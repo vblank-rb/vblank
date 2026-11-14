@@ -111,16 +111,16 @@ module VBlank
           # The same for the sprites' tiles (+scene_tiles+).
           class TooManySpriteTiles < TooMuch; end
 
-          # One screen's sprites do not fit video memory cut into squares of 16×16, in a game whose
-          # screens each keep their own. That screen alone is cut small, and the others keep their
-          # squares: a title's words in squares take half the rows of the sprite table they take
-          # cut small, and it has only 128.
+          # Screens whose sprites do not fit video memory cut into squares of 16×16, in a game whose
+          # screens each keep their own (+scenes+, every one the try found: #refuse_crowded_scenes!).
+          # Those screens alone give up squares, and the others keep theirs: a title's words in
+          # squares take half the rows of the sprite table they take cut small, and it has only 128.
           class ScreenSpritesFull < TooMuch
-            attr_reader :scene
+            attr_reader :scenes
 
-            def initialize(message, scene:)
+            def initialize(message, scenes:)
               super(message)
-              @scene = scene
+              @scenes = scenes
             end
           end
 
@@ -134,7 +134,7 @@ module VBlank
 
           # A screen's backgrounds need more sets of colours than eight with every way of fitting
           # them tried. Nothing a try for the sprites changes can help, so such a try passes it on
-          # (SNES#build_with_one_sprite_tile_set) rather than leaving a later one to fail on sprites.
+          # (SNES#one_sprite_tile_set_attempt) rather than leaving a later one to fail on sprites.
           class BackgroundColorsFull < TooMuch; end
 
           # A background on the third layer, a status bar or one held above a row, whose art does not
@@ -254,6 +254,7 @@ module VBlank
             @sprite_squares = sprite_squares
             @spare_sprite_tiles = lean_square_scenes.dup # scene => the tiles its squares may still waste
             @small_sprite_scenes = small_sprite_scenes
+            @crowded_scenes = {} # a scene whose sprites did not fit => the words of the refusal (#sprite_picture)
             @lost_squares = Hash.new { |scenes, scene| scenes[scene] = {} }
             @rows_added = 0 # rows the picture being made takes past its squares (#count_rows_added)
             @scene_of_sprite_tiles = nil
@@ -589,10 +590,31 @@ module VBlank
           # of +sprite_colors+, and nil for what every screen keeps; +tile_scene+ the same for its
           # tiles, in a game of +scene_tiles+. +number+ is its place in the table of pictures, where
           # it is not made in that order.
+          #
+          # A SCREEN WHOSE SPRITES DO NOT FIT (ScreenSpritesFull) fails the try, but it is one screen of
+          # many, and each screen keeps its own tiles, so the others can be crowded too and the next
+          # try would only find the next. So the screen is noted, its pictures from then on stand in
+          # with no pieces, and the try goes on to find every screen that does not fit before it
+          # stops (#refuse_crowded_scenes!).
           def sprite_picture(name, image, mixed: false, held: nil, scene: nil, tile_scene: nil, number: @sprite_pictures.length)
-            @sprite_pictures[name] ||= with_sprite_tiles_of(tile_scene) do
-              recording_lost_squares(name) { make_sprite_picture(name, image, mixed, held, scene, number) }
+            @sprite_pictures[name] ||= begin
+              raise ScreenSpritesFull.new(@crowded_scenes[tile_scene], scenes: [tile_scene]) if @crowded_scenes.key?(tile_scene)
+
+              with_sprite_tiles_of(tile_scene) do
+                recording_lost_squares(name) { make_sprite_picture(name, image, mixed, held, scene, number) }
+              end
+            rescue ScreenSpritesFull => e
+              @crowded_scenes[tile_scene] ||= e.message
+              SpritePicture.new(name: name, number: number, width: image.width, height: image.height, pieces: [])
             end
+          end
+
+          # Stops the try where a screen's sprites did not fit (#sprite_picture), naming every such
+          # screen it found.
+          def refuse_crowded_scenes!
+            return if @crowded_scenes.empty?
+
+            raise ScreenSpritesFull.new(@crowded_scenes.values.first, scenes: @crowded_scenes.keys)
           end
 
           # Whether any picture has a square of 16×16, which the runtime then reads off each piece.
@@ -840,7 +862,7 @@ module VBlank
             rescue TooMuch => e
               raise unless e.instance_of?(TooMuch) && squares_here?
 
-              raise ScreenSpritesFull.new(e.message, scene: scene)
+              raise ScreenSpritesFull.new(e.message, scenes: [scene])
             ensure
               @scene_of_sprite_tiles = nil
               @sprite_tiles, @sprite_tile_numbers, @sprite_square_numbers, @square_tile_numbers = shared

@@ -214,6 +214,10 @@ module VBlank
             # How many sprite tiles +scene+ leaves free (Art#free_sprite_tiles), for SNES#build.
             def free_sprite_tiles(scene) = @art.free_sprite_tiles(scene)
 
+            # Stops the try where a screen's sprites did not fit, once every screen is made
+            # (Art#refuse_crowded_scenes!), for SNES#build.
+            public def refuse_crowded_scenes! = @art&.refuse_crowded_scenes!
+
             # Pictures named in a warning before the rest are counted.
             PICTURES_NAMED = 3
 

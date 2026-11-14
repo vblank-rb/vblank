@@ -8,7 +8,8 @@ require "tmpdir"
 # and a row for each. A screen whose pictures fit only cut small must not cost another screen its
 # squares, or that screen's words can run out of the table's 128 rows.
 class TestSNESSmallPiecesByScreen < Minitest::Test
-  CROWD = 165 # pictures of three tiles of their own: 495 tiles cut small, and 660 in squares
+  SNES = VBlank::IR::Backends::SNES
+  CROWD =165 # pictures of three tiles of their own: 495 tiles cut small, and 660 in squares
 
   private def game
     crowd = CROWD
@@ -69,6 +70,53 @@ class TestSNESSmallPiecesByScreen < Minitest::Test
         end
       end
     end
+  end
+
+  SCREENS = 4
+
+  # SCREENS screens, each crowded as the one above, shown in turn a pass each.
+  private def crowded_screens_game
+    crowd = CROWD
+    screens = SCREENS
+    VBlank.game("SCREENS", consoles: %i[snes]) do
+      screen :tiled
+      colors :ink, %i[transparent red green]
+      random = Random.new(9)
+      screens.times do |screen_number|
+        names = Array.new(crowd) do |n|
+          name = :"crowd#{screen_number}_#{n}"
+          image name, width: 16, height: 16, colors: :ink,
+                      places: Array.new(256) { |at| (at / 16 >= 8) && ((at % 16) >= 8) ? 0 : random.rand(1..2) }
+          name
+        end
+        scene(:"crowded#{screen_number}") do
+          sprite :"far#{screen_number}", at: [80, 80], facing: names.to_h { |name| [name, name] }
+        end
+      end
+      state = 0
+      game_loop do
+        case_var(:state) do
+          screens.times { |screen_number| when_val screen_number, :"crowded#{screen_number}" }
+        end
+        state += 1
+        state = 0 if state == screens
+      end
+    end
+  end
+
+  # A try finds every crowded screen before it stops. So the build takes a try that finds the
+  # sprites need each screen's tiles to themselves, one that finds every crowded screen, one with
+  # each keeping only the squares that waste nothing, and one spending the tiles left free: not a
+  # try for each screen.
+  def test_several_crowded_screens_build_in_a_few_tries
+    snes = SNES.new
+    snes.build(crowded_screens_game.program(console: :snes))
+
+    assert_operator snes.tries, :<=, 4
+  end
+
+  def test_several_crowded_screens_play_as_the_interpreter_plays_them
+    game_player.run(crowded_screens_game.program(console: :snes), frames: SCREENS * 2)
   end
 
   private def rows_shown(rom)
