@@ -275,7 +275,8 @@ module VBlank
         music_volume: works,
         fade_music_in: works,
         fade_music_out: works,
-        songs: works("a recorded note with `glides: true` is refused: this build does not make it yet. For the rest, see `song`. " \
+        songs: works("see `song`. #{Answers::GLIDES_CARRY_ON} Its new loudness and side are not heard: the FM chip's " \
+                     "sixth voice plays a recording at one loudness, from both speakers. " \
                      "#{Answers::NOTE_VOICES_NOT_UNDER_VOLUME}"),
         sound_effects: works("see `song`."),
         sample: works("a recording is played on the FM chip's sixth voice, which can play a recording of eight " \

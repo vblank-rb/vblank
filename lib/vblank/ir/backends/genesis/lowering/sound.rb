@@ -98,9 +98,10 @@ module VBlank
             # is one thing it does not do yet. Its number in "recording_plays". +chip_envelope+ is
             # another console's sound chip's bytes for the shape, which nothing here reads. +pan+ is where
             # the note sits between the speakers, which nothing here reads either: every recording is
-            # mixed into the one stream the sixth FM voice plays, from both speakers.
-            def recorded_note_row(name, frequency, _volume, envelope = nil, chip_envelope: nil, pan: nil)
-              _ = pan
+            # mixed into the one stream the sixth FM voice plays, from both speakers. +walks+ asks for a row
+            # whose place is walked a sample at a time, for a part with a note that glides: every place here is.
+            def recorded_note_row(name, frequency, _volume, envelope = nil, chip_envelope: nil, pan: nil, walks: false)
+              _ = [pan, walks]
               info = Assets::Sample.of(declared_sample(name))
               shape = envelope || info.envelope
               if shape && !shape.plain?

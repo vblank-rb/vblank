@@ -101,6 +101,11 @@ module VBlank
             REGISTER_PAGE = 0x100
             VALUE_PAGE = 0x200
             PLAY_ENTRY = 0x80
+            # ...or GLIDE_ENTRY, in a game whose notes glide: the play goes on from where it is, at the
+            # step in the mailbox (#emit_glide).
+            GLIDE_ENTRY = 0x81
+            # Kept in a game with a recorded note that glides, whose runtime then carries what moves one.
+            GLIDES = "rt recordings glides"
             SECOND_PART = 2
             # How long the 68000 lets the Z80 run when the queue is full, in turns of a two-instruction
             # loop: more than a sample's time, in which the Z80 takes an entry.
@@ -155,7 +160,10 @@ module VBlank
             # Z80 sounds SAMPLES_A_SECOND on an NTSC console.
             def z80_step(step, voice_hz) = [(step * voice_hz / SAMPLES_A_SECOND / 256).round, 0xFFFF].min
 
-            def reserve(memory)
+            # +glides+ for a game with a recorded note that glides (`glides: true`), whose runtime then
+            # carries what bends one (#emit_glide) and its sound processor takes a new step mid-play.
+            def reserve(memory, glides: false)
+              memory.reserve(GLIDES, 2) if glides
               memory.reserve(PLACE, PLACE_BYTES)
               memory.reserve(KEPT_BY_PASS, Frame::STEPS_KEPT * 2)
               [DROPS, DROPS_MUSIC, OWNER_ASKING].each { |name| memory.reserve(name, 2) }
@@ -171,9 +179,11 @@ module VBlank
 
             def emit(asm, memory)
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
-              emit_start(asm, at)
+              glides = memory.reserved?(GLIDES)
+              emit_start(asm, at, glides: glides)
               emit_play(asm, at)
               emit_note(asm, at)
+              emit_glide(asm, at) if glides
               emit_stop(asm, at)
               emit_frame(asm, at)
               emit_mail(asm, at)
@@ -266,9 +276,9 @@ module VBlank
             # rt_recordings_start, as the game starts: the Z80's program copied into its memory and started,
             # its queue empty, the bus held all the while (Runtime::Boot has held it since power-on); and no
             # FM register's value kept yet.
-            def emit_start(asm, at)
+            def emit_start(asm, at, glides: false)
               h = Console::GenesisHardware
-              program = driver
+              program = driver(glides: glides)
               asm.label("rt_recordings_start")
               asm.lea(at.call(FM_KEPT), asm.a(0))
               asm.move(:w, asm.imm(FM_REGISTERS - 1), asm.d(0))
@@ -489,20 +499,7 @@ module VBlank
               asm.jsr(asm.abs_l("rt_recordings_place")) # END_AT, END_BANK
               asm.sub(:l, asm.disp(4, BACK), asm.d(0))
               asm.jsr(asm.abs_l("rt_recordings_place")) # LOOP_AT, LOOP_BANK
-              asm.move(:w, asm.disp(4, STEP), asm.d(1))
-              asm.btst(PAL_CONSOLE_BIT, asm.abs_l(Console::GenesisHardware::VERSION_REGISTER))
-              asm.branch(:eq, "rt_recordings_send_step")
-              asm.move(:w, asm.d(1), asm.d(2)) # a PAL console: the step made PAL_STEP_EXTRA longer, and no more than $FFFF
-              asm.mulu(asm.imm(PAL_STEP_EXTRA), asm.d(2))
-              asm.add(:l, asm.imm(0x8000), asm.d(2))
-              asm.swap(asm.d(2))
-              asm.add(:w, asm.d(2), asm.d(1))
-              asm.branch(:cc, "rt_recordings_send_step")
-              asm.move(:w, asm.imm(0xFFFF), asm.d(1))
-              asm.label("rt_recordings_send_step")
-              asm.move(:b, asm.d(1), asm.post(2)) # Z80_STEP, low byte first
-              asm.lsr(:w, 8, asm.d(1))
-              asm.move(:b, asm.d(1), asm.post(2))
+              emit_step_mailed(asm, "rt_recordings_send_step")
               asm.tst(:l, asm.disp(4, BACK))
               asm.scc(:ne, asm.ind(2)) # LOOPS
               asm.move(:b, asm.imm(1), asm.disp(1, PLAYS))
@@ -526,6 +523,52 @@ module VBlank
               asm.move(:b, asm.d(1), asm.post(2))
               asm.lsr(:w, 8, asm.d(1))
               asm.move(:b, asm.d(1), asm.post(2))
+              asm.rts
+            end
+
+            # The row A4 points at's STEP into the mailbox's Z80_STEP, A2 pointing at it, low byte first and A2
+            # moved past it: on a PAL console made PAL_STEP_EXTRA longer, and no more than $FFFF. +done+ names
+            # the label it reaches once the step is known. Uses D1 and D2.
+            def emit_step_mailed(asm, done)
+              asm.move(:w, asm.disp(4, STEP), asm.d(1))
+              asm.btst(PAL_CONSOLE_BIT, asm.abs_l(Console::GenesisHardware::VERSION_REGISTER))
+              asm.branch(:eq, done)
+              asm.move(:w, asm.d(1), asm.d(2))
+              asm.mulu(asm.imm(PAL_STEP_EXTRA), asm.d(2))
+              asm.add(:l, asm.imm(0x8000), asm.d(2))
+              asm.swap(asm.d(2))
+              asm.add(:w, asm.d(2), asm.d(1))
+              asm.branch(:cc, done)
+              asm.move(:w, asm.imm(0xFFFF), asm.d(1))
+              asm.label(done)
+              asm.move(:b, asm.d(1), asm.post(2))
+              asm.lsr(:w, 8, asm.d(1))
+              asm.move(:b, asm.d(1), asm.post(2))
+            end
+
+            # rt_recordings_glide(row, owner): the note +owner+'s part sounds, if it has the place, reads on at
+            # the row's pitch (Reference::Mixer#glide_music_note): how far a frame takes it, and the Z80 told
+            # its new step (GLIDE_ENTRY), which it takes from where it has got to, so nothing starts again. A
+            # Genesis plays a recording at one loudness and from both speakers, so the glide's loudness and side
+            # reach only the log, as the music volume's do. D0 = 1 when the part had a note, nought when not.
+            def emit_glide(asm, at)
+              asm.label("rt_recordings_glide")
+              asm.mulu(asm.imm(ROW_BYTES), asm.d(0))
+              asm.lea(asm.abs_l("recording_plays"), asm.a(0))
+              asm.lea(asm.idx(0, 0, 0), asm.a(4))
+              asm.tst(:w, at.call(PLACE, HELD))
+              asm.branch(:eq, "rt_recordings_none")
+              asm.cmp(:w, at.call(PLACE, OWNER), asm.d(1))
+              asm.branch(:ne, "rt_recordings_none")
+              asm.move(:l, asm.disp(4, ADVANCE), at.call(PLACE, PLACE_ADVANCE))
+              asm.move(:w, asm.disp(4, ADVANCE_FRACTION), at.call(PLACE, PLACE_ADVANCE_FRACTION))
+              emit_bus_taken(asm)
+              asm.lea(asm.abs_l(Z80_MEMORY + MAILBOX + Z80_STEP), asm.a(2))
+              emit_step_mailed(asm, "rt_recordings_glide_step")
+              asm.move(:w, asm.imm(GLIDE_ENTRY), asm.d(3))
+              asm.jsr(asm.abs_l("rt_z80_queued"))
+              emit_bus_given_back(asm)
+              asm.moveq(1, asm.d(0))
               asm.rts
             end
 
@@ -580,7 +623,7 @@ module VBlank
             # one of those the second timer finds missing: the recording is held one sample longer and
             # then passes over one, which cannot be heard. The chip's busy flag is looked at before each
             # entry is written, since the Z80 writes them back to back while no recording plays.
-            def driver
+            def driver(glides: false)
               Z80Program.new.tap do |z|
                 mail = ->(field) { MAILBOX + field }
                 # The timers' register named, +value+ written to it with the third voice's mode (the
@@ -689,7 +732,7 @@ module VBlank
                 z.word(0x3A, mail.call(QUEUE_WRITTEN)) # LD A,(queue written)
                 z.bytes(0xB9) # CP C
                 z.jump(0xCA, :wait) # JP Z
-                emit_entry_looked_at.call(:wait_play)
+                emit_entry_looked_at.call(glides ? :wait_entry : :wait_play)
                 emit_entry_written.call(:wait_busy)
                 z.jump(0xC3, :wait) # JP
                 z.label(:wait_play)
@@ -762,7 +805,7 @@ module VBlank
                 z.bytes(0xB9, 0xD9) # CP C ; EXX, which leaves the flags as they are
                 z.jump(0xCA, :loop) # JP Z
                 z.bytes(0xD9) # EXX
-                emit_entry_looked_at.call(:loop_play)
+                emit_entry_looked_at.call(glides ? :loop_entry : :loop_play)
                 emit_entry_written.call(:loop_busy)
                 z.bytes(0xD9) # EXX
                 z.jump(0xC3, :loop) # JP
@@ -824,7 +867,29 @@ module VBlank
                 z.word(0x32, mail.call(END_HIGH_NOW)) # LD (end high now),A
                 z.jump(0x32, :end_high_patched) # LD (the compare),A
                 z.bytes(0xC9) # RET
+                emit_glide_entries(z, mail, emit_entry_taken) if glides
               end.assembled
+            end
+
+            # A GLIDE, in a game whose notes glide: an entry of the queue that is GLIDE_ENTRY gives the play
+            # the mailbox's step from here, where it has got to, and is taken at once with nothing playing.
+            # The two places that send an entry onward to a new play send it here first (#driver's
+            # :wait_play and :loop_play, reached by the jumps to :wait_entry and :loop_entry instead), and
+            # it is written after everything else, so every other label is where it is in a game with none.
+            def emit_glide_entries(z, mail, emit_entry_taken)
+              z.label(:loop_entry) # in the second set, A the entry's first byte
+              z.bytes(0xFE, GLIDE_ENTRY) # CP glide
+              z.jump(0xC2, :loop_play) # JP NZ
+              emit_entry_taken.call
+              z.bytes(0xD9) # EXX
+              z.bytes(0xED)
+              z.word(0x5B, mail.call(Z80_STEP)) # LD DE,(step)
+              z.jump(0xC3, :loop) # JP
+              z.label(:wait_entry) # nothing playing: the glide has nothing to move
+              z.bytes(0xFE, GLIDE_ENTRY) # CP glide
+              z.jump(0xC2, :wait_play) # JP NZ
+              emit_entry_taken.call
+              z.jump(0xC3, :wait) # JP
             end
 
             # A very small Z80 assembler, as much of one as the program above takes: bytes, an instruction

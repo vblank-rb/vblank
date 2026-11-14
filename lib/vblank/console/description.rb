@@ -529,7 +529,7 @@ module VBlank
     # channel. What each verb does on it is Console::GenesisAnswers's to say.
     GENESIS = Description.new(name: :genesis, title: "Sega Genesis", screen_width: 320, screen_height: 224,
                               buttons: %i[a b c start right left up down].freeze, controllers: 1,
-                              holds_background_above_row: false, background_box: nil, glides_recordings: false, sets_main_volume: false, sprites: 80, sprite_places: 80,
+                              holds_background_above_row: false, background_box: nil, glides_recordings: true, sets_main_volume: false, sprites: 80, sprite_places: 80,
                               # The area is kept in memory (Genesis::Lowering::Paint#emit_inside).
                               area_clips_called_routines: true,
                               # A row of the screen shows at most 20 entries of the sprite table (16
