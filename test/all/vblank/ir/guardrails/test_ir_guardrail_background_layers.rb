@@ -411,4 +411,49 @@ class TestIRGuardrailBackgroundLayers < Minitest::Test
     assert validator.run(TURNS.program(console: :gbc), autofix: false).ok?
     assert validator.run(TWO_UP.program(console: :gba), autofix: false).ok?
   end
+
+  # THE SUPER NINTENDO'S THIRD LAYER is for a background shown on some rows only: a status bar,
+  # or a background kept above a row (Console::Description#layer_for_held_rows). So it shows two
+  # backgrounds, and one of those beside them; a third plain one is refused here, before any
+  # build, in words that name the bar, rather than by the build later as not made yet.
+  # +extra+ is what the screen shows beside an arena and clouds: :plain, :bar, :held or
+  # :plain_and_bar.
+  private def snes_arena_and(extra)
+    VBlank.game("THIRD", consoles: %i[snes]) do
+      screen :tiled
+      image(:dark, "#" => :black) { "########\n" * 8 }
+      tiles :floor, "#" => :dark
+      background :arena, tiles: :floor, map: ["#" * 4] * 4
+      background :clouds, tiles: :floor, map: ["#" * 4] * 4
+      background :hills, tiles: :floor, map: ["#" * 4] * 4 if %i[plain plain_and_bar].include?(extra)
+      status_bar :score, tiles: :floor, map: ["#" * 32] * 2, top: 208 if %i[bar plain_and_bar].include?(extra)
+      background :top, tiles: :floor, map: ["#" * 32] * 4, above_row: 32 if extra == :held
+      game_loop { wait_vblank }
+    end.program(console: :snes)
+  end
+
+  def test_three_plain_backgrounds_on_the_super_nintendo_are_refused_naming_the_bar
+    found = validator.run(snes_arena_and(:plain), autofix: false).errors
+
+    assert_equal 1, found.size
+    assert_match(/Super Nintendo shows 2 backgrounds at one time/, found.first.message)
+    assert_match(/status bar/, found.first.message, "it says what the third can be")
+    assert_equal :hills, found.first.node.name
+  end
+
+  def test_two_backgrounds_and_a_status_bar_fit_on_the_super_nintendo
+    assert validator.run(snes_arena_and(:bar), autofix: false).ok?
+  end
+
+  def test_two_backgrounds_and_one_kept_above_a_row_fit_on_the_super_nintendo
+    assert validator.run(snes_arena_and(:held), autofix: false).ok?
+  end
+
+  def test_three_backgrounds_beside_a_status_bar_on_the_super_nintendo_are_refused
+    found = validator.run(snes_arena_and(:plain_and_bar), autofix: false).errors
+
+    assert_equal 1, found.size
+    assert_match(/shows 3 backgrounds at one time \(:arena, :clouds, :hills\)/, found.first.message)
+    assert_match(/beside the status bar :score/, found.first.message)
+  end
 end

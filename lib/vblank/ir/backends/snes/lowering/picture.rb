@@ -51,8 +51,9 @@ module VBlank
             # (Runtime::Picture's rt_bar_place).
             def self.status_bar?(program) = program.walk.any? { |node| node.kind == :background && node.bar? }
 
-            # WHETHER +program+ PUTS A BACKGROUND HELD TO SOME ROWS ON THE THIRD LAYER (#held_to_rows?: a
-            # status bar, or a background held above a row): some screen shows it beside two other
+            # WHETHER +program+ PUTS A BACKGROUND HELD TO SOME ROWS ON THE THIRD LAYER (Nodes::Background#held_to_rows?:
+            # a status bar, or a background held above a row, which the line table switches,
+            # Runtime::Picture's BAR_TABLE): some screen shows it beside two other
             # backgrounds. Mode 1 has two layers of sixteen-colour tiles and a third of four, and the
             # held background is the one that goes there: it is what Super Bomberman puts there (its
             # stages show an arena on the two, each at its own scroll, and the bar on the third, which
@@ -71,15 +72,11 @@ module VBlank
 
               Stacking.screenfuls(program).any? do |screenful|
                 scenery = screenful.scenery
-                (scenery.any? { |bg| held_to_rows?(bg) } && scenery.length > BACKGROUND_LAYERS) ||
+                (scenery.any?(&:held_to_rows?) && scenery.length > BACKGROUND_LAYERS) ||
                   (scenery.any?(&:bar?) &&
                    Stacking.scenery_over_objects?(screenful.depths, scenery: scenery, objects: screenful.objects))
               end
             end
-
-            # Whether +bg+ is shown on some rows of the screen and not the rest, which the line table
-            # switches (Runtime::Picture's BAR_TABLE): a status bar, or a background held above a row.
-            def self.held_to_rows?(bg) = bg.bar? || !bg.above_row.nil?
 
             # Whether +program+ holds a background above a row, which takes the bar's line table.
             def self.background_rows_held?(program) = program.walk.any? { |node| node.kind == :background && node.above_row }
@@ -1310,7 +1307,7 @@ module VBlank
               if always.length + @scene_layers > BACKGROUND_LAYERS
                 refuse_unmade!(@third_layer ? "more than two backgrounds on the screen at once beside a status bar or a background held above a row" : "more than two backgrounds on the screen at once")
               end
-              @scene_bars = @scenes.keys.any? { |scene| @handover.arrival(scene).scenery.any? { |bg| Picture.held_to_rows?(bg) } }
+              @scene_bars = @scenes.keys.any? { |scene| @handover.arrival(scene).scenery.any?(&:held_to_rows?) }
               refuse_unmade!("a background kept above a row beside a status bar") if Picture.background_rows_held?(@program) && Picture.status_bar?(@program)
               refuse_unmade_stacking!
               refuse_unmade_bends!
@@ -1325,10 +1322,10 @@ module VBlank
             THIRD_LAYER = 2
 
             # +scenery+ less a background on the third layer.
-            def layered_scenery(scenery) = @third_layer ? scenery.reject { |bg| Picture.held_to_rows?(bg) } : scenery
+            def layered_scenery(scenery) = @third_layer ? scenery.reject(&:held_to_rows?) : scenery
 
             # Whether +bg+ is on the third layer.
-            def on_third_layer?(bg) = @third_layer && Picture.held_to_rows?(bg)
+            def on_third_layer?(bg) = @third_layer && bg.held_to_rows?
 
             # +bg+ on the third layer, as a refusal names it (the answers name when one is there).
             def third_layer_refusal_words(bg) = bg.bar? ? "a status bar on the third layer" : "a background held above a row beside two other backgrounds"
@@ -1338,8 +1335,8 @@ module VBlank
             # are among the places it can name. Every tile its maps show and every tile the game sets in
             # it is made now, so none comes later, after a scene has taken its copy of the tiles.
             def make_third_layer_art
-              refuse_unmade!("two backgrounds held to rows on one screen beside two other backgrounds") if Stacking.screenfuls(@program).any? { |screenful| screenful.scenery.count { |bg| Picture.held_to_rows?(bg) } > 1 }
-              backgrounds_declared.select { |bg| Picture.held_to_rows?(bg) }.each do |held|
+              refuse_unmade!("two backgrounds held to rows on one screen beside two other backgrounds") if Stacking.screenfuls(@program).any? { |screenful| screenful.scenery.count(&:held_to_rows?) > 1 }
+              backgrounds_declared.select(&:held_to_rows?).each do |held|
                 @layers[held] = THIRD_LAYER
                 refuse_unmade_third_layer!(held)
                 held.every_map.each_index { |which| grid_of(held, which) }
@@ -1484,7 +1481,7 @@ module VBlank
               ((0...@scene_layers).to_a - arrival.scenery.map { |bg| layer_of(bg) }).each do |layer|
                 runtime_call("rt_background_put_up", [Build.int(layer), Build.int(empty_grid.number), Build.int(1)])
               end
-              runtime_call("rt_bar_gone", []) if scene_bars? && arrival.scenery.none? { |bg| Picture.held_to_rows?(bg) }
+              runtime_call("rt_bar_gone", []) if scene_bars? && arrival.scenery.none?(&:held_to_rows?)
             end
 
             # The layers some scene bends and the one taking over does not: their rows go straight.

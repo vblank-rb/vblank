@@ -211,6 +211,10 @@ module VBlank
         # Whether it is a status bar (see +bar_top+).
         def bar? = !bar_top.nil?
 
+        # Whether it is shown on some rows of the screen and not the rest: a status bar, or a
+        # background kept above a row (+above_row+).
+        def held_to_rows? = bar? || !above_row.nil?
+
         # The variable a status bar's top row is kept in, which the gap between frames shows.
         def self.bar_top_var(name) = :"__bar_#{name}_top"
         def self.bar_covers_var(name) = :"__bar_#{name}_covers"

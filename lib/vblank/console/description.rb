@@ -49,7 +49,10 @@ module VBlank
     # +backgrounds+ is how many tiled layers it stacks, +turning_backgrounds+ how many of
     # them can turn and resize, and +backgrounds_beside_turning+ how many still scroll on a screen
     # where one turns. +bar_is_a_background+ marks whether a status bar is one of those layers, or a
-    # layer the console keeps beside them. +bar_shares_display+ marks whether the bar takes a part of the
+    # layer the console keeps beside them. +layer_for_held_rows+ marks a console with one layer more
+    # than +backgrounds+, of fewer colours, for one background shown on some rows only: a status bar,
+    # or a background kept above a row (Nodes::Background#held_to_rows?). The Super Nintendo's third
+    # layer of mode 1 is one, and Checks::TooManyBackgroundLayers counts such a background apart. +bar_shares_display+ marks whether the bar takes a part of the
     # display something else needs as well (a window the Advance's lights use, the memory the Color's
     # painted screen keeps its picture in), which Checks::StatusBarCannotShare asks about; where it is
     # false the bar is a picture drawn like any other. +turning_sprites+ marks whether a sprite can turn and resize.
@@ -165,7 +168,8 @@ module VBlank
                               :sprites_a_row, :sprite_pieces_drawn_a_line, :sprite_slivers_drawn_a_line,
                               :sprite_pixels_drawn_a_line, :sprite_piece_shape, :sprite_pieces_drawn_a_screen,
                               :sprite_table_filled_from, :turning_sprites, :sprite_sizes, :tile_planes, :backgrounds, :turning_backgrounds,
-                              :backgrounds_beside_turning, :bar_is_a_background, :bar_shares_display, :changes_cells_while_drawing,
+                              :backgrounds_beside_turning, :bar_is_a_background, :layer_for_held_rows, :bar_shares_display,
+                              :changes_cells_while_drawing,
                               :blends, :fades_by_brightness, :mixes_by_half, :list_colors, :color_bits, :painted_pages,
                               :clock_keeps_date, :cycles_a_second, :cycles_a_frame, :samples_a_copy,
                               :sample_timer_step, :sample_timer_counts, :recordings_at_once, :mixes_recordings,
@@ -237,7 +241,7 @@ module VBlank
                      voices_read_sound_memory: false, big_background_tiles: false, shown_rows: nil,
                      gives_up_rows: false, sprite_pieces_drawn_a_screen: nil, sprite_slivers_drawn_a_line: nil,
                      sprite_pixels_drawn_a_line: nil, sprite_piece_shape: :small, sprite_table_filled_from: :front,
-                     save_memories: ADVANCE_SAVE_MEMORIES, **rest) = super
+                     save_memories: ADVANCE_SAVE_MEMORIES, layer_for_held_rows: false, **rest) = super
 
       # Whether one sprite can show poses drawn from different lists of colours (see +pose_lists+).
       def poses_keep_own_lists? = pose_lists != :one
@@ -460,12 +464,12 @@ module VBlank
                                      # layers called mode 1: two of sixteen colours and one of four.
                                      # The build puts a status bar, or a background held above a
                                      # row, on the one of four, beside two other backgrounds
-                                     # (Backends::SNES::Lowering::Picture.third_layer?); three with
-                                     # neither among them it does not make yet, and says so.
+                                     # (Backends::SNES::Lowering::Picture.third_layer?), so that is
+                                     # the layer for held rows; a third plain background is refused.
                                      # Mode 7 turns one layer, alone; the build uses it only to
                                      # show a painted screen of big pixels.
-                                     backgrounds: 3, turning_backgrounds: 0, backgrounds_beside_turning: 0,
-                                     bar_is_a_background: true, bar_shares_display: true,
+                                     backgrounds: 2, turning_backgrounds: 0, backgrounds_beside_turning: 0,
+                                     bar_is_a_background: true, layer_for_held_rows: true, bar_shares_display: true,
                                      # Its colour maths adds, subtracts or halves, never the
                                      # Advance's sixteen steps, so a fade is walked colour by colour.
                                      changes_cells_while_drawing: false,

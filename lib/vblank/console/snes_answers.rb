@@ -161,8 +161,8 @@ module VBlank
         # --- backgrounds and layers ---
         tiles: works("tiles of sixteen colours each."),
         background: works("two backgrounds at a time, and a status bar or a background held above a row beside " \
-                          "them. Three backgrounds with neither among them are refused: this build does not make " \
-                          "that yet. The backgrounds are scrolled and changed as on the Advance. `above_row:` " \
+                          "them. A screen with three backgrounds and neither among them is refused before the " \
+                          "build. The backgrounds are scrolled and changed as on the Advance. `above_row:` " \
                           "keeps a background to the rows above that row, and takes no processor time as the " \
                           "screen is drawn. A game with it cannot have a status bar yet. With `alone: true`, the " \
                           "console shows only that background and the sprites above the row, so its see-through " \
