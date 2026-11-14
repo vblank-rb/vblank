@@ -39,9 +39,16 @@ module VBlank
           # room, and YJIT then threw code away and compiled it again, stopping every Ractor each
           # time: a dozen workers played slower together than one alone. Made once, the methods are
           # compiled once for every Ractor that plays them (Live::WorkerUnpacking).
+          #
+          # One game is made of it here first, so every instance variable a game sets as it is made
+          # has its place in Ruby's record of objects' layouts before any Ractor makes one. With
+          # none made here, four Ractors that each made their first game of a class at once once
+          # read one of its variables as nil; laying the class's variables out once, here, keeps
+          # the Ractors from laying them out at the same time.
           def self.shareable_class(source)
             game_class = Class.new { class_eval(source, "(the game, as Ruby)") }
             game_class.constants.each { |name| Ractor.make_shareable(game_class.const_get(name)) }
+            game_class.new
             game_class
           end
 
