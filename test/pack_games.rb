@@ -1318,6 +1318,19 @@ module PackGames
           recolor :palette_2, :other
         end
       end,
+      # A pool whose things are each told to draw with the list their pose's frame picks, which
+      # then follows recolor of that list.
+      game(:pool_drawn_with_its_frames_list, passes: 5) do |folder, options|
+        other = OTHER_LIST
+        poses_in_bank_colors(folder, options) do |_pack|
+          colors :other, other
+          guards = pool :guard, x: 0, y: 0, capacity: 2, image: :second
+          guards.spawn x: 40, y: 40
+          guards.spawn x: 80, y: 40
+          guards.each { |guard| guard.draw_with colors_name_of(:second) }
+          recolor :palette_2, :other
+        end
+      end,
       # Several sprites sharing poses, each following the list its pose's frame picks, two of
       # those lists recoloured through sets of their own.
       game(:actors_sharing_poses_whose_lists_are_recolored, passes: 6) do |folder, options|
@@ -1887,6 +1900,22 @@ module PackGames
           image :right, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_1 + 10, layout: PIECE_FRAME, count: 1), origin: ORIGIN,
                         colors: pack[:palette], size: SIZE
           sprite :both, at: [40, 40], frames: %i[left right], rate: 4
+        end)
+      end,
+      # The same sprite told to follow the list each frame picks, which is one list, recoloured.
+      # All-in-one it is a sprite drawn with that list, which every console plays.
+      game(:one_sprite_following_two_frames_of_one_bank, passes: 8) do |folder, options|
+        other = see_through_first(OTHER)
+        built_by(game_builder_of(folder, options: options) do |pack|
+          image :left, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_1 + 2, layout: PIECE_FRAME, count: 1), origin: ORIGIN,
+                       colors: pack[:palette], size: SIZE
+          image :right, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_1 + 10, layout: PIECE_FRAME, count: 1), origin: ORIGIN,
+                        colors: pack[:palette], size: SIZE
+          colors :other, other
+          both = sprite :both, at: [40, 40], facing: { left: :left, right: :right }
+          both.draw_with(%i[left right].map { |pose| colors_name_of(pose) }.uniq.to_h { |list| [list, list] })
+          both.face :right
+          recolor :palette_1, :other
         end)
       end
     ].freeze

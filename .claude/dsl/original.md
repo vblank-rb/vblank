@@ -643,12 +643,17 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   colours. The build cannot NAME that list, so `colors_name_of` of such a pose is a name standing for it
   (`IR::StartFile::Pose#bank_lists` keeps the bank lists' names): once the file is read the pose is a picture of the list
   `:<slot>_<bank>` its frame picks, and a sprite told `draw_with` that name, or to follow its poses' lists (`draw_with` given a
-  hash), follows that list, the runtime writing which one as it starts (`rg_start_file_frame_bank`). `bank:` paints only the
+  hash), follows that list, the runtime writing which one as it starts (`rg_start_file_frame_bank`). A pool's instance told
+  `draw_with` that name makes the pool follow the list for all its instances from power-on, since the build cannot write the
+  list into one instance's choice: an instance never told then shows what the list holds as well, and a pool told that
+  name and another list is a friendly error. `bank:` paints only the
   pieces whose record names that bank, drawn from that bank's list. A frame of two banks in the player's file, which the
   all-in-one build refuses, is drawn whole in its front piece's bank and follows that bank's list. On a
   console whose build keeps one list for a whole sprite (the Advance), one sprite may show two such poses of one slot, as
   all-in-one where their frames name one bank; where the player's file names two, which the all-in-one build refuses, each
-  pose is drawn in its own frame's bank. Nothing the file holds stops the
+  pose is drawn in its own frame's bank. On a console whose build keeps a list for each pose and does not follow them (the
+  Super Nintendo, the Color), one sprite of such poses of one slot may follow their lists, which all-in-one is a sprite drawn
+  with one list where their frames name one bank; where the file names two, each pose follows its own frame's list. Nothing the file holds stops the
   game: pieces are read while they end inside the slot, a piece outside the picture is not painted, and a tile past the
   slot paints nothing. The build sees a whole box, as for a picture. Worked example: `test/pack_pose_at_start_tests.rb`.
   **The layout is read once, by the pack's unpacking.** A frame's slot holds the original's bytes, and the game's

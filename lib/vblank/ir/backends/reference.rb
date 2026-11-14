@@ -298,6 +298,7 @@ module VBlank
         # budget: it stops the run wherever it has got to (at the next frame boundary
         # if the program has frames), and #stopped_at_budget? then returns true.
         def run(node, max_steps: nil, frames: nil)
+          as_built = node
           node = StartFile.filled(node, @handed_file) if node.kind == :program
           @read_program = (node if node.kind == :program)
           frames = DEFAULT_FRAMES if frames.nil? && max_steps.nil?
@@ -325,7 +326,7 @@ module VBlank
           @save.use_memory!(SaveLayout.memory_of(node))
           refuse_too_many_layers!(node)
           refuse_too_many_sprites!(node)
-          refuse_poses_with_different_colors!(node)
+          refuse_poses_with_different_colors!(node, as_built)
           refuse_two_see_through_layers!(node)
           # How the picture stacks: what scenery and objects there are, in what order,
           # and how deep each sits. Scenery in FRONT of an object means the save-under
@@ -613,8 +614,14 @@ module VBlank
         # ...and about a sprite's colors: this picture paints each of a sprite's pictures in
         # whatever colors it holds, and the console draws them all from one list. See
         # Guardrails::Checks::PosesWithDifferentColors.
-        def refuse_poses_with_different_colors!(node)
-          refusal = Guardrails::Checks::PosesWithDifferentColors.new.refusal_message(node)
+        #
+        # +as_built+ is +node+ before the file it is handed was read into it (StartFile.filled): the
+        # check tells a pose drawn in the bank its frame names by what the build left to read from
+        # the file, which the filled program no longer holds. Without it, a sprite following such
+        # poses whose frames name two banks would be refused here and played by the build for a
+        # computer, which the check lets through. The colours are compared as filled.
+        def refuse_poses_with_different_colors!(node, as_built)
+          refusal = Guardrails::Checks::PosesWithDifferentColors.new.refusal_message(node, as_built: as_built)
           raise ProgramError, refusal if refusal
         end
 

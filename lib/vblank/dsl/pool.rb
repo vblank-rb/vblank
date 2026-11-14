@@ -445,8 +445,17 @@ module VBlank
       def stacked_objects = @stacked_objects ||= []
 
       # Draw the instance at slot +index+ with other colours — the same verb a sprite has, and
-      # the same rules (see HardwareSprite#draw_with). Each instance keeps its own choice.
+      # the same rules (see HardwareSprite#draw_with). Each instance keeps its own choice, except
+      # for the list a pose's frame picks as the game starts, which the whole pool follows.
       def draw_with(index, which, showing)
+        # A list a pose's frame picks as the game starts (Builder#list_chosen_at_start?) is
+        # followed, as a sprite told it is (Pool#follow_lists_chosen_at_start).
+        which = { which => which } if which.is_a?(Symbol) && @builder.list_chosen_at_start?(which)
+        if which.is_a?(Hash) && !@builder.one_list_for_pose_lists?(which) && which.keys.any? { |own| @builder.list_chosen_at_start?(own) }
+          return follow_lists_chosen_at_start(which, showing)
+        end
+
+        refuse_following_and_drawing_with! if @following
         @recolors ||= begin
           unless spriteful?
             raise ArgumentError,
@@ -461,6 +470,39 @@ module VBlank
         choice = FieldRef.new(builder: @builder, list: colors_list, index: index.node, pool: @name, field: :colors)
         @recolors.draw_with(choice, which, showing)
         self
+      end
+
+      # A POOL TOLD TO DRAW WITH THE LIST A POSE'S FRAME PICKS, in a build that reads its pack as
+      # the game starts: which list that is is in the player's file, so the build cannot write it
+      # into the instance's choice as the build that holds the pack does. Each sprite the pool's
+      # things are drawn as follows the lists instead (Builder::PackPoses
+      # #follow_lists_chosen_at_start), as one sprite told the same does, and a pose shows what the
+      # list its frame picks holds now.
+      #
+      # Those sprites show each instance in turn, so they follow for every instance, from the
+      # start. Where the game tells every instance, that is what the build that holds the pack
+      # shows. An instance never told, or not told yet, shows what the list holds as well, where
+      # that build shows the colours the list was declared with: the two differ once the list is
+      # recoloured. A pool also told another list is refused (#refuse_following_and_drawing_with!).
+      private def follow_lists_chosen_at_start(lists, showing)
+        unless spriteful?
+          raise ArgumentError, "pool :#{@name} was told to draw_with other colors, but its instances draw nothing. " \
+                               "Give the pool pictures with image:, facing: or frames:."
+        end
+        refuse_following_and_drawing_with! if @recolors
+        stacked_objects.each do |node|
+          @builder.follow_pose_lists(node, lists, poses: @art.poses, showing: showing, subject: "pool :#{@name}")
+        end
+        @following = true
+        self
+      end
+
+      private def refuse_following_and_drawing_with!
+        raise ArgumentError,
+              "pool :#{@name} was told to draw_with the list that a frame picks, and to draw_with another list. " \
+              "This build reads its pack as the game starts. So the pool follows the lists of its frames for all " \
+              "its instances. It cannot also draw with another list. To fix this, change the colors of the list " \
+              "with `recolor`. Or build the game all-in-one."
       end
 
       # A pool never told to draw with other colours takes back the writes every spawn made
