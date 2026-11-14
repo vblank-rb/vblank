@@ -295,7 +295,10 @@ from that copy. The game's code says each piece's shape and size; it never depen
     that is not colours. Worked example: `vblank_layout_game_and_file` in
     `test/made_up_vblank_layout_originals.rb`.
   - `copy.file("MAPHEAD.#{release}")` — one file of a copy that is several files (below), with the same
-    verbs, each place counted from that file's start. A fixed place outside the file is refused.
+    verbs, each place counted from that file's start. A fixed place outside the file is refused. A
+    place worked out as the routine runs is held to the file too, for every byte a verb reads (a
+    `copy_bytes` or a format's `unpack_<name>` included): a read outside it stops the unpacking,
+    naming the file and the first byte read outside it, and never reads on into the next file.
 
   **An original that is several files** (a computer game's folder: Wolfenstein 3D's VSWAP.WL6,
   GAMEMAPS.WL6 and the rest) lists each release's files instead of a SHA-1 and a size:

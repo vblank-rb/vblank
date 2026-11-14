@@ -49,14 +49,14 @@ module VBlank
 
         def repeat(count, stop_when: nil, &) = @internals.builder.repeat(count, stop_when: stop_when, &)
 
-        # The copy's byte at +at+, with the check before it: a place outside the copy records a fault
-        # and reads a byte of the copy instead, as any table read does. A place worked out from
-        # another read of the copy is held first (BlockKitInternals#emit_held_place).
+        # The copy's byte at +at+, with the check before it: a place outside what the block may read
+        # (the whole copy, or the one file of it the block was given at) records a fault and reads
+        # a byte of the copy instead, as any table read does. A place worked out from another read
+        # of the copy is held first (BlockKitInternals#emit_held_place).
         def byte(at)
           at = @internals.emit_held_place(at)
-          copy = @internals.copy
-          @internals.emit_fault(Unpacking::Fault::READ_PAST_END, at, 0) if at < 0 || at >= copy.length
-          copy[at]
+          @internals.emit_read_outside_fault(at) if @internals.outside_block_reads(at)
+          @internals.copy[at]
         end
 
         def expect_size(size)
@@ -201,8 +201,35 @@ module VBlank
           end
         end
 
+        # The copy's byte at +at+, outside any block: a place outside the copy records a fault and
+        # reads a byte of the copy instead, as BlockKit#byte does.
+        def copy_byte(at)
+          at = emit_held_place(at)
+          emit_fault(Unpacking::Fault::READ_PAST_END, at, 0) if at < 0 || at >= copy.length
+          copy[at]
+        end
+
+        # Byte +at+ of +file+ (a FileReader), counted from the file's start, outside any block: a
+        # place outside the file records a fault naming the file, and reads a byte of the copy
+        # instead. Inside the file is inside the copy, so the copy's own check is not made too.
+        def file_byte(at, file)
+          at = emit_held_place(at)
+          emit_fault(Unpacking::Fault::READ_OUTSIDE_FILE, at, file.number) if at < 0 || at >= file.size
+          copy[at + file.start]
+        end
+
+        # WHAT A BLOCK MAY READ: from the copy's first byte to its end, or, for a block given its
+        # place in one file of a copy that is several (+file+, a FileReader), from that file's first
+        # byte to its end. So a block read at a place worked out as it runs cannot read on into the
+        # next file. The block's routine checks each read against the two ends (#outside_block_reads),
+        # the same two tests whether the block reads the whole copy or one file.
+        #
         # What a block is handed, set before its routine is called.
-        def emit_block_arguments(at:, slot:, start:, count:, format_number:)
+        def emit_block_arguments(at:, slot:, start:, count:, format_number:, file: nil)
+          routine_variable(:read_first).store!(file ? file.start : 0)
+          routine_variable(:read_ends).store!(file ? file.start + file.size : copy.length)
+          # The file's number, 1 first, or 0 for the whole copy.
+          routine_variable(:read_file).store!(file ? file.number + 1 : 0)
           routine_variable(:from).store!(at)
           routine_variable(:to).store!(slot.place(start))
           routine_variable(:ends).store!(slot.place(slot.byte_size))
@@ -266,6 +293,21 @@ module VBlank
             waiting.concat(looked_at.operand_nodes)
           end
           false
+        end
+
+        # Whether the block may not read the copy at +at+ (#emit_block_arguments): a test the routine
+        # makes.
+        def outside_block_reads(at) = at < routine_variable(:read_first) || at >= routine_variable(:read_ends)
+
+        # The fault for a block's read at +at+ outside what it may read: past the copy, or outside
+        # its file, named by the file's number and the place counted from the file's start.
+        def emit_read_outside_fault(at)
+          file = routine_variable(:read_file)
+          if file == 0
+            emit_fault(Unpacking::Fault::READ_PAST_END, at, 0)
+          else
+            emit_fault(Unpacking::Fault::READ_OUTSIDE_FILE, at - routine_variable(:read_first), file - 1)
+          end
         end
 
         # The fault for a write that does not fit: the first byte past the slot's end, in the slot.

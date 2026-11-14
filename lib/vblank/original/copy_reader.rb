@@ -55,32 +55,49 @@ module VBlank
 
       # The byte at +at+ in the copy, 0 to 255. +at+ may be worked out as the game runs. A place
       # outside the copy is a fault the build stops on.
-      def byte(at) = @kit.byte(at)
+      def byte(at) = @internals.copy_byte(at)
 
       # The two bytes from +at+, low byte first unless +big_endian+. A place worked out from another
       # read is held once for all its bytes (BlockKitInternals#emit_held_place).
-      def half(at, big_endian: false)
-        at = @internals.emit_held_place(at)
-        low = byte(at)
-        high = byte(sum_of(at, 1))
+      def half(at, big_endian: false) = join_half(hold_place(at), big_endian) { |place| byte(place) }
+
+      # The four bytes from +at+, low byte first unless +big_endian+.
+      def word(at, big_endian: false) = join_word(hold_place(at), big_endian) { |place| half(place, big_endian: big_endian) }
+
+      # The half at +at+ (a held place) made of the bytes the block reads at +at+ and the place
+      # after, low byte first unless +big_endian+; and the word made of the halves it reads. What
+      # CopyReader and FileReader read with, each giving its own reads.
+      def join_half(at, big_endian)
+        low = yield at
+        high = yield sum_of(at, 1)
         big_endian ? (low << 8) | high : low | (high << 8)
       end
 
-      # The four bytes from +at+, low byte first unless +big_endian+.
-      def word(at, big_endian: false)
-        at = @internals.emit_held_place(at)
-        first = half(at, big_endian: big_endian)
-        second = half(sum_of(at, 2), big_endian: big_endian)
+      def join_word(at, big_endian)
+        first = yield at
+        second = yield sum_of(at, 2)
         big_endian ? (first << 16) | second : first | (second << 16)
       end
 
+      # +at+, or a variable holding it where it is worked out from a read of the copy
+      # (BlockKitInternals#emit_held_place). FileReader asks, holding its places too.
+      def hold_place(at) = @internals.emit_held_place(at)
+
+      # Byte +at+ of +file+ (a FileReader), at a place the routine works out as it runs, checked
+      # against the file (BlockKitInternals#file_byte). FileReader asks.
+      def file_byte(at, file) = @internals.file_byte(at, file)
+
       # +count+ bytes from +at+ in the copy, as they are, into +into+ (a slot of `pack`) from its
       # byte +start+.
-      def copy_bytes(at:, count:, into:, start: 0)
+      def copy_bytes(at:, count:, into:, start: 0) = copy_bytes_within(nil, at: at, count: count, into: into, start: start)
+
+      # #copy_bytes, its reads held to +file+ (a FileReader, +at+ a place in the copy), or to the
+      # whole copy for nil. FileReader asks.
+      def copy_bytes_within(file, at:, count:, into:, start: 0)
         refuse_unless_slot!(into, "copy_bytes")
         refuse_outside_slot!(into, start, count)
         into.record_write
-        emit_block_call(:copy, at: at, slot: into, start: start, count: count, format_number: 0) do
+        emit_block_call(:copy, at: at, slot: into, start: start, count: count, format_number: 0, file: file) do
           emit_copy_routine
         end
       end
@@ -116,7 +133,7 @@ module VBlank
                                "#{@release.files.map(&:name).join(', ')}."
         end
 
-        FileReader.new(self, start: start, file: release_file)
+        FileReader.new(self, start: start, file: release_file, number: @release.files.index(release_file))
       end
 
       # +at+ moved on by +by+ bytes: a number, or a value worked out as the routine runs.
@@ -127,10 +144,14 @@ module VBlank
 
       # The block at +settings+' at: unpacked by the format called +format_name+, which the copy must
       # offer: what `copy.unpack_<name>` does.
-      def unpack(format_name, **settings)
+      def unpack(format_name, **settings) = unpack_within(nil, format_name, **settings)
+
+      # #unpack, its reads held to +file+ (a FileReader, at: a place in the copy), or to the whole
+      # copy for nil. FileReader asks.
+      def unpack_within(file, format_name, **settings)
         format = @formats.find { |offered| offered.format_name == format_name }
         refuse_format_not_offered!(format_name) unless format
-        unpack_with(format, **settings)
+        unpack_with(format, file, **settings)
       end
 
       # `unpack_<name>` for each format the copy offers. A verb of the game's for each format, named
@@ -160,7 +181,7 @@ module VBlank
       def format_asked(name) = name.to_s.start_with?("unpack_") ? name.to_s.delete_prefix("unpack_").to_sym : nil
 
       # A block of +format+, given +settings+: checked, its settings stored for its routine, then called.
-      def unpack_with(format, **settings)
+      def unpack_with(format, file, **settings)
         verb = "unpack_#{format.format_name}"
         refuse_unknown_settings!(verb, format, settings)
         refuse_missing_places!(verb, settings)
@@ -171,15 +192,17 @@ module VBlank
         into.record_write
         format.format_settings.each { |name, default| @kit.setting(name).store!(settings.fetch(name, default)) }
         emit_block_call(:"unpack_#{format.format_name}", at: settings.fetch(:at), slot: into, start: start, count: 0,
-                                                         format_number: @formats.index(format)) do
+                                                         format_number: @formats.index(format), file: file) do
           format.routine(@kit)
         end
       end
 
       # One block: what it is handed set in the kit's variables, its routine called (made the first
-      # time, from the block given), and a wait for the next frame.
-      def emit_block_call(routine_name, at:, slot:, start:, count:, format_number:, &routine)
-        @internals.emit_block_arguments(at: at, slot: slot, start: start, count: count, format_number: format_number)
+      # time, from the block given), and a wait for the next frame. Its reads are held to +file+ (a
+      # FileReader), or to the whole copy for nil.
+      def emit_block_call(routine_name, at:, slot:, start:, count:, format_number:, file: nil, &routine)
+        @internals.emit_block_arguments(at: at, slot: slot, start: start, count: count, format_number: format_number,
+                                        file: file)
         @builder.call(define_block_routine(routine_name, &routine))
         @internals.emit_wait
         nil
@@ -260,33 +283,48 @@ module VBlank
 
     # ONE FILE OF A COPY THAT IS SEVERAL FILES, as an unpacking routine reads it (CopyReader#file):
     # each verb of the copy's, with its places counted from the start of the file. A place written in
-    # the program that is outside the file is refused; one worked out as the routine runs is held to
-    # the whole copy, as every read is.
+    # the program that is outside the file is refused as the routine is built. One worked out as the
+    # routine runs is held to the file as it runs: a read outside it is the fault
+    # Unpacking::Fault::READ_OUTSIDE_FILE, which names the file and the first byte read outside it,
+    # and never a read of the next file. A fixed place costs no test as the routine runs beyond the
+    # one every read of the copy makes.
     class FileReader
-      # The ReleaseFile read, and where it starts in the copy.
-      attr_reader :file, :start
+      # The ReleaseFile read, where it starts in the copy, and its number in the release's list of
+      # files, 0 first, which a fault names it by.
+      attr_reader :file, :start, :number
 
-      def initialize(reader, start:, file:)
+      def initialize(reader, start:, file:, number:)
         @reader = reader
         @start = start
         @file = file
+        @number = number
       end
 
       # How many bytes the file holds.
       def size = @file.size
 
-      def byte(at) = @reader.byte(place(at))
+      def byte(at) = at.is_a?(Integer) ? @reader.byte(place(at)) : @reader.file_byte(at, self)
 
-      def half(at, big_endian: false) = @reader.half(place(at, 2), big_endian: big_endian)
+      def half(at, big_endian: false)
+        return @reader.half(place(at, 2), big_endian: big_endian) if at.is_a?(Integer)
 
-      def word(at, big_endian: false) = @reader.word(place(at, 4), big_endian: big_endian)
+        @reader.join_half(@reader.hold_place(at), big_endian) { |held| byte(held) }
+      end
 
-      def copy_bytes(at:, count:, into:, start: 0) = @reader.copy_bytes(at: place(at, count.is_a?(Integer) ? count : 1), count: count, into: into, start: start)
+      def word(at, big_endian: false)
+        return @reader.word(place(at, 4), big_endian: big_endian) if at.is_a?(Integer)
+
+        @reader.join_word(@reader.hold_place(at), big_endian) { |held| half(held, big_endian: big_endian) }
+      end
+
+      def copy_bytes(at:, count:, into:, start: 0)
+        @reader.copy_bytes_within(self, at: place(at, count.is_a?(Integer) ? count : 1), count: count, into: into, start: start)
+      end
 
       # The block at +settings+' at:, counted from the start of this file, unpacked by +format_name+.
       def unpack(format_name, **settings)
         settings[:at] = place(settings[:at]) if settings.key?(:at)
-        @reader.unpack(format_name, **settings)
+        @reader.unpack_within(self, format_name, **settings)
       end
 
       # `unpack_<name>` for each format the copy offers, from a place in this file (CopyReader#method_missing).

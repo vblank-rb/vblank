@@ -51,6 +51,71 @@ module CopyReaderTests
     assert_equal({ palette: PALETTE.pack("v*"), walls: TILE_BYTES, heights: HEIGHTS.pack("C*") }, unpacking.slot_bytes_in(played))
   end
 
+  # A READ OF ONE FILE AT A PLACE THE ROUTINE WORKS OUT AS IT RUNS is held to that file, as a place
+  # written in the program is: past DATA.MU1's 154 bytes it is a fault naming the file (1, the
+  # release's second) and the first byte read outside it, counted from the file's start, and not a
+  # read of whatever file comes next. The answer key is the release's file sizes (FolderOriginal).
+  # The build leaves its pack out, so the routine is played here and not first by the build.
+  PACK_LEFT_OUT = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
+  DATA_FILE_NUMBER = 1
+
+  private def fault_reading_data_file(count: 4, formats: [], &read)
+    b = VBlank::Builder.new(options: PACK_LEFT_OUT)
+    b.data_pack(from: folder_original(nil), version: "1", formats: formats) do |slots|
+      slots.numbers :read, count: count, width: :byte, signed: false
+      slots.fill_from_copy do |copy, pack, release|
+        read.call(copy.file("INDEX.#{release}"), copy.file("DATA.#{release}"), pack[:read])
+      end
+    end
+    unpacking = b.declared_data_pack.unpacking(release: VBlank::Original::Release.from("MU1", RELEASES.fetch("MU1")))
+    played = game_player.hand_file(folder_original.copy.read_bytes).run(unpacking.program, frames: 8)
+    unpacking.fault_in(played)
+  end
+
+  private def assert_read_outside_data_file(first_outside, fault)
+    refute_nil fault, "the read outside DATA.MU1 is a fault"
+    assert_equal [VBlank::Original::Unpacking::Fault::READ_OUTSIDE_FILE, first_outside, DATA_FILE_NUMBER],
+                 [fault.kind, fault.at, fault.detail]
+  end
+
+  def test_a_run_time_place_past_the_end_of_a_file_is_a_fault_naming_the_file
+    # The colours start at 16 in DATA.MU1, so this is byte 216 of a file of 154.
+    fault = fault_reading_data_file { |index, data, slot| data.copy_bytes at: index.word(6) + 200, count: 4, into: slot }
+
+    assert_read_outside_data_file 216, fault
+  end
+
+  def test_a_run_time_copy_that_starts_inside_a_file_and_runs_past_its_end_is_a_fault_at_the_end
+    # The heights start at 120, and 40 bytes from there run past byte 153.
+    fault = fault_reading_data_file(count: 40) { |index, data, slot| data.copy_bytes at: index.word(14), count: 40, into: slot }
+
+    assert_read_outside_data_file 154, fault
+  end
+
+  def test_a_fixed_place_with_a_run_time_count_past_the_end_of_a_file_is_a_fault_at_the_end
+    # INDEX.MU1 starts "MUIX": its first byte is 77, so 77 bytes from byte 150.
+    fault = fault_reading_data_file(count: 80) { |index, data, slot| data.copy_bytes at: 150, count: index.byte(0), into: slot }
+
+    assert_read_outside_data_file 154, fault
+  end
+
+  def test_a_run_time_byte_and_word_past_the_end_of_a_file_are_faults
+    byte = fault_reading_data_file { |index, data, slot| slot[0] = data.byte(index.word(6) + 200) }
+    word = fault_reading_data_file { |index, data, slot| slot[0] = data.word(index.word(6) + 136) }
+
+    assert_read_outside_data_file 216, byte
+    # The word is bytes 152 to 155.
+    assert_read_outside_data_file 154, word
+  end
+
+  def test_a_format_unpacking_from_a_run_time_place_past_the_end_of_a_file_is_a_fault
+    fault = fault_reading_data_file(formats: [PairRuns]) do |index, data, slot|
+      data.unpack_pair_runs at: index.word(6) + 150, into: slot
+    end
+
+    assert_read_outside_data_file 166, fault
+  end
+
   # The port's format, named in `formats:`, gives the copy `unpack_pair_runs`, with its setting.
   def test_a_format_of_the_ports_own_unpacks_and_counts_what_it_writes
     Dir.mktmpdir do |folder|

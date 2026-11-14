@@ -46,10 +46,17 @@ module VBlank
     # it after the last slot as a record of VBlank's own (FrameRewrite), which is all that anything
     # drawing a pose reads. That is so for a slot copied as it is too, in a pack with no routine.
     # BYTES is the slots and then those records, as the pack's file is after its header.
-    Unpacking = Data.define(:program, :slots, :copy_size, :format_words, :copy_bytes, :frames)
+    #
+    # +files+ are the release's files (ReleaseFiles) where its copy is several, which a fault
+    # reading outside one names; nil for a copy that is one file.
+    Unpacking = Data.define(:program, :slots, :copy_size, :format_words, :copy_bytes, :frames, :files)
 
     class Unpacking
-      def initialize(program:, slots:, copy_size:, format_words:, copy_bytes: nil, frames: FrameRecord::Section.new(sources: [])) = super
+      def initialize(program:, slots:, copy_size:, format_words:, copy_bytes: nil, frames: FrameRecord::Section.new(sources: []),
+                     files: nil) = super
+
+      # The error the build stops with for +fault+ (a Fault this unpacking met), in words.
+      def fault_error(fault) = fault.error(slots, copy_size, format_words, files: files)
 
       # A run of the program on +player+ (the interpreter, or any computer runtime's player), handed
       # the copy the build read where it read one. +options+ are the player's `run`'s.
@@ -236,23 +243,32 @@ module VBlank
       FAULT_AT = Messages::MadeNames.make(:unpacking_part, part: :fault_at)
       FAULT_DETAIL = Messages::MadeNames.make(:unpacking_part, part: :fault_detail)
 
-      # WHAT WENT WRONG AS THE ROUTINE RAN, the first time anything did. +kind+ is one of the three
-      # below; +at+ is a place in the copy for the first two and a byte outside the slot for the
-      # third (a format's write names the first byte past the slot's end, whether it found the
-      # write did not fit when the size was expected or when the byte was written); +detail+ is the
-      # number of the format the routine was told (Unpacking#format_words), or the slot's number in
-      # the pack's order.
+      # WHAT WENT WRONG AS THE ROUTINE RAN, the first time anything did. +kind+ is one of the four
+      # below; +at+ is a place in the copy for the first two, a byte outside the slot for the third
+      # (a format's write names the first byte past the slot's end, whether it found the write did
+      # not fit when the size was expected or when the byte was written), and for the fourth the
+      # first byte read outside one file of a copy that is several (CopyReader#file), counted from
+      # that file's start; +detail+ is the number of the format the routine was told
+      # (Unpacking#format_words), the slot's number in the pack's order, or the file's number in
+      # the release's list of files.
       Fault = Data.define(:kind, :at, :detail)
 
       class Fault
         WRONG_FORMAT = 1
         READ_PAST_END = 2
         WRITE_OUTSIDE_SLOT = 3
+        READ_OUTSIDE_FILE = 4
 
         # The error the build stops with, in words, for a pack of +slots+ from a copy of +copy_size+
-        # bytes whose formats are called +format_words+.
-        def error(slots, copy_size, format_words)
+        # bytes whose formats are called +format_words+, and whose +files+ (ReleaseFiles) are the
+        # release's when it is several.
+        def error(slots, copy_size, format_words, files: nil)
           case kind
+          when READ_OUTSIDE_FILE
+            file = files.fetch(detail)
+            WrongCopy.new("The unpacking routine reads byte #{at} (0x#{at.to_s(16)}) of #{file.name}. #{file.name} has " \
+                          "bytes 0 to #{file.size - 1}. A read must stay in its file and must not go on into the next " \
+                          "file. Correct the place that it reads for this release.")
           when WRONG_FORMAT
             name = format_words.fetch(detail)
             WrongCopy.new("The unpacking routine reads a block packed with #{name} at #{at} (0x#{at.to_s(16)}) in the " \

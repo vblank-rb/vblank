@@ -575,7 +575,7 @@ module VBlank
           # Written, so a lowering's many questions of a long routine read one walk of it rather
           # than walking it again for each (IR::Node#mark_written!).
           Original::Unpacking.new(program: maker.program.mark_written!, slots: slots, copy_size: copy_size,
-                                  format_words: reader.format_words, copy_bytes: bytes&.b, frames: frames)
+                                  format_words: reader.format_words, copy_bytes: bytes&.b, frames: frames, files: release.files)
         end
       end
 
@@ -730,7 +730,7 @@ module VBlank
 
       def refuse_faulted_or_unfinished_unpacking!(unpacking, ran, most_frames)
         fault = unpacking.fault_in(ran)
-        raise fault.error(unpacking.slots, unpacking.copy_size, unpacking.format_words) if fault
+        raise unpacking.fault_error(fault) if fault
         unless unpacking.finished_in?(ran)
           raise ArgumentError, "The data pack's unpacking routine did not get to its end in #{most_frames} frames. " \
                                "A routine must end. Look for a loop in `slots.fill_from_copy` that never stops."
