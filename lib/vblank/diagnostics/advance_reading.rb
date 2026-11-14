@@ -160,6 +160,8 @@ module VBlank
       # up to a canvas for the same sprite facing the other — which reads as the animation being
       # wrong rather than the position. The build did the moving, so it is undone here; +piece_x+
       # and +piece_y+ still carry what the console was told, for a test that wants that instead.
+      # In a game shown in a border all of these are on the game's own screen: the border's rows
+      # are left out, and the corner the border moves every sprite by is taken off.
       # A row the build cannot name is left where it is, since there is nothing to look up.
       #
       # Worth having because the finished picture cannot answer several ordinary questions: it
@@ -344,10 +346,17 @@ module VBlank
         table = palette(:sprites) # read once for the lot, not once per row
         turns = @rom.built.sprite_turns || {}
         held = @rom.built.held_sprites
-        @probe.sprites.map do |row|
+        border_rows, left, top = border_of_game_screen
+        @probe.sprites.filter_map do |row|
+          # A game shown in a border keeps the console's first rows for the border, and every one
+          # of its own sprites stands that far further along (GBA::BorderSprites), so those rows
+          # are not the game's, and the corner is taken off the rest.
+          next if row[:slot] < border_rows
+
+          row = row.merge(x: (row[:x] - left) & 0x1FF, y: (row[:y] - top) & 0xFF)
           # A row of a game keeping more rows than the console's table is whichever of its own
-          # rows was copied there this frame.
-          slot = held ? held.row_in_copy(row[:slot]) { |address| mem16(address) } : row[:slot]
+          # rows was copied there this frame, counted from the first after the border's.
+          slot = held ? held.row_in_copy(row[:slot] - border_rows) { |address| mem16(address) } : row[:slot]
           home = own.fetch(slot, slot)
           name = whose[home]
           dx, dy = moved.dig(home, pose_key(row, rooms, home)) || [0, 0]
@@ -363,6 +372,16 @@ module VBlank
                         x: (row[:x] - dx) & 0x1FF, y: (row[:y] - dy) & 0xFF,
                         colors: colors_drawn_from(row, table))
         end
+      end
+
+      # How many of the console's first sprite rows a game shown in a border keeps for the border,
+      # and where the game's screen starts on the console's: [rows, left, top], all nought for a
+      # game shown whole.
+      def border_of_game_screen
+        console = @rom.built.source_program&.described_console
+        return [0, 0, 0] unless console&.bordered?
+
+        [IR::Backends::GBA::BorderSprites::BORDER_ROWS, *console.border_corner]
       end
 
       # THE COLOURS A ROW IS DRAWING FROM, which is the question the row's +palette+ field looks

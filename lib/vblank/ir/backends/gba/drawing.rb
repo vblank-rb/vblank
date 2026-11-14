@@ -914,8 +914,9 @@ module VBlank
           def emit_late_pages_setting(setting)
             return unless @layout.late_pages.any?
 
-            rows = setting.rows
-            @primitives.store_word_immediate(rows ? rows + 1 : 0, @primitives.var_addr(LATE_PAGE_ROWS))
+            # Counted in the console's lines, which a game shown in a border starts below its top.
+            lines = @layout.late_pages.lines_above(setting)
+            @primitives.store_word_immediate(lines ? lines + 1 : 0, @primitives.var_addr(LATE_PAGE_ROWS))
             @frames.emit_set_pace(setting.pace)
           end
 
