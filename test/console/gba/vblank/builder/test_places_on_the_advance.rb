@@ -306,6 +306,29 @@ class TestPlacesOnTheAdvance < Minitest::Test
     end
   end
 
+  # A place drawn `inside` a rectangle is seen across the rectangle, and a lit face in perspective
+  # near enough to reach past its left side is cut there, row by row: the face's left side would
+  # land 20 pixels left of the rectangle's.
+  def test_a_lit_face_reaching_past_the_rectangle_it_is_drawn_inside_is_cut_at_its_side
+    screen = game_player.run(PlaceGames.held_and_faded_square(inside: [100, 40, 40, 80], ahead: 0.5), frames: 2).screen
+
+    [60, 80, 100].each do |y|
+      refute_equal BLACK, screen.pixel(100, y), "(100, #{y}) is the rectangle's first column"
+      assert_equal BLACK, screen.pixel(99, y), "(99, #{y}) is outside the rectangle"
+    end
+  end
+
+  # A fade over the whole screen darkens a lit face's pixels as it darkens the rest of the picture.
+  def test_a_lit_face_under_a_fade_is_darkened_with_the_picture
+    plain = game_player.run(PlaceGames.held_and_faded_square, frames: 2).screen
+    faded = game_player.run(PlaceGames.held_and_faded_square(faded: 50), frames: 2).screen
+
+    [[64, 24], [150, 80], [110, 80], [111, 80]].each do |x, y|
+      refute_equal BLACK, faded.pixel(x, y), "(#{x}, #{y}) is on the face"
+      refute_equal plain.pixel(x, y), faded.pixel(x, y), "(#{x}, #{y}) is darker under the fade"
+    end
+  end
+
   def test_a_window_reaching_past_the_screen_is_held_to_it
     screen = game_player.run(PlaceGames.listed_faces([0], window: [-50, -50, 400, 400]), frames: 2).screen
 

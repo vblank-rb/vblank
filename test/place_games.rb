@@ -142,6 +142,38 @@ module PlaceGames
     builder.program
   end
 
+  # A square face two wholes wide, its left side +ahead+ wholes in front of the viewer and its right
+  # side a whole further, lit brighter on the left than the right by the shading. It is drawn every
+  # pass inside the rectangle +inside+ ([x, y, width, height]) where one is given, with the whole
+  # screen faded +faded+ percent toward black. Every other pixel of its picture is the shading's
+  # white, which the light darkens; the rest are the tile's own colours, which no light changes.
+  HALF_WHITE_TILE = Ractor.make_shareable(TILE.each_with_index.map { |color, at| at.even? ? 0x7FFF : color })
+
+  def self.held_and_faded_square(inside: nil, faded: 0, ahead: 2.0)
+    builder = VBlank::Builder.new
+    builder.instance_eval do
+      screen :bitmap, tear_free: true
+      image :tile, width: 8, height: 8, data: HALF_WHITE_TILE
+      shading :fade, colors: SHADES, levels: SHADE_LEVELS
+      place :wall, shading: :fade do
+        face point(-1.0, 1.0, ahead), point(1.0, 1.0, ahead + 1), point(1.0, -1.0, ahead + 1), point(-1.0, -1.0, ahead),
+             picture: :tile, on_picture: [[0, 0], [8, 0], [8, 8], [0, 8]], light: [1.0, 0.25, 0.25, 1.0]
+      end
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      fade :black, faded unless faded.zero?
+      game_loop do
+        clear_screen :black
+        if inside
+          inside(*inside) { draw_place :wall, seen_by: eye }
+        else
+          draw_place :wall, seen_by: eye
+        end
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
   # A face of five corners filled straight from a list, with what it shows changing every pass:
   # the edges nothing outside is drawn move, the picture it shows is the other of two, and it is
   # drawn without perspective, then in perspective every eight pixels, then every pixel. These
