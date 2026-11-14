@@ -501,10 +501,13 @@ module VBlank
           # What working the test out records (a read's check of its place, the answer of a join
           # whose right side does something) moves into the loop, to run on every round before the
           # test is asked: left before the loop it would run once, and the test would ask the same
-          # answer for ever. +mark+ is where the test started recording.
+          # answer for ever. +mark+ is where the test started recording. Where the block runs first,
+          # the test is asked again after it, so what the first asking recorded is taken out and
+          # dropped with its answer.
           def open_game_loop(value, mark, &before_loop)
             @game_loop = stopping_test(value)
             if before_loop
+              take_statements_since(mark)
               yield
               @game_loop.discard!
               mark = statement_mark
