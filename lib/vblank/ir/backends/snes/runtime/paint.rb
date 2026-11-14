@@ -1038,7 +1038,7 @@ module VBlank
               asm.lda(asm.direct(s.top))
               asm.sta(asm.direct(s.y))
               asm.label("rt_paint_fill_row")
-              emit_fill_band(asm, s)
+              emit_fill_band(asm, s, fill_tiles_by_dma?(memory) ? "rt_paint_fill_band_copied" : "rt_paint_fill_band_stored")
               asm.jsr(asm.abs("rt_paint_row_start"))
               asm.lda(asm.direct(s.chunk))
               6.times { asm.asl }
@@ -1093,14 +1093,133 @@ module VBlank
                 end
                 asm.rts
               end
+              fill_tiles_by_dma?(memory) ? emit_fill_band_copied(asm, s, bank) : emit_fill_band_stored(asm, s)
+            end
+
+            # Whether a band's whole tiles are copied by the copying engine (rt_paint_fill_band_copied)
+            # rather than stored by the processor (rt_paint_fill_band_stored): only on a cartridge
+            # that never writes registers a line at a time as the screen is drawn (HDMA: Letterbox,
+            # and Picture's bar and bends, which keep HDMA_CHANNELS). The fill copies while the
+            # screen is drawn, and on the console's first processor (CPU revision 1) a copy (DMA)
+            # ending as a line's register writes (HDMA) start can lock the console up. bsnes does
+            # not show that; the console does, so a cartridge with HDMA keeps to stores.
+            def fill_tiles_by_dma?(memory)
+              !Letterbox.kept?(memory) && !memory.reserved?(Picture::HDMA_CHANNELS)
+            end
+
+            # rt_paint_fill_band_stored (JSR, the data bank the copy's, in a band of rt_paint_fill):
+            # what rt_paint_fill_band_copied does, by the processor: +count+ tiles side by side from
+            # X, each 32 stores of the colour's four words of planes, and X left at the last of them.
+            def emit_fill_band_stored(asm, s)
+              asm.label("rt_paint_fill_band_stored")
+              asm.bra("rt_paint_fill_band_stored_tile")
+              asm.label("rt_paint_fill_band_stored_next")
+              asm.txa
+              asm.clc
+              asm.adc(TILE_BYTES)
+              asm.tax
+              asm.label("rt_paint_fill_band_stored_tile")
+              4.times do |pair|
+                asm.lda(asm.direct(s.planes + (pair * 2)))
+                8.times { |row| asm.sta(asm.abs_x((pair * 16) + (row * 2))) }
+              end
+              asm.dec(asm.direct(s.count))
+              asm.bne("rt_paint_fill_band_stored_next")
+              asm.rts
+            end
+
+            # The channels of the copying engine rt_paint_fill_band_copied works. Channels 1 to 3
+            # and 7 write registers a line at a time as the screen is drawn (Picture's bar and
+            # bends, Letterbox, on a plain cartridge too), so they are never touched here. Channel
+            # 0 is every other copy's, and each sets it up whole before it copies, never while a
+            # fill is painting; 4 to 6 nothing else uses.
+            FILL_CHANNELS = [0, 4, 5, 6].freeze
+
+            # A row of bytes $FF, $00 by turns, long enough for every tile of a row of the screen:
+            # read from its start it is a pair of planes whose first is set and second not, from its
+            # second byte the other way round, and one byte of it, read again and again, is a pair
+            # both set or both not.
+            PLANE_RUN_BYTES = (COLUMNS * 16) + 1
+
+            # rt_paint_fill_band_copied (JSR, the data bank the copy's, in a band of rt_paint_fill):
+            # +count+ tiles side by side from X, each all eight rows of the colour's planes, and X
+            # left at the last of them. A tile is four runs of sixteen bytes, eight rows of each
+            # pair of planes, and every one of its bytes is $00 or $FF; so instead of 32 stores the
+            # processor makes, the copying engine copies each pair's run from PLANE_RUN_BYTES to the
+            # work RAM port (WMDATA), four channels one after another, a tile at a time. The engine
+            # moves a byte in a third of the time the processor stores one, and the port's place
+            # moves on by itself, so only the counts are set again for each tile.
+            def emit_fill_band_copied(asm, s, bank)
+              h = Console::SNESHardware
+              channel = ->(index, register) { asm.long(h::DMA_BASE + (FILL_CHANNELS.fetch(index) << 4) + register) }
+              run = "rt_paint_plane_run"
+              asm.label("rt_paint_fill_band_copied")
+              asm.txa
+              asm.sta(asm.long(h::WMADDL)) # and WMADDM
+              # The last tile, kept for the end (+row+ is a word to spare: each band works it out).
+              asm.lda(asm.direct(s.count))
+              asm.dec
+              6.times { asm.asl }
+              asm.sta(asm.direct(s.row))
+              asm.txa
+              asm.clc
+              asm.adc(asm.direct(s.row))
+              asm.pha
+              # Each pair of planes: a byte of the run read again and again when its two planes are
+              # alike, else the run from where its first plane's byte is; sixteen bytes to copy.
+              4.times do |pair|
+                planes = asm.direct(s.planes + (pair * 2))
+                asm.lda(planes)
+                asm.xba
+                asm.eor(planes)
+                asm.and_a(0x00FF)
+                asm.beq("rt_paint_fill_band_copied_alike_#{pair}")
+                asm.lda((h::WMDATA & 0xFF) << 8 | h::DMA_TO_ONE_PORT)
+                asm.bra("rt_paint_fill_band_copied_way_#{pair}")
+                asm.label("rt_paint_fill_band_copied_alike_#{pair}")
+                asm.lda((h::WMDATA & 0xFF) << 8 | h::DMA_TO_ONE_PORT | h::DMA_FIXED_SOURCE)
+                asm.label("rt_paint_fill_band_copied_way_#{pair}")
+                asm.sta(channel.call(pair, h::DMAP)) # and BBAD
+                asm.lda(planes)
+                asm.and_a(0x00FF)
+                asm.beq("rt_paint_fill_band_copied_from_#{pair}")
+                asm.lda(asm.imm(run))
+                asm.bra("rt_paint_fill_band_copied_start_#{pair}")
+                asm.label("rt_paint_fill_band_copied_from_#{pair}")
+                asm.lda(asm.imm(run, 1))
+                asm.label("rt_paint_fill_band_copied_start_#{pair}")
+                asm.sta(channel.call(pair, h::A1TL))
+                asm.lda(16)
+                asm.sta(channel.call(pair, h::DASL)) # and DASH, nought
+              end
+              asm.sep(0x20)
+              asm.lda(bank & 1)
+              asm.sta(asm.long(h::WMADDL + 2))
+              asm.lda(asm.bank_of(run))
+              4.times { |pair| asm.sta(channel.call(pair, h::A1B)) }
+              asm.bra("rt_paint_fill_band_copied_go")
+              asm.label("rt_paint_fill_band_copied_tile")
+              asm.lda(16)
+              4.times { |pair| asm.sta(channel.call(pair, h::DASL)) }
+              asm.label("rt_paint_fill_band_copied_go")
+              asm.lda(FILL_CHANNELS.sum { |each| 1 << each })
+              asm.sta(asm.long(h::MDMAEN))
+              asm.dec(asm.direct(s.count)) # its low byte: a band is 32 tiles at most
+              asm.bne("rt_paint_fill_band_copied_tile")
+              asm.rep(0x20)
+              asm.plx
+              asm.rts
+              asm.label(run)
+              asm.data_bytes(Array.new(PLANE_RUN_BYTES) { |at| at.even? ? 0xFF : 0x00 })
             end
 
             # In rt_paint_fill, at a row +y+ that is the top of a row of tiles whose eight rows the
             # rectangle covers: the whole BAND painted a tile at a time, its eight rows together,
-            # and on to the next row of pixels after it. A tile between the edges is 32 stores, not
+            # and on to the next row of pixels after it. The tiles the rectangle covers whole go to
+            # +whole_tiles+ (rt_paint_fill_band_copied or rt_paint_fill_band_stored) together, not
             # eight rows of the loop for a row; a fill of half the screen is mostly such tiles.
             # Else on to the row at a time.
-            def emit_fill_band(asm, s)
+            def emit_fill_band(asm, s, whole_tiles)
               asm.lda(asm.direct(s.y))
               asm.bit(0x0007)
               asm.branch_long(:bne, "rt_paint_fill_by_row")
@@ -1116,31 +1235,37 @@ module VBlank
               asm.clc
               asm.adc(asm.direct(s.row))
               asm.tax
-              asm.jsr(asm.abs("rt_paint_fill_band_left"))
+              # The band's tiles, and of them an edge the rectangle covers only in part (its mask's
+              # opposite not nought) painted through its mask; the rest are whole, copied.
               asm.lda(asm.direct(s.last))
               asm.sec
               asm.sbc(asm.direct(s.chunk))
-              asm.branch_long(:beq, "rt_paint_fill_band_done")
-              asm.dec
+              asm.inc
               asm.sta(asm.direct(s.count))
-              asm.branch_long(:beq, "rt_paint_fill_band_right")
-              asm.label("rt_paint_fill_band_middle")
-              asm.txa
-              asm.clc
-              asm.adc(TILE_BYTES)
-              asm.tax
-              4.times do |pair|
-                asm.lda(asm.direct(s.planes + (pair * 2)))
-                8.times { |row| asm.sta(asm.abs_x((pair * 16) + (row * 2))) }
-              end
+              asm.lda(asm.direct(s.left_planes))
+              asm.beq("rt_paint_fill_band_left_whole")
+              asm.jsr(asm.abs("rt_paint_fill_band_left"))
               asm.dec(asm.direct(s.count))
-              asm.branch_long(:bne, "rt_paint_fill_band_middle")
-              asm.label("rt_paint_fill_band_right")
+              asm.beq("rt_paint_fill_band_done")
               asm.txa
               asm.clc
               asm.adc(TILE_BYTES)
               asm.tax
+              asm.label("rt_paint_fill_band_left_whole")
+              asm.lda(asm.direct(s.right_planes))
+              asm.beq("rt_paint_fill_band_right_whole")
+              asm.dec(asm.direct(s.count))
+              asm.beq("rt_paint_fill_band_right")
+              asm.jsr(asm.abs(whole_tiles))
+              asm.txa
+              asm.clc
+              asm.adc(TILE_BYTES)
+              asm.tax
+              asm.label("rt_paint_fill_band_right")
               asm.jsr(asm.abs("rt_paint_fill_band_right_tile"))
+              asm.bra("rt_paint_fill_band_done")
+              asm.label("rt_paint_fill_band_right_whole")
+              asm.jsr(asm.abs(whole_tiles))
               asm.label("rt_paint_fill_band_done")
               asm.lda(asm.direct(s.y))
               asm.clc
@@ -2076,9 +2201,9 @@ module VBlank
               asm.lda(asm.abs(memory[GENERATION]))
               asm.sta(asm.abs(memory[SHOWN_GENERATION]))
               asm.jsr(asm.abs("rt_paint_map_runs")) if logged # after the tiles, which ask the map as it is shown
-              asm.jsr(asm.abs("rt_paint_choose_load")) if logged
+              asm.jsr(asm.abs("rt_paint_choose_load")) if loads_screen_off?(memory, logged)
               asm.rtl
-              emit_choose_load(asm, memory, s) if logged
+              emit_choose_load(asm, memory, s) if loads_screen_off?(memory, logged)
 
               # rt_paint_run_end (JSR): the run started at +chunk+, if one is, ended before +tile+
               # and put on its list: the runs of tiles not on the screen from the start, the others
@@ -2128,6 +2253,11 @@ module VBlank
               asm.label("rt_paint_run_end_none")
               asm.rts
             end
+
+            # Whether a big pass can be loaded with the screen off (rt_paint_choose_load): on a plain
+            # cartridge (+logged+) whose picture does not stop early. Letterbox turns the screen on
+            # and off itself, a line at a time, so it would show a load meant to be unseen.
+            def loads_screen_off?(memory, logged) = logged && !Letterbox.kept?(memory)
 
             # rt_paint_choose_load (JSR, as a pass on a plain cartridge is prepared, its runs listed):
             # LOAD_SCREEN_OFF set for a pass whose runs, both lists, hold more than SCREEN_OFF_TILES

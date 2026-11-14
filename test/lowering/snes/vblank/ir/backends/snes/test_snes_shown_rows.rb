@@ -59,6 +59,28 @@ class TestSNESShownRows < Minitest::Test
     assert_operator shortened, :>=, blank * 2, "64 rows given up more than double what a frame copies"
   end
 
+  # A picture that stops early writes the screen's registers a line at a time as it is drawn
+  # (HDMA), so a big fill on it is stored by the processor and not copied by the copying engine:
+  # on the console's first processor the two can lock it up (Runtime::Paint#fill_tiles_by_dma?).
+  # Its pictures are still the interpreter's.
+  def test_a_big_fill_on_a_picture_that_stops_early_is_stored_and_shows_as_the_interpreter
+    game = VBlank.game("HALF", consoles: %i[snes]) do
+      screen :bitmap, shown_rows: 32...192
+      n = var :n, 0
+      game_loop do
+        clear_screen :black
+        fill_rect 4, 36, 8, 8, :white
+        fill_rect 0, 32, 128, 160, :red if n >= 3
+        n += 1
+      end
+    end
+    VBlank::IR::Backends::SNES::CheckedRun.new.run(game.program(console: :snes), frames: 8) # raises if a pass differs
+    labels = game.build_rom(console: :snes).built.code.keys.map(&:to_s)
+
+    assert_includes labels, "rt_paint_fill_band_stored"
+    refute_includes labels, "rt_paint_fill_band_copied"
+  end
+
   # Every row shown is the screen as it is: the same cartridge as a game that names none.
   def test_every_row_shown_builds_the_same_cartridge
     assert_equal repainting_game(nil).build_rom(console: :snes).bytes, repainting_game(0...224).build_rom(console: :snes).bytes

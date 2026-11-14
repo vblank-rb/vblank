@@ -230,7 +230,8 @@ class TestSNESPaint < Minitest::Test
   # hold. With the screen off video RAM takes writes on every line, so it goes in one go and the
   # screen comes back on in the blank after: one black frame, and then the new picture whole. The
   # pass took 17 frames, sending it over six blanks with the screen on and painting it a row of
-  # pixels at a time; most of what is left is painting and keeping count of 448 tiles.
+  # pixels at a time. Its whole tiles are now copied by the copying engine, and most of what is
+  # left is keeping count of 448 tiles.
   def test_a_first_half_screen_picture_is_loaded_with_the_screen_off
     program = program_of do
       screen :bitmap
@@ -245,7 +246,7 @@ class TestSNESPaint < Minitest::Test
     SNES::CheckedRun.new.run(program, frames: 8)
     run = SNES::HeadlessRun.new(watch_picture: true).run(program, frames: 8)
 
-    assert_operator run.frames_took(5), :<=, 9, "the pass that paints the half"
+    assert_operator run.frames_took(5), :<=, 6, "the pass that paints the half"
     assert_equal 1, run.black_frames.size
     assert_empty run.torn_frames
   end
