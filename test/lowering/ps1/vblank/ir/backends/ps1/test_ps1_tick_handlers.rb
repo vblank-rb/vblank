@@ -80,6 +80,19 @@ class TestPS1TickHandlers < Minitest::Test
     assert_equal interpreted, moments_on(PS1::HeadlessRun.new, program, reads, &on_screen)
   end
 
+  # ...AND THE PASS'S OWN PAGE IS SHOWN FIRST, the handler's square never on it. The interpreter trades the
+  # pages at the boundary and again at the handler's wait (Reference#advance_frame), so a frame of the pass's
+  # page, blue, comes before each frame of the handler's, which holds its square. Drawn before the blank, the
+  # square showed on the page on the screen, and the pass's page was never shown.
+  def test_a_handler_waiting_on_a_tear_free_screen_shows_the_pass_page_first
+    assert_equal [[0, 16 * 16]] * 5, red_on_screen_each_frame(waiting_handler_program, 11).drop(1).each_slice(2).to_a
+  end
+
+  # The same on a screen with a sprite over the picture, which is shown from a copy of each page.
+  def test_a_handler_waiting_under_a_sprite_over_the_picture_shows_the_pass_page_first
+    assert_equal [[0, 16 * 16]] * 5, red_on_screen_each_frame(waiting_handler_program(with_sprite: true), 11).drop(1).each_slice(2).to_a
+  end
+
   # A HANDLER DRAWING MORE THAN A LIST HOLDS ON A TEAR-FREE SCREEN leaves the page on the screen alone: what it
   # draws goes on the page the next pass draws, whose clear covers it. Sent as the list filled, its squares
   # showed on the screen until the blank of every frame.
@@ -97,6 +110,29 @@ class TestPS1TickHandlers < Minitest::Test
   end
 
   private
+
+  # A tear-free screen cleared blue every pass, whose handler draws a red square and waits on every tick it is
+  # not already waiting in; +with_sprite+ puts a green sprite over the picture.
+  def waiting_handler_program(with_sprite: false)
+    program_of do
+      screen :bitmap, tear_free: true
+      if with_sprite
+        image(:dot, "G" => :green) { "GGGG\nGGGG" }
+        sprite :dot, at: [100, 100], over_picture: true
+      end
+      waiting = var :waiting, 0
+      beat = timer :beat, per_second: 60
+      beat.on_tick do
+        if waiting.zero?
+          waiting = 1
+          draw_rect_at 0, 0, 16, 16, :red
+          wait_vblank
+          waiting = 0
+        end
+      end
+      game_loop { clear_screen :blue }
+    end
+  end
 
   def program_of(&game)
     builder = Builder.new

@@ -86,6 +86,9 @@ module VBlank
             DISPLAY_ON = "rt display on"
             # Where the interrupt keeps the registers of the code it stopped.
             SAVED = "rt saved registers"
+            # 1 while a tear-free screen's timers run before the blank that shows the pass's page, for a game whose
+            # handlers paint ahead (#emit_show_owed). Asked for late, beside the draw list's state.
+            SHOW_OWED = "rt show owed"
 
             # What SHOWN holds once a stopped game's last picture is on the screen.
             END_SHOWN = 0xFFFF_FFFF
@@ -122,8 +125,12 @@ module VBlank
             def emit(asm, memory, sound: false, tiles: false, shown_by: nil, ticks_paint_ahead: false, crosses: false)
               at = ->(name) { Runtime.at(memory, name) }
               emit_interrupt(asm, at)
-              emit_wait(asm, at, sound, tiles, shown_by, ticks_paint_ahead)
-              emit_ticks_on_next_page(asm, memory, crosses, shown_by) if ticks_paint_ahead
+              memory.reserve(SHOW_OWED, 4) if ticks_paint_ahead
+              emit_wait(asm, memory, sound, tiles, shown_by, ticks_paint_ahead)
+              if ticks_paint_ahead
+                emit_ticks_on_next_page(asm, memory, crosses, shown_by)
+                emit_show_owed(asm, memory, sound, shown_by)
+              end
               emit_show_pass(asm, at)
               emit_read_buttons(asm, at)
               emit_stopping(asm, at, tiles, shown_by)
@@ -178,10 +185,19 @@ module VBlank
             # and wait for the screen. What keeps time by the frame moves on here, before the game is marked
             # as waiting, because that is where the interpreter moves it on: at the frame boundary,
             # before anything is read of the frame (Reference#advance_frame).
-            def emit_wait(asm, at, sound, tiles, shown_by, paint_ahead)
+            def emit_wait(asm, memory, sound, tiles, shown_by, paint_ahead)
+              at = ->(name) { Runtime.at(memory, name) }
               asm.label("rt_wait_vblank")
               asm.addiu(:sp, :sp, -4)
               asm.sw(:ra, 0, :sp)
+              if paint_ahead
+                # A wait inside the timers of a pass whose page is not shown yet shows it first (#emit_show_owed).
+                show_owed = show_owed_place(memory)
+                asm.lui(:t1, show_owed.high)
+                asm.lw(:t0, show_owed.low, :t1)
+                asm.bne(:t0, :zero, "rt_wait_show_owed")
+                asm.label("rt_wait_owed_shown")
+              end
               asm.lw(:t0, at.call(PASSES), :gp)
               asm.addiu(:t0, :t0, 1)
               asm.sw(:t0, at.call(PASSES), :gp)
@@ -219,6 +235,7 @@ module VBlank
               asm.jal("rt_read_buttons")
               asm.sw(:zero, at.call(WAITING), :gp)
               asm.jal("rt_sound_frame") if sound # the fades of the frames the pass took, and its voices started (Sound)
+              asm.label("rt_wait_return")
               asm.lw(:ra, 0, :sp)
               asm.jr(:ra) { asm.addiu(:sp, :sp, 4) }
 
@@ -257,8 +274,24 @@ module VBlank
               asm.jal("rt_draw_list_finish")
               emit_page_traded(asm, at)
               DrawList.emit_held_back_open(asm, memory)
+              # The passes ended so far, kept to find a wait inside the timers; and the pass's show owed to one.
+              show_owed = show_owed_place(memory)
+              asm.lw(:t0, at.call(PASSES), :gp)
+              asm.addiu(:sp, :sp, -4)
+              asm.sw(:t0, 0, :sp)
+              asm.li(:t0, 1)
+              asm.lui(:t1, show_owed.high)
+              asm.sw(:t0, show_owed.low, :t1)
               asm.jal("rt_frame_begins_unless_last")
+              asm.lui(:t1, show_owed.high)
+              asm.sw(:zero, show_owed.low, :t1)
               DrawList.emit_held_back_close(asm, memory)
+              # A wait inside the timers showed this pass's page, ended a pass of its own and took its buttons, as
+              # the interpreter's boundary inside the timers does (Reference#advance_frame): this boundary is over.
+              asm.lw(:t0, 0, :sp)
+              asm.addiu(:sp, :sp, 4)
+              asm.lw(:t1, at.call(PASSES), :gp)
+              asm.bne(:t0, :t1, "rt_wait_return")
               emit_page_traded(asm, at)
               asm.b("rt_wait_published")
 
@@ -270,6 +303,47 @@ module VBlank
               asm.sltiu(:t0, :t0, 1)
               asm.jr(:ra) { asm.and(:v0, :v0, :t0) }
             end
+
+            # A WAIT INSIDE THE TIMERS SHOWS THE PASS'S PAGE FIRST. The interpreter shows a tear-free screen's page
+            # at the frame boundary before the timers run (Reference#advance_frame), so a handler that waits ends a
+            # frame of its own after that one: the pass's page is shown, then the handler's. Here the timers run
+            # before the blank that shows the pass's page, so a wait inside them (SHOW_OWED, set while they run)
+            # first ends the pass as a wait does, without the game being found waiting, since the interpreter
+            # reports no moment there either: the page shown at the next blank, the frames it took and its
+            # buttons taken, and its sound moved on. Only then is the page the handler drew on hidden, and its
+            # commands, held back meanwhile (DrawList::HELD_BACK), drawn as its own pass ends. The boundary whose
+            # timers waited ends with them (#emit_ticks_on_next_page).
+            #
+            # A screen shown from pages of its own (+shown_by+) copies the page to show it, which is drawing: the
+            # handler's list is parked while it does (DrawList#emit_park).
+            def emit_show_owed(asm, memory, sound, shown_by)
+              at = ->(name) { Runtime.at(memory, name) }
+              show_owed = show_owed_place(memory)
+              asm.label("rt_wait_show_owed")
+              asm.sw(:zero, show_owed.low, :t1)
+              asm.jal("rt_draw_list_park") if shown_by
+              emit_page_traded(asm, at)
+              asm.lw(:t0, at.call(Paint::PAGE_Y), :gp)
+              asm.sw(:t0, at.call(Paint::PASS_PAGE_Y), :gp)
+              if shown_by
+                asm.li(:a1, 1)
+                asm.jal(shown_by) { asm.move(:a0, :t0) }
+              end
+              asm.li(:t0, 1)
+              asm.sw(:t0, at.call(Paint::FLIP_OWED), :gp)
+              emit_end_lines_store(asm, at)
+              asm.jal("rt_show_pass")
+              asm.lw(:t0, at.call(HOLD), :gp)
+              asm.bne(:t0, :zero, "rt_stopped")
+              asm.jal("rt_pad_await")
+              asm.jal("rt_read_buttons")
+              asm.jal("rt_sound_frame") if sound
+              asm.jal("rt_draw_list_unpark") if shown_by
+              asm.b("rt_wait_owed_shown")
+            end
+
+            # SHOW_OWED, as an instruction reaches it from a register given its top half.
+            def show_owed_place(memory) = DrawList::StatePlace.for_address(memory[SHOW_OWED])
 
             # PAGE_Y names the other page.
             def emit_page_traded(asm, at)

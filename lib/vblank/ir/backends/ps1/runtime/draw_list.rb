@@ -92,6 +92,13 @@ module VBlank
             # address (#emit_held_back_open).
             HELD_BACK_OFFSET_BYTES = STATE_BYTES
             HELD_BACK_USED = 1
+            # ...then the list held back as it was parked (#emit_park): where it starts (nought while none is
+            # parked), where its next node goes, its limit and its HELD_BACK word.
+            PARKED_START_OFFSET_BYTES = STATE_BYTES + 4
+            PARKED_CURSOR_OFFSET_BYTES = STATE_BYTES + 8
+            PARKED_LIMIT_OFFSET_BYTES = STATE_BYTES + 12
+            PARKED_HELD_BACK_OFFSET_BYTES = STATE_BYTES + 16
+            HELD_BACK_STATE_BYTES = 20
 
             # A LIST HELD BACK UNTIL THE BLANK. On a tear-free screen the game's timers run after the pass's page is
             # drawn and before the blank shows it, and what a handler draws goes on the page still on the screen
@@ -127,7 +134,7 @@ module VBlank
             # The state and the two lists, asked for once the game's numbers have their places; the region
             # cleared at power-on takes them in. +held_back+ for a game whose timers draw ahead (HELD_BACK).
             def reserve_late(memory, held_back: false)
-              memory.reserve(STATE_BLOCK, STATE_BYTES + (held_back ? 4 : 0))
+              memory.reserve(STATE_BLOCK, STATE_BYTES + (held_back ? HELD_BACK_STATE_BYTES : 0))
               memory.reserve(LISTS, LIST_BYTES * 2)
               memory.reserve(HELD_BACK, HELD_BACK_BYTES) if held_back
             end
@@ -178,8 +185,11 @@ module VBlank
               COMMAND_WORDS.each do |words|
                 emit_command_routine(asm, state, face_window, words, held_back) unless words == TRIANGLE_WORDS && !triangles
               end
-              emit_held_back_go_on(asm, state) if held_back
-              emit_send(asm, state)
+              if held_back
+                emit_held_back_go_on(asm, state)
+                emit_park(asm, state)
+              end
+              emit_send(asm, state, held_back)
               emit_kick(asm, (state if held_back))
               emit_finish(asm, state)
             end
@@ -257,9 +267,49 @@ module VBlank
               asm.jr(:ra) { asm.sw(:t2, state.at(LIMIT_OFFSET_BYTES), :t3) }
             end
 
+            # A LIST HELD BACK, PARKED. A handler that waits ends a pass while its commands are held back for the page
+            # still on the screen, and that page can be drawn on only once the blank has shown the page before it
+            # (Frame#emit_show_owed). Showing that page can draw too (a copy onto the page shown, Paint's
+            # rt_paint_sprites_shown), so the held list is parked meanwhile, as it stands, and the drawing goes into
+            # the other list, which is free: the pass's own was drawn before the timers ran. That list is then both
+            # lists, so one sent while parked is waited for before it is filled again (#emit_send).
+            #
+            # rt_draw_list_park and rt_draw_list_unpark change only t1 to t3; unpark is called once what was drawn
+            # while parked is drawn (rt_draw_list_finish).
+            def emit_park(asm, state)
+              asm.label("rt_draw_list_park")
+              asm.lui(:t3, state.high)
+              [[START_OFFSET_BYTES, PARKED_START_OFFSET_BYTES], [CURSOR_OFFSET_BYTES, PARKED_CURSOR_OFFSET_BYTES],
+               [LIMIT_OFFSET_BYTES, PARKED_LIMIT_OFFSET_BYTES], [HELD_BACK_OFFSET_BYTES, PARKED_HELD_BACK_OFFSET_BYTES]].each do |from, to|
+                asm.lw(:t1, state.at(from), :t3)
+                asm.sw(:t1, state.at(to), :t3)
+              end
+              asm.sw(:zero, state.at(HELD_BACK_OFFSET_BYTES), :t3)
+              asm.lw(:t1, state.at(OTHER_OFFSET_BYTES), :t3)
+              asm.sw(:t1, state.at(START_OFFSET_BYTES), :t3)
+              asm.sw(:t1, state.at(CURSOR_OFFSET_BYTES), :t3)
+              asm.addiu(:t1, :t1, LIMIT_BYTES)
+              asm.jr(:ra) { asm.sw(:t1, state.at(LIMIT_OFFSET_BYTES), :t3) }
+
+              # The list drawn while parked is the other again, and the parked one goes on being filled.
+              asm.label("rt_draw_list_unpark")
+              asm.lui(:t3, state.high)
+              asm.lw(:t1, state.at(START_OFFSET_BYTES), :t3)
+              asm.sw(:t1, state.at(OTHER_OFFSET_BYTES), :t3)
+              [[PARKED_START_OFFSET_BYTES, START_OFFSET_BYTES], [PARKED_CURSOR_OFFSET_BYTES, CURSOR_OFFSET_BYTES],
+               [PARKED_LIMIT_OFFSET_BYTES, LIMIT_OFFSET_BYTES], [PARKED_HELD_BACK_OFFSET_BYTES, HELD_BACK_OFFSET_BYTES]].each do |from, to|
+                asm.lw(:t1, state.at(from), :t3)
+                asm.sw(:t1, state.at(to), :t3)
+              end
+              asm.jr(:ra) { asm.sw(:zero, state.at(PARKED_START_OFFSET_BYTES), :t3) }
+            end
+
             # rt_draw_list_send: the list being filled ended and sent, unless it is empty, once the DMA has
             # finished sending the other; then the other is the one filled. Changes only t1 to t3.
-            def emit_send(asm, state)
+            #
+            # +held_back+ for a game that parks a list (#emit_park): one sent while a list is parked is sent whole
+            # before the processor goes on, since it is filled again at once.
+            def emit_send(asm, state, held_back)
               h = Console::PS1Hardware
               asm.label("rt_draw_list_send")
               asm.lui(:t3, state.high)
@@ -273,6 +323,13 @@ module VBlank
               asm.sw(:t2, h::DMA2_MADR & 0xFFFF, :t1)
               asm.li(:t3, h::DMA2_FROM_RAM_BY_LIST)
               asm.sw(:t3, h::DMA2_CHCR & 0xFFFF, :t1)
+              if held_back
+                asm.lui(:t3, state.high)
+                asm.lw(:t3, state.at(PARKED_START_OFFSET_BYTES), :t3)
+                asm.beq(:t3, :zero, "rt_draw_list_send_unparked")
+                emit_dma_wait(asm, "rt_draw_list_send_parked_wait")
+                asm.label("rt_draw_list_send_unparked")
+              end
               asm.lui(:t1, state.high)
               asm.lw(:t3, state.at(OTHER_OFFSET_BYTES), :t1)
               asm.sw(:t2, state.at(OTHER_OFFSET_BYTES), :t1)
