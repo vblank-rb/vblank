@@ -60,9 +60,14 @@ module VBlank
 
       # THE SPRITE TABLE AS BOXES (SpriteBox), one for each entry switched on that reaches the
       # screen, in the table's order. Nothing here needs a build record, so it is how a cartridge
-      # with none shows where its sprites are. A turned entry is the size of its picture, not of the
-      # doubled box a turned sprite can be drawn in. Across wraps at 512 and down at 256, as the
-      # console wraps them.
+      # with none shows where its sprites are. Across wraps at 512 and down at 256, as the console
+      # wraps them.
+      #
+      # A TURNED ENTRY AT DOUBLE SIZE IS THE BOX IT IS DRAWN IN, twice its picture's width and
+      # height. A sprite the console turns or resizes may be given a box that size to swing its
+      # corners through (VBlank's own always are), and the table's position is that box's corner,
+      # with the picture in its middle. A box of the picture's size at that corner would be neither
+      # where the picture is nor where it can reach.
       #
       # @return [Array<SpriteBox>]
       def sprite_boxes
@@ -70,7 +75,7 @@ module VBlank
         # Shape 3 is no shape: the console draws nothing for it, so it has no box.
         boxes = @probe.sprites.filter_map do |row|
           sizes = SPRITE_SIZES[row[:shape]] or next
-          width, height = sizes.fetch(row[:size])
+          width, height = sizes.fetch(row[:size]).map { |side| drawn_doubled?(row) ? side * 2 : side }
           SpriteBox.new(slot: row[:slot], x: SpriteBox.wrapped(row[:x], width, 512),
                         y: SpriteBox.wrapped(row[:y], height, 256), width: width, height: height, tile: row[:tile])
         end
@@ -81,6 +86,17 @@ module VBlank
       SPRITE_SIZES = Ractor.make_shareable([[[8, 8], [16, 16], [32, 32], [64, 64]],
                                             [[16, 8], [32, 8], [32, 16], [64, 32]],
                                             [[8, 16], [8, 32], [16, 32], [32, 64]]])
+
+      # Where in an entry's first halfword (OBJ attribute 0) the console is told to draw a turned
+      # sprite in a box twice its size. The same bit hides an entry that is not turned, which is why
+      # the emulator's rows leave it out: an entry hidden that way is not among them.
+      SPRITE_DOUBLE_SIZE_BIT = 0x0200
+      SPRITE_ENTRY_BYTES = 8
+
+      # Whether the console draws +row+'s sprite turned, in a box twice its picture's size.
+      private def drawn_doubled?(row)
+        row[:turned] && mem16(SPRITE_TABLE + (row[:slot] * SPRITE_ENTRY_BYTES)).anybits?(SPRITE_DOUBLE_SIZE_BIT)
+      end
 
       # A list here is its slots, with its length and, for one the game shifts, where its oldest
       # item is, kept apart from them (IR::Backends::GBA::Lists#list_places).
