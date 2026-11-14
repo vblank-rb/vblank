@@ -321,7 +321,8 @@ class TestTimer < Minitest::Test
   end
 
   # ...AND WHAT IT DRAWS WAITS FOR THE PAGE AFTER, however much it draws: a hundred and fifty squares are more
-  # than a console keeps waiting at once, and none of them shows over the blue.
+  # than a console keeps waiting at once, and none of them shows over the blue. The squares read are the first
+  # and one inside the smallest screen, the Color's.
   def test_a_handler_drawing_much_on_a_tear_free_screen_draws_on_the_page_being_drawn
     b = Builder.new
     b.instance_eval do
@@ -334,11 +335,14 @@ class TestTimer < Minitest::Test
     end
 
     screen = game_player.run(b.program, frames: 6).screen
-    assert_equal [Color.resolve(:blue)] * 2, [screen.pixel(2, 2), screen.pixel(226, 146)]
+    assert_equal [Color.resolve(:blue)] * 2, [screen.pixel(2, 2), screen.pixel(130, 130)]
   end
 
   # A SPRITE OVER A TEAR-FREE PICTURE THAT A HANDLER MOVES shows where the pass left it, on that pass's
   # frame: the frame boundary places it before the handler runs, and the handler's move shows a frame later.
+  # The first frame is not read: a console that keeps two pages places the sprite as the boundary trades
+  # them, and one that keeps one (the Color, the Super Nintendo, the Genesis) has placed nothing before the
+  # first pass's sprites, which come after its first wait.
   def test_a_handler_moving_a_sprite_over_a_tear_free_picture
     b = Builder.new
     b.instance_eval do
@@ -355,7 +359,7 @@ class TestTimer < Minitest::Test
     run = game_player
     run.each_vblank { (seen << (0...240).find { |x| run.screen.pixel(x, 61) == Color.resolve(:red) }) }
        .run(b.program, frames: 6)
-    assert_equal [20, 28, 36, 44, 52, 60], seen
+    assert_equal [28, 36, 44, 52, 60], seen.drop(1)
   end
 
   # A HANDLER READS THE BUTTONS of the frame it ticks on: A held for three frames is three ticks
