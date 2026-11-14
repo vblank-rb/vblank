@@ -476,7 +476,7 @@ module VBlank
           @sprite_drawing = SpriteDrawing.new(emitter: @emit, primitives: @primitives, lowering: @lowering,
                                               divide: @divide, framebuffer: @framebuffer,
                                               palette_tint: @palette_tint, uploads: @uploads,
-                                              placement: self)
+                                              placement: self, raster: @raster)
           @background_drawing = BackgroundDrawing.new(emitter: @emit, primitives: @primitives, lowering: @lowering,
                                                       divide: @divide, raster: @raster,
                                                       palette_tint: @palette_tint, uploads: @uploads, lists: @lists,

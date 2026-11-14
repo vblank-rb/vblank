@@ -30,12 +30,13 @@ module VBlank
           include EmitterCalls
 
           def initialize(emitter:, primitives:, lowering:, divide:, framebuffer:, palette_tint:, uploads:,
-                         placement:)
+                         placement:, raster:)
             @emitter = emitter
             @primitives = primitives
             @lowering = lowering
             @divide = divide
             @framebuffer = framebuffer
+            @raster = raster
             @palette_tint = palette_tint
             @uploads = uploads
             @placement = placement
@@ -144,10 +145,13 @@ module VBlank
           # shape of whatever the twin sprites paint, so nothing here mentions a place on
           # screen. EFFECT_LINE starts past the front of the stack: until a fade is
           # placed, no twin shows.
+          #
+          # In a game with a light the light sets the register as it switches, since a light that
+          # is on reaches the kept sprites too (Raster#emit_light_window_shut).
           def emit_boot_object_windows
             return if placed_fade.none?
 
-            write_reg16(REG_WINOUT, WIN_ALL_LAYERS | WIN_EFFECT | (WIN_ALL_LAYERS << WINOUT_OBJ_SHIFT))
+            write_reg16(REG_WINOUT, WIN_ALL_LAYERS | WIN_EFFECT | (WIN_ALL_LAYERS << WINOUT_OBJ_SHIFT)) unless @raster.feeds_light?
             store_word_immediate(placed_fade.fade_stack_index, var_addr(EFFECT_LINE))
           end
 
