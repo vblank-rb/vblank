@@ -1125,10 +1125,43 @@ module VBlank
           answer = "__plain_ruby_#{@answers += 1}"
           shut_at = node.end_keyword_loc&.start_offset || node.location.end_offset
           promotions = promotions_text(node, [node.statements, other_side(node)], answer)
+          watched = kept ? nil : flag_tested(node)
           sides = under_open_test(answer) do
-            "#{yes_side_text(node, answer, shut_at, kept)}#{no_side_text(node, answer, shut_at, kept)}"
+            "#{yes_side_text(node, answer, shut_at, kept, watched)}#{no_side_text(node, answer, shut_at, kept, watched)}"
           end
-          "(#{answer} = #{STEPS}.branch_test(#{test_text(node)}); #{promotions}#{sides}#{answer}.#{value_step(kept)})"
+          watch = watched ? "#{answer}.watch_flag(#{flag_watch_arguments(node, watched)}); " : ""
+          "(#{answer} = #{STEPS}.branch_test(#{test_text(node)}); #{watch}#{promotions}#{sides}#{answer}.#{value_step(kept)})"
+        end
+
+        # The instance variable a conditional tests standing alone (`if @open`, `unless @planned`,
+        # `if !@open`), where the rewrite follows instance variables, or nil. A plain `true` or
+        # `false` tested so is a once-guard or a game flag, and what its sides record tells which
+        # (Steps::BuildTest#watch_flag).
+        def flag_tested(node)
+          return unless @follows_instance_variables
+
+          tested = node.predicate
+          tested = tested.receiver if tested.is_a?(Prism::CallNode) && tested.name == :! && tested.arguments.nil?
+          tested.name if tested.is_a?(Prism::InstanceVariableReadNode)
+        end
+
+        # What BuildTest#watch_flag is handed: the object, the instance variable and what it holds
+        # now, the scope's binding (to put back the locals a side tried on a throwaway changes), and
+        # whether each side can be tried at all. A side that can leave the code around it (`return`,
+        # `break`, `next`, `yield`) cannot be run where it would not run.
+        def flag_watch_arguments(node, name)
+          other = other_side(node)
+          tries_no = other.is_a?(Prism::ElseNode) && side_tryable?(other.statements)
+          "self, :#{name}, #{name}, binding, tries_yes: #{side_tryable?(node.statements)}, tries_no: #{tries_no}"
+        end
+
+        def side_tryable?(statements) = !statements.nil? && !leaves_code?(statements)
+
+        def leaves_code?(node)
+          return true if JUMPS.any? { |kind| node.is_a?(kind) } || node.is_a?(Prism::YieldNode)
+          return false if node.is_a?(Prism::DefNode) || node.is_a?(Prism::LambdaNode)
+
+          node.compact_child_nodes.any? { |child| leaves_code?(child) }
         end
 
         def value_step(kept)
@@ -1345,12 +1378,22 @@ module VBlank
           "#{name} = (#{text}; #{name})"
         end
 
-        def yes_side_text(node, answer, shut_at, kept)
+        def yes_side_text(node, answer, shut_at, kept, watched = nil)
           body = side_body_text(node, other_side(node)&.location&.start_offset || shut_at)
-          "if #{answer}.open_yes_side; #{side_close_text(answer, kept, body)}; end; "
+          "if #{answer}.open_yes_side; #{watched_close_text(answer, side_close_text(answer, kept, body), watched)}; end; "
         end
 
-        def no_side_text(node, answer, shut_at, kept)
+        # A side of a test on a flag may be run on a throwaway (BuildTest#watch_flag), and whatever
+        # it raises there goes to the test, which drops it with the throwaway. On one, so the side's
+        # line numbers stay as written.
+        def watched_close_text(answer, close, watched)
+          return close unless watched
+
+          raised = fresh_name
+          "begin; #{close}; rescue StandardError => #{raised}; #{answer}.side_raised(#{raised}); end"
+        end
+
+        def no_side_text(node, answer, shut_at, kept, watched = nil)
           other = other_side(node)
           return "" unless other
 
@@ -1361,7 +1404,7 @@ module VBlank
                  else
                    "#{conditional_text(other, kept: kept)}#{line_ends_between(other.location.end_offset, shut_at)}"
                  end
-          "if #{answer}.open_no_side; #{side_close_text(answer, kept, body)}; end; "
+          "if #{answer}.open_no_side; #{watched_close_text(answer, side_close_text(answer, kept, body), watched)}; end; "
         end
 
         # One side's statements. What follows them is kept as written, because a heredoc's

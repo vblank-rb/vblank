@@ -62,6 +62,37 @@ class TestPlainRubyRefusals < Minitest::Test
     assert_match(/\(at test_plain_ruby_refusals\.rb:\d+\)/, error.message)
   end
 
+  def test_a_flag_of_the_game_block_tested_then_set_in_the_loop_is_refused
+    error = assert_raises(Refused) do
+      built do
+        @open = false
+        seen = var :seen, 0
+        game_loop do
+          seen += 1 if @open
+          @open = true
+        end
+      end
+    end
+
+    assert_includes error.message, "`game_variables :open` to the game block"
+  end
+
+  # The side Ruby skips is tried and put back: the locals and instance variables it set, and what
+  # the builder recorded, are as they were, so the build after it is the one without the side.
+  def test_a_flag_tested_where_the_side_sets_nothing_the_game_runs_builds_as_before
+    builder = built do
+      @shown = false
+      @label = :none
+      seen = var :seen, 0
+      game_loop do
+        @label = :shown if @shown
+        seen += 1 if @label == :none
+      end
+    end
+
+    assert_equal 3, game_player.run(builder.program, frames: 3)[:seen]
+  end
+
   def test_a_flag_left_nil_one_routine_tests_and_another_sets_is_told_to_start_as_false
     error = assert_raises(Refused) do
       built do

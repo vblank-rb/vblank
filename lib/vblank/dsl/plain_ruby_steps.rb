@@ -370,13 +370,128 @@ module VBlank
           end
 
           def game? = false
-          def open_yes_side = !!@value
-          def open_no_side = !@value
-          def close_side(value) = @answer = value
+          def open_yes_side = open_side(!!@value, @tries_yes)
+          def open_no_side = open_side(!@value, @tries_no)
+
+          def close_side(value)
+            return finish_tried_side if @tried
+
+            note_measured_side
+            @answer = value
+          end
+
           def keep_side_value(value) = @answer = value
+
+          # A TEST ON A PLAIN FLAG (`if @open`, `unless @planned`) in game code, which Ruby decides
+          # here, once. Whether that is right depends on what the flag guards (InstanceVariables::Uses,
+          # "A PLAIN TRUE OR FALSE"): a once-guard keeps work that is built, and a game flag keeps
+          # what the game does as it plays. The side Ruby runs is watched for statements recorded
+          # into the game; the side it skips is run on a throwaway (Throwaway) and asked the same.
+          # A side that could leave the code around it (+tries_yes+, +tries_no+ false) is not tried.
+          def watch_flag(owner, label, current, scope, tries_yes:, tries_no:)
+            @builder = InstanceVariables.builder_watching_flag(owner, label, current)
+            return unless @builder
+
+            @owner = owner
+            @label = label
+            @scope = scope
+            @tries_yes = tries_yes
+            @tries_no = tries_no
+          end
+
+          # A side that raised while it was tried leaves with the throwaway; any other raise is the
+          # game's, and goes on.
+          def side_raised(error)
+            raise error unless @tried
+
+            @tried.drop
+            @tried = nil
+          end
+
+          private
+
+          def open_side(taken, tries)
+            return taken unless @builder
+
+            if taken
+              @measured = @builder.statement_mark
+            elsif tries
+              @tried = Throwaway.new(@builder, @owner, @scope)
+            end
+            taken || !@tried.nil?
+          end
+
+          def note_measured_side
+            return unless @measured
+
+            InstanceVariables.note_flag_guarding_game(@owner, @label) if @builder.recorded_since?(@measured)
+            @measured = nil
+          end
+
+          def finish_tried_side
+            InstanceVariables.note_flag_guarding_game(@owner, @label) if @tried.drop
+            @tried = nil
+          end
+
+          public
           def keep_tail_value(value) = @answer = value
           def store_side(target, value) = @answer = Writes.give_variable(target, value)
           def refuse_jump!(_word) = nil
+        end
+
+        # A SIDE OF A TEST RUN WHERE RUBY WOULD SKIP IT, to see whether it records game code
+        # (BuildTest#watch_flag), and then put back as if it never ran. What is put back: the
+        # statements it recorded, everything the builder holds and the object the side runs on
+        # holds (each collection copied one level deep), and the locals of the scope it is written
+        # in. Nothing the game builds afterwards can tell it ran, short of a change it made deeper
+        # inside another object, which a once-guard's side (declaring routines, laying work out)
+        # does not make to anything the game reads. The builder's record of instance variables is
+        # told to look away while the side runs (InstanceVariables::Uses#start_trying).
+        #
+        # Reaching into the builder's, the object's and the scope's own variables is the point: the
+        # side changes them by running, and only putting every one back undoes that.
+        class Throwaway
+          def initialize(builder, owner, scope)
+            @builder = builder
+            @mark = builder.statement_mark
+            @builder_state = state_of(builder)
+            @owner = owner
+            @owner_state = state_of(owner) unless owner.equal?(builder)
+            @scope = scope
+            @locals = scope.local_variables.to_h { |name| [name, scope.local_variable_get(name)] }
+            builder.instance_variable_uses.start_trying
+          end
+
+          # Everything put back. The answer is whether the side recorded any game code.
+          def drop
+            uses = @builder.instance_variable_uses
+            restore(@builder, @builder_state)
+            restore(@owner, @owner_state) if @owner_state
+            @locals.each { |name, value| @scope.local_variable_set(name, value) }
+            uses.stop_trying
+            !@builder.take_statements_since(@mark).empty?
+          end
+
+          private
+
+          # Each variable's value, and for a collection a copy of what it holds, so the collection
+          # itself is put back holding that (anything else may hold the same collection).
+          def state_of(object)
+            object.instance_variables.to_h do |name|
+              value = object.instance_variable_get(name)
+              [name, [value, (value.dup if collection?(value))]]
+            end
+          end
+
+          def collection?(value) = [Array, Hash, Set].any? { |kind| value.is_a?(kind) } && !value.frozen?
+
+          def restore(object, state)
+            (object.instance_variables - state.keys).each { |name| object.remove_instance_variable(name) }
+            state.each do |name, (value, held)|
+              value.replace(held) if held
+              object.instance_variable_set(name, value)
+            end
+          end
         end
 
         # A test the game makes as it plays. BOTH sides run, once each, to record their code into
@@ -388,6 +503,10 @@ module VBlank
 
           def game? = true
           def hidden_variable(why, like: nil) = @condition.hidden_variable(why, like: like)
+
+          # A flag that turned out to be the game's (BuildTest#watch_flag): both sides run anyway.
+          def watch_flag(*, **) = nil
+          def side_raised(error) = raise(error)
 
           def open_yes_side
             @if_node = @condition.open_branch

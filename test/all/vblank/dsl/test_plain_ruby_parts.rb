@@ -135,6 +135,23 @@ class TestPlainRubyParts < Minitest::Test
     assert_match(/game_variables :open` to UnnamedDoorTestedFirstPart/, error.message)
   end
 
+  def test_an_unnamed_flag_tested_then_set_in_one_routine_around_game_code_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played(UnnamedDoorOneRoutinePart, :door_one_routine_tick)
+    end
+
+    assert_match(/game_variables :open` to UnnamedDoorOneRoutinePart/, error.message)
+    assert_match(/plain_ruby_game_parts\.rb:\d+/, error.message)
+  end
+
+  def test_an_unnamed_flag_whose_run_side_holds_game_code_and_is_set_in_that_routine_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played(UnnamedDoorOneRoutineRunSidePart, :door_one_routine_run_tick)
+    end
+
+    assert_match(/game_variables :open` to UnnamedDoorOneRoutineRunSidePart/, error.message)
+  end
+
   def test_a_named_flag_one_routine_sets_and_another_tests_plays_as_a_var
     named = played(NamedDoorPart, :named_door_test, :named_door_open, frames: 5)[:named_door_seen]
 

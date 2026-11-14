@@ -122,9 +122,10 @@ instance variables.
   A once-guard is set in the routine that has just read it (`plan unless @planned`, with `plan` setting
   `@planned = true`; or `return if @laid_out` above `@laid_out = true`): the work it guards is built
   the first time a routine reaches it, and a later read, from any routine, finds it built. It is not
-  refused. A game flag is set in one routine and tested in another (`@open = true` in one, `if @open`
-  in the other): Ruby would decide the test while building, so it is refused at the second of the two
-  lines the build reaches, naming the fix, `game_variables :open` (and `@open = false` where it starts,
+  refused, so long as what it guards adds nothing to what the game runs. A game flag is set in one
+  routine and tested in another (`@open = true` in one, `if @open` in the other), or tested around game
+  code and set in the same routine (`seen += 1 if @open`, then `@open = true`): Ruby would decide the
+  test while building, so it is refused at the second of the two lines the build reaches, naming the fix, `game_variables :open` (and `@open = false` where it starts,
   for one left nil).
 
 ## Changing a variable

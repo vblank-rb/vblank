@@ -360,13 +360,30 @@ module VBlank
           refuse_named_object!(label, current)
         end
 
-        # The builder's record of instance variables, while it records game code.
+        # The builder's record of instance variables, while it records game code. Nil while a side of
+        # a test is tried on a throwaway (Steps::Throwaway), since nothing it does stays.
         def uses_while_recording(owner)
           builder = Builder.in_use
           return unless builder&.recording_game_code? && !owner.is_a?(Module)
+          return if builder.instance_variable_uses.trying?
 
           builder.instance_variable_uses
         end
+
+        # The builder, where a test of +owner+'s +label+, holding +current+, is a test of a plain
+        # flag that no line of game code has changed yet: what its sides record decides what the
+        # flag is (Steps::BuildTest#watch_flag). Nil for any other.
+        def builder_watching_flag(owner, label, current)
+          return unless Uses::FLAGS.include?(current)
+
+          uses = uses_while_recording(owner)
+          return if uses.nil? || uses.named?(owner, label) || uses.flag_changed?(owner, label)
+
+          Builder.in_use
+        end
+
+        # A side of a test of +owner+'s plain flag +label+ records game code.
+        def note_flag_guarding_game(owner, label) = Builder.in_use.instance_variable_uses.note_flag_guarding_game(owner, label)
 
         # The game variable a named instance variable holding +current+ is: made now from a number
         # it still holds as Ruby, or the one it holds already.
@@ -611,8 +628,9 @@ module VBlank
           #
           # A `true` or `false` keeps two more: the routines whose code read it (nil reads too), and
           # whether its last change was a once-guard's (#note_flag_change).
+          # And whether a test on it guards game code: a side of one recorded statements, run or tried.
           Use = Struct.new(:read_before_change, :changed_at, :changed_from_ruby_at, :given_in, :flag_read_in, :flag_guard,
-                           :flag_read_nil)
+                           :flag_read_nil, :flag_guards_game)
 
           TRACKED = [Integer, Float, Symbol].freeze # What a plain instance variable is noted holding
           FLAGS = [true, false, nil].freeze # What a plain flag holds
@@ -627,7 +645,19 @@ module VBlank
             @makers_by_name = {}
             @first_numbers = {}
             @uses = {}.compare_by_identity
+            @trying = 0
           end
+
+          # A side of a test is run on a throwaway between these two (Steps::Throwaway): nothing it
+          # reads or writes is noted.
+          def start_trying = @trying += 1
+          def stop_trying = @trying -= 1
+          def trying? = @trying.positive?
+
+          # Has a line of game code given +owner+'s +label+ a value yet?
+          def flag_changed?(owner, label) = !@uses[owner]&.dig(label)&.changed_at.nil?
+
+          def note_flag_guarding_game(owner, label) = use_of(owner, label).flag_guards_game = true
 
           # A variable was just made for +owner+'s +label+, at the line running now. Recorded with
           # that line, under the class a mark would be written in (#first_number_owner).
@@ -729,7 +759,10 @@ module VBlank
           #   setting `@planned = true`, or `return if @laid_out` above `@laid_out = true`. Its
           #   change is made in the routine that has just read it, so the work it guards is built
           #   once, the first time a routine reaches it. A later read, from any routine, finds the
-          #   work built already. That is what the author meant, and it is left alone.
+          #   work built already. That is what the author meant, and it is left alone, so long as
+          #   no side of a test on it records game code (Steps::BuildTest#watch_flag): the side Ruby
+          #   ran is watched, and the side it skipped is tried on a throwaway. `@seen += 1 if @open`
+          #   above `@open = true` has a once-guard's shape, and it is a game flag.
           # - A GAME FLAG: one routine sets `@open = true` and another tests `if @open`. The game
           #   can run the two in either order, so a test decided while building is frozen at
           #   whichever value Ruby held then. Refused at the second of the two lines the build
@@ -754,7 +787,7 @@ module VBlank
             use = use_of(owner, label)
             routine = Builder.in_use.recorded_routine_body
             here = Messages::AuthorSource.author_file_and_line
-            use.flag_guard = use.flag_read_in&.include?(routine) || false
+            use.flag_guard = (use.flag_read_in&.include?(routine) && !use.flag_guards_game) || false
             refuse_unnamed_change!(owner, label, nil, flag: true) if use.read_before_change && !use.flag_guard
             use.given_in = routine
             use.changed_at ||= here

@@ -534,6 +534,31 @@ class UnnamedDoorTestedFirstPart
   end
 end
 
+# The door tested and then opened in one routine. It has the shape of a once-guard, but the side
+# of the test holds game code, so the flag decides what the game does as it plays. Once with the
+# side Ruby skips (the door starts shut), once with the side it runs.
+class UnnamedDoorOneRoutinePart
+  def initialize(builder)
+    @open = false
+    @seen = builder.var(:door_one_routine_seen, 0)
+    builder.func(:door_one_routine_tick) do
+      @seen += 1 if @open
+      @open = true
+    end
+  end
+end
+
+class UnnamedDoorOneRoutineRunSidePart
+  def initialize(builder)
+    @open = false
+    @seen = builder.var(:door_one_routine_run_seen, 0)
+    builder.func(:door_one_routine_run_tick) do
+      @seen += 1 unless @open
+      @open = true
+    end
+  end
+end
+
 # The door again, named: a game variable, which plays as its twin with `var`.
 class NamedDoorPart
   game_variables :open

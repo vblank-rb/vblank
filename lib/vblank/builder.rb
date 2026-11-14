@@ -1116,6 +1116,11 @@ module VBlank
 
     def statement_mark = StatementMark.new(container: @container_stack.last, last: @container_stack.last.children.last)
 
+    # Has anything been recorded since +mark+, where it was made? Nothing is taken.
+    def recorded_since?(mark)
+      !mark.container.equal?(@container_stack.last) || !mark.container.children.last.equal?(mark.last)
+    end
+
     # The statements recorded since +mark+, taken out of where they were recorded and handed back.
     def take_statements_since(mark)
       children = mark.container.children
