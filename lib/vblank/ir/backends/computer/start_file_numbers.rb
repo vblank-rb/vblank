@@ -38,9 +38,10 @@ module VBlank
           # The numbers before the tile layout in a background's rules
           # (StartFileFills#start_file_background_rules): the totals, where its map is and how its
           # cells are kept, where its tiles and its banks of colours are, how many sets of colours
-          # its tiles are written in, how many tiles the game holds before the map's in each, and
-          # how many bytes a cell of its map is.
-          BACKGROUND_HEADER_NUMBERS = 21
+          # its tiles are written in, how many tiles the game holds before the map's in each, how
+          # many bytes a cell of its map is, and where the cells it is told by a slot are in the
+          # file, how many, and which of the tiles the game holds is the first of theirs.
+          BACKGROUND_HEADER_NUMBERS = 24
 
           # The numbers before the tile layout in a pose's rules (StartFileFills#start_file_pose_rules):
           # what is filled, the totals, how many copies of it there are, the turn, the colours, where

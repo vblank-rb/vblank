@@ -82,7 +82,9 @@ module PackBackgroundSetCellGames
 
   # The made-up Color-layout original, for +platform+ (:gbc, or :pc for a computer game kept in
   # the Color's layout).
-  private def map_cells_original(folder, platform)
+  private def map_cells_original(folder, platform) = PackBackgroundSetCellGames.map_cells_original_in(folder, platform)
+
+  def self.map_cells_original_in(folder, platform)
     copy = "\0".b * (TILES_AT + (MAP_CELLS_VIDEO.length * 16))
     cells = MAP_TILES.flatten
     copy[MAP_CELLS_TILE_MAP_AT, cells.length] = cells.pack("C*")
@@ -96,8 +98,12 @@ module PackBackgroundSetCellGames
   end
 
   # A game showing the Color-layout original through a map of map cells, which its unpacking
-  # writes from the two maps as a port does, told +set_cells+, and whatever the block does with it.
-  private def map_cells_game_and_file(folder, platform, set_cells:, options: nil, &more)
+  # writes from the two maps as a port does, told +set_cells+ (or, given a block that takes the
+  # pack, the cells it gives back), and whatever the block does with it. With +changes+ the
+  # unpacking fills a slot of that many map cells too, the font's three cells over and over, the
+  # cells a game told by the slot writes (`set_cells: pack[:changes]`). +before+ is run on the
+  # builder, handed the pack, before the background is declared.
+  private def map_cells_game_and_file(folder, platform, set_cells:, changes: nil, before: nil, options: nil, &more)
     from = map_cells_original(folder, platform)
     layout = platform == :pc ? { layout: :gbc } : {}
     cells = MAP_TILES.flatten.length
@@ -108,15 +114,19 @@ module PackBackgroundSetCellGames
         slots.tiles :video, at: TILES_AT, count: MAP_CELLS_VIDEO.length, **layout
         slots.colors :palette, at: COLORS_AT, count: MAP_CELLS_PALETTE.length, **layout
         slots.map_cells :map, count: cells
+        slots.map_cells :changes, count: changes if changes
         slots.fill_from_copy do |copy, filled|
           repeat(cells) do |at|
             attributes = copy.byte(MAP_CELLS_ATTRIBUTES_AT + at)
             filled[:map].write_cell(at, tile: copy.byte(MAP_CELLS_TILE_MAP_AT + at) + (((attributes >> 3) & 1) * MAP_CELLS_BANK_TILES),
                                         bank: attributes & 7, mirrored: attributes >> 5, upside_down: attributes >> 6)
           end
+          (changes || 0).times { |at| filled[:changes].write_cell(at, tile: MAP_CELLS_BANK_TILES + (at % 3), bank: 1) }
         end
       end
-      world = background :world, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: 4, set_cells: set_cells
+      instance_exec(pack, &before) if before
+      told = set_cells.is_a?(Proc) ? set_cells.call(pack) : set_cells
+      world = background :world, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: 4, set_cells: told
       instance_exec(world, &more) if more
     end
     b.finalize_program
@@ -133,6 +143,16 @@ module PackBackgroundSetCellGames
     written = records ? { letter: cell.(0), space: cell.(2), worked: cell } : {}
     map_cells_game_and_file(folder, platform, set_cells: told, options: options) do |world|
       PackBackgroundSetCellGames.emit_text_loop(self, world, MAP_CELLS_FONT, blank_at, **written)
+    end
+  end
+
+  # THE GAME OF THE TESTS TOLD ITS CELLS BY A SLOT OF THE PACK (`set_cells: pack[:changes]`), as a
+  # port whose unpacking works out every cell its screen changes to: `set_cell` names a told cell
+  # by its place in the slot, 0 first, so the font's letter is 0, its second letter 1 and its
+  # space 2, and a place worked out past the slot's +changes+ (9) leaves the cell alone.
+  private def slot_told_text_game(folder, platform, changes: 3, blank_at: 99, options: nil)
+    map_cells_game_and_file(folder, platform, set_cells: ->(pack) { pack[:changes] }, changes: changes, options: options) do |world|
+      PackBackgroundSetCellGames.emit_text_loop(self, world, 0, blank_at)
     end
   end
 
@@ -522,6 +542,75 @@ class TestPackBackgroundSetCell < Minitest::Test
       expected = game_player.run(advance_text_game(folder, blank_at: 4).first, frames: 8).screen.to_a
 
       assert_equal expected, game_player.run(map_cells_text_game(folder, :gbc, blank_at: 4).first, frames: 8).screen.to_a
+    end
+  end
+
+  # CELLS TOLD BY A SLOT OF THE PACK, written by their place in it, written in the game and worked
+  # out as it runs: the same text as the Advance original's, and blanked again with the space.
+  def test_cells_told_by_a_slot_and_written_by_place_show_as_the_advances
+    Dir.mktmpdir do |folder|
+      written = game_player.run(advance_text_game(folder, blank_at: 4).first, frames: 3).screen.to_a
+      blanked = game_player.run(advance_text_game(folder, blank_at: 4).first, frames: 8).screen.to_a
+      program, = slot_told_text_game(folder, :gbc, blank_at: 4)
+
+      assert_equal written, game_player.run(program, frames: 3).screen.to_a
+      assert_equal blanked, game_player.run(program, frames: 8).screen.to_a
+    end
+  end
+
+  # A told slot of many cells: a place past the font's first three still draws its cell.
+  def test_a_place_far_into_a_told_slot_draws_its_cell
+    Dir.mktmpdir do |folder|
+      expected = game_player.run(advance_text_game(folder).first, frames: 5).screen.to_a
+      program, = map_cells_game_and_file(folder, :gbc, set_cells: ->(pack) { pack[:changes] }, changes: 40) do |world|
+        letters = table :letters, [36, 37, 39]
+        pass = var :pass, 0
+        game_loop do
+          wait_vblank
+          pass += 1
+          if pass == 2
+            world.set_cell 1, 1, letters[0]
+            world.set_cell 2, 1, letters[1]
+            world.set_cell 0, 0, letters[2] + 1
+          end
+        end
+      end
+
+      assert_equal expected, game_player.run(program, frames: 5).screen.to_a
+    end
+  end
+
+  def test_a_place_past_a_told_slot_written_in_the_game_is_refused
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) do
+        map_cells_game_and_file(folder, :gbc, set_cells: ->(pack) { pack[:changes] }, changes: 3) { |world| world.set_cell 0, 0, 3 }
+      end
+
+      assert_includes error.message, "set_cells:"
+      assert_includes error.message, "0 to 2"
+    end
+  end
+
+  # A slot told on a background of the console's own cell numbers is refused: its cells are records.
+  def test_a_slot_of_map_cells_told_to_a_background_of_the_consoles_own_cells_is_refused
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) do
+        words = MAP_TILES.flatten.map { |tile| ADVANCE_CELL.(tile) }
+        from = original(folder, :gba, PLACES.map(&LOW_HALF_FIRST).join, words)
+        b = VBlank::Builder.new
+        b.instance_eval do
+          screen :tiled
+          pack = data_pack from: from, version: "1" do |slots|
+            slots.tiles :video, at: TILES_AT, count: PLACES.length, colors: 16
+            slots.numbers :map, at: MAP_AT, count: words.length, width: :half, signed: false
+            slots.colors :palette, at: COLORS_AT, count: 32
+            slots.map_cells :changes, count: 2, at: 0
+          end
+          background :world, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: 4, set_cells: pack[:changes]
+        end
+      end
+
+      assert_includes error.message, "map cells"
     end
   end
 

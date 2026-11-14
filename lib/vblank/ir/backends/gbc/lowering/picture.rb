@@ -1347,14 +1347,11 @@ module VBlank
             # A big map's cell is changed where the map is kept while it is up (Runtime::BigMaps's
             # rt_big_set).
             #
-            # A tile picked as the program runs is written as the tests it stands for
-            # (IR::PickedTile), each with a change of its own: this lowering keeps no table of a
-            # background's cells to index yet.
+            # A tile picked as the program runs is a cell read from a table by the number
+            # (#emit_set_picked_tile_on).
             def emit_set_tile(node)
-              if node.picked?
-                tests = PickedTile.tests(node)
-                return tests && statement(tests)
-              end
+              return each_declaration(node) { |bg| emit_set_picked_tile_on(bg, node) } if node.picked?
+
               each_declaration(node) do |bg|
                 # A tile only another scene's declaration of this name has, from a line written for
                 # that scene: this declaration's part of the line writes nothing.
@@ -1364,9 +1361,7 @@ module VBlank
 
             def emit_set_tile_for_declaration(bg, node)
               tile = node.tile
-              number, palette = tile.nil? || tile.negative? ? [0, 0] : background_tile_named(bg.tiles.fetch(tile), bg, tile_room(bg))
-              colours = palette | (number >= 256 ? Console::GBCHardware::ATTR_TILE_BANK : 0)
-              cell = Build.int((number & 0xFF) | (colours << 8))
+              cell = Build.int(tile.nil? || tile.negative? ? 0 : grid_cell_of(bg, tile))
               return runtime_call("rt_big_set", [node.col, node.row, cell]) if big?(bg)
 
               refuse_background!(bg, as_grid: true)
@@ -1376,6 +1371,62 @@ module VBlank
               @asm.load(:hl, shown)
               @asm.inc([:hl])
               emit_cell_change(node, bg, cell)
+              @asm.load(:hl, shown)
+              @asm.dec([:hl])
+            end
+
+            # The two bytes the console's grid holds for a cell of +bg+ showing its tile +tile+: the
+            # tile's number in video memory, low byte, then its colours and its bank of video memory.
+            def grid_cell_of(bg, tile)
+              number, palette = background_tile_named(bg.tiles.fetch(tile), bg, tile_room(bg))
+              colours = palette | (number >= 256 ? Console::GBCHardware::ATTR_TILE_BANK : 0)
+              (number & 0xFF) | (colours << 8)
+            end
+
+            # Two bytes no cell of the grid holds, since a cell's colours byte is a palette of 0 to 7
+            # and a bank bit: what an entry of a table of cells holds for a number that stands for no tile.
+            NO_GRID_CELL = 0xFFFF
+
+            # A TILE PICKED AS THE GAME RUNS (Nodes::SetTile#picked_by) IS A CELL READ FROM A TABLE, as a
+            # console's own game writes its text: the number, less the one the list starts at, is a
+            # place in a table of the cells those tiles show, kept in a bank of the cartridge of its
+            # own. So the cost of a cell is the same however many tiles the number can pick, where the
+            # tests IR::PickedTile writes cost a test for each halving and a change of its own for each
+            # tile, in the code. A number that stands for no tile reads NO_GRID_CELL, and the cell is
+            # left alone, as is a tile only another scene's background of the name has.
+            def emit_set_picked_tile_on(bg, node)
+              cells = node.picks.map { |tile| tile && !tile.negative? && tile < bg.tiles.length ? grid_cell_of(bg, tile) : NO_GRID_CELL }
+              return if cells.all?(NO_GRID_CELL)
+
+              table = drawing_table("picked_cells", 2, cells, banked: true)
+              outside = fresh("picked_cell_outside")
+              place = Build.var_ref(keep_local(:picked_place))
+              value(Build.binop(:-, node.picked_by.copy, Build.int(node.picks_from)))
+              store(place.name)
+              jump_unless(Build.binop(:and, Build.binop(:>=, place, Build.int(0)), Build.binop(:<, place, Build.int(cells.length))), outside)
+              cell = Build.var_ref(keep_local(:picked_cell))
+              value(Entry.new(label: table, bytes: 2, signed: false, index: place, banked: true))
+              store(cell.name)
+              jump_if(Build.binop(:==, cell, Build.int(NO_GRID_CELL)), outside) if cells.include?(NO_GRID_CELL)
+              emit_worked_out_cell_change(bg, node, cell)
+              @asm.label(outside)
+            end
+
+            # A cell of +bg+ given the grid cell +cell+, a number the game worked out, where +node+ says.
+            def emit_worked_out_cell_change(bg, node, cell)
+              return runtime_call("rt_big_set", [node.col, node.row, cell]) if big?(bg)
+
+              refuse_background!(bg, as_grid: true)
+              cols, rows = map_size_of(bg)
+              shown = (@memory[Runtime::Picture::CELL_SHOWN_NOW] if node.now)
+              if shown
+                @asm.load(:hl, shown)
+                @asm.inc([:hl])
+              end
+              emit_cell_numbers(node.col, node.row, cols | (rows << 8), cell)
+              @asm.call("#{bg.bar? ? 'rt_bar_cell' : 'rt_background_cell'}_taken")
+              return unless shown
+
               @asm.load(:hl, shown)
               @asm.dec([:hl])
             end
@@ -1456,7 +1507,12 @@ module VBlank
                 emit_bcde_at_high(at.call(1))
               end
               emit_number_at_high(at.call(2), size, 2)
-              emit_number_at_high(at.call(3), cell, 2)
+              return emit_number_at_high(at.call(3), cell, 2) if cell.is_a?(Integer)
+
+              # A cell the game worked out (#emit_set_picked_tile_on), read last, since reading it
+              # uses no quick memory.
+              value(cell)
+              emit_bcde_at_high(at.call(3))
             end
 
             # BCDE's four bytes into quick memory from +address+ up, lowest first.

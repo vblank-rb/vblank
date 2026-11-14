@@ -85,6 +85,7 @@ module VBlank
         refuse_colors_short_of_table!(name, tiles, colors)
         refuse_bad_pack_background_shape!(name, map, across, cell, words)
         refuse_set_cells_of_table_tiles!(name, tiles, set_cells)
+        told_slot = (refuse_bad_told_slot!(name, set_cells, words) if set_cells.is_a?(DSL::PackSlot))
         tiles_a_side = cell / Original::Slot::TILE_SIDE
         record_pack_background_slot(tiles)
         moving = moving_pack_tiles_of(tiles)
@@ -94,6 +95,9 @@ module VBlank
                                                              tiles_a_side: tiles_a_side, words: words, set_cells: set_cells,
                                                              moving: moving, **others)
         end
+
+        # A slot's cells are known here: they are the told cells, written by their place in it.
+        set_cells = pack_slot_values(told_slot, :map_cells, "background :#{name}'s set_cells:") if told_slot
 
         tile_places = pack_tile_places(tiles, subject)
         bank_lists = if drawn_from_whole_table?(tiles)
@@ -117,7 +121,27 @@ module VBlank
         # Which banks the map uses is in the player's copy, so the game may name any bank of the slot.
         # Tiles drawn from the whole table have no list, so there is none to name.
         named = drawn_from_whole_table?(tiles) ? [] : bank_lists
-        background(name, tiles: tileset, map: made.rows, **others).allow_undrawn_lists(named).allow_set_cells(made.told)
+        told = told_slot ? made.told.by_place(set_cells.map { |word| made.told.tiles_of(word) }) : made.told
+        background(name, tiles: tileset, map: made.rows, **others).allow_undrawn_lists(named).allow_set_cells(told)
+      end
+
+      # `set_cells: pack[:changes]`: A SLOT OF MAP CELLS TELLS THE CELLS THE BACKGROUND MAY BE
+      # WRITTEN LATER, as a port's unpacking works out every cell its screen changes to, and
+      # `set_cell` names one by its place in the slot. Its cells are records (Original::MapCell),
+      # so the map is map cells too, a cell of 8x8 pixels. Hands back the slot.
+      def refuse_bad_told_slot!(name, slot, words)
+        refuse_slot_from_elsewhere!(slot, "background :#{name}'s set_cells:")
+        unless slot.shape == :map_cells && !slot.one_tile? && !slot.run_of_numbers?
+          raise ArgumentError, "background :#{name} was given set_cells: slot :#{slot.layout.name}, which holds " \
+                               "#{slot.shape}. To tell the cells set_cell can write from the pack, give a slot of map " \
+                               "cells, like `slots.map_cells :changes, count: 216`."
+        end
+        return slot if words == Original::MapCell::FORMAT
+
+        raise ArgumentError, "background :#{name} was given set_cells: slot :#{slot.layout.name}, a slot of map cells, " \
+                             "and its map: holds numbers in the layout of the original's console. Only a map of map " \
+                             "cells takes told cells from a slot. To fix this, give map: a slot of map cells, or give " \
+                             "set_cells: the cell numbers."
       end
 
       # What making a background's pictures from the pack reads: the background's +name+, the layout
@@ -401,13 +425,19 @@ module VBlank
           (@run_tiles_read_at_start ||= Set.new).merge(runs)
         end
         told = {}
-        cells = declare_pack_cells_written_later(name, set_cells, words, tiles_a_side, told, where.bank_names) do |tile, number|
-          # A told tile that takes turns is the run's tile for its bank and turn, as the map's are.
-          next pack_run_tile_read_at_start(runs, where, stand_ins.length, tile) if moving.key?(tile.tile) && tile.bank < where.bank_count
+        places = []
+        if set_cells.is_a?(DSL::PackSlot)
+          places, where = declare_told_slot_read_at_start(name, set_cells, where, [*stand_ins, *runs].uniq.length)
+          cells = DSL::PackCells.new(format: words, side: tiles_a_side, tiles_by_word: {}, place_tiles: places.zip)
+        else
+          cells = declare_pack_cells_written_later(name, set_cells, words, tiles_a_side, told, where.bank_names) do |tile, number|
+            # A told tile that takes turns is the run's tile for its bank and turn, as the map's are.
+            next pack_run_tile_read_at_start(runs, where, stand_ins.length, tile) if moving.key?(tile.tile) && tile.bank < where.bank_count
 
-          declare_told_tile_read_at_start(name, tile, where, number)
+            declare_told_tile_read_at_start(name, tile, where, number)
+          end
         end
-        held = [*stand_ins, *runs, *told.values].uniq
+        held = [*stand_ins, *runs, *told.values, *places].uniq
         refuse_oversized_map_at_start!(name, where, held.length)
         tileset = :"background :#{name} tiles"
         tiles(tileset, held.to_h { |picture| [picture, picture] })
@@ -417,6 +447,24 @@ module VBlank
 
         # Which bank the map uses is in the file, so one list given alone is every bank's.
         handle.allow_one_list_for_every_bank.allow_set_cells(cells)
+      end
+
+      # THE CELLS A SLOT TELLS A BACKGROUND READ AS THE GAME STARTS (`set_cells: pack[:changes]`).
+      # Which tile, bank and turn each is, is in the file, so the build holds a stand-in tile for
+      # each place of the slot, from tile +first+ of the background's own on, and the background's
+      # fill paints each from its cell as it paints a cell of the map, in every set of colours the
+      # background is drawn in and following its bank's list (IR::StartFile::Background#told_at).
+      # A stand-in is see-through and of no list, so nothing takes it for a bank's tile. Hands back
+      # the stand-ins' names, a place's first, and +where+ told where the slot is.
+      def declare_told_slot_read_at_start(name, slot, where, first)
+        side = Original::Slot::TILE_SIDE
+        places = Array.new(slot.count) do |place|
+          picture = :"background :#{name} told place #{place}"
+          image picture, width: side, height: side, places: Array.new(side * side, 0), colors: [:black]
+          picture
+        end
+        (@told_places_read_at_start ||= Set.new).merge(places)
+        [places, where.with(told_at: @pack_slot_starts.fetch(slot.layout.name), told_count: slot.count, told_first: first)]
       end
 
       # The tile of +runs+ (the run tiles a background read as the game starts holds from tile
@@ -531,7 +579,9 @@ module VBlank
 
       # Is +picture+ a tile of a background read as the game starts that a told cell can show: a
       # told tile's picture read from the file, or a tile of a run that takes turns?
-      def told_cell_tile_at_start?(picture) = picture_from_start_file?(picture) || @run_tiles_read_at_start&.include?(picture) || false
+      def told_cell_tile_at_start?(picture)
+        picture_from_start_file?(picture) || @run_tiles_read_at_start&.include?(picture) || @told_places_read_at_start&.include?(picture) || false
+      end
 
       # +held+ is how many tiles the build holds for it besides the map's: a stand-in for each bank,
       # the runs of tiles that take turns, and the told cells'.

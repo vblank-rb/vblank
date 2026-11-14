@@ -836,35 +836,52 @@ void rg_start_file_fill_followed_tiles(int32_t *followed, const int32_t *rules, 
       for (int32_t along = 0; along < side; along++)
         followed[3 + count++] = held + ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along;
   }
+  int32_t told_at = rules[21], told_count = rules[22], told_first = rules[23];
+  for (int32_t told = 0; told < told_count; told++) {
+    uint32_t word = start_file_number(told_at + (told * cell_bytes), cell_bytes, map_high_byte_first);
+    int32_t bank = (int32_t)((word >> bank_at) & ((1u << bank_bits) - 1u));
+    if (bank < bank_count && bank <= 30 && ((banks >> bank) & 1)) followed[3 + count++] = told_first + told;
+  }
   followed[2] = count;
+}
+
+/* One tile of a cell of such a background (rg_start_file_fill_moving_cells): the tile +down+ and
+ * +along+ of the cell +word+, shown as the run's tile for its bank and turn where it is one that
+ * takes turns, in the background's tile +slot+. */
+static void start_file_mark_moving_tile(int32_t *painted, const int32_t *rules, const int32_t *moving, uint32_t word,
+                                        int32_t down, int32_t along, int32_t slot) {
+  int32_t side = rules[5], tile_bits = rules[7], mirror_bit = rules[8], flip_bit = rules[9], bank_at = rules[10];
+  int32_t bank_bits = rules[11], row_tiles = rules[12], bank_count = rules[16];
+  int32_t start = moving[0], count = moving[1], entry = 1 + (bank_count * 8);
+  int32_t first_tile = (int32_t)(word & ((1u << tile_bits) - 1u));
+  int32_t mirrored = (int32_t)((word >> mirror_bit) & 1u), upside_down = (int32_t)((word >> flip_bit) & 1u);
+  int32_t bank = (int32_t)((word >> bank_at) & ((1u << bank_bits) - 1u));
+  if (bank >= bank_count) return;
+  int32_t tile = first_tile + ((upside_down ? side - 1 - down : down) * row_tiles) + (mirrored ? side - 1 - along : along);
+  for (int32_t which = 0; which < count; which++) {
+    const int32_t *each = moving + 2 + (which * entry);
+    if (each[0] != tile) continue;
+    const int32_t *shown = each + 1 + ((((bank * 4) + mirrored + (2 * upside_down))) * 2);
+    painted[start + (2 * slot)] = shown[0];
+    painted[start + (2 * slot) + 1] = shown[1];
+    return;
+  }
 }
 
 void rg_start_file_fill_moving_cells(int32_t *painted, const int32_t *rules, const int32_t *moving) {
   int32_t map_at = rules[2], cells = rules[3], across = rules[4], side = rules[5], map_high_byte_first = rules[6];
-  int32_t tile_bits = rules[7], mirror_bit = rules[8], flip_bit = rules[9], bank_at = rules[10], bank_bits = rules[11];
-  int32_t row_tiles = rules[12], bank_count = rules[16], held = rules[19], cell_bytes = rules[20];
-  int32_t start = moving[0], count = moving[1], entry = 1 + (bank_count * 8), columns = across * side;
+  int32_t held = rules[19], cell_bytes = rules[20], told_at = rules[21], told_count = rules[22], told_first = rules[23];
+  int32_t columns = across * side;
   for (int32_t cell = 0; cell < cells; cell++) {
     uint32_t word = start_file_number(map_at + (cell * cell_bytes), cell_bytes, map_high_byte_first);
-    int32_t first_tile = (int32_t)(word & ((1u << tile_bits) - 1u));
-    int32_t mirrored = (int32_t)((word >> mirror_bit) & 1u), upside_down = (int32_t)((word >> flip_bit) & 1u);
-    int32_t bank = (int32_t)((word >> bank_at) & ((1u << bank_bits) - 1u));
-    if (bank >= bank_count) continue;
-    for (int32_t down = 0; down < side; down++) {
-      for (int32_t along = 0; along < side; along++) {
-        int32_t tile = first_tile + ((upside_down ? side - 1 - down : down) * row_tiles) + (mirrored ? side - 1 - along : along);
-        int32_t number = ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along;
-        for (int32_t which = 0; which < count; which++) {
-          const int32_t *each = moving + 2 + (which * entry);
-          if (each[0] != tile) continue;
-          const int32_t *shown = each + 1 + ((((bank * 4) + mirrored + (2 * upside_down))) * 2);
-          painted[start + (2 * (held + number))] = shown[0];
-          painted[start + (2 * (held + number)) + 1] = shown[1];
-          break;
-        }
-      }
-    }
+    for (int32_t down = 0; down < side; down++)
+      for (int32_t along = 0; along < side; along++)
+        start_file_mark_moving_tile(painted, rules, moving, word, down, along,
+                                    held + ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along);
   }
+  for (int32_t told = 0; told < told_count; told++)
+    start_file_mark_moving_tile(painted, rules, moving, start_file_number(told_at + (told * cell_bytes), cell_bytes, map_high_byte_first),
+                                0, 0, told_first + told);
 }
 
 void rg_start_file_fill_painted_tiles(uint8_t *table, int32_t tiles, const int32_t *rules) {
@@ -883,48 +900,59 @@ void rg_start_file_fill_painted_tiles(uint8_t *table, int32_t tiles, const int32
   }
 }
 
-void rg_start_file_fill_background(const int32_t *rules) {
-  int32_t total = rules[0], start = rules[1], map_at = rules[2], cells = rules[3], across = rules[4], side = rules[5];
-  int32_t map_high_byte_first = rules[6], tile_bits = rules[7], mirror_bit = rules[8], flip_bit = rules[9];
+/* One tile of a cell of a background read from the file (rg_start_file_fill_background): the tile
+ * +down+ and +along+ of the cell +word+, painted into tile +slot+ of each set of the background's
+ * tiles. */
+static void start_file_paint_cell_tile(const int32_t *rules, uint16_t *pixels, uint32_t word, int32_t down, int32_t along,
+                                       int32_t slot) {
+  int32_t start = rules[1], cells = rules[3], across = rules[4], side = rules[5];
+  int32_t tile_bits = rules[7], mirror_bit = rules[8], flip_bit = rules[9];
   int32_t bank_at = rules[10], bank_bits = rules[11], row_tiles = rules[12], tiles_at = rules[13], tile_count = rules[14];
   int32_t colors_at = rules[15], bank_count = rules[16], bank_size = rules[17], sets = rules[18], held = rules[19];
-  int32_t cell_bytes = rules[20];
   const int32_t *tile_format = rules + RG_FILL_BACKGROUND_HEADER_NUMBERS;
   const int32_t *color_format = tile_format + RG_TILE_FORMAT_NUMBERS;
   const int32_t *lists = color_format + RG_COLOR_FORMAT_NUMBERS;
+  int32_t set_tiles = held + (across * side * (cells / across) * side);
+  int32_t first_tile = (int32_t)(word & ((1u << tile_bits) - 1u));
+  int32_t mirrored = (int32_t)((word >> mirror_bit) & 1u), upside_down = (int32_t)((word >> flip_bit) & 1u);
+  int32_t bank = (int32_t)((word >> bank_at) & ((1u << bank_bits) - 1u));
+  int32_t tile = first_tile + ((upside_down ? side - 1 - down : down) * row_tiles) + (mirrored ? side - 1 - along : along);
+  int32_t places[RG_FILL_TILE_PIXELS];
+  for (int32_t at = 0; at < RG_FILL_TILE_PIXELS; at++) {
+    int32_t row = at / RG_FILL_TILE_SIDE, column = at % RG_FILL_TILE_SIDE;
+    places[at] = tile < tile_count ? start_file_place(tiles_at + (tile * tile_format[RG_TILE_BYTES_AT]), tile_format, 1,
+                                                      upside_down ? RG_FILL_TILE_SIDE - 1 - row : row,
+                                                      mirrored ? RG_FILL_TILE_SIDE - 1 - column : column)
+                                   : 0;
+  }
+  for (int32_t set = 0; set < sets; set++) {
+    const int32_t *list = lists + ((((set * bank_count) + bank) * (1 + bank_size)));
+    uint16_t *drawn = pixels + start + (((set * set_tiles) + slot) * RG_FILL_TILE_PIXELS);
+    for (int32_t at = 0; at < RG_FILL_TILE_PIXELS; at++) {
+      uint16_t color = 0;
+      if (places[at] == 0) color = 0xFFFFu;
+      else if (bank >= bank_count) color = 0;
+      else if (list[0] < 0) color = (uint16_t)list[1 + places[at]];
+      else if (list[0] < bank_count) color = start_file_color(colors_at + (list[0] * bank_size * 2), color_format, places[at]);
+      drawn[at] = color;
+    }
+  }
+}
+
+void rg_start_file_fill_background(const int32_t *rules) {
+  int32_t total = rules[0], map_at = rules[2], cells = rules[3], across = rules[4], side = rules[5];
+  int32_t map_high_byte_first = rules[6], held = rules[19], cell_bytes = rules[20];
+  int32_t told_at = rules[21], told_count = rules[22], told_first = rules[23];
   int32_t columns = across * side;
-  int32_t set_tiles = held + (columns * (cells / across) * side);
   uint16_t *pixels = rg_screen_tile_pixels_to_fill(total);
   for (int32_t cell = 0; cell < cells; cell++) {
     uint32_t word = start_file_number(map_at + (cell * cell_bytes), cell_bytes, map_high_byte_first);
-    int32_t first_tile = (int32_t)(word & ((1u << tile_bits) - 1u));
-    int32_t mirrored = (int32_t)((word >> mirror_bit) & 1u), upside_down = (int32_t)((word >> flip_bit) & 1u);
-    int32_t bank = (int32_t)((word >> bank_at) & ((1u << bank_bits) - 1u));
-    for (int32_t down = 0; down < side; down++) {
-      for (int32_t along = 0; along < side; along++) {
-        int32_t tile = first_tile + ((upside_down ? side - 1 - down : down) * row_tiles) + (mirrored ? side - 1 - along : along);
-        int32_t number = ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along;
-        int32_t places[RG_FILL_TILE_PIXELS];
-        for (int32_t at = 0; at < RG_FILL_TILE_PIXELS; at++) {
-          int32_t row = at / RG_FILL_TILE_SIDE, column = at % RG_FILL_TILE_SIDE;
-          places[at] = tile < tile_count ? start_file_place(tiles_at + (tile * tile_format[RG_TILE_BYTES_AT]), tile_format, 1,
-                                                            upside_down ? RG_FILL_TILE_SIDE - 1 - row : row,
-                                                            mirrored ? RG_FILL_TILE_SIDE - 1 - column : column)
-                                         : 0;
-        }
-        for (int32_t set = 0; set < sets; set++) {
-          const int32_t *list = lists + ((((set * bank_count) + bank) * (1 + bank_size)));
-          uint16_t *drawn = pixels + start + (((set * set_tiles) + held + number) * RG_FILL_TILE_PIXELS);
-          for (int32_t at = 0; at < RG_FILL_TILE_PIXELS; at++) {
-            uint16_t color = 0;
-            if (places[at] == 0) color = 0xFFFFu;
-            else if (bank >= bank_count) color = 0;
-            else if (list[0] < 0) color = (uint16_t)list[1 + places[at]];
-            else if (list[0] < bank_count) color = start_file_color(colors_at + (list[0] * bank_size * 2), color_format, places[at]);
-            drawn[at] = color;
-          }
-        }
-      }
-    }
+    for (int32_t down = 0; down < side; down++)
+      for (int32_t along = 0; along < side; along++)
+        start_file_paint_cell_tile(rules, pixels, word, down, along,
+                                   held + ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along);
   }
+  for (int32_t told = 0; told < told_count; told++)
+    start_file_paint_cell_tile(rules, pixels, start_file_number(told_at + (told * cell_bytes), cell_bytes, map_high_byte_first),
+                               0, 0, told_first + told);
 }

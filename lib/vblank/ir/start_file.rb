@@ -234,9 +234,16 @@ module VBlank
       # +moving+ are the tiles that take turns through pictures (MovingTile, Builder::
       # PackTilePictures): a cell naming one shows a tile the program holds, which the game
       # repaints, in place of a tile of its own.
+      #
+      # THE CELLS A SLOT TELLS IT IT MAY BE WRITTEN LATER (`set_cells: pack[:slot]`): +told_count+
+      # cells from +told_at+ on, each kept as a cell of the map is. Which tile, bank and turn each
+      # is, is in the file, so the program holds a stand-in tile for each among its own, from its
+      # tile +told_first+ on, and `set_cell` writes those by number; each is filled from its cell as
+      # a cell of the map fills its own tile. None where +told_count+ is 0.
       Background = Data.define(:map_at, :cells, :across, :cell_tiles, :number_format, :map_words, :tiles_at, :tile_count,
-                               :tile_format, :colors_at, :bank_count, :bank_size, :color_format, :bank_names, :moving) do
-        def initialize(moving: [].freeze, **) = super
+                               :tile_format, :colors_at, :bank_count, :bank_size, :color_format, :bank_names, :moving,
+                               :told_at, :told_count, :told_first) do
+        def initialize(moving: [].freeze, told_at: 0, told_count: 0, told_first: 0, **) = super
 
         # How many tiles across and down the map is, and how many that makes: a tile of its own
         # for each, since two cells are known to show one tile only once the file is read.
@@ -1117,7 +1124,19 @@ module VBlank
         # program names one by its number: a stand-in for each bank, which nothing draws, and
         # the tiles of the cells the background was told it may be written, each a picture read
         # from the file itself (.fill_picture).
-        held = node.tiles
+        held = node.tiles.dup
+        # The cells a slot told it, each the tile the program holds for it, filled from its cell.
+        told = FormatReading.numbers(bytes.byteslice(from.told_at, from.told_count * cells.cell_bytes), from.number_format,
+                                     width: cells.cell_width, signed: false)
+        told.each_with_index do |word, at|
+          tile = cells.cell_tile(word, 0, 0, 1)
+          # A tile taking turns is the tile the program holds for its bank and turn, as a map's cell's is.
+          held[from.told_first + at] = if moving.key?(tile.tile) && tile.bank < from.bank_count
+                                         node.tiles.fetch(moving[tile.tile].tile_of(tile.bank, tile.mirrored, tile.upside_down))
+                                       else
+                                         declare_background_tile(program, node, tile, banks, bytes, "told #{at}", keep_blank: true)
+                                       end
+        end
         node.tiles = [*held, *pictures.values.compact]
         numbers = pictures.values.compact.each_with_index.to_h { |picture, at| [picture, held.length + at] }
         node.map = drawn.map { |row| row.map { |picture| picture.is_a?(Integer) ? picture : picture && numbers.fetch(picture) } }
@@ -1133,19 +1152,22 @@ module VBlank
       end
 
       # The picture of +tile+ (a Console::CellTile) of the background +node+, declared in +program+,
-      # by its name; nil for a tile that draws nothing, left empty in the map. A tile past the
-      # file's tiles draws nothing, and a bank past its colours is every place colour 0.
-      def self.declare_background_tile(program, node, tile, banks, bytes, number)
+      # by its name; nil for a tile that draws nothing, left empty in the map, unless +keep_blank+,
+      # for a tile the program names by its number, which is then see-through all over. A tile
+      # past the file's tiles draws nothing, and a bank past its colours is every place colour 0.
+      def self.declare_background_tile(program, node, tile, banks, bytes, number, keep_blank: false)
         from = node.from_file
-        return nil unless tile.tile < from.tile_count
-
         tile_bytes = from.tile_format.tile_bytes
-        places = FormatReading.tiles(bytes.byteslice(from.tiles_at + (tile.tile * tile_bytes), tile_bytes), from.tile_format).first
-        return nil if places.all?(&:zero?)
+        side = FormatReading::TILE_SIDE
+        places = if tile.tile < from.tile_count
+                   FormatReading.tiles(bytes.byteslice(from.tiles_at + (tile.tile * tile_bytes), tile_bytes), from.tile_format).first
+                 else
+                   Array.new(side * side, 0)
+                 end
+        return nil if places.all?(&:zero?) && !keep_blank
 
         colors = banks.fetch(tile.bank) { Array.new(from.bank_size, 0) }
         pixels, transparent = Assets.placed_pixels(places, colors)
-        side = FormatReading::TILE_SIDE
         picture = Assets::Image.new(width: side, height: side, transparent: transparent, pixels: pixels, colors: colors,
                                     places: places.pack("C*"), colors_name: from.bank_names[tile.bank])
         picture = tile.turns.reduce(picture) { |turned, way| turned.turned(way) }

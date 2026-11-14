@@ -579,7 +579,12 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   (`rg_start_file_fill_picture`) and drawn in its bank's list, and `set_cell` writes it. A told tile that draws
   nothing is a picture that is see-through all over. The program's tiles for such a background are a stand-in
   for each bank, then the told tiles, then the map's. Plain `set_tile` on it stays a friendly error, since which
-  tiles the map draws is in the file.
+  tiles the map draws is in the file. **Cells told by a slot of map cells (`set_cells: pack[:changes]`)**, which
+  the unpacking fills with every cell the screen changes to, are known only once the file is read: the program
+  holds a stand-in tile for each place of the slot, and the runtime paints each from its cell at power-on as it
+  paints a cell of the map (`IR::StartFile::Background#told_at`, `rg_start_file_fill_background`), in every set
+  of colours and following its bank's list (`rg_start_file_fill_followed_tiles`); `set_cell` names a place.
+  Nothing the file holds stops the game: a cell naming a tile past the slot draws nothing.
   Worked examples: `test/pack_background_tests.rb`, and `test/pack_background_set_cell_at_start_tests.rb` for the
   cells written later.
 - `screen :tiled, backdrop: pack[:palette]` (also `.bank(n)` and `backdrop_place:`) — the screen's backdrop,

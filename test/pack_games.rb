@@ -816,6 +816,8 @@ module PackGames
     include PackBackgroundSetCellGames
 
     TURNED_LIST = ->(turn) { MadeUpOriginalLayouts::PALETTE.rotate(turn).each_with_index.map { |color, at| at.zero? ? :transparent : color } }
+    # The same, as long as a bank of four colours, the Color-layout original's.
+    FOUR_COLOR_LIST = ->(turn) { TURNED_LIST.(turn).first(4) }
 
     private def advance_cells_game(folder, options, words, **told, &more)
       from = original(folder, :gba, PLACES.map(&LOW_HALF_FIRST).join, words)
@@ -851,6 +853,61 @@ module PackGames
       end,
       game(:map_cell_records_written_on_map_cells, passes: 8) do |folder, options|
         built(*map_cells_text_game(folder, :gbc, records: true, blank_at: 6, options: options))
+      end,
+      # Cells told by a slot the unpacking fills (`set_cells: pack[:changes]`), written by place,
+      # whose tiles, banks and turns are known only once the file is read.
+      game(:cells_told_by_a_slot_written_by_place, passes: 8) do |folder, options|
+        built(*slot_told_text_game(folder, :gbc, blank_at: 6, options: options))
+      end,
+      game(:cells_told_by_a_slot_drawn_with_other_lists, passes: 7) do |folder, options|
+        lists = [3, 5].map(&FOUR_COLOR_LIST)
+        built(*map_cells_game_and_file(folder, :gbc, set_cells: ->(pack) { pack[:changes] }, changes: 3, options: options) do |world|
+          lists.each_with_index { |list, at| colors :"other_#{at}", list }
+          pass = var :pass, 0
+          game_loop do
+            world.draw_with({ palette_1: %i[other_0 other_1] }, showing: pass - 2)
+            wait_vblank
+            pass += 1
+            world.set_cell 1, 0, 1 if pass == 2
+          end
+        end)
+      end,
+      # A told cell whose tile takes turns through pictures (tile_pictures) takes turns as the map's do.
+      game(:cell_told_by_a_slot_taking_turns_through_pack_pictures, passes: 8) do |folder, options|
+        group = nil
+        before = proc do |pack|
+          group = tile_pictures :belt, tiles: { pack[:video].tile(MAP_CELLS_BANK_TILES) => pack[:video].tiles(1, across: 2) }
+        end
+        built(*map_cells_game_and_file(folder, :gbc, set_cells: ->(pack) { pack[:changes] }, changes: 3, before: before,
+                                                     options: options) do |world|
+          tick = var :tick, 0
+          game_loop do
+            wait_vblank
+            tick += 1
+            world.set_cell 1, 0, 0 if tick == 1
+            group.show((tick / 2) % 2)
+          end
+        end)
+      end,
+      game(:cells_told_by_a_slot_on_a_background_following_two_banks, passes: 8) do |folder, options|
+        first = FOUR_COLOR_LIST.(3)
+        second = FOUR_COLOR_LIST.(5)
+        built(*map_cells_game_and_file(folder, :gbc, set_cells: ->(pack) { pack[:changes] }, changes: 3, options: options) do |world|
+          colors :first, first
+          colors :second, second
+          world.draw_with({ palette_0: :palette_0, palette_1: :palette_1 })
+          %i[palette_0 palette_1].each_with_index do |bank, at|
+            image :"dot_#{at}", width: 8, height: 8, places: Array.new(64, 2), colors: bank
+            sprite(:"dot_#{at}", at: [40 + (at * 20), 40]).draw_with bank
+          end
+          pass = var :pass, 0
+          game_loop do
+            pass += 1
+            world.set_cell 2, 0, 1 if pass == 2
+            recolor :palette_0, :first if pass >= 3
+            recolor :palette_1, :second if pass >= 5
+          end
+        end)
       end,
       # A written cell is drawn with the list the background is told to draw its bank with.
       game(:written_cell_drawn_with_other_lists, passes: 7) do |folder, options|

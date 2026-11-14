@@ -791,37 +791,56 @@ def rg_start_file_fill_followed_tiles(followed, rules, banks)
       end
     end
   end
+  told_at, told_count, told_first = rules[21, 3]
+  @rg_start_file.byteslice(told_at, told_count * cell_bytes).unpack(kept_as).each_with_index do |word, told|
+    bank = (word >> bank_at) & ((1 << bank_bits) - 1)
+    next if bank >= bank_count || bank > 30 || banks[bank].zero?
+
+    followed[3 + count] = told_first + told
+    count += 1
+  end
   followed[2] = count
 end
 
 # The cells of such a background naming a tile that takes turns through pictures (rg_runtime.h,
 # rg_start_file_fill_moving_cells).
 def rg_start_file_fill_moving_cells(painted, rules, moving)
-  map_at, cells, across, side, map_high_byte_first, tile_bits, mirror_bit, flip_bit, bank_at, bank_bits, row_tiles = rules[2, 11]
-  bank_count = rules[16]
-  held, cell_bytes = rules[19, 2]
-  start, count = moving[0, 2]
-  entry = 1 + (bank_count * 8)
+  map_at, cells, across, side, map_high_byte_first = rules[2, 5]
+  held, cell_bytes, told_at, told_count, told_first = rules[19, 5]
   columns = across * side
   kept_as = rg_start_file_cell_unpacking(cell_bytes, map_high_byte_first)
   @rg_start_file.byteslice(map_at, cells * cell_bytes).unpack(kept_as).each_with_index do |word, cell|
-    first_tile = word & ((1 << tile_bits) - 1)
-    mirrored = word[mirror_bit]
-    upside_down = word[flip_bit]
-    bank = (word >> bank_at) & ((1 << bank_bits) - 1)
-    next if bank >= bank_count
-
     side.times do |down|
       side.times do |along|
-        tile = first_tile + ((upside_down == 1 ? side - 1 - down : down) * row_tiles) + (mirrored == 1 ? side - 1 - along : along)
-        number = ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along
-        which = (0...count).find { |each| moving[2 + (each * entry)] == tile } or next
-        shown = 2 + (which * entry) + 1 + (((bank * 4) + mirrored + (2 * upside_down)) * 2)
-        painted[start + (2 * (held + number))] = moving[shown]
-        painted[start + (2 * (held + number)) + 1] = moving[shown + 1]
+        rg_start_file_mark_moving_tile(painted, rules, moving, word, down, along,
+                                       held + ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along)
       end
     end
   end
+  @rg_start_file.byteslice(told_at, told_count * cell_bytes).unpack(kept_as).each_with_index do |word, told|
+    rg_start_file_mark_moving_tile(painted, rules, moving, word, 0, 0, told_first + told)
+  end
+end
+
+# One tile of a cell of such a background, shown as a run's tile where it takes turns
+# (rg_runtime.c's start_file_mark_moving_tile).
+def rg_start_file_mark_moving_tile(painted, rules, moving, word, down, along, slot)
+  side = rules[5]
+  tile_bits, mirror_bit, flip_bit, bank_at, bank_bits, row_tiles = rules[7, 6]
+  bank_count = rules[16]
+  start, count = moving[0, 2]
+  entry = 1 + (bank_count * 8)
+  first_tile = word & ((1 << tile_bits) - 1)
+  mirrored = word[mirror_bit]
+  upside_down = word[flip_bit]
+  bank = (word >> bank_at) & ((1 << bank_bits) - 1)
+  return if bank >= bank_count
+
+  tile = first_tile + ((upside_down == 1 ? side - 1 - down : down) * row_tiles) + (mirrored == 1 ? side - 1 - along : along)
+  which = (0...count).find { |each| moving[2 + (each * entry)] == tile } or return
+  shown = 2 + (which * entry) + 1 + (((bank * 4) + mirrored + (2 * upside_down)) * 2)
+  painted[start + (2 * slot)] = moving[shown]
+  painted[start + (2 * slot) + 1] = moving[shown + 1]
 end
 
 # Tiles of the file as a run of painted tiles keeps them (rg_runtime.h, rg_start_file_fill_painted_tiles).
@@ -843,53 +862,65 @@ end
 # The tiles of a background whose map is in the file (rg_runtime.h, rg_start_file_fill_background).
 # The game's tile pixels are frozen, so an unfrozen copy takes their place, as a picture's fill does.
 def rg_start_file_fill_background(rules)
-  _total, start, map_at, cells, across, side, map_high_byte_first, tile_bits, mirror_bit, flip_bit, bank_at, bank_bits, row_tiles,
-    tiles_at, tile_count, colors_at, bank_count, bank_size, sets, held, cell_bytes = rules
+  map_at, cells, across, side, map_high_byte_first = rules[2, 5]
+  held, cell_bytes, told_at, told_count, told_first = rules[19, 5]
+  columns = across * side
+  @rg_game_tile_pixels = @rg_game_tile_pixels.dup if @rg_game_tile_pixels.frozen?
+  kept_as = rg_start_file_cell_unpacking(cell_bytes, map_high_byte_first)
+  @rg_start_file.byteslice(map_at, cells * cell_bytes).unpack(kept_as).each_with_index do |word, cell|
+    side.times do |down|
+      side.times do |along|
+        rg_start_file_paint_cell_tile(rules, word, down, along,
+                                      held + ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along)
+      end
+    end
+  end
+  return if told_count.zero?
+
+  @rg_start_file.byteslice(told_at, told_count * cell_bytes).unpack(kept_as).each_with_index do |word, told|
+    rg_start_file_paint_cell_tile(rules, word, 0, 0, told_first + told)
+  end
+end
+
+# One tile of a cell of such a background, painted into tile +slot+ of each set of its tiles
+# (rg_runtime.c's start_file_paint_cell_tile).
+def rg_start_file_paint_cell_tile(rules, word, down, along, slot)
+  _total, start, _map_at, cells, across, side, _high_byte_first, tile_bits, mirror_bit, flip_bit, bank_at, bank_bits, row_tiles,
+    tiles_at, tile_count, colors_at, bank_count, bank_size, sets, held = rules
   tile_format = RG_FILL_BACKGROUND_HEADER_NUMBERS
   color_format = tile_format + RG_TILE_FORMAT_NUMBERS
   lists = color_format + RG_COLOR_FORMAT_NUMBERS
-  columns = across * side
-  set_tiles = held + (columns * (cells / across) * side)
+  set_tiles = held + (across * side * (cells / across) * side)
   tile_bytes = rules[tile_format + RG_TILE_BYTES_AT]
-  @rg_game_tile_pixels = @rg_game_tile_pixels.dup if @rg_game_tile_pixels.frozen?
   pixels = @rg_game_tile_pixels
-  kept_as = rg_start_file_cell_unpacking(cell_bytes, map_high_byte_first)
-  words = @rg_start_file.byteslice(map_at, cells * cell_bytes).unpack(kept_as)
-  words.each_with_index do |word, cell|
-    first_tile = word & ((1 << tile_bits) - 1)
-    mirrored = word[mirror_bit] == 1
-    upside_down = word[flip_bit] == 1
-    bank = (word >> bank_at) & ((1 << bank_bits) - 1)
-    side.times do |down|
-      side.times do |along|
-        tile = first_tile + ((upside_down ? side - 1 - down : down) * row_tiles) + (mirrored ? side - 1 - along : along)
-        number = ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along
-        places = Array.new(64) do |at|
-          next 0 unless tile < tile_count
+  first_tile = word & ((1 << tile_bits) - 1)
+  mirrored = word[mirror_bit] == 1
+  upside_down = word[flip_bit] == 1
+  bank = (word >> bank_at) & ((1 << bank_bits) - 1)
+  tile = first_tile + ((upside_down ? side - 1 - down : down) * row_tiles) + (mirrored ? side - 1 - along : along)
+  places = Array.new(64) do |at|
+    next 0 unless tile < tile_count
 
-          row = at / 8
-          column = at % 8
-          rg_start_file_place(tiles_at + (tile * tile_bytes), rules, tile_format, 1,
-                              upside_down ? 7 - row : row, mirrored ? 7 - column : column)
-        end
-        sets.times do |set|
-          list = lists + (((set * bank_count) + bank) * (1 + bank_size))
-          drawn = start + (((set * set_tiles) + held + number) * 64)
-          places.each_with_index do |place, at|
-            pixels[drawn + at] = if place.zero?
-                                   RG_SEE_THROUGH
-                                 elsif bank >= bank_count
-                                   0
-                                 elsif rules[list].negative?
-                                   rules[list + 1 + place]
-                                 elsif rules[list] < bank_count
-                                   rg_start_file_color(colors_at + (rules[list] * bank_size * 2), rules, color_format, place)
-                                 else
-                                   0
-                                 end
-          end
-        end
-      end
+    row = at / 8
+    column = at % 8
+    rg_start_file_place(tiles_at + (tile * tile_bytes), rules, tile_format, 1,
+                        upside_down ? 7 - row : row, mirrored ? 7 - column : column)
+  end
+  sets.times do |set|
+    list = lists + (((set * bank_count) + bank) * (1 + bank_size))
+    drawn = start + (((set * set_tiles) + slot) * 64)
+    places.each_with_index do |place, at|
+      pixels[drawn + at] = if place.zero?
+                             RG_SEE_THROUGH
+                           elsif bank >= bank_count
+                             0
+                           elsif rules[list].negative?
+                             rules[list + 1 + place]
+                           elsif rules[list] < bank_count
+                             rg_start_file_color(colors_at + (rules[list] * bank_size * 2), rules, color_format, place)
+                           else
+                             0
+                           end
     end
   end
 end

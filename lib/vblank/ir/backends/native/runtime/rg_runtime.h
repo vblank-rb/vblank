@@ -190,7 +190,11 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * and the tiles of the cells it may be written later, which rg_start_file_fill_picture fills), so a
  * cell's tile is that many on from the set's first; and how many bytes a cell is, two, or one for
  * a map of bytes, each a tile's number, as a layer that turns keeps its map, or four for a cell of
- * VBlank's own record (Original::MapCell, lib/vblank/original/map_cell.rb). Then the two
+ * VBlank's own record (Original::MapCell, lib/vblank/original/map_cell.rb); and the cells it was
+ * told by a slot of the file that it may be written later (`set_cells: pack[:slot]`): where the
+ * slot is, how many cells it holds (0 for none), and which of the tiles the game holds is the
+ * first of theirs, each cell of the slot painting the tile the game holds after the one before
+ * as a cell of the map paints its own. Then the two
  * layouts, as rg_start_file_fill_picture has them, and for each set each bank's colours: the bank
  * of the file they are, or -1, and then a colour for each place, which the game holds, where it
  * is -1. The tiles of one set follow those of the one before. Place 0 is RG_SEE_THROUGH. A cell
@@ -200,10 +204,11 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * rg_start_file_fill_followed_tiles: which of such a background's tiles are drawn from one list of
  * colours the game changes, for a background that follows several (rg_background_follow, whose
  * rules +followed+ is: how many tile pixels, the background, how many tiles, and the tiles). The
- * game writes the tiles it holds and leaves room for one for every cell of the map; which bank a
- * cell is of is in the file, so this adds the tile of each cell whose bank has its bit set in
- * +banks+ (bank 0 the lowest bit), and counts them in. +rules+ are the background's own, as
- * rg_start_file_fill_background has them. A cell naming a bank past the colours follows no list.
+ * game writes the tiles it holds and leaves room for one for every cell of the map and every cell
+ * a slot told it; which bank a cell is of is in the file, so this adds the tile of each cell whose
+ * bank has its bit set in +banks+ (bank 0 the lowest bit), and counts them in. +rules+ are the
+ * background's own, as rg_start_file_fill_background has them. A cell naming a bank past the
+ * colours follows no list.
  *
  * rg_start_file_fill_moving_cells: the cells of such a background that name a tile taking turns
  * through pictures (IR::StartFile::MovingTile), each shown as a tile of a run of tiles the game

@@ -434,7 +434,7 @@ module VBlank
             return drawing_array("followed_tiles", "int32_t", known) if banks.empty?
 
             refuse_bank_past_followed_banks!(bg, banks.max)
-            rules = drawing_array("followed_tiles", "int32_t", [*known, *Array.new(from.tiles_drawn, 0)], writable: true)
+            rules = drawing_array("followed_tiles", "int32_t", [*known, *Array.new(from.tiles_drawn + from.told_count, 0)], writable: true)
             @start_file_followed_tiles << StartFileFollowedTiles.new(entry: entry_of(bg), rules: rules, banks: banks.sum { |bank| 1 << bank })
             rules
           end
@@ -461,7 +461,7 @@ module VBlank
                       from.number_format.high_byte_first ? 1 : 0, words.tile_bits, words.mirror_bit || words.unset_bit,
                       words.flip_bit || words.unset_bit, words.bank_at, words.bank_bits, words.row_tiles || 0,
                       from.tiles_at, from.tile_count, from.colors_at, from.bank_count, from.bank_size, fill.lists.length,
-                      fill.held, words.cell_bytes]
+                      fill.held, words.cell_bytes, from.told_at, from.told_count, from.told_first]
             unless header.length == StartFileNumbers::BACKGROUND_HEADER_NUMBERS
               raise ArgumentError, "A background fill's rules header has #{header.length} numbers, and StartFileNumbers::" \
                                    "BACKGROUND_HEADER_NUMBERS says #{StartFileNumbers::BACKGROUND_HEADER_NUMBERS}. Change both together."

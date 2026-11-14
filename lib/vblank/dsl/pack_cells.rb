@@ -17,7 +17,16 @@ module VBlank
     # tileset, row by row. A number is kept and looked up by the bits the layout reads, so two
     # numbers that differ only in a bit the console keeps for itself (the Genesis's priority) are
     # one cell.
-    PackCells = Data.define(:format, :side, :tiles_by_word) do
+    #
+    # CELLS TOLD BY A SLOT OF THE PACK (`set_cells: pack[:changes]`) are named by their place in it,
+    # 0 first: +place_tiles+ holds, for each place, its cell's tiles' keys, and `set_cell`'s number
+    # is a place (#write_place). nil for cells told by number.
+    PackCells = Data.define(:format, :side, :tiles_by_word, :place_tiles) do
+      def initialize(place_tiles: nil, **) = super
+
+      # The same cells, told by a slot whose places hold +place_tiles+.
+      def by_place(place_tiles) = with(place_tiles: place_tiles)
+
       # +word+ with the bits the layout does not read cleared (Console::MapWordFormat#read_bits).
       def read_part(word) = word & format.read_bits
 
@@ -51,6 +60,8 @@ module VBlank
       # Original::MapCell::Cell on a map of map cells (#number_of!). A cell is +side+ tiles each
       # way of the map the build made, so it is that many `set_tile`s: a changed cell as any other.
       def write(background, col, row, word)
+        return write_place(background, col, row, word) if place_tiles
+
         word = number_of!(word, background.name)
         return write_picked_by(background, col, row, word) if word.is_a?(Value)
 
@@ -61,6 +72,50 @@ module VBlank
       end
 
       private
+
+      # WRITE THE CELL AT +place+ OF THE SLOT THAT TOLD THEM. A place written in the game is its
+      # cell's tiles, and one past the slot is refused here. A place worked out as the game runs
+      # picks its tile from the list of every place's (Background#set_tile_picked), one step of the
+      # game however many cells the slot holds, and a place past the slot leaves the cell alone. A
+      # background whose walls follow its tiles keeps tests that halve the places, since the wall
+      # goes with the tile.
+      def write_place(background, col, row, place)
+        if place.is_a?(Value)
+          kept = place.hidden_copy
+          return write_place_between(background, col, row, kept, (0...place_tiles.length).to_a) if background.walls_follow_tiles?
+
+          (side * side).times do |at|
+            background.set_tile_picked(side == 1 ? col : (col * side) + (at % side), side == 1 ? row : (row * side) + (at / side),
+                                       kept, place_tiles.map { |tiles| tiles.fetch(at) })
+          end
+          return
+        end
+
+        unless place.is_a?(Integer) && place.between?(0, place_tiles.length - 1)
+          raise ArgumentError, "background :#{background.name} was told its cells by a slot of #{place_tiles.length} cells, " \
+                               "and set_cell names one by its place in that slot of set_cells:, 0 to #{place_tiles.length - 1}. " \
+                               "It was given #{place.inspect}. To fix this, give a place from 0 to #{place_tiles.length - 1}."
+        end
+        write_tiles(background, col, row, place_tiles.fetch(place))
+      end
+
+      def write_place_between(background, col, row, kept, places)
+        if places.one?
+          same = PlainRuby::Steps::GameTest.new(kept == places.first)
+          same.open_yes_side
+          write_tiles(background, col, row, place_tiles.fetch(places.first))
+          return same.close_side(nil)
+        end
+
+        lower, upper = places.each_slice(places.length.ceildiv(2)).to_a
+        which = PlainRuby::Steps::GameTest.new(kept < upper.first)
+        which.open_yes_side
+        write_place_between(background, col, row, kept, lower)
+        which.close_side(nil)
+        which.open_no_side
+        write_place_between(background, col, row, kept, upper)
+        which.close_side(nil)
+      end
 
       def write_tiles(background, col, row, tiles)
         tiles.each_with_index do |tile, at|

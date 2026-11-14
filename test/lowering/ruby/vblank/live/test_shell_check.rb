@@ -5,6 +5,7 @@ require "tmpdir"
 require "vblank/live"
 require "shell_tests"
 require "all/vblank/builder/test_pack_tile_poses"
+require "all/vblank/dsl/test_pack_background_set_cell"
 
 # THE CHECK EVERY PORT RUNS ON ITS SHELL (Live::ShellCheck), on the made-up port the shell tests
 # share. The answer key is the port's all-in-one build: its pack, and its play over the tape.
@@ -111,6 +112,44 @@ class TestShellCheck < Minitest::Test
       check(VBlank.game("MADE UP", consoles: %i[gbc], &made), said)
 
       assert_match "plays as its all-in-one build does", said.last
+    end
+  end
+
+  # A Color port whose screen is told the cells it changes to by a slot its unpacking fills
+  # (PackBackgroundSetCellGames' map-cells original), writing them by place as it plays: the shell
+  # paints the told cells from the file as it starts.
+  def test_a_port_whose_cells_are_told_by_a_slot_of_the_pack_passes_every_step
+    Dir.mktmpdir do |folder|
+      said = []
+      check(cells_told_by_a_slot_port(folder), said)
+
+      assert_match "plays as its all-in-one build does", said.last
+    end
+  end
+
+  private def cells_told_by_a_slot_port(folder)
+    games = PackBackgroundSetCellGames
+    from = games.map_cells_original_in(folder, :gbc)
+    cells = games::MAP_TILES.flatten.length
+    VBlank.game("MADE UP", consoles: %i[gbc]) do
+      screen :tiled
+      pack = data_pack from: from, version: "1" do |slots|
+        slots.tiles :video, at: games::TILES_AT, count: games::MAP_CELLS_VIDEO.length
+        slots.colors :palette, at: games::COLORS_AT, count: games::MAP_CELLS_PALETTE.length
+        slots.map_cells :map, count: cells
+        slots.map_cells :changes, count: 3
+        slots.fill_from_copy do |copy, filled|
+          repeat(cells) { |at| filled[:map].write_cell(at, tile: copy.byte(games::MAP_CELLS_TILE_MAP_AT + at)) }
+          3.times { |at| filled[:changes].write_cell(at, tile: games::MAP_CELLS_BANK_TILES + at, bank: 1) }
+        end
+      end
+      world = background :world, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: 4, set_cells: pack[:changes]
+      place = var :place, 0
+      game_loop do
+        world.set_cell place, 1, place
+        place += 1
+        place.store!(0) if place >= 3
+      end
     end
   end
 
