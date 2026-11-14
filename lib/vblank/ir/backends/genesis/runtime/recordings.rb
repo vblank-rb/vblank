@@ -356,7 +356,7 @@ module VBlank
               asm.move(:l, asm.disp(4, ADVANCE), at.call(PLACE, PLACE_ADVANCE))
               asm.move(:w, asm.disp(4, ADVANCE_FRACTION), at.call(PLACE, PLACE_ADVANCE_FRACTION))
               asm.move(:w, asm.disp(4, LOGGED), at.call(PLACE, PLACE_LOGGED))
-              emit_side_told(asm) if sides
+              emit_side_queued(asm) if sides
               asm.jsr(asm.abs_l("rt_recordings_send"))
               asm.moveq(1, asm.d(0))
               asm.rts
@@ -565,8 +565,8 @@ module VBlank
 
             # The speakers the row A4 points at plays from (SIDE) told to the FM chip's register $B6 of its second
             # part, the sixth voice's, which the DAC plays through: queued for the Z80 as any FM write is, and
-            # dropped when it is what the register holds already (Sound#emit_fm_write_queued). Uses D0 to D3.
-            def emit_side_told(asm)
+            # dropped when it is what the register holds already (Sound#emit_fm_write_queued). Uses D0 to D3 and A1.
+            def emit_side_queued(asm)
               asm.move(:w, asm.imm(0x100 | (ChipWrites::SPEAKERS + 2)), asm.d(0))
               asm.move(:w, asm.disp(4, SIDE), asm.d(1))
               asm.jsr(asm.abs_l("rt_fm_write"))
@@ -589,7 +589,7 @@ module VBlank
               asm.branch(:ne, "rt_recordings_none")
               asm.move(:l, asm.disp(4, ADVANCE), at.call(PLACE, PLACE_ADVANCE))
               asm.move(:w, asm.disp(4, ADVANCE_FRACTION), at.call(PLACE, PLACE_ADVANCE_FRACTION))
-              emit_side_told(asm) if sides
+              emit_side_queued(asm) if sides
               emit_bus_taken(asm)
               asm.lea(asm.abs_l(Z80_MEMORY + MAILBOX + Z80_STEP), asm.a(2))
               emit_step_mailed(asm, "rt_recordings_glide_step")

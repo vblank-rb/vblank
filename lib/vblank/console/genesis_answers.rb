@@ -30,13 +30,14 @@ module VBlank
 
       # Why a recording plays at full loudness on the Genesis. The cycles are counted from the sound
       # processor's sample loop (Backends::Genesis::Runtime::Recordings#driver) in the Z80's own timings,
-      # the common path a sample takes, against its clock over the samples a second it sounds.
+      # the common path a sample takes, against its clock over the samples a second it sounds; the
+      # look-up is an estimate of two instructions, not code that exists.
       RECORDING_LOUDNESS = "A recording plays at full loudness, whatever its volume: the DAC has no volume of " \
                            "its own. To play it more quietly, the sound processor must scale each sample, about " \
-                           "13300 times a second. Its sample loop takes about 204 of the 269 cycles it has for " \
-                           "each sample, a look-up in a scaling table takes about 27 more, and a table for each of the 16 " \
-                           "volumes takes 4 KB of its 8 KB of memory. The music volume and a sound's volume are " \
-                           "only in the sound log."
+                           "13300 times a second, through a table for each volume. This build does not do that " \
+                           "yet. Its sample loop takes about 204 of the 269 cycles it has for each sample, so the " \
+                           "look-up fits, and 16 tables take 4 KB of its 8 KB of memory. Until then, the music " \
+                           "volume and a sound's volume are only in the sound log."
 
       ANSWERS = Ractor.make_shareable({
         # --- building, the screen and settings ---
@@ -279,7 +280,7 @@ module VBlank
                     "side. If not, it plays from both speakers. A part that plays a recording plays from the " \
                     "left speaker, the right speaker or both, the nearest to where `pan` puts it, by the same " \
                     "rule: the DAC plays through the FM chip's sixth voice, which has a switch for each speaker. " \
-                    "#{RECORDING_LOUDNESS}"),
+                    "For its loudness, see `sample`."),
         play_song: works,
         stop_music: works,
         hold_music: works,

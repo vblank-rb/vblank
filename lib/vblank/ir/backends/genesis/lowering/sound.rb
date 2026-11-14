@@ -109,11 +109,11 @@ module VBlank
                                      "that yet.", part: "recordings with a shape")
               end
             
-              play_row(name, frequency, info.loop_length, Runtime::Recordings::NOT_LOGGED, side: SIDE_BITS.fetch(Audio::Pan.side_of(pan)))
+              play_row(name, frequency, info.loop_length, Runtime::Recordings::NOT_LOGGED, side: SPEAKER_BITS_BY_SIDE.fetch(Audio::Pan.side_of(pan)))
             end
 
             # The speakers' bits of the sixth FM voice for each side Audio::Pan.side_of names (nil both).
-            SIDE_BITS = { nil => ChipWrites::BOTH_SPEAKERS, left: ChipWrites::LEFT_SPEAKER, right: ChipWrites::RIGHT_SPEAKER }.freeze
+            SPEAKER_BITS_BY_SIDE = { nil => ChipWrites::BOTH_SPEAKERS, left: ChipWrites::LEFT_SPEAKER, right: ChipWrites::RIGHT_SPEAKER }.freeze
             
             def declared_sample(name) = @samples.fetch(name) { raise LoweringError, "the instrument #{name.inspect} is not declared" }
             
