@@ -68,8 +68,9 @@ module VBlank
 
           # The same check, knowing which variables came from no line of the author's. A game can
           # fill the memory with variables it never declared, and "2205 variables" would not help
-          # it look.
-          def told_of(names, hidden_notes) = self.class.new(made_names: names, hidden_notes: hidden_notes)
+          # it look. The class is named rather than asked of self (`self.class`), which crashed
+          # Ruby once with several Ractors building at once (Validator#plain_name says why).
+          def told_of(names, hidden_notes) = IwramBudget.new(made_names: names, hidden_notes: hidden_notes)
 
           def detect(program)
             console = program.described_console

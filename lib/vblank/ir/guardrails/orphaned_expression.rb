@@ -49,9 +49,10 @@ module VBlank
           end
 
           # One Finding per expression whose node never joined the tree. The program is
-          # not consulted: an orphan is precisely what is missing from it.
+          # not consulted: an orphan is precisely what is missing from it. The class is named
+          # rather than asked of self, for the reason Validator#plain_name gives.
           def detect(_program)
-            @expressions.reject { |value| value.node.parent }.map { |value| self.class.finding(value) }
+            @expressions.reject { |value| value.node.parent }.map { |value| OrphanedExpression.finding(value) }
           end
 
           # The Value itself is what the finding blames — it carries the author's call
