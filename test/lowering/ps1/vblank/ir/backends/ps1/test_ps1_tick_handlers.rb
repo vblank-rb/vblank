@@ -3,52 +3,15 @@
 require "test_helper"
 require "tmpdir"
 
-# Tick handlers on the PlayStation, where the checked run cannot hold them to the interpreter.
-#
-# A HANDLER THAT WAITS ends a pass inside the frame boundary it runs at, so the boundary's own pass is never
-# found waiting, and the pass the handler's wait ends is found waiting twice: once as the wait ends and once
-# as the boundary does. The interpreter reports the same moments (Reference#advance_frame calls each_vblank
-# after the timers, for the frame the handler's wait reached), but the checked run reads a pass once and
-# refuses a pass it never read (CartridgeCheck#refuse_passes_missed!). So these games are played on the
-# headless run, and each pass it reads is held to the interpreter's first moment of that frame.
+# Tick handlers on the PlayStation's tear-free screen, read where the checked run does not look.
 #
 # A HANDLER ON A TEAR-FREE SCREEN draws on the page still on the screen until the blank
 # (Runtime::Frame#emit_ticks_on_next_page); the checked run reads only the page each pass drew, so the page on
-# the screen is read here, from the emulator, after every frame.
+# the screen is read here, from the emulator, after every frame, or held to the interpreter's first moment of
+# each frame by the headless run. A handler waiting inside a repeat, on every console, is TestTimer's.
 class TestPS1TickHandlers < Minitest::Test
   PS1 = VBlank::IR::Backends::PS1
   RED = VBlank::Graphics::Color.resolve(:red)
-
-  # A HANDLER THAT WAITS INSIDE ITS OWN LOOP KEEPS ITS PLACE IN IT. Its wait is a frame boundary too, so the
-  # handler runs again inside it, to its end without waiting, and the first run then goes on from the turn it
-  # had reached: a run that waits takes three frames, and the runs inside it walk three turns each.
-  def test_a_handler_waiting_inside_a_repeat_keeps_its_turn
-    program = program_of do
-      screen :bitmap
-      depth = var :depth, 0
-      outer = var :outer, 0
-      inner = var :inner, 0
-      finished = var :finished, 0
-      beat = timer :beat, per_second: 60
-      beat.on_tick do
-        depth += 1
-        repeat(3) do
-          if depth == 1
-            outer += 1
-            wait_vblank
-          else
-            inner += 1
-          end
-        end
-        finished += 1 if depth == 1
-        depth -= 1
-      end
-      game_loop { wait_vblank }
-    end
-
-    reads = %i[outer inner finished depth]
-    assert_equal moments_on(Reference.new, program, reads), moments_on(PS1::HeadlessRun.new, program, reads)
-  end
 
   # A HANDLER THAT WAITS ON A TEAR-FREE SCREEN shows what it drew before its wait on the frame its wait ends,
   # over the page the game drew the pass before: a white bar as long as the passes the game had ended then.

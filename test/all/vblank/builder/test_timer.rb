@@ -285,6 +285,91 @@ class TestTimer < Minitest::Test
                   [28, 2, 5], [29, 2, 5], [34, 2, 6], [35, 2, 6], [40, 2, 7]], (1..14).map { |frame| seen.fetch(frame) }
   end
 
+  # A HANDLER THAT WAITS INSIDE ITS OWN LOOP KEEPS ITS PLACE IN IT. Its wait is a frame boundary too, so the
+  # handler runs again inside it, to its end without waiting, and the first run then goes on from the turn it
+  # had reached: a run that waits takes three frames, and the runs inside it walk three turns each. A
+  # cartridge keeps a loop's count at a fixed place, which the inner run would leave finished.
+  #
+  # The interpreter reports no moment for the frame whose handler waits, and two for the frame its last wait
+  # ends: the first as that wait ends, the second as the boundary that ran the handler does. The first is
+  # the one read here.
+  def test_a_handler_waiting_inside_a_repeat_keeps_its_turn
+    skip_on_native "a timer's handler that waits"
+    skip_on_js "a timer's handler that waits"
+    skip_on_ruby "a timer's handler that waits"
+    b = Builder.new
+    b.instance_eval do
+      screen :bitmap
+      depth = var :depth, 0
+      outer = var :outer, 0
+      inner = var :inner, 0
+      finished = var :finished, 0
+      beat = timer :beat, per_second: 60
+      beat.on_tick do
+        depth += 1
+        repeat(3) do
+          if depth == 1
+            outer += 1
+            wait_vblank
+          else
+            inner += 1
+          end
+        end
+        finished += 1 if depth == 1
+        depth -= 1
+      end
+      game_loop { wait_vblank }
+    end
+    b.finalize_program
+    reads = %i[outer inner finished depth]
+    seen = {}
+    run = game_player
+    run.each_vblank { |frame| seen[frame] ||= reads.map { |name| run[name] } }.run(b.program, frames: 9)
+
+    assert_equal({ 2 => [1, 3, 0, 1], 3 => [2, 6, 0, 1], 4 => [3, 9, 0, 1], 6 => [4, 12, 1, 1], 7 => [5, 15, 1, 1],
+                   8 => [6, 18, 1, 1] }, seen)
+    assert_equal [7, 18, 2, 1], reads.map { |name| run[name] }
+  end
+
+  # ...AND THE SAME WHEN THE WAIT IS IN A ROUTINE IT CALLS. Two turns here, each waiting in :breather. The
+  # game's waits are its own (`frame_sync: :manual`), so the routine's is not taken as the game loop's.
+  def test_a_handler_waiting_in_a_routine_inside_a_repeat_keeps_its_turn
+    skip_on_native "a timer's handler that waits"
+    skip_on_js "a timer's handler that waits"
+    skip_on_ruby "a timer's handler that waits"
+    b = Builder.new(options: VBlank::Cartridge::Options.new(frame_sync: :manual))
+    b.instance_eval do
+      screen :bitmap
+      depth = var :depth, 0
+      outer = var :outer, 0
+      inner = var :inner, 0
+      func(:breather) do
+        wait_vblank
+      end
+      beat = timer :beat, per_second: 60
+      beat.on_tick do
+        depth += 1
+        repeat(2) do
+          if depth == 1
+            outer += 1
+            call :breather
+          else
+            inner += 1
+          end
+        end
+        depth -= 1
+      end
+      game_loop { wait_vblank }
+    end
+    b.finalize_program
+    reads = %i[outer inner depth]
+    seen = {}
+    run = game_player
+    run.each_vblank { |frame| seen[frame] ||= reads.map { |name| run[name] } }.run(b.program, frames: 8)
+
+    assert_equal({ 2 => [1, 2, 1], 3 => [2, 4, 1], 5 => [3, 6, 1], 6 => [4, 8, 1], 8 => [5, 10, 1] }, seen)
+  end
+
   # A HANDLER CAN DRAW. On a painted screen it draws what the game's own lines draw, a number
   # here; on a tear-free one what it draws goes on the page being drawn, so the loop's next
   # clear takes it away before that page is shown and the screen stays blue. (A Color keeps one

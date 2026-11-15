@@ -54,6 +54,10 @@ module VBlank
             # Set by the same reader when it has taken the last pass it compares one by one: the
             # game's timers do not move on at the boundary after it, as the interpreter's do not.
             LAST_PASS_TAKEN = "rt last pass taken"
+            # The number of the last pass that reader compares, in a game whose tick handler waits
+            # (LoweringPlan#keeps_last_pass_number?), nought until it is written: a boundary ending a later pass
+            # moves nothing on. Such a game can end two passes in one frame, the reader seeing neither.
+            LAST_PASS = "rt last pass"
             # HOW MANY FRAMES A PASS TOOK (IR::Frames): the interrupt counts every frame (FRAMES, 32
             # bits); where a pass's wait ends, the frames since the last wait ended are what that
             # pass answers for (FRAMES_TAKEN), and held between one and IR::Frames::MOST (STEP_TAKEN).
@@ -143,6 +147,25 @@ module VBlank
               return unless second_controller
 
               [SECOND_HELD, SECOND_SEEN, SECOND_PRESSED, SECOND_PAD_HELD, SECOND_PAD_PRESSED].each { |name| memory.reserve(name, 2) }
+            end
+
+            # LAST_PASS, in a game whose tick handler waits (LoweringPlan#keeps_last_pass_number?).
+            def reserve_last_pass(memory) = memory.reserve(LAST_PASS, 4)
+
+            # Branches to rt_frame_begins_skipped when LAST_PASS is written and the pass that just ended
+            # (PASSES) comes after it: LAST_PASS less PASSES, a half at a time, borrows out of the top half.
+            # Neither count is ever negative, so the borrow is the answer.
+            def emit_skip_past_last_pass(asm, at)
+              asm.lda(at.call(LAST_PASS))
+              asm.ora(at.call(LAST_PASS, 2))
+              asm.beq("rt_frame_begins_not_past")
+              asm.lda(at.call(LAST_PASS))
+              asm.sec
+              asm.sbc(at.call(PASSES))
+              asm.lda(at.call(LAST_PASS, 2))
+              asm.sbc(at.call(PASSES, 2))
+              asm.bcc("rt_frame_begins_skipped")
+              asm.label("rt_frame_begins_not_past")
             end
 
             # +pad+ is two words of the direct page, the same on the game's page and the
@@ -331,6 +354,7 @@ module VBlank
               asm.label("rt_frame_begins_unless_last")
               asm.lda(at.call(LAST_PASS_TAKEN))
               asm.bne("rt_frame_begins_skipped")
+              emit_skip_past_last_pass(asm, at) if memory.reserved?(LAST_PASS)
               asm.jsl(asm.long("rt_frame_begins"))
               asm.label("rt_frame_begins_skipped")
               asm.rts

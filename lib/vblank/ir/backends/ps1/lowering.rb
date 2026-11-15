@@ -922,10 +922,10 @@ module VBlank
           def timer_sections
             return [] if @timers.empty?
 
-            each_timer = @timers.map { |name, _| timer_section(name) }
+            each_timer = @timers.map { |name, _| with_tick_handler_numbers_recorded(name) { timer_section(name) } }
             @frame_begins = "timers frame"
             in_order = routine_section(@frame_begins, [], routine: "the timers") do
-              with_call_numbers_kept do
+              with_call_numbers_kept(numbers_kept_around_timers(@timer_crossed)) do
                 (1..@timers.size).each do |place_in_order|
                   @timers.each_key do |name|
                     skip = fresh_label("not_this_one")
@@ -948,10 +948,9 @@ module VBlank
           # timers are all that run there.
           #
           # A handler that waits (LoweringPlan#tick_handlers_waiting) runs again inside its own wait: its own
-          # numbers are among them, and so are the ticks its timer still has to answer this frame.
-          def with_call_numbers_kept
-            kept = call_numbers
-            kept += [@timer_crossed] if @plan.tick_handlers_waiting.any?
+          # numbers are among +kept+, and so are the ticks its timer still has to answer this frame
+          # (ControlFlow#numbers_kept_around_timers).
+          def with_call_numbers_kept(kept)
             return yield if kept.empty?
 
             @asm.addiu(:sp, :sp, -4 * kept.length)
@@ -990,9 +989,7 @@ module VBlank
                 done = fresh_label("ticks_done")
                 @asm.label(top)
                 jump_unless(Build.binop(:>, Build.var_ref(@timer_crossed), Build.int(0)), done)
-                with_call_numbers_recorded_if(@plan.tick_handlers_waiting.key?(name)) do
-                  handler.children.each { |child| statement(child) }
-                end
+                handler.children.each { |child| statement(child) }
                 emit_sum(@timer_crossed, :-, Build.int(1))
                 @asm.b(top)
                 @asm.label(done)

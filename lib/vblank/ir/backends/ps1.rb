@@ -125,6 +125,7 @@ module VBlank
                                   glides: samples && Music.glides?(program),
                                   tiles: Lowering::Picture.tiled?(program),
                                   colors: colors, by_number: by_number, over_picture: over_picture)
+          Runtime::Frame.reserve_last_pass(memory) if cache.plan.keeps_last_pass_number?
           lowering = Lowering.new(program, memory: memory, cache: cache)
           game = lowering.sections
           runtime = Runtime.sections(memory, main: Lowering::MAIN, frame_begins: lowering.frame_begins,

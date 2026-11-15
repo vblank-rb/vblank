@@ -206,6 +206,15 @@ module VBlank
           @tick_handlers_waiting ||= @tick_handlers.select { |_, handler| statements_wait?(Reach.statements_under(handler)) }
         end
 
+        # Whether the build keeps the number of the last pass a reader of the running cartridge compares (each
+        # runtime's Frame::LAST_PASS). It otherwise marks the last pass as it reads it (Frame::LAST_PASS_TAKEN), and the
+        # boundary after it moves nothing on, as the interpreter's run stops there (Reference#advance_frame).
+        # A tick handler that waits ends a pass inside the boundary it runs at, so the pass the game loop
+        # ended and the handler's own end in one frame, and the reader sees neither: the boundary past the
+        # last pass would move the timers on before it could be marked. With the number written ahead, the
+        # runtime itself finds that boundary.
+        def keeps_last_pass_number? = tick_handlers_waiting.any?
+
         # THE ROUTINES A FRAME BOUNDARY CAN CALL WHILE A CALL OF THEM IS STILL GOING, by name. What a timer
         # does as it ticks, and a bend's steps, run at the frame boundary, which can be inside a routine's
         # own wait, or inside a routine it called that waits. A routine they call that can be waiting

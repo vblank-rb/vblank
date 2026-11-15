@@ -166,6 +166,7 @@ module VBlank
                                   swells: Music.swells_under_level?(program), slides: Music.slides?(program),
                                   sides: Music.sides_under_level?(program), samples: samples, scene_tiles: scene_tiles,
                                   glides: samples && Music.glides?(program), recorded_sides: samples && IR::Tunes.recorded_pans?(program))
+          Runtime::Frame.reserve_last_pass(memory) if cache.plan.keeps_last_pass_number?
           lowering = try.made = Lowering.new(program, memory: memory, scene_tiles: scene_tiles, scene_colors: scene_colors,
                                                       cache: cache)
           game = lowering.sections

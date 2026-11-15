@@ -463,12 +463,15 @@ module VBlank
           # A count a loop holds in a data register (#with_counter_held) needs nothing: such a loop has
           # no call and no wait in it, so it is never part way through at a frame boundary, which comes
           # only inside rt_wait_vblank; its count is in its place again by the time a routine waits.
-          def with_call_numbers_kept
-            return yield if call_numbers.empty?
+          #
+          # Around the timers, +kept+ is those and what a tick handler that waits keeps
+          # (ControlFlow#numbers_kept_around_timers).
+          def with_call_numbers_kept(kept = call_numbers)
+            return yield if kept.empty?
 
-            call_numbers.each { |name| @asm.move(:l, at(place_of(name)), @asm.pre(M68000::SP)) }
+            kept.each { |name| @asm.move(:l, at(place_of(name)), @asm.pre(M68000::SP)) }
             yield
-            call_numbers.reverse_each { |name| @asm.move(:l, @asm.post(M68000::SP), at(place_of(name))) }
+            kept.reverse_each { |name| @asm.move(:l, @asm.post(M68000::SP), at(place_of(name))) }
           end
 
           # Where the variable +name+ (or a number of a routine's own) is kept, as an address.
@@ -1432,10 +1435,10 @@ module VBlank
           def timer_sections
             return [] if @timers.empty?
 
-            each_timer = @timers.flat_map { |name, _| timer_section(name) }
+            each_timer = @timers.flat_map { |name, _| with_tick_handler_numbers_recorded(name) { timer_section(name) } }
             @frame_begins = "timers frame"
             in_order = routine_section(@frame_begins, [], routine: "the timers") do
-              with_call_numbers_kept do
+              with_call_numbers_kept(numbers_kept_around_timers(@timer_crossed)) do
                 (1..@timers.size).each do |place_in_order|
                   @timers.each_key do |name|
                     skip = fresh("not_this_one")

@@ -253,6 +253,7 @@ module VBlank
           waited = 0
           loop do
             play_frame
+            write_last_pass(frames)
             waited += 1
             refuse_stuck_game! if waited > LONGEST_PASS_FRAMES
             if pending && shown_pass == pending.first && moment_ready?(pending.first, frames)
@@ -429,6 +430,16 @@ module VBlank
         # The interpreter stops a run at the boundary after the last pass compared, before it
         # moves its timers on (Frame::LAST_PASS_TAKEN).
         def mark_last_pass_taken = write32(runtime_place(runtime::Frame::LAST_PASS_TAKEN), 1)
+
+        # The same stop, in a build that keeps the last pass by number (LoweringPlan#keeps_last_pass_number?):
+        # +frames+, the passes the interpreter reports, written to Frame::LAST_PASS after every frame played,
+        # since what the cartridge does as it starts can clear its memory after the first.
+        def write_last_pass(frames)
+          place = @places.runtime[runtime::Frame::LAST_PASS] or return
+
+          write32(place, frames)
+        end
+
         def passes = word(runtime_place(runtime::Frame::PASSES))
         def shown_pass = read32(runtime_place(runtime::Frame::SHOWN))
 

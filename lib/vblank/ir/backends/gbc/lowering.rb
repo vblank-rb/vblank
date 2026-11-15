@@ -624,17 +624,18 @@ module VBlank
           # waiting there (LoweringPlan#routines_reentered_at_frame_boundary): each pushed, four bytes,
           # before, and popped back after, so the call that waits goes on from its own loop's turn, as
           # the interpreter's does, whatever the boundary's call left there. A game whose boundary calls
-          # no such routine has no code here.
-          def with_call_numbers_kept
-            return yield if call_numbers.empty?
+          # no such routine has no code here. Around the timers, +kept+ is those and what a tick
+          # handler that waits keeps (ControlFlow#numbers_kept_around_timers).
+          def with_call_numbers_kept(kept = call_numbers)
+            return yield if kept.empty?
 
-            call_numbers.each do |name|
+            kept.each do |name|
               value(name)
               @asm.push(:bc)
               @asm.push(:de)
             end
             yield
-            call_numbers.reverse_each do |name|
+            kept.reverse_each do |name|
               @asm.pop(:de)
               @asm.pop(:bc)
               store(name)
@@ -1736,10 +1737,10 @@ module VBlank
           def timer_sections
             return [] if @timers.empty?
 
-            each_timer = @timers.flat_map { |name, number| timer_section(name, number) }
+            each_timer = @timers.flat_map { |name, number| with_tick_handler_numbers_recorded(name) { timer_section(name, number) } }
             @frame_begins = "timers frame"
             in_order = routine_section(@frame_begins, [], routine: "the timers") do
-              with_call_numbers_kept do
+              with_call_numbers_kept(numbers_kept_around_timers(@timer_crossed)) do
                 (1..@timers.size).each do |place_in_order|
                   @timers.each_key do |name|
                     skip = fresh("not_this_one")

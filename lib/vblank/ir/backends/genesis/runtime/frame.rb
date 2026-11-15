@@ -54,6 +54,10 @@ module VBlank
             # Set by the same reader when it has taken the last pass it compares one by one: the
             # game's timers do not move on at the boundary after it, as the interpreter's do not.
             LAST_PASS_TAKEN = "rt last pass taken"
+            # The number of the last pass that reader compares, in a game whose tick handler waits
+            # (LoweringPlan#keeps_last_pass_number?), nought until it is written: a boundary ending a later pass
+            # moves nothing on. Such a game can end two passes in one frame, the reader seeing neither.
+            LAST_PASS = "rt last pass"
             # HOW MANY FRAMES A PASS TOOK (IR::Frames): the interrupt counts every frame (FRAMES, 32
             # bits); where a pass's wait ends, the frames since the last wait ended are what that pass
             # answers for (FRAMES_TAKEN), and held between one and IR::Frames::MOST (STEP_TAKEN).
@@ -137,6 +141,9 @@ module VBlank
               CountingBlock.new(bytes: (bytes + 3) & ~3, flag_at: memory.displacement(COUNTING))
             end
 
+            # LAST_PASS, in a game whose tick handler waits (LoweringPlan#keeps_last_pass_number?).
+            def reserve_last_pass(memory) = memory.reserve(LAST_PASS, 4)
+
             # The routines that end a pass and start the next: the interrupt, the wait, the buttons,
             # stopping and going wrong. +sound+ for a game that makes sound, whose wait ends in Sound's
             # rt_sound_frame; +samples+ for one that plays recordings, whose interrupt reads the buttons
@@ -146,7 +153,7 @@ module VBlank
             def emit(asm, memory, sound: false, samples: false, count_at: nil)
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
               emit_interrupt(asm, at, samples, counting: !count_at.nil?)
-              emit_wait(asm, at, sound)
+              emit_wait(asm, at, sound, memory.reserved?(LAST_PASS))
               emit_show_pass(asm, at, count_at && asm.disp(5, Memory.displacement(count_at)))
               emit_buttons(asm, memory, at)
               emit_stopping(asm, at)
@@ -185,7 +192,9 @@ module VBlank
             # waiting, and wait for the screen. What keeps time by the frame moves on here, before
             # the game is marked as waiting, because that is where the interpreter moves it on: at
             # the frame boundary, before anything is read of the frame (Reference#advance_frame).
-            def emit_wait(asm, at, sound)
+            #
+            # +numbered+ for a game whose reader names the last pass it compares by number (LAST_PASS).
+            def emit_wait(asm, at, sound, numbered)
               asm.label("rt_wait_vblank")
               asm.addq(:l, 1, at.call(PASSES))
               asm.jsr(asm.abs_l("rt_frame_begins_unless_last"))
@@ -207,9 +216,21 @@ module VBlank
               asm.label("rt_frame_begins_unless_last")
               asm.tst(:l, at.call(LAST_PASS_TAKEN))
               asm.branch(:ne, "rt_frame_begins_skipped")
+              emit_skip_past_last_pass(asm, at) if numbered
               asm.jsr(asm.abs_l("rt_frame_begins"))
               asm.label("rt_frame_begins_skipped")
               asm.rts
+            end
+
+            # Branches to rt_frame_begins_skipped when LAST_PASS is written and the pass that just ended
+            # (PASSES) comes after it. D0 is free: the game's timers run here otherwise, code of the game's
+            # own, which changes any register it likes.
+            def emit_skip_past_last_pass(asm, at)
+              asm.move(:l, at.call(LAST_PASS), asm.d(0))
+              asm.branch(:eq, "rt_frame_begins_not_past")
+              asm.cmp(:l, at.call(PASSES), asm.d(0))
+              asm.branch(:cs, "rt_frame_begins_skipped")
+              asm.label("rt_frame_begins_not_past")
             end
 
             # rt_show_pass: what the pass drew, on the screen, and SHOWN saying so. The first time, the

@@ -48,6 +48,10 @@ module VBlank
             # one: the boundary after it is where the interpreter stops a run, before it moves
             # anything on, so the game's timers do not move on there either.
             LAST_PASS_TAKEN = "rt last pass taken"
+            # The number of the last pass that reader compares, in a game whose tick handler waits
+            # (LoweringPlan#keeps_last_pass_number?), nought until it is written: a boundary ending a later pass
+            # moves nothing on. Such a game can end two passes in one frame, the reader seeing neither.
+            LAST_PASS = "rt last pass"
             # HOW MANY FRAMES A PASS TOOK (IR::Frames). The screen's interrupt counts every frame it
             # draws (FRAMES, 32 bits, which a reader of the run reads too), whatever the game is
             # doing; where a pass's wait ends, the frames since the last wait ended are what that
@@ -130,6 +134,33 @@ module VBlank
               memory.reserve(PAD_PRESSED, 1)
               memory.reserve(MUSIC_OWED, 1)
               memory.reserve(PICTURE_NOT_UP_NOTED, 1)
+            end
+
+            # LAST_PASS, in a game whose tick handler waits (LoweringPlan#keeps_last_pass_number?).
+            def reserve_last_pass(memory) = memory.reserve(LAST_PASS, 4)
+
+            # Returns from rt_frame_begins_unless_last when LAST_PASS is written and the pass that just ended
+            # (PASSES) comes after it: LAST_PASS less PASSES, a byte at a time from the lowest, borrows out of
+            # the top byte. Neither count is ever negative, so the borrow is the answer.
+            def emit_return_past_last_pass(asm, memory)
+              asm.load(:hl, memory[LAST_PASS])
+              asm.load(:a, [:hli])
+              3.times do |i|
+                asm.or_a([:hl])
+                asm.inc(:hl) unless i == 2
+              end
+              asm.jump(:z, "rt_frame_begins")
+              asm.load(:hl, memory[PASSES])
+              asm.load(:de, memory[LAST_PASS])
+              4.times do |i|
+                asm.load(:a, [:de])
+                i.zero? ? asm.sub_a([:hl]) : asm.sbc_a([:hl])
+                next if i == 3
+
+                asm.inc(:hl)
+                asm.inc(:de)
+              end
+              asm.ret(:c)
             end
 
             # +together+ means the game has picture groups with more than one slot, which
@@ -324,6 +355,7 @@ module VBlank
               asm.load(:a, [memory[LAST_PASS_TAKEN]])
               asm.and_a(:a)
               asm.ret(:nz)
+              emit_return_past_last_pass(asm, memory) if memory.reserved?(LAST_PASS)
               asm.jump("rt_frame_begins")
 
               asm.label("rt_shown_is_passes")

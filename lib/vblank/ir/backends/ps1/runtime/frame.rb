@@ -53,6 +53,10 @@ module VBlank
             # Set by the same reader when it has taken the last pass it compares one by one: the game's
             # timers do not move on at the boundary after it, as the interpreter's do not.
             LAST_PASS_TAKEN = "rt last pass taken"
+            # The number of the last pass that reader compares, in a game whose tick handler waits
+            # (LoweringPlan#keeps_last_pass_number?), nought until it is written: a boundary ending a later pass
+            # moves nothing on. Such a game can end two passes in one frame, the reader seeing neither.
+            LAST_PASS = "rt last pass"
             # HOW MANY FRAMES A PASS TOOK (IR::Frames): the interrupt counts every frame (FRAMES); where a
             # pass's wait ends, the frames since the last wait ended are what that pass answers for
             # (FRAMES_TAKEN), and held between one and IR::Frames::MOST (STEP_TAKEN).
@@ -118,6 +122,9 @@ module VBlank
               memory.reserve(END_LINES, STEPS_KEPT * 2)
               memory.reserve(SAVED, (KEPT_REGISTERS.size + 2) * 4)
             end
+
+            # LAST_PASS, in a game whose tick handler waits (LoweringPlan#keeps_last_pass_number?).
+            def reserve_last_pass(memory) = memory.reserve(LAST_PASS, 4)
 
             # The routines that end a pass and start the next: the interrupt, the wait, the buttons,
             # stopping and going wrong. +sound+ for a game that makes sound, whose wait ends in Sound's
@@ -275,7 +282,19 @@ module VBlank
               # call: rt_frame_begins returns straight to the caller.
               asm.label("rt_frame_begins_unless_last")
               asm.lw(:t0, at.call(LAST_PASS_TAKEN), :gp)
+              unless memory.reserved?(LAST_PASS)
+                asm.beq(:t0, :zero, "rt_frame_begins")
+                return asm.jr(:ra)
+              end
+
+              # ...or the pass that just ended comes after the last one it compares (LAST_PASS).
+              asm.bne(:t0, :zero, "rt_frame_begins_skipped")
+              asm.lw(:t0, at.call(LAST_PASS), :gp)
               asm.beq(:t0, :zero, "rt_frame_begins")
+              asm.lw(:t1, at.call(PASSES), :gp)
+              asm.sltu(:t0, :t0, :t1)
+              asm.beq(:t0, :zero, "rt_frame_begins")
+              asm.label("rt_frame_begins_skipped")
               asm.jr(:ra)
             end
 

@@ -50,9 +50,9 @@ module VBlank
           refuse_endless_game_without_frames!(program)
           before = @save.dup # the interpreter starts from the save memory the cartridge started from
           super(program, frames: frames)
-          refuse_passes_missed!
           width, height = screen.then { |picture| [picture.width, picture.height] }
-          interpreted = play_on_interpreter(program, frames, width, height, before)
+          interpreted = first_moment_of_each_frame(play_on_interpreter(program, frames, width, height, before))
+          refuse_passes_missed!(interpreted)
           difference = moments_difference(interpreted)
           difference ||= further_difference(program, before)
           raise Disagreement, "the #{kit.title} lowering and the interpreter disagree at #{difference}" if difference
@@ -63,14 +63,28 @@ module VBlank
         private
 
         # A pass the cartridge ended without being found waiting has no moment to compare
-        # (CartridgeHeadlessRun#passes_missed). That is a fault of the checked run's cartridge, which is
-        # built to wait at every pass (CartridgeHeadlessRun#cartridge_builder), so it fails the run, naming the pass.
-        def refuse_passes_missed!
-          missed = passes_missed.first or return
+        # (CartridgeHeadlessRun#passes_missed). Where the interpreter has a moment of that frame, that is a
+        # fault of the checked run's cartridge, which is built to wait at every pass
+        # (CartridgeHeadlessRun#cartridge_builder), so it fails the run, naming the pass.
+        #
+        # Where the interpreter has none either, the pass ended inside a frame boundary: a tick handler
+        # that waits ends the boundary's pass with its own wait, before the game is found waiting there,
+        # and the interpreter's boundary reports no moment for that frame (Reference#advance_frame runs the
+        # timers before each_vblank, and the handler's wait is a boundary of its own). Both skip it alike.
+        def refuse_passes_missed!(interpreted)
+          reported = interpreted.to_set(&:frame)
+          missed = passes_missed.find { |pass| reported.include?(pass) } or return
 
           raise Disagreement, "the #{kit.title} cartridge went on from pass #{missed} without waiting for the " \
                               "screen, so the checked run never read that pass to compare it"
         end
+
+        # The interpreter's first moment of each frame. A tick handler that waits reports one frame twice: the
+        # handler's last wait reports it as that wait ends, and the boundary that ran the handler reports the
+        # same frame again as it ends (Reference#advance_frame calls each_vblank after the timers, by the frame
+        # the handler's wait reached). The cartridge reads a pass once, as the game is first found waiting at
+        # its end, which is the handler's wait: the first of the two.
+        def first_moment_of_each_frame(moments) = moments.uniq(&:frame)
 
         # Each frame's buttons as they are sent, kept to play the same ones on the interpreter.
         def buttons_sent(frame) = (@played[frame] = super)
