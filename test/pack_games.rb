@@ -1194,6 +1194,15 @@ module PackGames
       game(:pose_of_a_frame_through_a_view, passes: 3) do |folder, options|
         pose(folder, options, views: true, pose_colors: ->(palette) { palette.bank(1, size: 4) })
       end,
+      # The object's place outside the picture: above and left of it, and past its size.
+      game(:pose_of_a_frame_wholly_below_its_place, passes: 3) do |folder, options|
+        built_by(pose_game_builder(original(folder, frame_bytes: FRAME_BELOW_BYTES), origin: ORIGIN_ABOVE_LEFT, size: REACH,
+                                                                                    options: options))
+      end,
+      game(:pose_of_a_frame_far_above_its_place, passes: 3) do |folder, options|
+        built_by(pose_game_builder(original(folder, frame_bytes: FRAME_FAR_BYTES), origin: ORIGIN_PAST_SIZE, size: REACH,
+                                                                                  options: options))
+      end,
       game(:pose_of_a_frame_of_a_given_count_through_a_view, passes: 3) do |folder, options|
         pose(folder, options, views: true, frame_at: 2, layout: FRAME.with(counted: false), count: PIECES.length)
       end,
@@ -2072,6 +2081,13 @@ module PackGames
     GAMES = [
       game(:tile_poses_of_an_originals_frames, passes: 6) do |folder, options|
         built_by(ball_game_builder(original(folder), options: options))
+      end,
+      # The object's place above and left of the picture, every piece inside it.
+      game(:tile_poses_of_frames_wholly_below_their_place, passes: 6) do |folder, options|
+        below = SPIN_BELOW
+        built_by(ball_game_builder(original(folder, frames: below), options: options, frames: below) do |pack, at|
+          PackTilePoseGames.frame_pose(pack, at, origin: ORIGIN_ABOVE_LEFT, size: SIZE)
+        end)
       end
     ].freeze
   end

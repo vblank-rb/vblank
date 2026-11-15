@@ -708,7 +708,8 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   Super Nintendo, the Color), one sprite of such poses of one slot may follow their lists, which all-in-one is a sprite drawn
   with one list where their frames name one bank; where the file names two, each pose follows its own frame's list. Nothing the file holds stops the
   game: pieces are read while they end inside the slot, a piece outside the picture is not painted, and a tile past the
-  slot paints nothing. The build sees a whole box, as for a picture. Worked example: `test/pack_pose_at_start_tests.rb`.
+  slot paints nothing. `origin:` may be outside the picture (`[32, -1]` for a frame wholly below its place) as built
+  all-in-one: each piece is painted at the origin plus its offset, and only what lands inside the picture. The build sees a whole box, as for a picture. Worked example: `test/pack_pose_at_start_tests.rb`.
   **The layout is read once, by the pack's unpacking.** A frame's slot holds the original's bytes, and the game's
   `Original::FrameLayout` says how the original keeps a frame. Once every slot is filled, copied as it is or by
   `slots.fill_from_copy`, the unpacking reads each frame the game names and writes it after the pack's last slot as a
@@ -728,7 +729,8 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   16], size: [16, 16]` — **a pose of a set of sprite tiles whose pieces are one of the original's frames**
   (`sprites.md`, `sprite_tiles`): a retail game whose sprite memory holds a few tiles it rewrites, and whose frames name
   them. `first_tile:` is the number the frames give the set's first tile, so a frame's tile 0x42 is the set's tile 2;
-  each tile of each piece is a piece of the pose, its top left from `origin:` as a pack pose places them. The pose draws
+  each tile of each piece is a piece of the pose, its top left from `origin:` as a pack pose places them, an origin
+  outside the picture too. The pose draws
   no pixel of the pack: its pieces say which of the set's tiles go where, and the tiles are what the game loads with
   `copy_from`. Built all-in-one the frame is read as the game is built and the pose is the pose of pieces a port would
   write by hand, so every console that draws a set's poses draws it; a frame the set cannot draw is refused at the line

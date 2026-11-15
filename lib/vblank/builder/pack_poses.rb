@@ -428,11 +428,18 @@ module VBlank
       end
 
 
+      # THE ORIGIN NEED NOT BE INSIDE THE PICTURE. A frame whose pieces all sit below the object's
+      # place (the Minish Cap's anvil stars sit a row under theirs) puts the place above the
+      # picture: origin [32, -1]. What must be inside is each piece, origin plus its offset, and
+      # that is held where the pieces are known: here when the build holds the pack
+      # (#refuse_piece_left_of_origin!, and the size the pieces reach), and as the game starts
+      # otherwise, where each backend paints only what lands inside the picture.
       def refuse_bad_origin!(name, origin)
-        return origin if origin.is_a?(Array) && origin.length == 2 && origin.all? { |at| at.is_a?(Integer) && !at.negative? }
+        return origin if origin.is_a?(Array) && origin.length == 2 && origin.all?(Integer)
 
-        raise ArgumentError, "image :#{name} needs origin: [x, y], where the object's place is in the picture, in " \
-                             "whole pixels 0 or more. Got #{origin.inspect}."
+        raise ArgumentError, "image :#{name} was given origin: #{origin.inspect}. origin: must be [x, y] in whole pixels: " \
+                             "the place of the object, counted from the top left of the picture. It can be outside the " \
+                             "picture."
       end
 
       def refuse_piece_left_of_origin!(name, pieces)

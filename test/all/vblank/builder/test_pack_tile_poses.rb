@@ -32,6 +32,10 @@ module PackTilePoseGames
   BY_HAND = [[[0, 0, 0], [0, 8, 1], [8, 0, 2], [8, 8, 3]], [[0, 0, 2], [0, 8, 3], [8, 0, 0], [8, 8, 1]]].freeze
   ORIGIN = [8, 16].freeze
   SIZE = [16, 16].freeze
+  # The same frames wholly below and right of the object's place, which is then outside the
+  # picture, at [-8, -1]: each piece lands where SPIN's land from ORIGIN.
+  SPIN_BELOW = [[PIECE.(8, 1, 0x40), PIECE.(16, 1, 0x42)], [PIECE.(8, 1, 0x42), PIECE.(16, 1, 0x40)]].freeze
+  ORIGIN_ABOVE_LEFT = [-8, -1].freeze
 
   # Four tiles of 8x8 one under the other, each different in every row, in four colours so the
   # Game Boy Color shows them too.
@@ -128,6 +132,35 @@ class TestPackTilePoses < Minitest::Test
 
       assert_equal screens(written, 6), shown
       refute_equal shown[3], shown[5], "the ball does not spin"
+    end
+  end
+
+  # The object's place need not be inside the picture, so long as every piece lands inside.
+  def test_an_origin_outside_the_picture_places_the_pieces_where_the_same_pieces_by_hand_go
+    Dir.mktmpdir do |folder|
+      by_hand = BY_HAND
+      below = SPIN_BELOW
+      framed = ball_game_builder(original(folder, frames: below), frames: below) do |pack, at|
+        PackTilePoseGames.frame_pose(pack, at, origin: ORIGIN_ABOVE_LEFT, size: SIZE)
+      end
+      written = ball_game_builder(original(folder)) { |_pack, at| { pieces: by_hand.fetch(PackTilePoseGames.frame_starts(SPIN).index(at)) } }
+
+      assert_equal screens(written.program, 6), screens(framed.program, 6)
+    end
+  end
+
+  def test_an_origin_outside_the_picture_that_leaves_a_piece_outside_is_refused
+    below = SPIN_BELOW
+    Dir.mktmpdir do |folder|
+      from = original(folder, frames: below)
+      refused = lambda do |origin|
+        assert_raises(ArgumentError) do
+          ball_game_builder(from, frames: below) { |pack, at| PackTilePoseGames.frame_pose(pack, at, origin: origin, size: SIZE) }
+        end
+      end
+
+      assert_includes refused.([-16, -1]).message, "origin:"
+      assert_includes refused.([0, -1]).message, "size:"
     end
   end
 
