@@ -124,7 +124,10 @@ module VBlank
         seed: works, randomize: works, roll: works, rand: works, chance: works, random_numbers: works,
 
         # --- sound and music ---
-        enable_sound: works(Answers::MAIN_VOLUME_NOT_MADE_YET), define_sound: works, beep: works, noise: works, wave: works, stop_wave: works,
+        enable_sound: works("#{Answers::MAIN_VOLUME_EIGHTHS} The square, wave and noise voices can also play at " \
+                            "a half or a quarter of each step, so a quiet main volume is nearer. Recordings " \
+                            "play at half or at all, whichever is nearer."),
+        define_sound: works, beep: works, noise: works, wave: works, stop_wave: works,
         song: works("#{Answers::PAN_LEAD} #{Answers::NEAREST_SIDE} #{Answers::RECORDINGS_FROM_BOTH}"),
         play_song: works, stop_music: works, hold_music: works, release_music: works,
         music_volume: works, fade_music_in: works, fade_music_out: works,

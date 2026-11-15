@@ -98,9 +98,16 @@ module VBlank
           # are the mixer's. Written with the low bits alone, a program that switches sound on after
           # the mixer came up switches every recording off, silently, since the Game Boy voices of
           # the same tune keep playing.
+          #
+          # The main volume the game named is the level both speakers are set to, the share in
+          # SOUNDCNT_H's low bits and channel A's bit (GBA::MainVolume); a main volume of nothing
+          # leaves the sound switched off, and writes nothing else, since the chip takes nothing then.
           def emit_enable_sound(_node = nil)
-            emit_chip_writes(GameBoySound.enable)
-            @emitter.write_reg16(REG_SOUNDCNT_H, PSG_VOLUME_FULL | @mixer.direct_sound_routing)
+            main_volume = @mixer.main_volume
+            emit_chip_writes(GameBoySound.enable(speaker_level: main_volume.speaker_level, powered: main_volume.powered))
+            return unless main_volume.powered
+
+            @emitter.write_reg16(REG_SOUNDCNT_H, @mixer.psg_share | @mixer.direct_sound_routing)
           end
 
           # A one-off sound effect on channel 2. Resolve the beep to concrete musical

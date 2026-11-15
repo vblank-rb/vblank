@@ -331,7 +331,7 @@ module VBlank
     # The Game Boy Advance.
     ADVANCE = Description.new(name: :gba, title: "Game Boy Advance", screen_width: 240, screen_height: 160,
                               buttons: %i[a b select start right left up down r l].freeze, controllers: 1,
-                              holds_background_above_row: false, background_box: :shared_windows, glides_recordings: true, sets_main_volume: false, sprites: 128,
+                              holds_background_above_row: false, background_box: :shared_windows, glides_recordings: true, sets_main_volume: true, sprites: 128,
                               # Each shape is clipped against the area's edges as the ARM is
                               # written (Backends::GBA::Statements#emit_inside).
                               area_clips_called_routines: false,
@@ -384,7 +384,7 @@ module VBlank
     # each verb does on it is Console::ColorAnswers's to say.
     COLOR = Description.new(name: :gbc, title: "Game Boy Color", screen_width: 160, screen_height: 144,
                             buttons: %i[a b select start right left up down].freeze, controllers: 1,
-                            holds_background_above_row: false, background_box: nil, glides_recordings: false, sets_main_volume: false, sprites: 40, sprite_places: 40,
+                            holds_background_above_row: false, background_box: nil, glides_recordings: false, sets_main_volume: true, sprites: 40, sprite_places: 40,
                             # rt_paint_area keeps the area in memory (GBC::Lowering::Picture#emit_inside).
                             area_clips_called_routines: true,
                             # The first ten pieces its table holds on a line, every other left out
@@ -599,7 +599,7 @@ module VBlank
                                   # A background is a picture the graphics chip draws, so it can be held to
                                   # a box (the chip's drawing area) that nothing else uses. A recorded note
                                   # can glide: its voice's pitch is a register written while it plays.
-                                  holds_background_above_row: false, background_box: :own_window, glides_recordings: true, sets_main_volume: false,
+                                  holds_background_above_row: false, background_box: :own_window, glides_recordings: true, sets_main_volume: true,
                                   # The area is kept in memory (PS1::Lowering::Paint#emit_inside).
                                   area_clips_called_routines: true,
                                   # The graphics chip draws every sprite each frame as a textured rectangle,

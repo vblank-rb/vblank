@@ -76,9 +76,15 @@ module VBlank
       NOTE_VOICES_NOT_UNDER_VOLUME = "#{NOTE_VOICES} If the game sets its music volume, such a note is refused: " \
                                      "this build does not make it yet."
 
-      # What `enable_sound main_volume:` does on a console whose build does not write it yet
-      # (Description#sets_main_volume false), though its sound chip has a main volume.
-      MAIN_VOLUME_NOT_MADE_YET = "`main_volume:` is refused: this build does not make it yet."
+      # What `enable_sound main_volume:` does on a console whose sound chip takes a main volume of
+      # 127 steps or finer (the Super Nintendo's, the PlayStation's).
+      MAIN_VOLUME_SETS_CHIP = "`main_volume:` sets the main volume of the sound chip. It changes the loudness " \
+                              "of all songs and effects by the same share."
+
+      # ...and on a console whose chip is the Game Boy's: it has eight steps, and its quietest is not
+      # silent, so a main volume of 0 leaves the sound off (Backends::GameBoySound.enable).
+      MAIN_VOLUME_EIGHTHS = "`main_volume:` sets the main volume of the sound chip to the nearest of its eight " \
+                            "steps, from an eighth to all. At 0, the sound stays off."
 
       # How the reference names each verdict.
       VERDICT_WORDS = { works: "works", refused: "**refused**" }.freeze

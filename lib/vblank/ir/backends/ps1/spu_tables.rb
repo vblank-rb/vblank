@@ -56,10 +56,12 @@ module VBlank
           # The chip's numbers, then the Gaussian table. A recording's loudness times its shape's level
           # (with the level's top bit added back) is shifted down Audio::Envelope::WHOLE_GAIN_SHIFT to be a
           # whole number of 256ths, and a 256th is Runtime::Recordings::GAIN_TO_VOLUME_SHIFT up in the
-          # volume register, as Runtime::Recordings#emit_loudness sets a voice from them.
-          def rules
+          # volume register, as Runtime::Recordings#emit_loudness sets a voice from them. The chip's
+          # main volume is the one +main_volume+ names (Program#main_volume; nil for the loudest), as
+          # the PlayStation program writes it (SPUWrites.main_volume_writes).
+          def rules(main_volume)
             [SPUWrites::SAMPLE_RATE, Runtime::Sound::ADSR_LOW, Runtime::Sound::ADSR_HIGH, SPUWrites::LOUDEST,
-             H::SPU_MAIN_LOUDEST, SPUWrites::PITCH_44100, SPUWrites::PITCH_TOP, SoundMemory::SQUARE_SAMPLES,
+             SPUWrites.main_volume_register(main_volume), SPUWrites::PITCH_44100, SPUWrites::PITCH_TOP, SoundMemory::SQUARE_SAMPLES,
              Audio::Sound::WAVE_SAMPLES, H::SPU_FIRST_FREE / 2, Audio::Envelope::WHOLE_GAIN_SHIFT,
              Runtime::Recordings::GAIN_TO_VOLUME_SHIFT, *GAUSS]
           end

@@ -593,7 +593,7 @@ module VBlank
             memory = PS1::SoundMemory.new(@program, waveforms: waveforms[0...first_start_file_waveform], waves_from_file: count)
             @spu_memory = memory
             laid_out = PS1::SoundMemory.laid_out_at_start(@program).values
-            [sound_table("spu_rules", PS1::SPUTables.rules),
+            [sound_table("spu_rules", PS1::SPUTables.rules(@program.main_volume)),
              sound_table("spu_loops", PS1::SPUTables.loops(memory, waveforms, waves_from_file: count)),
              sound_table("spu_memory", PS1::SPUTables.memory(memory), writable: count.positive? || !laid_out.empty?),
              sound_table("spu_recordings", PS1::SPUTables.recordings(memory, @sound_log.recordings),
@@ -659,16 +659,22 @@ module VBlank
           # The rules every voice keeps: how fast each one's clock ticks, how often the program's
           # console hands its voices on to the speaker, the music volume a part sounds at in full
           # and how far to shift back down by it, the wave voice's loudness for each written
-          # volume, the part of a rank that tells a sound effect from the song, and how much of a
-          # 64th of a second a frame lasts, for a swell held under the music volume.
+          # volume, the part of a rank that tells a sound effect from the song, how much of a 64th of
+          # a second a frame lasts, for a swell held under the music volume, and the main volume the
+          # game named for all its sound, in 127ths (Program#main_volume), or -1 where it named none:
+          # the speaker plays the whole mix at that share, and the log names it as the sound is
+          # switched on, as the interpreter's does.
           def sound_rules_table
             sound = VBlank::Audio::Sound
             quarters = (0..15).map { |volume| sound.wave_level_quarters(sound.wave_level(volume)) }
             sound_table("sound_rules", [sound::SQUARE_CLOCK_HZ, sound::WAVE_CLOCK_HZ, sound::NOISE_CLOCK_HZ,
                                         @program.described_console.voice_output_hz, Tunes::FULL_LEVEL,
                                         Tunes::LEVEL_SHIFT, *quarters,
-                                        Tunes::ORDER_MASK, Tunes::COUNTED_A_FRAME])
+                                        Tunes::ORDER_MASK, Tunes::COUNTED_A_FRAME, @program.main_volume || MAIN_VOLUME_NONE])
           end
+
+          # The sound rules' main volume where the game named none (rg_sound.c's MAIN_VOLUME).
+          MAIN_VOLUME_NONE = -1
 
           # Every different waveform the game can put on the wave voice, 32 steps each, numbered as
           # the sound log numbers them (SoundLog#waveforms): the ones its `wave`s name and its songs'

@@ -184,6 +184,14 @@ def rg_square_clock_hz = @rg_game_sound_rules[0]
 def rg_wave_clock_hz = @rg_game_sound_rules[1]
 def rg_noise_clock_hz = @rg_game_sound_rules[2]
 def rg_output_hz = @rg_game_sound_rules[3]
+# The main volume the game named, in 127ths, or -1 for none (rg_sound.c's MAIN_VOLUME).
+def rg_main_volume = @rg_game_sound_rules[6 + RG_VOLUMES + 2]
+RG_MAIN_VOLUME_LOUDEST = 127
+
+# The whole mix at the main volume, rounded toward nought, as rg_sound.c's at_main_volume.
+def rg_at_main_volume(sum, main_volume)
+  main_volume < 0 ? sum : rg_sound_quotient(sum * main_volume, RG_MAIN_VOLUME_LOUDEST)
+end
 
 # C's division, which drops the fraction toward nought: Ruby's rounds down, which differs for a
 # sample below nought.
@@ -348,6 +356,7 @@ def rg_sound_render_frame
   mixed = @rg_heard_only == 0 ? rg_hook_mixed_slice(nil) : 0
   mixed_count = mixed == 0 ? 0 : mixed.length
   mixed_shift = rg_hook_mixed_sample_shift
+  main_volume = rg_main_volume # asked once a frame, never once a sample
   squares = @rg_squares
   sounding = []
   squares.each_with_index do |square, at|
@@ -390,6 +399,10 @@ def rg_sound_render_frame
       on_left += sample
       on_right += sample
     end
+    unless main_volume < 0
+      on_left = rg_at_main_volume(on_left, main_volume)
+      on_right = rg_at_main_volume(on_right, main_volume)
+    end
     left[i] = on_left < -32768 ? -32768 : (on_left > 32767 ? 32767 : on_left)
     right[i] = on_right < -32768 ? -32768 : (on_right > 32767 ? 32767 : on_right)
     i += 1
@@ -416,7 +429,7 @@ def rg_sound_log(line) = rg_driver_sound_logged(line)
 # --- the sounds the game makes itself ---
 
 def rg_sound_enabled
-  rg_sound_log("enabled")
+  rg_sound_log(rg_main_volume < 0 ? "enabled" : "enabled #{rg_main_volume}")
   @rg_sides.fill(0)
 end
 

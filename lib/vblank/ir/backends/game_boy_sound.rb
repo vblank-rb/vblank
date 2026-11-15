@@ -32,8 +32,15 @@ module VBlank
         # The bit of the sound-power register that powers the chip on.
         POWER_ON = 0x0080
 
-        # Every voice to both speakers, and both speakers at full volume.
-        EVERY_VOICE_TO_BOTH_SPEAKERS = 0xFF77
+        # Every voice to both speakers: the speakers' register's high byte, at the level its low byte holds.
+        EVERY_VOICE_SWITCHED_ON = 0xFF00
+
+        # THE MAIN VOLUME. The low byte of the speakers' register (NR50) holds a level for each speaker,
+        # 0 to 7, the right one in bits 0 to 2 and the left in bits 4 to 6, and the chip plays every
+        # voice at (level + 1) eighths of its loudness from it (Pan Docs, "Sound Control Registers").
+        # So the quietest level is an eighth, not silence.
+        SPEAKER_LEVEL_LOUDEST = 7
+        SPEAKER_LEVEL_STEPS = 8
 
         # The eight 16-bit words of the wave voice's memory.
         WAVE_WORDS = 8
@@ -54,8 +61,23 @@ module VBlank
         # full volume. Routing every channel rather than just the first two means a music voice on
         # channel 2 or a noise hit on channel 4 is actually heard; a channel stays silent until it
         # is triggered, so routing an unused one costs nothing.
-        def enable
-          [[:sound_power, POWER_ON], [:speakers, EVERY_VOICE_TO_BOTH_SPEAKERS]]
+        #
+        # +speaker_level+ is the level both speakers are set to (#speaker_level), and +powered+ false
+        # leaves the chip switched off instead: a main volume of nothing, which no level is.
+        def enable(speaker_level: SPEAKER_LEVEL_LOUDEST, powered: true)
+          return [[:sound_power, 0]] unless powered
+
+          [[:sound_power, POWER_ON], [:speakers, EVERY_VOICE_SWITCHED_ON | (speaker_level << 4) | speaker_level]]
+        end
+
+        # The level nearest +main_volume+, a number of 127ths (Program#main_volume; nil for the
+        # loudest): the eighths it is nearest, less one, and never below the quietest. 127 is level 7,
+        # 96 is level 5 (six eighths), and 1 is level 0, an eighth, as near as the chip goes.
+        def speaker_level(main_volume)
+          return SPEAKER_LEVEL_LOUDEST if main_volume.nil?
+
+          eighths = ((main_volume * SPEAKER_LEVEL_STEPS) + (Sound::MAIN_VOLUME_LOUDEST / 2)) / Sound::MAIN_VOLUME_LOUDEST
+          (eighths - 1).clamp(0, SPEAKER_LEVEL_LOUDEST)
         end
 
         # A one-off sound effect on channel 2 (the SFX channel): duty + volume +

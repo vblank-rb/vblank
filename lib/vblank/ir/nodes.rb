@@ -1493,8 +1493,9 @@ module VBlank
         # +main_volume+ is how loud the sound chip plays everything, in 127ths of its loudest
         # (`enable_sound main_volume: 96`, or a share), or absent where it plays at its loudest. It scales
         # the chip's whole mix: the interpreter logs it as the sound is switched on ([:enabled, 96],
-        # Reference#exec_enable_sound), a console whose build sets it writes it then, and every other
-        # console's build refuses a game that names it (Console::Questions).
+        # Reference#exec_enable_sound), a console whose build sets it writes it then, taken to its
+        # chip's own steps, a computer's build scales its whole mix by it, and a console with no
+        # main volume refuses a game that names it (Console::Questions).
 
         # The most players the game takes on this build, or nil where it gave nothing.
         def most_players = players&.last

@@ -79,7 +79,7 @@ module VBlank
           def for_entry(entry, voicing, effect_voices: 0)
             memory = voicing.memory
             case entry.first
-            when :enabled then []
+            when :enabled then entry[1] ? main_volume_writes(entry[1]) : []
             when :beep then beep(entry.last, memory)
             when :noise then entry.last ? noise(entry.last, memory) : silence(1 << NOISE_VOICE)
             when :wave then wave(entry.last, memory)
@@ -91,6 +91,24 @@ module VBlank
             else raise ArgumentError, "the PlayStation build does not play #{entry.first.inspect} yet"
             end
           end
+
+          # THE MAIN VOLUME, left and right (psx-spx, "SPU Volume and ADSR Generator": bit 15 clear is a
+          # fixed volume, its loudest 3FFFh), which scales the chip's whole mix after each voice's own
+          # volume. rt_sound_on sets both to the loudest; a game that names a main volume (in 127ths,
+          # Program#main_volume) has it written after. 3FFFh is 127 times 129, so a number of 127ths is
+          # that many times 129, exactly, and 127 is the loudest.
+          MAIN_VOLUME_STEP = H::SPU_MAIN_LOUDEST / VBlank::Audio::Sound::MAIN_VOLUME_LOUDEST
+          MAIN_LEFT = H::SPU_MAIN_VOLUME - H::SPU
+          MAIN_RIGHT = MAIN_LEFT + 2
+
+          def main_volume_writes(main_volume)
+            volume = main_volume * MAIN_VOLUME_STEP
+            [[:spu, MAIN_LEFT, volume], [:spu, MAIN_RIGHT, volume]]
+          end
+
+          # The main volume register's number for +main_volume+ (nil: the loudest), for a computer's
+          # build that plays the chip (PS1::SPUTables).
+          def main_volume_register(main_volume) = main_volume ? main_volume * MAIN_VOLUME_STEP : H::SPU_MAIN_LOUDEST
 
           # A beep: the square of its width, read at its pitch, at its loudness, fading as it names.
           def beep(effect, memory)

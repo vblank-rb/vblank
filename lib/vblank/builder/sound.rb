@@ -45,7 +45,7 @@ module VBlank
 
       # The most `enable_sound main_volume:` takes as a whole number: the loudest of the sound
       # chip's main volume steps, where a share of 1.0 lands.
-      MAIN_VOLUME_LOUDEST = 127
+      MAIN_VOLUME_LOUDEST = VBlank::Audio::Sound::MAIN_VOLUME_LOUDEST
 
       # +main_volume+ as the whole number of steps the program keeps: a whole number as it is, a
       # share of the loudest rounded to the nearest step.

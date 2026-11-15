@@ -146,7 +146,7 @@ module VBlank
             kind, *numbers = line.delete_prefix("sound ").split(" ")
             numbers = numbers.map { |number| Integer(number) }
             case kind
-            when "enabled" then [:enabled]
+            when "enabled" then [:enabled, *numbers] # and the main volume, where the game named one
             when "beep" then [:beep, @effects.fetch(numbers[0])]
             when "note" then [:note, @songs.fetch(numbers[0]).name, pitch_of(numbers[1])]
             when "voice"

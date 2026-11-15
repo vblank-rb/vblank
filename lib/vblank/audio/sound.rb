@@ -81,6 +81,11 @@ module VBlank
       LOUDNESS_TO_GAIN = GAIN_FRACTION - LOUDNESS_FRACTION # A loudness shifted up this far is its gain
       RAMP_SPLIT = 8
 
+      # THE MAIN VOLUME a game names for all its sound (`enable_sound main_volume:`) is counted in
+      # 127ths of the loudest, the Super Nintendo sound chip's own steps; each console's build takes
+      # that to its chip's own range, and a computer's build scales its whole mix by it.
+      MAIN_VOLUME_LOUDEST = 127
+
       # Resolve a beep into concrete musical values. +tone+ is either a preset name
       # (looked up first among the program's own +defined+ sounds, then the built-in
       # PRESETS) or a raw frequency in Hz. Any non-nil override replaces the base

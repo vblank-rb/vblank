@@ -176,7 +176,15 @@ module VBlank
             def emit_stop_music(_node) = @asm.call("rt_music_stop")
             def emit_hold_music(node) = @asm.call(node.held ? "rt_music_hold_tune" : "rt_music_release_tune")
 
-            def emit_enable_sound(_node) = sound_writes(GameBoySound.enable, [:enabled])
+            # The main volume the game named is the level of both speakers in NR50, the nearest of
+            # its eight (GameBoySound.speaker_level). A main volume of nothing leaves the chip
+            # switched off (NR52), since its quietest level is still an eighth: the chip then takes
+            # no write until it is switched on, so every sound after is silent.
+            def emit_enable_sound(_node)
+              main_volume = @program.main_volume
+              writes = GameBoySound.enable(speaker_level: GameBoySound.speaker_level(main_volume), powered: main_volume != 0)
+              sound_writes(writes, [:enabled, *main_volume])
+            end
 
             # Reference#exec_rumble: the cartridge's motor, a frame at a time (Runtime::Rumble).
             def emit_rumble(node) = runtime_call("rt_rumble", [node.frames, node.pattern])

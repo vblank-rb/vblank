@@ -204,10 +204,11 @@ module VBlank
               @music.section(words)
             end
 
-            # Reference#exec_enable_sound.
+            # Reference#exec_enable_sound: the chip let out at its loudest (rt_sound_on), then the main
+            # volume the game named, if it named one (SPUWrites.main_volume_writes).
             def emit_enable_sound(_node)
               runtime_call("rt_sound_on", [])
-              emit_sound_entry([:enabled])
+              emit_sound_entry([:enabled, *@program.main_volume])
             end
 
             # Reference#exec_beep: the beep resolved as the interpreter resolves it.

@@ -406,6 +406,7 @@ module VBlank
           # Register the samples: embed each one's PCM data as a ROM blob and note the
           # program plays sound. #prepare_mixer reserves the timer and memory.
           def prepare_direct_sound(program)
+            @main_volume = MainVolume.settings(program.main_volume)
             program.walk.each do |node|
               case node.kind
               when :sample
@@ -529,8 +530,8 @@ module VBlank
             @emitter.emit(ASM.load_immediate(ACC, 0x8000_0000))
             @primitives.store_var(ACC, MIX_LOT)
 
-            @emitter.write_reg16(REG_SOUNDCNT_X, SOUND_MASTER_ENABLE)   # master sound on
-            @emitter.write_reg16(REG_SOUNDCNT_H, direct_sound_a_config) # channel A, full volume, FIFO reset
+            @emitter.write_reg16(REG_SOUNDCNT_X, sound_power)           # master sound on (off at a main volume of nothing)
+            @emitter.write_reg16(REG_SOUNDCNT_H, direct_sound_a_config) # channel A at the main volume, FIFO reset
             @emitter.emit(ASM.load_immediate(ACC, @mix_buf0))
             store_reg_ioreg(ACC, REG_DMA1SAD)                      # DMA source = buffer 0
             @primitives.store_word_immediate(REG_FIFO_A, REG_DMA1DAD) # DMA dest = the sound FIFO
@@ -1418,22 +1419,32 @@ module VBlank
             @emitter.emit_call_through(ADDR)
           end
 
-          # WHICH BITS OF SOUNDCNT_H SEND THE RECORDED SOUND TO THE SPEAKERS: channel A at full
-          # volume, out to both, clocked by timer 0. They are asked for from outside because
-          # SOUNDCNT_H is a SHARED register — its low bits are the PSG's volume — and whoever
-          # writes it whole has to put these back or the recordings stop (see
+          # The main volume the game named, as the Advance's three settings of it (MainVolume).
+          attr_reader :main_volume
+
+          # WHICH BITS OF SOUNDCNT_H SEND THE RECORDED SOUND TO THE SPEAKERS: channel A at the
+          # main volume (all, or half), out to both, clocked by timer 0. They are asked for from
+          # outside because SOUNDCNT_H is a SHARED register — its low bits are the PSG's volume —
+          # and whoever writes it whole has to put these back or the recordings stop (see
           # Audio#emit_enable_sound). Nothing at all for a program that plays no recording.
           def direct_sound_routing
             return 0 unless plays_samples?
 
-            DSOUND_A_VOLUME_FULL | DSOUND_A_LEFT | DSOUND_A_RIGHT | DSOUND_A_TIMER0
+            (@main_volume.recordings_full ? DSOUND_A_VOLUME_FULL : 0) | DSOUND_A_LEFT | DSOUND_A_RIGHT | DSOUND_A_TIMER0
           end
 
-          # Channel A's SOUNDCNT_H setup at boot: that routing, the PSG kept at full volume
-          # beside it, and A's FIFO reset so playback starts clean. The reset belongs to boot
-          # alone — doing it again later would throw away whatever sound was queued.
+          # SOUNDCNT_H's low bits: the Game Boy voices' share of the main volume (PSG_VOLUME_FULL at
+          # the loudest).
+          def psg_share = @main_volume.share_bits
+
+          # SOUNDCNT_X: the sound switched on, unless the main volume is nothing.
+          def sound_power = @main_volume.powered ? SOUND_MASTER_ENABLE : 0
+
+          # Channel A's SOUNDCNT_H setup at boot: that routing, the PSG's share of the main
+          # volume beside it, and A's FIFO reset so playback starts clean. The reset belongs to
+          # boot alone — doing it again later would throw away whatever sound was queued.
           def direct_sound_a_config
-            PSG_VOLUME_FULL | direct_sound_routing | DSOUND_A_RESET_FIFO
+            psg_share | direct_sound_routing | DSOUND_A_RESET_FIFO
           end
 
           # The DMA1 control word for feeding the sound FIFO: enabled, 32-bit transfers to a
