@@ -331,6 +331,7 @@ module VBlank
           @save.use_memory!(SaveLayout.memory_of(node))
           refuse_too_many_layers!(node)
           refuse_too_many_sprites!(node)
+          refuse_painted_picture_with_other_poses!(node) # Must come before the next: the lowerings' order
           refuse_poses_with_different_colors!(node, as_built)
           refuse_two_see_through_layers!(node)
           # How the picture stacks: what scenery and objects there are, in what order,
@@ -627,6 +628,14 @@ module VBlank
         # computer, which the check lets through. The colours are compared as filled.
         def refuse_poses_with_different_colors!(node, as_built)
           refusal = Guardrails::Checks::PosesWithDifferentColors.new.refusal_message(node, as_built: as_built)
+          raise ProgramError, refusal if refusal
+        end
+
+        # ...and about a picture the game paints from a list: this picture could show it as one
+        # pose of several, and no console's build lays one out beside other poses. See
+        # Guardrails::Checks::PaintedPictureWithOtherPoses.
+        def refuse_painted_picture_with_other_poses!(node)
+          refusal = Guardrails::Checks::PaintedPictureWithOtherPoses.new.refusal_message(node)
           raise ProgramError, refusal if refusal
         end
 

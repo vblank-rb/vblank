@@ -43,6 +43,42 @@ class TestIRGuardrailPaintedPictureWithOtherPoses < Minitest::Test
     assert_empty findings
   end
 
+  private def refusal(program) = Check.new.refusal_message(program)
+
+  private def switching_game = program { sprite :speaker, at: [0, 0], frames: %i[plain tag], rate: 3 }
+
+  # The same sprite, its ordinary pose drawn from another list: it breaks the rule on one list for
+  # a sprite's pictures too, and this rule is the one each backend names.
+  private def switching_game_of_two_lists
+    program do
+      colors :other, %i[transparent red]
+      image(:other_plain, "#" => :red, colors: :other) { (["#" * 16] * 8).join("\n") }
+      sprite :speaker, at: [0, 0], frames: %i[other_plain tag], rate: 3
+    end
+  end
+
+  # A game's own tests play on the interpreter, from the program and without the build's checks,
+  # so it refuses the mix in the build's words rather than drawing what no cartridge shows.
+  def test_the_interpreter_refuses_in_the_same_words
+    [switching_game, switching_game_of_two_lists].each do |game|
+      error = assert_raises(Reference::ProgramError) { Reference.new.run(game, frames: 1) }
+
+      assert_match(/must be the only picture of its sprite/, error.message)
+      assert_equal refusal(game), error.message
+    end
+  end
+
+  # Handed the program straight, the Advance's lowering gives the same words, not a fault deep in
+  # laying out sprite memory.
+  def test_the_lowering_refuses_in_the_same_words
+    [switching_game, switching_game_of_two_lists].each do |game|
+      error = assert_raises(GBA::LoweringError) { GBA.new.lower(game) }
+
+      assert_match(/must be the only picture of its sprite/, error.message)
+      assert_equal refusal(game), error.message
+    end
+  end
+
   def test_the_build_stops_and_explains
     err = StringIO.new
     assert_raises(VBlank::ROMError) do

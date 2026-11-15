@@ -2054,9 +2054,10 @@ module VBlank
           # about which sprite is on top.
           def prepare_objects(program)
             nodes = @picture.objects
-            # The guardrails have these two rules and their words; this is the lowering's own
+            # The guardrails have these rules and their words; this is the lowering's own
             # invariant, for a program that reached it without passing the guardrails.
             refusal = Guardrails::Checks::TooManySprites.new.refusal_message(program) ||
+                      Guardrails::Checks::PaintedPictureWithOtherPoses.new.refusal_message(program) ||
                       Guardrails::Checks::PosesWithDifferentColors.new.refusal_message(program)
             raise LoweringError, refusal if refusal
             build_shared_object_palette(nodes)
