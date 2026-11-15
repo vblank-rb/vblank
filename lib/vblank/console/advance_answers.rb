@@ -72,7 +72,12 @@ module VBlank
         draw_in_order: works, hide_sprites: works, picture_groups: works, pool: works, box: works,
 
         # --- backgrounds and layers ---
-        tiles: works, canvas: works, tile_pictures: works, sprite_tiles: works, layers: works, layer: works,
+        tiles: works, canvas: works, tile_pictures: works, sprite_tiles: works,
+        layers: works("a see-through layer cannot hold a background and a sprite on one screen. The display " \
+                      "mixes a see-through sprite with one thing behind it, not two. Over the layer's own " \
+                      "background, the sprite cannot also show what is behind the layer. The build refuses " \
+                      "such a layer."),
+        layer: works("see `layers`."),
         background: works("`above_row:` is refused: this build does not make it yet. `show_only_inside` uses the " \
                           "display's second window. One background at a time can be held to a box. A game " \
                           "that holds one cannot also have a light, a status bar, a fade held to part of the " \
@@ -134,6 +139,50 @@ module VBlank
         songs: works("#{Answers::GLIDES_CARRY_ON} #{Answers::NOTE_VOICES}"),
         sound_effects: works, sample: works, instrument: works
       })
+
+      # Answers#refusals, and each see-through layer that holds a background and a sprite on one
+      # screen (#background_and_sprite_refusals).
+      def self.refusals(nodes, console)
+        nodes = nodes.to_a
+        super + background_and_sprite_refusals(nodes.find { |node| node.kind == :program })
+      end
+
+      # One Refusal for the first see-through layer of +program+ that holds a background and a sprite
+      # on one screen.
+      #
+      # The display mixes the near side of a blend with the one layer directly behind it at each
+      # pixel: two things, never three. The interpreter paints back to front, so a see-through sprite
+      # over its own layer's background is mixed with that background already mixed with the floor,
+      # three things, and no setting of the blend unit shows that picture. As built, the layer's
+      # background is only the near side (Backends::GBA::LayerBlend#blend_control), so the display
+      # draws the sprite solid there; naming the background on the far side too would mix the sprite
+      # with the background alone and lose the floor. So the build refuses the arrangement, as it
+      # refuses two see-through layers on one screen (Guardrails::Checks::SeeThroughPerScreen). A
+      # sprite is in the layer where it was declared there, and where the game can put it there as it
+      # runs (`put_in_layer`, a `showing:` list included).
+      def self.background_and_sprite_refusals(program)
+        return [] unless program
+
+        layers = IR::SeeThrough.layers(program)
+        IR::Stacking.screenfuls(program).each do |screenful|
+          layers.each do |layer|
+            next unless screenful.scenery.any? { |node| node.layer == layer.name }
+            next unless screenful.objects.any? { |node| node.layer == layer.name || node.layers&.include?(layer.name) }
+
+            return [Answers::Refusal.new(layer, background_and_sprite_message(layer, screenful.scene))]
+          end
+        end
+        []
+      end
+
+      def self.background_and_sprite_message(layer, scene)
+        screen = scene ? "In the scene :#{IR::Modes.strip_scene_prefix(scene)}, see-through" : "See-through"
+        "#{screen} layer :#{layer.name} holds a background and a sprite. A Game Boy Advance mixes a " \
+          "see-through sprite with one thing behind it, not two. Over the layer's own background, the " \
+          "sprite cannot also show what is behind the layer. To fix this, put the sprite or the background " \
+          "in a layer that is not see-through."
+      end
+      private_class_method :background_and_sprite_refusals, :background_and_sprite_message
 
       # WHAT .claude/dsl/game-boy-advance.md SAYS: the answers with words of their own, then every
       # other verb by name.

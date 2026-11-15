@@ -744,4 +744,92 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
     rooms = two_misty_rooms(walker: true, title: true)
     [2, 3, 4, 6, 7, 9, 10, 12].each { |frames| assert_backends_agree(rooms, frames: frames, console_frames: frames + 1) }
   end
+
+  # --- a see-through layer holding a background and a sprite ---
+  #
+  # The display mixes a see-through sprite with the one thing directly behind it. Over the
+  # layer's own background that is the background as drawn, before it was mixed with the floor,
+  # so the console cannot show the sprite over both the bar and the floor behind it, which is
+  # what the interpreter draws. The build refuses the arrangement, as it refuses two see-through
+  # layers on one screen.
+  def test_a_see_through_layer_holding_a_background_and_a_sprite_is_refused
+    %i[declared pool put_in_layer showing scene_sprite].each do |how|
+      error = assert_raises(VBlank::IR::Guardrails::ValidationError, "a sprite #{how} in the layer is not refused") do
+        refuse_on_the_advance!(glass_of_bars_and_a_sprite(how))
+      end
+
+      assert_match(/:glass/, error.message)
+      assert_match(/background and a sprite/, error.message)
+    end
+  end
+
+  # NEAR-MISS: the layer's background and its sprite on different screens never meet.
+  def test_a_see_through_layer_with_its_background_and_sprite_in_different_scenes_is_built
+    game = glass_of_bars_and_a_sprite(:other_scene)
+
+    refuse_on_the_advance!(game)
+    [1, 4].each { |frames| assert_backends_agree(game, frames: frames) }
+  end
+
+  # Raises the Advance's build's error for +game+, as the console's answers give it.
+  private def refuse_on_the_advance!(game)
+    for_the_advance = game.copy.tap { |copy| copy.console = :gba }
+    checks = [VBlank::IR::Guardrails::Checks::ConsoleAnswers.new]
+    VBlank::IR::Guardrails::Validator.new(checks: checks).run(for_the_advance, autofix: false).raise_on_error!
+  end
+
+  # A red floor and a half see-through layer of blue bars with gaps, and a white sprite that is
+  # in that layer as +how+ says: declared there, a pool's thing declared there, put there as the
+  # game runs, put there by a `showing:` list, declared there in a scene while the bars are on
+  # every screen, or declared there in a scene of its own that the bars are not in.
+  private def glass_of_bars_and_a_sprite(how)
+    tile = SOLID_TILE
+    program do
+      screen :tiled
+      image(:floor, "#" => :red) { tile }
+      image(:bar, "#" => :blue) { tile }
+      image(:ghost, "#" => :white) { tile }
+      tiles :floors, "#" => :floor
+      tiles :bars, "#" => :bar
+      layers :deep, :glass, :front
+      layer(:deep) { background :floor_bg, tiles: :floors, map: Array.new(20) { "#" * 30 } }
+      bars = proc { layer(:glass, transparency: 50) { background :bars_bg, tiles: :bars, map: Array.new(20) { "# " * 15 } } }
+      case how
+      when :declared
+        bars.call
+        layer(:glass) { sprite :ghost, at: [100, 16] }
+        game_loop {}
+      when :pool
+        bars.call
+        ghosts = layer(:glass) { pool :ghosts, x: 0, y: 0, capacity: 2, image: :ghost }
+        ghosts.spawn x: 100, y: 16
+        game_loop {}
+      when :put_in_layer
+        bars.call
+        ghost = layer(:front) { sprite :ghost, at: [100, 16] }
+        game_loop { ghost.put_in_layer :glass }
+      when :showing
+        bars.call
+        ghost = layer(:front) { sprite :ghost, at: [100, 16] }
+        depth = var :depth, 0
+        game_loop { ghost.put_in_layer %i[front glass], showing: depth }
+      when :scene_sprite
+        bars.call
+        scene(:haunted) { layer(:glass) { sprite :ghost, at: [100, 16] } }
+        var :where, 0
+        game_loop { case_var(:where) { when_val 0, :haunted } }
+      when :other_scene
+        scene(:barred, &bars)
+        scene(:haunted) { layer(:glass) { sprite :ghost, at: [100, 16] } }
+        where = var :where, 0
+        game_loop do
+          where.approach! 1, 1
+          case_var(:where) do
+            when_val 0, :barred
+            when_val 1, :haunted
+          end
+        end
+      end
+    end
+  end
 end
