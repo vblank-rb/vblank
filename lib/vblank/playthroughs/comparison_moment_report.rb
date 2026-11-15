@@ -41,7 +41,7 @@ module VBlank
           how_far = apart.zero? ? "on the same frame" : "#{apart} #{apart == 1 ? 'frame' : 'frames'} apart"
           ["The two cartridges drifted at the moment #{@drift.moment}.",
            "The first cartridge reached it on frame #{ours} and the second on frame #{theirs}, #{how_far}.",
-           differed_sentence("at that moment")]
+           *differed_lines("at that moment")]
         end
 
         def played_lines = ["the same script was played on each cartridge by itself"]

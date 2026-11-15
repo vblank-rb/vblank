@@ -158,11 +158,19 @@ module VBlank
           ["These video memories differed there: #{@drift.video_differences.map(&:in_words).join('; ')}."]
         end
 
-        # +where+ is `on that frame` or `at that moment`.
-        def differed_sentence(where)
-          things = @drift.differed.map { |what| WHAT_IS_NOT_A_READING.fetch(what) { "the reading #{what}" } }
-          "What differed #{where}: #{things.join(', ')}."
+        # What differed where the drift began, and then what began to differ later while it
+        # lasted, each with its own frame. The screens, the pixels and the readings the report
+        # gives are all of where it began, so what joined later is not said to have differed
+        # there. +where+ is `on that frame` or `at that moment`.
+        def differed_lines(where)
+          lines = ["What differed #{where}: #{@drift.differed_at_start.map { |what| thing_in_words(what) }.join(', ')}."]
+          return lines if @drift.began_later.empty?
+
+          later = @drift.began_later.map { |what, frame| "#{thing_in_words(what)}, on frame #{frame}" }
+          lines << "What began to differ later, while the drift lasted: #{later.join('; ')}."
         end
+
+        def thing_in_words(what) = WHAT_IS_NOT_A_READING.fetch(what) { "the reading #{what}" }
 
         # Every named reading on both cartridges, the ones that agree as well: a number a
         # pixel out is easier to chase than a picture that looks wrong, and the ones that

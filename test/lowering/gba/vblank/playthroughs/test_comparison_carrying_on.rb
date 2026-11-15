@@ -250,6 +250,30 @@ class TestComparisonCarryingOn < Minitest::Test
 
   private def report_lines(folder) = File.read(File.join(folder, "report.txt")).lines.map(&:strip)
 
+  # WHAT JOINED A DRIFT LATER IS SAID WITH THE FRAME IT BEGAN ON, not as differing on the
+  # drift's first frame. A reading is out from before the ground turns red until after it
+  # turns back, so the red frames join the drift the reading began. The report's screens are
+  # of the drift's first frame, when both grounds were blue, and its words say so.
+  def test_a_report_says_when_a_thing_that_joined_the_drift_began
+    first = walker
+    second = walker(turns_red_at: 45, red_for: 3)
+    tape = walk_right.play(first).tape
+    red_on = red_frames(second, tape)
+    across_the_red = { late: [->(_game) { false }, ->(game) { (42..50).cover?(game.var(:ticks)) }] }
+    late_on = frames_where(second, tape) { |game| (42..50).cover?(game.var(:ticks)) }
+
+    Dir.mktmpdir("drift") do |somewhere|
+      result = tape.compare(first, second, readings: across_the_red, carrying_on: true, reports_in: somewhere)
+      lines = report_lines(result.drift.report)
+
+      assert_operator late_on.first, :<, red_on.first
+      assert_equal [%i[late picture]], result.drifts.map(&:differed), "one drift, naming both"
+      assert_includes lines, "What differed on that frame: the reading late."
+      assert_includes lines, "What began to differ later, while the drift lasted: the picture, on frame #{red_on.first}."
+      assert_includes lines, "The two screens were the same picture there."
+    end
+  end
+
   # A report says how its drift ended in each of the ways one can: back in step, cut off by
   # a frame that was not looked at, still going at the end of the tape, or not known
   # because the comparison stopped there.
