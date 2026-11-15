@@ -538,6 +538,7 @@ module VBlank
 
               # Put up again, it keeps the cells its plane holds (SceneryWrites#emit_put_up_keeping_cells).
               emit_put_up_keeping_cells(node, plane_of(node)) { |kept| emit_put_up(node, kept ? nil : 0, reset_view: 1) }
+              emit_bar_beside(node)
             end
 
             # A BACKGROUND PUT UP ON A PAINTED SCREEN is painted into the picture, as the interpreter stamps it
@@ -729,6 +730,7 @@ module VBlank
               ((0...@scene_planes).to_a - arrival.scenery.map { |bg| plane_of(bg) }).each do |plane|
                 runtime_call("rt_plane_take_down", [Build.int(plane)])
               end
+              emit_bar_beside_arrival(arrival)
             end
 
             # A SCENE TAKING OVER IN A GAME THAT SHOWS BOTH KINDS OF SCREEN puts its own screen up first, since changing

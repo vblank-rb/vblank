@@ -116,6 +116,30 @@ module VBlank
         @arrivals = {}
       end
 
+      # THE STATUS BAR SHOWN BEFORE ITS OWN LINE RUNS, or nil.
+      #
+      # The interpreter builds its picture from the scenery every screen shows, whether or not each line
+      # has run yet (Reference#showing_scenery). A background's own picture is stamped as its line runs,
+      # but a status bar is painted only as the whole view is built again, and while one is declared every
+      # background put up builds the view again (Reference#put_up_background) — a line, a routine's, a
+      # scene's own as it takes over. So a bar whose line is in a routine or the game loop is in the
+      # picture from the first background put up, at the top the game last placed it at, or the one it was
+      # declared with. Played before the game loop, that is the first frame, before the loop has run its
+      # line.
+      #
+      # A backend puts this bar up beside each background it puts up until the bar has gone up once, and
+      # its line then keeps the cells the bar holds when it runs (Backends::SceneryWrites#emit_bar_beside).
+      # It is the bar the interpreter shows, the first every screen shows. A bar whose line is one of the
+      # program's own goes up as the game starts by itself, and a game with no such bar is built as before.
+      def bar_shown_early
+        bar = always_up.scenery.find(&:bar?)
+        bar if bar && bar.parent&.kind != :program
+      end
+
+      # Whether +arrival+ puts the bar shown early up beside the scene's own scenery: a scene with no scenery
+      # of its own puts nothing up, and one with a bar of its own shows that bar.
+      def bar_put_up_on_arrival?(arrival) = !bar_shown_early.nil? && arrival.scenery.any? && arrival.scenery.none?(&:bar?)
+
       # The plan for +scene+ taking over.
       def arrival(scene)
         @arrivals[scene] ||= begin

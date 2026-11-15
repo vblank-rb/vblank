@@ -779,6 +779,7 @@ module VBlank
                 store(var)
               end
               always.scenery.each { |bg| background_put_up(bg) }
+              emit_bar_shown_early_noted
               @asm.label(unchanged)
             end
 
@@ -813,6 +814,7 @@ module VBlank
               end
 
               scenery.each { |bg| background_put_up(bg) }
+              emit_bar_beside_arrival(arrival)
               painted = arrival.scenery.empty? ? @handover.always_up.painted_tiles : arrival.painted_tiles
               painted.each { |run| emit_run_copy(run) }
               # The sprites this pass placed, in front of the scenery the scene brought of its own,
@@ -1076,7 +1078,10 @@ module VBlank
             def emit_background(node)
               return paint_background(node) if painted_screen_for?(node)
 
-              background_put_up(node, again: put_up_again?(node)) unless @handover.on_arrival?(node)
+              return if @handover.on_arrival?(node)
+
+              background_put_up(node, again: put_up_again?(node))
+              emit_bar_beside(node)
             end
 
             # WHETHER +bg+'S LINE CAN RUN MORE THAN ONCE (one in a routine, or in the game loop). Put up the second

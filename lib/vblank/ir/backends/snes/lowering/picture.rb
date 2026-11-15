@@ -1266,6 +1266,7 @@ module VBlank
 
               # Put up again, it keeps the cells its layer holds (SceneryWrites#emit_put_up_keeping_cells).
               emit_put_up_keeping_cells(node, layer_of(node)) { |kept| emit_put_up(node, keeps_cells: kept) }
+              emit_bar_beside(node)
             end
 
             # +keeps_cells+ puts it up keeping the cells its layer holds: nothing is copied, and the view goes
@@ -1465,6 +1466,7 @@ module VBlank
                 runtime_call("rt_background_put_up", [Build.int(layer), Build.int(empty_grid.number), Build.int(1)])
               end
               runtime_call("rt_bar_gone", []) if scene_bars? && arrival.scenery.none?(&:held_to_rows?)
+              emit_bar_beside_arrival(arrival)
             end
 
             # The layers some scene bends and the one taking over does not: their rows go straight.

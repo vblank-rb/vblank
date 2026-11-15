@@ -720,6 +720,7 @@ module VBlank
               # showing goes back to the first as well (see IR::SceneHandover).
               arrival.map_choices.each { |var| @primitives.store_word_immediate(0, @primitives.var_addr(var)) }
               @background_drawing.emit_first_area_colors(arrival.scenery, up: name) # ...and a walking one to its first area's colours
+              emit_bar_beside(nil) if scene_handover.bar_put_up_on_arrival?(arrival)
             end
           end
 
@@ -797,6 +798,7 @@ module VBlank
           def emit_always_up
             always = scene_handover.always_up
             always.scenery.each { |node| @background_drawing.emit_background_hardware(node) }
+            emit_bar_beside(scene_handover.bar_shown_early) if scene_handover.bar_shown_early # ...the bar among them
             always.map_choices.each { |var| @primitives.store_word_immediate(0, @primitives.var_addr(var)) }
             @background_drawing.emit_first_area_colors(always.scenery)
             (always.painted_tiles + always.painted_pictures).each do |run|
@@ -1428,6 +1430,30 @@ module VBlank
 
             @background_drawing.emit_background_hardware(node)
             emit_enable_late_layer(node)
+            emit_bar_beside(node)
+          end
+
+          BAR_SHOWN_EARLY = :__bar_shown_early # Note that the bar shown early is up
+
+          # A STATUS BAR SHOWN BEFORE ITS OWN LINE RUNS (IR::SceneHandover#bar_shown_early) goes up beside every
+          # background put up until it has gone up once, as Backends::SceneryWrites#emit_bar_beside puts it up on
+          # the other cartridges, which the Advance's lowering does not mix in: the bar's own line notes it is up
+          # (BAR_SHOWN_EARLY, cleared as the backgrounds' pictures go in, BackgroundDrawing#emit_boot_backgrounds,
+          # and set again as a screen's change puts the bar back, #emit_always_up), and any other background puts
+          # it up unless the note is set. +node+ is the background put up, or nil for a scene's own scenery as it
+          # takes over.
+          def emit_bar_beside(node)
+            bar = scene_handover.bar_shown_early
+            return unless bar
+            return @primitives.store_word_immediate(1, @primitives.var_addr(BAR_SHOWN_EARLY)) if node.equal?(bar)
+            return if node&.bar?
+
+            up = gensym
+            load_var(ACC, BAR_SHOWN_EARLY)
+            emit(ASM.cmp_imm(ACC, 0))
+            emit_branch(:bcond, up, cond: :ne)
+            emit_background(bar)
+            place_label(up)
           end
 
           # Bitmap-mode background: no tile hardware, so stamp each non-empty cell with

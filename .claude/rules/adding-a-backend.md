@@ -147,7 +147,9 @@ writing an instruction is shared, because two copies of a decision drift apart:
   its place; `IR::SceneHandover#background_named` — which declaration a change to a background names;
   `SceneHandover#own_scenery_behind_shared?` — a stack that puts a scene's own background behind one
   every screen shows, which `LoweringPlan#refuse_unmade_stacking!` refuses for a lowering whose layers
-  cannot show it.
+  cannot show it; `SceneHandover#bar_shown_early` — a status bar whose line is in a routine or the
+  game loop, which the interpreter shows from the first background put up, so a lowering puts it up
+  beside each background until it has gone up once (`SceneryWrites#emit_bar_beside`).
 - `Backends::SceneryWrites` — mixed into the lowering beside `ControlFlow`, written with its hooks: a
   change to a background made to the scene's own declaration of the name, each scene a branch where
   that is known only as the game runs (`for_background`), and a background put up in a pass held at

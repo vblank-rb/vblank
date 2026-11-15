@@ -70,6 +70,21 @@ module StatusBarGames
     end
   end
 
+  # A red field's tiles and a green bar's, and a routine `put_up_bar` that puts the bar up, two rows tall at
+  # the bottom of the screen. +shape+ writes the rest: where the field goes up, and where the routine is
+  # called.
+  def routine_bar_game(&shape)
+    program do
+      screen :tiled
+      image(:red_art, "#" => :red) { Minitest::Test::SOLID_TILE }
+      image(:green_art, "#" => :green) { Minitest::Test::SOLID_TILE }
+      tiles :field_tiles, "#" => :red_art
+      tiles :bar_tiles, "#" => :green_art
+      func(:put_up_bar) { status_bar :score, tiles: :bar_tiles, map: ["#" * 32, "#" * 32], top: screen_height - BAR_HEIGHT }
+      instance_exec(&shape)
+    end
+  end
+
   # A white sprite sixteen rows tall that the stack puts behind a red field, standing half over the top of
   # a green bar two rows tall. The game loop's body is handed the bar and a counter of the passes.
   def sprite_behind_field_game(&body)

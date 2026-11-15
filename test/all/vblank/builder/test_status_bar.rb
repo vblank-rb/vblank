@@ -167,6 +167,132 @@ class TestStatusBar < Minitest::Test
     assert_backends_agree(prog, frames: [3, 4, 5], name: "BARTAKE")
   end
 
+  # A BAR PUT UP BY A ROUTINE THE LOOP CALLS (the way a game's routine that draws the screen does)
+  # shows from the first frame the field does, before the loop has run its line. The interpreter
+  # builds the picture from the scenery every screen shows, the bar at its declared top among it,
+  # as soon as a background goes up (IR::SceneHandover#bar_shown_early). Frame 1 is shown before the
+  # loop has run.
+  def test_a_bar_first_put_up_in_the_game_loop_shows_on_the_first_frame
+    prog = routine_bar_game do
+      background :field, tiles: :field_tiles, map: Array.new(32) { "#" * 32 }
+      game_loop { call :put_up_bar }
+    end
+
+    assert_equal GREEN, picture(prog, 1).pixel(8, screen_height - 4), "the bar, on the first frame"
+    assert_equal RED, picture(prog, 1).pixel(8, 8), "and the field above it"
+    assert_backends_agree(prog, frames: [1, 2], name: "BARLOOP")
+  end
+
+  # ...and a bar whose routine the loop first calls some passes in shows from the first frame too,
+  # and stays as the routine puts it up.
+  def test_a_bar_put_up_later_in_the_game_loop_shows_from_the_first_frame
+    prog = routine_bar_game do
+      background :field, tiles: :field_tiles, map: Array.new(32) { "#" * 32 }
+      step = var :step, 0
+      game_loop do
+        call :put_up_bar if step >= 4
+        step += 1
+      end
+    end
+    bottom = screen_height - 4
+
+    assert_equal GREEN, picture(prog, 1).pixel(8, bottom), "the bar, on the first frame"
+    assert_equal GREEN, picture(prog, 8).pixel(8, bottom), "and once the routine has put it up"
+    assert_backends_agree(prog, frames: [1, 8], name: "BARLATE")
+  end
+
+  # ...with the field put up by a routine called before the loop,
+  def test_a_bar_shows_with_a_field_put_up_by_a_routine_before_the_loop
+    prog = routine_bar_game do
+      step = var :step, 0
+      func(:put_up_field) { background :field, tiles: :field_tiles, map: Array.new(32) { "#" * 32 } }
+      call :put_up_field
+      game_loop do
+        call :put_up_bar if step >= 2
+        step += 1
+      end
+    end
+
+    assert_equal GREEN, picture(prog, 1).pixel(8, screen_height - 4)
+    assert_backends_agree(prog, frames: [1, 4], name: "BARFUNC")
+  end
+
+  # ...or inside a test before the loop,
+  def test_a_bar_shows_with_a_field_put_up_inside_a_test_before_the_loop
+    prog = routine_bar_game do
+      step = var :step, 0
+      wanted = var :wanted, 1
+      background :field, tiles: :field_tiles, map: Array.new(32) { "#" * 32 } if wanted == 1
+      game_loop do
+        call :put_up_bar if step >= 2
+        step += 1
+      end
+    end
+
+    assert_equal GREEN, picture(prog, 1).pixel(8, screen_height - 4)
+    assert_backends_agree(prog, frames: [1, 4], name: "BARIF")
+  end
+
+  # ...or first in the loop, where the frame after the pass that puts the field up shows the bar,
+  def test_a_bar_shows_with_a_field_first_put_up_in_the_loop
+    prog = routine_bar_game do
+      step = var :step, 0
+      func(:put_up_field) { background :field, tiles: :field_tiles, map: Array.new(32) { "#" * 32 } }
+      game_loop do
+        call :put_up_field
+        call :put_up_bar if step >= 2
+        step += 1
+      end
+    end
+
+    assert_equal GREEN, picture(prog, 2).pixel(8, screen_height - 4)
+    assert_backends_agree(prog, frames: [1, 2, 4], name: "BARFIELDLOOP")
+  end
+
+  # ...or as a scene's own field comes up.
+  def test_a_bar_shows_with_a_scenes_field
+    prog = routine_bar_game do
+      step = var :step, 0
+      state = var :state, 0
+      scene(:play) { background :field, tiles: :field_tiles, map: Array.new(32) { "#" * 32 } }
+      game_loop do
+        case_var(:state) { when_val 0, :play }
+        call :put_up_bar if step >= 3
+        step += 1
+      end
+    end
+
+    assert_equal GREEN, picture(prog, 2).pixel(8, screen_height - 4)
+    assert_backends_agree(prog, frames: [1, 2, 5], name: "BARSCENE")
+  end
+
+  # A bar moved in the pass its field first goes up shows at the row it was moved to on that frame:
+  # nothing has put it up from its corner.
+  def test_a_bar_moved_in_the_pass_its_field_first_goes_up_shows_moved
+    prog = program do
+      screen :tiled
+      image(:red_art, "#" => :red) { SOLID_TILE }
+      image(:green_art, "#" => :green) { SOLID_TILE }
+      tiles :field_tiles, "#" => :red_art
+      tiles :bar_tiles, "#" => :green_art
+      step = var :step, 0
+      bar = nil
+      func(:put_up_bar) { bar = status_bar :score, tiles: :bar_tiles, map: ["#" * 32, "#" * 32], top: screen_height - 16 }
+      func(:put_up_field) do
+        background :field, tiles: :field_tiles, map: Array.new(32) { "#" * 32 }
+        bar.move_to screen_height - 40
+      end
+      game_loop do
+        call :put_up_field
+        call :put_up_bar if step >= 3
+        step += 1
+      end
+    end
+
+    assert_equal GREEN, picture(prog, 2).pixel(8, screen_height - 30), "the bar's moved top"
+    assert_backends_agree(prog, frames: [1, 2, 6], name: "BARMOVED")
+  end
+
   # A bar declared in one scene is up in that scene alone: the scene after it shows its field to
   # the bottom of the screen.
   def test_a_bar_belongs_to_the_scene_that_declares_it

@@ -102,6 +102,10 @@ module VBlank
             @palette_tint.emit_record_bg_palette_source # ...the first area's, for a game that walks between areas
             @palette_tint.emit_changed_bg_lists_again # ...and the groups drawn from another list put back over it
             emit_boot_box_window
+            # The bar shown early, not up yet (Drawing#emit_bar_beside)
+            return unless @layout.screen.handover.bar_shown_early
+
+            @primitives.store_word_immediate(0, @primitives.var_addr(Drawing::BAR_SHOWN_EARLY))
           end
 
           # Point one layer's hardware at its data: DMA its map into its own screen block,

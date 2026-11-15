@@ -59,6 +59,49 @@ module VBlank
           place_label(done)
         end
 
+        # A STATUS BAR SHOWN BEFORE ITS OWN LINE RUNS (IR::SceneHandover#bar_shown_early) goes up beside every
+        # background put up until it has gone up once, as the interpreter's picture shows it from the first. The
+        # lowering calls this after it puts +node+ up, by a line or as a scene takes over (nil there): the bar's
+        # own line notes that the bar is up (#keep_corner_notes keeps the note), and any other background puts
+        # the bar up unless the note is set, through the lowering's emit_background as its line would. Nothing
+        # in a game with no such bar.
+        #
+        # Put up there, the bar is not held at its corner for the pass (#corner_note, #bar_note): the
+        # interpreter shows it at the top the game last placed it at, and only its own line puts it at its
+        # corner.
+        def emit_bar_beside(node)
+          bar = @plan.handover.bar_shown_early
+          return unless bar && @bar_shown_early_note
+          return statement(Build.set(@bar_shown_early_note, 1)) if node.equal?(bar)
+          return if node&.bar?
+
+          up = fresh_label("bar_up")
+          jump_unless(Build.binop(:==, Build.var_ref(@bar_shown_early_note), Build.int(0)), up)
+          with_corner_notes_off { emit_background(bar) }
+          place_label(up)
+        end
+
+        # The same beside a scene's own scenery, put up as the scene takes over
+        # (IR::SceneHandover#bar_put_up_on_arrival?).
+        def emit_bar_beside_arrival(arrival)
+          emit_bar_beside(nil) if @plan.handover.bar_put_up_on_arrival?(arrival)
+        end
+
+        # The bar the screen's change puts up again with the scenery every screen shows, noted as up, where the
+        # lowering puts that scenery up itself.
+        def emit_bar_shown_early_noted
+          bar = @plan.handover.bar_shown_early
+          emit_bar_beside(bar) if bar
+        end
+
+        # What the block writes, with no background or bar noted as held at its corner (#corner_note, #bar_note).
+        def with_corner_notes_off
+          @corner_notes_off = true
+          yield
+        ensure
+          @corner_notes_off = false
+        end
+
         # How a status bar's top is held at its corner (#keep_corner_notes): :own_note where a bar has a note of
         # its own, :layer_note where it is a layer like the others and its layer's note holds it, and nil where
         # the build places no bar's top.
@@ -81,13 +124,15 @@ module VBlank
             @put_up_this_pass = layers.to_h { |layer| [layer, keep_local(:"put_up_this_pass_#{layer}")] }
           end
           @bar_up_this_pass = keep_local(:bar_up_this_pass) if bar == :own_note && @plan.places_at_pass_end?(:place_bar)
+          @bar_shown_early_note = keep_local(:bar_shown_early) if @plan.handover.bar_shown_early
         end
 
-        # The note a background put up on layer +layer+ sets this pass, or nil where none is kept.
-        def corner_note(layer) = @put_up_this_pass&.fetch(layer)
+        # The note a background put up on layer +layer+ sets this pass, or nil where none is kept or the bar is
+        # being put up early (#emit_bar_beside).
+        def corner_note(layer) = (@put_up_this_pass&.fetch(layer) unless @corner_notes_off)
 
         # The note a status bar put up sets this pass, where it has one of its own, or nil.
-        def bar_note = @bar_up_this_pass
+        def bar_note = (@bar_up_this_pass unless @corner_notes_off)
 
         # The notes forgotten at a wait: the pass that put a background up has ended.
         def emit_corners_forgotten
