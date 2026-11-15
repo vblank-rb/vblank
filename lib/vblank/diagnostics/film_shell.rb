@@ -30,9 +30,17 @@ module VBlank
     # THE UNPACKING KEEPS REAL TIME. It plays in a Ractor of its own (Live::BackgroundUnpacking), and
     # the window shows its newest picture each frame, a frame's time apart at most: the film shows
     # the bar as a player's window would, so how many frames it fills over is this machine's speed.
+    # A side opened with `from: :game` plays the menu and the unpacking before the film's first frame,
+    # filming neither, so its frame 1 is the game's first pass on any machine:
+    #
+    #   Film.make("game.mp4", sides: { "shell" => -> { shell.open(from: :game) },
+    #                                  "all-in-one" => -> { shell.all_in_one } }, parts: [1..600])
     class FilmShell
       # A shell played as a film side refused the copy it was handed: the words a player is told.
       class Refused < StandardError; end
+
+      # A side counted from the game opened on a shell whose play ended before its game began.
+      class GameNeverBegan < StandardError; end
 
       # +game+ is the port (a Cartridge::Game); +console+ the console its shell is built for, the
       # first it names unless set.
@@ -45,12 +53,26 @@ module VBlank
         @game_began_on = nil
       end
 
+      # Where a side opened by #open puts the film's first frame: on the shell's menu, or on the first
+      # frame of the shell's game.
+      COUNTED_FROM = %i[menu game].freeze
+
       # The film frame the shell's game showed its first picture on, once a side opened by #open has
-      # played that far; nil before.
+      # played that far; nil before. 1 for a side counted from the game, once it has played a frame.
       attr_reader :game_began_on
 
-      # The shell from its first start, as a side Film plays (step, screenshot, close).
-      def open = ShellSide.new(Live::Shell.from(@built), @copy, ->(frame) { @game_began_on = frame })
+      # The shell from its first start, as a side Film plays (step, screenshot, close). +from+ :menu
+      # films the menu and the unpacking before the game, so the frame the game begins on is this
+      # machine's speed. +from+ :game plays the menu and the unpacking as the side opens, filming
+      # neither, so the film's first frame is the game's first on any machine.
+      def open(from: :menu)
+        unless COUNTED_FROM.include?(from)
+          raise ArgumentError, "`from: #{from.inspect}` is not a place to start the shell's film. Give `from: :menu` " \
+                               "to film the menu and the unpacking, or `from: :game` to start on the game's first frame."
+        end
+
+        ShellSide.new(Live::Shell.from(@built), @copy, ->(frame) { @game_began_on = frame }, from_game: from == :game)
+      end
 
       # The all-in-one build of the game, shown as a display switched off until the frame the shell's
       # game began on, then played from its first pass with the same buttons. Opened after the shell's
@@ -123,14 +145,19 @@ module VBlank
           @picture = nil
         end
 
-        # One picture further, with +keys+ (IR::Buttons.mask) the film's buttons for it.
+        # One picture further, with +keys+ (IR::Buttons.mask) the film's buttons for it. Answers what
+        # the play handed out of its Fiber: the picture, GAME_BEGINS, or nil once the play has ended.
         def step_picture(keys)
           @keys = keys
           return unless @fiber.alive?
 
           shown = @fiber.resume
-          @picture = shown if shown
+          @picture = shown if shown.is_a?(Live::Headless::Picture)
+          shown
         end
+
+        # True while the play can be stepped further.
+        def playing? = @fiber.alive?
 
         # The film's buttons for the picture being played, by name: the first player's, a bit each
         # in IR::Buttons::NAMES's order (IR::Buttons.mask).
@@ -149,10 +176,16 @@ module VBlank
       end
       private_constant :SteppedPlay
 
+      # What the shell's play hands out of its Fiber, in place of a picture, when the game is about to
+      # play its first pass: a side counted from the game stops its lead-in there.
+      GAME_BEGINS = :game_begins
+
       # THE SHELL'S SIDE. +copy+ is the copy handed to LOAD ROM, and +game_began+ is told the film
-      # frame the game's first picture is on.
+      # frame the game's first picture is on. +from_game+ plays the menu and the unpacking before the
+      # film's first frame (#play_lead_in), so that frame is the game's first pass, played with the
+      # film's buttons for it.
       class ShellSide
-        def initialize(shell, copy, game_began)
+        def initialize(shell, copy, game_began, from_game:)
           @folder = Dir.mktmpdir("film-shell")
           handed = File.join(@folder, File.basename(copy.path))
           FilmShell.hand_copy(copy, handed)
@@ -162,11 +195,13 @@ module VBlank
             shell.play(device, folder_path: File.join(@folder, "kept"), choose_copy: -> { handed },
                                refused: ->(words) { raise Refused, words },
                                play_game: lambda { |game|
+                                 Fiber.yield(GAME_BEGINS) if from_game
                                  game_began.call(@frame + 1)
                                  device.buttons = ->(_pass) { @play.film_buttons }
                                  Live::Session.new(game: game).play(device)
                                })
           })
+          play_lead_in if from_game
         rescue StandardError
           close
           raise
@@ -190,6 +225,19 @@ module VBlank
           @play&.stop
           FileUtils.remove_entry(@folder, true) if @folder
           nil
+        end
+
+        private
+
+        # The menu and the unpacking played with no film frame counted, as many pictures as this
+        # machine takes, until the game is about to play its first pass.
+        def play_lead_in
+          until @play.step_picture(0) == GAME_BEGINS
+            next if @play.playing?
+
+            raise GameNeverBegan, "The shell stopped before its game began. A film cannot start on the game's first " \
+                                  "frame. To see why, film the shell with `from: :menu`."
+          end
         end
       end
 

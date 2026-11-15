@@ -20,6 +20,7 @@ module VBlank
     #                 "retail cartridge" => "baserom.gba" }
     #     t.console = :ps1                             # build each game for this console
     #     t.lowering = "ruby"                          # show each side this way (the emulator if unsaid)
+    #     t.shell = -> { MyGame::GAME }                # a port whose shell every film shows (FilmShell)
     #   end
     #
     # A SIDE is a label (written over its pictures) and its cartridge: a path to a cartridge file,
@@ -37,12 +38,18 @@ module VBlank
     # (Playthroughs::CommandLine::SHOWN_WAYS), which play the game itself, so a cartridge file is
     # shown only in the emulator.
     #
+    # A SHELL. A port made from an original (a game with a data_pack) sets #shell, the game or a
+    # lambda answering it, and each film shows two sides before the others: "shell", the port's shell
+    # from its first start, and "all-in-one", the same game built all-in-one, on the same pass
+    # (FilmShell). A film file with `start_from :game` counts its frames from the shell's game's
+    # first frame, so it comes out alike on any machine; without it, from the shell's menu.
+    #
     # The task loads the library, the game's code and the film only when it runs, so defining it
     # costs a Rakefile nothing, and it starts no test framework. Making a film needs ImageMagick and
     # ffmpeg; nothing else a game does needs either, and a missing one stops the task saying what
     # to install.
     class FilmTasks < Rake::TaskLib
-      attr_accessor :name, :films, :out, :libs, :requires, :sides, :console, :lowering
+      attr_accessor :name, :films, :out, :libs, :requires, :sides, :console, :lowering, :shell
 
       def initialize(name = :film)
         super()
@@ -54,6 +61,7 @@ module VBlank
         @sides = {}
         @console = nil
         @lowering = nil
+        @shell = nil
         yield self if block_given?
         define_film_task
       end
@@ -67,7 +75,8 @@ module VBlank
       def make_film(film_name, search_path: ENV.fetch("PATH", ""), console: self.console, lowering: self.lowering)
         refuse_unknown_film!(film_name)
         load_game
-        plan = FilmScript.read(File.join(films, "#{film_name}.rb"), sides: sides, console: console, lowering: lowering)
+        plan = FilmScript.read(File.join(films, "#{film_name}.rb"), sides: sides, console: console, lowering: lowering,
+                                                                     shell: shell)
         plan.make(File.join(out, "#{film_name}.mp4"), search_path: search_path)
       end
 

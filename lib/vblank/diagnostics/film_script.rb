@@ -23,6 +23,8 @@ module VBlank
     #   start_from tape: "walk.tape"    every side plays a tape's presses first (from power-on)
     #   start_from state: { "ours" => "ours.ss1", "retail" => "retail.ss1" }
     #                                   each side starts from a state an emulator saved of it
+    #   start_from :game                the Rakefile's shell (FilmTasks#shell) is filmed from its game's
+    #                                   first frame, with its menu and unpacking played first, unfilmed
     #   side "old", "builds/old.gba"    a side of this film's own: a cartridge's path, a built one, a
     #   side("ours") { ... }            game to build, or a block answering any of them, or a running
     #                                   cartridge (see Film)
@@ -32,20 +34,29 @@ module VBlank
     #   scale 3                         each picture at three times the console's size (two if unsaid)
     #
     # A frame number counts from where the side starts: from power-on, after the tape, or after the
-    # state. A side the file names replaces the Rakefile's side of the same label, and is added if
-    # the Rakefile has none.
+    # state. A shell's two sides count from its menu, or from its game's first frame after
+    # `start_from :game`, which is the same frame on any machine however long the unpacking takes;
+    # a cartridge side beside them still starts from power-on. A side the file names replaces the
+    # Rakefile's side of the same label, and is added if the Rakefile has none.
     #
     # One more word takes everything at once, for a film already written as a call to Film.make:
     #
     #   film sides: { "ours" => -> { ... } }, parts: [1..110], keys: ->(frame) { ... }
     class FilmScript
       # What a film file asks for, once read: made into an MP4 by #make.
-      Plan = Data.define(:parts, :holds, :keys, :sides, :tape, :states, :scale, :console, :lowering) do
+      Plan = Data.define(:parts, :holds, :keys, :sides, :tape, :states, :scale, :console, :lowering, :shell, :shell_from) do
         # Write the film to +path+, handed back. +search_path+ is where ImageMagick and ffmpeg are
         # looked for (see Film.make).
         def make(path, search_path: ENV.fetch("PATH", ""))
-          openers = sides.to_h { |label, side| [label, -> { open_side(label, side) }] }
-          Film.make(path, sides: openers, parts: parts, keys: ->(frame) { buttons_on(frame) }, scale: scale, search_path: search_path)
+          Film.make(path, sides: side_openers, parts: parts, keys: ->(frame) { buttons_on(frame) }, scale: scale,
+                          search_path: search_path)
+        end
+
+        # Each side's label to the lambda that opens it, in the order Film plays them (Film.make's
+        # +sides:+): the shell's two sides first, where there is a shell, then the others. A side
+        # the film file names replaces the shell's side of that label in its place.
+        def side_openers
+          shell_openers.merge(sides.to_h { |label, side| [label, -> { open_side(label, side) }] })
         end
 
         # The buttons down on +frame+: what `keys` gives, and every hold over that frame.
@@ -55,6 +66,17 @@ module VBlank
         end
 
         private
+
+        # The shell's side and the all-in-one build's beside it (FilmShell), sharing one shell built
+        # when the first of them opens; none without a shell.
+        def shell_openers
+          return {} unless shell
+
+          film_shell = nil
+          build_shell = -> { film_shell ||= FilmShell.new(shell.respond_to?(:call) ? shell.call : shell, console: console) }
+          { SHELL_LABEL => -> { build_shell.call.open(from: shell_from) },
+            ALL_IN_ONE_LABEL => -> { build_shell.call.all_in_one } }
+        end
 
         # A side's game, opened at the moment before the film's first frame. A block or lambda
         # is called first; what it gives back that is already running is filmed as it stands. The
@@ -81,20 +103,28 @@ module VBlank
       # A side the film file names, with the console and lowering it names (nil where it names none).
       Side = Data.define(:game, :console, :lowering)
 
+      # The labels of the two sides a shell is filmed as (FilmShell#open and #all_in_one).
+      SHELL_LABEL = "shell"
+      ALL_IN_ONE_LABEL = "all-in-one"
+
       # The film in the file at +path+, with +sides+ (label to cartridge) the ones its Rakefile names.
       # +console+ and +lowering+ are what every side is opened with unless it sets its own (see
       # FilmCartridge); a name that is no console's or no lowering's is refused before any side opens.
-      def self.read(path, sides: {}, console: nil, lowering: nil)
-        script = new(path, sides: sides, console: console, lowering: lowering)
+      # +shell+ is a port (or a lambda answering one) whose shell is filmed as two sides, SHELL_LABEL
+      # and ALL_IN_ONE_LABEL, before the others (FilmShell); always played as Ruby, whatever +lowering+.
+      def self.read(path, sides: {}, console: nil, lowering: nil, shell: nil)
+        script = new(path, sides: sides, console: console, lowering: lowering, shell: shell)
         script.instance_eval(File.read(path), path.to_s, 1)
         script.plan
       end
 
-      def initialize(path, sides:, console: nil, lowering: nil)
+      def initialize(path, sides:, console: nil, lowering: nil, shell: nil)
         @path = path.to_s
         @console = console_named(console)
         @lowering = lowering_named(lowering)
         @sides = sides.transform_keys(&:to_s)
+        @shell = shell
+        @shell_from = :menu
         @parts = nil
         @holds = []
         @keys = nil
@@ -119,8 +149,9 @@ module VBlank
         @keys = given.is_a?(Hash) ? ->(frame) { given[frame] } : given
       end
 
-      def start_from(tape: nil, state: nil)
-        refuse_bad_start!(tape, state)
+      def start_from(place = nil, tape: nil, state: nil)
+        refuse_bad_start!(place, tape, state)
+        @shell_from = place if place
         @tape = tape
         @states = state.is_a?(Hash) ? state.transform_keys(&:to_s) : state
       end
@@ -146,13 +177,14 @@ module VBlank
         if @parts.nil?
           raise ArgumentError, "The film #{@path} does not say which frames to show. Add a line like `parts 1..90`."
         end
-        if @sides.empty?
+        if @sides.empty? && @shell.nil?
           raise ArgumentError, "The film #{@path} has no side to film. Name the sides in the Rakefile with `t.sides = " \
                                "{ \"ours\" => \"game.gba\" }`, or in the film with `side \"ours\", \"game.gba\"`."
         end
+        refuse_bad_shell_start!
 
         Plan.new(parts: @parts, holds: @holds, keys: @keys, sides: @sides, tape: @tape, states: @states, scale: @scale,
-                 console: @console, lowering: @lowering)
+                 console: @console, lowering: @lowering, shell: @shell, shell_from: @shell_from)
       end
 
       private
@@ -182,12 +214,28 @@ module VBlank
                              "to buttons: `keys { |frame| :a if frame == 30 }`."
       end
 
-      def refuse_bad_start!(tape, state)
-        return if tape.nil? ^ state.nil?
+      def refuse_bad_start!(place, tape, state)
+        return if [place, tape, state].compact.size == 1 && (place.nil? || FilmShell::COUNTED_FROM.include?(place))
 
-        raise ArgumentError, "`start_from` in #{@path} must name a tape or a saved state, and not both: " \
-                             "`start_from tape: \"walk.tape\"`."
+        raise ArgumentError, "`start_from` in #{@path} must name one place to start: a tape, a saved state, or the " \
+                             "shell's game: `start_from tape: \"walk.tape\"` or `start_from :game`."
       end
+
+      # A film started from the game counts from where the shell's game begins, so it needs a shell, and
+      # the shell's sides play the shell's menu, not a tape or a saved state.
+      def refuse_bad_shell_start!
+        if @shell_from == :game && @shell.nil?
+          raise ArgumentError, "The film #{@path} starts from the game of a shell. It has no shell to film. Name the " \
+                               "port in the Rakefile with `t.shell = -> { GAME }`, or remove `start_from :game`."
+        end
+        return unless @shell && (@tape || states_given?)
+
+        raise ArgumentError, "The film #{@path} films a shell. A shell starts at its menu, not from a tape or a saved " \
+                             "state. Remove `start_from tape:` or `start_from state:`, or use `start_from :game`."
+      end
+
+      # True when `start_from state:` named a state for any side.
+      def states_given? = @states.is_a?(Hash) ? !@states.empty? : !@states.nil?
 
       def refuse_bad_side!(label, cartridge, block)
         return if (label.is_a?(String) || label.is_a?(Symbol)) && (cartridge.nil? ^ block.nil?)

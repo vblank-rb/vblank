@@ -3,6 +3,7 @@
 require "test_helper"
 require "tmpdir"
 require "vblank/live"
+require "vblank/diagnostics/film_tasks"
 require "shell_tests"
 
 # A PORT'S SHELL FILMED FROM ITS FIRST START (Diagnostics::FilmShell), with the made-up port
@@ -96,6 +97,125 @@ class TestFilmShell < Minitest::Test
 
       refute_equal WHITE, first[(40 * 240) + 10], "the game showed A held before the film held it"
       assert_equal WHITE, held[(40 * 240) + 10], "A held on the film did not reach the game"
+    end
+  end
+
+  # Rounds of work the busy port's unpacking does before it writes (ShellTests#busy_port's): enough
+  # that its game, filmed from the menu, begins some tens of frames later than with one round.
+  BUSY_STEPS = 3_000_000
+
+  # Counted from the game's start, the shell's side shows the same frames of the game however many
+  # frames the unpacking took, and the all-in-one side beside it starts on its first.
+  def test_a_side_counted_from_the_game_shows_the_same_frames_however_long_the_unpacking_took
+    films = [1, BUSY_STEPS].map do |steps|
+      Dir.mktmpdir do |folder|
+        shell = FilmShell.new(moving_busy_port(original(folder), steps: steps))
+        side = shell.open(from: :game)
+        frames = Array.new(GAME_PASSES) { side.step(1).pixels }
+        side.close
+        beside = shell.all_in_one
+        frames_beside = Array.new(GAME_PASSES) { beside.step(1).pixels }
+        beside.close
+
+        assert_equal frames, frames_beside, "the all-in-one side does not start on the shell's game's first frame"
+        frames
+      end
+    end
+    expected = Dir.mktmpdir { |folder| all_in_one_pictures(moving_busy_port(original(folder), steps: 1)) }
+
+    assert_equal expected, films.first
+    assert_equal expected, films.last
+  end
+
+  # A film file with `start_from :game` opens the shell its Rakefile names (FilmTasks#shell) as two
+  # sides, the shell's and the all-in-one build's, each on the game's first frame.
+  def test_a_film_file_started_from_the_game_opens_the_rakefiles_shell_on_the_games_first_frame
+    Dir.mktmpdir do |folder|
+      game = moving_busy_port(original(folder), steps: 1)
+      path = File.join(folder, "start.rb")
+      File.write(path, "start_from :game\nparts 1..#{GAME_PASSES}\n")
+      openers = VBlank::Diagnostics::FilmScript.read(path, shell: -> { game }).side_openers
+      films = openers.transform_values do |opener|
+        side = opener.call
+        frames = Array.new(GAME_PASSES) { side.step(1).pixels }
+        side.close
+        frames
+      end
+      expected = all_in_one_pictures(game)
+
+      assert_equal %w[shell all-in-one], films.keys
+      assert_equal expected, films["shell"]
+      assert_equal expected, films["all-in-one"]
+    end
+  end
+
+  # `rake film` with a shell in the Rakefile writes the film under its name, the sides being the ones
+  # the test above opens.
+  def test_rake_film_films_the_rakefiles_shell_beside_its_all_in_one_build
+    rake_before = Rake.application
+    Rake.application = Rake::Application.new
+    Dir.mktmpdir do |folder|
+      game = port(original(folder))
+      FileUtils.mkdir_p(File.join(folder, "films"))
+      File.write(File.join(folder, "films", "start.rb"), "start_from :game\nparts 1..3\n")
+      tasks = VBlank::Diagnostics::FilmTasks.new do |t|
+        t.films = File.join(folder, "films")
+        t.out = File.join(folder, "out")
+        t.shell = -> { game }
+      end
+
+      film = tasks.make_film("start")
+
+      assert_equal File.join(folder, "out", "start.mp4"), film
+      assert_operator File.size(film), :>, 0
+    end
+  ensure
+    Rake.application = rake_before
+  end
+
+  # Starting from the game counts from a shell's game, so a film with no shell is told to name one.
+  def test_a_film_started_from_the_game_with_no_shell_is_told_to_name_one
+    Dir.mktmpdir do |folder|
+      path = File.join(folder, "start.rb")
+      File.write(path, "start_from :game\nparts 1..3\nside \"ours\", \"ours.gba\"\n")
+      refused = assert_raises(ArgumentError) { VBlank::Diagnostics::FilmScript.read(path) }
+
+      assert_match "t.shell", refused.message
+    end
+  end
+
+  def test_a_shell_side_from_an_unknown_place_is_refused
+    Dir.mktmpdir do |folder|
+      refused = assert_raises(ArgumentError) { FilmShell.new(port(original(folder))).open(from: :title) }
+
+      assert_match "from: :game", refused.message
+    end
+  end
+
+  # A port whose unpacking works +steps+ rounds before it writes (ShellTests#busy_port), and whose
+  # game moves a square a pixel each pass, so two frames of the game apart never look alike.
+  private def moving_busy_port(from, steps:)
+    VBlank.game("MADE UP", consoles: %i[gba]) do
+      screen :bitmap
+      pack = data_pack(from: from, version: "1") do |slots|
+        slots.numbers :heights, count: HEIGHTS.length, width: :byte, signed: false
+        slots.fill_from_copy do |copy, into|
+          busy = 0
+          mixed = 0
+          while busy < steps
+            mixed = ((mixed * 31) + copy.byte(mixed & 255)) & 0xFFFF
+            busy += 1
+          end
+          copy.unpack_rle at: RLE_AT, into: into[:heights]
+        end
+      end
+      heights = table :heights, pack[:heights]
+      step = var :step, 0
+      game_loop do
+        clear_screen :black
+        draw_rect_at step, 40 + heights[0], 4, 4, :white
+        step = (step + 1) & 127
+      end
     end
   end
 
