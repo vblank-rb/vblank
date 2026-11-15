@@ -28,8 +28,9 @@ module VBlank
                             step times upto].freeze
 
         # +from_unknown_block+: made from inside a block on something only running can tell apart
-        # (see LocalNames#from_unknown_block?).
-        Write = Struct.new(:node, :in_game_code, :from_unknown_block)
+        # (see LocalNames#from_unknown_block?). +from_game_block+: made from inside a game verb's
+        # block that its name's scope is outside (see LocalNames#from_game_block?).
+        Write = Struct.new(:node, :in_game_code, :from_unknown_block, :from_game_block)
 
         CHANGES = [Prism::LocalVariableWriteNode, Prism::LocalVariableOperatorWriteNode,
                    Prism::LocalVariableTargetNode, Prism::LocalVariableOrWriteNode,
@@ -97,9 +98,20 @@ module VBlank
           attr_accessor :unpacked_from_value
 
           def auto_variable?
-            return false if parameter? || !starts_variable?
+            return false if parameter?
+            return @writes.drop(1).any?(&:in_game_code) if starts_variable?
 
-            @writes.drop(1).any?(&:in_game_code)
+            changed_by_game_block_inside?
+          end
+
+          # A name first given a working-out in game code, `back = made - distance`, and changed
+          # inside a game verb's block below that line, `repeat(count) { back += 1 }`. The block is
+          # recorded once and runs many times, so a working-out moved on in it would move on once,
+          # while building, and every round would read the same number: the name is a variable
+          # that its line sets each time it runs. A working-out only carried down the lines of one
+          # block stays one, and costs nothing.
+          def changed_by_game_block_inside?
+            WHOLE_WRITES.any? { |kind| first_write.node.is_a?(kind) } && @writes.drop(1).any?(&:from_game_block)
           end
 
           # A number changed from a block that may be a pool's `each`, which only running it can
@@ -242,6 +254,10 @@ module VBlank
           @scopes_placed = {}.compare_by_identity
           @names_moved_in_game_code = {}
           @next_block_placed = false
+          # The scopes a game verb's block opens (`repeat`, `game_loop`), whose lines are recorded
+          # once and run as often as the game says.
+          @game_block_scopes = {}.compare_by_identity
+          @next_block_game = false
           # The `while` and `until` loops each write stands in, the nearest last. A block in a loop
           # runs in it; a method or a lambda runs where it is called, so it starts with none.
           @loops_around = {}.compare_by_identity
@@ -1001,6 +1017,7 @@ module VBlank
             @bodies_run_later << child if child.is_a?(Prism::BlockNode)
             game_block = child.is_a?(Prism::BlockNode) && GAME_VERBS.include?(node.name)
             @next_block_placed = true if game_block
+            @next_block_game = game_block
             read_names(child, scopes, in_game_code || game_block)
           end
           read_place_change(node) if node.name == :[]= || node.attribute_write?
@@ -1041,7 +1058,9 @@ module VBlank
         def read_block(node, scopes, in_game_code)
           scope = {}
           @scopes_placed[scope] = true if @next_block_placed
+          @game_block_scopes[scope] = true if @next_block_game
           @next_block_placed = false
+          @next_block_game = false
           parameter_names(node.parameters).each { |name| scope[name] = Local.new(name, parameter: true) }
           # A method or a lambda runs where it is called, not on the side of an `if` it is written in.
           sides = [Prism::DefNode, Prism::LambdaNode].any? { |kind| node.is_a?(kind) } ? [] : @sides_apart
@@ -1068,6 +1087,12 @@ module VBlank
           node.depth.positive? && scopes.last(node.depth).any? { |scope| !@scopes_placed.key?(scope) }
         end
 
+        # Does +node+ reach its name through a game verb's block, whose lines run as often as the
+        # game says, though they are recorded once?
+        def from_game_block?(node, scopes)
+          node.depth.positive? && scopes.last(node.depth).any? { |scope| @game_block_scopes.key?(scope) }
+        end
+
         def record_write(node, scopes, in_game_code)
           scope = scopes[-1 - node.depth]
           @outside_writes << node if scope.nil? && in_game_code
@@ -1077,7 +1102,8 @@ module VBlank
           record_change(local, node)
           @writes_in_game_code[node] = true if in_game_code || @iterating_in_game_code
           @writes_in_methods[node] = true if @in_method
-          local.writes << Write.new(node, in_game_code || looped_from_outside?(local), from_unknown_block?(node, scopes))
+          local.writes << Write.new(node, in_game_code || looped_from_outside?(local), from_unknown_block?(node, scopes),
+                                    from_game_block?(node, scopes))
           local.reads << node unless WHOLE_WRITES.any? { |kind| node.is_a?(kind) }
           @locals_by_node[node] = local
           @loops_around[node] = @open_loops unless @open_loops.empty?

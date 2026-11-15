@@ -3310,6 +3310,30 @@ class TestPlainRuby < Minitest::Test
     assert_equal 3, player[:most]
   end
 
+  # `back = made - 3` in game code, moved on by a `repeat` below it: each round reads the number
+  # the round before left, 1 then 2 then 3, as Ruby's `3.times` would, and the line starts it again
+  # on every pass. Left a working-out, `back += 1` would move on once, while building.
+  def test_a_name_started_from_a_working_out_in_game_code_and_moved_on_by_a_repeat_keeps_each_round
+    player = played(frames: 2) do
+      made = 4
+      sum = 0
+      last = 0
+      game_loop do
+        back = made - 3
+        sum = 0
+        repeat(3) do
+          sum += back
+          back += 1
+        end
+        last = back
+        made += 1
+      end
+    end
+
+    # The second pass starts from made 5: 2 + 3 + 4.
+    assert_equal [9, 5], [player[:sum], player[:last]]
+  end
+
   # `column = 0` at the top of each round of a loop the game makes, counted by a loop of Ruby's
   # inside it: the counter is plain Ruby, written out twice, on every round.
   def test_a_ruby_loop_counted_from_zero_inside_a_loop_of_the_games_is_written_out
