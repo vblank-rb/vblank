@@ -184,6 +184,7 @@ module VBlank
 
               name = variable_kept_at_least(operand, bytes)
               return emit_low_bytes_at(kept_place_of(name), bytes) if name
+              return emit_item_low_bytes(operand, bytes) if list_item_in_place?(operand)
               return emit_low_negative(operand, bytes) if operand.is_a?(Node) && operand.kind == :neg
               return value(operand) unless operand.is_a?(Node) && operand.kind == :binop
 
@@ -292,6 +293,8 @@ module VBlank
                 @asm.push(:de)
               end
               low_value(left, bytes)
+              return if number&.zero? && %i[+ - | ^].include?(node.op)
+
               if number
                 %i[e d].first(bytes).each_with_index do |register, i|
                   @asm.load(:a, register)

@@ -47,6 +47,23 @@ module DrawOrderCostGames
     end
   end
 
+  # A pool of +count+ for +console+, every one spawned, sorted by the bottom of each one's box, and
+  # every one moving down a pixel a pass, coming round to the top at 128: the order holds on most
+  # passes, and on some one thing goes from the back of it to the front.
+  def self.drifting_pool_game(console, count)
+    block = BLOCK
+    VBlank.game("DRIFTING POOL", consoles: [console]) do
+      screen :tiled
+      image(:block, "#" => :red) { block }
+      crowd = pool :crowd, x: 0, y: 0, capacity: count, image: :block
+      draw_in_order(crowd)
+      count.times { |i| crowd.spawn(x: (i * 13) % 200, y: (i * 37) % 120) }
+      game_loop do
+        crowd.each { |thing| thing.y = (thing.y + 1) & 127 }
+      end
+    end
+  end
+
   # How many passes of +game+ took each number of frames, built for +console+ and played twenty.
   def self.passes_by_frames(console, game)
     game.build_rom(console: console, out: StringIO.new, err: StringIO.new, profile: false)

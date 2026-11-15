@@ -150,6 +150,7 @@ module VBlank
           include WrittenNumbers
           include Division
           include KeptVariables
+          include KeyedSort
 
           # EVERY KIND THIS LOWERING CANNOT MAKE YET, by what it is part of. A kind leaves the list the
           # day the Color does it; test_gbc_kind_coverage.rb holds the list and the kind lists above to
@@ -303,7 +304,7 @@ module VBlank
             @declared_lists.each_value do |node|
               next if held_run_on_list(node.name)
 
-              width = LoweringPlan::SLOT_BYTES.fetch(node.width)
+              width = LoweringPlan::SLOT_BYTES.fetch(list_width(node))
               # Named as the game names it, since running out of room says which list asked.
               place = @memory.reserve("the list #{node.name.inspect}", Runtime::Lists::HEADER + (node.capacity * width))
               @lists[node.name] = [place, node.capacity, width, node.name.to_s]
@@ -363,7 +364,7 @@ module VBlank
           # Does the game declare a list of bytes full, or fill one? Then its runtime carries the
           # quick way to do it, and a game that does neither builds without it.
           def fills_byte_lists?
-            lists = @program.walk.select { |node| node.kind == :list_new && node.width == :byte }
+            lists = lists_kept_as(:byte)
             names = lists.map(&:name)
             lists.any?(&:full_of) || @program.walk.any? { |node| node.kind == :list_fill && names.include?(node.name) }
           end
@@ -371,7 +372,7 @@ module VBlank
           # Whether the game pushes bytes or takes from a list's front, so wants the routines that do
           # those quickly (Runtime::Lists#emit_queue_routines).
           def keeps_queues?
-            bytes = @program.walk.select { |node| node.kind == :list_new && node.width == :byte }.map(&:name)
+            bytes = lists_kept_as(:byte).map(&:name)
             @program.walk.any? do |node|
               (node.kind == :list_push && bytes.include?(node.name)) || (node.kind == :list_drop && node.from == :front)
             end
@@ -384,7 +385,7 @@ module VBlank
           # Whether the game pushes onto a list of halves or takes from one's front, so wants the
           # routines that push and read such a list quickly (Runtime::Lists#emit_queue_routines).
           def keeps_half_queues?
-            halves = @program.walk.select { |node| node.kind == :list_new && node.width == :half }.map(&:name)
+            halves = lists_kept_as(:half).map(&:name)
             @program.walk.any? do |node|
               (node.kind == :list_push || (node.kind == :list_drop && node.from == :front)) && halves.include?(node.name)
             end
@@ -709,6 +710,16 @@ module VBlank
               end
             end
 
+            # The lists kept in narrower slots than declared (GBC::ListWidths), each with its slot,
+            # :byte or :half. Their proof reads the variables kept in a byte, so it is made again
+            # whenever those are.
+            def list_widths
+              @list_widths ||= begin
+                narrow = (@cache.program.kept_widths || []).to_h.merge(byte_variables.to_h { |name| [name, :byte] })
+                ListWidths.new(@cache.program, narrow_variables: narrow).widths
+              end
+            end
+
             # THE VARIABLES WHOSE PLACE THE LOWERING HANDS OVER (Lowering#place_of): to a runtime
             # routine that reads or writes them where they are kept, or to code reading all four
             # bytes. Each is kept whole on every try after the one that found it, declared narrow
@@ -719,6 +730,7 @@ module VBlank
             def keep_whole(name)
               handed_over << name
               @byte_variables = nil
+              @list_widths = nil
             end
 
             # The tiles each background's `set_tile`s put in its cells, by the background's name.
@@ -1122,6 +1134,8 @@ module VBlank
           # round as signed ones, so the borrow is turned over when their top bits differ.
           def emit_list_sort(node)
             refuse_sorting_front_dropped!(node)
+            return emit_keyed_sort(node) if keyed_sort?(node)
+
             place, _capacity, width = list_placed(node)
             keys_place, _key_capacity, key_width = @lists.fetch(node.by) do
               raise LoweringError, "the list #{node.by.inspect} is sorted by and never declared"
@@ -1300,6 +1314,8 @@ module VBlank
           def value_of_list_get(node)
             place, capacity, width = list_placed(node)
             if (slot = fixed_slot(node))
+              return emit_slot_widened(slot, width) if width < 4
+
               @asm.load(:hl, slot)
               return @asm.call(TABLE_KEPT.fetch([width, true]).last)
             end
@@ -1331,21 +1347,46 @@ module VBlank
             return list_call("rt_list_set", node, node.index, node.value) if front_dropped_lists.include?(node.name)
 
             place, capacity, width = list_placed(node)
+            if (slot = fixed_slot(node))
+              low_value(node.value, width)
+              @asm.load(:hl, slot)
+              return emit_slot_written(width)
+            end
+
             out_of_range = fresh("list_index_out_of_range")
             done = fresh("list_item_written")
             emit_list_slot_of_index(node.index, place, capacity, width, out_of_range, fixed: fixed_length_lists.include?(node.name))
             @asm.push(:hl)
-            value(node.value)
+            low_value(node.value, width) # a slot keeps only its own bytes
             @asm.pop(:hl)
-            %i[e d c b].first(width).each_with_index do |reg, i|
-              @asm.inc(:hl) unless i.zero?
-              @asm.load([:hl], reg)
-            end
+            emit_slot_written(width)
             @asm.jump(done)
             @asm.label(out_of_range)
             value(node.index) if kept_list_index?(node.index, capacity)
             list_set_through_routine(place)
             @asm.label(done)
+          end
+
+          # BCDE = the slot of one or two bytes at +slot+, its sign copied upward: a pool's sprite
+          # reads its place so, a few instructions rather than a call.
+          def emit_slot_widened(slot, width)
+            @asm.load(:a, [slot])
+            @asm.load(:e, :a)
+            @asm.load(:a, [slot + 1]) if width == 2
+            @asm.load(:d, :a) if width == 2
+            @asm.rla
+            @asm.sbc_a(:a)
+            @asm.load(:d, :a) if width == 1
+            @asm.load(:c, :a)
+            @asm.load(:b, :a)
+          end
+
+          # The low +width+ bytes of BCDE into the slot at HL.
+          def emit_slot_written(width)
+            %i[e d c b].first(width).each_with_index do |reg, i|
+              @asm.inc(:hl) unless i.zero?
+              @asm.load([:hl], reg)
+            end
           end
 
           # HL = the slot the index in BCDE names in the list at +place+, whose slots are +width+
@@ -1412,8 +1453,9 @@ module VBlank
             end
           end
 
-          # The steps that leave a list as long as it is.
-          FIXED_LENGTH_STEPS = %i[list_new list_get list_set list_len].freeze
+          # The steps that leave a list as long as it is: a sort moves its items and its numbers' items
+          # within their slots.
+          FIXED_LENGTH_STEPS = %i[list_new list_get list_set list_len list_sort].freeze
 
           # The lists some reachable step takes an item from the front of.
           def front_dropped_lists
@@ -1459,6 +1501,13 @@ module VBlank
           def list_placed(node)
             @lists.fetch(node.name) { raise LoweringError, "the list #{node.name.inspect} is used and never declared" }
           end
+
+          # The slots list +node+ (its `list_new`) is kept in: as declared, or narrower where every
+          # number it can hold fits (GBC::ListWidths).
+          def list_width(node) = @cache.facts.list_widths.fetch(node.name, node.width)
+
+          # The `list_new` of every list kept in slots of +width+ (#list_width).
+          def lists_kept_as(width) = @program.walk.select { |node| node.kind == :list_new && list_width(node) == width }
 
           # Reference#exec_table_get: the index made safe (LoweringPlan.index_kept_in_range).
           def value_of_table_get(node)
@@ -2022,6 +2071,9 @@ module VBlank
           # The entry of a table of the drawing's numbers at an index the program has already kept
           # inside it: HL = the table + the index × the entry's size.
           def table_entry(entry)
+            number = written_entry(entry)
+            return load_constant(number) if number
+
             value(entry.index)
             (entry.bytes / 2).times do
               @asm.sla(:e)
@@ -2035,6 +2087,20 @@ module VBlank
             @asm.load_bank_of(:a, entry.label)
             @asm.load(:de, reader)
             @asm.call("rt_far_read")
+          end
+
+          # The number +entry+ reads when its index is written in the program and its table is one of
+          # the drawing's, which never changes once made: a sprite with one pose reads its picture and
+          # its colours at pose nought. Nil for any other.
+          def written_entry(entry)
+            at = folded(entry.index) or return nil
+            table = @drawing_tables.find { |held| held.label == entry.label } or return nil
+            raw = at.between?(0, table.entries.length - 1) && table.entries[at]
+            return nil unless raw.is_a?(Integer)
+
+            bits = entry.bytes * 8
+            raw &= (1 << bits) - 1
+            entry.signed && raw >= (1 << (bits - 1)) ? raw - (1 << bits) : raw
           end
 
           def value_of_int(node) = load_constant(node.value)

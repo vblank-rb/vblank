@@ -28,4 +28,36 @@ class TestGBCDrawInOrderCost < Minitest::Test
 
     assert_operator share, :<, 0.06, "an order of seven costs #{(share * 154).round(1)} of the frame's 154 lines"
   end
+
+  # Passes of +game+ played in thirty frames, and the frames.
+  private def passes_in_thirty_frames(game)
+    result = game.build_rom(console: :gbc, out: StringIO.new, err: StringIO.new, profile: false)
+                 .profile(out: StringIO.new, frames: 30)
+    [result.passes, result.frames]
+  end
+
+  # Measured: a pass took two frames before the sort was written out a place at a time.
+  def test_a_pool_of_thirty_two_moving_in_order_keeps_a_pass_a_frame
+    passes, frames = passes_in_thirty_frames(DrawOrderCostGames.drifting_pool_game(:gbc, 32))
+
+    assert_equal frames, passes, "every pass fits in one frame"
+  end
+
+  # Every thing passes every other each pass. Measured: a pass took three frames before the sort
+  # turned a run standing the wrong way round over at once.
+  def test_a_pool_of_thirty_two_whose_order_turns_round_keeps_a_pass_a_frame
+    passes, frames = passes_in_thirty_frames(DrawOrderCostGames.reversed_pool_game(:gbc, 32))
+
+    assert_equal frames, passes, "every pass fits in one frame"
+  end
+
+  # The checked run compares the sprites drawn, back to front, with the interpreter's after every
+  # pass, and stops at the first that differs.
+  def test_a_pool_of_thirty_two_moving_in_order_is_drawn_as_the_interpreter_draws_it
+    game_player.run(DrawOrderCostGames.drifting_pool_game(:gbc, 32).program(console: :gbc), frames: 140)
+  end
+
+  def test_a_pool_of_thirty_two_whose_order_turns_round_is_drawn_as_the_interpreter_draws_it
+    game_player.run(DrawOrderCostGames.reversed_pool_game(:gbc, 32).program(console: :gbc), frames: 8)
+  end
 end

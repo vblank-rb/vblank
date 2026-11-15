@@ -277,6 +277,39 @@ module VBlank
               @asm.label(read)
             end
 
+            # E (and D for two) = the low +bytes+ bytes of the item +item+ reads, from its slot, with
+            # no whole number made of it; a slot of one byte gives the second its sign. An index out
+            # of range stops the game, as reading the item would.
+            def emit_item_low_bytes(item, bytes)
+              place, capacity, width = list_placed(item)
+              read = fresh("list_item_read")
+              out_of_range = nil
+              if (slot = fixed_slot(item))
+                @asm.load(:hl, slot)
+              else
+                out_of_range = fresh("list_index_out_of_range")
+                emit_list_slot_of_index(item.index, place, capacity, width, out_of_range, fixed: fixed_length_lists.include?(item.name))
+              end
+              @asm.load(:a, [:hli])
+              @asm.load(:e, :a)
+              if bytes == 2
+                if width == 1
+                  @asm.rla
+                  @asm.sbc_a(:a)
+                  @asm.load(:d, :a)
+                else
+                  @asm.load(:d, [:hl])
+                end
+              end
+              return unless out_of_range
+
+              @asm.jump(read)
+              @asm.label(out_of_range)
+              value(item.index) if kept_list_index?(item.index, capacity)
+              list_get_through_routine(place)
+              @asm.label(read)
+            end
+
             # A list this long or shorter is indexed by a variable kept in a byte with one compare.
             BYTE_INDEXED_CAPACITY = 0x80
 

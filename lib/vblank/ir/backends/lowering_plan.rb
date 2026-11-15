@@ -182,7 +182,8 @@ module VBlank
         # of them; and nothing else in the program names either list. Both are the framework's own,
         # which nothing compares with the interpreter's, so a lowering that keeps the order in tables
         # of its own (SNES::Lowering#emit_keyed_sort, Genesis::Lowering#emit_keyed_sort) answers for
-        # what is drawn from it and nothing else.
+        # what is drawn from it and nothing else. The Color sorts the list itself, its places written
+        # out one by one (GBC::Lowering::KeyedSort).
         def sorts_kept_apart
           @sorts_kept_apart ||= begin
             uses = list_uses

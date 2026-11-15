@@ -59,7 +59,7 @@
     },
     "everywhere@gbc": {
       "code": 8064,
-      "data": 3408
+      "data": 3392
     },
     "everywhere@genesis": {
       "code": 4780,
@@ -139,7 +139,7 @@
     },
     "pacman@gbc": {
       "code": 8187,
-      "data": 14480
+      "data": 14320
     },
     "parallax": {
       "code": 2092,
@@ -187,7 +187,7 @@
     },
     "scoreboard@gbc": {
       "code": 7774,
-      "data": 7664
+      "data": 7632
     },
     "scroll": {
       "code": 2348,
@@ -239,7 +239,7 @@
     },
     "tower@gbc": {
       "code": 8409,
-      "data": 16320
+      "data": 16288
     },
     "tower@genesis": {
       "code": 6296,
