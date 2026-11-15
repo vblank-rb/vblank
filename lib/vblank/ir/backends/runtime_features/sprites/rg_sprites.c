@@ -94,7 +94,7 @@ static void blit_image_turned(int32_t image, int32_t x, int32_t y, int32_t angle
       int64_t from_x = floor_div(turn_cos * dx + turn_sin * dy, one_th) + width / 2;
       int64_t from_y = floor_div(-turn_sin * dx + turn_cos * dy, one_th) + height / 2;
       if (from_x < 0 || from_x >= width || from_y < 0 || from_y >= height) continue;
-      int32_t color = art.pixels[from_y * width + from_x];
+      int32_t color = picture_pixel(art, from_y * width + from_x);
       if (color != RG_NOT_DRAWN) set_pixel(left + ix, line, color);
     }
   }
@@ -275,7 +275,7 @@ static void blit_with_slices_left_out(const placed_object *placed) {
   picture art = picture_of(placed->image);
   for (int32_t row = 0; row < art.height; row++)
     for (int32_t col = 0; col < art.width; col++) {
-      int32_t color = art.pixels[row * art.width + col];
+      int32_t color = picture_pixel(art, row * art.width + col);
       int64_t line = (int64_t)placed->y + row;
       if (color != RG_NOT_DRAWN && !left_out_at(placed, col, row, line)) set_pixel((int64_t)placed->x + col, line, color);
     }
@@ -505,7 +505,7 @@ static int64_t block_end(int64_t edge) { return -floor_div(-edge, sprite_block) 
  * where it is see-through and anywhere outside it. */
 static int32_t picture_color(picture art, int64_t col, int64_t row) {
   if (col < 0 || col >= art.width || row < 0 || row >= art.height) return RG_NOT_DRAWN;
-  return art.pixels[row * art.width + col];
+  return picture_pixel(art, row * art.width + col);
 }
 
 /* SpriteBlocks#paint_box: one box of a sprite whose picture's corner is at (x, y), the box's own

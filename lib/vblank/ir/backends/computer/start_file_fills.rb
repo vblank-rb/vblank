@@ -32,6 +32,10 @@ module VBlank
         # and places are the file's, a list of colours the picture is drawn in instead is the
         # game's (known), and a turned picture is read turned.
         module StartFileFills
+          # How many places a pose read from the file (IR::StartFile::Pose) can draw: one for each
+          # number its tiles' planes can hold, so the colours of its places are that many long.
+          def self.pose_places(where) = 1 << where.tile_format.plane_bits.length
+
           private
 
           def reads_start_file? = !@program.start_file.nil?
@@ -611,8 +615,10 @@ module VBlank
           # file (IR::StartFile::Picture) of +width+ by +height+, +colors+ and +places+ are the lists
           # the game holds (the file has none of them), and +swapped+ the list of colours it is drawn
           # in instead, or nil. +image+ is the number of the image filled (Picture#image_arrays), or
-          # -1 for tile pixels.
-          StartFileFill = Data.define(:kind, :start, :width, :height, :from, :colors, :places, :swapped, :image)
+          # -1 for tile pixels. +place_colors_at+ is, for a pose held once (Picture#lay_out_images_read_at_start),
+          # where this image's colours of its places start in the image pixels; its pixels at +start+
+          # are then the places themselves. Nil for a picture whose pixels are its colours.
+          StartFileFill = Data.define(:kind, :start, :width, :height, :from, :colors, :places, :swapped, :image, :place_colors_at)
 
           # rg_runtime.h's numbers for what is filled and how it is turned.
           FILL_KINDS = Ractor.make_shareable({ tile: 0, image: 1 })
@@ -623,19 +629,24 @@ module VBlank
           # runs. The runtime is told how many pixels there are in all, since the C keeps them where
           # they cannot be written and fills a copy of them (rg_screen_tile_pixels_to_fill,
           # rg_screen_image_pixels_to_fill).
-          def record_start_file_fill(kind, start, node, swapped, image: -1)
+          def record_start_file_fill(kind, start, node, swapped, image: -1, place_colors_at: nil)
             @start_file_fills << StartFileFill.new(kind: kind, start: start, width: node.width, height: node.height,
                                                    from: node.from_file, colors: node.colors, places: node.places.bytes,
-                                                   swapped: swapped, image: image)
-            # Filled in a list of markers, its pixels hold them until they are put in their colours.
+                                                   swapped: swapped, image: image, place_colors_at: place_colors_at)
+            # Filled in a list of markers, its pixels hold them until they are put in their colours:
+            # for a pose held once, the colours of its places do.
             return unless marks_colors? && [*node.colors, *swapped].any? { |color| IR::StartFile.marker?(color) }
 
-            @start_file_marked_pixels << MarkedPixels.new(kind: kind, start: start, count: node.width * node.height)
+            @start_file_marked_pixels << if place_colors_at
+                                           MarkedPixels.new(kind: kind, start: place_colors_at, count: StartFileFills.pose_places(node.from_file))
+                                         else
+                                           MarkedPixels.new(kind: kind, start: start, count: node.width * node.height)
+                                         end
           end
 
           def build_start_file_picture_fills
             poses, pictures = @start_file_fills.partition { |fill| fill.from.is_a?(IR::StartFile::Pose) }
-            pose_fills = poses.group_by { |fill| fill.with(start: nil, swapped: nil, image: nil) }.map do |_, copies|
+            pose_fills = poses.group_by { |fill| fill.with(start: nil, swapped: nil, image: nil, place_colors_at: nil) }.map do |_, copies|
               total = copies.first.kind == :tile ? @tile_pixel_count : @image_pixel_count
               eval_call("rg_start_file_fill_pose", drawing_array("start_file_pose", "int32_t", start_file_pose_rules(copies, total)))
             end
@@ -656,7 +667,9 @@ module VBlank
           # THE FRAME IS PAINTED ONCE, however many lists of colours the pose is drawn in. +copies+
           # are the pose's fills that differ only in where their pixels start and the list they are
           # drawn in instead (StartFileFill#start and #swapped); a title's pose followed through
-          # sixty sets of colours is one painting and sixty copies.
+          # sixty sets of colours is one painting and sixty copies. A copy held once
+          # (StartFileFill#place_colors_at) is the frame's places at its start, written once for all
+          # the copies sharing them, and the colours of each place in its set.
           #
           # The numbers rg_start_file_fill_pose reads (rg_runtime.h has what each is).
           def start_file_pose_rules(copies, total)
@@ -666,7 +679,7 @@ module VBlank
             header = [FILL_KINDS.fetch(fill.kind), total, copies.length, fill.width, fill.height, turn,
                       where.colors_at || -1, where.colors_count, where.entry_at, where.records_at,
                       where.origin_x, where.origin_y, where.tiles_at, where.tile_count, where.bank || -1,
-                      *pose_piece_rules]
+                      *pose_piece_rules, StartFileFills.pose_places(where)]
             unless header.length == StartFileNumbers::POSE_HEADER_NUMBERS
               raise ArgumentError, "A pose fill's rules header has #{header.length} numbers, and StartFileNumbers::" \
                                    "POSE_HEADER_NUMBERS says #{StartFileNumbers::POSE_HEADER_NUMBERS}. Change both together."
@@ -674,7 +687,7 @@ module VBlank
 
             each_copy = copies.flat_map do |copy|
               swapped = copy.swapped || []
-              [copy.start, copy.image, swapped.length, *swapped]
+              [copy.start, copy.place_colors_at || -1, copy.image, swapped.length, *swapped]
             end
             [*header, *tile_format_rules(where.tile_format), *color_format_rules(where.color_format),
              *(fill.colors unless where.colors_at), *each_copy]

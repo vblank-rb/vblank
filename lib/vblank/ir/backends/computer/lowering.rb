@@ -270,6 +270,14 @@ module VBlank
             top_level.sum { |item| item.is_a?(Statements::StartFileArray) ? item.count * ARRAY_TYPE_BYTES.fetch(item.type) : 0 }
           end
 
+          # THE BYTES OF ROOM THE GAME MAKES AS IT STARTS FOR THE SPRITE PICTURES THE START FILE FILLS
+          # (StartFileFills#build_start_file_pixel_room), which the written game names only by size.
+          # Public for the same tests; asking lowers the program.
+          def start_file_image_room_bytes
+            top_level
+            (@image_pixel_count - @image_pixels_held) * ARRAY_TYPE_BYTES.fetch("int16_t")
+          end
+
           private
 
           # --- the file ---

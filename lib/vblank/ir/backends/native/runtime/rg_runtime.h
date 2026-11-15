@@ -244,10 +244,14 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * the object's place is in the picture, across and down; where the tiles are in the file and
  * how many; the bank a piece must name to be painted (-1 for every piece); and how the console's
  * sprite table holds a piece, 0 where it draws every piece (else 1 for small pieces, 2 for squares,
- * 3 for rectangles), and how tall a small piece is. Then the two
+ * 3 for rectangles), and how tall a small piece is; and how many places a tile can draw. Then the two
  * layouts and the game's own colours where the file has none, as rg_start_file_fill_picture has
- * them. Then for each copy: where its pixels start, the number of its image (-1 for tile pixels),
- * how many colours of another list it is drawn with, and that list. Place 0 is see-through. Where
+ * them. Then for each copy: where its pixels start, where the colours of its places start (-1 for
+ * a copy whose pixels are its colours), the number of its image (-1 for tile pixels), how many
+ * colours of another list it is drawn with, and that list. A copy with colours of its places holds
+ * the frame's places as its pixels, RG_NOT_DRAWN where nothing is, written once for every copy that
+ * shares them, and the colour of each place after; the image is drawn through those colours
+ * (rg_game_images, RG_IMAGE_FIELDS). Place 0 is see-through. Where
  * the console's table holds only so many pieces, the frame's pieces are listed for each copy's image
  * as that table holds them (rg_screen_read_image_pieces), in the frame's order, so the same pieces
  * are left out as where the game holds the frame. The file is the player's, and the game plays on whatever it

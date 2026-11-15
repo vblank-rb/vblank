@@ -39,7 +39,8 @@ RG_NO_LAYER = -1
 RG_MAX_SPRITES = 512
 RG_MAX_SEE_THROUGH = 16
 RG_AREAS_DEEP = 64
-RG_IMAGE_FIELDS = 3
+RG_IMAGE_FIELDS = 4
+RG_NO_IMAGE_COLORS = -1
 
 # Each layer the game can be seen through is RG_ST_FIELDS numbers in @rg_game_see_through.
 RG_ST_AMOUNTS_WRITTEN = 0
@@ -633,14 +634,19 @@ end
 
 # --- sprites ---
 
-# One picture: its pixels, where they start among them, and its size — [pixels, start, width,
-# height]. A painted image's pixels are its own, from 0; any other is in @rg_game_image_pixels.
+# One picture: its pixels, where they start among them, its size, and where among them the colours
+# of its places start where its pixels are places, or nil where they are colours (rg_screen.h) —
+# [pixels, start, width, height, colors]. A painted image's pixels are its own, from 0; any other is
+# in @rg_game_image_pixels.
 def rg_picture_of(image)
   info = RG_IMAGE_FIELDS * image
   painted = @rg_painted_images && @rg_painted_images[image]
   width = @rg_game_images[info + 1]
   height = @rg_game_images[info + 2]
-  painted ? [painted, 0, width, height] : [@rg_game_image_pixels, @rg_game_images[info], width, height]
+  return [painted, 0, width, height, nil] if painted
+
+  colors = @rg_game_images[info + 3]
+  [@rg_game_image_pixels, @rg_game_images[info], width, height, colors == RG_NO_IMAGE_COLORS ? nil : colors]
 end
 
 # Reference#run_tile_places: the 64 places of tile +which+ of a run's list, row by row. Each byte
@@ -737,20 +743,23 @@ end
 
 # Reference#blit_image: a see-through pixel is skipped, and each other one goes on as stored.
 def rg_blit_image(image, x, y)
-  art, start, width, height = rg_picture_of(image)
-  return rg_blit_plain(art, start, width, height, x, y) if rg_painting_plain?
+  art, start, width, height, colors = rg_picture_of(image)
+  return rg_blit_plain(art, start, width, height, x, y, colors) if rg_painting_plain?
 
   height.times do |row|
     width.times do |col|
       color = art[start + (row * width) + col]
-      rg_set_pixel(x + col, y + row, color) if color != RG_NOT_DRAWN
+      next if color == RG_NOT_DRAWN
+
+      rg_set_pixel(x + col, y + row, colors ? art[colors + color] : color)
     end
   end
 end
 
 # rg_blit_image when painting plain (rg_painting_plain?): the picture's +width+ by +height+ pixels
-# from +start+ in +art+, its corner at (x, y).
-def rg_blit_plain(art, start, width, height, x, y)
+# from +start+ in +art+, its corner at (x, y), each looked up in the colours of its places from
+# +colors+ in +art+ where those are given (rg_picture_of).
+def rg_blit_plain(art, start, width, height, x, y, colors)
   area = @rg_area
   left, right = rg_kept_span(x, x + width, RG_SCREEN_WIDTH, area.left, area.right, area.in_force)
   top, bottom = rg_kept_span(y, y + height, RG_SCREEN_HEIGHT, area.top, area.bottom, area.in_force)
@@ -767,6 +776,7 @@ def rg_blit_plain(art, start, width, height, x, y)
     while px < right
       color = art[from + px]
       if color != RG_NOT_DRAWN
+        color = art[colors + color] if colors
         target[at + px] = color & 0xFFFF
         is_mixed[at + px] = 0 if is_mixed
         touched = true

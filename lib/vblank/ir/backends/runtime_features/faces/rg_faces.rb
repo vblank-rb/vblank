@@ -134,7 +134,7 @@ def rg_face_row(row, from, to, left, right, image, numbers, spans, shading)
     shading_colors = shading[1]
     places = rg_shading_places_of(shading)
   end
-  art, at, art_width, art_height = rg_picture_of(image)
+  art, at, art_width, art_height, art_colors = rg_picture_of(image)
   across_mask = art_width - 1
   down_mask = art_height - 1
   numbered, numbered_at, = rg_picture_of(numbers) if numbers
@@ -194,6 +194,7 @@ def rg_face_row(row, from, to, left, right, image, numbers, spans, shading)
     across = (u >> 16) & across_mask
     down = (v >> 16) & down_mask
     color = art[at + (down * art_width) + across]
+    color = art[art_colors + color] if art_colors && color != RG_NOT_DRAWN
     unless color == RG_NOT_DRAWN
       # Reference::Shade#color_at, or #pixel_color_at for a picture of numbers: the colour's place
       # in the shading's list becomes, at the pixel's level (the top sixteen bits of its shade), the

@@ -67,7 +67,7 @@ end
 # through the turn to the pixel of the picture that lands there; one that falls outside the picture
 # is not drawn. A screen pixel is taken at its whole coordinate and the answer rounded down.
 def rg_blit_image_turned(image, x, y, angle, size, resizes)
-  art, start, width, height = rg_picture_of(image)
+  art, start, width, height, colors = rg_picture_of(image)
   one_th = @rg_game_turn_rules[1]
   turn_cos, turn_sin = rg_affine_matrix(angle % 360, size)
   left = x - (width / 2)
@@ -86,6 +86,7 @@ def rg_blit_image_turned(image, x, y, angle, size, resizes)
       next if from_x < 0 || from_x >= width || from_y < 0 || from_y >= height
 
       color = art[start + (from_y * width) + from_x]
+      color = art[colors + color] if colors && color != RG_NOT_DRAWN
       rg_set_pixel(left + ix, line, color) if color != RG_NOT_DRAWN
     end
   end
@@ -205,11 +206,12 @@ end
 
 # Reference#blit_image with a sprite's slices left out.
 def rg_blit_with_slices_left_out(placed)
-  art, start, width, height = rg_picture_of(placed.image)
+  art, start, width, height, colors = rg_picture_of(placed.image)
   height.times do |row|
     line = placed.y + row
     width.times do |col|
       color = art[start + (row * width) + col]
+      color = art[colors + color] if colors && color != RG_NOT_DRAWN
       rg_set_pixel(placed.x + col, line, color) if color != RG_NOT_DRAWN && !rg_left_out_at?(placed, col, row, line)
     end
   end
@@ -432,10 +434,11 @@ def rg_block_end(edge) = -((-edge) / @rg_sprite_block) * @rg_sprite_block
 # Reference#picture_reader: what a picture shows at a column and row of itself, or RG_NOT_DRAWN
 # where it is see-through and anywhere outside it.
 def rg_picture_color(picture, col, row)
-  art, start, width, height = picture
+  art, start, width, height, colors = picture
   return RG_NOT_DRAWN if col < 0 || col >= width || row < 0 || row >= height
 
-  art[start + (row * width) + col]
+  color = art[start + (row * width) + col]
+  colors && color != RG_NOT_DRAWN ? art[colors + color] : color
 end
 
 # SpriteBlocks#paint_box: one box of a sprite whose picture's corner is at (x, y), the box's own

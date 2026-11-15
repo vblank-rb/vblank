@@ -154,7 +154,7 @@ static void face_row(int32_t row, int32_t *from, int32_t *to, int32_t left, int3
     }
     int32_t across = rg_and(rg_shr(u, 16), art.width - 1);
     int32_t down = rg_and(rg_shr(v, 16), art.height - 1);
-    int32_t color = art.pixels[down * art.width + across];
+    int32_t color = picture_pixel(art, down * art.width + across);
     if (color == RG_NOT_DRAWN) continue;
     if (shading) {
       int32_t shade = rg_add(from[4], rg_mul(steps[3], along));
@@ -215,7 +215,7 @@ void rg_screen_face(const int32_t *pictures, int32_t picture_count, int32_t whic
   picture art = picture_of(image);
   /* After the levels' places, a lit fill lists, for each of its pictures, the image of its numbers
    * into the shading's colours, or -1 for a picture of colours. */
-  picture numbers = {NULL, 0, 0};
+  picture numbers = {NULL, 0, 0, NULL};
   if (shading) {
     int32_t numbered = shading[2 + shading[1] + shading[0] * shading[1] + clamp32(which, 0, picture_count - 1)];
     if (numbered >= 0) numbers = picture_of(numbered);

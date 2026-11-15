@@ -13,7 +13,7 @@
 def rg_screen_column(image, slice, x, top, height, width)
   return if height <= 0
 
-  art, start, art_width, art_height = rg_picture_of(image)
+  art, start, art_width, art_height, colors = rg_picture_of(image)
   column = rg_clamp_wide(slice, 0, art_width - 1)
   step = (art_height << 16) / height
   first = top < 0 ? -top : 0
@@ -21,6 +21,7 @@ def rg_screen_column(image, slice, x, top, height, width)
   (first...past).each do |row|
     source = rg_clamp_wide((row * step) >> 16, 0, art_height - 1)
     color = art[start + (source * art_width) + column]
+    color = art[colors + color] if colors && color != RG_NOT_DRAWN
     next if color == RG_NOT_DRAWN
 
     width.times { |across| rg_set_pixel(x + across, top + row, color) }

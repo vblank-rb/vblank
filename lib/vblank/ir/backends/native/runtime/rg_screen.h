@@ -167,11 +167,14 @@ rg_drawn_sprite rg_screen_drawn_sprite(int32_t place);
 
 /* --- the art, from the generated game --- */
 
-/* Sprite pictures: each image is three numbers in rg_game_images (where its pixels start in
- * rg_game_image_pixels, its width and its height). A pixel is the fifteen bits of colour the
- * picture stores, or RG_NOT_DRAWN where what is behind shows, so sixteen signed bits hold every
- * one. A sprite drawn with another list of colors has a picture of its own for each list, made
- * when the game is built. */
+/* Sprite pictures: each image is four numbers in rg_game_images (where its pixels start in
+ * rg_game_image_pixels, its width, its height, and where the colours of its places start there,
+ * or RG_NO_IMAGE_COLORS). A pixel is the fifteen bits of colour the picture stores, or
+ * RG_NOT_DRAWN where what is behind shows, so sixteen signed bits hold every one. A sprite drawn
+ * with another list of colors has a picture of its own for each list, made when the game is
+ * built. A pose read from the file the game is handed is held once instead: its pixels are its
+ * places, and each image of it has the colours of its places, which a pixel is looked up in as it
+ * is drawn (rg_start_file_fill_pose). */
 #define RG_NOT_DRAWN (-1)
 extern const int16_t rg_game_image_pixels[];
 /* The +count+ image pixels the picture is drawn from, as an array that can be written: a copy of
@@ -183,7 +186,8 @@ int16_t *rg_screen_image_pixels_to_fill(int32_t count);
  * RG_NOT_DRAWN until then. Called before anything else asks for the copy. */
 void rg_screen_image_pixels_room(int32_t total, int32_t held);
 extern const int32_t rg_game_images[];
-#define RG_IMAGE_FIELDS 3
+#define RG_IMAGE_FIELDS 4
+#define RG_NO_IMAGE_COLORS (-1)
 /* The border round the game's screen, as a picture of the whole screen, a colour a pixel; nothing
  * where the game's screen is the whole screen (Computer::Picture#border_pixels). */
 extern const int16_t rg_game_border_pixels[];

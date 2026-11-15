@@ -840,7 +840,7 @@ end
 # game's pixels are frozen, so an unfrozen copy takes their place, as a picture's fill does.
 def rg_start_file_fill_pose(rules)
   kind, _total, copies, width, height, turn, colors_at, colors_count, entry_at, records_at, origin_x, origin_y,
-    tiles_at, tile_count, only_bank, piece_shape, piece_tall = rules
+    tiles_at, tile_count, only_bank, piece_shape, piece_tall, place_count = rules
   tile_format = RG_FILL_POSE_HEADER_NUMBERS
   color_format = tile_format + RG_TILE_FORMAT_NUMBERS
   held_colors = color_format + RG_COLOR_FORMAT_NUMBERS
@@ -864,33 +864,53 @@ def rg_start_file_fill_pose(rules)
     @rg_game_image_pixels = @rg_game_image_pixels.dup if @rg_game_image_pixels.frozen?
     pixels = @rg_game_image_pixels
   end
-  # The frame painted once, written into each copy of the picture in that copy's colours.
+  # rg_runtime.c's pose_place_color
+  place_color = lambda do |place, swapped, swapped_count|
+    if place.zero?
+      kind == RG_FILL_TILE ? RG_SEE_THROUGH : -1
+    elsif place < swapped_count
+      rules[swapped + place]
+    elsif place >= colors_count
+      0
+    elsif colors_at.negative?
+      rules[held_colors + place]
+    else
+      rg_start_file_color(colors_at, rules, color_format, place)
+    end
+  end
+  # The frame painted once, written into each copy of the picture in that copy's colours, or, for
+  # a copy held once, as its places, and the colour of each place after.
+  places_written_at = -1
   copies.times do
     start = rules[copy]
-    image = rules[copy + 1]
-    swapped_count = rules[copy + 2]
-    swapped = copy + 3
+    place_colors_at = rules[copy + 1]
+    image = rules[copy + 2]
+    swapped_count = rules[copy + 3]
+    swapped = copy + 4
     rg_screen_read_image_pieces(image, pieces) if pieces && !image.negative?
-    height.times do |row|
-      width.times do |column|
-        from_row = (turn & RG_TURN_UPSIDE_DOWN).zero? ? row : height - 1 - row
-        from_column = (turn & RG_TURN_MIRRORED).zero? ? column : width - 1 - column
-        place = places[(from_row * width) + from_column]
-        color = if place.zero?
-                  kind == RG_FILL_TILE ? RG_SEE_THROUGH : -1
-                elsif place < swapped_count
-                  rules[swapped + place]
-                elsif place >= colors_count
-                  0
-                elsif colors_at.negative?
-                  rules[held_colors + place]
-                else
-                  rg_start_file_color(colors_at, rules, color_format, place)
-                end
-        pixels[start + (row * width) + column] = color
-      end
-    end
     copy = swapped + swapped_count
+    if place_colors_at.negative?
+      height.times do |row|
+        width.times do |column|
+          from_row = (turn & RG_TURN_UPSIDE_DOWN).zero? ? row : height - 1 - row
+          from_column = (turn & RG_TURN_MIRRORED).zero? ? column : width - 1 - column
+          pixels[start + (row * width) + column] = place_color.call(places[(from_row * width) + from_column], swapped, swapped_count)
+        end
+      end
+      next
+    end
+    unless start == places_written_at
+      height.times do |row|
+        width.times do |column|
+          from_row = (turn & RG_TURN_UPSIDE_DOWN).zero? ? row : height - 1 - row
+          from_column = (turn & RG_TURN_MIRRORED).zero? ? column : width - 1 - column
+          place = places[(from_row * width) + from_column]
+          pixels[start + (row * width) + column] = place.zero? ? -1 : place
+        end
+      end
+      places_written_at = start
+    end
+    place_count.times { |place| pixels[place_colors_at + place] = place_color.call(place, swapped, swapped_count) }
   end
 end
 

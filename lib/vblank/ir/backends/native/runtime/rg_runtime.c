@@ -912,11 +912,22 @@ static int32_t *start_file_pose_pieces(int32_t first, int32_t count, int32_t onl
   return list;
 }
 
+/* The colour place +place+ of a pose is drawn in: 0xFFFF for place 0, which is see-through; the
+ * list it is drawn in instead where that has the place; else its own colours, held by the game or
+ * read from the file at +colors_at+; and 0 for a place past them. */
+static uint16_t pose_place_color(int32_t place, const int32_t *swapped, int32_t swapped_count, const int32_t *held_colors,
+                                 int32_t colors_at, int32_t colors_count, const int32_t *color_format) {
+  if (place == 0) return 0xFFFFu;
+  if (place < swapped_count) return (uint16_t)swapped[place];
+  if (place < colors_count) return colors_at < 0 ? (uint16_t)held_colors[place] : start_file_color(colors_at, color_format, place);
+  return 0;
+}
+
 void rg_start_file_fill_pose(const int32_t *rules) {
   int32_t kind = rules[0], total = rules[1], copies = rules[2], width = rules[3], height = rules[4], turn = rules[5];
   int32_t colors_at = rules[6], colors_count = rules[7], entry_at = rules[8], records_at = rules[9];
   int32_t origin_x = rules[10], origin_y = rules[11], tiles_at = rules[12], tile_count = rules[13], only_bank = rules[14];
-  int32_t piece_shape = rules[15], piece_tall = rules[16];
+  int32_t piece_shape = rules[15], piece_tall = rules[16], place_count = rules[17];
   const int32_t *tile_format = rules + RG_FILL_POSE_HEADER_NUMBERS;
   const int32_t *color_format = tile_format + RG_TILE_FORMAT_NUMBERS;
   const int32_t *held_colors = color_format + RG_COLOR_FORMAT_NUMBERS;
@@ -936,29 +947,40 @@ void rg_start_file_fill_pose(const int32_t *rules) {
                                                        tile_count, width, height, turn, piece_shape, piece_tall);
   uint16_t *tile_pixels = kind == RG_FILL_TILE ? rg_screen_tile_pixels_to_fill(total) : NULL;
   int16_t *image_pixels = kind == RG_FILL_TILE ? NULL : rg_screen_image_pixels_to_fill(total);
+  int32_t places_written_at = -1;
   for (int32_t each = 0; each < copies; each++) {
-    int32_t start = copy[0], image = copy[1], swapped_count = copy[2];
-    const int32_t *swapped = copy + 3;
+    int32_t start = copy[0], place_colors_at = copy[1], image = copy[2], swapped_count = copy[3];
+    const int32_t *swapped = copy + 4;
     if (pieces && image >= 0) rg_screen_read_image_pieces(image, pieces);
+    copy = swapped + swapped_count;
+    if (place_colors_at >= 0) {
+      /* Held once: the places where the copy's pixels are, and the colour of each place after. */
+      if (start != places_written_at) {
+        for (int32_t row = 0; row < height; row++) {
+          for (int32_t column = 0; column < width; column++) {
+            int32_t from_row = (turn & RG_TURN_UPSIDE_DOWN) ? height - 1 - row : row;
+            int32_t from_column = (turn & RG_TURN_MIRRORED) ? width - 1 - column : column;
+            int32_t place = places[(from_row * width) + from_column];
+            image_pixels[start + (row * width) + column] = (int16_t)(place != 0 ? place : RG_NOT_DRAWN);
+          }
+        }
+        places_written_at = start;
+      }
+      for (int32_t place = 0; place < place_count; place++)
+        image_pixels[place_colors_at + place] =
+            (int16_t)pose_place_color(place, swapped, swapped_count, held_colors, colors_at, colors_count, color_format);
+      continue;
+    }
     for (int32_t row = 0; row < height; row++) {
       for (int32_t column = 0; column < width; column++) {
         int32_t from_row = (turn & RG_TURN_UPSIDE_DOWN) ? height - 1 - row : row;
         int32_t from_column = (turn & RG_TURN_MIRRORED) ? width - 1 - column : column;
         int32_t place = places[(from_row * width) + from_column];
-        uint16_t color = 0xFFFFu;
-        if (place != 0) {
-          color = 0;
-          if (place < swapped_count) {
-            color = (uint16_t)swapped[place];
-          } else if (place < colors_count) {
-            color = colors_at < 0 ? (uint16_t)held_colors[place] : start_file_color(colors_at, color_format, place);
-          }
-        }
+        uint16_t color = pose_place_color(place, swapped, swapped_count, held_colors, colors_at, colors_count, color_format);
         if (tile_pixels) tile_pixels[start + (row * width) + column] = color;
         else image_pixels[start + (row * width) + column] = (int16_t)color;
       }
     }
-    copy = swapped + swapped_count;
   }
   free(places);
 }

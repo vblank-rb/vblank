@@ -642,8 +642,15 @@ static FEATURE_ONLY void affine_matrix(int32_t angle, int32_t size, int64_t *tur
 
 /* --- sprites --- */
 
-/* One picture: where its pixels start, and its size. */
-typedef struct { const int16_t *pixels; int32_t width, height; } picture;
+/* One picture: where its pixels start, its size, and the colours of its places where its pixels
+ * are places (NULL where they are colours). */
+typedef struct { const int16_t *pixels; int32_t width, height; const int16_t *colors; } picture;
+
+/* The colour a picture shows at pixel +at+ of itself, or RG_NOT_DRAWN. */
+static FEATURE_ONLY int32_t picture_pixel(picture art, int64_t at) {
+  int32_t held = art.pixels[at];
+  return art.colors && held != RG_NOT_DRAWN ? art.colors[held] : held;
+}
 
 /* The images the game has painted, by image number: each one's pixels as its list last held
  * them, in the colors that image is drawn in, or nothing for an image nobody has painted
@@ -653,7 +660,8 @@ static int16_t **painted_images;
 static picture picture_of(int32_t image) {
   const int32_t *info = rg_game_images + RG_IMAGE_FIELDS * image;
   const int16_t *painted = painted_images ? painted_images[image] : NULL;
-  return (picture){painted ? painted : image_pixels_drawn + info[0], info[1], info[2]};
+  if (painted) return (picture){painted, info[1], info[2], NULL};
+  return (picture){image_pixels_drawn + info[0], info[1], info[2], info[3] == RG_NO_IMAGE_COLORS ? NULL : image_pixels_drawn + info[3]};
 }
 
 /* Room for one painted image's pixels, made the first time the image is painted. */
@@ -757,6 +765,15 @@ void rg_tile_pose_load(int32_t run, const int32_t *pieces, int32_t piece_count, 
 /* Reference#blit_image: a see-through pixel is skipped, and each other one goes on as stored. */
 static void blit_image(int32_t image, int32_t x, int32_t y) {
   picture art = picture_of(image);
+  /* The two walks apart, so a picture of colours is drawn as it was before pictures of places. */
+  if (art.colors) {
+    for (int32_t row = 0; row < art.height; row++)
+      for (int32_t col = 0; col < art.width; col++) {
+        int32_t held = art.pixels[row * art.width + col];
+        if (held != RG_NOT_DRAWN) set_pixel((int64_t)x + col, (int64_t)y + row, art.colors[held]);
+      }
+    return;
+  }
   for (int32_t row = 0; row < art.height; row++)
     for (int32_t col = 0; col < art.width; col++) {
       int32_t color = art.pixels[row * art.width + col];

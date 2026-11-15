@@ -57,6 +57,26 @@ module PackStandInSizeTests
                     "game from #{small} to #{big} bytes, more than one pose's #{one_pose} bytes of pixels more"
   end
 
+  # ...and A POSE IS HELD ONCE AS THE GAME RUNS, HOWEVER MANY SETS OF COLOURS DRAW IT: its pixels are
+  # the places of its frame, and each set it is drawn in is a list of those places' colours. The
+  # actors' two poses are each drawn in the three sets their lists can hold, so a copy of each pose
+  # for every set would be three times the room.
+  def test_poses_read_at_start_drawn_in_several_sets_are_held_once_as_the_game_runs
+    room = Dir.mktmpdir do |folder|
+      program = program_played(Actors.new.recolored_actors_builder(folder, size: BIG_POSE, options: LEFT_OUT).program)
+      lowering_class.new(program).start_file_image_room_bytes
+    end
+    poses = PackPoseBankColorGames::ACTOR_POSES.uniq.length
+    once = poses * BIG_POSE.inject(:*) * PIXEL_BYTES
+
+    assert_operator room, :<, once + SETS_OF_COLORS_BYTES,
+                    "The #{poses} poses of #{BIG_POSE.join('x')}, each drawn in three sets of colours, take #{room} bytes as " \
+                    "the game runs, more than the #{once} bytes of one copy of each and their sets of colours"
+  end
+
+  # Room enough for the colours of every set a pose is drawn in: a few lists of 256 colours.
+  SETS_OF_COLORS_BYTES = 8 * 256 * PIXEL_BYTES
+
   def test_a_background_read_at_start_given_more_cells_costs_the_written_game_less_than_their_pixels
     few, many = [FEW_CELLS, MANY_CELLS].map do |cells|
       words = PackTilePictureGames.title_belt_words(cells)

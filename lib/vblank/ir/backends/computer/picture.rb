@@ -58,6 +58,11 @@ module VBlank
           RUN_TILE_PIXELS = RUN_TILE_SIDE * RUN_TILE_SIDE
           # A tile's pixel where the layer behind shows (RG_SEE_THROUGH).
           TILE_SEE_THROUGH = 0xFFFF
+          # How many numbers describe one image (RG_IMAGE_FIELDS): where its pixels start, its width,
+          # its height, and where the colours of its places start, or NO_IMAGE_COLORS for an image
+          # whose pixels are its colours.
+          IMAGE_FIELDS = 4
+          NO_IMAGE_COLORS = -1
 
           private
 
@@ -217,6 +222,12 @@ module VBlank
           # there would be thrown away. Written out, a title's poses each drawn in every set of
           # colours its lists hold are hundreds of megabytes of stand-ins. So those pictures come
           # after the pixels written, as room the game makes as it starts (StartFileFills#build_start_file_pixel_room).
+          #
+          # A POSE READ FROM THE START FILE IS HELD ONCE, however many sets of colours draw it: its
+          # pixels are the places of its frame, and each image of it is those pixels and a list of
+          # the colours its set puts at each place, which the runtime looks each pixel up in as it
+          # draws (rg_game_images' fourth number). A title's actors followed through sixty sets of
+          # colours are then sixty short lists, not sixty copies of every pose.
           def image_arrays
             pixels = []
             info = []
@@ -225,12 +236,12 @@ module VBlank
               image = picture_named(name)
               from_start_file = picture_from_start_file(name)
               if from_start_file && colors != SHADING_PLACES
-                read_at_start << [info.length, from_start_file, colors]
-                info.push(nil, image.width, image.height)
+                read_at_start << [info.length, name, from_start_file, colors]
+                info.push(nil, image.width, image.height, NO_IMAGE_COLORS)
                 next
               end
-              info.push(pixels.length, image.width, image.height)
-              record_start_file_fill(:image, pixels.length, from_start_file, colors, image: (info.length / 3) - 1) if from_start_file
+              info.push(pixels.length, image.width, image.height, NO_IMAGE_COLORS)
+              record_start_file_fill(:image, pixels.length, from_start_file, colors, image: (info.length / IMAGE_FIELDS) - 1) if from_start_file
               drawn = if colors == SHADING_PLACES
                         bitmap = @data.fetch(name)
                         bitmap.places_in_shading(bitmap.shading)
@@ -246,14 +257,38 @@ module VBlank
               pixels.concat(drawn.map { |pixel| image_pixel_kept(pixel) })
             end
             @image_pixels_held = pixels.length
-            room_at = read_at_start.reduce(pixels.length) do |at, (info_at, node, colors)|
-              info[info_at] = at
-              record_start_file_fill(:image, at, node, colors, image: info_at / 3)
-              at + (node.width * node.height)
-            end
+            room_at = lay_out_images_read_at_start(read_at_start, info, pixels.length)
             @image_pixel_count = room_at # what the runtime copies them by, to fill an image read from the start file
             [runtime_array("image_pixels", "int16_t", pixels, grows: room_at > pixels.length), runtime_array("images", "int32_t", info),
              *sprite_name_arrays]
+          end
+
+          # The room for each image read from the start file, from +room_at+ in the image pixels,
+          # written into its fields of +info+ (+read_at_start+ is each one's field, picture name, file
+          # picture and colours). A picture is filled where its pixels are. A pose's places are laid
+          # out once by its picture's name, and each of its images has the colours of its places
+          # after them. Gives back where the room ends.
+          def lay_out_images_read_at_start(read_at_start, info, room_at)
+            places_at = {}
+            read_at_start.each do |info_at, name, node, colors|
+              image = info_at / IMAGE_FIELDS
+              unless node.from_file.is_a?(IR::StartFile::Pose)
+                info[info_at] = room_at
+                record_start_file_fill(:image, room_at, node, colors, image: image)
+                room_at += node.width * node.height
+                next
+              end
+
+              unless places_at.key?(name)
+                places_at[name] = room_at
+                room_at += node.width * node.height
+              end
+              info[info_at] = places_at[name]
+              info[info_at + 3] = room_at
+              record_start_file_fill(:image, places_at[name], node, colors, image: image, place_colors_at: room_at)
+              room_at += StartFileFills.pose_places(node.from_file)
+            end
+            room_at
           end
 
           # Reference#sprites names each sprite it drew by two names: the one the game declared it

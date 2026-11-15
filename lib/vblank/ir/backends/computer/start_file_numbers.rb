@@ -50,7 +50,7 @@ module VBlank
           # the console's sprite table holds a piece (StartFileFills#pose_piece_rules). How the
           # original keeps a frame is not among them: the file holds a record of VBlank's own for
           # each (Original::FrameRecord), which each runtime reads by that record's fixed layout.
-          POSE_HEADER_NUMBERS = 17
+          POSE_HEADER_NUMBERS = 18
 
           # The numbers before the colour layout in the rules of colours of a list the file chooses
           # (StartFileFills#chosen_color_rules): where the frame's entry is and where the frames'
