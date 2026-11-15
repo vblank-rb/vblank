@@ -203,6 +203,26 @@ class TestGameSuite < Minitest::Test
     assert_match(/^ native lowering: the game built as C/, out)
   end
 
+  # A game that holds a run to something other than the interpreter (a port, to its retail
+  # original) names that run's heading, which its task's description in rake -T follows too.
+  def test_a_run_given_a_heading_shows_it
+    heading = { "GAME_SUITE_HEADING" => "the game held to the original" }
+    out, passed, = rake("test:lowering:gba", env: heading.merge("TEST" => "test/walker_test.rb"))
+
+    assert passed, out
+    assert_match(/^ GBA lowering: the game held to the original$/, out)
+    assert_match(/test:lowering:gba\s+# Run the tests on the GBA lowering: the game held to the original/,
+                 rake("-T", env: heading).first)
+  end
+
+  def test_a_heading_for_a_lowering_the_game_does_not_play_is_refused
+    out, passed, = rake("-T", env: { "GAME_SUITE_HEADING" => "the Color", "GAME_SUITE_HEADING_ON" => "gbc" })
+
+    refute passed
+    assert_match(/t\.headings names :gbc/, out)
+    assert_match(/:gba/, out)
+  end
+
   # A game whose Rakefile names the Color too gets the Color's run as well.
   def test_a_game_for_the_color_plays_the_colors_run_too
     out, passed, lowerings = rake("test:all", env: { "GAME_SUITE_CONSOLES" => "gba gbc" })

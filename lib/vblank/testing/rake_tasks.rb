@@ -67,6 +67,11 @@ module VBlank
     # GoldenSample::SHARE unless set), on every lowering that plays each. A game that keeps no such
     # file has no such task.
     #
+    # A RUN'S HEADING names what the run plays, and its task's line in `rake -T` shows the same. A game
+    # whose run holds its cartridge to something other than the interpreter (a port, to its retail
+    # original) names that run's own, by lowering:
+    # `t.headings = { genesis: "the game built as a Sega Genesis cartridge, checked against the original" }`.
+    #
     # A TASK FOR EACH FOLDER OF TESTS, with `t.groups = "test"`: `rake test:group:enemies` plays every
     # test beneath test/enemies/ on every lowering that plays each, and `rake test:group:enemies:bat`
     # those beneath test/enemies/bat/ (SuiteGroups). `t.broad_groups = { "doors" => %w[rooms
@@ -86,9 +91,9 @@ module VBlank
       # and its tests, lib and test unless told); the folders each lowering owns, and each console;
       # the consoles the game is for, which every Rakefile names; the golden path's list, and the
       # share of the other files it draws, if not GoldenSample::SHARE; and the folder whose folders
-      # of tests are groups, with any broad groups.
+      # of tests are groups, with any broad groups; and a heading for any run, by lowering.
       attr_accessor :test_files, :libs, :lowering_folders, :console_folders, :consoles, :golden_sample,
-                    :golden_list, :golden_from, :groups, :broad_groups
+                    :golden_list, :golden_from, :groups, :broad_groups, :headings
 
       def initialize
         super
@@ -102,9 +107,11 @@ module VBlank
         @golden_from = "."
         @groups = nil
         @broad_groups = {}
+        @headings = {}
         yield self if block_given?
         @consoles = Console.refuse_unknown_consoles!(consoles, setting: "t.consoles")
         @lowerings = Lowering.lowerings_for(@consoles)
+        refuse_heading_for_unplayed_lowering!
         define_lowering_tasks
         define_test_task
         define_group_tasks if groups
@@ -349,15 +356,26 @@ module VBlank
       end
 
       def define_run_task(run, lowering, console, name)
+        heading = headings[lowering] || run.does
         TestTask.new(name) do |t|
           t.lowering = lowering
           t.console = console
+          t.heading = heading
           t.libs = libs.dup
           t.test_files = files(lowering, console)
           needs = run.needs&.then { |tool| "needs #{tool}; " }
           t.description = "Run the tests on the #{run.title} lowering#{as_console(lowering, console)}: " \
-                          "#{run.does} (#{needs}some files with TEST=, commas between)"
+                          "#{heading} (#{needs}some files with TEST=, commas between)"
         end
+      end
+
+      # A heading for a lowering this game's runs do not include would never be shown.
+      def refuse_heading_for_unplayed_lowering!
+        unplayed = headings.keys - @lowerings
+        return if unplayed.empty?
+
+        raise ArgumentError, "t.headings names #{Lowering.in_words(unplayed.map(&:inspect))}. This game has no run " \
+                             "on it. Name only #{Lowering.in_words(@lowerings.map(&:inspect))}."
       end
     end
   end
