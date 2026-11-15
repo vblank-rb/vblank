@@ -41,6 +41,17 @@ class TestSeats < Minitest::Test
     end
   end
 
+  # Player 2's keys for buttons the console lacks press nothing: H, Y and B are X, Y and C only
+  # where the console has them.
+  def test_player_twos_keys_press_only_the_consoles_buttons
+    down = [KEYS.fetch(:y), KEYS.fetch(:h), KEYS.fetch(:b), KEYS.fetch(:o)]
+    held = ->(buttons) { Seats.second_player_buttons(down: ->(code) { down.include?(code) }, free: ->(_) { true }, buttons: buttons) }
+
+    assert_equal %i[p2_a p2_x p2_y], held.call(VBlank::Console::SUPER_NINTENDO.buttons).sort
+    assert_equal %i[p2_a p2_c], held.call(VBlank::Console::GENESIS.buttons).sort
+    assert_equal %i[p2_a], held.call(VBlank::Console::ADVANCE.buttons)
+  end
+
   # A key player 1 or a hotkey has (a player chose O for A in the settings file) is not player 2's.
   def test_a_key_somebody_else_has_is_not_player_twos
     down = [KEYS.fetch(:l), KEYS.fetch(:o)]

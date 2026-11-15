@@ -253,6 +253,29 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
+  # Player 2's X and Y in a Super Nintendo game for two: H and Y, and --help names them.
+  def test_h_and_y_are_player_twos_x_and_y_in_a_super_nintendo_game
+    Dir.mktmpdir do |dir|
+      game = VBlank.game("TWO SNES", consoles: %i[snes], players: { computer: 1..2, else: 1 }) do
+        screen :bitmap
+        x_two = var(:x_two, 0)
+        y_two = var(:y_two, 0)
+        game_loop do
+          clear_screen :black
+          x_two.increase! 1 if held(:x, player: 2)
+          y_two.increase! 1 if held(:y, player: 2)
+        end
+      end
+      exe = Native.new.build_desktop(game, File.join(dir, "two"), err: nil)
+      help, = Open3.capture2e(exe, "--help", chdir: dir)
+      played = play_window(exe, dir, ["0", "0 keydown:H", "0", "0 keydown:Y", "0", "0 keyup:H keyup:Y", "0"], frames: 10)
+
+      assert_match(/H is X/, help)
+      assert_operator played.variables[:x_two], :>=, 3, "H is player 2's X"
+      assert_operator played.variables[:y_two], :>=, 2, "Y is player 2's Y"
+    end
+  end
+
   # PLAYER 2 ON THE KEYBOARD: the keyboard's right hand presses player 2's buttons, and player 1's
   # keys stay player 1's. Which key is which, and the gamepads' players, are tested with no window
   # (test_native_seats.rb); this is that the window hands player 2's buttons to the game. --help

@@ -91,6 +91,15 @@ class TestComputerControls < Minitest::Test
     assert built_with { computer_keys a: :o }
   end
 
+  # Player 2's X, Y and C keys (H, Y and B) are kept only where the console has the button.
+  def test_player_twos_x_y_and_c_keys_are_kept_only_where_the_console_has_them
+    snes = VBlank::Cartridge::Options.new(console: :snes, players: 2)
+    said = assert_raises(ArgumentError) { Builder.new(options: snes).instance_eval { computer_keys a: :y } }.message
+
+    assert_match(/presses player 2's :y on a computer/, said)
+    assert built_for_players(2) { computer_keys a: :y, b: :h }
+  end
+
   private def built_for_players(most, &block)
     builder = Builder.new(options: VBlank::Cartridge::Options.new(players: most))
     builder.instance_eval(&block)

@@ -13,8 +13,9 @@
  *
  * The keyboard is player 1, with the keys it has always had (and whatever the player chose). Its
  * right hand has a second, fixed set for player 2: I J K L for the pad, O for A, U for B, 7 and 9
- * for L and R, 8 for Select and 0 for Start. Those keys sit away from player 1's (the arrows, and
- * Z X A S on the left), away from the window's own hotkeys, and in the shape of the arrows and the
+ * for L and R, 8 for Select and 0 for Start, and on a console that has them H for X, Y for Y and B
+ * for C. Those keys sit away from player 1's (the arrows, and Z X A S Q W C on the left), away from
+ * the window's own hotkeys, and in the shape of the arrows and the
  * face buttons beside them. A key player 1 or a hotkey has, whether by VBlank's layout, by the game
  * (computer_keys) or by the player's settings file, stays that: player 2's set only has the keys
  * nobody else has.
@@ -81,7 +82,8 @@ static inline void rg_seats_leave(rg_seats *seats, uint32_t id) {
 }
 
 /* Player 2's keys: the console button (in rg_runtime.h's order: a, b, select, start, right, left,
- * up, down, r, l) each key presses, by scancode. */
+ * up, down, r, l, x, y, c) each key presses, by scancode. H, Y and B are X, Y and C: the window
+ * reads them only on a console that has the button (rg_window_console_has). */
 static inline int rg_seats_second_player_button(int key) {
   switch (key) {
   case 18: return 0; /* O: A */
@@ -94,6 +96,9 @@ static inline int rg_seats_second_player_button(int key) {
   case 14: return 7; /* K: Down */
   case 38: return 8; /* 9: R */
   case 36: return 9; /* 7: L */
+  case 11: return 10; /* H: X */
+  case 28: return 11; /* Y: Y */
+  case 5: return 12;  /* B: C */
   default: return -1;
   }
 }

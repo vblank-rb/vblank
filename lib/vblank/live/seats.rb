@@ -14,7 +14,8 @@ module VBlank
     # one plugged in, and nobody else's player changes.
     #
     # The keyboard is player 1, and its right hand player 2 (IR::ComputerControls::SECOND_PLAYER_KEYS:
-    # I J K L, O, U, 7 to 0), where nobody else has the key: a key player 1 or a hotkey has, by
+    # I J K L, O, U, 7 to 0, and H, Y and B for X, Y and C on a console that has them), where nobody
+    # else has the key: a key player 1 or a hotkey has, by
     # VBlank's layout, the game's or the player's settings, stays theirs. Players 3 and 4 are
     # gamepads only.
     class Seats
@@ -40,10 +41,11 @@ module VBlank
       def player_of(id) = @players[id]
 
       # Player 2's buttons held on the keyboard, by the names a run reads them by (:p2_left): each
-      # whose key is down and +free+ (nobody else's). +down+ and +free+ are each given a scancode.
-      def self.second_player_buttons(down:, free:)
+      # whose key is down and +free+ (nobody else's), among the console's +buttons+. +down+ and
+      # +free+ are each given a scancode.
+      def self.second_player_buttons(down:, free:, buttons: IR::Buttons::NAMES)
         SECOND_PLAYER_CODES.filter_map do |code, button|
-          IR::Buttons.name_for(button, 2) if free.call(code) && down.call(code)
+          IR::Buttons.name_for(button, 2) if buttons.include?(button) && free.call(code) && down.call(code)
         end
       end
 

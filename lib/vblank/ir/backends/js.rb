@@ -183,8 +183,7 @@ module VBlank
             script = WRITTEN_BY + in_own_function(data_beside_declaration(data_file, JSON.generate(data_file_name(path))),
                                                   text, *runtime_text(["rg_mount.js"]), "rg_mount_page(createGame);\n")
             Page.html(title: game.title, script: script, scale: scale, template: template, screen: described.framed_screen_size,
-                      pixel_size: described.pixel_size, shoulders: described.buttons.include?(:l), players: program.most_players || 1,
-                      more_buttons: described.buttons - Console::ADVANCE.buttons)
+                      pixel_size: described.pixel_size, buttons: described.buttons, players: program.most_players || 1)
           end
         end
 
@@ -220,8 +219,7 @@ module VBlank
           File.write(path, Page.html(title: game.title, script: script, scale: scale, template: template,
                                      screen: shell.game.described_console.framed_screen_size,
                                      pixel_size: shell.game.described_console.pixel_size,
-                                     shoulders: shell.game.described_console.buttons.include?(:l),
-                                     more_buttons: shell.game.described_console.buttons - Console::ADVANCE.buttons))
+                                     buttons: shell.game.described_console.buttons))
           progress.done
           path
         end

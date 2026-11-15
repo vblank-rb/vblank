@@ -84,7 +84,7 @@ class TestJSPage < Minitest::Test
   # words, and not on the pad.
   def test_a_console_without_l_and_r_has_none_on_its_page
     with = JS::Page.html(title: "BOTH", script: "", screen: [240, 160])
-    without = JS::Page.html(title: "BOTH", script: "", screen: [160, 144], shoulders: false)
+    without = JS::Page.html(title: "BOTH", script: "", screen: [160, 144], buttons: VBlank::Console::COLOR.buttons)
 
     assert_match(/are L and R/, with)
     assert_match(/id="pad-l"/, with)
@@ -93,15 +93,61 @@ class TestJSPage < Minitest::Test
     assert_match(/id="pad-start"/, without)
   end
 
-  # A console with X and Y, or C, names their keys in the page's words; the Advance names none.
-  def test_a_console_with_x_y_or_c_names_their_keys_on_its_page
-    snes = JS::Page.html(title: "SNES", script: "", screen: [256, 224], more_buttons: %i[x y])
-    genesis = JS::Page.html(title: "GENESIS", script: "", screen: [320, 224], more_buttons: %i[c])
-    advance = JS::Page.html(title: "ADVANCE", script: "", screen: [240, 160])
+  # The page's words name the keys the page reads for the console's buttons, and no others: X and
+  # Y on a Super Nintendo, C and no Select, L or R on a Genesis, and none of the three on the Advance.
+  # Player 2's words are the same.
+  def test_each_consoles_page_names_the_keys_it_reads
+    page = lambda do |console|
+      html = JS::Page.html(title: "KEYS", script: "", screen: [320, 224], buttons: VBlank::Console.described(console).buttons, players: 2)
+      html[%r{<p class="keys">.*?</p>}m]
+    end
+    snes = page.call(:snes)
+    genesis = page.call(:genesis)
+    advance = page.call(:gba)
 
     assert_match(%r{<kbd>W</kbd> is X, <kbd>Q</kbd> is Y}, snes)
+    assert_match(%r{<kbd>H</kbd> is X, <kbd>Y</kbd> is Y}, snes)
     assert_match(%r{<kbd>C</kbd> is C}, genesis)
-    refute_match(%r{is [XYC],}, advance)
+    assert_match(%r{<kbd>B</kbd> is C}, genesis)
+    refute_match(/Select|L and R/, genesis)
+    refute_match(/is [XYC][,.]/, advance)
+    assert_match(/is Select/, advance)
+  end
+
+  # The pad on the screen has the console's buttons alone: X and Y on a Super Nintendo's, C and no
+  # Select on a Genesis's, none of the three on the Advance's.
+  def test_each_consoles_pad_has_its_buttons
+    pad = ->(console) { JS::Page.html(title: "PAD", script: "", screen: [320, 224], buttons: VBlank::Console.described(console).buttons) }
+
+    assert_match(/id="pad-x".*id="pad-y"/m, pad.call(:snes))
+    assert_match(/id="pad-c"/, pad.call(:genesis))
+    refute_match(/id="pad-select"/, pad.call(:genesis))
+    refute_match(/id="pad-[xyc]"/, pad.call(:gba))
+  end
+
+  # A tap on X and Y on a Super Nintendo page's pad, and on C on a Genesis page's, presses that
+  # button, as a tap on any of the pad's buttons does.
+  def test_a_tap_on_x_y_or_c_presses_it
+    { snes: %i[x y], genesis: %i[c] }.each do |console, buttons|
+      game = buttons_game_on(console)
+      taps = buttons.flat_map { |button| ["finger 1 pad-#{button}", "lift 1"] }
+      picture = pictures_in(played_page([*taps, "play 2", "picture"], game)).first
+      interpreter = Reference.new.input_each_frame { |frame| frame == 2 ? buttons : [] }.run(game.program, frames: 2)
+
+      assert_same_picture interpreter.screen.shown, picture, "on the #{console} frame after #{buttons.join(' and ')} were tapped"
+    end
+  end
+
+  # A square lit along the top for each of +console+'s buttons held.
+  private def buttons_game_on(console)
+    buttons = VBlank::Console.described(console).buttons
+    VBlank.game "BUTTONS", consoles: [console] do
+      screen :bitmap
+      game_loop do
+        clear_screen :black
+        buttons.each_with_index { |button, i| fill_rect i * 10, 0, 8, 8, :white if held(button) }
+      end
+    end
   end
 
   # The page plays a frame of the game on each of the browser's frames, reads the keyboard as the

@@ -217,6 +217,7 @@ module VBlank
         @closed = false
         @has_menu = menu
         @player_settings = Settings.new(key_names: KeyNames.new(@sdl), game_controls: game_controls, buttons: buttons)
+        @console_buttons = buttons # the ones read, of player 2's keys too
         @settings_file = settings_file && SettingsFile.new(title: title, folder_of: ->(name) { settings_folder(name) },
                                                            asked: (settings_file unless settings_file == :usual))
         @settings_problems = @settings_file ? @settings_file.load(@player_settings) : []
@@ -354,7 +355,7 @@ module VBlank
         from_keys = @player_settings.buttons_held(&down)
         return (from_keys + @pads.values.flat_map { |pad| pad_held(pad) }).uniq unless @several_players
 
-        second = Seats.second_player_buttons(down: down, free: ->(code) { key_free?(code) })
+        second = Seats.second_player_buttons(down: down, free: ->(code) { key_free?(code) }, buttons: @console_buttons)
         from_pads = @pads.flat_map { |id, pad| Seats.buttons_as_player(pad_held(pad), @seats.player_of(id)) }
         (from_keys + second + from_pads).uniq
       end

@@ -55,8 +55,12 @@ module VBlank
       # the same (rg_seats.h, Live::Seats, rg_page.js's PAGE_SECOND_PLAYER_KEYS), only in a game
       # whose `players:` seats two or more, and only where nobody else has the key. Players 3 and 4 are gamepads only: four people do not fit round one
       # keyboard, and most keyboards lose keys when that many are held at once.
+      #
+      # On a console that has them, Y is Y and H is X, left of U and J as a Super Nintendo's Y is
+      # left of its B, and B is C, below them; each window reads only the buttons its console has,
+      # so on the Advance these three are nobody's.
       SECOND_PLAYER_KEYS = Ractor.make_shareable({ o: :a, u: :b, 8 => :select, 0 => :start, l: :right, j: :left,
-                                                   i: :up, k: :down, 9 => :r, 7 => :l })
+                                                   i: :up, k: :down, 9 => :r, 7 => :l, h: :x, y: :y, b: :c })
 
       # The keys the window keeps for itself, and what for: no button can have one. The desktop
       # window's hotkeys, the web page's (F for fullscreen), Escape, which stops choosing a key, and
@@ -90,7 +94,7 @@ module VBlank
         entries = entries_of(given, :computer_keys, console)
         refuse_same_twice!(entries, :computer_keys)
         entries.each { |button, name| refuse_key!(button, name, console.buttons) }
-        entries.each { |button, name| refuse_second_player_key!(button, name) } if most_players && most_players > 1
+        entries.each { |button, name| refuse_second_player_key!(button, name, console.buttons) } if most_players && most_players > 1
         refuse_crowded!(entries, :computer_keys, "keys", most: MOST_KEYS) { |button| LAYOUT_KEYS.fetch(button).length }
         entries.map { |button, name| [button, :key, name] }
       end
@@ -153,9 +157,9 @@ module VBlank
                              "key no button has, for example :d or :space."
       end
 
-      def self.refuse_second_player_key!(button, name)
+      def self.refuse_second_player_key!(button, name, buttons)
         theirs = SECOND_PLAYER_KEYS[name]
-        return unless theirs
+        return unless theirs && buttons.include?(theirs)
 
         raise ArgumentError, "`computer_keys #{button}: #{name.inspect}` names a key that presses player 2's :#{theirs} on a " \
                              "computer. This game is for more than one player, and player 2 must keep the key. To fix " \

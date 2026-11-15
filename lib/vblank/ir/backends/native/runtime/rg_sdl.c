@@ -1346,6 +1346,7 @@ static void key_changed(const SDL_KeyboardEvent *key) {
   /* In a game for several players, a key no button of player 1's and no hotkey has may be one of
    * player 2's (rg_seats.h). */
   int second = rg_seats_several_players(rg_game_seats[0]) ? rg_seats_second_player_button(code) : -1;
+  if (!rg_window_console_has(second)) second = -1; /* a button the console lacks */
   if (button < 0 && second >= 0 && key->down) {
     second_keys_down |= 1u << (uint32_t)second;
     second_keys_tapped |= 1u << (uint32_t)second;
@@ -2418,6 +2419,33 @@ static void attach_keyboard_pad(void) {
   read_events(); /* takes it up as a gamepad, with any real ones already plugged in */
 }
 
+/* Player 2's keys for the console's buttons other than the pad, as --help says them ("O is A"),
+ * after the words before them on the line, kept within 80 columns, with a full stop. */
+static void print_second_player_keys(void) {
+  /* O, U, 7, 9, 8, 0, H, Y and B, in the order they are said; rg_seats.h says which button each is. */
+  static const int keys[] = {18, 24, 36, 38, 37, 39, 11, 28, 5};
+  int column = 57; /* the end of "  Player 2 can also use these keys: I, J, K and L move," */
+  int left = 0;
+  for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    if (rg_window_console_has(rg_seats_second_player_button(keys[i]))) left++;
+  for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++) {
+    int button = rg_seats_second_player_button(keys[i]);
+    if (!rg_window_console_has(button)) continue;
+    char words[48];
+    left--;
+    snprintf(words, sizeof words, "%s is %s%s", rg_window_key_name(keys[i]), rg_window_button_name(button), left ? "," : ".");
+    int length = (int)strlen(words);
+    if (column + 1 + length > 78) {
+      printf("\n  %s", words);
+      column = 2 + length;
+    } else {
+      printf(" %s", words);
+      column += 1 + length;
+    }
+  }
+  printf("\n\n");
+}
+
 /* What --help prints: the keys as the window starts with them, read from the window's own table so
  * this cannot say a key the window does not use, and the options a player has a use for. The rest
  * (--headless, --scripted-keys, --trace, --window-picture, --usual-settings, and --frame-times and
@@ -2464,12 +2492,13 @@ static void print_usage(const char *program) {
     printf("To open the menu with a gamepad, press Back and Start together, or the guide\n"
            "button. In the menu, the D-pad moves, A chooses and B closes the menu.\n");
   printf("The settings file changes the keys and the gamepad buttons.\n\n");
-  if (rg_seats_several_players(rg_game_seats[0]))
+  if (rg_seats_several_players(rg_game_seats[0])) {
     printf("More players:\n"
            "  Each gamepad is one player. The first gamepad is player 1, the second is\n"
            "  player 2, and so on. A gamepad keeps its player until you disconnect it.\n"
-           "  Player 2 can also use these keys: I, J, K and L move, O is A, U is B,\n"
-           "  7 is L, 9 is R, 8 is Select and 0 is Start.\n\n");
+           "  Player 2 can also use these keys: I, J, K and L move,");
+    print_second_player_keys();
+  }
   printf("Files:\n"
          "  The save and the settings are kept in a folder named for the game, among\n"
          "  the files this computer keeps for each program. The settings are a text\n"
