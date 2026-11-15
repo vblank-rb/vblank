@@ -35,6 +35,7 @@ require_relative "ps1/lowering/sound"
 require_relative "ps1/lowering"
 require_relative "ps1/headless_run"
 require_relative "ps1/polygon_fill" # the chip's fill of a triangle, the answer key the checked run draws faces with
+require_relative "ps1/semi_transparency" # the chip's mix of a see-through texel, the answer key the checked run mixes with
 require_relative "ps1/checked_run"
 
 module VBlank
@@ -126,6 +127,7 @@ module VBlank
                                   tiles: Lowering::Picture.tiled?(program),
                                   colors: colors, by_number: by_number, over_picture: over_picture)
           Runtime::Frame.reserve_last_pass(memory) if cache.plan.keeps_last_pass_number?
+          Runtime::Tiles.reserve_plane_mixes(memory) if Lowering::Picture.mixes_see_through?(program)
           lowering = Lowering.new(program, memory: memory, cache: cache)
           game = lowering.sections
           runtime = Runtime.sections(memory, main: Lowering::MAIN, frame_begins: lowering.frame_begins,

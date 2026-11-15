@@ -180,6 +180,24 @@ module VBlank
       # << 16 | v << 8 | u, then height << 16 | width. A texel of 0000h, or a number into a colour table
       # whose entry is 0000h, is not drawn.
       GP0_TEXTURED_RECTANGLE = 0x65 << 24
+      # SEMI-TRANSPARENCY. A drawing command with this bit set mixes each texel whose top bit is set
+      # (every drawn texel: TEXEL_DRAWN) with the pixel already in video RAM under it, in the way the
+      # draw mode's bits 5-6 name (SEMI_TRANSPARENCY_SHIFT). The chip has four ways, each worked out in
+      # five bits a channel (B the pixel under, F the texel): 0 is B/2 + F/2, the sum halved once; 1 is
+      # B + F; 2 is B - F; 3 is B + F/4, F's quarter dropped to a whole first. A sum past 31 stops at 31,
+      # and a difference below 0 at 0 (psx-spx, "GPU Semi-Transparency"; Backends::PS1::SemiTransparency).
+      GP0_SEMI_TRANSPARENT = 0x02 << 24
+      SEMI_TRANSPARENCY_SHIFT = 5
+      SEMI_TRANSPARENCY_MASK = 3 << SEMI_TRANSPARENCY_SHIFT
+      # The ways a see-through layer's two shares (IR::SeeThrough.weights: sixteenths of the layer and of
+      # what is behind it) are mixed by: half of each, all of each, and a quarter of the layer over all of
+      # what is behind. B - F is no share of either, so no amount asks for it.
+      SEMI_TRANSPARENCY_MODES = { [8, 8] => 0, [16, 16] => 1, [4, 16] => 3 }.freeze
+      # ...and the two shares that need no mix: the layer whole over nothing of what is behind it, which is
+      # the layer drawn as any other, and nothing of the layer over all of what is behind, which is the layer
+      # not drawn at all.
+      SOLID_SHARES = [16, 0].freeze
+      HIDDEN_SHARES = [0, 16].freeze
       # A copy from the processor into video RAM: then y << 16 | x, then height << 16 | width, then the
       # pixels two to a word, the left one in the low half.
       GP0_COPY_TO_VRAM = 0xA0 << 24

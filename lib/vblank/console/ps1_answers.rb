@@ -26,6 +26,18 @@ module VBlank
 
       PLAIN = "the same as on the Advance."
 
+      # THE AMOUNTS A SEE-THROUGH LAYER CAN BE SEEN THROUGH BY. The graphics chip mixes a texel with the
+      # pixel under it in a few fixed ways (PS1Hardware::SEMI_TRANSPARENCY_MODES), never by the Advance's
+      # sixteenths, so a layer's two shares (IR::SeeThrough.weights) must be one of those, or need no mix
+      # (PS1Hardware::SOLID_SHARES, HIDDEN_SHARES). Each amount is a range, as the shares round.
+      SEE_THROUGH_AMOUNTS = "A layer of backgrounds can be see-through by three amounts only. They are the " \
+                            "amounts the graphics chip can mix. The first is half of the layer over half of what " \
+                            "is behind it: `transparency:` from 50 to 56, or `shows: 50, shows_behind: 50`. The " \
+                            "second is all of the layer added to all of what is behind it: `shows: 100, " \
+                            "shows_behind: 100`. The third is a quarter of the layer added to all of what is " \
+                            "behind it: `shows: 25, shows_behind: 100`. A layer can also be solid (`transparency: " \
+                            "0`) or not seen at all (`transparency: 100`). The build refuses other amounts."
+
       ANSWERS = Ractor.make_shareable({
         # --- building, the screen and settings ---
         screen: works("`screen :bitmap` and `screen :tiled` work: the graphics chip draws both into video RAM. " \
@@ -162,7 +174,9 @@ module VBlank
         canvas: works,
         tile_pictures: works,
         sprite_tiles: works,
-        layers: works,
+        layers: works("a layer holds a background or sprites. #{SEE_THROUGH_AMOUNTS} An amount the game works " \
+                      "out as it runs is refused too. A see-through layer of sprites is refused: this build does " \
+                      "not make it yet."),
         layer: works("see `layers`."),
 
         # --- text ---
@@ -246,9 +260,58 @@ module VBlank
       # (Backends::PS1::Lowering::NOT_LOWERED_YET), never in the words of hardware the console lacks.
       UNMADE_VERBS = %i[fade].freeze
 
-      # Answers#refusals, less the lines whose verb is one of UNMADE_VERBS.
+      # Answers#refusals, less the lines whose verb is one of UNMADE_VERBS, and with each see-through layer
+      # whose amounts the graphics chip cannot mix (#see_through_refusals).
+      #
+      # The step that tells the console a layer's amounts again before each frame (`:see_through`) is
+      # passed over for a layer whose amounts are numbers, which the framework puts in for every
+      # see-through layer of a game with more than one: each background is drawn by its own layer's way
+      # whichever screen is up (Backends::PS1::Lowering::Picture#plane_mix_word), so there is nothing to
+      # tell again.
       def self.refusals(nodes, console)
-        super.reject { |refusal| UNMADE_VERBS.include?(Questions.question_for(refusal.node, console)&.verb) }
+        nodes = nodes.to_a
+        layers = see_through_layers(nodes)
+        fixed = layers.select { |layer| IR::SeeThrough.fixed?(layer) }.map(&:name)
+        super.reject do |refusal|
+          UNMADE_VERBS.include?(Questions.question_for(refusal.node, console)&.verb) ||
+            (refusal.node.kind == :see_through && fixed.include?(refusal.node.layer))
+        end + see_through_refusals(layers)
+      end
+
+      # Every see-through layer the layers' declaration in +nodes+ names.
+      def self.see_through_layers(nodes) = nodes.select { |node| node.kind == :layers }.flat_map(&:see_through)
+
+      # A SEE-THROUGH LAYER AT AN AMOUNT THE CHIP DOES NOT MIX, one Refusal each of +layers+. Console::Questions
+      # lets a layer through on a console that mixes by halves and leaves the amounts to the console, since
+      # which it mixes is the console's own.
+      def self.see_through_refusals(layers)
+        layers.filter_map do |layer|
+          unless IR::SeeThrough.fixed?(layer)
+            next Answers::Refusal.new(layer, "This game works out how see-through layer :#{layer.name} is as the " \
+                                             "game runs. A PlayStation cannot mix a layer by every amount. " \
+                                             "#{SEE_THROUGH_AMOUNTS} To fix this, give the layer one of those " \
+                                             "amounts as a number for the PlayStation.")
+          end
+          next if mixes?(IR::SeeThrough.fixed_weights(layer))
+
+          Answers::Refusal.new(layer, "Layer :#{layer.name} is see-through by #{amounts_as_written(layer)}, and a " \
+                                      "PlayStation cannot mix that amount. #{SEE_THROUGH_AMOUNTS} To fix this, use " \
+                                      "one of those amounts for the PlayStation, for example " \
+                                      "`transparency: console.mixes_by_half ? 50 : 40`.")
+        end
+      end
+
+      # Whether the chip draws a layer at +shares+ (sixteenths of the layer and of what is behind it).
+      def self.mixes?(shares)
+        [PS1Hardware::SOLID_SHARES, PS1Hardware::HIDDEN_SHARES].include?(shares) ||
+          PS1Hardware::SEMI_TRANSPARENCY_MODES.key?(shares)
+      end
+
+      # +layer+'s amounts as the game wrote them, as the words of a refusal show them.
+      def self.amounts_as_written(layer)
+        return "`transparency: #{layer.behind.value}`" if layer.split
+
+        "`shows: #{layer.shows.value}, shows_behind: #{layer.behind.value}`"
       end
 
       # WHAT .claude/dsl/playstation.md SAYS: every answer, in the order ANSWERS gives them, and what the

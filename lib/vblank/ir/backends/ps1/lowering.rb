@@ -140,7 +140,7 @@ module VBlank
                                                     "fades, lights and screen effects" => %i[pixelate shade_outside],
                                                     "sprites and tiled backgrounds" => %i[copy_tiles box_background
                                                                                           copy_owed_tiles load_sprite_tiles affine_background
-                                                                                          scroll_rows see_through show_held_tiles
+                                                                                          scroll_rows show_held_tiles
                                                                                           show_picture_group],
                                                     "save memory" => %i[save_init save_store save_write save_erase save_read save_sum
                                                                         save_load_list save_store_list]

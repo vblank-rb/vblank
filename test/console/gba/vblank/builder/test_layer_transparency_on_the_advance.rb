@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "differential"
+require "see_through_scenery_tests"
 
 # THE TESTS OF vblank/builder/test_layer_transparency.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY, kept apart so that the
 # Game Boy Color's run never loads them (test/console/gba); the rest are in that file. The same
@@ -22,8 +23,12 @@ require "differential"
 # what the console does, so the tests below read as the picture rather than as a rule.
 # The one thing a reader would not guess is that a see-through sprite never shows another
 # sprite through it, only scenery; that has tests of its own below.
+#
+# The tests of a see-through layer of scenery that the PlayStation plays too are in
+# SeeThroughSceneryTests (test/see_through_scenery_tests.rb).
 class TestLayerTransparencyOnTheAdvance < Minitest::Test
   include Differential
+  include SeeThroughSceneryTests
 
   RED = VBlank::Graphics::Color.resolve(:red)
   WHITE = VBlank::Graphics::Color.resolve(:white)
@@ -361,29 +366,6 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
     end
   end
 
-  # A TINT does not take the blend, and the warning above sends people here — so it is a
-  # promise the suite has to keep. On a tiled screen a tint moves the colors themselves
-  # rather than asking the display to blend, so the layer keeps seeing through them: a
-  # `flash_screen :red` reaches a game the water can be seen through and a white one does
-  # not. What shows is the layer blending TINTED colors, so it is neither the plain
-  # see-through value nor the solid one.
-  private def tinted_program(amount, hold)
-    tile = SOLID_TILE
-    program do
-      screen :tiled
-      image(:back, "#" => :red) { tile }
-      image(:front, "#" => :white) { tile }
-      tiles :backset, "#" => :back
-      tiles :frontset, "#" => :front
-      layers :deep, :glass
-      layer(:deep) { background :floor, tiles: :backset, map: Array.new(20) { "#" * 30 } }
-      layer(:glass, transparency: amount) do
-        background :pane, tiles: :frontset, map: Array.new(20) { "#" * 20 }
-      end
-      game_loop { tint :blue, hold }
-    end
-  end
-
   # A fade PLACED in the stack is still a fade — it takes the same blend unit, whatever it
   # leaves alone — so the rule and the hand-back have to reach it too.
   private def placed_fade_program(amount, hold)
@@ -444,53 +426,6 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
     end
   end
 
-  # --- a see-through layer in a game that has SCENES ---
-  #
-  # The display is told which layers to blend by NUMBER, and scenes take turns with the
-  # console's layers — so the number a background sits on depends on which scene it was
-  # declared in, and a scene that sees through nothing must have the blend off rather than
-  # pointed at whatever background inherited that number.
-
-  SWITCH_AT = 6 # frames of the first scene before the game hands over to the second
-
-  # A banner scene that sees through nothing, handing over to a floor with a pane of glass
-  # over it. The pane is the SIXTH thing in the program's list of scenery and the SECOND on
-  # the hardware, which is the whole of what this is about.
-  private def scenes_that_take_turns
-    tile = SOLID_TILE
-    program do
-      screen :tiled
-      image(:back, "#" => :red) { tile }
-      image(:front, "#" => :white) { tile }
-      image(:other, "#" => :green) { tile }
-      tiles :backset, "#" => :back
-      tiles :frontset, "#" => :front
-      tiles :otherset, "#" => :other
-      full = Array.new(20) { "#" * 30 }
-      layers :banner, :sky, :deep, :glass
-      state = 0
-
-      scene :title do
-        layer(:banner) { background :banner, tiles: :otherset, map: full }
-        layer(:sky) { background :sky, tiles: :otherset, map: full }
-      end
-
-      scene :play do
-        layer(:deep) { background :floor, tiles: :backset, map: full }
-        layer(:glass, transparency: 50) { background :pane, tiles: :frontset, map: full }
-      end
-
-      tick = 0
-      game_loop do
-        tick += 1
-        state = 1 if tick > SWITCH_AT
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
-      end
-    end
-  end
 
   # A PLAIN BITMAP TITLE AND A MISTY ROOM, in either order, with nothing faded until a block
   # says so. +first+ is the scene the game starts in and +swap_at+ the pass the other takes
@@ -580,12 +515,6 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
     end
   end
 
-  def test_a_see_through_layer_of_scenery_shows_what_is_behind_it
-    seen = [0, 50, 100].map { |amount| shown(scenery_program(amount), *SCENERY_XY) }
-
-    assert_equal [WHITE, HALF_WHITE_OVER_RED, RED], seen
-  end
-
   def test_a_see_through_layer_of_sprites_shows_what_is_behind_it
     seen = [0, 50, 100].map { |amount| shown(sprite_program(amount), *SPRITE_XY) }
 
@@ -671,18 +600,6 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
     end
   end
 
-  # FADING TO WHITE IS THE OTHER DIRECTION AND NOT A MIRROR OF THE FIRST. Toward white a
-  # channel adds a share of the headroom it has left; toward black it keeps a share of
-  # what it has, and the two truncate opposite ways — so one direction can be right while
-  # the other is a step out at every pixel. Both halves of the picture are asserted: the
-  # layer is still blending, and the two backends land on the same color.
-  def test_a_fade_to_white_leaves_the_layer_see_through_too
-    solid = shown(faded_program(:scenery, 0, 25, toward: :white), *SCENERY_XY)
-
-    refute_equal solid, shown(faded_program(:scenery, 50, 25, toward: :white), *SCENERY_XY),
-                 "the see-through layer went solid while a fade to white ran"
-  end
-
   # ...and a fade of nothing is a lifted fade, not a fade of zero left in force.
   def test_a_lifted_fade_leaves_the_layer_see_through
     %i[scenery sprite].each do |kind|
@@ -759,13 +676,6 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
     assert_equal seen_through_mist, game_player.run(room, frames: 12).screen.pixel(200, 100)
   end
 
-  def test_a_tint_leaves_the_layer_see_through
-    solid = shown(tinted_program(0, 50), *SCENERY_XY)
-
-    refute_equal solid, shown(tinted_program(50, 50), *SCENERY_XY),
-                 "a tint took the layer's blend away"
-  end
-
   def test_one_flash_does_not_cost_the_layer_for_the_rest_of_the_game
     %i[scenery sprite].each do |kind|
       screen = game_player.run(flashing_program(kind), frames: AFTER_THE_FLASH).screen
@@ -779,16 +689,6 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
   def test_the_two_backends_draw_the_same_screen_after_a_fade
     assert_backends_agree(flashing_program(:scenery), frames: AFTER_THE_FLASH)
     assert_backends_agree(flashing_program(:sprite), frames: AFTER_THE_FLASH)
-  end
-
-  def test_a_scene_sees_through_its_own_layer
-    assert_equal HALF_WHITE_OVER_RED,
-                 shown(scenes_that_take_turns, *SCENERY_XY, frames: SWITCH_AT + 4),
-                 "the scene's pane does not show the floor under it"
-  end
-
-  def test_the_two_backends_draw_the_same_screen_when_a_scene_sees_through_a_layer
-    assert_backends_agree(scenes_that_take_turns, frames: SWITCH_AT + 4)
   end
 
   # A tint said on the title is still in force as the room takes over: both backends tint the
@@ -843,15 +743,5 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
   def test_rooms_after_a_title_agree_on_every_change_of_room
     rooms = two_misty_rooms(walker: true, title: true)
     [2, 3, 4, 6, 7, 9, 10, 12].each { |frames| assert_backends_agree(rooms, frames: frames, console_frames: frames + 1) }
-  end
-
-  # ...and the scene BEFORE it, which sees through nothing, must not have picked up the
-  # blend. Its two backgrounds sit on the layers the dive's floor and pane later use, so a
-  # blend set up once at boot would quietly make the banner see-through.
-  def test_a_scene_that_sees_through_nothing_is_drawn_solid
-    green = VBlank::Graphics::Color.resolve(:green)
-
-    assert_equal green, shown(scenes_that_take_turns, *SCENERY_XY, frames: 2),
-                 "the banner scene is blended on the oracle"
   end
 end

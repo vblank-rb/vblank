@@ -172,6 +172,8 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `called_routine_area_tests.rb` (a routine called inside an area, played by each console that keeps the area as it runs),
 `interrupted_walks.rb` (small games where a timer's handler or a bend calls a routine the game is part way through, and the check that the Advance cartridge finishes them as the interpreter does, for the timer's and the bend's cartridge tests),
 `palette_walk_tests.rb` (a fade or tint walked and repeated, played by each console that walks its colours itself),
+`see_through_scenery_tests.rb` (a background layer half see-through under a fade or a tint and in a scene of its own, played by each console that mixes it with what is behind: the Advance and the PlayStation),
+`layer_over_sprites_tests.rb` (a see-through background over sprites behind it and in front of it, played by the same two),
 `pixelate_backgrounds_tests.rb` (the backgrounds in blocks and the sprites as drawn, `pixelate ..., sprites: false`, played by each console whose display shows it: the Advance and the Super Nintendo),
 `first_pass_presses.rb` (presses counted from a game's first pass, for a game that sets up save
 records first),

@@ -177,6 +177,8 @@ module VBlank
         def frames_each_pass(&) = raise(RunComparison::AsksTheInterpreter, "for a pass to take several frames (`frames_each_pass`)")
         def frames_setting_up(*) = raise(RunComparison::AsksTheInterpreter, "how many frames setting up takes (`frames_setting_up`)")
         def fill_faces_with(*) = raise(RunComparison::AsksTheInterpreter, "to fill faces by a console chip's rules (`fill_faces_with`)")
+        def mix_see_through_with(*) = raise(RunComparison::AsksTheInterpreter,
+                                            "to mix a see-through layer by a console chip's rules (`mix_see_through_with`)")
 
         # Which player the person at this machine is. A cartridge is never one machine of a match:
         # its person is always the first player, so that is the one answer it takes.

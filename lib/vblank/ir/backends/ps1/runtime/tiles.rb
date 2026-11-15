@@ -78,8 +78,24 @@ module VBlank
             # planes a status bar goes up on (+bar_planes+), and +levels+: nil where every sprite is drawn in
             # front of every background in the order the pass placed them, or how many levels the stack has,
             # each drawn in turn, its backgrounds and then its sprites (Reference#repaint_view); +crosses+ for a game
-            # that shows a painted screen too (TILES_UP).
-            Screen = Data.define(:places, :depths, :opaque, :bar_planes, :levels, :crosses)
+            # that shows a painted screen too (TILES_UP); +mixed_planes+ the planes a see-through background goes
+            # up on, each drawn as its PLANE_MIXES word says.
+            Screen = Data.define(:places, :depths, :opaque, :bar_planes, :levels, :crosses, :mixed_planes)
+
+            # A SEE-THROUGH BACKGROUND (`layer ..., transparency:`) is its plane drawn with the chip's own
+            # semi-transparency (Console::PS1Hardware::GP0_SEMI_TRANSPARENT): every texel it draws mixed with the
+            # pixel already under it, which is the backdrop, the planes behind it and the sprites at the levels
+            # behind it, as the interpreter mixes the layer with what it painted first. Which way it mixes is the
+            # background's, and another background can go up on the plane when a scene takes over, so the game
+            # keeps a word for each plane (Lowering::Picture#emit_put_up writes it): the textured rectangle's
+            # command, semi-transparent or not, with the way in the draw mode's bits (SEMI_TRANSPARENCY_MASK)
+            # beside it; or PLANE_NOT_DRAWN for a background that shows nothing of itself (`transparency: 100`),
+            # whose plane is passed over, which is all of what is behind it and nothing of it. Only a game with a
+            # see-through background has it (#reserve_plane_mixes).
+            PLANE_MIXES = "rt plane mixes"
+            PLANE_NOT_DRAWN = 0
+
+            def self.reserve_plane_mixes(memory) = memory.reserve(PLANE_MIXES, MOST_PLANES * 4)
 
             # The sprites the last pass placed: how many, a word, then a row of DRAWN_BYTES for each:
             # whose it is (Backends::SpriteNames#name_number), which picture (#picture_number), its place
@@ -141,7 +157,7 @@ module VBlank
               emit_bar(asm, at) unless screen.bar_planes.empty?
               emit_draw(asm, at, screen, faces, colors)
               emit_sprites_at_level(asm, at) if screen.levels
-              emit_plane_drawing(asm, at, bar: !screen.bar_planes.empty?)
+              emit_plane_drawing(asm, at, bar: !screen.bar_planes.empty?, mixes: !screen.mixed_planes.empty?)
               emit_plane_tables(asm, screen.places, screen.depths)
             end
 
@@ -569,7 +585,7 @@ module VBlank
                   asm.bltz(:t0, skip)
                 end
                 asm.label("rt_tiles_draw_from_#{plane}") if screen.opaque.include?(plane)
-                emit_plane_draw_call(asm, screen, state, plane)
+                emit_plane_draw_call(asm, at, screen, state, plane)
                 asm.label(skip)
               end
               drawn = at.call(DRAWN)
@@ -586,11 +602,26 @@ module VBlank
               asm.label("rt_tiles_draw_sprites_end")
             end
 
-            def emit_plane_draw_call(asm, screen, state, plane)
+            # rt_plane_draw called for plane +plane+; in a game with a see-through background, with a2 the
+            # textured rectangle's command, and for a plane one goes up on, a2 and the draw mode's way of mixing
+            # read from its PLANE_MIXES word, and the plane passed over where that is PLANE_NOT_DRAWN.
+            def emit_plane_draw_call(asm, at, screen, state, plane)
+              h = Console::PS1Hardware
+              mixed = screen.mixed_planes.include?(plane)
+              not_drawn = "rt_tiles_draw_passed_over_#{plane}"
               asm.addiu(:a0, :gp, state)
-              asm.li(:a1, plane_draw_mode(screen.places.fetch(plane), screen.depths.fetch(plane)))
-              asm.jal("rt_plane_draw")
+              if mixed
+                asm.lw(:a2, at.call(PLANE_MIXES) + (plane * 4), :gp)
+                asm.li(:a1, plane_draw_mode(screen.places.fetch(plane), screen.depths.fetch(plane)))
+                asm.beq(:a2, :zero, not_drawn) { asm.andi(:t0, :a2, h::SEMI_TRANSPARENCY_MASK) }
+                asm.jal("rt_plane_draw") { asm.or(:a1, :a1, :t0) }
+              else
+                asm.lui(:a2, h::GP0_TEXTURED_RECTANGLE >> 16) unless screen.mixed_planes.empty?
+                asm.li(:a1, plane_draw_mode(screen.places.fetch(plane), screen.depths.fetch(plane)))
+                asm.jal("rt_plane_draw")
+              end
               asm.jal("rt_draw_list_kick")
+              asm.label(not_drawn) if mixed
             end
 
             # THE PICTURE A LEVEL AT A TIME (Reference#repaint_view), s4 the level: at each, the planes up whose
@@ -606,7 +637,7 @@ module VBlank
                 asm.beq(:t0, :zero, skip)
                 asm.lw(:t0, state + PLANE_LEVEL, :gp)
                 asm.bne(:t0, :s4, skip)
-                emit_plane_draw_call(asm, screen, state, plane)
+                emit_plane_draw_call(asm, at, screen, state, plane)
                 asm.label(skip)
               end
               asm.jal("rt_sprites_draw_at_level") { asm.move(:a0, :s4) }
@@ -677,7 +708,11 @@ module VBlank
             #
             # In a game with a status bar (+bar+) the bands go down to the bar's top (SCENERY_ROWS), and a bar at
             # the top of the screen leaves nothing of the plane to draw.
-            def emit_plane_drawing(asm, at, bar:)
+            #
+            # In a game with a see-through background (+mixes+), a2 = the rectangles' command (#emit_plane_draw_call),
+            # which no routine called here changes. Its low bits may hold the way the plane mixes, which land in the
+            # command's colour, and a raw textured rectangle mixes no colour in.
+            def emit_plane_drawing(asm, at, bar:, mixes: false)
               h = Console::PS1Hardware
               word = ->(index) { DrawList.word_offset_bytes(index) }
               rows = at.call(SCENERY_ROWS) if bar
@@ -714,7 +749,11 @@ module VBlank
               asm.sll(:t1, :t1, 4)
               asm.addu(:a0, :s1, :t0)
               DrawList.emit_command(asm, 1) { asm.addu(:a0, :a0, :t1) }
-              DrawList.emit_command(asm, 4) { asm.lui(:a0, h::GP0_TEXTURED_RECTANGLE >> 16) }
+              if mixes
+                DrawList.emit_command(asm, 4) { asm.move(:a0, :a2) }
+              else
+                DrawList.emit_command(asm, 4) { asm.lui(:a0, h::GP0_TEXTURED_RECTANGLE >> 16) }
+              end
               asm.lw(:t0, at.call(Paint::PAGE_Y), :gp)
               asm.addu(:t0, :t0, :s2)
               asm.sll(:t0, :t0, 16)

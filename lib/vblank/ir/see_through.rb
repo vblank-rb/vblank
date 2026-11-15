@@ -51,6 +51,12 @@ module VBlank
         [nearest_steps(shows), nearest_steps(behind)]
       end
 
+      # Whether both of +layer+'s amounts are numbers the author wrote, which never change.
+      def fixed?(layer) = layer.shows.kind == :int && layer.behind.kind == :int
+
+      # The two shares (#weights) of a layer whose amounts are #fixed?.
+      def fixed_weights(layer) = weights(layer, layer.shows.value, layer.behind.value)
+
       # The same two shares for amounts the game works out, as one number: the layer's
       # share in the low byte and what is behind above it — the halfword a display with a
       # blend register of that shape is told. Only the two-amount form comes here; the

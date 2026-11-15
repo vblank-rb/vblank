@@ -397,6 +397,7 @@ module VBlank
           unless [@screen.width, @screen.height] == [width, height]
             @screen = Framebuffer.new(width: width, height: height, color_bits: @console.color_bits)
           end
+          @screen.see_through_mixer = @see_through_mixer
           @screen.dims = @console.fades_by_brightness
           @screen.shown_rows = @console.shown_rows
         end
@@ -498,6 +499,17 @@ module VBlank
         # inside a face are the chip's (PS1::CheckedRun). Returns self.
         def fill_faces_with(filler)
           @face_filler = filler
+          self
+        end
+
+        # MIX EACH SEE-THROUGH LAYER THE WAY A CONSOLE'S CHIP DOES, not by Framebuffer#mix_see_through's
+        # own rule: +mixer+'s mix(color, under, near, far) gives the colour a pixel of the layer shows over
+        # what is under it, at its two shares in sixteenths. Which pixels are mixed, with what and at what
+        # shares, is still the interpreter's; only the arithmetic is the chip's (PS1::CheckedRun). Returns
+        # self.
+        def mix_see_through_with(mixer)
+          @see_through_mixer = mixer
+          @screen.see_through_mixer = mixer
           self
         end
 

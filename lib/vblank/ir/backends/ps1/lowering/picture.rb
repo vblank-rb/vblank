@@ -23,8 +23,8 @@ module VBlank
           module Picture
             # The steps that change colours as the game runs (Runtime::Colors).
             COLOR_CHANGES = %i[color_list_holds background_colors fade tint].freeze
-            STATEMENT_KINDS = (%i[background scroll_background place_bar set_tile show_map present_objects hide_sprites] +
-                               COLOR_CHANGES).freeze
+            STATEMENT_KINDS = (%i[background scroll_background place_bar set_tile show_map present_objects hide_sprites
+                                  see_through] + COLOR_CHANGES).freeze
 
             def emit_picture_statement(node)
               case node.kind
@@ -39,6 +39,10 @@ module VBlank
               when :background_colors then emit_background_colors(node)
               when :fade then emit_palette_walk(node)
               when :tint then emit_palette_walk(node)
+              # Reference#exec_see_through: a layer's amounts told again before the frame. Only a layer whose
+              # amounts are numbers comes here (Console::PS1Answers.refusals), and each background is drawn by
+              # its own layer's way as it goes up (#emit_plane_mix), so there is nothing to tell.
+              when :see_through then nil
               else raise LoweringError, "no writer here for #{node.kind.inspect}"
               end
             end
@@ -92,7 +96,59 @@ module VBlank
 
               bars = @layers.select { |bg, _| bg.bar? }.values.uniq.sort
               Runtime::Tiles::Screen.new(places: @plane_places, depths: @plane_depths, opaque: @opaque_planes, bar_planes: bars,
-                                         levels: @levels, crosses: @crosses)
+                                         levels: @levels, crosses: @crosses, mixed_planes: @mixed_planes)
+            end
+
+            # THE CHIP'S WAY EACH SEE-THROUGH BACKGROUND OF +program+ IS MIXED IN (Console::PS1Hardware::
+            # SEMI_TRANSPARENCY_MODES), by background: those in a layer whose amounts are numbers the chip mixes,
+            # and HIDDEN for one in a layer that shows nothing of itself (`transparency: 100`), which is not drawn.
+            # A layer drawn whole (`transparency: 0`) is no mix, and an amount the chip cannot mix was refused
+            # before the build (Console::PS1Answers.see_through_refusals).
+            def self.see_through_modes(program)
+              layers = SeeThrough.layers(program).to_h { |layer| [layer.name, layer] }
+              program.walk.each_with_object({}.compare_by_identity) do |bg, modes|
+                next unless bg.kind == :background && (layer = layers[bg.layer]) && SeeThrough.fixed?(layer)
+
+                shares = SeeThrough.fixed_weights(layer)
+                mode = shares == Console::PS1Hardware::HIDDEN_SHARES ? HIDDEN : Console::PS1Hardware::SEMI_TRANSPARENCY_MODES[shares]
+                modes[bg] = mode if mode
+              end
+            end
+
+            # A see-through background that shows nothing of itself (#see_through_modes).
+            HIDDEN = :hidden
+
+            # Whether +program+'s tiled screen has a see-through background (Runtime::Tiles::PLANE_MIXES).
+            def self.mixes_see_through?(program) = tiled?(program) && !see_through_modes(program).empty?
+
+            def see_through_modes = @see_through_modes ||= Picture.see_through_modes(@program)
+
+            # The word +bg+'s plane is drawn by (Runtime::Tiles::PLANE_MIXES): the textured rectangle, made
+            # semi-transparent and its way set beside it for a see-through background, or nought for one not
+            # drawn at all.
+            def plane_mix_word(bg)
+              h = Console::PS1Hardware
+              mode = see_through_modes[bg] or return h::GP0_TEXTURED_RECTANGLE
+              return Runtime::Tiles::PLANE_NOT_DRAWN if mode == HIDDEN
+
+              h::GP0_TEXTURED_RECTANGLE | h::GP0_SEMI_TRANSPARENT | (mode << h::SEMI_TRANSPARENCY_SHIFT)
+            end
+
+            # A see-through layer this build does not draw yet: one of sprites, which the interpreter mixes
+            # with the scenery alone and never with a sprite under them (Framebuffer#keep_scenery), and a
+            # status bar, which the runtime draws apart from the planes (Runtime::Tiles' rt_bar_draw).
+            def refuse_unmade_see_through!
+              mixed = SeeThrough.layers(@program).reject do |layer|
+                SeeThrough.fixed?(layer) && SeeThrough.fixed_weights(layer) == Console::PS1Hardware::SOLID_SHARES
+              end.map(&:name)
+              return if mixed.empty?
+
+              if @objects.each_value.any? { |obj| [obj.layer, *obj.layers].intersect?(mixed) }
+                refuse_unmade!(TILED_SCREEN, "shows sprites in a see-through layer")
+              end
+              return unless @backgrounds.any? { |bg| bg.bar? && mixed.include?(bg.layer) }
+
+              refuse_unmade!(TILED_SCREEN, "shows a status bar in a see-through layer")
             end
 
             def prepare_picture
@@ -122,6 +178,7 @@ module VBlank
             # a painted screen, backgrounds stamped where they are put up and sprites over the picture.
             def refuse_unmade_picture!
               refuse_fades_of_part!
+              refuse_unmade_see_through!
               return refuse_unmade_painted! unless @tiled
 
               others = @program.walk.select { |node| node.kind == :screen }.map(&:mode).uniq - %i[tiled bitmap]
@@ -326,11 +383,12 @@ module VBlank
               make_plane_tables(count)
               # The planes every background that goes up on draws every pixel of (Runtime::Tiles::Screen#opaque): one
               # of those up hides the backdrop and every plane behind it. A status bar is drawn below the rows the
-              # other planes are, so it hides nothing behind it.
+              # other planes are, so it hides nothing behind it, and nor does a see-through one.
               @opaque_planes =(0...count).select do |plane|
                 showing = backgrounds_on(plane)
-                !showing.empty? && showing.all? { |bg| !bg.bar? && opaque_background?(bg) }
+                !showing.empty? && showing.all? { |bg| !bg.bar? && !see_through_modes.key?(bg) && opaque_background?(bg) }
               end
+              @mixed_planes = see_through_modes.keys.map { |bg| plane_of(bg) }.uniq.sort
               @levels = picture_levels
               follow_backdrop_list
               make_tile_sheet
@@ -542,11 +600,22 @@ module VBlank
               runtime_call("rt_plane_put_up", [Build.int(plane_of(bg)), cells, Build.int(reset_view),
                                                Build.int(columns.bit_length - 1), Build.int(rows), Build.int(plane_table_word(bg)),
                                                Build.int(background_level(bg))])
+              emit_plane_mix(bg)
               return if reset_view.zero?
 
               emit_bar_put_up(bg) if bg.bar?
               note = corner_note(plane_of(bg))
               statement(Build.set(note, 1)) if note
+            end
+
+            # How +bg+'s plane is drawn from now (Runtime::Tiles::PLANE_MIXES), on a plane a see-through background
+            # goes up on: the others are always drawn whole.
+            def emit_plane_mix(bg)
+              plane = plane_of(bg)
+              return unless @mixed_planes.include?(plane)
+
+              @asm.li(:t0, plane_mix_word(bg))
+              emit_store_word(:t0, runtime_place(Runtime::Tiles::PLANE_MIXES) + (plane * 4))
             end
 
             # A STATUS BAR PUT UP shows from the top it was declared with, and the runtime's one top and one setting
