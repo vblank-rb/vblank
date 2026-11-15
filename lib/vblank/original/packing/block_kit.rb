@@ -54,7 +54,13 @@ module VBlank
 
         def value_of(operand) = @internals.value_of(operand)
 
+        # A list of the routine's own. Every format's lists are named in one space: two formats that
+        # name a list alike share it. The Advance's song formats (Packing::M4A) each walk a song with
+        # the same lists, kilobytes of them, and a routine that uses several holds them once. So a
+        # list of one name at another capacity or width is refused
+        # (BlockKitInternals#refuse_list_of_another_shape!).
         def list(name, capacity:, width: :word)
+          @internals.refuse_list_of_another_shape!(name, capacity, width)
           @internals.builder.list(@internals.made_name(:"format_#{name}"), capacity: capacity, width: width, full_of: 0)
         end
 
@@ -135,6 +141,9 @@ module VBlank
         # How many bytes a block writes between one wait for the next frame and the next.
         PROGRESS_BYTES = 256
 
+        # A list a format's routine declared (BlockKit#list): the format and the list's shape.
+        ListDeclaration = Data.define(:format_name, :capacity, :width)
+
         attr_reader :builder, :copy, :pack
 
         # +before_wait+ names a routine called before each wait for the next frame (a shell's
@@ -151,6 +160,27 @@ module VBlank
           @slot_bytes_done = slot_bytes_done
           @variables = {}
           @held_place_count = 0
+          @format_lists = {}
+        end
+
+        # +format_name+'s routine built in the block given: the format a list it declares is named
+        # by (#refuse_list_of_another_shape!).
+        def with_lists_declared_by(format_name)
+          @format_building = format_name
+          yield
+          @format_building = nil
+        end
+
+        # A WORKING LIST DECLARED AT A SHAPE ANOTHER DECLARATION OF ITS NAME DID NOT GIVE. Formats
+        # share a list of one name, and the build makes the list once, at the first declaration's
+        # capacity and width, so a block of a format that declared it bigger would run off its end,
+        # or would pass only while a format that declared it smaller runs second.
+        def refuse_list_of_another_shape!(name, capacity, width)
+          declared = ListDeclaration.new(format_name: @format_building, capacity: capacity, width: width)
+          first = (@format_lists[name] ||= declared)
+          return if first.capacity == capacity && first.width == width
+
+          raise ArgumentError, list_of_another_shape_message(name, first, declared)
         end
 
         # +at+, or, where it is worked out from a read of the copy, a variable of its own set to it
@@ -333,6 +363,24 @@ module VBlank
         def emit_outside_slot_fault
           emit_fault(Unpacking::Fault::WRITE_OUTSIDE_SLOT, routine_variable(:ends) - routine_variable(:slot_first),
                      routine_variable(:slot_number))
+        end
+
+        private
+
+        def list_shape_words(declaration) = "capacity: #{declaration.capacity}, width: :#{declaration.width}"
+
+        def list_of_another_shape_message(name, first, declared)
+          if first.format_name == declared.format_name
+            return "Format :#{first.format_name} makes the working list :#{name} two times, with " \
+                   "#{list_shape_words(first)} and with #{list_shape_words(declared)}. A list has one size. To fix " \
+                   "this, give one of the two lists a different name."
+          end
+
+          "Formats :#{first.format_name} and :#{declared.format_name} each make a working list :#{name}. " \
+            ":#{first.format_name} makes it with #{list_shape_words(first)}. :#{declared.format_name} makes it with " \
+            "#{list_shape_words(declared)}. Formats that use one list name share one list, and that list has one size. " \
+            "To fix this, give the list a different name in one format, like " \
+            "`block.list(:#{declared.format_name}_#{name}, ...)`."
         end
       end
     end

@@ -415,7 +415,11 @@ from that copy. The game's code says each piece's shape and size; it never depen
   length, a count), `block.finished`,
   `block.finish!` and `block.emit_wrong_format_fault`. Each write is checked against the slot and
   counted toward the progress bar. Put the module in a file the game loads with
-  `VBlank.require_game_file`, so an `if` in it is a branch of the routine.
+  `VBlank.require_game_file`, so an `if` in it is a branch of the routine. **The names of
+  `block.variable` and `block.list` are shared by every format** of a routine: two formats that name
+  a list alike use one list (the song formats of `Packing::M4A` share theirs this way), so one name
+  at two capacities or widths is refused, naming both formats and the list. Give a format's lists a
+  name of its own (`:sprite_even_bytes`) unless it means to share them.
 
   **The routine's counters are plain Ruby locals**, as a method's are anywhere in a game
   (`plain-ruby.md`): `at = block.from`, then `at += 2` inside a `block.repeat`. A local the routine

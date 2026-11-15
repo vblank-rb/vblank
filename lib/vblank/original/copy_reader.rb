@@ -199,7 +199,7 @@ module VBlank
         format.format_settings.each { |name, default| @kit.setting(name).store!(settings.fetch(name, default)) }
         emit_block_call(:"unpack_#{format.format_name}", at: settings.fetch(:at), slot: into, start: start, count: 0,
                                                          format_number: @formats.index(format), file: file) do
-          format.routine(@kit)
+          @internals.with_lists_declared_by(format.format_name) { format.routine(@kit) }
         end
       end
 
