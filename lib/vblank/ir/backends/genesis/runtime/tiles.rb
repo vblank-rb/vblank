@@ -558,10 +558,11 @@ module VBlank
               asm.lsl(:l, 3, asm.d(0))
             end
 
-            # rt_upload (and rt_upload_whole, which is the same, the screen being off): the maps noted
-            # are copied onto their planes, the cells changed after them written, then the sprite table
-            # and the scroll. The colours are first, being the shortest, since a map's copy can run past the end of the
-            # blank and what is written after it is on the screen a frame late.
+            # rt_upload (and rt_upload_whole, which is the same, the screen being off): the colours, the
+            # sprite table and the scroll, then the maps noted copied onto their planes and the cells
+            # changed after them. The maps are last, being the longest: a whole map's copy runs past the
+            # end of the blank (#emit_plane_map_copied), and what is written after it would be on the
+            # screen a frame late.
             #
             # In a game whose scenes each bring their own tiles in, an arriving scene's go first, with the
             # screen switched off (#emit_scene_tiles), and the screen comes back on in the blank after
@@ -572,18 +573,23 @@ module VBlank
               asm.jsr(asm.abs_l("rt_scene_tiles_copied")) if scene_tiles
               asm.jsr(asm.abs_l("art runs uploaded")) if runs # Lowering::TileRuns#tile_runs_section, after a scene's own tiles
               asm.jsr(asm.abs_l("rt_colors_written")) if colors
-              asm.jsr(asm.abs_l("rt_maps_and_cells_written"))
-              emit_sprite_table_written(asm, memory, at, samples: samples)
+              emit_sprite_table_written(asm, memory, at)
               emit_scroll_written(asm, memory)
+              asm.jsr(asm.abs_l("rt_maps_and_cells_written"))
               emit_screen_back_on(asm, at) if scene_tiles
               asm.rts
 
               # The maps noted and the cells changed after them, the part of the blank a full queue
               # of cells also writes (#emit_queue_written_early). D0 to D7 and A0 to A3 are used.
               asm.label("rt_maps_and_cells_written")
-              [[0, PLANE_A_AT], [1, PLANE_B_AT]].each { |plane, base| emit_plane_map_copied(asm, memory, plane, base, columns) }
+              [0, 1].each do |plane|
+                asm.moveq(plane, asm.d(0))
+                asm.jsr(asm.abs_l("rt_plane_map_copied"))
+              end
               emit_cells_written(asm, memory, at)
               asm.rts
+              emit_plane_map_copied(asm, memory, columns)
+              emit_vram_run_copied(asm, samples: samples)
             end
 
             # The screen, switched off for a scene's tiles, on again in the next blank.
@@ -596,37 +602,146 @@ module VBlank
               asm.label("rt_upload_screen_was_on")
             end
 
-            # The grid noted for plane +plane+, if any, copied row by row onto it: each row is
-            # as many cells as the map has across, from the start of a row of the plane.
-            def emit_plane_map_copied(asm, memory, plane, base, columns)
-              h = Console::GenesisHardware
+            # THE GRID NOTED FOR PLANE +plane+, if any, COPIED ONTO IT BY THE VIDEO CHIP (DMA), straight
+            # from the cartridge. A map of 64 by 64 cells is 8K, and the processor handing the chip a
+            # word at a time (two instructions a cell, a move and a loop) takes a whole frame over it,
+            # most of it while the screen is drawn, so the scene it brings arrives a frame late and the
+            # music waits for it. The chip copies by itself about 200 bytes a line of the blank, which is
+            # how the console's own games send a screen's map; that is nearly all of an 8K map in the
+            # blank, and what is left goes in at the top of the next frame, the processor stopped meanwhile.
+            #
+            # SO THE ROWS THE VIEW SHOWS GO FIRST. The copy starts at the row of the plane at the top of
+            # the view (where the pass left its scroll), runs to the grid's last row and comes round to
+            # its first: the rows still going in as the frame starts are the ones just above the view,
+            # which it does not show.
+            #
+            # A grid as wide as the plane is one run in the cartridge and on the plane, so it goes in two
+            # copies, from the view's row to the end and from the first row to the view's; a narrower one
+            # goes a row at a copy, each from the start of a row of the plane.
+            #
+            # rt_plane_map_copied: D0 is the plane, 0 for A and 1 for B, a long. Plane B's map is 8K past
+            # plane A's, its notes four bytes past A's. D0 to D7, A0 to A3 are used.
+            def emit_plane_map_copied(asm, memory, columns)
               shift = columns == 64 ? 6 : 5
-              skip = "rt_upload_no_map_#{plane}"
-              asm.move(:l, asm.abs_l(memory[PENDING], plane * 4), asm.d(0))
-              asm.branch(:eq, skip)
-              asm.movea(:l, asm.d(0), asm.a(2))
-              asm.clr(:l, asm.abs_l(memory[PENDING], plane * 4))
-              asm.movea(:l, asm.post(2), asm.a(0))
-              asm.moveq(0, asm.d(2))
-              asm.move(:w, asm.post(2), asm.d(2)) # cells across
-              asm.moveq(0, asm.d(3))
-              asm.move(:w, asm.ind(2), asm.d(3)) # rows
-              asm.moveq(0, asm.d(4)) # the row
-              asm.label("rt_upload_map_row_#{plane}")
-              asm.cmp(:l, asm.d(3), asm.d(4))
-              asm.branch(:ge, skip)
-              asm.move(:l, asm.d(4), asm.d(0))
-              asm.lsl(:l, shift + 1, asm.d(0)) # a row of the plane is its cells across, two bytes each
-              asm.add(:l, asm.imm(base), asm.d(0))
-              asm.jsr(asm.abs_l("rt_vram_write_at"))
-              asm.move(:w, asm.d(2), asm.d(5))
-              asm.subq(:w, 1, asm.d(5))
-              asm.label("rt_upload_map_cell_#{plane}")
-              asm.move(:w, asm.post(0), asm.abs_l(h::VDP_DATA))
-              asm.dbra(asm.d(5), "rt_upload_map_cell_#{plane}")
-              asm.addq(:l, 1, asm.d(4))
-              asm.bra("rt_upload_map_row_#{plane}")
-              asm.label(skip)
+              done = "rt_plane_map_done"
+              asm.label("rt_plane_map_copied")
+              asm.lea(asm.abs_l(memory[PENDING]), asm.a(2))
+              asm.move(:l, asm.d(0), asm.d(4))
+              asm.lsl(:l, 2, asm.d(4)) # the plane's notes, four bytes a plane
+              asm.move(:l, asm.idx(2, 0, 4, :w), asm.d(1))
+              asm.branch(:eq, done)
+              asm.clr(:l, asm.idx(2, 0, 4, :w))
+              asm.movea(:l, asm.d(1), asm.a(2))
+              asm.movea(:l, asm.post(2), asm.a(1)) # the grid's cells
+              asm.moveq(0, asm.d(6))
+              asm.move(:w, asm.post(2), asm.d(6)) # cells across
+              asm.moveq(0, asm.d(7))
+              asm.move(:w, asm.ind(2), asm.d(7)) # rows
+              asm.branch(:eq, done)
+              asm.ror(:w, 3, asm.d(0)) # plane B: $2000
+              asm.add(:l, asm.imm(PLANE_A_AT), asm.d(0))
+              asm.movea(:l, asm.d(0), asm.a(2)) # the plane's map in video RAM
+              asm.lea(asm.abs_l(memory[SCROLL], 2), asm.a(0))
+              asm.move(:w, asm.idx(0, 0, 4, :w), asm.d(4)) # the view's top, from which the row it is on
+              asm.lsr(:w, 3, asm.d(4))
+              asm.and(:w, asm.imm(columns - 1), asm.d(4))
+              asm.cmp(:w, asm.d(7), asm.d(4))
+              asm.branch(:cs, "rt_plane_map_from")
+              asm.moveq(0, asm.d(4)) # a view below the grid: from its first row
+              asm.label("rt_plane_map_from")
+              asm.move(:w, asm.d(7), asm.d(5)) # the rows still to copy
+              asm.label("rt_plane_map_run")
+              asm.moveq(1, asm.d(1)) # the rows in this copy: one, or to the end of a grid as wide as the plane
+              asm.cmp(:w, asm.imm(columns), asm.d(6))
+              asm.branch(:ne, "rt_plane_map_rows")
+              asm.move(:w, asm.d(7), asm.d(1))
+              asm.sub(:w, asm.d(4), asm.d(1))
+              asm.label("rt_plane_map_rows")
+              asm.sub(:w, asm.d(1), asm.d(5))
+              asm.move(:w, asm.d(4), asm.d(0)) # from the row's cells in the cartridge
+              asm.mulu(asm.d(6), asm.d(0))
+              asm.add(:l, asm.d(0), asm.d(0))
+              asm.movea(:l, asm.a(1), asm.a(0))
+              asm.add(:l, asm.d(0), asm.a(0))
+              asm.move(:l, asm.d(4), asm.d(0)) # to the start of its row of the plane
+              asm.lsl(:l, shift + 1, asm.d(0))
+              asm.add(:l, asm.a(2), asm.d(0))
+              asm.add(:w, asm.d(1), asm.d(4)) # the next row, round to the first past the last
+              asm.cmp(:w, asm.d(7), asm.d(4))
+              asm.branch(:cs, "rt_plane_map_next")
+              asm.moveq(0, asm.d(4))
+              asm.label("rt_plane_map_next")
+              asm.mulu(asm.d(6), asm.d(1)) # words
+              asm.jsr(asm.abs_l("rt_vram_run_copied"))
+              asm.tst(:w, asm.d(5))
+              asm.branch(:ne, "rt_plane_map_run")
+              asm.label(done)
+              asm.rts
+            end
+
+            # rt_vram_run_copied: D1 words (one or more) from A0 on the cartridge copied by the chip to D0 in
+            # video RAM. The chip counts its source within one 128K block, coming round to the block's
+            # start past its end, so a run that crosses into the next block goes as two copies. D0 to
+            # D3, A0 and A3 are used.
+            def emit_vram_run_copied(asm, samples: false)
+              asm.label("rt_vram_run_copied")
+              asm.move(:l, asm.a(0), asm.d(2))
+              asm.and(:l, asm.imm(0x1FFFF), asm.d(2))
+              asm.neg(:l, asm.d(2))
+              asm.add(:l, asm.imm(0x20000), asm.d(2))
+              asm.lsr(:l, 1, asm.d(2)) # words to the end of the block
+              asm.cmp(:l, asm.d(1), asm.d(2))
+              asm.branch(:cc, "rt_vram_copy") # all of it in this block
+              asm.movem_push(:l, :d0, :d1, :d2, :a0)
+              asm.move(:l, asm.d(2), asm.d(1))
+              asm.bsr("rt_vram_copy")
+              asm.movem_pop(:l, :d0, :d1, :d2, :a0)
+              asm.sub(:l, asm.d(2), asm.d(1))
+              asm.add(:l, asm.d(2), asm.d(2)) # bytes
+              asm.add(:l, asm.d(2), asm.d(0))
+              asm.add(:l, asm.d(2), asm.a(0))
+              emit_vram_copy(asm, samples: samples)
+            end
+
+            # rt_vram_copy: one copy by the chip, D1 words from A0 to D0 in video RAM, inside one 128K
+            # block. The length and the source (halved, since the chip counts words) go into five registers
+            # a byte each; the top two bits of the last are nought, a copy from the 68000's memory, the
+            # cartridge or work RAM. D0, D2, D3 and A3 are used; D1 and A0 are kept.
+            def emit_vram_copy(asm, samples: false)
+              h = Console::GenesisHardware
+              register = ->(number) { h::VDP_REGISTER | (number << 8) }
+              asm.label("rt_vram_copy")
+              asm.lea(asm.abs_l(h::VDP_CONTROL), asm.a(3))
+              asm.move(:w, asm.imm(register.call(h::REG_DMA_LENGTH_LOW)), asm.d(2))
+              asm.move(:b, asm.d(1), asm.d(2))
+              asm.move(:w, asm.d(2), asm.ind(3))
+              asm.move(:w, asm.d(1), asm.d(2))
+              asm.lsr(:w, 8, asm.d(2))
+              asm.or(:w, asm.imm(register.call(h::REG_DMA_LENGTH_HIGH)), asm.d(2))
+              asm.move(:w, asm.d(2), asm.ind(3))
+              asm.move(:l, asm.a(0), asm.d(3))
+              asm.lsr(:l, 1, asm.d(3))
+              asm.move(:w, asm.imm(register.call(h::REG_DMA_SOURCE_LOW)), asm.d(2))
+              asm.move(:b, asm.d(3), asm.d(2))
+              asm.move(:w, asm.d(2), asm.ind(3))
+              asm.lsr(:l, 8, asm.d(3))
+              asm.move(:w, asm.imm(register.call(h::REG_DMA_SOURCE_MIDDLE)), asm.d(2))
+              asm.move(:b, asm.d(3), asm.d(2))
+              asm.move(:w, asm.d(2), asm.ind(3))
+              asm.lsr(:l, 8, asm.d(3))
+              asm.and(:w, asm.imm(0x7F), asm.d(3))
+              asm.or(:w, asm.imm(register.call(h::REG_DMA_SOURCE_HIGH)), asm.d(3))
+              asm.move(:w, asm.d(3), asm.ind(3))
+              # The command (Hardware.command) for D0, with the copy's bit.
+              asm.move(:l, asm.d(0), asm.d(2))
+              asm.lsr(:l, 8, asm.d(2))
+              asm.lsr(:l, 6, asm.d(2))
+              asm.and(:l, asm.imm(0x3FFF), asm.d(0))
+              asm.swap(asm.d(0))
+              asm.or(:l, asm.d(2), asm.d(0))
+              asm.or(:l, asm.imm(h::WRITE_VRAM | h::COMMAND_DMA), asm.d(0))
+              Picture.emit_dma_started(asm, asm.d(0), asm.ind(3), samples: samples)
+              asm.rts
             end
 
             # The cells noted written one at a time, each with its place in the plane it is on.
@@ -657,7 +772,7 @@ module VBlank
             # written there, with the link it has: the row after its own. The rows after it go to their
             # own places, copied by the chip (#emit_sprite_rows_copied_by_chip). The row noted first is
             # the table's last, and its link is cleared here, since 80 names no row.
-            def emit_sprite_table_written(asm, memory, at, samples: false)
+            def emit_sprite_table_written(asm, memory, at)
               h = Console::GenesisHardware
               notes_end = memory[SPRITES] + (MOST_SPRITES * SPRITE_BYTES)
               asm.move(:l, asm.imm(h.command(h::WRITE_VRAM, SPRITES_AT)), asm.abs_l(h::VDP_CONTROL))
@@ -676,7 +791,7 @@ module VBlank
               2.times { asm.move(:l, asm.post(1), asm.ind(2)) }
               asm.subq(:w, 1, asm.d(5))
               asm.branch(:eq, "rt_upload_sprites_done")
-              emit_sprite_rows_copied_by_chip(asm, samples: samples)
+              emit_sprite_rows_copied_by_chip(asm)
               asm.label("rt_upload_sprites_done")
             end
 
@@ -687,40 +802,19 @@ module VBlank
             # and with the links the table wants, so they go as one run.
             #
             # A1 is at the note after the one written to row 0, D0 is the bytes of every row noted and
-            # D5 the rows still to go. The chip counts its length in words and its source in words too,
-            # so the address is halved, and the top byte of a place in work RAM halved is always $7F.
-            # The rows go to their own places in the table: with D0 bytes noted, that many before the
-            # row past the table's end, and one row on; a command keeps its address in its high word,
-            # and the write of it starts the copy (Picture#emit_dma_started, which stops the sound
-            # processor for it in a game that plays recordings, +samples+).
+            # D5 the rows still to go. The rows go to their own places in the table: with D0 bytes
+            # noted, that many before the row past the table's end, and one row on. The copy is
+            # rt_vram_copy's, the maps' own (#emit_vram_copy).
             #
             # The rows cannot cross one of the chip's 128K blocks, where its count of the source wraps:
             # work RAM is the top 64K of the last one, and the notes end inside it.
-            def emit_sprite_rows_copied_by_chip(asm, samples: false)
-              h = Console::GenesisHardware
-              register = ->(number) { h::VDP_REGISTER | (number << 8) }
-              asm.lea(asm.abs_l(h::VDP_CONTROL), asm.a(3))
-              asm.lsl(:w, 2, asm.d(5)) # four words a row
-              asm.move(:w, asm.imm(register.call(h::REG_DMA_LENGTH_LOW)), asm.d(1))
-              asm.move(:b, asm.d(5), asm.d(1))
-              asm.move(:w, asm.d(1), asm.ind(3))
-              asm.lsr(:w, 8, asm.d(5))
-              asm.or(:w, asm.imm(register.call(h::REG_DMA_LENGTH_HIGH)), asm.d(5))
-              asm.move(:w, asm.d(5), asm.ind(3))
-              asm.move(:l, asm.a(1), asm.d(5))
-              asm.lsr(:l, 1, asm.d(5))
-              asm.move(:w, asm.imm(register.call(h::REG_DMA_SOURCE_LOW)), asm.d(1))
-              asm.move(:b, asm.d(5), asm.d(1))
-              asm.move(:w, asm.d(1), asm.ind(3))
-              asm.lsr(:w, 8, asm.d(5))
-              asm.or(:w, asm.imm(register.call(h::REG_DMA_SOURCE_MIDDLE)), asm.d(5))
-              asm.move(:w, asm.d(5), asm.ind(3))
-              asm.move(:w, asm.imm(register.call(h::REG_DMA_SOURCE_HIGH) | 0x7F), asm.ind(3))
-              asm.swap(asm.d(0))
+            def emit_sprite_rows_copied_by_chip(asm)
+              asm.move(:w, asm.d(5), asm.d(1))
+              asm.lsl(:w, 2, asm.d(1)) # four words a row
+              asm.movea(:l, asm.a(1), asm.a(0))
               asm.neg(:l, asm.d(0))
-              first_past = h.command(h::WRITE_VRAM, SPRITES_AT + ((MOST_SPRITES + 1) * SPRITE_BYTES))
-              asm.add(:l, asm.imm(first_past | h::COMMAND_DMA), asm.d(0))
-              Picture.emit_dma_started(asm, asm.d(0), asm.ind(3), samples: samples)
+              asm.add(:l, asm.imm(SPRITES_AT + ((MOST_SPRITES + 1) * SPRITE_BYTES)), asm.d(0))
+              asm.jsr(asm.abs_l("rt_vram_copy"))
             end
 
             # Where each plane's view is, into the horizontal scroll table (a plane moved right by the

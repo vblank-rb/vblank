@@ -207,12 +207,14 @@ module VBlank
             end
 
             # The sprites' routines (Tiles' rt_sprites_begin and rt_sprite_place), and
-            # rt_sprite_table_written, which the blank's copy calls.
+            # rt_sprite_table_written, which the blank's copy calls, with the chip's copy it sends the
+            # table's rows by (Tiles' rt_vram_copy).
             def emit_sprites(asm, memory, at, samples: false)
               Tiles.emit_sprites(asm, memory, at)
               asm.label("rt_sprite_table_written")
-              Tiles.emit_sprite_table_written(asm, memory, at, samples: samples)
+              Tiles.emit_sprite_table_written(asm, memory, at)
               asm.rts
+              Tiles.emit_vram_copy(asm, samples: samples)
             end
 
             # The copy starts all nought, as work RAM does and as video RAM does, so every tile is all
