@@ -33,6 +33,7 @@ module RubyGenesisEmulator
   # an address means what it means to the cartridge's code.
   class Core
     # libretro's names for the memories, and the probe patch's own (core/gpgx-vblank-probe.patch).
+    SAVE_RAM = 0
     SYSTEM_RAM = 2
     VIDEO_RAM = 0x8001
     COLOR_RAM = 0x8002
@@ -100,6 +101,8 @@ module RubyGenesisEmulator
       load_library
       hand_over_callbacks
       @call[:retro_init].call
+      @shutdown = Shutdown.new(@call, @handle, @copy, @dir, @save_dir)
+      ObjectSpace.define_finalizer(self, @shutdown)
       load_cartridge(rom_path)
     end
 
@@ -208,16 +211,99 @@ module RubyGenesisEmulator
     def wram_write8(address, value) = (live(SYSTEM_RAM, 0x10000)[(address & 0xFFFF) ^ 1, 1] = [value & 0xFF].pack("C"))
     def wram_write32(address, value) = [value & 0xFFFFFFFF].pack("N").bytes.each_with_index { |byte, i| wram_write8(address + i, byte) }
 
+    # The cartridge's save memory, a byte for each odd address from $200000, as far as the last byte
+    # written that is not $FF (what the chip holds where nothing was saved): empty for a cartridge that
+    # saved nothing. The core keeps it only in memory and writes no file of it.
+    def save_ram = memory(SAVE_RAM)
+
     # Unloads the cartridge, shuts the core and lets go of its library.
     def destroy
       return unless @call
 
-      @call[:retro_unload_game].call
-      @call[:retro_deinit].call
-      @handle.close
-      @copy.give_back
+      ObjectSpace.undefine_finalizer(self)
+      @shutdown.call
       @call = nil
-      FileUtils.rm_rf(@dir)
+    end
+
+    # Each callback the core is handed, by the function that hands it over: what it returns, and what
+    # it is given.
+    CALLBACK_TYPES = {
+      retro_set_environment: [Fiddle::TYPE_BOOL, [Fiddle::TYPE_UINT, Fiddle::TYPE_VOIDP]],
+      retro_set_video_refresh: [Fiddle::TYPE_VOID, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_UINT, Fiddle::TYPE_UINT, Fiddle::TYPE_SIZE_T]],
+      retro_set_audio_sample: [Fiddle::TYPE_VOID, [Fiddle::TYPE_INT16_T, Fiddle::TYPE_INT16_T]],
+      retro_set_audio_sample_batch: [Fiddle::TYPE_SIZE_T, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_SIZE_T]],
+      retro_set_input_poll: [Fiddle::TYPE_VOID, []],
+      retro_set_input_state: [Fiddle::TYPE_INT16_T, [Fiddle::TYPE_UINT, Fiddle::TYPE_UINT, Fiddle::TYPE_UINT, Fiddle::TYPE_UINT]]
+    }.freeze
+
+    # +block+ as a C function the core can call, of the kind +setter+ hands over (CALLBACK_TYPES).
+    # Made here, not in a Core, so the block holds no Core.
+    def self.closure(setter, &block)
+      result, args = CALLBACK_TYPES.fetch(setter)
+      Fiddle::Closure::BlockCaller.new(result, args, &block)
+    end
+
+    # A CONSOLE NOBODY DESTROYED IS SHUT BY RUBY when it collects the Core, the same way #destroy
+    # shuts it. It must not be left as it is. Ruby closes the copy's lock when it collects it, and the
+    # copy is handed to the next console made in this process, while the library is still open here
+    # with the old cartridge in it, never shut: the next console's start goes on top of it.
+    #
+    # The finalizer must hold nothing that holds the Core, or the Core is never collected. The
+    # callbacks the Core handed over call its methods, so they hold it. So a shutdown first hands the
+    # core callbacks of its own: they answer where files go and ignore everything else.
+    class Shutdown
+      def initialize(call, handle, copy, dir, save_dir)
+        @call = call
+        @handle = handle
+        @copy = copy
+        @dir = dir
+        @system_dir = c_string(dir)
+        @save_dir = c_string(save_dir)
+      end
+
+      # Unloads the cartridge, shuts the core, closes the library and gives the copy back. A finalizer
+      # is handed the Core's object id, which is not needed here.
+      def call(_object_id = nil)
+        return unless @call
+
+        hand_over_own_callbacks
+        @call[:retro_unload_game].call
+        @call[:retro_deinit].call
+        @handle.close
+        @copy.give_back
+        @call = nil
+        FileUtils.rm_rf(@dir)
+      end
+
+      private
+
+      def c_string(text)
+        pointer = Fiddle::Pointer.malloc(text.bytesize + 1, Fiddle::RUBY_FREE)
+        pointer[0, text.bytesize + 1] = "#{text}\0".b
+        pointer
+      end
+
+      def hand_over_own_callbacks
+        @callbacks = {
+          retro_set_environment: Core.closure(:retro_set_environment) { |cmd, data| environment(cmd, data) },
+          retro_set_video_refresh: Core.closure(:retro_set_video_refresh) { nil },
+          retro_set_audio_sample: Core.closure(:retro_set_audio_sample) { nil },
+          retro_set_audio_sample_batch: Core.closure(:retro_set_audio_sample_batch) { |_data, frames| frames },
+          retro_set_input_poll: Core.closure(:retro_set_input_poll) { nil },
+          retro_set_input_state: Core.closure(:retro_set_input_state) { 0 }
+        }
+        @callbacks.each { |setter, callback| @call.fetch(setter).call(callback) }
+      end
+
+      def environment(cmd, data)
+        pointer = case cmd & 0xFFFF
+                  when GET_SYSTEM_DIRECTORY then @system_dir
+                  when GET_SAVE_DIRECTORY then @save_dir
+                  else return false
+                  end
+        Fiddle::Pointer.new(data.to_i, 8)[0, 8] = [pointer.to_i].pack("J")
+        true
+      end
     end
 
     private
@@ -267,21 +353,17 @@ module RubyGenesisEmulator
 
     def hand_over_callbacks
       @callbacks = {
-        retro_set_environment: closure(Fiddle::TYPE_BOOL, [Fiddle::TYPE_UINT, Fiddle::TYPE_VOIDP]) { |cmd, data| environment(cmd, data) },
-        retro_set_video_refresh: closure(Fiddle::TYPE_VOID, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_UINT, Fiddle::TYPE_UINT,
-                                                             Fiddle::TYPE_SIZE_T]) { |*args| take_picture(*args) },
-        retro_set_audio_sample: closure(Fiddle::TYPE_VOID, [Fiddle::TYPE_INT16_T, Fiddle::TYPE_INT16_T]) { nil },
-        retro_set_audio_sample_batch: closure(Fiddle::TYPE_SIZE_T, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_SIZE_T]) { |data, frames| take_sound(data, frames) },
-        retro_set_input_poll: closure(Fiddle::TYPE_VOID, []) { nil },
-        retro_set_input_state: closure(Fiddle::TYPE_INT16_T, [Fiddle::TYPE_UINT, Fiddle::TYPE_UINT, Fiddle::TYPE_UINT,
-                                                              Fiddle::TYPE_UINT]) do |port, device, _index, id|
+        retro_set_environment: Core.closure(:retro_set_environment) { |cmd, data| environment(cmd, data) },
+        retro_set_video_refresh: Core.closure(:retro_set_video_refresh) { |*args| take_picture(*args) },
+        retro_set_audio_sample: Core.closure(:retro_set_audio_sample) { nil },
+        retro_set_audio_sample_batch: Core.closure(:retro_set_audio_sample_batch) { |data, frames| take_sound(data, frames) },
+        retro_set_input_poll: Core.closure(:retro_set_input_poll) { nil },
+        retro_set_input_state: Core.closure(:retro_set_input_state) do |port, device, _index, id|
           button_state(port, device, id)
         end
       }
       @callbacks.each { |setter, callback| @call.fetch(setter).call(callback) }
     end
-
-    def closure(result, args, &block) = Fiddle::Closure::BlockCaller.new(result, args, &block)
 
     # What the core asks of the controller: one button, or all of them as bits when it asks for the mask.
     def button_state(port, device, id)
