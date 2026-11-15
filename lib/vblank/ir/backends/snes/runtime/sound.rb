@@ -141,10 +141,10 @@ module VBlank
             VOICE_TOLD = Ractor.make_shareable({ START_NOTE => [NOTE_START_WRITES, "rt_recordings_voice_start"],
                                                  NOTE_VOLUME => [NOTE_VOLUME_WRITES, "rt_recordings_voice_volume"] })
             # ...told whole, where the sound unit's program takes them (#driver).
-            VOICE_TOLD_WHOLE = { START_NOTE => [2, "rt_recordings_voice_start"],
-                                 NOTE_VOLUME => [1, "rt_recordings_voice_volume"] }.freeze
+            VOICE_TOLD_WHOLE = Ractor.make_shareable({ START_NOTE => [2, "rt_recordings_voice_start"],
+                                                       NOTE_VOLUME => [1, "rt_recordings_voice_volume"] })
             # ...and in a game with a note that glides, its new pitch.
-            VOICE_TOLD_OF_GLIDES = { NOTE_PITCH => [NOTE_PITCH_WRITES, "rt_recordings_voice_pitch"] }.freeze
+            VOICE_TOLD_OF_GLIDES = Ractor.make_shareable({ NOTE_PITCH => [NOTE_PITCH_WRITES, "rt_recordings_voice_pitch"] })
             # What a note's start takes more in a game with a recording shaped by the chip's own
             # envelope bytes: a write for ADSR2, or told whole, the two commands that hold the bytes.
             CHIP_ENVELOPE_WRITES = 1

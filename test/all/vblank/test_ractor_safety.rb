@@ -86,8 +86,10 @@ class TestRactorSafety < Minitest::Test
         enable_sound
         instrument :hum, pcm: [0, 64, 0, -64] * 100, rate: 22_050
         score = VBlank::Audio::Score
-        music = songs :music, [score.new(parts: [score::Part.new(plays: :hum, notes: [score::Note.new(at: 0, hz: 440)])],
-                                         length: 96)]
+        # A second note that glides from the first, then changes loudness, as Wolfenstein's
+        # converted songs do: it reaches the voice tables a plain note does not.
+        notes = [score::Note.new(at: 0, hz: 440), score::Note.new(at: 24, hz: 494, glides: true, volume: 8)]
+        music = songs :music, [score.new(parts: [score::Part.new(plays: :hum, notes: notes)], length: 96)]
         game_loop { music.play 0 }
       end.bytes
     end
