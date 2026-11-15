@@ -792,7 +792,7 @@ module VBlank
             kept = TABLE_KEPT_AS.fetch(table_type(table))
             copy = list_call("rg_list_copy", node, @names.of(:table, node.table), Statements::Int.new(kept), Statements::Int.new(table.entry_count),
                              value(node.at), Statements::Int.new(node.count))
-            run = @tile_runs.each_value.find { |each| each.list == node.name }
+            run = run_painted_from(node.name)
             [run ? made_where_run_pointed(run.name, copy) : copy]
           end
 

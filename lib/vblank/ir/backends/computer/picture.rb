@@ -82,7 +82,8 @@ module VBlank
             @bar_in_blocks = Blocks.bar_in_blocks!(@program, LoweringError)
             # The runs of tiles and the pictures the game paints from lists as it runs, and the
             # number rg_screen.c knows each by.
-            @tile_runs = by_name(@program.walk, :tile_run)
+            @runs_painted_from_lists = by_name(@program.walk, :tile_run)
+            @tile_runs = @runs_painted_from_lists.dup
             # A pose drawn from sprite tiles the game loads is a painted picture here too: its
             # pixels are kept as places, and a load writes the tiles it changes into each pose
             # that draws them (rg_tile_pose_load).
@@ -478,6 +479,11 @@ module VBlank
           # sprite's picture is read gives the color of every place at once, by the same rules
           # as art that was drawn ahead of time.
           def every_place_of(run) = painted_image(run, (0...PLACES_IN_RUN_COLORS).to_a, width: PLACES_IN_RUN_COLORS, height: 1)
+
+          # The run whose list is +name+, or nil. Only a run of tiles is painted from a list: a pose
+          # drawn from sprite tiles (PoseRun) takes its tiles from a load of its set
+          # (rg_tile_pose_load), has no list, and so no cell of the file is ever pointed at it.
+          def run_painted_from(name) = @runs_painted_from_lists.each_value.find { |run| run.list == name }
 
           # The run that paints the tile +name+, or nil for a tile that is a picture.
           def run_painting(name) = @tile_runs.each_value.find { |run| run.tiles.include?(name) }
