@@ -300,7 +300,14 @@ module VBlank
                       "`envelope:` is the sound chip's own bytes (a `VBlank::Audio::SNESEnvelope`) has them " \
                       "written to its voice unchanged, and the sound chip shapes each note itself. A recording " \
                       "given in the sound chip's own format (`brr:`) is played byte for byte as given, from the " \
-                      "loop point given (`brr_loop:`)."),
+                      "loop point given (`brr_loop:`). The sound chip plays recordings from its own memory, which " \
+                      "has room for less than 64 KB of them. Recordings that need more room can still fit when each " \
+                      "scene plays recordings of its own. In a game with no scenes, each routine that `call mode` " \
+                      "picks can play recordings of its own in the same way. Those go into the sound memory when " \
+                      "the scene or routine starts, over the ones before, and the game stops for some frames while " \
+                      "they go. A recording that more than one of them plays, or that a song plays, stays in the " \
+                      "sound memory for all of the game. When the recordings do not fit, the build stops and gives " \
+                      "the bytes they need and the room there is."),
         instrument: works("see `sample`.")
       })
 

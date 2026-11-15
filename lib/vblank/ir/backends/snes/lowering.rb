@@ -310,7 +310,7 @@ module VBlank
             keep_background_color_choices
             keep_sprite_color_choices
             keep_scene_tiles_up
-            keep_scene_recordings_up
+            keep_turn_recordings_up
             keep_loop_running
             keep_column_numbers
             keep_order_tables
@@ -598,7 +598,7 @@ module VBlank
           LOWERING_STATE = LoweringState.new(
             copied: [Memory, Art, PaintedArt, TextLayerArt],
             shared: [Integer, Symbol, String, NilClass, TrueClass, FalseClass, IR::Node, SceneHandover,
-                     SpriteNames, Music, W65816, RoutineCuts::PartCall, LoweringPlan, ChipCode],
+                     SpriteNames, Music, W65816, RoutineCuts::PartCall, LoweringPlan, ChipCode, Sound::ModeCall],
             unchanged: %i[@cuts @cache @tile_memo @keyed_sorts @keys_by_place]
           )
 
@@ -787,8 +787,10 @@ module VBlank
           # the list — below nought or past its end — calls nothing. Compared as a number that cannot
           # be negative, -1 is the biggest there is, so one test guards both ends. The routine is
           # reached through a table of their long addresses: its address pushed as RTL would find a
-          # return address (one less, bank first), and RTL taken to it.
+          # return address (one less, bank first), and RTL taken to it. A mode call first brings in
+          # the recordings of the mode it picks (Sound#emit_mode_recordings).
           def emit_call_one_of(node)
+            emit_mode_recordings(node)
             table = @routine_tables[node.targets] ||= "routines #{@routine_tables.length + 1}"
             none = fresh("calls_none")
             back = fresh("called")

@@ -242,6 +242,9 @@ module VBlank
             # into one stretch after the rest, the scene area. A scene taking over sends its own into
             # that area, over the scene before's (rt_sound_load_scene), and the scene up at power-on
             # has its own sent then. One scene whose own do not fit beside the rest is refused.
+            # A game with no scenes taking turns can have modes that do instead, the routines a call
+            # through a variable picks (Lowering::Sound#modes_taking_turns): each is a SceneLoad the
+            # same way, its recordings sent as that call picks it, and none up at power-on.
             #
             # Sending is through the mailboxes, as at power-on but three bytes a turn, not one: the
             # program the sound unit runs takes them (#emit_scene_load_commands). A voice still
@@ -297,7 +300,10 @@ module VBlank
                             "There is room for #{MEMORY_END - table_at} bytes. A recording that holds from a " \
                             "point keeps its held part up to 16 times over. To fix this, use shorter " \
                             "recordings, record them at a lower rate, or make each held part a multiple of " \
-                            "16 samples long."
+                            "16 samples long. You can also play each recording from one scene only. In a game " \
+                            "with no scenes, you can play each recording from one routine that `call mode` " \
+                            "picks. Then each scene or routine puts its recordings into the sound memory when " \
+                            "it starts, and only one at a time must fit."
             end
 
             # The recordings every scene can play, in a game loading the rest by scene, which do not fit
@@ -310,19 +316,28 @@ module VBlank
                                    "them at a lower rate, or play each one in one scene only."
             end
 
-            # One scene whose own recordings, beside those every scene plays, do not fit.
+            # One scene (or mode, Lowering::Sound#modes_taking_turns) whose own recordings, beside those
+            # every one plays, do not fit.
             def refuse_scene_sounds_too_big!(routine, table_at, size)
-              scene = scene_name(routine)
-              raise LoweringError, "The scene #{scene} plays recordings that take #{size} bytes of the Super " \
-                                   "Nintendo's sound memory. This count includes the recordings that every scene " \
-                                   "plays. There is room for #{MEMORY_END - table_at} bytes. A scene's recordings go " \
-                                   "into the sound memory when the scene starts, so the recordings of one scene must " \
-                                   "fit. To fix this, use shorter recordings in the scene #{scene}, record " \
-                                   "them at a lower rate, or play some of them in a different scene."
+              named = turn_name(routine)
+              word = turn_word(routine)
+              starts = IR::Modes.scene_func?(routine) ? "the scene starts" : "`call mode` picks the routine"
+              raise LoweringError, "The #{named} plays recordings that take #{size} bytes of the Super " \
+                                   "Nintendo's sound memory. This count includes the recordings that stay in the " \
+                                   "sound memory for all of the game. There is room for #{MEMORY_END - table_at} bytes. " \
+                                   "A #{word}'s own recordings go into the sound memory when #{starts}, so the " \
+                                   "recordings of one #{word} must fit. To fix this, use shorter recordings in the " \
+                                   "#{named}, record them at a lower rate, or play some of them in a different #{word}."
             end
 
             # The scene whose routine is +routine+, as the author wrote its name (`:cave`).
             def scene_name(routine) = IR::Modes.strip_scene_prefix(routine).to_sym.inspect
+
+            # A routine keeping recordings of its own as the author knows it: `scene :cave`, or for a
+            # mode (Lowering::Sound#modes_taking_turns), `routine :cave`.
+            def turn_name(routine) = "#{turn_word(routine)} #{scene_name(routine)}"
+
+            def turn_word(routine) = IR::Modes.scene_func?(routine) ? "scene" : "routine"
 
             # A NOTE TOLD WHOLE. The two chips talk a byte at a time, and a note is nine registers, so
             # a chord of seven is sixty-three turns of the mailbox the game has to wait for, and in a
@@ -612,8 +627,8 @@ module VBlank
             def start_piece_label(number) = "sound driver piece #{number}"
 
             def scene_load_sections(scene, bytes)
-              name = scene_name(scene.scene)
-              holds = W65816::Holding.new(what: "the recordings of the scene #{name}", fix: "use shorter recordings in the scene #{name}")
+              named = turn_name(scene.scene)
+              holds = W65816::Holding.new(what: "the recordings of the #{named}", fix: "use shorter recordings in the #{named}")
               pieces = bytes.each_slice(PIECE_BYTES).each_with_index.map do |piece, number|
                 asm = W65816.new("#{scene.label} piece #{number}", holds: holds)
                 asm.label("#{scene.label} piece #{number}")

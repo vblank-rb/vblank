@@ -99,11 +99,11 @@ module VBlank
             def scene_recording_loads
               return nil unless @scene_recordings
 
-              loads = @scenes.keys.select { |scene| own_recordings?(scene) }.map do |scene|
+              loads = recording_turns.keys.select { |scene| own_recordings?(scene) }.map do |scene|
                 count = @recordings.count { |kept, _| scene_of_recording(kept) == scene }
                 raise ArgumentError, "the scene #{scene.inspect} plays recordings of its own and none was lowered" if count.zero?
 
-                Runtime::Sound::SceneLoad.new(scene: scene, label: scene_recordings_label(scene), count: count)
+                Runtime::Sound::SceneLoad.new(scene: scene, label: turn_recordings_label(scene), count: count)
               end
               loads unless loads.empty?
             end
@@ -119,12 +119,12 @@ module VBlank
                 frames = bytes.ceildiv(Runtime::Sound::BYTES_A_FRAME)
                 next if frames <= 1
 
-                scene = Runtime::Sound.scene_name(load.scene)
+                scene = Runtime::Sound.turn_name(load.scene)
                 Guardrails::Finding.new(
                   check: :snes_scene_recordings_load, severity: :warning, node: @funcs.fetch(load.scene, :program),
-                  message: "The scene #{scene} sends #{bytes} bytes of its own recordings to the Super Nintendo's " \
+                  message: "The #{scene} sends #{bytes} bytes of its own recordings to the Super Nintendo's " \
                            "sound memory when it starts. The game stops for about #{frames} frames while they go. " \
-                           "To make this shorter, use shorter recordings in the scene #{scene}, or record them at " \
+                           "To make this shorter, use shorter recordings in the #{scene}, or record them at " \
                            "a lower rate."
                 )
               end
@@ -134,7 +134,7 @@ module VBlank
             # where it has none, or the game does not load them by scene.
             def opening_scene_recordings_label
               scene = opening_scene
-              scene_recordings_label(scene) if @scene_recordings && scene && own_recordings?(scene)
+              turn_recordings_label(scene) if @scene_recordings && recording_turns.key?(scene) && own_recordings?(scene)
             end
 
             # The recordings' names, by the number a place playing one keeps (Runtime::Recordings).
@@ -257,18 +257,22 @@ module VBlank
 
             # Each sample's name, beside the scenes that can play it, nil standing for anything outside
             # one: worked out once.
+            #
+            # A mode taking turns (#modes_taking_turns) is reached only through the call that picks it,
+            # which brings its recordings in, so a walk from anywhere stops there.
             def scenes_playing_samples
               @scenes_playing_samples ||= begin
                 playing = Hash.new { |hash, name| hash[name] = [] }
-                turns = scenes_taking_turns
-                @scenes.each_key do |scene|
+                turns = recording_turns.keys
+                modes = turns - @scenes.keys
+                (@scenes.keys | turns).each do |scene|
                   next unless @funcs.key?(scene)
 
                   owner = (scene if turns.include?(scene))
-                  samples_played_from([@funcs.fetch(scene)]).each { |name| playing[name] |= [owner] }
+                  samples_played_from([@funcs.fetch(scene)], past: modes).each { |name| playing[name] |= [owner] }
                 end
                 elsewhere = [@program, *@tick_handlers.values, *@program.walk.select { |node| node.kind == :scroll_rows }]
-                samples_played_from(elsewhere, past: @scenes.keys).each { |name| playing[name] |= [nil] }
+                samples_played_from(elsewhere, past: @scenes.keys | turns).each { |name| playing[name] |= [nil] }
                 song_instrument_names.each { |name| playing[name] |= [nil] }
                 playing
               end
@@ -295,6 +299,49 @@ module VBlank
 
               var, scenes = picked.max_by { |_, named| named.size }
               scenes - picked.reject { |other, _| other == var }.values.flatten - called
+            end
+
+            # The routines that keep recordings of their own, each by the number that says which one's
+            # are in the sound unit: the scenes taking turns, by their numbers; or in a game with none,
+            # the modes taking turns (#modes_taking_turns), by their places in the call's list.
+            def recording_turns
+              @recording_turns ||= begin
+                scenes = scenes_taking_turns
+                scenes.empty? ? modes_taking_turns : @scenes.select { |scene, _| scenes.include?(scene) }
+              end
+            end
+
+            # A call that picks one of +routines+ by the number +variable+ holds (#mode_call_of).
+            ModeCall = Data.define(:variable, :routines)
+            # What the note of whose recordings are in the sound unit holds while none are: no
+            # routine's number.
+            NO_TURN_RECORDINGS = -1
+
+            # The modes that take turns: the routines a call through a variable picks from (`call mode`,
+            # or a list picked by a variable's number), which runs one of them at a time, as a scene
+            # runs. Where the game has several such calls, those naming the same variable and the same
+            # routines are one mode call, and the one with the most routines keeps recordings of its
+            # own. A routine run any other way (called by name, by another such call, or as a scene)
+            # could run without its recordings brought in, so it keeps none. A pick by a value read
+            # afresh each time (a script's step, from a list) is not a mode call: it can call a
+            # different routine every time.
+            def modes_taking_turns
+              chosen = mode_call_chosen or return {}
+              others = Reach.routines_named(@reachable.reject { |node| mode_call_of(node) == chosen })
+              routines = chosen.routines
+              routines.each_with_index.to_h.select do |routine, _|
+                @funcs.key?(routine) && routines.count(routine) == 1 && !others.include?(routine)
+              end
+            end
+
+            # The mode call a run can reach whose routines keep recordings of their own, or nil.
+            def mode_call_chosen
+              @mode_call_chosen ||= @reachable.filter_map { |node| mode_call_of(node) }.uniq.max_by { |call| call.routines.size }
+            end
+
+            # +node+ as a ModeCall, when it is a call picking a routine by a variable; nil for any other.
+            def mode_call_of(node)
+              ModeCall.new(variable: node.which.name, routines: node.targets) if node.kind == :call_one_of && node.which.kind == :var_ref
             end
 
             # The samples played by the statements under +roots+ and the routines they call, however
@@ -331,7 +378,7 @@ module VBlank
               end
             end
 
-            def scene_recordings_label(scene) = "scene recordings of #{scene}"
+            def turn_recordings_label(routine) = "turn recordings of #{routine}"
 
             # #sound_recordings' order of the game's recordings: as they were first played, or in a game
             # that loads them by scene, those every scene can play and then each scene's own.
@@ -339,7 +386,7 @@ module VBlank
               return @recordings unless @scene_recordings
 
               always = @recordings.reject { |kept, _| scene_of_recording(kept) }
-              always + @scenes.keys.flat_map { |scene| @recordings.select { |kept, _| scene_of_recording(kept) == scene } }
+              always + recording_turns.keys.flat_map { |scene| @recordings.select { |kept, _| scene_of_recording(kept) == scene } }
             end
 
             # A row of "recording_plays" with its source number in #sound_recordings' order. +moved+ is
@@ -366,21 +413,46 @@ module VBlank
             # ones there (Runtime::Sound's rt_sound_load_scene). A scene with none leaves the last
             # scene's where they are.
             def emit_scene_recordings(scene)
-              return unless @scene_recordings_up && own_recordings?(scene)
+              return unless @turn_recordings_up && own_recordings?(scene)
 
-              number = Build.int(@scenes.fetch(scene))
-              same = fresh("scene_recordings_up")
-              jump_unless(Build.binop(:!=, Build.var_ref(@scene_recordings_up), number), same)
-              statement(Build.set(@scene_recordings_up, number))
-              runtime_call("rt_sound_load_scene", [LongAddress.new(scene_recordings_label(scene))])
+              emit_turn_recordings(scene)
+            end
+
+            # A mode call (#modes_taking_turns) brings in the recordings of the mode it is about to
+            # call, as a scene taking over does, before the call: a mode with none leaves the last
+            # one's where they are. The variable is read again for each mode with recordings of its
+            # own, which changes nothing, since reading it does nothing else.
+            def emit_mode_recordings(node)
+              call = mode_call_of(node)
+              return unless @turn_recordings_up && call && call == mode_call_chosen
+
+              recording_turns.each do |mode, number|
+                emit_turn_recordings(mode, Build.binop(:==, node.which, Build.int(number))) if own_recordings?(mode)
+              end
+            end
+
+            # The recordings of +routine+ sent, where +picked+ holds when given, unless they are the
+            # ones there.
+            def emit_turn_recordings(routine, picked = nil)
+              number = Build.int(recording_turns.fetch(routine))
+              same = fresh("turn_recordings_up")
+              elsewhere = Build.binop(:!=, Build.var_ref(@turn_recordings_up), number)
+              jump_unless(picked ? Build.binop(:and, picked, elsewhere) : elsewhere, same)
+              statement(Build.set(@turn_recordings_up, number))
+              runtime_call("rt_sound_load_scene", [LongAddress.new(turn_recordings_label(routine))])
               @asm.label(same)
             end
 
-            # Which scene's own recordings are in the sound unit, in a game that loads them by scene:
-            # from power-on, the scene the game opens on (Runtime#emit_start).
-            def keep_scene_recordings_up
+            # Which routine's own recordings are in the sound unit, in a game that loads them by scene
+            # or mode: from power-on, the scene the game opens on (Runtime#emit_start); in a game whose
+            # modes take turns, none (NO_TURN_RECORDINGS) until a mode call brings one in.
+            def keep_turn_recordings_up
+              return unless @scene_recordings && !recording_turns.empty?
+
               scene = opening_scene
-              @scene_recordings_up = keep_local(:scene_recordings_up, start: @scenes.fetch(scene)) if @scene_recordings && scene
+              modes = !(recording_turns.keys - @scenes.keys).empty?
+              start = scene && !modes ? @scenes.fetch(scene) : NO_TURN_RECORDINGS
+              @turn_recordings_up = keep_local(:turn_recordings_up, start: start)
             end
 
             # THE SOURCE NUMBER A PLAY OF THE RECORDING +declared+ READS, going +back+ at its end: the
