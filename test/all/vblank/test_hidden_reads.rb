@@ -23,6 +23,8 @@ class TestHiddenReads < Minitest::Test
   ALLOWED = {
     "test/lowering/gbc/vblank/ir/backends/gbc/test_gbc_clock.rb" =>
       "how the Color's lowering folds its clock's day count is the test",
+    "test/lowering/gba/vblank/dsl/test_background_draws_with_cartridge.rb" =>
+      "the Advance's build writing its tint note and a layer's list address at power-on is the test",
     "test/all/vblank/test_hidden_reads.rb" => "this file names the pattern it looks for",
   }.freeze
 
