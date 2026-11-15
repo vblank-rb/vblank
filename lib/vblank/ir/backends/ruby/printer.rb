@@ -71,6 +71,13 @@ module VBlank
           WRAPPED_OPERATORS = Ractor.make_shareable({ "rg_add" => "+", "rg_sub" => "-", "rg_mul" => "*" })
           OPERATORS_OF_TWO = Ractor.make_shareable(Set.new(COMPARISONS.keys + INLINE_OPERATORS.keys + WRAPPED_OPERATORS.keys))
 
+          # The runtime functions that test two conditions, written as Ruby's own test of two
+          # comparisons (#boolean): the operator that leaves its right side unworked when the left
+          # decides, and the one that works out both. The interpreter works out both sides
+          # always, so the first is used only where the right side cannot stop the game or change
+          # anything (#pure?).
+          BOOLEANS = Ractor.make_shareable({ "rg_both" => ["&&", "&"], "rg_either" => ["||", "|"] })
+
           # The most steps of a resumable routine tested for one after another, once halving has
           # narrowed the counter down to them (#print_step_choice).
           STEPS_TESTED_IN_TURN = 4
@@ -500,7 +507,7 @@ module VBlank
             when Statements::Index then expression_branches(item.array) + expression_branches(item.index)
             when Statements::Call
               function = item.function.text
-              own = if COMPARISONS.key?(function) then 1
+              own = if COMPARISONS.key?(function) || (BOOLEANS.key?(function) && boolean?(item)) then 1
                     elsif wrapped_operator?(item) || LIST_ITEM_METHODS.key?(function) then 3
                     else 0
                     end
@@ -608,7 +615,13 @@ module VBlank
             line(depth, "#{name(item.name)} = #{expression(item.value)}")
           end
 
+          # A test of a number written in the program (a loop's `stop_when` left out is a test of
+          # nought) is the branch it takes, with no test.
           def print_if(depth, item)
+            if item.condition.is_a?(Statements::Int)
+              return inner_statements(depth, item.condition.value.zero? ? item.otherwise : item.body, item)
+            end
+
             line(depth, "if #{condition(item.condition)}")
             inner_statements(depth + 1, item.body, item)
             unless item.otherwise.empty?
@@ -626,13 +639,52 @@ module VBlank
             line(depth, "end")
           end
 
-          # A number taken as a condition: not nought; a comparison is one already.
+          # A number taken as a condition: not nought; a comparison is one already, and so is a test
+          # of both or either of two (#boolean).
           def condition(item)
             operator = item.is_a?(Statements::Call) && COMPARISONS[item.function.text]
-            return "#{expression(item)} != 0" unless operator
+            unless operator
+              return boolean?(item) ? boolean(item) : "#{expression(item)} != 0"
+            end
 
             left, right = item.args
             "#{expression(left)} #{operator} #{expression(right)}"
+          end
+
+          # Whether +item+ is a comparison, or a test of both or either of two such (BOOLEANS), however
+          # deep, and so is written as Ruby's true or false (#boolean). rg_both of two comparisons was
+          # a call and two numbers made of trues and falses, on every turn of a loop that tests an
+          # index before it writes a list.
+          def boolean?(item)
+            return false unless item.is_a?(Statements::Call) && item.args.size == 2
+
+            function = item.function.text
+            COMPARISONS.key?(function) || (BOOLEANS.key?(function) && item.args.all? { |arg| boolean?(arg) })
+          end
+
+          # +item+, one #boolean? holds of, as Ruby's true or false. Both sides are worked out, left
+          # first, as the interpreter works them out, unless the right is #pure?.
+          def boolean(item)
+            function = item.function.text
+            left, right = item.args
+            if (compared = COMPARISONS[function])
+              "(#{expression(left)} #{compared} #{expression(right)})"
+            else
+              operators = BOOLEANS.fetch(function)
+              "(#{boolean(left)} #{pure?(right) ? operators[0] : operators[1]} #{boolean(right)})"
+            end
+          end
+
+          # Whether working out +item+ can neither stop the game nor change anything: a number, a
+          # name, or Ruby's operator (#operator_of_two?) on such. A list's item can stop the game,
+          # and any call can do anything.
+          def pure?(item)
+            case item
+            when Statements::Int, Statements::Name then true
+            when Statements::Call
+              (operator_of_two?(item) || BOOLEANS.key?(item.function.text)) && item.args.all? { |arg| pure?(arg) }
+            else false
+            end
           end
 
           # --- expressions ---
@@ -663,6 +715,8 @@ module VBlank
             return "#{expression(item.args.first)}.call" if function == "rg_call_routine"
             return list_item_call(item) if LIST_ITEM_METHODS.key?(function)
             return operator_of_two(item) if operator_of_two?(item)
+
+            return "(#{boolean(item)} ? 1 : 0)" if BOOLEANS.key?(function) && boolean?(item)
 
             @called << function
             "#{function}(#{item.args.map { |arg| expression(arg) }.join(', ')})"

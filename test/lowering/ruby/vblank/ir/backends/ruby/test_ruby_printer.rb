@@ -56,6 +56,50 @@ class TestRubyPrinter < Minitest::Test
 
   private def if_tests(nodes) = nodes.grep(Prism::IfNode).map(&:predicate).grep(Prism::CallNode)
 
+  # A test of both or either of two comparisons is Ruby's own, with no call to the runtime: the loop
+  # that tests an index before it writes a list made one on every turn.
+  def test_both_of_two_comparisons_is_written_inline
+    nodes = nodes_of_method(printed do
+      x = 0
+      hits = 0
+      game_loop do
+        hits += 1 if (x >= 0) & (x < 5)
+        hits += 1 if (x < 0) | (x > 5)
+        x += 1
+      end
+    end, :rg_game_main)
+
+    refute_includes call_names(nodes), :rg_both
+    refute_includes call_names(nodes), :rg_either
+    assert nodes.any?(Prism::AndNode), "both of two plain comparisons should be Ruby's &&"
+    assert nodes.any?(Prism::OrNode), "either of two plain comparisons should be Ruby's ||"
+  end
+
+  # `&` and `|` work out both sides (TestDSLExpression), so a second side that can stop the game is
+  # worked out even when the first settles the answer. Played through a checked run the interpreter
+  # stops first and hides whether the program did too, so the program is played alone here.
+  def test_the_program_works_out_both_sides_of_and_and_or
+    games = [
+      proc do
+        items = list :items, capacity: 4
+        items.push 7
+        hits = 0
+        game_loop { hits += 1 if (hits > 100) & (items[3] > 0) }
+      end,
+      proc do
+        items = list :items, capacity: 4
+        items.push 7
+        hits = 0
+        game_loop { hits += 1 if (hits < 100) | (items[3] > 0) }
+      end
+    ]
+    games.each do |game|
+      error = assert_raises(VBlank::IR::ProgramError) { VBlank::IR::Backends::Ruby::HeadlessRun.new.run(program_of(&game), frames: 3) }
+
+      assert_match(/index 3 is out of range for list :items/, error.message)
+    end
+  end
+
   # The game's own sums are Ruby's +, written where they run rather than a call to the runtime for
   # each: YJIT compiles an operator on small numbers to a few instructions, and a method only as a
   # call. A sum still comes round at 32 bits (Int32), through rg_i32, called only for one that does.
