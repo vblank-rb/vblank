@@ -147,6 +147,16 @@ module VBlank
             end
           end
 
+          # Addresses of code the code jumps to through them, low byte first: a table read by a JP (HL).
+          # Each reaches what a jump reaches (:near), so a label in another bank is refused as the
+          # cartridge is built rather than written as an address in whatever bank is in view.
+          def data_jump_targets(labels)
+            labels.each do |label|
+              fixup(:near, label)
+              emit(0, 0)
+            end
+          end
+
           # The number of the bank +label+ is in, as one byte.
           def data_bank_of(label)
             fixup(:bank, label)
