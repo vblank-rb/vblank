@@ -665,3 +665,83 @@ class UnsetNamedPart
     builder.func(:unset_named_tick) { @hits += 1 if @aim == 1 }
   end
 end
+
+# VALUES HANDED A VARIABLE. A cursor names its selection. A part handed that variable whole, as an
+# argument, as it is made, was given it to change; one that names its own copies the number.
+class HandedCursor
+  game_variables :selection
+  attr_reader :selection
+
+  def initialize = @selection = 3
+end
+
+# The fix the refusal names: the holder named, so it keeps a number of its own.
+class NamedHandedHolderPart
+  game_variables :held
+
+  def initialize(builder, cursor)
+    @held = cursor.selection
+    builder.func(:named_handed_tick) { @held = 5 }
+  end
+end
+
+# A part handed the cursor's variable whole, as an argument, as it is made: the caller gave it
+# that variable to change, so its line in game code changes the cursor's selection.
+class HandedArgumentHolderPart
+  def initialize(builder, selection)
+    @selection = selection
+    builder.func(:handed_argument_tick) { @selection = 5 }
+  end
+end
+
+class HandedArgumentMakerPart
+  def initialize(builder, cursor) = HandedArgumentHolderPart.new(builder, cursor.selection)
+end
+
+# The same handed a slot of a Hash, which it is given to change all the same.
+class SlotArgumentMakerPart
+  def initialize(builder)
+    @states = { 0 => builder.var(:slot_argument_0, 1) }
+    HandedArgumentHolderPart.new(builder, @states[0])
+  end
+end
+
+# A holder sharing the first of its own Hash's variables from setting up, given a number in game
+# code. In Ruby the first slot keeps 0, so the line is refused.
+class HandedHeldNumberPart
+  def initialize(builder)
+    @states = (0..1).to_h { |light| [light, builder.var(:"handed_held_number_#{light}", light)] }
+    @held = @states[0]
+    builder.func(:handed_held_number_tick) { @held = 5 }
+  end
+end
+
+# The same with the Hash named, and the holder counted up.
+class NamedStatesHeldPart
+  game_variables :states
+
+  def initialize(builder)
+    @states = { 0 => 1, 1 => 2 }
+    @held = @states[0]
+    builder.func(:named_states_held_tick) { @held += 1 }
+  end
+end
+
+# A value given a variable a method makes is the first place to hold it, so it is its own.
+class MadeByMethodPart
+  def initialize(builder)
+    make = ->(name, start) { builder.var(name, start, width: :half) }
+    @count = make.call(:made_by_method_count, 0)
+    builder.func(:made_by_method_tick) do
+      @count = 0 if @count > 1
+      @count += 1
+    end
+  end
+end
+
+# A part that chose a variable name for its value, made before a `var` line takes that name.
+class ChoosingNamePart
+  game_variables held: :chosen_by_a_part
+
+  def initialize = @held = 0
+end

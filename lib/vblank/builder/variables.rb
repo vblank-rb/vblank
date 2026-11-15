@@ -356,6 +356,7 @@ module VBlank
       # whole number, or two different numbers) can only be the second. So can a `save_var`
       # and a `var` of one name: the plain one would quietly be saved and loaded too.
       def refuse_conflicting_declaration!(name, value, saved: false, width: :word)
+        instance_variable_uses.refuse_var_on_part_variable!(name) if @var_declarations.key?(name)
         start = value.is_a?(DSL::Value) ? value.node : value
         here = Declaration.new(start: start, saved: saved, width: width, at: Messages::AuthorSource.author_file_and_line)
         first = (@var_declarations[name] ||= here)

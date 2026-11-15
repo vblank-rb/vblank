@@ -243,6 +243,62 @@ class TestPlainRubyParts < Minitest::Test
     assert_match(/belongs to something else.*add `game_variables :held` to HandedHeldPart/, error.message)
   end
 
+  # A HOLDER HANDED A VARIABLE (test/plain_ruby_game_parts.rb). One taken from a slot of a Hash
+  # holds it for a while, and in Ruby a line giving the holder a number leaves the slot as it was;
+  # the build cannot copy into a variable the holder does not have, so it stops at the line,
+  # naming `game_variables`. One handed whole to a part is that part's to change.
+  private def played_with_cursor(holder, routine)
+    builder = Builder.new
+    holder.new(builder, HandedCursor.new)
+    builder.game_loop { builder.call(routine) }
+    builder.finalize_program
+    game_player.tap { |player| player.run(builder.program, frames: 3) }
+  end
+
+  private def assert_slot_holder_refused(holder, routine, variable)
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) { played(holder, routine) }
+
+    assert_match(/`@held` holds the game variable :#{variable}.*`game_variables :held` to #{holder.name}/m, error.message)
+    assert_match(/plain_ruby_game_parts\.rb:\d+/, error.message)
+  end
+
+  def test_an_unnamed_value_sharing_a_slot_of_a_hash_given_a_number_is_refused
+    assert_slot_holder_refused(HandedHeldNumberPart, :handed_held_number_tick, :handed_held_number_0)
+  end
+
+  def test_an_unnamed_value_sharing_a_slot_of_a_named_hash_counted_up_is_refused
+    assert_slot_holder_refused(NamedStatesHeldPart, :named_states_held_tick, :named_states_held_part_states_0)
+  end
+
+  # 1, 2, then set back to 0 and counted to 1.
+  def test_an_unnamed_value_given_a_variable_a_method_made_changes_it
+    assert_equal [1, 2, 1], (1..3).map { |frames| played(MadeByMethodPart, :made_by_method_tick, frames: frames)[:made_by_method_count] }
+  end
+
+  def test_a_value_handed_a_variable_whole_as_an_argument_changes_it
+    player = played_with_cursor(HandedArgumentMakerPart, :handed_argument_tick)
+
+    assert_equal 5, player[:handed_cursor_selection]
+  end
+
+  def test_a_value_handed_a_slot_whole_as_an_argument_changes_it
+    assert_equal 5, played(SlotArgumentMakerPart, :handed_argument_tick)[:slot_argument_0]
+  end
+
+  def test_a_named_value_handed_another_parts_variable_keeps_a_number_of_its_own
+    player = played_with_cursor(NamedHandedHolderPart, :named_handed_tick)
+
+    assert_equal [3, 5], [player[:handed_cursor_selection], player[:named_handed_holder_part_held]]
+  end
+
+  def test_a_var_line_after_a_part_chose_its_name_is_refused
+    builder = Builder.new
+    ChoosingNamePart.new
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) { builder.var(:chosen_by_a_part, 0) }
+
+    assert_match(/:chosen_by_a_part.*`@held` of ChoosingNamePart/m, error.message)
+  end
+
   def test_named_values_swapped_in_one_line_change_places_on_every_pass
     totals = (1..3).map { |frames| played(SwappingPart, :swapping_tick, frames: frames)[:swapping_part_total] }
 

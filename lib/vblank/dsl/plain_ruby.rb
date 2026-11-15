@@ -721,9 +721,10 @@ module VBlank
         def instance_variable_write_text(node)
           prefix = between(node.location.start_offset, node.value.location.start_offset)
           value = value_text(node.value)
-          return "#{prefix}#{WRITES}.keep_as_own(#{value})" if LocalNames.makes_variable?(node.value)
+          return "#{prefix}#{WRITES}.keep_as_own((#{value}), self, :#{node.name})" if LocalNames.makes_variable?(node.value)
 
           copies = @names.moved_in_game_code?(node.name) ? ", copies: true" : ""
+          copies += ", shares: true" if @names.argument_read?(node.value)
           "#{prefix}#{write_call(instance_variable_place_text(node.name), "(#{value})", node.name,
                                  options: ", moves: true#{copies}#{owner_option}")}"
         end
@@ -732,7 +733,7 @@ module VBlank
         def instance_variable_or_text(node)
           return instance_variable_logic_text(node, "join_either") unless LocalNames.makes_variable?(node.value)
 
-          "#{node.name} ||= #{WRITES}.keep_as_own(#{value_text(node.value)})"
+          "#{node.name} ||= #{WRITES}.keep_as_own((#{value_text(node.value)}), self, :#{node.name})"
         end
 
         # `@x ||= value` and `@x &&= value`. On an instance variable the game names, in game code,
@@ -802,8 +803,16 @@ module VBlank
           # The line that makes a variable in game code sets it on every pass, as Ruby would.
           when :start then "#{prefix}#{start_text(node)}"
           when :assign then "#{prefix}#{assign_text(node.name, "(#{value_text(node.value)})")}"
-          else "#{prefix}#{noted_if_handed(node, kept_value_text(node.value, node))}"
+          else "#{prefix}#{noted_if_handed(node, local_value_text(node))}"
           end
+        end
+
+        # A local a `var` line makes keeps the variable as its own (Writes.keep_as_local).
+        def local_value_text(node)
+          value = kept_value_text(node.value, node)
+          return value unless LocalNames.var_call?(node)
+
+          "#{WRITES}.keep_as_local((#{value}), :#{node.name})"
         end
 
         # A write to a plain name that already holds something, which may turn out to be a game

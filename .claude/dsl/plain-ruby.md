@@ -76,7 +76,8 @@ instance variables.
   `cave_light_state_0_2`). Names with and without one mix on one line: `game_variables :seed,
   states: :cave_light_state`. A subclass can give its parent's instance variable another name.
   Refused: two instance variables of one class given one name, one given two names in one class,
-  and a name another variable of the game has already.
+  a name another variable of the game has already, and a `var` line after the part, naming the
+  variable the part made (in either order the two would be one variable).
 - **`game_variables :damage, :bonus, saved: false` marks them working room a save never keeps**:
   `saves_keep_everything` passes them over, as it does a `var` whose name starts with `_`
   (`variables.md`), and a `save_data` record that keeps one is refused. Their names do not change
@@ -94,6 +95,12 @@ instance variables.
   in game code and while setting up, and never make it share the other's. So a rotation through a
   held value (`@held = @states[0]; @states[0] = @states[1]; @states[1] = @held`) and a swap (`@a,
   @b = @b, @a`) work as in Ruby.
+- **An instance variable nobody named that takes a slot's variable only holds it**: `@held =
+  @states[0]`, then `@held = 5` or `@held += 1` in game code, is refused at that line, naming
+  `game_variables :held`, since Ruby's line would leave `@states[0]` as it was and the game's would
+  change it. A variable a part is handed whole is that part's to change (`@selection = selection`
+  in `initialize`, or one read through another part's `attr_reader`), as is one a method makes for
+  the instance variable that first holds it (`@count = make.call(:count, 0)`).
 - A subclass has its parent's names and can name more; a module the class includes can name its own.
   `attr_reader`, `attr_writer` and `attr_accessor`, with names written out or from a list
   (`attr_accessor(*LEVELS)`), reach the same variable, so another part can test `tilt.busy` and write
@@ -241,7 +248,8 @@ Each is a friendly error naming the line.
 | a misspelt key of a Hash of game variables | one of the keys it has |
 | an instance variable that game code changes and reads back, not named | `game_variables :busy` in the class's body (or the game block) |
 | an instance variable named by `game_variables` that holds `nil` or an object (a String, a sprite) when game code reads it | start it with a number, `true` or `false`; keep the object in another instance variable |
-| an instance variable nobody named that holds another part's game variable, given another game variable in game code | `game_variables :held` in the class's body: then the line copies the number |
+| an instance variable nobody named that holds a slot's game variable (`@held = @states[0]`), given a number or changed in game code (`@held = 5`, `@held += 1`) | `game_variables :held` in the class's body: then the line copies the number |
+| a `var` line naming a variable a part already made for an instance variable (`game_variables held: :x` in a part made first, then `var :x, 0`) | a name of its own for the `var` |
 | two instance variables given one variable name (`game_variables a: :x, b: :x`), one given two, or a name another variable has | a name of its own for each |
 | `game_variables :busy, saved: :x` (`saved:` given something but `true` or `false`) | `saved: false`, or `game_variables({ saved: :x })` to name `@saved` |
 | `game_variables :flash, saved: false` after `@flash` has its first number | the mark above that line |

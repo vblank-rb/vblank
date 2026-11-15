@@ -135,8 +135,34 @@ module VBlank
       # Mark this variable as scratch no save keeps (`game_variables ..., saved: false`).
       def note_unsaved = @builder.note_unsaved_variable(@name)
 
-      # Was this variable made for the instance variable holding it (see PlainRuby::Steps.reassign)?
-      attr_accessor :own_to_its_name
+      # The place this variable was made for (PlainRuby::Writes.keep_as_own): the object and the
+      # label of an instance variable, a Hash or an Array and its key for a slot, or no object for
+      # a place in VBlank's own files. An instance variable handed a slot's variable only holds it,
+      # and a write there must not change the slot (PlainRuby::Writes.handed_only?).
+      Holder = Data.define(:object, :label) do
+        # Is this a slot of a Hash or an Array (PlainRuby::Writes.claim_unheld)?
+        def slot? = object.is_a?(Hash) || object.is_a?(Array)
+      end
+
+      # The object of a Holder that is a local a `var` line made (PlainRuby::Writes.keep_as_local).
+      LOCAL_HOLDER = Ractor.make_shareable(Object.new)
+
+      attr_reader :holder
+
+      def note_holder(object, label) = @holder = Holder.new(object, label)
+
+      # The instance variables of parts this variable was handed to whole, as an argument, which
+      # each own it too (PlainRuby::Writes.share_argument).
+      def note_sharer(object, label) = (@sharers ||= []) << Holder.new(object, label)
+
+      # Was this variable made for +label+ of +object+, or handed to it to change? A place in
+      # VBlank's own files names no object, and takes any variable made for a place but a local
+      # as its own.
+      def held_by?(object, label)
+        return !@holder.nil? && !@holder.object.equal?(LOCAL_HOLDER) if object.nil?
+
+        [@holder, *@sharers].any? { |place| place && place.object.equal?(object) && place.label == label }
+      end
 
       # The plain name this hidden variable was made for, by PlainRuby::Writes.promote or
       # PlainRuby::Steps.kept_answer, or nil. The build's note of a hidden one names it too.

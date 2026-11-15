@@ -170,6 +170,7 @@ module VBlank
             refuse_chosen_name_taken!(label, name)
           end
           uses.note_made_for(name, owner, label)
+          uses.note_part_variable(free, owner, label)
           free
         end
 
@@ -445,11 +446,21 @@ module VBlank
           return held if held.is_a?(KeyedVariables)
 
           base = variable_name(owner, label)
-          if held.is_a?(Hash)
-            KeyedHash[held.map { |key, value| [key, element_variable(owner, label, base, key, value)] }].freeze
-          else
-            KeyedArray.new(held.each_with_index.map { |value, index| element_variable(owner, label, base, index, value) }).freeze
-          end
+          keyed = if held.is_a?(Hash)
+                    KeyedHash[held.map { |key, value| [key, element_variable(owner, label, base, key, value)] }]
+                  else
+                    KeyedArray.new(held.each_with_index.map { |value, index| element_variable(owner, label, base, index, value) })
+                  end
+          keep_as_slots(keyed, owner, label).freeze
+        end
+
+        # Each variable made here is its slot's, so an instance variable handed one
+        # (`@held = @states[0]`) holds it without owning it (Writes.handed_only?).
+        def keep_as_slots(keyed, owner, label)
+          made_here = Value::Holder.new(owner, label)
+          keys = keyed.is_a?(Hash) ? keyed.keys : keyed.each_index.to_a
+          keys.each { |key| keyed[key].note_holder(keyed, key) if keyed[key].holder == made_here }
+          keyed
         end
 
         def element_variable(owner, label, base, key, start)
@@ -567,7 +578,7 @@ module VBlank
           builder.instance_variable_uses.note_first_number(owner, label)
           variable.note_made_with_no_var_line
           variable.note_unsaved if builder.instance_variable_uses.marked_unsaved?(owner, label)
-          Writes.keep_as_own(variable)
+          Writes.keep_as_own(variable, owner, label)
         end
 
         # One holding nil, first given +value+ in game code: a variable of +value+'s kind, which
@@ -642,6 +653,9 @@ module VBlank
           # A skipped side of a test on a flag, where it is written and the line the build was at.
           SkippedSide = Data.define(:site, :at)
 
+          # The instance variable a variable was made for: its object and its label.
+          PartVariable = Data.define(:owner, :label)
+
           TRACKED = [Integer, Float, Symbol].freeze # What a plain instance variable is noted holding
           FLAGS = [true, false, nil].freeze # What a plain flag holds
 
@@ -653,6 +667,7 @@ module VBlank
             @unsaved_by_class = {}
             @chosen_by_class = {}
             @makers_by_name = {}
+            @part_variables = {}
             @first_numbers = {}
             @uses = {}.compare_by_identity
             @flags = {}.compare_by_identity
@@ -755,6 +770,23 @@ module VBlank
           def made_for?(name, owner, label) = @makers_by_name[name] == maker(owner, label)
 
           def note_made_for(name, owner, label) = @makers_by_name[name] ||= maker(owner, label)
+
+          # The variable named +name+ is made for +owner+'s +label+ (#free_name_for).
+          def note_part_variable(name, owner, label) = @part_variables[name] = PartVariable.new(owner, label)
+
+          # A `var` or `save_var` line names +name+, which a variable of the build has already. One
+          # made for an instance variable is that part's, and the line would share it with no word
+          # (the other order, a part choosing a name a `var` line took, is refused at the part).
+          def refuse_var_on_part_variable!(name)
+            made = @part_variables[name]
+            return unless made
+
+            part = made.owner.is_a?(Builder) ? "the game block" : made.owner.class.name || "a part"
+            raise Refused, "This `var` line makes the variable :#{name}. The game has a variable with that name " \
+                           "already: `#{made.label}` of #{part}. One name is one variable, so this line " \
+                           "changes `#{made.label}` too. To fix this, give this `var` a name of its own." \
+                           "#{Messages::AuthorSource.at_author_line}"
+          end
 
           def named?(owner, label)
             return @named_on_builder.include?(label) if owner.is_a?(Builder)
