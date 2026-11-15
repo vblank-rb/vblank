@@ -366,4 +366,72 @@ class TestBigMaps < Minitest::Test
   def test_both_backends_stop_the_mover_at_that_wall
     assert_backends_agree(wall_deep_in_a_bigger_room, frames: 30, name: "BIGWL")
   end
+
+  # --- a map that fits a grid of 64 cells, which comes round past its edges ---
+
+  # A MAP OF AT MOST 64 CELLS EACH WAY fits a grid, and a grid comes round: past the map's right
+  # edge the view shows its left one again, and above its top its bottom. A map smaller than its grid
+  # shows nothing in the grid's cells past its own, then comes round at the grid's edge. That holds
+  # on a console whose own grid is smaller and keeps such a map whole (the Color's is 32 cells).
+
+  # Where the view is put, a pass each, in pixels: part off each edge, wholly off each, across the
+  # grid's 32nd column and row.
+  REPEAT_SPOTS = [[-40, -40], [-20, 12], [400, -30], [470, 430], [-300, 40], [100, -500], [700, 10], [512, 512],
+                  [-160, -144], [255, 255], [3, 5]].freeze
+
+  def test_a_view_part_off_a_map_of_64_cells_shows_the_map_coming_round
+    assert_backends_agree(jumps_on(scrambled(64, 64)), frames: REPEAT_SPOTS.length + 2, name: "BIGR64")
+  end
+
+  def test_a_view_part_off_a_map_of_40_by_20_cells_shows_the_grid_coming_round
+    assert_backends_agree(jumps_on(scrambled(40, 20)), frames: REPEAT_SPOTS.length + 2, name: "BIGR40")
+  end
+
+  def test_a_view_walked_off_a_map_of_64_cells_shows_the_map_coming_round
+    prog = walk(-4, -3, start: [12, 10], map: scrambled(64, 64))
+    [6, 20].each { |frames| assert_backends_agree(prog, frames: frames, name: "BIGRW") }
+  end
+
+  def test_a_view_walked_off_a_map_of_40_by_20_cells_shows_the_grid_coming_round
+    prog = walk(5, 3, start: [340, 120], map: scrambled(40, 20))
+    [6, 30].each { |frames| assert_backends_agree(prog, frames: frames, name: "BIGRW40") }
+  end
+
+  # A CELL CHANGED WHERE THE VIEW SHOWS IT ONLY BY COMING ROUND: the view past the bottom right of a
+  # 40 by 20 map's grid, which comes round to the map's top left, two cells there changed, and the
+  # view walked on.
+  def test_a_cell_changed_past_the_edge_the_view_comes_round_to_shows
+    test = self
+    prog = program do
+      screen :tiled
+      test.tileset(self)
+      ground = background :ground, tiles: :ground, map: test.scrambled(40, 20)
+      pass = var :pass, 0
+      x = var :view_x, 480
+      game_loop do
+        pass += 1
+        ground.set_tile 3, 2, "w" if pass == 4
+        ground.set_tile 1, 5, "r" if pass == 5
+        x += 1 if pass > 5
+        ground.scroll_to x, 240
+      end
+    end
+    [5, 7, 20].each { |frames| assert_backends_agree(prog, frames: frames, name: "BIGRS") }
+  end
+
+  # +map+, its view put at each of REPEAT_SPOTS in turn.
+  private def jumps_on(map)
+    test = self
+    spots = REPEAT_SPOTS
+    program do
+      screen :tiled
+      test.tileset(self)
+      ground = background :ground, tiles: :ground, map: map
+      pass = var :pass, 0
+      game_loop do
+        pass += 1
+        spots.each_with_index { |(x, y), at| ground.scroll_to(x, y) if pass == at + 1 }
+      end
+    end
+  end
 end

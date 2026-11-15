@@ -22,8 +22,8 @@ class TestGBCBigMapArrival < Minitest::Test
   NOTE_FRAMES = 3
   PALETTE = [0x0000, 0x7FFF, 0x001F, 0x03E0].freeze
   # Where the view is put, a pass each, in pixels: a cell part way in, across the grid's 32nd column
-  # and row, at the map's right and bottom edges. A 64 by 64 map comes round past its edges for the
-  # interpreter, as a grid of 64 cells does, so the view stays on the map.
+  # and row, at the map's right and bottom edges. A view past the edges, where the map comes round, is
+  # held on every run by test/all/vblank/builder/test_big_maps.rb.
   VIEW_SPOTS = [[3, 5], [237, 245], [352, 368], [100, 40], [255, 255], [0, 368], [352, 0], [17, 201], [0, 0]].freeze
   # Where the made-up original keeps its colours, its map and its tiles.
   COLORS_AT = 0x10

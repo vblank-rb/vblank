@@ -1145,7 +1145,7 @@ module VBlank
                 next big_put_up(bg, 0, "rt_big_put_up") unless kept
 
                 cols, rows = TileMap.size_of(bg.map)
-                runtime_call("rt_big_put_up", [Build.int(@art.big_map_in_memory(cols, rows, changed_big_place(bg)))])
+                runtime_call("rt_big_put_up", [Build.int(@art.big_map_in_memory(cols, rows, changed_big_place(bg), repeats: !bg.streams?))])
               end
             end
 
@@ -1158,15 +1158,18 @@ module VBlank
             end
 
             # A background's map number +which+ kept whole, for a background one of whose maps is
-            # bigger than the grid (GBC::Art#big_map): every map of it is kept that way, so each stops
-            # at its own edge.
+            # bigger than the grid (GBC::Art#big_map): every map of it is kept that way. A background
+            # whose maps all fit a grid of 64 cells and are of one size comes round past its edges, as
+            # the interpreter's grid does (Reference#paint_background_window); any other stops at
+            # its own edge (IR::TileMap.streams?).
             def big_map_of(bg, which = 0)
               @big_maps ||= {}
               @big_maps[[bg, which]] ||= begin
                 refuse_background!(bg)
-                @art.big_map(bg.every_map.fetch(which).map do |row|
+                cells = bg.every_map.fetch(which).map do |row|
                   Array(row).map { |tile| tile.nil? || tile.negative? ? nil : background_tile_named(bg.tiles.fetch(tile), bg, tile_room(bg, which)) }
-                end)
+                end
+                @art.big_map(cells, repeats: !bg.streams?)
               end
             end
 
@@ -1596,7 +1599,7 @@ module VBlank
 
               runtime_call("rt_big_copy_in", [Build.int(big_map_of(bg, which)), Build.int(changed_big_place(bg))])
               cols, rows = TileMap.size_of(bg.every_map.fetch(which))
-              runtime_call(routine, [Build.int(@art.big_map_in_memory(cols, rows, changed_big_place(bg)))])
+              runtime_call(routine, [Build.int(@art.big_map_in_memory(cols, rows, changed_big_place(bg), repeats: !bg.streams?))])
             end
 
             # Where a big background the game changes is kept: room for the biggest of its maps.

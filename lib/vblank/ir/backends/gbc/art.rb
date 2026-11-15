@@ -240,7 +240,7 @@ module VBlank
             @run_tile_of = {} # [a painted tile's name, the room it is in] -> [tile number, palette number]
             @grids = []               # 2048 bytes each: the cells' tiles, then their attributes
             @grid_rows = []           # each grid's rows its maps reach, the rest of it empty
-            @big_maps = []            # [bytes, columns, rows] of each map bigger than the grid
+            @big_maps = []            # [bytes, columns, rows, address, repeats] of each map bigger than the grid
             background_tile_number(Array.new(16, 0)) # tile 0: nothing but the backdrop, for an empty cell
             grid(Array.new(GRID_CELLS) { Array.new(GRID_CELLS) }, rows: 0) # grid 0: nothing up
           end
@@ -1028,8 +1028,9 @@ module VBlank
 
           # The number of a map bigger than the grid (Runtime::BigMaps), kept whole: +cells+ is its
           # rows, each cell [tile number, palette number] or nil for one with nothing in it, and every
-          # cell is two bytes, its tile and its colours, a row after another.
-          def big_map(cells)
+          # cell is two bytes, its tile and its colours, a row after another. +repeats+ for a map that
+          # comes round past its edges, as one that fits a grid of 64 cells does (IR::TileMap.streams?).
+          def big_map(cells, repeats: false)
             cols = cells.map(&:length).max.to_i
             if cols > 255 || cells.length > 255
               raise LoweringError, "a map of #{cols}×#{cells.length} cells is bigger than a Game Boy Color build " \
@@ -1044,16 +1045,19 @@ module VBlank
                 [tile & 0xFF, palette | (tile >= 256 ? Console::GBCHardware::ATTR_TILE_BANK : 0)]
               end.flatten
             end
-            entry = [bytes, cols, cells.length]
+            entry = [bytes, cols, cells.length, nil, repeats]
             @big_maps.index(entry) || (@big_maps << entry).length - 1
           end
 
           # The number of a big map of +cols+ × +rows+ kept in work memory at +address+ (one the game
           # changes, Runtime::BigMaps's rt_big_copy_in): its table of rows gives where each row is there.
-          def big_map_in_memory(cols, rows, address)
-            entry = [nil, cols, rows, address]
+          def big_map_in_memory(cols, rows, address, repeats: false)
+            entry = [nil, cols, rows, address, repeats]
             @big_maps.index(entry) || (@big_maps << entry).length - 1
           end
+
+          # Whether any big map comes round past its edges, for the runtime's part that does it.
+          def big_maps_repeat? = @big_maps.any? { |entry| entry[4] }
 
           # --- the cartridge's copy ---
 
@@ -1154,11 +1158,11 @@ module VBlank
               indexes.data_bytes(@grid_rows[i])
             end
             # Each map bigger than the grid as Runtime::BigMaps reads it: where its table of rows is
-            # (each row's place and bank), a byte unused, and its size.
+            # (each row's place and bank), 1 for a map that comes round past its edges, and its size.
             asm.label("art_big_maps")
-            @big_maps.each_index do |i|
+            @big_maps.each_with_index do |(_, cols, rows, _, repeats), i|
               asm.data_words("art_big_rows_#{i}")
-              asm.data_bytes(0, @big_maps[i][1], @big_maps[i][2])
+              asm.data_bytes(repeats ? 1 : 0, cols, rows)
             end
             @big_maps.each_with_index do |(bytes, cols, rows, address), i|
               asm.label("art_big_rows_#{i}")
