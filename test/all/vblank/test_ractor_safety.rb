@@ -75,6 +75,24 @@ class TestRactorSafety < Minitest::Test
     end
   end
 
+  # A Super Nintendo cartridge that plays a song: one recorded instrument and a score of one note.
+  # The sound unit's program is written by an assembler of its own (SNES::SPC700), whose tables a
+  # worker first met here, so it is the build that proves those tables can be read from one.
+  module SuperNintendoSong
+    module_function
+
+    def cartridge
+      VBlank.build("SONG", console: :snes, out: StringIO.new, err: StringIO.new) do
+        enable_sound
+        instrument :hum, pcm: [0, 64, 0, -64] * 100, rate: 22_050
+        score = VBlank::Audio::Score
+        music = songs :music, [score.new(parts: [score::Part.new(plays: :hum, notes: [score::Note.new(at: 0, hz: 440)])],
+                                         length: 96)]
+        game_loop { music.play 0 }
+      end.bytes
+    end
+  end
+
   # THE ONE A WORKER NEVER REACHES, and it is not a tidy-up somebody has been putting off.
   # Both censuses skip it; the build at the bottom does not, so if a worker ever did reach it
   # it would raise there rather than pass quietly.
@@ -132,6 +150,15 @@ class TestRactorSafety < Minitest::Test
   def test_the_program_that_uses_everything_builds_the_same_in_a_worker
     on_main = Everything.cartridge
     in_worker = without_the_experimental_warning { Ractor.new { Everything.cartridge }.value }
+
+    assert_equal on_main, in_worker
+  end
+
+  # ANOTHER CONSOLE'S BUILD, which is a body of code of its own: every console's lowering has its
+  # own assemblers and tables, and the Advance's cartridge above crosses none of them.
+  def test_a_super_nintendo_cartridge_with_a_song_builds_the_same_in_a_worker
+    on_main = SuperNintendoSong.cartridge
+    in_worker = without_the_experimental_warning { Ractor.new { SuperNintendoSong.cartridge }.value }
 
     assert_equal on_main, in_worker
   end
