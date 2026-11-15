@@ -469,11 +469,7 @@ module VBlank
       when "native" then build_native(game_file)
       when "web" then build_web(game_file)
       when "ruby" then build_ruby(game_file)
-      when "gbc"
-        raise Thor::Error, "There is no --format=gbc now. To build a Game Boy Color cartridge, use --console gbc."
-      else
-        raise Thor::Error, "#{options[:format].inspect} is not a build format. The formats are: game, ir, native, " \
-                           "ruby, web."
+      else refuse_build_format!(options[:format])
       end
     rescue ArgumentError, VBlank::BuildError => e
       # A setting the game does not ask for, or one it cannot read, or a build that stopped (the
@@ -2066,6 +2062,21 @@ module VBlank
                            "#{VBlank::IR::Buttons::NAMES.join(', ')}."
       end
       buttons
+    end
+
+    # A --format build does not know. A console's name is the usual one: native, web and ruby each
+    # name where the game runs, so a person who wants a cartridge writes --format gba. A cartridge
+    # needs no --format at all, and --console picks which, so that is the way forward given.
+    def refuse_build_format!(format)
+      kit = VBlank::Console::KITS[format.downcase.to_sym]
+      if kit
+        raise Thor::Error, "#{format} is a console, not a build format. To build a cartridge for each console " \
+                           "that the game names, leave out --format. To build only the #{kit.title} cartridge, " \
+                           "use --console #{kit.name}."
+      end
+
+      raise Thor::Error, "#{format.inspect} is not a build format. The formats are: game, ir, native, ruby, web. " \
+                         "To build a cartridge, leave out --format."
     end
 
     # The settings --set named, as text: the game's own `setting` line reads each as the kind

@@ -932,6 +932,37 @@ class TestCLI < Minitest::Test
     end
   end
 
+  # A person who wants a cartridge reaches for the console's name, since native, web and ruby
+  # each name where the game runs. Every console's name is answered with the way forward: a
+  # cartridge needs no --format, and --console picks the console.
+  def test_format_naming_a_console_says_to_leave_it_out_or_use_console
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "both.rb"), BOTH)
+      out, status = cli("build", "both.rb", "--format", "gba", dir: dir)
+
+      refute status.success?
+      assert_match(/gba is a console, not a build format/, out)
+      assert_match(/leave out --format/, out)
+      assert_match(/--console gba/, out)
+      refute File.exist?(File.join(dir, "both.gba")), "a refused build writes nothing"
+
+      out, = cli("build", "both.rb", "--format", "SNES", dir: dir)
+      assert_match(/SNES is a console.*--console snes/m, out, "any console, written in capitals too")
+    end
+  end
+
+  # A format that is no console's name still says how to get a cartridge.
+  def test_an_unknown_format_says_a_cartridge_needs_no_format
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "both.rb"), BOTH)
+      out, status = cli("build", "both.rb", "--format", "rom", dir: dir)
+
+      refute status.success?
+      assert_match(/"rom" is not a build format/, out)
+      assert_match(/To build a cartridge, leave out --format/, out)
+    end
+  end
+
   # --output names one file, so a game for two consoles needs --console beside it.
   def test_build_output_for_a_game_of_two_consoles_needs_console
     Dir.mktmpdir do |dir|
