@@ -789,7 +789,7 @@ module VBlank
       # the background's cells (written by the copy at the frame boundary). Two rather than
       # one because that is what makes the copy happen exactly when the answer changes.
       def shown_map_var = :"__bg_#{@name}_map"
-      def live_map_var = :"__bg_#{@name}_live"
+      def live_map_var = IR::Nodes::Background.map_in_cells_var(@name)
 
       # ...and the same pair for which list of colours the tiles are drawn from: what the
       # game set, and what is really in the display's table.

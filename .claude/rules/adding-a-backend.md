@@ -156,7 +156,7 @@ writing an instruction is shared, because two copies of a decision drift apart:
   held; `emit_unless_put_up`; `emit_corners_forgotten`), and a background whose line runs more than
   once copying its declared map the first time alone, so a later put-up keeps the cells the game
   changed (`emit_put_up_keeping_cells`; the Color tells the two apart in its runtime instead, by the
-  grid its layer holds, and names the grid of whichever of its maps the layer holds), and the bar
+  grid its layer holds, and puts up the map the game last handed it, read from `choice`), and the bar
   shown early put up beside each background, by a line or a scene's arrival, until it has gone up
   once, held at no corner (`emit_bar_beside`, `emit_bar_beside_arrival`, `emit_bar_shown_early_noted`
   for a screen's change; the Advance writes the same in `Drawing#emit_bar_beside`).

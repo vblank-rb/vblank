@@ -813,7 +813,7 @@ module VBlank
                 return runtime_call("rt_background_put_up", [Build.int(0)])
               end
 
-              scenery.each { |bg| background_put_up(bg) }
+              scenery.each { |bg| background_put_up(bg, as_shown: own.empty?) }
               emit_bar_beside_arrival(arrival)
               painted = arrival.scenery.empty? ? @handover.always_up.painted_tiles : arrival.painted_tiles
               painted.each { |run| emit_run_copy(run) }
@@ -1128,18 +1128,21 @@ module VBlank
             # +again+ for a line that can run more than once (#put_up_again?): the cells the game changed stay,
             # through rt_background_put_up_kept, or for a big map the game changes, its copy in memory
             # (#changed_big_place) copied in the first time alone (SceneryWrites#emit_put_up_keeping_cells).
-            def background_put_up(bg, again: false)
+            #
+            # +as_shown+ for the scenery every screen shows put back as a scene takes over: it shows the map the
+            # game last handed it, as the interpreter's picture never stopped showing it (#emit_for_map_shown).
+            def background_put_up(bg, again: false, as_shown: false)
               return bar_put_up(bg, again: again) if bg.bar?
 
               emit_tile_room(tile_room(bg)) if bg.several_sets? # up as declared: its first area
 
               emit_bends_shown(bg)
               if big?(bg)
-                big_put_up_again(bg, again)
-              elsif again
-                emit_for_grid_kept(bg, Runtime::Picture::GRID_KEPT) do |grid, which|
-                  emit_tile_room(tile_room(bg, which)) if bg.several_sets? && which.positive? # ...or the kept map's
-                  runtime_call("rt_background_put_up_kept", [Build.int(grid)])
+                big_put_up_again(bg, again, as_shown)
+              elsif again || as_shown
+                emit_for_map_shown(bg) do |which|
+                  emit_tile_room(tile_room(bg, which)) if bg.several_sets? && which.positive? # ...or the shown map's
+                  runtime_call(again ? "rt_background_put_up_kept" : "rt_background_put_up_unscrolled", [Build.int(grid_of(bg, which))])
                 end
               else
                 runtime_call("rt_background_put_up_unscrolled", [Build.int(grid_of(bg))])
@@ -1148,41 +1151,41 @@ module VBlank
             end
 
             # A BACKGROUND OF SEVERAL MAPS PUT UP AGAIN keeps the map the game handed it, as the interpreter keeps
-            # it (Reference#put_up_background). The runtime's kept-grid number (+kept+, GRID_KEPT or BAR_KEPT) is
-            # the grid the layer holds; grids are shared between backgrounds and not numbered by map, so the runtime
-            # alone cannot tell that grid is one of this background's. The lowering can: the put-up names the grid
-            # of whichever of its maps the layer holds, and the first map's otherwise. The block writes the put-up
-            # of a grid, handed the grid and the number of its map. A background of one map names its grid alone.
-            #
-            # A grid another background holds that is the same as one of this one's maps is taken for that map,
-            # and a big map is put up as its first (#big_put_up_again).
-            def emit_for_grid_kept(bg, kept)
-              maps = bg.every_map.each_index.map { |which| [grid_of(bg, which), which] }.uniq(&:first)
-              return yield(*maps.first) if maps.one?
+            # it (Reference#put_up_background). Which map that is, is the number the game's own frame boundary
+            # writes as it hands the map over (the second of Nodes::Background#choice, the map really in the
+            # cells), so the put-up asks that and not the runtime: the runtime keeps only the grid its layer holds,
+            # and grids are shared between backgrounds and not numbered by map. The block writes the put-up of map
+            # number +which+; a background of one map writes its first alone.
+            def emit_for_map_shown(bg)
+              return yield(0) if bg.every_map.one?
 
-              done = fresh("map_kept")
-              maps.drop(1).each do |grid, which|
-                other = fresh("not_map_kept")
-                @asm.load(:a, [@memory[kept]])
-                @asm.cp_a(grid)
-                @asm.jump(:nz, other)
-                yield grid, which
+              shown = Nodes::Background.map_in_cells_var(bg.name)
+              done = fresh("map_shown")
+              (1...bg.every_map.length).each do |which|
+                other = fresh("not_map_shown")
+                jump_unless(Build.binop(:==, Build.var_ref(shown), Build.int(which)), other)
+                yield which
                 @asm.jump(done)
                 @asm.label(other)
               end
-              yield(*maps.first)
+              yield 0
               @asm.label(done)
             end
 
-            # A big map put up, its copy in memory kept from the first put-up of a line that runs again.
-            def big_put_up_again(bg, again)
-              return big_put_up(bg, 0, "rt_big_put_up") unless again && changed_big?(bg)
+            # A big map put up: as declared, or as the map shown for a line that runs again or one put back as a
+            # scene takes over (+as_shown+); its copy in memory kept from the first put-up of a line that runs
+            # again, for one the game changes.
+            def big_put_up_again(bg, again, as_shown)
+              return big_put_up(bg, 0, "rt_big_put_up") unless again || as_shown
+              return emit_for_map_shown(bg) { |which| big_put_up(bg, which, "rt_big_put_up") } unless again && changed_big?(bg)
 
               emit_put_up_keeping_cells(bg, BACKGROUND_LAYER) do |kept|
                 next big_put_up(bg, 0, "rt_big_put_up") unless kept
 
-                cols, rows = TileMap.size_of(bg.map)
-                runtime_call("rt_big_put_up", [Build.int(@art.big_map_in_memory(cols, rows, changed_big_place(bg), repeats: !bg.streams?))])
+                emit_for_map_shown(bg) do |which|
+                  cols, rows = TileMap.size_of(bg.every_map.fetch(which))
+                  runtime_call("rt_big_put_up", [Build.int(@art.big_map_in_memory(cols, rows, changed_big_place(bg), repeats: !bg.streams?))])
+                end
               end
             end
 
@@ -1219,7 +1222,7 @@ module VBlank
             def bar_put_up(bar, again: false)
               top = bar.bar_top.clamp(0, Console::GBCHardware::SCREEN_HEIGHT)
               if again
-                emit_for_grid_kept(bar, Runtime::Picture::BAR_KEPT) { |grid, _| runtime_call("rt_bar_put_up_kept", [Build.int(grid), Build.int(top)]) }
+                emit_for_map_shown(bar) { |which| runtime_call("rt_bar_put_up_kept", [Build.int(grid_of(bar, which)), Build.int(top)]) }
               else
                 runtime_call("rt_bar_put_up", [Build.int(grid_of(bar)), Build.int(top)])
               end

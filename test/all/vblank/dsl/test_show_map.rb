@@ -81,6 +81,72 @@ class TestShowMap < Minitest::Test
     assert_equal Color.resolve(:blue), cell_of(builder.program, frames: 6), "the cave stays"
   end
 
+  # ...and a map bigger than a console's grid of cells, which some consoles keep whole in memory.
+  BIG_HALL = Array.new(40) { "#" * 40 }
+  BIG_CAVE = Array.new(40) { "." * 40 }
+
+  def test_a_big_background_put_up_again_keeps_the_map_it_was_handed
+    builder = Builder.new
+    builder.instance_eval do
+      screen :tiled
+      image(:wall, "#" => :red) { SOLID_TILE }
+      image(:floor, "#" => :blue) { SOLID_TILE }
+      tiles :dungeon, "#" => :wall, "." => :floor
+      frames = var :frames, 0
+      func(:put_up_rooms) do
+        rooms = background :rooms, tiles: :dungeon, map: { hall: BIG_HALL, cave: BIG_CAVE }
+        rooms.show_map :cave if frames == 2
+      end
+      game_loop do
+        call :put_up_rooms
+        frames += 1
+      end
+    end
+    builder.finalize_program
+
+    assert_equal Color.resolve(:blue), cell_of(builder.program, frames: 6), "the cave stays"
+  end
+
+  # A background every screen shows keeps the map it was handed while scenes of no scenery of their
+  # own take turns over it,
+  def test_scenes_taking_turns_leave_the_map_handed_to_the_background_every_screen_shows
+    assert_equal Color.resolve(:blue), cell_of(scene_turns_program(HALL, CAVE), frames: 9), "the cave stays"
+  end
+
+  # ...a map bigger than a console's grid too.
+  def test_scenes_taking_turns_leave_the_big_map_handed_to_the_background_every_screen_shows
+    assert_equal Color.resolve(:blue), cell_of(scene_turns_program(BIG_HALL, BIG_CAVE), frames: 9), "the cave stays"
+  end
+
+  # Rooms of +hall+ and +cave+ every screen shows, handed the cave on the second pass, under two scenes
+  # with no scenery of their own that take turns.
+  private def scene_turns_program(hall, cave)
+    builder = Builder.new
+    builder.instance_eval do
+      screen :tiled
+      image(:wall, "#" => :red) { SOLID_TILE }
+      image(:floor, "#" => :blue) { SOLID_TILE }
+      tiles :dungeon, "#" => :wall, "." => :floor
+      frames = var :frames, 0
+      state = var :state, 0
+      rooms = background :rooms, tiles: :dungeon, map: { hall: hall, cave: cave }
+      scene(:play) { nil }
+      scene(:pause) { nil }
+      game_loop do
+        rooms.show_map :cave if frames == 1
+        state = 1 if frames == 3
+        state = 0 if frames == 6
+        case_var(:state) do
+          when_val 0, :play
+          when_val 1, :pause
+        end
+        frames += 1
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
   def test_naming_another_map_hands_the_background_that_whole_map
     program = rooms_program { |rooms, frames| rooms.show_map :cave if frames == 2 }
 

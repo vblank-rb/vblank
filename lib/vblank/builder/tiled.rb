@@ -548,7 +548,7 @@ module VBlank
         declared.held = held
         # Which map the game sets as showing, and which one is really in the cells — and, for
         # a background drawn from several sets of tiles, which set is really in tile memory.
-        choice = map_names.size > 1 ? [:"__bg_#{name}_map", :"__bg_#{name}_live"] : []
+        choice = map_names.size > 1 ? [:"__bg_#{name}_map", IR::Nodes::Background.map_in_cells_var(name)] : []
         choice += [IR::Nodes::Background.set_var(name)] if sets
         # ...and, for one brought into view a strip at a time, which map the strips come from:
         # back to the first with the rest. Not whether the cells around the view hold it yet.

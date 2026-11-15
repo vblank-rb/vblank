@@ -184,6 +184,10 @@ module VBlank
         # it as a scene takes over names the same one.
         def self.set_var(name) = :"__bg_#{name}_set"
 
+        # The variable that holds which of a background's maps is really in its cells, written as the gap
+        # between frames hands a map over: the second of +choice+, after the one the game sets.
+        def self.map_in_cells_var(name) = :"__bg_#{name}_live"
+
         # The variable that holds which list of colours a background told `draw_with` is really
         # drawn with now, written in the gap between frames (BackgroundColors).
         def self.live_colors_var(name) = :"__bg_#{name}_live_colors"
