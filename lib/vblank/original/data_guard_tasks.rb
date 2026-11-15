@@ -18,6 +18,7 @@ module VBlank
     #     t.folders = %w[dumps/ /cache/ *.levels/]   # folders that hold the original's data
     #     t.suffixes = %w[chr]                       # kinds of file its tools write
     #     t.generated_mark = "# rocket: written from the original"  # what its tools stamp on line one
+    #     t.big_files = %w[data/sprite_layout.json]  # big files of harvested numbers, past the size limit alone
     #   end
     #
     # That defines two tasks:
@@ -40,7 +41,7 @@ module VBlank
       HOOK_LINE = "bundle exec rake data_guard:check || exit 1"
       NEW_HOOK = "#!/bin/sh\n# Refuse a commit that stages the original game's data (VBlank::Original::DataGuard).\n#{HOOK_LINE}\n".freeze
 
-      attr_accessor :consoles, :folders, :suffixes, :generated_mark, :most_bytes
+      attr_accessor :consoles, :folders, :suffixes, :generated_mark, :most_bytes, :big_files
 
       def initialize
         super
@@ -49,6 +50,7 @@ module VBlank
         @suffixes = []
         @generated_mark = nil
         @most_bytes = DataGuard::MOST_BYTES
+        @big_files = []
         yield self if block_given?
         define_tasks
       end
@@ -80,7 +82,7 @@ module VBlank
         raise ArgumentError, "The data guard names no consoles. Set t.consoles in the Rakefile, as the game names them." if consoles.nil?
 
         DataGuard.new(consoles: consoles, folders: folders, suffixes: suffixes, generated_mark: generated_mark,
-                      most_bytes: most_bytes)
+                      most_bytes: most_bytes, big_files: big_files)
       end
 
       def refuse_other_hooks_folder!(folder)

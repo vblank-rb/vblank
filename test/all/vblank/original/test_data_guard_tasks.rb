@@ -79,6 +79,21 @@ class TestDataGuardTasks < Minitest::Test
     end
   end
 
+  def test_a_big_file_the_rakefile_names_passes_and_another_does_not
+    Rake.application = Rake::Application.new
+    named = VBlank::Original::DataGuardTasks.new do |t|
+      t.consoles = %i[gbc]
+      t.big_files = %w[layout.json]
+    end
+    Dir.mktmpdir do |folder|
+      stage(repository(folder), "layout.json", "1," * 300_000)
+
+      assert_empty named.staged_refusals(folder, env: {})
+      stage(folder, "other.json", "1," * 300_000)
+      assert_match "other.json", named.staged_refusals(folder, env: {}).join
+    end
+  end
+
   def test_ordinary_files_and_a_skip_pass
     Dir.mktmpdir do |folder|
       stage(repository(folder), "game.rb")
