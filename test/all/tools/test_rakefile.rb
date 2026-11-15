@@ -47,6 +47,13 @@ class TestRakefile < Minitest::Test
                  prerequisites("test:lowering:gba").grep(/\Acompile_/).sort
   end
 
+  # test:misplaced plays each folder's tests on the runs that do not load them, every console's
+  # among them, so a test there can open any console's emulator.
+  def test_the_misplaced_tests_run_builds_every_emulator
+    assert_equal %w[compile_emulator compile_genesis_core compile_ps1_core compile_snes_core],
+                 prerequisites("test:misplaced").grep(/\Acompile_/).sort
+  end
+
   def test_the_playthroughs_run_builds_the_super_nintendos_emulator
     assert_includes prerequisites("test:playthroughs"), "compile_snes_core"
   end

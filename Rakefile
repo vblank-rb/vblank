@@ -200,7 +200,9 @@ end
 namespace :test do
   desc "Tests kept out of test/all that pass, playing a game, on runs that do not load them " \
        "(rake test:misplaced ONLY=test/console/gba RUNS=gbc,snes,genesis)"
-  task misplaced: :compile_emulator do
+  # It plays each folder's tests on the runs that do not load them, so a test there can open any
+  # console's emulator, whichever runs RUNS names.
+  task misplaced: %i[compile_emulator compile_snes_core compile_genesis_core compile_ps1_core] do
     ruby "tools/misplaced_tests.rb"
   end
 end
