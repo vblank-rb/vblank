@@ -2692,7 +2692,8 @@ module VBlank
                     "#{PaletteBanks::BANKS} groups of colors the console holds for sprites. The sets given to " \
                     "`colors_in_use` take #{shared.length} of these groups. The biggest is " \
                     "#{@color_list_nodes.fetch(shared.first).busiest_set}. Each list in no set takes one group, " \
-                    "and so does each sprite with different colors.#{shared_sprites_note(node.scene)} To fix " \
+                    "and so does each sprite with different colors.#{shared_sprites_note(node.scene)}" \
+                    "#{wide_pictures_note(node.scene)} To fix " \
                     "this, give that set fewer lists, or tell sprites to draw_with fewer lists that are in no set."
             end
             unless @lent_lists.empty?
@@ -2700,14 +2701,16 @@ module VBlank
                     "#{whose_sprites(node.scene)} draw with more lists of colors than the console can hold. The " \
                     "console holds #{PaletteBanks::BANKS} groups of colors for sprites. Each sprite with " \
                     "different colors takes one group, and so does each list told to `recolor` or given to " \
-                    "`colors_in_use`.#{shared_sprites_note(node.scene)} The other lists use the groups that " \
+                    "`colors_in_use`.#{shared_sprites_note(node.scene)}#{wide_pictures_note(node.scene)} " \
+                    "The other lists use the groups that " \
                     "are left, in turn, but no group is left. To fix this, give more sprites the same " \
                     "`colors:` list."
             end
             raise LoweringError,
                   "#{whose_sprites(node.scene)} and the lists of colors they draw with need more than the " \
                   "#{PaletteBanks::BANKS} groups of colors the console holds for sprites. Each different list " \
-                  "takes one group, and so does each sprite with different colors.#{shared_sprites_note(node.scene)} " \
+                  "takes one group, and so does each sprite with different colors.#{shared_sprites_note(node.scene)}" \
+                  "#{wide_pictures_note(node.scene)} " \
                   "To fix this, tell sprites to draw_with fewer different lists, or give more sprites the same " \
                   "`colors:` list. Or tell the sprites to draw_with one list. Then change the colors that " \
                   "list holds with `recolor`. If no one room uses all these lists, say which lists each room " \
@@ -2745,6 +2748,27 @@ module VBlank
             return "" unless scene && @picture.objects.any? { |node| node.scene.nil? }
 
             " This count includes the sprites that every scene shows."
+          end
+
+          # The note, for a refusal of too many groups, of the groups the sprites of +scene+ with
+          # too many colours for one group took, which the count of lists and sprites leaves out.
+          # Such a picture is read across the whole table, and its colours fill whole groups there
+          # that no list can have. Named in the author's own words, the pictures; empty when no
+          # sprite of +scene+'s is one.
+          def wide_pictures_note(scene)
+            table = @obj_banks.fetch(scene)
+            wide = @picture.objects.select { |node| node.scene.nil? || node.scene == scene }.filter_map do |node|
+              place = table.placement(node.name) if table.known?(node.name)
+              [node, place] if place && !place.narrow? && place.indices.size > PaletteBanks::BANK_COLORS
+            end
+            return "" if wide.empty?
+
+            groups = wide.flat_map { |_node, place| place.groups }
+            pictures = wide.map { |node, _place| ":#{node.poses.first}" }.uniq
+            named = pictures.join(", ")
+            " A picture with more than #{PaletteBanks::BANK_COLORS} colors also takes groups, because its colors " \
+              "fill whole groups. Here #{named} #{pictures.one? ? 'takes' : 'take'} #{groups.uniq.length} of " \
+              "these groups. To get these groups back, draw #{named} from #{PaletteBanks::BANK_COLORS} colors or fewer."
           end
 
           # The bank each of a sprite's other lists landed in, in the order the program counts
