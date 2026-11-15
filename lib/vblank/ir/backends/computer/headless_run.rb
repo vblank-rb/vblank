@@ -572,6 +572,7 @@ module VBlank
               # reported where the program is (#next_line) and not a second time from here.
               complaint.report_on_exception = false
               frame = 0
+              @buttons_asked = 0
               rows = []
               expect_next_frame
               while (line = next_line(stdout, waiter, exe, frame))
@@ -595,7 +596,14 @@ module VBlank
           # whoever is watching the run is shown the frame, and then the buttons are sent. That
           # is the interpreter's order, and the program is waiting for its buttons throughout, so
           # the picture in its file is this frame's for as long as anybody here can ask for it.
+          #
+          # The buttons are asked for by how many times they have been read. That is how the
+          # interpreter asks its script, by the frame the screen shows (Reference#read_buttons). It is
+          # the frame's own number, except in a game whose timer's handler waits: there the frame the
+          # handler is held up in is counted and not shown, and the frame it reaches is shown twice,
+          # with buttons read each time.
           def record_frame_and_send_buttons(stdin, frame, rows)
+            @buttons_asked += 1
             read_state_from(rows)
             @screen = nil
             check = rows.find { |row| row.start_with?("picture-crc ") }.delete_prefix("picture-crc ").to_i(16)
@@ -603,7 +611,7 @@ module VBlank
               @moments << Moment.new(frame: frame, variables: @vars, picture: check, sounds: @audio_played.size, sprites: @sprites,
                                      collections: game_state.except(:vars), sounding: active_samples, motor: motor_on?)
             end
-            buttons = buttons_sent(frame)
+            buttons = buttons_sent(@buttons_asked)
             @on_vblank&.call(frame)
             stdin.puts(@pass_buttons.headless_input_line(buttons))
             stdin.flush

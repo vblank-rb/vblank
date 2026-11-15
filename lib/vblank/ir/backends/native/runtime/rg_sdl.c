@@ -1837,15 +1837,18 @@ static void read_computer_clock(void) {
 }
 
 /* The frame boundary: the picture the frame drew is shown, the clock comes round, and the
- * buttons for the next frame are read. */
+ * buttons for the next frame are read. A boundary that only ends the frame a waiting timer's
+ * handler held up is no new frame, so a scripted run neither counts it nor stops before it
+ * (rg_frame_ends_late), as the windowless run does; the window still shows it. */
 static void sdl_wait_vblank(void) {
   serve_state_request();
-  if (scripted && frames_played >= frames_to_play) finish_script();
+  int late = rg_frame_ends_late();
+  if (scripted && !late && frames_played >= frames_to_play) finish_script();
   Uint64 frame_ended = SDL_GetTicksNS();
   rg_window_frame_played(frame_ended, game_resumed_ns ? frame_ended - game_resumed_ns : 0);
   play_frame_sound();
   rg_frame_begins();
-  frames_played++;
+  if (!late) frames_played++;
   bool shown = end_of_slot();
   if (shown) present();
   write_files_due();

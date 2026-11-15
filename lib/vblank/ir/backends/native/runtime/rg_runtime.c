@@ -53,7 +53,7 @@ void rg_players_held_from_power_on(int32_t count, const uint32_t *masks) { hold_
 void rg_wait_vblank(void) { rg_screen_frame_ended(); }
 
 void rg_play_frames(void) {
-  while (rg_game_main()) rg_active_driver->wait_vblank();
+  while (rg_game_pass()) rg_active_driver->wait_vblank();
 }
 
 void rg_wait_vblank_while_answering(void) {
@@ -106,21 +106,84 @@ int32_t rg_timer_ticks(int32_t timer) {
 
 int32_t rg_timer_ticking(int32_t timer) { return timer == ticking; }
 
-/* Reference#accrue_timer, for every running timer: a frame's worth of ticks more, and the game's
- * handler once for each whole tick crossed. How many that is is settled before the first of them
- * runs, so a handler that stops its own timer, or starts it again, still finishes the ticks this
- * frame crossed. */
-static void timers_frame(void) {
+/* A frame's worth of ticks more for +timer+ (Reference#accrue_timer), and how many whole ticks
+ * that crossed. How many is settled before the first handler runs, so a handler that stops its
+ * own timer, or starts it again, still finishes the ticks this frame crossed. */
+static int64_t ticks_crossed(game_timer *timer) {
+  int64_t before = whole_ticks(timer);
+  timer->parts += timer->ticks_a_second;
+  return whole_ticks(timer) - before;
+}
+
+/* A HANDLER THAT WAITS. The interpreter runs a timer's handler inside the frame boundary, and a wait
+ * in the handler is a frame boundary of its own (Reference#accrue_timer, #advance_frame): that one
+ * moves every timer on and runs the handlers to their end, the frame it reaches is shown, and the
+ * handler carries on. Only once it ends do the boundary's other timers tick, and then its frame ends:
+ * the sound moves on and the frame is shown, one more time.
+ *
+ * The game's handler is resumable in such a game (Computer::Resumable, TIMER_STEPS): it tells the
+ * runtime it stopped (rg_timer_handler_waited), and the boundary's walk through the timers stops with
+ * it, keeping its place and the ticks still to answer. The driver then shows nothing (rg_frame_begins
+ * gives back 1) and asks for the game's next pass, which is the boundary of the handler's wait: one
+ * that, while a handler is stopped (rg_timer_handler_paused), runs every handler from its start to its
+ * end. The pass after it carries the handler on in place of the game (rg_game_pass). When the walk is
+ * over, the frame it began ends at the next boundary (rg_frame_ends_late). A game whose handlers never
+ * wait never stops the walk. */
+enum { HANDLER_NONE_STOPPED, HANDLER_STOPPED, HANDLER_WAIT_OVER };
+static int32_t walk_place;      /* the timer the boundary's walk is at, by its place in timers_started... */
+static int64_t walk_ticks_left; /* ...and that timer's ticks still to answer, a stopped one among them */
+static int32_t handler_state;   /* a handler stopped inside the boundary that ran it, and whether its wait is over */
+static int32_t handler_waited;  /* whether the handler the game just ran stopped */
+static int32_t frame_end_pending;  /* the walk is over: the frame it began ends at the next boundary */
+
+void rg_timer_handler_waited(int32_t waited) { handler_waited = waited; }
+int32_t rg_timer_handler_paused(void) { return handler_state != HANDLER_NONE_STOPPED; }
+int32_t rg_frame_ends_late(void) { return frame_end_pending; }
+
+/* The boundary's walk through every running timer, the game's handler once for each whole tick it
+ * crossed, from where it stopped: 1 when a handler stopped to wait (marked HANDLER_STOPPED), 0
+ * when it is over. */
+static int32_t walk_timers(void) {
+  handler_state = HANDLER_NONE_STOPPED;
+  for (; walk_place < timers_started_count; walk_place++) {
+    int32_t number = timers_started[walk_place];
+    if (walk_ticks_left == 0) {
+      if (!timers[number].running) continue;
+      walk_ticks_left = ticks_crossed(&timers[number]);
+    }
+    for (; walk_ticks_left > 0; walk_ticks_left--) {
+      ticking = number;
+      handler_waited = 0;
+      rg_game_timer_ticks();
+      ticking = NO_TIMER;
+      if (handler_waited) {
+        handler_state = HANDLER_STOPPED;
+        return 1;
+      }
+    }
+  }
+  walk_place = 0;
+  return 0;
+}
+
+/* The same at a boundary inside a stopped handler's wait, which runs each handler to its end and
+ * keeps nothing of the walk it is inside. */
+static void timers_frame_inside_wait(void) {
   for (int32_t i = 0; i < timers_started_count; i++) {
     game_timer *timer = &timers[timers_started[i]];
     if (!timer->running) continue;
-    int64_t before = whole_ticks(timer);
-    timer->parts += timer->ticks_a_second;
-    int64_t crossed = whole_ticks(timer) - before;
+    int64_t crossed = ticks_crossed(timer);
     ticking = timers_started[i];
     for (int64_t tick = 0; tick < crossed; tick++) rg_game_timer_ticks();
     ticking = NO_TIMER;
   }
+}
+
+int32_t rg_game_pass(void) {
+  if (handler_state == HANDLER_NONE_STOPPED) return rg_game_main();
+  if (handler_state == HANDLER_STOPPED) return 1; /* the boundary of its wait comes first */
+  if (!walk_timers()) frame_end_pending = 1;
+  return 1;
 }
 
 /* --- the cartridge's clock (Reference#value_of_clock) --- */
@@ -309,6 +372,12 @@ static void visit_timers(void) {
   rg_state_numbers("runtime.timers.order", order, RG_MAX_TIMERS + 1);
   timers_started_count = (int32_t)order[0];
   for (int32_t i = 0; i < RG_MAX_TIMERS; i++) timers_started[i] = (int32_t)order[i + 1];
+  int64_t walk[4] = {walk_place, walk_ticks_left, handler_state, frame_end_pending};
+  rg_state_numbers("runtime.timers.walk", walk, 4);
+  walk_place = (int32_t)walk[0];
+  walk_ticks_left = walk[1];
+  handler_state = (int32_t)walk[2];
+  frame_end_pending = (int32_t)walk[3];
 }
 
 /* The runtime's own fields, in Computer::StateFields's order. */
@@ -334,17 +403,33 @@ void rg_runtime_visit_state(void) {
   motor_on = (int32_t)motor[2];
 }
 
-/* The middle of Reference#advance_frame, in its order: the picture is switched on, the timers
- * tick, and then the sound moves on. */
-void rg_frame_begins(void) {
-  rg_screen_frame_started();
-  timers_frame();
-  /* The interpreter's order (Reference#advance_frame): the mix, then the tune, then every
-   * sounding note's shape (the sound features', in that order), and then the frame is counted,
-   * which moves a clock started at a test's moment. */
+/* The end of Reference#advance_frame's middle, in the interpreter's order: the mix, then the tune,
+ * then every sounding note's shape (the sound features', in that order), and then the frame is
+ * counted, which moves a clock started at a test's moment. */
+static void frame_ends(void) {
   rg_sound_frame();
   motor_frame();
   clock_frame();
+}
+
+/* The middle of Reference#advance_frame, in its order: the picture is switched on, the timers
+ * tick, and then the sound moves on — or, where a handler stopped (A HANDLER THAT WAITS above), only
+ * as far as that, or only the end of the frame its walk began. */
+int32_t rg_frame_begins(void) {
+  if (frame_end_pending) {
+    frame_end_pending = 0;
+    frame_ends();
+    return 0;
+  }
+  rg_screen_frame_started();
+  if (handler_state != HANDLER_NONE_STOPPED) {
+    timers_frame_inside_wait();
+    handler_state = HANDLER_WAIT_OVER;
+  } else if (walk_timers()) {
+    return 1;
+  }
+  frame_ends();
+  return 0;
 }
 
 /* A driver's halt and fault never come back; abort() is only there to say so to the compiler.

@@ -41,6 +41,11 @@ def rg_runtime_setup
   @rg_timers = Array.new(RG_MAX_TIMERS) { RgTimer.new }
   @rg_timers_started = []
   @rg_ticking = -1
+  @rg_walk_place = 0                           # where a boundary's walk through the timers is...
+  @rg_walk_ticks_left = 0                      # ...and that timer's ticks still to answer
+  @rg_handler_state = RG_HANDLER_NONE_STOPPED  # a handler stopped to wait, and whether its wait is over
+  @rg_handler_waited = 0                       # whether the handler just run stopped
+  @rg_frame_end_pending = 0                       # the walk is over: its frame ends at the next boundary
   @rg_clock_present = 0
   @rg_clock_set = 0
   @rg_clock_counts_frames = 0 # moved on a frame at each boundary, rather than told the time
@@ -132,15 +137,15 @@ def rg_match_seed = @rg_match_seed || 0
 
 # The frame the game drew has ended, whoever is driving and whether or not the run stops here. The
 # game then hands the frame back (its routines are resumable, Computer::Resumable), and the driver
-# takes the frame between calls of rg_game_main (#rg_play_frames).
+# takes the frame between calls of rg_game_pass (#rg_play_frames).
 def rg_wait_vblank
   rg_screen_frame_ended
 end
 
-# Plays the game a frame at a time: rg_game_main carries on from where it stopped and hands back 1
+# Plays the game a frame at a time: rg_game_pass carries on from where it stopped and hands back 1
 # while it waits for a frame, and the driver takes each frame between.
 def rg_play_frames
-  rg_driver_wait_vblank while rg_game_main == 1
+  rg_driver_wait_vblank while rg_game_pass == 1
 end
 
 # A routine the runtime asked for an answer cannot wait for a frame: the answer is wanted now.
@@ -149,12 +154,29 @@ def rg_wait_vblank_while_answering
 end
 
 # What every driver does as a frame begins, after deciding to play it, in the interpreter's order
-# (Reference#advance_frame): the picture is switched on, the timers tick, the sound features (the
-# mix, then the tune, then every sounding note's shape), and then the frame is counted, which moves
-# a clock started at a test's moment.
+# (Reference#advance_frame): the picture is switched on, the timers tick, and the frame ends
+# (#rg_frame_ends) — or only as far as a timer's handler that stopped to wait, giving back 1 as
+# nothing is shown yet, or only the end of the frame its walk began (#rg_frame_ends_late). 0 otherwise.
 def rg_frame_begins
+  if @rg_frame_end_pending == 1
+    @rg_frame_end_pending = 0
+    rg_frame_ends
+    return 0
+  end
   rg_screen_frame_started
-  rg_timers_frame
+  if @rg_handler_state == RG_HANDLER_NONE_STOPPED
+    return 1 if rg_walk_timers == 1
+  else
+    rg_timers_frame_inside_wait
+    @rg_handler_state = RG_HANDLER_WAIT_OVER
+  end
+  rg_frame_ends
+  0
+end
+
+# The sound features (the mix, then the tune, then every sounding note's shape), and then the frame
+# is counted, which moves a clock started at a test's moment.
+def rg_frame_ends
   rg_hook_sound_frame
   rg_hook_sound_frame_ended
   rg_motor_frame
@@ -214,6 +236,9 @@ def rg_state_timers
   order = [@rg_timers_started.length, *Array.new(RG_MAX_TIMERS) { |i| @rg_timers_started.fetch(i, -1) }]
   rg_state_numbers("runtime.timers.order", order)
   @rg_timers_started = order[1, order[0]]
+  walk = [@rg_walk_place, @rg_walk_ticks_left, @rg_handler_state, @rg_frame_end_pending]
+  rg_state_numbers("runtime.timers.walk", walk)
+  @rg_walk_place, @rg_walk_ticks_left, @rg_handler_state, @rg_frame_end_pending = walk
 end
 
 # The runtime's own fields, in Computer::StateFields's order.
@@ -1174,22 +1199,74 @@ end
 
 def rg_timer_ticking(timer) = timer == @rg_ticking ? 1 : 0
 
-# Reference#accrue_timer, for every running timer: a frame's worth of ticks more, and the game's
-# handler once for each whole tick crossed. How many that is is settled before the first of them
-# runs, so a handler that stops its own timer, or starts it again, still finishes the ticks this
-# frame crossed.
-def rg_timers_frame
+# A frame's worth of ticks more for +timer+ (Reference#accrue_timer), and how many whole ticks that
+# crossed. How many is settled before the first handler runs, so a handler that stops its own timer,
+# or starts it again, still finishes the ticks this frame crossed.
+def rg_timer_ticks_crossed(timer)
+  before = timer.whole_ticks
+  timer.parts += timer.ticks_a_second
+  timer.whole_ticks - before
+end
+
+# A HANDLER THAT WAITS: runtime/rg_runtime.c says how a boundary's walk through the timers stops
+# where a handler waits and carries on later. The same numbers, and the same steps.
+RG_HANDLER_NONE_STOPPED = 0
+RG_HANDLER_STOPPED = 1
+RG_HANDLER_WAIT_OVER = 2
+
+def rg_timer_handler_waited(waited)
+  @rg_handler_waited = waited
+end
+
+def rg_timer_handler_paused = @rg_handler_state == RG_HANDLER_NONE_STOPPED ? 0 : 1
+def rg_frame_ends_late = @rg_frame_end_pending
+
+# The boundary's walk through every running timer, from where it stopped: 1 when a handler stopped
+# to wait (marked RG_HANDLER_STOPPED), 0 when it is over.
+def rg_walk_timers
+  @rg_handler_state = RG_HANDLER_NONE_STOPPED
+  while @rg_walk_place < @rg_timers_started.length
+    number = @rg_timers_started[@rg_walk_place]
+    timer = @rg_timers[number]
+    @rg_walk_ticks_left = rg_timer_ticks_crossed(timer) if @rg_walk_ticks_left.zero? && timer.running
+    while @rg_walk_ticks_left.positive?
+      @rg_ticking = number
+      @rg_handler_waited = 0
+      rg_game_timer_ticks
+      @rg_ticking = -1
+      if @rg_handler_waited == 1
+        @rg_handler_state = RG_HANDLER_STOPPED
+        return 1
+      end
+
+      @rg_walk_ticks_left -= 1
+    end
+    @rg_walk_place += 1
+  end
+  @rg_walk_place = 0
+  0
+end
+
+# The same at a boundary inside a stopped handler's wait: each handler run to its end.
+def rg_timers_frame_inside_wait
   @rg_timers_started.each do |number|
     timer = @rg_timers[number]
     next unless timer.running
 
-    before = timer.whole_ticks
-    timer.parts += timer.ticks_a_second
-    crossed = timer.whole_ticks - before
+    crossed = rg_timer_ticks_crossed(timer)
     @rg_ticking = number
     crossed.times { rg_game_timer_ticks }
     @rg_ticking = -1
   end
+end
+
+# The game's next pass: rg_game_main, or a stopped handler carried on once its wait's boundary is over.
+def rg_game_pass
+  return rg_game_main if @rg_handler_state == RG_HANDLER_NONE_STOPPED
+  return 1 if @rg_handler_state == RG_HANDLER_STOPPED
+
+  @rg_frame_end_pending = 1 if rg_walk_timers.zero?
+  1
 end
 
 # --- the cartridge's clock (Reference#value_of_clock) ---

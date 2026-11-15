@@ -42,12 +42,23 @@ void rg_game_timer_ticks(void);
 
 /* --- what the runtime provides --- */
 
+/* The game's next pass: rg_game_main, or where a timer's handler stopped to wait, that handler
+ * carried on in its place (rg_runtime.c, "A HANDLER THAT WAITS"). 1 when it stopped for a frame, 0
+ * when the game is done. Every driver plays the game through this. */
+int32_t rg_game_pass(void);
+
+/* For a game whose timer's handler can wait (Computer::Resumable): the game sets whether the
+ * handler it just ran stopped to wait, and asks whether one is stopped inside the frame boundary
+ * that ran it, which makes this tick one at a boundary inside its wait. */
+void rg_timer_handler_waited(int32_t waited);
+int32_t rg_timer_handler_paused(void);
+
 /* The end of a frame the game drew. The game then stops for the frame and the driver shows it,
  * reads the buttons and waits for the next. The console calls this moment the vertical blank,
  * which is where the name comes from. */
 void rg_wait_vblank(void);
 
-/* Plays the game a frame at a time from power-on: rg_game_main, and the driver's frame between
+/* Plays the game a frame at a time from power-on: rg_game_pass, and the driver's frame between
  * each call, until the game is done. A run that has played all the frames it was asked for ends in
  * the driver's frame. */
 void rg_play_frames(void);

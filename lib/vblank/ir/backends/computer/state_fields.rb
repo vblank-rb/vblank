@@ -79,6 +79,9 @@ module VBlank
             Field.new(name: "runtime.players.connected", count: 1),
             Field.new(name: "runtime.timers", count: MOST_TIMERS * TIMER_NUMBERS),
             Field.new(name: "runtime.timers.order", count: MOST_TIMERS + 1),
+            # A boundary's walk through the timers that a handler stopped in: where it is, the ticks
+            # left, whether the handler is stopped and its wait over, and whether its frame ends late
+            Field.new(name: "runtime.timers.walk", count: 4),
             # present, set, moved by frames, the seconds, the ticks, and the days and seconds a game set
             Field.new(name: "runtime.clock", count: 7),
             Field.new(name: "runtime.motor", count: 3), # frames left, the pattern, whether it runs

@@ -294,9 +294,6 @@ class TestTimer < Minitest::Test
   # ends: the first as that wait ends, the second as the boundary that ran the handler does. The first is
   # the one read here.
   def test_a_handler_waiting_inside_a_repeat_keeps_its_turn
-    skip_on_native "a timer's handler that waits"
-    skip_on_js "a timer's handler that waits"
-    skip_on_ruby "a timer's handler that waits"
     b = Builder.new
     b.instance_eval do
       screen :bitmap
@@ -334,9 +331,6 @@ class TestTimer < Minitest::Test
   # ...AND THE SAME WHEN THE WAIT IS IN A ROUTINE IT CALLS. Two turns here, each waiting in :breather. The
   # game's waits are its own (`frame_sync: :manual`), so the routine's is not taken as the game loop's.
   def test_a_handler_waiting_in_a_routine_inside_a_repeat_keeps_its_turn
-    skip_on_native "a timer's handler that waits"
-    skip_on_js "a timer's handler that waits"
-    skip_on_ruby "a timer's handler that waits"
     b = Builder.new(options: VBlank::Cartridge::Options.new(frame_sync: :manual))
     b.instance_eval do
       screen :bitmap

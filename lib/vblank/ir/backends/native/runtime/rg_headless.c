@@ -331,19 +331,37 @@ static void answer_until_buttons(void) {
   finish();
 }
 
+/* A frame begun, counted, and 1 where it is shown now. The run stops before a new frame once it has
+ * played every frame it was asked for. A boundary that only ends the frame a waiting timer's handler
+ * held up is no new frame, and one that a handler stopped in shows nothing yet (rg_frame_begins); the
+ * interpreter reports neither and the frame it reaches twice, as this does.
+ *
+ * A frame's sound is written as the next boundary begins, once the sound has moved on once since the
+ * last was written. A held-up frame moves no sound, so the boundary after it writes none, and the
+ * late end writes the one before it: one written for each time the sound moves on. */
+static int sound_held_up; /* the frame just begun was held up, and moved no sound */
+
+static int begin_frame(void) {
+  if (rg_frame_ends_late()) {
+    if (!asked) write_frame_sound();
+    rg_frame_begins();
+    return 1;
+  }
+  if (!asked && !sound_held_up) write_frame_sound();
+  if (frame >= frames_to_play) finish();
+  int held_up = rg_frame_begins();
+  sound_held_up = held_up;
+  frame++;
+  return !held_up;
+}
+
 static void headless_wait_vblank(void) {
   state_at_boundary();
+  if (!begin_frame()) return;
   if (asked) {
-    if (frame >= frames_to_play) finish();
-    rg_frame_begins();
-    frame++;
     answer_until_buttons();
     return;
   }
-  write_frame_sound();
-  if (frame >= frames_to_play) finish();
-  rg_frame_begins();
-  frame++;
   char heading[32];
   snprintf(heading, sizeof heading, "frame %ld", frame);
   print_moment(heading, every_picture);
@@ -407,6 +425,10 @@ static _Noreturn void finish_final_state(void) {
 }
 
 static void final_state_wait_vblank(void) {
+  if (rg_frame_ends_late()) {
+    rg_frame_begins();
+    return;
+  }
   if (frame >= frames_to_play) finish_final_state();
   rg_frame_begins();
   frame++;
