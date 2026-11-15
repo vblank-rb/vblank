@@ -214,7 +214,8 @@ module VBlank
             if cartridge && program.described_console.plays_bios_start_up
               File.write(File.join(src, CartridgeStart::FILE), CartridgeStart.header(cartridge.buffer))
             end
-            File.write(File.join(src, MenuData::FILE), MenuData.source(menu: menu, states: states))
+            File.write(File.join(src, MenuData::FILE), MenuData.source(menu: menu, states: states,
+                                                                        buttons: program.described_console.buttons))
             File.write(File.join(src, ShellData::FILE), Printer.new.print_file(ShellData.items(shell)))
             Dir.glob(File.join(Zig::RUNTIME_DIR, "*")).each { |file| FileUtils.cp(file, src) }
             progress.step("Compiling C")

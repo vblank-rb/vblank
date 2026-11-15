@@ -230,6 +230,29 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
+  # A GENESIS PAD'S C: the C key presses it in a Genesis game's window, and --help names it among
+  # the Genesis's buttons alone. Which key starts on which button is tested with no window
+  # (test_native_window.rb); this is that the build tells the window its console's buttons.
+  def test_the_c_key_presses_c_in_a_genesis_game
+    Dir.mktmpdir do |dir|
+      game = VBlank.game("PRESSES C", consoles: %i[genesis]) do
+        screen :bitmap
+        held_c = var(:held_c, 0)
+        game_loop do
+          clear_screen :black
+          held_c.increase! 1 if held(:c)
+        end
+      end
+      exe = Native.new.build_desktop(game, File.join(dir, "c"), err: nil)
+      help, = Open3.capture2e(exe, "--help", chdir: dir)
+      played = play_window(exe, dir, ["0", "0 keydown:C", "0", "0", "0", "0 keyup:C", "0"], frames: 10)
+
+      assert_match(/^  C +C$/, help)
+      refute_match(/^  Select /, help, "a Genesis pad has no Select")
+      assert_operator played.variables[:held_c], :>=, 3, "the C key presses C"
+    end
+  end
+
   # PLAYER 2 ON THE KEYBOARD: the keyboard's right hand presses player 2's buttons, and player 1's
   # keys stay player 1's. Which key is which, and the gamepads' players, are tested with no window
   # (test_native_seats.rb); this is that the window hands player 2's buttons to the game. --help

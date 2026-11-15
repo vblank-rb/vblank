@@ -140,7 +140,7 @@ module VBlank
           lowering = Lowering.new(program, title: title)
           text, data_file = lowering.text_and_data_file(data: data)
           [["function #{name}(host) {\n", console_text(program.described_console), Computer::StateFile.js_text(program),
-            fingerprint_text(program), "const RG_GAME_CODE = #{JSON.generate((code || Cartridge::GameCode.for(title)).to_s)};\n", MenuData.source(menu: menu, states: states),
+            fingerprint_text(program), "const RG_GAME_CODE = #{JSON.generate((code || Cartridge::GameCode.for(title)).to_s)};\n", MenuData.source(menu: menu, states: states, buttons: program.described_console.buttons),
             *runtime_text(runtime_for(program) + ["rg_page_menu.js", "rg_page.js"]), RuntimeFeatures.js_text(lowering.runtime_features),
             text, "return page_create(host || {});\n}\n"].join, data_file]
         end
@@ -183,7 +183,8 @@ module VBlank
             script = WRITTEN_BY + in_own_function(data_beside_declaration(data_file, JSON.generate(data_file_name(path))),
                                                   text, *runtime_text(["rg_mount.js"]), "rg_mount_page(createGame);\n")
             Page.html(title: game.title, script: script, scale: scale, template: template, screen: described.framed_screen_size,
-                      pixel_size: described.pixel_size, shoulders: described.buttons.include?(:l), players: program.most_players || 1)
+                      pixel_size: described.pixel_size, shoulders: described.buttons.include?(:l), players: program.most_players || 1,
+                      more_buttons: described.buttons - Console::ADVANCE.buttons)
           end
         end
 
@@ -219,7 +220,8 @@ module VBlank
           File.write(path, Page.html(title: game.title, script: script, scale: scale, template: template,
                                      screen: shell.game.described_console.framed_screen_size,
                                      pixel_size: shell.game.described_console.pixel_size,
-                                     shoulders: shell.game.described_console.buttons.include?(:l)))
+                                     shoulders: shell.game.described_console.buttons.include?(:l),
+                                     more_buttons: shell.game.described_console.buttons - Console::ADVANCE.buttons))
           progress.done
           path
         end

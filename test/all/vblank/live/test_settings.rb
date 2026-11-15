@@ -10,7 +10,7 @@ class TestSettings < Minitest::Test
   Settings = VBlank::Live::Settings
 
   # SDL's names for the keys these tests use, by scancode.
-  NAMES = { 4 => "A", 16 => "M", 17 => "N", 19 => "P", 20 => "Q", 22 => "S", 27 => "X", 29 => "Z", 40 => "Return",
+  NAMES = { 4 => "A", 6 => "C", 16 => "M", 17 => "N", 19 => "P", 20 => "Q", 22 => "S", 26 => "W", 27 => "X", 29 => "Z", 40 => "Return",
             41 => "Escape", 42 => "Backspace", 43 => "Tab", 44 => "Space", 54 => ",", 58 => "F1", 60 => "F3",
             68 => "F11", 79 => "Right", 80 => "Left", 81 => "Down", 82 => "Up", 229 => "Right Shift" }.freeze
 
@@ -259,7 +259,57 @@ class TestSettings < Minitest::Test
     assert_nil settings.button_of_key(19)
   end
 
+  # --- the buttons only some consoles have: X, Y and C ---
+
+  # A Genesis pad's C is the C key, beside Z and X, and the left face button; a Super Nintendo's X
+  # and Y are W and Q, above the shoulders, and the top and left face buttons, where its own
+  # controller has them.
+  def test_a_genesis_window_presses_c_with_the_c_key_and_the_left_face_button
+    settings = for_console(:genesis)
+
+    assert_equal [:c], settings.buttons_held { |key| key == 6 }
+    assert_equal :c, settings.pad_map[2]
+    assert_equal :c, settings.button_of_key(6)
+  end
+
+  def test_a_super_nintendo_window_presses_x_with_w_and_y_with_q
+    settings = for_console(:snes)
+
+    assert_equal %i[x y], settings.buttons_held { |key| [26, 20].include?(key) }
+    assert_equal [:x, :y], [settings.pad_map[3], settings.pad_map[2]]
+  end
+
+  # The Advance has no X, Y or C, so their keys press nothing there and are free for its buttons.
+  def test_an_advance_window_has_no_x_y_or_c_and_their_keys_are_free
+    settings = fresh
+
+    assert_empty settings.buttons_held { |key| [6, 20, 26].include?(key) }
+    assert_nil settings.pad_map[3]
+    assert_nil settings.bind_key(:a, 1, 20)
+    assert_equal [27, 20], settings.keys_of(:a)
+  end
+
+  # Every window writes every button, so the file every game shares keeps a Genesis game's C when
+  # an Advance game writes it.
+  def test_every_window_writes_x_y_and_c_to_the_settings_file
+    text = fresh.text
+
+    assert_includes text, "key.x = W\nkey.y = Q\nkey.c = C\n"
+    assert_includes text, "pad.x = north\npad.y = west\npad.c = west\n"
+  end
+
+  # A key a Genesis player chose for C, read in a Super Nintendo window that gives it to Y, is a
+  # clash there, said in plain words; in the Advance's window, which has neither, it is none.
+  def test_a_key_two_buttons_have_is_a_clash_only_where_the_console_has_both
+    file = "key.y = C\n"
+
+    assert_match(/\AC is used for both Y and C/, Settings.new(key_names: Names.new, buttons: %i[a b y c]).read(file).first)
+    assert_empty fresh.read(file)
+  end
+
   private
+
+  def for_console(name) = Settings.new(key_names: Names.new, buttons: VBlank::Console.described(name).buttons)
 
   def fresh = Settings.new(key_names: Names.new)
   def with_game_controls = Settings.new(key_names: Names.new, game_controls: D_AND_WEST_ADDED_TO_A)

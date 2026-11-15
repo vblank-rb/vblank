@@ -57,8 +57,13 @@ module VBlank
               "RG_CLOCK_KEEPS_DATE" => console.clock_keeps_date, "RG_COLOR_BITS" => console.color_bits,
               "RG_VOICES_READ_SOUND_MEMORY" => console.voices_read_sound_memory,
               "RG_CONSOLE_PLAYS_BIOS_START_UP" => start_up && console.plays_bios_start_up,
-              "RG_ONE_PLAYERS_BUTTONS" => IR::Buttons::EVERY_BUTTON_MASK }
+              "RG_ONE_PLAYERS_BUTTONS" => IR::Buttons::EVERY_BUTTON_MASK, "RG_MOST_PLAYERS" => IR::Buttons::MOST_PLAYERS,
+              "RG_CONSOLE_BUTTONS" => console_buttons_mask(console) }
           end
+
+          # The buttons +console+ has, a bit each in IR::Buttons::NAMES's order: the ones a window
+          # gives keys and gamepad buttons to, and lists in its menu.
+          def console_buttons_mask(console) = IR::Buttons.player_mask(console.buttons, 1)
 
           # +value+ as C and JavaScript write it: true and false as 1 and 0.
           def as_number(value) = { true => 1, false => 0 }.fetch(value, value)

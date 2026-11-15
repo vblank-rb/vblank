@@ -403,6 +403,29 @@ class TestSDL < Minitest::Test
     end
   end
 
+  # A Genesis game's window has C in its Keys heading, after the D-pad, and a key chosen there is
+  # C's, written to the file every console's window reads.
+  def test_a_genesis_window_lists_c_and_a_key_chosen_for_it_is_written
+    flunk "SDL3 is not installed: #{SDL::INSTALL_LINE}" unless SDL.available?
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "settings.txt")
+      window = SDL.new(title: "TEST", settings_file: path, buttons: VBlank::Console::GENESIS.buttons)
+      press_key(SDL::MENU)
+      window.show(Array.new(240 * 160, 0), 240, 160)
+      %i[right right right].each { |key| press_key(SDL::MENU_KEYS.key(key)) }
+      8.times { press_key(SDL::MENU_KEYS.key(:down)) }
+      press_key(SDL::MENU_KEYS.key(:enter))
+      window.show(Array.new(240 * 160, 0), 240, 160)
+      press_key(7) # D
+      window.show(Array.new(240 * 160, 0), 240, 160)
+      press_key(SDL::MENU)
+      window.hold_while_paused
+      window.close
+
+      assert_includes File.read(path), "key.c = D\n"
+    end
+  end
+
   # Escape while a key is being chosen gives up the choice and keeps the window open; pressed again,
   # with nothing being chosen, it stops the play.
   def test_escape_gives_up_choosing_a_key_without_stopping_the_play

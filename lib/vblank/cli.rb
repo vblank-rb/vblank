@@ -773,7 +773,10 @@ module VBlank
         X, Z                     A, B
         Enter, Backspace         Start, Select
         A key, S key             L, R
-        the game's own keys      a game can add keys and gamepad buttons with
+        W, Q                     X, Y, on a console that has them (the Super
+                                 Nintendo, the PlayStation)
+        C key                    C, on a console that has it (the Genesis)
+        the game's own keys     a game can add keys and gamepad buttons with
                                  computer_keys and computer_gamepad. The menu's
                                  Controls shows every key a button has.
         F1 or `                  open the menu. On a Mac keyboard, ` (the key
@@ -795,8 +798,9 @@ module VBlank
 
       A gamepad plays the game too, alongside the keyboard: the D-pad or the left
       stick, the right face button for A and the bottom one for B, Start, Back
-      for Select, and the shoulder buttons for L and R. You can plug it in or
-      pull it out while the game plays. To open the menu with a gamepad, press
+      for Select, and the shoulder buttons for L and R. The top face button is X
+      and the left one is Y. On a Genesis, the left one is C. You can plug it in
+      or pull it out while the game plays. To open the menu with a gamepad, press
       Back and Start together, or the guide button in the middle (macOS can keep
       that button for itself). In the menu, the D-pad moves, A chooses and B
       closes the menu. Pause, fast forward and Escape need the keyboard.
@@ -1274,7 +1278,8 @@ module VBlank
       window = VBlank::Live::SDL.new(title: game.title, scale: options[:scale], width: width,
                                      height: height, pixel_size: built.game.described_console.pixel_size, menu: game.menu?,
                                      settings_file: options[:settings_file] || :usual, config_dir: options[:config_dir],
-                                     game_controls: VBlank::IR::ComputerControls.runtime_numbers(built.game.computer_controls))
+                                     game_controls: VBlank::IR::ComputerControls.runtime_numbers(built.game.computer_controls),
+                                     buttons: built.game.described_console.buttons)
       build_progress.done
       warn window.settings_problems_message if window.settings_problems_message
       folder = options[:pack_folder] || window.folder_for(shell.folder) or
@@ -1504,7 +1509,8 @@ module VBlank
                                      height: height, pixel_size: console.pixel_size, menu: game.menu?,
                                      settings_file: options[:settings_file] || :usual,
                                      config_dir: options[:config_dir], state_folder_name: state_folder_name(game, network),
-                                     game_controls: VBlank::IR::ComputerControls.runtime_numbers(program.computer_controls))
+                                     game_controls: VBlank::IR::ComputerControls.runtime_numbers(program.computer_controls),
+                                     buttons: console.buttons)
       build_progress.done
       warn window.settings_problems_message if window.settings_problems_message
       say "Playing #{game.title} for the #{console.title} in Ruby #{RUBY_VERSION} with #{jit_in_use}. " \

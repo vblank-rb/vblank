@@ -77,6 +77,11 @@ module VBlank
           # +game_controls+).
           def controls = @game.rg_live_controls
 
+          # The buttons its console has, by their names in IR::Buttons::NAMES (Live::SDL's +buttons+).
+          def buttons
+            IR::Buttons::NAMES.each_with_index.filter_map { |name, at| name if @game.class::RG_CONSOLE_BUTTONS[at] == 1 }
+          end
+
           # The most players the build seats, 0 for a game that names none (Live::Seats.several_players?).
           def seats = @game.rg_live_seats
 

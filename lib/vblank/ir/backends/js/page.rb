@@ -49,14 +49,17 @@ module VBlank
           # +screen+ ([width, height] in pixels: the console the game is built as) +scale+ times
           # over, its key help and pad showing L and R only when +shoulders+ (the console has them),
           # and player 2's keys only when the game seats more than one player (+players+).
+          # +more_buttons+ are the buttons the console has beyond the Advance's (:x, :y, :c), whose
+          # keys the help names too.
           # +pixel_size+ is how many of the console's pixels across and down each of the picture's is
           # shown as (Console::Description#pixel_size): a game of big pixels draws a canvas half the
           # console's width and height, and it is shown the console's size all the same.
           # A template that leaves the game out is a LoweringError, as anything else that stops a
           # web build is.
-          def html(title:, script:, screen:, scale: 3, pixel_size: 1, template: DEFAULT, shoulders: true, players: 1)
+          def html(title:, script:, screen:, scale: 3, pixel_size: 1, template: DEFAULT, shoulders: true, players: 1,
+                   more_buttons: [])
             pieces = pieces(title: title, script: script, scale: scale, screen: screen, pixel_size: pixel_size,
-                            shoulders: shoulders, players: players)
+                            shoulders: shoulders, players: players, more_buttons: more_buttons)
             page = ERB.new(File.read(template, encoding: Encoding::UTF_8), trim_mode: "-").result_with_hash(pieces)
             return page if page.include?(pieces[:game])
 
@@ -64,11 +67,15 @@ module VBlank
                                  "play it. Put <%= game %> in the template where the game goes."
           end
 
-          def pieces(title:, script:, scale:, screen:, pixel_size: 1, shoulders: true, players: 1)
+          # The keys of the buttons only some consoles have (rg_page.js's PAGE_KEYS), in words.
+          MORE_BUTTON_KEYS = { x: " <kbd>W</kbd> is X,", y: " <kbd>Q</kbd> is Y,", c: " <kbd>C</kbd> is C," }.freeze
+
+          def pieces(title:, script:, scale:, screen:, pixel_size: 1, shoulders: true, players: 1, more_buttons: [])
             l_and_r = shoulders ? " <kbd>A</kbd> and <kbd>S</kbd> are L and R," : ""
+            more = MORE_BUTTON_KEYS.slice(*more_buttons).values.join
             keys = <<~HTML.chomp
               <p class="keys">Arrows move. <kbd>X</kbd> is A, <kbd>Z</kbd> is B, <kbd>Enter</kbd> is Start, <kbd>Backspace</kbd> is
-              Select,#{l_and_r} <kbd>F</kbd> fills the screen, <kbd>F1</kbd> opens the menu, where the keys can be changed.
+              Select,#{l_and_r}#{more} <kbd>F</kbd> fills the screen, <kbd>F1</kbd> opens the menu, where the keys can be changed.
               Press a key or click to hear the sound.#{more_players_words(shoulders) if players > 1}</p>
             HTML
             controller = '<p id="controller"></p>'

@@ -16,7 +16,8 @@ module VBlank
     # The keys are the player's, kept in the settings file the desktop build keeps them in
     # (Settings, SettingsFile), and to begin with as mGBA and the desktop build have them: the
     # arrows are the pad, X is A, Z is B, Enter is Start, Backspace is Select, A and S are the
-    # shoulder buttons L and R. A gamepad plugged in plays too (PAD_BUTTONS); in a game for several
+    # shoulder buttons L and R; on a console that has them, W and Q are X and Y and the C key is C.
+    # A gamepad plugged in plays too (PAD_BUTTONS); in a game for several
     # players each one is the next player, and the keyboard's right hand is player 2 (Seats). As in the desktop
     # build, P pauses and carries on, Tab held fast forwards, F3, F11 and M switch the frame rate,
     # fullscreen and mute, and F1 opens the menu (Menu, WindowMenu), which holds the game while it
@@ -200,8 +201,12 @@ module VBlank
       # shown as at a scale of 1 (Console::Description#pixel_size): a game of big pixels hands over
       # a picture half the console's width and height, and its window is the console's size all the
       # same, the scale counted in the console's pixels as for any game.
+      #
+      # +buttons+ are the console's (Console::Description#buttons): the window reads and lists only
+      # those, so a Genesis game's has C, and the Advance's has no X, Y or C.
       def initialize(title:, scale: nil, width: 240, height: 160, pixel_size: 1, library: nil, menu: true, settings_file: nil,
-                     config_dir: nil, caption: nil, state_folder_name: nil, game_controls: nil)
+                     config_dir: nil, caption: nil, state_folder_name: nil, game_controls: nil,
+                     buttons: WindowMenu::ADVANCE_BUTTONS)
         @sdl = self.class.binding_for(library)
         @title = title
         @config_dir = config_dir
@@ -211,7 +216,7 @@ module VBlank
         @shown_height = height * pixel_size
         @closed = false
         @has_menu = menu
-        @player_settings = Settings.new(key_names: KeyNames.new(@sdl), game_controls: game_controls)
+        @player_settings = Settings.new(key_names: KeyNames.new(@sdl), game_controls: game_controls, buttons: buttons)
         @settings_file = settings_file && SettingsFile.new(title: title, folder_of: ->(name) { settings_folder(name) },
                                                            asked: (settings_file unless settings_file == :usual))
         @settings_problems = @settings_file ? @settings_file.load(@player_settings) : []

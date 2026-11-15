@@ -61,7 +61,7 @@
  * console's size first, so its window and its scale are the console's as for any game.
  *
  * THE BUTTONS ARE A GAMEPAD'S, AND THE KEYBOARD IS A GAMEPAD. The game is asked one question —
- * which of the console's ten buttons are down on any gamepad — and the keyboard answers it by
+ * which of the console's buttons are down on any gamepad — and the keyboard answers it by
  * pressing the buttons of a gamepad SDL makes up for it (a "virtual joystick"), which is then
  * read exactly as a real one plugged in beside it is. One way in means a real controller needs
  * nothing of its own, and a test that presses keys goes down the same path a player's fingers do.
@@ -71,9 +71,11 @@
  *
  * The keys start as mGBA's, so a player who has used it already knows them: the arrows for
  * the pad, X for A, Z for B, A and S for the shoulders, Return for Start and Backspace for
- * Select — and Right Shift for Select as well, for a keyboard with no Backspace. They are read by
+ * Select — and Right Shift for Select as well, for a keyboard with no Backspace. A console that has
+ * them has W for X, Q for Y and the C key for C. They are read by
  * where they sit on the keyboard, not by what is printed on them. On a gamepad the buttons are
- * where the console has them: A on the right, B below it. A player can choose others (rg_window.h
+ * where the console has them: A on the right, B below it, X on top, Y and C on the left. Only the
+ * buttons the game's console has are read (RG_CONSOLE_BUTTONS). A player can choose others (rg_window.h
  * keeps which key is which button and which gamepad button is which; the menu and the settings
  * file change them). The keyboard's own gamepad always has the console's layout: what a player
  * chooses is which button of a REAL gamepad is which.
@@ -162,7 +164,7 @@
 /* One frame of the console, in nanoseconds. */
 #define FRAME_NS ((Uint64)RG_CONSOLE_TICKS_A_FRAME * 1000000000ull / RG_CONSOLE_TICKS_A_SECOND)
 
-#define BUTTONS 10
+#define BUTTONS 13
 /* As many gamepads as are read at once, the keyboard's among them. */
 #define MOST_PADS 8
 
@@ -172,6 +174,9 @@
 SAME_AS_SDL(SDL_SCANCODE_UNKNOWN, RG_NO_KEY);
 SAME_AS_SDL(SDL_SCANCODE_ESCAPE, RG_KEY_ESCAPE);
 SAME_AS_SDL(SDL_SCANCODE_A, 4);
+SAME_AS_SDL(SDL_SCANCODE_C, 6);
+SAME_AS_SDL(SDL_SCANCODE_Q, 20);
+SAME_AS_SDL(SDL_SCANCODE_W, 26);
 SAME_AS_SDL(SDL_SCANCODE_M, 16);
 SAME_AS_SDL(SDL_SCANCODE_N, 17);
 SAME_AS_SDL(SDL_SCANCODE_P, 19);
@@ -207,7 +212,9 @@ SAME_AS_SDL(SDL_GAMEPAD_BUTTON_DPAD_RIGHT, 14);
 _Static_assert(BUTTONS == RG_WINDOW_BUTTONS, "the window and the runtime count the console's buttons differently");
 
 /* The gamepad the keyboard presses has the console's own layout whatever a player has chosen for
- * a real one: A on the right, B below it. Console buttons in the order rg_runtime.h numbers them. */
+ * a real one: A on the right, B below it. Console buttons in the order rg_runtime.h numbers them.
+ * Y and C are both the left face button, as they start on a real one: only the one the console has
+ * is read. */
 static const SDL_GamepadButton keyboard_pad_buttons[BUTTONS] = {
   SDL_GAMEPAD_BUTTON_EAST,           /* a */
   SDL_GAMEPAD_BUTTON_SOUTH,          /* b */
@@ -219,8 +226,11 @@ static const SDL_GamepadButton keyboard_pad_buttons[BUTTONS] = {
   SDL_GAMEPAD_BUTTON_DPAD_DOWN,      /* down */
   SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, /* r */
   SDL_GAMEPAD_BUTTON_LEFT_SHOULDER,  /* l */
+  SDL_GAMEPAD_BUTTON_NORTH,          /* x */
+  SDL_GAMEPAD_BUTTON_WEST,           /* y */
+  SDL_GAMEPAD_BUTTON_WEST,           /* c */
 };
-static const char *const button_names[BUTTONS] = {"a", "b", "select", "start", "right", "left", "up", "down", "r", "l"};
+static const char *const button_names[BUTTONS] = {"a", "b", "select", "start", "right", "left", "up", "down", "r", "l", "x", "y", "c"};
 
 static SDL_Window *window;
 static SDL_Renderer *renderer;
@@ -777,6 +787,7 @@ static char *settings_file_in(const char *folder) {
 static void load_settings(const char *asked, int usual_files_asked) {
   rg_window_use_key_names(scancode_name, scancode_named);
   rg_window_use_game_controls(rg_game_controls);
+  rg_window_use_console_buttons(RG_CONSOLE_BUTTONS);
   rg_window_use_defaults();
   char said[2048] = "";
 
@@ -1538,7 +1549,8 @@ static void trace_frame(uint32_t held) {
 static int32_t players_held(uint32_t *masks) {
   uint32_t keyboard = keys_down | keys_tapped;
   keys_tapped = 0;
-  for (uint32_t i = 0; i < BUTTONS; i++) SDL_SetJoystickVirtualButton(keyboard_pad, keyboard_pad_buttons[i], (keyboard >> i) & 1u);
+  for (uint32_t i = 0; i < BUTTONS; i++)
+    if (rg_window_console_has((int)i)) SDL_SetJoystickVirtualButton(keyboard_pad, keyboard_pad_buttons[i], (keyboard >> i) & 1u);
   SDL_UpdateGamepads();
 
   bool several = rg_seats_several_players(rg_game_seats[0]);
@@ -1553,6 +1565,7 @@ static int32_t players_held(uint32_t *masks) {
     if (player < 1 || player > RG_MOST_PLAYERS) continue;
     uint32_t *held = &masks[player - 1];
     for (uint32_t i = 0; i < BUTTONS; i++) {
+      if (!rg_window_console_has((int)i)) continue; /* a button the console lacks presses nothing */
       if (keyboards) {
         if (SDL_GetGamepadButton(pads[pad], keyboard_pad_buttons[i])) *held |= 1u << i;
         continue;
@@ -2418,12 +2431,14 @@ static void print_usage(const char *program) {
   }
   rg_window_use_key_names(scancode_name, scancode_named);
   rg_window_use_game_controls(rg_game_controls);
+  rg_window_use_console_buttons(RG_CONSOLE_BUTTONS);
   rg_window_use_defaults();
 
   printf("Usage: %s [options]\n\n", name);
   printf("Play %s, a game built with VBlank.\n\n", rg_game_title);
   printf("Keys:\n");
   for (int button = 0; button < RG_WINDOW_BUTTONS; button++) {
+    if (!rg_window_console_has(button)) continue;
     printf("  %-18s", rg_window_button_name(button));
     const char *between = "";
     for (int slot = 0; slot < RG_WINDOW_KEYS_A_BUTTON; slot++) {

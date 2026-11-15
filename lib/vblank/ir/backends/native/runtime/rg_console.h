@@ -148,6 +148,13 @@
 #define RG_ONE_PLAYERS_BUTTONS 8191
 #endif
 
+/* The buttons the console has, a bit each in the same order (Computer::ConsoleNumbers): the ones
+ * the window gives keys and gamepad buttons to and lists in its menu. Every build writes it; this is
+ * the Advance's ten, for a file of the runtime read on its own. */
+#ifndef RG_CONSOLE_BUTTONS
+#define RG_CONSOLE_BUTTONS 1023
+#endif
+
 /* Where each number of a picture's tile and colour layouts sits in
  * the rules a start-file fill is handed (Computer::StartFileNumbers, which writes them into every
  * build). These are the same numbers, for a file of the runtime read on its own, as an editor's

@@ -161,6 +161,14 @@ class TestMenu < Minitest::Test
     (place + 1).times { menu.press(:down) }
   end
 
+  # Every line of the Keys heading, from the first down to Reset.
+  private def key_lines(menu)
+    on_key_line(menu, 0)
+    lines = [menu.chosen_line]
+    lines << menu.tap { menu.press(:down) }.chosen_line until lines.last == "Reset"
+    lines
+  end
+
   def test_a_key_chosen_from_the_menu_is_that_button_and_is_kept
     menu = Menu.new
     on_key_line(menu, 0)
@@ -221,6 +229,32 @@ class TestMenu < Minitest::Test
 
     assert_equal :a, menu.controls.button_of_key(27)
     assert_equal :east, menu.controls.pad_of(:a)
+  end
+
+  # The Keys heading lists the console's buttons: a Genesis pad's C, and no Select, L or R.
+  def test_the_keys_heading_lists_the_buttons_the_console_has
+    controls = VBlank::Live::Settings.new(key_names: Menu::NumberedKeys.new, buttons: VBlank::Console::GENESIS.buttons)
+
+    assert_equal %w[A B Start Right Left Up Down C Reset], key_lines(Menu.new(controls: controls))
+    assert_equal %w[A B Select Start Right Left Up Down R L Reset], key_lines(Menu.new)
+  end
+
+  # A window told no console has the Advance's buttons, written down without the consoles, since a
+  # game written out as Ruby carries the menu and not them.
+  def test_a_window_told_no_console_has_the_advances_buttons
+    assert_equal VBlank::Console::ADVANCE.buttons, WindowMenu::ADVANCE_BUTTONS
+  end
+
+  # Choosing a key for C, the eighth line of a Genesis menu, gives the key to C.
+  def test_a_key_chosen_for_c_presses_c
+    controls = VBlank::Live::Settings.new(key_names: Menu::NumberedKeys.new, buttons: VBlank::Console::GENESIS.buttons)
+    menu = Menu.new(controls: controls)
+    on_key_line(menu, 7)
+    menu.press(:enter)
+
+    assert_includes menu.controls.capture_prompt, "for C"
+    menu.controls.capture_key(7)
+    assert_equal :c, menu.controls.button_of_key(7)
   end
 
   def test_closing_the_menu_ends_a_choice

@@ -25,9 +25,9 @@
 extern "C" {
 #endif
 
-/* The console's buttons, in the order rg_runtime.h numbers them: a, b, select, start, right,
- * left, up, down, r, l. */
-#define RG_WINDOW_BUTTONS 10
+/* Every console's buttons, in the order rg_runtime.h numbers them (IR::Buttons::NAMES): a, b,
+ * select, start, right, left, up, down, r, l, x, y, c. */
+#define RG_WINDOW_BUTTONS 13
 /* Keys a button may have: Right Shift and Backspace are both Select by default. */
 #define RG_WINDOW_KEYS_A_BUTTON 2
 /* Gamepad buttons a button may have: the one it starts on, and one the game adds (a player's
@@ -167,7 +167,16 @@ int rg_window_panel_named(const char *name);
 
 /* --- keys and gamepad buttons --- */
 
-/* Which console button a key is, or -1; which hotkey, or -1. A key is never both. */
+/* THE BUTTONS THE GAME'S CONSOLE HAS, a bit each in the order above (RG_CONSOLE_BUTTONS, which
+ * Computer::ConsoleNumbers writes), given before rg_window_use_defaults; the Advance's ten until
+ * then. Only they are read, shown in the menu and checked for a key two of them share. A button the
+ * console lacks keeps its keys and gamepad buttons, here and in the settings file, for a game of a
+ * console that has it: so the Genesis's C and the Super Nintendo's Y can both start on the left face
+ * button, since no console has both. */
+void rg_window_use_console_buttons(uint32_t buttons);
+int rg_window_console_has(int button);
+
+/* Which of the console's buttons a key is, or -1; which hotkey, or -1. A key is never both. */
 int rg_window_key_button(int key);
 int rg_window_key_hotkey(int key);
 /* The keys of a button (0 for the first, 1 for the second), RG_NO_KEY for none. */

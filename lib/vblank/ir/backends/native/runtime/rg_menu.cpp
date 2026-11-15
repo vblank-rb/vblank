@@ -43,6 +43,7 @@ void console_buttons_tab() {
     ImGui::TableSetupColumn("Gamepad button");
     ImGui::TableHeadersRow();
     for (int button = 0; button < RG_WINDOW_BUTTONS; button++) {
+      if (!rg_window_console_has(button)) continue;
       ImGui::PushID(button);
       ImGui::TableNextRow();
       ImGui::TableNextColumn();

@@ -106,6 +106,18 @@ class TestNativeWindowMenu < Minitest::Test
     assert_includes with, "rg_game_has_states = 1"
   end
 
+  # The Keys heading has a line for each of the console's buttons: a Genesis game's has C and no
+  # Select, and the Advance's no X, Y or C.
+  def test_the_keys_heading_lists_the_buttons_the_console_has
+    genesis = Native::MenuData.source(buttons: VBlank::Console::GENESIS.buttons)
+    advance = Native::MenuData.source
+
+    assert_includes genesis, '{"C", RG_MENU_BUTTON'
+    refute_includes genesis, '{"Select", RG_MENU_BUTTON'
+    assert_includes advance, '{"Select", RG_MENU_BUTTON'
+    %w[X Y C].each { |name| refute_includes advance, "{\"#{name}\", RG_MENU_BUTTON" }
+  end
+
 
   private
 

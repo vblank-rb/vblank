@@ -52,7 +52,8 @@ module VBlank
       # has them once its game does. The menu starts again on its first heading.
       def states=(states)
         @states = states
-        @headings = states ? WindowMenu::HEADINGS : WindowMenu::HEADINGS.reject(&:states?)
+        @headings = WindowMenu.headings(states: states ? true : false,
+                                        buttons: IR::Buttons::NAMES.select { |button| @controls.console_has?(button) })
         @state_request = nil
         @heading = 0
         @row = -1

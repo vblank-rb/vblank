@@ -54,6 +54,15 @@ class TestNativeCheckerFlags < Minitest::Test
 
     assert_equal written, defined.slice(*written.keys)
     assert_equal VBlank::IR::Buttons::EVERY_BUTTON_MASK, defined["RG_ONE_PLAYERS_BUTTONS"], "the buttons a player's number keeps"
+    assert_equal VBlank::IR::Backends::Computer::ConsoleNumbers.console_buttons_mask(VBlank::Console::ADVANCE),
+                 defined["RG_CONSOLE_BUTTONS"], "the Advance's buttons, for a file read alone"
+  end
+
+  # rg_driver.h gives the most players a file read on its own sees, and it must be the build's.
+  def test_the_most_players_a_file_read_alone_sees_is_the_builds
+    driver = File.read(File.join(Zig::RUNTIME_DIR, "rg_driver.h"))
+
+    assert_equal VBlank::IR::Buttons::MOST_PLAYERS, Integer(driver[/^#define RG_MOST_PLAYERS (\d+)$/, 1])
   end
 
   # The C the tests compile beside the runtime (a harness that drives one header on its own) is

@@ -76,7 +76,7 @@ module VBlank
       QUICK_LOAD_KEY = "F9"
 
       # The console's buttons and the window's hotkeys, in Settings::BUTTONS's and HOTKEYS's order.
-      BUTTON_NAMES = %w[A B Select Start Right Left Up Down R L].freeze
+      BUTTON_NAMES = %w[A B Select Start Right Left Up Down R L X Y C].freeze
       HOTKEY_NAMES = ["Pause", "Step one frame", "Show frame rate", "Fullscreen", "Mute", "Show menu", "Fast forward"].freeze
 
       # The most times the picture's size a window can be made. A frontend may set fewer: the most
@@ -99,6 +99,22 @@ module VBlank
         Heading.new("Load", [Line.state("Quick Load", :load, QUICK_SLOT, shortcut: QUICK_LOAD_KEY),
                              *STATE_SLOTS.map { |slot| Line.state("Slot #{slot}", :load, slot) }])
       ])
+
+      # The buttons of a window told no console: the Advance's, IR::Buttons::NAMES's first ten. It
+      # is not read from Console::ADVANCE, since a game written out as Ruby carries this file and not
+      # the consoles; test_menu.rb holds the two alike.
+      ADVANCE_BUTTONS = IR::Buttons::NAMES.first(10).freeze
+
+      # THE HEADINGS A WINDOW SHOWS: Keys has a line for each of the console's +buttons+ (by their
+      # names in IR::Buttons::NAMES), so a Genesis game's window lists C and no Select, and +states+
+      # false leaves out Save and Load. A line keeps its +place+ among every button's.
+      def self.headings(states: true, buttons: ADVANCE_BUTTONS)
+        shown = states ? HEADINGS : HEADINGS.reject(&:states?)
+        shown.map do |heading|
+          lines = heading.lines.select { |line| line.kind != :button || buttons.include?(IR::Buttons::NAMES.fetch(line.place)) }
+          lines.length == heading.lines.length ? heading : heading.with(lines: lines)
+        end
+      end
 
       # THE KEYS, by name; each frontend knows which of its own keys and buttons each name is. F1
       # opens and closes the menu, as in the desktop build, and so does the key above Tab, which a

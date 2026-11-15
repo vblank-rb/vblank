@@ -10,6 +10,9 @@
 /* SDL's scancodes are USB's usage numbers for the key, which do not change; rg_sdl.c asserts
  * every one of these is SDL's. */
 #define KEY_A 4
+#define KEY_C 6
+#define KEY_Q 20
+#define KEY_W 26
 #define KEY_N 17
 #define KEY_M 16
 #define KEY_P 19
@@ -37,7 +40,13 @@
  * for B, A and S for the shoulders, Return for Start and Backspace for Select, and Right Shift for
  * Select too, for a keyboard with no Backspace. On a gamepad the buttons are where the console has
  * them: A on the right, B below it (the numbers are SDL_GamepadButton's, in the order pad_kinds
- * lists them). */
+ * lists them).
+ *
+ * The buttons only some consoles have start where those consoles' controllers have them: the Super
+ * Nintendo's X and Y (a PlayStation's Triangle and Square) are W and Q, above the shoulders' S and A,
+ * and the top and left face buttons; the Genesis's C is the C key, beside Z and X, and the left face
+ * button, which is Y's too, since no console has both (rg_window_use_console_buttons). Live::Settings
+ * has the same table. */
 typedef struct {
   int keys[RG_WINDOW_KEYS_A_BUTTON];
   int pad;
@@ -56,6 +65,9 @@ static const button_kind button_kinds[RG_WINDOW_BUTTONS] = {
   {{KEY_DOWN, 0}, 12, "Down", "down"},
   {{KEY_S, 0}, 10, "R", "r"},
   {{KEY_A, 0}, 9, "L", "l"},
+  {{KEY_W, 0}, 3, "X", "x"},
+  {{KEY_Q, 0}, 2, "Y", "y"},
+  {{KEY_C, 0}, 2, "C", "c"},
 };
 
 /* A hotkey: the key it starts on, its names, and what it does. The keys are ones the console has
@@ -169,6 +181,12 @@ static int key_named(const char *name) {
 }
 
 static int is_button(int button) { return button >= 0 && button < RG_WINDOW_BUTTONS; }
+
+/* The console's buttons, a bit each: the Advance's ten until told. */
+static uint32_t console_buttons = (1u << 10) - 1;
+
+void rg_window_use_console_buttons(uint32_t buttons) { console_buttons = buttons; }
+int rg_window_console_has(int button) { return is_button(button) && ((console_buttons >> (uint32_t)button) & 1u); }
 static int is_hotkey(int hotkey) { return hotkey >= 0 && hotkey < RG_HOTKEY_COUNT; }
 static int is_pad_button(int pad_button) { return pad_button >= 0 && pad_button < RG_WINDOW_PAD_BUTTONS; }
 
@@ -401,7 +419,7 @@ int rg_window_key_button(int key) {
   if (key == RG_NO_KEY) return -1;
   for (int b = 0; b < RG_WINDOW_BUTTONS; b++)
     for (int s = 0; s < RG_WINDOW_KEYS_A_BUTTON; s++)
-      if (now.keys[b][s] == key) return b;
+      if (rg_window_console_has(b) && now.keys[b][s] == key) return b;
   return -1;
 }
 
@@ -471,7 +489,7 @@ static int game_added(int button, int is_key, int code) {
 static int key_taken(const settings *in, int key) {
   for (int b = 0; b < RG_WINDOW_BUTTONS; b++)
     for (int s = 0; s < RG_WINDOW_KEYS_A_BUTTON; s++)
-      if (in->keys[b][s] == key) return 1;
+      if (rg_window_console_has(b) && in->keys[b][s] == key) return 1;
   for (int h = 0; h < RG_HOTKEY_COUNT; h++)
     if (in->hotkeys[h] == key) return 1;
   return 0;
@@ -480,7 +498,7 @@ static int key_taken(const settings *in, int key) {
 static int pad_taken(const settings *in, int pad) {
   for (int b = 0; b < RG_WINDOW_BUTTONS; b++)
     for (int s = 0; s < RG_WINDOW_PADS_A_BUTTON; s++)
-      if (in->pad[b][s] == pad) return 1;
+      if (rg_window_console_has(b) && in->pad[b][s] == pad) return 1;
   return 0;
 }
 
@@ -501,7 +519,7 @@ static void remove_game_controls(settings *in) {
 static void add_game_controls(settings *in, int keys, int pads) {
   for (int i = 0; i < game_control_count(); i++) {
     int button = game_control_button(i), code = game_control_code(i);
-    if (!is_button(button)) continue;
+    if (!rg_window_console_has(button)) continue;
     if (game_control_is_key(i)) {
       if (!keys || key_taken(in, code)) continue;
       for (int s = 0; s < RG_WINDOW_KEYS_A_BUTTON; s++)
@@ -611,6 +629,7 @@ const char *rg_window_bind_pad(int button, int pad_button) {
   if (!is_button(button)) return say("There is no such button.");
   if (!is_pad_button(pad_button)) return say("The window cannot use that gamepad button.");
   for (int b = 0; b < RG_WINDOW_BUTTONS; b++) {
+    if (!rg_window_console_has(b)) continue;
     if (b != button && now.pad[b][0] == pad_button) set_int(&now.pad[b][0], now.pad[button][0]);
     for (int s = 1; s < RG_WINDOW_PADS_A_BUTTON; s++)
       if (now.pad[b][s] == pad_button) set_int(&now.pad[b][s], RG_NO_PAD);
@@ -644,6 +663,11 @@ static int *key_slot(settings *in, int index) {
   return &in->hotkeys[index - BUTTON_KEY_SLOTS];
 }
 
+/* Whether the window reads the key in slot +index+: a hotkey's, or a button's of the console. */
+static int slot_read(int index) {
+  return index >= BUTTON_KEY_SLOTS || rg_window_console_has(index / RG_WINDOW_KEYS_A_BUTTON);
+}
+
 static const char *slot_owner_name(int index) {
   return index < BUTTON_KEY_SLOTS ? button_kinds[index / RG_WINDOW_KEYS_A_BUTTON].name : hotkey_kinds[index - BUTTON_KEY_SLOTS].name;
 }
@@ -668,14 +692,14 @@ static void append(char *out, size_t room, const char *format, ...) {
 
 /* No key is two things: where two have one, the later loses it and it is said. A button's key
  * that a hotkey would have taken is the button's, since a console button is what a player came
- * for. Gives how many keys were taken off. */
+ * for. Only the console's buttons are looked at. Gives how many keys were taken off. */
 static int clear_clashing_keys(settings *in, char *problems, size_t room) {
   int found = 0;
   for (int later = 1; later < KEY_SLOTS; later++) {
     int *key = key_slot(in, later);
-    if (*key == RG_NO_KEY) continue;
+    if (*key == RG_NO_KEY || !slot_read(later)) continue;
     for (int earlier = 0; earlier < later; earlier++) {
-      if (*key_slot(in, earlier) != *key) continue;
+      if (!slot_read(earlier) || *key_slot(in, earlier) != *key) continue;
       /* Two keys of the same button are the same thing set twice, and are not a clash. */
       if (later < BUTTON_KEY_SLOTS && earlier / RG_WINDOW_KEYS_A_BUTTON == later / RG_WINDOW_KEYS_A_BUTTON) {
         set_as_own(in, key, RG_NO_KEY);
@@ -1088,7 +1112,7 @@ int rg_window_settings_read(const char *text, char *problems, size_t room) {
 
   /* Escape gives up choosing a key, so it is no button's and no hotkey's. */
   for (int i = 0; i < KEY_SLOTS; i++)
-    if (*key_slot(&candidate, i) == RG_KEY_ESCAPE) {
+    if (slot_read(i) && *key_slot(&candidate, i) == RG_KEY_ESCAPE) {
       if (room) append(problems, room, "Escape gives up choosing a key, so %s cannot use it and has no key.", slot_owner_name(i));
       set_as_own(&candidate, key_slot(&candidate, i), RG_NO_KEY);
       said++;

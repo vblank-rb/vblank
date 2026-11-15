@@ -93,6 +93,17 @@ class TestJSPage < Minitest::Test
     assert_match(/id="pad-start"/, without)
   end
 
+  # A console with X and Y, or C, names their keys in the page's words; the Advance names none.
+  def test_a_console_with_x_y_or_c_names_their_keys_on_its_page
+    snes = JS::Page.html(title: "SNES", script: "", screen: [256, 224], more_buttons: %i[x y])
+    genesis = JS::Page.html(title: "GENESIS", script: "", screen: [320, 224], more_buttons: %i[c])
+    advance = JS::Page.html(title: "ADVANCE", script: "", screen: [240, 160])
+
+    assert_match(%r{<kbd>W</kbd> is X, <kbd>Q</kbd> is Y}, snes)
+    assert_match(%r{<kbd>C</kbd> is C}, genesis)
+    refute_match(%r{is [XYC],}, advance)
+  end
+
   # The page plays a frame of the game on each of the browser's frames, reads the keyboard as the
   # buttons, and puts up the picture the interpreter draws. A key is read after each frame, for
   # the next: one held as the page opens counts from frame 2, and one let go after frame 10 still

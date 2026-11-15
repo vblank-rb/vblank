@@ -25,15 +25,22 @@ module VBlank
     # gives the window (SDL::KeyNames) and a test gives a table, and SettingsFile reads and writes.
     class Settings
       # A console button: what a player calls it, its name in the file, the keys and the gamepad
-      # button it starts on. The keys are mGBA's (SDL's scancodes: X, Z, Backspace and Right
-      # Shift, Return, the arrows, S, A).
+      # button it starts on, in IR::Buttons::NAMES's order. The Advance's ten keys are mGBA's
+      # (SDL's scancodes: X, Z, Backspace and Right Shift, Return, the arrows, S, A).
+      #
+      # The buttons only some consoles have start where those consoles' controllers have them. The
+      # Super Nintendo's X and Y (and the PlayStation's Triangle and Square, which a game names :x
+      # and :y) are W and Q, above the shoulders' S and A, and the top and left face buttons. The
+      # Genesis's C is the C key, beside Z and X, and the left face button, which is Y's too: no
+      # console has both, and a window reads only the buttons its console has (+buttons+ below).
       Button = Data.define(:name, :setting, :keys, :pad)
       BUTTONS = Ractor.make_shareable([
         Button.new("A", :a, [27], :east), Button.new("B", :b, [29], :south),
         Button.new("Select", :select, [42, 229], :back), Button.new("Start", :start, [40], :start),
         Button.new("Right", :right, [79], :dpad_right), Button.new("Left", :left, [80], :dpad_left),
         Button.new("Up", :up, [82], :dpad_up), Button.new("Down", :down, [81], :dpad_down),
-        Button.new("R", :r, [22], :right_shoulder), Button.new("L", :l, [4], :left_shoulder)
+        Button.new("R", :r, [22], :right_shoulder), Button.new("L", :l, [4], :left_shoulder),
+        Button.new("X", :x, [26], :north), Button.new("Y", :y, [20], :west), Button.new("C", :c, [6], :west)
       ])
 
       # A key the window keeps for itself, and the key it starts on: P, N, F3, F11, M, F1, Tab.
@@ -62,9 +69,12 @@ module VBlank
       # The key +hotkey+ starts on.
       def self.starting_key(hotkey) = HOTKEYS.find { |each| each.setting == hotkey }.key
 
-      # Which console button each of a gamepad's buttons is, by SDL's number for it, as the block
-      # (given a console button, its gamepad button) returns.
-      def self.pad_map = BUTTONS.to_h { |button| [PAD_BUTTONS.index(yield(button.setting)), button.setting] }
+      # Which of the Advance's buttons each of a gamepad's buttons is, by SDL's number for it, as the
+      # block (given a console button, its gamepad button) returns.
+      def self.pad_map
+        BUTTONS.select { |button| WindowMenu::ADVANCE_BUTTONS.include?(button.setting) }
+               .to_h { |button| [PAD_BUTTONS.index(yield(button.setting)), button.setting] }
+      end
 
       # +game_controls+ is the keys and gamepad buttons the game adds to the layout
       # (Builder::Input#computer_keys and #computer_gamepad), as the game is built with them: the
@@ -73,8 +83,14 @@ module VBlank
       # file is read wherever nothing else has them. The file never holds them (#text), so the file
       # every game shares never gives one game's keys to the others. This is rg_window.c's
       # add_game_controls.
-      def initialize(key_names:, game_controls: nil)
+      #
+      # +buttons+ are the console's (Console::Description#buttons), the Advance's when left out. Only
+      # they are read, shown and checked for a key two of them share: a button the console lacks
+      # keeps what it has, in the window and in the file, for a game of a console that has it. This
+      # is rg_window.c's rg_window_use_console_buttons.
+      def initialize(key_names:, game_controls: nil, buttons: WindowMenu::ADVANCE_BUTTONS)
         @key_names = key_names
+        @console_buttons = BUTTONS.select { |button| buttons.include?(button.setting) }
         @game_keys, @game_pads = game_controls_in(game_controls)
         @now = STARTING.dup
         BUTTONS.each do |button|
@@ -103,15 +119,18 @@ module VBlank
 
       # Which console button each of a gamepad's buttons is, by SDL's number for it.
       def pad_map
-        @pad_map ||= BUTTONS.each_with_object({}) do |button, map|
+        @pad_map ||= @console_buttons.each_with_object({}) do |button, map|
           pads_of(button.setting).each { |pad| map[PAD_BUTTONS.index(pad)] = button.setting }
         end
       end
 
       # The console buttons whose keys are down, as +down+ (given a scancode) returns.
       def buttons_held(&down)
-        BUTTONS.filter_map { |button| button.setting if keys_of(button.setting).any?(&down) }
+        @console_buttons.filter_map { |button| button.setting if keys_of(button.setting).any?(&down) }
       end
+
+      # Whether the console has +button+ (a setting's name, :x), so the window reads and shows it.
+      def console_has?(button) = @console_buttons.any? { |each| each.setting == button }
 
       # The keys a console button has, by scancode, and the gamepad buttons it is, the first first.
       def keys_of(button) = Array.new(KEYS_A_BUTTON) { |slot| @now[[:key, button, slot]] }.compact
@@ -122,7 +141,7 @@ module VBlank
       def hotkey_of(hotkey) = @now[[:hotkey, hotkey]]
 
       # The console button a key is, or the hotkey; nil for neither.
-      def button_of_key(key) = key && BUTTONS.find { |button| keys_of(button.setting).include?(key) }&.setting
+      def button_of_key(key) = key && @console_buttons.find { |button| keys_of(button.setting).include?(key) }&.setting
       def hotkey_of_key(key) = key && HOTKEYS.find { |hotkey| hotkey_of(hotkey.setting) == key }&.setting
 
       # --- choosing keys and gamepad buttons, as rg_window.c's rg_window_bind_* and rg_window_capture_* ---
@@ -200,7 +219,7 @@ module VBlank
       # it, so A and B can be swapped by choosing one; one another has as its second is taken off it.
       def bind_pad(button, pad)
         was = pad_of(button)
-        BUTTONS.each do |each|
+        @console_buttons.each do |each|
           change([:pad, each.setting, 0], was) if each.setting != button && pad_of(each.setting) == pad
           (1...PADS_A_BUTTON).each { |slot| change([:pad, each.setting, slot], nil) if @now[[:pad, each.setting, slot]] == pad }
         end
@@ -477,8 +496,10 @@ module VBlank
       # wherever nothing else has it: a player who gave the key to something else keeps that.
       def add_game_keys(into)
         @game_keys.each do |button, keys|
+          next unless console_has?(button)
+
           keys.each do |key|
-            next if into.any? { |name, value| name.is_a?(Array) && %i[key hotkey].include?(name.first) && value == key }
+            next if into.any? { |name, value| value == key && in_console?(name, %i[key hotkey]) }
 
             slot = KEYS_A_BUTTON.times.find { |at| into[[:key, button, at]].nil? } or next
             into[[:key, button, slot]] = key
@@ -488,13 +509,21 @@ module VBlank
 
       def add_game_pads(into)
         @game_pads.each do |button, pads|
+          next unless console_has?(button)
+
           pads.each do |pad|
-            next if into.any? { |name, value| name.is_a?(Array) && name.first == :pad && value == pad }
+            next if into.any? { |name, value| value == pad && in_console?(name, %i[pad]) }
 
             slot = PADS_A_BUTTON.times.find { |at| into[[:pad, button, at]].nil? } or next
             into[[:pad, button, slot]] = pad
           end
         end
+      end
+
+      # Whether +name+ (a settings hash's key) is a key, gamepad button or hotkey of one of +kinds+
+      # that this window reads: a hotkey, or a button of the console.
+      def in_console?(name, kinds)
+        name.is_a?(Array) && kinds.include?(name.first) && (name.first == :hotkey || console_has?(name[1]))
       end
 
       # The game's keys and gamepad buttons taken out of +from+, wherever they are on the button the
@@ -527,9 +556,10 @@ module VBlank
         set_as_own([:hotkey, hotkey.setting], key)
       end
 
-      # Every key a button or a hotkey has, in the order a clash is settled in, with whose it is.
+      # Every key a button of the console or a hotkey has, in the order a clash is settled in, with
+      # whose it is.
       def key_slots
-        BUTTONS.flat_map { |button| Array.new(KEYS_A_BUTTON) { |slot| [[:key, button.setting, slot], button.name] } } +
+        @console_buttons.flat_map { |button| Array.new(KEYS_A_BUTTON) { |slot| [[:key, button.setting, slot], button.name] } } +
           HOTKEYS.map { |hotkey| [[:hotkey, hotkey.setting], hotkey.name] }
       end
 

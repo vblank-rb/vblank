@@ -32,8 +32,12 @@ typedef struct {
 /* The driver in use; set by whichever main() started the program. */
 extern const rg_driver *rg_active_driver;
 
-/* The most players the runtime reads (IR::Buttons::MOST_PLAYERS). */
+/* The most players the runtime reads (IR::Buttons::MOST_PLAYERS). Every build writes it
+ * (Computer::ConsoleNumbers); this is the same number for a file read on its own, and
+ * test_native_checker_flags.rb holds the two alike. */
+#ifndef RG_MOST_PLAYERS
 #define RG_MOST_PLAYERS 16
+#endif
 
 /* A driver reports which buttons are down at every frame boundary: one number for each of +count+
  * connected players, the first player's first (IR::Buttons.masks), a bit a button in the order

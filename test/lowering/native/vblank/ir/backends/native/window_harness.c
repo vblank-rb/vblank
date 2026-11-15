@@ -2,7 +2,7 @@
  * Drives runtime/rg_window.c with no window, a command to a line of standard input and its
  * answer to a line of standard output. See test_native_window.rb.
  *
- * The keys have the names SDL gives them, for the few this knows: letters, Return, Escape,
+ * The keys have the names SDL gives them, for the few this knows: some letters, Return, Escape,
  * Backspace, Tab, Space, ",", F1, F3, F11, the arrows and Right Shift.
  */
 #define _DEFAULT_SOURCE
@@ -15,7 +15,7 @@ static const struct {
   const char *name;
   int key;
 } key_table[] = {
-  {"A", 4},      {"B", 5},    {"D", 7},         {"M", 16},        {"N", 17},      {"P", 19},          {"S", 22},   {"X", 27},
+  {"A", 4},      {"B", 5},    {"C", 6},         {"W", 26},        {"D", 7},       {"M", 16},        {"N", 17},      {"P", 19},          {"S", 22},   {"X", 27},
   {"Z", 29},     {"Q", 20},   {"Return", 40},   {"Escape", 41}, {"Backspace", 42},  {"Tab", 43}, {"Space", 44},
   {",", 54},     {"F1", 58},  {"F3", 60},       {"F11", 68},    {"Right", 79},      {"Left", 80}, {"Down", 81},
   {"Up", 82},    {"Right Shift", 229},
@@ -79,6 +79,13 @@ int main(void) {
     const char *c = words[0];
     int n = count > 1 ? atoi(words[1]) : 0;
     if (!strcmp(c, "reset")) rg_window_use_defaults();
+    else if (!strcmp(c, "console")) {
+      /* The console's buttons, by their names in the settings file. The window starts again. */
+      uint32_t buttons = 0;
+      for (int i = 1; i < count; i++) buttons |= 1u << (uint32_t)button_word(words[i]);
+      rg_window_use_console_buttons(buttons);
+      rg_window_use_defaults();
+    }
     else if (!strcmp(c, "paused")) printf("%d\n", rg_window_paused());
     else if (!strcmp(c, "pause")) rg_window_pause();
     else if (!strcmp(c, "resume")) rg_window_resume();
