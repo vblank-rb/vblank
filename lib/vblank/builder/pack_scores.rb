@@ -210,7 +210,7 @@ module VBlank
         refuse_slot_from_elsewhere!(handle.slot, subject)
         recorded = recorded_part?(part)
         clocked = IR::StartFile.takes_clock?(part)
-        handle.slot.layout.decode(@data_pack_contents.bytes_of(handle.slot.layout.name)).map do |note|
+        pack_slot_decoded(handle.slot.layout).map do |note|
           refuse_unnamed_side_or_clock!(note, subject, side: !recorded && note.shade.nil?, clock: clocked)
           refuse_voice_settings_out_of_range!(note, subject)
           key = note.key unless note.key == Original::PackNote::REST

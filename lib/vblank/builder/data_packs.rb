@@ -940,21 +940,56 @@ module VBlank
       def pack_slot_values(handle, wanted, where)
         refuse_slot_from_elsewhere!(handle, where)
         refuse_slot_read_wrongly!(handle, wanted, where)
-        values = handle.layout.decode(@data_pack_contents.bytes_of(handle.layout.name))
-        return values.slice(handle.first_color, handle.color_count) if handle.bank?
-        return values unless handle.one_tile?
+        if handle.one_tile?
+          tiles = pack_slot_tiles(handle.layout).slice(handle.tile_index, handle.count)
+          return IR::Assets.picture_places_of_tiles(tiles.flatten, across: handle.across)
+        end
 
-        IR::Assets.picture_places_of_tiles(values.slice(handle.tile_index, handle.count).flatten, across: handle.across)
+        values = pack_slot_decoded(handle.layout)
+        handle.bank? ? values.slice(handle.first_color, handle.color_count) : values
       end
 
       # THE TILES OF A SLOT OF TILES, from the tile +tiles+ (a DSL::PackSlot) starts at on, each a
       # list of its 64 places row by row, for a verb that draws the original's own tiles by number
-      # (PackBackgrounds, PackPoses). +subject+ names the line for the error.
+      # (PackBackgrounds, PackPoses): an Original::SlotTiles, which reads a tile when it is first
+      # asked for. +subject+ names the line for the error.
       def pack_tile_places(tiles, subject)
         refuse_tiles_not_from_slot!(tiles, subject)
         refuse_slot_from_elsewhere!(tiles, "#{subject}'s tiles:")
-        tiles.layout.decode(@data_pack_contents.bytes_of(tiles.layout.name)).drop(tiles.tile_index || 0)
+        pack_slot_tiles(tiles.layout).from(tiles.tile_index || 0)
       end
+
+      # READING A SLOT ONCE A BUILD. Every verb given a handle reads its slot here, and a game names
+      # one slot in many lines: a pose for each frame of a sprite, an image for each tile, a bank of
+      # colours for each list. So a slot is read once and kept for the rest of the build, rather
+      # than read again for each line, which made a build's cost lines times slot size.
+      #
+      # A slot of tiles is kept a tile at a time (Original::SlotTiles says why); any other shape
+      # is read whole the first time, which costs no more than one line reading it did.
+      #
+      # Both stores are this Builder's own, as the pack they read is, so nothing is shared between
+      # builds or between Ractors. What they hand back is frozen, since every line that reads a
+      # slot gets the same lists.
+
+      # The tiles of +layout+ (an Original::Slot of tiles, or a view of tiles), read as asked for.
+      def pack_slot_tiles(layout)
+        (@pack_slot_tiles ||= {})[layout] ||= Original::SlotTiles.new(layout, @data_pack_contents.bytes_of(layout.name))
+      end
+
+      # What +layout+ (an Original::Slot or a view, not of tiles) holds, read in its shape.
+      def pack_slot_decoded(layout)
+        (@pack_slots_decoded ||= {})[layout] ||=
+          Ractor.make_shareable(layout.decode(@data_pack_contents.bytes_of(layout.name)))
+      end
+
+      public
+
+      # How many tiles this build has read from its pack's slots of tiles, each counted once
+      # however many lines draw it. Asked by the test that holds a build's cost to the tiles it
+      # draws (test_pack_pose_build_cost.rb).
+      def pack_tiles_read = (@pack_slot_tiles || {}).values.sum(&:tiles_read)
+
+      private
 
       # tiles: is a slot of tiles, or the tiles of one from a tile on.
       def refuse_tiles_not_from_slot!(tiles, subject)
