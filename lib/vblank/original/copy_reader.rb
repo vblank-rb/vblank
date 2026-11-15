@@ -38,9 +38,12 @@ module VBlank
 
       # +formats+ are the formats the copy offers, in the order a fault numbers them; +platform+ is
       # the original's, which a refusal names; +release+ (a Release) is the one unpacked, whose files
-      # #file finds. +before_wait+ and +slot_bytes_done+ are BlockKitInternals'.
-      def initialize(builder, copy:, pack:, faults:, formats:, platform:, release: nil, before_wait: nil, slot_bytes_done: nil)
+      # #file finds. +before_wait+ and +slot_bytes_done+ are BlockKitInternals'. +building+ is the
+      # UnpackingPartBuilding the routine's parts are built in (nil for none), which #bytes_done asks.
+      def initialize(builder, copy:, pack:, faults:, formats:, platform:, release: nil, before_wait: nil, slot_bytes_done: nil,
+                     building: nil)
         @builder = builder
+        @building = building
         @release = release
         @internals = Packing::BlockKitInternals.new(builder, copy: copy, pack: pack, faults: faults, before_wait: before_wait,
                                                              slot_bytes_done: slot_bytes_done)
@@ -50,8 +53,13 @@ module VBlank
         @block_routines = {}
       end
 
-      # How many bytes have been written so far, a variable of the routine's.
-      def bytes_done = @internals.bytes_done
+      # How many bytes have been written so far, a variable of the routine's. The count runs on
+      # from one part of the routine to the next, so only the first part may read it
+      # (UnpackingPartBuilding#refuse_bytes_done_in_later_part!).
+      def bytes_done
+        @building&.refuse_bytes_done_in_later_part!
+        @internals.bytes_done
+      end
 
       # The byte at +at+ in the copy, 0 to 255. +at+ may be worked out as the game runs. A place
       # outside the copy is a fault the build stops on.
@@ -96,7 +104,6 @@ module VBlank
       def copy_bytes_within(file, at:, count:, into:, start: 0)
         refuse_unless_slot!(into, "copy_bytes")
         refuse_outside_slot!(into, start, count)
-        into.record_write
         emit_block_call(:copy, at: at, slot: into, start: start, count: count, format_number: 0, file: file) do
           emit_copy_routine
         end
@@ -189,7 +196,6 @@ module VBlank
         start = settings.fetch(:start, 0)
         refuse_unless_slot!(into, verb)
         refuse_outside_slot!(into, start, 0)
-        into.record_write
         format.format_settings.each { |name, default| @kit.setting(name).store!(settings.fetch(name, default)) }
         emit_block_call(:"unpack_#{format.format_name}", at: settings.fetch(:at), slot: into, start: start, count: 0,
                                                          format_number: @formats.index(format), file: file) do
@@ -200,7 +206,11 @@ module VBlank
       # One block: what it is handed set in the kit's variables, its routine called (made the first
       # time, from the block given), and a wait for the next frame. Its reads are held to +file+ (a
       # FileReader), or to the whole copy for nil.
+      #
+      # Every block writes +slot+, so the write is recorded here, where each one is built: a verb
+      # added later cannot leave it out (SlotUses, which the pack cache's parts read).
       def emit_block_call(routine_name, at:, slot:, start:, count:, format_number:, file: nil, &routine)
+        slot.record_write
         @internals.emit_block_arguments(at: at, slot: slot, start: start, count: count, format_number: format_number,
                                         file: file)
         @builder.call(define_block_routine(routine_name, &routine))
@@ -427,12 +437,11 @@ module VBlank
       # game's number, so it reads as one whether the slot is signed or not: above 2147483647 it
       # reads below zero, as any game number does.
       def [](index)
-        record_read
         refuse_item_outside_slot!(index) if index.is_a?(Integer)
-        return @list[place(index)] & 0xFF unless wide_numbers?
+        return load_byte(index) & 0xFF unless wide_numbers?
 
         number = slot_bytes_lowest_first.each_with_index.map do |offset, step|
-          (@list[place(number_byte(index, offset))] & 0xFF) << (8 * step)
+          (load_byte(number_byte(index, offset)) & 0xFF) << (8 * step)
         end.reduce(:|)
         @slot.signed && @slot.item_bytes == 2 ? (number ^ 0x8000) - 0x8000 : number
       end
@@ -441,11 +450,10 @@ module VBlank
       # +index+, written over its bytes in the slot's layout; any other slot takes the low 8 bits
       # into byte +index+. A copy's formats write bytes, from #place, whatever the slot holds.
       def []=(index, value)
-        record_write
         return write_number(index, value) if wide_numbers?
         return write_fixed_place(index, value) if index.is_a?(Integer)
 
-        write_or_emit_fault(index, byte_size, index) { @list[place(index)] = value }
+        write_or_emit_fault(index, byte_size, index) { store_byte(index, value) }
       end
 
       # CELL +index+ OF A SLOT OF MAP CELLS written as a MapCell record: its +tile+, counted from the
@@ -459,18 +467,17 @@ module VBlank
       # A tile past 65535 or a bank past 255 written as a number is refused, since the record would
       # keep only its low bits. One the routine works out keeps them.
       def write_cell(index, tile:, bank: 0, mirrored: false, upside_down: false)
-        record_write
         refuse_cell_of_another_shape!
         cell = index.is_a?(Integer) ? "cell #{index}" : "a cell"
         MapCell.refuse_oversized_part!("The unpacking writes #{cell} of slot :#{@slot.name} with", tile: tile, bank: bank)
         bytes = MapCell.bytes(tile: tile, bank: bank, mirrored: mirrored, upside_down: upside_down)
         if index.is_a?(Integer)
           refuse_item_outside_slot!(index, [@slot.count, "cell"])
-          return bytes.each_with_index { |byte, at| @list[@start + (index * MapCell::BYTES) + at] = byte }
+          return bytes.each_with_index { |byte, at| store_byte((index * MapCell::BYTES) + at, byte) }
         end
 
         write_or_emit_fault(index, item_count, index * MapCell::BYTES) do
-          bytes.each_with_index { |byte, at| @list[place((index * MapCell::BYTES) + at)] = byte }
+          bytes.each_with_index { |byte, at| store_byte((index * MapCell::BYTES) + at, byte) }
         end
       end
 
@@ -486,7 +493,6 @@ module VBlank
       # A channel written as a number past +bits+ is refused. One the routine works out keeps its
       # low +bits+ bits.
       def write_color(index, red:, green:, blue:, bits: 8)
-        record_write
         refuse_color_of_another_shape!
         refuse_channel_bits_out_of_range!(bits)
         refuse_channels_past_bits!(index, bits, red: red, green: green, blue: blue)
@@ -497,11 +503,11 @@ module VBlank
         bytes = format.high_byte_first ? low_high.reverse : low_high
         if index.is_a?(Integer)
           refuse_item_outside_slot!(index, [@slot.count, "color"])
-          return bytes.each_with_index { |byte, at| @list[@start + (index * Slot::COLOR_BYTES) + at] = byte }
+          return bytes.each_with_index { |byte, at| store_byte((index * Slot::COLOR_BYTES) + at, byte) }
         end
 
         write_or_emit_fault(index, item_count, index * Slot::COLOR_BYTES) do
-          bytes.each_with_index { |byte, at| @list[place((index * Slot::COLOR_BYTES) + at)] = byte }
+          bytes.each_with_index { |byte, at| store_byte((index * Slot::COLOR_BYTES) + at, byte) }
         end
       end
 
@@ -538,7 +544,7 @@ module VBlank
 
       def write_number_bytes(index, value)
         slot_bytes_lowest_first.each_with_index do |offset, step|
-          @list[place(number_byte(index, offset))] = step.zero? ? value : value >> (8 * step)
+          store_byte(number_byte(index, offset), step.zero? ? value : value >> (8 * step))
         end
       end
 
@@ -622,7 +628,23 @@ module VBlank
 
       def write_fixed_place(index, value)
         refuse_item_outside_slot!(index)
-        @list[@start + index] = value
+        store_byte(index, value)
+      end
+
+      # EVERY BYTE OF THE SLOT IS READ AND WRITTEN HERE, so the read or the write is recorded where
+      # it is built (#record_read, #record_write, which the pack cache's parts read), and a way of
+      # writing added later cannot leave it out. A copy's formats write through the routine their
+      # block calls, which records its slot (CopyReader#emit_block_call). +at+ is a byte of the
+      # slot, 0 first, a number or a value the routine works out; the place in the pack's list is
+      # worked out once the use is recorded, so a slot in pieces refuses first (PiecedSlotBytes).
+      def load_byte(at)
+        record_read
+        @list[place(at)]
+      end
+
+      def store_byte(at, value)
+        record_write
+        @list[place(at)] = value
       end
     end
 
@@ -720,6 +742,11 @@ module VBlank
       # the game value the part's block is handed.
       Entered = Data.define(:routine, :piece)
 
+      # +routines+ are the parts of the routine this build makes, in the order they run.
+      def initialize(routines)
+        @routines = routines
+      end
+
       # Must keep the piece inside a record: this file is read as game code, where a game variable
       # (a loop's index, the piece's) put in an instance variable is a write of the game's own. A
       # value worked out from one (PieceBytes' start, a read of a table) is not.
@@ -728,6 +755,20 @@ module VBlank
       end
 
       private def routine_entered = @entered&.routine
+
+      # THE COUNT OF BYTES DONE (CopyReader#bytes_done) READ IN A PART AFTER THE FIRST, or in a part
+      # in pieces. The count runs on from one part to the next, and from one piece to the next, so
+      # there it holds what the parts or pieces before wrote. The pack cache plays a part with only
+      # the parts it reads slots from (UnpackingParts), and a piece is made on its own, so the
+      # count would differ there and nothing in the program would show it.
+      def refuse_bytes_done_in_later_part!
+        routine = routine_entered
+        return unless routine && (routine.pieced? || @routines.index(routine)&.positive?)
+
+        raise ArgumentError, "#{part_words} reads `copy.bytes_done`. That count goes on from the parts and pieces " \
+                             "before it, and the cache can make this part on its own, so the count would be " \
+                             "different. To fix this, count the bytes this part writes in a variable of its own."
+      end
 
       # A slot used whole (+verb+ "reads" or "writes") in a part in pieces.
       def refuse_slot_in_pieced_part!(slot_name, verb)

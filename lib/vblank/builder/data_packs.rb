@@ -104,16 +104,21 @@ module VBlank
         # The slots each part in pieces writes, as the whole routine's build records them, which
         # the split for several workers is built from (#pieced_unpacking).
         whole_uses = {}
+        # What each part put in the whole routine's program, which each part built alone is held to.
+        whole_programs = Original::PartPrograms.new
         unless routines.empty?
           unpacking = unpacking_program(bytes, copy_release_slots, routines, reading, release: copy_release, built_names: whole_names,
-                                                                                    slot_uses: whole_uses)
+                                                                                    slot_uses: whole_uses, part_programs: whole_programs)
         end
         # Built once, the first time the cache or a test asks; nil is an answer too.
         parts_built = false
         parts = nil
         make_parts = lambda do
           unless parts_built
-            parts = (unpacking_parts(bytes, copy_release_slots, routines, reading, copy_release, unpacking, whole_names) if routines.size > 1)
+            if routines.size > 1
+              parts = unpacking_parts(bytes, copy_release_slots, routines, reading, copy_release,
+                                      Original::WholeRoutine.new(unpacking: unpacking, names: whole_names, programs: whole_programs))
+            end
             parts_built = true
           end
           parts
@@ -561,7 +566,7 @@ module VBlank
       # nothing else. A part in pieces with no SlotUses in +slot_uses+ is given one, so the caller
       # learns which slots it writes (#pieced_unpacking).
       def unpacking_program(bytes, slots, routines, reading, release:, frames: Original::FrameRecord::Section.new(sources: []),
-                            slot_uses: {}, built_names: Original::BuiltNames.new, piece: nil)
+                            slot_uses: {}, built_names: Original::BuiltNames.new, piece: nil, part_programs: nil)
         Builder.keeping_builder_in_use do
           maker = Builder.new(options: unpacking_options)
           copy_size = bytes ? bytes.bytesize : release.size
@@ -572,14 +577,14 @@ module VBlank
           faults = Original::UnpackingFaults.new(maker)
           progress = (Original::Unpacking::PROGRESS unless bytes || piece)
           slot_bytes_done = (maker.list(Original::Unpacking::SLOT_BYTES_DONE, capacity: slots.length, full_of: 0) if slots.any?(&:costly?))
+          building = Original::UnpackingPartBuilding.new(routines)
           reader = Original::CopyReader.new(maker, copy: copy_table, pack: list, faults: faults, formats: reading.formats,
                                                    platform: reading.platform, release: release, before_wait: progress,
-                                                   slot_bytes_done: slot_bytes_done)
+                                                   slot_bytes_done: slot_bytes_done, building: building)
           if progress
             done = slot_bytes_done ? UnpackingWork.new(slots, slot_bytes_done) : UnpackingBytes.new(slots, reader.bytes_done)
             Original::UnpackingProgress.new(maker).define(done, finished)
           end
-          building = Original::UnpackingPartBuilding.new
           pack = Original::UnpackingSlots.new(unpacking_writers(maker, list, slots, faults, building, piece))
           unless piece
             slots.reject(&:filled_by_routine?).each do |slot|
@@ -590,6 +595,8 @@ module VBlank
             slot_uses[routine.part] ||= Original::SlotUses.new if routine.pieced?
             pack.record_uses_in(slot_uses[routine.part])
             made_before = maker.variables
+            statements_before = maker.program.children.length
+            functions_before = maker.declared_function_names
             if piece
               chosen = maker.table(Original::Unpacking::PIECE_NUMBER, DSL::StartFileEntries.new(at: copy_size, count: 1),
                                    width: :half, signed: false)
@@ -608,6 +615,8 @@ module VBlank
               maker.instance_exec(reader, pack, release.name, &routine.block)
             end
             built_names.record_made_by(routine.part, maker.variables - made_before)
+            part_programs&.record_part(routine.part, statements: maker.program.children.drop(statements_before),
+                                                     functions: maker.declared_function_names - functions_before)
           end
           building.enter(nil)
           pack.record_uses_in(nil)
@@ -821,20 +830,24 @@ module VBlank
       # build the program of any of the parts.
       # Built as #unpacking_program builds the whole routine, with no frames. nil where a part
       # cannot be built alone: one that calls a routine another part defines, say. The whole
-      # routine is then cached as one, as a routine of one part is. +whole+ is the routine's
-      # Unpacking with every part, built already, which is the program of every part, and
-      # +whole_names+ (an Original::BuiltNames) the names that build made.
+      # routine is then cached as one, as a routine of one part is. +whole+ (an
+      # Original::WholeRoutine) is the routine's Unpacking with every part, built already, which
+      # is the program of every part, with the names that build made and what each part put in it.
       #
       # A part whose program alone names a variable its own build did not make is refused
       # (Original::BuiltNames#refuse_outside_variables!), naming the part that made it: it reached
       # another part's object or Ruby local, so built alone it is not the part the whole routine
-      # plays.
-      def unpacking_parts(bytes, slots, routines, reading, release, whole, whole_names)
+      # plays. So is a part that puts another program in its build alone than in the whole
+      # routine's (Original::PartPrograms#refuse_part_built_apart!): Ruby another part left made it.
+      def unpacking_parts(bytes, slots, routines, reading, release, whole)
         parts = routines.map do |routine|
           uses = Original::SlotUses.new
-          built_names = Original::BuiltNames.new(whole: whole_names)
+          built_names = Original::BuiltNames.new(whole: whole.names)
+          programs = Original::PartPrograms.new
           alone = unpacking_program(bytes, slots, [routine], reading, release: release, slot_uses: { routine.part => uses },
-                                                                      built_names: built_names)
+                                                                      built_names: built_names, part_programs: programs)
+          whole.programs.refuse_part_built_apart!(routine.part, whole.unpacking.program, whole.names.unique_names,
+                                                  programs, alone.program, built_names.unique_names)
           Original::UnpackingParts::Part.new(name: routine.part, read: uses.read, written: uses.written,
                                              names: Original::UnpackingParts.names_in(alone.program),
                                              unique_names: built_names.unique_names,
@@ -843,8 +856,8 @@ module VBlank
         make = lambda do |played|
           unpacking_program(bytes, slots, routines.select { |routine| played.include?(routine.part) }, reading, release: release)
         end
-        Original::UnpackingParts.new(parts: parts, make_unpacking: make, whole: whole)
-      rescue Original::OutsideVariableError
+        Original::UnpackingParts.new(parts: parts, make_unpacking: make, whole: whole.unpacking)
+      rescue Original::OutsideVariableError, Original::PartBuiltApartError
         raise
       rescue ArgumentError, BuildError
         # A part that builds only after another (it calls a routine the other defines) is no

@@ -360,8 +360,14 @@ from that copy. The game's code says each piece's shape and size; it never depen
   the rest from the cache (`Original::UnpackingParts`). Two parts are played together when one reads a
   slot the other writes, or both name one variable, list or routine. Hand nothing from one part to
   another in Ruby (an instance variable, a local both blocks share) or through `copy.bytes_done`:
-  the cache cannot see it, so pass it through a slot. The pack is the whole routine's,
-  byte for byte. A part that cannot be built alone (it calls a routine another part defines) keeps the
+  pass it through a slot. A part whose program built alone is not the one it makes after the parts
+  before it (Ruby an earlier part left changed it) is a friendly error naming the part
+  (`Original::PartBuiltApartError`, from `Original::PartPrograms`), and so is `copy.bytes_done` read in
+  any part but the first, or in a part with pieces, since the count goes on from the parts before.
+  Ruby both blocks reach that changes no program is no fault, and a variable's start is not
+  compared. Every way a part writes a slot records it, where the byte is written (`SlotBytes`'s
+  one reader and writer of its bytes, and `CopyReader#emit_block_call` for a format). The pack is
+  the whole routine's, byte for byte. A part that cannot be built alone (it calls a routine another part defines) keeps the
   whole routine as one entry. `pack.unpacking_parts` gives the parts to a game's own test. A test that
   wants the slots, not a pack file, keeps them the same way with
   `Original::PackCache.new(folder).slot_bytes(pack.unpacking, parts: pack.unpacking_parts) { |playing, parts| playing.slot_bytes_in(playing.run_fastest) }`:

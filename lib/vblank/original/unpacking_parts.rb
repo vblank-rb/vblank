@@ -84,6 +84,90 @@ module VBlank
       end
     end
 
+    # THE WHOLE ROUTINE'S BUILD, which the parts built alone are held to (Builder::DataPacks#unpacking_parts):
+    # its Unpacking, its BuiltNames, and its PartPrograms.
+    WholeRoutine = Data.define(:unpacking, :names, :programs)
+
+    # A part of an unpacking routine builds another program alone than after the parts before it
+    # (PartPrograms#refuse_part_built_apart!).
+    class PartBuiltApartError < BuildError; end
+
+    # WHAT EACH PART OF AN UNPACKING ROUTINE PUT IN ONE BUILD'S PROGRAM, recorded as the part's
+    # block runs (Builder::DataPacks#unpacking_program): the statements it added to the program and
+    # the routines it declared. A part's cache entry
+    # is keyed on its program built alone (UnpackingParts#key_source), and that is only the part
+    # the whole routine plays if the part builds the same both ways.
+    #
+    # WHY IT CAN BUILD ANOTHER WAY. A part's block is Ruby, run as the routine is built. Ruby one
+    # block leaves for another (an instance variable of the builder, an object both reach) is
+    # there when the whole routine is built and not when the part is built alone. The programs
+    # are what such Ruby changes, so they are what is compared: Ruby both blocks reach that makes
+    # no difference to a program is no fault.
+    #
+    # The names a build makes unique (Builder#unique_names) start again in each build, so each is
+    # written as the order it first comes in, and the building blocks' own declarations
+    # (UnpackingParts::BUILDING_BLOCK_NAME) are left out, since the first part to need one makes
+    # it, whichever that is. A variable's start is left out too: the whole program sets one at
+    # power-on where two parts name it and a part's own program need not, so it is not the part's.
+    # So a start chosen by such Ruby is not seen.
+    class PartPrograms
+      def initialize
+        @statements = {}
+        @functions = {}
+      end
+
+      # The part +part+'s block added +statements+ (IR nodes, in order) to the program's top and
+      # declared the routines named +functions+.
+      def record_part(part, statements:, functions:)
+        @statements[part] = statements
+        @functions[part] = functions
+      end
+
+      # The text of what the part +part+ put in +program+, once the program is finished, with
+      # +unique_names+ those the build made unique.
+      def text_of(part, program, unique_names)
+        own = @statements.fetch(part).reject { |node| building_block_node?(node) }
+        own += program.children.select do |node|
+          node.kind == :func && @functions.fetch(part).include?(node.attrs[:name]) && !building_block_node?(node)
+        end
+        in_order_of_first_use(own.map { |node| IR::Dump.source(node) }.join("\n"), unique_names)
+      end
+
+      # REFUSES A PART THAT BUILDS ANOTHER PROGRAM ALONE (+alone+, the PartPrograms of its build
+      # alone, of +alone_program+) than in the whole routine (this, of +whole_program+). Each
+      # program comes with the names its build made unique.
+      def refuse_part_built_apart!(part, whole_program, whole_unique, alone, alone_program, alone_unique)
+        return if text_of(part, whole_program, whole_unique) == alone.text_of(part, alone_program, alone_unique)
+
+        raise PartBuiltApartError,
+              "Part :#{part} of the data pack's unpacking is made another way when it is made alone than after " \
+              "the parts before it. Ruby that an earlier part leaves as it is made, such as an instance variable, " \
+              "changes how part :#{part} is made. The cache keeps each part on its own, so part :#{part} would " \
+              "keep stale bytes. To give a number to a later part, write it into a slot in the earlier part. " \
+              "Then read that slot in part :#{part}."
+      end
+
+      private
+
+      # The kinds of node that declare what their name names, rather than use it.
+      DECLARING_KINDS = %i[list_new table func].freeze
+
+      # A declaration of the building blocks' own, which the first part to need it makes.
+      def building_block_node?(node)
+        name = node.attrs[:name]
+        DECLARING_KINDS.include?(node.kind) && name.is_a?(Symbol) && name.match?(UnpackingParts::BUILDING_BLOCK_NAME)
+      end
+
+      # +text+ with each of +unique_names+ in it written as the order it first comes in.
+      def in_order_of_first_use(text, unique_names)
+        order = {}
+        text.gsub(/:(\w+)/) do |written|
+          name = Regexp.last_match(1).to_sym
+          unique_names.include?(name) ? ":unique_#{order[name] ||= order.length}" : written
+        end
+      end
+    end
+
     # THE PARTS OF AN UNPACKING ROUTINE (`slots.fill_from_copy :music do ... end`, one block a
     # part), as the pack cache keeps them apart (PackCache#pack). Each part is built once more as
     # a program of its own, the slots copied as they are and that part alone, to learn what it
@@ -111,13 +195,15 @@ module VBlank
     # writes, byte for byte. The cost is that a part changed alone plays again what it reads from
     # too, though that part's slots are in the cache.
     #
-    # WHAT THIS CANNOT SEE. Only what the program holds is looked at. Ruby the parts' blocks share
-    # as the game is built (an instance variable set in one block, a local both close over) can
-    # make a part build differently alone than after the others, and the count of bytes done
-    # (CopyReader#bytes_done) runs on from one part to the next. A part that hands anything to
-    # another this way must hand it through a slot instead. One way is refused rather than missed:
-    # a part built alone that reads a game variable another part's object or local keeps
-    # (BuiltNames#refuse_outside_variables!).
+    # WHAT IS REFUSED RATHER THAN MISSED. Only what the program holds is looked at, so a part that
+    # hands anything to another must hand it through a slot. Three other ways are refused as the
+    # routine is built: a part built alone that reads a game variable another part's object or
+    # local keeps (BuiltNames#refuse_outside_variables!); a part whose program built alone is not
+    # what it put in the whole routine's, which Ruby the blocks share does (an instance variable set
+    # in one block, read in the next: PartPrograms#refuse_part_built_apart!); and the count of bytes
+    # done (CopyReader#bytes_done) read after the first part, since it runs on from one part to the
+    # next (UnpackingPartBuilding#refuse_bytes_done_in_later_part!). What is still not seen is Ruby
+    # that changes only a variable's start, and Ruby kept between builds outside the game's blocks.
     #
     # WHAT A PART'S CACHE KEY IS MADE OF (#key_source): the program of the part built alone, for each
     # part played to make it (#played_for), as digests of each one's text as the pack cache keys a

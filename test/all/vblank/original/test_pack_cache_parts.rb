@@ -254,6 +254,123 @@ class TestPackCacheParts < Minitest::Test
     end
   end
 
+  # RUBY STATE ONE PART'S BLOCK LEAVES FOR ANOTHER, which no program shows. Here the first part
+  # sets an instance variable as it is built, and the second reads it to choose where it reads the
+  # copy. Built alone, the second part reads somewhere else, so its cache entry would be keyed on
+  # a part that is not the one the whole routine plays: a change to the first part's number would
+  # leave the second part's slot stale. The build refuses, naming the second part.
+  def test_a_part_built_from_ruby_another_part_left_is_refused
+    Dir.mktmpdir do |folder|
+      error = assert_raises(VBlank::Original::PartBuiltApartError) do
+        VBlank::Builder.new.data_pack(from: original(folder), version: "1") do |slots|
+          slots.numbers :first, count: 1, width: :byte, signed: false
+          slots.numbers :second, count: 1, width: :byte, signed: false
+          slots.fill_from_copy(:first) do |copy, into|
+            @second_at = 3
+            into[:first][0] = copy.byte(0)
+          end
+          slots.fill_from_copy(:second) { |copy, into| into[:second][0] = copy.byte(@second_at || 1) }
+        end.unpacking_parts
+      end
+
+      assert_match(/Part :second .*another way when it is made alone.*slot/m, error.message)
+    end
+  end
+
+  # A LOCAL BOTH PARTS' BLOCKS CLOSE OVER, which the first part sets as it is built and the second
+  # reads. Each part built alone is built after the whole routine, so the second sees the number
+  # the first set, and a change to that number changes the second part's key: the pack after the
+  # change is the whole routine's, byte for byte.
+  private def parts_sharing_a_local(folder, at:)
+    VBlank::Builder.new.data_pack(from: original(folder), version: "1") do |slots|
+      slots.numbers :first, count: 1, width: :byte, signed: false
+      slots.numbers :second, count: 1, width: :byte, signed: false
+      shared = {}
+      slots.fill_from_copy(:first) do |copy, into|
+        shared[:at] = at
+        into[:first][0] = copy.byte(0)
+      end
+      slots.fill_from_copy(:second) { |copy, into| into[:second][0] = copy.byte(shared.fetch(:at)) }
+    end.then { |pack| [pack.unpacking, pack.unpacking_parts] }
+  end
+
+  def test_parts_sharing_a_local_make_the_whole_routines_pack_after_a_change
+    Dir.mktmpdir do |folder|
+      cache = PackCache.new(File.join(folder, "packs"))
+      cached_pack(cache, *parts_sharing_a_local(folder, at: SPEEDS_AT))
+      unpacking, parts = parts_sharing_a_local(folder, at: SPEEDS_AT + 1)
+      made, = cached_pack(cache, unpacking, parts)
+
+      assert_equal whole_routine_pack(unpacking), made.to_bytes
+    end
+  end
+
+  # THE COUNT OF BYTES DONE runs on from one part to the next, so a later part reading it reads
+  # what the parts before it wrote, which a part played alone does not. The build refuses it in
+  # every part but the first.
+  def test_a_later_part_reading_the_bytes_done_is_refused
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) do
+        VBlank::Builder.new.data_pack(from: original(folder), version: "1") do |slots|
+          slots.numbers :first, count: 4, width: :byte, signed: false
+          slots.numbers :second, count: 1, width: :byte, signed: false
+          slots.fill_from_copy(:first) { |copy, into| copy.copy_bytes at: SPEEDS_AT, count: 4, into: into[:first] }
+          slots.fill_from_copy(:second) { |copy, into| into[:second][0] = copy.bytes_done }
+        end
+      end
+
+      assert_match(/Part :second .*bytes_done/m, error.message)
+    end
+  end
+
+  def test_the_first_part_may_read_the_bytes_done
+    Dir.mktmpdir do |folder|
+      parts = VBlank::Builder.new.data_pack(from: original(folder), version: "1") do |slots|
+        slots.numbers :first, count: 4, width: :byte, signed: false
+        slots.numbers :second, count: 1, width: :byte, signed: false
+        slots.fill_from_copy(:first) do |copy, into|
+          copy.copy_bytes at: SPEEDS_AT, count: 3, into: into[:first]
+          into[:first][3] = copy.bytes_done
+        end
+        slots.fill_from_copy(:second) { |copy, into| into[:second][0] = copy.byte(0) }
+      end.unpacking_parts
+
+      assert_equal %i[first second], parts.names
+    end
+  end
+
+  # EVERY WAY A PART WRITES A SLOT tells the cache it wrote it, so a part reading that slot is
+  # played with the part that wrote it. One block a verb, each writing the slot :written.
+  WRITES_BY_VERB = {
+    byte: ->(copy, into) { into[:written][0] = copy.byte(0) },
+    half: ->(copy, into) { into[:halves][0] = copy.half(0) },
+    cell: ->(copy, into) { into[:cells].write_cell(0, tile: copy.byte(0)) },
+    color: ->(copy, into) { into[:colors].write_color(0, red: copy.byte(0), green: 0, blue: 0) },
+    copy_bytes: ->(copy, into) { copy.copy_bytes at: 0, count: 2, into: into[:written] },
+    unpack: ->(copy, into) { copy.unpack_lz77 at: LZ77_AT, into: into[:walls] }
+  }.freeze
+  SLOT_WRITTEN_BY = { byte: :written, half: :halves, cell: :cells, color: :colors, copy_bytes: :written, unpack: :walls }.freeze
+
+  def test_every_verb_that_writes_a_slot_makes_its_reader_need_the_writer
+    WRITES_BY_VERB.each do |verb, write|
+      read = SLOT_WRITTEN_BY.fetch(verb)
+      Dir.mktmpdir do |folder|
+        parts = VBlank::Builder.new.data_pack(from: original(folder), version: "1") do |slots|
+          slots.numbers :written, count: 2, width: :byte, signed: false
+          slots.numbers :halves, count: 1, width: :half, signed: false
+          slots.map_cells :cells, count: 1
+          slots.colors :colors, count: 1
+          slots.tiles :walls, count: 2
+          slots.numbers :read, count: 1, width: :byte, signed: false
+          slots.fill_from_copy(:writer) { |copy, into| write.call(copy, into) }
+          slots.fill_from_copy(:reader) { |_copy, into| into[:read][0] = into[read][0] }
+        end.unpacking_parts
+
+        assert_equal %i[writer], parts.inputs_of(:reader), "the reader of a slot written by #{verb}"
+      end
+    end
+  end
+
   # Built all-in-one with a cache, the routine in parts makes the pack the build with no cache makes.
   def test_a_build_with_a_cache_makes_the_pack_of_the_build_without
     Dir.mktmpdir do |folder|
