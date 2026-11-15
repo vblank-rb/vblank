@@ -41,9 +41,10 @@ gem "ruby-gba-emulator", path: "ruby-gba-emulator"
 # both: the extension and the bsnes core (see ruby-snes-emulator's Rakefile).
 gem "ruby-snes-emulator", path: "ruby-snes-emulator"
 
-# THE SEGA GENESIS'S EMULATOR, the same way: Genesis Plus GX, driven through Fiddle, whose core
-# `rake compile_core` in ruby-genesis-emulator/ builds (see its Rakefile). Its licence bars commercial
-# use, which is one more reason it is here for testing and not in the gemspec.
+# THE SEGA GENESIS'S EMULATOR, the same way: Genesis Plus GX, played through a small C extension of
+# the gem's own. Bundler builds neither here, so `rake compile_genesis_core` builds both: the
+# extension and the core (see ruby-genesis-emulator's Rakefile). Its licence bars commercial use,
+# which is one more reason it is here for testing and not in the gemspec.
 gem "ruby-genesis-emulator", path: "ruby-genesis-emulator"
 
 # THE PLAYSTATION'S EMULATOR, the same way: Beetle PSX, driven through Fiddle, whose core

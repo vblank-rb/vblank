@@ -180,15 +180,17 @@ class TestCore < Minitest::Test
   private def collect_dropped_consoles = 3.times { GC.start(full_mark: true, immediate_sweep: true) }
 
   # +count+ bytes of work RAM from +address+, high byte first, in the copy of the core the next console
-  # would take, opened as that console opens it.
+  # would take, opened as that console opens it, before any cartridge goes in.
   private def work_ram_in_next_copy(address, count)
     copy = RubyGenesisEmulator::KeptCopy.take
-    library = Fiddle::Handle.new(copy.path, Fiddle::Handle::RTLD_NOW)
-    data = Fiddle::Function.new(library["retro_get_memory_data"], [Fiddle::TYPE_UINT], Fiddle::TYPE_VOIDP)
-    ram = Fiddle::Pointer.new(data.call(RubyGenesisEmulator::Core::SYSTEM_RAM).to_i, 0x10000)
-    Array.new(count) { |i| ram[(address + i) ^ 1, 1].getbyte(0) }
+    dir = Dir.mktmpdir
+    frontend = RubyGenesisEmulator::Frontend.new(copy.path, dir, dir, RubyGenesisEmulator::Core::SETTINGS,
+                                                 RubyGenesisEmulator::Core::RGB565)
+    ram = RubyGenesisEmulator::Core::SYSTEM_RAM
+    Array.new(count) { |i| frontend.memory_read(ram, (address + i) ^ 1, 1).getbyte(0) }
   ensure
-    library&.close
+    frontend&.close
     copy&.give_back
+    FileUtils.rm_rf(dir) if dir
   end
 end

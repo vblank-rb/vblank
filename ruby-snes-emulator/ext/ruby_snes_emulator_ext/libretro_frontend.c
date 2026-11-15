@@ -25,9 +25,9 @@
  *
  * THE SAME FILE SERVES ANY LIBRETRO CORE. Nothing here names a console: the core's settings, the
  * picture format it may ask for, and its memory ids all come from the Ruby that makes a Frontend.
- * The Genesis's and the PlayStation's emulators are written over the same retro_* calls and can
- * carry this file as it is, with an Init function of their own (ruby_snes_emulator_ext.c is this
- * gem's), rather than a frontend of each.
+ * So each emulator gem carries this file as it is, with an Init function of its own (its
+ * ruby_<gem>_ext.c), rather than a frontend of each: ruby-snes-emulator's and
+ * ruby-genesis-emulator's copies are the same file, and a change to one is made to both.
  *
  * The callbacks allocate with malloc, never through Ruby: Ruby's allocator may start the garbage
  * collector, and the core may call back from a stack Ruby knows nothing of.

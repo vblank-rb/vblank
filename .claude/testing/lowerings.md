@@ -50,7 +50,7 @@ mirrors `examples/`: a test there plays one example built for the Super Nintendo
 
 **The Sega Genesis run is built the same way.** Its player (`CartridgeCheckedPlayer.for(:genesis)`, over
 `Genesis::CheckedRun`) plays each test's program as a Genesis program in Genesis Plus GX
-(ruby-genesis-emulator, whose core `rake compile_genesis_core` builds), and
+(ruby-genesis-emulator, whose core and C extension `rake compile_genesis_core` builds), and
 `test/lowering/genesis/vblank/ir/backends/genesis/` is its own folder. The C, JavaScript and Ruby
 runs play the suite as the Genesis too, and skip a recording: it has no clock to play one by yet.
 

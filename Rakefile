@@ -46,12 +46,12 @@ task :compile_snes_core do
   Dir.chdir("ruby-snes-emulator") { sh "rake", "compile", "compile_core" }
 end
 
-# THE SEGA GENESIS'S EMULATOR: Genesis Plus GX, built with ruby-genesis-emulator's probe patch (that
-# gem's Rakefile says how). Its binding is plain Ruby too, so the core is all there is to build, once;
-# the Genesis run is the only one that plays its cartridges.
-desc "Build the Genesis Plus GX core the Sega Genesis run plays its cartridges in, if it is not built"
+# THE SEGA GENESIS'S EMULATOR: Genesis Plus GX, built with ruby-genesis-emulator's probe patch, and the
+# small C extension it is played through (that gem's Rakefile says how). Each is built only when it is
+# missing or out of date; the Genesis run is the only one that plays its cartridges.
+desc "Build the Genesis Plus GX core the Sega Genesis run plays its cartridges in, and its C extension, if not built"
 task :compile_genesis_core do
-  Dir.chdir("ruby-genesis-emulator") { sh "rake", "compile_core" }
+  Dir.chdir("ruby-genesis-emulator") { sh "rake", "compile", "compile_core" }
 end
 
 # THE PLAYSTATION'S EMULATOR: Beetle PSX, built with ruby-ps1-emulator's probe patch (that gem's

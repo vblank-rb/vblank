@@ -126,9 +126,10 @@ module VBlank
       end
 
       # THE SEGA GENESIS'S EMULATOR is a gem of its own too, ruby-genesis-emulator: Genesis Plus GX,
-      # built as a libretro core with a patch that hands over the console's memories, driven through
-      # Fiddle. It is loaded the same way, the gem first and this repository's checkout second, and
-      # when it is missing it says how to get it.
+      # built as a libretro core with a patch that hands over the console's memories, played through a
+      # small C extension of the gem's own, so a cartridge plays in any Ractor. It is loaded the same
+      # way, the gem first and this repository's checkout second, and when it is missing it says how
+      # to get it.
       def load_genesis!
         return true if genesis_loaded?
 
@@ -140,8 +141,9 @@ module VBlank
           raise LoadError, "An emulator is required to run a Sega Genesis cartridge, and ruby-genesis-emulator will " \
                            "not load. To fix this, add it to the git block that names vblank in your Gemfile: " \
                            "widen its glob to \"{,ruby-gba-emulator/,ruby-genesis-emulator/}*.gemspec\" and add " \
-                           "`gem \"ruby-genesis-emulator\"` inside it. Then run `rake compile_core` in " \
-                           "ruby-genesis-emulator/ to build the Genesis Plus GX core it plays cartridges in."
+                           "`gem \"ruby-genesis-emulator\"` inside it. Then run `rake compile compile_core` in " \
+                           "ruby-genesis-emulator/ to build its C extension and the Genesis Plus GX core it plays " \
+                           "cartridges in."
         end
 
         $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)

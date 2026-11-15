@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "fiddle"
 require "fileutils"
 require "tmpdir"
 
@@ -22,10 +21,10 @@ module RubyGenesisEmulator
   # process are two consoles that cannot see each other. The copy is loaded with its names kept
   # to itself (no RTLD_GLOBAL), or the second copy's code would call into the first's.
   #
-  # The core talks back through functions it is handed (the libretro callbacks): it asks its
-  # settings through the environment callback, hands over each finished picture and each batch of
-  # sound, and asks which buttons are down. Those are Ruby blocks wrapped as C functions (Fiddle
-  # closures), kept alive here for as long as the core is.
+  # The core is played through Frontend, this gem's C extension: it opens the copy, answers what
+  # the core asks, and keeps the picture and the sound the core hands over until they are asked for
+  # here (ext/ruby_genesis_emulator_ext/libretro_frontend.c says why that is C). So a Core can be
+  # made and played in any Ractor.
   #
   # ENDIANNESS. The 68000 is big-endian: the high byte of a number is at the lower address. The
   # library keeps work RAM as 16-bit words in the host's own order, so on a little-endian machine
@@ -56,16 +55,14 @@ module RubyGenesisEmulator
     BUTTONS = { b: 0, a: 1, mode: 2, start: 3, up: 4, down: 5, left: 6, right: 7,
                 c: 8, y: 9, x: 10, z: 11 }.freeze
 
-    # libretro's environment calls that matter here.
-    GET_CAN_DUPE = 3
-    GET_SYSTEM_DIRECTORY = 9
-    SET_PIXEL_FORMAT = 10
-    GET_VARIABLE_UPDATE = 17
-    GET_SAVE_DIRECTORY = 31
+    # The settings the core asks for, as libretro names them: none, so it keeps its own.
+    SETTINGS = Ractor.make_shareable({})
+
+    # libretro's picture format of two bytes a pixel, five bits of red, six of green and five of
+    # blue: the one the core is let draw in, and the one PIXEL_COLORS reads.
     RGB565 = 2
 
     JOYPAD = 1
-    JOYPAD_MASK = 256
 
     # The picture of the usual setting: 320 pixels across and 224 lines down. A game that asks the
     # video chip for 256 across (H32) or 240 lines shows a different size, which #width and #height say.
@@ -90,19 +87,12 @@ module RubyGenesisEmulator
     # without one keeps them in a folder of its own that is gone with it.
     def initialize(rom_path, save_dir: nil)
       @dir = Dir.mktmpdir("ruby-genesis-emulator")
-      @save_dir = save_dir || @dir
-      @buttons = Array.new(2) { [] }
       @frames = 0
       @picture = nil
       @audio = "".b
       @width = WIDTH
       @height = HEIGHT
-      @kept = [] # what the core holds a pointer to, kept from the garbage collector
-      load_library
-      hand_over_callbacks
-      @call[:retro_init].call
-      @shutdown = Shutdown.new(@call, @handle, @copy, @dir, @save_dir)
-      ObjectSpace.define_finalizer(self, @shutdown)
+      start_frontend(save_dir || @dir)
       load_cartridge(rom_path)
     end
 
@@ -111,12 +101,14 @@ module RubyGenesisEmulator
       unknown = buttons - BUTTONS.keys
       raise ArgumentError, "a Genesis controller has no #{unknown.join(', ')} button" unless unknown.empty?
 
-      @buttons[port] = buttons.map { |button| BUTTONS.fetch(button) }
+      @frontend.set_buttons(port, buttons.uniq.sum { |button| 1 << BUTTONS.fetch(button) })
     end
 
     # Plays one frame: up to the moment the console starts its next picture.
     def run_frame
-      @call[:retro_run].call
+      @frontend.run
+      @audio << @frontend.drain_audio
+      update_picture
       @frames += 1
       self
     end
@@ -203,12 +195,13 @@ module RubyGenesisEmulator
     def registers = REGISTER_NAMES.zip(memory(M68K_REGISTERS).unpack("L<*")).to_h
 
     # Work RAM read in place, at +address+ (only its low 16 bits matter, so $FF0100 and $0100 are
-    # the same byte), the high byte first as the console keeps a number.
-    def wram_read8(address) = live(SYSTEM_RAM, 0x10000)[(address & 0xFFFF) ^ 1, 1].getbyte(0)
+    # the same byte), the high byte first as the console keeps a number. Each address is taken within
+    # the 64K as the first is, so a read that runs past $FFFFFF goes on from $FF0000.
+    def wram_read8(address) = @frontend.memory_read(SYSTEM_RAM, (address & 0xFFFF) ^ 1, 1).getbyte(0)
     def wram_read16(address) = wram_bytes(address, 2).unpack1("n")
     def wram_read32(address) = wram_bytes(address, 4).unpack1("N")
     def wram_bytes(address, count) = Array.new(count) { |i| wram_read8(address + i) }.pack("C*")
-    def wram_write8(address, value) = (live(SYSTEM_RAM, 0x10000)[(address & 0xFFFF) ^ 1, 1] = [value & 0xFF].pack("C"))
+    def wram_write8(address, value) = @frontend.memory_write(SYSTEM_RAM, (address & 0xFFFF) ^ 1, [value & 0xFF].pack("C"))
     def wram_write32(address, value) = [value & 0xFFFFFFFF].pack("N").bytes.each_with_index { |byte, i| wram_write8(address + i, byte) }
 
     # The cartridge's save memory, a byte for each odd address from $200000, as far as the last byte
@@ -218,225 +211,86 @@ module RubyGenesisEmulator
 
     # Unloads the cartridge, shuts the core and lets go of its library.
     def destroy
-      return unless @call
+      return unless @shutdown
 
       ObjectSpace.undefine_finalizer(self)
       @shutdown.call
-      @call = nil
-    end
-
-    # Each callback the core is handed, by the function that hands it over: what it returns, and what
-    # it is given.
-    CALLBACK_TYPES = {
-      retro_set_environment: [Fiddle::TYPE_BOOL, [Fiddle::TYPE_UINT, Fiddle::TYPE_VOIDP]],
-      retro_set_video_refresh: [Fiddle::TYPE_VOID, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_UINT, Fiddle::TYPE_UINT, Fiddle::TYPE_SIZE_T]],
-      retro_set_audio_sample: [Fiddle::TYPE_VOID, [Fiddle::TYPE_INT16_T, Fiddle::TYPE_INT16_T]],
-      retro_set_audio_sample_batch: [Fiddle::TYPE_SIZE_T, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_SIZE_T]],
-      retro_set_input_poll: [Fiddle::TYPE_VOID, []],
-      retro_set_input_state: [Fiddle::TYPE_INT16_T, [Fiddle::TYPE_UINT, Fiddle::TYPE_UINT, Fiddle::TYPE_UINT, Fiddle::TYPE_UINT]]
-    }.freeze
-
-    # +block+ as a C function the core can call, of the kind +setter+ hands over (CALLBACK_TYPES).
-    # Made here, not in a Core, so the block holds no Core.
-    def self.closure(setter, &block)
-      result, args = CALLBACK_TYPES.fetch(setter)
-      Fiddle::Closure::BlockCaller.new(result, args, &block)
+      @shutdown = nil
     end
 
     # A CONSOLE NOBODY DESTROYED IS SHUT BY RUBY when it collects the Core, the same way #destroy
     # shuts it. It must not be left as it is. Ruby closes the copy's lock when it collects it, and the
     # copy is handed to the next console made in this process, while the library is still open here
-    # with the old cartridge in it, never shut: the next console's start goes on top of it.
+    # with the old cartridge in it, never shut: the next console's start goes on top of it. So the
+    # frontend is closed first and the copy given back after.
     #
     # The finalizer must hold nothing that holds the Core, or the Core is never collected. The
-    # callbacks the Core handed over call its methods, so they hold it. So a shutdown first hands the
-    # core callbacks of its own: they answer where files go and ignore everything else.
+    # frontend's callbacks are C and hold nothing of Ruby's, so holding the frontend is enough.
     class Shutdown
-      def initialize(call, handle, copy, dir, save_dir)
-        @call = call
-        @handle = handle
+      def initialize(frontend, copy, dir)
+        @frontend = frontend
         @copy = copy
         @dir = dir
-        @system_dir = c_string(dir)
-        @save_dir = c_string(save_dir)
       end
 
       # Unloads the cartridge, shuts the core, closes the library and gives the copy back. A finalizer
       # is handed the Core's object id, which is not needed here.
       def call(_object_id = nil)
-        return unless @call
+        return unless @frontend
 
-        hand_over_own_callbacks
-        @call[:retro_unload_game].call
-        @call[:retro_deinit].call
-        @handle.close
+        @frontend.close
         @copy.give_back
-        @call = nil
+        @frontend = nil
         FileUtils.rm_rf(@dir)
-      end
-
-      private
-
-      def c_string(text)
-        pointer = Fiddle::Pointer.malloc(text.bytesize + 1, Fiddle::RUBY_FREE)
-        pointer[0, text.bytesize + 1] = "#{text}\0".b
-        pointer
-      end
-
-      def hand_over_own_callbacks
-        @callbacks = {
-          retro_set_environment: Core.closure(:retro_set_environment) { |cmd, data| environment(cmd, data) },
-          retro_set_video_refresh: Core.closure(:retro_set_video_refresh) { nil },
-          retro_set_audio_sample: Core.closure(:retro_set_audio_sample) { nil },
-          retro_set_audio_sample_batch: Core.closure(:retro_set_audio_sample_batch) { |_data, frames| frames },
-          retro_set_input_poll: Core.closure(:retro_set_input_poll) { nil },
-          retro_set_input_state: Core.closure(:retro_set_input_state) { 0 }
-        }
-        @callbacks.each { |setter, callback| @call.fetch(setter).call(callback) }
-      end
-
-      def environment(cmd, data)
-        pointer = case cmd & 0xFFFF
-                  when GET_SYSTEM_DIRECTORY then @system_dir
-                  when GET_SAVE_DIRECTORY then @save_dir
-                  else return false
-                  end
-        Fiddle::Pointer.new(data.to_i, 8)[0, 8] = [pointer.to_i].pack("J")
-        true
       end
     end
 
     private
 
-    def memory(id)
-      size = @call[:retro_get_memory_size].call(id)
-      return "".b if size.zero?
+    def memory(id) = @frontend.memory(id)
 
-      Fiddle::Pointer.new(@call[:retro_get_memory_data].call(id).to_i)[0, size]
-    end
-
-    def live(id, size) = Fiddle::Pointer.new(@call[:retro_get_memory_data].call(id).to_i, size)
-
-    FUNCTIONS = {
-      retro_set_environment: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
-      retro_set_video_refresh: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
-      retro_set_audio_sample: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
-      retro_set_audio_sample_batch: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
-      retro_set_input_poll: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
-      retro_set_input_state: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
-      retro_init: [[], Fiddle::TYPE_VOID],
-      retro_deinit: [[], Fiddle::TYPE_VOID],
-      retro_load_game: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_BOOL],
-      retro_unload_game: [[], Fiddle::TYPE_VOID],
-      retro_run: [[], Fiddle::TYPE_VOID],
-      retro_set_controller_port_device: [[Fiddle::TYPE_UINT, Fiddle::TYPE_UINT], Fiddle::TYPE_VOID],
-      retro_get_memory_data: [[Fiddle::TYPE_UINT], Fiddle::TYPE_VOIDP],
-      retro_get_memory_size: [[Fiddle::TYPE_UINT], Fiddle::TYPE_SIZE_T]
-    }.freeze
-
-    def load_library
-      @copy = KeptCopy.take
-      @handle = Fiddle::Handle.new(@copy.path, Fiddle::Handle::RTLD_NOW)
-      @call = FUNCTIONS.to_h do |name, (args, result)|
-        [name, Fiddle::Function.new(@handle[name.to_s], args, result)]
+    # Opens a copy of the core of this Core's own and starts it, keeping the picture to the format
+    # PIXEL_COLORS reads.
+    def start_frontend(save_dir)
+      copy = KeptCopy.take
+      begin
+        @frontend = Frontend.new(copy.path, @dir, save_dir, SETTINGS, RGB565)
+      rescue StandardError, LoadError
+        copy.give_back
+        FileUtils.rm_rf(@dir)
+        raise
       end
+      @shutdown = Shutdown.new(@frontend, copy, @dir)
+      ObjectSpace.define_finalizer(self, @shutdown)
       refuse_unpatched_core!
     end
 
     def refuse_unpatched_core!
-      return if @call[:retro_get_memory_size].call(VIDEO_RAM) == 0x10000
+      return if @frontend.memory_size(VIDEO_RAM) == 0x10000
 
+      destroy
       raise LoadError, "#{CoreLibrary.path} is a Genesis Plus GX core built without this gem's probe patch, so it " \
                        "cannot hand over the console's memories. Build it with `rake compile_core` in " \
                        "ruby-genesis-emulator/."
     end
 
-    def hand_over_callbacks
-      @callbacks = {
-        retro_set_environment: Core.closure(:retro_set_environment) { |cmd, data| environment(cmd, data) },
-        retro_set_video_refresh: Core.closure(:retro_set_video_refresh) { |*args| take_picture(*args) },
-        retro_set_audio_sample: Core.closure(:retro_set_audio_sample) { nil },
-        retro_set_audio_sample_batch: Core.closure(:retro_set_audio_sample_batch) { |data, frames| take_sound(data, frames) },
-        retro_set_input_poll: Core.closure(:retro_set_input_poll) { nil },
-        retro_set_input_state: Core.closure(:retro_set_input_state) do |port, device, _index, id|
-          button_state(port, device, id)
-        end
-      }
-      @callbacks.each { |setter, callback| @call.fetch(setter).call(callback) }
-    end
-
-    # What the core asks of the controller: one button, or all of them as bits when it asks for the mask.
-    def button_state(port, device, id)
-      return 0 unless device == JOYPAD
-
-      down = @buttons.fetch(port, [])
-      return down.sum { |button| 1 << button } if id == JOYPAD_MASK
-
-      down.include?(id) ? 1 : 0
-    end
-
-    # What the core asks of its frontend. Anything not answered here is answered "no", which a
-    # core takes as the frontend not having it, and uses its own settings.
-    def environment(cmd, data)
-      case cmd & 0xFFFF
-      when GET_CAN_DUPE then write_bool(data, true)
-      when SET_PIXEL_FORMAT then Fiddle::Pointer.new(data.to_i)[0, 4].unpack1("l<") == RGB565
-      when GET_SYSTEM_DIRECTORY then write_pointer(data, kept_string(@dir))
-      when GET_SAVE_DIRECTORY then write_pointer(data, kept_string(@save_dir))
-      when GET_VARIABLE_UPDATE then write_bool(data, false)
-      else false
-      end
-    rescue StandardError
-      false
-    end
-
-    def write_bool(data, value)
-      Fiddle::Pointer.new(data.to_i, 1)[0, 1] = value ? "\1" : "\0"
-      true
-    end
-
-    def write_pointer(data, pointer)
-      Fiddle::Pointer.new(data.to_i, 8)[0, 8] = [pointer.to_i].pack("J")
-      true
-    end
-
-    # A C string the core may hold on to for as long as this core lives.
-    def kept_string(text) = kept_bytes("#{text}\0".b)
-
-    # +bytes+ copied into memory of their own that does not move, kept as long as the core lives.
-    def kept_bytes(bytes)
-      pointer = Fiddle::Pointer.malloc([bytes.bytesize, 1].max, Fiddle::RUBY_FREE)
-      pointer[0, bytes.bytesize] = bytes
-      @kept << pointer
-      pointer
-    end
-
-    # A picture handed over at the end of a frame. A null one is the last frame again.
-    def take_picture(data, width, height, pitch)
-      return if data.null?
+    # The picture handed over by the frame just played, if there was one. A frame the core drew
+    # nothing new for keeps the last.
+    def update_picture
+      bytes, width, height = @frontend.drain_picture
+      return unless bytes
 
       @width = width
       @height = height
-      rows = Fiddle::Pointer.new(data.to_i)[0, pitch * height]
-      @picture = pitch == width * 2 ? rows : (0...height).map { |y| rows.byteslice(y * pitch, width * 2) }.join
+      @picture = bytes
     end
 
-    # A batch of sound, +frames+ pairs of 16-bit samples, kept until #take_audio asks for it. It says
-    # how many pairs it took, which is all of them.
-    def take_sound(data, frames)
-      @audio << Fiddle::Pointer.new(data.to_i)[0, frames * 4]
-      frames
-    end
-
-    # libretro's retro_game_info: the path, the bytes and their count, and nothing for meta.
+    # Hands the core the cartridge's path and bytes, and plugs a pad into the first port.
     def load_cartridge(rom_path)
-      bytes = File.binread(rom_path)
-      path = kept_string(File.expand_path(rom_path))
-      data = kept_bytes(bytes)
-      info = kept_bytes([path.to_i, data.to_i, bytes.bytesize, 0].pack("J4"))
-      raise ArgumentError, "Genesis Plus GX would not load #{rom_path}" unless @call[:retro_load_game].call(info)
+      loaded = @frontend.load_game(File.expand_path(rom_path), File.binread(rom_path))
+      raise ArgumentError, "Genesis Plus GX would not load #{rom_path}" unless loaded
 
-      @call[:retro_set_controller_port_device].call(0, JOYPAD)
+      @frontend.set_controller_port_device(0, JOYPAD)
     end
   end
 end
