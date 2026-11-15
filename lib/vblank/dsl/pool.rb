@@ -203,8 +203,20 @@ module VBlank
       COPIED_FIELDS = %i[x y].freeze
 
       # The key the game's block gives for the thing in the slot the copy is on.
-      private def order_key_at_cursor
-        @order_key.call(Instance.new(self, Value.handed_to_block(@builder, Build.var_ref(stacking_cursor_var))))
+      private def order_key_at_cursor = key_at_cursor(@order_key)
+
+      # What +key+, given rather than the pool's own, gives for the thing in the slot the copy is on.
+      private def key_at_cursor(key)
+        key.call(Instance.new(self, Value.handed_to_block(@builder, Build.var_ref(stacking_cursor_var))))
+      end
+
+      # How many fraction bits +key+ gives a thing of this pool, or nil for a whole number. The
+      # number is worked out and dropped. Public for Builder::DrawOrder#order_key_bits, which asks
+      # before the pool is ordered, so an order whose numbers are of two kinds is refused.
+      def order_key_fraction_bits(key)
+        answer = key_at_cursor(key)
+        answer.discard! if answer.is_a?(Value)
+        Fraction.bits_of(answer)
       end
 
       # Whether +node+ reads the slot the copy is on only to read a copied field there.

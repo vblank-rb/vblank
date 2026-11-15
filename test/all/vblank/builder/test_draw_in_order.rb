@@ -234,6 +234,30 @@ class TestDrawInOrder < Minitest::Test
     assert_backends_agree(keyed_program(-10, front: :highest), frames: 2)
   end
 
+  # NUMBERS THAT ALL HOLD A FRACTION are put in order the way Ruby orders them: 54.5 is behind
+  # 60.0, and 66.5 is in front of it. The hero's number is his y and a half, the enemy's its y,
+  # given a fraction with `.to_f` (mixing the two kinds is refused; see the refusals below).
+  private def fraction_program(hero_y)
+    block = BLOCK
+    enemy_at = ENEMY_AT
+    program do
+      screen :tiled
+      image(:enemy, "#" => :red) { block }
+      image(:hero, "#" => :green) { block }
+      half = var :half, 0.5
+      enemy = sprite :enemy, at: enemy_at
+      hero = sprite :hero, at: [enemy_at[0] + 8, hero_y]
+      draw_in_order(enemy, hero) { |thing| thing.equal?(hero) ? thing.y.to_f + half : thing.y.to_f }
+      game_loop {}
+    end
+  end
+
+  def test_numbers_that_all_hold_a_fraction_are_put_in_order
+    assert_equal RED, shown(fraction_program(54)), "54.5 is behind 60, so the enemy covers the hero"
+    assert_equal GREEN, shown(fraction_program(66)), "66.5 is in front of 60"
+    assert_backends_agree(fraction_program(54), frames: 2)
+  end
+
   # A POOL'S THINGS TAKE PART ONE BY ONE. Two of them are spawned so that the older — which
   # a pool draws in front — stands higher; in order, the lower one covers it instead.
   private def pool_program(ordered: true)
@@ -482,6 +506,77 @@ class TestDrawInOrder < Minitest::Test
 
   private def refusal(&block)
     assert_raises(ArgumentError) { program(&block) }.message
+  end
+
+  # A block that gives one thing a number with a fraction and another a whole number is refused,
+  # naming both: the order would compare 54.5, kept multiplied up, against a plain 60.
+  def test_a_fraction_beside_a_whole_number_is_refused
+    block = BLOCK
+    message = refusal do
+      screen :tiled
+      image(:enemy, "#" => :red) { block }
+      image(:hero, "#" => :green) { block }
+      half = var :half, 0.5
+      enemy = sprite :enemy, at: [60, 60]
+      hero = sprite :hero, at: [68, 54]
+      draw_in_order(enemy, hero) { |thing| thing.equal?(hero) ? thing.y.to_f + half : thing.y }
+    end
+
+    assert_match(/a whole number for sprite :enemy/, message)
+    assert_match(/a fraction for sprite :hero/, message)
+    assert_match(/one kind only/, message)
+  end
+
+  def test_a_pools_fraction_beside_a_sprites_whole_number_is_refused
+    block = BLOCK
+    message = refusal do
+      screen :tiled
+      image(:walker, "#" => :red) { block }
+      image(:hero, "#" => :blue) { block }
+      walkers = pool :walker, x: 0, y: 0, lift: 0.0, capacity: 4, image: :walker
+      hero = sprite :hero, at: [62, 58]
+      draw_in_order(walkers, hero) { |thing| thing.equal?(hero) ? thing.y : thing.y.to_f + thing.lift }
+    end
+
+    assert_match(/a fraction for pool :walker/, message)
+    assert_match(/a whole number for sprite :hero/, message)
+  end
+
+  # With no block the numbers are the bottoms of the boxes, and a pool whose places hold a fraction
+  # has a bottom that holds one: the refusal then asks for a block.
+  def test_a_pools_fraction_bottom_beside_a_sprites_whole_one_asks_for_a_block
+    block = BLOCK
+    message = refusal do
+      screen :tiled
+      image(:walker, "#" => :red) { block }
+      image(:hero, "#" => :blue) { block }
+      walkers = pool :walker, x: 0.0, y: 0.0, capacity: 4, image: :walker
+      hero = sprite :hero, at: [62, 58]
+      draw_in_order walkers, hero
+    end
+
+    assert_match(/a fraction for pool :walker/, message)
+    assert_match(/Give draw_in_order a block/, message)
+  end
+
+  # Two fractions with different bits are refused the same way. A game's own fractions all have
+  # the default bits, so the coarse one is made by hand, as test_fraction_type.rb makes one.
+  def test_fractions_of_different_bits_are_refused
+    block = BLOCK
+    message = refusal do
+      screen :tiled
+      image(:enemy, "#" => :red) { block }
+      image(:hero, "#" => :green) { block }
+      var :coarse, 0
+      coarse = VBlank::DSL::Value.new(self, VBlank::IR::Build.var_ref(:coarse), name: :coarse, fraction_bits: 8)
+      enemy = sprite :enemy, at: [60, 60]
+      hero = sprite :hero, at: [68, 54]
+      draw_in_order(enemy, hero) { |thing| thing.equal?(hero) ? coarse : thing.y.to_f }
+    end
+
+    assert_match(/16 bits of fraction for sprite :enemy/, message)
+    assert_match(/8 bits of fraction for sprite :hero/, message)
+    assert_match(/the same bits/, message)
   end
 
   def test_a_bitmap_screen_is_refused
