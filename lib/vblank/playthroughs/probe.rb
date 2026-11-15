@@ -26,7 +26,17 @@ module VBlank
     # variables, lists and pools are read by the names the game gave them, as every other reader
     # reads them, from the build's record of where each is and how wide.
     #
-    #   Probe.open(game.build_rom(console: :gba)) { |probe| probe.var(:hearts) }
+    #   Probe.open(game.build_rom(console: :gba)) do |probe|
+    #     probe.step_until_started(within: 60)
+    #     probe.var(:hearts)   # => 3, the number the game starts it at
+    #   end
+    #
+    # EVERY PROBE OPENS AT POWER-ON, a built cartridge's too, so a port can play its build frame for
+    # frame beside its original. Until the game has run its lines before its first wait for the
+    # screen (#game_started?), what it keeps in memory is what memory held at power-on, or the
+    # nought a runtime clears it to while it sets up, and a read by name hands that back as if the
+    # game had set it. The Color's runtime takes several frames over that. So step until the game
+    # has started (#step_until_started) before reading the numbers it starts with.
     #
     # WHAT THE GAME SUPPLIES: the cartridge (a path, or anything Diagnostics::CartridgeFile takes) and
     # its labels, as its decompilation's RAM map has them: a name to an address on the console's bus,
@@ -118,6 +128,14 @@ module VBlank
 
         raise NeverHappened, never_happened_message(what, "#{within} frames", watch)
       end
+
+      # Whether the game on a cartridge built here has started, so its variables hold the numbers it
+      # set (Diagnostics::Verifier#game_started?). A cartridge that is only its file is refused, since
+      # nothing says when its game starts.
+      def game_started? = @reader.game_started?
+
+      # Play a frame at a time until the game has started (#game_started?), at most +within+ frames.
+      def step_until_started(within:) = step_until("the game's start", within: within) { game_started? }
 
       # Press +button+ again and again until the block answers yes, at most +within+ presses. The block
       # is asked on every frame, so the probe stops on the frame it first answers yes, part way through

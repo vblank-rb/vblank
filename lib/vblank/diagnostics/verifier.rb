@@ -548,6 +548,22 @@ module VBlank
         @var_addresses.key?(name)
       end
 
+      # WHETHER THE GAME HAS STARTED: run the lines it has before its first wait for the screen, so
+      # what it keeps holds the numbers it set. Until then the memory a variable is kept in holds
+      # whatever it held at power-on, or the nought a runtime clears it to while it sets up, and a
+      # read by name would hand that back as the game's number. A Probe asks it to step to the
+      # start (Probe#step_until_started).
+      #
+      # On the Advance one frame played is the answer: its cartridge sets up and reaches the game's
+      # own lines within its first frame, so only a game whose own lines before its first wait take
+      # longer than a frame is read early. A console whose runtime counts its waits answers from
+      # that count (CountedPasses), since its setting up takes several frames.
+      def game_started?
+        refuse_missing_build_record!("when its game has started")
+        ensure_rendered!
+        @played.positive?
+      end
+
       private def refuse_unknown_variable_places!
         refuse_missing_build_record!("where its variables are", or_else: "or hand the Verifier where they are: " \
                                                                        "`vars: backend.var_addresses`")

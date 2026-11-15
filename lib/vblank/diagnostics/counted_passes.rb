@@ -24,6 +24,12 @@ module VBlank
         [var_at(@rom.built.waits_counted_at) - 1, 0].max
       end
 
+      # The game has started once its runtime has counted a wait (Verifier#game_started?). The count
+      # is read only after a frame has played: before that it is whatever memory held at power-on.
+      def game_started?
+        super && var_at(@rom.built.waits_counted_at).positive?
+      end
+
       private
 
       # The runtime counts its own passes (see #passes), so there is nothing to watch.
