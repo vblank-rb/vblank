@@ -174,6 +174,18 @@ module VBlank
         end
       end
 
+      # HOW MUCH OF THE SOUND CHIP'S MEMORY THE GAME USES. The chip has 64K of its own, which the
+      # console's processor cannot see: its program, the table of its recordings and the recordings
+      # are sent there (IR::Backends::SNES::Runtime::Sound#image). +used+ counts from its first
+      # byte, the chip's own working memory included, to the end of what the game sends; +room+ is
+      # all of it. #line is what `vblank build` prints of it.
+      SoundMemory = Data.define(:used, :room) do
+        def line = format("Sound memory: %.1f KB of %d KB", used / 1024.0, room / 1024)
+      end
+
+      # The SoundMemory of the game, or nil for a game with no sound or a cartridge read from a file.
+      def sound_memory = @built&.sound_memory
+
       def console = self.class.console
       def header_title = self.class.title_field_of(@bytes)
       alias buffer bytes

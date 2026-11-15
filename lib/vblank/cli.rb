@@ -1799,6 +1799,8 @@ module VBlank
       path = options[:output] || File.join(File.dirname(File.expand_path(game_file)), game.default_filename(console: console))
       rom.write(path)
       say "Built #{File.basename(path)} (#{rom.size} bytes)"
+      # A sound chip with a memory of its own that the game fills: how full it is.
+      say rom.sound_memory.line if rom.respond_to?(:sound_memory) && rom.sound_memory
       # What asset packing and the quick memory did is said for a console whose build does them:
       # the Color's packs nothing and has no quick memory to choose for.
       if options[:stats] && VBlank::Console.for(console).measured_builds?

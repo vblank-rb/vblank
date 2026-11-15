@@ -162,6 +162,12 @@ module VBlank
             @next_scratch.tap { @next_scratch += bytes }
           end
 
+          # #scratch kept for +name+, so it is asked for and read back by name like any other place:
+          # a pointer an instruction reads through, which must be on the direct page.
+          def reserve_scratch(name, bytes)
+            @places.fetch(name) { @places[name] = scratch(bytes) }
+          end
+
           # The address +name+ was given.
           def [](name) = @places.fetch(name)
 

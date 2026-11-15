@@ -7,6 +7,12 @@ A game for several consoles that wants a different form of a sound on one of the
 on the Advance, the same song as notes on the Super Nintendo, whose sound chip has no room for the
 recording) asks `built_for?(:snes)` around the lines that declare it (`screen.md`).
 
+On the Super Nintendo the two kinds of sound are kept in two places. Recordings and instruments go
+into the sound chip's own memory, less than 64 KB, and `vblank build` says how much of it a game
+uses (`Sound memory: 47.8 KB of 64 KB`). Songs and sound effects stay in the cartridge, where a
+song's notes take as many banks as they need: 16 bytes a note or rest, kept twice for a song that
+repeats, up to 65536 in a game (`super-nintendo.md`, `songs`).
+
 ## On this page
 
 - `enable_sound`; `define_sound :name, …` + `beep :name`; `noise`, `wave` / `stop_wave`.

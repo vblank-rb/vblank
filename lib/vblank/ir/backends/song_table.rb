@@ -247,8 +247,16 @@ module VBlank
         # the number the cartridge's sound log keeps an entry as. +recordings+ (the lowering) gives
         # the row of "recording_plays" a recorded part's note plays (Lowering::Sound#recorded_note_row),
         # for its recording, its pitch, its volume as written and its shape (the note's or the part's).
-        def words(voicing, recordings: nil, &number_of)
+        #
+        # SONGS' NOTES APART (+notes_apart+), for a console that keeps them out of the table because
+        # the table would not fit where its player reads it (SNES::SongBanks). Each song part's two
+        # lists of notes then go one after another in #apart_note_words instead of after the song's
+        # record, and the part's entry names where each list starts there as a note's number, counted
+        # from nought, not as a place in the table. A sound effect's notes stay in the table. The
+        # rest of the table is laid out as it always is, so a console that never asks is unchanged.
+        def words(voicing, recordings: nil, notes_apart: false, &number_of)
           @recordings = recordings
+          @apart_notes = notes_apart ? [] : nil
           @songs.each { |song| refuse_parts!(song) }
           @groups = [] # every group's commands, each once, in the order first met
           @wobble_records = [] # every wobble's record, each once
@@ -305,6 +313,10 @@ module VBlank
           refuse_table_too_long!(table)
           table
         end
+
+        # The song parts' notes, as words, from the last #words told +notes_apart+, each note
+        # NOTE_BYTES long and numbered by its place among them.
+        def apart_note_words = @apart_notes.dup
 
         # Whether the game sets its music volume (Music.follows_level?).
         def follows_level? = @follows_level
@@ -363,9 +375,14 @@ module VBlank
             parts.each_with_index do |part, p|
               entry = p * PART_BYTES / 2
               part[:lists].each_with_index do |notes, which|
-                entries[entry + (which * 2)] = (at + tail.size) * 2
                 entries[entry + (which * 2) + 1] = notes.size
-                notes.each { |note| tail.concat(note_words(note, places)) }
+                if @apart_notes
+                  entries[entry + (which * 2)] = @apart_notes.size * 2 / NOTE_BYTES
+                  notes.each { |note| @apart_notes.concat(note_words(note, places)) }
+                else
+                  entries[entry + (which * 2)] = (at + tail.size) * 2
+                  notes.each { |note| tail.concat(note_words(note, places)) }
+                end
               end
               if part[:loudness]
                 entries[entry + (LOUDNESS_GROUPS / 2)] = (at + tail.size) * 2

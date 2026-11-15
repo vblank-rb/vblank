@@ -290,7 +290,12 @@ module VBlank
         music_volume: works,
         fade_music_in: works,
         fade_music_out: works,
-        songs: works("see `song`. #{Answers::GLIDES_CARRY_ON} #{Answers::NOTE_VOICES_NOT_UNDER_VOLUME}"),
+        songs: works("see `song`. #{Answers::GLIDES_CARRY_ON} #{Answers::NOTE_VOICES_NOT_UNDER_VOLUME} The songs " \
+                     "stay in the cartridge, and the console reads their notes from there. They do not go into the " \
+                     "sound chip's memory. A song can be longer than a bank of the cartridge: the notes go into " \
+                     "as many banks as they need. Each note or rest takes 16 bytes, and a song that repeats " \
+                     "keeps its notes two times. The songs of a game can have 65536 notes and rests. If they have " \
+                     "more, the build stops and gives the number."),
         sound_effects: works("see `song`."),
         sample: works("each recording plays on a voice of the sound chip. The sound chip has eight voices. Four " \
                       "always play recordings, and each of the other four does when the game never uses it for a " \
@@ -306,7 +311,8 @@ module VBlank
                       "the scene or routine starts, over the ones before, and the game stops for some frames while " \
                       "they go. A recording that more than one of them plays, or that a song plays, stays in the " \
                       "sound memory for all of the game. When the recordings do not fit, the build stops and gives " \
-                      "the bytes they need and the room there is."),
+                      "the bytes they need and the room there is. When they fit, `vblank build` gives how much " \
+                      "of the sound memory the game uses (`Sound memory: 47.8 KB of 64 KB`)."),
         instrument: works("see `sample`.")
       })
 

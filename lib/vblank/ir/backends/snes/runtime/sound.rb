@@ -256,7 +256,15 @@ module VBlank
             # What goes across, and where (#image): the bytes sent at power-on from DRIVER_AT, the page
             # the table starts on, where the scene area starts, and each scene's own recordings as the
             # bytes that go there, a whole number of turns of three.
-            Image = Data.define(:bytes, :table_at, :scene_area, :scene_bytes)
+            Image = Data.define(:bytes, :table_at, :scene_area, :scene_bytes) do
+              # How much of the sound chip's memory the game uses, counted from its first byte: up to
+              # the end of what is sent at power-on, or of the biggest scene's own recordings.
+              def chip_bytes = scene_area ? scene_area + scene_bytes.map(&:size).max.to_i : DRIVER_AT + bytes.size
+            end
+
+            # The sound chip's memory, all of it, for saying how much of it a game uses. What is sent
+            # ends at MEMORY_END.
+            MEMORY_BYTES = 0x10000
 
             # The most bytes of a scene's recordings one section of the cartridge holds: a whole number
             # of turns, well inside a bank, so a scene's own are cut into several where they need it.

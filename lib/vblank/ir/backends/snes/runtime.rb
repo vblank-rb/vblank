@@ -77,8 +77,9 @@ module VBlank
                                   steps_shapes: c.steps_shapes, swells: c.swells, slides: c.slides, sides: c.sides)
           end
 
-          # The runtime's sections: the entry points in the first bank, and everything else in one, for
-          # a cartridge that carries +carries+. +lowering+ gives what only lowering the game finds out:
+          # The runtime's sections (a Made, with how much of the sound chip's memory the game uses):
+          # the entry points in the first bank, and everything else in one, for a cartridge that
+          # carries +carries+. +lowering+ gives what only lowering the game finds out:
           # the routine run at each frame boundary, the wave voice's waveforms, the sections of its
           # songs and of its plays of recordings, where it keeps its music volume, the layers it bends,
           # and how its layers and sprites are drawn. +sleeps_every_pass+ for the cartridge a checked
@@ -133,15 +134,22 @@ module VBlank
             emit_start(asm, chip: c.chip?, sound: c.sound, opening_recordings: lowered[:opening_recordings], interrupt_on: !counted)
             emit_frame_begins(asm, lowering.frame_begins)
             chip_paint = c.painted && c.chip? ? [ChipFill.section, ChipBlit.section] : []
-            [vectors.section, asm.section, *chip_paint] +
-              (c.sound ? Sound.sections(memory, lowered[:waves], recordings: lowered[:recordings], scenes: lowered[:scene_recordings]) : []) +
-              [lowered[:music], lowered[:plays]].compact
+            if c.sound
+              sound = Sound.sections(memory, lowered[:waves], recordings: lowered[:recordings], scenes: lowered[:scene_recordings])
+              image = Sound.image_for(memory, lowered[:waves], recordings: lowered[:recordings], scenes: lowered[:scene_recordings])
+            end
+            Made.new(sections: [vectors.section, asm.section, *chip_paint, *sound, *lowered[:music]&.sections, lowered[:plays]].compact,
+                     sound_memory: image && Cartridge::SNESROM::SoundMemory.new(used: image.chip_bytes, room: Sound::MEMORY_BYTES))
           end
+
+          # What #sections made: the sections, and how much of the sound chip's memory the game uses
+          # (Cartridge::SNESROM::SoundMemory), nil for a game with no sound.
+          Made = Data.define(:sections, :sound_memory)
 
           # What +lowering+ reports the runtime needs, asked once and in this order, since a section
           # asked for is made then.
           def lowered_facts(carries, lowering)
-            { waves: lowering.sound_waves, music: (lowering.music_section if carries.songs),
+            { waves: lowering.sound_waves, music: (lowering.songs_laid_out if carries.songs),
               level_at: (lowering.variables.fetch(IR::Tunes::LEVEL) if carries.follows_level),
               recordings: lowering.sound_recordings, scene_recordings: lowering.scene_recording_loads,
               opening_recordings: lowering.opening_scene_recordings_label,
@@ -157,7 +165,10 @@ module VBlank
               Sound.emit(asm, memory, lowered[:waves], recordings: lowered[:recordings], scenes: lowered[:scene_recordings],
                                       songs: !lowered[:music].nil?, samples: !lowered[:plays].nil?, counted: counted)
             end
-            Music.emit(asm, memory, level_at: lowered[:level_at], effects: carries.effects, recorded: lowered[:recorded_parts]) if lowered[:music]
+            if lowered[:music]
+              Music.emit(asm, memory, level_at: lowered[:level_at], effects: carries.effects, recorded: lowered[:recorded_parts],
+                                      notes_apart: lowered[:music].notes_apart?)
+            end
             Recordings.emit(asm, memory, voices: carries.recording_voices) if lowered[:plays]
           end
 

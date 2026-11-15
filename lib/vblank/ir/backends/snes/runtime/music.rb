@@ -143,22 +143,112 @@ module VBlank
             end
 
             # +level_at+ is where a game that sets its music volume keeps it (IR::Tunes::LEVEL), or nil;
-            # +effects+ how many sound effects the game has.
-            def emit(asm, memory, level_at: nil, effects: 0, recorded: false)
+            # +effects+ how many sound effects the game has; +notes_apart+ for a game whose song
+            # parts' notes are apart from the table (SongBanks).
+            def emit(asm, memory, level_at: nil, effects: 0, recorded: false, notes_apart: false)
               at = ->(name, plus = 0) { asm.abs(memory[name], plus) }
               sharing = effects.positive?
+              reserve_notes_apart(memory) if notes_apart
               emit_game_side(asm, at)
               emit_tune_hold(asm, at) if holds?(memory)
               emit_frames(asm, at, sharing, memory)
               emit_wobbles(asm, at, memory) if wobbles?(memory)
               emit_shapes(asm, at, memory) if steps_shapes?(memory)
               emit_swells(asm, at, memory) if swells?(memory)
-              emit_slides(asm, at) if slides?(memory)
+              emit_slides(asm, at, memory) if slides?(memory)
               emit_switch(asm, at, memory, level_at, sharing, recorded)
               emit_song_frame(asm, at, memory, level_at, sharing, recorded)
               emit_level(asm, at, memory, level_at, recorded) if level_at
               Effects.emit(asm, memory, effects, level_at, recorded: recorded) if sharing
+              emit_note_copies(asm, memory) if notes_apart
               emit_group(asm)
+            end
+
+            # A SONG'S NOTES APART. A game whose songs do not fit a bank of the cartridge keeps its
+            # song parts' notes in banks of their own (SongBanks), NOTES_A_PIECE to a bank, and a
+            # part's entry names its first note by number. A note's number gives its piece (the high
+            # bits) and its place in the piece (the low bits, sixteen bytes a note), and
+            # "music_note_pieces" gives where each piece went, so a note is read through a 24-bit
+            # pointer on the direct page (NOTE_POINTER, rt_music_note_point), not with the table's
+            # one label. Looking ahead to a part's next note reads its frame alone through the
+            # pointer; the note that is due is copied into NOTE_COPY (rt_music_note_copy_pointed),
+            # and every routine reads the note there (#emit_note_field), a tune's or an effect's
+            # alike: an effect's notes stay in the table, and its note is copied from there
+            # (rt_music_note_from_table) before the routines a tune's and an effect's notes share. A
+            # game whose songs fit reads its notes in the table as it always did, and has neither place.
+            NOTE_COPY = "rt music note copy"
+            NOTE_POINTER = "rt music note pointer"
+            NOTE_POINTER_BYTES = 4 # Three of address, and the nought the 16-bit store of its bank writes
+
+            def reserve_notes_apart(memory)
+              memory.reserve(NOTE_COPY, SNES::Music::NOTE_BYTES)
+              memory.reserve_scratch(NOTE_POINTER, NOTE_POINTER_BYTES)
+            end
+
+            # Whether the song parts' notes are apart from the table (NOTE_COPY).
+            def notes_apart?(memory) = memory.reserved?(NOTE_COPY)
+
+            # A = +field+ of the note at NOTE, a tune's or an effect's (SNES::Music's NOTE_ names): read
+            # in the table with X = NOTE, which it loads unless +x_holds_note+; or, with the notes
+            # apart, from NOTE_COPY, leaving X and Y as they were.
+            def emit_note_field(asm, memory, field, x_holds_note: false)
+              if notes_apart?(memory)
+                asm.lda(asm.abs(memory[NOTE_COPY], field))
+              else
+                asm.ldx(asm.abs(memory[NOTE])) unless x_holds_note
+                asm.lda(asm.long_x("music_data", field))
+              end
+            end
+
+            # rt_music_note_point (JSR): NOTE_POINTER = where the song note whose number is A is.
+            # rt_music_note_copy_pointed (JSR): the note there copied into NOTE_COPY.
+            # rt_music_note_from_table (JSR): the note at X in the table copied there, an effect's.
+            # Each uses A, X and Y.
+            def emit_note_copies(asm, memory)
+              pieces = SongBanks::NOTES_A_PIECE
+              pointer = memory[NOTE_POINTER]
+              copy = memory[NOTE_COPY]
+              asm.label("rt_music_note_point")
+              asm.pha
+              asm.and_a(pieces - 1) # its place in the piece...
+              Math.log2(SNES::Music::NOTE_BYTES).to_i.times { asm.asl }
+              asm.sta(asm.direct(pointer))
+              asm.pla
+              asm.xba # ...and the piece, from the high bits
+              asm.and_a(0x00FF)
+              (Math.log2(pieces).to_i - 8).times { asm.lsr }
+              Math.log2(SongBanks::PIECE_ENTRY_BYTES).to_i.times { asm.asl }
+              asm.tax
+              asm.lda(asm.long_x(SongBanks::PIECES_LABEL))
+              asm.clc
+              asm.adc(asm.direct(pointer))
+              asm.sta(asm.direct(pointer))
+              asm.lda(asm.long_x(SongBanks::PIECES_LABEL, 2)) # its bank, and the nought after it
+              asm.sta(asm.direct(pointer + 2))
+              asm.rts
+
+              asm.label("rt_music_note_copy_pointed")
+              asm.ldy(SNES::Music::NOTE_BYTES - 2)
+              asm.label("rt_music_note_copy_pointed_word")
+              asm.lda(asm.ind_long_y(pointer))
+              asm.sta(asm.abs_y(copy))
+              asm.dey
+              asm.dey
+              asm.bpl("rt_music_note_copy_pointed_word")
+              asm.rts
+
+              asm.label("rt_music_note_from_table")
+              asm.ldy(0)
+              asm.label("rt_music_note_from_table_word")
+              asm.lda(asm.long_x("music_data"))
+              asm.sta(asm.abs_y(copy))
+              asm.inx
+              asm.inx
+              asm.iny
+              asm.iny
+              asm.cpy(SNES::Music::NOTE_BYTES)
+              asm.bne("rt_music_note_from_table_word")
+              asm.rts
             end
 
             # Whether the game holds its music (TUNE_HELD).
@@ -181,6 +271,9 @@ module VBlank
 
             # Whether a note from one speaker stays there as the music volume moves (LOUDNESS_LIST).
             def sides?(memory) = memory.reserved?(LOUDNESS_LIST)
+
+            # Whether a note changes as it plays in this game, and so #emit_note_changes calls anything.
+            def changes_notes?(memory) = wobbles?(memory) || steps_shapes?(memory) || swells?(memory) || slides?(memory)
 
             # The note at ENTRY and NOTE taken up by what changes as it plays, a tune's or an effect's.
             def emit_note_changes(asm, memory)
@@ -245,7 +338,7 @@ module VBlank
             # player runs, since on the Advance the voice moves by itself even under `hold_music`.
             # rt_music_note_slide: the record of the note at NOTE taken up, or nothing, when the
             # part at ENTRY plays on the one voice that slides.
-            def emit_slides(asm, at)
+            def emit_slides(asm, at, memory)
               m = SNES::Music
               asm.label("rt_music_slides")
               asm.ldx(at.call(SLIDE_CURSOR))
@@ -269,14 +362,13 @@ module VBlank
               asm.lda(asm.long_x("music_data", m::CHANNEL))
               asm.cmp(m::SLIDING_CHANNEL)
               asm.bne("rt_music_note_slide_done")
-              asm.ldx(at.call(NOTE))
-              asm.lda(asm.long_x("music_data", m::NOTE_VOLUME))
+              emit_note_field(asm, memory, m::NOTE_VOLUME)
               asm.bit(m::SLIDES)
               asm.bne("rt_music_note_slides")
               asm.stz(at.call(SLIDE_CURSOR))
               asm.rts
               asm.label("rt_music_note_slides")
-              asm.lda(asm.long_x("music_data", m::NOTE_WOBBLE))
+              emit_note_field(asm, memory, m::NOTE_WOBBLE, x_holds_note: true)
               asm.sta(at.call(SLIDE_CURSOR))
               asm.label("rt_music_note_slide_done")
               asm.rts
@@ -397,11 +489,10 @@ module VBlank
               asm.dec
               asm.asl
               asm.tay
-              asm.ldx(at.call(NOTE))
-              asm.lda(asm.long_x("music_data", m::NOTE_SWELL))
+              emit_note_field(asm, memory, m::NOTE_SWELL)
               asm.sta(record)
               asm.beq("rt_music_note_swell_done")
-              asm.lda(asm.long_x("music_data", m::NOTE_VOLUME))
+              emit_note_field(asm, memory, m::NOTE_VOLUME, x_holds_note: true)
               asm.bit(m::SLIDES)
               asm.beq("rt_music_note_swell_counts")
               # A note that slides is left to climb: striking it again would start its slide over.
@@ -485,8 +576,7 @@ module VBlank
               asm.dec
               asm.asl
               asm.tay
-              asm.ldx(at.call(NOTE))
-              asm.lda(asm.long_x("music_data", m::NOTE_SHAPES))
+              emit_note_field(asm, memory, m::NOTE_SHAPES)
               asm.sta(asm.abs_y(memory[SHAPE_RECORD]))
               asm.lda(0)
               asm.sta(asm.abs_y(memory[SHAPE_FRAME]))
@@ -567,10 +657,10 @@ module VBlank
               asm.dec
               asm.asl
               asm.tay
-              asm.ldx(at.call(NOTE))
+              asm.ldx(at.call(NOTE)) unless notes_apart?(memory)
               if slides?(memory)
                 # A note that slides does not wobble: the word is its slide's record.
-                asm.lda(asm.long_x("music_data", m::NOTE_VOLUME))
+                emit_note_field(asm, memory, m::NOTE_VOLUME, x_holds_note: true)
                 asm.bit(m::SLIDES)
                 asm.beq("rt_music_note_wobble_says")
                 asm.lda(0)
@@ -578,7 +668,7 @@ module VBlank
                 asm.rts
                 asm.label("rt_music_note_wobble_says")
               end
-              asm.lda(asm.long_x("music_data", m::NOTE_WOBBLE))
+              emit_note_field(asm, memory, m::NOTE_WOBBLE, x_holds_note: true)
               asm.sta(asm.abs_y(memory[WOBBLE_RECORD]))
               asm.beq("rt_music_note_wobble_done")
               asm.tax
@@ -797,8 +887,7 @@ module VBlank
               asm.sbc(m::RECORDED_CHANNEL - 1) # the part's own number in Recordings' places
               asm.sta(asm.direct(Sound::R1))
               asm.sta(at.call(NOTE_OWNER)) if level_at
-              asm.ldx(at.call(NOTE))
-              asm.lda(asm.long_x("music_data", m::NOTE_RECORDING))
+              emit_note_field(asm, memory, m::NOTE_RECORDING)
               asm.bne("rt_music_recorded_note_plays")
               asm.lda(asm.direct(Sound::R1))
               asm.sta(asm.direct(Sound::R0))
@@ -826,8 +915,7 @@ module VBlank
               asm.cmp(0)
               asm.branch_long(:beq, "rt_music_recorded_note_done") # no place: not heard
               asm.label("rt_music_recorded_note_log")
-              asm.ldx(at.call(NOTE))
-              asm.lda(asm.long_x("music_data", m::NOTE_HEAD))
+              emit_note_field(asm, memory, m::NOTE_HEAD)
               asm.tax
               emit_log_of_group(asm)
               emit_recorded_note_level(asm, at, memory) if level_at
@@ -843,10 +931,9 @@ module VBlank
               asm.lda(at.call(PART))
               asm.asl
               asm.tay
-              asm.ldx(at.call(NOTE))
-              asm.lda(asm.long_x("music_data", m::NOTE_WOBBLE))
+              emit_note_field(asm, memory, m::NOTE_WOBBLE)
               asm.sta(at.call(LOUDNESS_TABLE))
-              asm.lda(asm.long_x("music_data", m::NOTE_RECORDING))
+              emit_note_field(asm, memory, m::NOTE_RECORDING, x_holds_note: true)
               asm.beq("rt_music_recorded_level_rest")
               asm.lda(at.call(LOUDNESS_TABLE))
               asm.label("rt_music_recorded_level_rest")
@@ -868,8 +955,7 @@ module VBlank
               asm.stx(at.call(HELD_END))
               asm.label("rt_music_recorded_level_listed")
               emit_level_entry(asm, at)
-              asm.ldx(at.call(NOTE))
-              asm.lda(asm.long_x("music_data", m::NOTE_RECORDING))
+              emit_note_field(asm, memory, m::NOTE_RECORDING)
               asm.beq("rt_music_recorded_level_log")
               asm.ldx(at.call(LOUDNESS))
               asm.lda(asm.long_x("music_data", m::LEVEL_VOLUMES))
@@ -942,17 +1028,17 @@ module VBlank
               asm.lda(asm.abs_y(memory[CURSORS]))
               asm.cmp(at.call(COUNT))
               asm.branch_long(:bcs, "rt_music_part_next")
-              emit_times(asm, m::NOTE_BYTES) # the next note: its frame, and where its group is
-              asm.clc
-              asm.adc(at.call(LIST))
-              asm.tax
-              asm.lda(asm.long_x("music_data", m::NOTE_FRAME))
+              emit_frame_of_note_at_cursor(asm, at, memory) # the next note: its frame, and where its group is
               asm.cmp(at.call(FRAME))
               asm.beq("rt_music_part_note_due")
               emit_next_note_frame_kept(asm, at)
               asm.brl("rt_music_part_next")
               asm.label("rt_music_part_note_due")
-              asm.stx(at.call(NOTE))
+              if notes_apart?(memory)
+                asm.jsr(asm.abs("rt_music_note_copy_pointed"))
+              else
+                asm.stx(at.call(NOTE))
+              end
               if recorded # a part that plays a recording: its note in Recordings' places
                 asm.ldx(at.call(ENTRY))
                 asm.lda(asm.long_x("music_data", m::CHANNEL))
@@ -970,13 +1056,11 @@ module VBlank
                 Effects.emit_claim_call(asm, memory)
                 asm.branch_long(:beq, "rt_music_part_passed")
               end
-              asm.ldx(at.call(NOTE))
-              asm.lda(asm.long_x("music_data", m::NOTE_HEAD))
+              emit_note_field(asm, memory, m::NOTE_HEAD)
               asm.tax
               asm.jsr(asm.abs("rt_sound_group"))
               emit_note_loudness(asm, at, memory) if level_at
-              asm.ldx(at.call(NOTE))
-              asm.lda(asm.long_x("music_data", m::NOTE_TAIL))
+              emit_note_field(asm, memory, m::NOTE_TAIL)
               asm.tax
               asm.jsr(asm.abs("rt_sound_group"))
               emit_note_changes(asm, memory)
@@ -988,11 +1072,7 @@ module VBlank
               asm.lda(asm.abs_x(memory[CURSORS])) # the part's note after this one: its frame, if it has one
               asm.cmp(at.call(COUNT))
               asm.bcs("rt_music_part_next")
-              emit_times(asm, m::NOTE_BYTES)
-              asm.clc
-              asm.adc(at.call(LIST))
-              asm.tax
-              asm.lda(asm.long_x("music_data", m::NOTE_FRAME))
+              emit_frame_of_note_at_cursor(asm, at, memory)
               asm.cmp(at.call(FRAME))
               asm.beq("rt_music_part_next") # one note a part a frame, as Reference::Player#play_song_frame
               emit_next_note_frame_kept(asm, at)
@@ -1035,6 +1115,27 @@ module VBlank
               asm.rts
             end
 
+            # A = the frame of the note the cursor in A points to in the part's list at LIST. With the
+            # notes in the table, X = where the note is; with them apart, NOTE_POINTER points to it,
+            # and rt_music_note_copy_pointed copies it once it is due.
+            def emit_frame_of_note_at_cursor(asm, at, memory)
+              m = SNES::Music
+              unless notes_apart?(memory)
+                emit_times(asm, m::NOTE_BYTES)
+                asm.clc
+                asm.adc(at.call(LIST))
+                asm.tax
+                asm.lda(asm.long_x("music_data", m::NOTE_FRAME))
+                return
+              end
+
+              asm.clc
+              asm.adc(at.call(LIST))
+              asm.jsr(asm.abs("rt_music_note_point"))
+              asm.ldy(m::NOTE_FRAME)
+              asm.lda(asm.ind_long_y(memory[NOTE_POINTER]))
+            end
+
             # With a note's frame in A and the carry from comparing it with FRAME: kept in
             # NEXT_NOTE_FRAME if it is ahead of FRAME and sooner than the one kept.
             def emit_next_note_frame_kept(asm, at)
@@ -1051,13 +1152,12 @@ module VBlank
             # level written and logged.
             def emit_note_loudness(asm, at, memory)
               m = SNES::Music
-              asm.ldx(at.call(NOTE))
-              asm.lda(asm.long_x("music_data", m::NOTE_VOLUME))
+              emit_note_field(asm, memory, m::NOTE_VOLUME)
               asm.and_a(m::PLAIN_VOLUME | m::LEFT_ONLY | m::RIGHT_ONLY)
               asm.pha
               # A note that fades by itself is not held for a new level: one struck again would
               # start its fade over (IR::Tunes.changes_by_itself?), so the level reaches its next note.
-              asm.lda(asm.long_x("music_data", m::NOTE_VOLUME))
+              emit_note_field(asm, memory, m::NOTE_VOLUME, x_holds_note: true)
               asm.bit(m::RINGS_ALONE)
               asm.beq("rt_music_note_may_hold")
               asm.ldx(at.call(ENTRY))
@@ -1088,8 +1188,7 @@ module VBlank
               if swells?(memory)
                 # A note that swells logs its loudness and writes nothing: it stays at full volume, climbing.
                 asm.sta(at.call(LOUDNESS))
-                asm.ldx(at.call(NOTE))
-                asm.lda(asm.long_x("music_data", m::NOTE_SWELL))
+                emit_note_field(asm, memory, m::NOTE_SWELL)
                 asm.beq("rt_music_note_plain")
                 asm.sta(at.call(SWELL_GROUPS))
                 asm.lda(at.call(LOUDNESS))

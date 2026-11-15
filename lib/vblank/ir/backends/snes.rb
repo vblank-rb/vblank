@@ -21,6 +21,7 @@ require_relative "snes/memory"
 require_relative "snes/samples"
 require_relative "snes/dsp_writes"
 require_relative "snes/music"
+require_relative "snes/song_banks"
 require_relative "snes/text_layer_art"
 require_relative "snes/runtime"
 require_relative "snes/chip_code"
@@ -64,9 +65,11 @@ module VBlank
         # worked out with (DSPWrites::Voicing, Lowering::Sound#sound_voicing), and the game's
         # recordings by the number a place playing one keeps (Runtime::Recordings), each sprite
         # picture's number as SpriteNames numbers the picture it shows (Lowering::Picture#sprite_picture_names),
-        # and the pieces it made of each picture (Lowering::Picture#sprite_pieces_built).
+        # and the pieces it made of each picture (Lowering::Picture#sprite_pieces_built); and how much
+        # of the sound chip's memory the game uses (Cartridge::SNESROM::SoundMemory, nil for no sound).
         Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :routines, :sound_entries,
-                             :sound_voicing, :recording_names, :sprite_picture_names, :sprite_pieces, :console_voice_bits) do
+                             :sound_voicing, :recording_names, :sprite_picture_names, :sprite_pieces, :console_voice_bits,
+                             :sound_memory) do
           # Where the runtime counts the times the game has waited for the screen (32 bits).
           def waits_counted_at = runtime.fetch(Runtime::Frame::PASSES)
 
@@ -237,7 +240,7 @@ module VBlank
           try_findings = [*lowering.sprite_table_findings, *lowering.crowded_scene_findings, *lowering.scene_recording_findings]
           try_findings.concat(routines_without_their_chip(program)) unless carries.chip?
           sprite_pieces = lowering.sprite_pieces_built
-          linked = Linker.new(runtime + game, most_banks: board.most_banks).link
+          linked = Linker.new(runtime.sections + game, most_banks: board.most_banks).link
           routines = lowering.section_routines.map do |label, routine|
             placed = linked.sections.fetch(label)
             GameRoutine.new(addresses: placed.address...(placed.address + placed.section.size), routine: routine)
@@ -248,7 +251,8 @@ module VBlank
                              sound_entries: lowering.sound_entries, sound_voicing: lowering.sound_voicing,
                              recording_names: lowering.recording_names,
                              sprite_picture_names: lowering.sprite_picture_names, sprite_pieces: sprite_pieces,
-                             console_voice_bits: Music.voice_bits(DSPWrites::CONSOLE_VOICES.to_a - carries.recording_voices))
+                             console_voice_bits: Music.voice_bits(DSPWrites::CONSOLE_VOICES.to_a - carries.recording_voices),
+                             sound_memory: runtime.sound_memory)
           vectors = { reset: linked.address_of("rt_reset"), nmi: linked.address_of("rt_nmi"),
                       irq: linked.address_of("rt_irq"), brk: linked.address_of("rt_irq"),
                       cop: linked.address_of("rt_irq") }
