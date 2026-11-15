@@ -142,12 +142,12 @@ module VBlank
       private def sprite_handle(name, at:, facing: nil, frames: nil, frames_from: nil, facing_from: nil,
                                 from_aseprite: nil, dirs: nil, tile: nil, transparent: false, rate: nil, shown: true,
                                 hitbox: nil, colors: nil, over_picture: false)
-        colors = imported_colors(name, colors, imports: from_aseprite || facing_from || frames_from)
+        imported = imported_colors(name, colors, imports: from_aseprite || facing_from || frames_from)
         refuse_non_boolean_over_picture!(over_picture)
         over = over_painted_picture?(over_picture)
         if from_aseprite
           reject_other_pose_sources!(name, facing: facing, frames: frames, frames_from: frames_from, facing_from: facing_from)
-          poses, clips, width, height, durations = import_aseprite(name, from_aseprite, transparent, colors)
+          poses, clips, width, height, durations = import_aseprite(name, from_aseprite, transparent, imported: imported)
           return clip_hardware_sprite(name, at: at, poses: poses, clips: clips, durations: durations, width: width, height: height, shown: shown, hitbox: hitbox, over_picture: over) \
             if @screen_mode == :tiled || over
 
@@ -159,12 +159,12 @@ module VBlank
           raise ArgumentError, "Sprite :#{name} has both facing_from: and frames_from:. They both slice a sheet for the pose. Use only one." if frames_from
 
           facing = import_facing(name: name, path: facing_from, tile: tile, dirs: dirs, transparent: transparent,
-                                 colors: colors)
+                                 imported: imported)
         end
         if frames_from
           raise ArgumentError, "Sprite :#{name} has both frames: and frames_from:. They both supply the frames. Use only one." if frames
 
-          frames = import_frames(name: name, path: frames_from, tile: tile, transparent: transparent, colors: colors)
+          frames = import_frames(name: name, path: frames_from, tile: tile, transparent: transparent, imported: imported)
         end
         validate_animation!(name, facing, frames, rate, frames_from: frames_from)
         return hardware_sprite(name, at: at, facing: facing, frames: frames, rate: rate, shown: shown, hitbox: hitbox,

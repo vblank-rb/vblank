@@ -134,6 +134,7 @@ module VBlank
         width = opts[:width]
         height = opts[:height]
         colors = tile_run_colors(name, opts[:colors], what: "image")
+        colors_name = opts[:colors] if opts[:colors].is_a?(Symbol)
         refuse_tile_run_on_bitmap_screen!(name, what: "image")
         refuse_picture_run_size!(name, width, height)
         own_form = opts[:console_format] == true
@@ -141,8 +142,9 @@ module VBlank
 
         @images[name] = [width, height]
         @painted_colors[name] = colors
-        record(Build.tile_run(name, list: list.name, tiles: [], colors: colors, picture: name,
-                                    width: width, height: height, console_format: own_form))
+        @painted_colors_names[name] = colors_name
+        record(Build.tile_run(name, list: list.name, tiles: [], colors: colors, picture: name, width: width,
+                                    height: height, colors_name: colors_name, console_format: own_form))
         register_tile_run(name)
         DSL::TileRun.new(self, name)
       end

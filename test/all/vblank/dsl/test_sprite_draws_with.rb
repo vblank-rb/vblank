@@ -118,6 +118,61 @@ class TestSpriteDrawsWith < Minitest::Test
     (2..4).each { |frames| assert_backends_agree(painted_program, frames: frames) }
   end
 
+  # A painted picture given its list by name keeps that name, so a sprite showing it can name the
+  # list it draws with another, as a sprite of pictures drawn from several lists does.
+  private def painted_by_name_program
+    builder = Builder.new
+    builder.instance_eval do
+      screen :tiled
+      colors :ink, OWN
+      colors :hurt, HURT
+      canvas = list :canvas, capacity: 32, width: :byte
+      repeat(8) { [0x11, 0x11, 0x22, 0x22].each { |two_pixels| canvas.push two_pixels } }
+      tag = image :tag, from: canvas, width: 8, height: 8, colors: :ink
+      tag.changed
+      ship = sprite :tag, at: [40, 40]
+      ship.draw_with({ ink: :hurt })
+      game_loop {}
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  def test_a_painted_picture_draws_its_named_list_with_another
+    i = game_player.run(painted_by_name_program, frames: 3)
+
+    assert_equal Color.resolve(:yellow), i.screen.pixel(41, 41), "the first place of :hurt"
+    assert_equal Color.resolve(:white), i.screen.pixel(45, 41), "and the second"
+  end
+
+  # A canvas shown as a sprite is a painted picture too, and follows its list by name: what
+  # `recolor` puts in the list is what the sprite shows.
+  private def canvas_following_its_list_program
+    builder = Builder.new
+    builder.instance_eval do
+      screen :tiled
+      colors :ink, OWN
+      colors :hurt, HURT
+      tag = canvas :tag, width: 8, height: 8, colors: :ink, as: :sprite
+      tag.fill_rect 0, 0, 4, 8, :red
+      tag.fill_rect 4, 0, 4, 8, :green
+      tag.changed
+      ship = sprite :tag, at: [40, 40]
+      ship.draw_with({ ink: :ink })
+      recolor :ink, :hurt
+      game_loop {}
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  def test_a_canvas_sprite_follows_its_named_list
+    i = game_player.run(canvas_following_its_list_program, frames: 3)
+
+    assert_equal Color.resolve(:yellow), i.screen.pixel(41, 41), "the left half, at :ink's first place"
+    assert_equal Color.resolve(:white), i.screen.pixel(45, 41), "the right half, at its second"
+  end
+
   # A sprite told to draw with another list before its picture is first painted: the picture is
   # blank to start with, and once it is painted it shows the other list's colours, by the
   # places it holds then.

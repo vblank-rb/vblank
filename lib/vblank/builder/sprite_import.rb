@@ -7,32 +7,39 @@ module VBlank
     module SpriteImport
       private
 
-      # The list of colours every picture a sprite imports is drawn from, or nil. A name is a
-      # list declared with `colors`. Given to a sprite that imports nothing, it has no pictures
-      # to go to: those pictures were declared with `image`, which takes its own.
+      # A sprite's `colors:` for its imported pictures: the colours, and the list's name where given one
+      ImportedColors = Data.define(:colors, :colors_name)
+
+      # The list of colours every picture a sprite imports is drawn from; its colours are nil where
+      # the sprite was given none. A name is a list declared with `colors`, and each picture keeps
+      # it (IR::Assets::Image#colors_name) as `image ..., colors: :name` does, so `draw_with` can
+      # name the list. Given to a sprite that imports nothing, it has no pictures to go to: those
+      # pictures were declared with `image`, which takes its own.
       def imported_colors(name, colors, imports:)
-        return nil if colors.nil?
+        return ImportedColors.new(colors: nil, colors_name: nil) if colors.nil?
         unless imports
           raise ArgumentError,
                 "sprite :#{name} was given colors:, but its pictures are not imported from a file. " \
                 "colors: goes with frames_from:, facing_from: or from_aseprite:. To give pictures " \
                 "you declared a list of colors, write it on each: `image ..., colors: [...]`."
         end
-        colors.is_a?(Symbol) ? declared_colors_for_image!(name, colors) : colors
+        return ImportedColors.new(colors: colors, colors_name: nil) unless colors.is_a?(Symbol)
+
+        ImportedColors.new(colors: declared_colors_for_image!(name, colors), colors_name: colors)
       end
 
       # Import a sprite sheet into animation frames: slice the file into cells of the
       # given size and define each as an image, in row-major order. Returns the list
       # of frame image names, ready for the flipbook path — so `frames_from:` needs no
       # naming or numbering, just "cut it up and cycle the pieces."
-      def import_frames(name:, path:, tile:, transparent:, colors: nil)
+      def import_frames(name:, path:, tile:, transparent:, imported:)
         tile_w, tile_h = sheet_tile_size("sprite :#{name}", tile)
         sheet = Graphics::Image.slice(resolve_asset_path(path), tile_w: tile_w, tile_h: tile_h, transparent: transparent)
         (0...(sheet.cols * sheet.rows)).map do |i|
           bmp = sheet.cell(i % sheet.cols, i / sheet.cols)
           frame = :"__frame_#{name}_#{i}"
           define_pixel_image(frame, width: bmp.width, height: bmp.height, data: bmp.data,
-                                    transparent: bmp.transparent, colors: colors)
+                                    transparent: bmp.transparent, colors: imported.colors, colors_name: imported.colors_name)
           frame
         end
       end
@@ -43,7 +50,7 @@ module VBlank
       # (a plain facing: sprite), and a several-column sheet gives a per-direction
       # animation (a walk cycle each way it faces). Returns the facing: hash the normal
       # sprite path then handles — a single image per direction, or a list of frames.
-      def import_facing(name:, path:, tile:, dirs:, transparent:, colors: nil)
+      def import_facing(name:, path:, tile:, dirs:, transparent:, imported:)
         unless dirs.is_a?(Array) && dirs.any? && dirs.all? { |d| d.is_a?(Symbol) }
           raise ArgumentError,
                 "sprite :#{name} facing_from: needs dirs: — the direction of each row of the sheet, " \
@@ -63,7 +70,7 @@ module VBlank
             bmp = sheet.cell(col, row)
             img = :"__face_#{name}_#{dir}_#{col}"
             define_pixel_image(img, width: bmp.width, height: bmp.height, data: bmp.data, transparent: bmp.transparent,
-                                    colors: colors)
+                                    colors: imported.colors, colors_name: imported.colors_name)
             img
           end
           # One column: a still pose per direction. Several: this direction's frame list.
@@ -79,12 +86,12 @@ module VBlank
       # animation name to { off:, len: } (its first frame and its length) and durations is
       # each frame's own hold, in game frames — so a frame can be held longer than another.
       # A sheet with no tags becomes one clip named :all.
-      def import_aseprite(name, file_path, transparent, colors = nil)
+      def import_aseprite(name, file_path, transparent, imported:)
         frames, tags = load_aseprite(name, resolve_asset_path(file_path), transparent)
         poses = frames.each_with_index.map do |frame, i|
           img = :"__ase_#{name}_#{i}"
           define_pixel_image(img, width: frame.width, height: frame.height, data: frame.data,
-                                  transparent: frame.transparent, colors: colors)
+                                  transparent: frame.transparent, colors: imported.colors, colors_name: imported.colors_name)
           img
         end
         _poses, width, height = pose_images!(name, "Aseprite frame", poses)
