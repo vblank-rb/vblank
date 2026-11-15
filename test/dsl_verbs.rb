@@ -65,7 +65,8 @@ module DslVerbs
   # what Cartridge::Game#data_pack_file does, both documented on `data_pack`. declared_shell_screen
   # is the same question for the shell's first screen, documented on `shell_screen`.
   # declared_function_names is what the build of a data pack's unpacking asks of its builder, to
-  # tell which routines each part declared (Original::PartPrograms).
+  # tell which routines each part declared (Original::PartPrograms). pack_tiles_read is a count the
+  # build-cost test reads (test_pack_pose_build_cost.rb), not something a game calls.
   SKIP = %i[variables debug_halted? make_object_rotatable make_object_scalable with_test set_shown_tile_picture
             store! increase! decrease! copy_variable!
             keep_walls_changeable kept_walls_of every_kept_walls record_wall_change record_walls_brought_up
@@ -80,7 +81,7 @@ module DslVerbs
             lists_drawn_from list_drawn_from list_name_drawn_from colors_drawn_from declared_colors name_of_colors pool_refill_nodes
             request_tile_copy emit_tile_copy_in_place load_sprite_tiles canvas_font canvas_font_tables image_size image_pixels write_picked_pose
             record_light_shape light_circle show_light_now game_pack_checks record_clock_set declared_data_pack
-            made_data_pack_file declared_shell_screen declared_function_names].freeze
+            made_data_pack_file declared_shell_screen declared_function_names pack_tiles_read].freeze
 
   # …plus the verbs the loaded effect packs contribute. A pack's verb is an ordinary
   # DSL verb at the call site, so it has to be looked up in the same place.
