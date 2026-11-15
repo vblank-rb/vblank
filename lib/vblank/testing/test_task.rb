@@ -55,9 +55,17 @@ module VBlank
       attr_reader :lowering
       attr_writer :console
 
+      # What the run's heading says it plays, after the lowering's name: what the lowering's run
+      # does unless told (Lowering::Run#does, which checks against the interpreter). A game that
+      # holds its cartridge to something else, the retail original it ports, names that here:
+      #
+      #   t.heading = "the game built as a Sega Genesis cartridge, checked against the original"
+      attr_writer :heading
+
       def initialize(name)
         @lowering = :gba
         @console = nil
+        @heading = nil
         super
       end
 
@@ -123,7 +131,7 @@ module VBlank
       def print_heading(run)
         rule = "=" * 92
         as = console == run.console ? "" : " as the #{Console.for(console).title}"
-        $stdout.puts "", rule, " #{run.title} lowering#{as}: #{run.does}", rule
+        $stdout.puts "", rule, " #{run.title} lowering#{as}: #{@heading || run.does}", rule
         $stdout.flush
       end
 
