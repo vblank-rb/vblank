@@ -1067,7 +1067,16 @@ module VBlank
 
       # One run of a frame's objects drawn in an order the program works out (see
       # #present_objects).
-      DrawOrder = Data.define(:objects, :order)
+      #
+      # +permutation+ promises that the list always holds every place of the run once, from before
+      # the first frame is drawn: the builder's own list (Builder::DrawOrder#declare_order_lists),
+      # filled as the game starts and from then on only sorted or copied whole from a table of the
+      # run's orders. What it holds then needs no reading as the interpreter reads any list
+      # (Reference#names_in_draw_order), so a cartridge lowering may read it a slot an entry. A run
+      # written by hand promises nothing.
+      DrawOrder = Data.define(:objects, :order, :permutation) do
+        def initialize(objects:, order:, permutation: false) = super
+      end
 
       # --- backing store (remembering the pixels under a moving object) ---
       #

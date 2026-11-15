@@ -36,6 +36,8 @@ module VBlank
             include Backends::NotMadeYet
           end
 
+          # Must come before Picture, whose emit_sprite_walk_read takes the place of the walk's own.
+          include DrawOrderWalk
           include Paint
           include Picture
           include Collision

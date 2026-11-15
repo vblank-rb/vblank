@@ -1436,6 +1436,11 @@ module VBlank
             # its items four times over in a table of its own (Lowering#emit_keyed_sort), so its entry
             # is one read. The placing is here rather than a routine of its own, which took a long
             # JSR and an RTS more for every ordered sprite.
+            #
+            # The framework's own list (Build::DrawOrder#permutation) holds every place of the run in
+            # its slots, so each entry is read straight from its slot with nothing tested. Any other
+            # list — one written by hand, or one something takes items from the front of, whose slots
+            # move round — is walked as the interpreter reads it (DrawOrderWalk), through the same table.
             def emit_ordered_run(run)
               table = fresh("ordered_placings")
               past = fresh("past_ordered_placings")
@@ -1448,54 +1453,61 @@ module VBlank
                 emit_sprite_placing(object_named(name), returns: true)
               end
               @asm.label(past)
+              return emit_ordered_run_walked(run, table) unless order_read_by_slots?(run, @lists_dropped_from_front)
+
               keyed = @keyed_sorts&.fetch(run.order, nil)
-              outside = fresh("order_outside") unless keyed || @lists_dropped_from_front.include?(run.order)
               run.objects.each_index do |k|
                 if keyed
                   @asm.move(:w, at(keyed.entries, k * 2), @asm.d(0))
                 else
-                  outside ? emit_order_entry_read(run.order, k, outside) : emit_order_entry_called(run.order, k)
+                  emit_order_entry_read(run.order, k)
                   @asm.lsl(:l, 2, @asm.d(0))
                 end
-                @asm.lea(@asm.pc_rel(table), @asm.a(0))
-                @asm.movea(:l, @asm.idx(0, 0, 0, keyed ? :w : :l), @asm.a(0))
-                @asm.jsr(@asm.ind(0))
+                emit_ordered_placing_called(table, keyed ? :w : :l)
               end
-              emit_order_index_fault(run.order, outside) if outside
             end
 
             # D0 = entry +k+ of the order list +order+, whose first item is in its first slot, read from
-            # its slot's address: the index tested against how many the list holds (D1 = +k+ for the
-            # fault at +outside+), where reading it through the runtime would take a call, and the
-            # list's place found and the index scaled there. The entry is a place in the run, never
-            # below nought.
-            def emit_order_entry_read(order, k, outside)
+            # its slot's address, where reading it through the runtime would take a call, and the
+            # list's place found and the index scaled there.
+            def emit_order_entry_read(order, k)
               place, _capacity, bytes = @lists.fetch(order)
-              k.between?(-128, 127) ? @asm.moveq(k, @asm.d(1)) : @asm.move(:l, @asm.imm(k), @asm.d(1))
-              @asm.cmp(:w, @asm.abs_l(place, Runtime::Lists::LENGTH), @asm.d(1))
-              @asm.branch(:cc, outside)
               @asm.moveq(0, @asm.d(0)) unless bytes == 4
               @asm.move(Runtime::Lists::SLOT_SIZES.fetch(bytes), @asm.abs_l(place, Runtime::Lists::HEADER + (k * bytes)), @asm.d(0))
             end
 
-            # D0 = entry +k+ of an order list the game takes items from the front of, which only the
-            # runtime can find: a call, with the walk's registers kept on the stack meanwhile (#emit_sprite_placing).
-            def emit_order_entry_called(order, k)
+            # The placing D0 picks from +table+, by a +size+ (:w or :l) index four times the place, called.
+            def emit_ordered_placing_called(table, size)
+              @asm.lea(@asm.pc_rel(table), @asm.a(0))
+              @asm.movea(:l, @asm.idx(0, 0, 0, size), @asm.a(0))
+              @asm.jsr(@asm.ind(0))
+            end
+
+            # A run whose list is walked as the interpreter reads it (DrawOrderWalk).
+            def emit_ordered_run_walked(run, table)
+              emit_draw_order_walk(run) do |place|
+                @asm.move(:l, var(place), @asm.d(0))
+                @asm.lsl(:l, 2, @asm.d(0))
+                emit_ordered_placing_called(table, :l)
+              end
+            end
+
+            # DrawOrderWalk's: a read of the list may call the runtime, which can change anything, so
+            # the walk's registers go on the stack meanwhile (#emit_sprite_placing).
+            def emit_sprite_walk_read(name, value)
               @asm.movem_push(:l, *WALK_REGISTERS)
-              value(Build.list_get(order, Build.int(k)))
+              statement(Build.set(name, value))
               @asm.movem_pop(:l, *WALK_REGISTERS)
             end
 
-            # The run's entry D1 was outside the order list: the game stopped as the runtime stops it
-            # (Runtime::Lists#emit_faults), past the code the run's entries go on to.
-            def emit_order_index_fault(order, outside)
-              past = fresh("order_inside")
-              @asm.bra(past)
-              @asm.label(outside)
-              @asm.move(:l, @asm.imm(@lists.fetch(order).first), @asm.d(0))
-              @asm.movea(:l, @asm.d(0), @asm.a(0))
-              @asm.jmp(@asm.abs_l("rt_list_index_fault"))
-              @asm.label(past)
+            # DrawOrderWalk's: the place the variable +name+ holds and the run's +count+, the fault's two
+            # numbers, and no list, as the interpreter words it (Faults.draw_order_names_none).
+            def emit_draw_order_fault(name, count)
+              @asm.move(:l, @asm.imm(0), runtime_at(Runtime::Frame::FAULT, Runtime::Frame::FAULT_LIST))
+              @asm.move(:l, var(name), runtime_at(Runtime::Frame::FAULT, Runtime::Frame::FAULT_FIRST))
+              @asm.move(:l, @asm.imm(count), runtime_at(Runtime::Frame::FAULT, Runtime::Frame::FAULT_SECOND))
+              @asm.moveq(Runtime::Frame::DRAW_ORDER_NAMES_NONE, @asm.d(0))
+              @asm.jmp(@asm.abs_l("rt_fault"))
             end
 
             # The table of a sprite's pictures: how many, then where each one's pieces are. It is kept by

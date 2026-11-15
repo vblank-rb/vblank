@@ -156,6 +156,11 @@ writing an instruction is shared, because two copies of a decision drift apart:
   once copying its declared map the first time alone, so a later put-up keeps the cells the game
   changed (`emit_put_up_keeping_cells`; the Color tells the two apart in its runtime instead, by the
   grid its layer holds).
+- `Backends::DrawOrderWalk` — a draw order's list read as the interpreter reads it (every entry held,
+  a place below nought counted back, one naming no sprite stopping the game), for a list that is not
+  the builder's own (`Build::DrawOrder#permutation`) or that something takes items from the front of;
+  the lowering gives the fault and the placing through its table (the PlayStation walks every list,
+  the builder's too).
 - `Backends::PaletteWalk` — a fade or tint that walks the colours: what the runtime is handed
   (toward what, the colour, the steps held to their range) and the rules its runtime keeps (said
   the same, it does nothing; worked out as the pass ends, sent in the blank).

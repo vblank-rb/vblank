@@ -407,9 +407,22 @@ module VBlank
 
           # Each ordered run of +program+'s frame, with its copy given a place in +memory+ and
           # its table put in +blobs+; +lists+ gives where the program keeps each list.
+          #
+          # The copy reads the list from its first slot, one entry a sprite, with nothing tested, so it
+          # takes only the builder's own list (Build::DrawOrder#permutation), which holds every place
+          # of the run there. A list written by hand, or one something takes items from the front of
+          # (whose first item moves along its slots), is refused: the interpreter reads such a list as
+          # it holds (Reference#names_in_draw_order), and this copy does not.
           def self.plan_draw_runs(program, objects:, memory:, blobs:, lists:)
             present = program.walk.find { |node| node.kind == :present_objects } or return []
+            dropped = program.walk.filter_map { |node| node.name if node.kind == :list_drop && node.from == :front }
             (present.orders || []).each_with_index.map do |run, k|
+              unless DrawOrderWalk.read_by_slots?(run, dropped)
+                raise LoweringError, "the list #{run.order.inspect} orders sprites, and the game writes it or takes " \
+                                     "items from its front. The Game Boy Advance cartridge draws an order only from " \
+                                     "the list that draw_in_order keeps."
+              end
+
               sprites = run.objects.map { |name| objects.fetch(name) }
               first = sprites.map(&:slot).min
               slots = sprites.sum(&:pieces)

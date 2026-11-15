@@ -36,6 +36,7 @@ module VBlank
           end
 
           include ControlFlow
+          include DrawOrderWalk
           include SceneryWrites
 
           # EVERY KIND THIS LOWERING WRITES: its own, each by a method called by name in

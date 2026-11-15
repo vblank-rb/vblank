@@ -7,8 +7,8 @@ require "test_helper"
 # counting back from the last sprite of the run, and a place naming none of them stopping the game. The
 # builder keeps the list at the run's length and fills it with places that name its sprites, so only a
 # run written by hand reaches the rest: the native run's test_native_picture.rb holds the game as C to
-# the same games. Here, on the PlayStation's program alone, since the Color, the Super Nintendo and the
-# Genesis read as many entries as the run has sprites.
+# the same games, and every run plays a game of them in test/all/vblank/builder/test_draw_in_order.rb.
+# Here, the PlayStation's program played alone, where it stops on an entry naming no sprite.
 class TestPS1DrawOrder < Minitest::Test
   PS1 = VBlank::IR::Backends::PS1
   BLOCK = Ractor.make_shareable("#{'#' * 16}\n" * 16)
@@ -44,7 +44,7 @@ class TestPS1DrawOrder < Minitest::Test
       game_loop {}
     end
 
-    assert_raises(IndexError) { Reference.new.run(program, frames: 3) }
+    assert_raises(VBlank::IR::ProgramError) { Reference.new.run(program, frames: 3) }
     error = assert_raises(VBlank::IR::ProgramError) { PS1::HeadlessRun.new.run(program, frames: 3) }
     assert_match(/draw order names sprite 2 of the 2/, error.message)
   end

@@ -1920,7 +1920,8 @@ module VBlank
             # in the table, and one whose place changed does not, so is placed afresh. This holds
             # because the order's list holds each of its sprites' numbers once, every pass (the
             # framework sorts it; the game never writes it), so each sprite is placed every pass and
-            # what it keeps of its last placing is still what the table holds.
+            # what it keeps of its last placing is still what the table holds. A run whose list is
+            # walked as the interpreter reads it keeps nothing (#kept_sprites).
             def emit_present_objects(node)
               object = ->(name) { @objects.fetch(name) { raise LoweringError, "present of undeclared object #{name.inspect}" } }
               changing = node.names.map(&object).select { |obj| Stacking.levels_of(@stacking.depths, obj).uniq.length > 1 }
@@ -2091,35 +2092,55 @@ module VBlank
             # each sprite of the run, read by one dispatch the run shares, so the code grows with the
             # run's length and not its square.
             #
-            # A list of a byte a slot (a run of up to 128) is read where it is, a byte a sprite: the
-            # list is filled at power-on and only sorted or copied over after, so it is always as
-            # long as the run and its every slot holds a number from nought up, under the run's
-            # length. A longer run's list is read as any list item is, in 32 bits.
+            # The framework's own list (Build::DrawOrder#permutation) is filled at power-on and only
+            # sorted or copied over after, so it is always as long as the run and its every slot holds
+            # a place of the run, a byte a sprite (the Color keeps places for forty): each is read
+            # where it is, with nothing tested. Any other list — one written by hand, or one something
+            # takes items from the front of, whose slots move round — is walked as the interpreter
+            # reads it (DrawOrderWalk), last entry first.
             def emit_ordered_run(run, placings)
               dispatch = emit_ordered_dispatch(run, placings)
               place, _capacity, width = @lists.fetch(run.order)
-              (run.objects.length - 1).downto(0) do |k|
-                past = fresh("past_the_ordered")
-                if width == 1
-                  @asm.load(:a, [place + Runtime::Lists::HEADER + k])
-                else
-                  value(Build.list_get(run.order, Build.int(k)))
-                  @asm.load(:a, :b)
-                  @asm.or_a(:c)
-                  @asm.or_a(:d)
-                  @asm.jump_relative(:nz, past)
+              unless order_read_by_slots?(run, front_dropped_lists) && width == 1
+                return emit_draw_order_walk(run, from_back: true) do |entry|
+                  value(Build.var_ref(entry))
                   @asm.load(:a, :e)
+                  @asm.call(dispatch)
                 end
-                @asm.cp_a(run.objects.length)
-                @asm.jump_relative(:nc, past)
-                @asm.call(dispatch)
-                @asm.label(past)
               end
+
+              (run.objects.length - 1).downto(0) do |k|
+                @asm.load(:a, [place + Runtime::Lists::HEADER + k])
+                @asm.call(dispatch)
+              end
+            end
+
+            # DrawOrderWalk's: the place the variable +name+ holds and the run's +count+, the fault's two
+            # numbers, low byte first as a variable keeps them, and no list, as the interpreter words it
+            # (Faults.draw_order_names_none).
+            def emit_draw_order_fault(name, count)
+              fault = @memory[Runtime::Frame::FAULT]
+              value(Build.var_ref(name))
+              @asm.load(:hl, fault + 1)
+              @asm.xor_a(:a)
+              2.times { @asm.load([:hli], :a) }
+              BCDE_LOW_FIRST.each do |register|
+                @asm.load(:a, register)
+                @asm.load([:hli], :a)
+              end
+              [count & 0xFF, count >> 8, 0, 0].each do |byte|
+                @asm.load(:a, byte)
+                @asm.load([:hli], :a)
+              end
+              @asm.load(:a, Runtime::Frame::DRAW_ORDER_NAMES_NONE)
+              @asm.jump("rt_fault")
             end
 
             # The routine #emit_ordered_run calls with A the number of a sprite of +run+: it goes on to
             # that sprite's placing in +placings+ (whose return is the call's), through a table of
-            # their addresses. Written in place, with a jump over it. Returns its label.
+            # their addresses. Written in place, with a jump over it, so the table and the placings are
+            # in one section; a placing the table names in another bank is refused as the cartridge is
+            # built (SM83#data_jump_targets). Returns its label.
             def emit_ordered_dispatch(run, placings)
               dispatch = fresh("ordered_dispatch")
               table = fresh("ordered_placings")
@@ -2139,7 +2160,7 @@ module VBlank
               @asm.label(none)
               @asm.ret
               @asm.label(table)
-              @asm.data_words(run.objects.map { |name| placings.fetch(name, none) })
+              @asm.data_jump_targets(run.objects.map { |name| placings.fetch(name, none) })
               @asm.label(past)
               dispatch
             end
@@ -2240,11 +2261,18 @@ module VBlank
             # #emit_sum, which mark the sprite changed, and not one this lowering moves on by itself
             # (#written_unmarked?). Not one drawn with a list that holds other colours as the game runs:
             # which row it is drawn from follows what the list holds, which is none of its numbers.
+            # Not one of a run whose list is walked (DrawOrderWalk): that list can name a sprite twice
+            # in a pass, or not at all, so what a sprite keeps of its last placing is not what the
+            # table holds.
             def kept_sprites
-              @kept_sprites ||= @program.walk.select { |node| node.kind == :present_objects }.flat_map(&:names).uniq.select do |name|
-                obj = @objects.fetch(name)
-                Array(obj.recolors).none?(Symbol) &&
-                  sprite_numbers(obj).all? { |number| number.kind == :var_ref && !written_unmarked?(number.name) }
+              @kept_sprites ||= begin
+                drawn = @program.walk.select { |node| node.kind == :present_objects }
+                walked = drawn.flat_map { |node| node.orders || [] }.reject { |run| order_read_by_slots?(run, front_dropped_lists) }
+                (drawn.flat_map(&:names).uniq - walked.flat_map(&:objects)).select do |name|
+                  obj = @objects.fetch(name)
+                  Array(obj.recolors).none?(Symbol) &&
+                    sprite_numbers(obj).all? { |number| number.kind == :var_ref && !written_unmarked?(number.name) }
+                end
               end
             end
 

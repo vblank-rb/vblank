@@ -3217,11 +3217,16 @@ module VBlank
         end
 
         # The frame's objects in the order they are drawn: as listed, except that each run the
-        # program puts in order is drawn in the order its list holds (see Build#present_objects).
+        # program puts in order is drawn in the order its list holds (see Build#present_objects):
+        # every entry the list holds, however many, a place below nought counting back from the
+        # run's last sprite as a Ruby array's does. A place naming none of the run's sprites stops
+        # the game, before anything of the frame is drawn.
         def names_in_draw_order(node)
           (node.orders || []).reduce(node.names) do |names, run|
             first = names.index(run.objects.first)
-            ordered = @lists.fetch(run.order).to_a.map { |at| run.objects.fetch(at) }
+            ordered = @lists.fetch(run.order).to_a.map do |at|
+              run.objects.fetch(at) { raise ProgramError, Faults.draw_order_names_none(at, run.objects.length) }
+            end
             names[0...first] + ordered + names[(first + run.objects.length)..]
           end
         end

@@ -31,4 +31,17 @@ class TestDrawInOrderCartridge < Minitest::Test
 
     assert_equal [true, false], red_in_front
   end
+
+  # The cartridge copies an order a slot a sprite from the builder's own list, so an order list the
+  # game writes itself is refused as the cartridge is built, rather than drawn otherwise than the
+  # interpreter draws it.
+  def test_an_order_list_of_the_games_own_is_refused
+    prog = hand_ordered_program do |order|
+      order.push 0
+      game_loop {}
+    end
+    error = assert_raises(VBlank::BuildError) { assemble_rom(prog, name: "HANDORDER") }
+
+    assert_match(/draws an order only from the list that draw_in_order keeps/, error.message)
+  end
 end

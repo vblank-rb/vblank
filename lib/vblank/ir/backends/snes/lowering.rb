@@ -37,6 +37,7 @@ module VBlank
           end
 
           include ControlFlow
+          include DrawOrderWalk
           include SceneryWrites
           include MeasuredOnCopies
 
@@ -328,9 +329,8 @@ module VBlank
             @lowering_scene = nil
             bend_routine = bend_sections
             main = routines_fitting(MAIN, @program.children, routine: "the game loop")
-            placings = sprite_placing_sections
             columns = column_sections
-            [data_section, *table_sections, *routines, *timers, *bend_routine, *main, *placings, *columns, *chip_sections]
+            [data_section, *table_sections, *routines, *timers, *bend_routine, *main, *columns, *chip_sections]
           end
 
           # Whether the game has a division only a runtime routine can do (Runtime::Int32), once

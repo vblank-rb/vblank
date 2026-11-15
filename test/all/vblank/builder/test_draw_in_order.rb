@@ -101,6 +101,33 @@ module DrawInOrderGames
       game_loop {}
     end
   end
+
+  # A RUN DRAWN IN THE ORDER A LIST OF THE GAME'S OWN HOLDS, read as the interpreter reads it
+  # (Reference#names_in_draw_order): every entry the list holds, a place below nought counting back
+  # from the run's last sprite, and a place naming none of its sprites stopping the game. The builder
+  # keeps its own list full of the run's places, so only a run written onto the frame's drawing by hand
+  # reaches the rest. Two blocks overlap at OVERLAP: the red one first in the run, the green one second.
+  # The block is handed the list and writes the game.
+  private def hand_ordered_program(&game)
+    block = BLOCK
+    enemy_at = ENEMY_AT
+    prog = program do
+      screen :tiled
+      image(:enemy, "#" => :red) { block }
+      image(:hero, "#" => :green) { block }
+      sprite :enemy, at: enemy_at
+      sprite :hero, at: [enemy_at[0] + 8, enemy_at[1] + 6]
+      instance_exec(list(:order, capacity: 4, width: :byte), &game)
+    end
+    prog.walk.select { |node| node.kind == :present_objects }.each do |drawn|
+      run = VBlank::IR::Build::DrawOrder.new(objects: drawn.names, order: :order)
+      ordered = VBlank::IR::Build.present_objects(drawn.names, orders: [run])
+      beside = drawn.parent.children
+      beside[beside.index(drawn)] = ordered
+      ordered.parent = drawn.parent
+    end
+    prog
+  end
 end
 
 class TestDrawInOrder < Minitest::Test
@@ -112,6 +139,9 @@ class TestDrawInOrder < Minitest::Test
   BLUE = VBlank::Graphics::Color.resolve(:blue)
 
   OVERLAP = [70, 66].freeze
+
+  # Where the red block of DrawInOrderGames#hand_ordered_program shows and the green one does not reach.
+  RED_ALONE = [62, 62].freeze
 
   private def shown(prog, frames: 2) = game_player.run(prog, frames: frames).screen.pixel(*OVERLAP)
 
@@ -615,6 +645,42 @@ class TestDrawInOrder < Minitest::Test
     later = game_player.run(b.program, frames: 16).screen
     assert_equal 0x7C00, later.pixel(6, 13), "gone behind it"
     assert_equal 0x001F, later.pixel(6, 6), "and the sprite that stayed is where it was"
+  end
+
+  # --- an order list the game writes itself ---
+
+  # -1 is the green block, so it goes down first, under the red one; then the red one's entry is
+  # taken off the end, and the list names green alone.
+  def test_an_order_list_of_the_games_own_is_read_as_it_holds
+    prog = hand_ordered_program do |order|
+      order.push(-1)
+      order.push 0
+      n = var :n, 0
+      game_loop do
+        order.pop if n == 3
+        n += 1
+      end
+    end
+
+    assert_equal RED, shown(prog, frames: 2), "green goes down first, so red is in front"
+    assert_equal RED, game_player.run(prog, frames: 2).screen.pixel(*RED_ALONE), "and red is drawn"
+    assert_equal GREEN, shown(prog, frames: 6), "the list names green alone"
+    refute_equal RED, game_player.run(prog, frames: 6).screen.pixel(*RED_ALONE), "and red is not drawn"
+  end
+
+  # A place that names none of the run's sprites stops the game, on every console as in the interpreter:
+  # one past the last sprite, and one counting back past the first.
+  def test_an_order_entry_naming_no_sprite_stops_the_game
+    [2, -3].each do |none|
+      prog = hand_ordered_program do |order|
+        order.push 0
+        order.push none
+        game_loop {}
+      end
+
+      error = assert_raises(Reference::ProgramError) { game_player.run(prog, frames: 3) }
+      assert_match(/draw order names sprite #{none} of the 2/, error.message)
+    end
   end
 
   def test_an_unknown_front_is_refused

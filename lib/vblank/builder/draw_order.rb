@@ -158,7 +158,7 @@ module VBlank
           objects = object_names_in(order)
           run = names.select { |name| objects.include?(name) }
           (@draw_order_runs ||= {})[order.number] = run
-          Build::DrawOrder.new(objects: run, order: order.order_list)
+          Build::DrawOrder.new(objects: run, order: order.order_list, permutation: true)
         end
       end
 

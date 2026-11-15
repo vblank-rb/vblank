@@ -846,16 +846,14 @@ module VBlank
             # once, as a routine of its own ending in a return, and an entry picks it from a table of their
             # addresses kept beside the code: a few instructions an entry, whatever the run's length.
             #
-            # The entries are read as the interpreter reads the list (Reference#names_in_draw_order): every one
-            # it holds now, and a place below nought counts back from the run's last sprite, as a Ruby array's
-            # does. The builder keeps the list at the run's length and fills it with places of the run, so a
-            # game the builder makes never meets the rest; a run written by hand does. A place naming none of
-            # the run's sprites stops the game (Runtime::Tiles' rt_draw_order_fault), where the interpreter stops.
+            # The entries are read as the interpreter reads the list (DrawOrderWalk), whatever list it is: every
+            # one it holds now, and a place below nought counts back from the run's last sprite, as a Ruby array's
+            # does. A place naming none of the run's sprites stops the game (Runtime::Tiles' rt_draw_order_fault),
+            # where the interpreter stops.
             def emit_ordered_run(run)
               table = fresh_label("ordered_placings")
               past = fresh_label("past_ordered_placings")
               placings = run.objects.map { fresh_label("ordered_placing") }
-              count = run.objects.length
               @asm.b(past)
               @asm.label(table)
               @asm.data_words(placings)
@@ -867,29 +865,21 @@ module VBlank
                 @asm.jr(:ra)
               end
               @asm.label(past)
-              entry = @ordered_entry ||= keep_local(:ordered_entry)
-              next_entry = fresh_label("next_ordered_entry")
-              named = fresh_label("order_names_one")
-              done = fresh_label("ordered_run_done")
-              emit_store_number(entry, 0)
-              @asm.label(next_entry)
-              jump_unless(Build.binop(:<, Build.var_ref(entry), Build.list_len(run.order)), done)
-              emit_value(Build.list_get(run.order, Build.var_ref(entry)))
-              @asm.sra(:t0, :v0, 31) # all ones below nought...
-              @asm.andi(:t0, :t0, count) # ...so the run's length is added to a place counted back
-              @asm.addu(:t0, :v0, :t0)
-              @asm.sltiu(:t1, :t0, count)
-              @asm.bne(:t1, :zero, named)
+              emit_draw_order_walk(run) do |place|
+                emit_value(Build.var_ref(place))
+                @asm.sll(:t0, :v0, 2)
+                @asm.la(:t1, table)
+                @asm.addu(:t1, :t1, :t0)
+                @asm.lw(:t1, 0, :t1)
+                @asm.jalr(:t1)
+              end
+            end
+
+            # DrawOrderWalk's: the place the variable +name+ holds in v0 and the run's +count+ in a1, which
+            # rt_draw_order_fault keeps as the fault's two numbers.
+            def emit_draw_order_fault(name, count)
+              emit_value(Build.var_ref(name))
               @asm.j("rt_draw_order_fault") { @asm.addiu(:a1, :zero, count) }
-              @asm.label(named)
-              @asm.sll(:t0, :t0, 2)
-              @asm.la(:t1, table)
-              @asm.addu(:t1, :t1, :t0)
-              @asm.lw(:t1, 0, :t1)
-              @asm.jalr(:t1)
-              emit_increment(entry)
-              @asm.b(next_entry)
-              @asm.label(done)
             end
 
             def object_named(name) = @objects.fetch(name) { raise LoweringError, "present of undeclared object #{name.inspect}" }
