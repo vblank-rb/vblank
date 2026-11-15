@@ -179,6 +179,36 @@ class TestCLI < Minitest::Test
     end
   end
 
+  # A game that needs two settings, neither with a default.
+  NEEDS_TWO_SETTINGS = <<~RUBY
+    require "vblank"
+    VBlank.game "TWOSETS", consoles: %i[gba] do
+      screen :bitmap
+      var :floors, Integer(setting(:floors))
+      var :ammo, Integer(setting(:ammo))
+      game_loop { wait_vblank }
+    end
+  RUBY
+
+  # --set written once for each setting gives the game every one of them, on every command that
+  # takes it, as one --set with several does. The same name twice keeps the later value.
+  def test_a_repeated_set_gives_every_setting
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "two.rb"), NEEDS_TWO_SETTINGS)
+      File.write(File.join(dir, "idle.rb"), "VBlank.playthrough('idle') { wait frames: 2 }\n")
+
+      out, status = cli("build", "two.rb", "--set", "floors=1", "--set", "ammo=90", dir: dir)
+      assert status.success?, out
+
+      out, status = cli("run", "two.rb", "--no-window", "--script", "idle.rb", "--set", "floors=1",
+                        "--set", "ammo=90", dir: dir)
+      assert status.success?, out
+
+      out, status = cli("build", "two.rb", "--set", "floors=x", "ammo=90", "--set", "floors=1", dir: dir)
+      assert status.success?, "the later floors=1 is the one kept: #{out}"
+    end
+  end
+
   def test_inspect_reports_the_header_of_a_built_rom
     Dir.mktmpdir do |dir|
       cli("new", "demo", dir: dir)

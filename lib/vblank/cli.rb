@@ -147,6 +147,7 @@ module VBlank
       options = options_by_switch(command_named(name))
       words = args.drop(1)
       checked = [name]
+      lists = {}
       until words.empty?
         word = words.shift
         if word == "--"
@@ -161,7 +162,17 @@ module VBlank
         switch, value = word.split("=", 2)
         switch = switch.tr("_", "-")
         option = options[switch] or refuse_unknown_option!(args, word, switch, options.keys)
-        if value || option.boolean? || option.type == :array || option.lazy_default
+        # An option that takes several words (--set, --keys) may be written more than once, and
+        # Thor keeps only the last: --set floors=1 --set ammo=90 dropped floors=1 without a word.
+        # So each writing's words join one list, which goes to Thor once, where the option was
+        # first written: the option stands in `checked` for its list until the end. A --set that
+        # names a setting twice keeps the later value, as one --set does.
+        if option.type == :array
+          checked << option unless lists.key?(option)
+          (lists[option] ||= []).concat([value].compact, take_list_words!(words))
+          next
+        end
+        if value || option.boolean? || option.lazy_default
           checked << word
           next
         end
@@ -173,7 +184,15 @@ module VBlank
         end
         checked << "#{option.switch_name}=#{words.shift}"
       end
-      checked
+      checked.flat_map { |part| part.is_a?(Thor::Option) ? [part.switch_name, *lists.fetch(part)] : [part] }
+    end
+
+    # Removes and returns the words at the front of +words+ that an option taking several words
+    # takes: every word up to the next option or `--`, as Thor would.
+    def self.take_list_words!(words)
+      taken = []
+      taken << words.shift while words.first && words.first != "--" && !switch?(words.first)
+      taken
     end
 
     # A word written the way an option is: one or two dashes, then a letter.
