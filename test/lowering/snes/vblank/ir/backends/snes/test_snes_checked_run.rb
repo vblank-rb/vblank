@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "delegate"
+require "no_frames_games"
 
 # A game built as a Super Nintendo cartridge and played in bsnes does what the interpreter does,
 # pass for pass (SNES::CheckedRun): the game's numbers, its lists, its buttons and its routines, each
@@ -193,20 +195,37 @@ class TestSNESCheckedRun < Minitest::Test
   end
 
   # A run of no frames ends before the first pass is shown: the screen is still switched off, which
-  # the interpreter says as its plain white picture of a display switched off, and the game's numbers
+  # the interpreter shows as its plain white picture of a display switched off, and the game's numbers
   # are the first pass's.
   def test_a_run_of_no_frames_ends_with_the_screen_still_off
-    run = checked(frames: 0) do
-      screen :tiled
-      image(:wall, "#" => :gray) { "########\n" * 8 }
-      tiles :set, "#" => :wall
-      background :room, tiles: :set, map: ["##", "##"]
-      n = 0
-      game_loop { n += 1 }
-    end
+    run = SNES::CheckedRun.new.run(NoFramesGames.room_counting_passes(:snes), frames: 0)
 
     assert_equal Color.resolve(:white), run.screen.pixel(3, 3)
     assert_equal 0, run[:n]
+  end
+
+  # A STAND-IN FOR A RUNTIME THAT LETS THE SCREEN COME ON WHILE IT SETS UP: bsnes is made to show red
+  # where the real cartridge still has its screen switched off (all colour 0). The run reports the
+  # red the console shows, not the interpreter's switched-off white, so a check against the
+  # interpreter would fail.
+  class ScreenLitWhileSettingUp < SNES::HeadlessRun
+    # The emulator, but every pixel of its picture red.
+    class RedCore < SimpleDelegator
+      RED = VBlank::Graphics::Color.resolve(:red)
+
+      def colors = Array.new(width * height, RED)
+    end
+
+    private def power_on
+      @core = RedCore.new(@core)
+      super
+    end
+  end
+
+  def test_a_run_of_no_frames_reports_the_picture_shown_when_the_screen_is_on
+    run = ScreenLitWhileSettingUp.new.run(NoFramesGames.room_counting_passes(:snes), frames: 0)
+
+    assert_equal Color.resolve(:red), run.screen.pixel(3, 3)
   end
 
   def test_scenes_picked_by_a_variable_agree_with_the_interpreter

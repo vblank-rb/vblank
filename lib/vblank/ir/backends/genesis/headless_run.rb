@@ -102,18 +102,17 @@ module VBlank
           # one no cartridge for it can read, so it is not pressed.
           def set_buttons(buttons) = @core.set_buttons(buttons.map(&:to_sym) & PAD_BUTTONS)
 
-          # A RUN OF NO FRAMES ends as the first pass does, before anything is shown: the screen is
-          # still switched off. The interpreter shows a display switched off as a plain white picture
-          # (Reference::Framebuffer::HELD_OFF), so that is the picture the run ends on, and the game goes
-          # no further.
+          # A RUN OF NO FRAMES ends as the first pass does, before anything is shown
+          # (CartridgeHeadlessRun#end_before_first_picture): the runtime turns the screen on as the
+          # first pass is shown.
           def ends_before_first_picture?(frames) = frames.zero?
 
-          def end_before_first_picture(variables, lists, sprites, sounds, camera)
-            hold_after_this_pass
-            @sprites = sprites
-            off = Array.new(@core.width * @core.height, Reference::Framebuffer::HELD_OFF)
-            record_moment(:end, variables, lists, Picture.new(shown: off, width: @core.width, height: @core.height,
-                                                              camera_x: camera[0], camera_y: camera[1]), sounds)
+          # The screen switched off is the video chip's own: its screen bit clear. It then shows only
+          # the backdrop colour, which a game can set before its screen comes on, so the picture alone
+          # cannot tell.
+          def screen_forced_off?
+            hardware = Console::GenesisHardware
+            (@core.vdp_registers[hardware::REG_MODE2] & hardware::MODE2_SCREEN_ON_BIT).zero?
           end
 
           # A pass's moment waits for the count of its sounds (#sounds_counted?), but for the moment the run

@@ -173,19 +173,15 @@ module VBlank
           # it is not pressed.
           def set_buttons(buttons) = @core.set_buttons(buttons.filter_map { |button| PAD_BUTTONS[button.to_sym] })
 
-          # A RUN OF NO FRAMES ends as the first pass does, before anything is shown: the picture is still
-          # off. The interpreter shows a display switched off as a plain white picture
-          # (Reference::Framebuffer::HELD_OFF), so that is the picture the run ends on, and the game goes no
-          # further.
+          # A RUN OF NO FRAMES ends as the first pass does, before anything is shown
+          # (CartridgeHeadlessRun#end_before_first_picture): the runtime turns the display on as the
+          # first pass is shown (Runtime::Frame::DISPLAY_ON).
           def ends_before_first_picture?(frames) = frames.zero?
 
-          def end_before_first_picture(variables, lists, sprites, sounds, _camera)
-            hold_after_this_pass
-            @sprites = sprites
-            off = Array.new(@core.width * @core.height, Reference::Framebuffer::HELD_OFF)
-            record_moment(:end, variables, lists, Picture.new(shown: off, width: @core.width, height: @core.height,
-                                                              camera_x: 0, camera_y: 0), sounds)
-          end
+          # The display switched off is the graphics chip's own (its display-off bit, set by GP1(03h)).
+          # The picture alone cannot tell: video RAM keeps whatever was drawn into it while the
+          # display was off, and the chip shows nothing of it.
+          def screen_forced_off? = @core.gpu_state.fetch(:display_off) != 0
 
           # The count is written as the picture comes on for the first pass, which may be after the game was
           # found waiting at that pass's end, so it is read again at every moment.

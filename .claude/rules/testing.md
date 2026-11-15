@@ -180,6 +180,8 @@ records first),
 `power_on_frame_games.rb` (a screen held to a reading of `frames_since_power_on`, built with and without
 a long setting up, and what each console's cartridge is held to as its emulator counts frames from
 power-on, for the Advance's, the Super Nintendo's, the Genesis's and the PlayStation's tests),
+`no_frames_games.rb` (a small room played for no frames, which ends before the runtime turns the screen
+on, for the Super Nintendo's, the Genesis's and the PlayStation's tests of the picture such a run reports),
 `speakers.rb` (which speaker a cartridge's voice is heard from),
 `many_tiles.rb` (backgrounds of many different tiles, for what a console does when they are too many to
 hold at once), `scene_sprite_pictures.rb` (scenes whose sprite pictures together are more than a console

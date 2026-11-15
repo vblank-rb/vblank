@@ -29,6 +29,9 @@ module VBlank
       #   power_on                what is done before the first frame, past the buttons held
       #   read_fault              what the runtime kept of a fault: [code, list's place, first, second]
       #   picture_now(camera)     the emulator's picture, as a Picture
+      #   screen_forced_off?      for a console whose run of no frames ends before the first
+      #                           picture (#ends_before_first_picture?): whether the console has its
+      #                           screen switched off now
       #   read_picture_drawn, picture_of_pass
       #                           for a console whose picture is read as the game waits (optional)
       #   record_moment, finish_after_halt
@@ -301,6 +304,25 @@ module VBlank
 
         # Whether a run of +frames+ ends as the first pass does, before anything is shown.
         def ends_before_first_picture?(_frames) = false
+
+        # A RUN OF NO FRAMES, on a console whose runtime turns the screen on only as the first pass is
+        # shown, ends as that pass does, and the game goes no further. The picture is the one the
+        # console shows then. Where the console really has its screen switched off
+        # (#screen_forced_off?), that is the interpreter's picture of a display switched off, plain
+        # white (Reference::Framebuffer::HELD_OFF). Anything else is reported as shown, so a runtime
+        # that lets the screen come on while it sets up disagrees with the interpreter.
+        def end_before_first_picture(variables, lists, sprites, sounds, camera)
+          hold_after_this_pass
+          @sprites = sprites
+          record_moment(:end, variables, lists, picture_before_first_pass(camera), sounds)
+        end
+
+        def picture_before_first_pass(camera)
+          shown = picture_now(camera)
+          return shown unless screen_forced_off?
+
+          shown.with(shown: Array.new(shown.shown.size, Reference::Framebuffer::HELD_OFF))
+        end
 
         # What is read once the first pass has ended.
         def first_pass_ended = nil

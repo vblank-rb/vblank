@@ -223,21 +223,17 @@ module VBlank
           # the run ends on.
           def moment_ready?(pass, frames) = pass > frames || sounds_counted?(pass)
 
-          # A RUN OF NO FRAMES ends as the first pass does, before anything is shown: the screen is
-          # still switched off (Runtime::Frame turns it on as the first pass is shown). The interpreter
-          # shows a display switched off as a plain white picture (Reference::Framebuffer::HELD_OFF),
-          # so that is the picture the run ends on, and the game goes no further.
+          # A RUN OF NO FRAMES ends as the first pass does, before anything is shown
+          # (CartridgeHeadlessRun#end_before_first_picture): Runtime::Frame turns the screen on as the
+          # first pass is shown.
           def ends_before_first_picture?(frames) = frames.zero?
 
-          def end_before_first_picture(variables, lists, sprites, sounds, camera)
-            hold_after_this_pass
-            @sprites = sprites
-            width = @core.width / @pixel_size
-            height = @core.height / @pixel_size
-            off = Array.new(width * height, Reference::Framebuffer::HELD_OFF)
-            record_moment(:end, variables, lists, Picture.new(shown: off, width: width, height: height,
-                                                              camera_x: camera[0], camera_y: camera[1]), sounds)
-          end
+          # The screen held in forced blank, which bsnes draws as colour 0 on every pixel of its whole
+          # picture (every pixel, not only the ones a game of big pixels is read by). The probe gives
+          # no reading of the picture chip's own forced-blank bit, so the pixels are all there is to
+          # go on: a screen on that shows nothing but black reads the same, and is then held to the
+          # interpreter's switched-off white.
+          def screen_forced_off? = @core.colors.none?(&:positive?)
 
           # FRAME 1 CAN BE READ BEFORE IT IS DECIDED. An emulated frame ends as the console starts its
           # vertical blank, and the blank's interrupt reads the controller as it starts — so a first
