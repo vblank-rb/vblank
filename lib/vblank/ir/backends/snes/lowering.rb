@@ -1630,23 +1630,132 @@ module VBlank
 
           # The sort itself: each place after the first compared with the one before it, and the
           # routine that moves an item back called only for one that has to go.
+          #
+          # AN ORDER THAT TURNS ROUND. Moving each item back a place at a time is a step for every
+          # pair of things that passed each other, so when every thing passes every other (the
+          # whole order turned round, as when everything is flipped top to bottom) a pool of 32 is
+          # nearly 500 steps, more than a frame on this processor. So before an item goes back further
+          # than one place, the routine that turns a run round (#emit_keyed_run_reversal) looks for
+          # a run of things each strictly beyond the next, starting with the pair just swapped, and
+          # turns the whole run over at once, half as many swaps as it is long. The sort then
+          # takes up again at the place before the run, which the run's first item may still have
+          # to go back past. Only a run strictly falling is turned, so two things level never swap
+          # and keep the order they had, as the interpreter keeps them (Reference#exec_list_sort).
+          # Two things passing, the move nearly every frame makes, never reach the routine except
+          # at the first place, which has no place before it to tell the two apart.
           def emit_keyed_sort(keyed)
             mover = fresh("sort_move")
+            reversal = fresh("sort_reverse") if keyed.count > 2
             done = fresh("sort_done")
+            starts = (1...keyed.count).to_h { |place| [place, fresh("sort_place")] }
             (1...keyed.count).each do |place|
               stays = fresh("sort_stays")
+              @asm.label(starts.fetch(place))
               emit_keyed_stays_unless_beyond(keyed, keyed.number(@asm, place * 2), keyed.number(@asm, (place * 2) - 2), stays)
               emit_keyed_swap(keyed, place)
               if place > 1
                 emit_keyed_stays_unless_beyond(keyed, keyed.number(@asm, (place * 2) - 2), keyed.number(@asm, (place * 2) - 4), stays)
+              end
+              if reversal && place < keyed.count - 1
+                @asm.ldx(place * 2)
+                @asm.jsr(@asm.abs(reversal))
+                @asm.branch_long(:bcs, starts.fetch([place - 1, 1].max))
+              end
+              if place > 1
                 @asm.ldx((place - 1) * 2)
                 @asm.jsr(@asm.abs(mover))
               end
               @asm.label(stays)
             end
-            @asm.bra(done)
+            @asm.brl(done)
             emit_keyed_move(keyed, mover)
+            emit_keyed_run_reversal(keyed, reversal) if reversal
             @asm.label(done)
+          end
+
+          # The routine that turns a run round (#emit_keyed_sort), called with X twice a place whose
+          # item and the one before have just been swapped. Carry clear when the item after it is not
+          # strictly beyond the swapped item, so there is no run longer than the two, and nothing is
+          # done. Otherwise the swap is undone, the run found from the place before to the last place
+          # strictly beyond the one before it, every pair of it swapped from the two ends in, and the
+          # table of places written again across it; carry set. Its three words are the moving
+          # routine's own (#emit_keyed_move), which is never running then: where the run starts, one
+          # past where it ends, and the last place not yet swapped (Y), for X to be compared with.
+          def emit_keyed_run_reversal(keyed, reversal)
+            run = fresh("sort_run")
+            scan = fresh("sort_scan")
+            scanned = fresh("sort_scanned")
+            turn = fresh("sort_turn")
+            placing = fresh("sort_placing")
+            first, past, last = keyed_scratch_words(keyed)
+            @asm.label(reversal)
+            emit_keyed_compare(keyed, keyed.number(@asm, 2, x: true), keyed.number(@asm, -2, x: true))
+            @asm.bmi(run)
+            @asm.clc
+            @asm.rts
+
+            @asm.label(run)
+            @asm.txy
+            2.times { @asm.dex }
+            @asm.stx(first)
+            emit_keyed_swap_x_and_y(keyed)
+            @asm.tyx
+            2.times { @asm.inx }
+            @asm.label(scan)
+            @asm.cpx((keyed.count - 1) * 2)
+            @asm.bcs(scanned)
+            emit_keyed_compare(keyed, keyed.number(@asm, 2, x: true), keyed.number(@asm, 0, x: true))
+            @asm.bpl(scanned)
+            2.times { @asm.inx }
+            @asm.bra(scan)
+
+            @asm.label(scanned)
+            @asm.txy
+            2.times { @asm.inx }
+            @asm.stx(past)
+            @asm.ldx(first)
+            @asm.label(turn)
+            emit_keyed_swap_x_and_y(keyed)
+            2.times { @asm.inx }
+            2.times { @asm.dey }
+            @asm.sty(last)
+            @asm.cpx(last)
+            @asm.bcc(turn)
+
+            @asm.ldx(first)
+            @asm.label(placing)
+            @asm.lda(keyed.at(@asm, keyed.entries, x: true))
+            @asm.tay
+            @asm.txa
+            @asm.sta(@asm.abs_y(keyed.places))
+            2.times { @asm.inx }
+            @asm.cpx(past)
+            @asm.bcc(placing)
+            @asm.sec
+            @asm.rts
+          end
+
+          # The items in the places X and Y name (each twice its place) swapped, their numbers with
+          # them. The table of places is left for the caller to write.
+          def emit_keyed_swap_x_and_y(keyed)
+            [keyed.lows, keyed.highs, keyed.entries].each do |table|
+              @asm.lda(keyed.at(@asm, table, x: true))
+              @asm.pha
+              @asm.lda(@asm.abs_y(table))
+              @asm.sta(keyed.at(@asm, table, x: true))
+              @asm.pla
+              @asm.sta(@asm.abs_y(table))
+            end
+          end
+
+          # The three words the moving routine keeps an item's number and the item in: the sort's
+          # +scratch+ on its own page, or the direct page's.
+          def keyed_scratch_words(keyed)
+            if keyed.scratch
+              [0, 2, 4].map { |plus| keyed.at(@asm, keyed.scratch + plus) }
+            else
+              [@asm.direct(SORT_KEY), @asm.direct(SORT_KEY + 2), @asm.direct(SORT_ITEM)]
+            end
           end
 
           # A jump to +stays+ unless the number at +item+ (two halves) is strictly beyond the one at
@@ -1718,11 +1827,8 @@ module VBlank
           def emit_keyed_move(keyed, mover)
             step = fresh("sort_step")
             placed = fresh("sort_placed")
-            key, item = if keyed.scratch
-                          [[keyed.at(@asm, keyed.scratch), keyed.at(@asm, keyed.scratch + 2)], keyed.at(@asm, keyed.scratch + 4)]
-                        else
-                          [[@asm.direct(SORT_KEY), @asm.direct(SORT_KEY + 2)], @asm.direct(SORT_ITEM)]
-                        end
+            low, high, item = keyed_scratch_words(keyed)
+            key = [low, high]
             here = keyed.number(@asm, 0, x: true)
             before = keyed.number(@asm, -2, x: true)
             @asm.label(mover)

@@ -29,6 +29,30 @@ module DrawOrderCostGames
     end
   end
 
+  # A pool of +count+ for +console+, every one spawned, sorted by the bottom of each one's box, and
+  # every one turned upside down on the screen each pass, so the whole order turns round: every
+  # thing passes every other, the most work a sort that moves each thing back a place at a time
+  # can be given.
+  def self.reversed_pool_game(console, count)
+    block = BLOCK
+    VBlank.game("REVERSED POOL", consoles: [console]) do
+      screen :tiled
+      image(:block, "#" => :red) { block }
+      crowd = pool :crowd, x: 0, y: 0, capacity: count, image: :block
+      draw_in_order(crowd)
+      count.times { |i| crowd.spawn(x: (i * 13) % 200, y: (i * 37) % 120) }
+      game_loop do
+        crowd.each { |thing| thing.y = 127 - thing.y }
+      end
+    end
+  end
+
+  # How many passes of +game+ took each number of frames, built for +console+ and played twenty.
+  def self.passes_by_frames(console, game)
+    game.build_rom(console: console, out: StringIO.new, err: StringIO.new, profile: false)
+        .profile(out: StringIO.new, frames: 20).passes_by_frames
+  end
+
   # The profile of the game for +console+ over twenty passes.
   def self.profile(console, ordered:, sprites: 4)
     rom = game(console, ordered: ordered, sprites: sprites)

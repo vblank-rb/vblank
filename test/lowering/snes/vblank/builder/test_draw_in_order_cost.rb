@@ -23,4 +23,22 @@ class TestSNESDrawInOrderCost < Minitest::Test
 
     assert_operator cost, :<, BOUND_THIRTY, "an order of thirty costs #{cost.round(2)} lines"
   end
+
+  # A pool of 32 whose whole order turns round every pass, every thing passing every other, still
+  # keeps a pass a frame: the sort turns a run of things that stand the wrong way round over at
+  # once rather than moving each back a place at a time (Lowering#emit_keyed_sort).
+  def test_a_pool_of_thirty_two_whose_order_turns_round_takes_a_frame_a_pass
+    passes = DrawOrderCostGames.passes_by_frames(:snes, DrawOrderCostGames.reversed_pool_game(:snes, 32))
+
+    assert_equal({ 1 => 20 }, passes, "every pass fits in one frame")
+  end
+
+  # The same pool drawn in the interpreter's order on every pass: the checked run compares the
+  # sprites drawn, back to front, after each one, and stops at the first that differs. The first
+  # thing spawned stands at the top left or, turned upside down, 127 pixels below it.
+  def test_a_pool_of_thirty_two_whose_order_turns_round_is_drawn_as_the_interpreter_draws_it
+    shown = game_player.run(DrawOrderCostGames.reversed_pool_game(:snes, 32).program, frames: 8).screen
+
+    assert_includes [[8, 8], [8, 135]].map { |at| shown.pixel(*at) }, VBlank::Graphics::Color.resolve(:red)
+  end
 end

@@ -335,6 +335,39 @@ class TestDrawInOrder < Minitest::Test
     assert_equal color_named(:white), seven_shown(seven_program([2] * 7, front: :lowest))
   end
 
+  # THE SEVEN STAND AT A NEW ROW OF HEIGHTS EACH PASS, one after another, then stay at the last:
+  # in a line, the line turned round, a turned-round run behind one that stands apart, the same with
+  # two level in it, all level, turned round again, and a falling line with level pairs. Each row is
+  # sorted from the order the row before left, so the order turns round whole and in part, and
+  # things level keep the order they had. A checked run compares every pass's sprites with the
+  # interpreter's; the last row, a muddle, puts the lowest, green, in front.
+  TURNING_ROWS = [[0, 1, 2, 3, 4, 5, 6], [6, 5, 4, 3, 2, 1, 0], [2, 6, 5, 4, 3, 1, 0], [2, 6, 5, 5, 3, 1, 0],
+                  [3] * 7, [6, 5, 4, 3, 2, 1, 0], [5, 4, 4, 3, 1, 0, 0], [3, 6, 0, 5, 1, 4, 2]].freeze
+
+  private def turning_seven_program
+    colors = SEVEN_COLORS
+    rows = TURNING_ROWS
+    small = Array.new(8) { "#" * 8 }.join("\n")
+    program do
+      screen :tiled
+      heights = table :heights, rows.flatten, width: :byte
+      row = var :row, 0
+      things = colors.each_with_index.map do |color, i|
+        image(:"small_#{color}", "#" => color) { small }
+        sprite :"small_#{color}", at: [60 + i, 30]
+      end
+      draw_in_order(*things)
+      game_loop do
+        things.each_with_index { |thing, i| thing.y = 30 + heights[(row * 7) + i] }
+        row += 1 if row < rows.length - 1
+      end
+    end
+  end
+
+  def test_seven_turned_round_whole_and_in_part_are_drawn_in_order
+    assert_equal color_named(:green), game_player.run(turning_seven_program, frames: 12).screen.pixel(*SEVEN_AT)
+  end
+
   # --- taking turns in front, a frame each ---
 
   # Where red and green overlap, where all three do, and where green and blue do.

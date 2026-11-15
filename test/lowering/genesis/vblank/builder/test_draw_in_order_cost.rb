@@ -36,23 +36,6 @@ class TestDrawInOrderCost < Minitest::Test
     end
   end
 
-  # A pool of +count+, every one spawned, sorted by the bottom of each one's box, and every one
-  # turned upside down on the screen each pass, so the whole order turns round: every thing
-  # passes every other, the most work the sort can be given.
-  def self.sorted_pool_game(count)
-    block = BLOCK
-    VBlank.game("SORTED POOL", consoles: %i[genesis]) do
-      screen :tiled
-      image(:block, "#" => :red) { block }
-      crowd = pool :crowd, x: 0, y: 0, capacity: count, image: :block
-      draw_in_order(crowd)
-      count.times { |i| crowd.spawn(x: (i * 13) % 200, y: (i * 37) % 120) }
-      game_loop do
-        crowd.each { |thing| thing.y = 127 - thing.y }
-      end
-    end
-  end
-
   private def profile(game) = game.build_rom(console: :genesis, out: StringIO.new, err: StringIO.new, profile: false)
                                   .profile(out: StringIO.new, frames: 20)
 
@@ -71,7 +54,9 @@ class TestDrawInOrderCost < Minitest::Test
   # memory, and a pool of 32 so sorted fits in a frame even when every one of them passes every
   # other (Lowering#emit_keyed_sort).
   def test_a_pool_of_thirty_two_sorted_by_a_key_takes_a_frame_a_pass
-    assert_a_pass_a_frame(self.class.sorted_pool_game(32))
+    passes = DrawOrderCostGames.passes_by_frames(:genesis, DrawOrderCostGames.reversed_pool_game(:genesis, 32))
+
+    assert_equal({ 1 => 20 }, passes, "every pass fits in one frame")
   end
 
   # The order's own work is what the frame spends beyond the same pool with no order. Work that
