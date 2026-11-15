@@ -293,6 +293,40 @@ class TestStatusBar < Minitest::Test
     assert_backends_agree(prog, frames: [1, 2, 6], name: "BARMOVED")
   end
 
+  # A bar placed before anything has put it up shows at the row it was placed at, from the first
+  # background put up: only its own line puts it at the row it was declared with.
+  def test_a_bar_placed_before_it_first_goes_up_shows_where_it_was_placed
+    prog = movable_bar_game do
+      step = var :step, 0
+      call :move_bar
+      background :field, tiles: :field_tiles, map: Array.new(32) { "#" * 32 }
+      game_loop do
+        call :put_up_bar if step >= 3
+        step += 1
+      end
+    end
+
+    assert_equal GREEN, picture(prog, 1).pixel(8, screen_height - 30), "the bar's placed top"
+    assert_backends_agree(prog, frames: [1, 2, 6], name: "BARPLACED")
+  end
+
+  # ...and one placed in an earlier pass stays there while its field goes up again on every pass.
+  def test_a_bar_placed_in_an_earlier_pass_stays_placed_as_its_field_goes_up_again
+    prog = movable_bar_game do
+      step = var :step, 0
+      func(:put_up_field) { background :field, tiles: :field_tiles, map: Array.new(32) { "#" * 32 } }
+      game_loop do
+        call :put_up_field
+        call :move_bar if step == 0
+        call :put_up_bar if step >= 5
+        step += 1
+      end
+    end
+
+    assert_equal GREEN, picture(prog, 4).pixel(8, screen_height - 30), "the bar's placed top"
+    assert_backends_agree(prog, frames: [1, 2, 4, 8], name: "BARPLACEDEARLIER")
+  end
+
   # A bar declared in one scene is up in that scene alone: the scene after it shows its field to
   # the bottom of the screen.
   def test_a_bar_belongs_to_the_scene_that_declares_it
