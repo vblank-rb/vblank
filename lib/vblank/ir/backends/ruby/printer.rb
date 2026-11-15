@@ -86,6 +86,13 @@ module VBlank
           # narrowed the counter down to them (#print_step_choice).
           STEPS_TESTED_IN_TURN = 4
 
+          # The most steps written in place of their goto one inside another (#step_written_in_place?),
+          # and the most statements and branches such a step holds: the steps that count a loop on
+          # and test it are a few lines.
+          MOST_STEPS_IN_PLACE = 4
+          MOST_STATEMENTS_IN_PLACE = 8
+          MOST_BRANCHES_IN_PLACE = 12
+
           # The shifts, written as Ruby's operator when their count is written in the program
           # (#written_shift_count?).
           SHIFTS = Ractor.make_shareable({ "rg_shl" => "<<", "rg_shr" => ">>" })
@@ -236,6 +243,9 @@ module VBlank
             @ranges = {}
             @routine = item.name.text
             @in_parts = list_branches(item.body) > MOST_BRANCHES_A_METHOD
+            # What the steps written in place of a goto may add (#step_written_in_place?): no more
+            # than keeps the method inside MOST_BRANCHES_A_METHOD.
+            @branches_to_spare = MOST_BRANCHES_A_METHOD - list_branches(item.body)
             @locals_in_instance_variables = @in_parts || whole_method_local_count(item.body) > MOST_LOCALS_A_METHOD
             @parts = []
             @part_count = 0
@@ -536,13 +546,12 @@ module VBlank
             when Statements::Block then print_block(depth, item)
             when Statements::Comment then comment(depth, item.text)
             when Statements::Steps then print_steps(depth, item)
-            when Statements::Goto then line(depth, "#{expression(item.counter)} = #{integer(item.step)}")
-                              leave(depth, :goto, "next")
+            when Statements::Goto then print_goto(depth, item)
             when Statements::Pause then line(depth, "#{expression(item.counter)} = #{integer(item.step)}")
                                line(depth, "return 1")
             when Statements::Finish then line(depth, "#{expression(item.counter)} = 0")
                                 line(depth, "return 0")
-            when Statements::Resume then line(depth, "return 1 if #{expression(item.call)} == 1")
+            when Statements::Resume then print_resume(depth, item)
             when Statements::RunToEnd then print_run_to_end(depth, item)
             else raise LoweringError, "the printer has no statement form for #{item.class}"
             end
@@ -580,10 +589,132 @@ module VBlank
           # A resumable routine's steps (Computer::Resumable): a loop that picks the step its counter
           # names (#print_step_choice), each step going on to the next with `next`, and leaving the
           # method with 1 or 0.
+          #
+          # THE STEP IT IS ON IS A RUBY LOCAL, rg_step, read from the counter as the routine is called
+          # and set by each goto, and the counter is written only where the routine leaves: a wait
+          # (Pause) and the end (Finish) set it, and a call of a routine that waits (Resume) sets it
+          # to the step the call is in before it hands back 1. Nothing reads the counter while the
+          # routine runs (a state is written only between frames, when every routine has left at a
+          # wait), and an instance variable written at every goto cost an unpacking's loop three
+          # writes a byte.
+          #
+          # A routine printed in parts keeps the counter as it was, an instance variable set at every
+          # goto, since a part is a method of its own and cannot set the routine's local.
           def print_steps(depth, item)
-            line(depth, "while true")
-            line(depth + 1, "#{method_local('rg_step')} = #{expression(item.counter)}")
+            @steps_item = @in_parts ? nil : item
+            if @steps_item
+              line(depth, "#{method_local('rg_step')} = #{expression(item.counter)}")
+              line(depth, "while true")
+            else
+              line(depth, "while true")
+              line(depth + 1, "#{method_local('rg_step')} = #{expression(item.counter)}")
+            end
             print_step_choice(depth + 1, item, 0, item.steps.size)
+            line(depth, "end")
+          ensure
+            @steps_item = nil
+          end
+
+          # Step +number+ of +item+, where the choice picked it. A STEP THAT COMES BACK TO ITSELF
+          # (#step_comes_back?), as the body of a loop cut into steps does through the steps that
+          # count it on and test it, is a loop of its own: going back to it is that loop's `next`,
+          # and going to any other step leaves it, rg_step set, for the choice to pick again. A loop
+          # of a few steps then turns without picking a step at all.
+          def print_step(depth, item, number)
+            return inner_statements(depth, item.steps[number], item) unless @steps_item
+
+            looped = step_comes_back?(number)
+            line(depth, "while true") if looped
+            with_step(number, looped) { statements(depth + (looped ? 1 : 0), item.steps[number]) }
+            line(depth, "end") if looped
+          end
+
+          # The block printed as step +number+, a loop of its own when +looped+.
+          def with_step(number, looped)
+            @step_now = number
+            @step_looped = looped ? number : nil
+            @steps_in_place = [number]
+            yield
+          ensure
+            @step_now = @step_looped = @steps_in_place = nil
+          end
+
+          # A goto: the step it goes on to set and the choice made again; or, where that step is the
+          # one looping (#print_step), that loop's next turn; or that step's statements written here
+          # (#step_written_in_place?), which saves picking it.
+          def print_goto(depth, item)
+            unless @steps_item
+              line(depth, "#{expression(item.counter)} = #{integer(item.step)}")
+              return leave(depth, :goto, "next")
+            end
+
+            target = item.step
+            return line(depth, "next") if target == @step_looped
+            return print_step_in_place(depth, target) if step_written_in_place?(target, @steps_in_place, spending: true)
+
+            line(depth, "rg_step = #{integer(target)}")
+            line(depth, @step_looped ? "break" : "next")
+          end
+
+          # Step +target+'s statements where a goto to it was, printed knowing nothing the statements
+          # around the goto knew (a step is entered from many places).
+          def print_step_in_place(depth, target)
+            outside = [@step_now, @ranges]
+            @steps_in_place.push(target)
+            @step_now = target
+            @ranges = {}
+            statements(depth, @steps_item.steps[target])
+          ensure
+            @steps_in_place.pop
+            @step_now, @ranges = outside
+          end
+
+          # Whether a goto to +target+, from inside the steps +chain+ (the step being printed, and the
+          # ones written in place inside it), is written as +target+'s statements: a small step, none
+          # of the chain, the chain short enough, and, when +spending+, the branches it adds within
+          # what the routine has to spare.
+          def step_written_in_place?(target, chain, spending: false)
+            return false if chain.include?(target) || chain.size >= MOST_STEPS_IN_PLACE
+
+            step = @steps_item.steps[target]
+            branches = list_branches(step)
+            return false if branches > MOST_BRANCHES_IN_PLACE || statement_count(step) > MOST_STATEMENTS_IN_PLACE
+            return true unless spending
+            return false if branches > @branches_to_spare
+
+            @branches_to_spare -= branches
+            true
+          end
+
+          # Whether step +number+ goes back to itself, through the steps written in place inside it.
+          def step_comes_back?(number, chain = [number])
+            gotos_in(@steps_item.steps[chain.last]).any? do |target|
+              target == number || (step_written_in_place?(target, chain) && step_comes_back?(number, chain + [target]))
+            end
+          end
+
+          # The steps the gotos in +list+ go on to.
+          def gotos_in(list)
+            found = []
+            each_statement(list) { |statement| found << statement.step if statement.is_a?(Statements::Goto) }
+            found
+          end
+
+          def statement_count(list)
+            count = 0
+            each_statement(list) { count += 1 }
+            count
+          end
+
+          # A call of a routine that waits, made again when this one carries on: if it hands back 1,
+          # this routine does too, its counter set to the step the call is in (see THE STEP IT IS ON
+          # at #print_steps).
+          def print_resume(depth, item)
+            return line(depth, "return 1 if #{expression(item.call)} == 1") unless @steps_item
+
+            line(depth, "if #{expression(item.call)} == 1")
+            line(depth + 1, "#{expression(@steps_item.counter)} = #{integer(@step_now)}")
+            line(depth + 1, "return 1")
             line(depth, "end")
           end
 
@@ -602,7 +733,7 @@ module VBlank
             if past - first <= STEPS_TESTED_IN_TURN
               (first...past).each do |number|
                 line(depth, "#{number == first ? 'if' : 'elsif'} rg_step == #{integer(number)}")
-                inner_statements(depth + 1, item.steps[number], item)
+                print_step(depth + 1, item, number)
               end
               # A counter no step has (none the game writes) ends the routine, as the C does.
               line(depth, "else")

@@ -171,6 +171,39 @@ class TestRubyPrinter < Minitest::Test
     end
   end
 
+  # A LOOP CUT INTO STEPS, as one that waits every few turns is, turns as a loop of its own: its body's
+  # step goes back to itself through the steps that count it on and test it, written in place, and
+  # the step it is on is a Ruby local. The routine's counter is written only where it leaves, just
+  # before a `return`. Checked against the interpreter on every frame, waits and all.
+  def test_a_loop_cut_into_steps_turns_without_writing_its_counter
+    program = program_of do
+      total = var :total, 0
+      unwaited = var :unwaited, 0
+      game_loop do
+        repeat(50) do |turn|
+          total += turn
+          unwaited += 1
+          if unwaited >= 7
+            unwaited = 0
+            wait_vblank
+          end
+        end
+      end
+    end
+    nodes = nodes_of_method(printed_program(program), :rg_game_main)
+
+    counter_writes = nodes.grep(Prism::StatementsNode).flat_map do |list|
+      list.body.each_cons(2).select { |write, _| write.is_a?(Prism::InstanceVariableWriteNode) && write.name == :@rg_game_main_step }
+    end
+    refute_empty counter_writes
+    counter_writes.each { |_, after| assert_kind_of Prism::ReturnNode, after, "the counter should be written only as the routine leaves" }
+    looped = nodes.grep(Prism::WhileNode).select { |loop| every_node(loop.statements).any?(Prism::WhileNode) }
+    refute_empty looped, "the loop's body should be a loop of its own inside the choice of step"
+    run = game_player.run(program, frames: 20)
+
+    assert_operator run[:total], :>, 0
+  end
+
   # A ROUTINE LONGER THAN A METHOD HOLDS is printed in parts, each a method no longer than that,
   # since Ruby's compiler needs stack for every branch in a method and a Ractor has little. The
   # parts play as the routine did: a loop whose body is in parts still stops when it is told, its
