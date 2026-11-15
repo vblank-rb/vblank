@@ -38,7 +38,7 @@ module VBlank
             LCDC_WANTED = "rt picture lcdc"
             OVERLAP = "rt picture overlap" # Two sprites' masks and where they meet, while they are tested
             GRID_UP = "rt picture grid up" # The number of the grid up, or being put up
-            # IN A GAME THAT PUTS A BACKGROUND UP AGAIN (Lowering::Picture#puts_backgrounds_up_again?): the number of
+            # IN A GAME THAT PUTS A BACKGROUND UP AGAIN (Lowering::Picture#reserves_grid_kept?): the number of
             # the grid whose cells the background holds, and the window's for a status bar, which a changed cell
             # leaves as they are (GRID_UP and BAR_UP do not). A put-up that keeps the cells it holds
             # (rt_background_put_up_kept, rt_bar_put_up_kept) copies nothing while its grid is the one there.

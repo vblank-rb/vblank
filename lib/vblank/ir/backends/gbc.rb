@@ -385,7 +385,7 @@ module VBlank
                                   song_entries_in_banks: lowering.music.entries_in_banks?, tune_plays_once: lowering.music.tune_plays_once?,
                                   cells_shown_now: lowering.cells_shown_now?,
                                   bar_covers: lowering.bar_covers_sprites?, tile_loads: lowering.loads_sprite_tiles?,
-                                  walks_colors: lowering.walks_colors?, grids_kept: lowering.puts_backgrounds_up_again?)
+                                  walks_colors: lowering.walks_colors?, grids_kept: lowering.reserves_grid_kept?)
           Runtime::Frame.reserve_last_pass(memory) if cache.plan.keeps_last_pass_number?
           game = lowering.sections
           runs = lowering.run_uploads

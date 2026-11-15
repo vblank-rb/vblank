@@ -92,13 +92,27 @@ module VBlank
             # Does the game ask for a cell on the frame being drawn (`now: true`)?
             def cells_shown_now? = @reachable.any? { |node| node.kind == :set_tile && node.now }
 
-            # Does a background every screen shows go up from a line that can run more than once
-            # (#put_up_again?)? The runtime then keeps GRID_KEPT for it.
-            def puts_backgrounds_up_again?
-              @reachable.any? do |node|
+            # Does the runtime keep GRID_KEPT, for a put-up that keeps the cells its layer holds: a background
+            # every screen shows going up from a line that can run more than once (#put_up_again?), or put back
+            # as a scene takes over with the cells the game changed (#puts_changed_cells_back?).
+            def reserves_grid_kept?
+              puts_changed_cells_back? || @reachable.any? do |node|
                 node.kind == :background && !@handover.on_arrival?(node) && !painted_screen_for?(node) && put_up_again?(node)
               end
             end
+
+            # Does a scene with no scenery of its own put back, as it takes over (#emit_scene_arrival), a background
+            # every screen shows whose cells the game changes (#keeps_cells_on_arrival?)?
+            def puts_changed_cells_back?
+              return false unless @handover.always_up.scenery.any? { |bg| keeps_cells_on_arrival?(bg) }
+
+              @scenes.each_key.any? { |scene| @handover.arrival(scene).scenery.all?(&:bar?) }
+            end
+
+            # Whether +bg+, put back as a scene with no scenery of its own takes over, keeps the cells the game
+            # changed, as the interpreter never takes that scenery down (Reference#take_over): a background on a
+            # screen drawn from tiles that a reachable `set_tile` changes.
+            def keeps_cells_on_arrival?(bg) = !bg.bar? && !painted_screen_for?(bg) && cells_changed?(bg)
 
             # Has a status bar of the game more than one map to show (Runtime::Picture#emit_bar_show)?
             def bar_shows_maps? = @backgrounds.each_value.any? { |bg| bg.bar? && bg.every_map.length > 1 }
@@ -1130,7 +1144,8 @@ module VBlank
             # (#changed_big_place) copied in the first time alone (SceneryWrites#emit_put_up_keeping_cells).
             #
             # +as_shown+ for the scenery every screen shows put back as a scene takes over: it shows the map the
-            # game last handed it, as the interpreter's picture never stopped showing it (#emit_for_map_shown).
+            # game last handed it, and the cells the game changed, as the interpreter's picture never stopped
+            # showing them (#emit_for_map_shown, #keeps_cells_on_arrival?).
             def background_put_up(bg, again: false, as_shown: false)
               return bar_put_up(bg, again: again) if bg.bar?
 
@@ -1140,9 +1155,10 @@ module VBlank
               if big?(bg)
                 big_put_up_again(bg, again, as_shown)
               elsif again || as_shown
+                kept = again || keeps_cells_on_arrival?(bg)
                 emit_for_map_shown(bg) do |which|
                   emit_tile_room(tile_room(bg, which)) if bg.several_sets? && which.positive? # ...or the shown map's
-                  runtime_call(again ? "rt_background_put_up_kept" : "rt_background_put_up_unscrolled", [Build.int(grid_of(bg, which))])
+                  runtime_call(kept ? "rt_background_put_up_kept" : "rt_background_put_up_unscrolled", [Build.int(grid_of(bg, which))])
                 end
               else
                 runtime_call("rt_background_put_up_unscrolled", [Build.int(grid_of(bg))])
@@ -1177,15 +1193,24 @@ module VBlank
             # again, for one the game changes.
             def big_put_up_again(bg, again, as_shown)
               return big_put_up(bg, 0, "rt_big_put_up") unless again || as_shown
-              return emit_for_map_shown(bg) { |which| big_put_up(bg, which, "rt_big_put_up") } unless again && changed_big?(bg)
+              return emit_for_map_shown(bg) { |which| big_put_up(bg, which, "rt_big_put_up") } unless cells_changed?(bg)
+              # Written once in the program's own lines, it went up and was copied in as the game started, so put
+              # back as a scene takes over its copy already holds the cells the game changed. A line that runs
+              # again notes its first copy (SceneryWrites#emit_put_up_keeping_cells).
+              return emit_big_put_up_from_memory(bg) if bg.parent&.kind == :program
 
               emit_put_up_keeping_cells(bg, BACKGROUND_LAYER) do |kept|
                 next big_put_up(bg, 0, "rt_big_put_up") unless kept
 
-                emit_for_map_shown(bg) do |which|
-                  cols, rows = TileMap.size_of(bg.every_map.fetch(which))
-                  runtime_call("rt_big_put_up", [Build.int(@art.big_map_in_memory(cols, rows, changed_big_place(bg), repeats: !bg.streams?))])
-                end
+                emit_big_put_up_from_memory(bg)
+              end
+            end
+
+            # A big map the game changes put up from its copy in memory, as the map shown.
+            def emit_big_put_up_from_memory(bg)
+              emit_for_map_shown(bg) do |which|
+                cols, rows = TileMap.size_of(bg.every_map.fetch(which))
+                runtime_call("rt_big_put_up", [Build.int(@art.big_map_in_memory(cols, rows, changed_big_place(bg), repeats: !bg.streams?))])
               end
             end
 
@@ -1294,7 +1319,7 @@ module VBlank
             def emit_show_map(node) = each_declaration(node) { |bg| emit_show_map_for_declaration(bg, node) }
 
             def emit_show_map_for_declaration(bg, node)
-              return emit_show_changed_big_map(bg, node) if big?(bg) && changed_big?(bg)
+              return emit_show_changed_big_map(bg, node) if big?(bg) && cells_changed?(bg)
 
               emit_area_room(bg, node.which) if bg.several_sets? && @plans_background_rooms
 
@@ -1632,14 +1657,14 @@ module VBlank
               end
             end
 
-            # Whether the game changes a big background's cells as it runs, so it is kept in work
-            # memory while it is up.
-            def changed_big?(bg) = @reachable.any? { |node| node.kind == :set_tile && node.name == bg.name }
+            # Whether the game changes a background's cells as it runs: a big one is then kept in work memory
+            # while it is up, and one every screen shows keeps them as a scene puts it back.
+            def cells_changed?(bg) = @reachable.any? { |node| node.kind == :set_tile && node.name == bg.name }
 
             # A big background put up — or handed map number +which+ (+routine+ rt_big_show) — from its
             # map kept whole; one the game changes copied into work memory first.
             def big_put_up(bg, which, routine)
-              return runtime_call(routine, [Build.int(big_map_of(bg, which))]) unless changed_big?(bg)
+              return runtime_call(routine, [Build.int(big_map_of(bg, which))]) unless cells_changed?(bg)
 
               runtime_call("rt_big_copy_in", [Build.int(big_map_of(bg, which)), Build.int(changed_big_place(bg))])
               cols, rows = TileMap.size_of(bg.every_map.fetch(which))
