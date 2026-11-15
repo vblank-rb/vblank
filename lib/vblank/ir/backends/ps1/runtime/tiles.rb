@@ -109,7 +109,10 @@ module VBlank
             DRAWN_Y = 12
             DRAWN_ART = 16
             DRAWN_LEVEL = 20 # how deep it sits, for a screen drawn level by level (Screen#levels)
-            MOST_SPRITES = Console::PLAYSTATION.sprites
+            # Must be the places a game can keep (Guardrails::Checks::TooManySprites refuses more), so the
+            # table never runs out: a sprite that found it full would be left out where the interpreter,
+            # which has no cap for this console, draws it.
+            MOST_SPRITES = Console::PLAYSTATION.sprite_places
             # A picture in a sprite's table: its number, and where it is in the painted art.
             POSE_BYTES = 8
 

@@ -605,6 +605,9 @@ module VBlank
                                   # The graphics chip draws every sprite each frame as a textured rectangle,
                                   # so the number is the framework's, not the hardware's: every place a game
                                   # can keep is drawn, as the interpreter draws every sprite a frame shows.
+                                  # The build's table of a pass's sprites has a row for each place, and
+                                  # the build refuses more places (PS1::Runtime::Tiles::MOST_SPRITES), so
+                                  # sprite_pieces_drawn_a_screen stays nil.
                                   sprites: 512, sprite_places: 512,
                                   # Nothing limits a row: the chip draws whatever it is sent.
                                   # The chip draws a turned or resized sprite as a textured quad.
