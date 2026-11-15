@@ -5,6 +5,7 @@ require "test_helper"
 require "stringio"
 require "prism"
 require "conformance_fixture"
+require "ractor_workers"
 
 # CAN A GAME CALL THIS LIBRARY FROM A RACTOR?
 #
@@ -28,6 +29,8 @@ require "conformance_fixture"
 # difference that matters here: the count grew between the day it was first taken and the day
 # it was fixed, and a test naming the ones it knew about would have passed through both.
 class TestRactorSafety < Minitest::Test
+  include RactorWorkers
+
   # How many builds race each other, and how many times over. Eight is more than the cores
   # most machines have, which is the point — workers waiting to be let on a core interleave
   # differently each round, and a shared thing being written wants that to find it.
@@ -197,16 +200,6 @@ class TestRactorSafety < Minitest::Test
                      "#{disagreed} of #{AT_ONCE} builds run together disagreed with the one run alone"
       end
     end
-  end
-
-  # Ractors announce that they are experimental every time one is made. The library does
-  # not choose that and a test run should not carry it.
-  private def without_the_experimental_warning
-    was = Warning[:experimental]
-    Warning[:experimental] = false
-    yield
-  ensure
-    Warning[:experimental] = was
   end
 
   private def lazy_module_caches(path)

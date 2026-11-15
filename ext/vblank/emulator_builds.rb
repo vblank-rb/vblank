@@ -9,8 +9,9 @@ require "tmpdir"
 #
 # VBlank is one gem. ruby-gba-emulator/ and ruby-snes-emulator/ are folders inside it, and each
 # holds source that has to be compiled on the machine it runs on: a C extension over libmgba, and
-# bsnes itself. They are built in place, into the same folders a checkout builds them in, so
-# everything that finds an emulator finds it the same way in a checkout and in an installed gem.
+# bsnes itself with the small C extension it is played through. They are built in place, into the
+# same folders a checkout builds them in, so everything that finds an emulator finds it the same way
+# in a checkout and in an installed gem.
 #
 # AN EMULATOR THAT CANNOT BE BUILT DOES NOT STOP THE INSTALL. Building a cartridge is plain Ruby,
 # and somebody with no compiler can still do all of that. So each failure is written to a file
@@ -26,7 +27,7 @@ module EmulatorBuilds
 
   def build_all(root: ROOT)
     attempt(File.join(root, "ruby-gba-emulator")) { build_advance_emulator(File.join(root, "ruby-gba-emulator")) }
-    attempt(File.join(root, "ruby-snes-emulator")) { build_snes_core(File.join(root, "ruby-snes-emulator")) }
+    attempt(File.join(root, "ruby-snes-emulator")) { build_snes_emulator(File.join(root, "ruby-snes-emulator")) }
   end
 
   # Runs the block and leaves NOT_BUILT in +folder+ saying why if it raised, or no such file if not.
@@ -43,14 +44,28 @@ module EmulatorBuilds
   # What `rake compile` does in ruby-gba-emulator/, whose Rakefile says why it installs where it
   # does. Not by calling that Rakefile: it is a checkout's, and loads its test tasks.
   def build_advance_emulator(folder)
+    load File.join(folder, "lib", "ruby_gba_emulator", "built_for.rb")
+    build_extension(folder, "ruby_gba_emulator", RubyGBAEmulator::BUILT_FOR)
+  end
+
+  # What `rake compile compile_core` does in ruby-snes-emulator/: the C extension bsnes is played
+  # through, then bsnes.
+  def build_snes_emulator(folder)
+    load File.join(folder, "lib", "ruby_snes_emulator", "built_for.rb")
+    build_extension(folder, "ruby_snes_emulator", RubySNESEmulator::BUILT_FOR)
+    require File.join(folder, "lib", "ruby_snes_emulator", "core_build")
+    RubySNESEmulator::CoreBuild.make(File.join(folder, "core", "build", "bsnes_libretro.so"))
+  end
+
+  # Builds the extension in +folder+/ext/<name>_ext/ into lib/<built_for>/<name>/, where the gem's
+  # entry point looks for a build of this Ruby's.
+  def build_extension(folder, name, built_for)
     compiler = RbConfig::CONFIG["CC"].split.first
     raise Failed, "a C compiler (#{compiler}) is not installed" unless on_path?(compiler)
 
-    load File.join(folder, "lib", "ruby_gba_emulator", "built_for.rb")
-    installed = File.join(folder, "lib", RubyGBAEmulator::BUILT_FOR, "ruby_gba_emulator")
-    source = File.join(folder, "ext", "ruby_gba_emulator_ext")
+    installed = File.join(folder, "lib", built_for, name)
     FileUtils.mkdir_p(installed)
-    with_copy_of_source(folder) do |copy|
+    with_copy_of_source(folder, "#{name}_ext") do |copy|
       run(copy, RbConfig.ruby, "extconf.rb")
       run(copy, "make")
       run(copy, "make", "install-so", "RUBYARCHDIR=#{installed}")
@@ -61,20 +76,16 @@ module EmulatorBuilds
     raise
   end
 
-  # The extension's source copied somewhere of its own for the block. A game's bundle installs vblank
-  # and ruby-gba-emulator side by side from one clone, and that gem builds the same source itself. Two
-  # builds in one folder delete each other's test programs, so each finds libpng and libzip missing,
-  # and the extension links without them and crashes the first time it opens a cartridge.
-  def with_copy_of_source(folder)
+  # The extension's source, ext/+extension+/, copied somewhere of its own for the block. A game's
+  # bundle installs vblank and an emulator gem side by side from one clone, and that gem builds the
+  # same source itself. Two builds in one folder delete each other's test programs, so each finds
+  # libpng and libzip missing, and the extension links without them and crashes the first time it
+  # opens a cartridge.
+  def with_copy_of_source(folder, extension)
     Dir.mktmpdir("vblank-emulator-build") do |copy|
       %w[ext lib].each { |part| FileUtils.cp_r(File.join(folder, part), copy) }
-      yield File.join(copy, "ext", "ruby_gba_emulator_ext")
+      yield File.join(copy, "ext", extension)
     end
-  end
-
-  def build_snes_core(folder)
-    require File.join(folder, "lib", "ruby_snes_emulator", "core_build")
-    RubySNESEmulator::CoreBuild.make(File.join(folder, "core", "build", "bsnes_libretro.so"))
   end
 
   def on_path?(tool)

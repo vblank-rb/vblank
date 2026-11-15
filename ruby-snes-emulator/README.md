@@ -30,5 +30,8 @@ in a checkout: it downloads bsnes at the revision `CoreBuild` names, applies the
 it into `core/build/` (make, patch, tar and a C++ compiler). Set `VBLANK_SNES_CORE` to use a core
 built somewhere else.
 
-The binding is pure Ruby over Fiddle: there is no C extension to compile. Each `Core` loads a
-copy of the library of its own, so two of them in one process are two consoles.
+The core is played through a small C extension, a libretro frontend (`ext/ruby_snes_emulator_ext/`),
+so a cartridge plays in any Ractor, not only the main one. It needs a C compiler and nothing else:
+`rake compile` builds it into `lib/<this Ruby>/`, and a gem install builds it as any extension gem's
+is. Each `Core` loads a copy of the library of its own, so two of them in one process are two
+consoles.

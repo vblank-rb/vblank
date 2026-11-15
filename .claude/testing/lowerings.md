@@ -40,7 +40,7 @@ fails there and belongs in the folders of the consoles that can. A port's unpack
 `examples/pong.rb` changed for it, since the Advance's title zooms on a screen the Color cannot turn.
 **The Super Nintendo run is built the way the Color's is.** Its player (`CartridgeCheckedPlayer.for(:snes)`, over
 `SNES::CheckedRun`) plays each test's program as a Super Nintendo program in bsnes
-(ruby-snes-emulator, whose core `rake compile_snes_core` builds) and compares variables, lists,
+(ruby-snes-emulator, whose core and C extension `rake compile_snes_core` builds) and compares variables, lists,
 the picture and sprites with the interpreter's after every pass. A test whose program reaches a
 part its build does not make yet (`SNES::Lowering::NOT_LOWERED_YET`) skips, saying which part, and
 the run counts those skips by reason; `skip_on_snes` is there for a test it cannot play for a

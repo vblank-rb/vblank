@@ -92,9 +92,10 @@ module VBlank
       end
 
       # THE SUPER NINTENDO'S EMULATOR is a gem of its own too, ruby-snes-emulator: bsnes, built as a
-      # libretro core with a patch that hands over the console's memories, driven through Fiddle.
-      # It is loaded the same way, the gem first and this repository's checkout second, and when
-      # it is missing it says how to get it.
+      # libretro core with a patch that hands over the console's memories, played through a small C
+      # extension of the gem's own, so a cartridge plays in any Ractor. It is loaded the same way,
+      # the gem first and this repository's checkout second, and when it is missing it says how to
+      # get it.
       def load_snes!
         return true if snes_loaded?
 
@@ -106,8 +107,8 @@ module VBlank
           raise LoadError, "An emulator is required to run a Super Nintendo cartridge, and ruby-snes-emulator will " \
                            "not load. To fix this, add it to the git block that names vblank and ruby-gba-emulator " \
                            "in your Gemfile: widen its glob to \"{,ruby-gba-emulator/,ruby-snes-emulator/}*.gemspec\" " \
-                           "and add `gem \"ruby-snes-emulator\"` inside it. Then run `rake compile_core` in " \
-                           "ruby-snes-emulator/ to build the bsnes core it plays cartridges in."
+                           "and add `gem \"ruby-snes-emulator\"` inside it. Then run `rake compile compile_core` in " \
+                           "ruby-snes-emulator/ to build the bsnes core it plays cartridges in, and its C extension."
         end
 
         $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)

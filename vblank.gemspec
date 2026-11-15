@@ -23,6 +23,7 @@ Gem::Specification.new do |spec|
                        Dir.glob("ruby-gba-emulator/lib/**/*.rb") +
                        Dir.glob("ruby-gba-emulator/ext/ruby_gba_emulator_ext/*.{c,h,rb}") +
                        Dir.glob("ruby-snes-emulator/lib/**/*.rb") +
+                       Dir.glob("ruby-snes-emulator/ext/ruby_snes_emulator_ext/*.{c,h,rb}") +
                        Dir.glob("ruby-snes-emulator/core/*.{patch,md}") +
                        %w[vblank.gemspec Rakefile LICENSE.md]
   spec.bindir        = "bin"
@@ -31,8 +32,8 @@ Gem::Specification.new do |spec|
   spec.extensions    = ["ext/vblank/Rakefile"]
   spec.required_ruby_version = ">= 4.0"
 
-  # The Super Nintendo's emulator and `vblank run` reach their libraries through Fiddle. It comes
-  # with Ruby, but a game's bundle can load only what a gem names.
+  # `vblank run` reaches SDL3 through Fiddle. It comes with Ruby, but a game's bundle can load only
+  # what a gem names.
   spec.add_dependency "fiddle"
   spec.add_dependency "prism"
   # Runs ext/vblank/Rakefile when the gem is installed.

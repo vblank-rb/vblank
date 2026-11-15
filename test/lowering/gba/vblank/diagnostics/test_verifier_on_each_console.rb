@@ -9,7 +9,7 @@ require "stringio"
 # an Advance cartridge and a Color one, and a question only one console's cartridges answer is
 # refused by name on the other's.
 class TestVerifierOnEachConsole < Minitest::Test
-  # bsnes is opened through Fiddle, whose library handles Ruby refuses outside the main Ractor.
+  # Beetle PSX is opened through Fiddle, whose library handles Ruby refuses outside the main Ractor.
   runs_on_the_main_ractor!
 
   def setup

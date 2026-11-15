@@ -38,12 +38,12 @@ end
 desc "Build the emulator's C extension if its sources changed (required for the tests)"
 task compile_emulator: EMULATOR_BINARY
 
-# THE SUPER NINTENDO'S EMULATOR: bsnes, built with ruby-snes-emulator's probe patch (that gem's
-# Rakefile says how). Its binding is plain Ruby, so the core is all there is to build, once; the
-# Super Nintendo run is the only one that plays its cartridges.
-desc "Build the bsnes core the Super Nintendo run plays its cartridges in, if it is not built"
+# THE SUPER NINTENDO'S EMULATOR: bsnes, built with ruby-snes-emulator's probe patch, and the small C
+# extension it is played through (that gem's Rakefile says how). Each is built only when it is
+# missing or out of date; the Super Nintendo run is the only one that plays its cartridges.
+desc "Build the bsnes core the Super Nintendo run plays its cartridges in, and its C extension, if not built"
 task :compile_snes_core do
-  Dir.chdir("ruby-snes-emulator") { sh "rake", "compile_core" }
+  Dir.chdir("ruby-snes-emulator") { sh "rake", "compile", "compile_core" }
 end
 
 # THE SEGA GENESIS'S EMULATOR: Genesis Plus GX, built with ruby-genesis-emulator's probe patch (that

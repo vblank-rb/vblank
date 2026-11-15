@@ -36,9 +36,9 @@ gemspec
 #   end
 gem "ruby-gba-emulator", path: "ruby-gba-emulator"
 
-# THE SUPER NINTENDO'S EMULATOR, for the same reason and in the same way: bsnes, driven through
-# Fiddle, so there is no extension to build here. What it needs built is the bsnes core itself,
-# which `rake compile_core` in ruby-snes-emulator/ does (see its Rakefile).
+# THE SUPER NINTENDO'S EMULATOR, for the same reason and in the same way: bsnes, played through a
+# small C extension of the gem's own. Bundler builds neither here, so `rake compile_snes_core` builds
+# both: the extension and the bsnes core (see ruby-snes-emulator's Rakefile).
 gem "ruby-snes-emulator", path: "ruby-snes-emulator"
 
 # THE SEGA GENESIS'S EMULATOR, the same way: Genesis Plus GX, driven through Fiddle, whose core
