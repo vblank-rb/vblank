@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "weakref"
 
 # A program made by hand runs in Beetle PSX under OpenBIOS, and what it did is read back: a word it
 # stored in RAM, the screen it set up and the colour it filled the screen with.
@@ -100,5 +101,63 @@ class TestCore < Minitest::Test
     played(red_screen, 0) do |core|
       assert_raises(ArgumentError) { core.set_buttons(%i[a]) }
     end
+  end
+
+  def test_the_memory_card_holds_what_was_written_to_it
+    played(red_screen, 0) do |core|
+      core.memory_card = "\x5A".b * 16
+      core.run_frame
+      assert_equal "\x5A".b * 16, core.memory_card.byteslice(0, 16)
+      assert_equal 128 * 1024, core.memory_card.bytesize
+    end
+  end
+
+  # A console nobody destroyed is collected by Ruby in the end, and its copy of the core is handed to
+  # the next console made in this process. The next console must start with a memory card of its own,
+  # never the one the dropped console had.
+  def test_a_console_left_without_destroy_hands_its_memory_card_to_nobody
+    dropped = Thread.new { drop_console { |core| core.memory_card = "\x5A".b * 16 } }.value
+    collect_dropped_consoles
+    refute dropped.weakref_alive?, "the dropped console was collected, so its copy is free for the next"
+
+    played(forever(LOAD_AT), 1) do |core|
+      refute_equal "\x5A".b * 16, core.memory_card.byteslice(0, 16), "the new console has the dropped console's card"
+    end
+  end
+
+  # The copy of the core a dropped console gives back holds no program: Ruby shuts the console as
+  # #destroy does. A copy left with the program in it is a library never shut, which keeps the old
+  # console's memory for as long as the process runs.
+  def test_a_console_left_without_destroy_leaves_no_program_in_its_copy
+    dropped = Thread.new { drop_console { nil } }.value
+    collect_dropped_consoles
+    refute dropped.weakref_alive?, "the dropped console was collected, so its copy is free for the next"
+
+    refute_equal [MARKER].pack("V"), ram_in_next_copy(MARKER_AT, 4), "the copy still holds the dropped console's RAM"
+  end
+
+  # Made and played on a thread of its own and let go of there: Ruby looks for what is still held on
+  # every stack, and a word left on the test's own could keep the console from being collected. Hands
+  # back a weak reference, which says whether the console is still alive without keeping it so.
+  private def drop_console
+    core = RubyPS1Emulator::Core.new(write(Dir.mktmpdir, red_screen))
+    yield core
+    3.times { core.run_frame }
+    WeakRef.new(core)
+  end
+
+  private def collect_dropped_consoles = 3.times { GC.start(full_mark: true, immediate_sweep: true) }
+
+  # +count+ bytes of main RAM from +address+ in the copy of the core the next console would take, opened
+  # as that console opens it. A copy that holds no program has no RAM to show, and answers nil.
+  private def ram_in_next_copy(address, count)
+    copy = RubyPS1Emulator::KeptCopy.take
+    library = Fiddle::Handle.new(copy.path, Fiddle::Handle::RTLD_NOW)
+    data = Fiddle::Function.new(library["retro_get_memory_data"], [Fiddle::TYPE_UINT], Fiddle::TYPE_VOIDP)
+    ram = data.call(RubyPS1Emulator::Core::SYSTEM_RAM)
+    Fiddle::Pointer.new(ram.to_i, RubyPS1Emulator::Core::RAM_SIZE)[address & (RubyPS1Emulator::Core::RAM_SIZE - 1), count] unless ram.null?
+  ensure
+    library&.close
+    copy&.give_back
   end
 end
