@@ -1038,6 +1038,7 @@ module VBlank
           @picture_group_copying.emit_clear_groups_at_power_on # no picture group wanted or up yet
           @sprite_drawing.emit_sprites_shown_at_power_on # no frame without sprites asked for yet
           @sprite_drawing.emit_held_table_at_power_on # no sprite left out of a full table yet
+          @sprite_drawing.emit_no_scene_colors_sent # no scene's sprite colours sent yet
           @background_drawing.emit_held_tiles_at_power_on(program) # no cell change waiting yet
           emit_copy_hot_code_to_iwram unless @fast_funcs.empty?
           emit_call_power_on_swap # the scenes' own routines that fit side by side, the ones the game loop runs first
@@ -1883,6 +1884,9 @@ module VBlank
           @gated_sprites.group_by(&:state).each do |state, groups|
             names = groups.flat_map(&:names)
             @functions.define_generated_func(SpriteDrawing.hide_rows_routine(state)) { @sprite_drawing.emit_hide_sprite_rows(names) }
+          end
+          if (picked = @screen.scene_colors_picker)
+            @functions.define_generated_func(SpriteDrawing::SCENE_COLORS_ROUTINE) { @sprite_drawing.emit_scene_colors_routine(picked) }
           end
         end
 

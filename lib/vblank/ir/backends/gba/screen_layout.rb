@@ -558,6 +558,58 @@ module VBlank
           # Does any scene send a sprite colour table of its own?
           def scene_obj_palettes? = @scene_sends.each_value.any?(&:obj_palette)
 
+          # A scene whose sprite colour table goes in where the frame's sprites are written, picked
+          # by +value+ in the variable that picks it, and the table's blob.
+          ScenePickedColors = Data.define(:scene, :value, :blob)
+
+          # THE SPRITE COLOUR TABLES SENT WITH THE SPRITES (see
+          # SpriteDrawing#emit_scene_colors_on_change), and the one variable that picks their scenes.
+          # Only in a game whose loop writes the frame's sprites, and where every scene sending a
+          # table of its own is reached one way: by one clause of a `case_var` on that one variable,
+          # and by nothing else. There the variable says which scene's sprites are up, so it can say
+          # which table goes in. A scene also called by name, or picked by a second variable, is up
+          # when the variable does not say so, and two variables could each send a table over the
+          # other's; such a game keeps sending each table as its scene takes over. nil then.
+          ScenesPicked = Data.define(:state, :picks)
+
+          def scene_colors_picker
+            return @scene_colors_picker if defined?(@scene_colors_picker)
+
+            @scene_colors_picker = find_picked_color_scenes
+          end
+
+          # Does +scene+'s sprite colour table go in with the sprites (#scene_colors_picker),
+          # rather than as the scene takes over?
+          def scene_colors_picked?(scene) = scene_colors_picker&.picks&.any? { |pick| pick.scene == scene } || false
+
+          def find_picked_color_scenes
+            return nil unless scene_obj_palettes? && @program.walk.any? { |node| node.kind == :present_objects }
+
+            colored = @scene_sends.select { |_scene, send| send.obj_palette }
+            reached = scene_reaches
+            return nil unless colored.each_key.all? { |scene| reached[scene].one? && reached[scene].first }
+
+            states = colored.each_key.map { |scene| reached[scene].first.first }.uniq
+            return nil unless states.one?
+
+            picks = colored.map do |scene, send|
+              ScenePickedColors.new(scene: scene, value: reached[scene].first.last, blob: send.obj_palette)
+            end
+            ScenesPicked.new(state: states.first, picks: picks)
+          end
+
+          # Every way each scene is reached: [variable, value] for each `case_var` clause naming it,
+          # nil for each call by name.
+          def scene_reaches
+            @program.walk.each_with_object(Hash.new { |hash, scene| hash[scene] = [] }) do |node, reached|
+              case node.kind
+              when :case then node.clauses.each { |value, target| reached[target] << [node.var, value] }
+              when :call then reached[node.target] << nil
+              when :call_one_of then node.targets.each { |target| reached[target] << nil }
+              end
+            end
+          end
+
           # Does any scene send a background colour table of its own as it takes over?
           def scene_bg_palettes? = @scene_sends.each_value.any?(&:bg_palette)
 

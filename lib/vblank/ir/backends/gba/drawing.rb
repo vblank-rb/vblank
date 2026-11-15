@@ -867,8 +867,11 @@ module VBlank
 
             @scene_entry.emit_once_on_arrival(:art, name) do
               # Its colours first: the groups its sprites name are this scene's now (see
-              # ScreenLayout#build_shared_object_palette).
-              @palette_tint.emit_send_scene_obj_palette(colors, @layout.screen.obj_palette_units, name) if colors
+              # ScreenLayout#build_shared_object_palette). A scene a `case_var` picks has them sent
+              # with its sprites instead (see SpriteDrawing#emit_scene_colors_on_change).
+              if colors && !@layout.screen.scene_colors_picked?(name)
+                @palette_tint.emit_send_scene_obj_palette(colors, @layout.screen.obj_palette_units, name)
+              end
               art.each { |blob, at, units| @uploads.emit_dma_blob(blob, SpriteDrawing::OBJ_TILE_BASE + (at * 32), units * 16) }
               @sprite_drawing.emit_reset_resident_frames(rooms)
               pools.each { |pool| @sprite_drawing.emit_forget_poses_sent(pool) }

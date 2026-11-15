@@ -50,7 +50,7 @@
       "data": 0
     },
     "dive": {
-      "code": 55776,
+      "code": 56012,
       "data": 0
     },
     "everywhere": {
@@ -98,7 +98,7 @@
       "data": 44
     },
     "hero": {
-      "code": 80228,
+      "code": 80400,
       "data": 0
     },
     "jukebox": {
@@ -162,11 +162,11 @@
       "data": 44
     },
     "pong": {
-      "code": 43944,
+      "code": 44108,
       "data": 0
     },
     "pong_gbc": {
-      "code": 42528,
+      "code": 42692,
       "data": 0
     },
     "pong_gbc@gbc": {
@@ -202,7 +202,7 @@
       "data": 0
     },
     "shmup": {
-      "code": 37676,
+      "code": 37860,
       "data": 0
     },
     "snake": {

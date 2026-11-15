@@ -122,6 +122,7 @@ module VBlank
             emit_mark_still_sprites_unwritten
             @uploads.emit_dma_blob(@layout.screen.obj_palette_blob, OBJ_PALETTE, @layout.screen.obj_palette_units) # the shared sprite palette, once
             @palette_tint.emit_record_obj_palette_source(@layout.screen.obj_palette_blob) # ...which is the one a tint walks until a scene sends its own
+            emit_no_scene_colors_sent # ...so the scene taking over sends its own as it arrives
             @layout.screen.objects.each_value do |obj|
               # A sprite showing the same pictures as one already uploaded points at
               # those, so there is nothing of its own to send. A sprite that belongs to a
@@ -250,6 +251,7 @@ module VBlank
             emit_switch_sprite_layer
             emit_unless_set_just_came_in do
               @scene_entry.emit_unless_scene_is_loading do
+                emit_scene_colors_on_change # before any row is written
                 @picture_group_copying.emit_calls_to_routines
                 emit_count_lending_frame
                 emit_hide_scene_rows_on_change
@@ -715,6 +717,68 @@ module VBlank
           # The body of that routine: hide every row the sprites +names+ are written at.
           def emit_hide_sprite_rows(names)
             emit_hide_rows_at(names.flat_map { |name| row_addresses_of(name) }.uniq.sort)
+          end
+
+          # The value of the variable that picks scenes when a scene's sprite colour table last went
+          # in, and whether one has gone in since power-on or the last change of screen.
+          SCENE_PICK_SENT_FOR = :__scene_pick_sent_for
+          SCENE_COLORS_SENT = :__scene_sprite_colors_sent
+          # The routine that sends the table of the scene picked now.
+          SCENE_COLORS_ROUTINE = Messages::MadeNames.make(:scene_sprite_colors)
+
+          # A SCENE'S SPRITE COLOURS GO IN WITH ITS SPRITES, in the gap between frames, on the frame
+          # the variable that picks it changes, and not as its routine first runs.
+          #
+          # Scenes never up together take turns at the same groups of sprite colours (see
+          # ScreenLayout#build_shared_object_palette), and which scene's sprites are in the table
+          # changes here, in the gap, when the variable that picks scenes does (see
+          # #emit_hide_scene_rows_on_change). Sent as the arriving scene's routine first runs, its
+          # colours would land in the middle of the frame under the leaving scene's sprites, which
+          # are on screen until this gap, and for that frame they would show in the arriving
+          # scene's colours. So they go in here, before any row is written, the same frame the
+          # rows change. Three loads, two compares and two branches a frame; nothing in a game
+          # whose scenes send no colours of their own, or are not all picked by one variable (see
+          # ScreenLayout#scene_colors_picker).
+          #
+          # WHAT WAS REMEMBERED CAN HOLD ANYTHING AT POWER-ON, and a stray match would leave the
+          # first scene with no colours. And a change of screen sends the table every screen shows
+          # again (#emit_boot_objects), over the scene's. So the table also goes in at the first
+          # gap after power-on or a change of screen, whether the variable changed or not.
+          def emit_scene_colors_on_change
+            picked = @layout.screen.scene_colors_picker or return
+
+            changed = gensym
+            same = gensym
+            load_var(ACC, picked.state)
+            load_var(TMP, SCENE_PICK_SENT_FOR)
+            emit(ASM.cmp_reg(ACC, TMP))
+            emit_branch(:bcond, changed, cond: :ne)
+            load_var(TMP, SCENE_COLORS_SENT)
+            emit(ASM.cmp_imm(TMP, 0))
+            emit_branch(:bcond, same, cond: :ne)
+            place_label(changed)
+            store_var(ACC, SCENE_PICK_SENT_FOR)
+            @lowering.statement(Build.call(SCENE_COLORS_ROUTINE))
+            place_label(same)
+          end
+
+          # The body of that routine: the table of the scene +picked+'s variable picks now, through
+          # the tint in force (PaletteTint#emit_send_scene_obj_palette), and the note that the
+          # table in is the right one. A value picking none of them leaves the table as it is, as a
+          # scene with no colours of its own does.
+          def emit_scene_colors_routine(picked)
+            picked.picks.each do |pick|
+              emit_while_scene_up(picked.state, pick.value) do
+                @palette_tint.emit_send_scene_obj_palette(pick.blob, @layout.screen.obj_palette_units, pick.scene)
+              end
+            end
+            store_word_immediate(1, var_addr(SCENE_COLORS_SENT))
+          end
+
+          # Note that no scene's table has gone in: at power-on, whatever screen the game starts on,
+          # and wherever the table every screen shows is sent again.
+          def emit_no_scene_colors_sent
+            store_word_immediate(0, var_addr(SCENE_COLORS_SENT)) if @layout.screen.scene_colors_picker
           end
 
           # Every address a row of sprite +name+ is written at: its rows in the table, the copy

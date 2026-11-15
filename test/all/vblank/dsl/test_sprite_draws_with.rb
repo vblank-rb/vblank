@@ -666,4 +666,39 @@ class TestSpriteDrawsWith < Minitest::Test
     refute_match(/calm/, error.message)
   end
 
+  # THE FRAME A SCENE TAKES OVER. Each scene's ship steps through three lists of its own, which
+  # take turns with the other scene's at the same groups, and the game goes back and forth every
+  # six passes. A sprite is drawn from the pass before, so on the frame the new scene's routine
+  # first runs the leaving scene's ship is still the one on screen, and it has to keep its own
+  # scene's colours until its row goes.
+  HANDOVER_LISTS = 3
+
+  private def ships_taking_turns
+    lists = HANDOVER_LISTS
+    builder = Builder.new
+    builder.instance_eval do
+      screen :tiled
+      image :ship, width: 8, height: 8, data: SHIP, colors: OWN
+      firsts = (0...lists).map { |n| colors :"first#{n}", [:transparent, VBlank::Graphics::Color.rgb(8 * n, 31, 4), :white] }
+      seconds = (0...lists).map { |n| colors :"second#{n}", [:transparent, VBlank::Graphics::Color.rgb(31, 8 * n, 20), :white] }
+      state = var :state, 0
+      tick = var :tick, 0
+      scene(:first) { sprite(:first_ship, image: :ship, at: [40, 40]).draw_with firsts, showing: tick % lists }
+      scene(:second) { sprite(:second_ship, image: :ship, at: [80, 40]).draw_with seconds, showing: tick % lists }
+      game_loop do
+        tick += 1
+        state = (tick / 6) % 2
+        case_var(:state) do
+          when_val 0, :first
+          when_val 1, :second
+        end
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  def test_the_leaving_scenes_sprite_keeps_its_colors_on_the_frame_the_next_scene_takes_over
+    assert_backends_agree(ships_taking_turns, frames: [5, 6, 7, 12, 18])
+  end
 end
