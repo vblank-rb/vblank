@@ -126,7 +126,9 @@ task "test:lowering:gba" => :clear_coverage
 # EACH RUN BUILDS THE EMULATOR IT PLAYS A CARTRIDGE IN, AND NO OTHER. Which one follows the console
 # a run plays games as, not its lowering:
 #
-# - the GBA run reads the Advance's cartridge back in libmgba (test/lowering/gba/);
+# - the GBA run reads the Advance's cartridge back in libmgba (test/lowering/gba/), and its tests of
+#   the reader and of playthroughs read a Super Nintendo cartridge in bsnes and a PlayStation
+#   program in Beetle PSX too;
 # - the Game Boy Color run plays the Color's cartridges in libmgba too;
 # - the Super Nintendo, Genesis and PlayStation runs play theirs in bsnes, Genesis Plus GX and
 #   Beetle PSX;
@@ -136,7 +138,7 @@ task "test:lowering:gba" => :clear_coverage
 #
 # The JavaScript and Ruby runs build none: their sound is held sample for sample to the C build's
 # (test/runtime_sounds.rb), so they run on a machine with no emulator and no C compiler for one.
-task "test:lowering:gba" => :compile_emulator
+task "test:lowering:gba" => %i[compile_emulator compile_snes_core compile_ps1_core]
 task "test:lowering:gbc" => :compile_emulator
 task "test:lowering:native:gba" => :compile_emulator
 task "test:lowering:snes" => :compile_snes_core
@@ -167,7 +169,7 @@ namespace :test do
   # The tests of playing a game with nobody at the controls, which are every test in one
   # folder: the folder that mirrors lib/vblank/playthroughs. They are in the suite as
   # well; this is for working on that one module without waiting for the rest.
-  Rake::TestTask.new(playthroughs: %i[compile_emulator clear_coverage]) do |t|
+  Rake::TestTask.new(playthroughs: %i[compile_emulator compile_snes_core clear_coverage]) do |t|
     t.libs << "test" << "lib"
     t.test_files = FileList["test/lowering/gba/vblank/playthroughs/**/test_*.rb"]
     t.description = "Run the tests of playthroughs, tapes and comparisons"

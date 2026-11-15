@@ -39,6 +39,27 @@ class TestRakefile < Minitest::Test
     assert_match(/(^| )--ractor( |$)/, run_options("--name='/test_rgb_packs_channels|ractor/'"))
   end
 
+  # THE GBA RUN BUILDS EVERY EMULATOR ITS TESTS OPEN. Its reader's tests play a Super Nintendo
+  # cartridge in bsnes and a PlayStation program in Beetle PSX (test/lowering/gba/), so in a
+  # checkout that never built those, a run that did not build them first failed those tests.
+  def test_the_gba_run_builds_each_emulator_its_tests_play
+    assert_equal %w[compile_emulator compile_ps1_core compile_snes_core],
+                 prerequisites("test:lowering:gba").grep(/\Acompile_/).sort
+  end
+
+  def test_the_playthroughs_run_builds_the_super_nintendos_emulator
+    assert_includes prerequisites("test:playthroughs"), "compile_snes_core"
+  end
+
+  # What rake -P lists under +task+.
+  private def prerequisites(task)
+    out, status = Open3.capture2e("bundle", "exec", "rake", "-P", chdir: ROOT)
+    assert status.success?, out
+    listed = out.lines.map(&:chomp).slice_before { |line| line.start_with?("rake ") }
+    found = listed.find { |lines| lines.first == "rake #{task}" } or flunk("rake -P has no #{task}:\n#{out}")
+    found.drop(1).map(&:strip)
+  end
+
   # Somebody who asks for plain threads gets them.
   def test_asking_for_no_ractors_is_left_alone
     refute_match(/(^| )--ractor( |$)/, run_options("--no-ractor --name=/test_rgb_packs_channels/"))
