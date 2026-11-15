@@ -31,6 +31,9 @@ module VBlank
     #                                (answering `state`), and how the match is set up, before the first pass
     #   seat_players(most_players)   optional: the most players the game seats (0 for none named), told
     #                                before the first pass, for a window that seats several (Seats)
+    #   save_file                    optional: where the game's save memory is kept between plays
+    #                                (SaveFile), or nil for nowhere; asked as each play starts
+    #   take_state_request           optional: a save state the player asked for, or nil (#take_state_request)
     #   notice(words)                a line for the person about the match (a player left), said
     #                                where the device can, in a match over a network only
     #   now                          the time, in seconds, from any start that does not move back

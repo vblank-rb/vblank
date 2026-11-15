@@ -17,8 +17,9 @@ class TestSessionSaveFile < Minitest::Test
   StateRequest = VBlank::Live::WindowMenu::StateRequest
   StateSlots = VBlank::Live::StateSlots
 
-  # A headless device with a save file, and states in the same folder, asked for on the boundaries a
-  # script names (the first boundary is number 1).
+  # A headless device with a save file on disk, as the window has, in place of the bytes Headless
+  # keeps, and states in the same folder, asked for on the boundaries a script names (the first
+  # boundary is number 1).
   class SavingDevice < Headless
     attr_reader :save_file
 

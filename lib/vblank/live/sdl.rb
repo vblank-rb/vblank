@@ -162,6 +162,17 @@ module VBlank
         held.uniq
       end
 
+      # Why a window opened at +screen+ ([width, height]; nil takes the picture's own size) refuses a
+      # picture of +pixels+ given as +width+ by +height+, or nil when it shows it (#show). Headless
+      # asks it too, so a picture this window refuses is not shown there.
+      def self.picture_refusal_message(pixels, width, height, screen:)
+        screen ||= [width, height]
+        return nil if [width, height] == screen && pixels.length == width * height
+
+        "The window shows a #{screen.join('x')} picture, and it was given a #{width}x#{height} picture of " \
+          "#{pixels.length} pixels."
+      end
+
       # The keys the menu is worked with while it is open, by scancode: the arrows, and Enter.
       MENU_KEYS = Ractor.make_shareable(WindowMenu::MOVE_KEYS.to_h do |name, key|
         [KEY_CODES.fetch(name), key]
@@ -322,10 +333,7 @@ module VBlank
       # The picture into the window, and whatever SDL has heard from the window since. The
       # picture is the size the window was opened for.
       def show(pixels, width, height)
-        unless [width, height] == [@width, @height] && pixels.length == width * height
-          raise ArgumentError, "The window shows a #{@width}x#{@height} picture, and it was given a " \
-                               "#{width}x#{height} picture of #{pixels.length} pixels."
-        end
+        refusal = SDL.picture_refusal_message(pixels, width, height, screen: [@width, @height]) and raise ArgumentError, refusal
 
         read_events
         write_settings_when_due

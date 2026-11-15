@@ -23,16 +23,62 @@ module VBlank
     # +pauses+ maps a picture's number to the seconds the player pauses for after it is shown, and
     # +fast_forward+ holds the numbers of the passes (1, 2, 3, …) fast forward is held through, at
     # +fast_forward_speed+.
+    #
+    # IT IS ASKED WHAT THE WINDOW (SDL) IS ASKED, so a play that passes here does not stop in a
+    # window over a question only the window put to the game. It is told how many players each play
+    # seats (#seat_counts), keeps the game's save memory as the window's save file does (#saved;
+    # +save+ is what an earlier play left), and, given the +screen+ the window would be opened at
+    # ([width, height]), refuses a picture of another size as the window does. A picture whose
+    # pixels are not its width times its height is refused with or without one. +keeps_save+ false
+    # keeps no save memory, as the window keeps none in a match with other players. A shell's window
+    # keeps one only while its game plays (SDL#offer_states); Headless keeps one throughout, which
+    # comes to the same, since the session keeps no save for a play with no save memory (the menu's
+    # and the unpacking's).
+    #
+    # It never asks for a save state (Session#take_state_request is nil without asking), as a
+    # window nobody presses the keys of never does; a test that wants one subclasses it to answer
+    # take_state_request, state_saved, state_to_load, state_loaded and state_refused.
     class Headless
       Picture = Data.define(:pixels, :width, :height)
 
+      # THE GAME'S SAVE MEMORY, kept as bytes where the window keeps it in a file (SaveFile): the
+      # session reads it as the game starts and writes it soon after it changes and as the play ends.
+      class SaveMemory
+        # +bytes+ are what an earlier play left, or nil for a new cartridge.
+        def initialize(bytes) = @bytes = bytes&.b
+
+        # The bytes last written, else those it was made with.
+        attr_reader :bytes
+
+        # The bytes kept, or nil for none; SaveFile::NotThisGamesSave, as the window's file raises,
+        # when they are not +size+ bytes.
+        def read(size)
+          return @bytes if @bytes.nil? || @bytes.bytesize == size
+
+          raise SaveFile::NotThisGamesSave, "The save given to the headless device is #{@bytes.bytesize} bytes. It is " \
+                                            "not a save of this game, whose save is #{size} bytes."
+        end
+
+        def write(bytes) = @bytes = bytes.b
+      end
+
       # +sounds+ is each frame's samples, in the order they were handed over, and +sound_rate+ the
-      # samples a second they were made at.
-      attr_reader :pictures, :sounds, :sound_rate, :now, :gaps, :most_waiting, :notices
+      # samples a second they were made at. +seat_counts+ is the most players each play seats (0 for
+      # a game that names none), one a play, in the order they were played.
+      attr_reader :pictures, :sounds, :sound_rate, :now, :gaps, :most_waiting, :notices, :seat_counts
+
+      # The game's save memory (a SaveMemory), or nil when +keeps_save+ is false. The session asks
+      # for it as each play starts (Session#read_save_file), as it asks the window for its SaveFile.
+      attr_reader :save_file
 
       def initialize(frames:, buttons: {}, pass_seconds: 0, speaker: false, pauses: {}, fast_forward: [],
-                     fast_forward_speed: 4, on_notice: nil)
+                     fast_forward_speed: 4, on_notice: nil, save: nil, keeps_save: true, screen: nil)
+        raise ArgumentError, "A headless device that keeps no save cannot be given one. Drop save: or keeps_save: false." if save && !keeps_save
+
         @frames = frames
+        @screen = screen
+        @save_file = SaveMemory.new(save) if keeps_save
+        @seat_counts = []
         @buttons = buttons
         @on_notice = on_notice
         @pauses = pauses
@@ -54,8 +100,15 @@ module VBlank
 
       # The picture is the game's own and is drawn over next frame, so a copy is kept.
       def show(pixels, width, height)
+        refusal = SDL.picture_refusal_message(pixels, width, height, screen: @screen) and raise ArgumentError, refusal
         @pictures << Picture.new(pixels: pixels.dup, width: width, height: height)
       end
+
+      # The game's save memory as it stands: the bytes it last wrote, else those +save+ handed in, else nil.
+      def saved = @save_file&.bytes
+
+      # The game seats +most_players+ (0 for none named), told by the session before the first pass.
+      def seat_players(most_players) = @seat_counts << most_players
 
       # The left speaker's sound is kept. The right one's is as long, so it shows nothing more about
       # when the speaker runs out. The sound is the game's own and is written over next frame, so a

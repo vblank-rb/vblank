@@ -1652,7 +1652,9 @@ module VBlank
 
     def play_match_without_window(session, network)
       keys = options[:keys].map(&:to_sym)
-      device = VBlank::Live::Headless.new(frames: options[:pictures], buttons: keys, on_notice: ->(words) { say words })
+      # No save memory is kept, as a window keeps none in a match (#state_folder_name).
+      device = VBlank::Live::Headless.new(frames: options[:pictures], buttons: keys, on_notice: ->(words) { say words },
+                                          keeps_save: false)
       session.play(device).tap { say_match_summary(network, events_said: true) }
     rescue *MATCH_FAILURES => e
       raise Thor::Error, match_failure_message(e)
