@@ -95,6 +95,84 @@ class TestPoolRoutines < Minitest::Test
                  "each outer guard ran on itself: 1 + 10, not the last one twice"
   end
 
+  # A ROUTINE THAT WALKS ITS OWN POOL, which is how things of one pool bump into each other:
+  # the routine steps one thing, then looks through the pool for another close by. Inside that
+  # walk the routine's own thing is still itself, as it would be in plain Ruby, so `e.x` is
+  # where the stepper stands and `other.x` where the one it is checked against stands.
+  #
+  # Two things walk toward each other two pixels a step, 60 apart. The first step that leaves
+  # them nearer than 16 is the first thing's on pass 12, when it stands at 64 and the second at
+  # 78. Reading the walk's thing for the routine's own would never find a meeting at all: every
+  # thing the walk visited would look like the stepper itself.
+  def test_a_routine_walking_its_own_pool_reads_its_own_instance_inside_the_walk
+    program = program_with do
+      screen :bitmap
+      pass = var :pass, 0
+      met_on = var :met_on, 0
+      stepper_x = var :stepper_x, 0
+      other_x = var :other_x, 0
+      gap = var :gap, 0
+      things = pool :thing, x: 0, dx: 0, capacity: 4
+      things.func(:step) do |e|
+        e.x += e.dx
+        things.each do |other|
+          if other.index != e.index
+            gap = (other.x - e.x).abs
+            if gap < 16 && met_on == 0
+              met_on = pass
+              stepper_x = e.x
+              other_x = other.x
+            end
+          end
+        end
+      end
+      things.spawn(x: 40, dx: 2)
+      things.spawn(x: 100, dx: -2)
+      b = self
+      game_loop do
+        pass += 1
+        things.each { |_thing| b.call :step }
+      end
+    end
+    played = game_player.run(program, frames: 20)
+
+    assert_equal [12, 64, 78], [played[:met_on], played[:stepper_x], played[:other_x]],
+                 "the first thing met the second on pass 12, at 64 and 78"
+  end
+
+  # ...and names given the routine's own slot and place before the walk keep them inside it,
+  # as a name keeps the number of its line in plain Ruby.
+  def test_names_set_from_a_routine_s_instance_before_its_walk_keep_that_instance
+    program = program_with do
+      screen :bitmap
+      pass = var :pass, 0
+      met_on = var :met_on, 0
+      stepper_x = var :stepper_x, 0
+      things = pool :thing, x: 0, dx: 0, capacity: 4
+      things.func(:step) do |e|
+        e.x += e.dx
+        mover = e.index
+        here = e.x
+        things.each do |other|
+          if other.index != mover && (other.x - here).abs < 16 && met_on == 0
+            met_on = pass
+            stepper_x = here
+          end
+        end
+      end
+      things.spawn(x: 40, dx: 2)
+      things.spawn(x: 100, dx: -2)
+      b = self
+      game_loop do
+        pass += 1
+        things.each { |_thing| b.call :step }
+      end
+    end
+    played = game_player.run(program, frames: 20)
+
+    assert_equal [12, 64], [played[:met_on], played[:stepper_x]]
+  end
+
   # --- and the console agrees ---
 
   # Each guard's routine paints a rectangle at its own x, so which instance each call ran for

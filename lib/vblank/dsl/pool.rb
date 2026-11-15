@@ -674,6 +674,38 @@ module VBlank
       # than one worked out: left unused, it is not the game's to be blamed for.
       def current_instance = Instance.new(self, Value.handed_to_block(@builder, Build.var_ref(current_var)))
 
+      # Build the body of routine +name+ into the routine being built, yielding the instance
+      # it runs for.
+      #
+      # A ROUTINE THAT WALKS ITS OWN POOL — the stepper checked against every other thing —
+      # needs its instance in a variable of its own. The instance reads current_var, and a walk
+      # of the pool moves that on to each thing it visits, so inside the walk `e` would read
+      # the walk's thing. That holds for a read written inside the walk and for one made before
+      # it and kept in a name (`mover = e.index`), since both are reads of current_var. In plain
+      # Ruby `e` stays the routine's own thing under any walk.
+      #
+      # So the routine copies current_var into its own variable as it starts, and every read of
+      # current_var in its body reads that copy. Only a routine whose body walks its pool does
+      # this: any other keeps reading current_var, and builds the bytes it always did.
+      #
+      # Returns the routine's own variable, for the build to declare, or nil when it has none.
+      def build_routine_body(name)
+        own_var = part_name("routine#{instance_routines.index(name)}_at")
+        entry = Build.set(own_var, Build.var_ref(current_var))
+        record(entry)
+        walks_before = @walks.to_i
+        yield current_instance
+        body = entry.parent
+        if @walks.to_i == walks_before
+          body.children.delete(entry)
+          return nil
+        end
+
+        body.walk { |node| node.name = own_var if node.kind == :var_ref && node.name == current_var }
+        entry.value = Build.var_ref(current_var)
+        own_var
+      end
+
       # How many instances are live right now, as a {Value}.
       def count = Value.new(@builder, Build.var_ref(count_var))
 
@@ -908,12 +940,13 @@ module VBlank
       end
 
       # THE VARIABLES A POOL'S OWN WALKS HOLD A SLOT IN: the slot a walk is on (#walk_vars), the
-      # one a routine of the pool runs for (#record_current_slot), and the one the copy for its
+      # one a routine of the pool runs for (#record_current_slot) and that routine's own copy of
+      # it (#build_routine_body), and the one the copy for its
       # sprites is on (#stacking_nodes). Each is written only from the pool's chain once the walk
       # has seen that it holds a slot and not NONE, or put back from a copy of itself, and starts
       # at nought. So whenever one is read it is a slot below the pool's capacity, and a lowering
       # can read the pool's own lists there without testing the index first.
-      SLOT_PARTS = /\A(?:current|stacking_at|walk\d+_at)\z/
+      SLOT_PARTS = /\A(?:current|stacking_at|walk\d+_at|routine\d+_at)\z/
 
       # The name of the pool whose slot +var+ always holds (see SLOT_PARTS), or nil.
       def self.walked_by(var)

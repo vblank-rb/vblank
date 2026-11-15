@@ -123,7 +123,10 @@ module VBlank
       def declare_instance_routine(pool, name, &block)
         pool.instance_routines << name
         instance_routines[name] = pool
-        declare_func(name, wrote: "#{pool.name}.func :#{name}") { block.call(pool.current_instance) }
+        declare_func(name, wrote: "#{pool.name}.func :#{name}") do
+          own_var = pool.build_routine_body(name, &block)
+          ensure_var(own_var) if own_var
+        end
       end
 
       # A walk of +pool+ wrote down which instance it is on. Kept so the writes can be taken
