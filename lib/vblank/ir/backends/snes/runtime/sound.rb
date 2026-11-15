@@ -138,8 +138,8 @@ module VBlank
             NOTE_START_WRITES = 9
             NOTE_VOLUME_WRITES = 2
             NOTE_PITCH_WRITES = 2
-            VOICE_TOLD = { START_NOTE => [NOTE_START_WRITES, "rt_recordings_voice_start"],
-                           NOTE_VOLUME => [NOTE_VOLUME_WRITES, "rt_recordings_voice_volume"] }.freeze
+            VOICE_TOLD = Ractor.make_shareable({ START_NOTE => [NOTE_START_WRITES, "rt_recordings_voice_start"],
+                                                 NOTE_VOLUME => [NOTE_VOLUME_WRITES, "rt_recordings_voice_volume"] })
             # ...told whole, where the sound unit's program takes them (#driver).
             VOICE_TOLD_WHOLE = { START_NOTE => [2, "rt_recordings_voice_start"],
                                  NOTE_VOLUME => [1, "rt_recordings_voice_volume"] }.freeze
