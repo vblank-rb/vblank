@@ -41,6 +41,7 @@ require_relative "ir/stacking"              # The one rule turning declared laye
 require_relative "ir/scene_handover"        # What a scene does to the screen as it takes over
 require_relative "ir/late_pages"            # When a page finished too late is shown
 require_relative "ir/sprites_over_picture"  # Whether sprites show over a picture the scene paints
+require_relative "ir/whole_screen"          # Which statements paint over the whole screen
 require_relative "ir/movement"              # Which stacked things move, so the rest need not be redrawn
 require_relative "ir/sprite_rows"           # Which sprites of scenes never up together share a row of the table
 require_relative "ir/picture_group_places"  # Where pictures grouped by room go in sprite memory

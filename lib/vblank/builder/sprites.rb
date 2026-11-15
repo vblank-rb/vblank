@@ -209,8 +209,9 @@ module VBlank
         # sprite that starts shown is drawn once at its start (capture what's under it
         # and blit it) so it's on screen before the loop; one that starts hidden draws
         # nothing until `show`. (Declare a sprite AFTER you've drawn its background, so
-        # it captures the real scenery. A `clear_screen` after it is the one thing that
-        # is safe to draw later — see #finalize_sprite_clears.)
+        # it captures the real scenery. A `clear_screen` after it, or a fill written to
+        # cover the whole screen, is the one thing that is safe to draw later — see
+        # #finalize_sprite_clears.)
         record(Build.backing_buffer(buffer, width: width, height: height))
 
         handle = DSL::Sprite.new(self, x: pos_x, y: pos_y, old_x: old_x, old_y: old_y,
@@ -973,6 +974,10 @@ module VBlank
       # the next frame draws it over whatever the game painted after the clear — so a wall
       # drawn on the fresh field where the sprite stands is what the sprite remembers.
       #
+      # A fill whose place and size are written to cover the whole screen replaces the picture
+      # just as a clear does, so it counts as one (IR::WholeScreen.covers_screen?). One whose
+      # numbers the game works out as it runs does not, whatever they come to.
+      #
       # A clear inside an `inside` block clears that area and no more. A sprite outside it is
       # still on the picture, so that clear is left alone. A sprite INSIDE it is the same
       # mistake as painting over a sprite by hand, and is not caught here.
@@ -992,10 +997,12 @@ module VBlank
         end
       end
 
-      # Every `clear_screen` in the program that is not held to an area by an `inside` block.
+      # Every statement in the program that replaces the whole picture — a `clear_screen`, or a
+      # fill written to cover the screen — and is not held to an area by an `inside` block.
       def whole_screen_clears
+        screen = @program.described_console.screen_size
         @program.walk.select do |node|
-          next false unless node.kind == :clear_screen
+          next false unless IR::WholeScreen.covers_screen?(node, screen)
 
           holder = node.parent
           holder = holder.parent while holder && holder.kind != :inside
