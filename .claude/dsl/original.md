@@ -415,8 +415,34 @@ from that copy. The game's code says each piece's shape and size; it never depen
   length, a count), `block.finished`,
   `block.finish!` and `block.emit_wrong_format_fault`. Each write is checked against the slot and
   counted toward the progress bar. Put the module in a file the game loads with
-  `VBlank.require_game_file`, so an `if` in it is a branch of the routine. Worked example: `PairRuns`
-  in `test/copy_reader_tests.rb`; the library's are `lib/vblank/original/packing/<platform>.rb`.
+  `VBlank.require_game_file`, so an `if` in it is a branch of the routine.
+
+  **The routine's counters are plain Ruby locals**, as a method's are anywhere in a game
+  (`plain-ruby.md`): `at = block.from`, then `at += 2` inside a `block.repeat`. A local the routine
+  changes inside a `block.repeat` is a variable of the unpacking, set where its line runs; one only
+  carried down the lines is not, and costs nothing. A local first set inside a `block.repeat` (or on
+  one side of an `if` there) and moved on in a `block.repeat` below it is a variable too, set again
+  each round: `back = made - block.byte(at)`, then `back += 1` in the repeat that copies. No
+  `game_variables` line is needed or taken: a format is a module with no object to keep instance
+  variables in. `block.variable(:name)` with `store!` and `increase!` still works and builds what it
+  built.
+
+  ```ruby
+  def self.routine(block)
+    at = block.from
+    many = block.byte(at)
+    block.repeat(MOST_PAIRS, stop_when: (many == 0) | block.finished) do
+      block.repeat(many * block.setting(:times), stop_when: block.finished) { block.write(block.byte(at + 1)) }
+      at += 2
+      many = block.byte(at)
+    end
+  end
+  ```
+
+  Worked examples: `PairRuns` in `test/pair_runs_format.rb`, and `BackCopiesFormat` in
+  `test/back_copies_format.rb` (seven counters, copies back into what it made, loops inside loops),
+  beside the same format written with `block.variable`; the library's are
+  `lib/vblank/original/packing/<platform>.rb`.
 
   **Nothing goes past its place.** A write outside its slot is not made, and a read outside the copy reads
   nothing that matters; either, or a block not in the format asked for, stops the build, naming the first that

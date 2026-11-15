@@ -137,6 +137,7 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `pack_hold_tests.rb` (a recording's hold read from a data pack built all-in-one, a hold of every bit set being none, played by each console that plays an instrument: not the Color),
 `pack_scores_at_start_tests.rb` (songs and sound effects whose parts read their notes from a data pack slot with the pack left out, held to the same song written by hand, played by the interpreter and the game as C, JavaScript and Ruby),
 `copy_reader_tests.rb`, `packing_gba_tests.rb` and `packing_genesis_tests.rb` (a port's unpacking routine, a format of a port's own, and each platform's packed formats in it, played on the interpreter and the native, JavaScript and Ruby runs, which are where an unpacking runs; no console runs one),
+`pair_runs_format.rb` and `back_copies_format.rb` (formats of a port's own written in normal Ruby, game files those tests bring in; `back_copies_format.rb` holds a Ruby answer key and the same format written with `block.variable`),
 `genesis_packing_answers.rb` (the answer key for the Genesis's packed formats, decoders written from the 68000 routines and writers of made-up blocks),
 `m4a_answers.rb` (the answer key for the Advance's common sound driver, MusicPlayer2000: a made-up song of VBlank's own using each command the reader reads, and a player written from the driver's source),
 `settings_root_cases.rb` (where a player's settings folders are, the table the Ruby and C rules are both held to),

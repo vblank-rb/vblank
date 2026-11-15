@@ -7,6 +7,8 @@ require "folder_original"
 VBlank.require_game_file "fixtures/record_walk/record_walk_part"
 VBlank.require_game_file "fixtures/name_search/name_search_part"
 VBlank.require_game_file "plain_ruby_flagged_bytes_part"
+VBlank.require_game_file "pair_runs_format"
+VBlank.require_game_file "back_copies_format"
 
 # A PORT'S UNPACKING ROUTINE, PLAYED (Original::CopyReader, Original::Unpacking): the routine a
 # port writes in `slots.fill_from_copy`, built as a program of its own and played by `game_player`.
@@ -14,30 +16,8 @@ VBlank.require_game_file "plain_ruby_flagged_bytes_part"
 # is a computer program. So these play on the run whose player is the interpreter and on the
 # native, JavaScript and Ruby runs, each its own build of the routine checked against the
 # interpreter, and never on a console's (test/interpreter/, test/lowering/{native,js,ruby}/, each
-# under vblank/original/, include this module). The made-up original is MadeUpOriginal's.
-
-# A MADE-UP PACKED FORMAT, written as a port writes one of its own (Original::Packing::Format):
-# pairs of a count and a byte, the byte written that many times, each count multiplied by the
-# `times:` setting, until a count of 0.
-module PairRuns
-  extend VBlank::Original::Packing::Format
-  unpacks :pair_runs, times: 1
-
-  # The most pairs a block can hold, a bound on the loop that reads them.
-  MOST_PAIRS = 4096
-
-  def self.routine(block)
-    at = block.variable(:at)
-    many = block.variable(:many)
-    at.store!(block.from)
-    many.store!(block.byte(at))
-    block.repeat(MOST_PAIRS, stop_when: (many == 0) | block.finished) do
-      block.repeat(many * block.setting(:times), stop_when: block.finished) { block.write(block.byte(at + 1)) }
-      at.increase!(2)
-      many.store!(block.byte(at))
-    end
-  end
-end
+# under vblank/original/, include this module). The made-up original is MadeUpOriginal's. A
+# format of a port's own, PairRuns, is test/pair_runs_format.rb.
 
 module CopyReaderTests
   include FolderOriginal
@@ -128,6 +108,35 @@ module CopyReaderTests
 
       assert_equal({ runs: ([7] * 6 + [9] * 4).pack("C*") }, unpacking.slot_bytes_in(played))
       assert_equal 10, unpacking.bytes_done_in(played)
+    end
+  end
+
+  # A FORMAT'S ROUTINE IN NORMAL RUBY (test/back_copies_format.rb): seven counters, each a local set
+  # with `=` and moved on with `+=` in loops inside loops and on both sides of the routine's tests,
+  # one set from the copy's bytes before the place it read them moves on. It unpacks what the Ruby
+  # answer key does, and so does the same format with each counter a `block.variable`.
+  private def back_copies_unpacked(folder, format)
+    from = copy_of(folder, ([0xAA] + BackCopies::PACKED + [0xAA]).pack("C*"))
+    size = BackCopies.unpacked(BackCopies::PACKED, BackCopies::TAG).length
+    unpacking = VBlank::Builder.new.data_pack(from: from, version: "1", formats: [format]) do |slots|
+      slots.numbers :out, count: size, width: :byte, signed: false
+      slots.fill_from_copy do |copy, pack|
+        case format.format_name
+        when :back_copies then copy.unpack_back_copies at: 1, into: pack[:out], tag: BackCopies::TAG
+        else copy.unpack_back_copies_by_variables at: 1, into: pack[:out], tag: BackCopies::TAG
+        end
+      end
+    end.unpacking
+    played = unpacking.run_on(game_player, frames: 4)
+    assert_nil unpacking.fault_in(played)
+    [unpacking.slot_bytes_in(played)[:out], unpacking.bytes_done_in(played)]
+  end
+
+  def test_a_formats_routine_in_normal_ruby_keeps_its_counters
+    wanted = BackCopies.unpacked(BackCopies::PACKED, BackCopies::TAG).pack("C*")
+    Dir.mktmpdir do |folder|
+      assert_equal [wanted, wanted.bytesize], back_copies_unpacked(folder, BackCopiesFormat), "in normal Ruby"
+      assert_equal [wanted, wanted.bytesize], back_copies_unpacked(folder, BackCopiesByVariablesFormat), "with block.variable"
     end
   end
 

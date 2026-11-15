@@ -13,10 +13,11 @@ module VBlank
       #     unpacks :sorcery                 # gives the copy `unpack_sorcery at:, into:, start:`
       #
       #     def self.routine(block)          # game code, written into the unpacking once
-      #       at = block.variable(:at)
-      #       at.store!(block.from)
-      #       ...
-      #       block.write(block.byte(at))
+      #       at = block.from
+      #       block.repeat(block.byte(at)) do  # the first byte says how many follow
+      #         at += 1                      # a local changed in block.repeat is a variable (BlockKit)
+      #         block.write(block.byte(at))
+      #       end
       #     end
       #   end
       #

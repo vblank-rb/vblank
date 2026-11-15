@@ -13,7 +13,7 @@ module VBlank
       #   block.from                      # where the block starts in the copy
       #   block.setting(:base)            # a setting the copy's verb was given
       #   block.byte(at)                  # a byte of the copy, 0 to 255
-      #   block.variable(:flags)          # a variable of the routine's own
+      #   block.variable(:flags)          # a variable of the routine's own, kept with store! (a local does the same)
       #   block.value_of(1)               # a number as a game value, for `block.value_of(1) << count`
       #   block.list(:codes, capacity: 256, width: :half)   # a list of its own, all 0 each block
       #   block.repeat(n, stop_when: block.finished) { ... }
@@ -30,6 +30,17 @@ module VBlank
       # Each write is checked against the slot: one that does not fit is not made, it is the fault
       # the build stops on (the first byte that does not fit, whether +expect_size+ or +write+ finds
       # it), and it finishes the block. This file is read as game code.
+      #
+      # A ROUTINE'S COUNTERS ARE ITS LOCALS. A format's file is game code (VBlank.require_game_file),
+      # so its routine is a method of a game file, and `block.repeat` is the game verb `repeat`
+      # (DSL::PlainRuby::LocalNames::GAME_VERBS). The rewrite that reads every game file therefore
+      # makes a local the routine changes inside a `block.repeat` into a variable of the unpacking,
+      # with no word from the format: `at = block.from` then `at += 2`, `back = made - block.byte(at)`
+      # on one side of an `if` then `back += 1` in a `block.repeat` below it. This is how a method's
+      # locals work in the rest of a game, so a format needs nothing of its own for them: no
+      # `game_variables` line in the module (a format has no object for an instance variable to
+      # belong to) and no object the kit makes for the routine. `block.variable(:name)` stays for a
+      # format written with `store!` and `increase!`, and builds what it built.
       class BlockKit
         def initialize(internals)
           @internals = internals
