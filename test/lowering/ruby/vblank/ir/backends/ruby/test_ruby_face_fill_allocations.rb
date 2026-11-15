@@ -14,7 +14,7 @@ class TestRubyFaceFillAllocations < Minitest::Test
 
   private def objects_made_playing(program, frames)
     game = VBlank::IR::Backends::Ruby.new.live_game(program)
-    player = VBlank::Original::Unpacking::FrameLimitedPlayer.new(frames)
+    player = VBlank::Original::Unpacking::FrameLimitedPlayer.new(frames, picture_and_sound: true)
     before = GC.stat(:total_allocated_objects)
     game.play(player)
     GC.stat(:total_allocated_objects) - before

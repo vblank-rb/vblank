@@ -15,7 +15,7 @@ class TestRubyTintedPictureCost < Minitest::Test
 
   private def calls_playing(program, frames)
     game = VBlank::IR::Backends::Ruby.new.live_game(program)
-    player = VBlank::Original::Unpacking::FrameLimitedPlayer.new(frames)
+    player = VBlank::Original::Unpacking::FrameLimitedPlayer.new(frames, picture_and_sound: true)
     calls = 0
     counting = TracePoint.new(:c_call, :b_call) do |call|
       calls += 1 if call.event == :b_call || (call.method_id == :[] && call.defined_class == Hash)

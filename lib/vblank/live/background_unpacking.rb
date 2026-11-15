@@ -184,6 +184,8 @@ module VBlank
       # WHO PLAYS THE UNPACKING IN ITS RACTOR: it holds no buttons, and sends the window the picture
       # at most once every +seconds+, which is all a window can show; the rest of the unpacking's
       # frames are played as fast as they come. Once the window has closed the way, it stops the play.
+      # It asks for the picture only on a frame it sends one, and never for sound, so the runtime
+      # builds neither on the other frames (LiveGame says how it is asked).
       class PictureSender
         NO_BUTTONS = [].freeze
 
@@ -194,10 +196,12 @@ module VBlank
         end
 
         def take_state_request = nil
+        def sound_wanted? = false
+        def picture_wanted? = @sent_at.nil? || now - @sent_at >= @seconds
 
+        # +pixels+ is the picture where #picture_wanted? asked for it, else nil.
         def buttons_after(pixels, _left, _right)
-          now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-          if @sent_at.nil? || now - @sent_at >= @seconds
+          if pixels
             @pictures << [:picture, pixels]
             @sent_at = now
           end
@@ -205,6 +209,10 @@ module VBlank
         rescue Ractor::ClosedError
           nil
         end
+
+        private
+
+        def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       end
     end
   end

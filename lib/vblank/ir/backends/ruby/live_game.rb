@@ -8,8 +8,12 @@ module VBlank
         # runtime made into a class of its own each time, so two games never share a thing, with
         # the live driver (runtime/rg_live.rb) as the machine it runs on.
         #
-        # #play hands it whoever plays it, which is asked one thing at the end of every frame:
+        # #play hands it whoever plays it, which is asked three things at the end of every frame:
         #
+        #   sound_wanted?          whether it wants the frame's sound; when not, the sound is not
+        #                          mixed and +left+ and +right+ are nil
+        #   picture_wanted?        whether it wants the picture; when not, it is not built and
+        #                          +pixels+ is nil (a data pack's unpacking wants neither)
         #   buttons_after(pixels, left, right)  the picture as the screen shows it, a 15-bit colour
         #                          a pixel, a row at a time, drawn over next frame, and the sound of
         #                          the frame just played, the left speaker's 16-bit samples and the

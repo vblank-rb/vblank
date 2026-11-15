@@ -23,7 +23,7 @@ class TestRubyFaceFillPace < Minitest::Test
   WARMING_PASSES = 60 # played first, so YJIT has compiled the fill before it is timed
 
   private def seconds_playing(game, frames)
-    player = VBlank::Original::Unpacking::FrameLimitedPlayer.new(frames)
+    player = VBlank::Original::Unpacking::FrameLimitedPlayer.new(frames, picture_and_sound: true)
     start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     game.play(player)
     Process.clock_gettime(Process::CLOCK_MONOTONIC) - start

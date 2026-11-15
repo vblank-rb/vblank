@@ -20,7 +20,7 @@ class TestRubyBoxedBackgroundCost < Minitest::Test
 
   private def methods_called_playing(program, frames)
     game = VBlank::IR::Backends::Ruby.new.live_game(program)
-    player = VBlank::Original::Unpacking::FrameLimitedPlayer.new(frames)
+    player = VBlank::Original::Unpacking::FrameLimitedPlayer.new(frames, picture_and_sound: true)
     calls = 0
     counting = TracePoint.new(:call) { calls += 1 }
     counting.enable { game.play(player) }

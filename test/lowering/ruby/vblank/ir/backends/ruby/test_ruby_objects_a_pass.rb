@@ -25,7 +25,7 @@ class TestRubyObjectsAPass < Minitest::Test
   # counts toward the next one is not set back to nought part way.
   private def allocated_playing(program, frames)
     game = VBlank::IR::Backends::Ruby.new.live_game(program)
-    player = VBlank::Original::Unpacking::FrameLimitedPlayer.new(frames)
+    player = VBlank::Original::Unpacking::FrameLimitedPlayer.new(frames, picture_and_sound: true)
     GC.start
     GC.disable
     objects = GC.stat(:total_allocated_objects)

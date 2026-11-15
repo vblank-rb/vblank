@@ -241,7 +241,9 @@ module VBlank
       #
       # Not every frame: reading the count reads every variable of the game (LiveGame#vars), and
       # a picture is a copy for another Ractor, which in a long unpacking added up to a share of
-      # the work. A bar moved a few times a second looks no different.
+      # the work. A bar moved a few times a second looks no different. So the picture is asked for
+      # only on a frame it is sent, and only by the main job, and no job asks for sound: the
+      # runtime builds neither on the other frames (LiveGame says how it is asked).
       class WorkSender
         NO_BUTTONS = [].freeze
         SEND_SECONDS = 0.1
@@ -252,21 +254,33 @@ module VBlank
           @index = index
           @bytes_done = bytes_done
           @sent_at = nil
+          @picture_sent_at = nil
         end
 
         def take_state_request = nil
+        def sound_wanted? = false
+        def picture_wanted? = @index.zero? && due?(@picture_sent_at, now)
 
+        # +pixels+ is the picture where #picture_wanted? asked for it, else nil.
         def buttons_after(pixels, _left, _right)
-          now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-          if @sent_at.nil? || now - @sent_at >= SEND_SECONDS
+          at = now
+          if due?(@sent_at, at)
             @results << [:progress, @index, @game.vars.fetch(@bytes_done)]
-            @results << [:picture, pixels] if @index.zero?
-            @sent_at = now
+            @sent_at = at
+          end
+          if pixels
+            @results << [:picture, pixels]
+            @picture_sent_at = at
           end
           NO_BUTTONS
         rescue Ractor::ClosedError
           nil
         end
+
+        private
+
+        def due?(sent_at, at) = sent_at.nil? || at - sent_at >= SEND_SECONDS
+        def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       end
     end
   end

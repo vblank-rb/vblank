@@ -142,6 +142,11 @@ module VBlank
       #
       # +left+ and +right+ are the two speakers' sound; a sound that is the same from both can be
       # handed over once.
+      #
+      # A device is always shown the picture and handed the sound, so the game is asked for both.
+      def picture_wanted? = true
+      def sound_wanted? = true
+
       def buttons_after(pixels, left, right = left)
         speed = @uncapped ? 1 : @device.fast_forward_speed(@passes + 1)
         record_pass_time(speed)

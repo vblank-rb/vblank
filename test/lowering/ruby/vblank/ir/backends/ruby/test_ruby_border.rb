@@ -15,6 +15,8 @@ class TestRubyBorder < Minitest::Test
 
     def initialize = @pictures = []
     def take_state_request = nil
+    def picture_wanted? = true
+    def sound_wanted? = false
 
     def buttons_after(pixels, _left, _right)
       @pictures << pixels.dup

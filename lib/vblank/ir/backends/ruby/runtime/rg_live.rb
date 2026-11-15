@@ -32,12 +32,19 @@ end
 # The picture is shown as it stands once the next frame has begun, the way the screen shows it
 # once the frame boundary has passed, and the buttons the player answers are read for the pass
 # that starts.
+#
+# NOBODY WATCHING OR LISTENING. The player is asked each frame whether it wants the picture and the
+# sound (picture_wanted?, sound_wanted?), and is handed nil for what it does not want, which is then
+# never made. A data pack's unpacking has nobody at the window, and building its picture and mixing
+# its sound every frame was about half of a long unpacking's time. Neither changes the game: the game
+# cannot read its own sound, and the picture is built here only to be handed over (a read the game
+# makes of its screen catches up on any repaint owed, as the interpreter's own reads do).
 def rg_driver_wait_vblank
   rg_live_serve_state_request
   rg_live_mix_match_seed
-  left, right = rg_sound_render_frame
+  left, right = rg_sound_render_frame if @rg_live.sound_wanted?
   rg_frame_begins
-  buttons = @rg_live.buttons_after(rg_screen_framed, left, right)
+  buttons = @rg_live.buttons_after((rg_screen_framed if @rg_live.picture_wanted?), left, right)
   throw :rg_live_stop, :player if buttons.nil?
 
   rg_buttons_read(buttons)

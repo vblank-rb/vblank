@@ -180,11 +180,16 @@ module VBlank
       # +frames+ frames, as the interpreter's `frames:` does, so a routine that never ends cannot
       # keep the build forever. It also keeps when the last frame ended, for the watchdog, which it
       # lets raise only while the run is still playing.
+      #
+      # Nobody watches or hears an unpacking, so it asks for no picture and no sound, and the runtime
+      # makes neither (rg_live.rb's rg_driver_wait_vblank). A test that measures what making them
+      # costs asks for both (+picture_and_sound+).
       class FrameLimitedPlayer
         NO_BUTTONS = [].freeze
 
-        def initialize(frames)
+        def initialize(frames, picture_and_sound: false)
           @left = frames
+          @picture_and_sound = picture_and_sound
           @lock = Mutex.new
           @watched = true
           @last_frame_at = now
@@ -192,6 +197,9 @@ module VBlank
 
         # Nobody is at the controls of an unpacking, so no state is ever asked for.
         def take_state_request = nil
+
+        def picture_wanted? = @picture_and_sound
+        def sound_wanted? = @picture_and_sound
 
         def buttons_after(_pixels, _left, _right)
           @lock.synchronize { @last_frame_at = now }
