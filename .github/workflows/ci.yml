@@ -55,10 +55,11 @@ jobs:
           CI: '1'
 
       # The PlayStation run plays its programs in Beetle PSX, which ruby-ps1-emulator builds from one
-      # downloaded archive with the tools the machine already has (make, patch, tar and clang): the
-      # shell needs nothing more. A clean checkout has no core built, and `rake test:all` does not build
-      # it, so it is built here (a second or two when it is already there).
-      - name: Build the PlayStation's emulator core
+      # downloaded archive with the tools the machine already has (make, patch, tar and clang), and
+      # plays through a small C extension of its own: the shell needs nothing more. A clean checkout
+      # has neither built, and `rake test:all` does not build them, so they are built here (a second
+      # or two when they are already there).
+      - name: Build the PlayStation's emulator core and its C extension
         run: bundle exec rake compile_ps1_core
 
       # Every test on every lowering, one after the other. A whole run takes the machine to

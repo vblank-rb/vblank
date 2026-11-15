@@ -161,9 +161,9 @@ module VBlank
       end
 
       # THE PLAYSTATION'S EMULATOR is a gem of its own too, ruby-ps1-emulator: Beetle PSX, built as a
-      # libretro core with a patch that hands over the console's memories, driven through Fiddle. It is
-      # loaded the same way, the gem first and this repository's checkout second, and when it is
-      # missing it says how to get it.
+      # libretro core with a patch that hands over the console's memories, played through a small C
+      # extension of the gem's own, so a program plays in any Ractor. It is loaded the same way, the
+      # gem first and this repository's checkout second, and when it is missing it says how to get it.
       def load_ps1!
         return true if ps1_loaded?
 
@@ -175,8 +175,9 @@ module VBlank
           raise LoadError, "An emulator is required to run a PlayStation program, and ruby-ps1-emulator will " \
                            "not load. To fix this, add it to the git block that names vblank in your Gemfile: " \
                            "widen its glob to \"{,ruby-gba-emulator/,ruby-ps1-emulator/}*.gemspec\" and add " \
-                           "`gem \"ruby-ps1-emulator\"` inside it. Then run `rake compile_core` in " \
-                           "ruby-ps1-emulator/ to build the Beetle PSX core it plays programs in."
+                           "`gem \"ruby-ps1-emulator\"` inside it. Then run `rake compile compile_core` in " \
+                           "ruby-ps1-emulator/ to build its C extension and the Beetle PSX core it plays " \
+                           "programs in."
         end
 
         $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)

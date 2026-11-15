@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "fiddle"
 require "fileutils"
 require "tmpdir"
 
@@ -21,6 +20,12 @@ module RubyPS1Emulator
   # A LIBRETRO CORE IS ONE CONSOLE PER LIBRARY: it keeps the whole machine in the library's own
   # globals. So each Core loads a copy of the library of its own (KeptCopy), and two Cores in one
   # process are two consoles that cannot see each other.
+  #
+  # The core is played through Frontend, this gem's C extension: it opens the copy, answers what the
+  # core asks (a quiet log among it: Beetle tells a log what it finds, or the terminal when it has
+  # none), and keeps the sound the core hands over until it is asked for here
+  # (ext/ruby_ps1_emulator_ext/libretro_frontend.c says why that is C). So a Core can be made and
+  # played in any Ractor.
   #
   # NO BIOS FROM SONY, unless one is handed over. The core is told a system folder with no BIOS in it,
   # so it starts OpenBIOS, the free BIOS built into it. Beetle loads a PS-X EXE by letting the BIOS
@@ -75,16 +80,14 @@ module RubyPS1Emulator
     WIDTHS = [256, 320, 512, 640].freeze
     WIDTH_368 = 1 << 6
 
-    # libretro's environment calls that matter here.
-    GET_CAN_DUPE = 3
-    GET_SYSTEM_DIRECTORY = 9
-    SET_PIXEL_FORMAT = 10
-    GET_VARIABLE_UPDATE = 17
-    GET_LOG_INTERFACE = 27
-    GET_SAVE_DIRECTORY = 31
+    # The settings the core asks for, as libretro names them: none, so it keeps its own.
+    SETTINGS = Ractor.make_shareable({})
+
+    # The picture format the core is let draw in: whichever it asks for, since the picture is read
+    # from video RAM and never from what the core hands over.
+    ANY_PIXEL_FORMAT = nil
 
     JOYPAD = 1
-    JOYPAD_MASK = 256
 
     # The name Beetle looks for a North American console's BIOS under in its system folder, the region
     # it takes a PS-X EXE to be for. It takes a file of that name whichever console it was dumped from.
@@ -105,18 +108,11 @@ module RubyPS1Emulator
       raise ArgumentError, "there is no BIOS file at #{bios}" if bios && !File.file?(bios)
 
       @dir = Dir.mktmpdir("ruby-ps1-emulator")
-      @save_dir = save_dir || @dir
       File.symlink(File.expand_path(bios), File.join(@dir, BIOS_NAME)) if bios
-      @buttons = Array.new(2) { [] }
       @frames = 0
       @sound_frames = 0
       @audio = []
-      @kept = [] # what the core holds a pointer to, kept from the garbage collector
-      load_library
-      @shutdown = Shutdown.new(@call, @handle, @copy, @dir, @save_dir)
-      ObjectSpace.define_finalizer(self, @shutdown)
-      hand_over_callbacks
-      @call[:retro_init].call
+      start_frontend(save_dir || @dir)
       load_program(exe_path)
     end
 
@@ -125,12 +121,13 @@ module RubyPS1Emulator
       unknown = buttons - BUTTONS.keys
       raise ArgumentError, "a PlayStation pad has no #{unknown.join(', ')} button" unless unknown.empty?
 
-      @buttons[port] = buttons.map { |button| BUTTONS.fetch(button) }
+      @frontend.set_buttons(port, buttons.uniq.sum { |button| 1 << BUTTONS.fetch(button) })
     end
 
     # Plays one frame.
     def run_frame
-      @call[:retro_run].call
+      @frontend.run
+      take_sound(@frontend.drain_audio)
       @frames += 1
       self
     end
@@ -165,13 +162,12 @@ module RubyPS1Emulator
     # row that runs past video RAM's right edge goes round to its left, and one past the bottom to the
     # top, as the chip's own reading does.
     def colors_at(left, top, width, height)
-      video = live(VIDEO_RAM, VRAM_WIDTH * VRAM_HEIGHT * 2)
       left %= VRAM_WIDTH
       before_edge = [width, VRAM_WIDTH - left].min
       Array.new(height) do |row|
         line = ((top + row) % VRAM_HEIGHT) * VRAM_WIDTH * 2
-        bytes = video[line + (left * 2), before_edge * 2]
-        bytes += video[line, (width - before_edge) * 2] if width > before_edge
+        bytes = @frontend.memory_read(VIDEO_RAM, line + (left * 2), before_edge * 2)
+        bytes += @frontend.memory_read(VIDEO_RAM, line, (width - before_edge) * 2) if width > before_edge
         bytes.unpack("v*").map { |color| color & 0x7FFF }
       end.flatten
     end
@@ -231,16 +227,19 @@ module RubyPS1Emulator
     def gpu_busy_cycles = memory(GPU_BUSY).unpack1("Q<")
 
     # Main RAM read in place, at +address+ (only its low 21 bits matter, so 80010000h, A0010000h and
-    # 00010000h are the same byte), low byte first as the console keeps a number.
+    # 00010000h are the same byte), low byte first as the console keeps a number. Each address is
+    # taken within the 2 megabytes as the first is, so a read that runs past the end goes on from the
+    # start, as the console's mirrors of RAM do.
     def ram_read8(address) = ram_bytes(address, 1).getbyte(0)
     def ram_read16(address) = ram_bytes(address, 2).unpack1("v")
     def ram_read32(address) = ram_bytes(address, 4).unpack1("V")
-    def ram_bytes(address, count) = live(SYSTEM_RAM, RAM_SIZE)[address & (RAM_SIZE - 1), count]
-    def ram_write32(address, value) = (live(SYSTEM_RAM, RAM_SIZE)[address & (RAM_SIZE - 1), 4] = [value & 0xFFFF_FFFF].pack("V"))
+    def ram_bytes(address, count) = read_around(SYSTEM_RAM, RAM_SIZE, address, count)
+    def ram_write32(address, value) = write_around(SYSTEM_RAM, RAM_SIZE, address, [value & 0xFFFF_FFFF].pack("V"))
 
-    # The scratchpad read and written in place, +offset+ bytes from its start (1F800000h).
-    def scratchpad_bytes(offset, count) = live(SCRATCHPAD, SCRATCHPAD_SIZE)[offset & (SCRATCHPAD_SIZE - 1), count]
-    def scratchpad_write32(offset, value) = (live(SCRATCHPAD, SCRATCHPAD_SIZE)[offset & (SCRATCHPAD_SIZE - 1), 4] = [value & 0xFFFF_FFFF].pack("V"))
+    # The scratchpad read and written in place, +offset+ bytes from its start (1F800000h), going on
+    # from its start past its end as RAM does.
+    def scratchpad_bytes(offset, count) = read_around(SCRATCHPAD, SCRATCHPAD_SIZE, offset, count)
+    def scratchpad_write32(offset, value) = write_around(SCRATCHPAD, SCRATCHPAD_SIZE, offset, [value & 0xFFFF_FFFF].pack("V"))
 
     # --- the memory card ---
 
@@ -251,233 +250,106 @@ module RubyPS1Emulator
     # The memory card in the first slot, written over from its start (for a console that starts from a
     # card a frontend kept).
     def memory_card=(bytes)
-      size = @call[:retro_get_memory_size].call(MEMORY_CARD)
-      live(MEMORY_CARD, size)[0, [bytes.bytesize, size].min] = bytes.byteslice(0, size)
+      size = @frontend.memory_size(MEMORY_CARD)
+      @frontend.memory_write(MEMORY_CARD, 0, bytes.byteslice(0, size)) if size.positive?
     end
 
     # Unloads the program, shuts the core and lets go of its library.
     def destroy
-      return unless @call
+      return unless @shutdown
 
       ObjectSpace.undefine_finalizer(self)
       @shutdown.call
-      @call = nil
-    end
-
-    # Each callback the core is handed, by the function that hands it over: what it returns, and what
-    # it is given.
-    CALLBACK_TYPES = {
-      retro_set_environment: [Fiddle::TYPE_BOOL, [Fiddle::TYPE_UINT, Fiddle::TYPE_VOIDP]],
-      retro_set_video_refresh: [Fiddle::TYPE_VOID, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_UINT, Fiddle::TYPE_UINT, Fiddle::TYPE_SIZE_T]],
-      retro_set_audio_sample: [Fiddle::TYPE_VOID, [Fiddle::TYPE_INT16_T, Fiddle::TYPE_INT16_T]],
-      retro_set_audio_sample_batch: [Fiddle::TYPE_SIZE_T, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_SIZE_T]],
-      retro_set_input_poll: [Fiddle::TYPE_VOID, []],
-      retro_set_input_state: [Fiddle::TYPE_INT16_T, [Fiddle::TYPE_UINT, Fiddle::TYPE_UINT, Fiddle::TYPE_UINT, Fiddle::TYPE_UINT]],
-      # What the core says as it works goes to a log function it is handed: it takes a level, a format
-      # and the format's numbers, and only the first two are named here, which is all a caller of a C
-      # function that takes any number of them needs.
-      log: [Fiddle::TYPE_VOID, [Fiddle::TYPE_INT, Fiddle::TYPE_VOIDP]]
-    }.freeze
-
-    # +block+ as a C function the core can call, of the kind +setter+ hands over (CALLBACK_TYPES).
-    # Made here, not in a Core, so the block holds no Core.
-    def self.closure(setter, &block)
-      result, args = CALLBACK_TYPES.fetch(setter)
-      Fiddle::Closure::BlockCaller.new(result, args, &block)
+      @shutdown = nil
     end
 
     # A CONSOLE NOBODY DESTROYED IS SHUT BY RUBY when it collects the Core, the same way #destroy shuts
     # it. It must not be left as it is. Ruby closes the copy's lock when it collects it, and the copy is
     # handed to the next console made in this process, while the library is still open here with the
     # old program in it, never shut: the next console's start goes on top of it, and the old console's
-    # memory is kept for as long as the process runs.
+    # memory is kept for as long as the process runs. So the frontend is closed first and the copy given
+    # back after.
     #
-    # The finalizer must hold nothing that holds the Core, or the Core is never collected. The callbacks
-    # the Core handed over call its methods, so they hold it. So a shutdown first hands the core
-    # callbacks of its own: they answer where files go and ignore everything else. The log the core is
-    # handed is the shutdown's from the start, as the core keeps the one it is given at power-on.
+    # The finalizer must hold nothing that holds the Core, or the Core is never collected. The
+    # frontend's callbacks are C and hold nothing of Ruby's, so holding the frontend is enough.
     class Shutdown
-      attr_reader :quiet_log
-
-      def initialize(call, handle, copy, dir, save_dir)
-        @call = call
-        @handle = handle
+      def initialize(frontend, copy, dir)
+        @frontend = frontend
         @copy = copy
         @dir = dir
-        @system_dir = c_string(dir)
-        @save_dir = c_string(save_dir)
-        @quiet_log = Core.closure(:log) { nil }
       end
 
       # Unloads the program, shuts the core, closes the library and gives the copy back. A finalizer is
       # handed the Core's object id, which is not needed here.
       def call(_object_id = nil)
-        return unless @call
+        return unless @frontend
 
-        hand_over_own_callbacks
-        @call[:retro_unload_game].call
-        @call[:retro_deinit].call
-        @handle.close
+        @frontend.close
         @copy.give_back
-        @call = nil
+        @frontend = nil
         FileUtils.rm_rf(@dir)
-      end
-
-      private
-
-      def c_string(text)
-        pointer = Fiddle::Pointer.malloc(text.bytesize + 1, Fiddle::RUBY_FREE)
-        pointer[0, text.bytesize + 1] = "#{text}\0".b
-        pointer
-      end
-
-      def hand_over_own_callbacks
-        @callbacks = {
-          retro_set_environment: Core.closure(:retro_set_environment) { |cmd, data| environment(cmd, data) },
-          retro_set_video_refresh: Core.closure(:retro_set_video_refresh) { nil },
-          retro_set_audio_sample: Core.closure(:retro_set_audio_sample) { nil },
-          retro_set_audio_sample_batch: Core.closure(:retro_set_audio_sample_batch) { |_data, frames| frames },
-          retro_set_input_poll: Core.closure(:retro_set_input_poll) { nil },
-          retro_set_input_state: Core.closure(:retro_set_input_state) { 0 }
-        }
-        @callbacks.each { |setter, callback| @call.fetch(setter).call(callback) }
-      end
-
-      def environment(cmd, data)
-        pointer = case cmd & 0xFFFF
-                  when GET_SYSTEM_DIRECTORY then @system_dir
-                  when GET_SAVE_DIRECTORY then @save_dir
-                  when GET_LOG_INTERFACE then @quiet_log
-                  else return false
-                  end
-        Fiddle::Pointer.new(data.to_i, 8)[0, 8] = [pointer.to_i].pack("J")
-        true
       end
     end
 
     private
 
-    def memory(id)
-      size = @call[:retro_get_memory_size].call(id)
-      return "".b if size.zero?
+    def memory(id) = @frontend.memory(id)
 
-      Fiddle::Pointer.new(@call[:retro_get_memory_data].call(id).to_i)[0, size]
+    # +count+ bytes of memory +id+, which is +size+ bytes (a power of two), from +offset+ taken within
+    # it, going on from its start past its end.
+    def read_around(id, size, offset, count)
+      start = offset & (size - 1)
+      before_end = [count, size - start].min
+      bytes = @frontend.memory_read(id, start, before_end)
+      bytes << @frontend.memory_read(id, 0, count - before_end) if count > before_end
+      bytes
     end
 
-    def live(id, size) = Fiddle::Pointer.new(@call[:retro_get_memory_data].call(id).to_i, size)
+    # +bytes+ written over memory +id+ as #read_around reads it.
+    def write_around(id, size, offset, bytes)
+      start = offset & (size - 1)
+      before_end = [bytes.bytesize, size - start].min
+      @frontend.memory_write(id, start, bytes.byteslice(0, before_end))
+      @frontend.memory_write(id, 0, bytes.byteslice(before_end..)) if bytes.bytesize > before_end
+    end
 
-    FUNCTIONS = {
-      retro_set_environment: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
-      retro_set_video_refresh: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
-      retro_set_audio_sample: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
-      retro_set_audio_sample_batch: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
-      retro_set_input_poll: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
-      retro_set_input_state: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
-      retro_init: [[], Fiddle::TYPE_VOID],
-      retro_deinit: [[], Fiddle::TYPE_VOID],
-      retro_load_game: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_BOOL],
-      retro_unload_game: [[], Fiddle::TYPE_VOID],
-      retro_run: [[], Fiddle::TYPE_VOID],
-      retro_set_controller_port_device: [[Fiddle::TYPE_UINT, Fiddle::TYPE_UINT], Fiddle::TYPE_VOID],
-      retro_get_memory_data: [[Fiddle::TYPE_UINT], Fiddle::TYPE_VOIDP],
-      retro_get_memory_size: [[Fiddle::TYPE_UINT], Fiddle::TYPE_SIZE_T]
-    }.freeze
+    # The sound the frame just played made, kept until #take_audio asks for it, and counted.
+    def take_sound(bytes)
+      @sound_frames += bytes.bytesize / 4
+      @audio.concat(bytes.unpack("s<*"))
+    end
 
-    def load_library
-      @copy = KeptCopy.take
-      @handle = Fiddle::Handle.new(@copy.path, Fiddle::Handle::RTLD_NOW)
-      @call = FUNCTIONS.to_h do |name, (args, result)|
-        [name, Fiddle::Function.new(@handle[name.to_s], args, result)]
+    # Opens a copy of the core of this Core's own and starts it, with the system folder (where a BIOS
+    # is linked) and the save folder it is told.
+    def start_frontend(save_dir)
+      copy = KeptCopy.take
+      begin
+        @frontend = Frontend.new(copy.path, @dir, save_dir, SETTINGS, ANY_PIXEL_FORMAT)
+      rescue StandardError, LoadError
+        copy.give_back
+        FileUtils.rm_rf(@dir)
+        raise
       end
+      @shutdown = Shutdown.new(@frontend, copy, @dir)
+      ObjectSpace.define_finalizer(self, @shutdown)
       refuse_unpatched_core!
     end
 
     def refuse_unpatched_core!
-      return if @call[:retro_get_memory_size].call(GPU_STATE).positive?
+      return if @frontend.memory_size(GPU_STATE).positive?
 
+      destroy
       raise LoadError, "#{CoreLibrary.path} is a Beetle PSX core built without this gem's probe patch, so it " \
                        "cannot hand over the console's memories. Build it with `rake compile_core` in " \
                        "ruby-ps1-emulator/."
     end
 
-    def hand_over_callbacks
-      @callbacks = {
-        retro_set_environment: Core.closure(:retro_set_environment) { |cmd, data| environment(cmd, data) },
-        retro_set_video_refresh: Core.closure(:retro_set_video_refresh) { nil },
-        retro_set_audio_sample: Core.closure(:retro_set_audio_sample) { nil },
-        retro_set_audio_sample_batch: Core.closure(:retro_set_audio_sample_batch) do |data, frames|
-          @sound_frames += frames
-          @audio.concat(Fiddle::Pointer.new(data.to_i, frames * 4)[0, frames * 4].unpack("s<*"))
-          frames
-        end,
-        retro_set_input_poll: Core.closure(:retro_set_input_poll) { nil },
-        retro_set_input_state: Core.closure(:retro_set_input_state) do |port, device, _index, id|
-          button_state(port, device, id)
-        end
-      }
-      @callbacks.each { |setter, callback| @call.fetch(setter).call(callback) }
-    end
-
-    # What the core asks of the controller: one button, or all of them as bits when it asks for the mask.
-    def button_state(port, device, id)
-      return 0 unless device == JOYPAD
-
-      down = @buttons.fetch(port, [])
-      return down.sum { |button| 1 << button } if id == JOYPAD_MASK
-
-      down.include?(id) ? 1 : 0
-    end
-
-    # What the core asks of its frontend. Anything not answered here is answered "no", which a core
-    # takes as the frontend not having it, and uses its own settings. Any pixel format is taken, since
-    # the picture is read from video RAM and never from what the core hands over.
-    def environment(cmd, data)
-      case cmd & 0xFFFF
-      when GET_CAN_DUPE then write_bool(data, true)
-      when SET_PIXEL_FORMAT then true
-      when GET_SYSTEM_DIRECTORY then write_pointer(data, kept_string(@dir))
-      when GET_SAVE_DIRECTORY then write_pointer(data, kept_string(@save_dir))
-      when GET_VARIABLE_UPDATE then write_bool(data, false)
-      # What the core says as it works (which BIOS it found, which pads are plugged in) goes to a log
-      # the frontend hands it, or to the terminal when there is none. This one hears it and says
-      # nothing. It is the shutdown's, which outlives the Core (see Shutdown).
-      when GET_LOG_INTERFACE then write_pointer(data, @shutdown.quiet_log)
-      else false
-      end
-    rescue StandardError
-      false
-    end
-
-    def write_bool(data, value)
-      Fiddle::Pointer.new(data.to_i, 1)[0, 1] = value ? "\1" : "\0"
-      true
-    end
-
-    def write_pointer(data, pointer)
-      Fiddle::Pointer.new(data.to_i, 8)[0, 8] = [pointer.to_i].pack("J")
-      true
-    end
-
-    # A C string the core may hold on to for as long as this core lives.
-    def kept_string(text) = kept_bytes("#{text}\0".b)
-
-    # +bytes+ copied into memory of their own that does not move, kept as long as the core lives.
-    def kept_bytes(bytes)
-      pointer = Fiddle::Pointer.malloc([bytes.bytesize, 1].max, Fiddle::RUBY_FREE)
-      pointer[0, bytes.bytesize] = bytes
-      @kept << pointer
-      pointer
-    end
-
-    # libretro's retro_game_info: the path, the bytes and their count, and nothing for meta.
+    # Hands the core the program's path and bytes, and plugs a pad into the first port.
     def load_program(exe_path)
-      bytes = File.binread(exe_path)
-      path = kept_string(File.expand_path(exe_path))
-      data = kept_bytes(bytes)
-      info = kept_bytes([path.to_i, data.to_i, bytes.bytesize, 0].pack("J4"))
-      raise ArgumentError, "Beetle PSX would not load #{exe_path}" unless @call[:retro_load_game].call(info)
+      loaded = @frontend.load_game(File.expand_path(exe_path), File.binread(exe_path))
+      raise ArgumentError, "Beetle PSX would not load #{exe_path}" unless loaded
 
-      @call[:retro_set_controller_port_device].call(0, JOYPAD)
+      @frontend.set_controller_port_device(0, JOYPAD)
     end
   end
 end

@@ -149,15 +149,17 @@ class TestCore < Minitest::Test
   private def collect_dropped_consoles = 3.times { GC.start(full_mark: true, immediate_sweep: true) }
 
   # +count+ bytes of main RAM from +address+ in the copy of the core the next console would take, opened
-  # as that console opens it. A copy that holds no program has no RAM to show, and answers nil.
+  # as that console opens it, before any program goes in. A copy that holds no program has no RAM to
+  # show, and answers nil.
   private def ram_in_next_copy(address, count)
     copy = RubyPS1Emulator::KeptCopy.take
-    library = Fiddle::Handle.new(copy.path, Fiddle::Handle::RTLD_NOW)
-    data = Fiddle::Function.new(library["retro_get_memory_data"], [Fiddle::TYPE_UINT], Fiddle::TYPE_VOIDP)
-    ram = data.call(RubyPS1Emulator::Core::SYSTEM_RAM)
-    Fiddle::Pointer.new(ram.to_i, RubyPS1Emulator::Core::RAM_SIZE)[address & (RubyPS1Emulator::Core::RAM_SIZE - 1), count] unless ram.null?
+    dir = Dir.mktmpdir
+    frontend = RubyPS1Emulator::Frontend.new(copy.path, dir, dir, RubyPS1Emulator::Core::SETTINGS,
+                                             RubyPS1Emulator::Core::ANY_PIXEL_FORMAT)
+    frontend.memory(RubyPS1Emulator::Core::SYSTEM_RAM).byteslice(address & (RubyPS1Emulator::Core::RAM_SIZE - 1), count)
   ensure
-    library&.close
+    frontend&.close
     copy&.give_back
+    FileUtils.rm_rf(dir) if dir
   end
 end

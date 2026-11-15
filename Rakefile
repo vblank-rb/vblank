@@ -54,12 +54,12 @@ task :compile_genesis_core do
   Dir.chdir("ruby-genesis-emulator") { sh "rake", "compile", "compile_core" }
 end
 
-# THE PLAYSTATION'S EMULATOR: Beetle PSX, built with ruby-ps1-emulator's probe patch (that gem's
-# Rakefile says how). Its binding is plain Ruby too, so the core is all there is to build, once; the
-# PlayStation run is the only one that plays its programs.
-desc "Build the Beetle PSX core the PlayStation run plays its programs in, if it is not built"
+# THE PLAYSTATION'S EMULATOR: Beetle PSX, built with ruby-ps1-emulator's probe patch, and the small C
+# extension it is played through (that gem's Rakefile says how). Each is built only when it is missing
+# or out of date; the PlayStation run is the only one that plays its programs.
+desc "Build the Beetle PSX core the PlayStation run plays its programs in, and its C extension, if not built"
 task :compile_ps1_core do
-  Dir.chdir("ruby-ps1-emulator") { sh "rake", "compile_core" }
+  Dir.chdir("ruby-ps1-emulator") { sh "rake", "compile", "compile_core" }
 end
 
 # SimpleCov merges every result it finds in coverage/.resultset.json that is younger

@@ -26,8 +26,8 @@
  * THE SAME FILE SERVES ANY LIBRETRO CORE. Nothing here names a console: the core's settings, the
  * picture format it may ask for, and its memory ids all come from the Ruby that makes a Frontend.
  * So each emulator gem carries this file as it is, with an Init function of its own (its
- * ruby_<gem>_ext.c), rather than a frontend of each: ruby-snes-emulator's and
- * ruby-genesis-emulator's copies are the same file, and a change to one is made to both.
+ * ruby_<gem>_ext.c), rather than a frontend of each: ruby-snes-emulator's, ruby-genesis-emulator's
+ * and ruby-ps1-emulator's copies are the same file, and a change to one is made to all three.
  *
  * The callbacks allocate with malloc, never through Ruby: Ruby's allocator may start the garbage
  * collector, and the core may call back from a stack Ruby knows nothing of.
@@ -47,6 +47,7 @@
 #define ENV_SET_PIXEL_FORMAT 10
 #define ENV_GET_VARIABLE 15
 #define ENV_GET_VARIABLE_UPDATE 17
+#define ENV_GET_LOG_INTERFACE 27
 #define ENV_GET_SAVE_DIRECTORY 31
 #define PIXEL_FORMAT_XRGB8888 1
 #define DEVICE_JOYPAD 1
@@ -63,6 +64,13 @@ struct retro_game_info {
 struct retro_variable {
     const char *key;
     const char *value;
+};
+
+/* libretro's log function takes a level (an enum, passed as an int), a printf format and its values. */
+typedef void (*log_fn)(int, const char *, ...);
+
+struct retro_log_callback {
+    log_fn log;
 };
 
 typedef bool (*environment_fn)(unsigned, void *);
@@ -160,6 +168,15 @@ static bool answer_setting(struct frontend *f, struct retro_variable *variable)
     return false;
 }
 
+/* What a core says as it works (which BIOS it found, which pads are plugged in) goes to a log its
+ * frontend hands it, or to the terminal when it is handed none. This log hears it and says nothing:
+ * a test run has no use for the chatter. */
+static void quiet_log(int level, const char *format, ...)
+{
+    (void)level;
+    (void)format;
+}
+
 /* What the core asks of its frontend. Anything not answered here is answered "no", which a core
  * takes as the frontend not having it. */
 static bool on_environment(unsigned cmd, void *data)
@@ -187,6 +204,9 @@ static bool on_environment(unsigned cmd, void *data)
         return answer_setting(f, data);
     case ENV_GET_VARIABLE_UPDATE:
         *(bool *)data = false;
+        return true;
+    case ENV_GET_LOG_INTERFACE:
+        ((struct retro_log_callback *)data)->log = quiet_log;
         return true;
     default:
         return false;
