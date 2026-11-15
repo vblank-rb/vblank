@@ -148,8 +148,7 @@ writing an instruction is shared, because two copies of a decision drift apart:
   `SceneHandover#own_scenery_behind_shared?` — a stack that puts a scene's own background behind one
   every screen shows, which `LoweringPlan#refuse_unmade_stacking!` refuses for a lowering whose layers
   cannot show it; `SceneHandover#bar_shown_early` — a status bar whose line is in a routine or the
-  game loop, which the interpreter shows from the first background put up, so a lowering puts it up
-  beside each background until it has gone up once (`SceneryWrites#emit_bar_beside`).
+  game loop, which the interpreter shows from the first background put up.
 - `Backends::SceneryWrites` — mixed into the lowering beside `ControlFlow`, written with its hooks: a
   change to a background made to the scene's own declaration of the name, each scene a branch where
   that is known only as the game runs (`for_background`), and a background put up in a pass held at
@@ -157,7 +156,10 @@ writing an instruction is shared, because two copies of a decision drift apart:
   held; `emit_unless_put_up`; `emit_corners_forgotten`), and a background whose line runs more than
   once copying its declared map the first time alone, so a later put-up keeps the cells the game
   changed (`emit_put_up_keeping_cells`; the Color tells the two apart in its runtime instead, by the
-  grid its layer holds).
+  grid its layer holds, and names the grid of whichever of its maps the layer holds), and the bar
+  shown early put up beside each background, by a line or a scene's arrival, until it has gone up
+  once, held at no corner (`emit_bar_beside`, `emit_bar_beside_arrival`, `emit_bar_shown_early_noted`
+  for a screen's change; the Advance writes the same in `Drawing#emit_bar_beside`).
 - `Backends::DrawOrderWalk` — a draw order's list read as the interpreter reads it (every entry held,
   a place below nought counted back, one naming no sprite stopping the game), for a list that is not
   the builder's own (`Build::DrawOrder#permutation`) or that something takes items from the front of;

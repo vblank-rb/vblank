@@ -130,6 +130,31 @@ class TestStatusBarHandle < Minitest::Test
     assert_equal GREEN, picture(prog, 6).pixel(20, row), "the cell beside it"
   end
 
+  # ...and the map it was handed, put up again.
+  def test_a_bar_put_up_again_keeps_the_map_it_was_handed
+    prog = program do
+      screen :tiled
+      image(:red_art, "#" => :red) { Minitest::Test::SOLID_TILE }
+      image(:blue_art, "#" => :blue) { Minitest::Test::SOLID_TILE }
+      image(:green_art, "#" => :green) { Minitest::Test::SOLID_TILE }
+      tiles :field_tiles, "#" => :red_art
+      tiles :bar_tiles, "#" => :green_art, "o" => :blue_art
+      background :field, tiles: :field_tiles, map: Array.new(32) { "#" * 32 }
+      step = var :step, 0
+      func(:put_up_bar) do
+        bar = status_bar :score, tiles: :bar_tiles, top: screen_height - BAR_HEIGHT,
+                                 map: { green: ["#" * 32, "#" * 32], blue: ["o" * 32, "o" * 32] }
+        bar.show_map :blue if step == 2
+      end
+      game_loop do
+        call :put_up_bar
+        step += 1
+      end
+    end
+
+    assert_equal BLUE, picture(prog, 6).pixel(28, screen_height - 12), "the blue map stays"
+  end
+
   # Cells along the bar's top row, a pair a pass, each column worked out as a byte that comes
   # round (the way scrolling text finds its cells). One walks from 252: off the bar's 32 columns
   # until it comes round to 0 and onto it. The other walks from 28 off the bar's right edge, and a

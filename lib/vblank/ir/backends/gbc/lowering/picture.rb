@@ -1136,11 +1136,42 @@ module VBlank
               emit_bends_shown(bg)
               if big?(bg)
                 big_put_up_again(bg, again)
+              elsif again
+                emit_for_grid_kept(bg, Runtime::Picture::GRID_KEPT) do |grid, which|
+                  emit_tile_room(tile_room(bg, which)) if bg.several_sets? && which.positive? # ...or the kept map's
+                  runtime_call("rt_background_put_up_kept", [Build.int(grid)])
+                end
               else
-                routine = again ? "rt_background_put_up_kept" : "rt_background_put_up_unscrolled"
-                runtime_call(routine, [Build.int(grid_of(bg))])
+                runtime_call("rt_background_put_up_unscrolled", [Build.int(grid_of(bg))])
               end
               note_put_up(corner_note(BACKGROUND_LAYER))
+            end
+
+            # A BACKGROUND OF SEVERAL MAPS PUT UP AGAIN keeps the map the game handed it, as the interpreter keeps
+            # it (Reference#put_up_background). The runtime's kept-grid number (+kept+, GRID_KEPT or BAR_KEPT) is
+            # the grid the layer holds; grids are shared between backgrounds and not numbered by map, so the runtime
+            # alone cannot tell that grid is one of this background's. The lowering can: the put-up names the grid
+            # of whichever of its maps the layer holds, and the first map's otherwise. The block writes the put-up
+            # of a grid, handed the grid and the number of its map. A background of one map names its grid alone.
+            #
+            # A grid another background holds that is the same as one of this one's maps is taken for that map,
+            # and a big map is put up as its first (#big_put_up_again).
+            def emit_for_grid_kept(bg, kept)
+              maps = bg.every_map.each_index.map { |which| [grid_of(bg, which), which] }.uniq(&:first)
+              return yield(*maps.first) if maps.one?
+
+              done = fresh("map_kept")
+              maps.drop(1).each do |grid, which|
+                other = fresh("not_map_kept")
+                @asm.load(:a, [@memory[kept]])
+                @asm.cp_a(grid)
+                @asm.jump(:nz, other)
+                yield grid, which
+                @asm.jump(done)
+                @asm.label(other)
+              end
+              yield(*maps.first)
+              @asm.label(done)
             end
 
             # A big map put up, its copy in memory kept from the first put-up of a line that runs again.
@@ -1187,7 +1218,11 @@ module VBlank
             # +again+ for a line that can run more than once: the cells the game changed stay (rt_bar_put_up_kept).
             def bar_put_up(bar, again: false)
               top = bar.bar_top.clamp(0, Console::GBCHardware::SCREEN_HEIGHT)
-              runtime_call(again ? "rt_bar_put_up_kept" : "rt_bar_put_up", [Build.int(grid_of(bar)), Build.int(top)])
+              if again
+                emit_for_grid_kept(bar, Runtime::Picture::BAR_KEPT) { |grid, _| runtime_call("rt_bar_put_up_kept", [Build.int(grid), Build.int(top)]) }
+              else
+                runtime_call("rt_bar_put_up", [Build.int(grid_of(bar)), Build.int(top)])
+              end
               covers = @handover.bar_covers_on_put_up(bar)
               emit_store_bar_covers(covers) if covers && bar_covers_sprites?
               note_put_up(bar_note)

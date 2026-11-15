@@ -56,6 +56,31 @@ class TestShowMap < Minitest::Test
     assert_equal Color.resolve(:red), cell_of(program, frames: 4), "the hall, which was declared first"
   end
 
+  # A BACKGROUND WHOSE LINE RUNS EVERY PASS keeps the map the game handed it: put up again, it shows
+  # as it now is (Reference#put_up_background), as a room stays when the routine that draws the
+  # screen runs each frame.
+  def test_a_background_put_up_again_keeps_the_map_it_was_handed
+    builder = Builder.new
+    builder.instance_eval do
+      screen :tiled
+      image(:wall, "#" => :red) { SOLID_TILE }
+      image(:floor, "#" => :blue) { SOLID_TILE }
+      tiles :dungeon, "#" => :wall, "." => :floor
+      frames = var :frames, 0
+      func(:put_up_rooms) do
+        rooms = background :rooms, tiles: :dungeon, map: { hall: HALL, cave: CAVE }
+        rooms.show_map :cave if frames == 2
+      end
+      game_loop do
+        call :put_up_rooms
+        frames += 1
+      end
+    end
+    builder.finalize_program
+
+    assert_equal Color.resolve(:blue), cell_of(builder.program, frames: 6), "the cave stays"
+  end
+
   def test_naming_another_map_hands_the_background_that_whole_map
     program = rooms_program { |rooms, frames| rooms.show_map :cave if frames == 2 }
 
