@@ -408,16 +408,9 @@ module VBlank
             program.walk.each do |node|
               @effect_lists[node.name] = node.effects.map { |name| slots.fetch(name) } if node.kind == :sound_effect_list
             end
-            squares = @effects.map { |name| IR::Tunes.parts_on(@songs.fetch(name), :square) }.max
-            recorded = @effects.map { |name| IR::Tunes.recorded_parts(@songs.fetch(name)) }.max
-            @effect_lanes = MUSIC_CHANNELS.first(squares).map { |channel| Lane.new(:square, channel) }
-            CONSOLE_LANES.each do |kind, channel|
-              used = @effects.any? { |name| IR::Tunes.parts_on(@songs.fetch(name), kind).positive? }
-              @effect_lanes << Lane.new(kind, channel) if used
-            end
+            @effect_lanes = Audio.effect_lanes(@effects.map { |name| @songs.fetch(name) })
             @effect_waves = @effect_lanes.any? { |lane| lane.kind == :wave }
-            @effect_lanes += Array.new(recorded) { |lane| Lane.new(:recorded, lane) }
-            if recorded.positive?
+            if @effect_lanes.any? { |lane| lane.kind == :recorded }
               # The routine an effect's recorded note calls lives inside the screen's interrupt,
               # which is written before the routine the effects' notes are played from (see
               # #emit_sound_effect_step_routine) — so it is asked for here, not as that is written.
@@ -428,10 +421,44 @@ module VBlank
                 end
               end.to_h)
             end
-            # A power of two, so a place in the table is a shift of its number.
-            @effect_slot_bytes = 1 << (EFFECT_CURSORS + (4 * @effect_lanes.size) - 1).bit_length
+            @effect_slot_bytes = Audio.effect_slot_bytes(@effect_lanes)
             @effect_table = @memory.alloc_roomy(@effects.size * @effect_slot_bytes)
           end
+
+          # The lanes the sound effects play on, given their song nodes: as many square lanes as
+          # the effect with the most square parts, the wave and hiss lanes where any effect has a
+          # part on them, and as many recorded lanes as the effect with the most recorded parts.
+          def self.effect_lanes(effect_songs)
+            squares = effect_songs.map { |song| IR::Tunes.parts_on(song, :square) }.max
+            recorded = effect_songs.map { |song| IR::Tunes.recorded_parts(song) }.max
+            lanes = MUSIC_CHANNELS.first(squares).map { |channel| Lane.new(:square, channel) }
+            CONSOLE_LANES.each do |kind, channel|
+              lanes << Lane.new(kind, channel) if effect_songs.any? { |song| IR::Tunes.parts_on(song, kind).positive? }
+            end
+            lanes + Array.new(recorded) { |lane| Lane.new(:recorded, lane) }
+          end
+
+          # An effect's place in the table, for +lanes+: a power of two, so a place is a shift of its number.
+          def self.effect_slot_bytes(lanes) = 1 << (EFFECT_CURSORS + (4 * lanes.size) - 1).bit_length
+
+          # The sound effects' song nodes, in the order the program declares them.
+          def self.effect_songs(program)
+            songs = program.walk.select { |node| node.kind == :song }.to_h { |node| [node.name, node] }
+            IR::Tunes.effects(program).map { |name| songs.fetch(name) }
+          end
+
+          # HOW MUCH OF THE ROOMY MEMORY THE SOUND EFFECTS' TABLE WILL TAKE, read off the program
+          # before it is lowered, for the build's memory check (Roomy.reserved_by_build): an entry for
+          # each effect, as #prepare_sound_effects claims it, or nought for a game with none.
+          def self.effect_table_bytes(program)
+            songs = effect_songs(program)
+            return 0 if songs.empty?
+
+            Memory.whole_words(songs.size * effect_slot_bytes(effect_lanes(songs)))
+          end
+
+          # Whether a sound effect's recorded part ranks the mixer's voices (Mixer#ranks_voices!).
+          def self.effects_rank_voices?(program) = effect_songs(program).any? { |song| IR::Tunes.recorded_parts(song).positive? }
 
           def effect_slots_blob(list) = :"__sound_effect_slots_#{list}"
 

@@ -486,7 +486,7 @@ module VBlank
             @mix_totals = @memory.alloc(@mixer_spf * 2)
             # ...and in a game whose notes can find no voice at all, one slot more past the end,
             # which nothing mixes: where such a note is written (see #unmixed_slot_address).
-            @voice_base = @memory.alloc_roomy((MAX_VOICES + (ranks_voices? ? 1 : 0)) * SLOT_BYTES)
+            @voice_base = @memory.alloc_roomy(Mixer.voice_slots_bytes(ranks_voices?))
             @mix_routine_iwram = @memory.alloc(MIX_ROUTINE_IWRAM_MAX) # the mix routine is copied here from ROM at boot
             @timers.reserve!(COUNT_TIMER + 1, because: "Sampled sound uses two of them: one to play the " \
                                                        "sound, and one to count how much of it has played.")
@@ -494,9 +494,29 @@ module VBlank
 
           # THE LOTS EACH BUFFER CARRIES PAST ITS END: enough of the next buffer's start to cover
           # a hand-over LATE_ROOM late, rounded up to whole lots.
-          def guard_lots
-            lot = Timers::DMA_SAMPLES_A_LOT * @sample_clock.period
+          def guard_lots = Mixer.guard_lots(@sample_clock)
+
+          def self.guard_lots(clock)
+            lot = Timers::DMA_SAMPLES_A_LOT * clock.period
             (LATE_ROOM + lot - 1) / lot
+          end
+
+          # One output buffer's bytes at +clock+: a frame's samples and the guard lots past them.
+          def self.buffer_bytes(clock) = clock.samples_a_frame + (guard_lots(clock) * Timers::DMA_SAMPLES_A_LOT)
+
+          # The voice slots' bytes, with the slot nothing mixes where notes are +ranked+ (#ranks_voices?).
+          def self.voice_slots_bytes(ranked) = (MAX_VOICES + (ranked ? 1 : 0)) * SLOT_BYTES
+
+          # HOW MUCH OF THE ROOMY MEMORY THE MIXER WILL KEEP FOR +program+, read off the program
+          # before it is lowered, for the build's memory check (Roomy.reserved_by_build): the two
+          # output buffers and the voice slots, as #prepare_mixer claims them, or nought for a
+          # program that mixes nothing. +ranked+ is whether a sound effect's recorded part ranks
+          # the voices (Audio#prepare_sound_effects calls #ranks_voices! for one).
+          def self.roomy_bytes(program, ranked:)
+            return 0 unless IR::Mixing.mixes?(program)
+
+            clock = Timers.sample_clock(IR::Mixing.requested_rate(program))
+            (2 * Memory.whole_words(buffer_bytes(clock))) + Memory.whole_words(voice_slots_bytes(ranked))
           end
 
           # HOW FAR OFF THE NEXT SAMPLE HAS TO BE, in cycles, for the hand-over to read the count
@@ -508,7 +528,7 @@ module VBlank
 
           def lots_a_frame = @mixer_spf / Timers::DMA_SAMPLES_A_LOT
 
-          def buffer_bytes = @mixer_spf + (guard_lots * Timers::DMA_SAMPLES_A_LOT)
+          def buffer_bytes = Mixer.buffer_bytes(@sample_clock)
 
           # Bring the mixer up at boot: silence the voice slots and both buffers, power on
           # the sound hardware, point the DMA at the first buffer and the sample clock at the

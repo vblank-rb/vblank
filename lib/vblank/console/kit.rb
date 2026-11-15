@@ -162,6 +162,25 @@ module VBlank
       # .pieces_built says the shape); nil for a console whose build cuts every picture by the rule.
       def sprite_pieces_built(_program) = nil
 
+      # WHETHER A COLLECTION THE GAME MARKS COLD (`fast: false`, or a pool too big to share the
+      # work memory) IS KEPT IN THE ROOMIER MEMORY ALONE. Where it is, those collections must fit
+      # that memory on their own, which the build's memory check counts (Checks::IwramBudget).
+      # False where the build places every collection itself and reads no such mark.
+      def cold_collections_kept_roomier? = false
+
+      # WHAT ITS BUILD KEEPS IN THE ROOMIER MEMORY FOR ITSELF FOR +program+, read before it is
+      # lowered, each with a label and its bytes, for the same check to count against what the
+      # game's collections may use there. Empty where nothing of the build's is counted there.
+      def roomier_memory_reserved(_program) = []
+
+      # HOW MANY BYTES ONE LIST OF +capacity+ SLOTS OF +width+ TAKES in its build, for the same
+      # check: its slots and two words of its own (where it starts and how full it is). +ring+
+      # marks a list the game shifts from (#ring_lists), which a build may lay out its own way.
+      def list_bytes(capacity, width, ring:) = (capacity * IR::Build::ELEMENT_BYTES.fetch(width)) + (2 * 4)
+
+      # The lists +program+ shifts from, whose build may lay them out as a ring: none counted apart here.
+      def ring_lists(_program) = Set.new
+
       # +size+, when this console's build draws pieces that size; a plain refusal when it does not.
       def refuse_unusable_sprite_piece_size!(size)
         sizes = sprite_piece_sizes
@@ -245,6 +264,17 @@ module VBlank
       def compared_side_by_side? = true
       def inspector = Diagnostics::Inspector
       def original_formats = Hardware::ORIGINAL_FORMATS
+
+      # Its lowering keeps a cold collection in the roomy memory whatever room the quick one has
+      # (IR::Backends::GBA::Lists#place_list), and keeps its own sound, save and background buffers
+      # there (IR::Backends::GBA::Roomy.reserved_by_build says which it can count before lowering).
+      def cold_collections_kept_roomier? = true
+      def roomier_memory_reserved(program) = IR::Backends::GBA::Roomy.reserved_by_build(program)
+
+      # A list is laid out as the lowering lays it out (GBA::Lists#register_list): a ring's slots
+      # rounded up to a power of two, and a word for each counter it keeps.
+      def list_bytes(capacity, width, ring:) = IR::Backends::GBA::Lists.reserved_bytes(capacity, width, ring: ring)
+      def ring_lists(program) = IR::Backends::GBA.shifted_lists(program)
     end
 
     # THE KIT OF A CONSOLE WHOSE LOWERING IS CHECKED BY A RUN OF ITS OWN: its cartridge is made by

@@ -144,6 +144,41 @@ module VBlank
             body = bodies[target]
             collect_touched_lists(body, bodies, seen, found) if body
           end
+
+          # Room the build reserves in the roomy memory for itself, named for the author, and how
+          # many bytes it takes there.
+          Reservation = Data.define(:label, :bytes)
+
+          # WHAT THE BUILD WILL KEEP IN THE ROOMY MEMORY FOR ITSELF, read off +program+ before it
+          # is lowered, so the build's memory check (Guardrails::Checks::IwramBudget, through
+          # Console::AdvanceKit#roomier_memory_reserved) can count it against what the game's own
+          # collections may use there. Each number is the one the lowering claims, worked out by
+          # the same method the lowering calls.
+          #
+          # A held background's queue is counted for any held `set_tile`, though the lowering
+          # claims none for a game whose every held change names a cell off its map
+          # (HeldTiles#emit_fixed_tile_held): a game that does only that is refused 4K early.
+          #
+          # NOT COUNTED, because only laying out the sprites can say: the records the sprite
+          # drawing keeps there (GBA#alloc_sprite_record!) for a game with more sprites than the
+          # console's table holds, a pool whose pictures are sent as they are first shown, or
+          # sprites that share rooms. Which of those a game needs, and how big each is, is known
+          # only once ScreenLayout has placed every sprite, which happens inside the lowering.
+          def self.reserved_by_build(program)
+            ranked = Audio.effects_rank_voices?(program)
+            save_bytes = Memory.whole_words(SaveChip.roomy_bytes_of(IR::SaveLayout.memory_of(program)))
+            [Reservation.new(label: "the sound mixer's buffers", bytes: Mixer.roomy_bytes(program, ranked: ranked)),
+             Reservation.new(label: "the sound effects table", bytes: Audio.effect_table_bytes(program)),
+             Reservation.new(label: "the save memory's working space", bytes: save_bytes),
+             Reservation.new(label: "the background cell changes", bytes: held_tiles_bytes(program))]
+              .select { |item| item.bytes.positive? }
+          end
+
+          # The queue of a held background's cell changes (HeldTiles#held_queue_address), for a game
+          # that changes one.
+          def self.held_tiles_bytes(program)
+            HeldTiles.held_names(program).empty? ? 0 : Nodes::ShowHeldTiles::MOST_CELLS * Memory::WORD
+          end
         end
       end
     end

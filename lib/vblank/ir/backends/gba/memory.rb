@@ -126,9 +126,12 @@ module VBlank
           # that report it (see Divide and Placement) ask it here.
           def overrun = [@near - @far, 0].max
 
+          # +bytes+ rounded up to a whole word, as every claim here is.
+          def self.whole_words(bytes) = bytes + ((-bytes) % WORD)
+
           private
 
-          def whole_words(bytes) = bytes + ((-bytes) % WORD)
+          def whole_words(bytes) = Memory.whole_words(bytes)
         end
       end
     end

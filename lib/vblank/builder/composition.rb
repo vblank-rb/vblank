@@ -24,7 +24,8 @@ module VBlank
       # in the program to say why. A pool bigger than this is kept in the console's other
       # work memory, which is eight times the size and slower to read (see #pool). A pool
       # bigger than that memory is refused at its own line, and a game whose collections do
-      # not fit the two memories together is refused by the whole-program check
+      # not fit the two memories together, or whose cold ones (these pools among them) do not
+      # fit the roomier one, is refused by the whole-program check
       # (IR::Guardrails::Checks::IwramBudget), which adds up everything it declares.
       POOL_MAX_QUICK_BYTES = 16 * 1024
 
