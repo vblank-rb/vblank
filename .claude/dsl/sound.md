@@ -3,6 +3,10 @@
 The map of every page is `.claude/rules/dsl-reference.md`. **On this page** has a line for each
 verb here; the entries after it tell each one in full.
 
+A game for several consoles that wants a different form of a sound on one of them (a long recording
+on the Advance, the same song as notes on the Super Nintendo, whose sound chip has no room for the
+recording) asks `built_for?(:snes)` around the lines that declare it (`screen.md`).
+
 ## On this page
 
 - `enable_sound`; `define_sound :name, …` + `beep :name`; `noise`, `wave` / `stop_wave`.
