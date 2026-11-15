@@ -1618,12 +1618,13 @@ module VBlank
             end
 
             # The copy of the grid a map bigger than it is worked out into — at an address that is a
-            # multiple of 16, which the console's copying reads from — and the list for the blank.
+            # multiple of 32 (Runtime::BigMaps::BUFFER_ALIGN) — and the list for the blank.
             def keep_big_map_places
               return unless @backgrounds.each_value.any? { |bg| big?(bg) }
 
-              copy = @memory.reserve("the copy of a big map's grid", Runtime::BigMaps::BUFFER_BYTES + 15)
-              @big_map_places = [(copy + 15) & ~15, @memory.reserve("the cells for the blank", Runtime::BigMaps::STAGED_BYTES)]
+              align = Runtime::BigMaps::BUFFER_ALIGN
+              copy = @memory.reserve("the copy of a big map's grid", Runtime::BigMaps::BUFFER_BYTES + align - 1)
+              @big_map_places = [(copy + align - 1) & -align, @memory.reserve("the cells for the blank", Runtime::BigMaps::STAGED_BYTES)]
             end
 
             # Reference#exec_background_colors: the background's tiles drawn from another of its lists

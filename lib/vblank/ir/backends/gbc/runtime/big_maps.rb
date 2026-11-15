@@ -37,7 +37,14 @@ module VBlank
             ALONG_Y = 21 # 1 to step down a column, 0 along a row
             STEP_X = 22
             STEP_Y = 23
-            BYTES = 24
+            # The view's columns as the whole view is worked out (rt_big_whole), the same for every
+            # row: how many are left of the map, on it, and right of it, and the map's column the
+            # ones on it start at.
+            LEAD = 24
+            RUN = 25
+            TRAIL = 26
+            START = 27
+            BYTES = 28
 
             # The cells the screen shows, across and down, with the one the view is part way into.
             VIEW_COLS = (Console::GBCHardware::SCREEN_WIDTH / 8) + 1
@@ -46,8 +53,11 @@ module VBlank
             # Bytes an entry of the big maps' table takes: where its rows are, a byte unused, its size.
             ENTRY_BYTES = 5
 
-            # The copy of the grid: the cells' tiles, then their colours.
+            # The copy of the grid: the cells' tiles, then their colours. It starts on a multiple of
+            # 32 (BUFFER_ALIGN), so a row of it is one high byte and a column the low byte's bottom five
+            # bits (rt_big_whole); the console's copying wants a multiple of 16 of it besides.
             BUFFER_BYTES = 2048
+            BUFFER_ALIGN = 32
 
             # The list for the blank: how many, then each cell's place in the grid, tile and colours.
             STAGED_MOST = 64
@@ -69,6 +79,7 @@ module VBlank
               emit_set(asm, at, staged)
               emit_prepare(asm, memory, at, buffer, staged)
               emit_cells(asm, at, buffer, staged)
+              emit_whole(asm, at, buffer)
               emit_view(asm, staged)
             end
 
@@ -340,20 +351,7 @@ module VBlank
               asm.load([staged], :a) # the whole copy goes in: nothing left to copy cell by cell
               asm.inc(:a)
               asm.load([at + VALID], :a)
-              asm.load(:c, 0)
-              asm.label("rt_big_prepare_row")
-              asm.push(:bc)
-              asm.load(:b, :c)
-              asm.xor_a(:a)
-              asm.call("rt_big_from_want")
-              asm.load(:a, VIEW_COLS)
-              asm.load(:b, 0)
-              asm.call("rt_big_cells")
-              asm.pop(:bc)
-              asm.inc(:c)
-              asm.load(:a, :c)
-              asm.cp_a(VIEW_ROWS)
-              asm.jump_relative(:nz, "rt_big_prepare_row")
+              asm.call("rt_big_whole")
               job = memory[Picture::MAP_JOB]
               asm.load(:a, buffer & 0xFF)
               asm.load([job + 1], :a)
@@ -535,6 +533,218 @@ module VBlank
               asm.dec([:hl])
               asm.jump(:nz, "rt_big_cell")
               asm.ret
+            end
+
+            # rt_big_whole: THE WHOLE VIEW INTO THE COPY OF THE GRID, a row of the map at a time, as a
+            # map just put up or a jump of the view wants. Worked out a cell at a time (rt_big_cells),
+            # each cell asks whether it is on the map, finds its row in the map's table, puts the
+            # row's bank in view and back, and works out its place in the grid: some seventy
+            # instructions, and the view's 21 by 19 cells held the pass that put a map up for two
+            # frames past its own. A row of the view is one row of the map, its cells one after
+            # another in one bank, so here each row is found and its bank put in view once, and its
+            # cells copied with sixteen instructions each and three more where the grid's row comes round.
+            #
+            # Which of the view's columns are left of the map, on it and right of it is the same for
+            # every row, so it is worked out first (LEAD, RUN, TRAIL, from START): a cell off the map
+            # is nothing, the backdrop, as rt_big_cells makes it. A row off the map is all nothing.
+            def emit_whole(asm, at, buffer)
+              asm.label("rt_big_whole")
+              asm.load(:a, [at + WANT + 1])
+              asm.bit(7, :a)
+              asm.jump_relative(:z, "rt_big_whole_right")
+              # The view starts left of the map: -x columns of it are off it, up to the whole view.
+              asm.load(:a, [at + WANT])
+              asm.cpl
+              asm.load(:c, :a)
+              asm.load(:a, [at + WANT + 1])
+              asm.cpl
+              asm.load(:b, :a)
+              asm.inc(:bc)
+              asm.load(:a, :b)
+              asm.and_a(:a)
+              asm.jump_relative(:nz, "rt_big_whole_lead_all")
+              asm.load(:a, :c)
+              asm.cp_a(VIEW_COLS)
+              asm.jump_relative(:c, "rt_big_whole_lead_some")
+              asm.label("rt_big_whole_lead_all")
+              asm.load(:a, VIEW_COLS)
+              asm.label("rt_big_whole_lead_some")
+              asm.load([at + LEAD], :a)
+              asm.xor_a(:a)
+              asm.load([at + START], :a)
+              asm.jump_relative("rt_big_whole_run")
+              asm.label("rt_big_whole_right")
+              asm.xor_a(:a)
+              asm.load([at + LEAD], :a)
+              asm.load(:a, [at + WANT])
+              asm.load([at + START], :a)
+              asm.load(:a, [at + WANT + 1])
+              asm.and_a(:a)
+              asm.jump_relative(:nz, "rt_big_whole_no_run") # 256 or more across: past a map's last column
+              asm.label("rt_big_whole_run")
+              # On the map: as many as are left of its columns from START, up to what the view has left.
+              asm.load(:a, [at + START])
+              asm.load(:b, :a)
+              asm.load(:a, [at + COLS])
+              asm.sub_a(:b)
+              asm.jump_relative(:c, "rt_big_whole_no_run")
+              asm.jump_relative(:z, "rt_big_whole_no_run")
+              asm.load(:b, :a)
+              asm.load(:a, [at + LEAD])
+              asm.load(:c, :a)
+              asm.load(:a, VIEW_COLS)
+              asm.sub_a(:c)
+              asm.cp_a(:b)
+              asm.jump_relative(:c, "rt_big_whole_run_set")
+              asm.load(:a, :b)
+              asm.jump_relative("rt_big_whole_run_set")
+              asm.label("rt_big_whole_no_run")
+              asm.xor_a(:a)
+              asm.label("rt_big_whole_run_set")
+              asm.load([at + RUN], :a)
+              asm.load(:b, :a)
+              asm.load(:a, [at + LEAD])
+              asm.add_a(:b)
+              asm.load(:b, :a)
+              asm.load(:a, VIEW_COLS)
+              asm.sub_a(:b)
+              asm.load([at + TRAIL], :a)
+              # Each row of the view.
+              asm.load(:c, 0)
+              asm.label("rt_big_whole_rows")
+              asm.push(:bc)
+              asm.call("rt_big_whole_row")
+              asm.pop(:bc)
+              asm.inc(:c)
+              asm.load(:a, :c)
+              asm.cp_a(VIEW_ROWS)
+              asm.jump_relative(:nz, "rt_big_whole_rows")
+              asm.jump("rt_bank_back")
+
+              emit_whole_row(asm, at, buffer)
+              emit_whole_cells(asm)
+            end
+
+            # rt_big_whole_row: row C of the view. DE = its first cell's tile in the copy: the grid's
+            # row (the map's row round 32) × 32, and the view's first column round 32.
+            def emit_whole_row(asm, at, buffer)
+              asm.label("rt_big_whole_row")
+              asm.load(:a, [at + WANT + 2])
+              asm.add_a(:c)
+              asm.load([at + CELL + 2], :a)
+              asm.load(:a, [at + WANT + 3])
+              asm.adc_a(0)
+              asm.load([at + CELL + 3], :a)
+              asm.load(:a, [at + CELL + 2])
+              asm.and_a(31)
+              asm.load(:l, :a)
+              asm.load(:h, 0)
+              5.times { asm.add_hl(:hl) }
+              asm.load(:de, buffer)
+              asm.add_hl(:de)
+              asm.load(:a, [at + WANT])
+              asm.and_a(31)
+              asm.or_a(:l)
+              asm.load(:e, :a)
+              asm.load(:d, :h)
+              # On the map: the row at nought or above and below its size.
+              asm.load(:a, [at + CELL + 3])
+              asm.and_a(:a)
+              asm.jump_relative(:nz, "rt_big_whole_row_off")
+              asm.load(:a, [at + CELL + 2])
+              asm.load(:hl, at + ROWS)
+              asm.cp_a([:hl])
+              asm.jump_relative(:nc, "rt_big_whole_row_off")
+              # Its entry in the map's table of rows, three bytes: where the row is, its bank.
+              asm.load(:l, :a)
+              asm.load(:h, 0)
+              asm.load(:b, :h)
+              asm.load(:c, :l)
+              asm.add_hl(:hl)
+              asm.add_hl(:bc)
+              asm.load(:a, [at + MAP])
+              asm.load(:c, :a)
+              asm.load(:a, [at + MAP + 1])
+              asm.load(:b, :a)
+              asm.add_hl(:bc)
+              asm.load(:a, [:hli])
+              asm.load(:c, :a)
+              asm.load(:a, [:hli])
+              asm.load(:b, :a)
+              asm.load(:a, [:hl])
+              asm.select_rom_bank
+              # HL = the row + START × 2: the first cell on the map's tile, then its colours.
+              asm.load(:a, [at + START])
+              asm.load(:l, :a)
+              asm.load(:h, 0)
+              asm.add_hl(:hl)
+              asm.add_hl(:bc)
+              asm.load(:a, [at + LEAD])
+              asm.call("rt_big_whole_nothing")
+              asm.load(:a, [at + RUN])
+              asm.and_a(:a)
+              asm.jump_relative(:z, "rt_big_whole_trail")
+              asm.load(:b, :a)
+              asm.label("rt_big_whole_cell")
+              asm.load(:a, [:hli])
+              asm.load([:de], :a)
+              emit_colours_place(asm)
+              asm.load(:a, [:hli])
+              asm.load([:de], :a)
+              emit_tiles_place(asm)
+              emit_next_column(asm, "rt_big_whole_cell_on")
+              asm.dec(:b)
+              asm.jump_relative(:nz, "rt_big_whole_cell")
+              asm.label("rt_big_whole_trail")
+              asm.load(:a, [at + TRAIL])
+              asm.jump_relative("rt_big_whole_nothing")
+              asm.label("rt_big_whole_row_off")
+              asm.load(:a, VIEW_COLS)
+            end
+
+            # rt_big_whole_nothing: A cells of nothing from DE on, none for 0. HL is kept.
+            def emit_whole_cells(asm)
+              asm.label("rt_big_whole_nothing")
+              asm.and_a(:a)
+              asm.ret(:z)
+              asm.load(:b, :a)
+              asm.label("rt_big_whole_nothing_cell")
+              asm.xor_a(:a)
+              asm.load([:de], :a)
+              emit_colours_place(asm)
+              asm.xor_a(:a)
+              asm.load([:de], :a)
+              emit_tiles_place(asm)
+              emit_next_column(asm, "rt_big_whole_nothing_on")
+              asm.dec(:b)
+              asm.jump_relative(:nz, "rt_big_whole_nothing_cell")
+              asm.ret
+            end
+
+            # DE from a cell's tile in the copy to its colours, 1024 on, and back.
+            def emit_colours_place(asm)
+              asm.load(:a, :d)
+              asm.add_a(4)
+              asm.load(:d, :a)
+            end
+
+            def emit_tiles_place(asm)
+              asm.load(:a, :d)
+              asm.sub_a(4)
+              asm.load(:d, :a)
+            end
+
+            # DE to the next column of the grid's row, round from its 32nd to its first: the row
+            # starts on a multiple of 32, so only E's bottom five bits move.
+            def emit_next_column(asm, label)
+              asm.inc(:e)
+              asm.load(:a, :e)
+              asm.and_a(31)
+              asm.jump_relative(:nz, label)
+              asm.load(:a, :e)
+              asm.sub_a(32)
+              asm.load(:e, :a)
+              asm.label(label)
             end
 
             # rt_big_view, in the blank: the list's cells into the console's grid — each tile into the
