@@ -56,22 +56,43 @@ end
 # edge the interpreter's read_buttons finds. A driver reports which are down at every frame boundary,
 # as a list of one number per connected player (IR::Buttons.masks). The list never shortens: a
 # player who is connected stays so, and one the driver leaves out holds nothing.
+#
+# The three lists are written over where they are, never made again: this runs every frame, and a
+# long unpacking plays hundreds of thousands of frames, where new lists each frame were most of the
+# objects it made. So held, seen and pressed must stay three different Arrays.
 def rg_buttons_read(now)
-  @rg_held = rg_players_buttons(now)
-  @rg_pressed = @rg_held.each_with_index.map { |held, player| held & ~(@rg_seen[player] || 0) }
-  @rg_seen = @rg_held
+  held = rg_players_buttons(now)
+  seen = @rg_seen
+  pressed = @rg_pressed
+  player = 0
+  while player < held.length
+    buttons = held[player]
+    pressed[player] = buttons & ~(seen[player] || 0)
+    seen[player] = buttons
+    player += 1
+  end
 end
 
 # Down before the first frame boundary and not yet seen there, so the first boundary still finds
 # them going down — the interpreter's hold, and the console's keys from power-on.
 def rg_buttons_held_from_power_on(now)
-  @rg_held = rg_players_buttons(now)
+  rg_players_buttons(now)
 end
 
-# +now+ as each player's buttons, at least as many as are connected already.
+# +now+ as each player's buttons, written into the held list, which is kept at least as long as it was:
+# the players connected already.
 def rg_players_buttons(now)
-  held = now.map { |buttons| buttons & RG_ONE_PLAYERS_BUTTONS }
-  held + ([0] * [@rg_held.length - held.length, 0].max)
+  held = @rg_held
+  player = 0
+  while player < now.length
+    held[player] = now[player] & RG_ONE_PLAYERS_BUTTONS
+    player += 1
+  end
+  while player < held.length
+    held[player] = 0
+    player += 1
+  end
+  held
 end
 
 # A button's bit in +buttons+, or any of the first player's for -1. The buttons are numbered in

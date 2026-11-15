@@ -86,6 +86,27 @@ class TestLiveGameUnwatched < Minitest::Test
     assert_empty made
   end
 
+  # What +frames+ passes of a loop that only counts make, played unwatched.
+  private def objects_made_counting(frames)
+    b = Builder.new(options: VBlank::Cartridge::Options.new(console: :gba))
+    b.instance_eval do
+      count = var :count, 0
+      game_loop { count += 1 }
+    end
+    b.finalize_program
+    game = VBlank::IR::Backends::Ruby.new.live_game(b.program)
+    player = VBlank::Original::Unpacking::FrameLimitedPlayer.new(frames)
+    before = GC.stat(:total_allocated_objects)
+    game.play(player)
+    GC.stat(:total_allocated_objects) - before
+  end
+
+  # A long unpacking plays hundreds of thousands of frames, so a frame boundary that makes objects
+  # (the buttons read into new lists each frame did) keeps Ruby's garbage collector busy.
+  def test_a_frame_played_unwatched_makes_no_objects
+    assert_operator objects_made_counting(102) - objects_made_counting(2), :<, 100
+  end
+
   def test_an_unpacking_wants_no_picture_and_no_sound
     player = VBlank::Original::Unpacking::FrameLimitedPlayer.new(2)
 
