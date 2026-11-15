@@ -687,6 +687,11 @@ module VBlank
             attr_reader :tile_facts, :tiles_shown, :tile_colors_with, :recolor_steps, :recolor_steps_made, :list_swaps,
                         :sprite_pixels
 
+            # The slot each sprite picture's colours take in its palettes (GBC::SpriteSlots), by
+            # whether the try's scenes bring their own pictures in, laid out by the first such try
+            # that asks, or false for every picture in its own order (Picture#sprite_slots).
+            attr_reader :sprite_slots
+
             def initialize(cache)
               @cache = cache
               @tile_facts = {}
@@ -696,6 +701,7 @@ module VBlank
               @recolor_steps_made = {}
               @list_swaps = {}
               @sprite_pixels = {}
+              @sprite_slots = {}
             end
 
             # The variables kept in a byte though the game never declared them narrow

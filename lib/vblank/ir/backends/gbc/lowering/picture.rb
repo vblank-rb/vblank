@@ -193,7 +193,8 @@ module VBlank
                              first_cleared_to: @program.walk.find { |node| node.kind == :clear_screen }&.color,
                              backdrop: color_backdrop, piece_height: piece_height,
                              scene_pictures: (scene_pictures if @plans_scene_pictures),
-                             indexes_in_banks: @indexes_in_banks, tile_facts: @cache.facts.tile_facts)
+                             indexes_in_banks: @indexes_in_banks, tile_facts: @cache.facts.tile_facts,
+                             sprite_slots: sprite_slots)
               @grids = {} # a background declaration -> its grid's number
               @backgrounds = by_name(@program.walk, :background)
               @drawn_sprites = SpriteNames.new(@program) # the numbers a run names its sprites by
@@ -2587,20 +2588,89 @@ module VBlank
             # colour each of its places shows, as the interpreter draws it. +scene+ is the scene whose
             # own lists the sprite wearing it is numbered among (#lists_scene).
             def palette_of(name, colors, scene: nil)
-              run = picture_painting(name)
-              return @art.painted_sprite_palette(name, painted_colors(run, colors), scene: scene) if run
-
-              pose = tile_pose_named(name)
-              if pose
-                own = tile_pose_colors(pose)
-                drawn = colors ? Array.new([[own.length, colors.length].max, Art::PLACES].min) { |place| colors[place] || own.fetch(place, 0) } : own
-                return @art.painted_sprite_palette(name, drawn, scene: scene)
-              end
+              written = colors_written_by_game(name, colors)
+              return @art.painted_sprite_palette(name, written, scene: scene) if written
 
               # The pixels read once a picture and list a build: every sprite showing it asks again.
               image = picture_named(name)
               pixels = @cache.facts.sprite_pixels[[name, colors]] ||= sprite_pixels(image, colors)
               @art.sprite_palette(name, image, pixels, scene: scene)
+            end
+
+            # The colours by place, see-through first, of picture +name+ drawn with the list +colors+
+            # (nil for its own), where its places are the ones the game writes as it runs: a picture
+            # it paints, or one drawn from sprite tiles it loads. Nil for any other picture.
+            def colors_written_by_game(name, colors)
+              run = picture_painting(name)
+              return painted_colors(run, colors) if run
+
+              pose = tile_pose_named(name)
+              return nil unless pose
+
+              own = tile_pose_colors(pose)
+              colors ? Array.new([[own.length, colors.length].max, Art::PLACES].min) { |place| colors[place] || own.fetch(place, 0) } : own
+            end
+
+            # The slots each sprite picture's colours take in its palettes (GBC::SpriteSlots), laid out
+            # once a build from every picture a sprite the game places shows, and every set of colours
+            # #pose_rows draws it in, so two pictures of the same colours can share a palette whatever
+            # order their pixels use them in. Nil, every picture in its own order, where the layout is
+            # not worth its bytes (SpriteSlots.layout_for) and in a try that lends the lists, which
+            # SpriteSlots says why it does not lay out.
+            #
+            # Only a picture whose tiles are among the ones every screen shares is laid out. One the
+            # game paints or loads the tiles of keeps the places it writes; one in a group of pictures,
+            # or one whose tiles a scene brings in (Art#picture_tile), shares its tiles with no other
+            # picture's, which the layout's count of tiles does not model. Each of those keeps its own
+            # order, and its palettes are counted as reserved: the eight less those are what the
+            # layout has. A scene's pictures are its own only in a try whose scenes bring them in, so
+            # a layout is made for each kind of try.
+            def sprite_slots
+              return nil if @lends_sprite_colors
+
+              layouts = @cache.facts.sprite_slots
+              kind = @plans_scene_pictures ? :scene_pictures : :every_picture_shared
+              layouts[kind] = laid_out_sprite_slots || false unless layouts.key?(kind)
+              layouts[kind] || nil
+            end
+
+            # The layout of the pictures the game's placed sprites show (#sprite_slots), or nil.
+            def laid_out_sprite_slots
+              apart = grouped_pictures.keys | (@plans_scene_pictures ? scene_pictures.keys : [])
+              sets = Hash.new { |all, name| all[name] = [] }
+              reserved = []
+              placed = @reachable.select { |node| node.kind == :present_objects }.flat_map(&:names).uniq
+              placed.filter_map { |name| @objects[name] }.each do |obj|
+                drawn = sets_drawn_with(Array(obj.recolors)).flatten(1)
+                obj.poses.each do |name|
+                  if !cut_from_own_pixels?(name)
+                    reserved.concat(drawn.filter_map { |colors| colors_written_by_game(name, colors) }.map { |colors| Art.painted_palette(colors) })
+                  elsif apart.include?(name)
+                    reserved.concat(sprite_slots_picture(name, drawn).own_order_palettes)
+                  else
+                    sets[name] |= drawn
+                  end
+                end
+              end
+              pictures = sets.map { |name, colors| sprite_slots_picture(name, colors) }
+              SpriteSlots.layout_for(pictures, reserved: reserved, piece_height: piece_height)
+            end
+
+            # Whether sprite picture +name+ is one of the game's pictures, whose tiles the build cuts
+            # from its pixels, rather than one it paints or loads the tiles of as it runs.
+            def cut_from_own_pixels?(name) = @pictures.key?(name) && !picture_painting(name) && !tile_pose_named(name)
+
+            # Picture +name+ drawn in each of +sets+ (nil for its own colours), as SpriteSlots lays it
+            # out: each drawing the colour of each of its own places, as #palette_of would draw it.
+            def sprite_slots_picture(name, sets)
+              image = picture_named(name)
+              places = Art.own_sprite_places(image)
+              drawings = sets.map do |colors|
+                pixels = @cache.facts.sprite_pixels[[name, colors]] ||= sprite_pixels(image, colors)
+                Art.colors_by_place(places, pixels, places.max.to_i + 1).drop(1)
+              end
+              SpriteSlots::PictureColors.new(name: name, width: image.width, height: image.height, places: places,
+                                             drawings: drawings.uniq, fixed: !image.pieces.nil?)
             end
 
             # A sprite picture's pixels as the interpreter draws them (Reference#blit_image): the

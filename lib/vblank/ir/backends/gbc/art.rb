@@ -198,9 +198,14 @@ module VBlank
           #
           # +tile_facts+ keeps what each tile's picture alone gives, for every try of one build
           # (#tile_fact).
+          #
+          # +sprite_slots+ is the slot each sprite picture's colours take in its palettes, laid out for
+          # the whole game so pictures of the same colours share them (GBC::SpriteSlots), nil for every
+          # picture's own order.
           def initialize(square_colors: nil, lends: false, grouped: {}, room_colors: false, first_cleared_to: nil,
                          backdrop: BACKDROP, piece_height: SpritePieces::SIZE, scene_pictures: nil,
-                         indexes_in_banks: false, tile_facts: {})
+                         indexes_in_banks: false, tile_facts: {}, sprite_slots: nil)
+            @sprite_slots = sprite_slots
             @indexes_in_banks = indexes_in_banks
             @tile_facts = tile_facts # what each tile's picture alone gives (#tile_fact)
             @piece_height = piece_height
@@ -610,22 +615,35 @@ module VBlank
                                    "this, give `colors:` #{PLACES} colours or fewer."
             end
 
-            sprite_list_number(padded([BACKDROP, *colors.drop(1).map { |color| color & 0x7FFF }]), scene)
+            sprite_list_number(Art.painted_palette(colors), scene)
           end
+
+          # The four colours of the palette a painted picture is drawn in from +colors+ (see
+          # #painted_sprite_palette), of no more than four. Also what GBC::SpriteSlots counts as kept.
+          def self.painted_palette(colors) = padded([BACKDROP, *colors.drop(1).map { |color| color & 0x7FFF }])
 
           # The palette a sprite picture drawn as +drawn+ shows is given: +drawn+ is each pixel's
           # colour, or NOT_DRAWN, as the interpreter draws the picture (in its own colours or in
           # another list's). The same list asked twice is the same palette. +scene+ is the scene of
           # the sprite wearing it, nil for one in no scene.
+          #
+          # A drawing GBC::SpriteSlots laid out is the palette it gave, which other pictures' drawings
+          # can share; any other has the backdrop in the slots it does not draw.
           def sprite_palette(name, image, drawn, scene: nil)
-            picture = sprite_picture(name, image)
-            colors = Array.new(PLACES, BACKDROP)
-            picture.places.each_with_index do |place, i|
-              next if place.zero? || drawn[i] == NOT_DRAWN
-
-              colors[place] = drawn[i] & 0x7FFF
-            end
+            slotted = Art.colors_by_place(sprite_picture(name, image).places, drawn, PLACES)
+            colors = @sprite_slots&.shared_palette(name, slotted) || slotted.map { |color| color || BACKDROP }
             sprite_list_number(colors, scene)
+          end
+
+          # The colour each place of a sprite picture shows, by place, +count+ of them, see-through
+          # (place 0) and any place no pixel draws nil: +places+ is each pixel's place, +drawn+ each
+          # pixel's colour or NOT_DRAWN. Also what GBC::SpriteSlots is handed for each drawing.
+          def self.colors_by_place(places, drawn, count)
+            colors = Array.new(count)
+            places.each_with_index do |place, i|
+              colors[place] = drawn[i] & 0x7FFF unless place.zero? || drawn[i] == NOT_DRAWN
+            end
+            colors
           end
 
           # The number of sprite list +colors+ worn by a sprite of +scene+. Numbered once for the whole
@@ -1426,14 +1444,21 @@ module VBlank
             chunks
           end
 
-          # The place each pixel of a sprite's picture is drawn from: its own list's, where it came
-          # with one, or see-through and then every colour it draws in the order it draws them.
+          # The slot of its palette each pixel of a sprite's picture is drawn from: its own place
+          # (#own_sprite_places), moved to the slot the game's layout of sprite palettes gives it
+          # (GBC::SpriteSlots#slot_order), where there is one.
           def sprite_places(name, image)
-            if image.places
-              places = Array.new(image.width * image.height) { |i| image.drawn_at?(i) ? image.place_at(i) : 0 }
-              refuse_sprite_colors!(name, places.max.to_i)
-              return places
-            end
+            places = Art.own_sprite_places(image)
+            refuse_sprite_colors!(name, places.max.to_i)
+            order = @sprite_slots&.slot_order(name)
+            order ? places.map { |place| order[place] } : places
+          end
+
+          # The place each pixel of a sprite's picture takes in its own list: the list's, where it
+          # came with one, or see-through and then every colour it draws in the order it draws them.
+          # Also what GBC::SpriteSlots is handed, before any picture is cut.
+          def self.own_sprite_places(image)
+            return Array.new(image.width * image.height) { |i| image.drawn_at?(i) ? image.place_at(i) : 0 } if image.places
 
             colors = [nil]
             Array.new(image.width * image.height) do |i|
@@ -1442,7 +1467,7 @@ module VBlank
               color = image.color_at(i) & 0x7FFF
               colors << color unless colors.include?(color)
               colors.index(color)
-            end.tap { refuse_sprite_colors!(name, colors.length - 1) }
+            end
           end
 
           def refuse_sprite_colors!(name, colors)
@@ -1525,15 +1550,17 @@ module VBlank
           end
 
           # The tile's places drawn as they are, mirrored, upside down and both, by the flips that
-          # draw the tile that way.
-          def turnings(places)
+          # draw the tile that way. Also what GBC::SpriteSlots tells one tile from another by.
+          def self.turnings(places)
             h = Console::GBCHardware
-            { 0 => places, h::OBJ_X_FLIP => mirrored(places), h::OBJ_Y_FLIP => upside_down(places),
-              h::OBJ_X_FLIP | h::OBJ_Y_FLIP => upside_down(mirrored(places)) }
+            mirrored = places.each_slice(8).flat_map(&:reverse)
+            { 0 => places, h::OBJ_X_FLIP => mirrored, h::OBJ_Y_FLIP => upside_down(places),
+              h::OBJ_X_FLIP | h::OBJ_Y_FLIP => upside_down(mirrored) }
           end
 
-          def mirrored(places) = places.each_slice(8).flat_map(&:reverse)
-          def upside_down(places) = places.each_slice(8).to_a.reverse.flatten
+          def self.upside_down(places) = places.each_slice(8).to_a.reverse.flatten
+
+          def turnings(places) = Art.turnings(places)
 
           def background_tile_number(bytes)
             @background_tile_numbers[bytes] ||= (@background_tiles << bytes).length - 1
@@ -1553,7 +1580,10 @@ module VBlank
             room.numbers[bytes] = room.base + (room.tiles << bytes).length - 1
           end
 
-          def padded(colors) = colors + ([BACKDROP] * (PLACES - colors.length))
+          def padded(colors) = Art.padded(colors)
+
+          # +colors+ with the backdrop after them, to a palette's four.
+          def self.padded(colors) = colors + ([BACKDROP] * (PLACES - colors.length))
 
           def palette_number(palettes, colors, kind) = palettes.index(colors) || added_palette_number(palettes, colors, kind)
 
