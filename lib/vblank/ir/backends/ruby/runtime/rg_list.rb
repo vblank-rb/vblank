@@ -104,7 +104,14 @@ class RgList
 end
 
 # A list of bytes (`width: :byte`), its slots one byte each of a binary String, read back signed.
+#
+# The String is the same one for the list's whole life, its capacity long from the start, and is
+# only ever changed in place. So the printer reads and writes an item of a list that is always full
+# as the String's own byte (+items+, Printer#byte_item_in_place), having tested the index against
+# the list's length: such a list never moves its front from the first slot.
 class RgByteList < RgList
+  attr_reader :items
+
   def item(slot)
     byte = @items.getbyte(slot)
     byte >= 0x80 ? byte - 0x100 : byte

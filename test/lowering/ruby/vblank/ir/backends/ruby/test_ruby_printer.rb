@@ -118,6 +118,59 @@ class TestRubyPrinter < Minitest::Test
     refute_nil wrapped, "a sum past 32 bits should come round through rg_i32, and only when it is"
   end
 
+  # A LIST OF BYTES THAT IS ALWAYS FULL is read and written as its String's own byte, not through the
+  # list's methods: an unpacking writes its whole pack into one. A byte keeps the low bits and reads
+  # back signed, as the list's own methods keep it. Checked against the interpreter on every frame.
+  def test_an_always_full_list_of_bytes_is_read_and_written_in_place
+    program = program_of do
+      bytes = list :bytes, capacity: 4, width: :byte, full_of: 0
+      pass = 0
+      seen = var :seen, 0
+      game_loop do
+        bytes[pass & 3] = 198 + pass if (pass >= 0) & (pass < 4)
+        seen += bytes[(pass + 3) & 3]
+        pass += 1
+      end
+    end
+    text = printed_program(program)
+
+    refute_match(/@l_\w*bytes\.(set|get)\(/, text)
+    assert_match(/\.setbyte\(/, text)
+    assert_match(/\.getbyte\(/, text)
+    run = game_player.run(program, frames: 6)
+
+    assert_equal [-58, -57, -56, -55], run.list(:bytes)
+  end
+
+  # ...and an index outside it stops the game, though the test before the write says it is nought or
+  # more: the list is shorter than the test allows. Played alone, as the interpreter stops first.
+  def test_an_index_past_an_always_full_list_of_bytes_stops_the_game
+    games = [
+      proc do
+        bytes = list :bytes, capacity: 4, width: :byte, full_of: 0
+        pass = 0
+        game_loop do
+          bytes[pass + 2] = 1 if (pass >= 0) & (pass < 9)
+          pass += 1
+        end
+      end,
+      proc do
+        bytes = list :bytes, capacity: 4, width: :byte, full_of: 0
+        pass = 0
+        seen = 0
+        game_loop do
+          seen += bytes[1 - pass]
+          pass += 1
+        end
+      end
+    ]
+    [/index 4 is out of range for list :bytes/, /index -1 is out of range for list :bytes/].zip(games).each do |words, game|
+      error = assert_raises(VBlank::IR::ProgramError) { VBlank::IR::Backends::Ruby::HeadlessRun.new.run(program_of(&game), frames: 4) }
+
+      assert_match words, error.message
+    end
+  end
+
   # A ROUTINE LONGER THAN A METHOD HOLDS is printed in parts, each a method no longer than that,
   # since Ruby's compiler needs stack for every branch in a method and a Ractor has little. The
   # parts play as the routine did: a loop whose body is in parts still stops when it is told, its

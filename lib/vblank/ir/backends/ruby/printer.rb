@@ -67,6 +67,10 @@ module VBlank
           COMPARISONS = Ractor.make_shareable({ "rg_lt" => "<", "rg_le" => "<=", "rg_gt" => ">", "rg_ge" => ">=",
                                                 "rg_eq" => "==", "rg_ne" => "!=" })
           INLINE_OPERATORS = Ractor.make_shareable({ "rg_and" => "&", "rg_or" => "|", "rg_xor" => "^" })
+          # Each comparison of a number with a name, as the comparison of the name with the number
+          # (#narrow_by_test).
+          FLIPPED_COMPARISONS = Ractor.make_shareable({ "rg_lt" => "rg_gt", "rg_le" => "rg_ge", "rg_gt" => "rg_lt",
+                                                        "rg_ge" => "rg_le", "rg_eq" => "rg_eq", "rg_ne" => "rg_ne" })
           # ...and the ones that can pass 32 bits, and so come round (rg_i32) when they do.
           WRAPPED_OPERATORS = Ractor.make_shareable({ "rg_add" => "+", "rg_sub" => "-", "rg_mul" => "*" })
           OPERATORS_OF_TWO = Ractor.make_shareable(Set.new(COMPARISONS.keys + INLINE_OPERATORS.keys + WRAPPED_OPERATORS.keys))
@@ -183,13 +187,14 @@ module VBlank
           def add_starting_value(text) = @setup << "#{INDENT}#{text}\n"
 
           # A list, made as the game starts. One that is always full (#always_full_lists) is an
-          # RgFullList, and the game keeps its Array too, under a name of its own (#items_name).
+          # RgFullList, or of bytes the RgByteList every list of bytes is, and the game keeps its
+          # Array or String too, under a name of its own (#items_name).
           def print_list_storage(item)
             name = item.name.text
             made = "#{integer(item.capacity)}, #{integer(item.width)}, #{string(item.label)}"
             return add_starting_value("@#{name} = RgList.build(#{made})") unless @always_full.include?(name)
 
-            add_starting_value("@#{name} = RgFullList.new(#{made})")
+            add_starting_value("@#{name} = #{item.width == 1 ? 'RgList.build' : 'RgFullList.new'}(#{made})")
             add_starting_value("#{items_name(name)} = @#{name}.items")
           end
 
@@ -197,12 +202,13 @@ module VBlank
           # a variable starts as the runtime's do.
           def items_name(list) = "@rg_items_#{list}"
 
-          # THE LISTS THAT ARE ALWAYS FULL (runtime/rg_list.rb's RgFullList), each with the bytes its
-          # slot takes: lists of numbers wider than a byte that every declaration fills
+          # THE LISTS THAT ARE ALWAYS FULL (runtime/rg_list.rb's RgFullList, or for a list of bytes
+          # its RgByteList), each with the bytes its slot takes: lists that every declaration fills
           # (rg_list_full), and nothing empties, pushes onto, drops from or copies into. The runtime
           # changes a list's length only through those calls (and a state read in, which puts back
           # what the game had), so such a list holds its whole capacity from its declaration on, its
-          # first item in its first slot.
+          # first item in its first slot. A data pack's unpacking writes its whole pack into one such
+          # list of bytes.
           def always_full_lists(items)
             resized = Set.new
             items.grep(Statements::Function).each do |function|
@@ -213,7 +219,7 @@ module VBlank
               end
             end
             items.grep(Statements::ListStorage).filter_map do |list|
-              [list.name.text, list.width] if list.width != 1 && !resized.include?(list.name.text)
+              [list.name.text, list.width] unless resized.include?(list.name.text)
             end.to_h
           end
 
@@ -546,12 +552,17 @@ module VBlank
           # loop's (#counted_loop_ranges) are printed knowing its index and variable stay below its
           # count, which #range_of reads.
           def print_block(depth, item)
-            known = counted_loop_ranges(item.body)
-            return statements(depth, item.body) unless known
+            with_ranges(counted_loop_ranges(item.body)) { statements(depth, item.body) }
+          end
+
+          # The block printed knowing what +known+ says of the numbers it names (#range_of), as well as
+          # what was known around it; nil knows nothing more.
+          def with_ranges(known)
+            return yield unless known
 
             outside = @ranges
             @ranges = @ranges.merge(known)
-            statements(depth, item.body)
+            yield
           ensure
             @ranges = outside if known
           end
@@ -623,7 +634,7 @@ module VBlank
             end
 
             line(depth, "if #{condition(item.condition)}")
-            inner_statements(depth + 1, item.body, item)
+            with_ranges(tested_ranges(item.condition, item.body)) { inner_statements(depth + 1, item.body, item) }
             unless item.otherwise.empty?
               line(depth, "else")
               inner_statements(depth + 1, item.otherwise, item)
@@ -745,20 +756,44 @@ module VBlank
           # worked them out (a list read in the number can stop the game first). A write is a run of
           # statements in parentheses, not a test of its assignments, which Ruby warns of when one
           # sets a number written in the program. Out of range, rg_list_index_fault_at stops the
-          # game in the interpreter's words.
+          # game in the interpreter's words. An index known to be nought or more (#range_of) is not
+          # tested for it.
+          #
+          # A list of bytes is its String's own instead (#byte_item_in_place).
           def list_item_in_place(item)
             name = item.args.first.name.text
+            known = range_of(item.args[1])
+            above_nought = known && known[0] >= 0
             list, index, value = item.args.map { |arg| expression(arg) }
             slots = items_name(name)
             @called << "rg_list_index_fault_at"
             at = temporary
             fault = "rg_list_index_fault_at(#{list}, #{at})"
-            return "(((#{at} = #{index}) >= 0 && #{slots}[#{at}]) || #{fault})" unless value
+            return byte_item_in_place(name, list, index, value, at, above_nought, fault) if @always_full.fetch(name) == 1
+            return "((#{at} = #{index}; #{above_nought ? '' : "#{at} >= 0 && "}#{slots}[#{at}]) || #{fault})" unless value
 
             kept = temporary
             fitted = @always_full.fetch(name) == 2 ? "((#{kept} & 0xFFFF) ^ 0x8000) - 0x8000" : kept
-            "(#{at} = #{index}; #{kept} = #{value}; #{at} >= 0 && #{at} < #{slots}.size ? " \
+            "(#{at} = #{index}; #{kept} = #{value}; #{above_nought ? '' : "#{at} >= 0 && "}#{at} < #{slots}.size ? " \
               "(#{slots}[#{at}] = #{fitted}) : #{fault})"
+          end
+
+          # An item of an always-full list of bytes read or written as its String's own byte (see
+          # RgByteList#items atop runtime/rg_list.rb). The String holds the list's whole capacity from
+          # the start, so the index is tested against the list's length, which is nought until the
+          # declaration fills it, and a read is made signed as the list's own read makes it. The
+          # list's #set was a call, the ring's slot worked out and the index tested again, on every
+          # byte an unpacking writes.
+          def byte_item_in_place(name, list, index, value, at, above_nought, fault)
+            bytes = items_name(name)
+            in_range = "#{above_nought ? '' : "#{at} >= 0 && "}#{at} < #{list}.length"
+            unless value
+              byte = temporary
+              return "(#{at} = #{index}; #{in_range} ? ((#{byte} = #{bytes}.getbyte(#{at})) >= 0x80 ? #{byte} - 0x100 : #{byte}) : #{fault})"
+            end
+
+            kept = temporary
+            "(#{at} = #{index}; #{kept} = #{value}; #{in_range} ? #{bytes}.setbyte(#{at}, #{kept}) : #{fault})"
           end
 
           # A temporary of the method being printed (see MANY LOCALS in the class's heading).
@@ -866,6 +901,51 @@ module VBlank
             return if body_sets_or_calls?(rest, known)
 
             [index_name, variable].compact.to_h { |name| [name, [0, count_value - 1]] }
+          end
+
+          # WHAT A TEST SAYS OF ITS NAMES, inside the branch it takes: +condition+'s comparisons of a
+          # name with a number written in the program, alone or tested both together (rg_both), each
+          # narrowing what was known of the name. So an unpacking's `at >= 0 && at < count`, its test
+          # before a write to its list, prints the write knowing the index is nought or more. Nil
+          # where the test says nothing, or +body+ sets one of the names or calls a routine of the
+          # game (#body_sets_or_calls?).
+          def tested_ranges(condition, body)
+            known = {}
+            narrow_by_test(condition, known)
+            return if known.empty? || known.values.any? { |low, high| low > high } || body_sets_or_calls?(body, known.keys)
+
+            known
+          end
+
+          # What +item+ says of the names it compares, narrowed into +known+.
+          def narrow_by_test(item, known)
+            return unless item.is_a?(Statements::Call) && item.args.size == 2
+
+            function = item.function.text
+            return item.args.each { |side| narrow_by_test(side, known) } if function == "rg_both"
+            return unless COMPARISONS.key?(function)
+
+            left, right = item.args
+            if left.is_a?(Statements::Name) && right.is_a?(Statements::Int)
+              narrow_name(known, left.text, function, right.value)
+            elsif left.is_a?(Statements::Int) && right.is_a?(Statements::Name)
+              narrow_name(known, right.text, FLIPPED_COMPARISONS.fetch(function), left.value)
+            end
+          end
+
+          # +name+ known to stand to +number+ as +comparison+ says, narrowing what +known+ (or else
+          # #range_of) knew of it.
+          def narrow_name(known, name, comparison, number)
+            low, high = known[name] || @ranges[name] || [Int32::MIN, Int32::MAX]
+            case comparison
+            when "rg_lt" then high = [high, number - 1].min
+            when "rg_le" then high = [high, number].min
+            when "rg_gt" then low = [low, number + 1].max
+            when "rg_ge" then low = [low, number].max
+            when "rg_eq" then low, high = [low, number].max, [high, number].min
+            else return
+            end
+            known[name] = [low, high]
           end
 
           # The name a statement sets and the number written in the program it sets it to, or nil.
