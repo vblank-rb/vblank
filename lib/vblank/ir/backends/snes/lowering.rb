@@ -1377,6 +1377,8 @@ module VBlank
             [[walk.ahead, ahead], [walk.last, last]].each { |from, to| emit_slot_scaled(place_of(from), to, shifts) }
             current&.partners&.each { |name, scaled| emit_slot_scaled(place_of(name), scaled, shifts) }
             store_number(current.scaled, DSL::Pool::NONE) if current
+            counter = turns_countable_in_y?(node, body)
+            @asm.ldy(0) if counter
             @asm.label(top)
             @asm.ldx(at_place(ahead))
             @asm.branch_long(:bmi, done)
@@ -1390,13 +1392,42 @@ module VBlank
             end
             @asm.note_x_holds([at, links.stride])
             emit_walk_link_read(links, @lists.fetch(walk.links)[2], ahead, last, shifts)
+            section = @asm
+            y_changes = @asm.y_changes
             with_scaled_current(walk.at, current) { body.each { |child| statement(child) } }
-            @asm.inc(at_place(index))
+            counted_in_y = counter && section.equal?(@asm) && @asm.y_changes == y_changes
+            counted_in_y ? @asm.iny : @asm.inc(at_place(index))
             @asm.brl(top)
             @asm.label(done)
             emit_current_unscaled(current, at, shifts) if current
             store_number(place_of(walk.ahead), DSL::Pool::NONE)
-            emit_walk_index_kept_below(index, folded(node.count))
+            counted_in_y ? emit_walk_turns_from_y(index, folded(node.count)) : emit_walk_index_kept_below(index, folded(node.count))
+          end
+
+          # THE WALK'S TURNS COUNTED IN Y. The repeat's index is a variable, and counting it there is
+          # an INC of memory each turn, eight cycles at sixteen bits, where an INY is two (the cycle
+          # counts in fullsnes and the SNESdev wiki's 65816 reference). Y is set before the walk and the index written from it once, as the walk ends.
+          # Whether Y keeps it through the body is known only once the body is written
+          # (W65816#y_changes): where something in it changes Y, the turn counts in memory instead,
+          # and the LDY before the walk is left unread.
+          #
+          # Only where nothing in the body reads the index, which is in memory only as the walk ends,
+          # and nothing in it is the game's own instructions or stops the game, past which the index
+          # is not written.
+          def turns_countable_in_y?(node, body)
+            nodes = body.flat_map { |child| child.walk.to_a }
+            nodes.none? { |each| %i[raw halt].include?(each.kind) || each.attrs.values.flatten.include?(node.index) }
+          end
+
+          # The repeat's index from Y as the tree leaves it: the turns taken, or one below the count
+          # where the walk took every one of them.
+          def emit_walk_turns_from_y(index, count)
+            kept = fresh("walk_counted")
+            @asm.cpy(count)
+            @asm.bne(kept)
+            @asm.dey
+            @asm.label(kept, join: true)
+            @asm.sty(at_place(index))
           end
 
           # THE THING A WALK IS ON, KEPT ONLY AS X HOLDS IT. Each turn of #emit_stepped_walk loads the

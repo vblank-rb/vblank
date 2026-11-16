@@ -224,6 +224,25 @@ class TestSNESW65816 < Minitest::Test
     end
   end
 
+  # A number kept in Y over a run of code is still there when nothing in the run can change Y: a
+  # load, transfer, count, pull, call or return can, and so can a block copy or a change of the index
+  # width.
+  def test_what_can_change_y_is_counted
+    asm = W65816.new("test")
+    [-> { asm.lda(asm.abs(0x0700)) }, -> { asm.tax }, -> { asm.sta(asm.long_x(0x7E2000)) }, -> { asm.sep(0x20) },
+     -> { asm.cpy(3) }, -> { asm.sty(asm.abs(0x0700)) }].each do |keeps|
+      before = asm.y_changes
+      keeps.call
+      assert_equal before, asm.y_changes
+    end
+    [-> { asm.ldy(0) }, -> { asm.iny }, -> { asm.tay }, -> { asm.ply }, -> { asm.jsl(asm.long("routine")) }, -> { asm.rtl },
+     -> { asm.mvn(0x7E, 0x7E) }, -> { asm.sep(0x10) }].each do |changes|
+      before = asm.y_changes
+      changes.call
+      assert_operator asm.y_changes, :>, before
+    end
+  end
+
   def test_a_branch_back_to_a_join_is_refused
     asm = W65816.new("test")
     asm.label("top", join: true)

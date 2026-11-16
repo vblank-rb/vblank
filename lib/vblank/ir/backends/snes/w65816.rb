@@ -111,6 +111,11 @@ module VBlank
           WRITES_A = %i[lda ora and_a eor adc sbc txa tya tdc tsc pla xba xce plp].freeze
           CHANGES_A_IN_PLACE = %i[inc dec asl lsr rol ror].freeze
 
+          # WHAT CHANGES Y (#y_changes): the instructions that write it, and those that call or leave
+          # (an RTL to an address pushed is how a routine is called from a table), whatever runs then
+          # being free to. A block copy steps it, and REP or SEP of the index width cuts it.
+          WRITES_Y = %i[ldy tay txy ply iny dey xce plp].freeze
+
           # What X and A are noted to hold (#x_holds, #accumulator_holds), each nil when it is not known.
           Held = Data.define(:x, :a)
           NOTHING_HELD = Held.new(x: nil, a: nil)
@@ -155,6 +160,11 @@ module VBlank
 
           attr_reader :bytes
 
+          # How many instructions written so far can change Y (WRITES_Y): a lowering keeping a number
+          # in Y over a run of code reads it before and after, and the number is still there when the
+          # two agree.
+          attr_reader :y_changes
+
           def initialize(name, home: :any, holds: nil)
             @name = name
             @home = home
@@ -166,6 +176,7 @@ module VBlank
             @wide_a = true
             @wide_x = true
             @held = NOTHING_HELD
+            @y_changes = 0
             @held_at_branches = Hash.new { |states, label| states[label] = [] }
             @joins = {}
           end
@@ -450,12 +461,14 @@ module VBlank
 
           def emit_block_copy(opcode, to_bank, from_bank)
             @held = NOTHING_HELD
+            @y_changes += 1
             emit(opcode, to_bank, from_bank)
           end
 
           # The notes of what X and A hold made untrue by +name+ with +operand+, forgotten. Written
           # before the instruction, which does not change what that instruction does.
           def forget_held_for(name, operand)
+            @y_changes += 1 if WRITES_Y.include?(name) || CALLS.include?(name) || ENDS.include?(name)
             return @held = GONE if ENDS.include?(name)
             return @held = NOTHING_HELD if CALLS.include?(name) || MOVES_DIRECT_PAGE.include?(name)
             return if @held == GONE
@@ -473,6 +486,7 @@ module VBlank
 
           # A note forgotten for each register REP or SEP changes the width of.
           def forget_widened(flags)
+            @y_changes += 1 if flags.anybits?(0x10)
             return if @held == GONE
 
             @held = Held.new(x: (@held.x unless flags.anybits?(0x10)), a: (@held.a unless flags.anybits?(0x20)))
