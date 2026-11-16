@@ -120,7 +120,7 @@ module VBlank
 
           def place(shape)
             stride = record_bytes(shape)
-            area = :"#{shape.name} records"
+            area = DerivedNames.join(shape.name, " records")
             offset = 0
             places = shape.slot_lists.sort_by { |list, width| [-Build::ELEMENT_BYTES.fetch(width), list.to_s] }.to_h do |list, width|
               bytes = Build::ELEMENT_BYTES.fetch(width)
