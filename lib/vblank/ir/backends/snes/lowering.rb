@@ -372,6 +372,11 @@ module VBlank
           # The assembler a run of statements is measured in (MeasuredOnCopies#bytes_of).
           def measuring_assembler = W65816.new("measuring", holds: ROUTINES)
 
+          # The bytes a run of statements made into +asm+ comes to once its section is made, with
+          # its long branches and jumps in reach made short (W65816#shorten_long_branches), as the
+          # routine it is measured for will be.
+          def section_length(asm) = asm.section.bytes.bytesize
+
           # --- the data ---
 
           # The places that do not start at nought, each list's place, capacity and slot (the

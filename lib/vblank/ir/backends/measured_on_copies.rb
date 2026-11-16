@@ -30,9 +30,15 @@ module VBlank
             @routine = "measuring"
             @labels = 0
             list.each { |node| statement(node) }
-            @asm.here
+            section_length(@asm)
           end
         end
+
+        # The bytes what was made into +asm+ comes to as a section: what it holds, for a processor
+        # whose section is written as it was made. A lowering whose assembler changes the code as it
+        # makes the section (SNES::W65816#section, short branches) gives that section's length, so
+        # what is measured is what is made.
+        def section_length(asm) = asm.here
       end
     end
   end
