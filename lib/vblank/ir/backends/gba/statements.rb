@@ -76,6 +76,10 @@ module VBlank
           # counts up, which is right for any of them.
           attr_writer :unread_indexes, :scene_entry
 
+          # The lists (Lists), which a stepped walk holds a register on a thing of
+          # (#emit_stepped_walk), and the program, whose walks it asks the shared plan about.
+          attr_writer :lists, :program
+
           # Where a loop counting up in the quick memory keeps how many passes it makes, by its index.
           def self.limit_var(index) = DerivedNames.join(index, "__limit")
 
@@ -208,10 +212,111 @@ module VBlank
           # business. #loop_shapes hands it over the way #var_addresses hands over where a
           # variable landed.
           def emit_repeat(node)
+            return record_loop_shape(node, :registers) { emit_stepped_walk(node) } if stepped_walk?(node)
             return record_loop_shape(node, :registers) { emit_repeat_in_registers(node) } if LoopForm.counter_in_registers?(node)
             return record_loop_shape(node, :spilled) { emit_repeat_spilled(node) } if LoopForm.spills?(node)
 
             record_loop_shape(node, :memory) { emit_repeat_in_memory(node) }
+          end
+
+          # A WALK OF A POOL STEPPED AS AN ARM GAME STEPS ONE. The tree's walk keeps the thing it goes
+          # to next and the last it visits in variables, tests and copies them each turn, and reads
+          # the link out of a list at an index bounded and scaled each time; and every field the body
+          # reads or writes bounds and scales the index again. The ARM's way to reach the fields of
+          # one thing is a register holding the thing's address and each field one load or store at
+          # a distance written in the instruction, [Rn, #offset] (GBATEK, "ARM Opcodes: Memory: Single
+          # Data Transfer"; "ARM CPU Instruction Cycle Times" for what each costs).
+          #
+          # Here, for a pool kept at one stride (Lists#reserve_pool_areas): r11 holds the pool's
+          # block and r10 the thing's address in it (Lists::THING), the block plus the slot times the
+          # stride, which is what the links keep; every field of the thing in the body is a load or
+          # store at its distance from r10 (Lists#held_field?). The next thing is its link read at r10,
+          # NONE being negative, and the walk ends on it where the chain cannot change during it
+          # (LoweringPlan#chain_changed_during_walks?), else at the last thing as the tree does. The
+          # walk's variables end as the tree leaves them: the thing it was on and the next (NONE).
+          # The repeat's index is read by nothing (LoopForm.unread_indexes), so it is not counted.
+          #
+          # Only where the body leaves r10 and r11 alone, as a loop holding its count in them needs
+          # (LoopForm.needs_loop_registers?), but for calls of the game's routines, made with the
+          # two kept on the stack around them (#emit_call); and where nothing in it writes the walk's
+          # own variables.
+          def stepped_walk?(node)
+            walk = node.pool_walk
+            return false unless walk && @lists&.pool_block(walk.pool) && walk.step_statements == 2
+            return false unless @unread_indexes.include?(node.index) && node.count.kind == :int && node.count.value.positive?
+
+            links = @lists.slot_place(walk.links, @lists.list_info(walk.links))
+            return false unless links.scale == links.stride && links.width == 2
+
+            nodes = walk_plan.walk_body(node).flat_map { |child| child.walk.to_a }
+            nodes.all? { |each| each.kind == :call || !LoopForm.needs_loop_registers?(each) } &&
+              nodes.none? { |each| [walk.at, walk.ahead, walk.last].any? { |name| LoopForm.writes?(each, name) } }
+          end
+
+          # The shared plan of the program, asked which walks can leave out what (LoweringPlan#walk_body).
+          def walk_plan
+            @walk_plans ||= {}
+            @walk_plans[@program.object_id] ||= LoweringPlan.new(@program, console: Console::ADVANCE, error: LoweringError)
+          end
+
+          def emit_stepped_walk(node)
+            walk = node.pool_walk
+            plan = walk_plan
+            body = plan.walk_body(node)
+            shift = Math.log2(@lists.slot_place(walk.links, @lists.list_info(walk.links)).stride).to_i
+            stops_at_last = plan.chain_changed_during_walks?(walk.pool)
+            reads_at = body.flat_map { |child| child.walk.to_a }.any? { |each| reads_current_beyond_fields?(each, walk) }
+            thing = Lists::THING
+            block = LoopForm::LIMIT
+            top = @emitter.gensym
+            done = @emitter.gensym
+            none = @emitter.gensym
+            last = Statements.limit_var(node.index)
+
+            @emitter.emit_number(block, @lists.pool_block(walk.pool))
+            if stops_at_last
+              @primitives.load_var(ACC, walk.last)
+              @emitter.emit(ASM.add_reg_lsl(ACC, block, ACC, shift))
+              @primitives.store_var(ACC, last)                     # the last thing's address
+            end
+            @primitives.load_var(ACC, walk.ahead)
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit_branch(:bcond, none, cond: :lt)          # nothing to walk
+            @emitter.emit(ASM.add_reg_lsl(thing, block, ACC, shift)) # r10 = the first thing
+            @emitter.place_label(top)
+            if reads_at
+              @emitter.emit(ASM.sub_reg(ACC, thing, block))
+              @emitter.emit(ASM.asr_imm(ACC, ACC, shift)) if shift.positive?
+              @primitives.store_var(ACC, walk.at)
+            end
+            @lists.with_held_walk(walk) { body.each { |stmt| @lowering.statement(stmt) } }
+            if stops_at_last
+              @primitives.load_var(ACC, last)
+              @emitter.emit(ASM.cmp_reg(thing, ACC))
+              @emitter.emit_branch(:bcond, done, cond: :eq)
+            end
+            @lists.emit_held_link_read(walk.links)                 # r0 = the next thing's distance
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit(ASM.add_reg_cond(:ge, thing, block, ACC)) # r10 = the next thing
+            @emitter.emit_branch(:bcond, top, cond: :ge)
+            @emitter.place_label(done)
+            unless reads_at
+              @primitives.load_var(ACC, walk.last)
+              @primitives.store_var(ACC, walk.at)
+            end
+            @emitter.place_label(none)
+            @emitter.emit_number(ACC, DSL::Pool::NONE)
+            @primitives.store_var(ACC, walk.ahead)
+          end
+
+          # Whether +node+ reads the walk's current thing other than as the index of a field the held
+          # register reaches (Lists#held_field?).
+          def reads_current_beyond_fields?(node, walk)
+            node.attrs.values.flatten.any? do |operand|
+              next false unless operand.is_a?(Node) && operand.kind == :var_ref && operand.name == walk.at
+
+              !(%i[list_get list_set].include?(node.kind) && node.index.equal?(operand) && @lists.pool_field?(node.name, walk.pool))
+            end
           end
 
           # Remember which shape this loop got before emitting it, so the cost estimate charges
@@ -420,6 +525,14 @@ module VBlank
           # A routine the frame's sprite work rests on has nothing to do on a scene's copying pass,
           # which draws no sprites (see SceneEntry#emit_unless_scene_is_loading).
           def emit_call(node)
+            # A routine called inside a stepped walk may use any register, so the walk's two are
+            # kept on the stack around it (#emit_stepped_walk).
+            return emit_preserving(Lists::THING, LoopForm::LIMIT) { emit_routine_call(node) } if @lists&.held_walk?
+
+            emit_routine_call(node)
+          end
+
+          def emit_routine_call(node)
             return @placement.emit_call_func(node.target) unless SPRITE_WORK_ROUTINE.match?(node.target)
 
             @scene_entry.emit_unless_scene_is_loading { @placement.emit_call_func(node.target) }

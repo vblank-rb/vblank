@@ -175,6 +175,17 @@ module VBlank
                        "but the record's stride is the sum of the widths rounded up, more doublings to set X. " \
                        "Measured in bsnes, one more pair: 532 master clocks (half words 388); the bullets test 7.24%."
             },
+            gba: {
+              records: "A record for each thing, so a register on the thing a walk is on reaches every field " \
+                       "with one LDR or STR at an offset, the halfword and byte loads' offsets of a byte too " \
+                       "(GBA::Statements#emit_stepped_walk). Measured in the emulator, one more pair of things " \
+                       "checked: 171 cycles as lists, 23 as records; a walk step 56, 4 a thing; a field moved " \
+                       "on 32, 5; the bullets test 0.82% of a frame, 0.37%; five walkers 1.08%, 0.63%.",
+              tables: "The pool's tables in one block, reached the same way, but a field's distance from the " \
+                      "thing's slot in the first table is a table's length along, past the reach of a halfword " \
+                      "or byte load's offset in a bigger pool. Measured in the emulator, one more pair: 23 " \
+                      "cycles; a walk step 6, a field 11; the bullets test 0.38%; five walkers 0.63%."
+            },
             gbc: {
               tables: "Each table in a page of its own, so a field of the thing a walk is on is HL with H the " \
                       "page and L the table's low byte plus the thing's distance, and the walk steps by its links " \

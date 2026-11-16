@@ -394,7 +394,10 @@ module VBlank
                               face_fill_skips_outside_window: true,
                               # The painted screen is drawn through a background that resizes, so
                               # told to read half a pixel a step it shows each pixel as four.
-                              shows_bigger_pixels: true)
+                              shows_bigger_pixels: true,
+                              # A record for each thing where it fits, else as lists; tables side by
+                              # side where a game asks (Backends::PoolLayout::OWN_LAYOUTS says why).
+                              pool_layouts: %i[records lists tables].freeze)
 
     # The Game Boy Color: a smaller screen, eight buttons, forty sprites and ten on a row, one
     # background, nothing that turns, lists of four colours, and a clock that counts days. What

@@ -421,6 +421,9 @@ module VBlank
           # +at+ is an address the list's slots are kept at instead of room of their own: words
           # something else already keeps (see Faces#corner_lists_in_words). Such a list is never
           # moved to the roomy memory.
+          #
+          # A pool's list kept in its layout's area (#reserve_pool_areas) has its slots there and
+          # takes no room of its own.
           def register_list(name, capacity, ring: true, width: :word, fast: nil, roomy: false, at: nil)
             if (existing = @lists[name])
               return if existing[:capacity] == capacity && existing[:width] == width
@@ -433,8 +436,13 @@ module VBlank
             slots = Lists.slots_of(capacity, ring: ring)
             bytes = Build::ELEMENT_BYTES.fetch(width)
             want = Lists.slot_bytes(capacity, width, ring: ring)
-            base, in_roomy = at ? [at, false] : place_list(name, want, roomy ? false : fast)
-            fast = true if at
+            area = @pool_area_bases&.fetch(name, nil)
+            base, in_roomy = if area
+                               area
+                             else
+                               at ? [at, false] : place_list(name, want, roomy ? false : fast)
+                             end
+            fast = true if at # a pool's area moves as its block does (#reserve_pool_areas)
             # Placed before its counters are named, since where they go follows where it went.
             @lists[name] = { capacity: capacity, ring: ring, mask: slots - 1, base: base,
                              width: width, bytes: bytes, roomy: in_roomy, want: want, fast: fast }
@@ -531,13 +539,19 @@ module VBlank
           # game shifts from: those are rounded up to a power of two so the wrap is one AND, and
           # the oldest walks round all of them. +head_at+ is where such a list keeps the place of
           # its oldest, and nil for one that never moves it.
-          Place = Data.define(:base, :capacity, :bytes, :length_at, :slots, :head_at)
+          #
+          # +stride+ is how far apart its slots are and +scale+ what each value is kept multiplied by:
+          # +bytes+ and 1, except a pool's list kept in its layout's area, whose slots are at the pool's
+          # stride, +bytes+ the value's own width there, and a link kept as the slot times the stride.
+          Place = Data.define(:base, :capacity, :bytes, :length_at, :slots, :head_at, :stride, :scale)
 
           def list_places
             @lists.to_h do |name, info|
-              [name, Place.new(base: info[:base], capacity: info[:capacity], bytes: info[:bytes],
+              slot = slot_place(name, info)
+              [name, Place.new(base: info[:base], capacity: info[:capacity], bytes: slot.width,
                                length_at: @primitives.vars.fetch(length_var(name)), slots: info[:mask] + 1,
-                               head_at: (@primitives.vars.fetch(head_var(name)) if info[:ring]))]
+                               head_at: (@primitives.vars.fetch(head_var(name)) if info[:ring]),
+                               stride: slot.stride, scale: slot.scale)]
             end
           end
 
@@ -559,13 +573,83 @@ module VBlank
           # kept as a list is reached from the thing's number instead: the number bounded, shifted by
           # the slot's width and added to the list's base before the load, and again for the store. A
           # layout of records is an adapter of PoolLayout and a base register held through a walk's body.
+          #
+          # Kept at one stride (:tables, :records), a pool's areas are reserved one after another in
+          # one block before its lists are registered (#reserve_pool_areas), each list's slots at its
+          # place there, so one register on a thing's slot in the first area reaches every field of it
+          # at a distance written in the instruction (Statements#emit_stepped_walk).
           def place_pools(program)
             @slot_places = {}
             (program.pools || []).each do |shape|
-              placement = PoolLayout.chosen(shape, Console::ADVANCE, PoolLayout.steps_on(program, shape)).place(shape)
-              refuse_unmade_pool_placement!(shape, placement)
+              placement = pool_placement(program, shape)
+              refuse_unmade_pool_placement!(shape, placement) if placement.layout == :lists
               @slot_places.merge!(placement.slots)
             end
+          end
+
+          # The placement +shape+ is kept in: the layout chosen for it, or :lists where its block
+          # found no room in either memory (#reserve_pool_areas).
+          def pool_placement(program, shape)
+            placement = PoolLayout.chosen(shape, Console::ADVANCE, PoolLayout.steps_on(program, shape)).place(shape)
+            return placement if placement.layout == :lists || @pool_blocks&.key?(shape.name)
+
+            PoolLayout::ADAPTERS.fetch(:lists).place(shape)
+          end
+
+          # Whether +shape+ is a pool the console draws: its things are hardware sprites, and the
+          # sprite work reads its lists as lists, one after another (DSL::Pool#stacked_list), so it
+          # keeps :lists.
+          def self.drawn_pool?(program, shape)
+            drawn = program.walk.flat_map { |node| node.attrs.values.flatten.grep(Symbol) }.uniq.select do |name|
+              kind, parts = Messages::MadeNames.read(name)
+              kind == :pool_part && parts[:pool].to_s == shape.name.to_s && parts[:part].to_s.start_with?("stacked")
+            end
+            drawn.any?
+          end
+
+          # EACH POOL KEPT AT ONE STRIDE given its block, before any list is registered: the quick
+          # memory where it has room and the pool is not one +roomy+ names or the author marked
+          # cold, else the roomy one, else it keeps :lists. +roomy+ is the lists the plan sent to
+          # the roomy memory. A pool the console draws keeps :lists (Lists.drawn_pool?).
+          def reserve_pool_areas(program, roomy)
+            @pool_area_bases = {}
+            @pool_blocks = {}
+            cold = program.walk.filter_map { |node| node.name if node.kind == :list_new && node.fast == false }
+            (program.pools || []).each do |shape|
+              placement = PoolLayout.chosen(shape, Console::ADVANCE, PoolLayout.steps_on(program, shape)).place(shape)
+              next if placement.layout == :lists || Lists.drawn_pool?(program, shape)
+
+              bytes = Memory.whole_words(placement.areas.values.sum { |area| Memory.whole_words(area) })
+              block, in_roomy = pool_block_place(bytes, prefer_roomy: shape.slot_lists.keys.any? { |list| roomy.include?(list) || cold.include?(list) })
+              next unless block
+
+              @pool_blocks[shape.name] = block
+              placement.areas.reduce(block) do |address, (area, area_bytes)|
+                placement.slots.each { |list, slot| @pool_area_bases[list] = [address + slot.offset, in_roomy] if slot.area == area }
+                address + Memory.whole_words(area_bytes)
+              end
+            end
+          end
+
+          # Where a pool's block of +bytes+ goes: [its address, whether in the roomy memory], or nil
+          # where neither memory has room.
+          def pool_block_place(bytes, prefer_roomy:)
+            return [@memory.alloc(bytes), false] if !prefer_roomy && @memory.room_for?(bytes)
+
+            roomy = @memory.alloc_roomy(bytes)
+            roomy ? [roomy, true] : nil
+          end
+
+          # The address of the first of +pool+'s areas, which every field of a thing is reached from
+          # at a distance, or nil for a pool kept as lists.
+          def pool_block(pool) = @pool_blocks&.fetch(pool.to_sym, nil)
+
+          # How far the slot of +list+ for a thing is from the thing's slot in its pool's first area.
+          def field_distance(list) = list_info(list)[:base] - pool_block(DSL::Pool.owner_of_list(list))
+
+          # Whether +list+ is one of +pool+'s lists kept in its block.
+          def pool_field?(list, pool)
+            !pool_block(pool).nil? && DSL::Pool.owner_of_list(list).to_s == pool.to_s && @lists.key?(list)
           end
 
           # Where the slots of the list +name+ (its +info+) are: a pool's list as its layout placed it,
@@ -648,7 +732,12 @@ module VBlank
             if node.full_of
               @emitter.emit_number(ACC, info[:capacity])
               @primitives.store_var(ACC, length_var(node.name))
-              emit_fill_from_first_slot(info, node.full_of)
+              slot = slot_place(node.name, info)
+              if slot.stride == slot.width && slot.scale == 1
+                emit_fill_from_first_slot(info, node.full_of)
+              else
+                emit_fill_at_stride(info, slot, node.full_of)
+              end
             else
               @primitives.store_var(ACC, length_var(node.name))
             end
@@ -664,6 +753,42 @@ module VBlank
             emit_fill_pattern(info[:width])                         # r0 = the value in every byte place
             @emitter.emit_number(2, info[:capacity] * info[:bytes]) # r2 = bytes to write
             @placement.emit_call_cold_routine(FILL_ROUTINE)
+          end
+
+          # Every slot of a pool's list kept in its layout's area set to +value+, a slot at a time at
+          # the pool's stride, the number kept multiplied where the slot keeps it so (a link, whose
+          # NONE stays NONE).
+          #
+          # Four slots are written a turn, so a pool made full at power-on costs little more than a
+          # word written a slot (the loop's count and branch spread over four stores), and the slots
+          # left over after the last whole four are written after it.
+          def emit_fill_at_stride(info, slot, value)
+            again = @emitter.gensym
+            number = value.negative? ? value : value * slot.scale
+            turns, left = info[:capacity].divmod(FILL_SLOTS_A_TURN)
+            @primitives.emit_list_base(info[:base])
+            @emitter.emit(ASM.mov_reg(TMP, LIST_ADDR))              # r1 = the first slot
+            @emitter.emit_number(3, number)
+            if turns.positive?
+              @emitter.emit_number(2, turns)                        # r2 = turns left
+              @emitter.place_label(again)
+              FILL_SLOTS_A_TURN.times { emit_store_post(slot, 3) }
+              @emitter.emit(ASM.subs_imm(2, 2, 1))
+              @emitter.emit_branch(:bcond, again, cond: :ne)
+            end
+            left.times { emit_store_post(slot, 3) }
+          end
+
+          # How many slots a turn of #emit_fill_at_stride writes.
+          FILL_SLOTS_A_TURN = 4
+
+          # r+from+ stored at the slot r1 is at, at the slot's width, and r1 moved on a stride.
+          def emit_store_post(slot, from)
+            case slot.width
+            when 4 then @emitter.emit(ASM.str_post(from, TMP, slot.stride))
+            when 2 then @emitter.emit(ASM.store_halfword_post(from, TMP, slot.stride))
+            when 1 then @emitter.emit(ASM.strb_post(from, TMP, slot.stride))
+            end
           end
 
           # list_push: append at the tail — slot (head + length) & mask — then grow
@@ -724,6 +849,13 @@ module VBlank
           def emit_list_set(node)
             info = list_info(node.name)
             slot = slot_place(node.name, info)
+            if held_field?(node)
+              @lowering.value(node.value)                   # r0 = value
+              emit_value_scaled(slot)
+              return emit_held_field_store(node, slot)
+            end
+            return emit_scaled_list_set(node, info, slot) if slot.scale > 1
+
             if (offset = written_slot_offset(info, slot, node.index))
               @lowering.value(node.value)                   # r0 = value
               @primitives.emit_list_base(info[:base])       # after the value, which may use r9 itself
@@ -744,6 +876,10 @@ module VBlank
           def eval_list_get(node)
             info = list_info(node.name)
             slot = slot_place(node.name, info)
+            if held_field?(node)
+              emit_held_field_load(node, slot)
+              return emit_value_unscaled(slot)
+            end
             if (offset = written_slot_offset(info, slot, node.index))
               @primitives.emit_list_base(info[:base])
               @emitter.emit(ASM.ldr_offset(ACC, LIST_ADDR, offset))
@@ -754,6 +890,101 @@ module VBlank
             @bookkeeping&.emit_refuse_index_past_length(length_var(node.name), info[:base])
             emit_slot_address(info, node.name)         # r1 = &slot[(head+index)&mask]
             emit_load_element(info, ACC, TMP, bytes: slot.width) # r0 = slot
+            emit_value_unscaled(slot)
+          end
+
+          # --- a walk holding a register on its thing (Statements#emit_stepped_walk) ---
+
+          # The register a stepped walk holds on the thing it is on: the loop counter's register,
+          # which a walk stepped so does not count in, and which nothing in a body LoopForm lets
+          # keep its counter in registers can touch.
+          THING = LoopForm::COUNTER
+
+          # The walk whose thing THING holds while +block+ runs (IR::WalkShape).
+          def with_held_walk(walk)
+            outer = @held_walk
+            @held_walk = walk
+            yield
+          ensure
+            @held_walk = outer
+          end
+
+          # Whether a walk is holding THING on a thing now.
+          def held_walk? = !@held_walk.nil?
+
+          # r0 = the link +links+ of the held thing, as kept: the next thing's distance into the
+          # pool's block, or -1 for NONE.
+          def emit_held_link_read(links)
+            base, distance = held_field_operand(field_distance(links), 2)
+            @emitter.emit(ASM.ldrsh_offset(ACC, base, distance))
+          end
+
+          # Whether +node+ reads or writes a field of the thing the held walk is on.
+          def held_field?(node)
+            walk = @held_walk
+            !walk.nil? && node.index.is_a?(Node) && node.index.kind == :var_ref && node.index.name == walk.at &&
+              pool_field?(node.name, walk.pool)
+          end
+
+          # r0 = the held thing's field +node+ reads, one load at its distance from THING (LDR's
+          # distance reaches 4095 bytes, LDRSH's and LDRSB's 255; past that, the address is made in
+          # r1 first).
+          def emit_held_field_load(node, slot)
+            base, distance = held_field_operand(field_distance(node.name), slot.width)
+            case slot.width
+            when 4 then @emitter.emit(ASM.ldr_offset(ACC, base, distance))
+            when 2 then @emitter.emit(ASM.ldrsh_offset(ACC, base, distance))
+            when 1 then @emitter.emit(ASM.ldrsb_offset(ACC, base, distance))
+            end
+          end
+
+          # The held thing's field +node+ writes = r0, the low bits its width keeps.
+          def emit_held_field_store(node, slot)
+            base, distance = held_field_operand(field_distance(node.name), slot.width)
+            case slot.width
+            when 4 then @emitter.emit(ASM.str_offset(ACC, base, distance))
+            when 2 then @emitter.emit(ASM.store_halfword_offset(ACC, base, distance))
+            when 1 then @emitter.emit(ASM.strb_offset(ACC, base, distance))
+            end
+          end
+
+          # [the register, the distance] a load or store of +width+ bytes reaches a field +distance+
+          # from THING through: THING itself where the instruction's distance reaches, else r1 made
+          # THING plus the distance.
+          def held_field_operand(distance, width)
+            return [THING, distance] if distance <= (width == 4 ? 0xFFF : 0xFF)
+
+            @emitter.emit_number(TMP, distance)
+            @emitter.emit(ASM.add_reg(TMP, THING, TMP))
+            [TMP, 0]
+          end
+
+          # A LINK KEPT AS THE SLOT TIMES THE STRIDE (PoolLayout.strided_place), two bytes with NONE
+          # as $FFFF: read with its sign, NONE is -1, and an arithmetic shift right brings any other
+          # back to the slot and leaves -1 as it is.
+          def emit_value_unscaled(slot)
+            @emitter.emit(ASM.asr_imm(ACC, ACC, Math.log2(slot.scale).to_i)) if slot.scale > 1
+          end
+
+          # r0, a slot or NONE about to be written to a link kept multiplied, made the slot times the
+          # stride where it is not below nought.
+          def emit_value_scaled(slot)
+            return unless slot.scale > 1
+
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit(ASM.mov_reg_lsl_cond(:ge, ACC, ACC, Math.log2(slot.scale).to_i))
+          end
+
+          # A link kept multiplied written at an index, the value scaled as it goes in.
+          def emit_scaled_list_set(node, info, slot)
+            @lowering.value(node.index)
+            @bookkeeping&.emit_refuse_index_past_length(length_var(node.name), info[:base])
+            emit_slot_address(info, node.name)
+            @emitter.emit(ASM.push(TMP))
+            @lowering.value(node.value)
+            emit_value_scaled(slot)
+            @emitter.emit(ASM.pop(TMP))
+            emit_store_element(info, ACC, TMP, bytes: slot.width)
           end
 
           # list_len: read the length variable into the accumulator (a value).
@@ -773,7 +1004,7 @@ module VBlank
             return nil unless index.kind == :int && !info[:ring] && slot.width == 4 && @bookkeeping.nil?
             return nil unless index.value.between?(0, info[:capacity] - 1)
 
-            offset = slot.at(index.value)
+            offset = index.value * slot.stride # the list's base is its first slot, wherever its layout put it
             offset <= 0xFFF ? offset : nil
           end
 

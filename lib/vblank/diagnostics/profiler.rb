@@ -668,7 +668,7 @@ module VBlank
       # the list reads them, so they are counted with it.
       def self.touches_by_list(touches, lists)
         lists.to_h do |name, place|
-          words = ((place.slots * place.bytes) + 3) / 4
+          words = ((place.slots * place.stride) + 3) / 4
           items = (0...words).sum { |word| touches.fetch(place.base + (word * 4), 0) }
           [name, items + [place.length_at, place.head_at].compact.sum { |at| touches.fetch(at, 0) }]
         end

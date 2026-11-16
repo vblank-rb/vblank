@@ -888,6 +888,8 @@ module VBlank
           @stretched_columns = StretchedColumns.new(program, emitter: @emit)
           @framebuffer.stretched_columns = @stretched_columns
           @statements.unread_indexes = LoopForm.unread_indexes(program)
+          @statements.lists = @lists
+          @statements.program = program
           # Only a program that divides by something it works out as it runs carries the divide
           # routines, and every other division is settled at build time; the layout above kept
           # their places for the ones it needs.
@@ -1662,6 +1664,7 @@ module VBlank
             asked = node.fast
             [asked == false ? 2 : (asked || roomy.hot?(node.name) ? 0 : 1), -node.capacity]
           end
+          @lists.reserve_pool_areas(program, @lists_to_roomy)
           ranked.each do |node, ring|
             at = var_addr(Faces::CORNER_WORDS.first) if in_words.include?(node.name)
             @lists.register_list(node.name, node.capacity, ring: ring, width: node.width || :word,
