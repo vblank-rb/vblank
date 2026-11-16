@@ -1101,13 +1101,14 @@ module VBlank
               tests = PickedTile.tests(node)
               return tests ? lower(tests) : []
             end
+            # A tile of nil is the empty cell, as the map keeps one (#map_cells).
+            tile = Statements::Int.new(node.tile || CELL_EMPTY)
             if node.held
               return [eval_call("rg_background_hold_tile", background_number(node), value(node.col), value(node.row),
-                                Statements::Int.new(node.tile), Statements::Int.new(Nodes::ShowHeldTiles::MOST_CELLS))]
+                                tile, Statements::Int.new(Nodes::ShowHeldTiles::MOST_CELLS))]
             end
 
-            [eval_call("rg_background_set_tile", background_number(node), value(node.col), value(node.row),
-                       Statements::Int.new(node.tile))]
+            [eval_call("rg_background_set_tile", background_number(node), value(node.col), value(node.row), tile)]
           end
 
           # Reference#exec_show_held_tiles

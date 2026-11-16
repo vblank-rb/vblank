@@ -46,7 +46,7 @@ module VBlank
             list_set list_fill list_copy list_sort screen clear_screen fill_rect dma_fill_rect draw_rect_at
             pixel draw_text draw_digit inside camera blit blit_pose draw_column_at draw_place fill_face
             save_region restore_region background affine_background scroll_background place_bar box_background
-            scroll_rows shade_outside show_light_now set_tile show_map show_held_tiles background_colors
+            scroll_rows shade_outside show_light_now set_tile set_tile_block show_map show_held_tiles background_colors
             color_list_holds show_picture_group copy_tiles copy_owed_tiles load_sprite_tiles present_objects
             hide_sprites rumble fade tint pixelate see_through beep enable_sound play_song stop_music
             hold_music play_from_list play_sound_effect play_sample stop_sample wave stop_wave noise save_init
