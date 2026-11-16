@@ -512,8 +512,9 @@ module VBlank
         # Frames are whole; seconds may be fractional (half a second is fine), but
         # either way the interval must come out to at least one frame.
         valid = unit == :frames ? n.is_a?(Integer) : n.is_a?(Numeric)
+        refuse_game_number_for_timer!(verb, n, unit) unless valid
         unless valid && n.positive? && to_frames(n, unit).positive?
-          raise ArgumentError, "#{verb} needs a positive number of #{unit}. You gave #{n.inspect}."
+          raise ArgumentError, "#{verb} needs a positive number of #{unit}. You gave #{Messages::PlainWords.words_for_given(n)}."
         end
 
         @timer_seq += 1
@@ -522,6 +523,19 @@ module VBlank
         at_boot(Build.set(counter, Build.int(0)))
         add_part_member(:var, counter, framework: true) # a new game counts from nought again
         counter
+      end
+
+      # A timer's beat is counted while the game is built: its hidden counter is compared
+      # against a number fixed in the cartridge. So a variable, or a number the game works out,
+      # cannot be its beat, and the refusal names what the author wrote.
+      def refuse_game_number_for_timer!(verb, n, unit)
+        return unless Messages::PlainWords.game_number?(n)
+
+        example = unit == :seconds ? "#{verb}(0.5, :seconds) { ... }" : "#{verb}(30) { ... }"
+        raise ArgumentError,
+              "#{verb} takes only a number of #{unit} that is written in the program, like `#{example}`. " \
+              "You gave #{Messages::PlainWords.words_for_given(n)}. To fix this, write the number. " \
+              "If the beat must change as the game runs, count the frames in a variable of your own."
       end
 
       # A timer interval in whole frames. Frames pass through; seconds convert at the

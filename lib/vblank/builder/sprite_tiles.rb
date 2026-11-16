@@ -171,7 +171,7 @@ module VBlank
 
         raise ArgumentError, "image :#{name} gets its pieces from a frame of the data pack, and needs first_tile:, the " \
                              "number the frames give the first tile of sprite_tiles :#{set_name}, like `first_tile: 0x40`. " \
-                             "Got #{opts[:first_tile].inspect}."
+                             "Got #{Messages::PlainWords.words_for_given(opts[:first_tile])}."
       end
 
       def refuse_turned_frame_piece!(name)
@@ -280,7 +280,7 @@ module VBlank
         return if count.is_a?(Integer) && count.between?(1, MOST_TILES)
 
         raise ArgumentError, "sprite_tiles :#{name} needs `count:`, how many tiles it holds. It must be a whole " \
-                             "number from 1 to #{MOST_TILES}. Got #{count.inspect}."
+                             "number from 1 to #{MOST_TILES}. Got #{Messages::PlainWords.words_for_given(count)}."
       end
 
       def refuse_sprite_tiles_on_bitmap_screen!(name)

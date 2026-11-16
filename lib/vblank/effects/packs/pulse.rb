@@ -144,7 +144,7 @@ module VBlank
         def pulse_half_cycle(over)
           unless over.is_a?(Numeric) && over.positive?
             raise ArgumentError,
-                  "pulse needs a positive number of seconds for `over:`. You gave #{over.inspect}."
+                  "pulse needs a positive number of seconds for `over:`. You gave #{Messages::PlainWords.words_for_given(over)}."
           end
 
           [(over * Builder::ControlFlow::FRAMES_PER_SECOND / 2).round, 1].max
@@ -158,7 +158,7 @@ module VBlank
             next if size.is_a?(Numeric) && size.positive?
 
             raise ArgumentError,
-                  "a pulse's sizes must be more than 0. You gave #{size.inspect}. " \
+                  "a pulse's sizes must be more than 0. You gave #{Messages::PlainWords.words_for_given(size)}. " \
                   "1.0 is the size the sprite was drawn at, 2.0 is twice as big."
           end
           return unless from == to

@@ -94,7 +94,7 @@ module VBlank
         unless place.is_a?(Integer) && place.between?(0, place_tiles.length - 1)
           raise ArgumentError, "background :#{background.name} was told its cells by a slot of #{place_tiles.length} cells, " \
                                "and set_cell names one by its place in that slot of set_cells:, 0 to #{place_tiles.length - 1}. " \
-                               "It was given #{place.inspect}. To fix this, give a place from 0 to #{place_tiles.length - 1}."
+                               "It was given #{Messages::PlainWords.words_for_given(place)}. To fix this, give a place from 0 to #{place_tiles.length - 1}."
         end
         write_tiles(background, col, row, place_tiles.fetch(place))
       end

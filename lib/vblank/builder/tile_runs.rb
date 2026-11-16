@@ -251,7 +251,7 @@ module VBlank
         return if count.is_a?(Integer) && count.positive?
 
         raise ArgumentError, "tiles :#{name} needs `count:`, how many tiles the list holds. It must be a whole " \
-                             "number, 1 or more. Got #{count.inspect}."
+                             "number, 1 or more. Got #{Messages::PlainWords.words_for_given(count)}."
       end
 
       def refuse_tile_run_list_unfit!(name, list, count, what: "tiles", own_form: false)

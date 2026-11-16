@@ -54,7 +54,7 @@ module VBlank
           unless DSL::Whole.positive?(intensity)
             raise ArgumentError,
                   "shake_screen needs a positive whole number for intensity. " \
-                  "You gave #{intensity.inspect}."
+                  "You gave #{Messages::PlainWords.words_for_given(intensity)}."
           end
 
           shake = screen_shake_state
@@ -159,7 +159,7 @@ module VBlank
             in_frames = (duration * Builder::ControlFlow::FRAMES_PER_SECOND).round if duration.is_a?(Numeric)
             unless in_frames&.positive?
               raise ArgumentError,
-                    "shake_screen needs a positive duration in seconds. You gave #{duration.inspect}."
+                    "shake_screen needs a positive duration in seconds. You gave #{Messages::PlainWords.words_for_given(duration)}."
             end
             return in_frames
           end
@@ -167,7 +167,7 @@ module VBlank
           frames ||= 8 # a short, punchy default
           unless DSL::Whole.positive?(frames)
             raise ArgumentError,
-                  "shake_screen needs a positive whole number of frames. You gave #{frames.inspect}."
+                  "shake_screen needs a positive whole number of frames. You gave #{Messages::PlainWords.words_for_given(frames)}."
           end
           frames
         end

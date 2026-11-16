@@ -331,7 +331,7 @@ module VBlank
       def validate_pool!(name, capacity, fields)
         raise ArgumentError, "A pool needs a name that is a Symbol. Got #{name.inspect}." unless name.is_a?(Symbol)
         unless DSL::Whole.positive?(capacity)
-          raise ArgumentError, "pool :#{name} needs a positive capacity. Got #{capacity.inspect}."
+          raise ArgumentError, "pool :#{name} needs a positive capacity. Got #{Messages::PlainWords.words_for_given(capacity)}."
         end
 
         refuse_pool_name_with_stray_underscores!(name)

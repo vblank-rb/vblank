@@ -160,7 +160,7 @@ module VBlank
           unless at.nil? || (at.is_a?(Array) && at.length == 2 && at.all? { |n| n.is_a?(Integer) })
             raise ArgumentError,
                   "camera_follows takes `at:` as a place in the world, like `at: [120, 80]`. " \
-                  "You gave #{at.inspect}."
+                  "You gave #{Messages::PlainWords.words_for_given(at)}."
           end
           return if @follow_camera.nil? || @follow_camera.equal?(sprite)
 

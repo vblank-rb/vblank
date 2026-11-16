@@ -575,7 +575,7 @@ module VBlank
           unless at.is_a?(Array) && at.length == 2 && at.all?(Integer)
             raise ArgumentError,
                   "menu takes `at:` as where the first row starts, like `at: [80, 60]`. " \
-                  "Got #{at.inspect}. To centre a column of rows, ask the font how wide " \
+                  "Got #{Messages::PlainWords.words_for_given(at)}. To centre a column of rows, ask the font how wide " \
                   "the widest one comes out with `text_width`."
           end
 
@@ -587,7 +587,7 @@ module VBlank
 
           raise ArgumentError,
                 "menu takes `spacing:` as the pixels from one row to the next. " \
-                "Got #{step.inspect}."
+                "Got #{Messages::PlainWords.words_for_given(step)}."
         end
 
         def refuse_bad_menu_repeat_every!(frames)
@@ -595,7 +595,7 @@ module VBlank
 
           raise ArgumentError,
                 "menu takes `repeat_every:` as the frames a held button waits before it " \
-                "walks to the next row. Got #{frames.inspect}."
+                "walks to the next row. Got #{Messages::PlainWords.words_for_given(frames)}."
         end
 
         # Which row the cursor is on at power-on: the one the game named, else the first
@@ -610,7 +610,7 @@ module VBlank
           unless starts_on.is_a?(Integer)
             raise ArgumentError,
                   "menu takes `starts_on:` as which row the cursor starts on, counting " \
-                  "from 0, like `starts_on: 2`. Got #{starts_on.inspect}."
+                  "from 0, like `starts_on: 2`. Got #{Messages::PlainWords.words_for_given(starts_on)}."
           end
           unless (0...items.length).cover?(starts_on)
             raise ArgumentError,

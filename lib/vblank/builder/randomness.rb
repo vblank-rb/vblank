@@ -128,7 +128,7 @@ module VBlank
       # @return [Condition] the yes/no test
       def chance(percent)
         unless percent.is_a?(Integer) && (0..100).cover?(percent)
-          raise ArgumentError, "chance needs a whole percent from 0 to 100. You gave #{percent.inspect}."
+          raise ArgumentError, "chance needs a whole percent from 0 to 100. You gave #{Messages::PlainWords.words_for_given(percent)}."
         end
 
         draw = next_rng_var
@@ -181,7 +181,7 @@ module VBlank
       def range_bounds(range)
         unless range.is_a?(Range) && range.begin.is_a?(Integer) && range.end.is_a?(Integer)
           raise ArgumentError,
-                "roll/rand needs a range of whole numbers, like 0..9 or 0...10. You gave #{range.inspect}."
+                "roll/rand needs a range of whole numbers, like 0..9 or 0...10. You gave #{Messages::PlainWords.words_for_given(range)}."
         end
 
         lo = range.begin

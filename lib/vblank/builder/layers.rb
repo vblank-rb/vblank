@@ -418,7 +418,7 @@ module VBlank
         "showing #{as_written(words.shows)} of itself and #{as_written(words.behind)} of what is behind"
       end
 
-      def as_written(amount) = (DSL::Value.fixed_number(amount) || amount.inspect).to_s
+      def as_written(amount) = (DSL::Value.fixed_number(amount) || Messages::PlainWords.words_for_given(amount)).to_s
 
       # A bitmap screen paints its scenery, its sprites and its text into ONE picture
       # before the display ever sees it. By the time an effect could apply there is

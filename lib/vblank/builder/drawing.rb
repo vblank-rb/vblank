@@ -372,7 +372,7 @@ module VBlank
           next if value.is_a?(Integer)
 
           raise ArgumentError,
-                "`inside` needs edges settled while you build. Got #{name}: #{value.inspect}. " \
+                "`inside` needs edges settled while you build. Got #{name}: #{Messages::PlainWords.words_for_given(value)}. " \
                 "Where a part of the screen is belongs to how the screen is laid out, not to " \
                 "something the game works out as it runs."
         end
@@ -664,7 +664,7 @@ module VBlank
         return if rect.is_a?(Array) && rect.size == 4 && rect.all?(Integer)
 
         raise ArgumentError, "fade `#{word}:` takes a rectangle as four whole numbers you write: " \
-                             "[x, y, width, height], in pixels. You gave #{rect.inspect}."
+                             "[x, y, width, height], in pixels. You gave #{Messages::PlainWords.words_for_given(rect)}."
       end
 
       public
@@ -916,7 +916,7 @@ module VBlank
         unless width.is_a?(Integer) && width.positive?
           raise ArgumentError,
                 "draw_column_at needs a `width:` of 1 or more, settled while you build. " \
-                "Got #{width.inspect}. A strip's width is a property of the view, not " \
+                "Got #{Messages::PlainWords.words_for_given(width)}. A strip's width is a property of the view, not " \
                 "something the game works out as it runs."
         end
 
@@ -1270,18 +1270,18 @@ module VBlank
         unless at.is_a?(Array) && at.length == 2 && at.all?(Integer)
           raise ArgumentError,
                 "`spotlight at:` is where the light starts, as two whole numbers: `at: [120, 80]`. " \
-                "You gave #{at.inspect}. To move it as the game runs, use the handle: `light.move_to x, y`."
+                "You gave #{Messages::PlainWords.words_for_given(at)}. To move it as the game runs, use the handle: `light.move_to x, y`."
         end
         unless radius.is_a?(Integer) && radius >= 0
           raise ArgumentError,
                 "`spotlight radius:` is how far the light reaches, as a whole number of pixels, 0 or " \
-                "more. You gave #{radius.inspect}. To change it as the game runs, use `light.radius`."
+                "more. You gave #{Messages::PlainWords.words_for_given(radius)}. To change it as the game runs, use `light.radius`."
         end
         return if dark.is_a?(Integer) && (0..100).cover?(dark)
 
         raise ArgumentError,
               "`spotlight dark:` is how dark the picture is outside the light, as a whole number from " \
-              "0 to 100. You gave #{dark.inspect}. To change it as the game runs, use `light.dark`."
+              "0 to 100. You gave #{Messages::PlainWords.words_for_given(dark)}. To change it as the game runs, use `light.dark`."
       end
 
       # A fade's or a tint's amount for the tree, and how many bits of fraction it carries

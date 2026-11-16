@@ -139,7 +139,7 @@ module VBlank
         unless default.is_a?(Integer)
           raise ArgumentError,
                 "save_var's default must be a whole number. This is the value on a " \
-                "fresh cartridge. You gave #{default.inspect}."
+                "fresh cartridge. You gave #{Messages::PlainWords.words_for_given(default)}."
         end
 
         refuse_conflicting_declaration!(name, default, saved: true)

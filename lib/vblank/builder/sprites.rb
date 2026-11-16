@@ -716,7 +716,7 @@ module VBlank
           return if DSL::Whole.positive?(rate)
 
           raise ArgumentError,
-                "#{subject} :#{name} needs a positive rate: (how many game frames each picture is shown). Got #{rate.inspect}."
+                "#{subject} :#{name} needs a positive rate: (how many game frames each picture is shown). Got #{Messages::PlainWords.words_for_given(rate)}."
         end
         return unless frames
 
@@ -727,7 +727,7 @@ module VBlank
         return if DSL::Whole.positive?(rate)
 
         raise ArgumentError,
-              "#{subject} :#{name} needs a positive rate: (how many frames each picture is shown). Got #{rate.inspect}."
+              "#{subject} :#{name} needs a positive rate: (how many frames each picture is shown). Got #{Messages::PlainWords.words_for_given(rate)}."
       end
 
       # Refuse a second pose source alongside from_aseprite: (they all set the sprite's

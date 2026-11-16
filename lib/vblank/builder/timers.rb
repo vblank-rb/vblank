@@ -23,7 +23,7 @@ module VBlank
         unless DSL::Whole.positive?(per_second)
           raise ArgumentError,
                 "timer :#{name} needs per_second to be a positive whole number of ticks a second. " \
-                "Got #{per_second.inspect}. " \
+                "Got #{Messages::PlainWords.words_for_given(per_second)}. " \
                 "For slower or fractional timing, use `every` or `after` by frames or seconds."
         end
 

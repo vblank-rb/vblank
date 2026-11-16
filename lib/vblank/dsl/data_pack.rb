@@ -445,7 +445,7 @@ module VBlank
         unless shape == :numbers && layout.width == :byte && index.is_a?(Integer) && !index.negative? &&
                (index + 1) * PackWave::BYTES <= layout.count
           raise ArgumentError, "Slot :#{layout.name} holds #{layout.count} #{shape}. `wave` picks #{PackWave::BYTES} " \
-                               "bytes of a slot of bytes, two steps of the wave a byte. Got #{index.inspect}."
+                               "bytes of a slot of bytes, two steps of the wave a byte. Got #{Messages::PlainWords.words_for_given(index)}."
         end
 
         DSL::PackWave.new(slot: self, index: index)
@@ -457,7 +457,7 @@ module VBlank
         refuse_run_counted_from_slot_start!("number")
         unless shape == :numbers && index.is_a?(Integer) && index.between?(0, layout.count - 1)
           raise ArgumentError, "Slot :#{layout.name} holds #{layout.count} #{shape}. `number` picks one number of a slot " \
-                               "of numbers, 0 to #{layout.count - 1}. Got #{index.inspect}."
+                               "of numbers, 0 to #{layout.count - 1}. Got #{Messages::PlainWords.words_for_given(index)}."
         end
 
         DSL::PackNumber.new(slot: self, index: index)

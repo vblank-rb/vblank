@@ -590,7 +590,7 @@ module VBlank
       end
       unless count.is_a?(Integer) && count.positive?
         raise ArgumentError, "#{what} needs `count:`, a whole number written in the program, 1 or more. " \
-                             "It was given #{count.inspect}."
+                             "It was given #{Messages::PlainWords.words_for_given(count)}."
       end
       if DSL::Fraction.bits_of(at)
         raise ArgumentError, "#{what} starts the run at an entry of the table, and the number given to " \
@@ -2104,7 +2104,7 @@ module VBlank
       when nil
         raise ArgumentError, "To import #{name} from an image, give tile:. tile: is the size of each cell in pixels."
       else
-        raise ArgumentError, "tile: must be a number (square) or [width, height]. You gave #{tile.inspect}."
+        raise ArgumentError, "tile: must be a number (square) or [width, height]. You gave #{Messages::PlainWords.words_for_given(tile)}."
       end
     end
 
@@ -2114,7 +2114,7 @@ module VBlank
       case where
       when Array then where
       when Integer then [where % cols, where / cols]
-      else raise ArgumentError, "#{label} must be a cell number or [column, row]. You gave #{where.inspect}."
+      else raise ArgumentError, "#{label} must be a cell number or [column, row]. You gave #{Messages::PlainWords.words_for_given(where)}."
       end
     end
 

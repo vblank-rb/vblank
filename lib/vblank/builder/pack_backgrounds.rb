@@ -757,7 +757,7 @@ module VBlank
         sides = words.row_tiles ? [8, 16] : [8]
         unless across.is_a?(Integer) && across.positive? && (cells % across).zero?
           raise ArgumentError, "background :#{name} needs across:, how many cells a row of its map holds, a whole number " \
-                               "its map's #{cells} cells divide by. Got #{across.inspect}."
+                               "its map's #{cells} cells divide by. Got #{Messages::PlainWords.words_for_given(across)}."
         end
         return if sides.include?(cell)
 

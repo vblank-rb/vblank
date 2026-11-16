@@ -126,4 +126,32 @@ class TestDrawNumber < Minitest::Test
     err = assert_raises(ArgumentError) { tree { draw_number :score, 0, 0, :white, digits: 0 } }
     assert_match(/positive number of digits/, err.message)
   end
+
+  # The place and the width of the field are settled while the game is built, so a
+  # variable in one of them is refused, and the message names the variable the author wrote rather
+  # than printing a Ruby object.
+  def test_draw_number_given_a_variable_for_its_left_edge_names_it
+    err = assert_raises(ArgumentError) { tree { left = var(:left, 3); draw_number 5, left, 0, :white } }
+    assert_match(/draw_number/, err.message)
+    assert_match(/`left`/, err.message)
+    refute_match(/#</, err.message, "the message prints no Ruby object")
+  end
+
+  def test_draw_number_given_a_variable_for_its_top_edge_names_it
+    %i[bitmap tiled].each do |kind|
+      err = assert_raises(ArgumentError) do
+        tree { screen kind; top = var(:top, 3); draw_number 5, 8, top, :white }
+      end
+      assert_match(/draw_number/, err.message, "on a #{kind} screen")
+      assert_match(/`top`/, err.message, "on a #{kind} screen")
+      refute_match(/#</, err.message, "the message prints no Ruby object")
+    end
+  end
+
+  def test_draw_number_given_a_variable_for_its_digits_names_it
+    err = assert_raises(ArgumentError) { tree { wide = var(:wide, 3); draw_number 5, 0, 0, :white, digits: wide } }
+    assert_match(/digits/, err.message)
+    assert_match(/`wide`/, err.message)
+    refute_match(/#</, err.message, "the message prints no Ruby object")
+  end
 end
