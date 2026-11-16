@@ -78,9 +78,6 @@ module VBlank
         @kept_widths[name] = width
       end
 
-      # The width the game keeps variable +name+ at, or nil for the whole number.
-      def kept_width_of(name) = @kept_widths[name]
-
       def refuse_number_too_wide!(name, width, number)
         raise ArgumentError, "The variable :#{name} is kept as a #{width} (`width: :#{width}`), but the game sets it to " \
                              "#{number}. A #{width} holds #{IR::KeptWidths.lowest(width)} to #{IR::KeptWidths.highest(width)}. " \

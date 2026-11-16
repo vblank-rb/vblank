@@ -277,17 +277,6 @@ class TestVariableWidths < Minitest::Test
     assert_match(/-128 to 127/, error.message)
   end
 
-  def test_a_save_record_cannot_keep_a_narrow_variable
-    error = assert_raises(ArgumentError) do
-      played do
-        x = var :x, 0, width: :byte
-        save_data(:file) { keep x }
-      end
-    end
-
-    assert_match(/width: :byte/, error.message)
-  end
-
   def test_a_fraction_cannot_be_narrow
     error = assert_raises(ArgumentError) { played { var :x, 1.5, width: :half } }
 

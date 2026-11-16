@@ -669,6 +669,7 @@ module VBlank
       # Every routine the game wrote is built, so nothing more can be kept in a save_data
       # record: the records are laid out now, and the routines that read them built after —
       # with the ones held back until every line of the game was read (#build_last).
+      @saves&.settle_kept_parts! # every part's members are known now
       check_saves_keep_everything!
       lay_out_save_records
       emit_bodies(emitted, default_screen_mode)
