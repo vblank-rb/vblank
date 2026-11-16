@@ -218,10 +218,20 @@ module VBlank
           end
 
           # Where each of the game's variables went, by its name, and each of its lists — [its place,
-          # its capacity, the bytes a slot, its name] — once #sections has placed them; the label of
-          # the routine the runtime runs at each frame boundary, or nil for a game with no timers; and
-          # each routine's section, by its label, beside what that routine is to the author.
-          attr_reader :variables, :lists, :frame_begins, :section_routines
+          # its capacity, the bytes a slot, its name], and where a pool's layout put its slots elsewhere
+          # than after its header, slot 0's place and the bytes from one slot to the next — once
+          # #sections has placed them; the label of the routine the runtime runs at each frame
+          # boundary, or nil for a game with no timers; and each routine's section, by its label,
+          # beside what that routine is to the author.
+          attr_reader :variables, :frame_begins, :section_routines
+
+          def lists
+            @lists.to_h do |name, entry|
+              slots = @list_slots[name]
+              moved = slots && (slots.base != entry.first + Runtime::Lists::HEADER || slots.stride != entry[2])
+              [name, moved ? [*entry, slots.base, slots.stride] : entry]
+            end
+          end
 
           # Whether the cartridge counts the frames it spends setting up into the game's count of
           # frames since power-on, from the top of setting up (Runtime::Boot#emit).
@@ -268,6 +278,7 @@ module VBlank
             @handover = @plan.handover
             @scenes = @plan.scenes
             @lists = {}
+            @list_slots = {}
             @variables = {}
             @locals = {} # a routine's own numbers, by the name the lowering gave each
             @starts = [] # [address, value] for a place that does not start at nought
@@ -305,7 +316,9 @@ module VBlank
               place = chip_list_place(node.name) ||
                       @memory.reserve_far("the list #{node.name.inspect}", Runtime::Lists::HEADER + (node.capacity * width))
               @lists[node.name] = [place, node.capacity, width, node.name.to_s]
+              @list_slots[node.name] = ListSlots.new(header: place, base: place + Runtime::Lists::HEADER, stride: width)
             end
+            place_pool_slots
             @scene = keep_local(:scene, start: -1) unless @scenes.empty?
             keep_timer_numbers
             keep_corner_notes(corner_layers, bar: :own_note)
@@ -649,11 +662,12 @@ module VBlank
           # list of links this way on every turn.
           def emit_slot_into_variable(node, name)
             place, _capacity, width = list_placed(node)
-            slot = fixed_slot_address(node, place, width)
+            slot = fixed_slot_address(node)
             unless slot
-              emit_slot_into_x(place, width, index_halves(node.index), checked: !index_inside_full_list?(node.name, node.index))
+              emit_slot_into_x(place, list_slots(node).stride, index_halves(node.index),
+                               checked: !index_inside_full_list?(node.name, node.index))
             end
-            slots = slot || (place + Runtime::Lists::HEADER)
+            slots = slot || list_slots(node).base
             low, high = variable_halves(name)
             if width == 4
               [low, high].each_with_index do |to, i|
@@ -1076,7 +1090,7 @@ module VBlank
 
           def emit_slots_zeroed(node)
             place, capacity, width, = list_placed(node)
-            Runtime::Picture.emit_fill_work_ram(@asm, place + Runtime::Lists::HEADER, capacity * width, "rt_zero")
+            Runtime::Picture.emit_fill_work_ram(@asm, list_slots(node).base, capacity * width, "rt_zero")
           end
 
           def emit_list_push(node) = list_call("rt_list_push", node, node.value)
@@ -1102,21 +1116,22 @@ module VBlank
             return list_call("rt_list_get", node, node.index) if front_dropped_lists.include?(node.name)
 
             place, _capacity, width = list_placed(node)
-            slot = fixed_slot_address(node, place, width)
+            slot = fixed_slot_address(node)
             return emit_read_slot_at_x(slot, width, x: false) if slot
 
-            emit_slot_into_x(place, width, index_halves(node.index), checked: !index_inside_full_list?(node.name, node.index))
-            emit_read_slot_at_x(place + Runtime::Lists::HEADER, width)
+            slots = list_slots(node)
+            emit_slot_into_x(place, slots.stride, index_halves(node.index), checked: !index_inside_full_list?(node.name, node.index))
+            emit_read_slot_at_x(slots.base, width)
           end
 
           # Where the slot is, when the index is a number written in the program that is always
           # inside the list (#index_inside_full_list?): the read or write then names the slot
           # itself, with no index worked out at all. Nil otherwise.
-          def fixed_slot_address(node, place, width)
+          def fixed_slot_address(node)
             number = folded(node.index)
             return nil unless number && index_inside_full_list?(node.name, node.index)
 
-            place + Runtime::Lists::HEADER + (number * width)
+            list_slots(node).at(number)
           end
 
           # Where the two halves of +node+ are when it reads a whole-word slot at a fixed address
@@ -1125,8 +1140,7 @@ module VBlank
           def fixed_word_slot_halves(node)
             return nil unless node.is_a?(Node) && node.kind == :list_get && !front_dropped_lists.include?(node.name)
 
-            place, _capacity, width = list_placed(node)
-            slot = width == 4 && fixed_slot_address(node, place, width)
+            slot = list_placed(node)[2] == 4 && fixed_slot_address(node)
             slot ? [@asm.long(slot), @asm.long(slot, 2)] : nil
           end
 
@@ -1142,8 +1156,9 @@ module VBlank
             return list_call("rt_list_set", node, node.index, node.value) if front_dropped_lists.include?(node.name)
 
             place, _capacity, width = list_placed(node)
+            stride = list_slots(node).stride
             halves = operand_halves(node.value)
-            slot = fixed_slot_address(node, place, width)
+            slot = fixed_slot_address(node)
             halves ||= fixed_word_slot_halves(node.value) if slot && width == 4
             if slot
               # A word's sum is written straight into its slot, a half at a time.
@@ -1161,19 +1176,19 @@ module VBlank
             index = operand_halves(node.index)
             checked = !index_inside_full_list?(node.name, node.index)
             if halves
-              emit_slot_into_x(place, width, index_halves(node.index), checked: checked)
+              emit_slot_into_x(place, stride, index_halves(node.index), checked: checked)
             elsif index
               slot_value(node.value, width)
-              emit_slot_into_x(place, width, index, checked: checked)
+              emit_slot_into_x(place, stride, index, checked: checked)
               halves = [@asm.direct(R0), @asm.direct(R0 + 2)]
             else
               push_value(node.index)
               slot_value(node.value, width)
               pull_into(R1)
-              emit_slot_into_x(place, width, [@asm.direct(R1), @asm.direct(R1 + 2)], checked: checked)
+              emit_slot_into_x(place, stride, [@asm.direct(R1), @asm.direct(R1 + 2)], checked: checked)
               halves = [@asm.direct(R0), @asm.direct(R0 + 2)]
             end
-            emit_write_slot_at_x(place + Runtime::Lists::HEADER, width, halves)
+            emit_write_slot_at_x(list_slots(node).base, width, halves)
           end
 
           # Where the two halves of a list's index are: where a variable or a written number already
@@ -1192,6 +1207,37 @@ module VBlank
 
           def list_placed(node)
             @lists.fetch(node.name) { raise LoweringError, "the list #{node.name.inspect} is used and never declared" }
+          end
+
+          # WHERE A LIST'S SLOTS ARE: its header (where the runtime keeps its capacity, front and
+          # length), slot 0, and the bytes from one slot to the next. A list of the game's own has its
+          # slots straight after its header, a slot as wide as the list. A pool's slot lists are where
+          # its layout put them (Backends::PoolLayout, #place_pool_slots): today's lists the same way,
+          # another layout at a stride every list of the pool shares. Every read and write of a slot
+          # asks here, never the header's place plus the header.
+          ListSlots = Data.define(:header, :base, :stride) do
+            def at(slot) = base + (slot * stride)
+          end
+
+          # Each pool's slot lists placed by the layout the pool is kept in (Backends::PoolLayout).
+          # A layout keeping a slot list in an area of its own puts its slots after the list's
+          # header, where #sections reserved it.
+          def place_pool_slots
+            (@program.pools || []).each do |shape|
+              placement = PoolLayout.chosen(shape, CONSOLE, PoolLayout.steps_on(@program, shape)).place(shape)
+              placement.slots.each do |list, place|
+                next unless @lists.key?(list) && @lists.key?(place.area)
+
+                header = @lists.fetch(list).first
+                base = @lists.fetch(place.area).first + Runtime::Lists::HEADER + place.offset
+                @list_slots[list] = ListSlots.new(header: header, base: base, stride: place.stride)
+              end
+            end
+          end
+
+          def list_slots(node)
+            name = node.is_a?(Symbol) ? node : node.name
+            @list_slots.fetch(name) { raise LoweringError, "the list #{name.inspect} is used and never declared" }
           end
 
           # AN INDEX THAT CANNOT FALL OUTSIDE ITS LIST. A list made full and never made longer or
@@ -1391,7 +1437,7 @@ module VBlank
             return unless node.is_a?(Node) && node.kind == :list_get && !front_dropped_lists.include?(node.name)
 
             place, _capacity, width = list_placed(node)
-            slot = (width > 1 || bits == 8) && fixed_slot_address(node, place, width)
+            slot = (width > 1 || bits == 8) && fixed_slot_address(node)
             @asm.long(slot) if slot
           end
 
@@ -1399,8 +1445,8 @@ module VBlank
           # byte where all sixteen are wanted.
           def emit_low_half_of_slot(node, bits)
             place, _capacity, width = list_placed(node)
-            emit_slot_into_x(place, width, index_halves(node.index), checked: !index_inside_full_list?(node.name, node.index))
-            @asm.lda(@asm.long_x(place + Runtime::Lists::HEADER))
+            emit_slot_into_x(place, list_slots(node).stride, index_halves(node.index), checked: !index_inside_full_list?(node.name, node.index))
+            @asm.lda(@asm.long_x(list_slots(node).base))
             return unless width == 1 && bits == 16
 
             positive = fresh("byte_positive")
@@ -1444,7 +1490,7 @@ module VBlank
             keys_place, _keys_capacity, key_width = @lists.fetch(node.by) do
               raise LoweringError, "the list #{node.by.inspect} is sorted by and never declared"
             end
-            sort = SortPlaces.new(slots: place + Runtime::Lists::HEADER, width: width,
+            sort = SortPlaces.new(slots: list_slots(node).base, width: width,
                                   keys: keys_place + Runtime::Lists::HEADER, key_width: key_width,
                                   descending: node.descending)
             next_item = fresh("sort_item")
@@ -2510,11 +2556,11 @@ module VBlank
             return at_place(place_of(kept)) if kept
 
             place, _capacity, width = list_placed(node)
-            slot = fixed_slot_address(node, place, width)
+            slot = fixed_slot_address(node)
             return @asm.long(slot) if slot
 
-            emit_slot_into_x(place, width, operand_halves(node.index), checked: !index_inside_full_list?(node.name, node.index))
-            @asm.long_x(place + Runtime::Lists::HEADER)
+            emit_slot_into_x(place, list_slots(node).stride, operand_halves(node.index), checked: !index_inside_full_list?(node.name, node.index))
+            @asm.long_x(list_slots(node).base)
           end
 
           # The `abs` and the number it must be below, for a test #compare_absolute_below takes, or nil.
@@ -2578,8 +2624,8 @@ module VBlank
 
           def compare_narrow_slot(op, slot, number)
             place, _capacity, width = list_placed(slot)
-            emit_slot_into_x(place, width, index_halves(slot.index), checked: !index_inside_full_list?(slot.name, slot.index))
-            @asm.lda(@asm.long_x(place + Runtime::Lists::HEADER))
+            emit_slot_into_x(place, list_slots(slot).stride, index_halves(slot.index), checked: !index_inside_full_list?(slot.name, slot.index))
+            @asm.lda(@asm.long_x(list_slots(slot).base))
             @asm.and_a(0x00FF) if width == 1
             @asm.cmp(number & (width == 1 ? 0xFF : 0xFFFF))
             op == :== ? :bne : :beq
@@ -2996,11 +3042,11 @@ module VBlank
           # Where the two halves of +node+ (#slot_read_at_x?) are, with X set to reach them.
           def slot_halves_at_x(node)
             place, _capacity, width = list_placed(node)
-            slot = fixed_slot_address(node, place, width)
+            slot = fixed_slot_address(node)
             return [@asm.long(slot), @asm.long(slot, 2)] if slot
 
-            emit_slot_into_x(place, width, operand_halves(node.index), checked: !index_inside_full_list?(node.name, node.index))
-            [@asm.long_x(place + Runtime::Lists::HEADER), @asm.long_x(place + Runtime::Lists::HEADER, 2)]
+            emit_slot_into_x(place, list_slots(node).stride, operand_halves(node.index), checked: !index_inside_full_list?(node.name, node.index))
+            [@asm.long_x(list_slots(node).base), @asm.long_x(list_slots(node).base, 2)]
           end
 
           # The number +node+ worked out into R0 and pushed, high half first, so the stack holds it
@@ -3396,8 +3442,8 @@ module VBlank
             place, _capacity, width = list_placed(node)
             return unless width == 4
 
-            emit_slot_into_x(place, width, index_halves(node.index), checked: !index_inside_full_list?(node.name, node.index))
-            ->(along) { @asm.long_x(place + Runtime::Lists::HEADER + along) }
+            emit_slot_into_x(place, list_slots(node).stride, index_halves(node.index), checked: !index_inside_full_list?(node.name, node.index))
+            ->(along) { @asm.long_x(list_slots(node).base + along) }
           end
 
           # The number's top byte, with its sign above it, into the word +to+.

@@ -2239,7 +2239,7 @@ module VBlank
                   # A sorted order keeps its items doubled in the first 8K as well (Lowering#emit_keyed_sort).
                   @asm.ldx(@asm.abs(keyed.entries + (k * 2)))
                 else
-                  @asm.lda(@asm.long(place + Runtime::Lists::HEADER + (k * width)))
+                  @asm.lda(@asm.long(list_slots(run.order).at(k)))
                   @asm.and_a(0x00FF) if width == 1
                   @asm.asl
                   @asm.tax

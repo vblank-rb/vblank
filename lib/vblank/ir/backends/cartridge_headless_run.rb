@@ -410,18 +410,23 @@ module VBlank
         end
 
         # Every list as the runtime keeps it: a header (each runtime's Lists sets where in it the
-        # capacity, the front and the length are, and how many bytes each is) and then its slots, a ring
-        # from the front.
+        # capacity, the front and the length are, and how many bytes each is) and its slots, a ring
+        # from the front. The slots follow the header, a slot as wide as the list, unless the build
+        # placed them elsewhere: a pool's slot list kept in a layout of the console's own
+        # (Backends::PoolLayout) has its slot 0 and the bytes from one slot to the next beside its
+        # place.
         def read_lists
           layout = runtime::Lists
           field = layout::FIELD_BYTES
-          @places.lists.to_h do |name, (address, _capacity, width, _label)|
+          @places.lists.to_h do |name, (address, _capacity, width, _label, base, stride)|
+            base ||= address + layout::HEADER
+            stride ||= width
             capacity = number_at(address + layout::CAPACITY, field)
             front = number_at(address + layout::FRONT, field)
             length = number_at(address + layout::LENGTH, field)
             items = Array.new(length) do |i|
               slot = (front + i) % capacity
-              read_slot(address + layout::HEADER + (slot * width), width)
+              read_slot(base + (slot * stride), width)
             end
             [name, items]
           end
