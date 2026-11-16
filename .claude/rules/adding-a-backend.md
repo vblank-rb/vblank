@@ -248,6 +248,17 @@ shared piece is improved, the list shows which consoles do not get the improveme
 measured again. The same job written more than once with no entry in the list is drift, and is
 filed as a bug.
 
+**A shared piece is a starting point, not an answer.** The rule above guards against drift; it
+never makes the shared way right by default. The first time a lowering runs a shared piece on a hot
+path (every frame, or once per object, pair or pixel), it is measured on that console against the
+console's own games doing the same job. A measured gap means the lowering gets its own way, listed
+with its reason as above. Pools showed why: one layout for every console (a list per field, 32-bit
+numbers, a slot multiplied into an index on each read, a stored loop counter) cost the Super
+Nintendo several times what the retail game spent on the same check, and nothing asked until a port
+nearly ran out of frame. **A new shared piece leaves room for a console's own way**: a choice a
+console can offer several of and pick between per use (as the pool layout lets a console offer
+layouts and pick one per pool, and a game name one), not one shape for all.
+
 A new backend is named for the platform it targets (`JS`, not `Canvas` or `V8`), lives in
 `lib/vblank/ir/backends/<name>.rb` beside a folder of the same name, and is required from
 `lib/vblank/ir/backends.rb`.
@@ -377,3 +388,9 @@ trails. On the way there, a test it cannot play yet skips itself with a reason
 (`skip_on_native` is native's version), and the run counts its skips by reason at the end so
 they cannot pile up. A hardware feature is not done until it works on every backend; when one is
 on the radar, record each backend's slice as its own piece of work.
+
+**Working is half of done.** On a console, a feature's hot path is done when its cost there is
+measured too, against the console's own games doing that job (or a budget written down with its
+reason where none did), and pinned by a test that names where the measurement came from: the game
+and routine, or the budget's reason. A cost above that is a bug filed then, not when a game hits
+it (`.claude/rules/shared/all-projects.md`, "Speed").
