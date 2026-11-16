@@ -124,11 +124,42 @@ class TestIRVerifier < Minitest::Test
     assert_match(/fill_rect/, err.message)
     assert_match(/game\.rb:7/, err.message)
     assert_match(/works out as it runs/, err.message)
+    assert_match(/`speed`/, err.message, "it names the variable")
     refute_match(/#<VBlank::DSL::Value/, err.message, "the message names no Ruby object")
   end
 
+  # The same slip reaches the tree in two other shapes: a variable named by its symbol, and the
+  # bare value node a handle stands for. Both are the author's, so both get the plain error.
+  def test_a_variable_named_by_its_symbol_in_a_fixed_number_slot_is_refused_naming_it
+    bad = program(Nodes::FillRect.new(x: 0, y: :h, w: 2, h: 2, color: :red, source: "game.rb:7"))
+
+    err = assert_raises(VBlank::IR::Guardrails::ValidationError) { Verifier.verify!(bad) }
+    assert_match(/fill_rect/, err.message)
+    assert_match(/`h`/, err.message)
+    assert_match(/works out as it runs/, err.message)
+  end
+
+  def test_a_bare_variable_node_in_a_fixed_number_slot_is_refused_naming_it
+    bad = program(Nodes::FillRect.new(x: var_ref(:h), y: 0, w: 2, h: 2, color: :red, source: "game.rb:7"))
+
+    err = assert_raises(VBlank::IR::Guardrails::ValidationError) { Verifier.verify!(bad) }
+    assert_match(/fill_rect/, err.message)
+    assert_match(/`h`/, err.message)
+    refute_match(/var_ref/, err.message, "the message names no node of the tree")
+  end
+
+  def test_a_bare_worked_out_node_in_a_fixed_number_slot_is_refused_in_plain_words
+    bad = program(Nodes::FillRect.new(x: binop(:+, var_ref(:h), int(1)), y: 0, w: 2, h: 2, color: :red))
+
+    err = assert_raises(VBlank::IR::Guardrails::ValidationError) { Verifier.verify!(bad) }
+    assert_match(/fill_rect/, err.message)
+    assert_match(/works out as it runs/, err.message)
+    refute_match(/binop/, err.message, "the message names no node of the tree")
+  end
+
   def test_a_wrong_literal_type_in_a_structural_slot_is_caught
-    bad = program(Nodes::Every.new(counter: :t, period: :nope)) # period must be an Integer
+    # period must be an Integer. (A symbol there is a variable the author named: see above.)
+    bad = program(Nodes::Every.new(counter: :t, period: "30"))
     err = assert_raises(IR::InvariantError) { Verifier.verify!(bad) }
     assert_match(/every\.period must be an author-time int/, err.message)
   end

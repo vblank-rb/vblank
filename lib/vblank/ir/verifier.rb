@@ -138,18 +138,36 @@ module VBlank
       # fails far from the line ("cannot make ... a number"), so it is refused here in plain
       # words, naming the verb and the line the node was built at.
       #
-      # The handle is known by what it answers rather than by its class (IR loads before the
-      # DSL that defines it): it stands for a value node. Asked only of a field that already
-      # failed its check, so a well-formed program pays nothing for it.
+      # The game's number comes in three shapes: the handle a game holds (a `var`, an expression),
+      # the bare value node a handle stands for, and a variable named by its symbol where a
+      # number goes. A symbol is read as a variable only in a slot for a whole number, since a
+      # symbol is the right thing in a slot for a name. An `int` node is not one of them: it is a
+      # number written in the program that a verb wrapped by mistake, which is VBlank's bug.
+      # Asked only of a field that already failed its check, so a well-formed program pays
+      # nothing for it.
       def refuse_game_number_in_fixed_field!(node, field, type, value)
-        return unless value.respond_to?(:node) && value.node.is_a?(Node) && value.node.value?
+        given = game_number_words(type, value)
+        return unless given
 
         verb = Messages::PlainWords.verb_written(node)
         where = node.source ? " at #{node.source}" : ""
         fix = type == :int ? "write a plain number for #{field}, such as 10" : "write #{field} in the program"
         raise Guardrails::ValidationError,
               "`#{verb}`#{where} takes only a value that is written in the program for its #{field}. " \
-              "You gave it a number that the game works out as it runs. To fix this, #{fix}."
+              "You gave it #{given}. To fix this, #{fix}."
+      end
+
+      # How the refusal names the game's number in +value+, or nil when +value+ is not one.
+      def game_number_words(type, value)
+        if value.is_a?(Symbol)
+          return nil unless type == :int
+
+          return Messages::PlainWords.words_for_variable(value)
+        end
+        return nil if value.is_a?(Node) && value.kind == :int
+        return nil unless Messages::PlainWords.game_number?(value)
+
+        Messages::PlainWords.words_for_given(value)
       end
 
       # A value slot must actually be there — a verb that forgot to set it is as
