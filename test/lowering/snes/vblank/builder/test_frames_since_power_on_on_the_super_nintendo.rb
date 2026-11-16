@@ -23,6 +23,27 @@ class TestFramesSincePowerOnOnTheSuperNintendo < Minitest::Test
     assert_frames_setting_up_counted(:snes, busy: BUSY)
   end
 
+  # The frame a game's first pass is seen on, from power-on: setting up clears the work RAM the build
+  # placed something in and the maps the picture reads (Runtime::Boot). Clearing all 128K of work RAM
+  # and all 64K of video RAM, it was frame 6 for a small game and 8 for one of 700 numbers and 40
+  # lists. The big game sets up its 700 numbers and 40 lists after the clearing.
+  SMALL_GAME_FIRST_PASS_FRAME = 2
+  BIG_GAME_FIRST_PASS_FRAME = 4
+
+  def test_a_small_game_shows_its_first_pass_early
+    seen = first_pass_seen(:snes, declaring_game(2, 2))
+
+    assert_equal SMALL_GAME_FIRST_PASS_FRAME, seen.frame
+    assert_equal seen.due, seen.reading, "the first pass reads the frames shown before it"
+  end
+
+  def test_a_game_of_many_numbers_and_lists_shows_its_first_pass_early
+    seen = first_pass_seen(:snes, declaring_game(700, 40))
+
+    assert_equal BIG_GAME_FIRST_PASS_FRAME, seen.frame
+    assert_equal seen.due, seen.reading, "the first pass reads the frames shown before it"
+  end
+
   # Clearing the console's memories and sending the song's sounds to the sound chip take frames
   # before the game's first line. They are shown frames too.
   def test_a_screen_held_to_a_frame_changes_on_it_with_or_without_songs

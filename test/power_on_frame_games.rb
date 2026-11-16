@@ -56,6 +56,28 @@ module PowerOnFrameGames
     FirstPassSeen.new(frame: frame, reading: reader.var(:first), due: frame - 1 - before, blanks_before_program: before)
   end
 
+  # A game of +numbers+ variables and +lists+ lists, each set from power-on, whose first pass keeps
+  # what frames_since_power_on read in `first`, and counts its passes in `passes`: what a console
+  # clears and sets up before the first pass grows with what the game keeps.
+  private def declaring_game(numbers, lists)
+    b = Builder.new
+    b.instance_eval do
+      screen :tiled, backdrop: :black
+      many = Array.new(numbers) { |n| var :"number_#{n}", n + 1 }
+      held = Array.new(lists) { |n| list :"list_#{n}", capacity: 16, full_of: n + 1 }
+      passes = 0
+      first = -1
+      sum = 0
+      game_loop do
+        first = frames_since_power_on if passes.zero?
+        passes += 1
+        sum = many.first(2).sum + held.first(2).sum { |each| each[0] }
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
   # The frame the first pass is seen on and its reading, for the counting game set up at once and
   # after spinning +busy+ times: each reads the frames before it the program could count.
   private def assert_frames_setting_up_counted(console, busy:)

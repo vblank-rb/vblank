@@ -94,8 +94,6 @@ module VBlank
             asm = W65816.new("runtime")
             count_at = lowering.variables[IR::Frames::COUNT]
             counted = lowering.counts_from_power_on?
-            Boot.emit(asm, main: Lowering::MAIN, fast: c.board.fast, counted: counted)
-            Boot.emit_zero(asm)
             Int32.emit(asm, Int32.scratch(memory, fractions: lowering.fractions?), divides: lowering.divides?)
             pad = memory.scratch(4)
             Frame.emit(asm, memory, pad: pad, sound: c.sound, extra_buttons: c.extra_buttons,
@@ -140,7 +138,15 @@ module VBlank
               sound = Sound.sections(memory, lowered[:waves], recordings: lowered[:recordings], scenes: lowered[:scene_recordings])
               image = Sound.image_for(memory, lowered[:waves], recordings: lowered[:recordings], scenes: lowered[:scene_recordings])
             end
-            Made.new(sections: [vectors.section, asm.section, *chip_paint, *sound, *lowered[:music]&.sections, lowered[:plays]].compact,
+            # The boot last, so it clears only the work RAM everything above was placed in.
+            boot = W65816.new("runtime boot")
+            Boot.emit(boot, main: Lowering::MAIN, fast: c.board.fast, counted: counted,
+                            cleared: Boot::Cleared.new(work_ram: memory.placed_ranges,
+                                                       video_ram: Boot.video_ram_read(painted: c.painted || c.doubled,
+                                                                                      third_layer: c.third_layer)))
+            Boot.emit_zero(boot)
+            Made.new(sections: [vectors.section, asm.section, boot.section, *chip_paint, *sound, *lowered[:music]&.sections,
+                                lowered[:plays]].compact,
                      sound_memory: image && Cartridge::SNESROM::SoundMemory.new(used: image.chip_bytes, room: Sound::MEMORY_BYTES))
           end
 

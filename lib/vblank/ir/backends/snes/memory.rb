@@ -179,6 +179,15 @@ module VBlank
           # How many bytes of the first 8K are in use.
           def used = @next - FIRST
 
+          # THE WORK RAM ANYTHING WAS PLACED IN, as ranges of long addresses: the first 8K whole (the
+          # direct pages, the runtime, the variables and the stack), the far places after it, and the
+          # last bank's, where any were asked for. Asked once everything has its place.
+          def placed_ranges
+            ranges = [(FAR_FIRST - 0x2000)...[@next_far, FAR_FIRST].max]
+            ranges << (LAST_BANK...@next_last) if @next_last > LAST_BANK
+            ranges
+          end
+
           private
 
           def full_message(name, bytes, left, part)

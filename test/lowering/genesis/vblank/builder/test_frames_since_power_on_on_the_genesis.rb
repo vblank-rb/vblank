@@ -45,29 +45,6 @@ class TestFramesSincePowerOnOnTheGenesis < Minitest::Test
     assert_equal frame - 1, reading, "the first pass reads the frames shown before it"
   end
 
-  private
-
-  # A game of +numbers+ variables and +lists+ lists, each set from power-on, whose first pass keeps
-  # what frames_since_power_on read in `first`, and counts its passes in `passes`.
-  def declaring_game(numbers, lists)
-    b = Builder.new
-    b.instance_eval do
-      screen :tiled, backdrop: :black
-      many = Array.new(numbers) { |n| var :"number_#{n}", n + 1 }
-      held = Array.new(lists) { |n| list :"list_#{n}", capacity: 16, full_of: n + 1 }
-      passes = 0
-      first = -1
-      sum = 0
-      game_loop do
-        first = frames_since_power_on if passes.zero?
-        passes += 1
-        sum = many.first(2).sum + held.first(2).sum { |each| each[0] }
-      end
-    end
-    b.finalize_program
-    b.program
-  end
-
   # Clearing the console's memories takes frames before the game's first line, and copying its
   # painted screen whole more before its first pass is shown. They are shown frames too.
   def test_a_screen_held_to_a_frame_changes_on_it_with_or_without_songs
