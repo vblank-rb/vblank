@@ -64,7 +64,8 @@ module PackBackgroundAreaGames
   # builder, is the game loop, handed the background and, with +turning+, the group of pictures the
   # town's tile 1 takes turns through (nil without). Hands back the program and the pack file the
   # build made (nil for a build that leaves its pack out).
-  private def areas_game_and_file(from, options: VBlank::Cartridge::Options.new, turning: false, &loop_body)
+  private def areas_game_and_file(from, options: VBlank::Cartridge::Options.new, turning: false, set_cells: nil, &loop_body)
+    told = set_cells ? { set_cells: set_cells } : {}
     b = VBlank::Builder.new(options: options)
     b.instance_eval do
       screen :tiled
@@ -80,7 +81,7 @@ module PackBackgroundAreaGames
       groups << tile_pictures(:blocks, tiles: { pack[:town_video].tile(1) => pack[:turns].tiles(0, across: TURNS.length) }) if turning
       world = background :world, tiles: AREAS.keys.to_h { |name| [name, pack[:"#{name}_video"]] },
                                  map: AREAS.keys.to_h { |name| [name, pack[:"#{name}_map"]] },
-                                 colors: AREAS.keys.to_h { |name| [name, pack[:"#{name}_colors"]] }, across: ACROSS
+                                 colors: AREAS.keys.to_h { |name| [name, pack[:"#{name}_colors"]] }, across: ACROSS, **told
       instance_exec(world, groups.first, &loop_body)
     end
     b.finalize_program
@@ -88,11 +89,11 @@ module PackBackgroundAreaGames
   end
 
   # THE ANSWER KEY: both areas drawn by hand, walked by the same loop.
-  private def areas_drawn_by_hand(&loop_body)
+  private def areas_drawn_by_hand(areas = AREAS, &loop_body)
     b = VBlank::Builder.new
     b.instance_eval do
       screen :tiled
-      maps = AREAS.to_h do |name, area|
+      maps = areas.to_h do |name, area|
         area.banks.each_with_index { |bank, at| colors :"#{name}_bank_#{at}", bank }
         pictures = {}
         drawn = area.cells.map do |tile, bank, mirrored, upside_down|
@@ -109,7 +110,7 @@ module PackBackgroundAreaGames
         tiles :"#{name}_by_hand", pictures
         [name, drawn.each_slice(ACROSS).to_a]
       end
-      world = background :world, tiles: AREAS.keys.to_h { |name| [name, :"#{name}_by_hand"] }, map: maps
+      world = background :world, tiles: areas.keys.to_h { |name| [name, :"#{name}_by_hand"] }, map: maps
       instance_exec(world, &loop_body)
     end
     b.finalize_program
@@ -217,9 +218,51 @@ class TestPackBackgroundAreas < Minitest::Test
     assert_match(/colors/, error.message)
   end
 
-  def test_cells_written_later_on_areas_of_the_pack_are_a_friendly_error
-    word = PackBackgroundAreaGames.advance_word(2, 1, false, false)
-    error = refusal_with(tiles: { town: :town_video, castle: :town_video }, set_cells: [word])
+  # A CELL WRITTEN LATER IN EACH AREA: one cell number told for every area, each area drawing it
+  # from its own tiles and colours. The town's top left is written on the second pass; the game walks
+  # to the castle on the sixth and writes its bottom right on the eighth.
+  WRITTEN = [3, 1, false, false].freeze
+
+  private def areas_with_written(written)
+    AREAS.to_h { |name, area| [name, area.with(cells: area.cells.each_with_index.map { |cell, at| at == written[name] ? WRITTEN : cell })] }
+  end
+
+  def test_a_cell_written_later_shows_the_tile_of_the_area_showing
+    word = PackBackgroundAreaGames.advance_word(*WRITTEN)
+    Dir.mktmpdir do |folder|
+      walked, = areas_game_and_file(areas_original(folder), set_cells: [word]) do |world|
+        tick = var :tick, 0
+        game_loop do
+          tick += 1
+          world.set_cell 0, 0, word if tick == 2
+          world.show_map :castle if tick == 6
+          world.set_cell 1, 1, word if tick == 8
+        end
+      end
+      town = areas_drawn_by_hand(areas_with_written(town: 0)) { |world| PackBackgroundAreaGames.emit_walk(self, world) }
+      castle = areas_drawn_by_hand(areas_with_written(castle: 3)) { |world| PackBackgroundAreaGames.emit_walk(self, world) }
+
+      assert_equal screen_at(town, 2), screen_at(walked, 4), "the town, its top left written"
+      assert_equal screen_at(castle, 5), screen_at(walked, 11), "the castle, its bottom right written"
+    end
+  end
+
+  def test_a_cell_no_area_was_told_is_a_friendly_error
+    told = PackBackgroundAreaGames.advance_word(*WRITTEN)
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) do
+        areas_game_and_file(areas_original(folder), set_cells: [told]) do |world|
+          world.set_cell 0, 0, told + 1
+          game_loop { wait_vblank }
+        end
+      end
+
+      assert_match(/set_cells:/, error.message)
+    end
+  end
+
+  def test_set_cells_other_than_cell_numbers_on_areas_of_the_pack_are_a_friendly_error
+    error = refusal_with(tiles: { town: :town_video, castle: :town_video }, set_cells: :town_map)
 
     assert_match(/set_cells:/, error.message)
     assert_match(/areas/, error.message)

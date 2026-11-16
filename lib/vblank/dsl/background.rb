@@ -110,6 +110,19 @@ module VBlank
         self
       end
 
+      # THE CELLS `set_cell` MAY WRITE IN EACH AREA of a background from the data pack that walks
+      # between areas: a PackCells for each area, in the order of its maps (one map an area), or nil
+      # for an area told none. Each area's pictures are its own, so a picture names one tile of
+      # +tiles+ (the background's tiles, every area's after the last) and `set_cell` writes the tile
+      # of the area the game has asked to show.
+      #
+      # Called by Builder::PackBackgrounds#declare_pack_background_areas.
+      def allow_set_cells_by_area(cells_by_area, tiles)
+        @area_pack_cells = cells_by_area
+        @tile_index = tiles.each_with_index.to_h
+        self
+      end
+
       # The name the background was declared with.
       attr_reader :name
 
@@ -143,7 +156,7 @@ module VBlank
       # makes, and they all show together on the next frame (Builder#finalize_held_tiles).
       def set_tile(col, row, tile, now: nil)
         refuse_on_bitmap_screen!("set_tile", instead: "Draw over the spot with `blit`")
-        if @walks_areas
+        if @walks_areas && !@area_pack_cells
           raise ArgumentError,
                 "background :#{@name} walks between areas, so a tile name can be in more than one area. " \
                 "set_tile cannot change a cell of it. To fix this, give each look of the room a map " \
@@ -237,6 +250,8 @@ module VBlank
       # video memory while the frame is drawn. Where set_tile's `now:` changes nothing, this does not
       # either, and where a console refuses it, it refuses this too.
       def set_cell(col, row, word, now: false)
+        return set_cell_by_area(col, row, word, now) if @area_pack_cells
+
         if @pack_cells.nil?
           raise ArgumentError,
                 "background :#{@name} was not told any cells that set_cell can write. To fix this, draw it from the " \
@@ -245,6 +260,25 @@ module VBlank
         raise ArgumentError, "set_cell was given `now: #{now.inspect}`. It must be true or false." unless [true, false].include?(now)
 
         @pack_cells.write(self, col, row, word, now: now || nil)
+        self
+      end
+
+      # #set_cell on a background from the data pack walking between areas: the cell written as the
+      # area the game has asked to show tells it, one test of the map showing for each area told the
+      # cell. A number written in the game that no area was told is refused, as on one area.
+      def set_cell_by_area(col, row, word, now)
+        raise ArgumentError, "set_cell was given `now: #{now.inspect}`. It must be true or false." unless [true, false].include?(now)
+
+        told = @area_pack_cells.each_with_index.select do |cells, _|
+          cells && (!word.is_a?(Integer) || cells.tiles_of(word))
+        end
+        told = [@area_pack_cells.each_with_index.find { |cells, _| cells }] if told.empty? # its refusal names the cell
+        told.each do |cells, area|
+          test = PlainRuby::Steps::GameTest.new(showing == area)
+          test.open_yes_side
+          cells.write(self, col, row, word, now: now || nil)
+          test.close_side(nil)
+        end
         self
       end
 
