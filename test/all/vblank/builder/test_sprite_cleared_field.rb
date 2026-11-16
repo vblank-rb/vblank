@@ -92,11 +92,21 @@ class TestSpriteClearedField < Minitest::Test
   #
   # The fill is the block fill: a `fill_rect` this big takes the Advance longer than a frame,
   # and on a screen of one page the cartridge is then caught half way through it, which no
-  # picture of the interpreter's matches. The two verbs are one rule (IR::WholeScreen). Its size
-  # is the screen the game is laid out on, which the run's console may show less of.
+  # picture of the interpreter's matches. The two verbs are one rule (IR::WholeScreen).
+  #
+  # The fill covers both the screen the game is laid out on (the Advance's, which the build
+  # asks whether the fill covers) and the run's console's screen, which may be smaller (the
+  # Color's) or bigger (the Super Nintendo's). The part off the screen is clipped.
+  private def whole_screen_fill_size
+    laid_out = VBlank::Console::ADVANCE.screen_size
+    shown = VBlank::Console.described(game_console).screen_size
+    laid_out.zip(shown).map(&:max)
+  end
+
   def test_a_sprite_moved_after_a_whole_screen_fill_leaves_none_of_the_old_field
+    width, height = whole_screen_fill_size
     prog = field_program do |hero, step|
-      dma_fill_rect 0, 0, screen_width, screen_height, :blue if step == 3
+      dma_fill_rect 0, 0, width, height, :blue if step == 3
       hero.move :right, by: 8 if step > 3
     end
 
@@ -108,8 +118,9 @@ class TestSpriteClearedField < Minitest::Test
   end
 
   def test_a_sprite_hidden_after_a_whole_screen_fill_leaves_none_of_the_old_field
+    width, height = whole_screen_fill_size
     prog = field_program do |hero, step|
-      dma_fill_rect 0, 0, screen_width, screen_height, :blue if step == 3
+      dma_fill_rect 0, 0, width, height, :blue if step == 3
       hero.hide if step == 5
     end
 
