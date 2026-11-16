@@ -541,6 +541,55 @@ module VBlank
             end
           end
 
+          # --- pools (Backends::PoolLayout) ---
+          #
+          # A POOL IS KEPT IN THE LAYOUT ITS PLACEMENT GIVES: where slot s of each of its lists is, in
+          # bytes from the list's first slot (PoolLayout::SlotPlace), and how wide its value is. Every
+          # read and write of a slot by an index (#emit_slot_address, #written_slot_offset, and the
+          # loads and stores at the slot's width) asks #slot_place for that, a pool's list and any other
+          # alike. The Advance keeps every pool as lists today (Console::Description#pool_layouts): each
+          # slot list a block of its own, slot s at s times its width. A walk of a pool kept so is
+          # stepped by the statements the tree gives it (IR::WalkShape#step_statements).
+          #
+          # WHAT THE LISTS COST AGAINST THE CONSOLE'S HABIT. An ARM game keeps a thing as a record and
+          # holds its address in a register through the code that works on it, so a field is one LDR or
+          # STR with an immediate offset from that base, and the next thing is the base plus the record's
+          # size (GBATEK, "ARM Opcodes: Memory: Single Data Transfer",
+          # https://problemkaputt.de/gbatek.htm#armopcodesmemorysingledatatransferldrstrpld). A field
+          # kept as a list is reached from the thing's number instead: the number bounded, shifted by
+          # the slot's width and added to the list's base before the load, and again for the store. A
+          # layout of records is an adapter of PoolLayout and a base register held through a walk's body.
+          def place_pools(program)
+            @slot_places = {}
+            (program.pools || []).each do |shape|
+              placement = PoolLayout.chosen(shape, Console::ADVANCE, PoolLayout.steps_on(program, shape)).place(shape)
+              refuse_unmade_pool_placement!(shape, placement)
+              @slot_places.merge!(placement.slots)
+            end
+          end
+
+          # Where the slots of the list +name+ (its +info+) are: a pool's list as its layout placed it,
+          # any other a slot of its width after another.
+          def slot_place(name, info)
+            (@slot_places || {}).fetch(name) do
+              PoolLayout::SlotPlace.new(area: name, offset: 0, stride: info[:bytes], width: info[:bytes], scale: 1)
+            end
+          end
+
+          # A placement the Advance cannot keep yet: an area that is not one list of the tree, a value
+          # kept multiplied, or slots not one after another as wide as the list. Today's lists are
+          # none of those.
+          def refuse_unmade_pool_placement!(shape, placement)
+            placement.slots.each do |list, slot|
+              info = @lists[list] or next
+              next if slot.area == list && slot.scale == 1 && slot.offset.zero? && slot.stride == slot.width &&
+                      slot.width == info[:bytes]
+
+              raise LoweringError, "Pool :#{shape.name} is kept as #{placement.layout}. The Game Boy Advance build keeps " \
+                                   "a pool only as lists for now. To fix this, give the pool `layout: :lists`, or no layout."
+            end
+          end
+
           # A list's layout, or a friendly error if the program never created it.
           def list_info(name)
             @lists[name] ||
@@ -674,7 +723,8 @@ module VBlank
           # slot at worst, never a neighbouring variable.
           def emit_list_set(node)
             info = list_info(node.name)
-            if (offset = written_slot_offset(info, node.index))
+            slot = slot_place(node.name, info)
+            if (offset = written_slot_offset(info, slot, node.index))
               @lowering.value(node.value)                   # r0 = value
               @primitives.emit_list_base(info[:base])       # after the value, which may use r9 itself
               @emitter.emit(ASM.str_offset(ACC, LIST_ADDR, offset))
@@ -687,13 +737,14 @@ module VBlank
             @emitter.emit(ASM.push(TMP))
             @lowering.value(node.value)                     # r0 = value
             @emitter.emit(ASM.pop(TMP))                           # r1 = address
-            emit_store_element(info, ACC, TMP)                    # slot = value
+            emit_store_element(info, ACC, TMP, bytes: slot.width) # slot = value
           end
 
           # list_get: read the item at an index into the accumulator (a value).
           def eval_list_get(node)
             info = list_info(node.name)
-            if (offset = written_slot_offset(info, node.index))
+            slot = slot_place(node.name, info)
+            if (offset = written_slot_offset(info, slot, node.index))
               @primitives.emit_list_base(info[:base])
               @emitter.emit(ASM.ldr_offset(ACC, LIST_ADDR, offset))
               return
@@ -702,7 +753,7 @@ module VBlank
             @lowering.value(node.index)                     # r0 = index
             @bookkeeping&.emit_refuse_index_past_length(length_var(node.name), info[:base])
             emit_slot_address(info, node.name)         # r1 = &slot[(head+index)&mask]
-            emit_load_element(info, ACC, TMP)                     # r0 = slot
+            emit_load_element(info, ACC, TMP, bytes: slot.width) # r0 = slot
           end
 
           # list_len: read the length variable into the accumulator (a value).
@@ -718,11 +769,11 @@ module VBlank
           # store from the list's base, where a worked-out index takes six instructions or more to
           # bound and scale. The byte offset, or nil where the slot must be found as the game runs
           # (a ring, a narrow list, a number past the capacity, which the bound sends to slot nought).
-          def written_slot_offset(info, index)
-            return nil unless index.kind == :int && !info[:ring] && info[:width] == :word && @bookkeeping.nil?
+          def written_slot_offset(info, slot, index)
+            return nil unless index.kind == :int && !info[:ring] && slot.width == 4 && @bookkeeping.nil?
             return nil unless index.value.between?(0, info[:capacity] - 1)
 
-            offset = index.value * info[:bytes]
+            offset = slot.at(index.value)
             offset <= 0xFFF ? offset : nil
           end
 
@@ -749,7 +800,7 @@ module VBlank
             else
               emit_bound_to_capacity(info[:capacity])              # r0 = slot, or nought
             end
-            shift = Math.log2(info[:bytes]).to_i                   # 4 bytes -> 2, 2 -> 1, 1 -> 0
+            shift = Math.log2(slot_place(name, info).stride).to_i  # 4 bytes -> 2, 2 -> 1, 1 -> 0
             @emitter.emit(ASM.lsl_imm(ACC, ACC, shift)) if shift.positive? # r0 = slot * elem size
             @primitives.emit_list_base(info[:base])               # r9 = base address, often already there
             @emitter.emit(ASM.add_reg(TMP, LIST_ADDR, ACC))       # r1 = base + slot*size
@@ -764,11 +815,13 @@ module VBlank
           # number it holds including its sign, so what comes out of a byte slot holding -4 is
           # -4 and not 252. That is why there is no unsigned option: a slot that could not come
           # back negative would break every countdown written `sub` first and tested second.
-          def emit_load_element(info, into, addr)
-            case info[:width]
-            when :word then @emitter.emit(ASM.ldr(into, addr))
-            when :half then @emitter.emit(ASM.ldrsh(into, addr))
-            when :byte then @emitter.emit(ASM.ldrsb(into, addr))
+          #
+          # +bytes+ is the slot's width (#slot_place), the list's own unless a layout placed it.
+          def emit_load_element(info, into, addr, bytes: info[:bytes])
+            case bytes
+            when 4 then @emitter.emit(ASM.ldr(into, addr))
+            when 2 then @emitter.emit(ASM.ldrsh(into, addr))
+            when 1 then @emitter.emit(ASM.ldrsb(into, addr))
             end
           end
 
@@ -788,11 +841,11 @@ module VBlank
           # ...and the store, which keeps only the low bits that fit. A value too big for the
           # width is cut down rather than reaching the element next door — the same bargain
           # the index bound makes, and the interpreter cuts it down to exactly the same number.
-          def emit_store_element(info, from, addr)
-            case info[:width]
-            when :word then @emitter.emit(ASM.str(from, addr))
-            when :half then @emitter.emit(ASM.store_halfword(from, addr))
-            when :byte then @emitter.emit(ASM.strb(from, addr))
+          def emit_store_element(info, from, addr, bytes: info[:bytes])
+            case bytes
+            when 4 then @emitter.emit(ASM.str(from, addr))
+            when 2 then @emitter.emit(ASM.store_halfword(from, addr))
+            when 1 then @emitter.emit(ASM.strb(from, addr))
             end
           end
 

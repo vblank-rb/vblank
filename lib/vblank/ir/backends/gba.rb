@@ -1667,6 +1667,7 @@ module VBlank
             @lists.register_list(node.name, node.capacity, ring: ring, width: node.width || :word,
                                                            fast: node.fast, roomy: @lists_to_roomy.include?(node.name), at: at)
           end
+          @lists.place_pools(program)
         end
 
         # Element size in bytes for each table width, and the Array#pack directive that
