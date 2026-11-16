@@ -66,11 +66,14 @@ class TestGBCPackSceneArrival < Minitest::Test
 
   # POWER-ON DOES NOT GROW WITH WHAT LATER SCENES DRAW. The tiles of every scene's background are
   # copied in while the screen is off at power-on, so a second screen's tiles in the pack must not
-  # hold the game's first picture a frame later than the game with one.
+  # hold the game's first picture later than the game with one. Not later, rather than on the same
+  # frame: how long setting up takes moves where the first picture lands, and the game whose first
+  # screen is drawn too sets up in a different number of instructions (it was first seen on the
+  # same frame as the other before the start-up was made faster, and is now a frame earlier).
   def test_the_first_picture_is_not_held_by_a_second_screens_tiles
-    shown = [%i[none pack], %i[pack pack]].map { |hows| Dir.mktmpdir { |folder| first_picture_frame(scene_game(hows, folder)) } }
+    one, both = [%i[none pack], %i[pack pack]].map { |hows| Dir.mktmpdir { |folder| first_picture_frame(scene_game(hows, folder)) } }
 
-    assert_equal shown.first, shown.last
+    assert_operator both, :<=, one
   end
 
   def test_each_scene_from_the_pack_arrives_in_one_frame_beside_another

@@ -142,21 +142,38 @@ module SlowPassGames
   # Compared at each pass's end, since read on a slow pass's first frame its box has not moved yet.
   # A second lead-in that tapped on a frame of its own is not the first's cut short, and is not
   # held the first's tap again.
+  #
+  # THE TAP GOES ON A FRAME THE SLOW FIRST BUILD READS: one held during the second frame of a slow
+  # pass is read by no pass of the first, which read its buttons as the pass began, while the quick
+  # second reads it, so the two would part for a reason of their own. Which frames those are moves
+  # with how long the cartridge takes to set up, so the tap is put on the first frame after the short
+  # lead-in that the slow build's box answers.
   private def assert_catch_up_press_reaches_second(console)
     slow = stepping_box(console: console, slow: true, right_jumps: true)
     quick = stepping_box(console: console, right_jumps: true)
-    tap_on = LEAD_IN_FRAMES.fetch(:short) + 1
-    long = tapping_lead_in(tap_on, LEAD_IN_FRAMES.fetch(:long))
+    long_frames = LEAD_IN_FRAMES.fetch(:long)
+    tap_on = ((LEAD_IN_FRAMES.fetch(:short) + 1)...long_frames).find { |frame| tap_answered?(slow, frame, long_frames) }
+    refute_nil tap_on, "the slow build answers a tap on some frame between the lead-ins"
+    long = tapping_lead_in(tap_on, long_frames)
     short = lead_in_of(LEAD_IN_FRAMES.fetch(:short))
     through_tap = tapping_lead_in(tap_on, tap_on)
     assert_operator pass_after(stepping_box(console: console), through_tap), :<, pass_after(slow, long),
                     "the quick build is still behind the slow one's lead-in after the tap"
 
-    own_tap = tapping_lead_in(tap_on - 2, LEAD_IN_FRAMES.fetch(:short))
+    own_tap = tapping_lead_in(LEAD_IN_FRAMES.fetch(:short) - 1, LEAD_IN_FRAMES.fetch(:short))
     [through_tap, short, nil, own_tap].each do |second_lead_in|
       assert_plays_alike slow, quick, watch_steps, by_passes: :passes, passes_compared_at: :end,
                                                    lead_ins: [long, second_lead_in], readings: { x: :x }
     end
+  end
+
+  # Whether +cartridge+'s box is somewhere else after a lead-in of +frames+ that taps RIGHT on frame
+  # +tap_on+ than after one that taps nothing: whether a pass of it read the tap.
+  private def tap_answered?(cartridge, tap_on, frames)
+    box_after = lambda do |lead_in|
+      VBlank::Playthroughs::Playthrough.power_on_and_lead_in(cartridge, lead_in: lead_in).game.var(:x)
+    end
+    box_after.call(tapping_lead_in(tap_on, frames)) != box_after.call(lead_in_of(frames))
   end
 
   # A lead-in of +frames+ frames that holds RIGHT on frame +tap_on+ alone.
