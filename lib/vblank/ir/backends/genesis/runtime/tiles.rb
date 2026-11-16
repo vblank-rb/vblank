@@ -482,8 +482,13 @@ module VBlank
             # A piece is its tile and palette, its left as the chip counts it from the sprite's place
             # (SPRITE_ORIGIN more), its top, and its size in the high byte with the link's byte empty.
             # +tiles_from+ is the tile in video memory the pictures' tile 0 is (Lowering::Picture#sprite_tiles_from).
-            def picture_words(number, pieces, tiles_from)
+            #
+            # +in_front+ for a sprite drawn in front of the cells marked in front (Nodes::Object#in_front):
+            # each piece's word has the priority bit set, as a retail game's cursor has.
+            def picture_words(number, pieces, tiles_from, in_front: false)
               return [number, -1, 0, 0, 0, 0] if pieces.empty?
+
+              priority = in_front ? Art::PRIORITY : 0
 
               left = pieces.map(&:dx).min
               top = pieces.map(&:dy).min
@@ -491,7 +496,7 @@ module VBlank
               down = pieces.map { |piece| piece.dy + (piece.rows * 8) }.max - top
               [number, pieces.length - 1, left, [Paint::WIDTH - across + 1, 0].max, top, [Paint::HEIGHT - down + 1, 0].max] +
                 pieces.flat_map do |piece|
-                  [(piece.tile + tiles_from) | (piece.palette << Art::PALETTE_SHIFT), piece.dx + SPRITE_ORIGIN,
+                  [(piece.tile + tiles_from) | (piece.palette << Art::PALETTE_SHIFT) | priority, piece.dx + SPRITE_ORIGIN,
                    piece.dy + SPRITE_ORIGIN, piece.size_bits << 8]
                 end
             end

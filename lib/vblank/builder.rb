@@ -1566,7 +1566,7 @@ module VBlank
     # so a pool takes its place among the sprites by the same rule two sprites follow: the
     # one declared later is in front. The HUD comes last, over all of them.
     def finalize_present_lists
-      names = arrange_draw_orders(in_stack_order(@sprite_objects + @hud_objects))
+      names = move_front_sprites_last(arrange_draw_orders(in_stack_order(@sprite_objects + @hud_objects)))
       @present_nodes.each do |node|
         if names.empty?
           node.parent&.children&.delete(node)
@@ -1575,6 +1575,18 @@ module VBlank
           node.orders = draw_order_runs(names)
         end
       end
+    end
+
+    # +names+ with every sprite marked in front (IR::Nodes::Object#in_front) moved after the rest,
+    # each keeping its order: a console that keeps a priority bit in each sprite shows the front
+    # sprite's pixel and only then asks its priority, so a sprite in front must be in front of
+    # every sprite not in front, or one of those over it would put it behind a cell in front.
+    def move_front_sprites_last(names)
+      front = @program.walk.select { |node| node.kind == :object && node.in_front }.map(&:name)
+      return names if front.empty?
+
+      ahead, behind = names.partition { |name| front.include?(name) }
+      behind + ahead
     end
 
     # The objects to draw, arranged the way the declared layers ask for. This is the

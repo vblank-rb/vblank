@@ -54,4 +54,48 @@ class TestPackCellsInFront < Minitest::Test
 
     assert_includes error.message, "cells_in_front:"
   end
+
+  # --- a sprite in front (`in_front: true`), refused alike on every console ---
+
+  def test_in_front_given_something_but_true_or_false_is_refused
+    error = assert_raises(ArgumentError) { sprites_game { sprite :pointer, at: [0, 0], in_front: :yes } }
+
+    assert_includes error.message, ":pointer"
+    assert_includes error.message, "true or false"
+  end
+
+  def test_a_sprite_in_front_in_a_layer_is_refused
+    error = assert_raises(ArgumentError) do
+      sprites_game do
+        layers :back, :front
+        layer(:back) { sprite :pointer, at: [0, 0], in_front: true }
+      end
+    end
+
+    assert_includes error.message, ":back"
+  end
+
+  def test_a_sprite_in_front_in_a_draw_order_is_refused
+    error = assert_raises(ArgumentError) do
+      sprites_game do
+        pointer = sprite :pointer, at: [0, 0], in_front: true
+        walker = sprite :walker, at: [0, 0]
+        draw_in_order pointer, walker
+      end
+    end
+
+    assert_includes error.message, "in_front: true"
+  end
+
+  private def sprites_game(&more)
+    b = VBlank::Builder.new
+    b.instance_eval do
+      screen :tiled
+      image(:pointer, "#" => :red) { "########\n" * 8 }
+      image(:walker, "#" => :blue) { "########\n" * 8 }
+      instance_eval(&more)
+    end
+    b.finalize_program
+    b.program
+  end
 end

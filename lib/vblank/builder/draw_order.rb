@@ -385,7 +385,14 @@ module VBlank
                 "pool :#{thing.name} draws nothing itself, so draw_in_order has nothing of it to put in " \
                 "order. Give the pool `image:`, `facing:` or `frames:`."
         end
-        return if thing.is_a?(DSL::HardwareSprite)
+        if thing.is_a?(DSL::HardwareSprite)
+          return unless thing.object_node.in_front
+
+          raise ArgumentError,
+                "draw_in_order was given a sprite drawn in front (`in_front: true`). Such a sprite is in front of every " \
+                "sprite not in front, so draw_in_order cannot put it among them. To fix this, leave it out of the " \
+                "order, or remove `in_front: true`."
+        end
 
         raise ArgumentError,
               "draw_in_order puts things in order, and each one must be a sprite or a pool. " \

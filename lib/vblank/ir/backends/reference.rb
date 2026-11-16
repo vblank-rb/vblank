@@ -2646,6 +2646,7 @@ module VBlank
           paint_bar_over_sprites(bar, kept) if bar && @bar_covers[bar.name]
           held = showing_scenery.find(&:hides_sprites)
           paint_held_over_sprites(held, kept) if held
+          paint_sprites_in_front(kept)
           @screen.set_paint_fade(nil, nil)
           @screen.set_paint_see_through(nil)
         end
@@ -2670,6 +2671,19 @@ module VBlank
                 @tiles_painted_only = nil
               end
             end
+          end
+        end
+
+        # SPRITES IN FRONT (Nodes::Object#in_front): once everything else is painted, each sprite
+        # marked in front is painted again, in draw order, so its drawn pixels are over the cells in
+        # front as well (#paint_cells_in_front). The frame's draw list puts them after every other
+        # sprite already (Builder#move_front_sprites_last), so nothing else they are drawn over moves.
+        def paint_sprites_in_front(kept)
+          @obj_layer.each do |obj|
+            next unless obj[:in_front]
+
+            set_blend_for(obj[:name], kept)
+            paint_snapshot_object(obj)
           end
         end
 
@@ -3476,6 +3490,7 @@ module VBlank
             snap = { name: obj.name, image: image, x: on[:x], y: on[:y],
                      level: object_level(obj), color_list: object_color_list(obj, image), left_out: on[:left_out] }
             snap[:transform] = object_transform(obj) if object_transformed?(obj)
+            snap[:in_front] = true if obj.in_front
             snap
           end
         end

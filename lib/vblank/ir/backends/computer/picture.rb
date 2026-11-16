@@ -174,7 +174,8 @@ module VBlank
           # --- the art, for rg_screen.c ---
 
           def picture_data
-            [*image_arrays, *background_arrays, *see_through_arrays, sprite_fade_places_array, *sprite_block_arrays,
+            [*image_arrays, *background_arrays, *see_through_arrays, sprite_fade_places_array, sprites_in_front_array,
+             *sprite_block_arrays,
              *run_arrays, image_pieces_array,
              runtime_array("picture_sizes", "int32_t",
                     [@stacking.scenery.length, @stacking.depths.count, @handover.always_up.scenery.length,
@@ -714,6 +715,11 @@ module VBlank
           # For every sprite, whether a fade placed in the stack reaches it (see #fade_place).
           def sprite_fade_places_array
             runtime_array("sprite_fade_places", "int32_t", @objects.each_value.map { |obj| fade_place(obj) })
+          end
+
+          # Each sprite by its number: 1 for one drawn in front of the cells in front (Nodes::Object#in_front).
+          def sprites_in_front_array
+            runtime_array("sprites_in_front", "int32_t", @objects.each_value.map { |obj| obj.in_front ? 1 : 0 })
           end
 
           # How far forward a layer is among the layers the game declared, or NO_LAYER for a name

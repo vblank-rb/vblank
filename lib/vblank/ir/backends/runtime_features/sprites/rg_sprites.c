@@ -610,6 +610,17 @@ static void rg_sprites_paint_level(int32_t level) {
   }
 }
 
+/* Reference#paint_sprites_in_front: once everything else is painted (this feature comes after the
+ * tiled one, which paints the cells in front), each sprite drawn in front is painted again. */
+static void rg_sprites_repaint_ending(void) {
+  for (int32_t i = 0; i < sprite_layer_count; i++) {
+    if (!rg_game_sprites_in_front[sprite_layer[i].sprite]) continue;
+    mix_as_sprite(sprite_layer[i].sprite);
+    fade_unless_left_as_drawn(rg_game_sprite_fade_places[sprite_layer[i].sprite]);
+    paint_kept_sprite(&sprite_layer[i]);
+  }
+}
+
 /* Reference#exec_screen: what was under each sprite went with the old screen, so nothing is put back
  * over the new one. A console that places its sprites at the end of a pass takes them off after this. */
 static void rg_sprites_screen_crossed(int32_t new_kind) {

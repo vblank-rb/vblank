@@ -1364,13 +1364,20 @@ module VBlank
         # does, so it changes nothing that is shown. A target whose palettes keep a list's colours in
         # the list's order cuts the pose in that order, so it shares the list's palette with anything
         # else drawn from the list. Absent otherwise.
+        #
+        # +in_front+ means it is drawn in front of a background's cells marked in front of the
+        # sprites (Background#in_front) as well as everything else, as a console that keeps a
+        # priority bit in each sprite draws one with it set. The frame's draw list puts such a
+        # thing after every thing not marked, so it is also in front of every other sprite, which
+        # is how that console tells which sprite's pixel to show before it asks the priority.
+        # Absent otherwise.
         operands name: :name, declared: :name,
                  poses: :list, pose: :value, x: :value,
                  y: :value, active: :value, angle: :value,
                  scale: :value, layer: :name, scene: :name,
                  recolor: :value, recolors: :list,
                  layers: :list, layer_pick: :name, over_picture: :flag, follows: :name, follows_each: :list,
-                 follows_unchanging: :list
+                 follows_unchanging: :list, in_front: :flag
 
         # The ColorList a pose drawn from the list named +colors_name+ follows (see +follows_each+),
         # or nil for a pose that is shown as it was drawn.

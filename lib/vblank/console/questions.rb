@@ -125,6 +125,10 @@ module VBlank
           if turns?(node)
             Question.new(:sprite, "This sprite turns or resizes (`scale`, `face_angle`, `turn`, `pulse`)",
                          console.turning_sprites)
+          elsif node.in_front
+            # The same part of the console as a background's cells in front: a priority bit in each sprite.
+            Question.new(:sprite, "This sprite is drawn in front of a background's cells marked in front (`in_front: true`)",
+                         console.cells_in_front)
           end
         end
       end

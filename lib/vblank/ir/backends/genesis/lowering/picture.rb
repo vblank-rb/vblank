@@ -55,6 +55,7 @@ module VBlank
               @grids = {}
               @cells_made = {}
               @pose_tables = {}
+              @front_pose_tables = {} # the same for the sprites drawn in front (#pose_table)
               @pose_rooms = {}
               @layers = {}.compare_by_identity
             end
@@ -885,6 +886,7 @@ module VBlank
                 data.data_longs(poses.length)
                 data.data_longs(poses.map { |pose| pieces_label(@art.sprite_pictures.fetch(pose).number) })
               end
+              write_front_poses(data)
               (@recolor_tables || []).each do |lines|
                 data.label(recolor_table_label(lines))
                 data.data_words(lines.length, *lines.map { |line| line << Art::PALETTE_SHIFT })
@@ -904,6 +906,22 @@ module VBlank
             ART = M68000::Holding.new(what: "the game's pictures", fix: "use fewer different pictures and maps")
 
             def pieces_label(number) = "art pieces #{number}"
+            def front_pieces_label(number) = "art pieces in front #{number}"
+
+            # The pose tables of the sprites drawn in front (#pose_table), and their pictures' pieces
+            # with the priority bit set, once for each picture whichever sprites show it.
+            private def write_front_poses(data)
+              @front_pose_tables.each do |poses, label|
+                data.label(label)
+                data.data_longs(poses.length)
+                data.data_longs(poses.map { |pose| front_pieces_label(@art.sprite_pictures.fetch(pose).number) })
+              end
+              @front_pose_tables.keys.flatten(1).uniq.each do |pose|
+                picture = @art.sprite_pictures.fetch(pose)
+                data.label(front_pieces_label(picture.number))
+                data.data_words(Runtime::Tiles.picture_words(picture.number, picture.pieces, sprite_tiles_from, in_front: true))
+              end
+            end
             def grid_label(number) = "art grid #{number}"
 
             private
@@ -1601,9 +1619,14 @@ module VBlank
             #
             # A sprite kept to one pose reads a table of its own, of its pictures drawn from its room
             # (PoseRooms), each kept under the sprite's name and the pose's.
+            # A sprite drawn in front (Nodes::Object#in_front) reads its pictures' pieces from copies
+            # whose words have the priority bit set (#front_pose_sections), so a sprite that shows one
+            # of them beside it, not in front, keeps its own.
             def pose_table(obj)
               pictures = streamed?(obj) ? obj.poses.map { |name| room_key(obj, name) } : obj.poses
-              @pose_tables[pictures] ||= "poses #{@pose_tables.length}"
+              return @pose_tables[pictures] ||= "poses #{@pose_tables.length}" unless obj.in_front
+
+              @front_pose_tables[pictures] ||= "poses in front #{@front_pose_tables.length}"
             end
 
             # Reference#exec_hide_sprites: the next placing of the sprites places none.

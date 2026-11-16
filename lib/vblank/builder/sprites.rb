@@ -102,11 +102,41 @@ module VBlank
       # @param rate [Integer, nil] frames-per-step for +frames:+/+frames_from:+ (required with them)
       # @param shown [Boolean] draw it now (true, default), or start hidden until `show`
       # @return [Sprite, HardwareSprite] a handle: x / y / move / move_to (and, in bitmap mode, face / hide / show)
-      def sprite(name, image: nil, **settings)
+      def sprite(name, image: nil, in_front: false, **settings)
         refuse_image_beside_poses!(name, settings) if image
         handle = sprite_handle(image || name, **settings)
+        put_sprite_in_front!(name, handle) if refuse_bad_in_front!(name, in_front)
         declared_sprites << DeclaredSprite.new(name: name, handle: handle)
         handle
+      end
+
+      # A SPRITE IN FRONT (`in_front: true`) is drawn over a background's cells marked in front of
+      # the sprites (`cells_in_front: true`) as well as over everything else, as a retail game's
+      # cursor or speech box frame sits over scenery its characters walk behind: the console keeps
+      # a priority bit in each sprite as it does in each cell. The frame draws it after every sprite
+      # not in front (Builder#finalize_present_lists), so it is in front of those too. Hands back
+      # whether it is in front.
+      def refuse_bad_in_front!(name, in_front)
+        return in_front if [true, false].include?(in_front)
+
+        raise ArgumentError, "Sprite :#{name} was given `in_front: #{in_front.inspect}`. It must be true or false."
+      end
+
+      # The sprite's own step marked in front. A sprite stamped into a painted screen has none, and
+      # one in a layer is drawn where the layer is.
+      def put_sprite_in_front!(name, handle)
+        unless handle.is_a?(DSL::HardwareSprite)
+          raise ArgumentError, "Sprite :#{name} was given `in_front: true`, and it is drawn into the picture of a " \
+                               "`screen :bitmap`. A sprite is in front of cells only on a `screen :tiled`. To fix " \
+                               "this, use `screen :tiled`, or remove `in_front: true`."
+        end
+        node = handle.object_node
+        if node.layer
+          raise ArgumentError, "Sprite :#{name} was given `in_front: true`, and it is in the layer :#{node.layer}. A " \
+                               "sprite in front is drawn in front of every layer. To fix this, declare it outside " \
+                               "`layer`, or remove `in_front: true`."
+        end
+        node.in_front = true
       end
 
       # One sprite as it was declared: its name and its handle, for #finalize_sprite_readings.
@@ -136,7 +166,8 @@ module VBlank
           sprites.one? ? sprites.first.handle.reading_named(name) : IR::SharedName.new(name: name, count: sprites.size)
         end
       end
-      private :declared_sprites, :refuse_image_beside_poses!, :finalize_sprite_readings
+      private :declared_sprites, :refuse_image_beside_poses!, :finalize_sprite_readings, :refuse_bad_in_front!,
+              :put_sprite_in_front!
 
       # The sprite itself, painted on a bitmap screen or the console's own on a tiled one (#sprite).
       private def sprite_handle(name, at:, facing: nil, frames: nil, frames_from: nil, facing_from: nil,
