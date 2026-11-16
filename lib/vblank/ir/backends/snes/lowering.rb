@@ -714,12 +714,14 @@ module VBlank
           def copy_variable(from, name)
             halves = operand_halves(from)
             at = place_of(name)
-            (DSL::Pool.holds_only_slots?(name) ? 1 : 2).times do |i|
+            copied = DSL::Pool.holds_only_slots?(name) ? 1 : 2
+            copied.times do |i|
               @asm.lda(halves[i])
               @asm.sta(at_place(at + (2 * i)))
             end
             key = slot_key(at_place(at), 1)
-            return unless DSL::Pool.walk_slot?(name) && key
+            # A holds the low half, the slot, only when that was the one half copied.
+            return unless DSL::Pool.walk_slot?(name) && key && copied == 1
 
             @asm.tax
             @asm.note_x_holds(key)
