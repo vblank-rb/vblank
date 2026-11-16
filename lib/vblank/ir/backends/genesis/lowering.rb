@@ -947,6 +947,8 @@ module VBlank
             return list_call("rt_list_set", node, node.index, node.value) if @lists_dropped_from_front.include?(node.name)
 
             held = held_field(node)
+            return if held && emit_held_field_stepped(node, held)
+
             if held
               value(node.value)
               emit_slot_value_scaled(node)
@@ -979,6 +981,33 @@ module VBlank
             end
             emit_slot_widening(slot_bytes(node))
             emit_slot_value_unscaled(node)
+          end
+
+          # A FIELD OF THE HELD THING MOVED ON BY A NUMBER WRITTEN IN THE PROGRAM, `t.x += 2`: one
+          # instruction on the field where it is, ADDQ or SUBQ for 1 to 8 and ADDI or SUBI past that,
+          # where reading it out, adding and writing it back is three. Each keeps the field's own
+          # width, which is what the slot keeps of the sum the interpreter works out in 32 bits. True
+          # where it was made so.
+          def emit_held_field_stepped(node, held)
+            value = node.value
+            return false unless value.is_a?(Node) && value.kind == :binop && %i[+ -].include?(value.op)
+
+            read = value.lhs
+            by = folded(value.rhs)
+            return false unless by && read.is_a?(Node) && read.kind == :list_get && read.name == node.name &&
+                                read.index.is_a?(Node) && read.index.kind == :var_ref && read.index.name == node.index.name &&
+                                slot_place(node.name).scale == 1
+
+            by = -by if value.op == :-
+            size = { 1 => :b, 2 => :w, 4 => :l }.fetch(slot_bytes(node))
+            if by.between?(1, 8)
+              @asm.addq(size, by, held)
+            elsif by.between?(-8, -1)
+              @asm.subq(size, -by, held)
+            else
+              @asm.add(size, @asm.imm(by), held)
+            end
+            true
           end
 
           # A LINK KEPT AS THE SLOT TIMES THE STRIDE (PoolLayout.strided_place), two bytes with NONE
@@ -2140,7 +2169,18 @@ module VBlank
             return @asm.imm(known) if known
 
             name = variable_named(node)
-            var(name) if name
+            return var(name) if name
+
+            held_word_field(node)
+          end
+
+          # A long field of the thing a walk holds (#held_field), which an instruction reads where it is
+          # as it would a variable; nil for anything else.
+          def held_word_field(node)
+            return unless node.is_a?(Node) && node.kind == :list_get && @held_walk
+            return unless slot_bytes(node) == 4 && slot_place(node.name).scale == 1
+
+            held_field(node)
           end
 
           # The left side worked out into D0, and the block handed where the right side is: in place

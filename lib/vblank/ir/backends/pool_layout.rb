@@ -179,11 +179,11 @@ module VBlank
               tables: "The pool's tables in one block, so one address register on the thing a walk is on reaches " \
                       "every field at a distance written in the instruction, and the walk steps by its links " \
                       "(Genesis::Lowering#emit_stepped_walk). Measured in Genesis Plus GX, one more pair of things " \
-                      "checked: 558 cycles as lists, 264 as tables; the bullets test 7.87% of a frame, 3.48%; " \
+                      "checked: 558 cycles as lists, 264 as tables; the bullets test 7.87% of a frame, 3.29%; " \
                       "five walkers 12.67%, 7.51%.",
               records: "A record for each thing, reached the same way, but its stride is the sum of the widths " \
                        "rounded up, more doublings to find a thing. Measured in Genesis Plus GX, one more pair: " \
-                       "282 cycles; the bullets test 3.57%; five walkers 8.14%."
+                       "282 cycles; the bullets test 3.38%; five walkers 8.14%."
             }
           }
         )
