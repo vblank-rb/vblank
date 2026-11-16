@@ -82,6 +82,17 @@ class TestPoolLayout < Minitest::Test
     assert_equal 1, records.areas.size
   end
 
+  # The builds for a computer (desktop, web, Ruby) keep every pool as lists, whatever layout the game
+  # names for the console they are made as (Computer::Lowering.pool_layout).
+  def test_the_builds_for_a_computer_keep_every_pool_as_lists_whatever_layout_it_names
+    shape = guard_shape(program_with_pool)
+    [nil, :lists, :tables, :records].each do |layout|
+      kept = VBlank::IR::Backends::Computer::Lowering.pool_layout(shape.with(layout: layout))
+
+      assert_equal :lists, kept.name, "a pool naming #{layout.inspect}"
+    end
+  end
+
   # The steps a program takes on a pool's lists, which a layout reads to know whether it can keep it.
   def test_the_steps_on_a_pools_lists_are_found
     program = program_with_pool

@@ -35,7 +35,7 @@ module VBlank
           # on the way: a list of whole numbers is read as fast as one was before narrow lists
           # were kept narrow.
           def item_access_function(function, name)
-            "#{function}_#{ITEM_TYPE_SUFFIXES.fetch(SLOT_BYTES.fetch(@lists.fetch(name).width))}"
+            "#{function}_#{ITEM_TYPE_SUFFIXES.fetch(slot_place(name).width)}"
           end
         end
       end

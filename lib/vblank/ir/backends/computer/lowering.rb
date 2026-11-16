@@ -234,6 +234,7 @@ module VBlank
             # A list is there, empty, from power-on wherever it is declared (the interpreter
             # gathers them before running), so its storage is the first declaration's.
             @lists = by_name(@reachable.reverse, :list_new)
+            @slot_places = place_pools(program)
             @scenes = scene_numbers
             @start_file_fills = [] # what the routine reading the start file writes into the pictures' pixels (StartFileFills)
             @start_file_background_fills = [] # ...and into the tiles of each background whose map is read from it
@@ -470,7 +471,54 @@ module VBlank
           def list_storage
             @lists.values.map do |node|
               Statements::ListStorage.new(name: list(node.name), items: @names.of(:list, "#{node.name}.items"),
-                                 capacity: node.capacity, width: SLOT_BYTES.fetch(node.width), label: node.name.to_s)
+                                 capacity: node.capacity, width: slot_place(node.name).width, label: node.name.to_s)
+            end
+          end
+
+          # --- pools (Backends::PoolLayout) ---
+          #
+          # A POOL IS KEPT IN THE LAYOUT ITS PLACEMENT GIVES, and these builds keep every pool AS LISTS,
+          # whatever layout the game names for the console it is made as: a list of the runtime's for
+          # each of the pool's lists (runtime/rg_list.h), each item as wide as the list. A layout is
+          # where a cartridge keeps a pool in the console's memory so its processor reaches a field
+          # in fewer instructions; a build for a computer has no such memory to fit, its runtime
+          # reaches an item by index whatever the layout, and it is checked against the interpreter,
+          # which keeps every pool as lists. So the build made as any console is the same text for the
+          # same game, and a pool laid out its console's way plays here as it always has.
+          #
+          # Every list's item width is read from its slot's place (#slot_place), a pool's from the
+          # placement, so a layout these builds take later is placed in one spot. The headless run
+          # reads the items back as the runtime prints them, a number each, so a pool's list needs
+          # no place of its own there.
+          def self.pool_layout(_shape) = PoolLayout::ADAPTERS.fetch(:lists)
+
+          # Every pool's slot lists placed (#pool_layout), by list.
+          def place_pools(program)
+            (program.pools || []).each_with_object({}) do |shape, places|
+              placement = self.class.pool_layout(shape).place(shape)
+              refuse_unmade_pool_placement!(shape, placement)
+              places.merge!(placement.slots)
+            end
+          end
+
+          # Where a list's slots are, in bytes: a pool's list as its layout placed it, any other a
+          # slot of its declared width after another.
+          def slot_place(name)
+            @slot_places.fetch(name) do
+              bytes = SLOT_BYTES.fetch(@lists.fetch(name).width)
+              PoolLayout::SlotPlace.new(area: name, offset: 0, stride: bytes, width: bytes, scale: 1)
+            end
+          end
+
+          # A placement the runtimes cannot keep: anything but a list of the runtime's for each list,
+          # items one after another as wide as the list.
+          def refuse_unmade_pool_placement!(shape, placement)
+            placement.slots.each do |list, slot|
+              declared = @lists[list] or next
+              next if slot.area == list && slot.scale == 1 && slot.offset.zero? && slot.stride == slot.width &&
+                      slot.width == SLOT_BYTES.fetch(declared.width)
+
+              raise LoweringError, "pool :#{shape.name} is placed as #{placement.layout}, which #{build_name} cannot keep"
             end
           end
 
