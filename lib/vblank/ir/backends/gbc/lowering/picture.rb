@@ -18,7 +18,7 @@ module VBlank
             STATEMENT_KINDS = %i[
               screen clear_screen fill_rect dma_fill_rect draw_rect_at pixel draw_text draw_digit inside blit
               blit_pose draw_column_at save_region restore_region background scroll_background place_bar
-              show_map set_tile background_colors scroll_rows camera present_objects hide_sprites
+              show_map set_tile set_tile_block background_colors scroll_rows camera present_objects hide_sprites
               show_picture_group color_list_holds fade tint
             ].freeze
 
@@ -43,6 +43,7 @@ module VBlank
               when :place_bar then emit_place_bar(node)
               when :show_map then emit_show_map(node)
               when :set_tile then emit_set_tile(node)
+              when :set_tile_block then emit_set_tile_block(node)
               when :background_colors then emit_background_colors(node)
               when :scroll_rows then emit_scroll_rows(node)
               when :camera then emit_camera(node)
@@ -1449,6 +1450,9 @@ module VBlank
               @asm.load(:hl, bend_table(bend))
               @asm.call("rt_bends_on")
             end
+
+            # Reference#exec_set_tile_block: its cells one by one, as its children write them.
+            def emit_set_tile_block(node) = node.children.each { |child| statement(child) }
 
             # Reference#exec_set_tile: one cell of the background given another of its tiles — or
             # none, the backdrop — written into the console's grid (Runtime::Picture's

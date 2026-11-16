@@ -111,6 +111,7 @@ module VBlank
             when :shade_outside then lower_nothing(node)
             when :show_light_now then lower_show_light_now(node)
             when :set_tile then lower_set_tile(node)
+            when :set_tile_block then lower_set_tile_block(node)
             when :show_map then lower_show_map(node)
             when :show_held_tiles then lower_show_held_tiles(node)
             when :background_colors then lower_background_colors(node)

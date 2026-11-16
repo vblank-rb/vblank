@@ -230,6 +230,7 @@ module VBlank
             @starts = [] # [address, value] for a place that does not start at nought
             @routine_tables = {} # a list of routines a call picks from by number -> its table's label
             @cell_tables = {} # the words a picked tile's cells hold (Picture#emit_set_picked_tile_of) -> their table's label
+            @cell_blocks = {} # what a block of cells is written from (Picture#emit_set_tile_block_of) -> its label
             @section_routines = {}
             @indexes_checked = {} # a loop's count -> the fewest items it is checked to be below (#index_checked_below?)
             @pictures = by_kind(:bitmap)
@@ -396,6 +397,11 @@ module VBlank
             @cell_tables.each do |words, label|
               asm.label(label)
               asm.data_words(words)
+            end
+            @cell_blocks.each do |(columns, rows, command, stride, source), label|
+              asm.label(label)
+              asm.data_words(columns, rows, command, stride)
+              asm.data_longs(source)
             end
             asm.section
           end
@@ -1906,7 +1912,8 @@ module VBlank
 
           # A runtime routine taking +args+ in D0, D1, D2... Each that needs working out is worked out
           # in order and pushed, then they are pulled into their registers, the last first; then the
-          # ones that are only a number or a variable are put in theirs.
+          # ones that are only a number or a variable are put in theirs. A block given writes what
+          # else the routine takes, last before the call.
           def runtime_call(name, args)
             worked = args.each_index.reject { |i| simple_operand(args[i]) }
             worked.each { |i| push_value(args[i]) }
@@ -1921,6 +1928,7 @@ module VBlank
                 @asm.move(:l, source, @asm.d(i))
               end
             end
+            yield if block_given?
             call_routine(name)
           end
 

@@ -19,6 +19,8 @@ module VBlank
     # memory — you set where the window sits, in pixels, and the framework moves it
     # (the console's own background hardware does it for free).
     class Background
+      include BackgroundCellBlocks
+
       Build = IR::Build
 
       # Built by the `background` verb, which allocates the hidden offset variables the
@@ -52,6 +54,7 @@ module VBlank
         @name = name
         @tile_pictures = tile_pictures
         @declaration_tail = node
+        @declaration = node # the background statement itself, whatever is written on its line after it
         @scroll_x = scroll_x
         @scroll_y = scroll_y
         @walls = walls

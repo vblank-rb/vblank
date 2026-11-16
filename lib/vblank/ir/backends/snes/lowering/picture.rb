@@ -19,7 +19,7 @@ module VBlank
           # in the sprite table every pass the game places its sprites.
           module Picture
             STATEMENT_KINDS = %i[
-              screen background scroll_background set_tile show_map present_objects hide_sprites fade tint
+              screen background scroll_background set_tile set_tile_block show_map present_objects hide_sprites fade tint
               place_bar scroll_rows copy_tiles copy_owed_tiles background_colors color_list_holds see_through
               pixelate
             ].freeze
@@ -30,6 +30,7 @@ module VBlank
               when :background then emit_background(node)
               when :scroll_background then emit_scroll_background(node)
               when :set_tile then emit_set_tile(node)
+              when :set_tile_block then emit_set_tile_block(node)
               when :show_map then emit_show_map(node)
               when :present_objects then emit_present_objects(node)
               when :hide_sprites then emit_hide_sprites(node)
@@ -1524,6 +1525,9 @@ module VBlank
                 runtime_call("rt_background_scroll", [Build.int(layer_of(bg)), node.x, node.y])
               end
             end
+
+            # Reference#exec_set_tile_block: its cells one by one, as its children write them.
+            def emit_set_tile_block(node) = emit_children(node)
 
             # Reference#exec_set_tile: a tile the background does not have changes nothing, and nor
             # does a place outside its map.

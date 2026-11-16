@@ -17,7 +17,7 @@ module VBlank
         class BackgroundDrawing
           # The statements this part writes (Lowering#statements_written_by), each by its own method.
           STATEMENT_KINDS = %i[
-            scroll_background place_bar box_background affine_background set_tile show_map show_held_tiles
+            scroll_background place_bar box_background affine_background set_tile set_tile_block show_map show_held_tiles
             copy_tiles copy_owed_tiles background_colors
           ].freeze
 
@@ -28,6 +28,7 @@ module VBlank
             when :box_background then emit_box_background(node)
             when :affine_background then emit_affine_background(node)
             when :set_tile then emit_set_tile(node)
+            when :set_tile_block then emit_set_tile_block(node)
             when :show_map then emit_show_map(node)
             when :show_held_tiles then emit_show_held_tiles(node)
             when :copy_tiles then emit_copy_tiles(node)
@@ -312,6 +313,10 @@ module VBlank
           def emit_box_set_aside
             write_reg16(REG_WINOUT, WIN_ALL_LAYERS | WIN_EFFECT) if @layout.screen.boxes_backgrounds?
           end
+
+          # A BLOCK OF CELLS (Nodes::SetTileBlock) is its cells written one by one, as its children
+          # write them: this lowering writes each cell straight into the map where the line is.
+          def emit_set_tile_block(node) = node.children.each { |stmt| @lowering.statement(stmt) }
 
           # PUT A DIFFERENT TILE IN ONE CELL, while the game runs.
           #

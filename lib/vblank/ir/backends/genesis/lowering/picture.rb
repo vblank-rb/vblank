@@ -16,7 +16,7 @@ module VBlank
           # pieces, placed in the sprite table every pass the game places its sprites.
           module Picture
             STATEMENT_KINDS = %i[
-              background scroll_background set_tile show_map present_objects color_list_holds
+              background scroll_background set_tile set_tile_block show_map present_objects color_list_holds
               background_colors fade tint hide_sprites
             ].freeze
 
@@ -25,6 +25,7 @@ module VBlank
               when :background then emit_background(node)
               when :scroll_background then emit_scroll_background(node)
               when :set_tile then emit_set_tile(node)
+              when :set_tile_block then emit_set_tile_block(node)
               when :show_map then emit_show_map(node)
               when :present_objects then emit_present_objects(node)
               when :color_list_holds then emit_color_list_holds(node)
@@ -1045,6 +1046,77 @@ module VBlank
                 end
               end
             end
+
+            # A BLOCK OF CELLS IS NOTED AS ONE COMMAND FOR THE BLANK (Runtime::Tiles#emit_block_noted),
+            # as a console's own game queues a box for its interrupt to lay: the block's place and size
+            # and the one cell's word, or where the map's own cells are in the cartridge. The blank
+            # writes its cells a row at a time, the chip moving on by itself from cell to cell, so a
+            # block of two hundred cells costs the pass what one cell does. Its children, the same
+            # cells written one by one, are what the interpreter plays (Reference#exec_set_tile_block);
+            # the checked run holds this to them.
+            #
+            # THIS IS THE ONE LOWERING THAT DOES NOT PLAY THE CHILDREN, and the measurement is why: a
+            # speech box of 189 cells written one by one took the pass nearly a whole frame, each
+            # cell a test of its place and a call to note it, and written as five blocks it takes a
+            # small part of one, the blank writing a word a cell
+            # (test/lowering/genesis/vblank/ir/backends/genesis/test_genesis_cell_blocks.rb).
+            def emit_set_tile_block(node) = for_background(node) { |bg| emit_set_tile_block_of(bg, node) }
+
+            def emit_set_tile_block_of(bg, node)
+              columns, rows = TileMap.size_of(bg.every_map.first)
+              base = (Runtime::Tiles.cell_command >> 16) + (layer_of(bg).odd? ? Runtime::Tiles::PLANE_B_AT - Runtime::Tiles::PLANE_A_AT : 0)
+              word, skipped = emit_block_cell_word(bg, node)
+              return unless word
+
+              description =
+                if node.restore
+                  grid = grid_of(bg, 0)
+                  [columns, rows, base, grid.columns * 2, grid_label(grid.number)]
+                else
+                  [columns, rows, base, 0, 0]
+                end
+              label = @cell_blocks[description] ||= "cell block #{@cell_blocks.length + 1}"
+              runtime_call("rt_note_block", [node.col, node.row, node.across, node.down, word]) do
+                @asm.lea(@asm.abs_l(label), @asm.a(0))
+              end
+              @asm.label(skipped) if skipped
+            end
+
+            # What D4 is handed for +node+'s block on +bg+: the one cell's word, a number or a number of
+            # the lowering's own it was read into, and the label to jump to where the picked number
+            # stands for no tile; nil where no cell is written at all. A block put back takes nought.
+            def emit_block_cell_word(bg, node)
+              return [Build.int(0), nil] if node.restore
+              unless node.picked?
+                return nil if node.tile && node.tile >= bg.tiles.length
+
+                return [Build.int(cell_word_of(bg, node.tile)), nil]
+              end
+
+              words = node.picks.map { |tile| tile && tile < bg.tiles.length ? cell_word_of(bg, tile) : NO_CELL }
+              return nil if words.all?(NO_CELL)
+
+              table = @cell_tables[words] ||= "cells #{@cell_tables.length + 1}"
+              skipped = fresh("block_skipped")
+              word = keep_local(:block_cell)
+              value(node.picked_by)
+              @asm.sub(:l, @asm.imm(node.picks_from), @asm.d(0)) unless node.picks_from.zero?
+              @asm.cmp(:l, @asm.imm(words.length), @asm.d(0))
+              @asm.branch(:cc, skipped)
+              @asm.add(:l, @asm.d(0), @asm.d(0)) # two bytes a word
+              @asm.lea(@asm.abs_l(table), @asm.a(0))
+              @asm.moveq(0, @asm.d(1))
+              @asm.move(:w, @asm.idx(0, 0, 0), @asm.d(1))
+              if words.include?(NO_CELL)
+                @asm.cmp(:w, @asm.imm(NO_CELL), @asm.d(1))
+                @asm.branch(:eq, skipped)
+              end
+              @asm.move(:l, @asm.d(1), var(word))
+              [Build.var_ref(word), skipped]
+            end
+
+            # Whether the game changes a block of cells in one step, whose runtime the build then carries.
+            public def writes_cell_blocks? = @program.walk.any? { |node| node.kind == :set_tile_block }
 
             # Reference#exec_set_tile: a tile the background does not have changes nothing, and nor
             # does a place outside its map.

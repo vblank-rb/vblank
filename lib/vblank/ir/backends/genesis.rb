@@ -208,6 +208,7 @@ module VBlank
                                              scene_tiles: scene_tiles, scene_colors: scene_colors,
                                              runs: picture == :tiled && lowering.paints_tiles?,
                                              poses: lowering.streams_poses?,
+                                             blocks: picture == :tiled && lowering.writes_cell_blocks?,
                                              count_at: (lowering.variables.fetch(IR::Frames::COUNT) if counted))
           linked = Linker.new(runtime + game).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists,

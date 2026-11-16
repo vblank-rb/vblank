@@ -68,11 +68,51 @@ module VBlank
 
         # A number past the layout's would be read without its high bits, as another cell.
         tiles = word.is_a?(Integer) && word.between?(0, most_number) && tiles_of(word)
-        tiles or raise ArgumentError, untold_cell_message(background, word)
+        tiles or raise ArgumentError, untold_cell_message(background.name, word)
         write_tiles(background, col, row, tiles, now)
       end
 
+      # WHAT A BLOCK OF CELLS EACH WRITTEN AS +cell+ PUTS IN EACH, for cells of one tile
+      # (Background#fill_cells): the tileset key of the one tile, or the number it is +picked_by+, the
+      # keys +picks+ of the numbers from +from+ on, nil where a number stands for none. +cell+ is what
+      # `set_cell` takes. Nil for a number worked out as the game runs among told numbers too far
+      # apart for one list, which the block then writes a cell at a time.
+      CellBlock = Data.define(:tile, :picked_by, :picks, :from)
+
+      def cell_block_tiles(name, cell)
+        if place_tiles
+          return CellBlock.new(tile: nil, picked_by: cell, picks: place_tiles.map(&:first), from: 0) if cell.is_a?(Value)
+
+          return CellBlock.new(tile: place_tiles_of!(name, cell).first, picked_by: nil, picks: nil, from: 0)
+        end
+
+        word = number_of!(cell, name)
+        unless word.is_a?(Value)
+          tiles = word.is_a?(Integer) && word.between?(0, most_number) && tiles_of(word)
+          tiles or raise ArgumentError, untold_cell_message(name, word)
+          return CellBlock.new(tile: tiles.first, picked_by: nil, picks: nil, from: 0)
+        end
+
+        runs = runs_of(tiles_by_word.keys.sort)
+        return nil unless runs.one?
+
+        run = runs.first
+        CellBlock.new(tile: nil, picked_by: word & format.read_bits, picks: (run.first..run.last).map { |told| tiles_by_word[told]&.first },
+                      from: run.first)
+      end
+
       private
+
+      # The tiles of the cell at +place+ of the slot that told them, a place written in the game;
+      # one past the slot is refused. +name+ is the background's.
+      def place_tiles_of!(name, place)
+        unless place.is_a?(Integer) && place.between?(0, place_tiles.length - 1)
+          raise ArgumentError, "background :#{name} was told its cells by a slot of #{place_tiles.length} cells, " \
+                               "and set_cell names one by its place in that slot of set_cells:, 0 to #{place_tiles.length - 1}. " \
+                               "It was given #{Messages::PlainWords.words_for_given(place)}. To fix this, give a place from 0 to #{place_tiles.length - 1}."
+        end
+        place_tiles.fetch(place)
+      end
 
       # WRITE THE CELL AT +place+ OF THE SLOT THAT TOLD THEM. A place written in the game is its
       # cell's tiles, and one past the slot is refused here. A place worked out as the game runs
@@ -92,12 +132,7 @@ module VBlank
           return
         end
 
-        unless place.is_a?(Integer) && place.between?(0, place_tiles.length - 1)
-          raise ArgumentError, "background :#{background.name} was told its cells by a slot of #{place_tiles.length} cells, " \
-                               "and set_cell names one by its place in that slot of set_cells:, 0 to #{place_tiles.length - 1}. " \
-                               "It was given #{Messages::PlainWords.words_for_given(place)}. To fix this, give a place from 0 to #{place_tiles.length - 1}."
-        end
-        write_tiles(background, col, row, place_tiles.fetch(place), now)
+        write_tiles(background, col, row, place_tiles_of!(background.name, place), now)
       end
 
       def write_place_between(background, col, row, kept, places, now)
@@ -195,8 +230,8 @@ module VBlank
         same.close_side(nil)
       end
 
-      def untold_cell_message(background, word)
-        "background :#{background.name} was not told that set_cell can write #{cell_description(word)}. So the build made " \
+      def untold_cell_message(name, word)
+        "background :#{name} was not told that set_cell can write #{cell_description(word)}. So the build made " \
           "no picture for it. To fix this, add the cell to the background's `set_cells:`."
       end
 

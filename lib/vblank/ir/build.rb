@@ -1022,6 +1022,16 @@ module VBlank
                                picked_by: to_value_node(picked_by), picks_from: from, picks: tiles)
       end
 
+      # A block of +across+ by +down+ cells from +col+ and +row+ changed at once (see
+      # Nodes::SetTileBlock): to +tile+, to the tile +picked_by+ picks from +tiles+ counted from
+      # +from+, or with +restore+ back to the map's own. +body+ is the same change a cell at a time.
+      def set_tile_block(name, col, row, across, down, *body, tile: nil, picked_by: nil, tiles: nil, from: 0, restore: nil)
+        Nodes.build(:set_tile_block, children: body, name: name, col: to_value_node(col), row: to_value_node(row),
+                                     across: to_value_node(across), down: to_value_node(down), tile: tile,
+                                     picked_by: picked_by && to_value_node(picked_by), picks_from: from, picks: tiles,
+                                     restore: restore)
+      end
+
       # Show every held cell change at once (see Nodes::ShowHeldTiles).
       def show_held_tiles(cells: Nodes::ShowHeldTiles::MOST_CELLS)
         Nodes.build(:show_held_tiles, cells: cells)

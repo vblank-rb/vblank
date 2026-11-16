@@ -23,7 +23,7 @@ module VBlank
           module Picture
             # The steps that change colours as the game runs (Runtime::Colors).
             COLOR_CHANGES = %i[color_list_holds background_colors fade tint].freeze
-            STATEMENT_KINDS = (%i[background scroll_background place_bar set_tile show_map present_objects hide_sprites
+            STATEMENT_KINDS = (%i[background scroll_background place_bar set_tile set_tile_block show_map present_objects hide_sprites
                                   see_through] + COLOR_CHANGES).freeze
 
             def emit_picture_statement(node)
@@ -32,6 +32,7 @@ module VBlank
               when :scroll_background then emit_scroll_background(node)
               when :place_bar then emit_place_bar(node)
               when :set_tile then emit_set_tile(node)
+              when :set_tile_block then emit_set_tile_block(node)
               when :show_map then emit_show_map(node)
               when :present_objects then emit_present_objects(node)
               when :hide_sprites then emit_hide_sprites(node)
@@ -657,6 +658,9 @@ module VBlank
                 emit_unless_put_up(node, corner_note(plane_of(bg))) { runtime_call("rt_bar_place", [node.top]) }
               end
             end
+
+            # Reference#exec_set_tile_block: its cells one by one, as its children write them.
+            def emit_set_tile_block(node) = emit_children(node)
 
             # Reference#exec_set_tile: a tile the background does not have changes nothing, and nor does a
             # cell outside its map, which the runtime tests against the map's size.

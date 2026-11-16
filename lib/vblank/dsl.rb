@@ -49,6 +49,7 @@ require_relative "dsl/instrument"
 require_relative "dsl/score_list"
 require_relative "dsl/song_list"
 require_relative "dsl/sound_effect_list"
+require_relative "dsl/background_cell_blocks" # A block of a background's cells changed in one line
 VBlank.require_game_file "dsl/background"
 require_relative "dsl/pack_cells"          # The cells a background from the data pack may be written later
 VBlank.require_game_file "dsl/status_bar"

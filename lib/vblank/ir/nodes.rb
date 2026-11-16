@@ -493,6 +493,28 @@ module VBlank
         def tiles_named = picked? ? picks.compact.uniq : [tile]
       end
 
+      # A BLOCK OF CELLS OF A DECLARED BACKGROUND CHANGED AT ONCE: +across+ by +down+ cells from
+      # +col+ and +row+ each take the one tile SetTile's +tile+ or +picked_by+ names, or with
+      # +restore+ go back to the tile the background's map was declared with there. A speech box
+      # opening is a few of these, and closing it one. Each operand is a variable, read once.
+      #
+      # ITS CHILDREN ARE THE SAME CHANGE WRITTEN A CELL AT A TIME: two counted loops of SetTile,
+      # the place's cells in rows, any cell off the map left alone as SetTile leaves it, and the
+      # loops' own variables set back to nought at the end. That is what the block means, and what
+      # a backend with no way of its own plays. A console whose games write a block of cells into
+      # video memory with one command in the blank does that instead, so a block costs the pass a
+      # few words noted, not a test and a note for every cell (Genesis::Lowering::Picture#emit_set_tile_block).
+      class SetTileBlock
+        include Node
+        kind :set_tile_block
+        category :draw
+        operands name: :name, col: :value, row: :value, across: :value, down: :value, tile: :int,
+                 picked_by: :maybe_value, picks_from: :int, picks: :list, restore: :flag
+
+        # Whether the tile is picked as the program runs, as SetTile#picked? says.
+        def picked? = !picked_by.nil?
+      end
+
       class BackingBuffer
         include Node
         kind :backing_buffer

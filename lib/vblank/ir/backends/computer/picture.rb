@@ -1091,6 +1091,9 @@ module VBlank
             [eval_call("rg_background_scroll", background_number(node), value(node.x), value(node.y))]
           end
 
+          # Reference#exec_set_tile_block: its cells one by one, as its children write them.
+          def lower_set_tile_block(node) = body_of(node)
+
           # A tile picked as the program runs is written as the tests it stands for (IR::PickedTile):
           # the runtimes take a tile's number, and keep no table of a background's cells to index.
           def lower_set_tile(node)

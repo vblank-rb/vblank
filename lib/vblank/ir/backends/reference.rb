@@ -824,7 +824,7 @@ module VBlank
           hide_sprites rumble screen clear_screen pixel fill_rect dma_fill_rect draw_rect_at draw_column_at
           draw_place fill_face draw_text draw_digit background scroll_background place_bar box_background
           affine_background background_colors color_list_holds show_picture_group scroll_rows shade_outside
-          show_light_now camera fade tint pixelate see_through present_objects set_tile show_held_tiles
+          show_light_now camera fade tint pixelate see_through present_objects set_tile set_tile_block show_held_tiles
           show_map copy_tiles copy_owed_tiles load_sprite_tiles enable_sound beep noise wave stop_wave
           play_song play_from_list play_sound_effect stop_music hold_music play_sample stop_sample
           timer_start timer_stop on_timer set_clock
@@ -901,6 +901,7 @@ module VBlank
           when :see_through then exec_see_through(node)
           when :present_objects then exec_present_objects(node)
           when :set_tile then exec_set_tile(node)
+          when :set_tile_block then exec_set_tile_block(node)
           when :show_held_tiles then exec_show_held_tiles(node)
           when :show_map then exec_show_map(node)
           when :copy_tiles then exec_copy_tiles(node)
@@ -1857,6 +1858,9 @@ module VBlank
         # scene, changes nothing here.
         def tile_of_declaration_up?(node, tile) = tile.nil? || tile < background_up(node.name).tiles.length
 
+        # A BLOCK OF CELLS is what its children do, a cell at a time (Nodes::SetTileBlock).
+        def exec_set_tile_block(node) = node.children.each { |child| exec(child) }
+
         # EVERY HELD CHANGE, in the order the game made them.
         def exec_show_held_tiles(_node) = show_held_tiles
 
@@ -2575,7 +2579,7 @@ module VBlank
         # ...and the ones that change what the picture is built from and then always repaint, so
         # an owed repaint is replaced rather than painted — plus `background`, which settles one
         # itself when it has anything to put up (see #exec_background).
-        REPAINTING = %i[scroll_background place_bar box_background show_map set_tile show_held_tiles copy_tiles copy_owed_tiles
+        REPAINTING = %i[scroll_background place_bar box_background show_map set_tile set_tile_block show_held_tiles copy_tiles copy_owed_tiles
                         background_colors see_through present_objects background affine_background].freeze
         # ...and the ones that are mostly laid over the picture as the screen is read, and that
         # owe the picture again themselves on the occasions they change what is painted (see
