@@ -231,6 +231,7 @@ module VBlank
             @routine_tables = {} # a list of routines a call picks from by number -> its table's label
             @cell_tables = {} # the words a picked tile's cells hold (Picture#emit_set_picked_tile_of) -> their table's label
             @cell_blocks = {} # what a block of cells is written from (Picture#emit_set_tile_block_of) -> its label
+            @slot_places = {} # where a pool's lists keep their slots, by list (#place_pools)
             @section_routines = {}
             @indexes_checked = {} # a loop's count -> the fewest items it is checked to be below (#index_checked_below?)
             @pictures = by_kind(:bitmap)
@@ -290,6 +291,7 @@ module VBlank
               place = @memory.reserve("the list #{node.name.inspect}", Runtime::Lists::HEADER + (node.capacity * width))
               @lists[node.name] = [place, node.capacity, width, node.name.to_s]
             end
+            place_pools
             reserve_patches
             keep_tile_runs
             refuse_tiles_past_room_early!
@@ -956,7 +958,7 @@ module VBlank
           # D(+index+) holds the index and is left holding the slot's distance; D(index + 1) is
           # worked with.
           def emit_slot_address(node, index, fault:)
-            place, = @lists.fetch(node.name) { raise LoweringError, "the list #{node.name.inspect} is used and never declared" }
+            place = area_place(slot_place(node.name))
             full = always_full_lists[node.name]
             @asm.lea(at(place), @asm.a(0))
             unless full && (index_inside?(node.index, full) || index_checked_below?(node.index, full))
@@ -1022,19 +1024,21 @@ module VBlank
           # 32K is scaled as a word, which is quicker: the index is known to be inside it by now.
           def emit_slot_scaling(node, index)
             size = slots_within_word?(node) ? :w : :l
-            (slot_bytes(node).bit_length - 1).times { @asm.add(size, @asm.d(index), @asm.d(index)) }
+            (slot_place(node.name).stride.bit_length - 1).times { @asm.add(size, @asm.d(index), @asm.d(index)) }
           end
 
           # The slot of the list A0 points at that the distance in D(+index+) names.
           def slot_operand(node, index)
-            @asm.idx(0, Runtime::Lists::HEADER, index, slots_within_word?(node) ? :w : :l)
+            @asm.idx(0, Runtime::Lists::HEADER + slot_place(node.name).offset, index, slots_within_word?(node) ? :w : :l)
           end
 
-          def slot_bytes(node) = @lists.fetch(node.name)[2]
+          # How many bytes the value in a slot of +node+'s list is.
+          def slot_bytes(node) = slot_place(node.name).width
 
           def slots_within_word?(node)
-            _place, capacity, bytes = @lists.fetch(node.name)
-            capacity * bytes <= 0x7FFF
+            _place, capacity, = @lists.fetch(node.name)
+            slot = slot_place(node.name)
+            slot.offset + (capacity * slot.stride) <= 0x7FFF
           end
 
           # D0, just read from a slot of +bytes+ bytes, widened by its sign.
@@ -1080,8 +1084,60 @@ module VBlank
             index = capacity && folded(node.index)
             return unless index&.between?(0, capacity - 1)
 
-            place, _capacity, bytes = @lists.fetch(node.name)
-            [place + Runtime::Lists::HEADER + (index * bytes), bytes]
+            slot = slot_place(node.name)
+            [area_place(slot) + Runtime::Lists::HEADER + slot.at(index), slot.width]
+          end
+
+          # --- pools (Backends::PoolLayout) ---
+          #
+          # A POOL IS KEPT IN THE LAYOUT ITS PLACEMENT GIVES: where slot s of each of its lists is, in
+          # bytes from the start of the list's area (PoolLayout::SlotPlace), how wide its value is, and
+          # the number it is kept multiplied by. Every read and write of a slot below asks #slot_place
+          # for that, a pool's list and any other alike, and the headless run reads a pool's lists back
+          # through the same (Places#slot_places). The Genesis keeps every pool as lists today
+          # (Console::Description#pool_layouts): each slot list an area of its own, which is the list
+          # with its header, slot s at s times its width. A walk of a pool kept so is stepped by the
+          # statements the tree gives it (IR::WalkShape#step_statements), lowered as any other.
+          #
+          # A layout of the Genesis's own is an adapter that places a pool another way; this lowering
+          # then needs only its areas reserved and a walk stepped its way, and refuses one until it has.
+          def place_pools
+            @slot_places = {}
+            console = @program.described_console
+            (@program.pools || []).each do |shape|
+              layout = PoolLayout.chosen(shape, console, PoolLayout.steps_on(@program, shape))
+              placement = layout.place(shape)
+              refuse_unmade_pool_placement!(shape, placement)
+              @slot_places.merge!(placement.slots)
+            end
+          end
+
+          # Where a list's slots are: a pool's list as its layout placed it, any other a slot of its
+          # width after another.
+          def slot_place(name)
+            @slot_places.fetch(name) do
+              _place, _capacity, bytes = @lists.fetch(name) { raise LoweringError, "the list #{name.inspect} is used and never declared" }
+              PoolLayout::SlotPlace.new(area: name, offset: 0, stride: bytes, width: bytes, scale: 1)
+            end
+          end
+
+          # The address of the area +slot+ is in: a list's own place, its header first.
+          def area_place(slot) = @lists.fetch(slot.area).first
+
+          # The slots' places as the headless run reads them, by list.
+          public def slot_places = @slot_places.dup
+
+          # A placement this lowering cannot keep yet: an area that is not one list of the tree, a
+          # value kept multiplied, or slots not one after another. Today's lists are none of those.
+          def refuse_unmade_pool_placement!(shape, placement)
+            placement.slots.each do |list, slot|
+              next if slot.area == list && @lists.key?(list) && slot.scale == 1 && slot.offset.zero? &&
+                      slot.stride == slot.width && slot.width == @lists.fetch(list)[2]
+
+              raise NotMadeYet.new("Pool :#{shape.name} is kept as #{placement.layout}. The Genesis build keeps a pool " \
+                                   "only as lists for now. To fix this, give the pool `layout: :lists`, or no layout.",
+                                   part: "a pool's layout")
+            end
           end
 
           # The lists made full of one number and never made longer or shorter, so each holds its

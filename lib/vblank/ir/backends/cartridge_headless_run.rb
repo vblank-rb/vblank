@@ -419,18 +419,27 @@ module VBlank
           layout = runtime::Lists
           field = layout::FIELD_BYTES
           @places.lists.to_h do |name, (address, _capacity, width, _label, base, stride)|
-            base ||= address + layout::HEADER
-            stride ||= width
             capacity = number_at(address + layout::CAPACITY, field)
             front = number_at(address + layout::FRONT, field)
             length = number_at(address + layout::LENGTH, field)
+            # Two ways a run says a list's slots moved, to be made one: the Super Nintendo hands its
+            # slot 0 and stride beside the list's place, the Genesis answers #slot_place_of.
+            place = slot_place_of(name, width)
             items = Array.new(length) do |i|
               slot = (front + i) % capacity
-              read_slot(base + (slot * stride), width)
+              if base || stride
+                read_slot((base || (address + layout::HEADER)) + (slot * (stride || width)), width)
+              else
+                read_slot(address + layout::HEADER + place.at(slot), place.width) / place.scale
+              end
             end
             [name, items]
           end
         end
+
+        # Where the slots of the list +name+, of +width+ bytes, are after its header: one after another,
+        # unless the console's run says a pool's layout placed them otherwise (Backends::PoolLayout).
+        def slot_place_of(name, width) = PoolLayout::SlotPlace.new(area: name, offset: 0, stride: width, width: width, scale: 1)
 
         # A slot of +width+ bytes, read back sign-extended as the interpreter's is.
         def read_slot(address, width)

@@ -290,6 +290,10 @@ module VBlank
           # which the one reader reads too).
           def read_sprites = @places.drawn_sprite_rows(@drawn_sprites) { |address| half(address) }
 
+          # A pool's list read back where its layout placed its slots (Lowering#place_pools), any other
+          # list a slot after another.
+          def slot_place_of(name, width) = @places.slot_places.fetch(name) { super }
+
           # The Genesis's work RAM, read and written by address.
           def byte(address) = @core.wram_read8(address)
           def half(address) = @core.wram_read16(address)

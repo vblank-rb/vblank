@@ -61,8 +61,10 @@ module VBlank
         # (what it only reads), for the cost recorded in tools/emitted_baseline.json.
         # +video_tiles+ is how many tiles the game's pictures put in video memory (VideoTiles), or nil
         # for a game that draws from none.
+        # +slot_places+ is where each of a pool's lists keeps its slots, as its layout placed it
+        # (Backends::PoolLayout::SlotPlace, Lowering#place_pools), by list.
         Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :sprite_picture_names, :bytes,
-                             :sound_entries, :sound_voicing, :recording_names, :video_tiles) do
+                             :sound_entries, :sound_voicing, :recording_names, :video_tiles, :slot_places) do
           # Where the runtime counts the times the game has waited for the screen (32 bits).
           def waits_counted_at = runtime.fetch(Runtime::Frame::PASSES)
 
@@ -216,7 +218,7 @@ module VBlank
                              source_program: program, code: linked.places, sprite_picture_names: picture == :tiled || over ? lowering.sprite_picture_names : {},
                              bytes: byte_counts(linked), sound_entries: lowering.sound_entries,
                              sound_voicing: lowering.sound_voicing, recording_names: lowering.recording_names,
-                             video_tiles: lowering.video_tiles)
+                             video_tiles: lowering.video_tiles, slot_places: lowering.slot_places)
           Cartridge::GenesisROM.new(linked.image, title: title, vectors: vectors(linked), built: built)
         end
 

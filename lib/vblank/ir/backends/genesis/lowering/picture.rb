@@ -1574,9 +1574,11 @@ module VBlank
             # its slot's address, where reading it through the runtime would take a call, and the
             # list's place found and the index scaled there.
             def emit_order_entry_read(order, k)
-              place, _capacity, bytes = @lists.fetch(order)
+              slot = slot_place(order)
+              bytes = slot.width
               @asm.moveq(0, @asm.d(0)) unless bytes == 4
-              @asm.move(Runtime::Lists::SLOT_SIZES.fetch(bytes), @asm.abs_l(place, Runtime::Lists::HEADER + (k * bytes)), @asm.d(0))
+              @asm.move(Runtime::Lists::SLOT_SIZES.fetch(bytes), @asm.abs_l(area_place(slot), Runtime::Lists::HEADER + slot.at(k)),
+                        @asm.d(0))
             end
 
             # The placing D0 picks from +table+, by a +size+ (:w or :l) index four times the place, called.
