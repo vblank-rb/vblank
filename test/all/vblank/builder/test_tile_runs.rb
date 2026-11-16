@@ -137,6 +137,44 @@ class TestTileRuns < Minitest::Test
 
   include Differential
 
+  # A background walking between areas whose first area shows the run: painted, walked away from
+  # and back to, it shows the list as it was when last told changed.
+  private def walking_run_game
+    b = Builder.new
+    b.instance_eval do
+      screen :tiled
+      colors :ink, %i[transparent white]
+      image(:red_tile, "#" => :red) { (["#" * 8] * 8).join("\n") }
+      canvas = list :canvas, capacity: 64, width: :byte
+      repeat(64) { canvas.push 0 }
+      box = tiles :box, from: canvas, count: 2, colors: :ink
+      tiles :road, "#" => :red_tile
+      ground = background :ground, tiles: { house: :box, road: :road },
+                                   map: { house: { inside: [[1, 2]] }, road: { outside: ["##"] } }
+      frame = 0
+      game_loop do
+        frame += 1
+        if frame == 2
+          canvas[0] = 0x01
+          box.changed
+        end
+        ground.show_map :outside if frame == 4
+        ground.show_map :inside if frame == 7
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  def test_a_run_on_a_background_walking_between_areas_keeps_its_picture
+    assert_equal RED, pixel(walking_run_game, 6, 0, 0), "the road"
+    assert_equal WHITE, pixel(walking_run_game, 10, 0, 0), "the house again, as painted"
+  end
+
+  def test_the_console_agrees_on_a_run_walked_away_from_and_back_to
+    assert_backends_agree(walking_run_game, frames: 10, name: "RUNWALK")
+  end
+
   # Every byte of both tiles gets a different pattern of places from a four-colour list, so a
   # copy that landed a tile late, a byte off, or with its two pixels swapped draws a different
   # picture somewhere — and the whole screen is compared, console against interpreter.

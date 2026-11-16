@@ -111,7 +111,8 @@ class TestTilePictures < Minitest::Test
     assert_equal [BLUE, GREEN, GREEN], shown(program, 8)
   end
 
-  # Two areas of tiles on one background, each with the group among them at a place of its own.
+  # Two areas of tiles on one background, each with the group among them at a place of its own. The
+  # two maps are one size, as a console that keeps one area's tiles at a time holds them.
   private def walking_game(&step)
     test = self.class
     b = Builder.new
@@ -126,7 +127,7 @@ class TestTilePictures < Minitest::Test
       tiles :near, "w" => water[:top], "#" => :green_tile
       tiles :far, "#" => :filler, "g" => :green_tile, "w" => water[:top]
       ground = background :ground, tiles: { near: :near, far: :far },
-                                   map: { near: { pond: ["w#"] }, far: { lake: ["#gw"] } }
+                                   map: { near: { pond: ["w##"] }, far: { lake: ["#gw"] } }
       tick = var :tick, 0
       game_loop do
         tick += 1

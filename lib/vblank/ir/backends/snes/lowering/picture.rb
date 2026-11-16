@@ -1115,6 +1115,8 @@ module VBlank
             # copy, as a Super Nintendo game turns it off to load a screen, and on again once the pass's
             # picture is in), and its colours through the fade in force (Runtime::Tint's rt_colors_hold).
             # Then the map goes up as any map does, so no frame shows a map over the wrong area's tiles.
+            # Tiles painted from a list (`tile_pictures` too) keep fixed places, made before any area
+            # takes its copy, so an area showing one names the run's own tiles in every area.
 
             # Whether a background of +program+ walks between areas.
             def self.walks_areas?(program) = program.walk.any? { |node| node.kind == :background && node.several_sets? }
@@ -1200,9 +1202,6 @@ module VBlank
               if bg.scene.nil? && (@screen_colors || @scene_background_tiles)
                 refuse_unmade!("a background walking between areas on every screen, in a game whose scenes bring in their own colours or tiles")
               end
-              return unless @tile_runs.any? { |run| bg.tiles.intersect?(Array(run.tiles)) }
-
-              refuse_unmade!("a background walking between areas showing tiles painted from a list")
             end
 
             ART = W65816::Holding.new(what: "the game's pictures", fix: "use fewer different pictures and maps")
