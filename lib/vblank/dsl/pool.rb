@@ -1081,7 +1081,28 @@ module VBlank
       def record_current_slot(index)
         node = Build.set(current_var, index.node)
         record(node)
+        current_writes << node
         @builder.record_walk_instance_writes(self, node)
+      end
+
+      # The writes #record_current_slot made, one for each walk.
+      private def current_writes = @current_writes ||= []
+
+      # A WALK WHOSE BODY NEVER ASKS WHICH THING IT IS ON writes it down for nobody. Only a call
+      # can reach a routine of the pool, which reads it, and a routine's own reads inside its walks
+      # read its own variable (#build_routine_body); a walk inside reads it to keep it. So a walk
+      # whose body has no call and no read of it, the inner walk of a thing checked against each
+      # other thing above all, goes without the write, one store for every thing it visits. What
+      # it was before the walk is what it is during it, and the walk puts that back as it ends.
+      # Called at the end of the build (Builder#finalize_pool_walks), once every routine's body has
+      # been read.
+      public def drop_unread_current_writes
+        current_writes.each do |write|
+          body = write.parent.children.drop_while { |node| !node.equal?(write) }.drop(1)
+          next if body.any? { |statement| statement.walk.any? { |node| node.callees.any? || current_read?(node) } }
+
+          write.parent.children.delete(write)
+        end
       end
 
       # ...and a walk PUTS IT BACK as it leaves, because the walks nest. Two walks over one pool

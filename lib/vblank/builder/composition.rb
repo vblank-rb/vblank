@@ -183,6 +183,9 @@ module VBlank
             nodes.each { |node| ensure_var(node.var) }
           end
         end
+        (@pool_walks || []).map(&:first).uniq.each do |pool|
+          pool.drop_unread_current_writes unless pool.instance_routines.empty?
+        end
       end
 
       # A routine that works on one instance runs on the instance its pool is walking. Called

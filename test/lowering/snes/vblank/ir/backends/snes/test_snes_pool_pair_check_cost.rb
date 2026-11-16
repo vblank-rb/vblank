@@ -57,11 +57,12 @@ class TestSNESPoolPairCheckCost < Minitest::Test
   # number in 32 bits; the bound holds the cheaper turn and test: short branches where the target is
   # near (W65816#branch_long), the walk's slot copies a half long, `abs(d) < 16` decided from d's
   # high half (SNES::Lowering#compare_absolute_below), the next link's high half written only for
-  # NONE, and X set once for both of the walk's byte lists (W65816#x_holds).
-  def test_one_more_thing_to_check_costs_under_1400_master_clocks
+  # NONE, X set once for both of the walk's byte lists (W65816#x_holds), and no note of which thing
+  # the walk is on where nothing in its body reads it (Pool#drop_unread_current_writes).
+  def test_one_more_thing_to_check_costs_under_1320_master_clocks
     per_pair = (routine_clocks(self.class.game(4)) - routine_clocks(self.class.game(2))) / 2
 
-    assert_operator per_pair, :<, 1400
+    assert_operator per_pair, :<, 1320
   end
 
   # With the places in half words, the difference and its test are worked out in 16 bits
