@@ -8,10 +8,12 @@ module VBlank
       # A pool reaches the tree as plain lists, variables and loops (DSL::Pool), and the interpreter
       # runs that tree: one list for each field and for the pool's own bookkeeping, a repeat for each
       # walk. Every lowering keeps it so today, a list in memory for each list of the tree. That is
-      # the :lists layout, which every console has. A console's own games keep their things other
-      # ways: the Super Nintendo's walk a record for each thing with one index register reaching every
-      # field (Super Bomberman), or tables side by side read with one index (Super Mario World's
-      # sprite tables). A layout of a console's own is an adapter of this interface, chosen per pool,
+      # the :lists layout, which every console has. A console's own games keep their things the way
+      # its processor reaches memory cheaply: on the Super Nintendo, a record for each thing or tables
+      # side by side, either read with one index register held on the thing for every field; on the
+      # Color, a record with HL pointed at it; on the Genesis, a record with an address register on it
+      # (https://snes.nesdev.org/wiki/65C816, https://gbdev.io/pandocs/, https://plutiedev.com/).
+      # A layout of a console's own is an adapter of this interface, chosen per pool,
       # so adding one is one new adapter and no lowering's code changes for a pool it does not keep.
       #
       # WHAT A LAYOUT SAYS (an adapter):

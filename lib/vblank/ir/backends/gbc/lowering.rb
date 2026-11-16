@@ -1533,17 +1533,15 @@ module VBlank
           # A layout of the Color's own is an adapter that places a pool another way; this lowering then
           # needs only its areas reserved and a walk stepped its way, and refuses one until it has.
           #
-          # WHAT THE LISTS COST, AGAINST THE COLOR'S OWN GAMES. Pokemon Pinball's Seel bonus moves each
-          # of its three seels with one call of UpdateSeelPosition, handed DE and HL pointing into that
-          # seel's own record: the call and the check of its state are a handful of instructions, and
-          # its 16-bit position is added to with LD A,[DE] / ADD [HL] / LD [DE],A and the carry, a few
-          # instructions on bytes it already points at
-          # (https://github.com/pret/pokepinball/blob/master/engine/pinball_game/object_collision/seel_bonus_resolve_collision.asm).
-          # A walk of a pool kept as lists, measured in the emulator with a probe of 24 things, spends
-          # about four times that call and check to step to each thing, and each field it adds to is a
-          # read and a write of a list: the index checked, multiplied by the slot's width and added to
-          # the list's place, both ways, which is ten to twenty times the record's few instructions. A
-          # layout of records with HL kept on the thing through the walk's body is the Color's way.
+          # WHAT THE LISTS COST ON THIS PROCESSOR. A Color game keeps each thing as a record and points
+          # HL (or DE) at it for as long as it works on that thing: a byte field is then one instruction
+          # (ADD [HL], or INC [HL]), and a 16-bit field a few, since the SM83 has no indexed addressing
+          # and HL is the register that reaches memory cheaply (https://gbdev.io/pandocs/CPU_Instruction_Set.html;
+          # the pret decompilations on github.com/pret show the habit routine after routine). A pool kept
+          # as lists cannot do that: each field read or write checks the index, multiplies it by the
+          # slot's width and adds the list's place, and the walk steps through link lists in memory,
+          # several times the record's instructions for every field. A layout of records with HL kept on
+          # the thing through the walk's body is the Color's way.
           def place_pools
             @slot_places = {}
             console = @program.described_console
