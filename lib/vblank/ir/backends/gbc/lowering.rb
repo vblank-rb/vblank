@@ -277,6 +277,7 @@ module VBlank
             @handover = @plan.handover
             @scenes = @plan.scenes
             @lists = {}
+            @slot_places = {} # where a pool's lists keep their slots, by list (#place_pools)
             @variables = {}
             @locals = {} # a routine's own numbers, by the name the lowering gave each
             @starts = [] # [address, value] for a place that does not start at nought
@@ -309,6 +310,7 @@ module VBlank
               place = @memory.reserve("the list #{node.name.inspect}", Runtime::Lists::HEADER + (node.capacity * width))
               @lists[node.name] = [place, node.capacity, width, node.name.to_s]
             end
+            place_pools
             @scene = keep_local(:scene, start: -1) unless @scenes.empty?
             keep_timer_numbers
             keep_held_colors
@@ -1446,8 +1448,8 @@ module VBlank
             index = folded(node.index)
             return nil unless index && fixed_length_lists.include?(node.name)
 
-            place, capacity, width = list_placed(node)
-            place + Runtime::Lists::HEADER + (index * width) if index.between?(0, capacity - 1)
+            place, capacity, = list_placed(node)
+            place + Runtime::Lists::HEADER + slot_place(node.name).at(index) if index.between?(0, capacity - 1)
           end
 
           # The names of the lists #fixed_slot reads straight from.
@@ -1504,9 +1506,88 @@ module VBlank
           end
 
           # The list +node+ names, as #sections placed it: [its place, its capacity, the bytes a slot,
-          # its name].
+          # its name]. Every read and write of a slot starts here, so a pool's list is reached where
+          # its layout placed its slots (#slot_place): the area's place, and its slots' width, which
+          # #refuse_unmade_pool_placement! holds to one slot after another from the header's end.
           def list_placed(node)
-            @lists.fetch(node.name) { raise LoweringError, "the list #{node.name.inspect} is used and never declared" }
+            place, capacity, _width, label = @lists.fetch(node.name) do
+              raise LoweringError, "the list #{node.name.inspect} is used and never declared"
+            end
+            slot = slot_place(node.name)
+            [slot.area == node.name ? place : @lists.fetch(slot.area).first, capacity, slot.width, label]
+          end
+
+          # --- pools (Backends::PoolLayout) ---
+          #
+          # A POOL IS KEPT IN THE LAYOUT ITS PLACEMENT GIVES: where slot s of each of its lists is, in
+          # bytes from the start of the list's area (PoolLayout::SlotPlace), how wide its value is, and
+          # the number it is kept multiplied by. Every read and write of a slot asks for that through
+          # #list_placed, and the headless run reads a pool's lists back through the same
+          # (Places#slot_places). The Color keeps every pool as lists today
+          # (Console::Description#pool_layouts): each slot list an area of its own, which is the list
+          # with its header, slot s at s times its width. Its width is the one the Color keeps the list
+          # in (#list_width, GBC::ListWidths), which can be narrower than the game declared, so the
+          # pool is placed with those widths. A walk of a pool kept so is stepped by the statements the
+          # tree gives it (IR::WalkShape#step_statements), lowered as any other.
+          #
+          # A layout of the Color's own is an adapter that places a pool another way; this lowering then
+          # needs only its areas reserved and a walk stepped its way, and refuses one until it has.
+          #
+          # WHAT THE LISTS COST, AGAINST THE COLOR'S OWN GAMES. Pokemon Pinball's Seel bonus moves each
+          # of its three seels with one call of UpdateSeelPosition, handed DE and HL pointing into that
+          # seel's own record: the call and the check of its state are a handful of instructions, and
+          # its 16-bit position is added to with LD A,[DE] / ADD [HL] / LD [DE],A and the carry, a few
+          # instructions on bytes it already points at
+          # (https://github.com/pret/pokepinball/blob/master/engine/pinball_game/object_collision/seel_bonus_resolve_collision.asm).
+          # A walk of a pool kept as lists, measured in the emulator with a probe of 24 things, spends
+          # about four times that call and check to step to each thing, and each field it adds to is a
+          # read and a write of a list: the index checked, multiplied by the slot's width and added to
+          # the list's place, both ways, which is ten to twenty times the record's few instructions. A
+          # layout of records with HL kept on the thing through the walk's body is the Color's way.
+          def place_pools
+            @slot_places = {}
+            console = @program.described_console
+            (@program.pools || []).each do |shape|
+              kept = shape.with(slot_lists: shape.slot_lists.to_h { |list, width| [list, pool_list_width(list, width)] })
+              layout = PoolLayout.chosen(kept, console, PoolLayout.steps_on(@program, kept))
+              placement = layout.place(kept)
+              refuse_unmade_pool_placement!(shape, placement)
+              @slot_places.merge!(placement.slots)
+            end
+          end
+
+          # The width the Color keeps the list +name+ in, declared +width+ (#list_width).
+          def pool_list_width(name, width)
+            node = @declared_lists[name]
+            node ? list_width(node) : width
+          end
+
+          # Where a list's slots are: a pool's list as its layout placed it, any other a slot of its
+          # width after another.
+          def slot_place(name)
+            @slot_places.fetch(name) do
+              _place, _capacity, bytes = @lists.fetch(name) { raise LoweringError, "the list #{name.inspect} is used and never declared" }
+              PoolLayout::SlotPlace.new(area: name, offset: 0, stride: bytes, width: bytes, scale: 1)
+            end
+          end
+
+          # The slots' places as the headless run reads them, by list.
+          public def slot_places = @slot_places.dup
+
+          # A placement this lowering cannot keep yet: an area that is not one list of the tree, a
+          # value kept multiplied, or slots not one after another as wide as the list keeps them.
+          # Today's lists are none of those. A list the build keeps nowhere (a run painted from it
+          # holds it instead) is not asked about.
+          def refuse_unmade_pool_placement!(shape, placement)
+            placement.slots.each do |list, slot|
+              next unless @lists.key?(list)
+              next if slot.area == list && slot.scale == 1 && slot.offset.zero? &&
+                      slot.stride == slot.width && slot.width == @lists.fetch(list)[2]
+
+              raise NotMadeYet.new("Pool :#{shape.name} is kept as #{placement.layout}. The Game Boy Color build keeps a " \
+                                   "pool only as lists for now. To fix this, give the pool `layout: :lists`, or no layout.",
+                                   part: "a pool's layout")
+            end
           end
 
           # The slots list +node+ (its `list_new`) is kept in: as declared, or narrower where every

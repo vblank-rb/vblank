@@ -81,9 +81,12 @@ module VBlank
         #
         # +kept_bytes+ is each variable the cartridge keeps narrower than four bytes, by its name: one
         # the game declared narrow, or one only ever holding a byte (GBC::ByteVariables).
+        #
+        # +slot_places+ is where each of a pool's lists keeps its slots, as its layout placed it
+        # (Backends::PoolLayout::SlotPlace, Lowering#place_pools), by list.
         Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :routines, :sound_tables, :notes,
                              :music_follows_level, :sound_effects, :recordings, :picture_checks, :together_checks,
-                             :kept_bytes) do
+                             :kept_bytes, :slot_places) do
           # How many bytes variable +name+ is kept in: four for a whole number. A narrow one reads
           # back with its sign copied up from its top byte.
           def variable_bytes(name) = kept_bytes.fetch(name, 4)
@@ -422,7 +425,8 @@ module VBlank
                              music_follows_level: !lowering.music_level.nil?,
                              sound_effects: lowering.music.effects.map(&:name), recordings: lowering.clips.recordings,
                              picture_checks: lowering.picture_checks,
-                             together_checks: lowering.together_checks, kept_bytes: lowering.kept_variable_bytes)
+                             together_checks: lowering.together_checks, kept_bytes: lowering.kept_variable_bytes,
+                             slot_places: lowering.slot_places)
           save_bytes = SaveLayout.named_by?(program) ? Runtime::Saving::SIZE : 0
           Cartridge::GBCROM.new(linked.banks, title: title, save_bytes: save_bytes, clock: lowering.clock?,
                                               rumble: lowering.rumbles?, built: built)
