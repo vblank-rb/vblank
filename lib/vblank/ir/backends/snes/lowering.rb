@@ -64,6 +64,7 @@ module VBlank
             when :abs then emit_abs(node)
             when :negate_abs then emit_negate_abs(node)
             when :clamp then emit_clamp(node)
+            when :repeat then with_invariant_reads_kept(node) { emit_control_flow_statement(node) }
             when *ControlFlow::STATEMENT_KINDS then emit_control_flow_statement(node)
             when :call then emit_call(node)
             when :call_one_of then emit_call_one_of(node)
@@ -1084,6 +1085,8 @@ module VBlank
           # list's header, which takes as long as ten sums, and a game walking a map held in a list
           # does this many times a pass.
           def value_of_list_get(node)
+            kept = kept_read(node)
+            return load_variable(kept) if kept
             return list_call("rt_list_get", node, node.index) if front_dropped_lists.include?(node.name)
 
             place, _capacity, width = list_placed(node)
@@ -2449,12 +2452,20 @@ module VBlank
           def compare_half_distance_below(node, limit)
             held = fresh("near")
             within = fresh("within_half")
-            @asm.lda(half_slot_operand(node.lhs))
-            @asm.sta(@asm.direct(R0))
-            operand = half_slot_operand(node.rhs)
-            emit_carry_for(node.op)
-            @asm.lda(@asm.direct(R0))
-            emit_half_sum(node.op, operand)
+            left = half_slot_operand(node.lhs)
+            if kept_read(node.rhs)
+              # The right side is a number of the routine's own, read where it is: no X to set.
+              right = half_slot_operand(node.rhs)
+              emit_carry_for(node.op)
+              @asm.lda(left)
+            else
+              @asm.lda(left)
+              @asm.sta(@asm.direct(R0))
+              right = half_slot_operand(node.rhs)
+              emit_carry_for(node.op)
+              @asm.lda(@asm.direct(R0))
+            end
+            emit_half_sum(node.op, right)
             @asm.bvc(within)
             @asm.lda(0xFFFF) # overflowed: 32768 or more apart
             @asm.bra(held)
@@ -2479,8 +2490,13 @@ module VBlank
               list_placed(node)[2] == 2 && !operand_halves(node.index).nil?
           end
 
-          # Where the half-word slot +node+ (#half_slot_read?) is, with X set to reach it.
+          # Where the half-word slot +node+ (#half_slot_read?) is, with X set to reach it, or the low
+          # half of the number it is kept in before its loop (#with_invariant_reads_kept), which holds
+          # the slot's half word as it reads back.
           def half_slot_operand(node)
+            kept = kept_read(node)
+            return at_place(place_of(kept)) if kept
+
             place, _capacity, width = list_placed(node)
             slot = fixed_slot_address(node, place, width)
             return @asm.long(slot) if slot
@@ -2834,8 +2850,64 @@ module VBlank
 
           def variable_named(node)
             return node if node.is_a?(Symbol)
+            return unless node.is_a?(Node)
+            return node.name if node.kind == :var_ref
 
-            node.name if node.is_a?(Node) && node.kind == :var_ref
+            kept_read(node)
+          end
+
+          # A LIST'S SLOT THAT A LOOP READS ON EVERY TURN AND NEVER CHANGES, read once before it. A
+          # thing of a pool checked against each other thing reads its own fields at its own slot
+          # for every pair: `(other.x - e.x).abs < 16`, where `e`'s slot and the field's list stay as
+          # they are through the walk. Each such read, worked out every turn, sets X to the slot and
+          # reads it there, or works it into R0 beside the other side; read once into a number of the
+          # routine's own before the loop, it is a variable on every turn, which a sum or a comparison
+          # reads where it is.
+          #
+          # A read is kept so when its index is a variable and nothing in the loop names that
+          # variable or the list but to read them, the loop calls nothing and has no frame boundary
+          # in it (LoweringPlan::FRAME_ENDING_KINDS), so nothing else runs while it goes, and its
+          # index cannot be outside the list (#index_inside_full_list?), so reading it first, even for
+          # a loop that never reads it, cannot stop the game.
+          def with_invariant_reads_kept(node)
+            kept = invariant_reads(node).to_h do |read|
+              number = keep_local(:kept_read)
+              value(read)
+              store(number)
+              [[read.name, read.index.name], number]
+            end
+            outer = @kept_reads
+            @kept_reads = (outer || {}).merge(kept)
+            yield
+          ensure
+            @kept_reads = outer
+          end
+
+          # The reads of +loop+ #with_invariant_reads_kept keeps, one for each list and index.
+          def invariant_reads(loop)
+            nodes = loop.walk.to_a
+            return [] if nodes.any? { |each| each.callees.any? || LoweringPlan::FRAME_ENDING_KINDS.include?(each.kind) }
+
+            reads = nodes.select do |each|
+              each.kind == :list_get && each.index.is_a?(Node) && each.index.kind == :var_ref && !folded(each) &&
+                !front_dropped_lists.include?(each.name) && index_inside_full_list?(each.name, each.index) &&
+                !kept_read(each)
+            end
+            reads.uniq { |read| [read.name, read.index.name] }.reject do |read|
+              nodes.any? { |each| names?(each, read.index.name, :var_ref) || names?(each, read.name, :list_get) }
+            end
+          end
+
+          # Whether +node+, other than a node of kind +reader+, names +name+ in what it holds.
+          def names?(node, name, reader)
+            node.kind != reader && node.attrs.values.flatten.any?(name)
+          end
+
+          # The number a read is kept in before its loop (#with_invariant_reads_kept), or nil.
+          def kept_read(node)
+            return unless @kept_reads && node.kind == :list_get && node.index.is_a?(Node) && node.index.kind == :var_ref
+
+            @kept_reads[[node.name, node.index.name]]
           end
 
           # Where the two halves of +node+ can be read without working anything out: the number itself

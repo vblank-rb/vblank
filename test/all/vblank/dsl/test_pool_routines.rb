@@ -140,6 +140,35 @@ class TestPoolRoutines < Minitest::Test
                  "the first thing met the second on pass 12, at 64 and 78"
   end
 
+  # A routine that moves its own thing on every turn of its walk reads where it has moved to on the
+  # next turn, not where it was when the walk began.
+  def test_a_routine_moving_its_own_instance_inside_its_walk_reads_each_new_place
+    program = program_with do
+      screen :bitmap
+      near = var :near, 0
+      pass = var :pass, 0
+      things = pool :thing, x: 0, capacity: 4
+      things.func(:step) do |e|
+        things.each do |other|
+          e.x += 10
+          near += 1 if other.index != e.index && (other.x - e.x).abs < 5
+        end
+      end
+      things.spawn(x: 0)
+      things.spawn(x: 21)
+      things.spawn(x: 100)
+      b = self
+      game_loop do
+        pass += 1
+        things.each { |thing| b.call :step if thing.x < 10 } if pass == 1
+      end
+    end
+    played = game_player.run(program, frames: 3)
+
+    assert_equal [1, [21, 30, 100]], [played[:near], played.pool(:thing, :x).compact.sort],
+                 "the second turn's 20 is near the second thing's 21, and the thing ends at 30"
+  end
+
   # ...and names given the routine's own slot and place before the walk keep them inside it,
   # as a name keeps the number of its line in plain Ruby.
   def test_names_set_from_a_routine_s_instance_before_its_walk_keep_that_instance
