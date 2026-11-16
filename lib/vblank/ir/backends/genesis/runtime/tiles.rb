@@ -440,8 +440,9 @@ module VBlank
             # draws it from the palette its own picture names.
             #
             # A READER'S ROW is four words: whose, which picture, where. A game has a row of it for
-            # every sprite it can declare (Console::Description#sprite_places is the table's 80), so the
-            # walk never counts them.
+            # every sprite that can be up together, which the build holds to the table's 80
+            # (Console::Description#sprite_places, Checks::TooManySprites): only a sprite that shows is
+            # placed, and two scenes never up together count apart. So the walk never counts them.
             def emit_sprites(asm, memory, at)
               asm.label("rt_sprites_begin")
               asm.clr(:w, at.call(SPRITE_COUNT))

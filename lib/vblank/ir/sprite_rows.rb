@@ -72,6 +72,13 @@ module VBlank
         screens(Stacking.objects_in_draw_order(program), shared_keys(groups, []), groups, weight)
       end
 
+      # The rows +program+ needs on a machine that hands them out as it places the sprites that show:
+      # as many as its busiest screen's (#screens_shown_together), with no row any sprite's own.
+      def plan_shown_together(program, &weight)
+        screens = screens_shown_together(program, &weight)
+        Plan.new(rows: {}, count: screens.map(&:count).max || 0, screens: screens, keys: {}, between: [])
+      end
+
       # The variable and value each sprite that shares is put up by, by name.
       def shared_keys(groups, ordered)
         return {} if groups.empty?

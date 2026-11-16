@@ -183,7 +183,7 @@ module VBlank
                               :whole_screen_size, :extension, :code_cache_bytes, :face_fill_skips_outside_window,
                               :face_fill_by_row_middles, :pixel_size, :shows_bigger_pixels,
                               :pose_lists, :sprites_in_blocks, :voices_read_sound_memory, :big_background_tiles,
-                              :shown_rows, :gives_up_rows, :save_memories) do
+                              :shown_rows, :gives_up_rows, :save_memories, :sprite_rows_settled) do
       # +code_cache_bytes+ is how much of the game's code the processor keeps in a cache of its own and
       # runs without going out to memory for each instruction, or nil for a processor with none (it
       # reads every instruction from memory as it runs it, or memory as quick as a cache). Where it is
@@ -240,12 +240,19 @@ module VBlank
       # video memory takes writes only while it is not drawing, and that can switch the screen off
       # for those rows, so the copy has them as well as the blank (the Super Nintendo's forced
       # blank, written line by line: Backends::SNES::Runtime::Letterbox).
+      #
+      # +sprite_rows_settled+ marks a console whose build gives each sprite its rows of the sprite
+      # table as the game is built (the Advance's, IR::SpriteRows.plan), so a sprite drawn in an order
+      # the game works out keeps its rows on every screen. Where it is false the runtime hands the
+      # rows out on every pass to the sprites that show, so only the sprites that can be up together
+      # count against +sprite_places+ (Checks::TooManySprites).
       def initialize(code_cache_bytes: nil, face_fill_skips_outside_window: false, face_fill_by_row_middles: true,
                      pixel_size: 1, shows_bigger_pixels: false, pose_lists: :one, sprites_in_blocks: true,
                      voices_read_sound_memory: false, big_background_tiles: false, shown_rows: nil,
                      gives_up_rows: false, sprite_pieces_drawn_a_screen: nil, sprite_slivers_drawn_a_line: nil,
                      sprite_pixels_drawn_a_line: nil, sprite_piece_shape: :small, sprite_table_filled_from: :front,
-                     save_memories: ADVANCE_SAVE_MEMORIES, layer_for_held_rows: false, cells_in_front: false, **rest) = super
+                     save_memories: ADVANCE_SAVE_MEMORIES, layer_for_held_rows: false, cells_in_front: false,
+                     sprite_rows_settled: false, **rest) = super
 
       # Whether one sprite can show poses drawn from different lists of colours (see +pose_lists+).
       def poses_keep_own_lists? = pose_lists != :one
@@ -334,6 +341,7 @@ module VBlank
 
     # The Game Boy Advance.
     ADVANCE = Description.new(name: :gba, title: "Game Boy Advance", screen_width: 240, screen_height: 160,
+                              sprite_rows_settled: true,
                               buttons: %i[a b select start right left up down r l].freeze, controllers: 1,
                               holds_background_above_row: false, background_box: :shared_windows, glides_recordings: true, sets_main_volume: true, sprites: 128,
                               # Each shape is clipped against the area's edges as the ARM is
