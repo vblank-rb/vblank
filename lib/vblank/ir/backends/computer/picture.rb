@@ -1091,8 +1091,15 @@ module VBlank
             [eval_call("rg_background_scroll", background_number(node), value(node.x), value(node.y))]
           end
 
-          # Reference#exec_set_tile_block: its cells one by one, as its children write them.
-          def lower_set_tile_block(node) = body_of(node)
+          # Reference#exec_set_tile_block: its cells one by one, as its children write them. A block put
+          # back on a background read from the data pack as the game starts has no children, since the
+          # build does not hold its map: the runtime puts it back from the map it read.
+          def lower_set_tile_block(node)
+            return body_of(node) unless node.restore && node.children.empty?
+
+            [eval_call("rg_background_restore_cells", background_number(node), value(node.col), value(node.row),
+                       value(node.across), value(node.down))]
+          end
 
           # A tile picked as the program runs is written as the tests it stands for (IR::PickedTile):
           # the runtimes take a tile's number, and keep no table of a background's cells to index.

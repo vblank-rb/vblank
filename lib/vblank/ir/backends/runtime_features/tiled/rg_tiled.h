@@ -23,6 +23,9 @@ void rg_background_box(int32_t background, int32_t x, int32_t y, int32_t width, 
 /* One cell becomes tile number +tile+ of the background's tiles. A cell the map does not have is
  * left alone. */
 void rg_background_set_tile(int32_t background, int32_t col, int32_t row, int32_t tile);
+/* A block of +across+ by +down+ cells from +col+ and +row+ goes back to the map as declared, or as
+ * read from the file the game was handed. A cell the map does not have is left alone. */
+void rg_background_restore_cells(int32_t background, int32_t col, int32_t row, int32_t across, int32_t down);
 /* The same change on a background declared `held: true`: it waits for rg_show_held_tiles. With
  * +most+ changes waiting, every one of them goes in first. +most+ is at most RG_HELD_TILES_ROOM. */
 #define RG_HELD_TILES_ROOM 1024

@@ -504,6 +504,11 @@ module VBlank
       # a backend with no way of its own plays. A console whose games write a block of cells into
       # video memory with one command in the blank does that instead, so a block costs the pass a
       # few words noted, not a test and a note for every cell (Genesis::Lowering::Picture#emit_set_tile_block).
+      #
+      # A block put back on a background read from the start file has no children, since the build
+      # does not hold that map: only the builds that read such a file meet one, and each puts the
+      # cells back from the map it read (Reference#exec_set_tile_block, which puts back every block
+      # that way, and Computer::Picture#lower_set_tile_block).
       class SetTileBlock
         include Node
         kind :set_tile_block

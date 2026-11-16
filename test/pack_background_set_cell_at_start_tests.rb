@@ -79,6 +79,40 @@ module PackBackgroundSetCellAtStartTests
     end
   end
 
+  # A BLOCK OF CELLS PUT BACK WITH THE PACK LEFT OUT (`restore_cells`): the map is the file's, read
+  # as the game starts, so the cells go back to what the all-in-one build puts back, the map's
+  # empty cell (2, 1) emptied again. A block of told cells covers part of the map on pass 2, part
+  # of it, and some of the map past its edge, is put back on pass 4, and the rest on pass 6.
+  def test_cells_put_back_with_the_pack_left_out_show_as_the_all_in_one_builds
+    Dir.mktmpdir do |folder|
+      game = lambda do |**settings|
+        map_cells_game_and_file(folder, :gbc, set_cells: ->(pack) { pack[:changes] }, changes: 3, **settings) do |world|
+          t = var :t, 0
+          game_loop do
+            t += 1
+            world.fill_cells 0, 0, 4, 2, 1 if t == 2
+            world.restore_cells 1, -1, 2, 5 if t == 4
+            world.restore_cells 0, 0, 9, 9 if t == 6
+          end
+        end
+      end
+      program, file = game.()
+      left_out, = game.(options: LEFT_OUT)
+      all_in_one = pictures_of_frames(program, [3, 5, 7])
+
+      refute_equal all_in_one[0], all_in_one[2], "the block showed, and was put back"
+      assert_equal all_in_one, pictures_of_frames(left_out, [3, 5, 7], file: file)
+    end
+  end
+
+  # The picture after each of +frames+, played by this run's player, handed +file+ where given.
+  private def pictures_of_frames(program, frames, file: nil)
+    frames.map do |count|
+      player = file ? game_player.hand_file(file) : game_player
+      player.run(program, frames: count).screen.to_a
+    end
+  end
+
   # Written `now: true` with the pack left out, by number and by place, the cells show what the
   # all-in-one build shows written without it. Played as a console that writes its video memory
   # only between frames, the game is refused as its all-in-one build is (TestPackBackgroundSetCell).

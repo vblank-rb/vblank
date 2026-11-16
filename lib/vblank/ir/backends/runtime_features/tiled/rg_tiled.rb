@@ -483,6 +483,28 @@ end
 
 # Reference#exec_set_tile: the copy is made even when the cell turns out not to be there. A cell is
 # kept as a signed sixteen-bit number, as the map's cells are.
+# Reference#exec_set_tile_block, a block put back: rg_tiled.c's, function for function.
+def rg_background_restore_cells(background, col, row, across, down)
+  cells = @rg_cells_now[rg_keeper_of(background)][1]
+  return unless cells
+
+  map = rg_map_entry(rg_declaration_up(background), 0)
+  cols = rg_map_cols(background)
+  rows = rg_map_rows(background)
+  declared = @rg_game_map_cells.entries(@rg_game_maps[map + RG_MAP_CELLS], cols * rows)
+  changed = false
+  ([row, 0].max...[row + down, rows].min).each do |r|
+    ([col, 0].max...[col + across, cols].min).each do |c|
+      at = (r * cols) + c
+      next if cells[at] == declared[at]
+
+      cells[at] = declared[at]
+      changed = true
+    end
+  end
+  rg_request_repaint if changed
+end
+
 def rg_background_set_tile(background, col, row, tile)
   # A tile only another scene's declaration of the name has changes nothing here.
   return if tile >= rg_background_field(rg_declaration_up(background), RG_BG_TILES)

@@ -1858,8 +1858,26 @@ module VBlank
         # scene, changes nothing here.
         def tile_of_declaration_up?(node, tile) = tile.nil? || tile < background_up(node.name).tiles.length
 
-        # A BLOCK OF CELLS is what its children do, a cell at a time (Nodes::SetTileBlock).
-        def exec_set_tile_block(node) = node.children.each { |child| exec(child) }
+        # A BLOCK OF CELLS is what its children do, a cell at a time (Nodes::SetTileBlock). A block
+        # put back takes each cell from the map of the declaration up, as declared, or as read from
+        # the file the program was handed (StartFile.filled); a cell off the map is left alone.
+        def exec_set_tile_block(node)
+          return node.children.each { |child| exec(child) } unless node.restore
+
+          declared = background_up(node.name).map
+          col, row, across, down = [node.col, node.row, node.across, node.down].map { |value| eval_value(value) }
+          map = mutable_map(node.name)
+          changed = false
+          ([row, 0].max...[row + down, map.length].min).each do |r|
+            ([col, 0].max...[col + across, map[r].length].min).each do |c|
+              next if map[r][c] == declared[r][c]
+
+              map[r][c] = declared[r][c]
+              changed = true
+            end
+          end
+          request_repaint if changed
+        end
 
         # EVERY HELD CHANGE, in the order the game made them.
         def exec_show_held_tiles(_node) = show_held_tiles

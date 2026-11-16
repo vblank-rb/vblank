@@ -68,6 +68,8 @@ module VBlank
         side = @pack_cells&.side || 1
         # A cell of a background from the pack may be several tiles each way; the block is in tiles.
         col, row, across, down = [col, row, across, down].map { |number| side == 1 ? number : number * side }
+        return record_restored_block_from_file(col, row, across, down) if @declaration.from_file
+
         columns = map.first.length
         uses = map.flatten.compact.uniq
         emptied = map.flatten.include?(nil)
@@ -102,6 +104,18 @@ module VBlank
           place_of = cells.compact.uniq.each_with_index.to_h
           @builder.table(:"__restore_#{@name}", cells.map { |tile| tile ? place_of.fetch(tile) : -1 }, width: :half)
         end
+      end
+
+      # A BLOCK PUT BACK ON A BACKGROUND READ FROM THE DATA PACK AS THE GAME STARTS has no children:
+      # its map is the file's, which the build does not hold, so it cannot be written a cell at a
+      # time from a table. Only the interpreter and the builds for a computer leave a pack out, and
+      # each puts the block back from the map it read (Reference#exec_set_tile_block, the runtimes'
+      # rg_background_restore_cells).
+      def record_restored_block_from_file(col, row, across, down)
+        col, row, across, down = [col, row, across, down].map { |number| keep_number_readable(number) }
+        record(IR::Build.set_tile_block(@name, Value.node_for(col), Value.node_for(row), Value.node_for(across),
+                                        Value.node_for(down), restore: true))
+        self
       end
 
       # THE BLOCK AS ONE STEP, whose children are the same cells a cell at a time: two counted loops
@@ -170,15 +184,17 @@ module VBlank
 
       # RESTORING NEEDS THE MAP AS THE BUILD KNOWS IT. A background of several maps shows whichever
       # the game last handed it; one whose walls go with its tiles would need each cell's wall put
-      # back too; and one read from the data pack as the game starts has no map until then.
+      # back too; and one read from the data pack as the game starts, declared `held: true`, would
+      # hold cells the build cannot name, since its map is the file's.
       def refuse_restore_unknown_map!
         problem =
           if @map_names.length > 1
             "was declared with several maps, and restore_cells puts back the cells of one map"
           elsif walls_follow_tiles?
             "has walls that follow its tiles, and restore_cells does not put back walls"
-          elsif @declaration.from_file
-            "is read from the data pack as the game starts, so the build does not know its map"
+          elsif @declaration.from_file && @held
+            "is read from the data pack as the game starts and holds its cells (`held: true`), so the build " \
+              "cannot hold the cells of its map"
           end
         return unless problem
 

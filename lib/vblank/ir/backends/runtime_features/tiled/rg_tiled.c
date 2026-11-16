@@ -479,6 +479,27 @@ void rg_background_set_tile(int32_t background, int32_t col, int32_t row, int32_
   request_repaint();
 }
 
+/* Reference#exec_set_tile_block, a block put back: each cell of it on the map takes the cell of the
+ * first map of the declaration up. With no copy of its own, the name's cells are that map already. */
+void rg_background_restore_cells(int32_t background, int32_t col, int32_t row, int32_t across, int32_t down) {
+  int16_t *cells = cells_now[keeper_of(background)].cells;
+  if (!cells) return;
+  const int16_t *declared = rg_game_map_cells + map_entry(declaration_up(background), 0)[RG_MAP_CELLS];
+  int64_t cols = map_cols(background), rows = map_rows(background);
+  int64_t first_row = row < 0 ? 0 : row, past_row = (int64_t)row + down < rows ? (int64_t)row + down : rows;
+  int64_t first_col = col < 0 ? 0 : col, past_col = (int64_t)col + across < cols ? (int64_t)col + across : cols;
+  int32_t changed = 0;
+  for (int64_t r = first_row; r < past_row; r++) {
+    for (int64_t c = first_col; c < past_col; c++) {
+      int64_t at = r * cols + c;
+      if (cells[at] == declared[at]) continue;
+      cells[at] = declared[at];
+      changed = 1;
+    }
+  }
+  if (changed) request_repaint();
+}
+
 /* Reference#exec_set_tile, for a background declared `held: true`: the change waits, its cell
  * worked out now, for rg_show_held_tiles. With +most+ waiting, everything waiting goes in first. */
 void rg_background_hold_tile(int32_t background, int32_t col, int32_t row, int32_t tile, int32_t most) {
