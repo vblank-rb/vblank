@@ -222,16 +222,6 @@ module VBlank
 
         module_function
 
-        # Whether +shape+ is a pool drawn as sprites: the sprite work of the Advance's and the
-        # PlayStation's builds reads its lists as lists, one after another (DSL::Pool#stacked_list), so
-        # there it keeps :lists.
-        def drawn_as_sprites?(program, shape)
-          program.walk.flat_map { |node| node.attrs.values.flatten.grep(Symbol) }.uniq.any? do |name|
-            kind, parts = Messages::MadeNames.read(name)
-            kind == :pool_part && parts[:pool].to_s == shape.name.to_s && parts[:part].to_s.start_with?("stacked")
-          end
-        end
-
         # The layout +shape+ is kept in on +console+ (a Console::Description), given +steps+, the
         # kinds of step the program takes on its lists (#steps_on): the one the game named, which the
         # builder has already refused where the console lacks it, else the first of the console's

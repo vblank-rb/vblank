@@ -599,14 +599,14 @@ module VBlank
           # EACH POOL KEPT AT ONE STRIDE given its block, before any list is registered: the quick
           # memory where it has room and the pool is not one +roomy+ names or the author marked
           # cold, else the roomy one, else it keeps :lists. +roomy+ is the lists the plan sent to
-          # the roomy memory. A pool drawn as sprites keeps :lists (PoolLayout.drawn_as_sprites?).
+          # the roomy memory.
           def reserve_pool_areas(program, roomy)
             @pool_area_bases = {}
             @pool_blocks = {}
             cold = program.walk.filter_map { |node| node.name if node.kind == :list_new && node.fast == false }
             (program.pools || []).each do |shape|
               placement = PoolLayout.chosen(shape, Console::ADVANCE, PoolLayout.steps_on(program, shape)).place(shape)
-              next if placement.layout == :lists || PoolLayout.drawn_as_sprites?(program, shape)
+              next if placement.layout == :lists
 
               bytes = Memory.whole_words(placement.areas.values.sum { |area| Memory.whole_words(area) })
               block, in_roomy = pool_block_place(bytes, prefer_roomy: shape.slot_lists.keys.any? { |list| roomy.include?(list) || cold.include?(list) })
@@ -637,8 +637,11 @@ module VBlank
           def field_distance(list) = list_info(list)[:base] - pool_block(DSL::Pool.owner_of_list(list))
 
           # Whether +list+ is one of +pool+'s lists kept in its block.
+          # Only a list placed in the pool's block: a pool keeps lists of its own outside it too (the
+          # colours it is drawn with, the copies its sprites show), each a plain list after its header.
           def pool_field?(list, pool)
-            !pool_block(pool).nil? && DSL::Pool.owner_of_list(list).to_s == pool.to_s && @lists.key?(list)
+            !pool_block(pool).nil? && (@pool_area_bases || {}).key?(list) &&
+              DSL::Pool.owner_of_list(list).to_s == pool.to_s && @lists.key?(list)
           end
 
           # Where the slots of the list +name+ (its +info+) are: a pool's list as its layout placed it,
@@ -771,8 +774,15 @@ module VBlank
           # How many slots a turn of #emit_fill_at_stride writes.
           FILL_SLOTS_A_TURN = 4
 
-          # r+from+ stored at the slot r1 is at, at the slot's width, and r1 moved on a stride.
+          # r+from+ stored at the slot r1 is at, at the slot's width, and r1 moved on a stride. A
+          # halfword store moves its register on by 255 bytes at most, so a wider stride is a store and
+          # an add.
           def emit_store_post(slot, from)
+            if slot.width == 2 && slot.stride > 0xFF
+              @emitter.emit(ASM.store_halfword_post(from, TMP, 0))
+              return @primitives.emit_add_const(TMP, TMP, slot.stride, LIST_ADDR)
+            end
+
             case slot.width
             when 4 then @emitter.emit(ASM.str_post(from, TMP, slot.stride))
             when 2 then @emitter.emit(ASM.store_halfword_post(from, TMP, slot.stride))

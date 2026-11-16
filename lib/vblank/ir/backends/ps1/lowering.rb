@@ -935,9 +935,6 @@ module VBlank
           # width and added to the list's place before the load, and again for the store. A layout of
           # records is an adapter of PoolLayout and a base register held through a walk's body.
           #
-          # A pool drawn as sprites keeps :lists, since the runtime's sprite work reads its lists as lists
-          # (PoolLayout.drawn_as_sprites?).
-          #
           # Kept at one stride (:tables, :records), a pool's areas are reserved here one after another in
           # one block in the region, where its lists would have been, so one register on a thing's slot in
           # the first area reaches every field of it at a 16-bit distance (#emit_stepped_walk); each list
@@ -948,7 +945,6 @@ module VBlank
             @pool_blocks = {}
             (@program.pools || []).each do |shape|
               placement = PoolLayout.chosen(shape, Console::PLAYSTATION, PoolLayout.steps_on(@program, shape)).place(shape)
-              placement = PoolLayout::ADAPTERS.fetch(:lists).place(shape) if PoolLayout.drawn_as_sprites?(@program, shape)
               if placement.layout == :lists
                 refuse_unmade_pool_placement!(shape, placement)
               else
@@ -993,8 +989,11 @@ module VBlank
           def field_distance(name, pool) = first_slot_at(@lists.fetch(name)) - pool_block(pool)
 
           # Whether +name+ is one of +pool+'s lists kept in its block.
+          # Only a list placed in the pool's block: a pool keeps lists of its own outside it too (the
+          # colours it is drawn with, the copies its sprites show), each a plain list after its header.
           def pool_field?(name, pool)
-            !pool_block(pool).nil? && @lists.key?(name) && DSL::Pool.owner_of_list(name).to_s == pool.to_s
+            slot = @slot_places[name]
+            !slot.nil? && @pool_areas.key?(slot.area) && @lists.key?(name) && DSL::Pool.owner_of_list(name).to_s == pool.to_s
           end
 
           # The slots' places as the headless run reads them, by list, each counted from the end of its
