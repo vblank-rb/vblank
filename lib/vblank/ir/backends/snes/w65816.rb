@@ -97,7 +97,7 @@ module VBlank
           # Each conditional branch's opposite, for a branch too far for one byte (#branch_long).
           OPPOSITES = { bpl: :bmi, bmi: :bpl, bvc: :bvs, bvs: :bvc, bcc: :bcs, bcs: :bcc, bne: :beq, beq: :bne }.freeze
 
-          # WHAT CHANGES WHAT X OR A HOLDS (#x_holds, #a_holds): the instructions that write it, those that write
+          # WHAT CHANGES WHAT X OR A HOLDS (#x_holds, #accumulator_holds): the instructions that write it, those that write
           # memory, those that call (whatever is called can do either), and those that never go on to
           # the next instruction, past which X is whatever the way in to the next label brings.
           WRITES_X = %i[tax tsx tyx plx inx dex xce plp ldx].freeze
@@ -107,11 +107,11 @@ module VBlank
           # #store_misses? reads as plain addresses, means another place.
           MOVES_DIRECT_PAGE = %i[tcd pld].freeze
           ENDS = %i[rts rtl rti stp jmp jml].freeze
-          # What changes A (#a_holds): a load or a sum into it, and each of these on A itself.
+          # What changes A (#accumulator_holds): a load or a sum into it, and each of these on A itself.
           WRITES_A = %i[lda ora and_a eor adc sbc txa tya tdc tsc pla xba xce plp].freeze
           CHANGES_A_IN_PLACE = %i[inc dec asl lsr rol ror].freeze
 
-          # What X and A are noted to hold (#x_holds, #a_holds), each nil when it is not known.
+          # What X and A are noted to hold (#x_holds, #accumulator_holds), each nil when it is not known.
           Held = Data.define(:x, :a)
           NOTHING_HELD = Held.new(x: nil, a: nil)
 
@@ -203,7 +203,7 @@ module VBlank
           # With +join+, the label is only ever reached from above it: by falling through and by
           # branches written before it, never by one written after (the end of a test, the place past
           # its other side). What X and A hold there is then what they held on every way in, when
-          # those agree (#x_holds, #a_holds). Any other label can be reached from anywhere, so
+          # those agree (#x_holds, #accumulator_holds). Any other label can be reached from anywhere, so
           # neither is known there.
           def label(name, join: false)
             name = name.to_s
@@ -228,16 +228,16 @@ module VBlank
 
           # Notes that X holds +key+ (an Array the lowering makes, starting with the address of the
           # variable it was worked out from) until something changes X or that variable.
-          def note_x_holds(key) = (@held = Held.new(x: key, a: a_holds))
+          def note_x_holds(key) = (@held = Held.new(x: key, a: accumulator_holds))
 
-          # WHAT A HOLDS, as the lowering noted it (#note_a_holds): the address of a variable whose low
+          # WHAT A HOLDS, as the lowering noted it (#note_accumulator_holds): the address of a variable whose low
           # half A has, as a load or a store of it leaves it, or nil. A load of that variable again,
           # where nothing reads the flags the load would set, need not be made. Forgotten as the X
           # note is, and on anything that writes A.
-          def a_holds = (@held.a unless @held == GONE)
+          def accumulator_holds = (@held.a unless @held == GONE)
 
           # Notes that A holds the low half of the variable at +address+ (in the first 64K).
-          def note_a_holds(address) = (@held = Held.new(x: x_holds, a: address))
+          def note_accumulator_holds(address) = (@held = Held.new(x: x_holds, a: address))
 
 
           # What the code at the next label finds A, X and Y to be: +a16+ and +xy16+ mark whether

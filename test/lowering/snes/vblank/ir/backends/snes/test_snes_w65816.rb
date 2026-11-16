@@ -210,17 +210,17 @@ class TestSNESW65816 < Minitest::Test
   # that writes A or the variable, or makes A another width.
   def test_what_a_holds_is_kept_until_it_could_change
     asm = W65816.new("test")
-    asm.note_a_holds(0x0700)
+    asm.note_accumulator_holds(0x0700)
     asm.cmp(asm.abs(0x0704))
     asm.sta(asm.abs(0x0708))
     asm.tax
-    assert_equal 0x0700, asm.a_holds, "a compare, a store elsewhere and a TAX leave it"
+    assert_equal 0x0700, asm.accumulator_holds, "a compare, a store elsewhere and a TAX leave it"
 
     [-> { asm.adc(1) }, -> { asm.lda(asm.abs(0x0700)) }, -> { asm.asl }, -> { asm.txa }, -> { asm.pla },
      -> { asm.stz(asm.abs(0x0700)) }, -> { asm.sep(0x20) }, -> { asm.jsl(asm.long("routine")) }].each do |change|
-      asm.note_a_holds(0x0700)
+      asm.note_accumulator_holds(0x0700)
       change.call
-      assert_nil asm.a_holds
+      assert_nil asm.accumulator_holds
     end
   end
 

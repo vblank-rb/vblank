@@ -726,7 +726,7 @@ module VBlank
 
             @asm.tax
             @asm.note_x_holds(key)
-            @asm.note_a_holds(key.first)
+            @asm.note_accumulator_holds(key.first)
           end
 
           # A number written in the program, straight into the variable at +at+.
@@ -883,15 +883,15 @@ module VBlank
             node.op == :== ? :bne : :beq
           end
 
-          # LDA of a variable's low half, unless A holds it already (W65816#a_holds): a pool's walk
+          # LDA of a variable's low half, unless A holds it already (W65816#accumulator_holds): a pool's walk
           # stores the slot it is on and then compares it and reads lists at it straight after. Only
           # where what follows sets the flags itself (a compare, a shift), as the load it saves would.
           def emit_low_half_load(operand)
             address = operand.value + operand.plus if operand.is_a?(W65816::Operand) && operand.mode == :abs && operand.value.is_a?(Integer)
-            return if address && @asm.a_holds == address
+            return if address && @asm.accumulator_holds == address
 
             @asm.lda(operand)
-            @asm.note_a_holds(address) if address
+            @asm.note_accumulator_holds(address) if address
           end
 
           # The low half of a short counter compared, unsigned, with a number written in the program
