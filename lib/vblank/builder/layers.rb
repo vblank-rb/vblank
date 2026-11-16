@@ -91,10 +91,11 @@ module VBlank
         scroll_background: :free,
         place_bar: :free,
         box_background: :free,
-        # ...and one cell of it becoming a different tile, or the whole of it becoming
+        # ...and one cell of it (or a block of cells) becoming a different tile, or the whole of it becoming
         # another map. Both change a background that already has a depth of its own, so
         # neither is itself at one.
         set_tile: :free,
+        set_tile_block: :free,
         show_map: :free,
         show_held_tiles: :free,
         # ...or a run of its tiles painted from a list, which changes pixels, not depth.
