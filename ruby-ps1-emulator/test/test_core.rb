@@ -65,6 +65,28 @@ class TestCore < Minitest::Test
     end
   end
 
+  # The loader copies a program in before it starts, a longer one for longer: a short program begins
+  # in the first frame, before any blank, and one padded to 64K after the screen's first blanks.
+  def test_the_blanks_before_a_program_begins_grow_with_its_length
+    blanks = [red_screen, red_screen + ([0] * 0x4000)].map do |words|
+      Dir.mktmpdir do |dir|
+        core = RubyPS1Emulator::Core.new(write(dir, words))
+        core.watch_program_start!
+        12.times { core.run_frame }
+        core.blanks_before_program
+      ensure
+        core&.destroy
+      end
+    end
+
+    assert_equal 0, blanks.first
+    assert_operator blanks.last, :>, 1
+  end
+
+  def test_the_start_is_watched_from_power_on_or_not_at_all
+    played(red_screen, 1) { |core| assert_raises(ArgumentError) { core.watch_program_start! } }
+  end
+
   # A halfword to the sound chip's register at +distance+ from 1F800000h (SH t1, distance(t0)).
   private def sound_register(distance, value) = number(value) + [0xA509_0000 | distance]
 

@@ -28,26 +28,43 @@ module PowerOnFrameGames
   # that is what it read. Spinning before the loop makes setting up take several. Answers that
   # frame and that reading, for +program+ built for +console+.
   private def first_pass_frame_and_reading(console, program)
+    first_pass_seen(console, program).then { |seen| [seen.frame, seen.reading] }
+  end
+
+  # What the first pass of a counting game showed: the frame it was first seen on, from power-on, what
+  # it read, and what it should have read, which is the frames shown before it that the program could
+  # count. A cartridge starts at power-on, so that is every frame before the one it is seen on. A
+  # PlayStation program is copied into RAM before its first instruction runs, by Beetle's loader here
+  # and by the BIOS from a disc on a console, which takes seconds: frames from power-on are no
+  # PlayStation measure, and the blanks the emulator says came before the program began
+  # (Diagnostics::PS1Reading#blanks_before_program) are left out of what it should have read.
+  FirstPassSeen = Data.define(:frame, :reading, :due, :blanks_before_program)
+
+  private def first_pass_seen(console, program)
     rom = power_on_cartridge(console, program)
     reader = VBlank::Diagnostics::Verifier.new(rom, frames: 1, vars: rom.var_addresses)
+    # Only a PlayStation reader is asked when its program began; a cartridge's began at power-on.
+    loaded = reader.respond_to?(:watch_program_start!)
+    reader.watch_program_start! if loaded
     frame = 1
     until reader.var(:passes).positive?
       flunk "no pass ran in 60 frames" if frame == 60
       reader.step
       frame += 1
     end
-    [frame, reader.var(:first)]
+    before = loaded ? reader.blanks_before_program : 0
+    FirstPassSeen.new(frame: frame, reading: reader.var(:first), due: frame - 1 - before, blanks_before_program: before)
   end
 
   # The frame the first pass is seen on and its reading, for the counting game set up at once and
-  # after spinning +busy+ times: each reads one fewer than the frame it is seen on.
+  # after spinning +busy+ times: each reads the frames before it the program could count.
   private def assert_frames_setting_up_counted(console, busy:)
-    quick_frame, quick = first_pass_frame_and_reading(console, counting_game(0))
-    slow_frame, slow = first_pass_frame_and_reading(console, counting_game(busy))
+    quick = first_pass_seen(console, counting_game(0))
+    slow = first_pass_seen(console, counting_game(busy))
 
-    assert_equal quick_frame - 1, quick, "a game that sets up at once reads the frames before its first pass"
-    assert_operator slow_frame, :>, quick_frame, "spinning first should make setting up take longer"
-    assert_equal slow_frame - 1, slow, "and the frames spent setting up are counted"
+    assert_equal quick.due, quick.reading, "a game that sets up at once reads the frames before its first pass"
+    assert_operator slow.frame, :>, quick.frame, "spinning first should make setting up take longer"
+    assert_equal slow.due, slow.reading, "and the frames spent setting up are counted"
   end
 
   # The emulator frame each build of the screen-waiting game first shows green on, by name: no song,

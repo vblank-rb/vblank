@@ -129,8 +129,61 @@ module RubyPS1Emulator
       @frontend.run
       take_sound(@frontend.drain_audio)
       @frames += 1
+      note_program_start if @watching_start
       self
     end
+
+    # WHEN THE PROGRAM BEGAN. A program is copied into RAM before its first instruction runs: by
+    # Beetle's loader here, reading it from the expansion port a byte at a time, and on a console by
+    # the BIOS from a disc, which takes seconds. A longer program takes longer, so a program cannot
+    # count the screen's blanks from power-on, only those since it began, and a test of what it counts
+    # asks the emulator when that was.
+    #
+    # Asked for before the first frame (it counts where the processor's time goes, which costs the
+    # emulator a little, so only a core asked for it does): #take_processor_time is started, and each
+    # frame until the program begins is taken, the loader's time all counted at 80000000h, outside main
+    # RAM. The frame that ends with the processor in the program's own code (#program_running?), which
+    # it never leaves, is the frame it began in, and the loader's cycles in that frame are how far into
+    # it the program began. A profiler opened on the same core afterwards starts its count with an ask
+    # whose answer it does not use, as it always does.
+    def watch_program_start!
+      raise ArgumentError, "the program's start is watched from power-on, and #{@frames} frames have run" unless @frames.zero?
+
+      take_processor_time
+      @watching_start = true
+      @frame_cycles = []
+    end
+
+    # The frame from power-on the program's first instruction ran in, or nil before it has.
+    attr_reader :program_started_on
+
+    # HOW MANY OF THE SCREEN'S BLANKS CAME BEFORE THE PROGRAM BEGAN. Every frame ends as a blank
+    # begins (the graphics chip's line is the last shown line then), so a blank ends each frame; and
+    # Beetle's first frame is two of the screen's, with a blank between them, one frame's cycles before
+    # its end. A blank is before the program when it is at or before the cycle the program began on.
+    # Nil until the program has begun and a frame after it has run, which says how long a frame is.
+    def blanks_before_program
+      return nil unless @program_start_cycle && @frame_cycles.length > @program_started_on
+
+      field = @frame_cycles.last
+      ends = @frame_cycles.each_with_index.flat_map do |cycles, i|
+        finish = @frame_cycles.first(i + 1).sum
+        cycles > field + (field / 2) ? [finish - field, finish] : [finish]
+      end
+      ends.count { |blank| blank <= @program_start_cycle }
+    end
+
+    private def note_program_start
+      time = take_processor_time
+      @frame_cycles << time.values.sum
+      return unless @program_started_on.nil? && program_running?
+
+      @program_started_on = @frames
+      @program_start_cycle = @frame_cycles[0...-1].sum + time.fetch(OUTSIDE_MAIN_RAM, 0)
+    end
+
+    # Where #take_processor_time counts the time of code outside main RAM: the BIOS's and the loader's.
+    OUTSIDE_MAIN_RAM = 0x8000_0000
 
     # --- the picture ---
 
@@ -344,12 +397,22 @@ module RubyPS1Emulator
                        "ruby-ps1-emulator/."
     end
 
-    # Hands the core the program's path and bytes, and plugs a pad into the first port.
+    # Hands the core the program's path and bytes, and plugs a pad into the first port. Where the
+    # program's code goes in RAM is read from its header: the address at 18h and the length at 1Ch.
     def load_program(exe_path)
-      loaded = @frontend.load_game(File.expand_path(exe_path), File.binread(exe_path))
+      bytes = File.binread(exe_path)
+      loaded = @frontend.load_game(File.expand_path(exe_path), bytes)
       raise ArgumentError, "Beetle PSX would not load #{exe_path}" unless loaded
 
+      load_at, length = bytes.byteslice(EXE_TEXT_AT, 8).unpack("VV")
+      @program_code = (load_at...(load_at + length)).freeze
       @frontend.set_controller_port_device(0, JOYPAD)
     end
+
+    # Where a PS-X EXE's header keeps the address its code is loaded at, and the length after it.
+    EXE_TEXT_AT = 0x18
+
+    # Whether the processor is inside the program's code now.
+    def program_running? = @program_code.cover?(registers.fetch(:pc))
   end
 end
