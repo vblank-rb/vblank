@@ -571,6 +571,7 @@ module VBlank
               mark = mark_scratch(s)
               at = at_scratch(s)
               copy = memory[COPY]
+              Paint.emit_fill_small(asm, checked: false)
               asm.label("rt_paint_fill")
               asm.jsr(asm.abs("rt_paint_take_area"))
               [[R.call(0), R.call(2), R.call(5)], [R.call(1), R.call(3), R.call(6)]].each do |from, size, out|

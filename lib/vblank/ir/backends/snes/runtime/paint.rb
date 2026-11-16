@@ -995,10 +995,37 @@ module VBlank
 
             # --- rectangles ---
 
+            # rt_paint_fill_small(x, y, w, h, place), each number's low half alone (JSL): a fill whose
+            # numbers the game knew to be below 65536 and not below nought while it was built, a pixel
+            # or a rectangle at places written in the program, and so set up in five stores, not ten.
+            # On a screen painted again only where a pass differs from the last (PaintLog,
+            # RepeatLog), the block written there is its check, which compares the five
+            # (PaintLog::HIGH_HALVES_NOUGHT) and returns when the pass so far is the same, and it
+            # then goes on to the fill's own painting. Otherwise the high halves are made nought and
+            # it is the fill, placed after.
+            def emit_fill_small(asm, checked:)
+              asm.label("rt_paint_fill_small")
+              return emit_high_halves_nought(asm) unless checked
+
+              yield
+              asm.brl("rt_paint_fill_now")
+            end
+
+            # Nought in the high half of each of a fill's five working numbers.
+            def emit_high_halves_nought(asm) = 5.times { |i| asm.stz(asm.direct(R.call(i) + 2)) }
+
             # rt_paint_fill(x, y, w, h, place): the rectangle, as far as it is inside the area, in
             # the colour at +place+. Each row of it is a tile's row at the left edge (some of its
             # pixels), the tiles' rows between (all eight), and a tile's row at the right edge.
             def emit_fill(asm, memory, s, bank, logged)
+              emit_fill_small(asm, checked: logged) do
+                small = PaintLog::KIND_FILL | PaintLog::HIGH_HALVES_NOUGHT
+                PaintLog.emit_same_as_last_pass(asm, memory, small, 20, "rt_paint_fill_small_last_pass")
+                emit_high_halves_nought(asm)
+                asm.lda(small)
+                asm.ldx(20)
+                asm.jsr(asm.abs("rt_paint_op_begin"))
+              end
               asm.label("rt_paint_fill")
               emit_op_begin(asm, memory, PaintLog::KIND_FILL, 20, "rt_paint_fill_now") if logged
               asm.jsr(asm.abs("rt_paint_take_area"))

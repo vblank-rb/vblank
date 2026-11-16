@@ -56,6 +56,9 @@ module VBlank
             NUMBER_BYTES = 20
             KIND_FILL = 1
             KIND_BLIT = 2
+            # A fill given its numbers' low halves alone, as PaintLog::HIGH_HALVES_NOUGHT says.
+            HIGH_HALVES_NOUGHT = PaintLog::HIGH_HALVES_NOUGHT
+            KIND_BITS = PaintLog::KIND_BITS
             # Where each kind is painted, past its check.
             NOW = Ractor.make_shareable({ KIND_FILL => "rt_paint_fill_now", KIND_BLIT => "rt_paint_blit_now" })
             # The paintings a pass can write down, and the log's bytes. A pass of more paints them all
@@ -124,10 +127,13 @@ module VBlank
             # (in the direct page from 0): while a clear is deferred, compared with the entry at
             # LOG_END and passed over (RTL) when it is the same; else written down, while the pass is.
             # Painting it again from the log starts at its NOW label, past this.
-            def emit_check(asm, memory, kind, bytes)
+            #
+            # A +kind+ with HIGH_HALVES_NOUGHT is a fill handed only its numbers' low halves: it
+            # compares those alone (PaintLog#compared_words), and nought is put in the high halves
+            # before it is written down. It ends at its own label, +now+.
+            def emit_check(asm, memory, kind, bytes, now: NOW.fetch(kind))
               log = memory[LOG]
               area = memory[Paint::AREA]
-              now = NOW.fetch(kind)
               differs = "#{now}_differs"
               asm.lda(asm.abs(memory[DEFERRED]))
               asm.branch_long(:beq, "#{now}_written")
@@ -138,9 +144,9 @@ module VBlank
               asm.ora(asm.abs(area + Paint::AREA_PART))
               asm.cmp(asm.long_x(log))
               asm.branch_long(:bne, differs)
-              (bytes / 2).times do |i|
-                asm.lda(asm.direct(i * 2))
-                asm.cmp(asm.long_x(log, ENTRY_NUMBERS + (i * 2)))
+              PaintLog.compared_words(kind, bytes).each do |at|
+                asm.lda(asm.direct(at))
+                asm.cmp(asm.long_x(log, ENTRY_NUMBERS + at))
                 asm.branch_long(:bne, differs)
               end
               asm.lda(asm.abs(area + Paint::AREA_PART))
@@ -159,6 +165,9 @@ module VBlank
               asm.label(differs)
               asm.jsr(asm.abs("rt_repeat_apply_keeping"))
               asm.label("#{now}_written")
+              if kind.anybits?(HIGH_HALVES_NOUGHT)
+                (2...bytes).step(4) { |at| asm.stz(asm.direct(at)) }
+              end
               asm.lda(asm.abs(memory[RECORDING]))
               asm.beq("#{now}_at_once")
               asm.ldx(asm.abs(memory[LOG_END]))
@@ -254,7 +263,7 @@ module VBlank
                 asm.sta(asm.direct(i * 2))
               end
               asm.lda(asm.long_x(log))
-              asm.and_a(0x00FF)
+              asm.and_a(KIND_BITS)
               asm.cmp(KIND_FILL)
               asm.bne("rt_repeat_apply_blit")
               asm.jsl(asm.long(NOW.fetch(KIND_FILL)))

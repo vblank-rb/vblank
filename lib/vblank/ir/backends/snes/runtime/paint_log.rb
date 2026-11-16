@@ -158,6 +158,12 @@ module VBlank
             # bit alone, so one test finds either.
             KIND_LAYER = 4
             KIND_DEMOTED = 5
+            # A FILL WHOSE NUMBERS ALL HAVE A HIGH HALF OF NOUGHT, as the game knew while it was built
+            # (a pixel or a rectangle at places written in the program): rt_paint_fill_small, given
+            # only the low halves. Its entry's kind carries this bit, so a pass the same as the last
+            # compares five words, not ten, to find it so; the kind is the bits below it.
+            HIGH_HALVES_NOUGHT = 0x80
+            KIND_BITS = 0x7F
             # The ways a painting is known to rt_paint_hash, by the bytes of working numbers and the
             # step between the words hashed: a rectangle's five numbers whole, a picture's three by
             # their low words, and a clear's place.
@@ -387,6 +393,7 @@ module VBlank
               hash = memory[OP_HASH]
               asm.label("rt_paint_hash")
               asm.lda(asm.abs(memory[OP_KIND]))
+              asm.and_a(KIND_BITS) # a small fill paints what any fill of its numbers does
               asm.eor(0x9E37)
               asm.sta(asm.abs(hash))
               asm.lda(0x79B9)
@@ -486,6 +493,9 @@ module VBlank
             # LOG_END moves past it, and the routine returns (RTL). Not the same, the clear is made
             # and it goes on, to be written down. Written out in each routine, as a call and the
             # setting up of one would cost a third as much again as comparing.
+            #
+            # A +kind+ with HIGH_HALVES_NOUGHT compares the numbers' low halves alone: an entry of
+            # that kind had high halves of nought too, so the high halves are the same.
             def emit_same_as_last_pass(asm, memory, kind, bytes, prefix)
               log = memory[LOG]
               area = memory[Paint::AREA]
@@ -500,9 +510,9 @@ module VBlank
               asm.ora(asm.abs(area + Paint::AREA_PART))
               asm.cmp(asm.long_x(log))
               asm.branch_long(:bne, differs)
-              (bytes / 2).times do |i|
-                asm.lda(asm.direct(i * 2))
-                asm.cmp(asm.long_x(log, ENTRY_NUMBERS + (i * 2)))
+              compared_words(kind, bytes).each do |at|
+                asm.lda(asm.direct(at))
+                asm.cmp(asm.long_x(log, ENTRY_NUMBERS + at))
                 asm.branch_long(:bne, differs)
               end
               asm.lda(asm.abs(area + Paint::AREA_PART))
@@ -522,6 +532,13 @@ module VBlank
               emit_retry_against_other_picture(asm, memory, "#{prefix}_compare")
               asm.jsr(asm.abs("rt_paint_apply_deferred_clear"))
               asm.label("#{prefix}_written")
+            end
+
+            # The offsets of the words of +bytes+ of working numbers a painting of +kind+ is compared
+            # by: every word, or each number's low half for a kind with HIGH_HALVES_NOUGHT.
+            def compared_words(kind, bytes)
+              step = kind.anybits?(HIGH_HALVES_NOUGHT) ? 4 : 2
+              (0...bytes).step(step).to_a
             end
 
             # Where a deferred pass's painting differs from the last pass's: compared again at
@@ -1457,7 +1474,7 @@ module VBlank
               end
               asm.phx
               asm.lda(asm.long_x(log))
-              asm.and_a(0x00FF) # the kind, without whether its area was the screen's
+              asm.and_a(KIND_BITS) # the kind, without whether its area was the screen's or its numbers small
               asm.cmp(KIND_FILL)
               asm.bne("rt_paint_replay_blit")
               asm.jsl(asm.long("rt_paint_fill_now"))

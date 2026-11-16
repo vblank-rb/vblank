@@ -605,14 +605,31 @@ module VBlank
 
             # Reference#exec_fill_rect, #exec_dma_fill_rect and #exec_draw_rect_at: the same rectangle.
             def emit_fill_rect(node)
-              runtime_call("rt_paint_fill", [*[node.x, node.y, node.w, node.h].map { |edge| value_node(edge) },
-                                             Build.int(place_of_color(node.color))])
+              emit_fill_call([*[node.x, node.y, node.w, node.h].map { |edge| value_node(edge) },
+                              Build.int(place_of_color(node.color))])
             end
 
             # Reference#exec_pixel: a rectangle one pixel square.
             def emit_pixel(node)
-              runtime_call("rt_paint_fill", [value_node(node.x), value_node(node.y), Build.int(1), Build.int(1),
-                                             Build.int(place_of_color(node.color))])
+              emit_fill_call([value_node(node.x), value_node(node.y), Build.int(1), Build.int(1),
+                              Build.int(place_of_color(node.color))])
+            end
+
+            # rt_paint_fill with +args+; or, when every one is a number written in the program from
+            # nought to 65535, rt_paint_fill_small with their low halves alone: half the stores here,
+            # and on a pass the same as the last, half the words compared (Runtime::Paint#emit_fill_small).
+            def emit_fill_call(args)
+              known = args.map { |arg| folded(arg) }
+              return runtime_call("rt_paint_fill", args) unless known.all? { |number| number&.between?(0, 0xFFFF) }
+
+              known.each_with_index do |number, i|
+                at = @asm.direct(Memory.register(i))
+                next @asm.stz(at) if number.zero?
+
+                @asm.lda(number)
+                @asm.sta(at)
+              end
+              call_routine("rt_paint_fill_small")
             end
 
             # Reference#exec_inside: painting held to the rectangle while the children run, and the
