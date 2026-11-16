@@ -155,15 +155,14 @@ module VBlank
       def declare_pack_background_areas(name, tiles:, map:, colors:, across:, cell:, set_cells: nil, cells_in_front: nil, **others)
         areas = pack_area_names!(name, tiles: tiles, map: map, colors: colors)
         refuse_written_cells_on_areas!(name, set_cells, cells_in_front)
-        if pack_left_out?
-          raise ArgumentError, "background :#{name} walks between areas of the data pack, and this build reads its pack as " \
-                               "the game starts. VBlank does not make that yet. To fix this, build the game all-in-one."
-        end
-
         slots = areas.to_h do |area|
           [area, { tiles: slot_of_area(tiles, area), map: slot_of_area(map, area), colors: slot_of_area(colors, area) }]
         end
         refuse_areas_of_two_shapes!(name, slots)
+        if pack_left_out?
+          return declare_pack_areas_read_at_start(name, slots, across: across, cell: cell, set_cells: set_cells, **others)
+        end
+
         art = slots.to_h do |area, given|
           told = set_cells.is_a?(Hash) ? set_cells[area] : set_cells
           [area, pack_area_art(name, area, across: across, cell: cell, set_cells: told, **given)]
@@ -239,13 +238,10 @@ module VBlank
         end
       end
 
-      # THE ART OF ONE AREA, made as #declare_pack_background makes a background built all-in-one,
-      # its pictures named for the area so two areas' never meet. Hands back a PackAreaArt.
-      #
-      # +set_cells+ are the cells `set_cell` may write in this area, made pictures of the area's own.
-      def pack_area_art(name, area, tiles:, map:, colors:, across:, cell:, set_cells: nil)
-        own = :"#{name}'s area :#{area}"
-        subject = "background :#{own}"
+      # The area +own+ (a background's name and the area's) checked as #declare_pack_background
+      # checks a background of one area, and its slot of tiles recorded. Hands back how a cell of
+      # its map is read (a Console::MapWordFormat) and its tiles that take turns through pictures.
+      def refuse_bad_pack_area!(own, tiles:, map:, colors:, across:, cell:, set_cells:)
         words = pack_map_word_format!(own, map)
         words = cell_format_without_banks(words) if drawn_from_whole_table?(tiles)
         refuse_colors_short_of_table!(own, tiles, colors)
@@ -254,6 +250,17 @@ module VBlank
         record_pack_background_slot(tiles)
         moving = moving_pack_tiles_of(tiles)
         refuse_moving_table_tiles!(own, tiles) unless moving.empty?
+        [words, moving]
+      end
+
+      # THE ART OF ONE AREA, made as #declare_pack_background makes a background built all-in-one,
+      # its pictures named for the area so two areas' never meet. Hands back a PackAreaArt.
+      #
+      # +set_cells+ are the cells `set_cell` may write in this area, made pictures of the area's own.
+      def pack_area_art(name, area, tiles:, map:, colors:, across:, cell:, set_cells: nil)
+        own = :"#{name}'s area :#{area}"
+        subject = "background :#{own}"
+        words, moving = refuse_bad_pack_area!(own, tiles: tiles, map: map, colors: colors, across: across, cell: cell, set_cells: set_cells)
         tile_places = pack_tile_places(tiles, subject)
         bank_lists = if drawn_from_whole_table?(tiles)
                        pack_color_tables(colors, tiles.layout.format.colors, "#{subject}'s colors:")
@@ -602,6 +609,72 @@ module VBlank
       # The tiles the map draws come after them, made as the game starts.
       def declare_pack_background_read_at_start(name, tiles:, map:, colors:, across:, tiles_a_side:, words:, moving:, set_cells: nil,
                                                 **others)
+        made = pack_tiles_held_at_start(name, tiles: tiles, map: map, colors: colors, across: across, tiles_a_side: tiles_a_side,
+                                              words: words, moving: moving, set_cells: set_cells, first: 0)
+        where = made.where
+        refuse_oversized_map_at_start!(name, where, made.held.length)
+        tileset = :"background :#{name} tiles"
+        tiles(tileset, made.held.to_h { |picture| [picture, picture] })
+        handle = background(name, tiles: tileset, map: Array.new(where.rows) { Array.new(where.columns, made.held.first) }, **others)
+        @backgrounds.fetch(name).node.from_file = [where]
+        # The told cells' tiles are known here, and the map's are marked as the file is read.
+        mark_tiles_in_front(name, made.told) if words.reads_front
+        return handle.allow_undrawn_lists([]) if drawn_from_whole_table?(tiles)
+
+        # Which bank the map uses is in the file, so one list given alone is every bank's.
+        handle.allow_one_list_for_every_bank.allow_set_cells(made.cells)
+      end
+
+      # THE SAME BACKGROUND WALKING BETWEEN AREAS, WITH THE PACK LEFT OUT: each area's tiles held
+      # as one background's are (#pack_tiles_held_at_start), its pictures named for the area and
+      # numbered after the areas' before it, and the areas one background walking between
+      # tilesets (Builder::Tiled#background_from_sets), each area's map the size of its own and
+      # naming its first stand-in. The node keeps a record of the file for each area, in order,
+      # and each backend that plays it reads every area's cells as the game starts. +slots+ are
+      # each area's tiles:, map: and colors:, by area.
+      def declare_pack_areas_read_at_start(name, slots, across:, cell:, set_cells: nil, **others)
+        first = 0
+        made = slots.to_h do |area, given|
+          own = :"#{name}'s area :#{area}"
+          told = set_cells.is_a?(Hash) ? set_cells[area] : set_cells
+          words, moving = refuse_bad_pack_area!(own, across: across, cell: cell, set_cells: told, **given)
+          part = pack_tiles_held_at_start(own, **given, across: across, tiles_a_side: cell / Original::Slot::TILE_SIDE, words: words,
+                                               moving: moving, set_cells: told, first: first)
+          first += part.held.length
+          [area, part]
+        end
+        # Every area's tiles are one background's, so each area's map has room for what the rest leave.
+        every_tile = first + made.each_value.sum { |part| part.where.tiles_drawn }
+        made.each do |area, part|
+          refuse_oversized_map_at_start!(:"#{name}'s area :#{area}", part.where, every_tile - part.where.tiles_drawn)
+        end
+        tilesets = made.to_h do |area, part|
+          tileset = :"background :#{name}'s area :#{area} tiles"
+          tiles(tileset, part.held.to_h { |picture| [picture, picture] })
+          [area, tileset]
+        end
+        maps = made.transform_values { |part| Array.new(part.where.rows) { Array.new(part.where.columns, part.held.first) } }
+        handle = background(name, tiles: tilesets, map: maps, **others)
+        node = @backgrounds.fetch(name).node
+        node.from_file = made.values.map(&:where)
+        return handle.allow_undrawn_lists([]) if drawn_from_whole_table?(slots.values.first[:tiles])
+
+        handle.allow_one_list_for_every_bank
+        return handle if set_cells.nil?
+
+        handle.allow_set_cells_by_area(made.values.map(&:cells), node.tiles)
+      end
+
+      # What a build reading its pack as the game starts holds for one background, or one area of
+      # one: where its map, tiles and colours are in the file (an IR::StartFile::Background), the
+      # pictures it holds in order (a stand-in for each bank, the runs of tiles that take turns,
+      # the told cells' tiles), the told tiles by tile as drawn, and the cells `set_cell` may write
+      # (a DSL::PackCells).
+      HeldAtStart = Data.define(:where, :held, :told, :cells)
+
+      # The pictures and record of #declare_pack_background_read_at_start, for a background or an
+      # area +name+ whose held tiles start at tile +first+ of the background's. Hands back a HeldAtStart.
+      def pack_tiles_held_at_start(name, tiles:, map:, colors:, across:, tiles_a_side:, words:, moving:, set_cells:, first:)
         subject = "background :#{name}"
         [[tiles, "tiles:"], [map.with(first_pixel: 0, pixel_count: nil), "map:"], [colors, "colors:"]].each do |slot, what|
           refuse_slot_from_elsewhere!(slot, "#{subject}'s #{what}")
@@ -628,34 +701,25 @@ module VBlank
                     end
         # The tiles that take turns through pictures follow, each a tile of a run (PackTilePictures).
         unless moving.empty?
-          runs, where = declare_pack_tile_runs_at_start(name, moving, where, stand_ins.length)
+          runs, where = declare_pack_tile_runs_at_start(name, moving, where, first + stand_ins.length)
           (@run_tiles_read_at_start ||= Set.new).merge(runs)
         end
         told = {}
         places = []
         if set_cells.is_a?(DSL::PackSlot)
-          places, where = declare_told_slot_read_at_start(name, set_cells, where, [*stand_ins, *runs].uniq.length)
+          places, where = declare_told_slot_read_at_start(name, set_cells, where, first + [*stand_ins, *runs].uniq.length)
           cells = DSL::PackCells.new(format: words, side: tiles_a_side, tiles_by_word: {}, place_tiles: places.zip)
         else
           cells = declare_pack_cells_written_later(name, set_cells, words, tiles_a_side, told, where.bank_names) do |tile, number|
             # A told tile that takes turns is the run's tile for its bank and turn, as the map's are.
-            next pack_run_tile_read_at_start(runs, where, stand_ins.length, tile) if moving.key?(tile.tile) && tile.bank < where.bank_count
+            if moving.key?(tile.tile) && tile.bank < where.bank_count
+              next pack_run_tile_read_at_start(runs, where, first + stand_ins.length, tile)
+            end
 
             declare_told_tile_read_at_start(name, tile, where, number)
           end
         end
-        held = [*stand_ins, *runs, *told.values, *places].uniq
-        refuse_oversized_map_at_start!(name, where, held.length)
-        tileset = :"background :#{name} tiles"
-        tiles(tileset, held.to_h { |picture| [picture, picture] })
-        handle = background(name, tiles: tileset, map: Array.new(where.rows) { Array.new(where.columns, stand_ins.first) }, **others)
-        @backgrounds.fetch(name).node.from_file = where
-        # The told cells' tiles are known here, and the map's are marked as the file is read.
-        mark_tiles_in_front(name, told) if words.reads_front
-        return handle.allow_undrawn_lists([]) if whole_table
-
-        # Which bank the map uses is in the file, so one list given alone is every bank's.
-        handle.allow_one_list_for_every_bank.allow_set_cells(cells)
+        HeldAtStart.new(where: where, held: [*stand_ins, *runs, *told.values, *places].uniq, told: told, cells: cells)
       end
 
       # THE CELLS A SLOT TELLS A BACKGROUND READ AS THE GAME STARTS (`set_cells: pack[:changes]`).

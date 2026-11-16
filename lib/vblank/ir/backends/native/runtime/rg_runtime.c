@@ -1247,14 +1247,13 @@ void rg_start_file_fill_painted_tiles(uint8_t *table, int32_t tiles, const int32
  * tiles. */
 static void start_file_paint_cell_tile(const int32_t *rules, uint16_t *pixels, uint32_t word, int32_t down, int32_t along,
                                        int32_t slot) {
-  int32_t start = rules[1], cells = rules[3], across = rules[4], side = rules[5];
+  int32_t start = rules[1], side = rules[5];
   int32_t tile_bits = rules[7], mirror_bit = rules[8], flip_bit = rules[9];
   int32_t bank_at = rules[10], bank_bits = rules[11], row_tiles = rules[12], tiles_at = rules[13], tile_count = rules[14];
-  int32_t colors_at = rules[15], bank_count = rules[16], bank_size = rules[17], sets = rules[18], held = rules[19];
+  int32_t colors_at = rules[15], bank_count = rules[16], bank_size = rules[17], sets = rules[18], set_tiles = rules[24];
   const int32_t *tile_format = rules + RG_FILL_BACKGROUND_HEADER_NUMBERS;
   const int32_t *color_format = tile_format + RG_TILE_FORMAT_NUMBERS;
   const int32_t *lists = color_format + RG_COLOR_FORMAT_NUMBERS;
-  int32_t set_tiles = held + (across * side * (cells / across) * side);
   int32_t first_tile = (int32_t)(word & ((1u << tile_bits) - 1u));
   int32_t mirrored = (int32_t)((word >> mirror_bit) & 1u), upside_down = (int32_t)((word >> flip_bit) & 1u);
   int32_t bank = (int32_t)((word >> bank_at) & ((1u << bank_bits) - 1u));

@@ -1124,12 +1124,12 @@ end
 # One tile of a cell of such a background, painted into tile +slot+ of each set of its tiles
 # (rg_runtime.c's start_file_paint_cell_tile).
 def rg_start_file_paint_cell_tile(rules, word, down, along, slot)
-  _total, start, _map_at, cells, across, side, _high_byte_first, tile_bits, mirror_bit, flip_bit, bank_at, bank_bits, row_tiles,
-    tiles_at, tile_count, colors_at, bank_count, bank_size, sets, held = rules
+  _total, start, _map_at, _cells, _across, side, _high_byte_first, tile_bits, mirror_bit, flip_bit, bank_at, bank_bits, row_tiles,
+    tiles_at, tile_count, colors_at, bank_count, bank_size, sets = rules
+  set_tiles = rules[24]
   tile_format = RG_FILL_BACKGROUND_HEADER_NUMBERS
   color_format = tile_format + RG_TILE_FORMAT_NUMBERS
   lists = color_format + RG_COLOR_FORMAT_NUMBERS
-  set_tiles = held + (across * side * (cells / across) * side)
   tile_bytes = rules[tile_format + RG_TILE_BYTES_AT]
   pixels = @rg_game_tile_pixels
   first_tile = word & ((1 << tile_bits) - 1)

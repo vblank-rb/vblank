@@ -37,6 +37,8 @@ module PackBackgroundAreaGames
                      cells: [[2, 1, false, false], [1, 0, false, true], [0, 0, false, false], [3, 1, true, true]],
                      map_at: CASTLE_MAP_AT, colors_at: CASTLE_COLORS_AT, tiles_at: CASTLE_TILES_AT)
   }.freeze
+  # The cell each area may be written with later: [tile, bank, mirrored, upside down].
+  WRITTEN = [3, 1, false, false].freeze
 
   VBlank::Testing::InRactors.share_constants(self)
 
@@ -129,6 +131,36 @@ module PackBackgroundAreaGames
       end
     end
   end
+
+  # The town's tile 1 takes turns through two pictures of the pack (+blocks+): the second is chosen
+  # on the second pass, the game walks to the castle on the fourth and back on the sixth.
+  def self.emit_turning_walk(builder, world, blocks)
+    builder.instance_eval do
+      tick = var :tick, 0
+      game_loop do
+        tick += 1
+        blocks.show 1 if tick == 2
+        world.show_map :castle if tick == 4
+        world.show_map :town if tick == 6
+      end
+    end
+  end
+
+  # A CELL WRITTEN LATER IN EACH AREA (WRITTEN): one cell number told for every area, each area
+  # drawing it from its own tiles and colours. The town's top left is written on the second pass; the
+  # game walks to the castle on the sixth and writes its bottom right on the eighth.
+  def self.emit_written_cells(builder, world)
+    word = advance_word(*WRITTEN)
+    builder.instance_eval do
+      tick = var :tick, 0
+      game_loop do
+        tick += 1
+        world.set_cell 0, 0, word if tick == 2
+        world.show_map :castle if tick == 6
+        world.set_cell 1, 1, word if tick == 8
+      end
+    end
+  end
 end
 
 class TestPackBackgroundAreas < Minitest::Test
@@ -158,13 +190,7 @@ class TestPackBackgroundAreas < Minitest::Test
   def test_a_tile_taking_turns_in_one_area_keeps_its_picture_through_a_walk
     Dir.mktmpdir do |folder|
       walked, = areas_game_and_file(areas_original(folder), turning: true) do |world, blocks|
-        tick = var :tick, 0
-        game_loop do
-          tick += 1
-          blocks.show 1 if tick == 2
-          world.show_map :castle if tick == 4
-          world.show_map :town if tick == 6
-        end
+        PackBackgroundAreaGames.emit_turning_walk(self, world, blocks)
       end
       first = game_player.run(walked, frames: 1).screen.pixel(1, 0)
       second = game_player.run(walked, frames: 3).screen.pixel(1, 0)
@@ -218,11 +244,6 @@ class TestPackBackgroundAreas < Minitest::Test
     assert_match(/colors/, error.message)
   end
 
-  # A CELL WRITTEN LATER IN EACH AREA: one cell number told for every area, each area drawing it
-  # from its own tiles and colours. The town's top left is written on the second pass; the game walks
-  # to the castle on the sixth and writes its bottom right on the eighth.
-  WRITTEN = [3, 1, false, false].freeze
-
   private def areas_with_written(written)
     AREAS.to_h { |name, area| [name, area.with(cells: area.cells.each_with_index.map { |cell, at| at == written[name] ? WRITTEN : cell })] }
   end
@@ -231,13 +252,7 @@ class TestPackBackgroundAreas < Minitest::Test
     word = PackBackgroundAreaGames.advance_word(*WRITTEN)
     Dir.mktmpdir do |folder|
       walked, = areas_game_and_file(areas_original(folder), set_cells: [word]) do |world|
-        tick = var :tick, 0
-        game_loop do
-          tick += 1
-          world.set_cell 0, 0, word if tick == 2
-          world.show_map :castle if tick == 6
-          world.set_cell 1, 1, word if tick == 8
-        end
+        PackBackgroundAreaGames.emit_written_cells(self, world)
       end
       town = areas_drawn_by_hand(areas_with_written(town: 0)) { |world| PackBackgroundAreaGames.emit_walk(self, world) }
       castle = areas_drawn_by_hand(areas_with_written(castle: 3)) { |world| PackBackgroundAreaGames.emit_walk(self, world) }

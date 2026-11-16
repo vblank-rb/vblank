@@ -814,15 +814,26 @@ module PackGames
   end
 
   # A BACKGROUND FROM THE PACK THAT WALKS BETWEEN AREAS (PackBackgroundAreaGames): each area its own
-  # slots of tiles, map and colours, walked into and back. A build that leaves its pack out does not
-  # make it yet.
+  # slots of tiles, map and colours, walked into and back.
   class BackgroundAreas < Kit
     include PackBackgroundAreaGames
 
     GAMES = [
-      game(:background_walking_between_areas_of_slots, passes: 9,
-                                                       refused: refused_by_builder("walks between areas of the data pack")) do |folder, options|
+      game(:background_walking_between_areas_of_slots, passes: 9) do |folder, options|
         built(*areas_game_and_file(areas_original(folder), options: options) { |world| PackBackgroundAreaGames.emit_walk(self, world) })
+      end,
+      game(:cells_written_in_each_area_of_a_walking_background, passes: 11) do |folder, options|
+        told = [PackBackgroundAreaGames.advance_word(*WRITTEN)]
+        made = areas_game_and_file(areas_original(folder), options: options, set_cells: told) do |world|
+          PackBackgroundAreaGames.emit_written_cells(self, world)
+        end
+        built(*made)
+      end,
+      game(:tile_taking_turns_in_one_area_of_a_walking_background, passes: 9) do |folder, options|
+        made = areas_game_and_file(areas_original(folder), options: options, turning: true) do |world, blocks|
+          PackBackgroundAreaGames.emit_turning_walk(self, world, blocks)
+        end
+        built(*made)
       end
     ].freeze
   end

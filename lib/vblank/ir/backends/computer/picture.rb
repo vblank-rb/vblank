@@ -555,15 +555,15 @@ module VBlank
             fields = @stacking.scenery.flat_map do |bg|
               tiles_start = tiles_starts.fetch(bg)
               steps = color_swaps(bg)
-              tile_count = bg.tiles.length + (bg.from_file ? bg.from_file.tiles_drawn : 0)
+              tile_count = bg.tiles.length + (bg.from_file ? bg.tiles_drawn_from_file : 0)
               painted_start, colors_start = painted_tiles_of(bg, steps, painted_tiles, run_colors)
               first_map = maps.length / MAP_FIELDS
-              bg.every_map.each do |map|
+              bg.every_map.each_with_index do |map, number|
                 # A background that never comes round again has no grid to come round at.
                 maps.push(cells.length, *TileMap.size_of(map), *(bg.streams? ? [0, 0] : TileMap.grid(map)))
                 # Read from the start file, each cell names its own tile, in order, after the tiles
-                # the game holds.
-                cells.concat(bg.from_file ? (bg.tiles.length...tile_count).to_a : map_cells(map))
+                # the game holds and the cells' tiles of the sets before the map's own.
+                cells.concat(bg.from_file ? cell_tiles_from_file(bg, number) : map_cells(map))
               end
               [bg.tile_w, bg.tile_h, first_map, Array(bg.maps).length, @backgrounds.fetch(bg.name),
                bg.streams? ? 1 : 0, tiles_start,
@@ -597,6 +597,15 @@ module VBlank
             tiles_in_front.concat(Array.new(tile_count) { |tile| bg.in_front.include?(tile) ? 1 : 0 })
             record_start_file_tiles_in_front(bg, start) if bg.from_file
             start
+          end
+
+          # The tiles of the cells of map +number+ of +bg+, a background read from the start file:
+          # a tile of its own for each cell, in order, among those of the map's set
+          # (Nodes::Background#first_tiles_from_file).
+          def cell_tiles_from_file(bg, number)
+            set = bg.map_sets ? bg.map_sets.fetch(number) : 0
+            first = bg.first_tiles_from_file.fetch(set)
+            (first...(first + bg.from_file.fetch(set).tiles_drawn)).to_a
           end
 
           # RG_BG_FRONT of a background with no cells in front of the sprites.
@@ -649,7 +658,7 @@ module VBlank
             # A background whose map is read from the start file has, after the tiles the game
             # holds for it, a tile for every cell of the map, see-through until the file is read
             # (StartFileFills#record_start_file_background_fill).
-            cell_tiles = bg.from_file ? bg.from_file.tiles_drawn : 0
+            cell_tiles = bg.from_file ? bg.tiles_drawn_from_file : 0
             record_start_file_background_fill(start, bg, steps) if bg.from_file
             [nil, *steps].flat_map do |swaps|
               held = bg.tiles.map do |tile|
@@ -686,9 +695,9 @@ module VBlank
             # A background read from the start file whose tiles take turns through pictures has
             # a tile for every cell after the ones the game holds, none painted until the routine
             # reading the file points the cells naming such a tile at a run's (StartFileFills).
-            if bg.from_file && !bg.from_file.moving.empty?
+            if bg.from_file&.any? { |where| !where.moving.empty? }
               record_start_file_moving_cells(bg, starts.first)
-              painted_tiles.concat(Array.new(bg.from_file.tiles_drawn * 2) { |at| at.even? ? NOT_PAINTED : 0 })
+              painted_tiles.concat(Array.new(bg.tiles_drawn_from_file * 2) { |at| at.even? ? NOT_PAINTED : 0 })
             end
             [nil, *steps].each do |swaps|
               @tile_runs.each_value do |run|
@@ -894,7 +903,7 @@ module VBlank
           def tile_pixel_total
             @stacking.scenery.sum do |bg|
               tiles = bg.tiles.sum { |tile| tile_image(tile).then { |image| image.width * image.height } }
-              tiles += bg.from_file.tiles_drawn * RUN_TILE_PIXELS if bg.from_file
+              tiles += bg.tiles_drawn_from_file * RUN_TILE_PIXELS if bg.from_file
               tiles * (color_swaps(bg).length + 1)
             end
           end

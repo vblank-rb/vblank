@@ -109,7 +109,7 @@ module VBlank
         operands name: :name, tiles: :list, map: :list, maps: :list, choice: :list, tile_w: :int,
                  tile_h: :int, layer: :name, scene: :name, affine: :flag, recolors: :list, palettes: :list,
                  palette_names: :list, sets: :list, set_starts: :list, map_sets: :list, bar_top: :int,
-                 above_row: :int, alone: :flag, hides_sprites: :flag, boxed: :name, follows: :name, follows_each: :list, from_file: :file_background,
+                 above_row: :int, alone: :flag, hides_sprites: :flag, boxed: :name, follows: :name, follows_each: :list, from_file: :file_backgrounds,
                  in_front: :list
 
         # +in_front+, on a background some of whose cells are drawn IN FRONT OF THE SPRITES (a
@@ -153,10 +153,28 @@ module VBlank
         end
 
         # +from_file+ is where in the file the program is handed as it starts (StartFile) this
-        # background's map, tiles and colours are (a StartFile::Background), or absent for one the
-        # program holds. Its +tiles+ are then a tile for each bank of colours, its +map+ names the
-        # first in every cell, and each of its +palettes+ holds a marker for each colour of a bank
-        # (StartFile, "MARKERS"): the size and the lists' names are true, and nothing else of them is.
+        # background's map, tiles and colours are, or absent for one the program holds: a
+        # StartFile::Background for each of its +sets+, in their order, or one for a background of
+        # one set. Its +tiles+ are then a tile for each bank of colours of each set, its maps name
+        # the set's first in every cell, and each of its +palettes+ holds a marker for each colour
+        # of a bank (StartFile, "MARKERS"): the size and the lists' names are true, and nothing
+        # else of them is.
+
+        # How many tiles the maps read from the file have, a tile for every cell of each
+        # (StartFile::Background#tiles_drawn), all the sets together.
+        def tiles_drawn_from_file = from_file.sum(&:tiles_drawn)
+
+        # Where each record of +from_file+ has its first tile among the background's tiles, once a
+        # build for a computer gives every cell a tile of its own: after the tiles the program
+        # holds, and after every earlier record's.
+        def first_tiles_from_file
+          firsts = []
+          from_file.reduce(tiles.length) do |first, where|
+            firsts << first
+            first + where.tiles_drawn
+          end
+          firsts
+        end
 
         # Each of +palettes+ as a tile drawn from it gives which list it was drawn from
         # (Bitmap#list_drawn_from): its name and its colours.
