@@ -561,18 +561,44 @@ module VBlank
             # draws with others has none to write, and a set of none is a set the routine cannot count.
             def emit_background_colors_on(which, bg)
               return if @screen_colors && Array(bg.recolors).empty?
+              return emit_walking_background_colors(which, bg) if bg.several_sets?
 
-              label = held_colors_label([:background, bg.object_id]) do
-                [nil, *bg.recolors.each_index].map { |step| background_held_set(bg, step) }
-              end
-              runtime_call("rt_colors_hold", [LongAddress.new(label), which])
+              runtime_call("rt_colors_hold", [LongAddress.new(background_colors_label(bg)), which])
             end
 
-            # Each background a scene shows and draws with other colours, in a game of screen colours:
-            # the number it was told last, by its name, from power-on the one naming none, as the
-            # interpreter keeps it by name (Reference @bg_colors).
+            # The table of +bg+'s sets of colours, its own and one for each list it borrows, in +area+
+            # (an Art::AreaKey) for a background walking between areas.
+            def background_colors_label(bg, area = nil)
+              held_colors_label([:background, bg.object_id, area]) do
+                [nil, *bg.recolors.each_index].map { |step| background_held_set(bg, step, area) }
+              end
+            end
+
+            # A background walking between areas keeps its lists' palettes in each area's own copy of
+            # the colours, so a list it borrows is written into the area up (#area_up_var) alone. An area
+            # not up gets the list as it comes in (#emit_area_up). None up, after a scene brought its own
+            # tiles in over them, writes nothing.
+            def emit_walking_background_colors(which, bg)
+              done = fresh("walking_colors")
+              bg.sets.each_index do |set|
+                key = area_key(bg, set)
+                other = fresh("not_area")
+                jump_unless(Build.binop(:==, Build.var_ref(area_up_var), Build.int(area_keys.index(key))), other)
+                runtime_call("rt_colors_hold", [LongAddress.new(background_colors_label(bg, key)), which])
+                @asm.brl(done)
+                @asm.label(other)
+              end
+              @asm.label(done)
+            end
+
+            # Each background whose list the game must write again later: one a scene shows and draws
+            # with other colours, in a game of screen colours, and one walking between areas that draws
+            # with other colours. The number it was told last, by its name, from power-on the one naming
+            # none, as the interpreter keeps it by name (Reference @bg_colors).
             def keep_background_color_choices
-              recolored = @screen_colors ? backgrounds_declared.select { |bg| bg.scene && !Array(bg.recolors).empty? } : []
+              recolored = backgrounds_declared.select do |bg|
+                !Array(bg.recolors).empty? && ((@screen_colors && bg.scene) || bg.several_sets?)
+              end
               @background_color_choices = recolored.map(&:name).uniq.to_h do |name|
                 [name, keep_local(:"colors_of_#{name}", start: Build::NO_RECOLOR)]
               end
@@ -587,7 +613,9 @@ module VBlank
 
             # What +bg+'s lists are kept under: a name two scenes declare is two backgrounds with sets
             # of their own, in a game of screen colours.
-            def held_lists_key(bg) = [colors_scene_of(bg), bg.name]
+            # A background walking between areas keeps a set for each +area+ (an Art::AreaKey), since each
+            # area has its own copy of the colours.
+            def held_lists_key(bg, area = nil) = [colors_scene_of(bg), bg.name, *area]
 
             # The one scene whose background shows the tiles of +run+, whose colours it is then drawn
             # from; nil where every screen keeps them, for a run two scenes show as well as one that
@@ -665,12 +693,12 @@ module VBlank
             #
             # Lists that share a palette (Art#held_offset_of) are one set, each list's colours where
             # it starts in the palette, so the write of one leaves none of the others' as zeros.
-            def background_held_set(bg, step)
+            def background_held_set(bg, step, area = nil)
               swaps = step && bg.list_swaps(step)
-              lists = ((@background_lists || {})[held_lists_key(bg)] || {}).map do |list, (palette, image)|
+              lists = ((@background_lists || {})[held_lists_key(bg, area)] || {}).map do |list, (palette, image)|
                 swapped = swaps && swaps[list]
                 colors = (1...image.colors.length).map { |place| (swapped && swapped[place]) || image.colors[place] }
-                [palette, @art.held_offset_of(held_list_key(bg, list)), colors]
+                [palette, @art.held_offset_of(held_list_key(bg, list, area)), colors]
               end
               lists.group_by(&:first).map do |palette, held|
                 [@art.background_palette_at(palette), held.sort_by { |_, offset, _| offset }.flat_map(&:last)]
@@ -682,19 +710,22 @@ module VBlank
             # palette's first place, since the game writes those tiles' places as they are in the list
             # (Runtime::Picture's rt_tile_run_copy); any other may share its palette with the
             # background's other lists (Art#held_background_palette).
-            def held_background_palette(bg, image)
+            #
+            # On a background walking between areas the palette is in the copy of the colours of +area+
+            # (an Art::AreaKey), the area the tile is in.
+            def held_background_palette(bg, image, area = nil)
               return nil if Array(bg.recolors).empty?
 
               list = image.list_drawn_from
               colors = image.colors.drop(1).map { |color| color & 0x7FFF }
-              owner = held_lists_key(bg) unless @tile_runs.any? { |run| run.list_drawn_from == list }
-              palette = @art.held_background_palette(held_list_key(bg, list), colors, scene: colors_scene_of(bg), owner: owner)
-              ((@background_lists ||= {})[held_lists_key(bg)] ||= {})[list] = [palette, image]
+              owner = held_lists_key(bg, area) unless @tile_runs.any? { |run| run.list_drawn_from == list }
+              palette = @art.held_background_palette(held_list_key(bg, list, area), colors, scene: area || colors_scene_of(bg), owner: owner)
+              ((@background_lists ||= {})[held_lists_key(bg, area)] ||= {})[list] = [palette, image]
               palette
             end
 
             # What +bg+'s held +list+ is kept under in the Art.
-            def held_list_key(bg, list) = [:backgrounds, *held_lists_key(bg), list]
+            def held_list_key(bg, list, area = nil) = [:backgrounds, *held_lists_key(bg, area), list]
 
             # THE PALETTE OF A RUN ON A BACKGROUND THE GAME DRAWS WITH OTHER COLOURS: the one its list has
             # on that background, shared with the pictures drawn from the list, so a walk of colours
@@ -1118,24 +1149,29 @@ module VBlank
               @area_up_var ||= keep_local(:area_up, start: power_on_area ? area_keys.index(power_on_area) : -1)
             end
 
-            # Bring area +key+ in, unless it is up: its tiles and its colours, for the next blank. With
-            # +colors_always+ its colours come in either way, as a scene taking over has just copied its
-            # own over them.
-            def emit_area_up(key, colors_always: false)
+            # Bring area +key+ of +bg+ in, unless it is up: its tiles and its colours, for the next blank.
+            # With +colors_always+ its colours come in either way, as a scene taking over has just copied
+            # its own over them.
+            def emit_area_up(bg, key, colors_always: false)
               number = area_keys.index(key)
               up = area_up_var
               same = fresh("area_up")
               jump_unless(Build.binop(:!=, Build.var_ref(up), Build.int(number)), same)
               statement(Build.set(up, Build.int(number)))
               runtime_call("rt_scene_background_tiles", [LongAddress.new(area_tiles_table_label(number))])
-              emit_area_colors(number) unless colors_always
+              emit_area_colors(bg, key) unless colors_always
               @asm.label(same)
-              emit_area_colors(number) if colors_always
+              emit_area_colors(bg, key) if colors_always
             end
 
-            def emit_area_colors(number)
-              label = held_colors_label(:areas) { area_keys.map { |key| @art.scene_colors(key) } }
-              runtime_call("rt_colors_hold", [LongAddress.new(label), Build.int(number - 1)])
+            # Area +key+'s colours, then the list +bg+ was last told to draw with written over its own
+            # (Reference keeps that by the background's name, whichever area is up, so an area walked
+            # back to draws with it again).
+            def emit_area_colors(bg, key)
+              label = held_colors_label(:areas) { area_keys.map { |one| @art.scene_colors(one) } }
+              runtime_call("rt_colors_hold", [LongAddress.new(label), Build.int(area_keys.index(key) - 1)])
+              choice = @background_color_choices[bg.name]
+              runtime_call("rt_colors_hold", [LongAddress.new(background_colors_label(bg, key)), Build.var_ref(choice)]) if choice
             end
 
             def area_tiles_label(number) = "art background tiles of area #{number}"
@@ -1160,7 +1196,6 @@ module VBlank
 
             # What this build does not make yet of a background walking between areas.
             def refuse_unmade_walking!(bg)
-              refuse_unmade!("a background walking between areas drawn with other colours (`draw_with`)") unless Array(bg.recolors).empty?
               refuse_unmade!("a background walking between areas on a status bar or held above a row") if bg.held_to_rows?
               if bg.scene.nil? && (@screen_colors || @scene_background_tiles)
                 refuse_unmade!("a background walking between areas on every screen, in a game whose scenes bring in their own colours or tiles")
@@ -1392,7 +1427,7 @@ module VBlank
               else
                 # A walking background goes up in its first area, whose colours come in again since a
                 # scene taking over has just copied its own over them.
-                emit_area_up(area_key(bg, 0), colors_always: true) if bg.several_sets?
+                emit_area_up(bg, area_key(bg, 0), colors_always: true) if bg.several_sets?
                 runtime_call("rt_background_put_up", [Build.int(layer_of(bg)), Build.int(grid_of(bg, 0).number), Build.int(1)])
               end
               # A status bar put up shows from the top it was declared with (Reference#bar_top_shown), and
@@ -1624,9 +1659,9 @@ module VBlank
 
               @run_cells.fetch(name) do
                 image = @cache.image(picture_named(name))
-                held = held_background_palette(bg, image)
-                offset = held ? @art.held_offset_of(held_list_key(bg, image.list_drawn_from)) : 0
                 area = area_of_tile(bg, tile) if bg.several_sets?
+                held = held_background_palette(bg, image, area)
+                offset = held ? @art.held_offset_of(held_list_key(bg, image.list_drawn_from, area)) : 0
                 places = { held: held, held_offset: offset, scene: area || colors_scene_of(bg), tile_scene: area || tiles_scene_of(bg) }
                 bg.tile_w == BIG_TILE ? @art.background_big_cell(image, **places) : @art.background_cell(image, **places)
               end
@@ -2267,7 +2302,7 @@ module VBlank
               bg.every_map.each_index do |number|
                 other = fresh("not_map")
                 jump_unless(Build.binop(:==, Build.var_ref(which), Build.int(number)), other)
-                emit_area_up(area_key(bg, bg.map_sets.fetch(number))) if bg.several_sets?
+                emit_area_up(bg, area_key(bg, bg.map_sets.fetch(number))) if bg.several_sets?
                 runtime_call("rt_background_put_up", [Build.int(layer_of(bg)), Build.int(grid_of(bg, number).number), Build.int(0)])
                 @asm.brl(done)
                 @asm.label(other)
