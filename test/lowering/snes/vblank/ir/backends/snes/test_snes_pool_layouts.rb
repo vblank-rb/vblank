@@ -47,6 +47,46 @@ class TestSNESPoolLayouts < Minitest::Test
     end
   end
 
+  # Things removed only between walks, the oldest each time a fourth is spawned, so every thing on
+  # the chain is live and a walk passes none it must skip (LoweringPlan#dead_on_chain?); and a
+  # second pool removed from inside its own walk, whose walk must still skip what it removed.
+  def self.game_removing_outside_walks
+    VBlank.game("REMOVED BETWEEN WALKS", consoles: %i[snes]) do
+      screen :tiled
+      image(:floor, "#" => :blue) { (["#" * 8] * 8).join("\n") }
+      tiles :set, "#" => :floor
+      background :field, tiles: :set, map: Array.new(28) { "#" * 32 }
+      things = pool :thing, x: 0, hits: 0, capacity: 5, widths: { hits: :byte }
+      sparks = pool :spark, x: 0, age: 0, capacity: 5, widths: { age: :byte }
+      fired = var :fired, 0
+      total = var :total, 0
+      oldest = var :oldest, 0
+      game_loop do
+        fired += 1
+        things.spawn(x: fired * 3, hits: 0)
+        sparks.spawn(x: fired, age: 0)
+        things.each(newest_first: true) { |t| oldest = t.index }
+        things.remove_at(oldest) if things.count > 3
+        total = 0
+        things.each do |t|
+          t.hits += 1
+          things.each { |other| total += other.x if other.index != t.index }
+        end
+        sparks.each do |s|
+          s.age += 1
+          sparks.each { |other| other.remove if other.age > 2 && other.index != s.index }
+          total += s.x
+        end
+      end
+    end
+  end
+
+  def test_walks_with_removals_between_and_during_them_play_as_on_the_interpreter
+    run = game_player.run(self.class.game_removing_outside_walks.program(console: :snes), frames: 40)
+
+    assert_operator run[:fired], :>=, 40
+  end
+
   LAYOUTS.each do |layout|
     define_method(:"test_a_pool_kept_as_#{layout}_plays_as_on_the_interpreter") do
       run = game_player.run(self.class.game(layout).program(console: :snes), frames: 90)

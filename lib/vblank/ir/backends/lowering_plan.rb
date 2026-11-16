@@ -260,6 +260,25 @@ module VBlank
             Reach.routines_named(statements).uniq.any? { |called| @funcs.key?(called) && waits?(called) }
         end
 
+        # WHETHER A THING OF +pool+ CAN BE ON ITS CHAIN WHILE IT IS NOT LIVE, so a walk of it must
+        # test each thing it passes (DSL::Pool#each). A thing removed outside a walk is taken out of
+        # the chain at once; one removed during a walk stays in it, dead, on the pool's retired list
+        # until the walks end (DSL::Pool#removal_routine). So the only way to a dead thing on the
+        # chain is a push onto the retired list, and that is reached only by a removal made while a
+        # walk of the pool runs: in a walk's body, in a routine it calls, or in what a timer's tick
+        # or a bend runs, which can come in the middle of one. Where none of those removes a thing of
+        # the pool, every thing on its chain is live.
+        def dead_on_chain?(pool)
+          (@dead_on_chain ||= {}).fetch(pool) do
+            walks = @reachable.select { |node| node.kind == :repeat && node.pool_walk&.pool.to_s == pool.to_s }
+            roots = walks + @tick_handlers.values + @bend_roots
+            statements = Reach.statements_from(*roots) +
+                         Reach.routines_called_from(@program, roots).flat_map { |name| Reach.statements_under(@funcs.fetch(name)) }
+            retired = DSL::Pool.retired_list(pool)
+            @dead_on_chain[pool] = statements.any? { |node| node.kind == :list_push && node.name == retired }
+          end
+        end
+
         # Every game loop of the program.
         def game_loops = @game_loops ||= @program.walk.select { |node| node.kind == :loop }
 

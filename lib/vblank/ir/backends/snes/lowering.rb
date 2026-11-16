@@ -1371,7 +1371,7 @@ module VBlank
 
             top = fresh("walk")
             done = fresh("walk_done")
-            body = node.children.drop(walk.step_statements)
+            body = without_live_test(walk, node.children.drop(walk.step_statements))
             current = scaled_current(walk, body, at, links.stride)
             store_number(index, 0)
             [[walk.ahead, ahead], [walk.last, last]].each { |from, to| emit_slot_scaled(place_of(from), to, shifts) }
@@ -1428,6 +1428,25 @@ module VBlank
             @asm.dey
             @asm.label(kept, join: true)
             @asm.sty(at_place(index))
+          end
+
+          # A walk's +body+ without its test of whether the thing is live, where every thing on the
+          # pool's chain is (LoweringPlan#dead_on_chain?): the statements the test held. The test
+          # reads a byte and compares it, each turn; the console's own games walk a chain that holds
+          # only live things and test nothing. Any other body as it is.
+          def without_live_test(walk, body)
+            return body unless body.length == 1 && live_test?(body.first, walk) && !@plan.dead_on_chain?(walk.pool)
+
+            body.first.children
+          end
+
+          # Whether +node+ is a walk's `if` on the thing at +walk+'s slot being live, with no else.
+          def live_test?(node, walk)
+            return false unless node.kind == :if && node.else.nil? && binop?(node.cond, :==) && folded(node.cond.rhs) == 1
+
+            read = node.cond.lhs
+            read.is_a?(Node) && read.kind == :list_get && read.name == DSL::Pool.active_list(walk.pool) &&
+              read.index.is_a?(Node) && read.index.kind == :var_ref && read.index.name == walk.at
           end
 
           # THE THING A WALK IS ON, KEPT ONLY AS X HOLDS IT. Each turn of #emit_stepped_walk loads the
