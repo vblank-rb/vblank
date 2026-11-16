@@ -1,12 +1,15 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "ractor_workers"
 
 # THE NAMES THE BUILD MAKES UP for routines and variables nobody wrote — a save record's
 # routines, the save machinery's own, a font's digit routine, a scene's sprite routine — and
 # what a report calls each one. Made and read back through one table, so these ask the table
 # itself: no build is needed to find out whether two names can meet.
 class TestMadeNames < Minitest::Test
+  include RactorWorkers
+
   MadeNames = VBlank::Messages::MadeNames
 
   # One set of parts for every kind of name, as the build would hand them over.
@@ -103,6 +106,19 @@ class TestMadeNames < Minitest::Test
     }
     said.each { |name, words| assert_equal words, MadeNames.words_for_made_name(name), name.inspect }
     assert_nil MadeNames.words_for_made_name(:jump), "a routine the author named is not one of these"
+  end
+
+  # A build in a Ractor worker words its routines as one on the main Ractor does, every kind of
+  # them: a report names them while a build places them, in whichever Ractor builds.
+  def test_every_kind_is_worded_alike_in_another_ractor
+    names = Ractor.make_shareable(SAMPLES.map { |kind, parts| MadeNames.make(kind, **parts) })
+    here = names.map { |name| MadeNames.words_for_made_name(name) }
+
+    there = without_the_experimental_warning do
+      value_raising_its_cause(Ractor.new(names) { |all| all.map { |name| MadeNames.words_for_made_name(name) } })
+    end
+
+    assert_equal here, there
   end
 
   # The parts a game chooses — a record's name, a font's, a scene's — spelled to run into
