@@ -270,6 +270,29 @@ module VBlank
         # the pool, every thing on its chain is live.
         def dead_on_chain?(pool) = written_during_walks?(pool, DSL::Pool.retired_list(pool))
 
+        # THE BODY OF A POOL'S WALK, +repeat+ (IR::WalkShape), for a lowering stepping the walk its
+        # own way: the statements after the walk's steps, without the test of whether the thing is
+        # live where every thing on the pool's chain is (#dead_on_chain?), so only the statements
+        # the test held. The test reads a byte and compares it each turn; the console's own games
+        # walk a chain that holds only live things and test nothing.
+        def walk_body(repeat)
+          walk = repeat.pool_walk
+          body = repeat.children.drop(walk.step_statements)
+          return body unless body.length == 1 && live_test?(body.first, walk) && !dead_on_chain?(walk.pool)
+
+          body.first.children
+        end
+
+        # Whether +node+ is a walk's `if` on the thing at +walk+'s slot being live, with no else.
+        def live_test?(node, walk)
+          cond = node.cond if node.kind == :if
+          return false unless cond.is_a?(Node) && node.else.nil? && cond.kind == :binop && cond.op == :== && folded(cond.rhs) == 1
+
+          read = cond.lhs
+          read.is_a?(Node) && read.kind == :list_get && read.name == DSL::Pool.active_list(walk.pool) &&
+            read.index.is_a?(Node) && read.index.kind == :var_ref && read.index.name == walk.at
+        end
+
         # WHETHER +pool+'S CHAIN CAN CHANGE WHILE A WALK OF IT RUNS. A walk stops after the thing
         # that was last when it began (DSL::Pool#each), because a thing spawned during it is added
         # after that one. The chain is changed only by the pool's routines that write its links:

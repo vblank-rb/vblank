@@ -11,8 +11,10 @@ module VBlank
       # the :lists layout, which every console has. A console's own games keep their things the way
       # its processor reaches memory cheaply: on the Super Nintendo, a record for each thing or tables
       # side by side, either read with one index register held on the thing for every field; on the
-      # Color, a record with HL pointed at it; on the Genesis, a record with an address register on it
-      # (https://snes.nesdev.org/wiki/65C816, https://gbdev.io/pandocs/, https://plutiedev.com/).
+      # Color, a record with HL pointed at it (https://snes.nesdev.org/wiki/65C816,
+      # https://gbdev.io/pandocs/); on the Genesis, an address register on the thing and each field at
+      # a distance written in the instruction, the d16(An) mode (Motorola's M68000 Programmer's
+      # Reference Manual).
       # A layout of a console's own is an adapter of this interface, chosen per pool,
       # so adding one is one new adapter and no lowering's code changes for a pool it does not keep.
       #
@@ -172,6 +174,16 @@ module VBlank
               records: "A record for each thing: one X reaches every field, " \
                        "but the record's stride is the sum of the widths rounded up, more doublings to set X. " \
                        "Measured in bsnes, one more pair: 532 master clocks (half words 388); the bullets test 7.24%."
+            },
+            genesis: {
+              tables: "The pool's tables in one block, so one address register on the thing a walk is on reaches " \
+                      "every field at a distance written in the instruction, and the walk steps by its links " \
+                      "(Genesis::Lowering#emit_stepped_walk). Measured in Genesis Plus GX, one more pair of things " \
+                      "checked: 558 cycles as lists, 264 as tables; the bullets test 7.87% of a frame, 3.48%; " \
+                      "five walkers 12.67%, 7.51%.",
+              records: "A record for each thing, reached the same way, but its stride is the sum of the widths " \
+                       "rounded up, more doublings to find a thing. Measured in Genesis Plus GX, one more pair: " \
+                       "282 cycles; the bullets test 3.57%; five walkers 8.14%."
             }
           }
         )
