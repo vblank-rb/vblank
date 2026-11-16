@@ -680,9 +680,9 @@ module VBlank
               # so its high half is nought already, and only NONE writes it.
               @asm.sta(high)
               @asm.bra(spread)
-              @asm.label(positive)
+              @asm.label(positive, join: true)
               @asm.sta(low)
-              return @asm.label(spread)
+              return @asm.label(spread, join: true)
             end
 
             @asm.bra(spread)
@@ -706,6 +706,11 @@ module VBlank
           # A variable a pool keeps only slots in (DSL::Pool::SLOT_ONLY_PARTS) is only ever set to a
           # slot, below the pool's capacity, and starts at nought, so its high half is nought for good:
           # only the low half is copied into one.
+          #
+          # The slot a walk is on is read at straight after, as the index of the walk's lists of bytes
+          # (DSL::Pool::WALK_SLOT_PARTS), so it is put in X as well while A holds it: one instruction,
+          # where reading it back for each list is two, on each side of the walk's test of whether
+          # this is its last thing.
           def copy_variable(from, name)
             halves = operand_halves(from)
             at = place_of(name)
@@ -713,6 +718,11 @@ module VBlank
               @asm.lda(halves[i])
               @asm.sta(at_place(at + (2 * i)))
             end
+            key = slot_key(at_place(at), 1)
+            return unless DSL::Pool.walk_slot?(name) && key
+
+            @asm.tax
+            @asm.note_x_holds(key)
           end
 
           # A number written in the program, straight into the variable at +at+.
@@ -808,8 +818,17 @@ module VBlank
 
           # --- what ControlFlow asks of a lowering, in the 65816's instructions ---
 
-          def fresh_label(what) = fresh(what)
-          def place_label(label) = @asm.label(label)
+          # The labels a test's two sides end at (ControlFlow#emit_if) are reached only from above,
+          # by the test and by the end of its first side, so they are joins (W65816#label).
+          JOIN_LABELS = %w[else end_if].freeze
+
+          def fresh_label(what)
+            label = fresh(what)
+            (@join_labels ||= {})[label] = true if JOIN_LABELS.include?(what)
+            label
+          end
+
+          def place_label(label) = @asm.label(label, join: (@join_labels || {}).key?(label))
           def jump(label) = @asm.brl(label)
           def emit_value(operand) = value(operand)
           def emit_store(name) = store(name)
@@ -1199,9 +1218,15 @@ module VBlank
           # (#index_inside_full_list?).
           def emit_slot_into_x(place, width, index, checked: true)
             unless checked
+              key = slot_key(index[0], width)
+              return if key && @asm.x_holds == key
+
               @asm.lda(index[0])
               (width - 1).bit_length.times { @asm.asl }
-              return @asm.tax
+              @asm.tax
+              return @asm.note_x_holds(key) if key
+
+              return
             end
 
             inside = fresh("inside_the_list")
@@ -1225,6 +1250,17 @@ module VBlank
             @asm.label(inside)
             (width - 1).bit_length.times { @asm.asl }
             @asm.tax
+          end
+
+          # WHAT X HOLDS WHEN A SLOT IS READ AT IT: the low half of the variable +index+ (a place in
+          # memory) times +width+, as an assembler's note (W65816#x_holds). Two reads of one slot, or of
+          # slots as wide in two lists, one after the other, need X set once: a pool's walk reads the
+          # thing's link and whether it is live from two lists of bytes at the slot it is on. Nil for
+          # an index the note cannot name.
+          def slot_key(index, width)
+            return unless index.is_a?(W65816::Operand) && %i[dp abs].include?(index.mode) && index.value.is_a?(Integer)
+
+            [index.value + index.plus, width]
           end
 
           # R0 = the slot at +slots+ plus X. A slot narrower than a word reads back with its top bit
@@ -2335,7 +2371,7 @@ module VBlank
                 @asm.bne(differ)
                 @asm.lda(lefts[1])
                 @asm.cmp(halves[1])
-                @asm.label(differ)
+                @asm.label(differ, join: true)
               else
                 signed = fresh("signed")
                 @asm.lda(lefts[0])
@@ -2344,7 +2380,7 @@ module VBlank
                 @asm.sbc(halves[1])
                 @asm.bvc(signed)
                 @asm.eor(0x8000)
-                @asm.label(signed)
+                @asm.label(signed, join: true)
               end
             end
             # The negative flag now shows left < right, where for > and <= the two were swapped.

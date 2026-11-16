@@ -55,21 +55,22 @@ class TestSNESPoolPairCheckCost < Minitest::Test
   # The retail game's walk (Super Bomberman's check_for_enemy_with_enemy_collision) spends about 372
   # master clocks on an enemy whose x it tests, in 8 bits with the object in X. Ours keeps every
   # number in 32 bits; the bound holds the cheaper turn and test: short branches where the target is
-  # near (W65816#branch_long), the walk's slot copies a half long, and `abs(d) < 16` decided from
-  # d's high half (SNES::Lowering#compare_absolute_below).
-  def test_one_more_thing_to_check_costs_under_1470_master_clocks
+  # near (W65816#branch_long), the walk's slot copies a half long, `abs(d) < 16` decided from d's
+  # high half (SNES::Lowering#compare_absolute_below), the next link's high half written only for
+  # NONE, and X set once for both of the walk's byte lists (W65816#x_holds).
+  def test_one_more_thing_to_check_costs_under_1400_master_clocks
     per_pair = (routine_clocks(self.class.game(4)) - routine_clocks(self.class.game(2))) / 2
 
-    assert_operator per_pair, :<, 1470
+    assert_operator per_pair, :<, 1400
   end
 
   # With the places in half words, the difference and its test are worked out in 16 bits
   # (SNES::Lowering#compare_half_distance_below): nearer to the retail game's 8.
-  def test_one_more_thing_to_check_in_half_words_costs_under_1260_master_clocks
+  def test_one_more_thing_to_check_in_half_words_costs_under_1200_master_clocks
     halves = ->(others) { self.class.game(others, widths: HALF_PLACES) }
     per_pair = (routine_clocks(halves.call(4)) - routine_clocks(halves.call(2))) / 2
 
-    assert_operator per_pair, :<, 1260
+    assert_operator per_pair, :<, 1200
   end
 
   # The checks find what the interpreter finds on every pass, the meeting included.

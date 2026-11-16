@@ -1048,6 +1048,16 @@ module VBlank
       # the high half when the link read is NONE.
       NEXT_SLOT_PARTS = /\Awalk\d+_ahead\z/
 
+      # THE SLOT A WALK IS ON (#walk_vars), set at the top of every turn and read straight after:
+      # the thing's link to the next, and whether it is live, are each a list read at that slot.
+      WALK_SLOT_PARTS = /\Awalk\d+_at\z/
+
+      # Whether +var+ is the slot a walk is on (see WALK_SLOT_PARTS).
+      def self.walk_slot?(var)
+        kind, parts = Messages::MadeNames.read(var)
+        kind == :pool_part && WALK_SLOT_PARTS.match?(parts[:part])
+      end
+
       # Whether +var+ is a walk's next slot (see NEXT_SLOT_PARTS).
       def self.next_slot_of_walk?(var)
         kind, parts = Messages::MadeNames.read(var)

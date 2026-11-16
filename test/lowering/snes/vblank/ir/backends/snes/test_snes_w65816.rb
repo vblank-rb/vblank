@@ -175,4 +175,39 @@ class TestSNESW65816 < Minitest::Test
     assert_equal [0xA9, 0x03, 0x80], bytes[132, 3]
     assert_equal 0x808003, linked_bank.address_of("near")
   end
+
+  # What X holds, as noted, lasts until something could make it untrue: a store to the variable it
+  # came from, an instruction that writes X, a call, or a label anything could jump to. At a join,
+  # it is what every way in agrees on.
+  def test_what_x_holds_is_kept_until_it_could_change
+    asm = W65816.new("test")
+    noted = [0x0700, 1]
+    asm.note_x_holds(noted)
+    asm.sta(asm.abs(0x0704))
+    asm.lda(asm.long_x(0x7E2000))
+    assert_equal noted, asm.x_holds, "a store elsewhere, and a read at X, leave it"
+
+    asm.beq("past")
+    asm.lda(1)
+    asm.label("past", join: true)
+    assert_equal noted, asm.x_holds, "both ways in agree"
+
+    asm.bne("other")
+    asm.inx
+    asm.label("other", join: true)
+    assert_nil asm.x_holds, "one way in changed X"
+
+    [-> { asm.sta(asm.abs(0x0701)) }, -> { asm.tax }, -> { asm.jsl(asm.long("routine")) },
+     -> { asm.sta(asm.long_x(0x7E2000)) }, -> { asm.sta(asm.abs(0x2118)) }, -> { asm.label("anywhere") }].each do |change|
+      asm.note_x_holds(noted)
+      change.call
+      assert_nil asm.x_holds
+    end
+  end
+
+  def test_a_branch_back_to_a_join_is_refused
+    asm = W65816.new("test")
+    asm.label("top", join: true)
+    assert_raises(W65816::Error) { asm.bra("top") }
+  end
 end

@@ -97,6 +97,23 @@ module VBlank
           # Each conditional branch's opposite, for a branch too far for one byte (#branch_long).
           OPPOSITES = { bpl: :bmi, bmi: :bpl, bvc: :bvs, bvs: :bvc, bcc: :bcs, bcs: :bcc, bne: :beq, beq: :bne }.freeze
 
+          # WHAT CHANGES WHAT X HOLDS (#x_holds): the instructions that write X, those that write
+          # memory, those that call (whatever is called can do either), and those that never go on to
+          # the next instruction, past which X is whatever the way in to the next label brings.
+          WRITES_X = %i[tax tsx tyx plx inx dex xce plp ldx].freeze
+          WRITES_MEMORY = %i[sta stx sty stz inc dec tsb trb asl lsr rol ror].freeze
+          CALLS = %i[jsr jsl].freeze
+          ENDS = %i[rts rtl rti stp jmp jml].freeze
+
+          # What X holds past an instruction that never goes on to the next one.
+          GONE = :gone
+
+          # The ways of naming a place in memory a store's address is written in the instruction,
+          # and the first address of the console's registers, which are not memory (a store there
+          # can start a copy into memory).
+          WRITTEN_PLACES = %i[dp abs].freeze
+          REGISTERS_FROM = 0x2100
+
           # A long branch is the opposite branch and a BRL; a short one, the branch alone.
           LONG_BRANCH_BYTES = 5
           SHORT_BRANCH_BYTES = 2
@@ -138,6 +155,9 @@ module VBlank
             @long_branches = []
             @wide_a = true
             @wide_x = true
+            @x_holds = nil
+            @x_at_branches = Hash.new { |states, label| states[label] = [] }
+            @joins = {}
           end
 
           # --- operands ---
@@ -169,13 +189,36 @@ module VBlank
           def here = @bytes.bytesize
 
           # Names the next byte. A name is the whole program's: two sections cannot share one.
-          def label(name)
+          #
+          # With +join+, the label is only ever reached from above it: by falling through and by
+          # branches written before it, never by one written after (the end of a test, the place past
+          # its other side). What X holds there is then what it held on every way in, when they agree
+          # (#x_holds). Any other label can be reached from anywhere, so X is not known there.
+          def label(name, join: false)
             name = name.to_s
             raise Error, "label #{name} is placed twice" if @labels.key?(name)
 
             @labels[name] = here
+            ways_in = @x_at_branches.delete(name) || []
+            ways_in << @x_holds unless @x_holds == GONE
+            @x_holds = join && ways_in.uniq.length == 1 ? ways_in.first : nil
+            @joins[name] = true if join
             name
           end
+
+          # WHAT X HOLDS, as the lowering noted it (#note_x_holds), or nil when it is not known. The
+          # lowering reads a slot of a list at X, and X is the slot's number times the slot's width,
+          # worked out from a variable: two reads of one variable's slot one after the other need only
+          # the first to set X. The note is forgotten as soon as anything could make it untrue: an
+          # instruction that writes X, a store to the variable it came from (or one whose address is not
+          # written in the instruction, or to the console's registers, which can start a copy into
+          # memory), a call, and a label anything could jump to.
+          def x_holds = (@x_holds unless @x_holds == GONE)
+
+          # Notes that X holds +key+ (an Array the lowering makes, starting with the address of the
+          # variable it was worked out from) until something changes X or that variable.
+          def note_x_holds(key) = (@x_holds = key)
+
 
           # What the code at the next label finds A, X and Y to be: +a16+ and +xy16+ mark whether
           # they are 16 bits wide. Code jumped to from elsewhere sets them, since the assembler
@@ -251,50 +294,56 @@ module VBlank
             RUBY
           end
 
-          SINGLES.each { |name, opcode| class_eval("def #{name} = emit(#{opcode})", __FILE__, __LINE__) }
+          SINGLES.each { |name, opcode| class_eval("def #{name} = emit_single(:#{name}, #{opcode})", __FILE__, __LINE__) }
 
           BRANCHES.each do |name, opcode|
             class_eval <<~RUBY, __FILE__, __LINE__ + 1
               def #{name}(target)
+                note_way_in(target)
                 emit(#{opcode})
                 fixup(:relative, target)
                 emit(0)
+                @x_holds = GONE if :#{name} == :bra
               end
             RUBY
           end
 
           # BRL: anywhere in the bank, two signed bytes from the next instruction.
           def brl(target)
-            emit(0x82)
-            fixup(:relative_long, target)
-            emit(0, 0)
+            note_way_in(target)
+            emit_brl(target)
+            @x_holds = GONE
           end
 
           # A conditional branch to anywhere in the bank: the opposite branch over a BRL. Where the
           # target turns out to be in this section and in reach of one byte, #section makes it the
           # short branch instead (#shorten_long_branches).
           def branch_long(condition, target)
+            note_way_in(target)
             @long_branches << LongBranch.new(at: here, condition: condition, label: target.to_s)
             emit(BRANCHES.fetch(OPPOSITES.fetch(condition)), 3)
-            brl(target)
+            emit_brl(target)
           end
 
           # REP and SEP clear and set the processor's flags; the widths of A and of X and Y follow.
+          # Making X 8 bits wide empties its high byte, so a note of what it holds is forgotten.
           def rep(flags)
             emit(0xC2, flags & 0xFF)
             @wide_a = true if flags.anybits?(0x20)
             @wide_x = true if flags.anybits?(0x10)
+            @x_holds = nil if flags.anybits?(0x10)
           end
 
           def sep(flags)
             emit(0xE2, flags & 0xFF)
             @wide_a = false if flags.anybits?(0x20)
             @wide_x = false if flags.anybits?(0x10)
+            @x_holds = nil if flags.anybits?(0x10)
           end
 
           # MVN and MVP copy a block: X from, Y to, A+1 bytes, between the two banks named.
-          def mvn(to_bank, from_bank) = emit(0x54, to_bank, from_bank)
-          def mvp(to_bank, from_bank) = emit(0x44, to_bank, from_bank)
+          def mvn(to_bank, from_bank) = emit_block_copy(0x54, to_bank, from_bank)
+          def mvp(to_bank, from_bank) = emit_block_copy(0x44, to_bank, from_bank)
 
           private
 
@@ -311,6 +360,7 @@ module VBlank
           end
 
           def emit_operated(name, operand, opcode)
+            forget_x_for(name, operand)
             operand = Operand.new(:imm, operand, 0) if operand.is_a?(Integer)
             return emit(opcode) if operand == :a
 
@@ -365,6 +415,53 @@ module VBlank
           def fixup(kind, label, plus = 0) = @fixups << Fixup.new(offset: here, kind: kind, label: label.to_s, plus: plus)
 
           def emit(*values) = @bytes << values.pack("C*")
+
+          def emit_single(name, opcode)
+            forget_x_for(name, :a)
+            emit(opcode)
+          end
+
+          def emit_brl(target)
+            emit(0x82)
+            fixup(:relative_long, target)
+            emit(0, 0)
+          end
+
+          def emit_block_copy(opcode, to_bank, from_bank)
+            @x_holds = nil
+            emit(opcode, to_bank, from_bank)
+          end
+
+          # The note of what X holds made untrue by +name+ with +operand+, forgotten. Written before
+          # the instruction, which does not change what that instruction does.
+          def forget_x_for(name, operand)
+            return @x_holds = GONE if ENDS.include?(name)
+            return @x_holds = nil if WRITES_X.include?(name) || CALLS.include?(name)
+            return unless @x_holds.is_a?(Array) && WRITES_MEMORY.include?(name) && operand != :a
+
+            @x_holds = nil unless store_misses_noted?(operand)
+          end
+
+          # Whether a store to +operand+ surely leaves the variable X was worked out from alone: its
+          # address is written in the instruction, is memory, and the two bytes stored there do not
+          # reach the variable's low half.
+          def store_misses_noted?(operand)
+            return false unless operand.is_a?(Operand) && WRITTEN_PLACES.include?(operand.mode) && operand.value.is_a?(Integer)
+
+            address = operand.value + operand.plus
+            noted = @x_holds.first
+            address < REGISTERS_FROM && !(noted - 1..noted + 1).cover?(address)
+          end
+
+          # A branch to +target+ written, with what X holds now as one way in to it. A label marked a
+          # join (#label) is never branched to from below it, which would have to be a loop.
+          def note_way_in(target)
+            target = target.to_s
+            raise Error, "#{target} is a join, and a branch from below it would make it a loop" if @joins.key?(target)
+            return if @labels.key?(target)
+
+            @x_at_branches[target] << (@x_holds == GONE ? nil : @x_holds)
+          end
 
           # LONG BRANCHES MADE SHORT WHERE THEY REACH. A conditional branch carries one signed byte, so
           # #branch_long writes the opposite branch over a BRL, five bytes, for a target that may be
