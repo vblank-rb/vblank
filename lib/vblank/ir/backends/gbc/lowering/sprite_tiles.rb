@@ -72,7 +72,7 @@ module VBlank
                                                                   set_count: set.count)
               return unless bounds
 
-              numbers = bounds.map { |number, most| [number_kept_once(number), most] }
+              numbers = bounds.each_with_index.map { |(number, most), at| [number_kept_once(number, :"load_tile_#{at}"), most] }
               fits = numbers.map do |number, most|
                 Build.binop(:and, Build.binop(:>=, number, Build.int(0)), Build.binop(:<=, number, Build.int(most)))
               end.reduce { |both, each| Build.binop(:and, both, each) }
@@ -86,12 +86,14 @@ module VBlank
             end
 
             # +number+ as a value read again for nothing: itself, where it is written in the program,
-            # or a number of the routine's own it is worked out into once.
-            def number_kept_once(number)
+            # or a number it is worked out into once, kept as +what+ (Lowering#keep_step_local): the
+            # load reads it before it ends, so every load of the routine keeps it in one place. The
+            # two numbers of one load are read together, so each has a +what+ of its own.
+            def number_kept_once(number, what)
               known = folded(number)
               return Build.int(known) if known
 
-              kept = keep_local(:load_tile)
+              kept = keep_step_local(what)
               value(number)
               store(kept)
               Build.var_ref(kept)

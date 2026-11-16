@@ -481,7 +481,7 @@ module VBlank
                 return
               end
 
-              chosen = keep_local(:map)
+              chosen = keep_step_local(:map)
               value(which)
               store(chosen)
               bg.every_map.each_index do |at|
@@ -653,7 +653,7 @@ module VBlank
               fine = fresh("held_group_up")
               in_table = Build.binop(:and, Build.binop(:>=, pose, Build.int(0)), Build.binop(:<, pose, Build.int(held_in.length)))
               jump_unless(in_table, fine)
-              group = Build.var_ref(keep_local(:held_in))
+              group = Build.var_ref(keep_step_local(:held_in))
               value(Entry.new(drawing_table("held_in", 1, held_in), 1, false, pose))
               store(group.name)
               jump_if(Build.binop(:==, group, Build.int(IN_NO_ONE_GROUP)), fine)
@@ -915,7 +915,7 @@ module VBlank
             # outside 0..9 draws nothing.
             def emit_draw_digit(node)
               font = node.fonts.get(node.font)
-              digit = keep_local(:digit)
+              digit = keep_step_local(:digit)
               value(node.value)
               store(digit)
               (0..9).each do |d|
@@ -973,7 +973,7 @@ module VBlank
             # Reference#exec_blit_pose: the one of the pictures the number names, and none for a
             # number outside them.
             def emit_blit_pose(node)
-              which = keep_local(:pose)
+              which = keep_step_local(:pose)
               value(node.index)
               store(which)
               node.poses.each_with_index do |name, at|
@@ -1362,7 +1362,7 @@ module VBlank
             # ...a big background the game changes: the map named copied in as declared and handed
             # over, by number, and a number naming none leaves it as it is.
             def emit_show_changed_big_map(bg, node)
-              which = keep_local(:map)
+              which = keep_step_local(:map)
               value(node.which)
               store(which)
               bg.every_map.each_index do |at|
@@ -2442,7 +2442,7 @@ module VBlank
               jump_unless(Build.binop(:==, value_node(obj.active), Build.int(1)), hidden)
               # A pose the program never changes is used as it is, so the build can see it is in range.
               said = folded(obj.pose)
-              pose = said ? Build.int(said) : Build.var_ref(keep_local(:pose))
+              pose = said ? Build.int(said) : Build.var_ref(keep_step_local(:pose))
               unless said
                 value(obj.pose)
                 store(pose.name)
@@ -2602,7 +2602,7 @@ module VBlank
             # pose. Worked out once and kept, since every table of the sprite is read at the same
             # place, and working out the row asks which list it is drawn with now and multiplies.
             def emit_row_and_pose_kept(obj, lists, sets, pose)
-              kept = keep_local(:row_and_pose)
+              kept = keep_step_local(:row_and_pose)
               value(Sum.new(:+, Sum.new(:*, row_drawn_with(obj, lists, sets), Build.int(obj.poses.length)), pose))
               store(kept)
               Build.var_ref(kept)

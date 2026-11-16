@@ -986,9 +986,12 @@ module VBlank
 
           # Reference#exec_call_one_of: the number worked out once, and a number naming no routine of
           # the list — below nought or past its end — calls nothing. Compared as a number that cannot
-          # be negative, -1 is the biggest there is, so one test guards both ends.
+          # be negative, -1 is the biggest there is, so one test guards both ends. The number is last
+          # read to find the routine's entry, before the call, so nothing the called routine does can
+          # change which routine it is, and the lines of a routine share one place for it
+          # (#keep_step_local).
           def emit_call_one_of(node)
-            which = keep_local(:which)
+            which = keep_step_local(:which)
             value(node.which)
             store(which)
             none = fresh("calls_none")
@@ -2039,7 +2042,7 @@ module VBlank
           # is written back, and the marker after them, in that order, so a power cut lands on the
           # byte it lands on in the interpreter.
           def emit_save_init(node)
-            saved = keep_local(:saved)
+            saved = keep_step_local(:saved)
             marker_at = Build.int(SaveLayout::SAVE_VAR_MARKER_AT)
             marker = Int32.wrap(node.magic)
             value(Build.binop(:==, save_read(marker_at, :word), Build.int(marker)))
