@@ -64,7 +64,7 @@ class TestPoolLayout < Minitest::Test
 
     assert tables.fits?(shape, %i[list_new list_get list_set])
     refute tables.fits?(shape, %i[list_new list_get list_fill])
-    refute tables.fits?(shape.with(slot_lists: shape.slot_lists.transform_values { :byte }), %i[list_get])
+    refute tables.fits?(shape.with(slot_lists: shape.slot_lists.transform_values { :byte }, link_lists: []), %i[list_get])
   end
 
   # Tables put every slot list at the pool's widest slot; records put a thing's values side by
@@ -91,6 +91,15 @@ class TestPoolLayout < Minitest::Test
 
       assert_equal :lists, kept.name, "a pool naming #{layout.inspect}"
     end
+  end
+
+  # A link is kept as the slot times the stride in two bytes, so the next thing's place is read
+  # straight into an index; NONE stays NONE.
+  def test_tables_keep_links_scaled
+    shape = guard_shape(program_with_pool)
+    links = PoolLayout::ADAPTERS.fetch(:tables).place(shape).place_of(VBlank::DSL::Pool.next_list(:guard))
+
+    assert_equal [4, 2, 4], [links.scale, links.width, links.stride]
   end
 
   # The steps a program takes on a pool's lists, which a layout reads to know whether it can keep it.

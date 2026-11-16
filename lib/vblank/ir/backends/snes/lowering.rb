@@ -229,11 +229,11 @@ module VBlank
           # reads them there.
           def slot_places
             @list_slots.each_with_object({}) do |(name, slots), places|
-              place, _capacity, width, = @lists.fetch(name)
-              next if slots.base == place + Runtime::Lists::HEADER && slots.stride == width
+              place, = @lists.fetch(name)
+              next unless slots.moved?(place)
 
               places[name] = PoolLayout::SlotPlace.new(area: name, offset: slots.base - (place + Runtime::Lists::HEADER),
-                                                       stride: slots.stride, width: width, scale: 1)
+                                                       stride: slots.stride, width: slots.width, scale: slots.scale)
             end
           end
 
@@ -323,7 +323,8 @@ module VBlank
               place = chip_list_place(node.name) ||
                       @memory.reserve_far("the list #{node.name.inspect}", Runtime::Lists::HEADER + slots)
               @lists[node.name] = [place, node.capacity, width, node.name.to_s]
-              @list_slots[node.name] = ListSlots.new(header: place, base: place + Runtime::Lists::HEADER, stride: width)
+              @list_slots[node.name] = ListSlots.new(header: place, base: place + Runtime::Lists::HEADER, stride: width,
+                                                     width: width, scale: 1)
             end
             place_pool_slots(strided)
             @scene = keep_local(:scene, start: -1) unless @scenes.empty?
@@ -660,7 +661,7 @@ module VBlank
 
           # Whether +node+ is a list's slot read where it is, as #value_of_list_get reads one.
           def slot_read_into_variable?(node)
-            node.is_a?(Node) && node.kind == :list_get && !front_dropped_lists.include?(node.name)
+            plain_slot_read?(node)
           end
 
           # A LIST'S SLOT STRAIGHT INTO A VARIABLE: each half read and stored where it goes, a narrow
@@ -1104,9 +1105,10 @@ module VBlank
           # its place, a byte slot with A eight bits wide so the bytes beside it in a record are kept.
           def emit_strided_slots_filled(node)
             slots = list_slots(node)
-            width = list_placed(node)[2]
+            width = slots.width
             again = fresh("strided_fill")
-            number = node.full_of & 0xFFFF
+            kept = slots.scaled? && node.full_of != DSL::Pool::NONE ? node.full_of * slots.scale : node.full_of
+            number = kept & 0xFFFF
             @asm.ldx(0)
             @asm.label(again)
             @asm.lda(number)
@@ -1160,6 +1162,7 @@ module VBlank
             kept = kept_read(node)
             return load_variable(kept) if kept
             return list_call("rt_list_get", node, node.index) if front_dropped_lists.include?(node.name)
+            return emit_scaled_slot_read(node) if list_slots(node).scaled?
 
             place, _capacity, width = list_placed(node)
             slot = fixed_slot_address(node)
@@ -1200,6 +1203,7 @@ module VBlank
             keyed = @keys_by_place&.fetch(node.name, nil)
             return emit_key_by_place(node, keyed) if keyed
             return list_call("rt_list_set", node, node.index, node.value) if front_dropped_lists.include?(node.name)
+            return emit_scaled_slot_write(node) if list_slots(node).scaled?
 
             place, _capacity, width = list_placed(node)
             stride = list_slots(node).stride
@@ -1261,8 +1265,22 @@ module VBlank
           # its layout put them (Backends::PoolLayout, #place_pool_slots): today's lists the same way,
           # another layout at a stride every list of the pool shares. Every read and write of a slot
           # asks here, never the header's place plus the header.
-          ListSlots = Data.define(:header, :base, :stride) do
+          #
+          # +width+ is the bytes a slot's value is kept in, and +scale+ what it is kept multiplied by:
+          # the list's own width and 1, except a pool's link kept as the slot times the stride
+          # (Backends::PoolLayout.strided_place), two bytes with NONE as $FFFF.
+          ListSlots = Data.define(:header, :base, :stride, :width, :scale) do
             def at(slot) = base + (slot * stride)
+
+            # Whether the slots are anywhere but straight after the header at +place+, each as wide as
+            # the list and kept as the tree holds it.
+            def moved?(place) = base != place + Runtime::Lists::HEADER || stride != width || scale != 1
+
+            # Whether the values are kept multiplied (#emit_scaled_slot_read, #emit_scaled_slot_write).
+            def scaled? = scale != 1
+
+            # How many doublings the scale is.
+            def scale_shifts = (scale - 1).bit_length
           end
 
           # The SlotPlace of each slot list of a pool kept in a layout other than :lists, by the list:
@@ -1288,7 +1306,7 @@ module VBlank
               next unless @lists.key?(list)
 
               @list_slots[list] = ListSlots.new(header: @lists.fetch(list).first, base: areas.fetch(place.area) + place.offset,
-                                                stride: place.stride)
+                                                stride: place.stride, width: place.width, scale: place.scale)
             end
           end
 
@@ -1372,6 +1390,16 @@ module VBlank
             stepped = fresh("walk_stepped")
             @asm.cpx(at_place(last))
             @asm.beq(none)
+            if links.scale == links.stride
+              # Kept as the slot times the stride already, NONE as $FFFF: the next thing as it is.
+              @asm.lda(@asm.long_x(links.base))
+              @asm.bra(stepped)
+              @asm.label(none, join: true)
+              @asm.lda(0xFFFF)
+              @asm.label(stepped, join: true)
+              return @asm.sta(at_place(ahead))
+            end
+
             @asm.lda(@asm.long_x(links.base))
             @asm.and_a(0x00FF) if width == 1
             @asm.cmp(width == 1 ? 0x00FF : 0xFFFF)
@@ -1393,6 +1421,61 @@ module VBlank
             @asm.bne(kept)
             @asm.dec(at_place(index))
             @asm.label(kept, join: true)
+          end
+
+          # Whether +node+ reads a slot of a list where it is, kept as the tree holds it: the reads the
+          # quick ways of this lowering take. A slot kept multiplied is read by #emit_scaled_slot_read.
+          def plain_slot_read?(node)
+            node.is_a?(Node) && node.kind == :list_get && !front_dropped_lists.include?(node.name) &&
+              !list_slots(node).scaled?
+          end
+
+          # A LINK KEPT AS THE SLOT TIMES THE STRIDE read as the tree holds it, into R0: NONE, kept as
+          # $FFFF, as -1; any other, halved back to the slot.
+          def emit_scaled_slot_read(node)
+            slots = list_slots(node)
+            none = fresh("link_none")
+            done = fresh("link_read")
+            slot = fixed_slot_address(node)
+            unless slot
+              emit_slot_into_x(slots.header, slots.stride, index_halves(node.index),
+                               checked: !index_inside_full_list?(node.name, node.index))
+            end
+            @asm.lda(slot ? @asm.long(slot) : @asm.long_x(slots.base))
+            @asm.cmp(0xFFFF)
+            @asm.beq(none)
+            slots.scale_shifts.times { @asm.lsr }
+            @asm.sta(@asm.direct(R0))
+            @asm.stz(@asm.direct(R0 + 2))
+            @asm.bra(done)
+            @asm.label(none, join: true)
+            @asm.sta(@asm.direct(R0))
+            @asm.sta(@asm.direct(R0 + 2))
+            @asm.label(done, join: true)
+          end
+
+          # A slot or NONE written into a link kept as the slot times the stride: the index worked
+          # out, then the value, as the tree takes them; NONE kept as $FFFF, a slot doubled up.
+          def emit_scaled_slot_write(node)
+            slots = list_slots(node)
+            stored = fresh("link_stored")
+            checked = !index_inside_full_list?(node.name, node.index)
+            slot = fixed_slot_address(node)
+            index = operand_halves(node.index)
+            if slot || index
+              value(node.value)
+              emit_slot_into_x(slots.header, slots.stride, index, checked: checked) unless slot
+            else
+              push_value(node.index)
+              value(node.value)
+              pull_into(R1)
+              emit_slot_into_x(slots.header, slots.stride, [@asm.direct(R1), @asm.direct(R1 + 2)], checked: checked)
+            end
+            @asm.lda(@asm.direct(R0))
+            @asm.bmi(stored)
+            slots.scale_shifts.times { @asm.asl }
+            @asm.label(stored, join: true)
+            @asm.sta(slot ? @asm.long(slot) : @asm.long_x(slots.base))
           end
 
           def list_slots(node)
@@ -1546,7 +1629,7 @@ module VBlank
           MOST_LOW_HALF_DEPTH = 4
 
           def narrow_slot_read?(node)
-            node.is_a?(Node) && node.kind == :list_get && !front_dropped_lists.include?(node.name) && list_placed(node)[2] < 4
+            plain_slot_read?(node) && list_placed(node)[2] < 4
           end
 
           # A = the low +bits+ (8 or 16) of +node+'s number, the bits above them anything when +bits+
@@ -1594,7 +1677,7 @@ module VBlank
             if (var = variable_named(node))
               return at_place(place_of(var))
             end
-            return unless node.is_a?(Node) && node.kind == :list_get && !front_dropped_lists.include?(node.name)
+            return unless plain_slot_read?(node)
 
             place, _capacity, width = list_placed(node)
             slot = (width > 1 || bits == 8) && fixed_slot_address(node)
@@ -2704,7 +2787,7 @@ module VBlank
           end
 
           def half_slot_read?(node)
-            node.is_a?(Node) && node.kind == :list_get && !folded(node) && !front_dropped_lists.include?(node.name) &&
+            plain_slot_read?(node) && !folded(node) &&
               list_placed(node)[2] == 2 && !operand_halves(node.index).nil?
           end
 
@@ -2770,7 +2853,7 @@ module VBlank
             return unless %i[== !=].include?(node.op)
 
             [[node.lhs, node.rhs], [node.rhs, node.lhs]].each do |slot, other|
-              next unless slot.is_a?(Node) && slot.kind == :list_get && !front_dropped_lists.include?(slot.name)
+              next unless plain_slot_read?(slot)
 
               number = folded(other)
               next if number.nil? || folded(slot)
@@ -3195,7 +3278,7 @@ module VBlank
           # writes a list, so the slot reads the same after the other side is worked out as before.
           # A slot narrower than a word has its sign worked out first, and is not read so.
           def slot_read_at_x?(node)
-            node.is_a?(Node) && node.kind == :list_get && !folded(node) && !front_dropped_lists.include?(node.name) &&
+            plain_slot_read?(node) && !folded(node) &&
               list_placed(node)[2] == 4 && !operand_halves(node.index).nil?
           end
 

@@ -351,7 +351,7 @@ module VBlank
           slot_lists: pool_lists(pool, fields, widths).except(*stacks), stack_lists: stacks,
           vars: { head: pool.head_var, tail: pool.tail_var, count: pool.count_var, current: pool.current_var,
                   walking: pool.walking_var },
-          layout: layout
+          layout: layout, link_lists: [pool.next_list, pool.prev_list]
         )
         @program.pools = (@program.pools || []) + [Ractor.make_shareable(shape)]
       end

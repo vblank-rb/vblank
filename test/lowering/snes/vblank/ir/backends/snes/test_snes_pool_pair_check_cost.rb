@@ -60,21 +60,22 @@ class TestSNESPoolPairCheckCost < Minitest::Test
   # NONE, X set once for both of the walk's byte lists (W65816#x_holds), and no note of which thing
   # the walk is on where nothing in its body reads it (Pool#drop_unread_current_writes), and the
   # routine's own thing's fields read once before the walk (SNES::Lowering#with_invariant_reads_kept), and
-  # the pool kept as tables, walked a turn at a time in X (Backends::PoolLayout::Tables,
+  # the pool kept as tables, walked a turn at a time in X, its links kept as the slot times the
+  # stride so the next is read straight into X (Backends::PoolLayout::Tables,
   # SNES::Lowering#emit_stepped_walk).
-  def test_one_more_thing_to_check_costs_under_900_master_clocks
+  def test_one_more_thing_to_check_costs_under_850_master_clocks
     per_pair = (routine_clocks(self.class.game(4)) - routine_clocks(self.class.game(2))) / 2
 
-    assert_operator per_pair, :<, 900
+    assert_operator per_pair, :<, 850
   end
 
   # With the places in half words, the difference and its test are worked out in 16 bits
   # (SNES::Lowering#compare_half_distance_below): nearer to the retail game's 8.
-  def test_one_more_thing_to_check_in_half_words_costs_under_780_master_clocks
+  def test_one_more_thing_to_check_in_half_words_costs_under_700_master_clocks
     halves = ->(others) { self.class.game(others, widths: HALF_PLACES) }
     per_pair = (routine_clocks(halves.call(4)) - routine_clocks(halves.call(2))) / 2
 
-    assert_operator per_pair, :<, 780
+    assert_operator per_pair, :<, 700
   end
 
   # The checks find what the interpreter finds on every pass, the meeting included.

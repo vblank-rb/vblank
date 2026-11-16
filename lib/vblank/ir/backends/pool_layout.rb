@@ -86,25 +86,44 @@ module VBlank
           (steps - STRIDED_STEPS).empty? && bytes <= MOST_STRIDED_BYTES
         end
 
+        # THE BYTES ONE SLOT OF +list+ TAKES in a layout at one stride: the list's own width, but a
+        # link (PoolShape#link_lists) is kept as the slot times the stride, so the next thing's place
+        # is read straight into an index, and that takes two bytes, NONE being $FFFF.
+        def self.stored_bytes(shape, list, width)
+          bytes = Build::ELEMENT_BYTES.fetch(width)
+          shape.link_lists.include?(list) ? [bytes, 2].max : bytes
+        end
+
+        # Where +list+ of +shape+ is at +offset+ in +area+, at +stride+: a link kept as the slot times
+        # the stride, any other list as the tree holds it.
+        def self.strided_place(shape, list, width, area:, offset:, stride:)
+          link = shape.link_lists.include?(list)
+          SlotPlace.new(area: area, offset: offset, stride: stride, width: stored_bytes(shape, list, width),
+                        scale: link ? stride : 1)
+        end
+
         # TABLES SIDE BY SIDE: each slot list in an area of its own, as :lists, but every slot as wide
         # as the pool's widest list, so one index, the slot number times that stride, reaches the same
-        # thing's slot in any of them. Each value keeps its own width at the front of its slot. A pool
-        # whose lists are all one width is already kept so, and stays :lists.
+        # thing's slot in any of them. Each value keeps its own width at the front of its slot, and the
+        # links are kept scaled. A pool whose slots would all be one width is already kept so, and
+        # stays :lists.
         class Tables
           def name = :tables
 
           def fits?(shape, steps)
-            widths = shape.slot_lists.values.map { |width| Build::ELEMENT_BYTES.fetch(width) }
+            widths = stored_widths(shape)
             widths.uniq.length > 1 && PoolLayout.strided_fits?(shape, steps, widths.length * shape.capacity * widths.max)
           end
 
           def place(shape)
-            stride = shape.slot_lists.values.map { |width| Build::ELEMENT_BYTES.fetch(width) }.max
+            stride = stored_widths(shape).max
             places = shape.slot_lists.to_h do |list, width|
-              [list, SlotPlace.new(area: list, offset: 0, stride: stride, width: Build::ELEMENT_BYTES.fetch(width), scale: 1)]
+              [list, PoolLayout.strided_place(shape, list, width, area: list, offset: 0, stride: stride)]
             end
             Placement.new(layout: name, areas: places.keys.to_h { |list| [list, shape.capacity * stride] }, slots: places)
           end
+
+          def stored_widths(shape) = shape.slot_lists.map { |list, width| PoolLayout.stored_bytes(shape, list, width) }
         end
 
         # A RECORD FOR EACH THING: every slot list of the pool in one area, the thing's values side by
@@ -122,17 +141,17 @@ module VBlank
             stride = record_bytes(shape)
             area = DerivedNames.join(shape.name, " records")
             offset = 0
-            places = shape.slot_lists.sort_by { |list, width| [-Build::ELEMENT_BYTES.fetch(width), list.to_s] }.to_h do |list, width|
-              bytes = Build::ELEMENT_BYTES.fetch(width)
-              place = SlotPlace.new(area: area, offset: offset, stride: stride, width: bytes, scale: 1)
-              offset += bytes
+            widest_first = shape.slot_lists.sort_by { |list, width| [-PoolLayout.stored_bytes(shape, list, width), list.to_s] }
+            places = widest_first.to_h do |list, width|
+              place = PoolLayout.strided_place(shape, list, width, area: area, offset: offset, stride: stride)
+              offset += place.width
               [list, place]
             end
             Placement.new(layout: name, areas: { area => shape.capacity * stride }, slots: places)
           end
 
           def record_bytes(shape)
-            bytes = shape.slot_lists.values.sum { |width| Build::ELEMENT_BYTES.fetch(width) }
+            bytes = shape.slot_lists.sum { |list, width| PoolLayout.stored_bytes(shape, list, width) }
             1 << (bytes - 1).bit_length
           end
         end
@@ -148,11 +167,11 @@ module VBlank
             snes: {
               tables: "One X, the slot times the pool's widest slot, reaches every field of the thing a walk " \
                       "is on, and the walk is stepped in X (SNES::Lowering#emit_stepped_walk). Measured in bsnes, " \
-                      "one more pair of things checked: 1010 master clocks as lists, 876 as tables (half " \
-                      "words: 900, 758); the bullets test 7.77% of a frame, 7.25%.",
+                      "one more pair of things checked: 1010 master clocks as lists, 824 as tables (half " \
+                      "words: 900, 680); the bullets test 7.77% of a frame, 7.05%.",
               records: "A record for each thing: one X reaches every field, " \
                        "but the record's stride is the sum of the widths rounded up, more doublings to set X. " \
-                       "Measured in bsnes, one more pair: 924 master clocks (half words 806); the bullets test 7.77%."
+                       "Measured in bsnes, one more pair: 840 master clocks (half words 704); the bullets test 7.48%."
             }
           }
         )

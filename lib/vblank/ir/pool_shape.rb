@@ -15,8 +15,10 @@ module VBlank
     # spawned after and before it, and its pose lists. +stack_lists+ are its lists of slots that grow
     # and shrink (the free slots, the things removed during a walk). +vars+ names its variables by
     # what they hold. +layout+ is the layout the game asked for (`pool :enemy, ..., layout: :tables`),
-    # or nil where the lowering chooses.
-    PoolShape = Data.define(:name, :capacity, :fields, :slot_lists, :stack_lists, :vars, :layout) do
+    # or nil where the lowering chooses. +link_lists+ are the slot lists that hold a slot or NONE:
+    # the links to the thing spawned after and the one before, which a layout may keep as the slot
+    # times its stride (Backends::PoolLayout::SlotPlace#scale).
+    PoolShape = Data.define(:name, :capacity, :fields, :slot_lists, :stack_lists, :vars, :layout, :link_lists) do
       # The width of +list+, one of the pool's slot lists, or nil for a list that is not one.
       def width_of(list) = slot_lists[list]
     end
