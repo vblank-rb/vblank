@@ -59,16 +59,17 @@ module VBlank
       # WRITE THE CELL at +col+ and +row+ of +background+ as +word+, a number in the layout or an
       # Original::MapCell::Cell on a map of map cells (#number_of!). A cell is +side+ tiles each
       # way of the map the build made, so it is that many `set_tile`s: a changed cell as any other.
-      def write(background, col, row, word)
-        return write_place(background, col, row, word) if place_tiles
+      # +now+ is each `set_tile`'s (Background#set_cell).
+      def write(background, col, row, word, now: nil)
+        return write_place(background, col, row, word, now) if place_tiles
 
         word = number_of!(word, background.name)
-        return write_picked_by(background, col, row, word) if word.is_a?(Value)
+        return write_picked_by(background, col, row, word, now) if word.is_a?(Value)
 
         # A number past the layout's would be read without its high bits, as another cell.
         tiles = word.is_a?(Integer) && word.between?(0, most_number) && tiles_of(word)
         tiles or raise ArgumentError, untold_cell_message(background, word)
-        write_tiles(background, col, row, tiles)
+        write_tiles(background, col, row, tiles, now)
       end
 
       private
@@ -79,14 +80,14 @@ module VBlank
       # game however many cells the slot holds, and a place past the slot leaves the cell alone. A
       # background whose walls follow its tiles keeps tests that halve the places, since the wall
       # goes with the tile.
-      def write_place(background, col, row, place)
+      def write_place(background, col, row, place, now)
         if place.is_a?(Value)
           kept = place.hidden_copy
-          return write_place_between(background, col, row, kept, (0...place_tiles.length).to_a) if background.walls_follow_tiles?
+          return write_place_between(background, col, row, kept, (0...place_tiles.length).to_a, now) if background.walls_follow_tiles?
 
           (side * side).times do |at|
             background.set_tile_picked(side == 1 ? col : (col * side) + (at % side), side == 1 ? row : (row * side) + (at / side),
-                                       kept, place_tiles.map { |tiles| tiles.fetch(at) })
+                                       kept, place_tiles.map { |tiles| tiles.fetch(at) }, now: now)
           end
           return
         end
@@ -96,32 +97,32 @@ module VBlank
                                "and set_cell names one by its place in that slot of set_cells:, 0 to #{place_tiles.length - 1}. " \
                                "It was given #{Messages::PlainWords.words_for_given(place)}. To fix this, give a place from 0 to #{place_tiles.length - 1}."
         end
-        write_tiles(background, col, row, place_tiles.fetch(place))
+        write_tiles(background, col, row, place_tiles.fetch(place), now)
       end
 
-      def write_place_between(background, col, row, kept, places)
+      def write_place_between(background, col, row, kept, places, now)
         if places.one?
           same = PlainRuby::Steps::GameTest.new(kept == places.first)
           same.open_yes_side
-          write_tiles(background, col, row, place_tiles.fetch(places.first))
+          write_tiles(background, col, row, place_tiles.fetch(places.first), now)
           return same.close_side(nil)
         end
 
         lower, upper = places.each_slice(places.length.ceildiv(2)).to_a
         which = PlainRuby::Steps::GameTest.new(kept < upper.first)
         which.open_yes_side
-        write_place_between(background, col, row, kept, lower)
+        write_place_between(background, col, row, kept, lower, now)
         which.close_side(nil)
         which.open_no_side
-        write_place_between(background, col, row, kept, upper)
+        write_place_between(background, col, row, kept, upper, now)
         which.close_side(nil)
       end
 
-      def write_tiles(background, col, row, tiles)
+      def write_tiles(background, col, row, tiles, now)
         tiles.each_with_index do |tile, at|
           along = at % side
           down = at / side
-          background.set_tile(side == 1 ? col : (col * side) + along, side == 1 ? row : (row * side) + down, tile)
+          background.set_tile(side == 1 ? col : (col * side) + along, side == 1 ? row : (row * side) + down, tile, now: now)
         end
       end
 
@@ -137,12 +138,12 @@ module VBlank
       #
       # A background whose walls follow its tiles keeps the tests that halve the told numbers,
       # each with a `set_tile` of its own, since the wall goes with the tile.
-      def write_picked_by(background, col, row, word)
+      def write_picked_by(background, col, row, word, now)
         kept = (word & format.read_bits).hidden_copy
         words = tiles_by_word.keys.sort
-        return write_between(background, col, row, kept, words) if background.walls_follow_tiles?
+        return write_between(background, col, row, kept, words, now) if background.walls_follow_tiles?
 
-        write_run_between(background, col, row, kept, runs_of(words))
+        write_run_between(background, col, row, kept, runs_of(words), now)
       end
 
       # How far apart two told numbers can be and still be in one run. The numbers between them
@@ -152,45 +153,45 @@ module VBlank
       # +words+, sorted, as runs: each a list of numbers no further apart than MOST_GAP_IN_RUN.
       def runs_of(words) = words.slice_when { |before, after| after - before > MOST_GAP_IN_RUN }.to_a
 
-      def write_run_between(background, col, row, kept, runs)
-        return write_from_run(background, col, row, kept, runs.first) if runs.one?
+      def write_run_between(background, col, row, kept, runs, now)
+        return write_from_run(background, col, row, kept, runs.first, now) if runs.one?
 
         lower, upper = runs.each_slice(runs.length.ceildiv(2)).to_a
         which = PlainRuby::Steps::GameTest.new(kept < upper.first.first)
         which.open_yes_side
-        write_run_between(background, col, row, kept, lower)
+        write_run_between(background, col, row, kept, lower, now)
         which.close_side(nil)
         which.open_no_side
-        write_run_between(background, col, row, kept, upper)
+        write_run_between(background, col, row, kept, upper, now)
         which.close_side(nil)
       end
 
       # The cell's tiles, each picked from the list of what the numbers of +run+ put there.
-      def write_from_run(background, col, row, kept, run)
+      def write_from_run(background, col, row, kept, run, now)
         (side * side).times do |at|
           keys = (run.first..run.last).map { |word| tiles_by_word[word]&.fetch(at) }
           background.set_tile_picked(side == 1 ? col : (col * side) + (at % side), side == 1 ? row : (row * side) + (at / side),
-                                     kept, keys, from: run.first)
+                                     kept, keys, from: run.first, now: now)
         end
       end
 
-      def write_between(background, col, row, kept, words)
-        return write_if_equal(background, col, row, kept, words.first) if words.one?
+      def write_between(background, col, row, kept, words, now)
+        return write_if_equal(background, col, row, kept, words.first, now) if words.one?
 
         lower, upper = words.each_slice(words.length.ceildiv(2)).to_a
         which = PlainRuby::Steps::GameTest.new(kept < upper.first)
         which.open_yes_side
-        write_between(background, col, row, kept, lower)
+        write_between(background, col, row, kept, lower, now)
         which.close_side(nil)
         which.open_no_side
-        write_between(background, col, row, kept, upper)
+        write_between(background, col, row, kept, upper, now)
         which.close_side(nil)
       end
 
-      def write_if_equal(background, col, row, kept, word)
+      def write_if_equal(background, col, row, kept, word, now)
         same = PlainRuby::Steps::GameTest.new(kept == word)
         same.open_yes_side
-        write_tiles(background, col, row, tiles_by_word.fetch(word))
+        write_tiles(background, col, row, tiles_by_word.fetch(word), now)
         same.close_side(nil)
       end
 

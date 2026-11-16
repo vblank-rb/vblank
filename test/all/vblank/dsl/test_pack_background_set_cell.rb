@@ -137,12 +137,12 @@ module PackBackgroundSetCellGames
   # three cells told as a range of record numbers, or with +records+ as a list of
   # Original::MapCell::Cell, the cells written in the game given as Cells too, a worked-out
   # letter's Cell holding the tile the game works out.
-  private def map_cells_text_game(folder, platform, records: false, blank_at: 99, options: nil)
+  private def map_cells_text_game(folder, platform, records: false, blank_at: 99, now: false, options: nil)
     cell = ->(at) { VBlank::Original::MapCell::Cell.new(tile: at + MAP_CELLS_BANK_TILES, bank: 1) }
     told = records ? Array.new(3, &cell) : MAP_CELLS_FONT..(MAP_CELLS_FONT + 2)
     written = records ? { letter: cell.(0), space: cell.(2), worked: cell } : {}
     map_cells_game_and_file(folder, platform, set_cells: told, options: options) do |world|
-      PackBackgroundSetCellGames.emit_text_loop(self, world, MAP_CELLS_FONT, blank_at, **written)
+      PackBackgroundSetCellGames.emit_text_loop(self, world, MAP_CELLS_FONT, blank_at, now: now, **written)
     end
   end
 
@@ -150,9 +150,9 @@ module PackBackgroundSetCellGames
   # port whose unpacking works out every cell its screen changes to: `set_cell` names a told cell
   # by its place in the slot, 0 first, so the font's letter is 0, its second letter 1 and its
   # space 2, and a place worked out past the slot's +changes+ (9) leaves the cell alone.
-  private def slot_told_text_game(folder, platform, changes: 3, blank_at: 99, options: nil)
+  private def slot_told_text_game(folder, platform, changes: 3, blank_at: 99, now: false, options: nil)
     map_cells_game_and_file(folder, platform, set_cells: ->(pack) { pack[:changes] }, changes: changes, options: options) do |world|
-      PackBackgroundSetCellGames.emit_text_loop(self, world, 0, blank_at)
+      PackBackgroundSetCellGames.emit_text_loop(self, world, 0, blank_at, now: now)
     end
   end
 
@@ -214,8 +214,9 @@ module PackBackgroundSetCellGames
   # The loop of the game of the tests, on +builder+: +letter+ and +space+ are the cells written in
   # the game, the font's first letter and its space, and +base+ the font's first cell as a number,
   # to which the letters worked out from the table are added.
-  # +worked+ makes the cell of a letter the game works out, given the letter's number.
-  def self.emit_text_loop(builder, world, base, blank_at, letter: base, space: base + 2, worked: ->(at) { base + at })
+  # +worked+ makes the cell of a letter the game works out, given the letter's number. +now+ is
+  # each `set_cell`'s.
+  def self.emit_text_loop(builder, world, base, blank_at, letter: base, space: base + 2, worked: ->(at) { base + at }, now: false)
     builder.instance_eval do
       letters = table :letters, [0, 1, 2, 9]
       pass = var :pass, 0
@@ -223,13 +224,13 @@ module PackBackgroundSetCellGames
         wait_vblank
         pass += 1
         if pass == 2
-          world.set_cell 1, 1, letter
-          world.set_cell 2, 1, worked.(letters[1])
-          world.set_cell 0, 0, worked.(letters[3])
+          world.set_cell 1, 1, letter, now: now
+          world.set_cell 2, 1, worked.(letters[1]), now: now
+          world.set_cell 0, 0, worked.(letters[3]), now: now
         end
         if pass == blank_at
-          world.set_cell 1, 1, space
-          world.set_cell 2, 1, worked.(letters[2])
+          world.set_cell 1, 1, space, now: now
+          world.set_cell 2, 1, worked.(letters[2]), now: now
         end
       end
     end
@@ -736,6 +737,35 @@ class TestPackBackgroundSetCell < Minitest::Test
       end
 
       assert_includes error.message, "set_cells:"
+    end
+  end
+
+  # `set_cell ..., now: true` asks what `set_tile ..., now: true` asks: a console that writes its
+  # video memory only between frames refuses it, by number and by place, and one that can write a
+  # cell while it draws does not.
+  def test_a_cell_written_now_is_refused_where_a_set_tile_now_is
+    check = VBlank::IR::Guardrails::Checks::ConsoleAnswers.new
+    Dir.mktmpdir do |folder|
+      [map_cells_text_game(folder, :gbc, now: true).first, slot_told_text_game(folder, :gbc, now: true).first].each do |program|
+        program.console = :snes
+        found = check.detect(program)
+
+        assert_equal [:error], found.map(&:severity).uniq
+        assert_match(/between frames/, found.first.message)
+        program.console = :gba
+        assert_empty check.detect(program)
+        program.console = :gbc
+        assert_empty check.detect(program)
+      end
+    end
+  end
+
+  def test_a_cell_written_now_with_anything_but_true_or_false_is_refused
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) { advance_game(folder, set_cells: [ADVANCE_CELL.(1)]) { |world| world.set_cell 0, 0, ADVANCE_CELL.(1), now: :soon } }
+
+      assert_includes error.message, "now:"
+      assert_includes error.message, "true or false"
     end
   end
 end

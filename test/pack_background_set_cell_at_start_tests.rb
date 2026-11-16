@@ -16,6 +16,8 @@ module PackBackgroundSetCellAtStartTests
   include PackBackgroundSetCellGames
 
   LEFT_OUT = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
+  # Frames after which a game blanking its text on pass 4 shows the text, and then the blank.
+  WRITTEN_AND_BLANKED_FRAMES = [3, 8].freeze
 
   def test_a_told_cell_drawing_a_tile_past_the_slot_is_refused_with_the_pack_left_out
     Dir.mktmpdir do |folder|
@@ -74,6 +76,30 @@ module PackBackgroundSetCellAtStartTests
 
       assert_equal expected, game_player.run(program, frames: 5).screen.to_a
       assert_equal expected, game_player.hand_file(file).run(left_out, frames: 5).screen.to_a
+    end
+  end
+
+  # Written `now: true` with the pack left out, by number and by place, the cells show what the
+  # all-in-one build shows written without it. Played as a console that writes its video memory
+  # only between frames, the game is refused as its all-in-one build is (TestPackBackgroundSetCell).
+  def test_cells_written_now_with_the_pack_left_out_show_as_written_for_the_gap
+    shows_now = VBlank::Console.described(VBlank::Testing.console).changes_cells_while_drawing
+    Dir.mktmpdir do |folder|
+      { "by number" => ->(**settings) { map_cells_text_game(folder, :gbc, blank_at: 4, **settings) },
+        "by place" => ->(**settings) { slot_told_text_game(folder, :gbc, blank_at: 4, **settings) } }.each do |how, game|
+        program, file = game.()
+        left_out, = game.(now: true, options: LEFT_OUT)
+        unless shows_now
+          error = assert_raises(VBlank::IR::Guardrails::ValidationError) { game_player.hand_file(file).run(left_out, frames: 3) }
+          assert_match(/between frames/, error.message, how)
+          next
+        end
+
+        WRITTEN_AND_BLANKED_FRAMES.each do |frames|
+          assert_equal game_player.run(program, frames: frames).screen.to_a,
+                       game_player.hand_file(file).run(left_out, frames: frames).screen.to_a, "#{how}, after #{frames} frames"
+        end
+      end
     end
   end
 end

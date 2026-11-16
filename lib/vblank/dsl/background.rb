@@ -198,13 +198,13 @@ module VBlank
       # The walls do not follow such a cell, so a background whose walls follow its tiles
       # (#walls_follow_tiles?) is not written this way.
       #
-      # Called by PackCells, for a cell written as the original's own cell number.
-      def set_tile_picked(col, row, number, keys, from: 0)
+      # Called by PackCells, for a cell written as the original's own cell number. +now+ is #set_tile's.
+      def set_tile_picked(col, row, number, keys, from: 0, now: nil)
         refuse_on_bitmap_screen!("set_cell", instead: "Draw over the spot with `blit`")
         refuse_set_tile_on_streamed_map!
         tiles = keys.map { |key| key && @tile_index.fetch(key) }
         node = record(Build.set_tile_picked(@name, Value.node_for(col), Value.node_for(row), Value.node_for(number), tiles,
-                                            from: from, held: (true if @held)))
+                                            from: from, now: now, held: (true if @held)))
         @builder.note_held_tile_change(node) if @held
         self
       end
@@ -228,13 +228,20 @@ module VBlank
       # place outside the map is left alone. A number written in the game that the background was
       # not told is refused here. One worked out as the game plays that it was not told leaves the
       # cell alone, since no picture was made for it (PackCells#write).
-      def set_cell(col, row, word)
+      #
+      # +now+ is #set_tile's: on a console that waits for the gap between frames to write a cell,
+      # the cell shows on the frame being drawn instead, as the original writes it straight into
+      # video memory while the frame is drawn. Where set_tile's `now:` changes nothing, this does not
+      # either, and where a console refuses it, it refuses this too.
+      def set_cell(col, row, word, now: false)
         if @pack_cells.nil?
           raise ArgumentError,
                 "background :#{@name} was not told any cells that set_cell can write. To fix this, draw it from the " \
                 "data pack and name the cells in `set_cells:`, or use set_tile with a key of its tileset."
         end
-        @pack_cells.write(self, col, row, word)
+        raise ArgumentError, "set_cell was given `now: #{now.inspect}`. It must be true or false." unless [true, false].include?(now)
+
+        @pack_cells.write(self, col, row, word, now: now || nil)
         self
       end
 

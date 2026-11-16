@@ -879,6 +879,14 @@ module PackGames
       game(:cells_told_by_a_slot_written_by_place, passes: 8) do |folder, options|
         built(*slot_told_text_game(folder, :gbc, blank_at: 6, options: options))
       end,
+      # The same cells written `now: true`, by number and by place: a console that writes a cell
+      # while it draws shows each on the frame being drawn, the pack left out or not.
+      game(:font_cells_written_now_on_map_cells, passes: 8) do |folder, options|
+        built(*map_cells_text_game(folder, :gbc, blank_at: 6, now: true, options: options))
+      end,
+      game(:cells_told_by_a_slot_written_now_by_place, passes: 8) do |folder, options|
+        built(*slot_told_text_game(folder, :gbc, blank_at: 6, now: true, options: options))
+      end,
       game(:cells_told_by_a_slot_drawn_with_other_lists, passes: 7) do |folder, options|
         lists = [3, 5].map(&FOUR_COLOR_LIST)
         built(*map_cells_game_and_file(folder, :gbc, set_cells: ->(pack) { pack[:changes] }, changes: 3, options: options) do |world|
