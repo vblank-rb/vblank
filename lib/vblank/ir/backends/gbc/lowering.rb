@@ -233,6 +233,8 @@ module VBlank
           # its own lists too (Art::TooManyLentLists). +tile_rooms+ builds it with each screen
           # bringing its own background tiles in (Art::TooManyBackgroundTiles, Picture#plan_tile_rooms),
           # and +room_colors+ with its own background colours too (Art::TooManyBackgroundLists).
+          # +blank_first_held+ leaves the first palette each screen's own where a tile that draws
+          # nothing would take it for every screen (Art::TooManyRoomLists).
           # +banked_songs+ keeps its songs' notes in the cartridge's banks (GBC::Music#sections), and
           # +bank_pose_tables+ the tables of its sprites' poses in each list (Picture#picture_and_attributes_drawn),
           # and +bank_background_colors+ the tables of its backgrounds' colours (Picture#emit_background_colors_for_declaration).
@@ -248,8 +250,9 @@ module VBlank
           def initialize(program, memory:, lends_sprite_colors: false, tile_rooms: false, room_colors: false,
                          banked_songs: false, bank_pose_tables: false, bank_background_colors: false,
                          scene_pictures: false, banked_table_bytes: BANKED_TABLE_BYTES, effects_in_banks: false,
-                         indexes_in_banks: false, cache: BuildCache.for(GBC, program))
+                         indexes_in_banks: false, cache: BuildCache.for(GBC, program), blank_first_held: false)
             @program = program
+            @blank_first_held = blank_first_held
             @effects_in_banks = effects_in_banks
             @indexes_in_banks = indexes_in_banks
             @banked_table_bytes = banked_table_bytes

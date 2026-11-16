@@ -46,9 +46,11 @@ class TestPackBackgroundBanksOnTheColor < Minitest::Test
 
   # The eight-bank screen walked up from black, told a cell of tile 0 (which draws nothing) and one
   # of tile 1, both in bank 3: the blank one is written over a drawn cell on the second pass, and
-  # the drawn one over the next on the third.
-  private def eight_banks_with_a_blank_told_cell(from)
+  # the drawn one over the next on the third. With +in_scene+ the screen is a scene's, and a second
+  # scene, never shown, draws from HUT_LISTS.
+  private def eight_banks_with_a_blank_told_cell(from, in_scene: false)
     shown = EIGHT_BANKS_SCREEN
+    hut_lists = HUT_LISTS
     blank = VBlank::Original::MapCell::Cell.new(tile: 0, bank: 3)
     drawn = VBlank::Original::MapCell::Cell.new(tile: 1, bank: 3)
     b = Builder.new
@@ -64,21 +66,60 @@ class TestPackBackgroundBanksOnTheColor < Minitest::Test
           end
         end
       end
-      world = background :world, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: shown.across,
-                                 set_cells: [blank, drawn]
-      walks = Array.new(8) { |at| [:"palette_#{at}", color_walk(:"palette_#{at}", from: :black, steps: COLOR_WALK_STEPS)] }.to_h
       step = var :step, 0
-      game_loop do
+      field = lambda do
+        world = background :world, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: shown.across,
+                                   set_cells: [blank, drawn]
+        walks = Array.new(8) { |at| [:"palette_#{at}", color_walk(:"palette_#{at}", from: :black, steps: COLOR_WALK_STEPS)] }.to_h
         world.draw_with(walks, showing: step)
-        wait_vblank
-        step.store!(step + 1)
         world.set_cell 3, 0, blank if step == 2
         world.set_cell 4, 0, drawn if step == 3
+      end
+      unless in_scene
+        field.call
+        next game_loop do
+          wait_vblank
+          step.store!(step + 1)
+        end
+      end
+
+      # A bar every scene shows, of a tile that draws nothing: asked for before any scene's lists.
+      image :bar_blank, width: 8, height: 8, colors: [:transparent, :white], places: Array.new(64, 0)
+      tiles :bar_tiles, { "." => :bar_blank }
+      status_bar :bar, tiles: :bar_tiles, map: ["." * 20, "." * 20], top: screen_height - 16
+      hut_lists.each_with_index do |list, at|
+        image :"hut_#{at}", width: 8, height: 8, colors: list, places: Array.new(64) { |i| 1 + ((i + at) % 3) }
+      end
+      tiles :hut_tiles, { "a" => :hut_0, "b" => :hut_1 }
+      scene(:field) { field.call }
+      scene(:hut) { background :hut, tiles: :hut_tiles, map: ["ab"] }
+      var :state, 0
+      game_loop do
+        wait_vblank
+        step.store!(step + 1)
+        case_var(:state) do
+          when_val 0, :field
+          when_val 1, :hut
+        end
       end
     end
     b.finalize_program
     b.program
   end
+
+  # THE SAME IN A SCENE OF ITS OWN, beside a scene drawn from two other lists: ten lists between
+  # them, so each scene brings its own lists in as it comes up. Every scene shows a bar whose tile
+  # draws nothing too, asked for before any scene's lists are, and neither it nor the told cell
+  # takes a list: the scene's eight banks still fit the eight.
+  def test_a_told_cell_that_draws_nothing_takes_no_list_in_a_scene_bringing_its_own_lists
+    Dir.mktmpdir do |folder|
+      from = color_original(folder, EIGHT_BANKS_SCREEN)
+      game_player.run(eight_banks_with_a_blank_told_cell(from, in_scene: true), frames: COLOR_WALK_STEPS + 4)
+    end
+  end
+
+  # Two lists of four colours for the other scene, unlike any of the eight banks.
+  HUT_LISTS = [[:transparent, 0x001F, 0x03E0, 0x7C00], [:transparent, 0x7FFF, 0x1234, 0x4321]].freeze
 
   # A map whose cells name nine banks needs nine lists at once, one more than the Color holds,
   # and the refusal names the eight. The made-up original holds eight banks of colours; the ninth

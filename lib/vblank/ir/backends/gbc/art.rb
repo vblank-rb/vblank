@@ -112,6 +112,12 @@ module VBlank
           # that runs out, and the build is made again with rooms that carry colours (GBC#build).
           class TooManyBackgroundLists < LoweringError; end
 
+          # MORE LISTS OF COLOURS THAN ONE SCREEN HOLDS, with the ones every screen keeps. Where a
+          # tile that draws nothing took the first palette for every screen (#blank_tile), the
+          # build is made again with that palette left each screen's own (GBC#build); otherwise the
+          # words are the author's.
+          class TooManyRoomLists < LoweringError; end
+
           # THE TILES ONE SCREEN BRINGS IN, past the ones every screen keeps from power-on: a scene's
           # own backgrounds' tiles, or one area's of a background that walks between areas. +number+
           # is the one the runtime brings it in by (one up, so that nought is none), or nil for a
@@ -202,9 +208,14 @@ module VBlank
           # +sprite_slots+ is the slot each sprite picture's colours take in its palettes, laid out for
           # the whole game so pictures of the same colours share them (GBC::SpriteSlots), nil for every
           # picture's own order.
+          #
+          # +blank_first_held+ marks that a tile that draws nothing, asked for before any palette is
+          # made, holds the first palette for others rather than taking it (#blank_tile,
+          # TooManyRoomLists).
           def initialize(square_colors: nil, lends: false, grouped: {}, room_colors: false, first_cleared_to: nil,
                          backdrop: BACKDROP, piece_height: SpritePieces::SIZE, scene_pictures: nil,
-                         indexes_in_banks: false, tile_facts: {}, sprite_slots: nil)
+                         indexes_in_banks: false, tile_facts: {}, sprite_slots: nil, blank_first_held: false)
+            @blank_first_held = blank_first_held
             @sprite_slots = sprite_slots
             @indexes_in_banks = indexes_in_banks
             @tile_facts = tile_facts # what each tile's picture alone gives (#tile_fact)
@@ -236,6 +247,7 @@ module VBlank
             @background_tile_numbers = {}
             @background_palettes = []
             @black_held = false # the first palette is black alone, until one that can be first comes
+            @blank_on_first = false # a tile that draws nothing is drawn from the first palette (#blank_tile)
             # Its recolour steps -> [room, picture name] -> [tile number, palette number]. The steps are
             # kept by which object they are, not by what they hold, since hashing them walks every
             # colour of every step: the lowering hands over one object for steps that are equal
@@ -894,7 +906,9 @@ module VBlank
           # +any_first+ marks that no empty cell shows while it is in, so whatever its first colour, it can
           # be the first.
           def background_palette_number(colors, keeps_backdrop: true, room: nil, swaps: nil, any_first: false)
-            can_be_first = any_first || (keeps_backdrop && colors.first == @backdrop)
+            # A tile that draws nothing drawn from the first palette (#blank_tile) shows its first
+            # colour on every screen, so the first keeps the backdrop there wherever it is filled.
+            can_be_first = (any_first && !@blank_on_first) || (keeps_backdrop && colors.first == @backdrop)
             palette = BackgroundPalette.new(colors: colors, swaps: swaps)
             return room_palette_number(room, palette, can_be_first) if room && room_colors?
             return settled_palette_number(palette, can_be_first) if @shared_palettes
@@ -951,7 +965,7 @@ module VBlank
             return if room.palette_reach < most
 
             beside = painting? ? " beside a painted screen" : ""
-            raise LoweringError, "the backgrounds of #{room.what} need more than #{most} lists of colours, with the " \
+            raise TooManyRoomLists, "the backgrounds of #{room.what} need more than #{most} lists of colours, with the " \
                                  "lists that every scene shares. A Game Boy Color holds #{most}#{beside} at one " \
                                  "time. To fix this, draw more of them from the same colours."
           end
@@ -978,16 +992,33 @@ module VBlank
 
           # A TILE THAT DRAWS NOTHING (#draws_nothing?): every pixel shows its palette's first colour,
           # so any palette whose first colour is the backdrop with every list it is drawn with shows
-          # it rightly, and it takes no palette of its own. Where the palette of the backdrop alone
-          # is there already, or no palette is yet, it is drawn from that one, as it always was. Where
-          # that palette would be one more, it is drawn from one already made instead: where an empty
-          # cell can show, the first, whose first colour is the backdrop as an empty cell shows it
-          # (#list_order, Lowering::Picture#empty_cells_shown_with?), and elsewhere the first that
-          # keeps the backdrop first (#backdrop_first_palette_number). Only where there is none of
-          # those is the backdrop's own palette made.
+          # it rightly, and it takes no palette of its own.
+          #
+          # Asked for before any palette is made, it takes the backdrop's own palette as the first,
+          # which every screen then keeps. In a game whose screens bring their colours in, that
+          # leaves each screen one palette fewer, so a build where a screen's run out tries again
+          # with +blank_first_held+ (TooManyRoomLists): where an empty cell can show, the tile is
+          # drawn from the first palette and leaves it free, black alone held there as for a tile
+          # that cannot be first (#background_palette_number). The first palette that can be first
+          # takes its place, starting with the backdrop as an empty cell shows it, and the first
+          # stays each screen's own to fill (#keep_art_asked_so_far). Only then, since holding it
+          # costs each screen the code that puts its own first in, and a game that fits keeps its bytes.
+          #
+          # Otherwise, where the palette of the backdrop alone is there already, it is drawn from
+          # that one, as it always was. Where that palette would be one more, it is drawn from one
+          # already made instead: where an empty cell can show, the first, whose first colour is
+          # the backdrop (#list_order, Lowering::Picture#empty_cells_shown_with?), and elsewhere the
+          # first that keeps the backdrop first (#backdrop_first_palette_number). Only where there
+          # is none of those is the backdrop's own palette made.
           def blank_tile(drawing, empty_cells_shown)
             number = tile_number_in(drawing.room, TileBytes.of(Array.new(64, 0)))
             alone = padded([@backdrop])
+            if @blank_first_held && @background_palettes.empty? && empty_cells_shown && !@shared_palettes
+              @background_palettes << backdrop_alone
+              @black_held = true
+              @blank_on_first = true
+              return [number, 0]
+            end
             return [number, drawn_palette_number(alone, drawing)] if @background_palettes.empty? || backdrop_alone_made?(drawing.room)
 
             palette = empty_cells_shown ? 0 : backdrop_first_palette_number(drawing.room)

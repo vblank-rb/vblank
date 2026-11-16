@@ -209,7 +209,7 @@ module VBlank
                              backdrop: color_backdrop, piece_height: piece_height,
                              scene_pictures: (scene_pictures if @plans_scene_pictures),
                              indexes_in_banks: @indexes_in_banks, tile_facts: @cache.facts.tile_facts,
-                             sprite_slots: sprite_slots)
+                             sprite_slots: sprite_slots, blank_first_held: @blank_first_held)
               @grids = {} # a background declaration -> its grid's number
               @backgrounds = by_name(@program.walk, :background)
               @drawn_sprites = SpriteNames.new(@program) # the numbers a run names its sprites by
