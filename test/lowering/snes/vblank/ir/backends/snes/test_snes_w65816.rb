@@ -197,7 +197,8 @@ class TestSNESW65816 < Minitest::Test
     asm.label("other", join: true)
     assert_nil asm.x_holds, "one way in changed X"
 
-    [-> { asm.sta(asm.abs(0x0701)) }, -> { asm.tax }, -> { asm.jsl(asm.long("routine")) },
+    # Moving the direct page moves what a direct page address means, the noted variable's among them.
+    [-> { asm.tcd }, -> { asm.pld }, -> { asm.sta(asm.abs(0x0701)) }, -> { asm.tax }, -> { asm.jsl(asm.long("routine")) },
      -> { asm.sta(asm.long_x(0x7E2000)) }, -> { asm.sta(asm.abs(0x2118)) }, -> { asm.label("anywhere") }].each do |change|
       asm.note_x_holds(noted)
       change.call

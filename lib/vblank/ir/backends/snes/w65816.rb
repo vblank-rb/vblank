@@ -103,6 +103,9 @@ module VBlank
           WRITES_X = %i[tax tsx tyx plx inx dex xce plp ldx].freeze
           WRITES_MEMORY = %i[sta stx sty stz inc dec tsb trb asl lsr rol ror].freeze
           CALLS = %i[jsr jsl].freeze
+          # The direct page moved: every direct page address, the noted variable's and the stores
+          # #store_misses_noted? reads as plain addresses, means another place.
+          MOVES_DIRECT_PAGE = %i[tcd pld].freeze
           ENDS = %i[rts rtl rti stp jmp jml].freeze
 
           # What X holds past an instruction that never goes on to the next one.
@@ -436,7 +439,7 @@ module VBlank
           # the instruction, which does not change what that instruction does.
           def forget_x_for(name, operand)
             return @x_holds = GONE if ENDS.include?(name)
-            return @x_holds = nil if WRITES_X.include?(name) || CALLS.include?(name)
+            return @x_holds = nil if WRITES_X.include?(name) || CALLS.include?(name) || MOVES_DIRECT_PAGE.include?(name)
             return unless @x_holds.is_a?(Array) && WRITES_MEMORY.include?(name) && operand != :a
 
             @x_holds = nil unless store_misses_noted?(operand)
