@@ -692,6 +692,9 @@ module VBlank
                                   # holds it to that on the PlayStation's run). Each pose is a picture
                                   # of its own, drawn from its own list.
                                   pose_lists: :followed,
+                                  # A pool as tables unless a game names another
+                                  # (Backends::PoolLayout::OWN_LAYOUTS says why).
+                                  pool_layouts: %i[tables lists records].freeze,
                                   sprites_placed_before_wait: true,
                                   rumbles: false, plays_bios_start_up: false, whole_screen_size: nil,
                                   extension: ".exe",

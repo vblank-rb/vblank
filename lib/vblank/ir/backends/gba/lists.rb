@@ -596,28 +596,17 @@ module VBlank
             PoolLayout::ADAPTERS.fetch(:lists).place(shape)
           end
 
-          # Whether +shape+ is a pool the console draws: its things are hardware sprites, and the
-          # sprite work reads its lists as lists, one after another (DSL::Pool#stacked_list), so it
-          # keeps :lists.
-          def self.drawn_pool?(program, shape)
-            drawn = program.walk.flat_map { |node| node.attrs.values.flatten.grep(Symbol) }.uniq.select do |name|
-              kind, parts = Messages::MadeNames.read(name)
-              kind == :pool_part && parts[:pool].to_s == shape.name.to_s && parts[:part].to_s.start_with?("stacked")
-            end
-            drawn.any?
-          end
-
           # EACH POOL KEPT AT ONE STRIDE given its block, before any list is registered: the quick
           # memory where it has room and the pool is not one +roomy+ names or the author marked
           # cold, else the roomy one, else it keeps :lists. +roomy+ is the lists the plan sent to
-          # the roomy memory. A pool the console draws keeps :lists (Lists.drawn_pool?).
+          # the roomy memory. A pool drawn as sprites keeps :lists (PoolLayout.drawn_as_sprites?).
           def reserve_pool_areas(program, roomy)
             @pool_area_bases = {}
             @pool_blocks = {}
             cold = program.walk.filter_map { |node| node.name if node.kind == :list_new && node.fast == false }
             (program.pools || []).each do |shape|
               placement = PoolLayout.chosen(shape, Console::ADVANCE, PoolLayout.steps_on(program, shape)).place(shape)
-              next if placement.layout == :lists || Lists.drawn_pool?(program, shape)
+              next if placement.layout == :lists || PoolLayout.drawn_as_sprites?(program, shape)
 
               bytes = Memory.whole_words(placement.areas.values.sum { |area| Memory.whole_words(area) })
               block, in_roomy = pool_block_place(bytes, prefer_roomy: shape.slot_lists.keys.any? { |list| roomy.include?(list) || cold.include?(list) })

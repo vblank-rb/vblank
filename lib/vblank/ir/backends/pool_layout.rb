@@ -206,11 +206,31 @@ module VBlank
               records: "A record for each thing, reached the same way, but its stride is the sum of the widths " \
                        "rounded up, more doublings to find a thing. Measured in Genesis Plus GX, one more pair: " \
                        "282 cycles; the bullets test 3.38%; five walkers 8.14%."
+            },
+            ps1: {
+              tables: "The pool's tables in one block, so one register on the thing a walk is on reaches every " \
+                      "field with one load or store at a 16-bit distance, and the walk steps by its links " \
+                      "(PS1::Lowering#emit_stepped_walk). Measured in Beetle PSX, one more pair of things " \
+                      "checked: 96 cycles as lists, 51 as tables; a walk step 54, 15 a thing; a field moved on " \
+                      "25, 11; the bullets test 0.37% of a frame, 0.21%; five walkers 0.55%, 0.36%.",
+              records: "A record for each thing, reached the same way and measured the same: 51 cycles a pair, " \
+                       "a walk step 15, a field 11; the bullets test 0.21%; five walkers 0.36%. No cheaper than " \
+                       "tables, so tables stay first, as on the other consoles whose numbers tie."
             }
           }
         )
 
         module_function
+
+        # Whether +shape+ is a pool drawn as sprites: the sprite work of the Advance's and the
+        # PlayStation's builds reads its lists as lists, one after another (DSL::Pool#stacked_list), so
+        # there it keeps :lists.
+        def drawn_as_sprites?(program, shape)
+          program.walk.flat_map { |node| node.attrs.values.flatten.grep(Symbol) }.uniq.any? do |name|
+            kind, parts = Messages::MadeNames.read(name)
+            kind == :pool_part && parts[:pool].to_s == shape.name.to_s && parts[:part].to_s.start_with?("stacked")
+          end
+        end
 
         # The layout +shape+ is kept in on +console+ (a Console::Description), given +steps+, the
         # kinds of step the program takes on its lists (#steps_on): the one the game named, which the
