@@ -56,7 +56,8 @@ module VBlank
                                                        gbc: { bitmap: 9, tiled: 6 }, snes: { bitmap: 8, tiled: 6 },
                                                        ps1: { bitmap: 1 } })
 
-      # A console and screen nobody has measured (the Genesis's, whose cartridge cannot be filmed yet).
+      # A console and screen nobody has measured (the Genesis's: its cartridge shows a sprite a pass after
+      # the interpreter does, so no number of frames held back lines the two up while a sprite moves).
       UNMEASURED_START_FRAMES = 1
 
       # The folder this cartridge's save memory is kept in while it runs.

@@ -286,19 +286,9 @@ module VBlank
 
           # The sprites the game placed in its last pass, back to front, as the interpreter gives them
           # (Reference#sprites): the runtime keeps a row for each (Runtime::Tiles::DRAWN) — whose, which
-          # picture, where — and SpriteNames turns the numbers back into names. A game with no
-          # sprites keeps no such place.
-          def read_sprites
-            return [] unless @places.runtime.key?(Runtime::Tiles::DRAWN)
-
-            at = runtime_place(Runtime::Tiles::DRAWN)
-            signed = ->(value) { value >= 0x8000 ? value - 0x10000 : value }
-            Array.new(half(at)) do |i|
-              whose, picture, x, y = @core.wram_bytes(at + 2 + (i * Runtime::Tiles::DRAWN_BYTES), 8).unpack("n4")
-              @drawn_sprites.row(signed.call(whose), @places.sprite_picture_names.fetch(picture, picture), signed.call(x),
-                                 signed.call(y))
-            end
-          end
+          # picture, where — and SpriteNames turns the numbers back into names (Places#drawn_sprite_rows,
+          # which the one reader reads too).
+          def read_sprites = @places.drawn_sprite_rows(@drawn_sprites) { |address| half(address) }
 
           # The Genesis's work RAM, read and written by address.
           def byte(address) = @core.wram_read8(address)

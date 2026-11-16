@@ -64,6 +64,21 @@ module VBlank
                              :sound_entries, :sound_voicing, :recording_names, :video_tiles) do
           # Where the runtime counts the times the game has waited for the screen (32 bits).
           def waits_counted_at = runtime.fetch(Runtime::Frame::PASSES)
+
+          # The sprites the last pass placed (Runtime::Tiles::DRAWN), as the interpreter's rows through
+          # +drawn+ (SpriteNames), each word read by the block from its work RAM address; none for a game
+          # with no sprites. A count word, then a row of four words for each: whose, which picture (by the
+          # number sprite_picture_names maps to SpriteNames'), across and down, each signed.
+          def drawn_sprite_rows(drawn)
+            at = runtime[Runtime::Tiles::DRAWN] or return []
+            signed = ->(address) { yield(address).then { |value| value >= 0x8000 ? value - 0x10000 : value } }
+            Array.new(yield(at)) do |i|
+              row = at + 2 + (i * Runtime::Tiles::DRAWN_BYTES)
+              picture = yield(row + 2)
+              drawn.row(signed.call(row), sprite_picture_names.fetch(picture, picture), signed.call(row + 4),
+                        signed.call(row + 6))
+            end
+          end
         end
 
         # HOW MANY 8×8 TILES THE GAME'S PICTURES PUT IN VIDEO MEMORY, which the build knows and a
