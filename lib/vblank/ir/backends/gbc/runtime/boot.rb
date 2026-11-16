@@ -85,30 +85,11 @@ module VBlank
               asm.load_high(h::SVBK, :a)
               asm.xor_a(:a)
               asm.load_high(h::VBK, :a)
-              # Work memory: the always-there half, and bank 1 for a game that keeps anything there.
-              # That takes a frame longer to start, so a game that does not stays as it was. The stack
-              # is in the first half, so this is done here and not by a call, whose return address it
-              # would clear.
-              asm.load(:hl, h::WRAM0)
-              asm.xor_a(:a)
-              asm.label("rt_boot_clear_work")
-              asm.load([:hli], :a)
-              asm.load(:b, :a)
-              asm.load(:a, :h)
-              asm.cp_a((memory&.banked_half_used? ? Memory::HIGH_END : Memory::HIGH_START) >> 8)
-              asm.load(:a, :b)
-              asm.jump_relative(:nz, "rt_boot_clear_work")
+              emit_work_memory_cleared(asm, banked_half: memory&.banked_half_used?)
               asm.load(:hl, Memory::QUICK_FIRST)
               asm.load(:bc, Memory::QUICK_END - Memory::QUICK_FIRST)
               asm.call("rt_clear")
-              # Video memory, both banks.
-              [1, 0].each do |bank|
-                asm.load(:a, bank)
-                asm.load_high(h::VBK, :a)
-                asm.load(:hl, h::VRAM)
-                asm.load(:bc, h::VRAM_SIZE)
-                asm.call("rt_clear")
-              end
+              emit_video_memory_cleared(asm)
               emit_oam_dma_copy(asm)
               # Every colour of every list black, which is the interpreter's empty screen — but the
               # backdrop, where one was put first (#emit_backdrop), which is left as it is.
@@ -149,6 +130,64 @@ module VBlank
               asm.call("rt_start")
               asm.call(main)
               asm.jump("rt_halt") # a game whose main routine ends has stopped, as one that halts has
+            end
+
+            # Bytes of work memory one turn of the clearing loop writes nought to.
+            WORK_CLEARED_A_TURN = 16
+
+            # WORK MEMORY CLEARED: the always-there half, and bank 1 for a game that keeps anything
+            # there. The stack is in the first half, so this is done here and not by a call, whose
+            # return address it would clear. A store that moves on (LD (HL+),A) takes two machine
+            # cycles, the least any store to work memory takes (Pan Docs, CPU instruction set), so
+            # the loop is sixteen of them to a test of its count: two and a quarter cycles a byte,
+            # where a test after every byte took ten. B counts the turns of a 4K half, 256 of them
+            # from nought, and C the halves.
+            def emit_work_memory_cleared(asm, banked_half:)
+              asm.load(:hl, Console::GBCHardware::WRAM0)
+              asm.xor_a(:a)
+              asm.load(:c, banked_half ? 2 : 1)
+              asm.label("rt_boot_clear_half")
+              asm.load(:b, :a)
+              asm.label("rt_boot_clear_work")
+              WORK_CLEARED_A_TURN.times { asm.load([:hli], :a) }
+              asm.dec(:b)
+              asm.jump_relative(:nz, "rt_boot_clear_work")
+              asm.dec(:c)
+              asm.jump_relative(:nz, "rt_boot_clear_half")
+            end
+
+            # VIDEO MEMORY CLEARED, both banks, by the console's own copy (general-purpose DMA, HDMA1
+            # to HDMA5) from the start of work memory, which is nought by now. The copy moves sixteen
+            # bytes in 32 of the screen's cycles, which at double speed is sixteen of the
+            # processor's, a cycle a byte, where a loop storing a byte at a time takes six (Pan Docs,
+            # CGB Registers, VRAM DMA Transfers). Picture::GDMA_MOST_BLOCKS blocks at a time, so the
+            # processor, stopped while each copy runs, misses no tick of a timer counting the frames
+            # the screen is off.
+            def emit_video_memory_cleared(asm)
+              h = Console::GBCHardware
+              blocks = Picture::GDMA_MOST_BLOCKS
+              [1, 0].each do |bank|
+                asm.load(:a, bank)
+                asm.load_high(h::VBK, :a)
+                # Must not use DE: it holds the frames counted so far in a game that counts them
+                # (Frame#emit_dark_start).
+                asm.load(:b, h::VRAM >> 8)
+                asm.label("rt_boot_clear_video_#{bank}")
+                asm.load(:a, h::WRAM0 >> 8)
+                asm.load_high(h::HDMA1, :a)
+                asm.xor_a(:a)
+                asm.load_high(h::HDMA2, :a)
+                asm.load_high(h::HDMA4, :a)
+                asm.load(:a, :b)
+                asm.load_high(h::HDMA3, :a)
+                asm.load(:a, blocks - 1)
+                asm.load_high(h::HDMA5, :a)
+                asm.load(:a, :b)
+                asm.add_a((blocks * 16) >> 8)
+                asm.load(:b, :a)
+                asm.cp_a((h::VRAM + h::VRAM_SIZE) >> 8)
+                asm.jump_relative(:nz, "rt_boot_clear_video_#{bank}")
+              end
             end
 
             # THE SCREEN BEFORE THE GAME'S FIRST FRAME. The screen stays off until the first frame is

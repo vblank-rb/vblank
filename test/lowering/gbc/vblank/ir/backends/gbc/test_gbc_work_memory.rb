@@ -22,9 +22,12 @@ class TestGBCWorkMemory < Minitest::Test
     end
   end
 
+  # The list's own slots in the banked half, which nothing writes: it starts the half and ends past
+  # 0xDF00, and what follows it is the run's own (where a sprite was last placed), which the game
+  # writes once it runs.
   private def bytes_left_over(built)
     reader = VBlank::Diagnostics::Verifier.new(built, frames: 4, vars: built.var_addresses)
-    (0xD800...0xE000).reject { |address| reader.mem8(address).zero? }
+    (0xD800...0xDF00).reject { |address| reader.mem8(address).zero? }
   end
 
   # A game's own variables that spill past the low half read nought from its first frame, as the
