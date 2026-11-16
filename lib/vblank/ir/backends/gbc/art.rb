@@ -216,6 +216,7 @@ module VBlank
                          backdrop: BACKDROP, piece_height: SpritePieces::SIZE, scene_pictures: nil,
                          indexes_in_banks: false, tile_facts: {}, sprite_slots: nil, blank_first_held: false)
             @blank_first_held = blank_first_held
+            @lists_kept_by_place = Set.new # lists whose tiles are kept by place (#keep_split_lists_by_place)
             @sprite_slots = sprite_slots
             @indexes_in_banks = indexes_in_banks
             @tile_facts = tile_facts # what each tile's picture alone gives (#tile_fact)
@@ -758,7 +759,7 @@ module VBlank
               order = list_order(image)
               placed = recolor_steps && !order && drawn_places(image)
               if draws_nothing?(image) then blank_tile(drawing, empty_cells_shown)
-              elsif pack_places_kept?(image) then kept_tile(image, drawing)
+              elsif places_kept?(image) then kept_tile(image, drawing)
               elsif order then listed_tile(image, order, drawing)
               elsif placed then placed_tile(image, placed, drawing)
               else drawn_tile(name, image, drawing)
@@ -839,17 +840,50 @@ module VBlank
           # the list's colours after its first, in the list's order. So a tile read from a data pack
           # in the Color's own layout (Console::GBCHardware::ORIGINAL_FORMATS) goes into the
           # cartridge as the original's bytes. Place 0 is see-through and shows the backdrop, the
-          # palette's first colour. False for a tile not from a data pack slot, from a longer list, or
-          # with a place past its list; #list_order and #drawn_tile take those.
-          def pack_places_kept?(image)
-            return false unless image.places_from_pack? && image.colors && image.colors.length <= PLACES
+          # palette's first colour. A tile of the game's own list is kept so too where its list's
+          # tiles would otherwise take more than one palette (#keep_split_lists_by_place). False for
+          # any other tile, one from a longer list, or one with a place past its list; #list_order
+          # and #drawn_tile take those.
+          def places_kept?(image)
+            return false unless image.colors && image.colors.length <= PLACES
+            return false unless image.places_from_pack? || @lists_kept_by_place.include?(image.list_drawn_from)
 
-            tile_fact(:pack_places_kept, image) do
+            places_within_list?(image)
+          end
+
+          def places_within_list?(image)
+            return false unless image.places
+
+            tile_fact(:places_within_list, image) do
               (0...IR::FormatReading::TILE_PIXELS).all? { |i| image.tile_see_through_at?(i) || image.place_at(i) < image.colors.length }
             end
           end
 
-          # The four colours of a tile whose places are kept (#pack_places_kept?) when each place shows
+          # LISTS OF FOUR WHOSE TILES WOULD SPLIT. A tile drawn by place from a list of four colours
+          # or fewer, place 0 see-through, is drawn by its colours: one that never shows place 0
+          # takes the list's colours alone (#list_order), and one that does takes the backdrop and
+          # the colours it draws (#drawn_tile). So one list's tiles can take two palettes or more,
+          # though its colours, the backdrop for place 0, fit one, as a cartridge made for the
+          # Color draws a screen from a list. Of +images+, every background tile's picture, the
+          # lists whose tiles would take more than one palette so are kept by place instead
+          # (#places_kept?): one palette, the backdrop and then the list's colours. A list whose
+          # tiles take one palette either way is drawn as it always was, so its bytes stay the same.
+          def keep_split_lists_by_place(images)
+            by_list = images.select { |image| image.width == 8 && image.height == 8 && image.colors && image.colors.length <= PLACES }
+                            .select { |image| places_within_list?(image) && !image.places_from_pack? }
+                            .group_by(&:list_drawn_from)
+            @lists_kept_by_place = by_list.filter_map { |list, drawn| list if drawn.map { |image| colors_drawn_by_color(image) }.uniq.length > 1 }.to_set
+          end
+
+          # The four colours a tile drawn by its colours takes, not by its places (#list_order, #drawn_tile).
+          def colors_drawn_by_color(image)
+            order = list_order(image)
+            return padded(order.map { |place| image.colors[place] & 0x7FFF }) if order
+
+            padded([@backdrop, *tile_colors(image)])
+          end
+
+          # The four colours of a tile whose places are kept (#places_kept?) when each place shows
           # the colour the block gives it.
           def kept_colors(image) = padded([@backdrop, *(1...image.colors.length).map { |place| yield(place) & 0x7FFF }])
 

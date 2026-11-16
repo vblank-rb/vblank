@@ -218,7 +218,13 @@ module VBlank
               @drawing_tables = [] # DrawingTable each, for the data
               @picture_checks = [] # what each check asks, by its number (#picture_checks)
               @together_checks = [] # [set, the numbers naming a group, the slots] each (#together_checks)
+              @art.keep_split_lists_by_place(drawn_background_tile_images)
               plan_tile_rooms if @plans_tile_rooms
+            end
+
+            # The picture of every tile a background is declared with, painted ones left out.
+            def drawn_background_tile_images
+              tiled_scenery.flat_map { |bg| bg.tiles.compact }.uniq.reject { |name| run_painting(name) }.map { |name| tile_image(name) }
             end
 
             # --- the tiles each screen brings in ---
@@ -1858,7 +1864,7 @@ module VBlank
 
               image = tile_image(name)
               swapped = swaps && swaps[image.list_drawn_from]
-              return @art.kept_colors(image) { |place| (swapped && swapped[place]) || image.colors[place] } if @art.pack_places_kept?(image)
+              return @art.kept_colors(image) { |place| (swapped && swapped[place]) || image.colors[place] } if @art.places_kept?(image)
 
               order = @art.list_order(image)
               if order
