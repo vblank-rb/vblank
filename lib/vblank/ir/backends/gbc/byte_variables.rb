@@ -91,6 +91,9 @@ module VBlank
             when Symbol then found << value
             when Array then value.each { |item| symbols_in(item, found) }
             when Hash then value.each { |key, item| symbols_in([key, item], found) }
+            # What a pool is (on the program) names its variables to say what each holds, not to
+            # read or write one.
+            when IR::PoolShape, IR::WalkShape then nil
             when Data then value.to_h.each_value { |item| symbols_in(item, found) }
             end
             found

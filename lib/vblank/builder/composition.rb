@@ -87,10 +87,11 @@ module VBlank
       # @param fields [Hash{Symbol=>Object}] field name => default value
       # @return [Pool]
       def pool(name, capacity:, image: nil, facing: nil, frames: nil, rate: nil,
-               on_full: :drop, estimate: nil, widths: {}, fast: nil, **fields)
+               on_full: :drop, estimate: nil, widths: {}, fast: nil, layout: nil, **fields)
         validate_pool!(name, capacity, fields)
         validate_on_full!(name, on_full)
         validate_pool_widths!(name, fields, widths)
+        refuse_pool_layout_not_kept!(name, layout)
         refuse_field_spelled_as_pool_word!(name, facing: facing, frames: frames, rate: rate, fast: fast)
         art = pool_art!(name, image: image, facing: facing, frames: frames, rate: rate, fields: fields)
         record_estimate_line(estimate)
@@ -107,6 +108,7 @@ module VBlank
         handle.fast = fast # the lists a pool gains later go where the rest of it went
         setup_pool_storage(handle, capacity, fields, widths, fast)
         setup_pool_art(handle, capacity, art, widths, fast) if art
+        record_pool_shape(handle, fields, widths, layout)
         declared_pools << handle
         add_part_member(:pool, handle)
         handle
@@ -317,6 +319,41 @@ module VBlank
         raise ArgumentError,
               "pool :#{name} gives field :#{bad.first} the width #{bad.last.inspect}. A width must be " \
               ":byte (0..255), :half (0..65535) or :word."
+      end
+
+      # The ways a console can keep a pool in memory (Console::Description#pool_layouts): as a list
+      # for each field, as tables side by side read with one index, or as a record for each thing.
+      POOL_LAYOUTS = %i[lists tables records].freeze
+
+      # `layout:` names how the console keeps the pool. A game that names none builds as the
+      # console's build chooses, so it only needs one to insist; a console that has no such way
+      # refuses it here, before anything is built.
+      def refuse_pool_layout_not_kept!(name, layout)
+        return if layout.nil?
+
+        unless POOL_LAYOUTS.include?(layout)
+          raise ArgumentError, "pool :#{name} got layout: #{layout.inspect}. A pool layout is :lists, :tables or :records."
+        end
+        kept = console.pool_layouts
+        return if kept.include?(layout)
+
+        raise ArgumentError,
+              "pool :#{name} asks for layout: #{layout.inspect}. The #{console.title} keeps a pool only as " \
+              "#{kept.map(&:inspect).join(' or ')}. Remove layout:, or name one of these."
+      end
+
+      # What the pool is, on the program, for a lowering that keeps it its own way (IR::PoolShape).
+      def record_pool_shape(pool, fields, widths, layout)
+        stacks = [pool.free_list, pool.retired_list]
+        shape = IR::PoolShape.new(
+          name: pool.name, capacity: pool.capacity,
+          fields: fields.keys.map { |field| IR::PoolField.new(name: field, list: pool.field_list(field), width: widths.fetch(field, :word)) },
+          slot_lists: pool_lists(pool, fields, widths).except(*stacks), stack_lists: stacks,
+          vars: { head: pool.head_var, tail: pool.tail_var, count: pool.count_var, current: pool.current_var,
+                  walking: pool.walking_var },
+          layout: layout
+        )
+        @program.pools = (@program.pools || []) + [Ractor.make_shareable(shape)]
       end
 
       # A field that carries a fraction cannot be narrowed by this, and saying so is better

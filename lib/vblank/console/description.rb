@@ -183,7 +183,7 @@ module VBlank
                               :whole_screen_size, :extension, :code_cache_bytes, :face_fill_skips_outside_window,
                               :face_fill_by_row_middles, :pixel_size, :shows_bigger_pixels,
                               :pose_lists, :sprites_in_blocks, :voices_read_sound_memory, :big_background_tiles,
-                              :shown_rows, :gives_up_rows, :save_memories, :sprite_rows_settled) do
+                              :shown_rows, :gives_up_rows, :save_memories, :sprite_rows_settled, :pool_layouts) do
       # +code_cache_bytes+ is how much of the game's code the processor keeps in a cache of its own and
       # runs without going out to memory for each instruction, or nil for a processor with none (it
       # reads every instruction from memory as it runs it, or memory as quick as a cache). Where it is
@@ -246,13 +246,18 @@ module VBlank
       # the game works out keeps its rows on every screen. Where it is false the runtime hands the
       # rows out on every pass to the sprites that show, so only the sprites that can be up together
       # count against +sprite_places+ (Checks::TooManySprites).
+      #
+      # +pool_layouts+ is the ways the console's build can keep a pool in memory (Backends::PoolLayout):
+      # :lists, a list for each field, which every console has; :tables, the fields side by side, each
+      # read with one index; :records, a record for each thing. A game may name one
+      # (`pool :enemy, ..., layout: :tables`); one the console lacks is refused.
       def initialize(code_cache_bytes: nil, face_fill_skips_outside_window: false, face_fill_by_row_middles: true,
                      pixel_size: 1, shows_bigger_pixels: false, pose_lists: :one, sprites_in_blocks: true,
                      voices_read_sound_memory: false, big_background_tiles: false, shown_rows: nil,
                      gives_up_rows: false, sprite_pieces_drawn_a_screen: nil, sprite_slivers_drawn_a_line: nil,
                      sprite_pixels_drawn_a_line: nil, sprite_piece_shape: :small, sprite_table_filled_from: :front,
                      save_memories: ADVANCE_SAVE_MEMORIES, layer_for_held_rows: false, cells_in_front: false,
-                     sprite_rows_settled: false, **rest) = super
+                     sprite_rows_settled: false, pool_layouts: %i[lists].freeze, **rest) = super
 
       # Whether one sprite can show poses drawn from different lists of colours (see +pose_lists+).
       def poses_keep_own_lists? = pose_lists != :one

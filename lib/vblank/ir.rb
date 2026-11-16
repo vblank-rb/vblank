@@ -10,6 +10,7 @@ require_relative "ir/clock"                 # What a game reads of the date and 
 require_relative "ir/clock_calendar"        # The calendar a cartridge adds to a time the game set
 require_relative "ir/frames"                # How many frames a pass of the game loop took
 require_relative "ir/rumble"                # How a rumble's pattern is read, a frame at a time
+require_relative "ir/pool_shape"            # What a pool and a walk of it are, for a lowering keeping one its own way
 require_relative "ir/node"                  # What every node can do; names no kind
 require_relative "ir/nodes"                 # One class per kind, each declaring its own operands
 require_relative "ir/fields"                # The operand tables, read from the classes

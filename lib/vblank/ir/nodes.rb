@@ -1517,7 +1517,11 @@ module VBlank
                  fraction_vars: :list, fraction_lists: :list, sprite_readings: :list, background_readings: :list,
                  players: :list, verbs_written: :list,
                  for_computer: :flag, for_unpacking: :flag, border: :text, border_size: :list, pixel_size: :int,
-                 shown_rows: :list, start_file: :start_file, mix_rate: :int, main_volume: :int, computer_controls: :list
+                 shown_rows: :list, start_file: :start_file, mix_rate: :int, main_volume: :int, computer_controls: :list,
+                 pools: :pool_shapes
+
+        # +pools+ is each pool the game declared, as a lowering that keeps a pool its own way reads
+        # it (IR::PoolShape), or absent for a program with none.
 
         # +computer_controls+ is the keys and gamepad buttons the game adds to VBlank's layout on a
         # computer, as [button, :key or :pad, name] triples (IR::ComputerControls), or absent for a
@@ -1703,7 +1707,10 @@ module VBlank
         include Node
         kind :repeat
         category :control
-        operands count: :value, index: :name, stop_when: :value
+        operands count: :value, index: :name, stop_when: :value, pool_walk: :walk_shape
+
+        # +pool_walk+ is what the loop is when it is a walk of a pool (IR::WalkShape), or absent. A
+        # lowering that keeps the pool as lists, and the interpreter, never read it.
       end
 
       class RestoreRegion

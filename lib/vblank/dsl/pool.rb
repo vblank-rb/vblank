@@ -628,11 +628,22 @@ module VBlank
               block.call(Instance.new(pool, slot))
             end
           end
+          mark_walk(@builder.last_recorded_statement, at, ahead, last, links)
         end
         record(Build.sub(walking_var, Build.int(1)))
         record(release_when_idle)
         self
       end
+
+      # The repeat a walk made, marked as one (IR::WalkShape): the thing it is on, the one it goes to
+      # next, the last it visits, and the links it steps along, by the first two of its statements.
+      def mark_walk(repeat_node, at, ahead, last, links)
+        return unless repeat_node&.kind == :repeat
+
+        repeat_node.pool_walk = Ractor.make_shareable(IR::WalkShape.new(pool: @name, at: at, ahead: ahead, last: last, links: links,
+                                                            step_statements: 2))
+      end
+      private :mark_walk
 
       def refuse_unknown_walk_order!(newest_first)
         return if [true, false].include?(newest_first)

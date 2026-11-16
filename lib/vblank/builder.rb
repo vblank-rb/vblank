@@ -984,6 +984,10 @@ module VBlank
       attach(node)
     end
 
+    # The statement recorded last in the open container, for a handle that marks what it just
+    # recorded through a verb (Pool#each marks its repeat as a walk). An internal hook, not a verb.
+    def last_recorded_statement = @container_stack.last.children.last
+
     # Record a container node and run +block+ to fill its children — the hook a handle
     # reaches for to attach a body from outside the builder (e.g. Timer#on_tick). Lives
     # in the core, not a concern, so it isn't scanned as a DSL verb. Returns the node.

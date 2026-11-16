@@ -164,6 +164,62 @@ class TestPool < Minitest::Test
     assert_equal 1 + 4 + 64 + 128 + (32 * 256) + (16 * 256), i[:near]
   end
 
+  # --- what a pool is, for a console that keeps one its own way ---
+
+  private def pool_program(console: :gba, &game)
+    b = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: console))
+    b.instance_eval(&game)
+    b.finalize_program
+    b.program
+  end
+
+  # The program says what each pool is: its fields at the widths the game declared, its own lists,
+  # its variables, and the layout it asked for.
+  def test_the_program_carries_each_pool_as_declared
+    program = pool_program do
+      screen :bitmap
+      pool :guard, x: 0, hp: 0, capacity: 6, widths: { hp: :byte }, layout: :lists
+      halt
+    end
+    shape = program.pools.find { |each| each.name == :guard }
+
+    assert_equal [6, :lists], [shape.capacity, shape.layout]
+    assert_equal({ x: :word, hp: :byte }, shape.fields.to_h { |field| [field.name, field.width] })
+    assert_equal :byte, shape.width_of(VBlank::DSL::Pool.active_list(:guard))
+    assert_equal VBlank::DSL::Pool.head_var(:guard), shape.vars.fetch(:head)
+  end
+
+  # Each walk's loop says it is one: the thing it is on, the next, the last, and the links it
+  # follows, the other way round for a walk newest first.
+  def test_each_walk_is_marked_on_its_loop
+    program = pool_program do
+      screen :bitmap
+      things = pool :thing, x: 0, capacity: 4
+      things.each { |t| t.x += 1 }
+      things.each(newest_first: true) { |t| t.x -= 1 }
+      halt
+    end
+    walks = program.walk.filter_map { |node| node.pool_walk if node.kind == :repeat }
+
+    assert_equal [VBlank::DSL::Pool.next_list(:thing), VBlank::DSL::Pool.prev_list(:thing)], walks.map(&:links)
+    assert(walks.all? { |walk| walk.pool == :thing && walk.step_statements == 2 })
+  end
+
+  # A layout a console has no way to keep a pool in is refused before anything is built, naming
+  # the console and the layouts it has; a word that is no layout at all is refused on any.
+  def test_a_layout_the_console_lacks_is_refused_in_plain_words
+    others = %i[tables records]
+    VBlank::Console::DESCRIPTIONS.each do |name, description|
+      (others - description.pool_layouts).each do |layout|
+        error = assert_raises(ArgumentError) { pool_program(console: name) { pool :guard, x: 0, capacity: 4, layout: layout } }
+        assert_includes error.message, "keeps a pool only as"
+        assert_includes error.message, description.title
+      end
+    end
+    error = assert_raises(ArgumentError) { pool_program { pool :guard, x: 0, capacity: 4, layout: :rows } }
+    assert_includes error.message, "A pool layout is"
+  end
+
   # --- baked guardrails (build-time, friendly errors) ---
 
   # A POOL TOO BIG TO SHARE THE QUICK MEMORY. The console has 32K of quick memory, which the
