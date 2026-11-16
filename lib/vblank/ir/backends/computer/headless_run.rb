@@ -48,6 +48,13 @@ module VBlank
             def on_screen?(x, y) = x.between?(0, width - 1) && y.between?(0, height - 1)
           end
 
+          # The picture as the window shows it, the whole screen: the game's screen as shown, and
+          # where that is shown in a border, the border round it (rg_screen_framed). #pixel is nil
+          # off the screen.
+          Framed = Data.define(:pixels, :width, :height) do
+            def pixel(x, y) = x.between?(0, width - 1) && y.between?(0, height - 1) ? pixels[(y * width) + x] : nil
+          end
+
           # Where the game had got to at one frame boundary (RunComparison::Moment).
           Moment = RunComparison::Moment
 
@@ -112,6 +119,11 @@ module VBlank
           # The interpreter has no such count: it is what a test reads to see that a screen
           # standing still is not rebuilt every frame.
           attr_reader :repaints_painted
+
+          # The picture the run ended on as the window shows it (a Framed): for a game shown in a
+          # border, the whole screen with the border round the game's. The interpreter has no
+          # window, and plays the game's screen alone.
+          attr_reader :framed
 
           # The save memory the run was handed, holding what the last run left in it.
           attr_reader :save
@@ -310,7 +322,12 @@ module VBlank
           # order of the voices; the most that sounded at once; how many plays were dropped; the
           # level a sounding recording of the game's plays at; and how far through its shape the
           # first voice sounding a recording is.
+          #
+          # A build for a computer mixes a game with a recording of sixteen bits at sixteen
+          # (IR::Mixing.full_depth?), so its slices are what the interpreter gives as
+          # #full_depth_sound, and the two names give the same slices here.
           def mixed_sound = @mix_slices.dup
+          def full_depth_sound = mixed_sound
           def active_samples = @mixing.map { |recording, *| recording_name(recording) }
           def peak_voices = @mix_peak
 
@@ -318,6 +335,9 @@ module VBlank
             _, _, level, = @mixing.find { |recording, *| recording_name(recording) == name }
             level
           end
+
+          # How loud each sounding voice plays, out of 512, in the same order (Reference#loudness_by_voice).
+          def loudness_by_voice = @mixing.map { |_, loudness, *| loudness }
 
           def sound_drops
             dropped, held = @mix_drops
@@ -363,6 +383,8 @@ module VBlank
           def frames_each_pass(&) = raise(RunComparison::AsksTheInterpreter, "for a pass to take several frames (`frames_each_pass`)")
           def frames_setting_up(*) = raise(RunComparison::AsksTheInterpreter, "how many frames setting up takes (`frames_setting_up`)")
           def fill_faces_with(*) = raise(RunComparison::AsksTheInterpreter, "to fill faces by a console chip's rules (`fill_faces_with`)")
+          def mix_see_through_with(*) = raise(RunComparison::AsksTheInterpreter,
+                                              "to mix a see-through layer by a console chip's rules (`mix_see_through_with`)")
           def log = refuse_unanswered!(:log)
           def screen_mode = refuse_unanswered!(:screen_mode)
           def sprites_by_depth = refuse_unanswered!(:sprites_by_depth)
@@ -377,6 +399,11 @@ module VBlank
 
             raise RunComparison::AsksTheInterpreter, "for the person at this machine to be player #{player} (`local_player=`)"
           end
+
+          # To play the game as one machine of a match (Reference#play_as_match). The windowless program is
+          # handed no match's seed or players, so it plays the presses alone; a tape of a match plays on
+          # the interpreter only (Playthroughs::Tape).
+          def play_as_match(**) = refuse_unanswered!(:play_as_match)
 
           # Which compiler the program's own language turns its code into machine code with, as the
           # program reports itself before its first frame: :yjit or :none from the Ruby lowering's, and
@@ -521,6 +548,21 @@ module VBlank
                         camera_x: @camera[0], camera_y: @camera[1])
           end
 
+          # The whole screen in the program's file now, after the two pictures #picture_now reads,
+          # for a game shown in a border; the picture as shown for any other.
+          def framed_now
+            return Framed.new(pixels: @screen.shown, width: @screen.width, height: @screen.height) unless @console.bordered?
+
+            width, height = @console.whole_screen_size
+            each = width * height
+            pixels = @pictures.pread(each * 2, @console.screen_width * @console.screen_height * 4).to_s.unpack("v*")
+            unless pixels.length == each
+              raise Computer::Error, "the program's picture file holds #{pixels.length} pixels of the whole screen, where it is #{each}"
+            end
+
+            Framed.new(pixels: pixels, width: width, height: height)
+          end
+
           def play_frames(exe, frames, options)
             @moments = []
             Open3.popen3(*program_command(exe), frames.to_s, *options) do |stdin, stdout, stderr, waiter|
@@ -530,6 +572,7 @@ module VBlank
               # reported where the program is (#next_line) and not a second time from here.
               complaint.report_on_exception = false
               frame = 0
+              @buttons_asked = 0
               rows = []
               expect_next_frame
               while (line = next_line(stdout, waiter, exe, frame))
@@ -553,7 +596,14 @@ module VBlank
           # whoever is watching the run is shown the frame, and then the buttons are sent. That
           # is the interpreter's order, and the program is waiting for its buttons throughout, so
           # the picture in its file is this frame's for as long as anybody here can ask for it.
+          #
+          # The buttons are asked for by how many times they have been read. That is how the
+          # interpreter asks its script, by the frame the screen shows (Reference#read_buttons). It is
+          # the frame's own number, except in a game whose timer's handler waits: there the frame the
+          # handler is held up in is counted and not shown, and the frame it reaches is shown twice,
+          # with buttons read each time.
           def record_frame_and_send_buttons(stdin, frame, rows)
+            @buttons_asked += 1
             read_state_from(rows)
             @screen = nil
             check = rows.find { |row| row.start_with?("picture-crc ") }.delete_prefix("picture-crc ").to_i(16)
@@ -561,7 +611,7 @@ module VBlank
               @moments << Moment.new(frame: frame, variables: @vars, picture: check, sounds: @audio_played.size, sprites: @sprites,
                                      collections: game_state.except(:vars), sounding: active_samples, motor: motor_on?)
             end
-            buttons = buttons_sent(frame)
+            buttons = buttons_sent(@buttons_asked)
             @on_vblank&.call(frame)
             stdin.puts(@pass_buttons.headless_input_line(buttons))
             stdin.flush
@@ -585,6 +635,7 @@ module VBlank
           def record_end(rows)
             read_state_from(rows)
             @screen = picture_now
+            @framed = framed_now
             @buffered = rows.include?("pages 2")
             @repaints_painted = Integer(rows.find { |row| row.start_with?("repaints ") }.split(" ").last)
             @moments << Moment.new(frame: :end, variables: @vars, picture: self.class.picture_check(@screen.shown),

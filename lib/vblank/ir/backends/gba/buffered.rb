@@ -1129,6 +1129,7 @@ module VBlank
             emit_branch(:bcond, skip, cond: :ge)
 
             emit_blit_row_span(bmp, skip)
+            emit_blit_row_odd_ends(bmp, row, skip)
             emit_blit_row_addresses(bmp, row)
             emit_blit_row_copy
             place_label(skip)
@@ -1154,6 +1155,51 @@ module VBlank
             emit(ASM.sub_reg(BLIT_UNITS, BLIT_RIGHT, BLIT_LEFT))
             emit(ASM.cmp_imm(BLIT_UNITS, 0))
             emit_branch(:bcond, skip, cond: :le)
+          end
+
+          # THE ENDS OF A ROW CUT BY AN AREA WITH AN ODD EDGE. The picture starts on an even
+          # column and is an even number of pixels wide, so only an area's edge can cut a row
+          # halfway through a pair. A pixel left alone at either end is written on its own — read
+          # the pair, change that half, write it back — and the row is narrowed past it, so the
+          # copy between moves whole pairs. Without this the copy dropped those pixels, and a row
+          # cut down to the one pixel asked the copy engine for no pairs, which it reads as its
+          # biggest count: it wrote over all of video memory. The edges are settled while
+          # building, so an area with even edges, and the whole screen, emit none of this.
+          def emit_blit_row_odd_ends(bmp, row, skip)
+            left_odd = @framebuffer.clip_left.odd?
+            right_odd = @framebuffer.clip_right.odd?
+            return unless left_odd || right_odd
+
+            emit_blit_row_end_pixel(bmp, row, BLIT_LEFT, high: true, after: -> { emit(ASM.add_imm(BLIT_LEFT, BLIT_LEFT, 1)) }) if left_odd
+            emit_blit_row_end_pixel(bmp, row, BLIT_RIGHT, high: false, before: -> { emit(ASM.sub_imm(BLIT_RIGHT, BLIT_RIGHT, 1)) }) if right_odd
+            emit(ASM.sub_reg(BLIT_UNITS, BLIT_RIGHT, BLIT_LEFT))
+            emit(ASM.cmp_imm(BLIT_UNITS, 0))
+            emit_branch(:bcond, skip, cond: :le)
+          end
+
+          # One end of the row written alone when the end in +column+ is odd. The left end's
+          # first pixel is then the right half of its pair (+high+); the right end, one past the
+          # last pixel, leaves that last pixel as the left half of its own. +before+ and +after+
+          # move the end past the pixel, so +column+ names that pixel's column while it is written.
+          def emit_blit_row_end_pixel(bmp, row, column, high:, before: nil, after: nil)
+            whole = gensym
+            emit(ASM.tst_imm(column, 1))
+            emit_branch(:bcond, whole, cond: :eq)
+            before&.call
+            emit(ASM.sub_reg(ACC, column, BLIT_X))         # how far into the picture's row
+            emit_add_const(ACC, ACC, row * bmp.width, SPARE)
+            emit(ASM.ldrb_reg(ACC, BLIT_SRC, ACC))         # r0 = its colour slot
+            emit_number(SPARE, SCREEN_WIDTH)
+            emit(ASM.mul(TMP, BLIT_ROW_Y, SPARE))
+            emit(ASM.add_reg(TMP, TMP, column))
+            load_var(SPARE, BACKBUF)
+            emit(ASM.add_reg(TMP, TMP, SPARE))
+            emit(ASM.bic_imm(TMP, TMP, 1)) if high         # the pair it is the right half of
+            emit(ASM.load_halfword(SPARE, TMP))
+            emit_splice_index_reg(SPARE, ACC, high)
+            emit(ASM.store_halfword(SPARE, TMP))
+            after&.call
+            place_label(whole)
           end
 
           # Where the row is read from (r5) and written to (r3). Both are byte addresses

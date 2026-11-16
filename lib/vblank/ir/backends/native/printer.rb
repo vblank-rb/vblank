@@ -75,7 +75,15 @@ module VBlank
 
           # Sixteen numbers a line, so a table of thousands is still a file a person can scroll. A big
           # table of bytes is kept in a file of its own (#print_embedded_array).
+          #
+          # A big table of zeros alone (ConstArray#all_zeros?: what the start file fills, with the data
+          # pack left out) is its size: C sets every number of an array to 0 that its initializer
+          # leaves out, so nothing of millions of zeros is written or compiled.
           def print_const_array(item)
+            if item.values.size > MOST_WRITTEN_AS_NUMBERS && item.all_zeros?
+              return line(0, "#{linkage(item)}#{'const ' unless item.writable}#{item.type} #{item.name.text}[#{item.values.size}] = {0};")
+            end
+
             embedded = EMBEDDED_TYPES[item.type]
             if embedded && item.values.size > MOST_WRITTEN_AS_NUMBERS && item.values.all?(Integer)
               return print_embedded_array(item, embedded)

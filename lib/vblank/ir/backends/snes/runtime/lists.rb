@@ -27,6 +27,9 @@ module VBlank
             LENGTH = 4
             WIDTH = 6
             HEADER = 8
+            # How many bytes each number of the header is (CartridgeHeadlessRun#read_lists). A list is
+            # kept in one 64K bank of work RAM (Memory#reserve), so it never has more than 65,535 slots.
+            FIELD_BYTES = 2
 
             R0 = Memory.register(0)
             R1 = Memory.register(1)

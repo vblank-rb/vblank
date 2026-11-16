@@ -40,11 +40,30 @@ module VBlank
 
       # The picture as four bytes a pixel: red, green, blue and one unused, each five-bit channel
       # widened to eight by repeating its top bits.
+      #
+      # The core hands back the same list of colours while the picture has not changed, and then the
+      # bytes made from it last time are the answer again. They are frozen, as the reader keeps them.
       def frame_buffer
-        @core.colors.map do |color|
-          widened(color & 0x1F) | (widened((color >> 5) & 0x1F) << 8) | (widened((color >> 10) & 0x1F) << 16)
-        end.pack("V*")
+        colors = @core.colors
+        return @frame_buffer if @frame_buffer_of.equal?(colors)
+
+        @frame_buffer_of = colors
+        @frame_buffer = SNESProbe.picture_bytes(colors).freeze
       end
+
+      # The four bytes of each of +colors+ (the console's 15-bit colours), one after another. Each
+      # pixel is a lookup that Array#values_at makes in C, not a Ruby block run for every pixel,
+      # which cost more than a frame of the console. Public for the probe's test, which holds every
+      # colour to its answer key.
+      def self.picture_bytes(colors) = PIXEL_BYTES.values_at(*colors).join
+
+      # Each five-bit channel widened to eight by repeating its top bits.
+      def self.widened(channel) = (channel << 3) | (channel >> 2)
+
+      # The four bytes of a pixel of the reader's picture for each of the 32768 colours.
+      PIXEL_BYTES = Ractor.make_shareable(Array.new(0x8000) do |color|
+        Array.new(3) { |channel| widened((color >> (channel * 5)) & 0x1F) }.pack("C3x")
+      end)
 
       # The sound of the last step, a String of samples for each frame of it: 16 bits each, left
       # and right by turns, at SoundRecording's rate for this console.
@@ -92,10 +111,6 @@ module VBlank
       end
 
       def closed? = @closed == true
-
-      private
-
-      def widened(channel) = (channel << 3) | (channel >> 2)
     end
   end
 end

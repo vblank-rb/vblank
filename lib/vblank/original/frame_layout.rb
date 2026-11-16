@@ -292,8 +292,9 @@ module VBlank
       # The sum of +terms+, each a number or a game's value, with a value on the left of every sum.
       def sum_of(*terms)
         numbers, values = terms.partition { |term| term.is_a?(Integer) }
-        # Must fold with +, not Array#sum: sum starts from Ruby's 0, and a term may be a game's value.
-        [*values, numbers.sum].reduce { |sum, term| sum + term }
+        # Must fold with +, not Array#sum: sum starts from Ruby's 0, and a term may be a game's value,
+        # which must be on the left of every sum. So Performance/Sum is wrong here.
+        [*values, numbers.sum].reduce { |sum, term| sum + term } # rubocop:disable Performance/Sum
       end
 
       def pose_values_in_words(names)

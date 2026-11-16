@@ -29,6 +29,11 @@ module VBlank
     #   its test, can name it;
     # - a file over most_bytes (512 KB unless set), which is almost always art pulled from the
     #   original. The message says how to commit it anyway, rather than guessing where it came from.
+    #   A path the game names in big_files: (a path or a glob, from the top of the repository) is let
+    #   past this limit alone: numbers a port harvested from its copy, positions and timings but no
+    #   art, can be bigger than any file of the original's would be, and the size is then the wrong
+    #   question. Every other refusal still applies to it, so a cartridge or a tool's output named
+    #   there is refused as before.
     #
     # WHAT THE GAME SUPPLIES: its consoles, and any folders, kinds and mark of its own. It names them
     # in its Rakefile (DataGuardTasks), whose task the hook runs.
@@ -59,12 +64,13 @@ module VBlank
       # How git marks a submodule in its index: a commit of another repository, not a file.
       SUBMODULE_MODE = "160000"
 
-      def initialize(consoles:, folders: [], suffixes: [], generated_mark: nil, most_bytes: MOST_BYTES)
+      def initialize(consoles:, folders: [], suffixes: [], generated_mark: nil, most_bytes: MOST_BYTES, big_files: [])
         kinds = consoles.flat_map { |console| ORIGINAL_FILE_KINDS.fetch(Console.for(console).name) }
         @suffixes = (kinds + suffixes.map { it.delete_prefix(".") }).map(&:downcase).uniq
         @folders = folders
         @generated_mark = generated_mark
         @most_bytes = most_bytes
+        @big_files = big_files
       end
 
       # What is wrong with +staged+ (StagedFile values), a message for each kind of refusal, or none.
@@ -135,7 +141,7 @@ module VBlank
       end
 
       def big_files_message(staged)
-        found = staged.select { |file| file.size > @most_bytes }
+        found = staged.select { |file| file.size > @most_bytes && !named_big_file?(file.path) }
         return if found.empty?
 
         "These staged files are more than #{@most_bytes / 1024} KB:\n#{file_list(found) { " (#{it.size} bytes)" }}\n" \
@@ -161,6 +167,12 @@ module VBlank
           starts = anchored ? [0] : (0..(parts.size - length))
           starts.any? { |start| parts.size >= start + length && File.fnmatch(pattern, parts[start, length].join("/"), File::FNM_CASEFOLD) }
         end
+      end
+
+      # Whether +path+ is one the game let past the size limit (big_files:): a path or a glob from the
+      # top of the repository, where ** crosses folders and * does not.
+      def named_big_file?(path)
+        @big_files.any? { |pattern| File.fnmatch?(pattern, path, File::FNM_PATHNAME | File::FNM_EXTGLOB) }
       end
 
       def file_list(files) = files.map { |file| "  #{file.path}#{yield(file) if block_given?}" }.join("\n")

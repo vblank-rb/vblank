@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "did_you_mean" # Offers the closest names in place of one a game never declared
+
 module VBlank
   module IR
     # A RUNNING GAME'S STATE, ASKED BY THE NAMES THE GAME GAVE IT: a variable in the game's units, a
@@ -16,7 +18,18 @@ module VBlank
     # through this reader's #raw_var.
     module ReadingByName
       # A variable's number now, in the game's units: a fraction as the fraction.
-      def var(name) = read_program ? read_program.var_in_game_units(name, raw_var(name)) : raw_var(name)
+      #
+      # A NAME THE PROGRAM NEVER DECLARED IS REFUSED, not read as 0. A stored number nobody wrote is
+      # 0, so without this a test left reading a name that a rename took away keeps passing every
+      # assertion that the number stays 0. With no program to ask (a hand-built tree with no program
+      # at its root), nothing says which names exist, and the stored number is all there is.
+      def var(name)
+        return raw_var(name) unless read_program
+
+        refuse_undeclared_variable!(name) unless var?(name)
+        read_program.var_in_game_units(name, raw_var(name))
+      end
+
       def [](name) = var(name)
 
       # Whether the game has a variable +name+: one its program names anywhere, the framework's own
@@ -51,6 +64,29 @@ module VBlank
 
       # The variables +program+ names, kept beside the program they were worked out from.
       VariablesNamed = Data.define(:program, :names)
+
+      # +name+, which the program never names, refused with the names closest to it the game gave,
+      # or the first of its names where none is close (the framework's own, with two underscores in
+      # front, are left out).
+      def refuse_undeclared_variable!(name)
+        own = variables_named.map(&:to_s).reject { |known| known.start_with?("__") }.sort
+        closest = DidYouMean::SpellChecker.new(dictionary: own).correct(name.to_s)
+        raise ArgumentError, "This game has no variable #{name.inspect}. #{names_offered_message(closest, own)} " \
+                             "To ask if a variable exists, use var?(#{name.inspect})."
+      end
+
+      # The most names an unknown-variable error lists where none is close.
+      NAMES_LISTED_MOST = 20
+
+      # The sentence that offers +closest+ in place of a name, or the first of +own+ where nothing is close.
+      def names_offered_message(closest, own)
+        said = ->(names) { names.map { |known| ":#{known}" }.join(", ") }
+        return "The closest #{closest.size == 1 ? 'name is' : 'names are'} #{said.call(closest)}." unless closest.empty?
+        return "The game has no variables of its own." if own.empty?
+
+        more = own.size - NAMES_LISTED_MOST
+        "Its variables are #{said.call(own.first(NAMES_LISTED_MOST))}#{" and #{more} more" if more.positive?}."
+      end
 
       # The program, refused in plain words where there is none to say +what+.
       def named_program(what)

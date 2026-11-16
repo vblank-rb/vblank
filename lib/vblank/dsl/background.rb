@@ -427,7 +427,7 @@ module VBlank
       def refuse_unfollowed_changing_list!(list)
         return if @bitmap
 
-        names = @tile_pictures.map { |pose| @builder.list_drawn_from(pose).first }.uniq
+        names = @tile_pictures.map { |pose| @builder.list_name_drawn_from(pose) }.uniq
         return unless names.include?(list)
 
         fix = names.one? ? "draw_with :#{list}" : "draw_with({ #{list}: :#{list} })"
@@ -789,7 +789,7 @@ module VBlank
       # the background's cells (written by the copy at the frame boundary). Two rather than
       # one because that is what makes the copy happen exactly when the answer changes.
       def shown_map_var = :"__bg_#{@name}_map"
-      def live_map_var = :"__bg_#{@name}_live"
+      def live_map_var = IR::Nodes::Background.map_in_cells_var(@name)
 
       # ...and the same pair for which list of colours the tiles are drawn from: what the
       # game set, and what is really in the display's table.

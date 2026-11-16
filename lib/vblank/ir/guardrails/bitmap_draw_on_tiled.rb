@@ -45,7 +45,7 @@ module VBlank
               next unless TILE_HARDWARE_MODES.include?(mode)
 
               Finding.new(check: NAME, severity: :error,
-                          message: message(TiledDisplay.verb_for(node.kind), mode), node: node)
+                          message: message(TiledDisplay.verb_for(node), mode), node: node)
             end
           rescue Modes::Conflict
             # The program already has a worse problem — one drawing routine reached

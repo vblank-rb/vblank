@@ -258,6 +258,26 @@ module VBlank
           # in them, and a reachable scroll of it still calls the feature's code.
           def runtime_features = @runtime_features ||= RuntimeFeatures.used_by(@program.walk)
 
+          # How many bytes each type an array can be written in takes.
+          ARRAY_TYPE_BYTES = Ractor.make_shareable({ "int8_t" => 1, "uint8_t" => 1, "int16_t" => 2, "uint16_t" => 2, "int32_t" => 4 })
+
+          # THE BYTES THE GAME SETS ASIDE FOR WHAT THE START FILE FILLS (Statements::StartFileArray): the
+          # tables, colours and numbers a build that reads its pack as the game starts keeps while it runs,
+          # in whichever language it is written. The written game names only their sizes, so what it holds
+          # at run time is not in its length. Public for the tests of what such a build costs
+          # (test/pack_stand_in_size_tests.rb); asking lowers the program, so ask a lowering made for it.
+          def start_file_array_bytes
+            top_level.sum { |item| item.is_a?(Statements::StartFileArray) ? item.count * ARRAY_TYPE_BYTES.fetch(item.type) : 0 }
+          end
+
+          # THE BYTES OF ROOM THE GAME MAKES AS IT STARTS FOR THE SPRITE PICTURES THE START FILE FILLS
+          # (StartFileFills#build_start_file_pixel_room), which the written game names only by size.
+          # Public for the same tests; asking lowers the program.
+          def start_file_image_room_bytes
+            top_level
+            (@image_pixel_count - @image_pixels_held) * ARRAY_TYPE_BYTES.fetch("int16_t")
+          end
+
           private
 
           # --- the file ---
@@ -757,19 +777,23 @@ module VBlank
           def lower_list_new(node)
             [node.full_of ? list_call("rg_list_full", node, Statements::Int.new(node.full_of)) : list_call("rg_list_empty", node)]
           end
-          def lower_list_push(node) = [list_call("rg_list_push", node, value(node.value))]
+          def lower_list_push(node) = [list_call(item_access_function("rg_list_push", node.name), node, value(node.value))]
           def lower_list_drop(node) = [list_call("rg_list_drop", node, Statements::Int.new(node.from == :front ? 1 : 0))]
-          def lower_list_set(node) = [list_call("rg_list_set", node, value(node.index), value(node.value))]
+          def lower_list_set(node) = [list_call(item_access_function("rg_list_set", node.name), node, value(node.index), value(node.value))]
 
           def lower_list_fill(node)
             [list_call("rg_list_fill", node, value(node.from), value(node.count), value(node.value))]
           end
 
+          # A copy into the list of a run that shows only where a cell of the file is pointed at it
+          # is made only once one is (StartFileFills#made_where_run_pointed).
           def lower_list_copy(node)
             table = @tables.fetch(node.table)
             kept = TABLE_KEPT_AS.fetch(table_type(table))
-            [list_call("rg_list_copy", node, @names.of(:table, node.table), Statements::Int.new(kept), Statements::Int.new(table.entry_count),
-                       value(node.at), Statements::Int.new(node.count))]
+            copy = list_call("rg_list_copy", node, @names.of(:table, node.table), Statements::Int.new(kept), Statements::Int.new(table.entry_count),
+                             value(node.at), Statements::Int.new(node.count))
+            run = run_painted_from(node.name)
+            [run ? made_where_run_pointed(run.name, copy) : copy]
           end
 
           # Reference#exec_list_sort, as one call: the runtime sorts the list in place by the
@@ -781,6 +805,11 @@ module VBlank
           def list_call(function, node, *args)
             Statements::Eval.new(call(function, Statements::AddressOf.new(list(node.name)), *args))
           end
+
+          # The runtime function that reads or writes one item of the list +name+ (rg_list_get,
+          # rg_list_set, rg_list_push). Every runtime takes the one name; a runtime with a function
+          # for each width of item names it here (Native::Lowering).
+          def item_access_function(function, _name) = function
 
           # --- values ---
 
@@ -872,7 +901,9 @@ module VBlank
             Statements::Index.new(@names.of(:table, node.name), safe)
           end
 
-          def value_of_list_get(node) = call("rg_list_get", Statements::AddressOf.new(list(node.name)), value(node.index))
+          def value_of_list_get(node)
+            call(item_access_function("rg_list_get", node.name), Statements::AddressOf.new(list(node.name)), value(node.index))
+          end
           def value_of_list_len(node) = call("rg_list_length", Statements::AddressOf.new(list(node.name)))
 
           # One byte of a named piece of data. The index is a number written in the program, so

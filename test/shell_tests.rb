@@ -47,9 +47,10 @@ module ShellTests
   include MadeUpOriginal
   include OriginalBytesSearch
 
-  # The made-up port: the colours copied as they are, the tiles and the heights unpacked by its
-  # routine, laid out as a background with a marker placed by the heights. +version+ is the build
-  # the pack names.
+  # The made-up port: the colours and a frame of a sprite copied as they are, the tiles and the
+  # heights unpacked by its routine, laid out as a background with a marker placed by the heights,
+  # and a sprite whose pose is the frame, drawn from the tiles. +version+ is the build the pack
+  # names.
   private def port(from, version: "1")
     VBlank.game("MADE UP", consoles: %i[gba]) do
       screen :bitmap
@@ -58,6 +59,7 @@ module ShellTests
         slots.colors :palette, at: PALETTE_AT, count: 16
         slots.tiles :walls, count: 2
         slots.numbers :heights, count: HEIGHTS.length, width: :byte, signed: false
+        slots.numbers :frames, at: FRAMES_AT, count: FRAME_BYTES.length, width: :byte, signed: false
         slots.fill_from_copy do |copy, into|
           copy.unpack_lz77 at: LZ77_AT, into: into[:walls]
           copy.unpack_rle at: RLE_AT, into: into[:heights]
@@ -67,6 +69,9 @@ module ShellTests
       image :wall_b, width: 8, height: 8, colors: pack[:palette], places: pack[:walls].tile(1)
       tiles :walls, 0 => :wall_a, 1 => :wall_b
       background :room, tiles: :walls, map: [[0, 1, 0, 1], [1, 0, 1, 0]]
+      image :hero, tiles: pack[:walls], frame: pack[:frames].frame(0, layout: FRAME), origin: [8, 8], colors: pack[:palette],
+                   size: [16, 8]
+      sprite :hero, at: [120, 100]
       heights = table :heights, pack[:heights]
       step = var :step, 0
       game_loop do
@@ -74,6 +79,19 @@ module ShellTests
         step = (step + 1) & 15
       end
     end
+  end
+
+  # Where the port's pose is: the sprite's place, its picture's top left, and the pose's size.
+  POSE_LEFT = 120
+  POSE_TOP = 100
+  POSE_SIZE = [16, 8].freeze
+
+  # Whether +pixels+ (a picture +width+ across, row by row) show the port's pose: its first piece
+  # is the first tile of the walls, whose stripes are red, green and blue, so the box the pose
+  # stands in holds red. A shell that lost the frame's record shows the black ground there.
+  private def pose_shown_in?(pixels, width)
+    box = (POSE_TOP...(POSE_TOP + POSE_SIZE[1])).flat_map { |y| pixels[(y * width) + POSE_LEFT, POSE_SIZE[0]] }
+    box.include?(PALETTE[1])
   end
 
   # A PORT WHOSE UNPACKING WORKS A LONG TIME BETWEEN WRITES (a port rendering music before it writes

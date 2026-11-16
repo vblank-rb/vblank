@@ -98,4 +98,21 @@ class TestFolderCopy < Minitest::Test
 
     assert_match "INDEX.MU1 holds bytes 0 to 17", refused.message
   end
+
+  # A place the routine works out as it runs, past the end of DATA.MU1's 154 bytes, stops the build
+  # naming the file and the place, rather than reading the file after it.
+  def test_a_read_worked_out_past_the_end_of_a_file_stops_the_build_naming_the_file
+    refused = assert_raises(VBlank::Original::WrongCopy) do
+      VBlank::Builder.new.data_pack(from: folder_original, version: "1") do |slots|
+        slots.numbers :one, count: 4, width: :byte, signed: false
+        slots.fill_from_copy do |copy, pack|
+          copy.file("DATA.MU1").copy_bytes at: copy.file("INDEX.MU1").word(6) + 200, count: 4, into: pack[:one]
+        end
+      end
+    end
+
+    assert_match "byte 216 ", refused.message
+    assert_match "DATA.MU1", refused.message
+    assert_match "0 to 153", refused.message
+  end
 end

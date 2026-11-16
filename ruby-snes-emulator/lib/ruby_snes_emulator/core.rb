@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "fiddle"
 require "fileutils"
 require "tmpdir"
 
@@ -24,10 +23,10 @@ module RubySNESEmulator
   # lets go of those globals, so a Core made later from the same copy is a console just out of
   # the box.
   #
-  # The core talks back through functions it is handed (the libretro callbacks): it asks its
-  # settings through the environment callback, hands over each finished picture and each batch
-  # of sound, and asks which buttons are down. Those are Ruby blocks wrapped as C functions
-  # (Fiddle closures), kept alive here for as long as the core is.
+  # The core is played through Frontend, this gem's C extension: it opens the copy, answers what
+  # the core asks, and keeps the picture and the sound the core hands over until they are asked
+  # for here (ext/ruby_snes_emulator_ext/libretro_frontend.c says why that is C). So a Core can be
+  # made and played in any Ractor.
   class Core
     # libretro's names for the memories, and the probe patch's own (core/bsnes-vblank-probe.patch).
     SAVE_RAM = 0
@@ -48,17 +47,12 @@ module RubySNESEmulator
     # The settings the core asks for, as libretro names them. The PPU and the sound DSP are the
     # accurate ones — the fast PPU keeps its memories elsewhere, and the probe reads the accurate
     # one's — and nothing is run ahead.
-    SETTINGS = { "bsnes_ppu_fast" => "OFF", "bsnes_dsp_fast" => "OFF", "bsnes_run_ahead_frames" => "OFF",
-                 "bsnes_ppu_show_overscan" => "OFF", "bsnes_cpu_fastmath" => "OFF",
-                 "bsnes_hotfixes" => "OFF", "bsnes_entropy" => "None" }.freeze
+    SETTINGS = Ractor.make_shareable({ "bsnes_ppu_fast" => "OFF", "bsnes_dsp_fast" => "OFF",
+                                       "bsnes_run_ahead_frames" => "OFF", "bsnes_ppu_show_overscan" => "OFF",
+                                       "bsnes_cpu_fastmath" => "OFF", "bsnes_hotfixes" => "OFF",
+                                       "bsnes_entropy" => "None" })
 
-    # libretro's environment calls that matter here.
-    GET_CAN_DUPE = 3
-    GET_SYSTEM_DIRECTORY = 9
-    SET_PIXEL_FORMAT = 10
-    GET_VARIABLE = 15
-    GET_VARIABLE_UPDATE = 17
-    GET_SAVE_DIRECTORY = 31
+    # libretro's picture format of four bytes a pixel, the one bsnes is let draw in.
     XRGB8888 = 1
 
     JOYPAD = 1
@@ -68,6 +62,9 @@ module RubySNESEmulator
     WIDTH = 256
     HEIGHT = 224
 
+    # Work RAM's size: banks $7E and $7F.
+    WORK_RAM_SIZE = 0x20000
+
     attr_reader :frames, :drawn_width, :drawn_height
 
     # +rom_path+ is the cartridge; its battery-backed RAM is kept in a .srm file in +save_dir+,
@@ -75,19 +72,12 @@ module RubySNESEmulator
     # +save_dir+ the file goes in a folder of the core's own that is gone with it.
     def initialize(rom_path, save_dir: nil)
       @dir = Dir.mktmpdir("ruby-snes-emulator")
-      @save_dir = save_dir || @dir
-      @buttons = Array.new(2) { [] }
       @frames = 0
       @picture = nil
       @drawn_width = WIDTH * 2
       @drawn_height = HEIGHT * 2
       @audio = []
-      @kept = [] # what the core holds a pointer to, kept from the garbage collector
-      load_library
-      hand_over_callbacks
-      @call[:retro_init].call
-      @shutdown = Shutdown.new(@call, @handle, @copy, @dir, @save_dir)
-      ObjectSpace.define_finalizer(self, @shutdown)
+      start_frontend(save_dir || @dir)
       load_cartridge(rom_path)
     end
 
@@ -96,12 +86,14 @@ module RubySNESEmulator
       unknown = buttons - BUTTONS.keys
       raise ArgumentError, "a Super Nintendo controller has no #{unknown.join(', ')} button" unless unknown.empty?
 
-      @buttons[port] = buttons.map { |button| BUTTONS.fetch(button) }
+      @frontend.set_buttons(port, buttons.sum { |button| 1 << BUTTONS.fetch(button) })
     end
 
     # Plays one frame: up to the moment the console starts its next picture.
     def run_frame
-      @call[:retro_run].call
+      @frontend.run
+      @audio << @frontend.drain_audio
+      update_picture
       @frames += 1
       self
     end
@@ -126,7 +118,43 @@ module RubySNESEmulator
       return @colors if @colors && @colors_of == video_buffer
 
       @colors_of = video_buffer
-      @colors = picture_colors(video_buffer).freeze
+      @colors = Core.picture_colors(video_buffer, @drawn_width, @drawn_height).freeze
+    end
+
+    # +buffer+, a picture bsnes drew at +drawn_width+ × +drawn_height+ (#video_buffer), as the
+    # console's own colours at its own size (#colors). Public for the gem's own test, which holds it
+    # to the arithmetic pixel by pixel on a picture no cartridge would draw.
+    #
+    # ONE UNPACK AND ONE LOOKUP, NOT A BLOCK PER PIXEL. A single pattern reads the whole picture:
+    # each kept row starts at its own byte (@) and is read as one number per square, the whole
+    # square's width at once (a pixel, V, or two side by side, Q), so the pixels in between are
+    # never made into numbers of their own. The square's top-left pixel is that number's low four
+    # bytes, all #console_color looks at. A picture has few distinct squares, so a hash works out
+    # each the first time it is asked for and answers every other square from memory.
+    def self.picture_colors(buffer, drawn_width, drawn_height)
+      colors = Hash.new { |known, square| known[square] = console_color(square) }
+      colors.values_at(*buffer.unpack(picture_pattern(drawn_width, drawn_height)))
+    end
+
+    # The unpack pattern #picture_colors reads a picture of this size with. A row read as one
+    # directive and a count is parsed once; a directive per pixel is parsed a pixel at a time,
+    # which is most of the work. So a square two pixels wide is one 8-byte number, and only some
+    # other width falls back to a pixel and a skip each.
+    def self.picture_pattern(drawn_width, drawn_height)
+      across = drawn_width / WIDTH
+      down = drawn_height / HEIGHT
+      row = case across
+            when 1 then "V#{WIDTH}"
+            when 2 then "Q<#{WIDTH}"
+            else "Vx#{(across - 1) * 4}" * WIDTH
+            end
+      Array.new(HEIGHT) { |y| "@#{y * down * drawn_width * 4}#{row}" }.join
+    end
+
+    # A square as bsnes drew its top-left pixel in the low four bytes (blue, green, red, unused)
+    # as a 15-bit colour: the top five bits of each, red lowest.
+    def self.console_color(square)
+      ((square >> 19) & 0x1F) | (((square >> 11) & 0x1F) << 5) | (((square >> 3) & 0x1F) << 10)
     end
 
     # The sound of the frames since this was last asked, as signed 16-bit samples, left and right
@@ -176,50 +204,47 @@ module RubySNESEmulator
     end
 
     # Work RAM read and written in place, at +address+ from 0 to 0x1FFFF (bank $7E's first byte
-    # is 0, bank $7F's is 0x10000), lowest byte first as the console keeps a number.
-    def wram_read8(address) = live(SYSTEM_RAM, 0x20000)[address & 0x1FFFF, 1].getbyte(0)
+    # is 0, bank $7F's is 0x10000), lowest byte first as the console keeps a number. Each address
+    # is taken within the 128K as the first is, so a read that runs past the end of bank $7F goes
+    # on from bank $7E's first byte.
+    def wram_read8(address) = wram_bytes(address, 1).getbyte(0)
     def wram_read16(address) = wram_bytes(address, 2).unpack1("v")
     def wram_read32(address) = wram_bytes(address, 4).unpack1("V")
-    def wram_bytes(address, count) = live(SYSTEM_RAM, 0x20000)[address & 0x1FFFF, count]
-    def wram_write8(address, value) = (live(SYSTEM_RAM, 0x20000)[address & 0x1FFFF, 1] = [value & 0xFF].pack("C"))
-    def wram_write32(address, value) = (live(SYSTEM_RAM, 0x20000)[address & 0x1FFFF, 4] = [value & 0xFFFFFFFF].pack("V"))
+
+    def wram_bytes(address, count)
+      start = address & 0x1FFFF
+      within = [count, WORK_RAM_SIZE - start].min
+      bytes = @frontend.memory_read(SYSTEM_RAM, start, within)
+      within == count ? bytes : bytes + wram_bytes(0, count - within)
+    end
+
+    def wram_write8(address, value) = @frontend.memory_write(SYSTEM_RAM, address & 0x1FFFF, [value & 0xFF].pack("C"))
+    def wram_write32(address, value) = @frontend.memory_write(SYSTEM_RAM, address & 0x1FFFF, [value & 0xFFFFFFFF].pack("V"))
 
     # +count+ bytes of the cartridge's RAM from +address+, read in place. On a board with a chip
-    # (a Super FX) that RAM is the chip's.
-    def save_ram_bytes(address, count) = live(SAVE_RAM, @call[:retro_get_memory_size].call(SAVE_RAM))[address, count]
+    # (a Super FX) that RAM is the chip's. A read past its end reads what there is.
+    def save_ram_bytes(address, count)
+      size = @frontend.memory_size(SAVE_RAM)
+      return nil if address > size
+
+      @frontend.memory_read(SAVE_RAM, address, [count, size - address].min)
+    end
 
     # The cartridge's battery-backed RAM, written over (for a save that starts with something in it).
     def save_ram=(bytes)
-      size = @call[:retro_get_memory_size].call(SAVE_RAM)
+      size = @frontend.memory_size(SAVE_RAM)
       raise ArgumentError, "this cartridge has no battery-backed RAM" if size.zero?
 
-      live(SAVE_RAM, size)[0, [bytes.bytesize, size].min] = bytes.byteslice(0, size)
+      @frontend.memory_write(SAVE_RAM, 0, bytes.byteslice(0, size))
     end
 
     # Unloads the cartridge (writing its .srm), shuts the core and lets go of its library.
     def destroy
-      return unless @call
+      return unless @shutdown
 
       ObjectSpace.undefine_finalizer(self)
       @shutdown.call
-      @call = nil
-    end
-
-    # Each callback the core is handed, by the function that hands it over: what it returns, and
-    # what it is given.
-    CALLBACK_TYPES = {
-      retro_set_environment: [Fiddle::TYPE_BOOL, [Fiddle::TYPE_UINT, Fiddle::TYPE_VOIDP]],
-      retro_set_video_refresh: [Fiddle::TYPE_VOID, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_UINT, Fiddle::TYPE_UINT, Fiddle::TYPE_SIZE_T]],
-      retro_set_audio_sample: [Fiddle::TYPE_VOID, [Fiddle::TYPE_INT16_T, Fiddle::TYPE_INT16_T]],
-      retro_set_audio_sample_batch: [Fiddle::TYPE_SIZE_T, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_SIZE_T]],
-      retro_set_input_poll: [Fiddle::TYPE_VOID, []],
-      retro_set_input_state: [Fiddle::TYPE_INT16_T, [Fiddle::TYPE_UINT, Fiddle::TYPE_UINT, Fiddle::TYPE_UINT, Fiddle::TYPE_UINT]]
-    }.freeze
-
-    # +block+ as a C function the core can call, of the kind +setter+ hands over (CALLBACK_TYPES).
-    def self.closure(setter, &block)
-      result, args = CALLBACK_TYPES.fetch(setter)
-      Fiddle::Closure::BlockCaller.new(result, args, &block)
+      @shutdown = nil
     end
 
     # A CONSOLE NOBODY DESTROYED IS SHUT BY RUBY when it collects the Core, the same way #destroy
@@ -227,201 +252,75 @@ module RubySNESEmulator
     # and the copy is handed to the next console made in this process, while the library is
     # still open here with the old cartridge in it. bsnes takes a cartridge still in the console
     # out as the next one goes in, and writes its RAM to the new cartridge's save file, which the
-    # new one then reads: the new console starts from the old one's save.
+    # new one then reads: the new console starts from the old one's save. So the frontend is
+    # closed first and the copy given back after.
     #
     # The finalizer must hold nothing that holds the Core, or the Core is never collected. The
-    # callbacks the Core handed over call its methods, so they hold it. So a shutdown first hands
-    # the core callbacks of its own: they answer where saves go and ignore everything else.
+    # frontend's callbacks are C and hold nothing of Ruby's, so holding the frontend is enough.
     class Shutdown
-      def initialize(call, handle, copy, dir, save_dir)
-        @call = call
-        @handle = handle
+      def initialize(frontend, copy, dir)
+        @frontend = frontend
         @copy = copy
         @dir = dir
-        @save_dir = Fiddle::Pointer.malloc(save_dir.bytesize + 1, Fiddle::RUBY_FREE)
-        @save_dir[0, save_dir.bytesize + 1] = "#{save_dir}\0".b
       end
 
       # Takes the cartridge out (writing its .srm), shuts the core, closes the library and gives
       # the copy back. A finalizer is handed the Core's object id, which is not needed here.
       def call(_object_id = nil)
-        return unless @call
+        return unless @frontend
 
-        hand_over_own_callbacks
-        @call[:retro_unload_game].call
-        @call[:retro_deinit].call
-        @handle.close
+        @frontend.close
         @copy.give_back
-        @call = nil
+        @frontend = nil
         FileUtils.rm_rf(@dir)
-      end
-
-      private
-
-      def hand_over_own_callbacks
-        @callbacks = {
-          retro_set_environment: Core.closure(:retro_set_environment) do |cmd, data|
-            next false unless cmd & 0xFFFF == GET_SAVE_DIRECTORY
-
-            Fiddle::Pointer.new(data.to_i, 8)[0, 8] = [@save_dir.to_i].pack("J")
-            true
-          end,
-          retro_set_video_refresh: Core.closure(:retro_set_video_refresh) { nil },
-          retro_set_audio_sample: Core.closure(:retro_set_audio_sample) { nil },
-          retro_set_audio_sample_batch: Core.closure(:retro_set_audio_sample_batch) { |_data, frames| frames },
-          retro_set_input_poll: Core.closure(:retro_set_input_poll) { nil },
-          retro_set_input_state: Core.closure(:retro_set_input_state) { 0 }
-        }
-        @callbacks.each { |setter, callback| @call.fetch(setter).call(callback) }
       end
     end
 
     private
 
-    # Each row's top-left pixels, read by a pattern that steps over the rest of each square, so the
-    # pixels in between are never made into numbers at all.
-    def picture_colors(buffer)
-      across = @drawn_width / WIDTH
-      down = @drawn_height / HEIGHT
-      pattern = "#{"Vx#{(across - 1) * 4}" * WIDTH}"
-      (0...HEIGHT).flat_map do |y|
-        row = buffer.byteslice(y * down * @drawn_width * 4, WIDTH * across * 4)
-        row.unpack(pattern).map do |pixel|
-          ((pixel >> 19) & 0x1F) | (((pixel >> 11) & 0x1F) << 5) | (((pixel >> 3) & 0x1F) << 10)
-        end
+    def memory(id) = @frontend.memory(id)
+
+    # Opens a copy of the core of this Core's own and starts it, keeping the picture to the format
+    # #picture_colors reads.
+    def start_frontend(save_dir)
+      copy = KeptCopy.take
+      begin
+        @frontend = Frontend.new(copy.path, @dir, save_dir, SETTINGS, XRGB8888)
+      rescue StandardError, LoadError
+        copy.give_back
+        FileUtils.rm_rf(@dir)
+        raise
       end
-    end
-
-    def memory(id)
-      size = @call[:retro_get_memory_size].call(id)
-      return "".b if size.zero?
-
-      Fiddle::Pointer.new(@call[:retro_get_memory_data].call(id).to_i)[0, size]
-    end
-
-    def live(id, size) = Fiddle::Pointer.new(@call[:retro_get_memory_data].call(id).to_i, size)
-
-    FUNCTIONS = {
-      retro_set_environment: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
-      retro_set_video_refresh: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
-      retro_set_audio_sample: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
-      retro_set_audio_sample_batch: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
-      retro_set_input_poll: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
-      retro_set_input_state: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
-      retro_init: [[], Fiddle::TYPE_VOID],
-      retro_deinit: [[], Fiddle::TYPE_VOID],
-      retro_load_game: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_BOOL],
-      retro_unload_game: [[], Fiddle::TYPE_VOID],
-      retro_run: [[], Fiddle::TYPE_VOID],
-      retro_set_controller_port_device: [[Fiddle::TYPE_UINT, Fiddle::TYPE_UINT], Fiddle::TYPE_VOID],
-      retro_get_memory_data: [[Fiddle::TYPE_UINT], Fiddle::TYPE_VOIDP],
-      retro_get_memory_size: [[Fiddle::TYPE_UINT], Fiddle::TYPE_SIZE_T]
-    }.freeze
-
-    # WHERE THE CORE CALLS BACK FROM. bsnes runs each of the console's chips as a cothread, on a
-    # stack of its own, and Ruby must never run on one of those: its garbage collector scans the
-    # stack it believes the thread is on. The probe patch makes the core ask for the buttons, and
-    # hand over the sound and the picture, only from the stack retro_run was called on.
-    def load_library
-      @copy = KeptCopy.take
-      @handle = Fiddle::Handle.new(@copy.path, Fiddle::Handle::RTLD_NOW)
-      @call = FUNCTIONS.to_h do |name, (args, result)|
-        [name, Fiddle::Function.new(@handle[name.to_s], args, result)]
-      end
+      @shutdown = Shutdown.new(@frontend, copy, @dir)
+      ObjectSpace.define_finalizer(self, @shutdown)
       refuse_unpatched_core!
     end
 
     def refuse_unpatched_core!
-      return if @call[:retro_get_memory_size].call(REGISTERS) == 16
+      return if @frontend.memory_size(REGISTERS) == 16
 
+      destroy
       raise LoadError, "#{CoreLibrary.path} is a bsnes core built without this gem's probe patch, so it cannot hand " \
                        "over the console's memories. Build it with `rake compile_core` in ruby-snes-emulator/."
     end
 
-    def hand_over_callbacks
-      @callbacks = {
-        retro_set_environment: Core.closure(:retro_set_environment) { |cmd, data| environment(cmd, data) },
-        retro_set_video_refresh: Core.closure(:retro_set_video_refresh) { |*args| take_picture(*args) },
-        retro_set_audio_sample: Core.closure(:retro_set_audio_sample) do |left, right|
-          @audio << [left, right].pack("s<2")
-        end,
-        retro_set_audio_sample_batch: Core.closure(:retro_set_audio_sample_batch) do |data, frames|
-          @audio << Fiddle::Pointer.new(data.to_i)[0, frames * 4]
-          frames
-        end,
-        retro_set_input_poll: Core.closure(:retro_set_input_poll) { nil },
-        retro_set_input_state: Core.closure(:retro_set_input_state) do |port, device, _index, id|
-          device == JOYPAD && @buttons.fetch(port, []).include?(id) ? 1 : 0
-        end
-      }
-      @callbacks.each { |setter, callback| @call.fetch(setter).call(callback) }
-    end
-
-    # What the core asks of its frontend. Anything not answered here is answered "no", which a
-    # core takes as the frontend not having it.
-    def environment(cmd, data)
-      case cmd & 0xFFFF
-      when GET_CAN_DUPE then write_bool(data, true)
-      when SET_PIXEL_FORMAT then Fiddle::Pointer.new(data.to_i)[0, 4].unpack1("l<") == XRGB8888
-      when GET_SYSTEM_DIRECTORY then write_pointer(data, kept_string(@dir))
-      when GET_SAVE_DIRECTORY then write_pointer(data, kept_string(@save_dir))
-      when GET_VARIABLE then answer_setting(data)
-      when GET_VARIABLE_UPDATE then write_bool(data, false)
-      else false
-      end
-    rescue StandardError
-      false
-    end
-
-    def answer_setting(data)
-      struct = Fiddle::Pointer.new(data.to_i, 16)
-      key = Fiddle::Pointer.new(struct[0, 8].unpack1("J")).to_s
-      value = SETTINGS[key] or return false
-
-      struct[8, 8] = [kept_string(value).to_i].pack("J")
-      true
-    end
-
-    def write_bool(data, value)
-      Fiddle::Pointer.new(data.to_i, 1)[0, 1] = value ? "\1" : "\0"
-      true
-    end
-
-    def write_pointer(data, pointer)
-      Fiddle::Pointer.new(data.to_i, 8)[0, 8] = [pointer.to_i].pack("J")
-      true
-    end
-
-    # A C string the core may hold on to for as long as this core lives.
-    def kept_string(text) = kept_bytes("#{text}\0".b)
-
-    # +bytes+ copied into memory of their own that does not move, kept as long as the core lives.
-    def kept_bytes(bytes)
-      pointer = Fiddle::Pointer.malloc([bytes.bytesize, 1].max, Fiddle::RUBY_FREE)
-      pointer[0, bytes.bytesize] = bytes
-      @kept << pointer
-      pointer
-    end
-
-    # A picture handed over at the end of a frame. A null one is the last frame again.
-    def take_picture(data, width, height, pitch)
-      return if data.null?
+    # The picture handed over by the frame just played, if there was one. A frame the core drew
+    # nothing new for keeps the last.
+    def update_picture
+      bytes, width, height = @frontend.drain_picture
+      return unless bytes
 
       @drawn_width = width
       @drawn_height = height
-      rows = Fiddle::Pointer.new(data.to_i)[0, pitch * height]
-      @picture = pitch == width * 4 ? rows : (0...height).map { |y| rows.byteslice(y * pitch, width * 4) }.join
+      @picture = bytes
     end
 
-    # libretro's retro_game_info: the path, the bytes and their count, and nothing for meta.
+    # libretro's retro_game_info: the path and the bytes.
     def load_cartridge(rom_path)
-      bytes = File.binread(rom_path)
-      path = kept_string(File.expand_path(rom_path))
-      data = kept_bytes(bytes)
-      info = kept_bytes([path.to_i, data.to_i, bytes.bytesize, 0].pack("J4"))
-      raise ArgumentError, "bsnes would not load #{rom_path}" unless @call[:retro_load_game].call(info)
+      loaded = @frontend.load_game(File.expand_path(rom_path), File.binread(rom_path))
+      raise ArgumentError, "bsnes would not load #{rom_path}" unless loaded
 
-      @call[:retro_set_controller_port_device].call(0, JOYPAD)
+      @frontend.set_controller_port_device(0, JOYPAD)
     end
   end
 end

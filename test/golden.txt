@@ -36,6 +36,7 @@ test/all/vblank/audio/test_changing_notes_beside_effects.rb
 
 # Whole games: every example built and played a little on every run, and a few played right through
 test/all/examples/test_every_example_plays.rb
+test/all/examples/test_examples_use_every_verb.rb
 test/all/examples/test_pacman_example.rb
 test/all/examples/test_tower_example.rb
 test/console/gbc/examples/test_breakout_example.rb

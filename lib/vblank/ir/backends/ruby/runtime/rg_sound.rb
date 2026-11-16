@@ -184,6 +184,14 @@ def rg_square_clock_hz = @rg_game_sound_rules[0]
 def rg_wave_clock_hz = @rg_game_sound_rules[1]
 def rg_noise_clock_hz = @rg_game_sound_rules[2]
 def rg_output_hz = @rg_game_sound_rules[3]
+# The main volume the game named, in 127ths, or -1 for none (rg_sound.c's MAIN_VOLUME).
+def rg_main_volume = @rg_game_sound_rules[6 + RG_VOLUMES + 2]
+RG_MAIN_VOLUME_LOUDEST = 127
+
+# The whole mix at the main volume, rounded toward nought, as rg_sound.c's at_main_volume.
+def rg_at_main_volume(sum, main_volume)
+  main_volume < 0 ? sum : rg_sound_quotient(sum * main_volume, RG_MAIN_VOLUME_LOUDEST)
+end
 
 # C's division, which drops the fraction toward nought: Ruby's rounds down, which differs for a
 # sample below nought.
@@ -347,6 +355,8 @@ def rg_sound_render_frame
   # frame, and heard only with every voice. Asked once a frame, never once a sample.
   mixed = @rg_heard_only == 0 ? rg_hook_mixed_slice(nil) : 0
   mixed_count = mixed == 0 ? 0 : mixed.length
+  mixed_shift = rg_hook_mixed_sample_shift
+  main_volume = rg_main_volume # asked once a frame, never once a sample
   squares = @rg_squares
   sounding = []
   squares.each_with_index do |square, at|
@@ -357,8 +367,8 @@ def rg_sound_render_frame
   hiss = @rg_hiss
   noise_sounds = hiss.step_ticks != 0 && !hiss.loudness.stays_silent?
   noise_to_left, noise_to_right = rg_speakers_of(RG_NOISE_VOICE)
-  left = Array.new(count)
-  right = Array.new(count)
+  frame = rg_sound_frame_buffers(count)
+  left, right = frame
   i = 0
   while i < count
     if (@rg_slide_clock += 1) == RG_SLIDE_TICK_SAMPLES
@@ -385,15 +395,31 @@ def rg_sound_render_frame
       on_right += sample if noise_to_right
     end
     if mixed_count > 0 # the recordings play from both
-      sample = mixed[i * mixed_count / count] * RG_MIX_STEP
+      sample = (mixed[i * mixed_count / count] * RG_MIX_STEP) >> mixed_shift
       on_left += sample
       on_right += sample
+    end
+    unless main_volume < 0
+      on_left = rg_at_main_volume(on_left, main_volume)
+      on_right = rg_at_main_volume(on_right, main_volume)
     end
     left[i] = on_left < -32768 ? -32768 : (on_left > 32767 ? 32767 : on_left)
     right[i] = on_right < -32768 ? -32768 : (on_right > 32767 ? 32767 : on_right)
     i += 1
   end
-  [left, right]
+  frame
+end
+
+# The two speakers' Arrays a frame's sound is written into, [left, right], made +count+ samples long:
+# the same two every frame, so a frame's sound takes no new memory (a new pair each frame was
+# memory Ruby had to collect, and enough of it brings on a collection that stops the game for frames).
+# Whoever is handed them keeps a copy if it keeps the sound past the frame (Live::Session says so to
+# its devices). A frame is a sample shorter or longer than the one before as the leftover part of a
+# sample carries, so each is cut back here, and grows as it is written.
+def rg_sound_frame_buffers(count)
+  frame = (@rg_sound_frame ||= [[], []])
+  frame.each { |side| side.pop while side.length > count }
+  frame
 end
 
 # --- the log ---
@@ -403,7 +429,7 @@ def rg_sound_log(line) = rg_driver_sound_logged(line)
 # --- the sounds the game makes itself ---
 
 def rg_sound_enabled
-  rg_sound_log("enabled")
+  rg_sound_log(rg_main_volume < 0 ? "enabled" : "enabled #{rg_main_volume}")
   @rg_sides.fill(0)
 end
 

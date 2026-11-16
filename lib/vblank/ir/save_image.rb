@@ -51,13 +51,31 @@ module VBlank
         @wiping = nil
       end
 
+      # THE CARTRIDGE'S CLOCK CHIP AS AN EMULATOR LEFT IT, kept beside the save memory, or nil.
+      # A cartridge with a clock has a chip that goes on counting while the console is off, on
+      # a battery of its own, as the save memory keeps its bytes; an emulator writes what that
+      # chip holds, and when, after the save memory in the same file. These are those bytes, in
+      # the emulator's own form, carried so the next run of the cartridge from this save finds
+      # its clock where this one left it (Diagnostics::Verifier#write_save_memory). Nothing here
+      # reads them, and the interpreter is given its clock by the test instead.
+      attr_reader :clock_state
+
+      # Keep +bytes+ as #clock_state. Returns self.
+      def keep_clock_state(bytes)
+        @clock_state = bytes&.b&.freeze
+        self
+      end
+
       # The kind and size of the chip (an IR::SaveLayout::Memory).
       def memory = @memory || SaveLayout::PACKED
 
       # Take the save memory +program_memory+ a program declares it has. A chip cannot change, so
-      # one that was already another size is refused.
+      # one that was already another size is refused. One of the same size takes the program's
+      # kind: a .sav file says only how big the chip is (#from_sav), and 64K of it is the Advance's
+      # flash or a Super FX cartridge's battery-backed RAM.
       def use_memory!(program_memory)
         @memory ||= program_memory
+        @memory = program_memory if @memory.size == program_memory.size
         return if @memory == program_memory
 
         raise WrongSize.new(@memory.kilobytes, program_memory.kilobytes)

@@ -67,7 +67,7 @@ module VBlank
             interpreter, interpreted = play_on_interpreter(program, frames, interpreters_save)
             difference = self.class.first_difference(interpreted, moments) ||
                          self.class.sounds_difference(interpreter.audio, audio_played) ||
-                         self.class.mix_difference(interpreter.mixed_sound, mixed_sound) ||
+                         self.class.mix_difference(interpreter.full_depth_sound, mixed_sound) ||
                          self.class.drops_difference(interpreter.sound_drops, sound_drops) ||
                          self.class.save_difference(interpreters_save, @save)
             raise Disagreement, disagreement_message(difference, program, frames) if difference

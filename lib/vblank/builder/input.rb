@@ -101,15 +101,15 @@ module VBlank
       # keys (I J K L, O, U, 7 to 0) in a game for more than one player. A player can still change
       # every key in Controls, and Reset puts the game's layout back.
       def computer_keys(**keys)
-        add_computer_controls!(:key, IR::ComputerControls.keys_entries!(keys, most_players: @program.most_players))
+        add_computer_controls!(:key, IR::ComputerControls.keys_entries!(keys, console: console, most_players: @program.most_players))
       end
 
       # MORE GAMEPAD BUTTONS FOR A BUTTON ON A COMPUTER, as `computer_keys` adds keys: the free ones
-      # are :west, :north, :left_stick and :right_stick.
+      # are :west, :north, :left_stick and :right_stick, but for those a console's X, Y or C start on.
       #
       #   computer_gamepad a: :west
       def computer_gamepad(**buttons)
-        add_computer_controls!(:pad, IR::ComputerControls.pads_entries!(buttons))
+        add_computer_controls!(:pad, IR::ComputerControls.pads_entries!(buttons, console: console))
       end
 
       private

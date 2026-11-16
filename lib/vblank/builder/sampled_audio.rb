@@ -2,7 +2,7 @@
 
 module VBlank
   class Builder
-    # The sampled-audio verb: `sample` — define a recorded sound (8-bit PCM) and hand
+    # The sampled-audio verb: `sample` — define a recorded sound (8- or 16-bit PCM) and hand
     # back a {Sample} handle to play and stop it. A concern of {Builder}, mixed in so
     # `sample` stays a flat DSL verb.
     module SampledAudio
@@ -20,10 +20,16 @@ module VBlank
       # samples as an Array of -128..127 (or a binary String) and the `rate:` they play at.
       # Returns a {Sample} handle — `play` it, `stop` it.
       #
+      # +bits+ 16 takes `pcm:` as 16-bit samples, an Array of -32768..32767 or a String of two
+      # bytes each, low byte first. A 16-bit WAV is 16-bit without it. A build for a computer
+      # plays all sixteen bits; a console's build keeps what its sound hardware holds, made from
+      # the high byte of each sample, as an 8-bit recording of those bytes would be.
+      #
       # @param name [Symbol] the sample's name
-      # @param pcm [Array<Integer>, String, nil] the 8-bit signed PCM samples (or use from:)
+      # @param pcm [Array<Integer>, String, nil] the signed PCM samples (or use from:)
       # @param from [String, nil] a .wav file to load (or use pcm:)
       # @param rate [Integer, nil] samples per second — defaults to the WAV's rate, or 8192 for pcm:
+      # @param bits [Integer, nil] 8 or 16, how many bits each `pcm:` sample has (8 when not given)
       # @return [Sample]
       #
       # +length+ is how many of the samples the recording plays, from its first: for a recording
@@ -35,7 +41,7 @@ module VBlank
       # bytes or a slot of the data pack, and +brr_loop+ how many bytes into it its loop starts: the
       # Super Nintendo plays those bytes as they are, and every other build what the chip decodes.
       def sample(name, pcm: nil, from: nil, rate: nil, note: :C4, envelope: nil, holds_from: nil, length: nil,
-                 brr: nil, brr_loop: 0)
+                 brr: nil, brr_loop: 0, bits: nil)
         raise ArgumentError, "A sample name must be a Symbol. You gave #{name.inspect}." unless name.is_a?(Symbol)
         if VBlank::Audio::Music::CONSOLE_VOICE_NAMES.include?(name)
           raise ArgumentError, "The recording #{name.inspect} has the name of one of the console's own " \
@@ -46,9 +52,15 @@ module VBlank
 
         refuse_brr_beside_samples!(name, pcm: pcm, from: from, holds_from: holds_from, length: length) if brr
         refuse_brr_loop_alone!(name, brr_loop) unless brr
+        unless bits.nil?
+          refuse_unknown_bits!(name, bits)
+          refuse_bits_without_pcm!(name, pcm)
+        end
         # A setting may be a number of the data pack, read here (PackScores), or, in a build that
         # leaves its pack out, read as the game starts: the recording then holds a stand-in for it.
-        settings_from_file = recording_settings_in_start_file(rate: rate, holds_from: holds_from, envelope: envelope, length: length)
+        brr_from_file = brr_in_start_file(name, brr, brr_loop) if brr
+        settings_from_file = recording_settings_in_start_file(rate: rate, holds_from: holds_from, envelope: envelope, length: length,
+                                                              brr: brr_from_file)
         # Must be worked out before pack_setting_value turns the pack's numbers into plain ones.
         # A length, a hold or a rate read here from the pack is the player's, held as the runtime
         # holds it as the game starts (#recording_length, #holds_point, #pack_rate_value), so the
@@ -65,16 +77,26 @@ module VBlank
         envelope = chip_envelope.closest_envelope if chip_envelope
         # A recording in the Super Nintendo sound chip's format is played everywhere else as the
         # samples the chip decodes from it, round its own loop.
-        chip_recording = snes_recording(name, brr, brr_loop) if brr
-        if chip_recording
+        chip_recording = snes_recording(name, brr, brr_loop) if brr && !brr_from_file
+        full_samples = nil
+        if brr_from_file
+          # Decoded as the game starts (IR::StartFile::BRR): zeros of the most it can come to.
+          loop_written = brr_from_file.loop_at if brr_from_file.loop_at.is_a?(Integer)
+          bytes = "\0".b * IR::StartFile.brr_room(brr_from_file.count, loop_written)
+          rate ||= DEFAULT_SAMPLE_RATE
+          holds_from = nil
+        elsif chip_recording
           decoded = chip_recording.decoded
           bytes = decoded.pcm
           rate ||= DEFAULT_SAMPLE_RATE
           holds_from = decoded.holds_from
         else
-          bytes, rate = sample_data(name, pcm, from, rate)
-          room = bytes.bytesize
-          bytes = bytes.byteslice(0, recording_length(name, length, room, length_from_pack: length_from_pack)) if length
+          recording = sample_data(name, pcm, from, rate, bits)
+          room = recording.bytes.bytesize
+          recording = recording.first(recording_length(name, length, room, length_from_pack: length_from_pack)) if length
+          bytes = recording.bytes
+          full_samples = recording.full_samples
+          rate = recording.rate
         end
         # Where a hold the game wrote can be: inside the samples given, where the pack gave the length.
         hold_room = length_from_pack ? room : bytes.bytesize
@@ -90,7 +112,8 @@ module VBlank
                                                    holds_from: holds_point(name, holds_from, bytes.bytesize, rate, room: hold_room,
                                                                            from_pack: hold_from_pack),
                                                    from_file: start_file_offset, chip_envelope: chip_envelope,
-                                                   settings_from_file: settings_from_file, chip_recording: chip_recording))
+                                                   settings_from_file: settings_from_file, chip_recording: chip_recording,
+                                                   full_samples: full_samples))
         DSL::Sample.new(self, name)
       end
 
@@ -104,13 +127,33 @@ module VBlank
       #
       # @return [Instrument]
       def instrument(name, pcm: nil, from: nil, rate: nil, note: :C4, envelope: nil, holds_from: nil, length: nil,
-                     brr: nil, brr_loop: 0)
+                     brr: nil, brr_loop: 0, bits: nil)
         note_verb_written(:instrument)
         DSL::Instrument.new(self, sample(name, pcm: pcm, from: from, rate: rate, note: note, envelope: envelope,
-                                               holds_from: holds_from, length: length, brr: brr, brr_loop: brr_loop))
+                                               holds_from: holds_from, length: length, brr: brr, brr_loop: brr_loop,
+                                               bits: bits))
       end
 
       private
+
+      # `bits:` is how many bits each `pcm:` sample has: 8 or 16.
+      def refuse_unknown_bits!(name, bits)
+        return if [8, 16].include?(bits)
+
+        raise ArgumentError, "sample :#{name} has bits: #{bits.inspect}. bits: is how many bits each pcm: sample has. " \
+                             "To fix this, give bits: 8 or bits: 16."
+      end
+
+      # `bits:` says how deep the samples given as `pcm:` are, so it means nothing for any other
+      # source: a WAV file and a BRR recording say their own, and a data pack's samples are bytes.
+      def refuse_bits_without_pcm!(name, pcm)
+        source = "takes its samples from the data pack, which keeps 8 bits a sample" if pcm.is_a?(DSL::PackSlot)
+        source ||= "has no pcm:" unless pcm
+        return unless source
+
+        raise ArgumentError, "sample :#{name} has bits: and #{source}. bits: is for samples given as pcm:. A WAV file " \
+                             "says its own bits. To fix this, remove bits:."
+      end
 
       # A BRR recording's samples and where it loops are its own bytes', so nothing else can give them.
       def refuse_brr_beside_samples!(name, pcm:, from:, holds_from:, length:)
@@ -132,30 +175,64 @@ module VBlank
 
       # THE RECORDING +brr+ (bytes, or a slot of the data pack's samples) as an Audio::SNESRecording
       # that loops back +brr_loop+ bytes in (a number of the pack, or the game's own). The chip's
-      # decoding is worked out here, as the game is built, from bytes a build that leaves its pack
-      # out does not hold.
+      # decoding is worked out here, as the game is built. What the pack gives is the player's, so
+      # it is held as a runtime holds it as the game starts (IR::StartFile.brr_held); what the game
+      # wrote itself is refused where it is wrong.
       def snes_recording(name, brr, brr_loop)
+        from_pack = brr.is_a?(DSL::PackSlot) || brr_loop.is_a?(DSL::PackNumber)
         if brr.is_a?(DSL::PackSlot)
-          refuse_slot_from_elsewhere!(brr, "sample :#{name}'s brr:")
-          refuse_slot_read_wrongly!(brr, :samples, "sample :#{name}'s brr:")
-          refuse_brr_left_out!(name)
+          refuse_brr_slot!(name, brr)
+          refuse_brr_not_blocks!(name, brr.count, brr_loop.is_a?(DSL::PackNumber) ? 0 : brr_loop)
           brr = @data_pack_contents.bytes_of(brr.layout.name).byteslice(brr.first_pixel, brr.count)
         end
-        refuse_brr_left_out!(name) if brr_loop.is_a?(DSL::PackNumber)
         loop_at = pack_setting_value(brr_loop, "sample :#{name}'s brr_loop:", nil)
         begin
-          Audio::SNESRecording.new(bytes: brr, loop_at: loop_at)
+          from_pack ? IR::StartFile.brr_held(brr, loop_at) : Audio::SNESRecording.new(bytes: brr, loop_at: loop_at)
         rescue ArgumentError => e
           raise ArgumentError, "sample :#{name}: #{e.message}"
         end
       end
 
-      def refuse_brr_left_out!(name)
-        return unless pack_left_out?
+      # Where a recording in the chip's format is in the start file (an IR::StartFile::BRR), for one
+      # read from the pack with the pack left out; nil for any other. The slot's size and a loop
+      # point the game wrote are the game's own words, so they are refused here where they are not
+      # a recording's, as Audio::SNESRecording refuses them, on bytes of that size.
+      def brr_in_start_file(name, brr, brr_loop)
+        return nil unless pack_left_out? && (brr.is_a?(DSL::PackSlot) || brr_loop.is_a?(DSL::PackNumber))
 
-        raise ArgumentError, "sample :#{name} reads a BRR recording from the data pack, and this build reads its pack as the " \
-                             "game starts. A BRR recording from the pack is not made that way yet. To fix this, build the " \
-                             "game all-in-one."
+        refuse_brr_written_with_pack_loop!(name) unless brr.is_a?(DSL::PackSlot)
+        refuse_brr_slot!(name, brr)
+        loop_at = pack_number_in_start_file(brr_loop) if brr_loop.is_a?(DSL::PackNumber)
+        if loop_at
+          refuse_slot_from_elsewhere!(brr_loop.slot, "sample :#{name}'s brr_loop:")
+        else
+          refuse_brr_not_blocks!(name, brr.count, brr_loop)
+        end
+        IR::StartFile::BRR.new(at: @pack_slot_starts.fetch(brr.layout.name) + brr.first_pixel, count: brr.count, loop_at: loop_at || brr_loop)
+      end
+
+      def refuse_brr_slot!(name, slot)
+        refuse_slot_from_elsewhere!(slot, "sample :#{name}'s brr:")
+        refuse_slot_read_wrongly!(slot, :samples, "sample :#{name}'s brr:")
+      end
+
+      # What Audio::SNESRecording refuses of +count+ bytes that loop back +loop_at+ bytes in, made
+      # of blocks of nought whose last ends the recording.
+      def refuse_brr_not_blocks!(name, count, loop_at)
+        recording = Audio::SNESRecording
+        blank = "\0".b * count
+        blank.setbyte(count - recording::BLOCK_BYTES, recording::END_BIT) if count >= recording::BLOCK_BYTES
+        recording.new(bytes: blank, loop_at: loop_at)
+      rescue ArgumentError => e
+        raise ArgumentError, "sample :#{name}: #{e.message}"
+      end
+
+      # A recording the game wrote, with its loop point in the pack: the bytes are not in the file,
+      # so the runtime has nothing to decode them from.
+      def refuse_brr_written_with_pack_loop!(name)
+        raise ArgumentError, "sample :#{name} has BRR bytes written in the game and brr_loop: from the data pack. This build " \
+                             "reads its pack as the game starts. A loop point from the pack is read only with its " \
+                             "recording from the pack. To fix this, give brr: from the pack too, or build the game all-in-one."
       end
 
       # +holds_from+ as a sample number, read here where it is a number of the pack
@@ -222,18 +299,25 @@ module VBlank
         IR::StartFile.hold_held(at, length)
       end
 
-      # Resolve the sample's [bytes, rate] from whichever source was given — a WAV file
-      # (its own rate, unless overridden) or raw pcm: samples — insisting on exactly one.
-      def sample_data(name, pcm, from, rate)
+      # Resolve the sample's samples and rate (an Audio::Wav::Recording) from whichever source was
+      # given — a WAV file (its own rate, unless overridden) or raw pcm: samples — insisting on
+      # exactly one. Its bytes are the 8-bit samples every console's build plays; a 16-bit
+      # recording's high byte of each sample, as a 16-bit WAV's have always been.
+      def sample_data(name, pcm, from, rate, bits)
+        recording = Audio::Wav::Recording
         if from
           raise ArgumentError, "You gave both pcm: and from: to sample :#{name}. Give pcm: or from:, not both." if pcm
 
           loaded = Audio::Wav.load(resolve_asset_path(from))
-          [loaded[:bytes], rate || loaded[:rate]]
+          rate ? loaded.with(rate: rate) : loaded
         elsif pcm.is_a?(DSL::PackSlot)
-          [pack_recording_bytes(name, pcm, rate), rate]
+          recording.new(bytes: pack_recording_bytes(name, pcm, rate), full_samples: nil, rate: rate)
+        elsif pcm && bits == 16
+          full_samples = pack_pcm_16bit(name, pcm)
+          recording.new(bytes: full_samples.unpack("s<*").map { |level| level >> 8 }.pack("c*"), full_samples: full_samples,
+                        rate: rate || DEFAULT_SAMPLE_RATE)
         elsif pcm
-          [pack_pcm(name, pcm), rate || DEFAULT_SAMPLE_RATE]
+          recording.new(bytes: pack_pcm(name, pcm), full_samples: nil, rate: rate || DEFAULT_SAMPLE_RATE)
         else
           raise ArgumentError, "sample :#{name} needs sound data. Give pcm: (raw samples) or from: (a .wav file)."
         end
@@ -275,6 +359,30 @@ module VBlank
           pcm.pack("c*")
         else
           raise ArgumentError, "sample :#{name} pcm: must be an Array of -128..127 or a byte String. You gave #{pcm.class}."
+        end
+      end
+
+      # Pack 16-bit PCM into two bytes a sample, low byte first, from a String already in that
+      # form or an Array of sample values.
+      def pack_pcm_16bit(name, pcm)
+        case pcm
+        when String
+          if pcm.bytesize.odd?
+            raise ArgumentError, "sample :#{name} has bits: 16 and a pcm: String of #{pcm.bytesize} bytes. A 16-bit " \
+                                 "sample is two bytes, low byte first, so the String must have an even length."
+          end
+          raise ArgumentError, "sample :#{name} has no PCM data. Give it one or more samples." if pcm.empty?
+
+          pcm.b
+        when Array
+          bad = pcm.find { |s| !s.is_a?(Integer) || !s.between?(-32_768, 32_767) }
+          raise ArgumentError, "sample :#{name} has a bad PCM value #{bad.inspect}. With bits: 16, each value must be -32768..32767." if bad
+          raise ArgumentError, "sample :#{name} has no PCM data. Give it one or more samples." if pcm.empty?
+
+          pcm.pack("s<*")
+        else
+          raise ArgumentError, "sample :#{name} pcm: must be an Array of -32768..32767 or a String of 16-bit samples. " \
+                               "You gave #{pcm.class}."
         end
       end
     end

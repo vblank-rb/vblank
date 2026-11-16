@@ -31,6 +31,10 @@ module VBlank
           # Whether a fade to black is the display's brightness (Console::Description#fades_by_brightness).
           attr_writer :dims
 
+          # What mixes a see-through layer in place of #mix_see_through's own rule, or nil
+          # (Reference#mix_see_through_with).
+          attr_writer :see_through_mixer
+
           # @param fill [Integer] the color every cell starts as (0 reads as black)
           # @param color_bits [Integer] how many bits of each color channel the console shows, from
           #   the top: the five the other consoles keep, or the three of the Genesis
@@ -51,6 +55,7 @@ module VBlank
             @paint_toward = nil
             @paint_steps = 0
             @through = nil
+            @see_through_mixer = nil
             @mixed_tops = nil
             @scenery = nil
             @painting_sprite = false
@@ -668,6 +673,8 @@ module VBlank
           # documentation describes the five-bit mix; what the picture is checked against
           # is the widened one.
           def mix_see_through(color, under, near, far)
+            return @see_through_mixer.mix(color, under, near, far) if @see_through_mixer
+
             packed = 0
             3.times do |channel|
               shift = channel * 5

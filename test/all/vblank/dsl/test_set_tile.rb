@@ -153,6 +153,84 @@ class TestSetTile < Minitest::Test
     assert_equal Color.resolve(:red), pixel_at(0, 1, screen), "nothing else was written over"
   end
 
+  # A BACKGROUND WHOSE LINE RUNS AGAIN keeps the cells the game changed: it was up already, and
+  # putting it up again shows it from its corner, as it now is (Reference#put_up_background). The
+  # background is declared in a routine the game loop calls, so its line runs every pass; the door
+  # opens on the third pass and must stay open on every pass after.
+  private def room_put_up_every_pass
+    builder = Builder.new
+    builder.instance_eval do
+      screen :tiled
+      image(:wall, "#" => :red) { SOLID_TILE }
+      image(:floor, "#" => :blue) { SOLID_TILE }
+      tiles :dungeon, "#" => :wall, "." => :floor
+      frames = var :frames, 0
+      func(:put_up_room) do
+        room = background :room, tiles: :dungeon, map: Array.new(6) { "######" }
+        room.set_tile 3, 1, "." if frames == 2
+      end
+      game_loop do
+        call :put_up_room
+        wait_vblank
+        frames += 1
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  # A background every screen shows keeps the cell the game changed while scenes of no scenery of
+  # their own take turns over it (Reference#take_over puts nothing of it up again).
+  def test_scenes_taking_turns_keep_the_cell_changed_on_the_background_every_screen_shows
+    screen = game_player.run(scene_turns_room(Array.new(6) { "######" }), frames: 9).screen
+
+    assert_equal Color.resolve(:blue), pixel_at(3, 1, screen), "the door stays open"
+    assert_equal Color.resolve(:red), pixel_at(2, 1, screen), "and its neighbour is untouched"
+  end
+
+  # ...a map bigger than a console's grid too.
+  def test_scenes_taking_turns_keep_the_cell_changed_on_a_big_background_every_screen_shows
+    screen = game_player.run(scene_turns_room(Array.new(10) { "#" * 34 }), frames: 9).screen
+
+    assert_equal Color.resolve(:blue), pixel_at(3, 1, screen), "the door stays open"
+    assert_equal Color.resolve(:red), pixel_at(2, 1, screen), "and its neighbour is untouched"
+  end
+
+  # A room of +map+ every screen shows, its door opened on the second pass, under two scenes with no
+  # scenery of their own that take turns.
+  private def scene_turns_room(map)
+    builder = Builder.new
+    builder.instance_eval do
+      screen :tiled
+      image(:wall, "#" => :red) { SOLID_TILE }
+      image(:floor, "#" => :blue) { SOLID_TILE }
+      tiles :dungeon, "#" => :wall, "." => :floor
+      room = background :room, tiles: :dungeon, map: map
+      frames = var :frames, 0
+      state = var :state, 0
+      scene(:play) { nil }
+      scene(:pause) { nil }
+      game_loop do
+        room.set_tile 3, 1, "." if frames == 1
+        state = 1 if frames == 3
+        state = 0 if frames == 6
+        case_var(:state) do
+          when_val 0, :play
+          when_val 1, :pause
+        end
+        frames += 1
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  def test_a_background_put_up_again_keeps_the_cell_changed
+    screen = game_player.run(room_put_up_every_pass, frames: 6).screen
+    assert_equal Color.resolve(:blue), pixel_at(3, 1, screen), "the door stays open"
+    assert_equal Color.resolve(:red), pixel_at(2, 1, screen), "and its neighbour is untouched"
+  end
+
   # --- the console draws the same thing ---
 
   def test_both_backends_agree_after_a_cell_changed

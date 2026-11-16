@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "stringio"
 
 # `list :name, capacity: N` — a bounded, ordered collection whose length changes
 # at run time. Assert its behavior through the reference interpreter (the oracle):
@@ -500,6 +501,23 @@ class TestList < Minitest::Test
 
     assert_equal 6, run[:count]
     assert_equal [1, 2, 3, 4, 5, 6], run.list(:seen)
+  end
+
+  # A list of more than 65,535 slots of a byte is more than the work memory of the Color, the
+  # Genesis or the Super Nintendo holds in one piece, so each build stops, naming the list, rather
+  # than keeping a count too big for its header. The consoles that hold one play it as the
+  # interpreter does (LongListTests, test/long_list_tests.rb).
+  def test_a_list_of_more_than_65535_slots_is_refused_where_the_memory_cannot_hold_it
+    %i[gbc genesis snes].each do |console|
+      err = StringIO.new
+      error = assert_raises(VBlank::BuildError, console.to_s) do
+        VBlank.build("LONG LIST", console: console, out: StringIO.new, err: err) do
+          big = list :big, capacity: 100_000, width: :byte
+          game_loop { big.push 1 }
+        end
+      end
+      assert_match(/list :big/, err.string + error.message, console.to_s)
+    end
   end
 
   def test_a_width_the_list_does_not_know_is_refused

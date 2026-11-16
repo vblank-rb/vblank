@@ -92,6 +92,28 @@ module VBlank
             # Does the game ask for a cell on the frame being drawn (`now: true`)?
             def cells_shown_now? = @reachable.any? { |node| node.kind == :set_tile && node.now }
 
+            # Does the runtime keep GRID_KEPT, for a put-up that keeps the cells its layer holds: a background
+            # every screen shows going up from a line that can run more than once (#put_up_again?), or put back
+            # as a scene takes over with the cells the game changed (#puts_changed_cells_back?).
+            def reserves_grid_kept?
+              puts_changed_cells_back? || @reachable.any? do |node|
+                node.kind == :background && !@handover.on_arrival?(node) && !painted_screen_for?(node) && put_up_again?(node)
+              end
+            end
+
+            # Does a scene with no scenery of its own put back, as it takes over (#emit_scene_arrival), a background
+            # every screen shows whose cells the game changes (#keeps_cells_on_arrival?)?
+            def puts_changed_cells_back?
+              return false unless @handover.always_up.scenery.any? { |bg| keeps_cells_on_arrival?(bg) }
+
+              @scenes.each_key.any? { |scene| @handover.arrival(scene).scenery.all?(&:bar?) }
+            end
+
+            # Whether +bg+, put back as a scene with no scenery of its own takes over, keeps the cells the game
+            # changed, as the interpreter never takes that scenery down (Reference#take_over): a background on a
+            # screen drawn from tiles that a reachable `set_tile` changes.
+            def keeps_cells_on_arrival?(bg) = !bg.bar? && !painted_screen_for?(bg) && cells_changed?(bg)
+
             # Has a status bar of the game more than one map to show (Runtime::Picture#emit_bar_show)?
             def bar_shows_maps? = @backgrounds.each_value.any? { |bg| bg.bar? && bg.every_map.length > 1 }
 
@@ -185,7 +207,8 @@ module VBlank
                              first_cleared_to: @program.walk.find { |node| node.kind == :clear_screen }&.color,
                              backdrop: color_backdrop, piece_height: piece_height,
                              scene_pictures: (scene_pictures if @plans_scene_pictures),
-                             indexes_in_banks: @indexes_in_banks, tile_facts: @cache.facts.tile_facts)
+                             indexes_in_banks: @indexes_in_banks, tile_facts: @cache.facts.tile_facts,
+                             sprite_slots: sprite_slots)
               @grids = {} # a background declaration -> its grid's number
               @backgrounds = by_name(@program.walk, :background)
               @drawn_sprites = SpriteNames.new(@program) # the numbers a run names its sprites by
@@ -770,6 +793,7 @@ module VBlank
                 store(var)
               end
               always.scenery.each { |bg| background_put_up(bg) }
+              emit_bar_shown_early_noted
               @asm.label(unchanged)
             end
 
@@ -803,7 +827,8 @@ module VBlank
                 return runtime_call("rt_background_put_up", [Build.int(0)])
               end
 
-              scenery.each { |bg| background_put_up(bg) }
+              scenery.each { |bg| background_put_up(bg, as_shown: own.empty?) }
+              emit_bar_beside_arrival(arrival)
               painted = arrival.scenery.empty? ? @handover.always_up.painted_tiles : arrival.painted_tiles
               painted.each { |run| emit_run_copy(run) }
               # The sprites this pass placed, in front of the scenery the scene brought of its own,
@@ -1067,8 +1092,19 @@ module VBlank
             def emit_background(node)
               return paint_background(node) if painted_screen_for?(node)
 
-              background_put_up(node) unless @handover.on_arrival?(node)
+              return if @handover.on_arrival?(node)
+
+              background_put_up(node, again: put_up_again?(node))
+              emit_bar_beside(node)
             end
+
+            # WHETHER +bg+'S LINE CAN RUN MORE THAN ONCE (one in a routine, or in the game loop). Put up the second
+            # time, it keeps the cells the game changed, as the interpreter keeps them (Reference#put_up_background).
+            # The Color already copies nothing for a grid that is up, and a changed cell marks its grid as not
+            # up (GRID_UP), so a scene's arrival puts the declared map back; a put-up that keeps the cells is
+            # told apart by a second number, the grid whose cells the layer holds (Runtime::Picture::GRID_KEPT),
+            # rather than by a note of the lowering's own (SceneryWrites#emit_put_up_keeping_cells).
+            def put_up_again?(bg) = bg.parent&.kind != :program
 
             # Whether a background is declared where the screen is painted: its scene's screen, or the
             # game's for one in no scene.
@@ -1102,14 +1138,80 @@ module VBlank
             # unscrolled every time, even when its grid is up already: a background put up again
             # on every pass, after the game has set where its view sits, shows from its corner on
             # every frame (Runtime::Picture's rt_background_put_up_unscrolled).
-            def background_put_up(bg)
-              return bar_put_up(bg) if bg.bar?
+            #
+            # +again+ for a line that can run more than once (#put_up_again?): the cells the game changed stay,
+            # through rt_background_put_up_kept, or for a big map the game changes, its copy in memory
+            # (#changed_big_place) copied in the first time alone (SceneryWrites#emit_put_up_keeping_cells).
+            #
+            # +as_shown+ for the scenery every screen shows put back as a scene takes over: it shows the map the
+            # game last handed it, and the cells the game changed, as the interpreter's picture never stopped
+            # showing them (#emit_for_map_shown, #keeps_cells_on_arrival?).
+            def background_put_up(bg, again: false, as_shown: false)
+              return bar_put_up(bg, again: again) if bg.bar?
 
               emit_tile_room(tile_room(bg)) if bg.several_sets? # up as declared: its first area
 
               emit_bends_shown(bg)
-              big?(bg) ? big_put_up(bg, 0, "rt_big_put_up") : runtime_call("rt_background_put_up_unscrolled", [Build.int(grid_of(bg))])
-              note_put_up(@put_up_this_pass)
+              if big?(bg)
+                big_put_up_again(bg, again, as_shown)
+              elsif again || as_shown
+                kept = again || keeps_cells_on_arrival?(bg)
+                emit_for_map_shown(bg) do |which|
+                  emit_tile_room(tile_room(bg, which)) if bg.several_sets? && which.positive? # ...or the shown map's
+                  runtime_call(kept ? "rt_background_put_up_kept" : "rt_background_put_up_unscrolled", [Build.int(grid_of(bg, which))])
+                end
+              else
+                runtime_call("rt_background_put_up_unscrolled", [Build.int(grid_of(bg))])
+              end
+              note_put_up(corner_note(BACKGROUND_LAYER))
+            end
+
+            # A BACKGROUND OF SEVERAL MAPS PUT UP AGAIN keeps the map the game handed it, as the interpreter keeps
+            # it (Reference#put_up_background). Which map that is, is the number the game's own frame boundary
+            # writes as it hands the map over (the second of Nodes::Background#choice, the map really in the
+            # cells), so the put-up asks that and not the runtime: the runtime keeps only the grid its layer holds,
+            # and grids are shared between backgrounds and not numbered by map. The block writes the put-up of map
+            # number +which+; a background of one map writes its first alone.
+            def emit_for_map_shown(bg)
+              return yield(0) if bg.every_map.one?
+
+              shown = Nodes::Background.map_in_cells_var(bg.name)
+              done = fresh("map_shown")
+              (1...bg.every_map.length).each do |which|
+                other = fresh("not_map_shown")
+                jump_unless(Build.binop(:==, Build.var_ref(shown), Build.int(which)), other)
+                yield which
+                @asm.jump(done)
+                @asm.label(other)
+              end
+              yield 0
+              @asm.label(done)
+            end
+
+            # A big map put up: as declared, or as the map shown for a line that runs again or one put back as a
+            # scene takes over (+as_shown+); its copy in memory kept from the first put-up of a line that runs
+            # again, for one the game changes.
+            def big_put_up_again(bg, again, as_shown)
+              return big_put_up(bg, 0, "rt_big_put_up") unless again || as_shown
+              return emit_for_map_shown(bg) { |which| big_put_up(bg, which, "rt_big_put_up") } unless cells_changed?(bg)
+              # Written once in the program's own lines, it went up and was copied in as the game started, so put
+              # back as a scene takes over its copy already holds the cells the game changed. A line that runs
+              # again notes its first copy (SceneryWrites#emit_put_up_keeping_cells).
+              return emit_big_put_up_from_memory(bg) if bg.parent&.kind == :program
+
+              emit_put_up_keeping_cells(bg, BACKGROUND_LAYER) do |kept|
+                next big_put_up(bg, 0, "rt_big_put_up") unless kept
+
+                emit_big_put_up_from_memory(bg)
+              end
+            end
+
+            # A big map the game changes put up from its copy in memory, as the map shown.
+            def emit_big_put_up_from_memory(bg)
+              emit_for_map_shown(bg) do |which|
+                cols, rows = TileMap.size_of(bg.every_map.fetch(which))
+                runtime_call("rt_big_put_up", [Build.int(@art.big_map_in_memory(cols, rows, changed_big_place(bg), repeats: !bg.streams?))])
+              end
             end
 
             # Whether any of a background's maps is bigger than the Color's grid of 32×32 cells.
@@ -1121,15 +1223,18 @@ module VBlank
             end
 
             # A background's map number +which+ kept whole, for a background one of whose maps is
-            # bigger than the grid (GBC::Art#big_map): every map of it is kept that way, so each stops
-            # at its own edge.
+            # bigger than the grid (GBC::Art#big_map): every map of it is kept that way. A background
+            # whose maps all fit a grid of 64 cells and are of one size comes round past its edges, as
+            # the interpreter's grid does (Reference#paint_background_window); any other stops at
+            # its own edge (IR::TileMap.streams?).
             def big_map_of(bg, which = 0)
               @big_maps ||= {}
               @big_maps[[bg, which]] ||= begin
                 refuse_background!(bg)
-                @art.big_map(bg.every_map.fetch(which).map do |row|
+                cells = bg.every_map.fetch(which).map do |row|
                   Array(row).map { |tile| tile.nil? || tile.negative? ? nil : background_tile_named(bg.tiles.fetch(tile), bg, tile_room(bg, which)) }
-                end)
+                end
+                @art.big_map(cells, repeats: !bg.streams?)
               end
             end
 
@@ -1137,12 +1242,18 @@ module VBlank
             # it was declared with until it is placed (Reference#bar_top_shown), and covering sprites
             # as that bar was last set to (IR::SceneHandover#bar_covers_on_put_up). The setting is kept
             # only where a reachable `covers_sprites =` sets it (#bar_covers_sprites?).
-            def bar_put_up(bar)
+            #
+            # +again+ for a line that can run more than once: the cells the game changed stay (rt_bar_put_up_kept).
+            def bar_put_up(bar, again: false)
               top = bar.bar_top.clamp(0, Console::GBCHardware::SCREEN_HEIGHT)
-              runtime_call("rt_bar_put_up", [Build.int(grid_of(bar)), Build.int(top)])
+              if again
+                emit_for_map_shown(bar) { |which| runtime_call("rt_bar_put_up_kept", [Build.int(grid_of(bar, which)), Build.int(top)]) }
+              else
+                runtime_call("rt_bar_put_up", [Build.int(grid_of(bar)), Build.int(top)])
+              end
               covers = @handover.bar_covers_on_put_up(bar)
               emit_store_bar_covers(covers) if covers && bar_covers_sprites?
-              note_put_up(@bar_up_this_pass)
+              note_put_up(bar_note)
             end
 
             # Reference#exec_place_bar.
@@ -1150,7 +1261,7 @@ module VBlank
               return unless declared_background!(node).bar? # one that is not a status bar has no top to place
 
               emit_store_bar_covers(node.covers) if node.covers
-              emit_unless_put_up(node, @bar_up_this_pass) { runtime_call("rt_place_bar", [node.top]) }
+              emit_unless_put_up(node, bar_note) { runtime_call("rt_place_bar", [node.top]) }
             end
 
             # The runtime's one setting for whether the bar shown covers sprites, set to +covers+.
@@ -1161,7 +1272,7 @@ module VBlank
 
             def emit_scroll_background(node)
               declared_background!(node)
-              emit_unless_put_up(node, @put_up_this_pass) { runtime_call("rt_background_scroll", [node.x, node.y]) }
+              emit_unless_put_up(node, corner_note(BACKGROUND_LAYER)) { runtime_call("rt_background_scroll", [node.x, node.y]) }
             end
 
             def declared_background!(node)
@@ -1208,7 +1319,7 @@ module VBlank
             def emit_show_map(node) = each_declaration(node) { |bg| emit_show_map_for_declaration(bg, node) }
 
             def emit_show_map_for_declaration(bg, node)
-              return emit_show_changed_big_map(bg, node) if big?(bg) && changed_big?(bg)
+              return emit_show_changed_big_map(bg, node) if big?(bg) && cells_changed?(bg)
 
               emit_area_room(bg, node.which) if bg.several_sets? && @plans_background_rooms
 
@@ -1347,14 +1458,11 @@ module VBlank
             # A big map's cell is changed where the map is kept while it is up (Runtime::BigMaps's
             # rt_big_set).
             #
-            # A tile picked as the program runs is written as the tests it stands for
-            # (IR::PickedTile), each with a change of its own: this lowering keeps no table of a
-            # background's cells to index yet.
+            # A tile picked as the program runs is a cell read from a table by the number
+            # (#emit_set_picked_tile_on).
             def emit_set_tile(node)
-              if node.picked?
-                tests = PickedTile.tests(node)
-                return tests && statement(tests)
-              end
+              return each_declaration(node) { |bg| emit_set_picked_tile_on(bg, node) } if node.picked?
+
               each_declaration(node) do |bg|
                 # A tile only another scene's declaration of this name has, from a line written for
                 # that scene: this declaration's part of the line writes nothing.
@@ -1364,9 +1472,7 @@ module VBlank
 
             def emit_set_tile_for_declaration(bg, node)
               tile = node.tile
-              number, palette = tile.nil? || tile.negative? ? [0, 0] : background_tile_named(bg.tiles.fetch(tile), bg, tile_room(bg))
-              colours = palette | (number >= 256 ? Console::GBCHardware::ATTR_TILE_BANK : 0)
-              cell = Build.int((number & 0xFF) | (colours << 8))
+              cell = Build.int(tile.nil? || tile.negative? ? 0 : grid_cell_of(bg, tile))
               return runtime_call("rt_big_set", [node.col, node.row, cell]) if big?(bg)
 
               refuse_background!(bg, as_grid: true)
@@ -1376,6 +1482,73 @@ module VBlank
               @asm.load(:hl, shown)
               @asm.inc([:hl])
               emit_cell_change(node, bg, cell)
+              @asm.load(:hl, shown)
+              @asm.dec([:hl])
+            end
+
+            # The two bytes the console's grid holds for a cell of +bg+ showing its tile +tile+: the
+            # tile's number in video memory, low byte, then its colours and its bank of video memory.
+            def grid_cell_of(bg, tile)
+              number, palette = background_tile_named(bg.tiles.fetch(tile), bg, tile_room(bg))
+              colours = palette | (number >= 256 ? Console::GBCHardware::ATTR_TILE_BANK : 0)
+              (number & 0xFF) | (colours << 8)
+            end
+
+            # Two bytes no cell of the grid holds, since a cell's colours byte is a palette of 0 to 7
+            # and a bank bit: what an entry of a table of cells holds for a number that stands for no tile.
+            NO_GRID_CELL = 0xFFFF
+
+            # A TILE PICKED AS THE GAME RUNS (Nodes::SetTile#picked_by) IS A CELL READ FROM A TABLE, as a
+            # console's own game writes its text: the number, less the one the list starts at, is a
+            # place in a table of the cells those tiles show, kept in a bank of the cartridge of its
+            # own. So the cost of a cell is the same however many tiles the number can pick, where the
+            # tests IR::PickedTile writes cost a test for each halving and a change of its own for each
+            # tile, in the code. A number that stands for no tile reads NO_GRID_CELL, and the cell is
+            # left alone, as is a tile only another scene's background of the name has.
+            def emit_set_picked_tile_on(bg, node)
+              cells = node.picks.map { |tile| tile && !tile.negative? && tile < bg.tiles.length ? grid_cell_of(bg, tile) : NO_GRID_CELL }
+              return if cells.all?(NO_GRID_CELL)
+
+              table = picked_cells_table(cells)
+              outside = fresh("picked_cell_outside")
+              place = Build.var_ref(keep_local(:picked_place))
+              value(Build.binop(:-, node.picked_by.copy, Build.int(node.picks_from)))
+              store(place.name)
+              jump_unless(Build.binop(:and, Build.binop(:>=, place, Build.int(0)), Build.binop(:<, place, Build.int(cells.length))), outside)
+              cell = Build.var_ref(keep_local(:picked_cell))
+              value(Entry.new(label: table, bytes: 2, signed: false, index: place, banked: true))
+              store(cell.name)
+              jump_if(Build.binop(:==, cell, Build.int(NO_GRID_CELL)), outside) if cells.include?(NO_GRID_CELL)
+              emit_worked_out_cell_change(bg, node, cell)
+              @asm.label(outside)
+            end
+
+            # The label of a banked table of +cells+, one kept for every line that picks from the same
+            # cells. A game writes a line of text from a line of Ruby for each letter, or a port's
+            # screen changes many cells told by one slot, so a table for each line would be a table of
+            # every told cell for each: a few hundred bytes of the banks a line. The tables are only
+            # read, so two lines can read one. It is looked for among the tables this try still holds,
+            # since a routine measured and thrown away (Lowering#bytes_of) takes its tables with it.
+            def picked_cells_table(cells)
+              kept = @drawing_tables.find { |table| table.banked && table.bytes == 2 && table.label.start_with?("picked_cells ") && table.entries == cells }
+              kept ? kept.label : drawing_table("picked_cells", 2, cells, banked: true)
+            end
+
+            # A cell of +bg+ given the grid cell +cell+, a number the game worked out, where +node+ says.
+            def emit_worked_out_cell_change(bg, node, cell)
+              return runtime_call("rt_big_set", [node.col, node.row, cell]) if big?(bg)
+
+              refuse_background!(bg, as_grid: true)
+              cols, rows = map_size_of(bg)
+              shown = (@memory[Runtime::Picture::CELL_SHOWN_NOW] if node.now)
+              if shown
+                @asm.load(:hl, shown)
+                @asm.inc([:hl])
+              end
+              emit_cell_numbers(node.col, node.row, cols | (rows << 8), cell)
+              @asm.call("#{bg.bar? ? 'rt_bar_cell' : 'rt_background_cell'}_taken")
+              return unless shown
+
               @asm.load(:hl, shown)
               @asm.dec([:hl])
             end
@@ -1456,7 +1629,12 @@ module VBlank
                 emit_bcde_at_high(at.call(1))
               end
               emit_number_at_high(at.call(2), size, 2)
-              emit_number_at_high(at.call(3), cell, 2)
+              return emit_number_at_high(at.call(3), cell, 2) if cell.is_a?(Integer)
+
+              # A cell the game worked out (#emit_set_picked_tile_on), read last, since reading it
+              # uses no quick memory.
+              value(cell)
+              emit_bcde_at_high(at.call(3))
             end
 
             # BCDE's four bytes into quick memory from +address+ up, lowest first.
@@ -1479,18 +1657,18 @@ module VBlank
               end
             end
 
-            # Whether the game changes a big background's cells as it runs, so it is kept in work
-            # memory while it is up.
-            def changed_big?(bg) = @reachable.any? { |node| node.kind == :set_tile && node.name == bg.name }
+            # Whether the game changes a background's cells as it runs: a big one is then kept in work memory
+            # while it is up, and one every screen shows keeps them as a scene puts it back.
+            def cells_changed?(bg) = @reachable.any? { |node| node.kind == :set_tile && node.name == bg.name }
 
             # A big background put up — or handed map number +which+ (+routine+ rt_big_show) — from its
             # map kept whole; one the game changes copied into work memory first.
             def big_put_up(bg, which, routine)
-              return runtime_call(routine, [Build.int(big_map_of(bg, which))]) unless changed_big?(bg)
+              return runtime_call(routine, [Build.int(big_map_of(bg, which))]) unless cells_changed?(bg)
 
               runtime_call("rt_big_copy_in", [Build.int(big_map_of(bg, which)), Build.int(changed_big_place(bg))])
               cols, rows = TileMap.size_of(bg.every_map.fetch(which))
-              runtime_call(routine, [Build.int(@art.big_map_in_memory(cols, rows, changed_big_place(bg)))])
+              runtime_call(routine, [Build.int(@art.big_map_in_memory(cols, rows, changed_big_place(bg), repeats: !bg.streams?))])
             end
 
             # Where a big background the game changes is kept: room for the biggest of its maps.
@@ -1512,12 +1690,13 @@ module VBlank
             end
 
             # The copy of the grid a map bigger than it is worked out into — at an address that is a
-            # multiple of 16, which the console's copying reads from — and the list for the blank.
+            # multiple of 32 (Runtime::BigMaps::BUFFER_ALIGN) — and the list for the blank.
             def keep_big_map_places
               return unless @backgrounds.each_value.any? { |bg| big?(bg) }
 
-              copy = @memory.reserve("the copy of a big map's grid", Runtime::BigMaps::BUFFER_BYTES + 15)
-              @big_map_places = [(copy + 15) & ~15, @memory.reserve("the cells for the blank", Runtime::BigMaps::STAGED_BYTES)]
+              align = Runtime::BigMaps::BUFFER_ALIGN
+              copy = @memory.reserve("the copy of a big map's grid", Runtime::BigMaps::BUFFER_BYTES + align - 1)
+              @big_map_places = [(copy + align - 1) & -align, @memory.reserve("the cells for the blank", Runtime::BigMaps::STAGED_BYTES)]
             end
 
             # Reference#exec_background_colors: the background's tiles drawn from another of its lists
@@ -1568,7 +1747,7 @@ module VBlank
             end
 
             # In a game too big for the part of the cartridge always in view, the tables are kept in
-            # its banks (GBC#build_in_view), each table's bank in C beside its place in HL, and
+            # its banks (GBC#roomier_view), each table's bank in C beside its place in HL, and
             # rt_background_colors_far puts that bank in view to read it.
             def emit_background_colors_for_declaration(bg, which)
               refuse_walking_recolor!(bg)
@@ -1804,7 +1983,14 @@ module VBlank
             # A run the game puts in order as it runs (`draw_in_order`, Reference#names_in_draw_order)
             # stands at its place among the rest, and its sprites are placed in the order its list
             # holds them, read from the front: each sprite's placing is a routine of the frame's own,
-            # called by the number the list holds.
+            # called by the number the list holds. That routine leaves a sprite as it is when it was
+            # placed as it was on the pass before (#emit_placing_unless_unchanged), as the rest of the
+            # frame's sprites are: a sprite whose place in the order is the same begins where it began
+            # in the table, and one whose place changed does not, so is placed afresh. This holds
+            # because the order's list holds each of its sprites' numbers once, every pass (the
+            # framework sorts it; the game never writes it), so each sprite is placed every pass and
+            # what it keeps of its last placing is still what the table holds. A run whose list is
+            # walked as the interpreter reads it keeps nothing (#kept_sprites).
             def emit_present_objects(node)
               object = ->(name) { @objects.fetch(name) { raise LoweringError, "present of undeclared object #{name.inspect}" } }
               changing = node.names.map(&object).select { |obj| Stacking.levels_of(@stacking.depths, obj).uniq.length > 1 }
@@ -1831,7 +2017,7 @@ module VBlank
               @asm.jump(past)
               placings.each do |name, label|
                 @asm.label(label)
-                sprite_placement(object.call(name))
+                emit_placing_unless_unchanged(object.call(name))
                 @asm.ret
               end
               @asm.label(past)
@@ -1894,6 +2080,17 @@ module VBlank
               emit_ordered_run(run, labels)
             end
 
+            # The Color's one background layer, which a put-up holds at its corner through its pass
+            # (SceneryWrites#keep_corner_notes). Its status bar is the window, placed by its top, with a
+            # note of its own.
+            BACKGROUND_LAYER = 0
+
+            # +note+ (SceneryWrites#corner_note or #bar_note, or nil for none) set: the background or bar
+            # was put up this pass.
+            def note_put_up(note)
+              statement(Build.set(note, 1)) if note
+            end
+
             # A FRAME WITHOUT SPRITES (`hide_sprites`, Reference#exec_hide_sprites). The pass that
             # asks only notes it; the next placing of the frame's sprites places none and forgets
             # it was asked. rt_sprites_end then moves every entry of the sprite table above the
@@ -1906,39 +2103,6 @@ module VBlank
             # That costs nothing in the picture: the one it was taken from borrows another in turn,
             # and each borrowing copies its colours in, so every sprite is drawn in its own. Only a
             # pass wearing more than eight lists at once misses one, as it would without the gap.
-            # A BACKGROUND PUT UP IN A PASS SHOWS FROM ITS CORNER ON THAT PASS'S FRAME
-            # (Reference#put_up_background), and the place the game keeps for its view — or the top
-            # it keeps for a status bar — is written at the end of the pass (IR::Frames
-            # .loop_in_console_order), after the put-up. So a put-up notes itself for the rest of its
-            # pass, and the write at the end of it leaves the background or bar where it was put up;
-            # the wait forgets the note (#emit_corners_forgotten), and the next pass's write moves it.
-            def keep_corner_notes
-              @put_up_this_pass = keep_local(:put_up_this_pass) if @plan.places_at_pass_end?(:scroll_background)
-              @bar_up_this_pass = keep_local(:bar_up_this_pass) if @plan.places_at_pass_end?(:place_bar)
-            end
-
-            # +note+ (a local of #keep_corner_notes, or nil for none) set: the background or bar was
-            # put up this pass.
-            def note_put_up(note)
-              statement(Build.set(note, 1)) if note
-            end
-
-            # The notes forgotten at a wait: the pass that put a background up has ended.
-            def emit_corners_forgotten
-              [@put_up_this_pass, @bar_up_this_pass].compact.each { |note| statement(Build.set(note, 0)) }
-            end
-
-            # +node+'s write, unless it is written at the end of a pass that put its background or bar
-            # up (+note+, #keep_corner_notes).
-            def emit_unless_put_up(node, note)
-              return yield unless note && @plan.placed_at_pass_end?(node)
-
-              held = fresh("held_at_corner")
-              jump_unless(Build.binop(:==, Build.var_ref(note), Build.int(0)), held)
-              yield
-              @asm.label(held)
-            end
-
             def keep_sprites_hidden_flag
               @sprites_hidden = keep_local(:sprites_hidden) if @reachable.any? { |node| node.kind == :hide_sprites }
             end
@@ -1996,26 +2160,56 @@ module VBlank
             # THE NUMBER PICKS THE ROUTINE FROM A TABLE, as the Genesis's does: a routine address for
             # each sprite of the run, read by one dispatch the run shares, so the code grows with the
             # run's length and not its square.
+            #
+            # The framework's own list (Build::DrawOrder#permutation) is filled at power-on and only
+            # sorted or copied over after, so it is always as long as the run and its every slot holds
+            # a place of the run, a byte a sprite (the Color keeps places for forty): each is read
+            # where it is, with nothing tested. Any other list — one written by hand, or one something
+            # takes items from the front of, whose slots move round — is walked as the interpreter
+            # reads it (DrawOrderWalk), last entry first.
             def emit_ordered_run(run, placings)
               dispatch = emit_ordered_dispatch(run, placings)
-              (run.objects.length - 1).downto(0) do |k|
-                past = fresh("past_the_ordered")
-                value(Build.list_get(run.order, Build.int(k)))
-                @asm.load(:a, :b)
-                @asm.or_a(:c)
-                @asm.or_a(:d)
-                @asm.jump_relative(:nz, past)
-                @asm.load(:a, :e)
-                @asm.cp_a(run.objects.length)
-                @asm.jump_relative(:nc, past)
-                @asm.call(dispatch)
-                @asm.label(past)
+              place, _capacity, width = @lists.fetch(run.order)
+              unless order_read_by_slots?(run, front_dropped_lists) && width == 1
+                return emit_draw_order_walk(run, from_back: true) do |entry|
+                  value(Build.var_ref(entry))
+                  @asm.load(:a, :e)
+                  @asm.call(dispatch)
+                end
               end
+
+              (run.objects.length - 1).downto(0) do |k|
+                @asm.load(:a, [place + Runtime::Lists::HEADER + k])
+                @asm.call(dispatch)
+              end
+            end
+
+            # DrawOrderWalk's: the place the variable +name+ holds and the run's +count+, the fault's two
+            # numbers, low byte first as a variable keeps them, and no list, as the interpreter words it
+            # (Faults.draw_order_names_none).
+            def emit_draw_order_fault(name, count)
+              fault = @memory[Runtime::Frame::FAULT]
+              value(Build.var_ref(name))
+              @asm.load(:hl, fault + 1)
+              @asm.xor_a(:a)
+              2.times { @asm.load([:hli], :a) }
+              BCDE_LOW_FIRST.each do |register|
+                @asm.load(:a, register)
+                @asm.load([:hli], :a)
+              end
+              [count & 0xFF, count >> 8, 0, 0].each do |byte|
+                @asm.load(:a, byte)
+                @asm.load([:hli], :a)
+              end
+              @asm.load(:a, Runtime::Frame::DRAW_ORDER_NAMES_NONE)
+              @asm.jump("rt_fault")
             end
 
             # The routine #emit_ordered_run calls with A the number of a sprite of +run+: it goes on to
             # that sprite's placing in +placings+ (whose return is the call's), through a table of
-            # their addresses. Written in place, with a jump over it. Returns its label.
+            # their addresses. Written in place, with a jump over it, so the table and the placings are
+            # in one section; a placing the table names in another bank is refused as the cartridge is
+            # built (SM83#data_jump_targets). Returns its label.
             def emit_ordered_dispatch(run, placings)
               dispatch = fresh("ordered_dispatch")
               table = fresh("ordered_placings")
@@ -2035,7 +2229,7 @@ module VBlank
               @asm.label(none)
               @asm.ret
               @asm.label(table)
-              @asm.data_words(run.objects.map { |name| placings.fetch(name, none) })
+              @asm.data_jump_targets(run.objects.map { |name| placings.fetch(name, none) })
               @asm.label(past)
               dispatch
             end
@@ -2097,8 +2291,11 @@ module VBlank
               return nil if on.nil? || lists.any?(Symbol) || obj.poses.length > 0xFF || lists.length > 0xFF
               return nil if (folded(on) && folded(on) != 1) ||
                             [obj.pose, obj.x, obj.y, *(obj.recolor unless lists.empty?)].any? { |number| folded(number) }
-              # The runtime reads each of these as a whole number where it is kept.
-              return nil if [on, obj.pose, obj.x, obj.y, obj.recolor].compact.any? { |number| kept_variable_named(value_node(number)) }
+              # The runtime reads each number the block names as a whole number where it is kept:
+              # one list, so the test and the block cannot name different numbers.
+              read_whole = [(on unless folded(on)), (Build.var_ref(scene.first) if scene), obj.pose, obj.x, obj.y,
+                            (obj.recolor unless lists.empty?)].compact.map { |number| value_node(number) }
+              return nil if read_whole.any? { |number| kept_variable_named(number) }
 
               pieces = single_pieces(obj)
               rows = pose_rows(obj, sprite_level(obj)).each_slice(obj.poses.length).flat_map do |list_rows|
@@ -2108,12 +2305,12 @@ module VBlank
                    @art.lends? ? row.palette : 0, *(pieces ? @art.piece_entry(pieces[pose]) : [0, 0])]
                 end
               end
-              place = ->(number) { little_endian(place_of(variable_named(value_node(number))), 2) }
-              head = [pieces ? 1 : 0, *(pieces ? [pieces.first.dx, pieces.first.dy] : [0, 0]),
-                      *(folded(on) ? [0, 0] : place.call(on)),
-                      *(scene ? [*place.call(scene.first), scene.last] : [0, 0, 0]), *place.call(obj.pose),
-                      obj.poses.length, *place.call(obj.x), *place.call(obj.y),
-                      *(lists.empty? ? [0, 0] : place.call(obj.recolor)), lists.length]
+              places = read_whole.map { |number| little_endian(place_of(variable_named(number)), 2) }
+              on_place = folded(on) ? [0, 0] : places.shift
+              scene_place = scene ? [*places.shift, scene.last] : [0, 0, 0]
+              pose_place, x_place, y_place = places.shift(3)
+              head = [pieces ? 1 : 0, *(pieces ? [pieces.first.dx, pieces.first.dy] : [0, 0]), *on_place, *scene_place,
+                      *pose_place, obj.poses.length, *x_place, *y_place, *(lists.empty? ? [0, 0] : places.shift), lists.length]
               drawing_table("posed_sprite", 1, head + rows, banked: @bank_pose_tables)
             end
 
@@ -2133,11 +2330,18 @@ module VBlank
             # #emit_sum, which mark the sprite changed, and not one this lowering moves on by itself
             # (#written_unmarked?). Not one drawn with a list that holds other colours as the game runs:
             # which row it is drawn from follows what the list holds, which is none of its numbers.
+            # Not one of a run whose list is walked (DrawOrderWalk): that list can name a sprite twice
+            # in a pass, or not at all, so what a sprite keeps of its last placing is not what the
+            # table holds.
             def kept_sprites
-              @kept_sprites ||= @program.walk.select { |node| node.kind == :present_objects }.flat_map(&:names).uniq.select do |name|
-                obj = @objects.fetch(name)
-                Array(obj.recolors).none?(Symbol) &&
-                  sprite_numbers(obj).all? { |number| number.kind == :var_ref && !written_unmarked?(number.name) }
+              @kept_sprites ||= begin
+                drawn = @program.walk.select { |node| node.kind == :present_objects }
+                walked = drawn.flat_map { |node| node.orders || [] }.reject { |run| order_read_by_slots?(run, front_dropped_lists) }
+                (drawn.flat_map(&:names).uniq - walked.flat_map(&:objects)).select do |name|
+                  obj = @objects.fetch(name)
+                  Array(obj.recolors).none?(Symbol) &&
+                    sprite_numbers(obj).all? { |number| number.kind == :var_ref && !written_unmarked?(number.name) }
+                end
               end
             end
 
@@ -2265,9 +2469,11 @@ module VBlank
               @asm.call("rt_sprite_args_set")
             end
 
-            # Whether +operand+ is worked out without a runtime routine that takes numbers (#emit_sprite_call).
+            # Whether +operand+ is worked out without a runtime routine that takes numbers (#emit_sprite_call):
+            # a pool's sprite reads its place from one slot of a list (Lowering#fixed_slot).
             def read_without_args?(operand)
               return true if folded(operand) || variable_named(operand)
+              return true if operand.is_a?(Node) && operand.kind == :list_get && fixed_slot(operand)
 
               operand.is_a?(Entry) && read_without_args?(operand.index)
             end
@@ -2450,20 +2656,89 @@ module VBlank
             # colour each of its places shows, as the interpreter draws it. +scene+ is the scene whose
             # own lists the sprite wearing it is numbered among (#lists_scene).
             def palette_of(name, colors, scene: nil)
-              run = picture_painting(name)
-              return @art.painted_sprite_palette(name, painted_colors(run, colors), scene: scene) if run
-
-              pose = tile_pose_named(name)
-              if pose
-                own = tile_pose_colors(pose)
-                drawn = colors ? Array.new([[own.length, colors.length].max, Art::PLACES].min) { |place| colors[place] || own.fetch(place, 0) } : own
-                return @art.painted_sprite_palette(name, drawn, scene: scene)
-              end
+              written = colors_written_by_game(name, colors)
+              return @art.painted_sprite_palette(name, written, scene: scene) if written
 
               # The pixels read once a picture and list a build: every sprite showing it asks again.
               image = picture_named(name)
               pixels = @cache.facts.sprite_pixels[[name, colors]] ||= sprite_pixels(image, colors)
               @art.sprite_palette(name, image, pixels, scene: scene)
+            end
+
+            # The colours by place, see-through first, of picture +name+ drawn with the list +colors+
+            # (nil for its own), where its places are the ones the game writes as it runs: a picture
+            # it paints, or one drawn from sprite tiles it loads. Nil for any other picture.
+            def colors_written_by_game(name, colors)
+              run = picture_painting(name)
+              return painted_colors(run, colors) if run
+
+              pose = tile_pose_named(name)
+              return nil unless pose
+
+              own = tile_pose_colors(pose)
+              colors ? Array.new([[own.length, colors.length].max, Art::PLACES].min) { |place| colors[place] || own.fetch(place, 0) } : own
+            end
+
+            # The slots each sprite picture's colours take in its palettes (GBC::SpriteSlots), laid out
+            # once a build from every picture a sprite the game places shows, and every set of colours
+            # #pose_rows draws it in, so two pictures of the same colours can share a palette whatever
+            # order their pixels use them in. Nil, every picture in its own order, where the layout is
+            # not worth its bytes (SpriteSlots.layout_for) and in a try that lends the lists, which
+            # SpriteSlots says why it does not lay out.
+            #
+            # Only a picture whose tiles are among the ones every screen shares is laid out. One the
+            # game paints or loads the tiles of keeps the places it writes; one in a group of pictures,
+            # or one whose tiles a scene brings in (Art#picture_tile), shares its tiles with no other
+            # picture's, which the layout's count of tiles does not model. Each of those keeps its own
+            # order, and its palettes are counted as reserved: the eight less those are what the
+            # layout has. A scene's pictures are its own only in a try whose scenes bring them in, so
+            # a layout is made for each kind of try.
+            def sprite_slots
+              return nil if @lends_sprite_colors
+
+              layouts = @cache.facts.sprite_slots
+              kind = @plans_scene_pictures ? :scene_pictures : :every_picture_shared
+              layouts[kind] = laid_out_sprite_slots || false unless layouts.key?(kind)
+              layouts[kind] || nil
+            end
+
+            # The layout of the pictures the game's placed sprites show (#sprite_slots), or nil.
+            def laid_out_sprite_slots
+              apart = grouped_pictures.keys | (@plans_scene_pictures ? scene_pictures.keys : [])
+              sets = Hash.new { |all, name| all[name] = [] }
+              reserved = []
+              placed = @reachable.select { |node| node.kind == :present_objects }.flat_map(&:names).uniq
+              placed.filter_map { |name| @objects[name] }.each do |obj|
+                drawn = sets_drawn_with(Array(obj.recolors)).flatten(1)
+                obj.poses.each do |name|
+                  if !cut_from_own_pixels?(name)
+                    reserved.concat(drawn.filter_map { |colors| colors_written_by_game(name, colors) }.map { |colors| Art.painted_palette(colors) })
+                  elsif apart.include?(name)
+                    reserved.concat(sprite_slots_picture(name, drawn).own_order_palettes)
+                  else
+                    sets[name] |= drawn
+                  end
+                end
+              end
+              pictures = sets.map { |name, colors| sprite_slots_picture(name, colors) }
+              SpriteSlots.layout_for(pictures, reserved: reserved, piece_height: piece_height)
+            end
+
+            # Whether sprite picture +name+ is one of the game's pictures, whose tiles the build cuts
+            # from its pixels, rather than one it paints or loads the tiles of as it runs.
+            def cut_from_own_pixels?(name) = @pictures.key?(name) && !picture_painting(name) && !tile_pose_named(name)
+
+            # Picture +name+ drawn in each of +sets+ (nil for its own colours), as SpriteSlots lays it
+            # out: each drawing the colour of each of its own places, as #palette_of would draw it.
+            def sprite_slots_picture(name, sets)
+              image = picture_named(name)
+              places = Art.own_sprite_places(image)
+              drawings = sets.map do |colors|
+                pixels = @cache.facts.sprite_pixels[[name, colors]] ||= sprite_pixels(image, colors)
+                Art.colors_by_place(places, pixels, places.max.to_i + 1).drop(1)
+              end
+              SpriteSlots::PictureColors.new(name: name, width: image.width, height: image.height, places: places,
+                                             drawings: drawings.uniq, fixed: !image.pieces.nil?)
             end
 
             # A sprite picture's pixels as the interpreter draws them (Reference#blit_image): the

@@ -245,6 +245,39 @@ class TestNativeWindow < Minitest::Test
     assert_equal %w[ok east south], ask("bind_pad a south", "reset_pad", "pad_of a", "pad_of b")
   end
 
+  # --- the buttons only some consoles have: X, Y and C (Live::Settings has the same rules) ---
+
+  GENESIS = "console a b c start right left up down"
+  SUPER_NINTENDO = "console a b select start right left up down r l x y"
+
+  def test_a_genesis_window_presses_c_with_the_c_key_and_the_left_face_button
+    assert_equal ["button c", "west", "C / west", "none"], ask(GENESIS, "owner C", "pad_of c", "button_text c", "owner Backspace")
+  end
+
+  def test_a_super_nintendo_window_presses_x_with_w_and_y_with_q
+    assert_equal ["button x", "button y", "north", "west"], ask(SUPER_NINTENDO, "owner W", "owner Q", "pad_of x", "pad_of y")
+  end
+
+  # The Advance has no X, Y or C, so their keys press nothing there and are free for its buttons.
+  def test_an_advance_window_has_no_x_y_or_c_and_their_keys_are_free
+    assert_equal ["none", "none", "none", "ok", "X C"], ask("owner W", "owner Q", "owner C", "bind_key a 1 C", "keys_of a")
+  end
+
+  def test_every_window_writes_x_y_and_c_to_the_settings_file
+    text = ask("write").join("\n")
+
+    assert_includes text, "key.x = W\nkey.y = Q\nkey.c = C\n"
+    assert_includes text, "pad.x = north\npad.y = west\npad.c = west\n"
+  end
+
+  def test_a_key_two_buttons_have_is_a_clash_only_where_the_console_has_both
+    both = ask("console a b y c", "read\nkey.y = C\n.")
+
+    assert_equal "1 problems", both[0]
+    assert_match(/\AC is used for both Y and C/, both[1])
+    assert_equal ["0 problems"], ask("read\nkey.y = C\n.")
+  end
+
   # --- the game's own keys and gamepad buttons (computer_keys, computer_gamepad) ---
 
   D_AND_WEST_ADDED_TO_A = "game_controls a key D a pad west"

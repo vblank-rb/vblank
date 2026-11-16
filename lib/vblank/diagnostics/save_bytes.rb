@@ -25,11 +25,22 @@ module VBlank
         @from = from
       end
 
+      # The cartridge's clock chip as an emulator left it beside these bytes, or nil (see
+      # IR::SaveImage#clock_state).
+      attr_reader :clock_state
+
+      # Keep +bytes+ as #clock_state. Returns self.
+      def keep_clock_state(bytes)
+        @clock_state = bytes&.b&.freeze
+        self
+      end
+
       # THE SAVE THESE BYTES ARE: an IR::SaveImage when they are the size of a chip this
-      # framework's cartridges have, and otherwise the bytes kept as they are.
-      def self.save_holding(bytes, from:)
+      # framework's cartridges have, and otherwise the bytes kept as they are. +clock_state+ is
+      # what the emulator kept of the cartridge's clock beside them, carried with the save.
+      def self.save_holding(bytes, from:, clock_state: nil)
         modelled = IR::SaveLayout::NAMEABLE.any? { |kilobytes| bytes.bytesize == kilobytes * 1024 }
-        modelled ? IR::SaveImage.from_sav(bytes) : new(bytes, from: from)
+        (modelled ? IR::SaveImage.from_sav(bytes) : new(bytes, from: from)).keep_clock_state(clock_state)
       end
 
       def bytesize = to_sav.bytesize

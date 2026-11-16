@@ -45,21 +45,13 @@ module VBlank
               # Blame the clear rather than the loop. The fix is to delete this one
               # line and paint the field before the loop instead — and the steady walk
               # follows calls, so the clear may well sit in a scene some way from here.
-              clear = steady.find { |node| full_screen_clear?(node, screen) }
+              # Where a fill starts is not asked: one a screen in size wipes the field under the
+              # sprite wherever it is (IR::WholeScreen.screen_sized?).
+              clear = steady.find { |node| WholeScreen.screen_sized?(node, screen) }
               next unless clear
 
               Finding.new(check: NAME, severity: :warning, message: PROBLEM, node: clear)
             end
-          end
-
-          private
-
-          # A whole-screen wipe: a `clear_screen`, or a fill that covers the display.
-          def full_screen_clear?(node, (width, height))
-            return true if node.kind == :clear_screen
-            return false unless %i[fill_rect dma_fill_rect].include?(node.kind)
-
-            node.w.to_i >= width && node.h.to_i >= height
           end
         end
       end

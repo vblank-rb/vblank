@@ -145,7 +145,7 @@ module VBlank
           # a scene per frame means, and it is what the interpreter does — it reads the
           # variable once and compares each clause against that reading.
           def emit_case(node)
-            picked = :"_picked_#{node.var}"
+            picked = Functions.picked_var(node.var)
             @lowering.statement(Build.copy(picked, node.var))
             @entering_scene_set = @placement.emit_scene_set_entry if @placement.swaps_at?(node)
             node.clauses.each do |value, target|
@@ -155,6 +155,9 @@ module VBlank
               @lowering.statement(Build.if_(test, Build.call(target)))
             end
           end
+
+          # Where a `case` on +var+ keeps the copy its clauses are tested against.
+          def self.picked_var(var) = :"_picked_#{var}"
 
           # A CLAUSE OF THE DISPATCH THAT SWAPS: the scene's own routines are copied into the
           # quick memory before its routine is called, unless they are in already (see

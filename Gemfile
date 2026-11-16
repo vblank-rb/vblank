@@ -36,19 +36,21 @@ gemspec
 #   end
 gem "ruby-gba-emulator", path: "ruby-gba-emulator"
 
-# THE SUPER NINTENDO'S EMULATOR, for the same reason and in the same way: bsnes, driven through
-# Fiddle, so there is no extension to build here. What it needs built is the bsnes core itself,
-# which `rake compile_core` in ruby-snes-emulator/ does (see its Rakefile).
+# THE SUPER NINTENDO'S EMULATOR, for the same reason and in the same way: bsnes, played through a
+# small C extension of the gem's own. Bundler builds neither here, so `rake compile_snes_core` builds
+# both: the extension and the bsnes core (see ruby-snes-emulator's Rakefile).
 gem "ruby-snes-emulator", path: "ruby-snes-emulator"
 
-# THE SEGA GENESIS'S EMULATOR, the same way: Genesis Plus GX, driven through Fiddle, whose core
-# `rake compile_core` in ruby-genesis-emulator/ builds (see its Rakefile). Its licence bars commercial
-# use, which is one more reason it is here for testing and not in the gemspec.
+# THE SEGA GENESIS'S EMULATOR, the same way: Genesis Plus GX, played through a small C extension of
+# the gem's own. Bundler builds neither here, so `rake compile_genesis_core` builds both: the
+# extension and the core (see ruby-genesis-emulator's Rakefile). Its licence bars commercial use,
+# which is one more reason it is here for testing and not in the gemspec.
 gem "ruby-genesis-emulator", path: "ruby-genesis-emulator"
 
-# THE PLAYSTATION'S EMULATOR, the same way: Beetle PSX, driven through Fiddle, whose core
-# `rake compile_core` in ruby-ps1-emulator/ builds (see its Rakefile). It is GPL-2.0, and only plays
-# the programs VBlank builds, to check them.
+# THE PLAYSTATION'S EMULATOR, the same way: Beetle PSX, played through a small C extension of the
+# gem's own. Bundler builds neither here, so `rake compile_ps1_core` builds both: the extension and
+# the core (see ruby-ps1-emulator's Rakefile). It is GPL-2.0, and only plays the programs VBlank
+# builds, to check them.
 gem "ruby-ps1-emulator", path: "ruby-ps1-emulator"
 
 # DOS'S EMULATOR, the same way: DOSBox, driven through Fiddle, whose core `rake compile_core` in

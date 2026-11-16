@@ -91,7 +91,9 @@ module VBlank
         refuse_order_split_by!(things, "layer", &:layer)
         refuse_order_split_by!(things, "scene", &:scene)
 
+        from_block = !key.nil?
         key ||= ->(thing) { thing.bottom }
+        refuse_mixed_key_kinds!(things, key, from_block: from_block) unless turns
         order = Order.new(number: draw_orders.length + 1, things: things, front: front, key: key, turns: turns)
         # A pool's things are ordered one by one, so each needs its number (see Pool#order_by).
         things.each { |thing| thing.order_by(key) if thing.is_a?(DSL::Pool) } unless turns
@@ -102,6 +104,64 @@ module VBlank
       private
 
       def draw_orders = @draw_orders ||= []
+
+      # EVERY THING'S NUMBER MUST BE OF ONE KIND. The numbers are sorted as plain whole numbers,
+      # and a number holding a fraction is kept multiplied up (2.5 with 16 bits of fraction is
+      # 163840; see DSL::Fraction). So when the block gives one thing a fraction and another a
+      # whole number, 2.5 sorts as 163840 against a 3, and the order is wrong with nothing said.
+      # Two fractions of different bits are wrong the same way.
+      #
+      # It is refused rather than put right by multiplying the whole number up, which is what
+      # `a < b` does when a fraction meets a whole number the game works out
+      # (DSL::Scale#node_matching): the framework cannot tell whether a whole number counts whole
+      # pixels or something finer, so the author says which, with `.to_i` or `.to_f`, and every
+      # number the sort reads is one the game's own code wrote. Unlike `a < b`, a whole number
+      # written in the block is refused too, so no number is ever changed on its way to the sort.
+      #
+      # With no block, the numbers are the bottoms of the boxes, and a pool whose places hold a
+      # fraction has a bottom that holds one; the advice is then to give a block.
+      #
+      # Each thing's number is worked out once here to read its kind, and dropped; nothing is
+      # changed, so an order whose numbers are all of one kind builds the same bytes. A block is
+      # expected to work a number out and do nothing else: one that also wrote a statement would
+      # have it written here too.
+      def refuse_mixed_key_kinds!(things, key, from_block:)
+        kinds = things.to_h { |thing| [thing, order_key_bits(thing, key)] }
+        return if kinds.values.uniq.length == 1
+
+        first, other = kinds.to_a.uniq(&:last).first(2)
+        both_fractions = first.last && other.last
+        raise ArgumentError,
+              "draw_in_order found #{key_kind_words(first.last, both_fractions)} for " \
+              "#{order_thing_name(first.first)} and #{key_kind_words(other.last, both_fractions)} for " \
+              "#{order_thing_name(other.first)}. The order can compare numbers of one kind only. " \
+              "#{mixed_key_kinds_advice(both_fractions, from_block)}"
+      end
+
+      # How many fraction bits +key+ gives +thing+'s number, or nil for a whole number.
+      def order_key_bits(thing, key)
+        return thing.order_key_fraction_bits(key) if thing.is_a?(DSL::Pool)
+
+        answer = key.call(thing)
+        answer.discard! if answer.is_a?(DSL::Value)
+        DSL::Fraction.bits_of(answer)
+      end
+
+      def mixed_key_kinds_advice(both_fractions, from_block)
+        unless from_block
+          return "The numbers are the bottoms of the boxes. Give draw_in_order a block that gives " \
+                 "every thing one kind of number, for example `{ |thing| thing.bottom.to_i }`."
+        end
+        return "Give every thing a fraction with the same bits, or use `.to_i` on both." if both_fractions
+
+        "Give every thing the same kind of number: use `.to_i` on the fraction, or `.to_f` on the whole number."
+      end
+
+      def key_kind_words(bits, both_fractions)
+        return "a whole number" unless bits
+
+        both_fractions ? "a number with #{bits} bits of fraction" : "a number with a fraction"
+      end
 
       # The objects of one thing in an order, back to front: a sprite's one, or one for each
       # thing a pool can hold at once.
@@ -158,7 +218,7 @@ module VBlank
           objects = object_names_in(order)
           run = names.select { |name| objects.include?(name) }
           (@draw_order_runs ||= {})[order.number] = run
-          Build::DrawOrder.new(objects: run, order: order.order_list)
+          Build::DrawOrder.new(objects: run, order: order.order_list, permutation: true)
         end
       end
 
@@ -232,11 +292,42 @@ module VBlank
         return order_turn_nodes(order) if order.turns
 
         keys = order.keys_list
-        by_name = order_keys(order)
+        by_name = without_common_addend(order_keys(order))
         numbers = run_objects(order).each_with_index.map do |name, i|
           Build.list_set(keys, Build.int(i), by_name.fetch(name))
         end
         numbers + [Build.list_sort(order.order_list, by: keys, descending: order.front == :lowest)]
+      end
+
+      # THE SAME NUMBER ADDED TO EVERY THING'S NUMBER CHANGES NO ORDER, so it is left out. A box's
+      # bottom is the thing's place, plus where the box starts in it, plus its height, and things of
+      # one size have the same two: the order of their bottoms is the order of their places, and
+      # each thing's number is then a copy of its place, where it was a sum worked out every frame.
+      # The one order it is not is past the biggest number there is, where a sum turns round to the
+      # smallest; a thing placed there is two billion pixels off the screen.
+      #
+      # +keys+ is each thing's number, by name, handed back with the numbers written in the
+      # program that every one of them adds up to the same total made noughts, in place: each
+      # sum stays in the tree, so the game's own number it was worked out from is still used
+      # (Guardrails::Checks::OrphanedExpression), and a lowering leaves a nought added out.
+      def without_common_addend(keys)
+        sums = keys.values.map { |node| sums_of_written_numbers(node) }
+        totals = sums.map { |each| each.sum { |sum| sum.rhs.value } }.uniq
+        return keys unless totals.length == 1 && !totals.first.zero?
+
+        sums.flatten.each { |sum| sum.replace_operand(sum.rhs, Build.int(0)) }
+        keys
+      end
+
+      # The sums in +node+ that add a number written in the program to it, outermost first: none
+      # for a node that is not such a sum.
+      def sums_of_written_numbers(node)
+        sums = []
+        while node.kind == :binop && node.op == :+ && node.rhs.kind == :int
+          sums << node
+          node = node.lhs
+        end
+        sums
       end
 
       # This frame's order copied from the table (#declare_turn_table), and the turn moved to the

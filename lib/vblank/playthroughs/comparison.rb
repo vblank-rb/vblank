@@ -87,10 +87,17 @@ module VBlank
       # +second_frame+ is, for a comparison lined up step by step (see LinedUp), the frame the
       # second cartridge began it on (+frame+ is the first's, and so is +last_frame+), and +pass+
       # the pass it began on where the steps are passes (see Passes). Both are nil frame by frame.
+      #
+      # +began_later+ is, for a comparison that carried on, each thing in +differed+ that began to
+      # differ after the frame the drift began, with the frame it began on (the first cartridge's).
+      # Everything else in +differed+ differed on +frame+ itself.
       Drift = Data.define(:frame, :last_frame, :ended, :moment, :differed, :readings, :report, :picture_difference,
-                          :video_differences, :pass, :second_frame) do
+                          :video_differences, :pass, :second_frame, :began_later) do
         def initialize(frame:, moment:, differed:, readings:, last_frame: nil, ended: nil, report: nil, picture_difference: nil,
-                       video_differences: [], pass: nil, second_frame: nil) = super
+                       video_differences: [], pass: nil, second_frame: nil, began_later: {}) = super
+
+        # What in +differed+ differed on the frame the drift began.
+        def differed_at_start = differed - began_later.keys
 
         # The frames of the stretch as a range, first to last, or nil where the last is
         # not known.
@@ -963,16 +970,21 @@ module VBlank
           elsif lasted.empty?
             end_drift_once_settled(observation)
           else
-            carry_drift_on(lasted.keys)
+            carry_drift_on(lasted)
           end
           @decided_frame = observation.frame
         end
 
         # The drift goes on, and whatever has now differed for long enough is part of it —
-        # which is also how a drift that had seemed to end turns out not to have.
-        private def carry_drift_on(things)
+        # which is also how a drift that had seemed to end turns out not to have. +lasted+ is
+        # each thing with the Beginning it began on; one new to the drift that began after the
+        # drift's first frame is kept with that frame, for the report to say apart.
+        private def carry_drift_on(lasted)
           @lull = nil
-          @under_way.drift = @under_way.drift.with(differed: @under_way.drift.differed | things)
+          drift = @under_way.drift
+          joined = lasted.reject { |thing, _beginning| drift.differed.include?(thing) }.transform_values(&:frame)
+          later = joined.select { |_thing, frame| frame > drift.frame }
+          @under_way.drift = drift.with(differed: drift.differed | joined.keys, began_later: drift.began_later.merge(later))
         end
 
         # Nothing has differed for long enough on this frame, so the drift seems to have

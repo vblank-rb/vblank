@@ -79,7 +79,34 @@ class TestFlickerMeasured < Minitest::Test
     end
   end
 
+  # A STILL PICTURE THAT TAKES SEVERAL FRAMES TO DRAW: every pass clears the screen and paints
+  # it red again a dot at a time, which is too slow for one frame. The player sees a red screen
+  # that never changes, because a page is shown only once its pass is done. Half way through a
+  # pass the page being drawn is red at the top and still black at the bottom, and it stays
+  # that way for frames on end.
+  private def slow_still_rom
+    VBlank.build("FLICKSLOW", console: :gba, validate: false, out: nil, err: nil) do
+      screen :bitmap, tear_free: true
+      game_loop do
+        clear_screen :black
+        repeat(160) do |y|
+          repeat(240) { |x| draw_rect_at x, y, 1, 1, :red }
+        end
+      end
+    end
+  end
+
   private def flicker_of(rom) = VBlank::Diagnostics::Profiler.run(rom, frames: 12).flicker
+
+  # THE BEAD'S CASE. A pass that takes several frames leaves its page half drawn across a
+  # two-frame gap, and that half disagrees with the page on screen. But the player never sees
+  # the half-drawn page, so nothing flickers.
+  def test_a_still_picture_drawn_over_several_frames_is_not_caught
+    reading = flicker_of(slow_still_rom)
+
+    assert_predicate reading, :measured?
+    refute_predicate reading, :losing?, "the picture on screen never changes, got #{reading.pixels} pixels"
+  end
 
   # THE ONE THAT MATTERS. The console really is showing two different pictures in
   # turn, and the reading says so and says where.

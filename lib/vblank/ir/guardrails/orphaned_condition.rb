@@ -32,9 +32,10 @@ module VBlank
           end
 
           # One Finding per leftover Condition. The program is irrelevant here — the
-          # data is the pending set — so it's ignored.
+          # data is the pending set — so it's ignored. The class is named rather than asked of
+          # self, for the reason Validator#plain_name gives.
           def detect(_program)
-            @pending.map { |condition| self.class.finding(condition) }
+            @pending.map { |condition| OrphanedCondition.finding(condition) }
           end
 
           # A Finding for a Condition built but never used to branch. The Condition

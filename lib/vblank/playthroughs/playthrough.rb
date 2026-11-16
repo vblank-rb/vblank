@@ -186,11 +186,13 @@ module VBlank
       # after it.
       #
       # +on+ and +window+ are as for #play, and +count_passes+ marks that the playing will ask for them.
-      # What comes back is a Started: the game, to ask, and what steps it.
-      def self.power_on_and_lead_in(cartridge, save: nil, lead_in: nil, on: nil, window: nil, count_passes: false)
+      # +match+ is the match a tape replays (a Tape::Match), which only the interpreter takes (Tape#play
+      # refuses it anywhere else). What comes back is a Started: the game, to ask, and what steps it.
+      def self.power_on_and_lead_in(cartridge, save: nil, lead_in: nil, on: nil, window: nil, count_passes: false,
+                                    match: nil)
         refuse_unbuilt_game_on_emulator!(cartridge, on)
         game = if on && on != LoweredGame::EMULATOR
-                 lowered_game(cartridge, on, save, speaker: !window.nil?)
+                 lowered_game(cartridge, on, save, speaker: !window.nil?, match: match)
                else
                  power_on(cartridge, save: save, count_passes: count_passes || !window.nil?)
                end
@@ -224,7 +226,7 @@ module VBlank
 
       # The game inside +cartridge+ run the way +on+ names. That takes the game, so a cartridge
       # somebody else made, which is only its bytes, plays on the emulator alone.
-      def self.lowered_game(cartridge, on, save, speaker: false)
+      def self.lowered_game(cartridge, on, save, speaker: false, match: nil)
         cartridge = cartridge_from(cartridge)
         unless LoweredGame::RUNS.key?(on)
           raise ArgumentError, "There is no way to run a game called #{on.inspect}. The ways are " \
@@ -234,7 +236,7 @@ module VBlank
           raise ArgumentError, "A cartridge file plays on the emulator alone. To play on #{on}, give the game file."
         raise ArgumentError, "A save plays on the emulator alone. To play on #{on}, leave the save out." if save
 
-        LoweredGame.new(program, on, speaker: speaker)
+        LoweredGame.new(program, on, speaker: speaker, match: match)
       end
 
       # WHAT A PLAYING CAN COUNT IN PASSES. The same buttons on the same pass give the same game only
@@ -328,18 +330,17 @@ module VBlank
       # A SAVE FILE READ FROM A PATH, which can be the emulator's own file and not the save memory
       # alone: a Super FX board's file has the chip's working RAM before the save, and a clock's
       # file the clock's bytes after it. Where the save memory is in it is the cartridge's to give
-      # (Console::Kit#save_file_of), so it becomes a save once the cartridge is known.
+      # (Console::Kit#save_file_of), so it becomes a save once the cartridge is known. The clock's
+      # bytes go with it (IR::SaveImage#clock_state).
       SaveFile = Data.define(:bytes, :from) do
-        def memory_for(cartridge)
-          memory = Console.for(cartridge.console).save_file_of(cartridge).memory_in(bytes)
-          Diagnostics::SaveBytes.save_holding(memory, from: from)
-        end
+        def memory_for(cartridge) = Playthrough.save_in(cartridge, bytes, from: from)
       end
 
-      # The save memory in +bytes+, the emulator's save file of +cartridge+, or nil when it holds none.
-      def self.save_memory_in(cartridge, bytes)
-        memory = bytes && Console.for(cartridge.console).save_file_of(cartridge).memory_in(bytes)
-        memory unless memory.nil? || memory.empty?
+      # The save in +bytes+, the emulator's save file of +cartridge+: its save memory, with the
+      # clock's bytes the emulator keeps after it.
+      def self.save_in(cartridge, bytes, from:)
+        layout = Console.for(cartridge.console).save_file_of(cartridge)
+        Diagnostics::SaveBytes.save_holding(layout.memory_in(bytes), from: from, clock_state: layout.clock_in(bytes))
       end
 
       # +save+ MADE TO FIT +cartridge+, or refused. A cartridge this framework built records how
@@ -396,7 +397,7 @@ module VBlank
         # The lead-in is played once the console is on and before the playing begins, so
         # none of it is on the tape.
         def self.play(title, steps, cartridge, save: nil, lead_in: nil, pictures_in: nil, on: nil, window: nil, in_passes: nil,
-                      count_passes: false, progress: Messages::Progress.silent, &at_each_moment)
+                      count_passes: false, match: nil, progress: Messages::Progress.silent, &at_each_moment)
           Playthrough.refuse_lead_in_not_playthrough!(lead_in)
           save = Playthrough.save_from(save)
           save = Playthrough.save_fitted_to(cartridge = Playthrough.cartridge_from(cartridge), save) if save
@@ -404,12 +405,16 @@ module VBlank
           cartridge = Playthrough.cartridge_from(cartridge)
           Playthrough.refuse_unusable_pass_count!(cartridge, in_passes)
           counting = Playthrough.counts_passes?(steps, lead_in: lead_in, in_passes: in_passes, asked: count_passes)
+          # Making the game the way +on+ names (a big game written as Ruby, or built as C) takes a
+          # while before its first frame, so it is a phase of its own.
+          progress.step("Starting game")
           started = Playthrough.power_on_and_lead_in(cartridge, save: save, lead_in: lead_in, on: on, window: window,
-                                                                count_passes: counting)
+                                                                count_passes: counting, match: match)
           game = started.game
           stepper = in_passes ? PassStepper.new(game, in_passes, stepper: started.stepper) : started.stepper
           playing = new(title, cartridge, game, at_each_moment, stepper: stepper,
-                        save: save, folder: folder, led_in: !lead_in.nil?, in_passes: in_passes, progress: progress)
+                        save: save, folder: folder, led_in: !lead_in.nil?, in_passes: in_passes, match: match,
+                        progress: progress)
           progress.step(lead_in ? "playing from after the lead-in" : "playing from power-on")
           steps.each { |step| step.play(playing) }
           playing.played
@@ -426,8 +431,9 @@ module VBlank
         # +in_passes+ names what the counts are counted in, for the tape to record (see Tape), and
         # +progress+ is told the frame reached as each hold ends and a phase at each moment. +stepper+
         # plays the frames each hold asks for: the game itself, or a WindowStepper or PassStepper over it.
+        # +match+ is the match a tape replays (a Tape::Match), for the tape this playing makes, or nil.
         def initialize(title, cartridge, game, at_each_moment, save:, folder:, stepper: game, led_in: false, in_passes: nil,
-                       progress: Messages::Progress.silent)
+                       match: nil, progress: Messages::Progress.silent)
           @title = title
           @progress = progress
           @cartridge = cartridge
@@ -436,6 +442,7 @@ module VBlank
           @save = save
           @led_in = led_in
           @in_passes = in_passes
+          @match = match
           @at_each_moment = at_each_moment
           @folder = folder
           @taping = Tape::Taping.new
@@ -541,7 +548,8 @@ module VBlank
         # What this playing came to. The frames and the moments are the tape's own, so the
         # two can never disagree.
         def played
-          tape = Tape.recorded_on(@cartridge, @taping.steps, save: @save, led_in: @led_in, in_passes: @in_passes)
+          tape = Tape.recorded_on(@cartridge, @taping.steps, save: @save, led_in: @led_in, in_passes: @in_passes,
+                                                             match: @match)
           Played.new(frames: tape.frames, moments: tape.moments, game: @game, tape: tape,
                      pictures: @pictures, picture_files: @picture_files, save: save_left)
         end
@@ -549,10 +557,13 @@ module VBlank
         # The cartridge's save memory as the last frame left it, or nil for a cartridge with
         # none. Whatever size it is: a cartridge somebody else made can keep a save of a
         # size the framework has no model of, and that one comes back as its bytes. It is the
-        # save memory alone, without what else the emulator keeps in its file (Playthrough.save_memory_in).
+        # save memory alone, without what else the emulator keeps in its file, and the clock's
+        # bytes carried beside it, so a playthrough started from it finds the clock as this one
+        # left it (Playthrough.save_in).
         def save_left
-          memory = Playthrough.save_memory_in(@cartridge, @game.save_bytes)
-          memory && Diagnostics::SaveBytes.save_holding(memory, from: "The save this playthrough left")
+          bytes = @game.save_bytes or return nil
+          save = Playthrough.save_in(@cartridge, bytes, from: "The save this playthrough left")
+          save unless save.to_sav.empty?
         end
       end
 

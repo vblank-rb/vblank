@@ -37,6 +37,22 @@ module RuntimeSounds
     assert_sounds_like_the_native_runtime program, frames: 70
   end
 
+  # The main volume scales the whole mix, a song's note and a beep together.
+  def test_a_main_volume_sounds_as_on_the_native_runtime
+    program = sound_program do
+      enable_sound main_volume: 77
+      song(:tune) { voice(:lead) { volume 15; note :A4, :whole } }
+      count = var :count, 0
+      game_loop do
+        count += 1
+        play_song :tune
+        beep 990, duty: :eighth, decay: :slow if count == 6
+      end
+    end
+
+    assert_sounds_like_the_native_runtime program, frames: 40
+  end
+
   # A song in two parts on the two square voices, coming round, with the music turned down and
   # faded out and back while a note is held, and a beep borrowing the second voice partway.
   def test_a_song_and_its_volume_sound_as_on_the_native_runtime

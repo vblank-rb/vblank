@@ -168,11 +168,12 @@ class TestPool < Minitest::Test
   end
 
   # Two pools that each fit the roomier memory and do not fit it together: 135,000 bytes
-  # apiece. The one left with no room is named as the pool the game declared, not as one of
-  # the lists the framework made it from.
+  # apiece. The build's checks refuse them before they are laid out, naming them as the pools the
+  # game declared, not as the lists the framework made them from.
   def test_pools_that_fill_the_roomier_memory_between_them_are_named_as_pools
-    error = assert_raises(GBA::LoweringError) do
-      VBlank.build("TWO", console: :gba, out: StringIO.new, err: StringIO.new) do
+    err = StringIO.new
+    assert_raises(VBlank::ROMError) do
+      VBlank.build("TWO", console: :gba, out: StringIO.new, err: err) do
         screen :bitmap
         pool :left, x: 0, y: 0, vx: 0, vy: 0, capacity: 5400
         pool :right, x: 0, y: 0, vx: 0, vy: 0, capacity: 5400
@@ -180,8 +181,9 @@ class TestPool < Minitest::Test
       end
     end
 
-    assert_match(/pool :(left|right)/, error.message)
-    refute_match(/__pool/, error.message, "no name of the framework's own")
+    assert_match(/pool :(left|right)/, err.string)
+    assert_match(/`fast: false`/, err.string, "the finding for collections kept out of the quick memory")
+    refute_match(/__pool/, err.string, "no name of the framework's own")
   end
 
   # A pool that draws its instances spends a sprite on each, and the console draws 128: that

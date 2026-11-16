@@ -165,6 +165,7 @@ module VBlank
               first = entries.length
               holding.each do |picture|
                 to = SpriteDrawing::OBJ_TILE_BASE + ((base + laid.places.offset(picture.key)) * 32)
+                Primitives.refuse_copy_of_nothing!(picture.key.bytesize / 4) # the walk reads this control word from the table
                 entries << [from.fetch(picture.key), to, (picture.key.bytesize / 4) | DMA_ENABLE | DMA_32BIT, 0]
               end
               [first | (holding.length << COUNT_SHIFT), holding.sum { |picture| picture.key.bytesize }]

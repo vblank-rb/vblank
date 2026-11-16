@@ -17,13 +17,20 @@ module VBlank
 
       PCM_FORMAT = 1 # The "fmt " audio-format code for uncompressed PCM
 
-      # Load +path+ and return { bytes:, rate: } — the converted 8-bit signed PCM (a binary
-      # String) and the sample rate in Hz read from the file.
+      # A recording's samples and rate: +bytes+ the 8-bit signed PCM every console's build plays (a
+      # binary String), +full_samples+ the 16-bit signed samples of a 16-bit recording (a binary
+      # String, two bytes each, low byte first; nil for an 8-bit one), and +rate+ in Hz.
+      Recording = Data.define(:bytes, :full_samples, :rate) do
+        # The first +count+ samples, at both depths.
+        def first(count) = with(bytes: bytes.byteslice(0, count), full_samples: full_samples&.byteslice(0, count * 2))
+      end
+
+      # Load +path+ as a Recording, at the sample rate read from the file.
       def load(path)
         parse(File.binread(path), path)
       end
 
-      # Parse a WAV file's bytes into { bytes:, rate: }. +source+ names it in errors.
+      # Parse a WAV file's bytes into a Recording. +source+ names it in errors.
       def parse(riff, source = "the WAV data")
         unless riff.byteslice(0, 4) == "RIFF" && riff.byteslice(8, 4) == "WAVE"
           raise Error, "#{source} is not a WAV file. It has no RIFF/WAVE header. Use a plain PCM WAV file."
@@ -36,7 +43,8 @@ module VBlank
           raise Error, "#{source} is not uncompressed PCM (format #{format}). This framework loads only uncompressed PCM. Export it as a plain PCM WAV file."
         end
 
-        { bytes: to_signed_8bit_mono(data, channels, bits, source), rate: rate }
+        Recording.new(bytes: to_signed_8bit_mono(data, channels, bits, source),
+                      full_samples: (to_signed_16bit_mono(data, channels) if bits == 16), rate: rate)
       end
 
       # The bytes of the first chunk named +id+. RIFF chunks are [4-byte id][4-byte
@@ -61,9 +69,19 @@ module VBlank
           when 16 then data.unpack("s<*").map { |s| s >> 8 }  # keep the signed high byte of each 16-bit sample
           else raise Error, "#{path} is #{bits}-bit. This framework loads only 8-bit or 16-bit PCM. Export the file as 8-bit or 16-bit PCM."
           end
-        # Stereo (or more) interleaves the channels sample-by-sample; average them to mono.
-        mono = channels <= 1 ? samples : samples.each_slice(channels).map { |group| group.sum / group.size }
-        mono.pack("c*")
+        average_channels(samples, channels).pack("c*")
+      end
+
+      # The raw samples of a 16-bit file as one channel of 16-bit signed PCM, the channels averaged
+      # at all sixteen bits. Not the 8-bit samples shifted up: those average each channel's high
+      # byte, which rounds otherwise, and a console's build keeps them as they always were.
+      def to_signed_16bit_mono(data, channels)
+        average_channels(data.unpack("s<*"), channels).pack("s<*")
+      end
+
+      # Stereo (or more) interleaves the channels sample by sample; average them to mono.
+      def average_channels(samples, channels)
+        channels <= 1 ? samples : samples.each_slice(channels).map { |group| group.sum / group.size }
       end
     end
   end

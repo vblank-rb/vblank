@@ -147,7 +147,7 @@ module VBlank
         return if numbers.is_a?(Array) && numbers.length == 3 && numbers.all? { |n| n.is_a?(Numeric) || n.is_a?(Value) }
         return if what == "move by:" && numbers.all? { |n| n.is_a?(Numeric) || n.is_a?(Value) }
 
-        raise ArgumentError, "eye.#{what} was given #{numbers.inspect}. It takes numbers or values the game works " \
+        raise ArgumentError, "eye.#{what} was given #{Messages::PlainWords.words_for_given(numbers)}. It takes numbers or values the game works " \
                              "out. To fix this, give three of them."
       end
 

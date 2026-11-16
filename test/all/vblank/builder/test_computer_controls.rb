@@ -48,8 +48,29 @@ class TestComputerControls < Minitest::Test
 
   def test_an_unknown_key_or_button_is_refused
     assert_match(/names no key VBlank knows/, refusal { computer_keys a: :f13 })
-    assert_match(/names no button a computer's window has/, refusal { computer_keys x: :d })
+    assert_match(/names no button the Game Boy Advance has/, refusal { computer_keys x: :d })
+    assert_match(/names no button the Game Boy Advance has/, refusal { computer_keys zz: :d })
   end
+
+  # X, Y and C have keys and gamepad buttons only where the console has them: W, Q and the C key,
+  # and the top and left face buttons. So a Super Nintendo game cannot give W to A, nor a Genesis
+  # game the left face button to Start, while an Advance game can.
+  def test_the_keys_of_x_y_and_c_are_taken_only_where_the_console_has_them
+    assert_match(/already presses :x on a computer/, refusal_on(:snes) { computer_keys a: :w })
+    assert_match(/already uses/, refusal_on(:genesis) { computer_gamepad start: :west })
+    assert_match(/:north :left_stick :right_stick/, refusal_on(:genesis) { computer_gamepad start: :west })
+    assert built_on(:snes) { computer_keys x: :d }
+    assert built_with { computer_keys a: :w, b: :c }
+    assert built_with { computer_gamepad start: :west }
+  end
+
+  private def built_on(console, &block)
+    builder = Builder.new(options: VBlank::Cartridge::Options.new(console: console))
+    builder.instance_eval(&block)
+    builder
+  end
+
+  private def refusal_on(console, &block) = assert_raises(ArgumentError) { built_on(console, &block) }.message
 
   def test_a_gamepad_button_the_layout_uses_is_refused
     said = refusal { computer_gamepad a: :south }
@@ -68,6 +89,15 @@ class TestComputerControls < Minitest::Test
     assert built_for_players(2) { computer_keys a: :d }
     assert built_for_players(1) { computer_keys a: :o, l: 7 }
     assert built_with { computer_keys a: :o }
+  end
+
+  # Player 2's X, Y and C keys (H, Y and B) are kept only where the console has the button.
+  def test_player_twos_x_y_and_c_keys_are_kept_only_where_the_console_has_them
+    snes = VBlank::Cartridge::Options.new(console: :snes, players: 2)
+    said = assert_raises(ArgumentError) { Builder.new(options: snes).instance_eval { computer_keys a: :y } }.message
+
+    assert_match(/presses player 2's :y on a computer/, said)
+    assert built_for_players(2) { computer_keys a: :y, b: :h }
   end
 
   private def built_for_players(most, &block)

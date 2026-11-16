@@ -113,8 +113,12 @@ module VBlank
               asm.ldx(asm.abs(memory[entry]))
               asm.lda(asm.long_x("music_data", m::CHANNEL))
               asm.sta(asm.abs(memory[CLAIM_CHANNEL]))
-              asm.ldx(asm.abs(memory[note]))
-              asm.lda(asm.long_x("music_data", m::NOTE_SOUNDS))
+              if note == Music::NOTE
+                Music.emit_note_field(asm, memory, m::NOTE_SOUNDS)
+              else
+                asm.ldx(asm.abs(memory[note]))
+                asm.lda(asm.long_x("music_data", m::NOTE_SOUNDS))
+              end
               asm.sta(asm.abs(memory[CLAIM_SOUNDS]))
               asm.jsr(asm.abs("rt_sfx_claim"))
             end
@@ -503,6 +507,10 @@ module VBlank
               asm.sta(at.call(Music::ENTRY))
               asm.lda(at.call(NOTE))
               asm.sta(at.call(Music::NOTE))
+              if Music.notes_apart?(memory) && Music.changes_notes?(memory) # where those steps read a note
+                asm.tax
+                asm.jsr(asm.abs("rt_music_note_from_table"))
+              end
               Music.emit_note_changes(asm, memory)
               asm.label("rt_sfx_frame_next")
               asm.inc(at.call(PART))

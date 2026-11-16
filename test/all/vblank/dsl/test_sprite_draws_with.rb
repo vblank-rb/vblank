@@ -60,6 +60,30 @@ class TestSpriteDrawsWith < Minitest::Test
     assert_equal Color.resolve(:white), i.screen.pixel(45, 41)
   end
 
+  # A LIST WHOSE PLACES REPEAT A COLOUR, as a logo's list does while every place is still black before
+  # it fades in. Each place is a place of its own: a pixel drawn at the second green stays green, and
+  # a background of other colours beside the sprite never takes that place over.
+  def test_a_list_that_repeats_a_color_keeps_each_place_beside_a_background
+    builder = Builder.new
+    builder.instance_eval do
+      screen :tiled
+      colors :dim, %i[transparent green green red]
+      image :mark, width: 8, height: 8, colors: :dim, places: Array.new(64) { |i| (i % 8) < 4 ? 2 : 3 }
+      image(:floor, "#" => :blue, "." => :white) { "#.#.#.#.\n" * 8 }
+      tiles :floor, { 0 => :floor }
+      background :floor, tiles: :floor, map: [[0]]
+      mark = sprite :mark, at: [40, 40]
+      mark.draw_with :dim
+      game_loop {}
+    end
+    builder.finalize_program
+    i = game_player.run(builder.program, frames: 2)
+
+    assert_equal shown(:green), i.screen.pixel(41, 41), "the second place, which repeats the first's colour"
+    assert_equal shown(:red), i.screen.pixel(45, 41), "the place after it"
+    assert_equal shown(:white), i.screen.pixel(1, 0), "the background beside it"
+  end
+
   # A picture the game paints from a list keeps its pixels as places, so another list swaps
   # its colours by place the same way. A save file's name wears its panel's colours like this.
   private def painted_program
@@ -92,6 +116,61 @@ class TestSpriteDrawsWith < Minitest::Test
     assert_equal Color.resolve(:white), hurt.screen.pixel(45, 41), "and the second"
     assert_equal Color.resolve(:red), past.screen.pixel(41, 41), "past the set, its own colors"
     (2..4).each { |frames| assert_backends_agree(painted_program, frames: frames) }
+  end
+
+  # A painted picture given its list by name keeps that name, so a sprite showing it can name the
+  # list it draws with another, as a sprite of pictures drawn from several lists does.
+  private def painted_by_name_program
+    builder = Builder.new
+    builder.instance_eval do
+      screen :tiled
+      colors :ink, OWN
+      colors :hurt, HURT
+      canvas = list :canvas, capacity: 32, width: :byte
+      repeat(8) { [0x11, 0x11, 0x22, 0x22].each { |two_pixels| canvas.push two_pixels } }
+      tag = image :tag, from: canvas, width: 8, height: 8, colors: :ink
+      tag.changed
+      ship = sprite :tag, at: [40, 40]
+      ship.draw_with({ ink: :hurt })
+      game_loop {}
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  def test_a_painted_picture_draws_its_named_list_with_another
+    i = game_player.run(painted_by_name_program, frames: 3)
+
+    assert_equal Color.resolve(:yellow), i.screen.pixel(41, 41), "the first place of :hurt"
+    assert_equal Color.resolve(:white), i.screen.pixel(45, 41), "and the second"
+  end
+
+  # A canvas shown as a sprite is a painted picture too, and follows its list by name: what
+  # `recolor` puts in the list is what the sprite shows.
+  private def canvas_following_its_list_program
+    builder = Builder.new
+    builder.instance_eval do
+      screen :tiled
+      colors :ink, OWN
+      colors :hurt, HURT
+      tag = canvas :tag, width: 8, height: 8, colors: :ink, as: :sprite
+      tag.fill_rect 0, 0, 4, 8, :red
+      tag.fill_rect 4, 0, 4, 8, :green
+      tag.changed
+      ship = sprite :tag, at: [40, 40]
+      ship.draw_with({ ink: :ink })
+      recolor :ink, :hurt
+      game_loop {}
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  def test_a_canvas_sprite_follows_its_named_list
+    i = game_player.run(canvas_following_its_list_program, frames: 3)
+
+    assert_equal Color.resolve(:yellow), i.screen.pixel(41, 41), "the left half, at :ink's first place"
+    assert_equal Color.resolve(:white), i.screen.pixel(45, 41), "the right half, at its second"
   end
 
   # A sprite told to draw with another list before its picture is first painted: the picture is
@@ -249,6 +328,37 @@ class TestSpriteDrawsWith < Minitest::Test
     i = game_player.run(builder.program, frames: 5)
 
     assert_equal Color.resolve(:red), i.screen.pixel(81, 41)
+  end
+
+  # A thing of a pool told a list for each list its pictures are drawn from, then its own again. A
+  # pool of one list takes the hash as draw_with that list; poses of several lists are in
+  # test/pose_color_list_tests.rb, since the Advance refuses such a pool.
+  def test_an_instance_told_a_list_for_its_list_draws_with_it_then_its_own_again
+    builder = Builder.new
+    builder.instance_eval do
+      screen :tiled
+      colors :ship_colors, OWN
+      image :ship, width: 8, height: 8, data: SHIP, colors: :ship_colors
+      colors :hurt, HURT
+      ships = pool :ship, x: 0, y: 0, capacity: 2, image: :ship
+      ships.spawn x: 40, y: 40
+      ships.spawn x: 80, y: 40
+      frame = 0
+      game_loop do
+        frame += 1
+        ships.each do |ship|
+          ship.draw_with({ ship_colors: :hurt }) if frame == 1 && ship.x == 80
+          ship.draw_with :own if frame == 4 && ship.x == 80
+        end
+      end
+    end
+    builder.finalize_program
+    hurt = game_player.run(builder.program, frames: 3)
+
+    assert_equal [Color.resolve(:red), Color.resolve(:yellow)], [hurt.screen.pixel(41, 41), hurt.screen.pixel(81, 41)]
+    healed = game_player.run(builder.program, frames: 7)
+
+    assert_equal [Color.resolve(:red), Color.resolve(:red)], [healed.screen.pixel(41, 41), healed.screen.pixel(81, 41)]
   end
 
   def test_the_console_draws_a_pools_instances_the_same
@@ -556,4 +666,39 @@ class TestSpriteDrawsWith < Minitest::Test
     refute_match(/calm/, error.message)
   end
 
+  # THE FRAME A SCENE TAKES OVER. Each scene's ship steps through three lists of its own, which
+  # take turns with the other scene's at the same groups, and the game goes back and forth every
+  # six passes. A sprite is drawn from the pass before, so on the frame the new scene's routine
+  # first runs the leaving scene's ship is still the one on screen, and it has to keep its own
+  # scene's colours until its row goes.
+  HANDOVER_LISTS = 3
+
+  private def ships_taking_turns
+    lists = HANDOVER_LISTS
+    builder = Builder.new
+    builder.instance_eval do
+      screen :tiled
+      image :ship, width: 8, height: 8, data: SHIP, colors: OWN
+      firsts = (0...lists).map { |n| colors :"first#{n}", [:transparent, VBlank::Graphics::Color.rgb(8 * n, 31, 4), :white] }
+      seconds = (0...lists).map { |n| colors :"second#{n}", [:transparent, VBlank::Graphics::Color.rgb(31, 8 * n, 20), :white] }
+      state = var :state, 0
+      tick = var :tick, 0
+      scene(:first) { sprite(:first_ship, image: :ship, at: [40, 40]).draw_with firsts, showing: tick % lists }
+      scene(:second) { sprite(:second_ship, image: :ship, at: [80, 40]).draw_with seconds, showing: tick % lists }
+      game_loop do
+        tick += 1
+        state = (tick / 6) % 2
+        case_var(:state) do
+          when_val 0, :first
+          when_val 1, :second
+        end
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  def test_the_leaving_scenes_sprite_keeps_its_colors_on_the_frame_the_next_scene_takes_over
+    assert_backends_agree(ships_taking_turns, frames: [5, 6, 7, 12, 18])
+  end
 end

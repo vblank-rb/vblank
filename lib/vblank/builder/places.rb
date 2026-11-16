@@ -17,10 +17,11 @@ module VBlank
       VIEW_ANGLE = 90
 
       # The settings `perspective:` takes. The default works the picture's place out exactly every
-      # eight pixels across a row and steps straight between; :every_pixel works it out at each
+      # sixteen pixels across a row, or every eight where the face leans away steeply close by,
+      # and steps straight between; :every_8_pixels works it out every eight, :every_pixel at each
       # pixel, and :none stretches the picture straight between a row's ends.
       PERSPECTIVES = IR::Nodes::FillFace::PERSPECTIVE_SPANS.keys.freeze
-      PERSPECTIVE = :every_8_pixels
+      PERSPECTIVE = IR::Nodes::FillFace::DEFAULT_PERSPECTIVE
 
       # A place made of flat faces (see DSL::Place). The block declares its points and faces:
       #

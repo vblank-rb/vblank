@@ -11,22 +11,23 @@ class TestConsoleTables < Minitest::Test
   # Long enough for the game to start and its sprite table to reach the console.
   FRAMES = 30
 
-  private def boxed_game
+  # +turned+ turns the box a little on every pass, so the console draws it in a box twice its size.
+  private def boxed_game(turned: false)
     VBlank.build("BOXED", console: :gba, out: StringIO.new, err: StringIO.new) do
       screen :tiled
       image(:box, "#" => :white) { "########\n" * 8 }
       image(:sea, "." => :blue) { "........\n" * 8 }
       tiles :set, "." => :sea
       background :field, tiles: :set, map: Array.new(32) { "." * 32 }
-      sprite :box, at: [40, 60]
-      game_loop {}
+      box = sprite :box, at: [40, 60]
+      game_loop { box.turn(3) if turned }
     end
   end
 
   # The game read with its build record, and a probe over its bare file, both FRAMES frames in.
-  private def with_recorded_and_bare
+  private def with_recorded_and_bare(turned: false)
     Dir.mktmpdir("cartridges") do |folder|
-      built = boxed_game
+      built = boxed_game(turned: turned)
       path = File.join(folder, "boxed.gba").tap { |file| built.write(file) }
       recorded = VBlank::Diagnostics::Verifier.new(built, frames: FRAMES)
       VBlank::Playthroughs::Probe.open(path) do |probe|
@@ -60,6 +61,14 @@ class TestConsoleTables < Minitest::Test
       assert_equal [[40, 60]], recorded.sprites(:box).map { |row| [row.x, row.y] }
       assert_equal [60, 40], [entry.getbyte(0), entry.byteslice(2, 2).unpack1("v") & 0x1FF]
       assert_equal [[40, 60, 8, 8]], bare.sprite_boxes.map { |box| [box.x, box.y, box.width, box.height] }
+    end
+  end
+
+  # A turned box is drawn in a box twice its size with the picture in its middle, so its box off the
+  # bare file is 16 by 16, standing half the picture up and to the left of where the game put it.
+  def test_a_turned_sprite_s_box_is_the_double_size_box_it_is_drawn_in
+    with_recorded_and_bare(turned: true) do |_recorded, bare|
+      assert_equal [[36, 56, 16, 16]], bare.sprite_boxes.map { |box| [box.x, box.y, box.width, box.height] }
     end
   end
 

@@ -84,6 +84,10 @@ module VBlank
             HOLD = "rt hold"
             # Set when the reader has taken the last pass it compares one by one: no timer moves on after it.
             LAST_PASS_TAKEN = "rt last pass taken"
+            # The number of the last pass the reader compares, written by the reader in a game whose tick handler
+            # waits (LoweringPlan#keeps_last_pass_number?): two passes can end in one frame there, so the reader
+            # cannot mark the last one as it takes it, and the runtime finds the boundary past it itself.
+            LAST_PASS = "rt last pass"
             # A PASS IS HELD AT ITS END FOR A READER THAT ASKS (READER_HOLDS), until the reader has taken it
             # (PASS_TAKEN, the number of the last pass it took). A reader looks at the program once a frame, and a
             # pass that ends just before a retrace would otherwise be through its wait, and on into the next pass,
@@ -168,7 +172,8 @@ module VBlank
 
           # Where each of the runtime's names is, for a reader.
           def places(memory, sprites: false, view: false)
-            names = Frame::WORDS + [Frame::FAULT, Frame::STEPS] + (sprites ? Sprites.places(memory) : []) + (view ? View::PLACES : [])
+            names = Frame::WORDS + [Frame::FAULT, Frame::STEPS] + (sprites ? Sprites.places(memory) : []) + (view ? View::PLACES : []) +
+                    (memory.reserved?(Frame::LAST_PASS) ? [Frame::LAST_PASS] : [])
             names.to_h { |name| [name, memory[name]] }
           end
 
@@ -354,6 +359,15 @@ module VBlank
               # after which the interpreter moves nothing on.
               asm.cmp(at.call(Frame::LAST_PASS_TAKEN), 0)
               asm.jne("rt_wait_timers_moved")
+              # ...or the pass that just ended comes after the last one it compares (Frame::LAST_PASS).
+              if memory.reserved?(Frame::LAST_PASS)
+                asm.mov(:eax, at.call(Frame::LAST_PASS))
+                asm.test(:eax, :eax)
+                asm.je("rt_wait_timers_move")
+                asm.cmp(:eax, at.call(Frame::PASSES))
+                asm.jb("rt_wait_timers_moved")
+                asm.label("rt_wait_timers_move")
+              end
               asm.call(frame_begins)
               asm.label("rt_wait_timers_moved")
             end

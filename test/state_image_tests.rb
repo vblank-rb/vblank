@@ -499,6 +499,67 @@ module StateImageTests
     assert_plays_on_from(inside.state, program, seen, from: middle + 1, frames: 20)
   end
 
+  # A GAME WHOSE TIMER'S HANDLER WAITS, twice a tick, inside a loop of its own: a frame boundary can
+  # come while the handler is stopped, part way through the timers, so the state holds where that walk is.
+  # The handler draws a square where its turn has got to, and the game a square that moves.
+  private def waiting_handler_game
+    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console))
+    builder.instance_eval do
+      screen :bitmap
+      depth = var :depth, 0
+      turns = var :turns, 0
+      inner = var :inner, 0
+      x = var :x, 0
+      beat = timer :beat, per_second: 20
+      beat.on_tick do
+        depth += 1
+        repeat(2) do |turn|
+          if depth == 1
+            turns += 1
+            draw_rect_at turn * 10, 100, 8, 8, :red
+            wait_vblank
+          else
+            inner += 1
+          end
+        end
+        depth -= 1
+      end
+      game_loop do
+        clear_screen :blue
+        x = (x + 1) % 200
+        draw_rect_at x, 20, 8, 8, :white
+        wait_vblank
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  # Each frame the run shows, by its number, with its numbers and its picture as stored: a frame a
+  # waiting handler held up is not shown, and the one it reaches is shown twice.
+  private def frames_shown(run, program, frames:)
+    shown = []
+    run.each_vblank { |frame| shown << [frame, run.vars.dup, VBlank::IR::Backends::RunComparison.picture_check(run.screen.to_a)] }
+       .run(program, frames: frames)
+    shown
+  end
+
+  def test_a_state_written_while_a_timer_handler_waits_plays_on_inside_it
+    program = waiting_handler_game
+    unbroken = frames_shown(state_run, program, frames: 60)
+    # A frame shown while the handler is stopped in its first wait: the next frame shown, the
+    # boundary the state is written at, is that of its second.
+    stopped = unbroken.each_cons(2).find { |(frame, vars, _), (_, after, _)| frame > 10 && vars[:depth] == 1 && after[:depth] == 1 }
+    refute_nil stopped, "the handler is stopped in its first wait at a frame shown"
+    stopped = stopped.first.first
+    writer = state_run.writing_state_after(stopped)
+    frames_shown(writer, program, frames: stopped + 1)
+    resumed = frames_shown(state_run.starting_from_state(writer.state), program, frames: 60 - stopped)
+
+    assert_equal(unbroken.select { |frame, _, _| frame >= stopped + 1 },
+                 resumed.map { |frame, vars, picture| [frame + stopped, vars, picture] })
+  end
+
   def test_the_runtimes_fields_are_the_ones_every_runtime_keeps
     _, state = unbroken_with_state(state_game)
 

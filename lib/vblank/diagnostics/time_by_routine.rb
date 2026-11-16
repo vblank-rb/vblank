@@ -13,8 +13,12 @@ module VBlank
       Spent = Data.define(:routine, :share)
 
       # How much of the time went on waiting, the fewest lines any frame had to spare, and the
-      # routines by share, the game's and the runtime's apart.
-      Report = Data.define(:idle_share, :fewest_lines_spare, :game, :runtime)
+      # routines by share, the game's and the runtime's apart. +fewest_lines_spare+ is whole lines,
+      # rounded down, for a person; +fewest_lines_spare_unrounded+ is the same frame's spare time
+      # with the part of a line kept, for a test that subtracts two readings: each rounded reading
+      # is up to a line under the time, so their difference can move a line when nothing it
+      # measures changed.
+      Report = Data.define(:idle_share, :fewest_lines_spare, :fewest_lines_spare_unrounded, :game, :runtime)
 
       # Only the Advance's profile can put a button down as the measured frames begin.
       def self.refuse_press!(press, console)
@@ -47,7 +51,8 @@ module VBlank
         end
         total = (game.values.sum + runtime.values.sum).to_f
         waiting = runtime.select { |label, _| label.match?(@waits) }
-        Report.new(idle_share: waiting.values.sum / total, fewest_lines_spare: by_frame.map { |spent| lines_spare(spent) }.min,
+        fewest = by_frame.map { |spent| lines_spare(spent) }.min
+        Report.new(idle_share: waiting.values.sum / total, fewest_lines_spare: fewest&.floor, fewest_lines_spare_unrounded: fewest,
                    game: by_share(game, total), runtime: by_share(runtime.except(*waiting.keys), total))
       end
 
@@ -77,8 +82,9 @@ module VBlank
         end
       end
 
+      # The lines a frame's time +spent+ waited through, with the part of a line kept.
       def lines_spare(spent)
-        spent.sum { |address, time| !@routine_at.call(address) && label_before(address).match?(@waits) ? time : 0 } / @line
+        spent.sum { |address, time| !@routine_at.call(address) && label_before(address).match?(@waits) ? time : 0 }.fdiv(@line)
       end
 
       def by_share(time_by_routine, total)

@@ -37,7 +37,7 @@ module VBlank
 
           # The filters' weights for the sample before and the one before that, in 64ths (Beetle PSX, spu.c
           # SPU_RunDecoder's Weights; psx-spx gives SPU ADPCM as "reportedly same as for CD-XA").
-          WEIGHTS = [[0, 0], [60, 0], [115, -52], [98, -55], [122, -60]].freeze
+          WEIGHTS = Ractor.make_shareable([[0, 0], [60, 0], [115, -52], [98, -55], [122, -60]])
 
           # +samples+ (signed 16-bit numbers, any count) as blocks: padded with silence to a whole block,
           # and, when +loop+, flagged to go round for ever from sample +loop_from+ (a whole number of blocks

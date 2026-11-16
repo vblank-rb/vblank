@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require "console/gba/vblank/builder/test_layer_over_sprites_on_the_advance"
+require "layer_over_sprites_tests"
 
 # A see-through background over sprites on the Advance's cartridge: the picture read back in the
 # emulator, and what the cartridge tells the display to mix. What every run that plays games as

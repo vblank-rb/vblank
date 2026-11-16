@@ -76,6 +76,36 @@ class TestLoweringPlan < Minitest::Test
     end
   end
 
+  # A sprite that shows a picture the game paints from a list beside another picture, which no
+  # console's build lays out (Checks::PaintedPictureWithOtherPoses).
+  private def painted_beside_other_pose(console)
+    b = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: console))
+    b.instance_eval do
+      screen :tiled
+      colors :ink, %i[transparent white]
+      canvas = list :canvas, capacity: 32, width: :byte
+      image :tag, from: canvas, width: 8, height: 8, colors: :ink
+      image :plain, width: 8, height: 8, colors: :ink, places: Array.new(64, 1)
+      sprite :speaker, at: [40, 20], frames: %i[plain tag], rate: 3
+      game_loop { nil }
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # The PlayStation's build does not paint a picture from a list yet, which it says first, in the
+  # plan's order.
+  def test_a_painted_picture_beside_other_poses_is_refused_in_the_interpreters_words
+    BACKENDS.except(:ps1).each do |console, backend|
+      program = painted_beside_other_pose(console)
+      interpreter_message = assert_raises(VBlank::IR::ProgramError) { Backends::Reference.new.run(program, frames: 1) }.message
+      error = assert_raises(backend::LoweringError, console.to_s) { backend.new.build(program) }
+
+      assert_match(/must be the only picture of its sprite/, error.message, console.to_s)
+      assert_equal interpreter_message, error.message, "#{console}: the interpreter's words"
+    end
+  end
+
   # The whole order on the plan, every console alike: each fault is refused only once every fault
   # before it in the order is gone. The first is a file handed to the game as it starts, which no
   # cartridge is; the rest are steps.

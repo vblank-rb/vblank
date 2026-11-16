@@ -137,10 +137,15 @@ module VBlank
           # be painted: a row-at-a-time block fill over exactly those edges. It does not go
           # through the rectangle verb because that one holds authors to an even width, and an
           # area's width is whatever the author set.
+          #
+          # An area of no width fills nothing, and must copy nothing: the copy engine reads a count
+          # of nought as its biggest count, and would fill all of video memory.
           def emit_fill_area(color)
+            width = @framebuffer.clip_right - @framebuffer.clip_left
+            return unless width.positive?
+
             scratch = @framebuffer.emit_color_fill_word(color)
-            control = @framebuffer.fill_control_for_column(@framebuffer.clip_left,
-                                                            @framebuffer.clip_right - @framebuffer.clip_left)
+            control = @framebuffer.fill_control_for_column(@framebuffer.clip_left, width)
             (@framebuffer.clip_top...@framebuffer.clip_bottom).each do |row|
               @framebuffer.emit_dma_fill_row(scratch, VRAM_START + ((row * SCREEN_WIDTH) + @framebuffer.clip_left) * 2,
                                          control)
@@ -463,6 +468,7 @@ module VBlank
             @emitter.write_reg16(REG_DISPCNT, base | held)
             @primitives.store_word_immediate(MODE_BUFFERED, @primitives.var_addr(MODE_STATE))
             @scene_entry.emit_clear_used_markers # a new display: nothing any scene put up is there
+            @background_drawing.emit_forget_all_held_tiles # ...nor any cell change waiting for it
             # In a program that crosses to the tiled screen, that screen's own colors have been in
             # this table since, so every number this screen painted would mean another color. So
             # put the originals back, which is also what makes a remembered tint true again. A
@@ -486,6 +492,7 @@ module VBlank
             @emitter.write_reg16(REG_DISPCNT, MODE_3 | BG2_ENABLE | display_window_bits | sprites_over_picture_bits | held)
             @primitives.store_word_immediate(MODE_DIRECT, @primitives.var_addr(MODE_STATE))
             @scene_entry.emit_clear_used_markers # a new display: nothing any scene put up is there
+            @background_drawing.emit_forget_all_held_tiles # ...nor any cell change waiting for it
             @effects.emit_kept_tint_on_entry(IR::Modes::DIRECT)
           end
 
@@ -713,6 +720,7 @@ module VBlank
               # showing goes back to the first as well (see IR::SceneHandover).
               arrival.map_choices.each { |var| @primitives.store_word_immediate(0, @primitives.var_addr(var)) }
               @background_drawing.emit_first_area_colors(arrival.scenery, up: name) # ...and a walking one to its first area's colours
+              emit_bar_beside(nil) if scene_handover.bar_put_up_on_arrival?(arrival)
             end
           end
 
@@ -790,6 +798,7 @@ module VBlank
           def emit_always_up
             always = scene_handover.always_up
             always.scenery.each { |node| @background_drawing.emit_background_hardware(node) }
+            emit_bar_beside(scene_handover.bar_shown_early) if scene_handover.bar_shown_early # ...the bar among them
             always.map_choices.each { |var| @primitives.store_word_immediate(0, @primitives.var_addr(var)) }
             @background_drawing.emit_first_area_colors(always.scenery)
             (always.painted_tiles + always.painted_pictures).each do |run|
@@ -858,8 +867,11 @@ module VBlank
 
             @scene_entry.emit_once_on_arrival(:art, name) do
               # Its colours first: the groups its sprites name are this scene's now (see
-              # ScreenLayout#build_shared_object_palette).
-              @palette_tint.emit_send_scene_obj_palette(colors, @layout.screen.obj_palette_units, name) if colors
+              # ScreenLayout#build_shared_object_palette). A scene a `case_var` picks has them sent
+              # with its sprites instead (see SpriteDrawing#emit_scene_colors_on_change).
+              if colors && !@layout.screen.scene_colors_picked?(name)
+                @palette_tint.emit_send_scene_obj_palette(colors, @layout.screen.obj_palette_units, name)
+              end
               art.each { |blob, at, units| @uploads.emit_dma_blob(blob, SpriteDrawing::OBJ_TILE_BASE + (at * 32), units * 16) }
               @sprite_drawing.emit_reset_resident_frames(rooms)
               pools.each { |pool| @sprite_drawing.emit_forget_poses_sent(pool) }
@@ -914,8 +926,9 @@ module VBlank
           def emit_late_pages_setting(setting)
             return unless @layout.late_pages.any?
 
-            rows = setting.rows
-            @primitives.store_word_immediate(rows ? rows + 1 : 0, @primitives.var_addr(LATE_PAGE_ROWS))
+            # Counted in the console's lines, which a game shown in a border starts below its top.
+            lines = @layout.late_pages.lines_above(setting)
+            @primitives.store_word_immediate(lines ? lines + 1 : 0, @primitives.var_addr(LATE_PAGE_ROWS))
             @frames.emit_set_pace(setting.pace)
           end
 
@@ -1420,6 +1433,30 @@ module VBlank
 
             @background_drawing.emit_background_hardware(node)
             emit_enable_late_layer(node)
+            emit_bar_beside(node)
+          end
+
+          BAR_SHOWN_EARLY = :__bar_shown_early # Note that the bar shown early is up
+
+          # A STATUS BAR SHOWN BEFORE ITS OWN LINE RUNS (IR::SceneHandover#bar_shown_early) goes up beside every
+          # background put up until it has gone up once, as Backends::SceneryWrites#emit_bar_beside puts it up on
+          # the other cartridges, which the Advance's lowering does not mix in: the bar's own line notes it is up
+          # (BAR_SHOWN_EARLY, cleared as the backgrounds' pictures go in, BackgroundDrawing#emit_boot_backgrounds,
+          # and set again as a screen's change puts the bar back, #emit_always_up), and any other background puts
+          # it up unless the note is set. +node+ is the background put up, or nil for a scene's own scenery as it
+          # takes over.
+          def emit_bar_beside(node)
+            bar = scene_handover.bar_shown_early
+            return unless bar
+            return @primitives.store_word_immediate(1, @primitives.var_addr(BAR_SHOWN_EARLY)) if node.equal?(bar)
+            return if node&.bar?
+
+            up = gensym
+            load_var(ACC, BAR_SHOWN_EARLY)
+            emit(ASM.cmp_imm(ACC, 0))
+            emit_branch(:bcond, up, cond: :ne)
+            emit_background(bar)
+            place_label(up)
           end
 
           # Bitmap-mode background: no tile hardware, so stamp each non-empty cell with

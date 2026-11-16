@@ -13,12 +13,14 @@ require_relative "diagnostics/func_dumper"
 require_relative "diagnostics/sm83_listing"      # A routine of a Game Boy Color cartridge
 require_relative "diagnostics/missing_emulator"  # Why the emulator would not load, and what to do about it
 require_relative "diagnostics/emulator"          # The one seam to the emulator backend; swap emulators here
+require_relative "diagnostics/screen_questions"  # A whole screen's questions in Ruby, for an emulator not the Advance's
 require_relative "diagnostics/frame_sound"       # One frame's samples and the loudest of them
 require_relative "diagnostics/recorded_sound"    # The sound of a run, its older part in a scratch file
 require_relative "diagnostics/verifier"          # Real pixels and real sound read back through the emulator
 require_relative "diagnostics/film"              # A film of one cartridge running, or two side by side, as an MP4
 require_relative "diagnostics/film_cartridge"    # One side of a film, brought to its first frame with a save folder of its own
 require_relative "diagnostics/film_script"       # A film written as a small file
+require_relative "diagnostics/film_shell"        # A port's shell filmed from its first start, as a side of a film
 # Its rake task, film_tasks.rb, is a Rakefile's and is not required here: a Rakefile requires it alone,
 # and it loads the library when it runs.
 require_relative "diagnostics/sound_recording"   # What a game sounds like on the cartridge, the desktop build or as Ruby

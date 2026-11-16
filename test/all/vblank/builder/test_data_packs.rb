@@ -530,32 +530,59 @@ class TestDataPacks < Minitest::Test
     end
   end
 
-  # AN ALL-IN-ONE BUILD UNPACKS AT A SPEED A BIG PORT CAN WAIT FOR. A routine copying 16 MB a byte
-  # at a time in a loop of its own, as a port's decoder works, takes the Ruby run many times the
-  # bound and the interpreter far longer; played as C (Original::Unpacking#run_fastest) it takes a
-  # small part of it, compiling the routine the first time included, which leaves room for a busy
-  # machine. The pack is the copy, byte for byte.
+  # AN ALL-IN-ONE BUILD UNPACKS AT A SPEED A BIG PORT CAN WAIT FOR: as C
+  # (Original::Unpacking#run_fastest), many times faster than the same routine played as Ruby. A
+  # routine copies 16 MB a byte at a time in a loop of its own, as a port's decoder works.
+  #
+  # HELD TO THE WORK, NOT THE CLOCK. A bound in seconds failed whenever other runs shared the
+  # cores, so the yardstick is measured in the same process at the same moment, and slows with
+  # it: the same routine played as Ruby (#run_as_ruby) for the frames that copy one sixteenth of
+  # the copy (the routine waits for a frame each BlockKitInternals::PROGRESS_BYTES written). The whole
+  # build must take under RUBY_SIXTEENTHS_ALLOWED of those. As C it takes under one (and a smaller
+  # share on a busy machine, where the Ruby slows more); a build that fell back to Ruby takes about
+  # sixteen, and to the interpreter far more, so either fails, as does C doing about five times the
+  # work. The yardstick includes writing the routine as Ruby, a small part of it.
+  #
+  # The build is timed the second time it unpacks. The first compiles the routine, which takes
+  # longer than the unpacking itself; the compiled program is kept by its C, so the second plays
+  # it as a player's machine does on every later build.
   LOOPED_COPY_BYTES = 16 << 20
-  MOST_UNPACKING_SECONDS = 4
+  RUBY_SIXTEENTHS_ALLOWED = 3
 
-  def test_an_all_in_one_unpacking_of_sixteen_megabytes_takes_under_four_seconds
+  def test_an_all_in_one_unpacking_plays_many_times_faster_than_as_ruby
+    skip_on_this_machine "zig is not installed, so the build plays its unpacking as Ruby" unless VBlank::IR::Backends::Native::Zig.installed?
+
     Dir.mktmpdir do |folder|
       bytes = Random.new(3).bytes(LOOPED_COPY_BYTES)
+      copy = copy_of(folder, bytes)
+      looped_copy_pack(copy)
       builder = Builder.new
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      builder.data_pack(from: copy_of(folder, bytes), version: "1") do |slots|
-        slots.pixels :art, count: LOOPED_COPY_BYTES
-        slots.fill_from_copy do |copy, filled|
-          repeat(LOOPED_COPY_BYTES) do |at|
-            filled[:art][at] = copy.byte(at)
-            copy.count_written 1
-          end
-        end
-      end
-      took = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+      pack = looped_copy_pack(copy, builder)
+      build_took = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+      sixteenth = LOOPED_COPY_BYTES / 16
+      unpacking = pack.unpacking
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      as_ruby = unpacking.run_as_ruby(frames: sixteenth / VBlank::Original::Packing::BlockKitInternals::PROGRESS_BYTES)
+      ruby_took = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
 
       assert_equal bytes, VBlank::Original::Pack.from_bytes(builder.made_data_pack_file).bytes_of(:art)
-      assert_operator took, :<, MOST_UNPACKING_SECONDS, "the unpacking took #{took.round(1)} s"
+      assert_equal sixteenth, unpacking.bytes_done_in(as_ruby), "the yardstick copied a sixteenth of the copy"
+      assert_operator build_took, :<, ruby_took * RUBY_SIXTEENTHS_ALLOWED,
+                      "the build's unpacking took #{build_took.round(2)} s; a sixteenth of it as Ruby took #{ruby_took.round(2)} s"
+    end
+  end
+
+  # The pack made from +copy+ by a routine copying it a byte at a time, built by +builder+.
+  private def looped_copy_pack(copy, builder = Builder.new)
+    builder.data_pack(from: copy, version: "1") do |slots|
+      slots.pixels :art, count: LOOPED_COPY_BYTES
+      slots.fill_from_copy do |reader, filled|
+        repeat(LOOPED_COPY_BYTES) do |at|
+          filled[:art][at] = reader.byte(at)
+          reader.count_written 1
+        end
+      end
     end
   end
 

@@ -14,12 +14,12 @@
       "data": 0
     },
     "breakout": {
-      "code": 67528,
+      "code": 70632,
       "data": 0
     },
     "breakout@gbc": {
-      "code": 11786,
-      "data": 47982
+      "code": 11835,
+      "data": 45457
     },
     "buffered_bounce": {
       "code": 4942,
@@ -34,8 +34,8 @@
       "data": 0
     },
     "chip_band@gbc": {
-      "code": 13668,
-      "data": 13976
+      "code": 13350,
+      "data": 13784
     },
     "clock": {
       "code": 25718,
@@ -46,11 +46,11 @@
       "data": 0
     },
     "cube3d": {
-      "code": 36476,
+      "code": 37132,
       "data": 0
     },
     "dive": {
-      "code": 55776,
+      "code": 56012,
       "data": 0
     },
     "everywhere": {
@@ -58,11 +58,11 @@
       "data": 0
     },
     "everywhere@gbc": {
-      "code": 8382,
-      "data": 3408
+      "code": 8064,
+      "data": 3392
     },
     "everywhere@genesis": {
-      "code": 4670,
+      "code": 4780,
       "data": 880
     },
     "floating_digits": {
@@ -74,7 +74,7 @@
       "data": 0
     },
     "flowers@gbc": {
-      "code": 6850,
+      "code": 6547,
       "data": 4832
     },
     "font_styles": {
@@ -98,11 +98,11 @@
       "data": 44
     },
     "hero": {
-      "code": 80228,
+      "code": 80400,
       "data": 0
     },
     "jukebox": {
-      "code": 70610,
+      "code": 72434,
       "data": 0
     },
     "lake": {
@@ -114,11 +114,11 @@
       "data": 0
     },
     "level@genesis": {
-      "code": 4236,
+      "code": 4298,
       "data": 2404
     },
     "lit_corridor": {
-      "code": 39528,
+      "code": 40608,
       "data": 0
     },
     "maze": {
@@ -126,7 +126,7 @@
       "data": 0
     },
     "maze@genesis": {
-      "code": 3792,
+      "code": 3870,
       "data": 2108
     },
     "meadow": {
@@ -138,15 +138,15 @@
       "data": 0
     },
     "pacman@gbc": {
-      "code": 8505,
-      "data": 14512
+      "code": 8187,
+      "data": 14320
     },
     "parallax": {
       "code": 2092,
       "data": 0
     },
     "parallax@genesis": {
-      "code": 3016,
+      "code": 3126,
       "data": 4448
     },
     "piano": {
@@ -162,16 +162,16 @@
       "data": 44
     },
     "pong": {
-      "code": 43944,
+      "code": 44108,
       "data": 0
     },
     "pong_gbc": {
-      "code": 41788,
+      "code": 42692,
       "data": 0
     },
     "pong_gbc@gbc": {
-      "code": 13857,
-      "data": 28096
+      "code": 14021,
+      "data": 27856
     },
     "raycaster": {
       "code": 6112,
@@ -186,15 +186,15 @@
       "data": 0
     },
     "scoreboard@gbc": {
-      "code": 8069,
-      "data": 7664
+      "code": 7774,
+      "data": 7632
     },
     "scroll": {
       "code": 2348,
       "data": 0
     },
     "scroll@genesis": {
-      "code": 3004,
+      "code": 3114,
       "data": 8472
     },
     "sheet": {
@@ -202,7 +202,7 @@
       "data": 0
     },
     "shmup": {
-      "code": 37552,
+      "code": 37860,
       "data": 0
     },
     "snake": {
@@ -230,7 +230,7 @@
       "data": 0
     },
     "tiles@genesis": {
-      "code": 3124,
+      "code": 3234,
       "data": 2776
     },
     "tower": {
@@ -238,15 +238,15 @@
       "data": 0
     },
     "tower@gbc": {
-      "code": 8689,
-      "data": 16880
+      "code": 8409,
+      "data": 16288
     },
     "tower@genesis": {
-      "code": 6242,
+      "code": 6296,
       "data": 3740
     },
     "two_rooms": {
-      "code": 36338,
+      "code": 36994,
       "data": 0
     },
     "wanderers": {
@@ -254,7 +254,7 @@
       "data": 0
     },
     "wanderers@gbc": {
-      "code": 8101,
+      "code": 7787,
       "data": 5664
     }
   }

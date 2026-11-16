@@ -7,10 +7,13 @@ module RubyPS1Emulator
   # patch hands none of those over, so it is refused rather than used.
   #
   # VBLANK_PS1_CORE names the library when it is set. Otherwise this gem's own build is used, which
-  # `rake compile_core` in this gem's folder makes (see the Rakefile for the steps).
+  # `rake compile_core` in this gem's folder makes (see the Rakefile for the steps). The core is played
+  # through the gem's C extension, which `rake compile` builds.
+  #
+  # The paths are frozen, so a Ractor worker may read them.
   module CoreLibrary
     SETTING = "VBLANK_PS1_CORE"
-    BUILT = File.expand_path("../../core/build/mednafen_psx_libretro.so", __dir__)
+    BUILT = File.expand_path("../../core/build/mednafen_psx_libretro.so", __dir__).freeze
 
     module_function
 
@@ -32,6 +35,19 @@ module RubyPS1Emulator
             rake compile_core
 
         It needs make, patch, tar and a C compiler. Or set #{SETTING} to a core that is built already.
+      MESSAGE
+    end
+
+    # Why the C extension that plays the core did not load (+detail+, Ruby's own reason), and how
+    # to build it.
+    def extension_missing_message(detail)
+      <<~MESSAGE
+        A PlayStation program is played through ruby-ps1-emulator's C extension, and it is not
+        built for this Ruby (#{detail}). To build it, run this in ruby-ps1-emulator/:
+
+            rake compile
+
+        It needs a C compiler.
       MESSAGE
     end
   end

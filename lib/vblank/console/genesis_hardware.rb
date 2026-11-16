@@ -111,6 +111,7 @@ module VBlank
       MODE2_SCREEN_OFF = 0x04
       MODE2_VBLANK_INTERRUPT = 0x20 # Added to switch the vertical blank's interrupt on
       MODE2_DMA = 0x10 # Added to let the video chip copy from work RAM by itself
+      MODE2_SCREEN_ON_BIT = 0x40 # The one bit of mode register 2 that turns the screen on, read on its own
 
       # Added to a write command, it starts that copy: the video chip takes the bus and moves the
       # words the DMA registers name, with the processor stopped until it is done. In the blank it

@@ -9,4 +9,6 @@ class TestRubyPackStandInSize < Minitest::Test
   include PackStandInSizeTests
 
   private def written_bytes(program) = VBlank::IR::Backends::Ruby.new.live_source(program).bytesize
+  private def lowering_class = VBlank::IR::Backends::Ruby::Lowering
+  private def headless_run = VBlank::IR::Backends::Ruby::HeadlessRun.new
 end

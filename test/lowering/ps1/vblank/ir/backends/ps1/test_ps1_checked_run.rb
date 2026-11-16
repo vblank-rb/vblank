@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "delegate"
+require "no_frames_games"
 
 # What only the PlayStation's own program can show, played in Beetle PSX and held to the interpreter
 # pass for pass (PS1::CheckedRun). What a game does with its numbers, lists, scenes and routines is in
@@ -107,6 +109,28 @@ class TestPS1CheckedRun < Minitest::Test
     assert_match(/can call itself again/, error.message)
   end
 
+  # A cell is changed only inside the row it is in (Reference#change_cell reads the row's own length),
+  # and the program keeps one size for a background's map. Every map the builder makes is a rectangle,
+  # so a map whose rows differ in length was built by hand, and is refused rather than changed past a
+  # short row's end.
+  def test_a_map_whose_rows_differ_in_length_is_refused
+    program = program_of do
+      screen :tiled
+      image(:wall, "#" => :red) { SOLID_TILE }
+      tiles :walls, "#" => :wall
+      room = background :room, tiles: :walls, map: %w[## ##]
+      game_loop { room.set_tile 1, 1, "#" }
+    end
+    declared = program.walk.find { |node| node.kind == :background }
+    ragged = VBlank::IR::Build.background(:room, tiles: declared.tiles, map: [[0, 0], [0]], tile_w: 8, tile_h: 8)
+    beside = declared.parent.children
+    beside[beside.index(declared)] = ragged
+    ragged.parent = declared.parent
+
+    error = assert_raises(PS1::LoweringError) { PS1.new.build(program) }
+    assert_match(/rows are of different lengths/, error.message)
+  end
+
   # What the console can do and this build does not make yet is refused as not made yet, naming the
   # part, never in the words of hardware the console lacks (Console::PS1Answers).
   def test_what_the_build_does_not_make_yet_is_refused_as_not_made_yet
@@ -119,6 +143,38 @@ class TestPS1CheckedRun < Minitest::Test
 
       assert_match(/#{part}/, error.part)
     end
+  end
+
+  # A run of no frames ends before the first pass is shown: the graphics chip still has its display
+  # switched off, which the interpreter shows as its plain white picture of a display switched off,
+  # and the game's numbers are the first pass's.
+  def test_a_run_of_no_frames_ends_with_the_screen_still_off
+    run = PS1::CheckedRun.new.run(NoFramesGames.room_counting_passes(:ps1), frames: 0)
+
+    assert_equal Color.resolve(:white), run.screen.pixel(3, 3)
+    assert_equal 0, run[:n]
+  end
+
+  # A STAND-IN FOR A RUNTIME THAT LETS THE DISPLAY COME ON WHILE IT SETS UP: the graphics chip reads
+  # with its display on, where the real program still has it off. The run reports the picture
+  # Beetle PSX holds where the chip shows it, not the interpreter's switched-off white, so a check
+  # against the interpreter would fail.
+  class DisplayOnWhileSettingUp < PS1::HeadlessRun
+    # The emulator, but its graphics chip's display always on.
+    class DisplayOnCore < SimpleDelegator
+      def gpu_state = __getobj__.gpu_state.merge(display_off: 0)
+    end
+
+    private def power_on
+      @core = DisplayOnCore.new(@core)
+      super
+    end
+  end
+
+  def test_a_run_of_no_frames_reports_the_picture_shown_when_the_display_is_on
+    run = DisplayOnWhileSettingUp.new.run(NoFramesGames.room_counting_passes(:ps1), frames: 0)
+
+    assert_equal [0], run.screen.to_a.uniq, "the picture Beetle PSX holds where the chip shows it: nothing drawn there yet"
   end
 
   private

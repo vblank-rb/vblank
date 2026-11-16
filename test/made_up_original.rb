@@ -24,7 +24,15 @@ module MadeUpOriginal
   SPRITES_AT = 0xC0
   LZ77_AT = 0x140
   RLE_AT = 0x1A0
-  COPY_SIZE = 0x200
+  FRAMES_AT = 0x200
+  COPY_SIZE = 0x210
+
+  # A frame of a sprite as the made-up original keeps it: a count, then four bytes a piece, x and y
+  # (signed, from the object's place), the tile, and flags (bit 6 mirrored). Two pieces side by
+  # side above the object's place: the first tile, and the second mirrored.
+  FRAME = VBlank::Original::FrameLayout.new(piece_bytes: 4, counted: true, x_at: 0, y_at: 1, tile_at: 2, flags_at: 3,
+                                            mirrored_bit: 6)
+  FRAME_BYTES = [2, 0xF8, 0xF8, 0, 0, 0, 0xF8, 1, 0x40].freeze
 
   # A 16x16 picture as its places, row by row: see-through in a slanting pattern, and the rest in
 # eleven colours, so a turned copy of it differs from it at every row and column.
@@ -56,6 +64,7 @@ end.each_slice(2).map { |left, right| left | (right << 4) }.pack("C*").freeze
     bytes[SPRITES_AT, SPRITE_BYTES.bytesize] = SPRITE_BYTES
     bytes[LZ77_AT, LZ77_BLOCK.bytesize] = LZ77_BLOCK
     bytes[RLE_AT, RLE_BLOCK.bytesize] = RLE_BLOCK
+    bytes[FRAMES_AT, FRAME_BYTES.length] = FRAME_BYTES.pack("C*")
     bytes.freeze
   end
   SHA1 = Digest::SHA1.hexdigest(COPY)

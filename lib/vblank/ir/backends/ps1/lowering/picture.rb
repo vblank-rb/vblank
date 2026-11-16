@@ -23,8 +23,8 @@ module VBlank
           module Picture
             # The steps that change colours as the game runs (Runtime::Colors).
             COLOR_CHANGES = %i[color_list_holds background_colors fade tint].freeze
-            STATEMENT_KINDS = (%i[background scroll_background place_bar set_tile show_map present_objects hide_sprites] +
-                               COLOR_CHANGES).freeze
+            STATEMENT_KINDS = (%i[background scroll_background place_bar set_tile show_map present_objects hide_sprites
+                                  see_through] + COLOR_CHANGES).freeze
 
             def emit_picture_statement(node)
               case node.kind
@@ -39,6 +39,10 @@ module VBlank
               when :background_colors then emit_background_colors(node)
               when :fade then emit_palette_walk(node)
               when :tint then emit_palette_walk(node)
+              # Reference#exec_see_through: a layer's amounts told again before the frame. Only a layer whose
+              # amounts are numbers comes here (Console::PS1Answers.refusals), and each background is drawn by
+              # its own layer's way as it goes up (#emit_plane_mix), so there is nothing to tell.
+              when :see_through then nil
               else raise LoweringError, "no writer here for #{node.kind.inspect}"
               end
             end
@@ -92,7 +96,59 @@ module VBlank
 
               bars = @layers.select { |bg, _| bg.bar? }.values.uniq.sort
               Runtime::Tiles::Screen.new(places: @plane_places, depths: @plane_depths, opaque: @opaque_planes, bar_planes: bars,
-                                         levels: @levels, crosses: @crosses)
+                                         levels: @levels, crosses: @crosses, mixed_planes: @mixed_planes)
+            end
+
+            # THE CHIP'S WAY EACH SEE-THROUGH BACKGROUND OF +program+ IS MIXED IN (Console::PS1Hardware::
+            # SEMI_TRANSPARENCY_MODES), by background: those in a layer whose amounts are numbers the chip mixes,
+            # and HIDDEN for one in a layer that shows nothing of itself (`transparency: 100`), which is not drawn.
+            # A layer drawn whole (`transparency: 0`) is no mix, and an amount the chip cannot mix was refused
+            # before the build (Console::PS1Answers.see_through_refusals).
+            def self.see_through_modes(program)
+              layers = SeeThrough.layers(program).to_h { |layer| [layer.name, layer] }
+              program.walk.each_with_object({}.compare_by_identity) do |bg, modes|
+                next unless bg.kind == :background && (layer = layers[bg.layer]) && SeeThrough.fixed?(layer)
+
+                shares = SeeThrough.fixed_weights(layer)
+                mode = shares == Console::PS1Hardware::HIDDEN_SHARES ? HIDDEN : Console::PS1Hardware::SEMI_TRANSPARENCY_MODES[shares]
+                modes[bg] = mode if mode
+              end
+            end
+
+            # A see-through background that shows nothing of itself (#see_through_modes).
+            HIDDEN = :hidden
+
+            # Whether +program+'s tiled screen has a see-through background (Runtime::Tiles::PLANE_MIXES).
+            def self.mixes_see_through?(program) = tiled?(program) && !see_through_modes(program).empty?
+
+            def see_through_modes = @see_through_modes ||= Picture.see_through_modes(@program)
+
+            # The word +bg+'s plane is drawn by (Runtime::Tiles::PLANE_MIXES): the textured rectangle, made
+            # semi-transparent and its way set beside it for a see-through background, or nought for one not
+            # drawn at all.
+            def plane_mix_word(bg)
+              h = Console::PS1Hardware
+              mode = see_through_modes[bg] or return h::GP0_TEXTURED_RECTANGLE
+              return Runtime::Tiles::PLANE_NOT_DRAWN if mode == HIDDEN
+
+              h::GP0_TEXTURED_RECTANGLE | h::GP0_SEMI_TRANSPARENT | (mode << h::SEMI_TRANSPARENCY_SHIFT)
+            end
+
+            # A see-through layer this build does not draw yet: one of sprites, which the interpreter mixes
+            # with the scenery alone and never with a sprite under them (Framebuffer#keep_scenery), and a
+            # status bar, which the runtime draws apart from the planes (Runtime::Tiles' rt_bar_draw).
+            def refuse_unmade_see_through!
+              mixed = SeeThrough.layers(@program).reject do |layer|
+                SeeThrough.fixed?(layer) && SeeThrough.fixed_weights(layer) == Console::PS1Hardware::SOLID_SHARES
+              end.map(&:name)
+              return if mixed.empty?
+
+              if @objects.each_value.any? { |obj| [obj.layer, *obj.layers].intersect?(mixed) }
+                refuse_unmade!(TILED_SCREEN, "shows sprites in a see-through layer")
+              end
+              return unless @backgrounds.any? { |bg| bg.bar? && mixed.include?(bg.layer) }
+
+              refuse_unmade!(TILED_SCREEN, "shows a status bar in a see-through layer")
             end
 
             def prepare_picture
@@ -122,6 +178,7 @@ module VBlank
             # a painted screen, backgrounds stamped where they are put up and sprites over the picture.
             def refuse_unmade_picture!
               refuse_fades_of_part!
+              refuse_unmade_see_through!
               return refuse_unmade_painted! unless @tiled
 
               others = @program.walk.select { |node| node.kind == :screen }.map(&:mode).uniq - %i[tiled bitmap]
@@ -226,7 +283,20 @@ module VBlank
                   refuse_unmade!(TILED_SCREEN, "has a background whose map is more than #{TileMap.max_grid_size} cells across " \
                                                "or down, or whose maps are of different sizes")
                 end
+                refuse_ragged_changed_map!(bg)
               end
+            end
+
+            # A CELL IS CHANGED ONLY INSIDE ITS OWN ROW (Reference#change_cell), and the runtime tests a changed cell
+            # against one size for the whole map (#emit_set_tile_of), which every map the builder makes has: it
+            # refuses a map whose rows differ in length (Builder#background_rows). So a map like that was built by
+            # hand, and one whose cells the game changes is refused here, rather than changed past a short row's end.
+            def refuse_ragged_changed_map!(bg)
+              return if bg.every_map.all? { |map| map.map { |row| Array(row).length }.uniq.length <= 1 }
+              return unless @program.walk.any? { |node| node.kind == :set_tile && node.name == bg.name }
+
+              raise LoweringError, "the background #{bg.name.inspect} has a map whose rows are of different lengths, and " \
+                                   "the game changes its cells"
             end
 
             def refuse_unmade_sprites!
@@ -301,7 +371,7 @@ module VBlank
               always = @handover.always_up.scenery
               own = @scenes.keys.map { |scene| @handover.arrival(scene).scenery }
               @scene_planes = own.map(&:length).max || 0
-              refuse_unmade_stacking!
+              @plan.refuse_unmade_stacking!(NotMadeYet, part: TILED_SCREEN)
               always.each_with_index { |bg, i| @layers[bg] = @scene_planes + (always.length - 1 - i) }
               own.each { |scenery| scenery.each_with_index { |bg, i| @layers[bg] = scenery.length - 1 - i } }
               count = @scene_planes + always.length
@@ -313,11 +383,12 @@ module VBlank
               make_plane_tables(count)
               # The planes every background that goes up on draws every pixel of (Runtime::Tiles::Screen#opaque): one
               # of those up hides the backdrop and every plane behind it. A status bar is drawn below the rows the
-              # other planes are, so it hides nothing behind it.
+              # other planes are, so it hides nothing behind it, and nor does a see-through one.
               @opaque_planes =(0...count).select do |plane|
                 showing = backgrounds_on(plane)
-                !showing.empty? && showing.all? { |bg| !bg.bar? && opaque_background?(bg) }
+                !showing.empty? && showing.all? { |bg| !bg.bar? && !see_through_modes.key?(bg) && opaque_background?(bg) }
               end
+              @mixed_planes = see_through_modes.keys.map { |bg| plane_of(bg) }.uniq.sort
               @levels = picture_levels
               follow_backdrop_list
               make_tile_sheet
@@ -404,12 +475,6 @@ module VBlank
               [grids.map(&:first).max || PLANE_CELLS, grids.map(&:last).max || PLANE_CELLS].map { |cells| cells * TILE_SIDE }
             end
 
-            # A stack the planes' order cannot show: a scene's own background behind one every screen shows.
-            def refuse_unmade_stacking!
-              return unless @scenes.each_key.any? { |scene| @handover.own_scenery_behind_shared?(scene) }
-
-              refuse_unmade!(TILED_SCREEN, "puts a scene's own background in a layer behind a background every screen shows")
-            end
 
             def plane_of(bg) = @layers.fetch(bg) { raise LoweringError, "the background #{bg.name.inspect} is on no plane" }
 
@@ -471,7 +536,9 @@ module VBlank
               return if @handover.on_arrival?(node)
               return emit_stamp_background(node) unless @tiled
 
-              emit_put_up(node, 0, reset_view: 1)
+              # Put up again, it keeps the cells its plane holds (SceneryWrites#emit_put_up_keeping_cells).
+              emit_put_up_keeping_cells(node, plane_of(node)) { |kept| emit_put_up(node, kept ? nil : 0, reset_view: 1) }
+              emit_bar_beside(node)
             end
 
             # A BACKGROUND PUT UP ON A PAINTED SCREEN is painted into the picture, as the interpreter stamps it
@@ -526,16 +593,30 @@ module VBlank
             end
 
             # A status bar put up from its corner shows from the top it was declared with (Reference#bar_top_shown).
+            # +which+ is the map whose cells go onto the plane, or nil to keep the cells the plane holds
+            # (SceneryWrites#emit_put_up_keeping_cells), which are of a map the size of the first.
             def emit_put_up(bg, which, reset_view:)
-              columns, rows = TileMap.grid(bg.every_map.fetch(which))
-              runtime_call("rt_plane_put_up", [Build.int(plane_of(bg)), LabelAddress.new(grid_label(bg, which)), Build.int(reset_view),
+              columns, rows = TileMap.grid(bg.every_map.fetch(which || 0))
+              cells = which ? LabelAddress.new(grid_label(bg, which)) : Build.int(0)
+              runtime_call("rt_plane_put_up", [Build.int(plane_of(bg)), cells, Build.int(reset_view),
                                                Build.int(columns.bit_length - 1), Build.int(rows), Build.int(plane_table_word(bg)),
                                                Build.int(background_level(bg))])
+              emit_plane_mix(bg)
               return if reset_view.zero?
 
               emit_bar_put_up(bg) if bg.bar?
-              note = @put_up_this_pass&.fetch(plane_of(bg))
+              note = corner_note(plane_of(bg))
               statement(Build.set(note, 1)) if note
+            end
+
+            # How +bg+'s plane is drawn from now (Runtime::Tiles::PLANE_MIXES), on a plane a see-through background
+            # goes up on: the others are always drawn whole.
+            def emit_plane_mix(bg)
+              plane = plane_of(bg)
+              return unless @mixed_planes.include?(plane)
+
+              @asm.li(:t0, plane_mix_word(bg))
+              emit_store_word(:t0, runtime_place(Runtime::Tiles::PLANE_MIXES) + (plane * 4))
             end
 
             # A STATUS BAR PUT UP shows from the top it was declared with, and the runtime's one top and one setting
@@ -550,56 +631,17 @@ module VBlank
             # The label of the table of +bg+'s map number +which+, made with the art (#picture_sections).
             def grid_label(bg, which) = (@grids[[bg.object_id, which]] ||= ["tiles grid #{@grids.length}", bg, which]).first
 
-            # A BACKGROUND PUT UP IN A PASS SHOWS FROM ITS CORNER ON THAT PASS'S FRAME
-            # (Reference#put_up_background), as the Genesis's lowering keeps it
-            # (Genesis::Lowering::Picture#keep_corner_notes): a put-up notes itself for the rest of its pass,
-            # a note for each plane, and the scroll, or a status bar's top, written at the end of the pass leaves
-            # it where it was put up. The wait forgets the notes.
-            def keep_corner_notes
-              return unless @tiled && @plan.places_at_pass_end?(:scroll_background, :place_bar)
-
-              @put_up_this_pass = (0...@plane_places.length).to_h { |plane| [plane, keep_local(:"put_up_this_pass_#{plane}")] }
-            end
-
-            def emit_clear_corner_notes
-              @put_up_this_pass&.each_value { |note| emit_store_number(note, 0) }
-            end
-
-            def emit_unless_put_up(node, note)
-              return yield unless note && @plan.placed_at_pass_end?(node)
-
-              held = fresh_label("held_at_corner")
-              jump_unless(Build.binop(:==, Build.var_ref(note), Build.int(0)), held)
-              yield
-              @asm.label(held)
-            end
-
-            # THE DECLARED BACKGROUND a scroll, a changed cell or a map handed over names: the one by that name,
-            # or, where several scenes each declare one by that name, the one of the scene whose routine is being
-            # lowered, or the one every screen shows; nil where that cannot be told while the game is built.
-            def background_declared_for(node) = @handover.background_named(node, scene: @lowering_scene, error: LoweringError)
-
-            # +node+'s change made to the background it names, yielded to the block; where that is not known
-            # while the game is built, to the one of the scene up when it runs, each scene its own branch.
-            def for_background(node)
-              bg = background_declared_for(node)
-              return yield(bg) if bg
-
-              @scenes.each do |scene, number|
-                own = @handover.arrival(scene).scenery.find { |declared| declared.name == node.name }
-                next unless own
-
-                other = fresh_label("not_scene")
-                jump_unless(Build.binop(:==, Build.var_ref(@scene), Build.int(number)), other)
-                yield own
-                @asm.label(other)
-              end
+            # A BACKGROUND PUT UP IN A PASS IS HELD AT ITS CORNER through that pass (SceneryWrites#keep_corner_notes),
+            # on a screen drawn from tiles: a note for each plane. A status bar is a plane like the others, so its
+            # plane's note holds its top too.
+            def keep_plane_corner_notes
+              keep_corner_notes((0...@plane_places.length).to_a, bar: :layer_note) if @tiled
             end
 
             # Reference#exec_scroll_background.
             def emit_scroll_background(node)
               for_background(node) do |bg|
-                emit_unless_put_up(node, @put_up_this_pass&.fetch(plane_of(bg))) do
+                emit_unless_put_up(node, corner_note(plane_of(bg))) do
                   runtime_call("rt_plane_scroll", [Build.int(plane_of(bg)), node.x, node.y])
                 end
               end
@@ -612,7 +654,7 @@ module VBlank
                 next unless bg.bar?
 
                 runtime_call("rt_bar_covers", [node.covers]) if node.covers
-                emit_unless_put_up(node, @put_up_this_pass&.fetch(plane_of(bg))) { runtime_call("rt_bar_place", [node.top]) }
+                emit_unless_put_up(node, corner_note(plane_of(bg))) { runtime_call("rt_bar_place", [node.top]) }
               end
             end
 
@@ -688,6 +730,7 @@ module VBlank
               ((0...@scene_planes).to_a - arrival.scenery.map { |bg| plane_of(bg) }).each do |plane|
                 runtime_call("rt_plane_take_down", [Build.int(plane)])
               end
+              emit_bar_beside_arrival(arrival)
             end
 
             # A SCENE TAKING OVER IN A GAME THAT SHOWS BOTH KINDS OF SCREEN puts its own screen up first, since changing
@@ -872,10 +915,12 @@ module VBlank
             # A RUN THE GAME PUTS IN ORDER AS IT RUNS: its list holds the run's sprites back to front, each by its
             # place in the run, so each entry in turn places the sprite it names. Each sprite's placing is written
             # once, as a routine of its own ending in a return, and an entry picks it from a table of their
-            # addresses kept beside the code: a few instructions an entry, whatever the run's length. As many
-            # entries are read as the run has sprites, which is the length the builder keeps the list at, and an
-            # entry read past the list's end stops the game, as the interpreter's read does. An entry naming no
-            # sprite of the run, which the builder never writes and the interpreter stops on, places none here.
+            # addresses kept beside the code: a few instructions an entry, whatever the run's length.
+            #
+            # The entries are read as the interpreter reads the list (DrawOrderWalk), whatever list it is: every
+            # one it holds now, and a place below nought counts back from the run's last sprite, as a Ruby array's
+            # does. A place naming none of the run's sprites stops the game (Runtime::Tiles' rt_draw_order_fault),
+            # where the interpreter stops.
             def emit_ordered_run(run)
               table = fresh_label("ordered_placings")
               past = fresh_label("past_ordered_placings")
@@ -891,18 +936,21 @@ module VBlank
                 @asm.jr(:ra)
               end
               @asm.label(past)
-              run.objects.each_index do |k|
-                none = fresh_label("order_names_none")
-                emit_value(Build.list_get(run.order, Build.int(k)))
-                @asm.sltiu(:t0, :v0, run.objects.length)
-                @asm.beq(:t0, :zero, none)
-                @asm.sll(:v0, :v0, 2)
+              emit_draw_order_walk(run) do |place|
+                emit_value(Build.var_ref(place))
+                @asm.sll(:t0, :v0, 2)
                 @asm.la(:t1, table)
-                @asm.addu(:t1, :t1, :v0)
+                @asm.addu(:t1, :t1, :t0)
                 @asm.lw(:t1, 0, :t1)
                 @asm.jalr(:t1)
-                @asm.label(none)
               end
+            end
+
+            # DrawOrderWalk's: the place the variable +name+ holds in v0 and the run's +count+ in a1, which
+            # rt_draw_order_fault keeps as the fault's two numbers.
+            def emit_draw_order_fault(name, count)
+              emit_value(Build.var_ref(name))
+              @asm.j("rt_draw_order_fault") { @asm.addiu(:a1, :zero, count) }
             end
 
             def object_named(name) = @objects.fetch(name) { raise LoweringError, "present of undeclared object #{name.inspect}" }
@@ -921,12 +969,42 @@ module VBlank
             # A SPRITE WHOSE POSES FOLLOW THE LISTS THEY ARE DRAWN FROM (Object#follows_each, Reference#object_color_list):
             # each pose drawn from a list the game changes shows what the list holds now, so its picture is read
             # through the list's colour table (#sprite_picture_following), and every other pose as it is drawn.
-            # For each pose, the list it follows, or nil.
+            # For each pose, the list it follows, a BackgroundTable it is read through, or nil.
             def followed_lists(obj)
               obj.poses.map do |pose|
-                list = obj.follows_each && obj.list_followed_by_pose(@cache.image(picture_named(pose)).colors_name)
-                list if list && changing_list?(list)
+                image = @cache.image(picture_named(pose))
+                list = obj.follows_each && obj.list_followed_by_pose(image.colors_name)
+                next list if list && changing_list?(list)
+
+                background_table_holding(image) if obj.follows_unchanging&.include?(image.colors_name)
               end
+            end
+
+            # A BACKGROUND'S COLOUR TABLE THAT A SPRITE'S POSE IS READ THROUGH: +table+, and the place in it of each
+            # colour the pose draws (+places+, colour => place).
+            BackgroundTable = Data.define(:table, :places)
+
+            # A POSE A SPRITE FOLLOWS TO A LIST THE GAME NEVER CHANGES (Object#follows_unchanging) shows the colours
+            # it was drawn in, for good. A background drawing that list keeps those colours in its own table, in
+            # entries showing the same colour in every set it can be drawn with (PlaneColors), so only a fade or a
+            # tint changes what they show, and those walk every table alike (#color_sections). The
+            # graphics chip reads a sprite's texture through any table its drawing names, so the pose is read
+            # through the background's, and needs no table of its own. Only a table of 16 is shared: one of 256
+            # would keep the pose's texture at 8 bits a texel, twice the video RAM its few colours need at 4.
+            # The first background whose table holds every colour the pose draws, unchanged, or nil for none.
+            def background_table_holding(image)
+              return nil if @painted_numbers || !@plane_colors
+
+              colors = (0...(image.width * image.height)).select { |at| image.drawn_at?(at) }.map { |at| image.color_at(at) & 0x7FFF }.uniq
+              @plane_colors.each do |bg, plane_colors|
+                table = @plane_tables[bg]
+                next unless table && table.capacity == TextureMemory::TABLE_COLORS.fetch(4)
+
+                # An entry showing one colour in every set its source names is written again with that colour alone.
+                places = colors.to_h { |color| [color, plane_colors.entries.index { |entry| entry.colors.uniq == [color] }] }
+                return BackgroundTable.new(table: table, places: places.transform_values { |at| at + 1 }) if places.values.all?
+              end
+              nil
             end
 
             # A SPRITE DRAWN WITH ANOTHER LIST OF COLOURS (`draw_with`, Reference#object_color_list): its pictures
@@ -1021,6 +1099,7 @@ module VBlank
             def sprite_picture(name, colors)
               return register_image_picture(name) unless colors
               return sprite_picture_following(name, colors) if colors.is_a?(Symbol)
+              return sprite_picture_through(name, colors) if colors.is_a?(BackgroundTable)
 
               LabelAddress.new(painted_art.register_picture([:image, name, colors]) do
                 image = @cache.image(picture_named(name))
@@ -1048,6 +1127,19 @@ module VBlank
 
                   colors = sets.map { |recolor| recolor.color_for(at, image.raw_at(at)) & 0x7FFF }
                   drawn[[at % image.width, at / image.width]] = sprite_list_place(list, table, colors)
+                end
+                drawn
+              end)
+            end
+
+            # The picture +name+ in its own colours, read through a background's table (#background_table_holding):
+            # each pixel the place there of the colour it draws.
+            def sprite_picture_through(name, shared)
+              LabelAddress.new(painted_art.register_picture([:image, name, :through, shared.table.field], table: shared.table) do
+                image = @cache.image(picture_named(name))
+                drawn = {}
+                (image.width * image.height).times do |at|
+                  drawn[[at % image.width, at / image.width]] = shared.places.fetch(image.color_at(at) & 0x7FFF) if image.drawn_at?(at)
                 end
                 drawn
               end)

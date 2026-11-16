@@ -97,6 +97,15 @@ class TestGameSuite < Minitest::Test
     end
   end
 
+  # TEST names several files with commas between, and each run plays all of them.
+  def test_rake_test_plays_each_file_test_names
+    out, passed, = rake("test", env: { "CONSOLE" => "gba", "TEST" => "test/walker_test.rb,test/cartridge_test.rb" })
+
+    assert passed, out
+    assert_match(/^GBA lowering\s+passed/, out)
+    assert_match(/\b3 runs\b/, out, "the walker's two tests and the cartridge's")
+  end
+
   # A game whose list is somewhere of its own names it, and gets the task all the same.
   def test_a_golden_list_kept_elsewhere_is_named
     game_with_a_golden_path do |game|
@@ -192,6 +201,26 @@ class TestGameSuite < Minitest::Test
 
     out, = rake("test:lowering:native")
     assert_match(/^ native lowering: the game built as C/, out)
+  end
+
+  # A game that holds a run to something other than the interpreter (a port, to its retail
+  # original) names that run's heading, which its task's description in rake -T follows too.
+  def test_a_run_given_a_heading_shows_it
+    heading = { "GAME_SUITE_HEADING" => "the game held to the original" }
+    out, passed, = rake("test:lowering:gba", env: heading.merge("TEST" => "test/walker_test.rb"))
+
+    assert passed, out
+    assert_match(/^ GBA lowering: the game held to the original$/, out)
+    assert_match(/test:lowering:gba\s+# Run the tests on the GBA lowering: the game held to the original/,
+                 rake("-T", env: heading).first)
+  end
+
+  def test_a_heading_for_a_lowering_the_game_does_not_play_is_refused
+    out, passed, = rake("-T", env: { "GAME_SUITE_HEADING" => "the Color", "GAME_SUITE_HEADING_ON" => "gbc" })
+
+    refute passed
+    assert_match(/t\.headings names :gbc/, out)
+    assert_match(/:gba/, out)
   end
 
   # A game whose Rakefile names the Color too gets the Color's run as well.

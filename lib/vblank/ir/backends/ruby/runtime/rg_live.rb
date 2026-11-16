@@ -25,19 +25,26 @@ def rg_live_main(player, match_seed = nil, local_player = nil)
     rg_play_frames
     nil
   end
-  stopped_by == :player ? nil : rg_screen_shown
+  stopped_by == :player ? nil : rg_screen_framed
 end
 
 # The sound of the frame the pass played is made first, before the next frame moves the music on.
 # The picture is shown as it stands once the next frame has begun, the way the screen shows it
 # once the frame boundary has passed, and the buttons the player answers are read for the pass
 # that starts.
+#
+# NOBODY WATCHING OR LISTENING. The player is asked each frame whether it wants the picture and the
+# sound (picture_wanted?, sound_wanted?), and is handed nil for what it does not want, which is then
+# never made. A data pack's unpacking has nobody at the window, and building its picture and mixing
+# its sound every frame was about half of a long unpacking's time. Neither changes the game: the game
+# cannot read its own sound, and the picture is built here only to be handed over (a read the game
+# makes of its screen catches up on any repaint owed, as the interpreter's own reads do).
 def rg_driver_wait_vblank
   rg_live_serve_state_request
   rg_live_mix_match_seed
-  left, right = rg_sound_render_frame
+  left, right = rg_sound_render_frame if @rg_live.sound_wanted?
   rg_frame_begins
-  buttons = @rg_live.buttons_after(rg_screen_shown, left, right)
+  buttons = @rg_live.buttons_after((rg_screen_framed if @rg_live.picture_wanted?), left, right)
   throw :rg_live_stop, :player if buttons.nil?
 
   rg_buttons_read(buttons)
@@ -129,7 +136,21 @@ def rg_driver_dump_variable(name, value)
   @rg_state_snapshot.vars[name.to_s] = value if @rg_state_snapshot
 end
 
+# Every variable the game keeps, by name, as they stand now, and none of its lists: what a shell's
+# worker reads its count of bytes done from as it unpacks, many times a second, where the lists are
+# a pack of tens of megabytes.
+def rg_live_vars
+  @rg_state_snapshot = RgLiveState.new(vars: {}, lists: {})
+  @rg_vars_alone = true
+  rg_game_dump_state
+  @rg_state_snapshot.vars
+ensure
+  @rg_state_snapshot = nil
+  @rg_vars_alone = false
+end
+
 def rg_driver_dump_list(list)
+  return if @rg_vars_alone
   return unless @rg_state_text || @rg_state_snapshot
 
   @rg_state_text << "list #{list.name}\t#{list.items_in_order.join(' ')}\n" if @rg_state_text

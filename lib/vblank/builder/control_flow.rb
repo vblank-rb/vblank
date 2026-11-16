@@ -170,6 +170,11 @@ module VBlank
           elsif !stop_when.nil?
             DSL::Value.node_for(stop_when)
           end
+        # A test whose working out recorded statements (a read of the copy's check of its place)
+        # runs them inside the loop, before it is asked on each round.
+        test_statements = leave ? take_trailing_test_statements(leave) : []
+        return repeat_rerunning_test_statements(count, index, i, leave, test_statements, &block) unless test_statements.empty?
+
         if leave
           inlined = inline_held_expressions(leave)
           # The test is now the copy, so the value given is used, not thrown away.
@@ -185,7 +190,10 @@ module VBlank
       # step that stands for a loop is handed (IR save_load_list, save_store_list).
       private def declare_loop_counter
         @repeat_seq += 1
-        :"__repeat_#{@repeat_seq}".tap { |index| ensure_var(index) }
+        :"__repeat_#{@repeat_seq}".tap do |index|
+          ensure_var(index)
+          @unique_names << index
+        end
       end
 
       # The console refreshes the screen ~59.73 times a second; like every game, we
@@ -504,8 +512,9 @@ module VBlank
         # Frames are whole; seconds may be fractional (half a second is fine), but
         # either way the interval must come out to at least one frame.
         valid = unit == :frames ? n.is_a?(Integer) : n.is_a?(Numeric)
+        refuse_game_number_for_timer!(verb, n, unit) unless valid
         unless valid && n.positive? && to_frames(n, unit).positive?
-          raise ArgumentError, "#{verb} needs a positive number of #{unit}. You gave #{n.inspect}."
+          raise ArgumentError, "#{verb} needs a positive number of #{unit}. You gave #{Messages::PlainWords.words_for_given(n)}."
         end
 
         @timer_seq += 1
@@ -514,6 +523,19 @@ module VBlank
         at_boot(Build.set(counter, Build.int(0)))
         add_part_member(:var, counter, framework: true) # a new game counts from nought again
         counter
+      end
+
+      # A timer's beat is counted while the game is built: its hidden counter is compared
+      # against a number fixed in the cartridge. So a variable, or a number the game works out,
+      # cannot be its beat, and the refusal names what the author wrote.
+      def refuse_game_number_for_timer!(verb, n, unit)
+        return unless Messages::PlainWords.game_number?(n)
+
+        example = unit == :seconds ? "#{verb}(0.5, :seconds) { ... }" : "#{verb}(30) { ... }"
+        raise ArgumentError,
+              "#{verb} takes only a number of #{unit} that is written in the program, like `#{example}`. " \
+              "You gave #{Messages::PlainWords.words_for_given(n)}. To fix this, write the number. " \
+              "If the beat must change as the game runs, count the frames in a variable of your own."
       end
 
       # A timer interval in whole frames. Frames pass through; seconds convert at the

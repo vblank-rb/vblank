@@ -88,12 +88,14 @@ module LitCorridor
       end
       lamp_points.concat(rings[LAMP])
       rings.each_cons(2).with_index do |(near, far), ring|
-        lit = [LitCorridor.light_at(ring), LitCorridor.light_at(ring + 1)]
+        # The light at this ring and at the next. Not called `lit`: that is the build's setting.
+        near_light = LitCorridor.light_at(ring)
+        far_light = LitCorridor.light_at(ring + 1)
         # Seen from inside, each face's points go round clockwise.
-        face near[0], far[0], far[3], near[3], picture: :stone, on_picture: WHOLE, light: [lit[0], lit[1], lit[1], lit[0]]
-        face far[1], near[1], near[2], far[2], picture: :stone, on_picture: WHOLE, light: [lit[1], lit[0], lit[0], lit[1]]
-        face near[3], far[3], far[2], near[2], picture: :ground, on_picture: WHOLE, light: [lit[0], lit[1], lit[1], lit[0]]
-        face near[0], near[1], far[1], far[0], picture: :stone, on_picture: WHOLE, light: [lit[0], lit[0], lit[1], lit[1]]
+        face near[0], far[0], far[3], near[3], picture: :stone, on_picture: WHOLE, light: [near_light, far_light, far_light, near_light]
+        face far[1], near[1], near[2], far[2], picture: :stone, on_picture: WHOLE, light: [far_light, near_light, near_light, far_light]
+        face near[3], far[3], far[2], near[2], picture: :ground, on_picture: WHOLE, light: [near_light, far_light, far_light, near_light]
+        face near[0], near[1], far[1], far[0], picture: :stone, on_picture: WHOLE, light: [near_light, near_light, far_light, far_light]
       end
       last = rings.last
       face last[0], last[1], last[2], last[3], picture: :stone, on_picture: WHOLE,

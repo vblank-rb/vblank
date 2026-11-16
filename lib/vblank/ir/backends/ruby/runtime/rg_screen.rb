@@ -39,7 +39,8 @@ RG_NO_LAYER = -1
 RG_MAX_SPRITES = 512
 RG_MAX_SEE_THROUGH = 16
 RG_AREAS_DEEP = 64
-RG_IMAGE_FIELDS = 3
+RG_IMAGE_FIELDS = 4
+RG_NO_IMAGE_COLORS = -1
 
 # Each layer the game can be seen through is RG_ST_FIELDS numbers in @rg_game_see_through.
 RG_ST_AMOUNTS_WRITTEN = 0
@@ -99,8 +100,22 @@ end
 # cell holds, looked up with table[color]; +everywhere+ is whether it applies to every pixel; +rows+, when
 # it does not, is [from, to, inverted] for each screen row, a pixel being changed when +inverted+ differs
 # from from <= x < to; +remix+ is whether a see-through mixed cell is mixed again from its two sides, each
-# through the table.
-RgShownFilter = Struct.new(:table, :everywhere, :rows, :remix)
+# through the table; +changes+ counts the times the table was emptied to be worked out again for other
+# settings (the same Hash kept), for an answer kept from it (rg_colors_through), nil for a table never emptied.
+RgShownFilter = Struct.new(:table, :everywhere, :rows, :remix, :changes)
+
+# Where image +image+'s pieces are: [the array, where they start in it] (rg_screen.h,
+# rg_screen_image_pieces): those the start file lists for it, or else the game's own.
+def rg_screen_image_pieces(image)
+  read = @rg_image_pieces_read[image]
+  read ? [read, 0] : [@rg_game_image_pieces, @rg_game_image_pieces[2 + image]]
+end
+
+# +pieces+, how many and then four numbers each, are image +image+'s from now on (rg_screen.h,
+# rg_screen_read_image_pieces).
+def rg_screen_read_image_pieces(image, pieces)
+  @rg_image_pieces_read[image] = pieces
+end
 
 def rg_screen_setup
   # TWO PAGES, OR ONE (Framebuffer#paged=). A tear-free screen is two pictures: the display shows
@@ -130,6 +145,8 @@ def rg_screen_setup
   # rebuilt every frame.
   @rg_scenery = Array.new(RG_SCREEN_CELLS, 0)
   @rg_scenery_kept = false
+  # The pieces of each image the start file lists, by the image's number (#rg_screen_read_image_pieces).
+  @rg_image_pieces_read = {}
   @rg_screen_held = 0 # switched off until the first frame (Framebuffer#held=)
   @rg_frames_begun = false # a frame boundary has been reached (Reference @uses_frames)
   # Made the first time each is needed; named here so the game's shape never changes in play.
@@ -617,14 +634,19 @@ end
 
 # --- sprites ---
 
-# One picture: its pixels, where they start among them, and its size — [pixels, start, width,
-# height]. A painted image's pixels are its own, from 0; any other is in @rg_game_image_pixels.
+# One picture: its pixels, where they start among them, its size, and where among them the colours
+# of its places start where its pixels are places, or nil where they are colours (rg_screen.h) —
+# [pixels, start, width, height, colors]. A painted image's pixels are its own, from 0; any other is
+# in @rg_game_image_pixels.
 def rg_picture_of(image)
   info = RG_IMAGE_FIELDS * image
   painted = @rg_painted_images && @rg_painted_images[image]
   width = @rg_game_images[info + 1]
   height = @rg_game_images[info + 2]
-  painted ? [painted, 0, width, height] : [@rg_game_image_pixels, @rg_game_images[info], width, height]
+  return [painted, 0, width, height, nil] if painted
+
+  colors = @rg_game_images[info + 3]
+  [@rg_game_image_pixels, @rg_game_images[info], width, height, colors == RG_NO_IMAGE_COLORS ? nil : colors]
 end
 
 # Reference#run_tile_places: the 64 places of tile +which+ of a run's list, row by row. Each byte
@@ -721,20 +743,23 @@ end
 
 # Reference#blit_image: a see-through pixel is skipped, and each other one goes on as stored.
 def rg_blit_image(image, x, y)
-  art, start, width, height = rg_picture_of(image)
-  return rg_blit_plain(art, start, width, height, x, y) if rg_painting_plain?
+  art, start, width, height, colors = rg_picture_of(image)
+  return rg_blit_plain(art, start, width, height, x, y, colors) if rg_painting_plain?
 
   height.times do |row|
     width.times do |col|
       color = art[start + (row * width) + col]
-      rg_set_pixel(x + col, y + row, color) if color != RG_NOT_DRAWN
+      next if color == RG_NOT_DRAWN
+
+      rg_set_pixel(x + col, y + row, colors ? art[colors + color] : color)
     end
   end
 end
 
 # rg_blit_image when painting plain (rg_painting_plain?): the picture's +width+ by +height+ pixels
-# from +start+ in +art+, its corner at (x, y).
-def rg_blit_plain(art, start, width, height, x, y)
+# from +start+ in +art+, its corner at (x, y), each looked up in the colours of its places from
+# +colors+ in +art+ where those are given (rg_picture_of).
+def rg_blit_plain(art, start, width, height, x, y, colors)
   area = @rg_area
   left, right = rg_kept_span(x, x + width, RG_SCREEN_WIDTH, area.left, area.right, area.in_force)
   top, bottom = rg_kept_span(y, y + height, RG_SCREEN_HEIGHT, area.top, area.bottom, area.in_force)
@@ -751,6 +776,7 @@ def rg_blit_plain(art, start, width, height, x, y)
     while px < right
       color = art[from + px]
       if color != RG_NOT_DRAWN
+        color = art[colors + color] if colors
         target[at + px] = color & 0xFFFF
         is_mixed[at + px] = 0 if is_mixed
         touched = true
@@ -957,6 +983,21 @@ def rg_screen_shown
   rg_keep_console_colors(rg_black_rows_given_up(rg_screen_shown_in_five_bits))
 end
 
+# rg_screen.c's rg_screen_framed: the picture as the window shows it, the whole screen. Where the
+# game's screen is shown in a border, the border with the picture as shown over its middle.
+def rg_screen_framed
+  return rg_screen_shown unless rg_screen_bordered?
+
+  framed = (@rg_framed ||= @rg_game_border_pixels.dup)
+  game = rg_screen_shown
+  RG_SCREEN_HEIGHT.times do |y|
+    framed[((y + RG_GAME_TOP) * RG_WHOLE_WIDTH) + RG_GAME_LEFT, RG_SCREEN_WIDTH] = game[y * RG_SCREEN_WIDTH, RG_SCREEN_WIDTH]
+  end
+  framed
+end
+
+def rg_screen_bordered? = RG_WHOLE_WIDTH != RG_SCREEN_WIDTH || RG_WHOLE_HEIGHT != RG_SCREEN_HEIGHT
+
 # rg_screen.c's black_rows_given_up: the rows the game gave up (`shown_rows:`) black, unless the
 # display is switched off.
 def rg_black_rows_given_up(shown)
@@ -1017,9 +1058,22 @@ def rg_screen_shown_in_five_bits
   tops = mixes.tops
   unders = mixes.unders
   mixed_by = @rg_mixed_cells_by
+  # A row read straight across, with a fade or tint over all of it or none, and no layer in front, no
+  # light and no feature moving its columns, is the stored row turned through the fade's table as one
+  # (rg_screen_shown_row_through): no lookup and no comparison a pixel.
+  whole_rows = !front && !dim && !columns && camera_x == 0 && (!fade || fade_all)
+  lookup = whole_rows && fade ? rg_colors_through(fade) : nil
   RG_SCREEN_HEIGHT.times do |y|
     from_y = rg_hook_shown_row(y) + @rg_camera_y
     row = y * RG_SCREEN_WIDTH
+    if whole_rows && from_y >= 0 && from_y < RG_SCREEN_HEIGHT
+      from = from_y * RG_SCREEN_WIDTH
+      # A mixed cell (marked 1, and every other cell 0) is mixed again through the table, a pixel at a time below.
+      unless remix && rg_row_has_mixed_cell?(mixed_cells, from)
+        rg_screen_shown_row_through(shown, row, viewed, from, lookup, fade_table)
+        next
+      end
+    end
     # Where a filter does not apply everywhere, its row says [from, to, inverted]: a pixel is
     # changed when inverted differs from from <= x < to.
     fade_row = fade && !fade_all ? fade_rows[y] : nil
@@ -1058,18 +1112,84 @@ def rg_screen_shown_in_five_bits
   shown
 end
 
+# How many colours a cell can hold: sixteen bits.
+RG_CELL_COLORS = 0x10000
+
+# NO SLICES OF THE SCREEN'S ARRAYS. A slice of a long Array (viewed[from, RG_SCREEN_WIDTH]) is not a
+# copy: it shares the Array's storage, and the next write to the Array then copies the whole screen's
+# worth of storage first, since the slice still looks at the old one. Reading the picture a row at a
+# time that way copied each page several times a pass, and the memory those copies took made Ruby
+# collect garbage often and, every few seconds, mark every object the process holds, which stopped
+# the game for several frames. So the picture is read here by index, and copied whole with
+# Array#[]= (which copies the elements and shares nothing).
+
+# Whether the row of +mixed_cells+ that starts at +from+ marks any cell mixed.
+def rg_row_has_mixed_cell?(mixed_cells, from)
+  at = from
+  last = from + RG_SCREEN_WIDTH
+  while at < last
+    return true if mixed_cells[at] != 0
+
+    at += 1
+  end
+  false
+end
+
+# A fade's or tint's +table+ (a Hash that works a colour out the first time it is asked) kept again
+# as an Array, a place for every colour a cell can hold, nil until the colour is first asked, so a
+# pixel is turned through it by an index where the Hash takes a call a colour. Emptied when the
+# filter hands over another table, or empties its own (+changes+), which it does as the fade or tint
+# moves: the one Array is kept, so a moving fade takes no new memory a pass for it.
+def rg_colors_through(filter)
+  lookup = (@rg_colors_through ||= Array.new(RG_CELL_COLORS))
+  table = filter.table
+  return lookup if @rg_colors_through_table.equal?(table) && @rg_colors_through_changes == filter.changes
+
+  @rg_colors_through_table = table
+  @rg_colors_through_changes = filter.changes
+  lookup.fill(nil)
+end
+
+# One row of the picture: the stored row from +from+, through +lookup+ (rg_colors_through of
+# +table+) where a fade or tint is over it, into +shown+ at +row+. A colour not asked before is
+# worked out by the table first; a colour no cell holds goes through the table itself.
+def rg_screen_shown_row_through(shown, row, viewed, from, lookup, table)
+  x = 0
+  while x < RG_SCREEN_WIDTH
+    color = viewed[from + x]
+    shown[row + x] = if !lookup
+                       color
+                     elsif color >= 0 && color < RG_CELL_COLORS
+                       lookup[color] || (lookup[color] = table[color])
+                     else
+                       table[color]
+                     end
+    x += 1
+  end
+end
+
 # rg_screen_shown with nothing over the picture: each row the stored row the window sits over, and
-# off the picture the backdrop, which is nought.
+# off the picture the backdrop, which is nought. A window moved only up or down is the picture copied
+# whole (no slice: see rg_row_has_mixed_cell?), turned round by the rows it moved, and the rows that
+# came round from the other edge filled with the backdrop.
 def rg_screen_shown_plain(shown, viewed)
   camera_x = @rg_camera_x
   camera_y = @rg_camera_y
+  if camera_x == 0
+    shown[0, RG_SCREEN_CELLS] = viewed
+    return shown if camera_y == 0
+    return shown.fill(0) if camera_y.abs >= RG_SCREEN_HEIGHT
+
+    shown.rotate!(camera_y * RG_SCREEN_WIDTH)
+    off = camera_y.abs * RG_SCREEN_WIDTH
+    return camera_y.positive? ? shown.fill(0, RG_SCREEN_CELLS - off) : shown.fill(0, 0, off)
+  end
+
   RG_SCREEN_HEIGHT.times do |y|
     row = y * RG_SCREEN_WIDTH
     from_y = y + camera_y
     if from_y < 0 || from_y >= RG_SCREEN_HEIGHT
       shown.fill(0, row, RG_SCREEN_WIDTH)
-    elsif camera_x == 0
-      shown[row, RG_SCREEN_WIDTH] = viewed[from_y * RG_SCREEN_WIDTH, RG_SCREEN_WIDTH]
     else
       from_row = from_y * RG_SCREEN_WIDTH
       x = 0
@@ -1103,9 +1223,11 @@ end
 
 def rg_visit_mixes(name, mixes)
   values = rg_state_numbers(name, [*mixes.is_mixed, *mixes.tops, *mixes.unders])
-  mixes.is_mixed.replace(values[0, RG_SCREEN_CELLS])
-  mixes.tops.replace(values[RG_SCREEN_CELLS, RG_SCREEN_CELLS])
-  mixes.unders.replace(values[2 * RG_SCREEN_CELLS, RG_SCREEN_CELLS])
+  # Copied in rather than replaced with a slice, which would share the slice's storage (see
+  # rg_row_has_mixed_cell?).
+  mixes.is_mixed[0, RG_SCREEN_CELLS] = values[0, RG_SCREEN_CELLS]
+  mixes.tops[0, RG_SCREEN_CELLS] = values[RG_SCREEN_CELLS, RG_SCREEN_CELLS]
+  mixes.unders[0, RG_SCREEN_CELLS] = values[2 * RG_SCREEN_CELLS, RG_SCREEN_CELLS]
 end
 
 # How many areas are open around the one in force, then that one, then each open around it, the

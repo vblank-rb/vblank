@@ -65,9 +65,10 @@ class TestScreenPixelSize < Minitest::Test
     assert_equal [240, 160], sizes
   end
 
-  # Every console but the Advance refuses big pixels in its own words, naming the part.
+  # Every console but the Advance and the Super Nintendo refuses big pixels in its own words,
+  # naming the part.
   def test_each_console_that_cannot_show_big_pixels_refuses_them
-    %i[gbc snes genesis ps1].each do |console|
+    %i[gbc genesis ps1].each do |console|
       made = game(%i[gba] + [console]) do
         screen :bitmap, pixel_size: 2
         game_loop { clear_screen :blue }
@@ -80,12 +81,13 @@ class TestScreenPixelSize < Minitest::Test
     end
   end
 
-  def test_the_advance_takes_big_pixels
-    made = game do
+  def test_the_advance_and_the_super_nintendo_take_big_pixels
+    made = game(%i[gba snes]) do
       screen :bitmap, pixel_size: 2
       game_loop { clear_screen :blue }
     end
 
     assert_empty Answers.new.detect(made.program(console: :gba))
+    assert_empty Answers.new.detect(made.program(console: :snes))
   end
 end

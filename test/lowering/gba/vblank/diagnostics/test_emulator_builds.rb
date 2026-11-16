@@ -30,7 +30,7 @@ class TestEmulatorBuilds < Minitest::Test
   # builds on a copy and leaves nothing in the folder the other build is using.
   def test_a_build_works_on_a_copy_of_the_source
     folder = VBlank.root.join("ruby-gba-emulator").to_s
-    EmulatorBuilds.with_copy_of_source(folder) do |copy|
+    EmulatorBuilds.with_copy_of_source(folder, "ruby_gba_emulator_ext") do |copy|
       refute copy.start_with?(folder)
       assert_path_exists File.join(copy, "extconf.rb")
       assert_path_exists File.join(copy, "..", "..", "lib", "ruby_gba_emulator", "built_from.rb")

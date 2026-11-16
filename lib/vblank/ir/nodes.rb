@@ -184,6 +184,10 @@ module VBlank
         # it as a scene takes over names the same one.
         def self.set_var(name) = :"__bg_#{name}_set"
 
+        # The variable that holds which of a background's maps is really in its cells, written as the gap
+        # between frames hands a map over: the second of +choice+, after the one the game sets.
+        def self.map_in_cells_var(name) = :"__bg_#{name}_live"
+
         # The variable that holds which list of colours a background told `draw_with` is really
         # drawn with now, written in the gap between frames (BackgroundColors).
         def self.live_colors_var(name) = :"__bg_#{name}_live_colors"
@@ -210,6 +214,10 @@ module VBlank
 
         # Whether it is a status bar (see +bar_top+).
         def bar? = !bar_top.nil?
+
+        # Whether it is shown on some rows of the screen and not the rest: a status bar, or a
+        # background kept above a row (+above_row+).
+        def held_to_rows? = bar? || !above_row.nil?
 
         # The variable a status bar's top row is kept in, which the gap between frames shows.
         def self.bar_top_var(name) = :"__bar_#{name}_top"
@@ -374,12 +382,17 @@ module VBlank
       # the picture's 8-pixel grid. Places no piece covers are see-through. The picture is
       # +width+ by +height+, as far as its pieces reach. It shows what the set's tiles hold
       # now, so it has no pixels of its own.
+      #
+      # +from_file+ is where in the file the program is handed as it starts (StartFile) the frame
+      # is whose pieces these are (a StartFile::TilePose), for a pose of one of the original's
+      # frames built with its pack left out; +pieces+ are stand-ins until then. Absent on every
+      # other pose.
       class TilePose
         include Node
         kind :tile_pose
         declaration!
         category :data
-        operands name: :name, tiles: :name, pieces: :list, width: :int, height: :int
+        operands name: :name, tiles: :name, pieces: :list, width: :int, height: :int, from_file: :file_tile_pose
       end
 
       # Load +count+ tiles of a SpriteTiles set from the cartridge: tiles +to+ onwards of the set
@@ -803,11 +816,16 @@ module VBlank
         operands value: :value, x: :int, y: :int, color: :color, font: :name
       end
 
+      # A rectangle whose place and size are read as the program runs. +written_as+ is the verb the
+      # author wrote where it was another (`fill_rect` given a number the game works out is drawn
+      # as this), so a message names that verb (Messages::PlainWords.verb_written); nil for a
+      # `draw_rect_at`. No backend reads it. It is an option, not a name: nothing in the program is
+      # called this, so the walks that gather a program's variable and list names must not see it.
       class DrawRectAt
         include Node
         kind :draw_rect_at
         category :draw
-        operands x: :value, y: :value, w: :value, h: :value, color: :color
+        operands x: :value, y: :value, w: :value, h: :value, color: :color, written_as: :option
       end
 
       # One column of a picture, stretched to a height the program works out. The whole of a
@@ -889,9 +907,13 @@ module VBlank
 
         # +perspective+ is how many pixels apart the place on the picture is worked out exactly
         # across a row: PERSPECTIVE_NONE for never (the picture is stretched straight between the
-        # row's ends), 8 or 1. Between, it steps straight.
+        # row's ends), 16, 8 or 1. Between, it steps straight. A stretch longer than SPLIT_PIXELS
+        # is cut in two where the distance changes fast across it (Reference#stretch_ends).
         PERSPECTIVE_NONE = 0
-        PERSPECTIVE_SPANS = Ractor.make_shareable({ none: PERSPECTIVE_NONE, every_8_pixels: 8, every_pixel: 1 })
+        PERSPECTIVE_SPANS = Ractor.make_shareable({ none: PERSPECTIVE_NONE, every_16_pixels: 16, every_8_pixels: 8,
+                                                    every_pixel: 1 })
+        SPLIT_PIXELS = 8
+        DEFAULT_PERSPECTIVE = :every_16_pixels # What `draw_place` draws with unless told
 
         # The edges nothing outside is drawn, [left, top, right, bottom].
         def edges = [left, top, right, bottom]
@@ -1459,7 +1481,7 @@ module VBlank
                  fraction_vars: :list, fraction_lists: :list, sprite_readings: :list, background_readings: :list,
                  players: :list, verbs_written: :list,
                  for_computer: :flag, for_unpacking: :flag, border: :text, border_size: :list, pixel_size: :int,
-                 shown_rows: :list, start_file: :start_file, mix_rate: :int, computer_controls: :list
+                 shown_rows: :list, start_file: :start_file, mix_rate: :int, main_volume: :int, computer_controls: :list
 
         # +computer_controls+ is the keys and gamepad buttons the game adds to VBlank's layout on a
         # computer, as [button, :key or :pad, name] triples (IR::ComputerControls), or absent for a
@@ -1471,6 +1493,13 @@ module VBlank
         # +mix_rate+ is the rate the game asked its recordings to be mixed at, in samples a second
         # (`enable_sound mix_rate: 13379`), or absent where the mix runs at the rate most of its
         # recordings were made at (IR::Mixing.requested_rate).
+        #
+        # +main_volume+ is how loud the sound chip plays everything, in 127ths of its loudest
+        # (`enable_sound main_volume: 96`, or a share), or absent where it plays at its loudest. It scales
+        # the chip's whole mix: the interpreter logs it as the sound is switched on ([:enabled, 96],
+        # Reference#exec_enable_sound), a console whose build sets it writes it then, taken to its
+        # chip's own steps, a computer's build scales its whole mix by it, and a console with no
+        # main volume refuses a game that names it (Console::Questions).
 
         # The most players the game takes on this build, or nil where it gave nothing.
         def most_players = players&.last
@@ -1574,6 +1603,28 @@ module VBlank
 
         # The size of piece the game named for +console+'s sprites, or nil where it named none.
         def sprite_piece_size_on(console) = (sprite_piece_sizes || []).to_h[console]
+
+        # THE SPRITE PIECES +console+'S BUILD MADE OF EACH PICTURE (Backends::SpriteLines.pieces_built),
+        # worked out by the block the first time it is asked and kept, or as the build recorded them
+        # (#record_sprite_pieces_built). Asked again while the block runs (the build it starts asks
+        # too), the answer is nil. A frozen program keeps nothing and works it out each time.
+        def sprite_pieces_built_on(console)
+          return yield if frozen?
+
+          @sprite_pieces_built ||= {}
+          return @sprite_pieces_built[console] if @sprite_pieces_built.key?(console)
+
+          @sprite_pieces_built[console] = nil
+          @sprite_pieces_built[console] = yield
+        end
+
+        # +pieces+ are the sprite pieces +console+'s build made of each picture, which a build that
+        # has just made them records so nothing builds the game again to find them.
+        def record_sprite_pieces_built(console, pieces)
+          return if frozen?
+
+          (@sprite_pieces_built ||= {})[console] = pieces
+        end
       end
 
       # A FONT THE PROGRAM DECLARED, the same way a declared picture is a node: it draws
@@ -1633,7 +1684,13 @@ module VBlank
         category :data
         operands name: :name, bytes: :text, rate: :int, note: :option,
                  envelope: :shape, holds_from: :int, from_file: :int, chip_envelope: :chip_shape,
-                 settings_from_file: :file_recording_settings, chip_recording: :chip_recording
+                 settings_from_file: :file_recording_settings, chip_recording: :chip_recording,
+                 full_samples: :text
+
+        # +full_samples+ is a recording of sixteen bits as it was given, two bytes a sample, low byte
+        # first, for a backend that plays all of them (IR::Mixing.full_depth?); +bytes+ is then the
+        # eight bits a console holds, which every console's backend plays as it did before a game
+        # could give sixteen. Nil for an 8-bit recording.
 
         # +settings_from_file+ is where its rate, the sample it holds from and its envelope are in
         # the file the program is handed as it starts (a StartFile::RecordingSettings), for those
@@ -1722,7 +1779,9 @@ module VBlank
       # HOW MUCH SAVE MEMORY THE PROGRAM HAS, in kilobytes (see IR::SaveLayout::MEMORIES), and
       # so which kind: the smallest takes any byte at any time, where the bigger ones have to be
       # wiped a block at a time before a block is written again (IR::SaveLayout::Memory says
-      # which). A program that names none has the smallest.
+      # which). A program that names none has the smallest. +chip+ is the kind (:battery, :flash,
+      # :eeprom) where it is not the Advance's chip of that size, as on a console whose cartridge
+      # keeps more than 32K of battery-backed memory; nil for the Advance's.
       #
       # It also records how the size came about, for a report to read and nothing to run:
       # +asked_for+ is whether the program's author named it, and +records+ is each record laid
@@ -1734,7 +1793,7 @@ module VBlank
         kind :save_memory
         declaration!
         category :data
-        operands kilobytes: :int, asked_for: :flag, records: :list
+        operands kilobytes: :int, chip: :option, asked_for: :flag, records: :list
       end
 
       # Wipe the block of save memory that holds +at+, so it takes any write again, and reads

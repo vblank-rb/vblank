@@ -130,7 +130,7 @@ module VBlank
         # A waveform of the part's own, rather than one of the names — the wave voice either way.
         when Array then { wave: Sound.wave_steps!(plays) }
         # ...or one read from the file the game is handed as it starts, a stand-in until then.
-        when IR::StartFile::Wave then { wave: IR::StartFile::WAVE_STAND_IN, wave_from_file: plays }
+        when IR::StartFile::Wave then { wave: IR::StartFile.wave_stand_in, wave_from_file: plays }
         when :square then raise ArgumentError, SQUARE_PLAYS_MESSAGE
         when Symbol then { instrument: plays }
         else
@@ -277,6 +277,10 @@ module VBlank
         # ...and a recorded note's own envelope as a sound chip keeps it (an Audio::SNESEnvelope),
         # beside the nearest shape in the envelope's place.
         CHIP_ENVELOPE_SLOT = 12
+        # ...and whether a drum hit rattles, true or false, where its note was given it (Score::Note#metallic).
+        METALLIC_SLOT = 13
+        # ...and a wave note's own waveform, a shape or 32 steps (Score::Note#own_wave).
+        WAVE_SLOT = 14
 
         # Does this part, or a note of it, set a slide?
         def slides? = Music.slides_said?(slide, events)
@@ -430,8 +434,13 @@ module VBlank
         # wobbles (see #vibrato), +pan+ the speaker it plays from (see #pan), and +duty+ its shape,
         # or the shapes it steps through (see #duty). A note that sets nothing leaves the later slots
         # off its event (Music.without_trailing_nils).
+        #
+        # +glides: true+ BENDS THE NOTE SOUNDING rather than striking a new one: on a part that
+        # plays a recording, the note reads on from where it has got to at this pitch, and at this
+        # note's +volume+ and +pan+ where it names them, else the note's own, its shape going on as it was (Score::Note's
+        # `glides:`, the same word). A run of them a few frames apart is a bend that sweeps.
         def note(pitch, duration, envelope: nil, volume: nil, decay: nil, swell: nil, slide_up: nil, slide_down: nil,
-                 vibrato: nil, pan: nil, duty: nil)
+                 vibrato: nil, pan: nil, duty: nil, glides: nil)
           where = "a note of the part #{part_label.inspect}"
           shape = Envelope.of(envelope, where)
           fade = NoteFade.said(decay: decay, swell: swell, where: where.capitalize)
@@ -440,8 +449,11 @@ module VBlank
           side = Pan.said(pan, where: where.capitalize)
           duties = Duty.said(duty, where: where.capitalize)
           refuse_volume_out_of_range!(volume) if volume
+          Score::Checks.refuse_bad_glide!(Score::Note.new(at: 0, key: pitch, volume: volume, envelope: envelope, glides: glides),
+                                          where.capitalize, @plays) unless glides.nil?
           @events << [@current_frame, resolve_pitch(pitch),
-                      *Music.without_trailing_nils([nil, volume, shape, fade, slide, wobble, side, duties])]
+                      *Music.without_trailing_nils([nil, volume, shape, fade, slide, wobble, side, duties, nil,
+                                                    glides || nil])]
           @current_frame += duration_frames(duration)
         end
 

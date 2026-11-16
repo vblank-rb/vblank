@@ -8,8 +8,11 @@ require_relative "runtime/blank"
 require_relative "runtime/lists"
 require_relative "runtime/picture"
 require_relative "runtime/paint"
+require_relative "runtime/paint_doubled"
+require_relative "runtime/paint_doubled_send"
 require_relative "runtime/paint_log"
 require_relative "runtime/paint_turns"
+require_relative "runtime/repeat_log"
 require_relative "runtime/text_layer"
 require_relative "runtime/tint"
 require_relative "runtime/mosaic"
@@ -49,7 +52,12 @@ module VBlank
           # the copy of the screen's interrupt it runs meanwhile after the rest, so a plain cartridge's places do not move.
           def reserve(memory, carries)
             c = carries
-            Paint.reserve(memory, chip: c.chip?, text_layer: c.text_layer, turns: c.paint_turns) if c.painted
+            if c.doubled
+              PaintDoubled.reserve(memory, band: c.shown_band,
+                                           behind: PaintDoubledSend.behind_for?(band: c.shown_band, dims: c.dims, mosaic: c.mosaic))
+            elsif c.painted
+              Paint.reserve(memory, chip: c.chip?, text_layer: c.text_layer, turns: c.paint_turns)
+            end
             Frame.reserve(memory, second_controller: c.second_controller)
             Picture.reserve(memory, bar: c.bar?, row_held: c.row_held, alone_flag_in_line_table: c.alone_flag_in_line_table,
                                     bends: c.bends, scene_bends: c.scene_bends,
@@ -71,23 +79,28 @@ module VBlank
                                   steps_shapes: c.steps_shapes, swells: c.swells, slides: c.slides, sides: c.sides)
           end
 
-          # The runtime's sections: the entry points in the first bank, and everything else in one, for
-          # a cartridge that carries +carries+. +lowering+ gives what only lowering the game finds out:
+          # The runtime's sections (a Made, with how much of the sound chip's memory the game uses):
+          # the entry points in the first bank, and everything else in one, for a cartridge that
+          # carries +carries+. +lowering+ gives what only lowering the game finds out:
           # the routine run at each frame boundary, the wave voice's waveforms, the sections of its
           # songs and of its plays of recordings, where it keeps its music volume, the layers it bends,
-          # and how its layers and sprites are drawn.
-          def sections(memory, carries, lowering)
+          # and how its layers and sprites are drawn. +sleeps_every_pass+ for the cartridge a checked
+          # run reads (Frame#emit_sleep_unless_in_blank).
+          def sections(memory, carries, lowering, sleeps_every_pass: false)
             c = carries
             lowered = lowered_facts(c, lowering)
             vectors = W65816.new("runtime vectors", home: :first)
             Boot.emit_vectors(vectors)
             asm = W65816.new("runtime")
-            Boot.emit(asm, main: Lowering::MAIN, fast: c.board.fast)
+            count_at = lowering.variables[IR::Frames::COUNT]
+            counted = lowering.counts_from_power_on?
+            Boot.emit(asm, main: Lowering::MAIN, fast: c.board.fast, counted: counted)
             Boot.emit_zero(asm)
             Int32.emit(asm, Int32.scratch(memory, fractions: lowering.fractions?), divides: lowering.divides?)
             pad = memory.scratch(4)
             Frame.emit(asm, memory, pad: pad, sound: c.sound, extra_buttons: c.extra_buttons,
-                                    second_controller: c.second_controller, dims: c.dims)
+                                    second_controller: c.second_controller, dims: c.dims, sleeps_every_pass: sleeps_every_pass,
+                                    count_at: count_at)
             Blank.emit(asm, memory, Blank.scratch(memory))
             lists = Lists.scratch(memory)
             Lists.emit(asm, memory, lists)
@@ -99,7 +112,11 @@ module VBlank
                                       sprite_squares: lowered[:sprite_squares], changing_colors: c.changing_colors,
                                       math_turns: c.math_turns, scene_bars: lowered[:scene_bars], third_layer: c.third_layer,
                                       held_hides_sprites: c.held_hides_sprites)
-            Paint.emit(asm, memory, Paint.scratch(memory), chip: c.chip?, columns: lowering.paints_columns?) if c.painted
+            if c.doubled
+              PaintDoubled.emit(asm, memory, Paint.scratch(memory), band: c.shown_band, columns: lowering.paints_columns?)
+            elsif c.painted
+              Paint.emit(asm, memory, Paint.scratch(memory), chip: c.chip?, columns: lowering.paints_columns?)
+            end
             Tint.emit(asm, memory, Tint.scratch(memory), colors_shown: lowered[:colors_shown], changing_colors: c.changing_colors, dims: c.dims,
                                scene_backdrops: c.scene_backdrops, backdrop_follows: c.backdrop_follows)
             Collide.emit(asm, memory, Collide.scratch(memory))
@@ -112,22 +129,29 @@ module VBlank
             end
             if c.saves
               saving = Saving.scratch(memory)
-              Saving.emit(asm, memory, saving, bank: c.board.save_bank)
+              Saving.emit(asm, memory, saving, bank: c.board.save_bank, size: c.saves)
               Saving.emit_list_moves(asm, saving, lists) if lowering.moves_lists_to_save?
             end
-            emit_sound_routines(asm, memory, c, lowered)
-            emit_start(asm, chip: c.chip?, sound: c.sound, opening_recordings: lowered[:opening_recordings])
+            emit_sound_routines(asm, memory, c, lowered, counted: counted)
+            emit_start(asm, chip: c.chip?, sound: c.sound, opening_recordings: lowered[:opening_recordings], interrupt_on: !counted)
             emit_frame_begins(asm, lowering.frame_begins)
             chip_paint = c.painted && c.chip? ? [ChipFill.section, ChipBlit.section] : []
-            [vectors.section, asm.section, *chip_paint] +
-              (c.sound ? Sound.sections(memory, lowered[:waves], recordings: lowered[:recordings], scenes: lowered[:scene_recordings]) : []) +
-              [lowered[:music], lowered[:plays]].compact
+            if c.sound
+              sound = Sound.sections(memory, lowered[:waves], recordings: lowered[:recordings], scenes: lowered[:scene_recordings])
+              image = Sound.image_for(memory, lowered[:waves], recordings: lowered[:recordings], scenes: lowered[:scene_recordings])
+            end
+            Made.new(sections: [vectors.section, asm.section, *chip_paint, *sound, *lowered[:music]&.sections, lowered[:plays]].compact,
+                     sound_memory: image && Cartridge::SNESROM::SoundMemory.new(used: image.chip_bytes, room: Sound::MEMORY_BYTES))
           end
+
+          # What #sections made: the sections, and how much of the sound chip's memory the game uses
+          # (Cartridge::SNESROM::SoundMemory), nil for a game with no sound.
+          Made = Data.define(:sections, :sound_memory)
 
           # What +lowering+ reports the runtime needs, asked once and in this order, since a section
           # asked for is made then.
           def lowered_facts(carries, lowering)
-            { waves: lowering.sound_waves, music: (lowering.music_section if carries.songs),
+            { waves: lowering.sound_waves, music: (lowering.songs_laid_out if carries.songs),
               level_at: (lowering.variables.fetch(IR::Tunes::LEVEL) if carries.follows_level),
               recordings: lowering.sound_recordings, scene_recordings: lowering.scene_recording_loads,
               opening_recordings: lowering.opening_scene_recordings_label,
@@ -138,12 +162,15 @@ module VBlank
               sprite_squares: lowering.sprite_squares?, scene_bars: lowering.scene_bars? }
           end
 
-          def emit_sound_routines(asm, memory, carries, lowered)
+          def emit_sound_routines(asm, memory, carries, lowered, counted: false)
             if carries.sound
               Sound.emit(asm, memory, lowered[:waves], recordings: lowered[:recordings], scenes: lowered[:scene_recordings],
-                                      songs: !lowered[:music].nil?, samples: !lowered[:plays].nil?)
+                                      songs: !lowered[:music].nil?, samples: !lowered[:plays].nil?, counted: counted)
             end
-            Music.emit(asm, memory, level_at: lowered[:level_at], effects: carries.effects, recorded: lowered[:recorded_parts]) if lowered[:music]
+            if lowered[:music]
+              Music.emit(asm, memory, level_at: lowered[:level_at], effects: carries.effects, recorded: lowered[:recorded_parts],
+                                      notes_apart: lowered[:music].notes_apart?)
+            end
             Recordings.emit(asm, memory, voices: carries.recording_voices) if lowered[:plays]
           end
 
@@ -151,10 +178,13 @@ module VBlank
           # table "game_starts": each place as a word and its number as two, and a place of nought
           # after the last), its lists' headers, the picture's start, the screen's interrupt
           # switched on, and the buttons held from power-on. A game that makes sound sends the sound
-          # unit its program first, while the screen's interrupt is still off (Sound), and then, in a
+          # unit its program first, while the screen's interrupt is off (Sound#emit_start), and then, in a
           # game that loads each scene's recordings, those of the scene it opens on, whose table is
           # +opening_recordings+: the game's first pass is then not the one that waits for them.
-          def emit_start(asm, chip: false, sound: false, opening_recordings: nil)
+          # +interrupt_on+ is false for a game that counts frames from power-on, whose interrupt
+          # was switched on as soon as work RAM was cleared (Boot#emit), so the frames all this
+          # takes are counted too.
+          def emit_start(asm, chip: false, sound: false, opening_recordings: nil, interrupt_on: true)
             asm.label("rt_start")
             asm.jsl(asm.long("rt_chip_start")) if chip
             asm.jsl(asm.long("rt_sound_start")) if sound
@@ -176,7 +206,7 @@ module VBlank
             asm.label("rt_start_lists")
             asm.jsl(asm.long("rt_lists_start"))
             asm.jsl(asm.long("rt_picture_start"))
-            emit_interrupt_on(asm)
+            emit_interrupt_on(asm) if interrupt_on
             asm.jml(asm.long("rt_buttons_from_power_on"))
           end
 

@@ -48,8 +48,10 @@ module PackingGBATests
 
   # THE ADVANCE'S COMMON SOUND DRIVER (Packing::M4A), whose answer key is M4AAnswers: a made-up song
   # whose tracks use every command the reader reads, and one that ends, each track's notes, the
-  # songs' lengths and loops, and a recording and its voice's settings.
-  M4A_NOTES = 16
+  # songs' lengths and loops, and a recording and its voice's settings. The song of every command
+  # never comes round whole (its first track counts its rounds in the driver's memory), so it is
+  # written for as many rounds as the reader keeps.
+  M4A_NOTES = 176
 
   private def m4a_unpacking(folder, &fill)
     VBlank::Builder.new.data_pack(from: copy_of(folder, M4AAnswers::COPY), version: "1") do |slots|
@@ -116,6 +118,28 @@ module PackingGBATests
     end
   end
 
+  # A RECORDING'S NOTE, VOICED: where it sits between the speakers, a pitch between keys, and each
+  # bend, VOL or PAN while it sounds a record that glides, as the driver moves a sounding note.
+  def test_each_recorded_note_voiced_keeps_its_side_and_its_bends
+    song = M4AAnswers::BENDING_SONG_AT
+    Dir.mktmpdir do |folder|
+      slots = m4a_slots(folder) do |copy, pack|
+        2.times { |track| copy.unpack_m4a_voiced_track at: song, into: pack[:"voiced_#{track}"], track: track }
+      end
+
+      2.times do |track|
+        assert_equal M4AAnswers.voiced_track_bytes(song, track, count: M4A_NOTES), slots.fetch(:"voiced_#{track}"), "track #{track}"
+      end
+      notes = VBlank::Original::PackNote.list_in(slots.fetch(:voiced_0), voiced: true)
+      assert(notes.any?(&:glides), "a bend while a note sounds glides")
+      assert(notes.any? { |note| note.hz && !note.glides }, "a note struck between keys names its hz")
+      assert(notes.any? { |note| note.shade&.negative? }, "a note on the left names its shade")
+      assert(notes.any? { |note| note.glides && note.loudness < notes.first.loudness }, "a VOL while a note sounds glides quieter")
+      assert(notes.any? { |note| note.glides && note.shade&.negative? && note.at > notes.first.length },
+             "a PAN while a note sounds glides it to the left")
+    end
+  end
+
   # Tracks that switch between voices of the group, a drum kit and a key split. By default each
   # number the voice-and-kit track's records name is one voice the driver played; with the kit's and
   # the split's numbers set as a port sets them (M4AAnswers::MIXED_PARTS), each note's number picks,
@@ -157,6 +181,77 @@ module PackingGBATests
       assert_equal M4AAnswers.length(M4AAnswers::SONG_AT).pack("v2"), slots.fetch(:length)
       assert_equal M4AAnswers.length(M4AAnswers::ENDING_SONG_AT).pack("v2"), slots.fetch(:ending_length)
     end
+  end
+
+  # A SONG WHOSE TRACKS COME ROUND AT DIFFERENT POINTS (M4AAnswers::ROUNDS_TRACKS), its second
+  # round a frame later in the tempo's count than its first and its first track's rounds counted
+  # in the driver's memory: written until the two come round together, and its length the frames
+  # to there.
+  def test_a_song_whose_tracks_come_round_apart_is_written_until_they_come_round_together
+    song = M4AAnswers::ROUNDS_SONG_AT
+    Dir.mktmpdir do |folder|
+      slots = m4a_slots(folder) do |copy, pack|
+        2.times { |track| copy.unpack_m4a_track at: song, into: pack[:"track_#{track}"], track: track }
+        copy.unpack_m4a_length at: song, into: pack[:length]
+      end
+
+      2.times do |track|
+        assert_equal M4AAnswers.track_bytes(song, track, count: M4A_NOTES), slots.fetch(:"track_#{track}"), "track #{track}"
+      end
+      assert_equal M4AAnswers.length(song).pack("v2"), slots.fetch(:length)
+    end
+  end
+
+  # The same song played from the pack for four times its length, as the driver plays it on past
+  # every loop: the notes the answer key's player strikes in those frames, copied into the pack as
+  # they are and played once, sound the same.
+  ROUNDS_FRAMES = 180
+
+  def test_a_song_whose_tracks_come_round_apart_plays_as_the_driver_past_its_first_loop
+    song = M4AAnswers::ROUNDS_SONG_AT
+    played = (0...2).map { |track| M4AAnswers.played_track_bytes(song, track, frames: ROUNDS_FRAMES, count: M4A_NOTES) }
+    Dir.mktmpdir do |folder|
+      read = rounds_game(File.join(folder, "read"), M4AAnswers::COPY) do |copy, pack|
+        2.times { |track| copy.unpack_m4a_track at: song, into: pack[:"track_#{track}"], track: track }
+        copy.unpack_m4a_length at: song, into: pack[:length]
+      end
+      driver = rounds_game(File.join(folder, "driver"), played.join + [ROUNDS_FRAMES, 0xFFFF].pack("v2")) do |copy, pack|
+        2.times { |track| copy.copy_bytes at: track * played[0].bytesize, count: played[0].bytesize, into: pack[:"track_#{track}"] }
+        copy.copy_bytes at: 2 * played[0].bytesize, count: 4, into: pack[:length]
+      end
+      wanted = game_player.input_each_frame { |frame| frame == 1 ? [:a] : [] }.run(driver, frames: ROUNDS_FRAMES)
+      heard = game_player.input_each_frame { |frame| frame == 1 ? [:a] : [] }.run(read, frames: ROUNDS_FRAMES)
+
+      assert wanted.audio.any?, "the song sounds"
+      assert_equal wanted.audio, heard.audio
+    end
+  end
+
+  # A game playing the two squares' tracks of the rounds song from a pack of +bytes+ that +fill+
+  # unpacks, coming round at the pack's loop, or playing once where the loop has every bit set.
+  private def rounds_game(folder, bytes, &fill)
+    Dir.mkdir(folder)
+    from = copy_of(folder, bytes)
+    b = VBlank::Builder.new
+    b.instance_eval do
+      screen :bitmap
+      enable_sound
+      pack = data_pack(from: from, version: "1") do |slots|
+        2.times { |track| slots.notes :"track_#{track}", count: M4A_NOTES }
+        slots.numbers :length, count: 2, width: :half, signed: false
+        slots.fill_from_copy(&fill)
+      end
+      parts = Array.new(2) { |track| VBlank::Audio::Score::Part.new(notes: pack[:"track_#{track}"].notes) }
+      timing = pack[:length]
+      music = songs :music, [VBlank::Audio::Score.new(parts: parts, tempo: 3600, ticks_per_beat: 1, length: timing.number(0),
+                                                      loop_from: timing.number(1), longest: ROUNDS_FRAMES)]
+      game_loop do
+        wait_vblank
+        music.play 0 if pressed(:a)
+      end
+    end
+    b.finalize_program
+    b.program
   end
 
   def test_a_music_player_2000_voices_recording_and_settings_are_its_wave_and_envelope

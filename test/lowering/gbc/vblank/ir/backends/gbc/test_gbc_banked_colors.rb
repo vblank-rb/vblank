@@ -6,7 +6,7 @@ require "test_helper"
 # each of its palettes holds there, for every screen that says `draw_with`. Screens of
 # eight palettes stepped through forty lists come to more than the part of a
 # Color cartridge always in view holds beside the game's code. Such a game is built with those
-# tables in the cartridge's banks (GBC#build_in_view), read with their bank put in view, and
+# tables in the cartridge's banks (GBC#roomier_view), read with their bank put in view, and
 # plays as it does on the interpreter.
 class TestGBCBankedColors < Minitest::Test
   TILES = 8

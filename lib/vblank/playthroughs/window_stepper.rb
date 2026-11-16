@@ -34,6 +34,10 @@ module VBlank
       def width = @game.screen_width
       def height = @game.screen_height
 
+      # The script presses every button, so the window seats no players, 0 as for a game that
+      # names none (Live::Seats.several_players?): its gamepads only work the menu.
+      def seats = 0
+
       # +sound_rate+ is how many samples a second the game's sound comes at, for each speaker.
       def initialize(game, device, frame_seconds:, sound_rate:)
         require_relative "../live" # not part of `require "vblank"`, and a window is what wants it

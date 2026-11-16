@@ -58,6 +58,11 @@ module VBlank
           RUN_TILE_PIXELS = RUN_TILE_SIDE * RUN_TILE_SIDE
           # A tile's pixel where the layer behind shows (RG_SEE_THROUGH).
           TILE_SEE_THROUGH = 0xFFFF
+          # How many numbers describe one image (RG_IMAGE_FIELDS): where its pixels start, its width,
+          # its height, and where the colours of its places start, or NO_IMAGE_COLORS for an image
+          # whose pixels are its colours.
+          IMAGE_FIELDS = 4
+          NO_IMAGE_COLORS = -1
 
           private
 
@@ -77,7 +82,8 @@ module VBlank
             @bar_in_blocks = Blocks.bar_in_blocks!(@program, LoweringError)
             # The runs of tiles and the pictures the game paints from lists as it runs, and the
             # number rg_screen.c knows each by.
-            @tile_runs = by_name(@program.walk, :tile_run)
+            @runs_painted_from_lists = by_name(@program.walk, :tile_run)
+            @tile_runs = @runs_painted_from_lists.dup
             # A pose drawn from sprite tiles the game loads is a painted picture here too: its
             # pixels are kept as places, and a load writes the tiles it changes into each pose
             # that draws them (rg_tile_pose_load).
@@ -178,7 +184,27 @@ module VBlank
                      sprites_over_picture? ? 1 : 0]),
              runtime_array("always_up", "int32_t", @handover.always_up.scenery.map { |bg| entry_of(bg) }),
              runtime_array("sines", "int32_t", (0...450).map { |degrees| Affine.sine(degrees) }),
-             runtime_array("turn_rules", "int32_t", [Build::SCALE_ONE, Affine::ONE_TH, Affine::MAX, Affine::MIN_SCALE])]
+             runtime_array("turn_rules", "int32_t", [Build::SCALE_ONE, Affine::ONE_TH, Affine::MAX, Affine::MIN_SCALE]),
+             runtime_array("border_pixels", "int16_t", border_pixels)]
+          end
+
+          # THE BORDER ROUND THE GAME'S SCREEN, where the console shows that screen in the middle of a
+          # bigger one (Console::Description#bordered?): a picture of the whole screen, a colour a
+          # pixel row by row, which the window shows with the game's screen over its middle
+          # (rg_screen_framed). The game's own (`border`) or VBlank's, as the cartridge draws it
+          # (GBA::BorderSprites). Nothing for a game shown whole.
+          def border_pixels
+            console = @program.described_console
+            return [] unless console.bordered?
+
+            whole = console.whole_screen_size
+            pixels = if @program.border
+                       width, height = @program.border_size
+                       Graphics::Border.whole_picture(width: width, height: height, pixels: @program.border, whole: whole)
+                     else
+                       Graphics::Border.default(whole: whole, inner: console.screen_size)
+                     end
+            pixels.map { |color| color & MAX_COLOR }
           end
 
           # An array of numbers rg_screen.c reads by name (rg_game_ and +what+).
@@ -197,6 +223,12 @@ module VBlank
           # there would be thrown away. Written out, a title's poses each drawn in every set of
           # colours its lists hold are hundreds of megabytes of stand-ins. So those pictures come
           # after the pixels written, as room the game makes as it starts (StartFileFills#build_start_file_pixel_room).
+          #
+          # A POSE READ FROM THE START FILE IS HELD ONCE, however many sets of colours draw it: its
+          # pixels are the places of its frame, and each image of it is those pixels and a list of
+          # the colours its set puts at each place, which the runtime looks each pixel up in as it
+          # draws (rg_game_images' fourth number). A title's actors followed through sixty sets of
+          # colours are then sixty short lists, not sixty copies of every pose.
           def image_arrays
             pixels = []
             info = []
@@ -205,12 +237,12 @@ module VBlank
               image = picture_named(name)
               from_start_file = picture_from_start_file(name)
               if from_start_file && colors != SHADING_PLACES
-                read_at_start << [info.length, from_start_file, colors]
-                info.push(nil, image.width, image.height)
+                read_at_start << [info.length, name, from_start_file, colors]
+                info.push(nil, image.width, image.height, NO_IMAGE_COLORS)
                 next
               end
-              info.push(pixels.length, image.width, image.height)
-              record_start_file_fill(:image, pixels.length, from_start_file, colors) if from_start_file
+              info.push(pixels.length, image.width, image.height, NO_IMAGE_COLORS)
+              record_start_file_fill(:image, pixels.length, from_start_file, colors, image: (info.length / IMAGE_FIELDS) - 1) if from_start_file
               drawn = if colors == SHADING_PLACES
                         bitmap = @data.fetch(name)
                         bitmap.places_in_shading(bitmap.shading)
@@ -226,14 +258,38 @@ module VBlank
               pixels.concat(drawn.map { |pixel| image_pixel_kept(pixel) })
             end
             @image_pixels_held = pixels.length
-            room_at = read_at_start.reduce(pixels.length) do |at, (info_at, node, colors)|
-              info[info_at] = at
-              record_start_file_fill(:image, at, node, colors)
-              at + (node.width * node.height)
-            end
+            room_at = lay_out_images_read_at_start(read_at_start, info, pixels.length)
             @image_pixel_count = room_at # what the runtime copies them by, to fill an image read from the start file
             [runtime_array("image_pixels", "int16_t", pixels, grows: room_at > pixels.length), runtime_array("images", "int32_t", info),
              *sprite_name_arrays]
+          end
+
+          # The room for each image read from the start file, from +room_at+ in the image pixels,
+          # written into its fields of +info+ (+read_at_start+ is each one's field, picture name, file
+          # picture and colours). A picture is filled where its pixels are. A pose's places are laid
+          # out once by its picture's name, and each of its images has the colours of its places
+          # after them. Gives back where the room ends.
+          def lay_out_images_read_at_start(read_at_start, info, room_at)
+            places_at = {}
+            read_at_start.each do |info_at, name, node, colors|
+              image = info_at / IMAGE_FIELDS
+              unless node.from_file.is_a?(IR::StartFile::Pose)
+                info[info_at] = room_at
+                record_start_file_fill(:image, room_at, node, colors, image: image)
+                room_at += node.width * node.height
+                next
+              end
+
+              unless places_at.key?(name)
+                places_at[name] = room_at
+                room_at += node.width * node.height
+              end
+              info[info_at] = places_at[name]
+              info[info_at + 3] = room_at
+              record_start_file_fill(:image, places_at[name], node, colors, image: image, place_colors_at: room_at)
+              room_at += StartFileFills.pose_places(node.from_file)
+            end
+            room_at
           end
 
           # Reference#sprites names each sprite it drew by two names: the one the game declared it
@@ -279,33 +335,44 @@ module VBlank
           end
 
           # Reference#sprite_piece_places, for a console that draws only so many pieces of sprites on
-          # a line: how tall a piece is, then where each image's pieces start, then each image's
-          # pieces (see rg_screen.h for the layout). Only how tall a piece is where the console
-          # draws them all.
+          # a line or on the screen: how many images, how far past the screen's edge a piece still
+          # takes an entry of the table (SpriteLines.entry_reach, 0 for its own width or height),
+          # then where each image's pieces start, then each image's pieces (see rg_screen.h for the
+          # layout). Only two 0s where the console draws them all. A pose read from the start file
+          # lists none here: the runtime lists its frame's pieces as the game starts
+          # (StartFileFills#pose_piece_rules). A pose of sprite tiles whose pieces are a frame of the
+          # file lists its stand-ins here, and the runtime lists the frame's pieces in their place as
+          # it starts (StartFileFills#tile_pose_piece_rules).
           def image_pieces_array
             console = @program.described_console
+            return runtime_array("image_pieces", "int32_t", [0, 0]) unless console.sprite_pieces_drawn_a_line || console.sprite_pieces_drawn_a_screen
+
             tall = (@program.sprite_piece_size_on(console.name) || [SpritePieces::SIZE] * 2).last
-            values = [tall]
-            if console.sprite_pieces_drawn_a_line
-              lists = @images.each_key.map { |name, _| sprite_piece_places(name, tall) }
-              start = 1 + lists.length
-              lists.each do |places|
-                values << start
-                start += 1 + (2 * places.length)
-              end
-              lists.each { |places| values.push(places.length, *places.flatten) }
+            lists = @images.each_key.map do |name, colors|
+              next [] if picture_from_start_file(name)&.from_file.is_a?(IR::StartFile::Pose)
+
+              sprite_piece_places(name, colors, tall, console.sprite_piece_shape)
             end
+            values = [lists.length, SpriteLines.entry_reach(@program, piece_height: tall) || 0]
+            start = 2 + lists.length
+            lists.each do |places|
+              values << start
+              start += 1 + (4 * places.length)
+            end
+            lists.each { |places| values.push(places.length, *places.flatten) }
             runtime_array("image_pieces", "int32_t", values)
           end
 
-          # Where the pieces of the picture +name+ stand in it, as the console's table holds them.
-          def sprite_piece_places(name, tall)
+          # Where the pieces of the picture +name+, drawn in +colors+, stand in it, and how big each
+          # is, as the console's table holds them (Reference#sprite_piece_places).
+          def sprite_piece_places(name, colors, tall, shape)
             return SpriteLines.tile_pose_places(@tile_poses.fetch(name).pieces, piece_height: tall) if @tile_poses.key?(name)
 
             run = @tile_runs.each_value.find { |r| r.picture == name }
-            return SpriteLines.painted_places(run.width, run.height, piece_height: tall) if run
+            return SpriteLines.painted_places(run.width, run.height, piece_height: tall, shape: shape) if run
 
-            SpriteLines.picture_places(sprite_pictures.fetch(name), piece_height: tall)
+            SpriteLines.places_built(@program, name, colors == SHADING_PLACES ? nil : colors) ||
+              SpriteLines.picture_places(sprite_pictures.fetch(name), piece_height: tall, shape: shape)
           end
 
           # Every picture the program defines, as SpriteCut reads one.
@@ -344,12 +411,27 @@ module VBlank
             end.reduce { |both, each| call("rg_both", both, each) }
             kept = Lowering::TABLE_KEPT_AS.fetch(table_type(table))
             loads = @tile_poses.each_value.select { |pose| pose.tiles == node.name }.map do |pose|
-              pieces = drawing_array("pose_pieces", "int32_t", pose.pieces.flatten)
+              pieces = tile_pose_pieces_array(pose)
               eval_call("rg_tile_pose_load", Statements::Int.new(@run_numbers.fetch(pose.name)), pieces, Statements::Int.new(pose.pieces.length),
                         @names.of(:table, node.table), Statements::Int.new(kept), from, to, Statements::Int.new(node.count))
             end
             [Statements::Block.new([Statements::Local.new(name: from, value: value(node.at)), Statements::Local.new(name: to, value: value(node.to)),
                            Statements::If.new(condition: fits, body: [*loads, eval_call("rg_screen_request_rebuild")], otherwise: [])])]
+          end
+
+          # The array of a pose's pieces a load hands the runtime, three numbers a piece. A pose whose
+          # pieces are a frame of the file the program is handed as it starts holds its stand-ins
+          # where the routine reading the file can write them, and that routine writes the frame's
+          # pieces over them (StartFileFills#record_start_file_tile_pose_fill).
+          def tile_pose_pieces_array(pose)
+            (@tile_pose_pieces_arrays ||= {})[pose.name] ||=
+              if pose.from_file
+                drawing_array("pose_pieces", "int32_t", pose.pieces.flatten, writable: true).tap do |array|
+                  record_start_file_tile_pose_fill(array, pose)
+                end
+              else
+                drawing_array("pose_pieces", "int32_t", pose.pieces.flatten)
+              end
           end
 
           # A sprite picture's pixels as the interpreter draws them (Reference#blit_image): the
@@ -398,6 +480,11 @@ module VBlank
           # as art that was drawn ahead of time.
           def every_place_of(run) = painted_image(run, (0...PLACES_IN_RUN_COLORS).to_a, width: PLACES_IN_RUN_COLORS, height: 1)
 
+          # The run whose list is +name+, or nil. Only a run of tiles is painted from a list: a pose
+          # drawn from sprite tiles (PoseRun) takes its tiles from a load of its set
+          # (rg_tile_pose_load), has no list, and so no cell of the file is ever pointed at it.
+          def run_painted_from(name) = @runs_painted_from_lists.each_value.find { |run| run.list == name }
+
           # The run that paints the tile +name+, or nil for a tile that is a picture.
           def run_painting(name) = @tile_runs.each_value.find { |run| run.tiles.include?(name) }
 
@@ -427,9 +514,12 @@ module VBlank
              runtime_array("run_images", "int32_t", images, writable: marked_numbers_in?(:run_images))]
           end
 
-          # Reference#exec_copy_tiles and what a scene arriving does with each run it shows.
+          # Reference#exec_copy_tiles and what a scene arriving does with each run it shows. A run that
+          # shows only where a cell of the file is pointed at it is copied only once one is
+          # (StartFileFills#made_where_run_pointed).
           def tile_copy(run)
-            eval_call("rg_tiles_copy", Statements::Int.new(@run_numbers.fetch(run.name)), Statements::AddressOf.new(list(run.list)))
+            copy = eval_call("rg_tiles_copy", Statements::Int.new(@run_numbers.fetch(run.name)), Statements::AddressOf.new(list(run.list)))
+            made_where_run_pointed(run.name, copy)
           end
 
           def lower_copy_tiles(node)

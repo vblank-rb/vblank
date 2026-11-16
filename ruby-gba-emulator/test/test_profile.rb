@@ -345,6 +345,53 @@ class TestRubyGBAEmulatorProfile < Minitest::Test
            "each pass missed one break and slept about 139 lines before the next: #{passes.inspect}")
   end
 
+  # A game whose every pass runs on past the next break before it reaches the routine
+  # :gap_done, and then on into the picture after it, so the pass itself ends with lines to
+  # spare. Built here rather than through rom_ending_on, since the test needs the routine's address.
+  private def gap_rom(gap_until)
+    VBlank.build("PGAP", console: :gba, code: "PGAP", maker: "01") do
+      extend VBlank::Builder::Debug
+      screen :bitmap
+      spin = var :spin, 0
+      func(:gap_done) { spin += 1 }
+      game_loop do
+        repeat(100_000, stop_when: read_scanline < 160) { spin += 1 }
+        repeat(100_000, stop_when: read_scanline >= gap_until) { spin += 1 }
+        call :gap_done
+        repeat(100_000, stop_when: read_scanline < 160) { spin += 1 }
+        repeat(100_000, stop_when: read_scanline >= 20) { spin += 1 }
+      end
+    end
+  end
+
+  # Each pass but the first, as [missed, ended_before, gap_overran_by], with the gap ending as
+  # the pass reaches the start of :gap_done.
+  private def passes_with_gap(rom)
+    with_probe(write_rom(rom, "gap")) do |probe|
+      gap_end = rom.built.routines.fetch(:gap_done).begin
+      probe.profile(frames: 10, settle: 10, gap_ends: [gap_end]).passes.drop(1)
+           .map { |pass| [pass.missed, pass.ended_before, pass.gap_overran_by] }
+    end
+  end
+
+  # THE GAP AFTER A PASS, against the emulator's own count of breaks begun. A pass that reaches
+  # the end of its gap after a break began lost that picture there, however many lines it had
+  # left when it went to sleep; it says how many lines into that break the gap ended.
+  def test_a_gap_that_runs_past_a_break_says_how_many_lines_into_it_it_ended
+    passes = passes_with_gap(gap_rom(165))
+
+    refute_empty passes
+    assert(passes.all? { |missed, spare, gap| missed == 1 && spare.positive? && (5..9).cover?(gap) },
+           "each gap ended about six lines into the break, and the pass then had lines to spare: #{passes.inspect}")
+  end
+
+  def test_a_gap_that_ends_before_the_break_says_nothing
+    passes = passes_with_gap(gap_rom(150))
+
+    refute_empty passes
+    assert(passes.all? { |_, _, gap| gap.nil? }, "no gap ran past a break: #{passes.inspect}")
+  end
+
   # WHAT A FRAME READS AND WRITES, word by word, beside what it runs. A number kept in the quick
   # memory and read 300 times a pass is touched 300 times a frame; one that a frame never reads is
   # not in the count at all. This is what lets a build weigh keeping a list in the quick memory

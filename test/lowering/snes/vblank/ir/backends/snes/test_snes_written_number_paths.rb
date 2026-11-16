@@ -104,11 +104,40 @@ class TestSNESWrittenNumberPaths < Minitest::Test
           record(ir.set(:"gated_left#{j}", ir.binop(:*, compared.call, ir.binop(:+, ir.var_ref(:n), ir.int(7)))))
           record(ir.set(:"gated_slot#{j}", ir.binop(:*, compared.call, ir.list_get(:words, ir.int(1)))))
         end
+        TestSNESWrittenNumberPaths.narrow_sums(self, n, narrow, halves)
         at.increase!(1)
       end
     end
     b.finalize_program
     b.program
+  end
+
+  # SUMS INTO A BYTE OR HALF SLOT, worked out in their low half (Lowering#slot_value): of slots at a
+  # written index and at a variable's, of variables and written numbers, a side that is a sum of its
+  # own, a byte slot read into a half, and each operator. Each slot written is read back into a
+  # variable of its own at once, so every answer is held to the interpreter's.
+  def self.narrow_sums(builder, n, narrow, halves)
+    builder.instance_eval do
+      one = var :one, 1
+      sums = [
+        [narrow, 0, -> { narrow[1] + 1 }],
+        [narrow, 0, -> { narrow[one] - n }],
+        [narrow, 0, -> { n - (narrow[one] + 3) }],
+        [narrow, 0, -> { (narrow[one] | 5) ^ halves[one] }],
+        [narrow, 0, -> { (narrow[1] + 1) & 3 }],
+        [halves, 0, -> { halves[1] + 0x7FFF }],
+        [halves, 0, -> { narrow[1] - halves[1] }],
+        [halves, 0, -> { narrow[one] + narrow[one] }],
+        [halves, 0, -> { (halves[one] ^ n) & 0x7F0F }],
+        [halves, 0, -> { 1000 - (halves[one] - (narrow[one] + n)) }],
+        [halves, one, -> { narrow[1] }]
+      ]
+      sums.each_with_index do |(list, index, sum), i|
+        list[index] = sum.call
+        var(:"narrow_sum#{i}", 0).store!(list[index])
+      end
+      halves[one] = n
+    end
   end
 
   def test_every_answer_is_the_interpreters_at_each_edge

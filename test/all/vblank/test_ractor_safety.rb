@@ -5,6 +5,7 @@ require "test_helper"
 require "stringio"
 require "prism"
 require "conformance_fixture"
+require "ractor_workers"
 
 # CAN A GAME CALL THIS LIBRARY FROM A RACTOR?
 #
@@ -28,6 +29,8 @@ require "conformance_fixture"
 # difference that matters here: the count grew between the day it was first taken and the day
 # it was fixed, and a test naming the ones it knew about would have passed through both.
 class TestRactorSafety < Minitest::Test
+  include RactorWorkers
+
   # How many builds race each other, and how many times over. Eight is more than the cores
   # most machines have, which is the point — workers waiting to be let on a core interleave
   # differently each round, and a shared thing being written wants that to find it.
@@ -72,6 +75,26 @@ class TestRactorSafety < Minitest::Test
           halt if x >= 3
         end
       end.buffer
+    end
+  end
+
+  # A Super Nintendo cartridge that plays a song: one recorded instrument and a score of one note.
+  # The sound unit's program is written by an assembler of its own (SNES::SPC700), whose tables a
+  # worker first met here, so it is the build that proves those tables can be read from one.
+  module SuperNintendoSong
+    module_function
+
+    def cartridge
+      VBlank.build("SONG", console: :snes, out: StringIO.new, err: StringIO.new) do
+        enable_sound
+        instrument :hum, pcm: [0, 64, 0, -64] * 100, rate: 22_050
+        score = VBlank::Audio::Score
+        # A second note that glides from the first, then changes loudness, as Wolfenstein's
+        # converted songs do: it reaches the voice tables a plain note does not.
+        notes = [score::Note.new(at: 0, hz: 440), score::Note.new(at: 24, hz: 494, glides: true, volume: 8)]
+        music = songs :music, [score.new(parts: [score::Part.new(plays: :hum, notes: notes)], length: 96)]
+        game_loop { music.play 0 }
+      end.bytes
     end
   end
 
@@ -136,6 +159,15 @@ class TestRactorSafety < Minitest::Test
     assert_equal on_main, in_worker
   end
 
+  # ANOTHER CONSOLE'S BUILD, which is a body of code of its own: every console's lowering has its
+  # own assemblers and tables, and the Advance's cartridge above crosses none of them.
+  def test_a_super_nintendo_cartridge_with_a_song_builds_the_same_in_a_worker
+    on_main = SuperNintendoSong.cartridge
+    in_worker = without_the_experimental_warning { Ractor.new { SuperNintendoSong.cartridge }.value }
+
+    assert_equal on_main, in_worker
+  end
+
   # THE OTHER WAY OF RUNNING A GAME. Turning a program into cartridge bytes is one; playing
   # it on the fake console the tests measure against is a different body of code, and until
   # now nothing had asked whether that one works off the main Ractor either.
@@ -168,16 +200,6 @@ class TestRactorSafety < Minitest::Test
                      "#{disagreed} of #{AT_ONCE} builds run together disagreed with the one run alone"
       end
     end
-  end
-
-  # Ractors announce that they are experimental every time one is made. The library does
-  # not choose that and a test run should not carry it.
-  private def without_the_experimental_warning
-    was = Warning[:experimental]
-    Warning[:experimental] = false
-    yield
-  ensure
-    Warning[:experimental] = was
   end
 
   private def lazy_module_caches(path)

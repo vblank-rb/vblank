@@ -43,6 +43,28 @@ module VBlank
     # worked out as the record is written, so a reader multiplies and adds and asks nothing.
     #
     # WHERE THE RECORDS ARE IN THE PACK: after its last slot (Pack), as a Section.
+    #
+    # THE PACK KEEPS EACH FRAME TWICE, its slot's raw bytes and its record, and that is chosen.
+    # A slot that only frames read could be left out of the pack's file, but nothing knows which
+    # slot that is until the whole game is declared, and a slot's place in the file is fixed
+    # before that: `data_pack` lays the file out (Pack.layout) before the game names a verb, and a
+    # build that leaves its pack out writes each place into the program as each verb is declared.
+    # Leaving such a slot out would need the game to say so as it names the slot, and the
+    # unpacking to keep the slot in its list of bytes (its frames are read from there) while the
+    # pack file, its header, the C run that writes the list straight to the file (Unpacking
+    # #write_pack_as_c) and the shell's check of the header all leave it out. The pack is a file on
+    # a computer, read into its memory, never a cartridge's: a record keeps a piece in PIECE_BYTES,
+    # where an original keeps one in four to eight, so the raw slot is the smaller part of what its
+    # frames cost in the file, and leaving it out is not worth a second layout of the pack.
+    #
+    # THE RECORDS ARE ASSEMBLED TWICE, here in Ruby (Source#record, Section#bytes) and as game code
+    # (FrameRewrite), and that is chosen too. The build that holds the pack needs a frame's pieces
+    # the moment `image` names it, before the game has named the frames after it, so Source#record
+    # is needed whatever the pack's file is made with; Section#bytes only lays those records out.
+    # Playing the rewrite instead, once the game is declared, would build and play a program a
+    # second time to make bytes the build has already. And the two check each other: the tests of
+    # frame_record_unpacking_tests.rb and a port's shell check (Live::ShellCheck) hold the
+    # unpacking's records to these byte for byte.
     module FrameRecord
       ENTRY_BYTES = 4
       HEADER_BYTES = 4
@@ -73,6 +95,23 @@ module VBlank
 
         # The tile the piece shows at +column+ and +row+ of itself (0 first), before it is turned.
         def tile_at(column, row) = tile + (column * column_step) + (row * row_step)
+
+        # THE BLOCKS A PICTURE OF PIECES IS MADE OF, which a pose cuts this piece into once it is
+        # turned: a picture's pieces are 8x8 or 16x16, so blocks of two tiles a side where two are
+        # left each way and of one along an odd edge. Each is [column, row, tiles a side], counted
+        # in tiles from the turned piece's top left; a piece of 4 by 4 tiles is four blocks. The
+        # build that holds the pack (Builder::PackPoses), the interpreter (IR::StartFile.fill_pose)
+        # and each runtime's rg_start_file_fill_pose cut it the same way and in this order.
+        def blocks
+          (0...rows).step(2).flat_map do |row|
+            (0...columns).step(2).flat_map do |column|
+              next [[column, row, 2]] if column + 2 <= columns && row + 2 <= rows
+
+              [row, row + 1].select { |r| r < rows }.product([column, column + 1].select { |c| c < columns })
+                            .map { |r, c| [c, r, 1] }
+            end
+          end
+        end
       end
 
       # A FRAME AS READ BACK: how many pieces the original's frame names, and the pieces held.
@@ -145,8 +184,10 @@ module VBlank
       # section's SIZE follows from the game's own words alone (#size), as every slot's does, since
       # a build that leaves its pack out must know the file's size: the pieces a game gave a frame,
       # and for the frames that say their own count as many pieces as their slot could hold between
-      # them. Frames laid over each other could ask for more; a record that does not fit keeps the
-      # pieces that do, and one with no room for its header has none (entry 0), which draws nothing.
+      # them. Frames laid over each other can ask for more; a record that does not fit keeps the
+      # pieces that do, and one with no room for its header has none (entry 0). Neither is drawn
+      # short: the build that holds the pack refuses such frames, and the unpacking stops with a
+      # fault (#index_of_first_without_room).
       # Frames of one slot read with different pose values are each a slot's worth, since one
       # frame given two sets of values is two records.
       Section = Data.define(:sources) do
@@ -173,18 +214,54 @@ module VBlank
         # what the pack's unpacking writes (FrameRewrite), worked out here by the build that holds
         # the pack.
         def bytes(slot_bytes)
-          out = records_at
-          directory = []
-          records = sources.map do |source|
-            room = room_at(out)
-            next directory << 0 if room.negative?
+          laid = lay_out_records(slot_bytes)
+          [laid.directory.pack("V*"), *laid.records].join.b.ljust(size, "\0".b)
+        end
 
-            directory << out
-            source.record(slot_bytes.fetch(source.slot.name), room: room).tap { |record| out += record.bytesize }
+        # THE ORDER THE RECORDS ARE WRITTEN IN, which is not always the order the game named the
+        # frames: the unpacking reads the frames of one slot kept one way in one loop
+        # (FrameRewrite), so their records are written together, each group where its first frame
+        # was named. Each group is a list of [source, its number in the directory].
+        def groups_in_writing_order = sources.each_with_index.group_by { |source, _| [source.slot.name, source.layout] }.values
+
+        # FRAMES THAT OVERLAP. #size gives the frames of one slot that say their own count as many
+        # pieces as the slot holds, which is enough while no two of them share bytes. Frames that
+        # overlap can name more, and then a record has too little room for its pieces, or none:
+        # the number in the directory of the first such source to be written, read from
+        # +slot_bytes+ as #bytes reads them, or nil where every record has room. The build that
+        # holds the pack refuses such frames (PackPoses#refuse_frames_without_room!), and the
+        # unpacking stops with a fault (FrameRewrite), so no pose is drawn short of its pieces.
+        def index_of_first_without_room(slot_bytes) = lay_out_records(slot_bytes).first_cut
+
+        private
+
+        def lay_out_records(slot_bytes)
+          out = records_at
+          directory = Array.new(sources.length, 0)
+          records = []
+          first_cut = nil
+          groups_in_writing_order.flatten(1).each do |source, index|
+            bytes = slot_bytes.fetch(source.slot.name)
+            room = room_at(out)
+            if room.negative?
+              first_cut ||= index
+              next
+            end
+
+            record = source.record(bytes, room: room)
+            first_cut ||= index if record.bytesize < source.record(bytes).bytesize
+            directory[index] = out
+            records << record
+            out += record.bytesize
           end
-          [directory.pack("V*"), *records.grep(String)].join.b.ljust(size, "\0".b)
+          LaidOut.new(directory: directory, records: records, first_cut: first_cut)
         end
       end
+
+      # A SECTION LAID OUT (Section#bytes): where each record starts by number in the directory (0
+      # for one with no room), the records in the order they are written, and the number of the
+      # first record cut short or left out for want of room (nil for none).
+      LaidOut = Data.define(:directory, :records, :first_cut)
 
       # The record of the frame whose directory entry is at byte +entry_at+ of +bytes+ (a whole
       # pack file), in a section that starts at byte +section_at+: an empty frame where the entry

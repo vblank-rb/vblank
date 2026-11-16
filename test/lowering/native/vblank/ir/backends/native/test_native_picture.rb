@@ -470,7 +470,7 @@ class TestNativePicture < Minitest::Test
       game_loop {}
     end
 
-    assert_raises(IndexError) { reference_snapshots(program, frames: 3, buttons: {}) }
+    assert_raises(VBlank::IR::ProgramError) { reference_snapshots(program, frames: 3, buttons: {}) }
     error = assert_raises(VBlank::IR::ProgramError) { lowered_snapshots(program, frames: 3, buttons: {}, mode: :checked) }
     assert_match(/draw order names sprite 2 of the 2/, error.message)
   end

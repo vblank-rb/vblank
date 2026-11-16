@@ -13,6 +13,7 @@
 #   examples/shmup/enemies.rb  — a fixed few enemies that dive and respawn
 #   examples/shmup/boss.rb     — a 96x48 cruiser: one sprite, bigger than the console draws
 #   examples/shmup/hud.rb      — the score / ships display
+#   examples/shmup/blasts.rb   — verbs of the game's own for things blowing up, brought in by `uses`
 #
 # The game is two scenes: PLAYING and a GAME OVER screen. A scene owns what it draws — the
 # ship, enemies, boss and HUD are declared inside the playing scene, so they're on screen
@@ -29,6 +30,7 @@ VBlank.require_game_file "shmup/player"
 VBlank.require_game_file "shmup/enemies"
 VBlank.require_game_file "shmup/boss"
 VBlank.require_game_file "shmup/hud"
+VBlank.require_game_file "shmup/blasts"
 
 module Shmup
   PLAYING = 0
@@ -48,6 +50,8 @@ module Shmup
     # :ui, so it reaches the field and everything moving in it and leaves the score alone.
     layers :enemies, :ship, :ui
     seed 0xC0DE # a fixed stream once at boot, so enemy respawns are reproducible
+    enable_sound
+    uses Blasts # play_enemy_blast and play_ship_blast, from examples/shmup/blasts.rb
     # Place for place: see-through, the hull, then the bright part (the cockpit, the core).
     colors :warm_yellow,       [:transparent, :yellow, :white]
     colors :warm_orange,       [:transparent, :orange, :yellow]

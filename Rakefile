@@ -38,28 +38,28 @@ end
 desc "Build the emulator's C extension if its sources changed (required for the tests)"
 task compile_emulator: EMULATOR_BINARY
 
-# THE SUPER NINTENDO'S EMULATOR: bsnes, built with ruby-snes-emulator's probe patch (that gem's
-# Rakefile says how). Its binding is plain Ruby, so the core is all there is to build, once; the
-# Super Nintendo run is the only one that plays its cartridges.
-desc "Build the bsnes core the Super Nintendo run plays its cartridges in, if it is not built"
+# THE SUPER NINTENDO'S EMULATOR: bsnes, built with ruby-snes-emulator's probe patch, and the small C
+# extension it is played through (that gem's Rakefile says how). Each is built only when it is
+# missing or out of date; the Super Nintendo run is the only one that plays its cartridges.
+desc "Build the bsnes core the Super Nintendo run plays its cartridges in, and its C extension, if not built"
 task :compile_snes_core do
-  Dir.chdir("ruby-snes-emulator") { sh "rake", "compile_core" }
+  Dir.chdir("ruby-snes-emulator") { sh "rake", "compile", "compile_core" }
 end
 
-# THE SEGA GENESIS'S EMULATOR: Genesis Plus GX, built with ruby-genesis-emulator's probe patch (that
-# gem's Rakefile says how). Its binding is plain Ruby too, so the core is all there is to build, once;
-# the Genesis run is the only one that plays its cartridges.
-desc "Build the Genesis Plus GX core the Sega Genesis run plays its cartridges in, if it is not built"
+# THE SEGA GENESIS'S EMULATOR: Genesis Plus GX, built with ruby-genesis-emulator's probe patch, and the
+# small C extension it is played through (that gem's Rakefile says how). Each is built only when it is
+# missing or out of date; the Genesis run is the only one that plays its cartridges.
+desc "Build the Genesis Plus GX core the Sega Genesis run plays its cartridges in, and its C extension, if not built"
 task :compile_genesis_core do
-  Dir.chdir("ruby-genesis-emulator") { sh "rake", "compile_core" }
+  Dir.chdir("ruby-genesis-emulator") { sh "rake", "compile", "compile_core" }
 end
 
-# THE PLAYSTATION'S EMULATOR: Beetle PSX, built with ruby-ps1-emulator's probe patch (that gem's
-# Rakefile says how). Its binding is plain Ruby too, so the core is all there is to build, once; the
-# PlayStation run is the only one that plays its programs.
-desc "Build the Beetle PSX core the PlayStation run plays its programs in, if it is not built"
+# THE PLAYSTATION'S EMULATOR: Beetle PSX, built with ruby-ps1-emulator's probe patch, and the small C
+# extension it is played through (that gem's Rakefile says how). Each is built only when it is missing
+# or out of date; the PlayStation run is the only one that plays its programs.
+desc "Build the Beetle PSX core the PlayStation run plays its programs in, and its C extension, if not built"
 task :compile_ps1_core do
-  Dir.chdir("ruby-ps1-emulator") { sh "rake", "compile_core" }
+  Dir.chdir("ruby-ps1-emulator") { sh "rake", "compile", "compile_core" }
 end
 
 # DOS'S EMULATOR: DOSBox, built with ruby-dos-emulator's probe patch (that gem's Rakefile says how).
@@ -134,7 +134,9 @@ task "test:lowering:gba" => :clear_coverage
 # EACH RUN BUILDS THE EMULATOR IT PLAYS A CARTRIDGE IN, AND NO OTHER. Which one follows the console
 # a run plays games as, not its lowering:
 #
-# - the GBA run reads the Advance's cartridge back in libmgba (test/lowering/gba/);
+# - the GBA run reads the Advance's cartridge back in libmgba (test/lowering/gba/), and its tests of
+#   the reader and of playthroughs read a Super Nintendo cartridge in bsnes and a PlayStation
+#   program in Beetle PSX too;
 # - the Game Boy Color run plays the Color's cartridges in libmgba too;
 # - the Super Nintendo, Genesis and PlayStation runs play theirs in bsnes, Genesis Plus GX and
 #   Beetle PSX;
@@ -144,7 +146,7 @@ task "test:lowering:gba" => :clear_coverage
 #
 # The JavaScript and Ruby runs build none: their sound is held sample for sample to the C build's
 # (test/runtime_sounds.rb), so they run on a machine with no emulator and no C compiler for one.
-task "test:lowering:gba" => :compile_emulator
+task "test:lowering:gba" => %i[compile_emulator compile_snes_core compile_ps1_core]
 task "test:lowering:gbc" => :compile_emulator
 task "test:lowering:native:gba" => :compile_emulator
 task "test:lowering:snes" => :compile_snes_core
@@ -176,7 +178,7 @@ namespace :test do
   # The tests of playing a game with nobody at the controls, which are every test in one
   # folder: the folder that mirrors lib/vblank/playthroughs. They are in the suite as
   # well; this is for working on that one module without waiting for the rest.
-  Rake::TestTask.new(playthroughs: %i[compile_emulator clear_coverage]) do |t|
+  Rake::TestTask.new(playthroughs: %i[compile_emulator compile_snes_core clear_coverage]) do |t|
     t.libs << "test" << "lib"
     t.test_files = FileList["test/lowering/gba/vblank/playthroughs/**/test_*.rb"]
     t.description = "Run the tests of playthroughs, tapes and comparisons"
@@ -207,7 +209,9 @@ end
 namespace :test do
   desc "Tests kept out of test/all that pass, playing a game, on runs that do not load them " \
        "(rake test:misplaced ONLY=test/console/gba RUNS=gbc,snes,genesis)"
-  task misplaced: :compile_emulator do
+  # It plays each folder's tests on the runs that do not load them, so a test there can open any
+  # console's emulator, whichever runs RUNS names.
+  task misplaced: %i[compile_emulator compile_snes_core compile_genesis_core compile_ps1_core] do
     ruby "tools/misplaced_tests.rb"
   end
 end

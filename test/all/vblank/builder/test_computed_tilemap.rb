@@ -186,6 +186,19 @@ class TestComputedTilemap < Minitest::Test
     assert_match(/empty map/, err.message)
   end
 
+  # ...and so is a map of rows with no cells in them: a map of nothing, which a console that
+  # copies a map row by row once copied as the most cells its counter holds, over all of video
+  # memory.
+  def test_a_map_of_rows_with_no_cells_says_it_is_empty
+    b = Builder.new
+    b.instance_eval { screen :tiled }
+    b.instance_eval { tiles :world, from: SHEET, tile: 8 }
+    [[[]], ["", ""]].each do |map|
+      err = assert_raises(ArgumentError) { b.background(:room, tiles: :world, map: map) }
+      assert_match(/empty map/, err.message)
+    end
+  end
+
   # `solid:` says which TILES block, and it never said how they were named — so it
   # takes the tileset's keys whatever they are, with nothing new to write. Worth
   # asserting rather than assuming: a wall that quietly stops blocking is a game you

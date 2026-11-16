@@ -22,8 +22,10 @@ class TestIRBackendReference < Minitest::Test
     assert_equal 5, run_ir(program(set(:x, 5)))[:x]
   end
 
+  # A variable the program reads and never writes is 0. A name the program never has is refused
+  # (test/all/vblank/ir/test_reading_by_name.rb).
   def test_unwritten_variable_reads_zero
-    assert_equal 0, run_ir(program)[:nope]
+    assert_equal 0, run_ir(program(set(:x, var_ref(:unwritten))))[:unwritten]
   end
 
   def test_arithmetic_with_immediates_and_vars

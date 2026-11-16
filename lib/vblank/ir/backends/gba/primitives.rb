@@ -197,6 +197,7 @@ module VBlank
           # the engine does not care which of its two ends it hears about first.
           def emit_start_copy_engine(from:, to:, control:)
             refuse_copy_engine_register_clash!(from, to, control)
+            refuse_copy_of_nothing!(control)
             @emitter.emit_number(TMP, REG_DMA3SAD)
             # What a block must leave alone: the engine's address, and a control word that is
             # still waiting for its turn.
@@ -346,6 +347,32 @@ module VBlank
 
             raise ArgumentError, "the control word cannot wait in r#{ACC}: the numbers written before " \
                                  "it are loaded through that register"
+          end
+
+          # The low half of the engine's control word: how many units it moves.
+          COPY_COUNT_MASK = 0xFFFF
+
+          # A COUNT OF NOUGHT IS THE ENGINE'S BIGGEST COUNT, not nothing (GBATEK, DMA word count:
+          # "0 = 4000h" for the first three engines, "0 = 10000h" for this one). Asked to move
+          # nothing it moves 65,536 units, more than all of video memory holds, from wherever its
+          # source was over whatever follows its destination. A copy whose count is settled while
+          # building and comes to nought is a lowering that forgot to leave the copy out, so it
+          # is refused here, naming the methods that asked (the first two, since the nearest is
+          # often a one-line pass-through), before such a cartridge can be made. A count the game
+          # works out as it runs is the caller's to test before the copy. The few places that
+          # write the control word by hand ask this too.
+          def self.refuse_copy_of_nothing!(control, askers = caller_locations(1, 2))
+            return unless control.is_a?(Integer) && (control & COPY_COUNT_MASK).zero?
+
+            named = askers.map { |place| "#{place.label} (#{File.basename(place.path)}:#{place.lineno})" }
+            raise ArgumentError, "#{named.join(', called by ')} started the copying engine with a count of " \
+                                 "nought, which it reads as 65,536: leave the copy out when there is " \
+                                 "nothing to copy"
+          end
+
+          def refuse_copy_of_nothing!(control)
+            askers = caller_locations(2..).drop_while { |place| place.base_label == "emit_start_copy_engine" }
+            self.class.refuse_copy_of_nothing!(control, askers.first(2))
           end
 
           # A block that works a number out must leave the +kept+ registers as they are, and

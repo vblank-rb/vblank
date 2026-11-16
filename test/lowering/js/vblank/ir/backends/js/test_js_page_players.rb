@@ -44,14 +44,31 @@ class TestJSPagePlayers < Minitest::Test
   end
 
   # Each of player 2's keys (IR::ComputerControls::SECOND_PLAYER_KEYS, by the browser's name for
-  # it) holds its button, and the arrows stay player 1's.
+  # it) holds its button, and the arrows stay player 1's. The keys of X, Y and C press nothing for
+  # the Advance, which has none of them.
   def test_the_keyboards_right_hand_is_player_two
     keys = VBlank::IR::ComputerControls::SECOND_PLAYER_KEYS
     codes = keys.keys.map { |name| name.is_a?(Integer) ? "Digit#{name}" : "Key#{name.upcase}" }
-    held = keys.values.map { |button| :"p2_#{button}" }
+    held = keys.values.select { |button| advance_buttons.include?(button) }.map { |button| :"p2_#{button}" }
 
     assert_page_holds([*codes.map { |code| "down #{code}" }, "down ArrowLeft"], held + %i[left],
                       "with every one of player 2's keys held, and the left arrow")
+  end
+
+  # On a Super Nintendo page player 2's H is X and Y is Y, as in the other two windows.
+  def test_player_twos_x_and_y_keys_on_a_super_nintendo_page
+    game = VBlank.game "PLAYERS", consoles: %i[snes], players: { computer: 1..2, else: 1 } do
+      screen :bitmap
+      game_loop do
+        clear_screen :black
+        %i[x y].each_with_index { |button, i| fill_rect i * 10, 10, 8, 8, :white if held(button, player: 2) }
+      end
+    end
+    picture = pictures_in(played_page(["down KeyH", "down KeyY", "play 2", "picture"], game)).first
+    interpreter = Reference.new.input_each_frame { |frame| frame >= 2 ? %i[p2_x p2_y] : [] }
+                           .run(game.checked_program(err: nil, console: :snes), frames: 2)
+
+    assert_same_picture interpreter.screen.shown, picture, "with player 2's H and Y held"
   end
 
   # A game that names no players plays as before: every controller is player 1's, and player 2's

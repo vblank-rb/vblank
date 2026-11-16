@@ -11,8 +11,8 @@ module VBlank
       BYTES_EACH = 4
 
       WORDS = Ractor.make_shareable({
-        copy: ["keeps its number from this line, as Ruby does.",
-               "Unneeded if everything that reads it comes before the line that changes the number."],
+        copy: ["keeps the number it got on this line, as Ruby does.",
+               IR::Guardrails::Checks::IwramBudget::COPY_ADVICE],
         swap: ["keeps one number while the others are written.", nil],
         picked: ["keeps the number the test picked.", nil],
         join: ["keeps the answer of `&&` or `||`.", "Unneeded in an `if` with no `else`."],
@@ -30,8 +30,8 @@ module VBlank
         printer.puts("hidden variables: #{notes.length} (#{notes.length * BYTES_EACH} bytes)")
         notes.group_by { |note| [note.source, note.why] }.each do |(source, why), same|
           said, advice = WORDS.fetch(why)
-          count = same.length > 1 ? " (#{same.length} of them)" : ""
-          printer.puts("  #{place(source)}  #{line_text(source)}  #{said}#{count}")
+          count = same.length > 1 ? "#{same.length} of them, " : ""
+          printer.puts("  #{place(source)}  #{line_text(source)}  #{said} (#{count}#{same.length * BYTES_EACH} bytes)")
           printer.puts("    #{advice}") if advice
         end
         printer.puts("")
@@ -46,7 +46,8 @@ module VBlank
 
       def line_json(note)
         said, advice = WORDS.fetch(note.why)
-        { at: place(note.source), line: line_text(note.source), why: note.why.to_s, says: said, advice: advice }
+        { at: place(note.source), line: line_text(note.source), why: note.why.to_s, bytes: BYTES_EACH, says: said,
+          advice: advice }
       end
 
       def place(source) = source ? File.basename(source) : "the library"

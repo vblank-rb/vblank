@@ -120,6 +120,12 @@ writing an instruction is shared, because two copies of a decision drift apart:
   `Backends::LoopForm` says which shape a `repeat` can take (its count kept in the game's own
   variable), and `ControlFlow#index_below` what a loop's variable is known to stay under while its
   body is written, so a read of a table or a list there needs no check of the index.
+- `Backends::BuildTries` — a build as a series of tries, each a whole lowering with one set of
+  settings (a Data), until one fits: each try timed and logged, what a try found kept for the
+  tries after it, attempts the build can go back from, a better try kept only if it fits, and
+  steps a measured overflow rules out skipped (`first_step_not_ruled_out`). The console gives its
+  settings, its step (`next_settings`, given the error and the try) and its measurements; its
+  lowering raises the moment a count passes what the console holds.
 - `Backends::BuildCache` — what a build works out from the program alone, once for all its tries:
   the plan, the handover, the stacking, each picture's pixels, and the lowering's own memos (its
   `BuildFacts`). A console's build makes one per build (`BuildCache.for`) and hands it to each try.
@@ -140,7 +146,25 @@ writing an instruction is shared, because two copies of a decision drift apart:
 - `IR::Stacking.items_in_draw_order` — a frame's sprites back to front, each run the game orders in
   its place; `IR::SceneHandover#background_named` — which declaration a change to a background names;
   `SceneHandover#own_scenery_behind_shared?` — a stack that puts a scene's own background behind one
-  every screen shows.
+  every screen shows, which `LoweringPlan#refuse_unmade_stacking!` refuses for a lowering whose layers
+  cannot show it; `SceneHandover#bar_shown_early` — a status bar whose line is in a routine or the
+  game loop, which the interpreter shows from the first background put up.
+- `Backends::SceneryWrites` — mixed into the lowering beside `ControlFlow`, written with its hooks: a
+  change to a background made to the scene's own declaration of the name, each scene a branch where
+  that is known only as the game runs (`for_background`), and a background put up in a pass held at
+  its corner through it (`keep_corner_notes`, given the console's layers and how its status bar is
+  held; `emit_unless_put_up`; `emit_corners_forgotten`), and a background whose line runs more than
+  once copying its declared map the first time alone, so a later put-up keeps the cells the game
+  changed (`emit_put_up_keeping_cells`; the Color tells the two apart in its runtime instead, by the
+  grid its layer holds, and puts up the map the game last handed it, read from `choice`), and the bar
+  shown early put up beside each background, by a line or a scene's arrival, until it has gone up
+  once, held at no corner (`emit_bar_beside`, `emit_bar_beside_arrival`, `emit_bar_shown_early_noted`
+  for a screen's change; the Advance writes the same in `Drawing#emit_bar_beside`).
+- `Backends::DrawOrderWalk` — a draw order's list read as the interpreter reads it (every entry held,
+  a place below nought counted back, one naming no sprite stopping the game), for a list that is not
+  the builder's own (`Build::DrawOrder#permutation`) or that something takes items from the front of;
+  the lowering gives the fault and the placing through its table (the PlayStation walks every list,
+  the builder's too).
 - `Backends::PaletteWalk` — a fade or tint that walks the colours: what the runtime is handed
   (toward what, the colour, the steps held to their range) and the rules its runtime keeps (said
   the same, it does nothing; worked out as the pass ends, sent in the blank).

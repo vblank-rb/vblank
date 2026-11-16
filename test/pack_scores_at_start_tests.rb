@@ -84,9 +84,11 @@ module PackScoresAtStartTests
 
   # The pack file holding +parts+ (their records by slot name), as a player's machine would make it.
   # +timing+ is what its song's length and loop hold, and with +waves+ it holds WAVES.
-  private def pack_file(parts, timing: TIMING, waves: false)
+  # +timing_packing+ is how the timing slot's numbers are written: two bytes, low byte first, unless
+  # the game names another shape for the slot (+timing_slot+ of #scored_game).
+  private def pack_file(parts, timing: TIMING, waves: false, timing_packing: "v*")
     slots = parts.transform_values { |notes| records(notes) }.merge(settings: [*SHAPE, HOLDS_FROM].pack("C*"),
-                                                                    timing: timing.pack("v*"))
+                                                                    timing: timing.pack(timing_packing))
     slots[:waves] = WAVES.flatten.pack("C*") if waves
     VBlank::Original::Pack.holding(slots, sha1: Digest::SHA1.hexdigest("made up"), build_version: "1").to_bytes
   end
@@ -96,7 +98,10 @@ module PackScoresAtStartTests
   # notes written by hand. It plays song 0 on A and sound effect 0 on B, or with +plays+ false
   # declares them and plays neither. With +waves+ the pack has a slot of WAVES, and the block is
   # handed a way to get one of them for a part's `plays:`, the same way.
-  private def scored_game(parts, folder: nil, instruments: {}, plays: true, waves: false, &scores)
+  # +timing_slot+ is the timing slot's shape: its width and whether it goes below zero, and its
+  # byte order where it names one.
+  private def scored_game(parts, folder: nil, instruments: {}, plays: true, waves: false, timing_slot: { width: :half, signed: false },
+                          &scores)
     test = self
     b = VBlank::Builder.new(options: folder ? PACK_AT_START : VBlank::Cartridge::Options.new)
     from = folder && original_nowhere(folder)
@@ -106,7 +111,7 @@ module PackScoresAtStartTests
       pack = from && data_pack(from: from, version: "1") do |slots|
         parts.each_key.with_index { |name, place| slots.notes name, at: place * MOST * PackNote::BYTES, count: MOST }
         slots.numbers :settings, at: SETTINGS_AT, count: SHAPE.length + 1, width: :byte, signed: false
-        slots.numbers :timing, at: TIMING_AT, count: TIMING.length, width: :half, signed: false
+        slots.numbers :timing, at: TIMING_AT, count: TIMING.length, **timing_slot
         slots.numbers :waves, at: WAVES_AT, count: WAVES.flatten.length, width: :byte, signed: false if waves
       end
       wave_of = ->(index) { pack ? pack[:waves].wave(index) : test.wave_steps_by_hand(index) }
@@ -144,18 +149,26 @@ module PackScoresAtStartTests
 
   # The game with its pack left out, handed its pack, is heard as the game written by hand is: the
   # same sound log and the same mixed samples, on each of +buttons+ pressed once.
+  # +player+ keeping what each speaker plays, where it can: a game built as C, JavaScript or Ruby,
+  # whose speakers are the voices as the console's own chip plays them (the PlayStation's reads them
+  # out of sound memory), which the sound log and the recordings' mix do not show.
+  private def speakers_kept(player) = player.respond_to?(:recording_sound) ? player.recording_sound : player
+
   private def assert_plays_as_written(parts, frames:, buttons: %i[a], instruments: {}, waves: false, &scores)
     Dir.mktmpdir do |folder|
       by_hand = scored_game(parts, instruments: instruments, waves: waves, &scores)
       left_out = scored_game(parts, folder: folder, instruments: instruments, waves: waves, &scores)
       buttons.each do |button|
         once = ->(frame) { frame == 1 ? [button] : [] }
-        wanted = game_player.input_each_frame(&once).run(by_hand, frames: frames)
-        played = game_player.hand_file(pack_file(parts, waves: waves)).input_each_frame(&once).run(left_out, frames: frames)
+        wanted = speakers_kept(game_player).input_each_frame(&once).run(by_hand, frames: frames)
+        played = speakers_kept(game_player.hand_file(pack_file(parts, waves: waves))).input_each_frame(&once).run(left_out, frames: frames)
 
         refute_empty wanted.audio.select { |entry| entry.first == :note }, "the song written by hand plays notes on #{button}"
         assert_equal wanted.audio, played.audio, "the sound log on #{button}"
         assert_equal wanted.mixed_sound, played.mixed_sound, "the mixed sound on #{button}"
+        next unless wanted.respond_to?(:recording_sound)
+
+        assert_equal [wanted.sound, wanted.sound_right], [played.sound, played.sound_right], "the speakers on #{button}"
       end
     end
   end
@@ -202,8 +215,8 @@ module PackScoresAtStartTests
   # A WAVE OF THE PACK'S, read as the game starts (`plays: pack[:waves].wave(1)`): the song's wave
   # part reads its notes from the pack too, and the sound effect's, written in the game, plays the
   # other wave. Each is heard as the same wave's 32 steps written by hand. A build for a computer
-  # playing as a console whose voices read sound memory (the PlayStation) makes that memory as the
-  # game is built, and refuses the wave in plain words.
+  # playing as a console whose voices read sound memory (the PlayStation) writes the wave into its
+  # loop there as the game starts (rg_spu_fill_wave).
   def test_a_wave_part_playing_a_wave_from_the_pack_read_as_the_game_starts_plays_as_written_by_hand
     parts = { lead: LEAD, wave: WAVE }
     scores = lambda do |notes_of, _settings, _timing, wave_of|
@@ -212,15 +225,7 @@ module PackScoresAtStartTests
         effects: [Score.new(parts: [Part.new(notes: [Note.new(at: 0, length: 8, key: 69), Note.new(at: 12, key: 76)], plays: wave_of.(0))],
                             tempo: 150, length: 24)] }
     end
-    unless VBlank::Testing.checked? && VBlank::Console.described(game_console).voices_read_sound_memory
-      return assert_plays_as_written(parts, frames: 120, buttons: %i[a b], waves: true, &scores)
-    end
-
-    Dir.mktmpdir do |folder|
-      left_out = scored_game(parts, folder: folder, waves: true, &scores)
-      error = assert_raises(VBlank::BuildError) { game_player.hand_file(pack_file(parts, waves: true)).run(left_out, frames: 1) }
-      assert_includes error.message, "sound memory"
-    end
+    assert_plays_as_written(parts, frames: 120, buttons: %i[a b], waves: true, &scores)
   end
 
   # A NOTE'S SPEAKER AND ITS NOISE CLOCK, as a sound driver sets them for each note it strikes. A
@@ -276,6 +281,53 @@ module PackScoresAtStartTests
       played = game_player.hand_file(pack_file({ melody: MELODY }, timing: [500, 70])).input_each_frame(&once).run(left_out, frames: 150)
 
       assert_equal wanted.audio, played.audio
+    end
+  end
+
+  # A LOOP POINT WITH EVERY BIT SET IS NONE, as a hold with every bit set is (IR::StartFile.no_loop?):
+  # how a sound driver's unpacking writes a song that ends (Original::Packing::M4A's NO_LOOP). The
+  # song plays once and ends, as the same Score written with `plays_once: true`, and is not heard
+  # again while the game still names it.
+  def test_a_loop_point_of_every_bit_set_plays_the_song_once
+    assert_plays_once_from_pack([84, 0xFFFF], "v*")
+  end
+
+  # Every bit set in each shape of slot: 255 in a byte, -1 in a slot that goes below zero, and
+  # 65535 in two bytes read high byte first, whose length is read in that order too.
+  def test_a_loop_point_of_every_bit_set_plays_the_song_once_in_a_byte_slot
+    assert_plays_once_from_pack([84, 0xFF], "C*", width: :byte, signed: false)
+  end
+
+  def test_a_loop_point_of_minus_one_plays_the_song_once_in_a_signed_slot
+    assert_plays_once_from_pack([84, -1], "s<*", width: :half, signed: true)
+  end
+
+  def test_a_loop_point_of_every_bit_set_plays_the_song_once_in_a_slot_read_high_byte_first
+    assert_plays_once_from_pack([84, 0xFFFF], "n*", width: :half, signed: false, byte_order: :high_first)
+  end
+
+  # The song whose length is 84 ticks and whose loop point is +timing+'s second number, written
+  # into the pack by +packing+ in a slot of +timing_slot+'s shape, with the pack left out: heard as
+  # the same Score written with `plays_once: true`.
+  private def assert_plays_once_from_pack(timing, packing, **timing_slot)
+    parts = { lead: LEAD, low: LOW }
+    slot = timing_slot.empty? ? { width: :half, signed: false } : timing_slot
+    Dir.mktmpdir do |folder|
+      by_hand = scored_game(parts) do |notes_of|
+        { songs: [Score.new(parts: [Part.new(notes: notes_of.(:lead)), Part.new(notes: notes_of.(:low), volume: 9)], tempo: 150,
+                            length: 84, plays_once: true)] }
+      end
+      left_out = scored_game(parts, folder: folder, timing_slot: slot) do |notes_of, _settings, read|
+        { songs: [Score.new(parts: [Part.new(notes: notes_of.(:lead)), Part.new(notes: notes_of.(:low), volume: 9)], tempo: 150,
+                            longest: 300, **read)] }
+      end
+      once = ->(frame) { frame == 1 ? [:a] : [] }
+      wanted = game_player.input_each_frame(&once).run(by_hand, frames: 200)
+      file = pack_file(parts, timing: timing, timing_packing: packing)
+      played = game_player.hand_file(file).input_each_frame(&once).run(left_out, frames: 200)
+
+      assert_equal wanted.audio, played.audio
+      assert_equal wanted.mixed_sound, played.mixed_sound
     end
   end
 
@@ -711,6 +763,75 @@ module PackScoresAtStartTests
     end
   end
 
+  # A DRUM THAT RATTLES ON SOME HITS AND A WAVE PART THAT CHANGES WAVE, read as the game starts from
+  # voiced records (Original::PackNote's bytes 25 and 26). A record's wave is one of the part's
+  # (`notes(waves: [...])`): a wave of the pack, a shape, the pack's other wave; one past those, and a
+  # rattle byte past 1, are the part's own. The pad holds a note across the loop in the copy's wave.
+  RATTLING = [
+    [[0, 6, 60, OWN, { metallic: 1 }], { key: 60, metallic: true }],
+    [[8, 6, 62, OWN, { metallic: 0 }], { key: 62, metallic: false }],
+    [[16, 6, 64, OWN, {}], { key: 64 }],
+    [[24, 6, 60, OWN, { metallic: 7 }], { key: 60 }],
+    [[32, 6, 60, OWN, { metallic: 1 }], { key: 60, metallic: true }]
+  ].freeze
+  WAVE_TURNS = [
+    [[0, 6, 57, OWN, { wave: 0 }], { key: 57, wave: :wave_0 }],
+    [[8, 6, 59, OWN, { wave: 1 }], { key: 59, wave: :sine }],
+    [[16, 6, 60, OWN, { wave: 9 }], { key: 60 }],
+    [[24, 0, 62, OWN, { wave: 2 }], { key: 62, wave: :wave_1 }]
+  ].freeze
+  # The pack's waves a note written by hand names, by which of WAVES each is.
+  PACK_WAVE_NAMES = { wave_0: 0, wave_1: 1 }.freeze
+
+  # A game of a song of the drum and the pad, read from voiced slots with the pack left out
+  # (+folder+ given), or written by hand.
+  private def rattling_game(folder: nil)
+    test = self
+    b = VBlank::Builder.new(options: folder ? PACK_AT_START : VBlank::Cartridge::Options.new)
+    from = folder && original_nowhere(folder)
+    b.instance_eval do
+      screen :bitmap
+      enable_sound
+      pack = from && data_pack(from: from, version: "1") do |slots|
+        slots.voiced_notes :drum, at: 0, count: MOST
+        slots.voiced_notes :pad, at: MOST * PackNote::VOICED_BYTES, count: MOST
+        slots.numbers :waves, at: WAVES_AT, count: WAVES.flatten.length, width: :byte, signed: false
+      end
+      drum = pack ? pack[:drum].notes : test.rattling_notes_by_hand(RATTLING)
+      pad = pack ? pack[:pad].notes(waves: [pack[:waves].wave(0), :sine, pack[:waves].wave(1)]) : test.rattling_notes_by_hand(WAVE_TURNS)
+      music = songs :music, [Score.new(parts: [Part.new(notes: drum, plays: :noise), Part.new(notes: pad, plays: :sawtooth)],
+                                       tempo: 150, length: 44, loop_from: 20)]
+      game_loop do
+        wait_vblank
+        music.play 0 if pressed(:a)
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # Called back from the game's block, so it is public.
+  def rattling_notes_by_hand(notes)
+    voiced_written(notes).map { |note| PACK_WAVE_NAMES.key?(note.wave) ? note.with(wave: wave_steps(PACK_WAVE_NAMES.fetch(note.wave))) : note }
+  end
+
+  def test_a_drum_that_rattles_and_a_wave_part_that_changes_wave_read_as_the_game_starts_play_as_written_by_hand
+    Dir.mktmpdir do |folder|
+      by_hand = rattling_game
+      left_out = rattling_game(folder: folder)
+      file = VBlank::Original::Pack.holding({ drum: voiced_records(RATTLING), pad: voiced_records(WAVE_TURNS),
+                                              waves: WAVES.flatten.pack("C*") },
+                                            sha1: Digest::SHA1.hexdigest("made up"), build_version: "1").to_bytes
+      once = ->(frame) { frame == 1 ? [:a] : [] }
+      wanted = game_player.input_each_frame(&once).run(by_hand, frames: 100)
+      played = game_player.hand_file(file).input_each_frame(&once).run(left_out, frames: 100)
+
+      assert(wanted.audio.any? { |kind, wave| kind == :wave && wave && wave[:shape] == wave_steps(1) }, "the pad plays the copy's wave")
+      assert(wanted.audio.any? { |kind, hit| kind == :noise && hit && hit[:metallic] }, "the drum rattles")
+      assert_equal wanted.audio, played.audio
+    end
+  end
+
   # PITCHES BETWEEN KEYS THAT GLIDE, read as the game starts: a recorded part whose voiced records
   # name hz in 16ths and glides, the first shaded between the speakers, one naming an instrument and a volume as it glides (the part's
   # own, from the file), one out of range (its key), and a noise part whose hits name hz, one
@@ -810,7 +931,7 @@ module PackScoresAtStartTests
 
   # Shareable, as a test class's own constants are made (test_helper.rb), since a test may run in
   # a Ractor and these are a module's.
-  constants.each { |name| Ractor.make_shareable(const_get(name)) }
+  VBlank::Testing::InRactors.share_constants(self)
 
   # A game that declares a song and never plays one is built without the music player (the music
   # runtime feature), which is what makes a part's notes from the file. It starts all the same.

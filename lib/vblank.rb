@@ -16,6 +16,11 @@ module VBlank
 
   # A build the checks stopped, or a cartridge that came out wrong.
   class ROMError < BuildError; end
+
+  # A build the guardrails stopped. The build has printed the findings already, under the line
+  # that says it stopped (Messages::BuildStopped), so a caller that prints this error's message
+  # prints it as it is, with no second headline.
+  class StoppedByChecks < ROMError; end
 end
 
 # THE WHOLE LIBRARY, A LINE FOR EACH MODULE, and this is the only place that says so. Each one loads a
@@ -132,11 +137,14 @@ module VBlank
   # +consoles+ is every console the game is for, which `built_for?` may ask about; left out, it is
   # +console+ alone. A Game hands its `consoles:` here.
   # +pack_at_start+ leaves the game's data pack out of a build for a computer; see {Cartridge::Options}.
+  # +on_read+, when given, is called with the game as read (a Cartridge::EvaluatedGame), before it is
+  # checked: for a caller that needs more of what the game declared than the program, such as a
+  # shell's data pack, without reading a big game a second time.
   def self.build(title, code: nil, maker: nil, validate: true, frame_sync: :auto, fast_cartridge: nil,
                  fast_code: nil, out: $stdout, err: $stderr, progress: Messages::Progress.silent,
                  profile: false, settings: {}, save_memory: nil, stack_room: nil, console: nil, variant: nil,
                  sprite_piece_size: {}, cartridge: true, for_computer: false, players: nil, consoles: nil,
-                 pack_at_start: false, &block)
+                 pack_at_start: false, on_read: nil, &block)
     block = DSL::PlainRuby.game_block(block) if block
     # The settings that say how the game is built travel as one value from here on (see
     # {Cartridge::Options}), checked now so a setting that cannot be right stops the build first.
@@ -167,20 +175,13 @@ module VBlank
 
     progress.step("Reading game")
     evaluated = Cartridge::EvaluatedGame.new(block, options: options, progress: progress, settings: settings)
+    on_read&.call(evaluated)
     program = evaluated.program
 
-    # First prove the tree is well-formed — every value operand is a value node,
-    # nothing structural is out of place. This checks the *library's* own
-    # consistency, not the developer's game, so a failure is a VBlank bug and
-    # raises loudly rather than joining the friendly guardrail report below. It
-    # runs before the guardrails and the backend so a malformed tree can't reach
-    # them and fail cryptically two passes downstream. One mismatch is the author's: a
-    # number the game works out, handed to a verb that takes only a written one. That
-    # one is refused in plain words naming the line (see IR::Verifier).
-    progress.step("Checking program")
-    IR::Verifier.verify!(program)
-
-    # Run the guardrails over the finished IR and collect every finding — its
+    # The checks every build and every test player runs, in one place (IR::ProgramChecks, which
+    # says what each half is for): the tree proved well-formed, then the guardrails.
+    #
+    # The guardrails collect every finding — its
     # plain-language explanation and the suggested fix. A warning is advisory (a
     # game loop with no frame sync, say): the build goes on. A fatal problem
     # (drawing on a tiled screen, which would leave the screen black) stops the
@@ -195,16 +196,18 @@ module VBlank
     # and on a terminal the warning lands on the line the phase is still rewriting.
     # A finding is worth reading either way; where it is worth reading is after the
     # build has finished saying what it did.
-    unless evaluated.debug_halted?
-      progress.step("Checking for mistakes")
-      # The default checks — the always-on builtins plus anything registered (an
-      # effect pack's own guardrails) — walk the IR. The rest are appended per build
-      # because they report from what the run learned rather than from the tree:
-      # leftover Conditions (a native-`if` slip leaves no trace there), covered
-      # `wait_vblank` calls, the lines that gave an `estimate:`, and the software sprites,
-      # whose layer lives on the handle.
-      # All are just checks in the list, so the Validator treats them alike.
-      made = [evaluated.variables_with_no_var_line, evaluated.hidden_variable_notes.length]
+    #
+    # The default checks — the always-on builtins plus anything registered (an
+    # effect pack's own guardrails) — walk the IR. The rest are appended per build
+    # because they report from what the run learned rather than from the tree:
+    # leftover Conditions (a native-`if` slip leaves no trace there), covered
+    # `wait_vblank` calls, the lines that gave an `estimate:`, and the software sprites,
+    # whose layer lives on the handle.
+    # All are just checks in the list, so the Validator treats them alike.
+    if evaluated.debug_halted?
+      IR::ProgramChecks.refuse_malformed!(program, progress: progress)
+    else
+      made = [evaluated.variables_with_no_var_line, evaluated.hidden_variable_notes]
       told_checks = IR::Guardrails.default_checks.map { |check| check.respond_to?(:told_of) ? check.told_of(*made) : check }
       checks = told_checks + evaluated.game_pack_checks +
                [IR::Guardrails::Checks::OrphanedCondition.new(evaluated.unused_conditions),
@@ -212,13 +215,13 @@ module VBlank
                 IR::Guardrails::Checks::DroppedFrameSync.new(evaluated.dropped_syncs),
                 IR::Guardrails::Checks::EstimateDoesNothing.new(evaluated.estimate_lines),
                 IR::Guardrails::Checks::HandedNameWritten.new(evaluated.handed_name_writes),
+                IR::Guardrails::Checks::PressKeptFromSettingUp.new(evaluated.kept_buttons),
                 IR::Guardrails::Checks::LayerHoldsNothing.new(evaluated.sprites),
                 IR::Guardrails::Checks::StackNotHonored.new(evaluated.sprites)]
-      findings = IR::Guardrails::Validator.new(checks: checks, progress: progress)
-                                          .run(program, autofix: false)
+      findings = IR::ProgramChecks.findings_for!(program, checks: checks, progress: progress)
       if findings.errors.any?
-        raise ROMError,
-              "build stopped by #{findings.errors.size} problem(s) — see the explanation(s) above"
+        stopped_by_checks = true
+        raise StoppedByChecks, Messages::BuildStopped.fix_findings_line(findings.errors.size)
       end
     end
 
@@ -246,6 +249,14 @@ module VBlank
     # reader sees the explanation and then the line saying the build stopped.
     progress.done
     findings = request.findings if request
+    # A build the findings stopped says so first, so its reader knows before the first word of
+    # them that nothing was made. A game built for several consoles names this one, as the others
+    # can still build.
+    if stopped_by_checks
+      stopped_on = Console.described(options.console).title if cartridge && options.game_consoles.size > 1
+      err.puts Messages::BuildStopped.headline(title, console: stopped_on)
+      err.puts
+    end
     findings&.print_findings(to: err)
     # A build cut short by `debug_halt` says so where it says the rest, so a test that captures
     # the build's words has these too and the terminal is spared them.

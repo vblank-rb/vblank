@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "web_page"
+require "border_frame_tests"
 
 # A game built for the web is one page: the picture's canvas, the keys said in words, and the game
 # and its runtime in one script, with nothing fetched — so the page opens from a disk. Its script
@@ -37,17 +38,116 @@ class TestJSPage < Minitest::Test
     end
   end
 
+  # A game laid out for the Color, built for the Advance in a border, fills the Advance's canvas:
+  # the border round it, and the game's picture at (40, 8).
+  def test_a_color_game_in_a_border_fills_the_advances_canvas
+    html = Dir.mktmpdir do |dir|
+      path = File.join(dir, "page.html")
+      JS.new.build_page(BorderFrameTests::PLAIN, path, console: :gba, err: StringIO.new)
+      File.read(path, encoding: Encoding::UTF_8)
+    end
+    picture = pictures_in(played_page(["play 3", "picture"], html: html)).first
+    border = VBlank::Graphics::Border.default(whole: [240, 160], inner: [160, 144])
+
+    assert_match(/<canvas id="screen" width="240" height="160"/, html)
+    assert_equal 240 * 160, picture.size
+    [[0, 0], [239, 159], [39, 80], [120, 7]].each do |x, y|
+      assert_equal border[(y * 240) + x], picture[(y * 240) + x], "the border at (#{x}, #{y})"
+    end
+    assert_equal VBlank::Graphics::Color.resolve(:red), picture[(8 * 240) + 40], "the game's red bar at (40, 8)"
+  end
+
+  # A game of big pixels draws a canvas half the Advance's width and height, and the page shows it as
+  # big as the same game's with pixels of the console's own size: each pixel a square of four.
+  def test_a_canvas_of_big_pixels_is_shown_the_size_of_the_consoles_screen
+    pages = [1, 2].to_h do |size|
+      game = VBlank.game("BIGPAGE", consoles: %i[gba]) do
+        screen :bitmap, pixel_size: size
+        game_loop { clear_screen :blue }
+      end
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "page.html")
+        JS.new.build_page(game, path, console: :gba, err: StringIO.new)
+        [size, File.read(path, encoding: Encoding::UTF_8)]
+      end
+    end
+    shown = pages.transform_values { |html| html.match(%r{canvas \{ width: min\((\d+)px, 96vw\); aspect-ratio: (\d+) / (\d+)}).captures }
+
+    assert_match(/<canvas id="screen" width="120" height="80"/, pages[2])
+    assert_match(/<canvas id="screen" width="240" height="160"/, pages[1])
+    assert_equal %w[720 240 160], shown[1]
+    assert_equal %w[720 120 80], shown[2]
+    assert_equal 120 * 80, pictures_in(played_page(["play 3", "picture"], html: pages[2])).first.size
+  end
+
   # A console with no L and R, the Color, gets a page that names none: not in the keys said in
   # words, and not on the pad.
   def test_a_console_without_l_and_r_has_none_on_its_page
     with = JS::Page.html(title: "BOTH", script: "", screen: [240, 160])
-    without = JS::Page.html(title: "BOTH", script: "", screen: [160, 144], shoulders: false)
+    without = JS::Page.html(title: "BOTH", script: "", screen: [160, 144], buttons: VBlank::Console::COLOR.buttons)
 
     assert_match(/are L and R/, with)
     assert_match(/id="pad-l"/, with)
     refute_match(/L and R/, without)
     refute_match(/id="pad-[lr]"/, without)
     assert_match(/id="pad-start"/, without)
+  end
+
+  # The page's words name the keys the page reads for the console's buttons, and no others: X and
+  # Y on a Super Nintendo, C and no Select, L or R on a Genesis, and none of the three on the Advance.
+  # Player 2's words are the same.
+  def test_each_consoles_page_names_the_keys_it_reads
+    page = lambda do |console|
+      html = JS::Page.html(title: "KEYS", script: "", screen: [320, 224], buttons: VBlank::Console.described(console).buttons, players: 2)
+      html[%r{<p class="keys">.*?</p>}m]
+    end
+    snes = page.call(:snes)
+    genesis = page.call(:genesis)
+    advance = page.call(:gba)
+
+    assert_match(%r{<kbd>W</kbd> is X, <kbd>Q</kbd> is Y}, snes)
+    assert_match(%r{<kbd>H</kbd> is X, <kbd>Y</kbd> is Y}, snes)
+    assert_match(%r{<kbd>C</kbd> is C}, genesis)
+    assert_match(%r{<kbd>B</kbd> is C}, genesis)
+    refute_match(/Select|L and R/, genesis)
+    refute_match(/is [XYC][,.]/, advance)
+    assert_match(/is Select/, advance)
+  end
+
+  # The pad on the screen has the console's buttons alone: X and Y on a Super Nintendo's, C and no
+  # Select on a Genesis's, none of the three on the Advance's.
+  def test_each_consoles_pad_has_its_buttons
+    pad = ->(console) { JS::Page.html(title: "PAD", script: "", screen: [320, 224], buttons: VBlank::Console.described(console).buttons) }
+
+    assert_match(/id="pad-x".*id="pad-y"/m, pad.call(:snes))
+    assert_match(/id="pad-c"/, pad.call(:genesis))
+    refute_match(/id="pad-select"/, pad.call(:genesis))
+    refute_match(/id="pad-[xyc]"/, pad.call(:gba))
+  end
+
+  # A tap on X and Y on a Super Nintendo page's pad, and on C on a Genesis page's, presses that
+  # button, as a tap on any of the pad's buttons does.
+  def test_a_tap_on_x_y_or_c_presses_it
+    { snes: %i[x y], genesis: %i[c] }.each do |console, buttons|
+      game = buttons_game_on(console)
+      taps = buttons.flat_map { |button| ["finger 1 pad-#{button}", "lift 1"] }
+      picture = pictures_in(played_page([*taps, "play 2", "picture"], game)).first
+      interpreter = Reference.new.input_each_frame { |frame| frame == 2 ? buttons : [] }.run(game.program, frames: 2)
+
+      assert_same_picture interpreter.screen.shown, picture, "on the #{console} frame after #{buttons.join(' and ')} were tapped"
+    end
+  end
+
+  # A square lit along the top for each of +console+'s buttons held.
+  private def buttons_game_on(console)
+    buttons = VBlank::Console.described(console).buttons
+    VBlank.game "BUTTONS", consoles: [console] do
+      screen :bitmap
+      game_loop do
+        clear_screen :black
+        buttons.each_with_index { |button, i| fill_rect i * 10, 0, 8, 8, :white if held(button) }
+      end
+    end
   end
 
   # The page plays a frame of the game on each of the browser's frames, reads the keyboard as the

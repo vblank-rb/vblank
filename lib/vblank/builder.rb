@@ -145,10 +145,16 @@ module VBlank
     Build = IR::Build
 
     # One variable the build added for the author: its name, the line that needed it, and why.
-    HiddenVariableNote = Data.define(:name, :source, :why)
+    # +local+ is the plain Ruby local it holds the number of (Value#owner_name), or nil.
+    HiddenVariableNote = Data.define(:name, :source, :why, :local) do
+      def initialize(name:, source:, why:, local: nil) = super
+    end
 
     # A line of game code that gave a name a new number while it held a game variable.
     HandedNameWrite = Data.define(:name, :variable, :source)
+
+    # A line outside game code that keeps a button's answer in +local+ for game code to read.
+    KeptButton = Data.define(:local, :source)
 
     # @param options [Cartridge::Options] how the game is built; the Builder reads its frame
     #   pacing and the save memory it named
@@ -193,10 +199,13 @@ module VBlank
       @repeat_seq = 0          # counts repeat loops, to name each one's hidden index var
       @game_whiles = 0         # how many game `while` loops are open now
       @hidden_variables = 0    # counts the variables a picked value keeps its answer in
+      @unique_names = Set.new  # variable names this build made unique (#unique_names)
       @hidden_variable_notes = []
       @held_expressions = {}   # variable name → the value node it was set to (#register_held_expression)
+      @value_statements = {}.compare_by_identity # value node → the statements it needs (#register_statements_for_value)
       @open_repeat_container_counts = [] # containers each #open_repeat opened, for #close_repeat
       @handed_name_writes = []
+      @kept_buttons = []
       @variables_with_no_var_line = []
       @unsaved_variables = Set.new # named `game_variables ..., saved: false` (Builder::SaveData)
       @instance_variable_uses = DSL::PlainRuby::InstanceVariables::Uses.new
@@ -581,7 +590,7 @@ module VBlank
       end
       unless count.is_a?(Integer) && count.positive?
         raise ArgumentError, "#{what} needs `count:`, a whole number written in the program, 1 or more. " \
-                             "It was given #{count.inspect}."
+                             "It was given #{Messages::PlainWords.words_for_given(count)}."
       end
       if DSL::Fraction.bits_of(at)
         raise ArgumentError, "#{what} starts the run at an entry of the table, and the number given to " \
@@ -662,6 +671,8 @@ module VBlank
       check_saves_keep_everything!
       lay_out_save_records
       emit_bodies(emitted, default_screen_mode)
+      # Every line of game code is recorded, so each plain flag's tests and changes are known.
+      @instance_variable_uses.refuse_game_flags!
 
       finalize_scene_sprite_handover # first: it settles what each sprite waits for before it is painted
       finalize_sprite_repaints
@@ -1107,6 +1118,11 @@ module VBlank
 
     def statement_mark = StatementMark.new(container: @container_stack.last, last: @container_stack.last.children.last)
 
+    # Has anything been recorded since +mark+, where it was made? Nothing is taken.
+    def recorded_since?(mark)
+      !mark.container.equal?(@container_stack.last) || !mark.container.children.last.equal?(mark.last)
+    end
+
     # The statements recorded since +mark+, taken out of where they were recorded and handed back.
     def take_statements_since(mark)
       children = mark.container.children
@@ -1134,6 +1150,7 @@ module VBlank
       @repeat_seq += 1
       index = :"__repeat_#{@repeat_seq}"
       ensure_var(index)
+      @unique_names << index
       return open_repeat_rerunning_test_statements(most_passes, index, stop_node, test_statements) unless test_statements.empty?
 
       push_open_repeat(Build.repeat(DSL::Value.node_for(most_passes), index, stop_when: inline_held_expressions(stop_node)))
@@ -1155,6 +1172,7 @@ module VBlank
       @hidden_variables += 1
       name = :"#{Build::KEPT_VARIABLE_PREFIX}#{@hidden_variables}"
       ensure_var(name)
+      @unique_names << name
       bits = like.is_a?(Float) ? DSL::Fraction.bits_of(like) : (like.fraction_bits if like&.fraction?)
       @fraction_vars[name] = bits if bits
       @hidden_variable_notes << HiddenVariableNote.new(name:, source: Messages::AuthorSource.author_source, why:)
@@ -1170,12 +1188,44 @@ module VBlank
     # BlockKitInternals#emit_held_place, which holds those places.
     def register_held_expression(name, node) = @held_expressions[name] = node
 
+    # The value the block gives back, with the statements recorded while working it out kept as
+    # what that value needs run before each time it is read: a read of the copy's check of its place
+    # against the copy's end, and the store of a held place (#register_held_expression). A loop's
+    # test given as an argument (`repeat n, stop_when: copy.byte(at) == 0`) is worked out before
+    # the loop is opened, so those statements are recorded before it, and would run once; #repeat
+    # moves them into the loop, to run on every round before the test is asked
+    # (#take_trailing_test_statements). Public for Original::Packing::BlockKitInternals, whose
+    # reads of the copy are such values.
+    def register_statements_for_value
+      mark = statement_mark
+      value = yield
+      if value.is_a?(DSL::Value) && mark.container.equal?(@container_stack.last)
+        children = mark.container.children
+        start = mark.last ? children.index { |statement| statement.equal?(mark.last) } : -1
+        recorded = start ? children[(start + 1)..] : []
+        @value_statements[value.node] = recorded unless recorded.empty?
+      end
+      value
+    end
+
     # +name+, or the first of name_2, name_3... that no variable has.
     def free_variable_name(name)
       return name unless @variables.include?(name)
 
       (2..).lazy.map { |number| :"#{name}_#{number}" }.find { |each_name| !@variables.include?(each_name) }
     end
+
+    # #free_variable_name, for a variable about to be made under it: the name is one of
+    # #unique_names from now on.
+    def reserve_free_variable_name(name) = free_variable_name(name).tap { |free| @unique_names << free }
+
+    # THE VARIABLE NAMES THIS BUILD MADE UNIQUE, by a counter (a `repeat`'s index, a hidden copy, an
+    # approach's step) or by taking a free name (#reserve_free_variable_name: a plain-Ruby local's
+    # variable, an object's instance variable's). Another build of other code makes the same names
+    # for variables of its own, so two builds that each made a name never mean one variable by it:
+    # built together, the second would have been given another. Original::UnpackingParts asks, for
+    # a part of an unpacking built alone.
+    attr_reader :unique_names
 
     # Has a `var` line made +name+ already? PlainRuby::Writes asks, for a line that makes a variable
     # and is reached a second time.
@@ -1192,7 +1242,7 @@ module VBlank
     # written out, with another start. The variable keeps the first as its power-on number, and
     # the line sets it to the other where it runs.
     def plain_local_variable(source, name, start)
-      local = (@plain_locals[[source, name]] ||= PlainLocal.new(variable_name: free_variable_name(name), start: start))
+      local = (@plain_locals[[source, name]] ||= PlainLocal.new(variable_name: reserve_free_variable_name(name), start: start))
       var(local.variable_name, local.start)
     end
 
@@ -1201,6 +1251,13 @@ module VBlank
 
     # What the build added for the author that the author never wrote, for `rom.profile`.
     def hidden_variable_notes = @hidden_variable_notes
+
+    # The hidden variable +name+ holds the number of the plain local +local+ (Value#owner_name=),
+    # for Cartridge::Game#copies_that_differed to name it.
+    def record_hidden_variable_local(name, local)
+      at = @hidden_variable_notes.rindex { |note| note.name == name } or return # made just before, so near the end
+      @hidden_variable_notes[at] = @hidden_variable_notes[at].with(local: local)
+    end
 
     # Game code gave a new number to +name+, which held the game +variable+ it was handed, so the
     # variable stayed as it was (PlainRuby::Writes.note_handed_name_written). One warning for each
@@ -1215,10 +1272,24 @@ module VBlank
     # The lines #record_handed_name_write kept, for the warning.
     attr_reader :handed_name_writes
 
+    # A line outside game code kept a button's answer in +local+ for game code to read
+    # (DSL::Value#record_kept_button). One warning for each line.
+    def record_kept_button(local)
+      source = Messages::AuthorSource.author_source
+      return if @kept_buttons.any? { |kept| kept.source == source && kept.local == local }
+
+      @kept_buttons << KeptButton.new(local:, source:)
+    end
+
+    # The lines #record_kept_button kept, for the warning.
+    attr_reader :kept_buttons
+
     # The names normal Ruby made variables of with no `var` line.
     attr_reader :variables_with_no_var_line
 
     def note_variable_with_no_var_line(name) = @variables_with_no_var_line |= [name]
+
+    def variable_with_no_var_line?(name) = @variables_with_no_var_line.include?(name)
 
     # An unsaved variable: scratch a part named with `game_variables ..., saved: false`, which a
     # save never keeps. `saves_keep_everything` passes it over, and a `save_data` record keeping
@@ -1253,16 +1324,71 @@ module VBlank
     # statements, so it is set afresh each round before the test reads it. Nor does the `else`
     # gate what is declared in the body (no #open_container), as the plain repeat's body is not.
     def open_repeat_rerunning_test_statements(most_passes, index, stop_node, test_statements)
+      stopped = declare_stop_flag(index)
+      push_open_repeat(Build.repeat(DSL::Value.node_for(most_passes), index, stop_when: Build.var_ref(stopped)))
+      @container_stack.push(emit_test_asking(stopped, stop_node, test_statements))
+      @open_repeat_container_counts[-1] += 1
+    end
+
+    # #repeat's loop for a `stop_when:` whose working out recorded +test_statements+
+    # (#take_trailing_test_statements): the loop #open_repeat_rerunning_test_statements makes,
+    # given a block for its body, which is handed +index_value+.
+    def repeat_rerunning_test_statements(count, index, index_value, stop_node, test_statements, &block)
+      stopped = declare_stop_flag(index)
+      push_container(Build.repeat(DSL::Value.node_for(count), index, stop_when: Build.var_ref(stopped))) do
+        @container_stack.push(emit_test_asking(stopped, stop_node, test_statements))
+        begin
+          run_block(index_value, &block)
+        ensure
+          @container_stack.pop
+        end
+      end
+    end
+
+    # The loop's stop flag, a variable of its own, set to 0 here before the loop.
+    def declare_stop_flag(index)
       stopped = :"#{index}_stopped"
       ensure_var(stopped)
+      @unique_names << stopped
       record(Build.set(stopped, 0))
-      push_open_repeat(Build.repeat(DSL::Value.node_for(most_passes), index, stop_when: Build.var_ref(stopped)))
+      stopped
+    end
+
+    # Inside the loop: +test_statements+, then an `if` on +stop_node+ that sets +stopped+, whose
+    # `else` is given back for the body.
+    def emit_test_asking(stopped, stop_node, test_statements)
       test_statements.each { |statement| attach(statement) }
       ask = Build.if_(stop_node, Build.set(stopped, 1))
       ask.else = Build.else_
       record(ask)
-      @container_stack.push(ask.else)
-      @open_repeat_container_counts[-1] += 1
+      ask.else
+    end
+
+    # The statements +node+ (a loop's test, worked out before the loop) needs run before each time
+    # it is read (#register_statements_for_value), and those the statements themselves need, taken
+    # out of the open container. They are taken only when they are the last statements recorded
+    # there, so nothing written between them and the loop reads what they set; otherwise none are,
+    # and the test reads them once, before the loop.
+    def take_trailing_test_statements(node)
+      return [] if @value_statements.empty?
+
+      children = @container_stack.last.children
+      needed = {}.compare_by_identity
+      waiting = [node]
+      until waiting.empty?
+        waiting.pop.walk.each do |part|
+          @value_statements.fetch(part, []).each do |statement|
+            next if needed.key?(statement)
+
+            needed[statement] = true
+            waiting << statement
+          end
+        end
+      end
+      here = children.select { |statement| needed.key?(statement) }
+      return [] if here.empty? || !children.last(here.size).each_with_index.all? { |statement, at| statement.equal?(here[at]) }
+
+      children.pop(here.size)
     end
 
     # Records +node+, a game `while`'s repeat, and opens it until #close_repeat.
@@ -1978,7 +2104,7 @@ module VBlank
       when nil
         raise ArgumentError, "To import #{name} from an image, give tile:. tile: is the size of each cell in pixels."
       else
-        raise ArgumentError, "tile: must be a number (square) or [width, height]. You gave #{tile.inspect}."
+        raise ArgumentError, "tile: must be a number (square) or [width, height]. You gave #{Messages::PlainWords.words_for_given(tile)}."
       end
     end
 
@@ -1988,7 +2114,7 @@ module VBlank
       case where
       when Array then where
       when Integer then [where % cols, where / cols]
-      else raise ArgumentError, "#{label} must be a cell number or [column, row]. You gave #{where.inspect}."
+      else raise ArgumentError, "#{label} must be a cell number or [column, row]. You gave #{Messages::PlainWords.words_for_given(where)}."
       end
     end
 

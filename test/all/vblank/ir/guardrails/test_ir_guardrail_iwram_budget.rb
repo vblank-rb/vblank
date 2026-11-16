@@ -158,6 +158,114 @@ class TestIRGuardrailIwramBudget < Minitest::Test
     assert_match(/list :trail/, err.string)
   end
 
+  # A COLD COLLECTION CAN ONLY BE IN THE ROOMIER MEMORY. Two pools too big for the quick memory
+  # are kept out of it, so together they must fit the roomier memory alone, however much of the
+  # quick memory is free. Each fits; the two do not, and the build says so before it lays them out.
+  def test_the_build_stops_on_cold_pools_past_the_roomier_memory
+    err = StringIO.new
+    error = assert_raises(VBlank::ROMError) do
+      VBlank.build("COLD", console: :gba, out: StringIO.new, err: err) do
+        pool :left, a: 0, b: 0, c: 0, d: 0, capacity: 5400
+        pool :right, a: 0, b: 0, c: 0, d: 0, capacity: 5400
+        game_loop { wait_vblank }
+      end
+    end
+    assert_match(/problem/i, error.message)
+    assert_match(/pool :(left|right)/, err.string, "it names the biggest of them")
+    assert_match(/out of the #{VBlank::Messages::PlainWords::QUICK_MEMORY}/o, err.string,
+                 "the cold collections' finding, not the one for both memories")
+  end
+
+  # A LIST THE GAME SHIFTS FROM TAKES MORE THAN ITS CAPACITY on the Advance: its slots are rounded
+  # up to a power of two, so its wrap is one step. 40,000 words is about 156KB asked for and 256KB
+  # of slots taken, which with its two counters is past the roomier memory.
+  def test_a_cold_list_the_game_shifts_from_is_counted_at_the_room_it_takes
+    prog = program(
+      screen(:bitmap),
+      list_new(:queue, 40_000, fast: false),
+      loop_(wait_vblank, list_push(:queue, int(1)), list_drop(:queue, from: :front), halt),
+    )
+    plain = program(
+      screen(:bitmap),
+      list_new(:queue, 40_000, fast: false),
+      loop_(wait_vblank, list_push(:queue, int(1)), halt),
+    )
+
+    assert_match(/list :queue \(256(\.0)?KB\)/, findings_for(prog).first&.message.to_s)
+    assert_empty findings_for(plain), "the same list never shifted takes what it asks for"
+  end
+
+  # Two cold lists that each fit the roomier memory and together are past it, but under the two
+  # memories added up. Cold or not is all that differs between the programs below.
+  private def two_lists_past_the_roomier_memory(fast:, console: nil)
+    half = (ROOMIER / 2) + 1024
+    program(
+      screen(:bitmap),
+      list_new(:near, half / Budget::WORD, fast: fast),
+      list_new(:far, (half / Budget::WORD) + 16, fast: fast),
+      loop_(wait_vblank, halt),
+      console: console,
+    )
+  end
+
+  def test_cold_lists_past_the_roomier_memory_are_a_fatal_error_naming_the_biggest
+    findings = findings_for(two_lists_past_the_roomier_memory(fast: false))
+
+    assert_equal 1, findings.size
+    assert findings.first.error?
+    assert_equal :far, findings.first.node.name, "it blames the biggest, at its own line"
+    assert_match(/list :far/, findings.first.message)
+    assert_match(/out of the #{VBlank::Messages::PlainWords::QUICK_MEMORY}/o, findings.first.message)
+    assert_match(/`fast: false`/, findings.first.message, "it says which lists are kept out")
+    assert_match(/roomier memory/, findings.first.message)
+  end
+
+  def test_the_same_lists_not_marked_cold_can_share_the_quick_memory
+    assert_empty findings_for(two_lists_past_the_roomier_memory(fast: nil))
+  end
+
+  # The Super Nintendo's build places every list itself and reads no `fast:`, so cold lists are
+  # counted with the rest against all its work RAM.
+  def test_cold_lists_are_not_held_to_the_roomier_memory_alone_on_the_super_nintendo
+    snes = VBlank::Console::SUPER_NINTENDO
+    half = (snes.roomier_memory_bytes / 2) + 512
+    prog = program(
+      screen(:tiled),
+      list_new(:near, half / Budget::WORD, fast: false),
+      list_new(:far, half / Budget::WORD, fast: false),
+      loop_(wait_vblank, halt),
+      console: :snes,
+    )
+
+    assert_empty findings_for(prog)
+  end
+
+  # WHAT THE BUILD KEEPS IN THE ROOMIER MEMORY FOR ITSELF IS COUNTED TOO. Two cold pools that fit
+  # the roomier memory alone, in a game that plays a recording: the sound mixer's buffers are
+  # there as well, and then the pools do not fit. The same pools in a silent game build.
+  private def cold_pools_game(sound:)
+    proc do
+      if sound
+        enable_sound
+        boom = sample :boom, pcm: [0, 10, 20, 30, -10] * 100, rate: 8000
+      end
+      pool :left, a: 0, b: 0, c: 0, d: 0, capacity: 5240
+      pool :right, a: 0, b: 0, c: 0, d: 0, capacity: 5240
+      game_loop { boom&.play }
+    end
+  end
+
+  def test_the_sound_mixers_buffers_leave_less_of_the_roomier_memory_for_cold_pools
+    err = StringIO.new
+    assert_raises(VBlank::ROMError) do
+      VBlank.build("COLDSOUND", console: :gba, out: StringIO.new, err: err, &cold_pools_game(sound: true))
+    end
+    assert_match(/sound mixer's buffers/, err.string)
+    assert_match(/pool :(left|right)/, err.string)
+
+    VBlank.build("COLDQUIET", console: :gba, out: StringIO.new, err: StringIO.new, &cold_pools_game(sound: false))
+  end
+
   # A GAME FOR THE COLOR IS CHECKED AGAINST THE COLOR'S MEMORY: 8K, every variable and list in
   # it, and no roomier memory beside it. A list the Advance would hold without a word is too big.
   def test_a_color_program_past_the_colors_memory_is_a_fatal_error
@@ -237,6 +345,51 @@ class TestIRGuardrailIwramBudget < Minitest::Test
     assert_includes err.string, "`lives`"
     assert_includes err.string, "1 hidden variable"
     refute_includes err.string, "`filler0`"
+  end
+
+  # A game a few words short of the Color's memory, whose loop reads 64 items that a method moves
+  # past before they are used: each keeps the number of its line in a copy, as Ruby's does, and
+  # those copies run the game out. The error names the line, what its copies cost, and how to
+  # write the Ruby so it needs none. The same game reading each item after the move fits.
+  def test_running_out_of_memory_through_copies_names_their_line_and_the_change_that_needs_none
+    fillers = (VBlank::Console::COLOR.free_work_memory_bytes / Budget::WORD) - 40
+    err = StringIO.new
+    assert_raises(VBlank::ROMError) do
+      VBlank.build("COPIES", console: :gbc, out: StringIO.new, err: err) do
+        def bump(place) = place.increase!(1)
+        packed = table :packed, [10, 20, 30], width: :byte
+        at = var :at, 0
+        total = var :total, 0
+        fillers.times { |i| var :"filler#{i}", 0 }
+        game_loop do
+          64.times do
+            flags = packed[at]
+            bump(at)
+            total += flags
+          end
+        end
+      end
+    end
+
+    copy_line = "test_ir_guardrail_iwram_budget.rb:#{__LINE__ - 8}"
+    assert_includes err.string, "64 are copies (256B)"
+    assert_includes err.string, "#{copy_line} (256B)"
+    assert_includes err.string, "read the name before"
+    refute_includes err.string, "`var`."
+
+    VBlank.build("NO COPIES", console: :gbc, out: StringIO.new, err: StringIO.new) do
+      def bump(place) = place.increase!(1)
+      packed = table :packed, [10, 20, 30], width: :byte
+      at = var :at, 0
+      total = var :total, 0
+      fillers.times { |i| var :"filler#{i}", 0 }
+      game_loop do
+        64.times do
+          bump(at)
+          total += packed[at]
+        end
+      end
+    end
   end
 
   def test_a_color_program_within_the_colors_memory_is_not_flagged

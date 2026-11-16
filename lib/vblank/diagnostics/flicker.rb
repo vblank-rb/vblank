@@ -22,12 +22,17 @@ module VBlank
     # has one screen or the other, so exactly one of the two questions can be asked of it,
     # and neither is ever asked where it has no meaning.
     #
-    # HOW IT IS MEASURED, and why nothing has to track writes. Take both pictures at a
-    # frame boundary, and both again TWO boundaries later. Two boundaries, not one: only
-    # one picture is drawn into per frame, so a single frame apart shows nothing about the
-    # other one. Over two frames each picture has had its turn. A pixel where the two
-    # pictures DISAGREE and NEITHER of them changed is a pixel no frame is going to fix —
-    # the disagreement is permanent, and the player is watching it flicker.
+    # HOW IT IS MEASURED, and why nothing has to track writes. Take the picture on screen
+    # just after each of four page swaps running: the two pictures in turn, then the two
+    # again. Four, not two: only one picture is drawn into per pass, so two swaps show each
+    # picture once and nothing about whether it changed. Over four each has had its turn. A
+    # pixel where the two pictures DISAGREE and NEITHER of them changed is a pixel no pass is
+    # going to fix — the disagreement is permanent, and the player is watching it flicker.
+    #
+    # AT A SWAP, NOT A FIXED NUMBER OF FRAMES APART. A pass can take several frames, and the
+    # picture being drawn sits half finished for all of them; read then, it disagrees with the
+    # one on screen and holds still, though the player never sees it. Only a picture just put
+    # on screen is one the player sees (Profiler.flicker_in).
     #
     # WHAT THAT RULES OUT, which is the whole reason it is measured rather than read off
     # the program:
@@ -75,12 +80,12 @@ module VBlank
         IR::Modes.resolve(program).any_buffered?
       end
 
-      # THE RULE, and it is the whole of this module: given both pictures at one frame
-      # boundary and both again two boundaries later, which pixels are stuck?
+      # THE RULE, and it is the whole of this module: given both pictures, and both again
+      # two page swaps later, which pixels are stuck?
       #
       # Each snapshot is a pair of flat, row-major pictures in a FIXED order — the same
       # picture first in both snapshots. Which of the two the display happens to be showing
-      # swaps every frame and does not matter here; what matters is that a picture is
+      # does not matter here; what matters is that a picture is
       # compared against itself.
       def read(before, after, width: Console::ADVANCE.screen_width)
         first_a, second_a = before

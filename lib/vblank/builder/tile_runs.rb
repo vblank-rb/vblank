@@ -134,6 +134,7 @@ module VBlank
         width = opts[:width]
         height = opts[:height]
         colors = tile_run_colors(name, opts[:colors], what: "image")
+        colors_name = opts[:colors] if opts[:colors].is_a?(Symbol)
         refuse_tile_run_on_bitmap_screen!(name, what: "image")
         refuse_picture_run_size!(name, width, height)
         own_form = opts[:console_format] == true
@@ -141,8 +142,9 @@ module VBlank
 
         @images[name] = [width, height]
         @painted_colors[name] = colors
-        record(Build.tile_run(name, list: list.name, tiles: [], colors: colors, picture: name,
-                                    width: width, height: height, console_format: own_form))
+        @painted_colors_names[name] = colors_name
+        record(Build.tile_run(name, list: list.name, tiles: [], colors: colors, picture: name, width: width,
+                                    height: height, colors_name: colors_name, console_format: own_form))
         register_tile_run(name)
         DSL::TileRun.new(self, name)
       end
@@ -211,11 +213,18 @@ module VBlank
 
       # The run's colours, place 0 first: a list declared with `colors`, by name, or the
       # colours themselves.
+      #
+      # A list given by name is held as every picture given it by name holds it (#declared_colors):
+      # place 0 see-through, whatever colour the list keeps there. So one name is one list to a
+      # sprite showing a painted picture beside a picture drawn from that list, and to a background
+      # holding a run beside tiles of it, and `draw_with` recolours them alike. A list read from the
+      # data pack as the game starts keeps a marker at place 0, which no picture of it holds.
       def tile_run_colors(name, colors, what: "tiles")
-        list = colors.is_a?(Symbol) ? @color_lists[colors] : colors
-        if list.nil? && colors.is_a?(Symbol)
-          raise ArgumentError, "#{what} :#{name} draws from colors :#{colors}, and no list has that name. " \
-                               "Declare it first with `colors :#{colors}, [:transparent, ...]`."
+        list = colors
+        if colors.is_a?(Symbol)
+          list = declared_colors(colors) or
+            raise ArgumentError, "#{what} :#{name} draws from colors :#{colors}, and no list has that name. " \
+                                 "Declare it first with `colors :#{colors}, [:transparent, ...]`."
         end
         unless list.is_a?(Array) && list.length.between?(2, Images::PICTURE_COLORS)
           raise ArgumentError, "#{what} :#{name} needs `colors:`: a list of 2 to #{Images::PICTURE_COLORS} colors, " \
@@ -242,7 +251,7 @@ module VBlank
         return if count.is_a?(Integer) && count.positive?
 
         raise ArgumentError, "tiles :#{name} needs `count:`, how many tiles the list holds. It must be a whole " \
-                             "number, 1 or more. Got #{count.inspect}."
+                             "number, 1 or more. Got #{Messages::PlainWords.words_for_given(count)}."
       end
 
       def refuse_tile_run_list_unfit!(name, list, count, what: "tiles", own_form: false)

@@ -26,6 +26,30 @@ class TestSuiteGroups < Minitest::Test
     end
   end
 
+  # A game's test files can reach past the folder its groups are read from (the framework half's
+  # tests beside a game's own); those are in no group, so no group is named after their folder.
+  def test_a_test_file_outside_the_root_is_in_no_group
+    Dir.mktmpdir do |dir|
+      root = File.join(dir, "games/pinball/test")
+      tests_in(root, "flippers/test_flip.rb")
+      tests_in(dir, "test/test_loose.rb", "test/rooms/test_door.rb")
+      files = Dir.glob(File.join(dir, "{test,games/pinball/test}/**/test_*.rb"))
+
+      found = VBlank::Testing::SuiteGroups.new(root, files: files).map(&:name)
+
+      assert_equal %w[flippers], found
+    end
+  end
+
+  # The folder rake runs in, ".", holds every file named from it.
+  def test_the_folder_rake_runs_in_is_a_root
+    files = %w[enemies/test_bat.rb rooms/test_door.rb]
+
+    found = VBlank::Testing::SuiteGroups.new(".", files: files, broad: { "doors" => %w[rooms/test_*.rb] }).to_h { [it.name, it.files] }
+
+    assert_equal({ "enemies" => %w[enemies/test_bat.rb], "rooms" => %w[rooms/test_door.rb], "doors" => %w[rooms/test_door.rb] }, found)
+  end
+
   def test_a_broad_group_gathers_folders_and_files
     Dir.mktmpdir do |root|
       tests_in(root, "enemies/test_bat.rb", "rooms/test_door.rb", "rooms/test_wall.rb")

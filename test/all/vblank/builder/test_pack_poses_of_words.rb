@@ -55,7 +55,7 @@ module PackPoseOfWordsGames
   DOWN_COLUMNS = ->(piece, column, row) { piece.tile + (column * piece.rows) + row }
   ACROSS_ROWS = ->(piece, column, row) { piece.tile + (row * piece.columns) + column }
 
-  constants.each { |name| Ractor.make_shareable(const_get(name)) }
+  VBlank::Testing::InRactors.share_constants(self)
 
   private def frame_bytes(high_byte_first)
     word, signed = high_byte_first ? ["n", "s>"] : ["v", "s<"]

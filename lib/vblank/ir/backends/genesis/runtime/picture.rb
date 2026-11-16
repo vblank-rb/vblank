@@ -57,8 +57,9 @@ module VBlank
             # the console's maker tells its games to send the Z80 a bus request before every copy of
             # this kind, from the cartridge or from work RAM alike: on some consoles a Z80 that reaches
             # for the bus as the copy starts can spoil the copy, work RAM, or the byte the Z80 reads.
-            # So the Z80 is asked for its bus and waited for, the copy runs, and the Z80 is let go, as
-            # the console's own games do round theirs. The recording stands still for the length of the
+            # So the Z80 is asked for its bus and waited for before the command, the copy runs, and the
+            # Z80 is let go, as the console's own games do round theirs, with interrupts held off all the
+            # while (Recordings#emit_bus_taken). The recording stands still for the length of the
             # stop, with or without the request: a Z80 that wants the cartridge while the chip holds
             # the bus waits for the copy to end anyway. Its program times its samples by the FM
             # chip's timers, which count on through a stop, and passes over the samples the stop
@@ -74,11 +75,11 @@ module VBlank
             # command is put on the stack, which is in work RAM, and its two halves are written from
             # there: two instructions more than one long write from the register.
             def emit_dma_started(asm, command, port, samples:)
+              Recordings.emit_bus_taken(asm) if samples
               asm.move(:l, command, asm.pre(M68000::SP))
               asm.move(:w, asm.post(M68000::SP), port)
-              Recordings.emit_bus_taken(asm) if samples
               asm.move(:w, asm.post(M68000::SP), port)
-              asm.clr(:w, asm.abs_l(Console::GenesisHardware::Z80_BUS_REQUEST)) if samples
+              Recordings.emit_bus_given_back(asm) if samples
             end
 
             # rt_screen_on: the video chip told to show the picture and to interrupt in the blank.

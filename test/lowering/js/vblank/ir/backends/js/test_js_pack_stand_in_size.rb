@@ -9,4 +9,6 @@ class TestJSPackStandInSize < Minitest::Test
   include PackStandInSizeTests
 
   private def written_bytes(program) = VBlank::IR::Backends::JS.new.lower(program).bytesize
+  private def lowering_class = VBlank::IR::Backends::JS::Lowering
+  private def headless_run = VBlank::IR::Backends::JS::HeadlessRun.new
 end

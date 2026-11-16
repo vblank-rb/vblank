@@ -23,8 +23,9 @@ module VBlank
       KEY = 0
       PAD = 1
 
-      # The buttons a computer's window has keys for.
-      BUTTONS = %i[a b select start right left up down r l].freeze
+      # The buttons a computer's window has keys for, every console's, in the order Buttons::NAMES
+      # lists them. A window reads only its console's (Live::Settings's +buttons+).
+      BUTTONS = Buttons::NAMES
 
       # The most keys, and gamepad buttons, one button has in a window (rg_window.h's
       # RG_WINDOW_KEYS_A_BUTTON and RG_WINDOW_PADS_A_BUTTON).
@@ -42,9 +43,10 @@ module VBlank
       KEYS = LETTER_KEYS.merge(DIGIT_KEYS).merge(OTHER_KEYS).freeze
 
       # VBlank's own layout: the keys each button starts on (the window's, rg_window.c's
-      # button_kinds; the page's, rg_page.js's PAGE_KEYS).
+      # button_kinds; the page's, rg_page.js's PAGE_KEYS). X, Y and C have theirs only in a window
+      # for a console that has them.
       LAYOUT_KEYS = Ractor.make_shareable({ a: %i[x], b: %i[z], select: %i[backspace right_shift], start: %i[enter], right: %i[right],
-                      left: %i[left], up: %i[up], down: %i[down], r: %i[s], l: %i[a] })
+                      left: %i[left], up: %i[up], down: %i[down], r: %i[s], l: %i[a], x: %i[w], y: %i[q], c: %i[c] })
 
       # Player 2's keys, on the keyboard's right hand, for a game two people play at one keyboard:
       # I J K L the pad, O for A and U for B (A on the right, as the console has it), 7 and 9 the
@@ -53,8 +55,12 @@ module VBlank
       # the same (rg_seats.h, Live::Seats, rg_page.js's PAGE_SECOND_PLAYER_KEYS), only in a game
       # whose `players:` seats two or more, and only where nobody else has the key. Players 3 and 4 are gamepads only: four people do not fit round one
       # keyboard, and most keyboards lose keys when that many are held at once.
+      #
+      # On a console that has them, Y is Y and H is X, left of U and J as a Super Nintendo's Y is
+      # left of its B, and B is C, below them; each window reads only the buttons its console has,
+      # so on the Advance these three are nobody's.
       SECOND_PLAYER_KEYS = Ractor.make_shareable({ o: :a, u: :b, 8 => :select, 0 => :start, l: :right, j: :left,
-                                                   i: :up, k: :down, 9 => :r, 7 => :l })
+                                                   i: :up, k: :down, 9 => :r, 7 => :l, h: :x, y: :y, b: :c })
 
       # The keys the window keeps for itself, and what for: no button can have one. The desktop
       # window's hotkeys, the web page's (F for fullscreen), Escape, which stops choosing a key, and
@@ -66,30 +72,38 @@ module VBlank
       PADS = { south: 0, east: 1, west: 2, north: 3, back: 4, guide: 5, start: 6, left_stick: 7, right_stick: 8,
                left_shoulder: 9, right_shoulder: 10, dpad_up: 11, dpad_down: 12, dpad_left: 13, dpad_right: 14 }.freeze
 
-      # The gamepad buttons no button has in VBlank's layout, on the desktop or on a web page (whose
-      # face buttons are the other way round), and which open no menu.
+      # The gamepad buttons none of the Advance's buttons has in VBlank's layout, on the desktop or
+      # on a web page (whose face buttons are the other way round), and which open no menu.
       FREE_PADS = %i[west north left_stick right_stick].freeze
+
+      # The gamepad buttons X, Y and C start on, in a window for a console that has them, which are
+      # then not free there.
+      MORE_LAYOUT_PADS = Ractor.make_shareable({ x: :north, y: :west, c: :west })
+
+      # The gamepad buttons free in a window for a console of +buttons+.
+      def self.free_pads(buttons) = FREE_PADS - MORE_LAYOUT_PADS.slice(*buttons).values
 
       # How many gamepad buttons each button starts with.
       LAYOUT_PADS = 1
 
       # The entries for +given+ (button => key name, or a list of them), as [button, :key, name]
       # triples, or a friendly error naming what cannot be. +most_players+ is the most players the
-      # build seats: a game for two or more keeps player 2's keys free.
-      def self.keys_entries!(given, most_players: nil)
-        entries = entries_of(given, :computer_keys)
+      # build seats: a game for two or more keeps player 2's keys free. +console+ is the build's
+      # (a Console::Description): only its buttons can be named, and only their keys are taken.
+      def self.keys_entries!(given, console:, most_players: nil)
+        entries = entries_of(given, :computer_keys, console)
         refuse_same_twice!(entries, :computer_keys)
-        entries.each { |button, name| refuse_key!(button, name) }
-        entries.each { |button, name| refuse_second_player_key!(button, name) } if most_players && most_players > 1
+        entries.each { |button, name| refuse_key!(button, name, console.buttons) }
+        entries.each { |button, name| refuse_second_player_key!(button, name, console.buttons) } if most_players && most_players > 1
         refuse_crowded!(entries, :computer_keys, "keys", most: MOST_KEYS) { |button| LAYOUT_KEYS.fetch(button).length }
         entries.map { |button, name| [button, :key, name] }
       end
 
       # ...and for gamepad buttons.
-      def self.pads_entries!(given)
-        entries = entries_of(given, :computer_gamepad)
+      def self.pads_entries!(given, console:)
+        entries = entries_of(given, :computer_gamepad, console)
         refuse_same_twice!(entries, :computer_gamepad)
-        entries.each { |button, name| refuse_pad!(button, name) }
+        entries.each { |button, name| refuse_pad!(button, name, free_pads(console.buttons)) }
         refuse_crowded!(entries, :computer_gamepad, "gamepad buttons", most: MOST_PADS) { LAYOUT_PADS }
         entries.map { |button, name| [button, :pad, name] }
       end
@@ -103,18 +117,18 @@ module VBlank
         end]
       end
 
-      def self.entries_of(given, verb)
+      def self.entries_of(given, verb, console)
         given.flat_map do |button, names|
-          refuse_button!(button, verb)
+          refuse_button!(button, verb, console)
           Array(names).map { |name| [button, name] }
         end
       end
 
-      def self.refuse_button!(button, verb)
-        return if BUTTONS.include?(button)
+      def self.refuse_button!(button, verb, console)
+        return if console.buttons.include?(button)
 
-        raise ArgumentError, "`#{verb} #{button}:` names no button a computer's window has. " \
-                             "To fix this, use one of these: #{BUTTONS.map { |each| ":#{each}" }.join(' ')}."
+        raise ArgumentError, "`#{verb} #{button}:` names no button the #{console.title} has. " \
+                             "To fix this, use one of these: #{console.buttons.map { |each| ":#{each}" }.join(' ')}."
       end
 
       def self.refuse_same_twice!(entries, verb)
@@ -126,7 +140,7 @@ module VBlank
         end
       end
 
-      def self.refuse_key!(button, name)
+      def self.refuse_key!(button, name, buttons)
         unless KEYS.key?(name)
           raise ArgumentError, "`computer_keys #{button}: #{name.inspect}` names no key VBlank knows. To fix this, use a letter " \
                                "(:d), a digit (1), or one of these: #{OTHER_KEYS.keys.map { |key| ":#{key}" }.join(' ')}."
@@ -135,7 +149,7 @@ module VBlank
           raise ArgumentError, "`computer_keys #{button}: #{name.inspect}` names a key the window keeps for itself " \
                                "(#{reason}). To fix this, choose another key."
         end
-        owner = LAYOUT_KEYS.find { |_, keys| keys.include?(name) }&.first
+        owner = LAYOUT_KEYS.slice(*buttons).find { |_, keys| keys.include?(name) }&.first
         return unless owner
 
         raise ArgumentError, "`computer_keys #{button}: #{name.inspect}` names a key that already presses :#{owner} on a " \
@@ -143,21 +157,21 @@ module VBlank
                              "key no button has, for example :d or :space."
       end
 
-      def self.refuse_second_player_key!(button, name)
+      def self.refuse_second_player_key!(button, name, buttons)
         theirs = SECOND_PLAYER_KEYS[name]
-        return unless theirs
+        return unless theirs && buttons.include?(theirs)
 
         raise ArgumentError, "`computer_keys #{button}: #{name.inspect}` names a key that presses player 2's :#{theirs} on a " \
                              "computer. This game is for more than one player, and player 2 must keep the key. To fix " \
                              "this, choose a key no button has, for example :d or :space."
       end
 
-      def self.refuse_pad!(button, name)
-        return if FREE_PADS.include?(name)
+      def self.refuse_pad!(button, name, free)
+        return if free.include?(name)
 
         why = PADS.key?(name) ? "is a button the window already uses. A gamepad button presses one button" : "names no gamepad button"
         raise ArgumentError, "`computer_gamepad #{button}: #{name.inspect}` #{why}. " \
-                             "To fix this, use one of these: #{FREE_PADS.map { |pad| ":#{pad}" }.join(' ')}."
+                             "To fix this, use one of these: #{free.map { |pad| ":#{pad}" }.join(' ')}."
       end
 
       # A button given more than the window has room for (+most+), counting the ones it starts with.

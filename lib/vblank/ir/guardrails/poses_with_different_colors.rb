@@ -32,9 +32,12 @@ module VBlank
           NAME = :poses_with_different_colors
           PLAIN_NAME = "a sprite whose pictures have different lists of colors"
 
-          def detect(program)
+          # +as_built+ is the program before the file it is handed was read into it (StartFile.filled),
+          # where +program+ is the filled one: it tells which poses are drawn in their frames' banks,
+          # which the filled program no longer says (#sprites_following_lists).
+          def detect(program, as_built: program)
             console = program.described_console
-            return sprites_following_lists(program, console) if console.poses_keep_own_lists?
+            return sprites_following_lists(program, console, as_built) if console.poses_keep_own_lists?
 
             pictures = program.walk.select { |node| node.kind == :bitmap }
             lists = pictures.to_h { |node| [node.name, colors_compared(node.colors, program.start_file)] }
@@ -49,8 +52,8 @@ module VBlank
           end
 
           # Why the sprites are refused, or nil when every one draws from one list.
-          def refusal_message(program)
-            detect(program).first&.message
+          def refusal_message(program, as_built: program)
+            detect(program, as_built: as_built).first&.message
           end
 
           private
@@ -63,15 +66,43 @@ module VBlank
           # console's build makes, so it is not refused. A build that reads its pack as the game
           # starts makes one of a pose whose list its frame picks (Builder::PackPoses
           # #follow_lists_chosen_at_start), where the build that holds the pack draws the sprite with
-          # the list. A sprite of several such poses is still refused, since the build cannot know
-          # whether their frames pick one list.
-          def sprites_following_lists(program, console)
+          # the list.
+          #
+          # A sprite of SEVERAL such poses, all of banks of one slot, is not refused either. Which
+          # bank each frame names is in the player's file, read as the game starts, so the build
+          # cannot tell. Where every frame names one bank, the build that holds the pack draws the
+          # sprite with that bank's list, as above. Where they name two, which that build refuses, the
+          # build for a computer follows each pose's list: the file is the player's, so nothing in it
+          # stops the game, as with a frame whose pieces name two banks (#colors_compared).
+          #
+          # The poses are told apart in +as_built+, the program as the build made it: once the file
+          # is read into it, such a pose is a picture of the one list its frame picked.
+          def sprites_following_lists(program, console, as_built)
             return [] if console.poses_follow_lists?
 
+            bank_lists_by_pose = as_built.walk.select { |node| node.kind == :bitmap }.to_h { |node| [node.name, frame_bank_lists(node)] }
             following = Stacking.objects_in_draw_order(program).select(&:follows_each)
-            following.reject { |node| node.poses.uniq.one? }.map do |node|
+            following.reject { |node| single_color_source?(node, bank_lists_by_pose) }.map do |node|
               Finding.new(check: NAME, severity: :error, node: node, message: following_message(node, console))
             end
+          end
+
+          # The lists of the banks a pose drawn in its frame's bank can be drawn from
+          # (StartFile::Pose#bank_lists), or nil for any other picture.
+          def frame_bank_lists(node)
+            pose_in_file = node.from_file
+            pose_in_file.bank_lists if pose_in_file.is_a?(StartFile::Pose)
+          end
+
+          # Whether the sprite +node+ takes its colours from one source: it shows one picture, or only
+          # poses drawn in their frames' banks of one slot (+bank_lists_by_pose+ holds each picture's
+          # bank lists, nil for any other).
+          def single_color_source?(node, bank_lists_by_pose)
+            poses = node.poses.uniq
+            return true if poses.one?
+
+            slots = poses.map { |pose| bank_lists_by_pose[pose] }.uniq
+            slots.one? && !slots.first.nil?
           end
 
           def following_message(node, console)

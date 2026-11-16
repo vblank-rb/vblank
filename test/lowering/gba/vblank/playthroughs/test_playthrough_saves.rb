@@ -124,6 +124,73 @@ class TestPlaythroughSaves < Minitest::Test
     assert_nil file_screen.play(counting).save
   end
 
+  # --- a cartridge with a clock ---
+
+  SATURDAY = { year: 2031, month: 5, day: 17, hour: 8, minute: 9, second: 10 }.freeze
+
+  # A Color game that sets its clock to SATURDAY on pass +set_on_pass+, and keeps what it reads of
+  # the clock every pass; a pass that never comes is the same game reading the time set before.
+  # A playthrough gives the Color's cartridge the clock its chip has, which goes on counting from
+  # the computer's own.
+  private def clock_game(set_on_pass:)
+    VBlank.build("PTCLOCK", console: :gbc, out: StringIO.new, err: StringIO.new, profile: false) do
+      screen :tiled
+      image(:wall, "#" => :red) { SOLID_TILE }
+      tiles :frame, "#" => :wall
+      background :box, tiles: :frame, map: ["##"]
+      now = clock
+      kept = %i[year month day hour minute second is_set].to_h { |name| [name, var(name, -1)] }
+      passes = 0
+      game_loop do
+        now.set_to(**SATURDAY) if passes == set_on_pass
+        kept[:year] = now.year
+        kept[:month] = now.month
+        kept[:day] = now.day
+        kept[:hour] = now.hour
+        kept[:minute] = now.minute
+        kept[:second] = now.second
+        kept[:is_set] = 0
+        kept[:is_set] = 1 if now.set?
+        passes += 1
+      end
+    end
+  end
+
+  private def clock_read(played) = %i[year month day hour is_set].map { |name| played.game.var(name) }
+
+  # The seconds the clock has counted since the hour set.
+  private def seconds_past_the_hour(played) = (played.game.var(:minute) * 60) + played.game.var(:second)
+
+  # THE CLOCK SET IN ONE PLAYTHROUGH GOES ON IN THE NEXT, started from its save: the cartridge
+  # carries its clock chip from one power-on to the next as it carries its save memory, and the
+  # emulator keeps what the chip counted beside the save memory in its file. The chip counts the
+  # computer's own seconds, so the first playthrough plays until it has counted two, and the
+  # next reads at least as late: started with a fresh chip, it would read the moment the time
+  # was set again. The same from the emulator's own file, by its path.
+  def test_a_clock_set_in_one_playthrough_goes_on_in_the_next_from_its_save
+    counted = SATURDAY[:second] + 2
+    set_and_wait = VBlank.playthrough("set the clock, and wait two seconds") do
+      wait frames: 10
+      wait_until("the clock has counted two seconds", within: 60_000) { |game| game.var(:second) >= counted }
+    end
+    read = VBlank.playthrough("read the clock") { wait frames: 10 }
+    set = set_and_wait.play(clock_game(set_on_pass: 2))
+    reader = clock_game(set_on_pass: -1)
+    expected = [*SATURDAY.values_at(:year, :month, :day, :hour), 1]
+
+    assert_equal expected, clock_read(set), "the first playthrough sets the clock"
+    from_save = read.play(reader, save: set.save)
+    assert_equal expected, clock_read(from_save), "the next one, from its save, reads it set"
+    assert_operator seconds_past_the_hour(from_save), :>=, seconds_past_the_hour(set), "and counted on from where it was"
+    Dir.mktmpdir("saves") do |folder|
+      path = File.join(folder, "clock.sav")
+      File.binwrite(path, set.game.save_bytes)
+
+      assert_operator seconds_past_the_hour(read.play(reader, save: path)), :>=, seconds_past_the_hour(set),
+                      "and from the emulator's file of it"
+    end
+  end
+
   # --- what a tape says about where it started ---
 
   # A TAPE SAYS WHETHER IT WAS RECORDED FROM POWER-ON OR FROM A SAVE, and which save, for a

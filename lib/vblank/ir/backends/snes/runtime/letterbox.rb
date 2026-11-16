@@ -126,10 +126,12 @@ module VBlank
             def named_band?(memory) = kept?(memory) && !follows_rows?(memory)
 
             # The console's first and last line of the band +program+ names (Program#shown_rows), or
-            # nil for one that names none. The screen's row y is the console's line y + 1.
+            # nil for one that names none. The screen's row y is the console's line y + 1. A game of
+            # big pixels names rows of its small picture, each that many of the console's lines.
             def band_of(program)
               first, past = program.shown_rows
-              first && [first + 1, past]
+              size = program.pixel_size || 1
+              first && [(first * size) + 1, past * size]
             end
 
             # At power-on (in rt_paint_start, A 16 bits wide): the whole screen on, and no rows painted.

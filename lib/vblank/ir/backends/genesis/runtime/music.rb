@@ -789,6 +789,17 @@ module VBlank
               asm.jsr(asm.abs_l("rt_recordings_note_release"))
               asm.bra("rt_music_recorded_note_log")
               asm.label("rt_music_recorded_note_plays")
+              if memory.reserved?(Recordings::GLIDES) # a note that glides (SongTable::GLIDES, the row's top bit)
+                asm.branch(:pl, "rt_music_recorded_note_strikes")
+                asm.and(:w, asm.imm(m::GLIDES - 1), asm.d(2))
+                asm.subq(:w, 1, asm.d(2))
+                asm.move(:w, asm.d(2), asm.d(0))
+                asm.jsr(asm.abs_l("rt_recordings_glide"))
+                asm.tst(:w, asm.d(0))
+                asm.branch(:eq, "rt_music_recorded_note_done") # no note to carry on: not heard
+                asm.bra("rt_music_recorded_note_log")
+                asm.label("rt_music_recorded_note_strikes")
+              end
               asm.subq(:w, 1, asm.d(2))
               asm.move(:w, asm.d(2), asm.d(0))
               asm.movea(:l, at.call(SONG), asm.a(0))

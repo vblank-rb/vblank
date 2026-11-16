@@ -42,12 +42,23 @@ void rg_game_timer_ticks(void);
 
 /* --- what the runtime provides --- */
 
+/* The game's next pass: rg_game_main, or where a timer's handler stopped to wait, that handler
+ * carried on in its place (rg_runtime.c, "A HANDLER THAT WAITS"). 1 when it stopped for a frame, 0
+ * when the game is done. Every driver plays the game through this. */
+int32_t rg_game_pass(void);
+
+/* For a game whose timer's handler can wait (Computer::Resumable): the game sets whether the
+ * handler it just ran stopped to wait, and asks whether one is stopped inside the frame boundary
+ * that ran it, which makes this tick one at a boundary inside its wait. */
+void rg_timer_handler_waited(int32_t waited);
+int32_t rg_timer_handler_paused(void);
+
 /* The end of a frame the game drew. The game then stops for the frame and the driver shows it,
  * reads the buttons and waits for the next. The console calls this moment the vertical blank,
  * which is where the name comes from. */
 void rg_wait_vblank(void);
 
-/* Plays the game a frame at a time from power-on: rg_game_main, and the driver's frame between
+/* Plays the game a frame at a time from power-on: rg_game_pass, and the driver's frame between
  * each call, until the game is done. A run that has played all the frames it was asked for ends in
  * the driver's frame. */
 void rg_play_frames(void);
@@ -190,7 +201,11 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * and the tiles of the cells it may be written later, which rg_start_file_fill_picture fills), so a
  * cell's tile is that many on from the set's first; and how many bytes a cell is, two, or one for
  * a map of bytes, each a tile's number, as a layer that turns keeps its map, or four for a cell of
- * VBlank's own record (Original::MapCell, lib/vblank/original/map_cell.rb). Then the two
+ * VBlank's own record (Original::MapCell, lib/vblank/original/map_cell.rb); and the cells it was
+ * told by a slot of the file that it may be written later (`set_cells: pack[:slot]`): where the
+ * slot is, how many cells it holds (0 for none), and which of the tiles the game holds is the
+ * first of theirs, each cell of the slot painting the tile the game holds after the one before
+ * as a cell of the map paints its own. Then the two
  * layouts, as rg_start_file_fill_picture has them, and for each set each bank's colours: the bank
  * of the file they are, or -1, and then a colour for each place, which the game holds, where it
  * is -1. The tiles of one set follow those of the one before. Place 0 is RG_SEE_THROUGH. A cell
@@ -200,10 +215,11 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * rg_start_file_fill_followed_tiles: which of such a background's tiles are drawn from one list of
  * colours the game changes, for a background that follows several (rg_background_follow, whose
  * rules +followed+ is: how many tile pixels, the background, how many tiles, and the tiles). The
- * game writes the tiles it holds and leaves room for one for every cell of the map; which bank a
- * cell is of is in the file, so this adds the tile of each cell whose bank has its bit set in
- * +banks+ (bank 0 the lowest bit), and counts them in. +rules+ are the background's own, as
- * rg_start_file_fill_background has them. A cell naming a bank past the colours follows no list.
+ * game writes the tiles it holds and leaves room for one for every cell of the map and every cell
+ * a slot told it; which bank a cell is of is in the file, so this adds the tile of each cell whose
+ * bank has its bit set in +banks+ (bank 0 the lowest bit), and counts them in. +rules+ are the
+ * background's own, as rg_start_file_fill_background has them. A cell naming a bank past the
+ * colours follows no list.
  *
  * rg_start_file_fill_moving_cells: the cells of such a background that name a tile taking turns
  * through pictures (IR::StartFile::MovingTile), each shown as a tile of a run of tiles the game
@@ -212,7 +228,8 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * where the background's painted tiles start in +painted+, how many moving tiles, and for each its
  * tile as a cell names it and then, for each bank and each of the four turns (none, mirrored,
  * upside down, both), the run and which of its tiles. A cell naming such a tile in a bank past the
- * colours keeps its own tile.
+ * colours keeps its own tile. +pointed+ has a number for each run, set to 1 for each run a cell is
+ * pointed at, so a show copies its picture into those runs alone.
  *
  * rg_start_file_fill_painted_tiles: +tiles+ tiles of the file into +table+, 32 bytes each, as a run
  * of painted tiles keeps them: two places a byte, the left one in the low four bits.
@@ -236,12 +253,37 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * bytes saying where its record starts, and where the records start, which that is counted from
  * (0 for a frame with no record); where
  * the object's place is in the picture, across and down; where the tiles are in the file and
- * how many; and the bank a piece must name to be painted (-1 for every piece). Then the two
+ * how many; the bank a piece must name to be painted (-1 for every piece); and how the console's
+ * sprite table holds a piece, 0 where it draws every piece (else 1 for small pieces, 2 for squares,
+ * 3 for rectangles), and how tall a small piece is; and how many places a tile can draw. Then the two
  * layouts and the game's own colours where the file has none, as rg_start_file_fill_picture has
- * them. Then for each copy: where its pixels start, how many colours of another list it is drawn
- * with, and that list. Place 0 is see-through. The file is the player's, and the game plays on whatever it
+ * them. Then for each copy: where its pixels start, where the colours of its places start (-1 for
+ * a copy whose pixels are its colours), the number of its image (-1 for tile pixels), how many
+ * colours of another list it is drawn with, and that list. A copy with colours of its places holds
+ * the frame's places as its pixels, RG_NOT_DRAWN where nothing is, written once for every copy that
+ * shares them, and the colour of each place after; the image is drawn through those colours
+ * (rg_game_images, RG_IMAGE_FIELDS). Place 0 is see-through. Where
+ * the console's table holds only so many pieces, the frame's pieces are listed for each copy's image
+ * as that table holds them (rg_screen_read_image_pieces), in the frame's order, so the same pieces
+ * are left out as where the game holds the frame. The file is the player's, and the game plays on whatever it
  * holds: pieces are read while they end inside the file, a piece or the part of one outside the
  * picture is not painted, and a tile past the file's paints nothing.
+ *
+ * rg_start_file_fill_tile_pose: the pieces of a pose of a set of sprite tiles whose pieces are one
+ * of the original's frames (IR::StartFile::TilePose), into +pieces+, three numbers a piece (where
+ * its tile's top left is in the picture, across and down, and which of the set's tiles), the array
+ * a load of the set hands rg_tile_pose_load. The frame is the same record rg_start_file_fill_pose
+ * reads. +rules+ are where the frame's entry is and where the records start; where the object's
+ * place is in the picture, across and down; the number the frames give the set's first tile; how
+ * many tiles the set holds; the picture's width and height; and how many pieces +pieces+ has room
+ * for. Each tile of each piece, row by row, is a piece of the pose, and the file is the player's:
+ * a tile that is turned, off the picture's 8-pixel grid, outside the picture or outside the set
+ * draws nothing, nor one at a place an earlier one took. Each place left names tile -1, which no
+ * set holds. IR::StartFile.tile_pose_pieces_in says the same in Ruby. Then, on a console that draws
+ * only so many sprite pieces, how tall a piece is (0 where it draws every one), how many images show
+ * the pose and each one's number: the pieces kept are listed for each of those images
+ * (rg_screen_read_image_pieces) as SpriteLines.tile_pose_places lists them, in place of the
+ * stand-ins the game lists.
  *
  * rg_start_file_put_tile_pixels: +count+ of the game's own pixels, +pixels+, into the background
  * tiles' pixels from +start+ on, of which there are +total+: a tile the game holds for a
@@ -313,9 +355,10 @@ void rg_start_file_fill_bytes(int8_t *samples, int32_t at, int32_t count, int32_
 void rg_start_file_fill_picture(const int32_t *rules);
 void rg_start_file_fill_background(const int32_t *rules);
 void rg_start_file_fill_followed_tiles(int32_t *followed, const int32_t *rules, int32_t banks);
-void rg_start_file_fill_moving_cells(int32_t *painted, const int32_t *rules, const int32_t *moving);
+void rg_start_file_fill_moving_cells(int32_t *painted, const int32_t *rules, const int32_t *moving, int32_t *pointed);
 void rg_start_file_fill_painted_tiles(uint8_t *table, int32_t tiles, const int32_t *rules);
 void rg_start_file_fill_pose(const int32_t *rules);
+void rg_start_file_fill_tile_pose(int32_t *pieces, const int32_t *rules);
 void rg_start_file_put_tile_pixels(int32_t total, int32_t start, int32_t count, const uint16_t *pixels);
 void rg_start_file_fill_colors(int32_t *colors, int32_t first, int32_t count, int32_t at, const int32_t *format);
 void rg_start_file_fill_places(int32_t *numbers, int32_t first, int32_t count, int32_t at, int32_t places);

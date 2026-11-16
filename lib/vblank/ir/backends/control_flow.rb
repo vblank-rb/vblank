@@ -117,8 +117,16 @@ module VBlank
         # The block, which makes the routine +name+ and the parts cut off it, with each of the numbers
         # it keeps for one call of it recorded (#record_call_number) when a frame boundary can call it
         # again while a call of it is going (LoweringPlan#routines_reentered_at_frame_boundary).
-        def with_call_numbers_recorded_for(name)
-          @recording_call_numbers = @plan.routines_reentered_at_frame_boundary.include?(name)
+        def with_call_numbers_recorded_for(name, &) = with_call_numbers_recorded_if(@plan.routines_reentered_at_frame_boundary.include?(name), &)
+
+        # The block, which makes the timer +name+'s routine and the parts cut off it, with the numbers its
+        # handler keeps recorded when the handler can wait (LoweringPlan#tick_handlers_waiting): it runs again
+        # inside its own wait.
+        def with_tick_handler_numbers_recorded(name, &) = with_call_numbers_recorded_if(@plan.tick_handlers_waiting.key?(name), &)
+
+        # The block, with the numbers it keeps recorded when +recording+.
+        def with_call_numbers_recorded_if(recording)
+          @recording_call_numbers = recording
           yield
         ensure
           @recording_call_numbers = false
@@ -135,6 +143,12 @@ module VBlank
         # each lowering in its own processor's instructions (its #with_call_numbers_kept). Complete once
         # every routine of the game is made.
         def call_numbers = @call_numbers || []
+
+        # The numbers the routine running the timers puts back around them: #call_numbers, and in a game
+        # whose tick handler waits, +crossed+ too, the ticks the running timer still has to answer this
+        # frame, which the handler's run inside its own wait sets again for that frame
+        # (Reference#accrue_timer keeps each frame's count to itself).
+        def numbers_kept_around_timers(crossed) = @plan.tick_handlers_waiting.any? ? [*call_numbers, crossed] : call_numbers
 
         # Reference#exec_repeat: the count worked out once, before the first turn; the index
         # counting 0, 1, 2... and in the game's variable from the top of each turn; and

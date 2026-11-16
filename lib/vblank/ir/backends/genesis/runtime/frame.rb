@@ -54,6 +54,10 @@ module VBlank
             # Set by the same reader when it has taken the last pass it compares one by one: the
             # game's timers do not move on at the boundary after it, as the interpreter's do not.
             LAST_PASS_TAKEN = "rt last pass taken"
+            # The number of the last pass that reader compares, in a game whose tick handler waits
+            # (LoweringPlan#keeps_last_pass_number?), nought until it is written: a boundary ending a later pass
+            # moves nothing on. Such a game can end two passes in one frame, the reader seeing neither.
+            LAST_PASS = "rt last pass"
             # HOW MANY FRAMES A PASS TOOK (IR::Frames): the interrupt counts every frame (FRAMES, 32
             # bits); where a pass's wait ends, the frames since the last wait ended are what that pass
             # answers for (FRAMES_TAKEN), and held between one and IR::Frames::MOST (STEP_TAKEN).
@@ -74,6 +78,18 @@ module VBlank
             # 1 once the screen is on: before the end of the first pass it is off.
             DISPLAY_ON = "rt display on"
 
+            # IN A GAME THAT READS HOW MANY FRAMES IT HAS SHOWN SINCE POWER-ON, the frames setting up takes
+            # are counted too. COUNTING is 1 while setting up runs and the interrupt only counts FRAMES
+            # (Boot#emit, #emit_interrupt); SETTING_UP is the frames setting up took, kept one more for a
+            # reader of the run, so nought means not counted yet (#emit_setting_up_counted).
+            COUNTING = "rt counting"
+            SETTING_UP = "rt frames setting up"
+
+            # The part of work RAM the interrupt touches while it only counts, which the boot clears
+            # first (Boot#emit): +bytes+ from the start of work RAM, a whole number of long words, and the
+            # distance of COUNTING from A5.
+            CountingBlock = Data.define(:bytes, :flag_at)
+
             # What SHOWN holds once a stopped game's last picture is on the screen.
             END_SHOWN = 0xFFFF_FFFF
 
@@ -88,7 +104,14 @@ module VBlank
 
             module_function
 
-            def reserve(memory)
+            # +counted+ for a game that reads how many frames it has shown since power-on (COUNTING,
+            # SETTING_UP). Must be the first places reserved, so the interrupt's are at the start of
+            # work RAM (#counting_block).
+            def reserve(memory, counted: false)
+              if counted
+                memory.reserve(COUNTING, 2)
+                memory.reserve(SETTING_UP, 2)
+              end
               memory.reserve(STATE, 2)
               memory.reserve(WAITING, 2)
               memory.reserve(PASSES, 4)
@@ -110,29 +133,57 @@ module VBlank
               memory.reserve(DISPLAY_ON, 2)
             end
 
+            # The CountingBlock of a game that counts the frames setting up takes: COUNTING to FRAMES.
+            def counting_block(memory)
+              raise LoweringError, "the frame counter's places must be reserved first" unless memory[COUNTING] == Memory::FIRST
+
+              bytes = memory[FRAMES] + 4 - Memory::FIRST
+              CountingBlock.new(bytes: (bytes + 3) & ~3, flag_at: memory.displacement(COUNTING))
+            end
+
+            # LAST_PASS, in a game whose tick handler waits (LoweringPlan#keeps_last_pass_number?).
+            def reserve_last_pass(memory) = memory.reserve(LAST_PASS, 4)
+
             # The routines that end a pass and start the next: the interrupt, the wait, the buttons,
             # stopping and going wrong. +sound+ for a game that makes sound, whose wait ends in Sound's
-            # rt_sound_frame.
-            def emit(asm, memory, sound: false)
+            # rt_sound_frame; +samples+ for one that plays recordings, whose interrupt reads the buttons
+            # with the Z80 stopped (Recordings#emit_bus_holds).
+            # +count_at+ is where a game that reads how many frames it has shown since power-on keeps that
+            # count, and nil for any other.
+            def emit(asm, memory, sound: false, samples: false, count_at: nil)
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
-              emit_interrupt(asm, at)
-              emit_wait(asm, at, sound)
-              emit_show_pass(asm, at)
+              emit_interrupt(asm, at, samples, counting: !count_at.nil?)
+              emit_wait(asm, at, sound, memory.reserved?(LAST_PASS))
+              emit_show_pass(asm, at, count_at && asm.disp(5, Memory.displacement(count_at)))
               emit_buttons(asm, memory, at)
               emit_stopping(asm, at)
             end
 
             # The interrupt that signals a frame has been drawn. It keeps every register it touches, counts
             # the frame and reads the buttons, so a pass that spans several frames answers for each of
-            # them, as the interpreter's does. A5 is the game's own and is never changed.
-            def emit_interrupt(asm, at)
+            # them, as the interpreter's does. A5 is the game's own and is never changed. In a game that
+            # plays recordings the buttons are read with the Z80 stopped.
+            #
+            # +counting+ for a game that counts the frames setting up takes: while COUNTING is set the
+            # interrupt only counts the frame, since the buttons' reading would let the Z80 go before
+            # its program is in, and work RAM past the counting block is still being cleared.
+            def emit_interrupt(asm, at, samples, counting: false)
               asm.label("rt_vblank_interrupt")
+              if counting
+                asm.tst(:w, at.call(COUNTING))
+                asm.branch(:ne, "rt_vblank_interrupt_counting")
+              end
               asm.movem_push(:l, :d0, :d1, :d2, :d3)
-              asm.jsr(asm.abs_l("rt_pad_read"))
+              asm.jsr(asm.abs_l(samples ? "rt_z80_bus_for_pad" : "rt_pad_read"))
               asm.addq(:l, 1, at.call(FRAMES))
               asm.move(:w, asm.imm(1), at.call(VBLANK))
               asm.movem_pop(:l, :d0, :d1, :d2, :d3)
               asm.rte
+              if counting
+                asm.label("rt_vblank_interrupt_counting")
+                asm.addq(:l, 1, at.call(FRAMES))
+                asm.rte
+              end
               asm.label("rt_unused_interrupt")
               asm.rte
             end
@@ -141,7 +192,9 @@ module VBlank
             # waiting, and wait for the screen. What keeps time by the frame moves on here, before
             # the game is marked as waiting, because that is where the interpreter moves it on: at
             # the frame boundary, before anything is read of the frame (Reference#advance_frame).
-            def emit_wait(asm, at, sound)
+            #
+            # +numbered+ for a game whose reader names the last pass it compares by number (LAST_PASS).
+            def emit_wait(asm, at, sound, numbered)
               asm.label("rt_wait_vblank")
               asm.addq(:l, 1, at.call(PASSES))
               asm.jsr(asm.abs_l("rt_frame_begins_unless_last"))
@@ -163,9 +216,21 @@ module VBlank
               asm.label("rt_frame_begins_unless_last")
               asm.tst(:l, at.call(LAST_PASS_TAKEN))
               asm.branch(:ne, "rt_frame_begins_skipped")
+              emit_skip_past_last_pass(asm, at) if numbered
               asm.jsr(asm.abs_l("rt_frame_begins"))
               asm.label("rt_frame_begins_skipped")
               asm.rts
+            end
+
+            # Branches to rt_frame_begins_skipped when LAST_PASS is written and the pass that just ended
+            # (PASSES) comes after it. D0 is free: the game's timers run here otherwise, code of the game's
+            # own, which changes any register it likes.
+            def emit_skip_past_last_pass(asm, at)
+              asm.move(:l, at.call(LAST_PASS), asm.d(0))
+              asm.branch(:eq, "rt_frame_begins_not_past")
+              asm.cmp(:l, at.call(PASSES), asm.d(0))
+              asm.branch(:cs, "rt_frame_begins_skipped")
+              asm.label("rt_frame_begins_not_past")
             end
 
             # rt_show_pass: what the pass drew, on the screen, and SHOWN saying so. The first time, the
@@ -178,13 +243,16 @@ module VBlank
             # pass takes one: the count starts again as the picture first shows, with that frame as
             # the first, so a game counting frames (a timer, an effect that runs every frame) counts
             # the same ones, and the buttons the interrupt of that frame read are the first frame's.
-            def emit_show_pass(asm, at)
+            # +count+ is the place of the count of frames since power-on in a game that reads it
+            # (#emit_setting_up_counted).
+            def emit_show_pass(asm, at, count)
               asm.label("rt_show_pass")
               asm.tst(:w, at.call(DISPLAY_ON))
               asm.branch(:ne, "rt_show_pass_on")
               asm.jsr(asm.abs_l("rt_upload_whole"))
               asm.jsr(asm.abs_l("rt_sleep_until_vblank"))
               asm.jsr(asm.abs_l("rt_screen_on"))
+              emit_setting_up_counted(asm, at, count) if count
               asm.move(:l, asm.imm(1), at.call(FRAMES))
               asm.move(:w, asm.imm(1), at.call(FRAMES_MARK))
               asm.move(:w, asm.imm(1), at.call(DISPLAY_ON))
@@ -211,6 +279,21 @@ module VBlank
               asm.label("rt_sleep_until_vblank_done")
               asm.move_to_sr(asm.imm(INTERRUPTS_ON))
               asm.rts
+            end
+
+            # THE FRAMES SETTING UP TOOK, COUNTED ALL THE SAME, in a game that reads how many frames it
+            # has shown since power-on. Such a game counts blanks from near the top of setting up
+            # (Boot#emit), so FRAMES holds every blank since, the one just waited for included, which ends
+            # the first pass's frame; the rest are setting up's. They go into the game's count at +count+
+            # now, which the first pass reads only once its wait is over, the frames of the pass itself
+            # added after (Lowering#emit_wait_vblank): where the interpreter adds them
+            # (Reference#store_frame_counters). SETTING_UP keeps them one more, for a reader of the run. No
+            # interrupt comes between: one has just come.
+            def emit_setting_up_counted(asm, at, count)
+              asm.move(:l, at.call(FRAMES), asm.d(0))
+              asm.move(:w, asm.d(0), at.call(SETTING_UP))
+              asm.subq(:l, 1, asm.d(0))
+              asm.add(:l, asm.d(0), count)
             end
 
             # BUTTONS. The pad is read by hand through its port: with its select line high it shows C,

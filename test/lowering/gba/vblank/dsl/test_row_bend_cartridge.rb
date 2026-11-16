@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "interrupted_walks"
 require "all/vblank/dsl/test_row_bend"
 
 # Bending a background row by row on the Advance's cartridge: which way the build lowers a bend
@@ -8,6 +9,7 @@ require "all/vblank/dsl/test_row_bend"
 # measured on the running cartridge, and the bent rows read back in the emulator. What a bend
 # draws on every run is in test/all/vblank/dsl/test_row_bend.rb.
 class TestRowBendCartridge < Minitest::Test
+  include InterruptedWalks
   include RowBendGames
 
   BendForm = VBlank::IR::Backends::GBA::BendForm
@@ -171,6 +173,68 @@ class TestRowBendCartridge < Minitest::Test
     refute BendForm.fed_by_dma?(b.program)
     refute BendForm.rows_precomputed?(b.program)
     assert_match(/never waits for a frame/, BendForm.kept_interrupt_reason(b.program))
+  end
+
+  # --- a block that calls a routine which is itself waiting ---
+
+  # THE CARTRIDGE KEEPS THE WAITING WALK'S COUNT, as the interpreter does
+  # (test_row_bend.rb's test_a_call_the_block_interrupted_carries_on_where_it_was). The rows are
+  # worked out as the game wakes from its wait, which here is inside :walk's own loop, and the
+  # block walks again from the start. The game's own walk then finishes its four steps.
+  def test_a_call_the_block_interrupted_carries_on_where_it_was
+    assert_finished_like_interpreter(interrupted_walk_program(again_from: :bend, calls_in_body: false), name: "BWALK")
+  end
+
+  # ...and a walk whose count is kept in memory, since its body calls two routines.
+  def test_a_call_the_block_interrupted_keeps_a_count_in_memory
+    assert_finished_like_interpreter(interrupted_walk_program(again_from: :bend, calls_in_body: true), name: "BWALKM")
+  end
+
+  # A `case` READS ITS VARIABLE ONCE, for each call, as the interpreter's does (Reference#exec_case).
+  # The game visits scene 1, whose routine waits, and the block visits scene 2 at that wait. The
+  # game's own visit then tests its other clauses against the 1 it read, and does not visit scene 2
+  # too. Each visit of scene 2 the game made bends the rows four across.
+  def test_a_case_the_block_interrupted_keeps_its_reading
+    b = Builder.new(options: VBlank::Cartridge::Options.new(frame_sync: :manual))
+    b.instance_eval do
+      screen :tiled
+      image(:bar, "." => :transparent, "#" => :red) { (["##......"] * 8).join("\n") }
+      tiles :stripes, "#" => :bar
+      water = background :water, tiles: :stripes, map: Array.new(20) { "#" * 30 }
+      waiting = var :waiting, 0
+      place = var :place, 1
+      twos = var :twos, 0
+      passes = var :passes, 0
+      done = var :done, 0
+      scene(:first_place) { wait_vblank if waiting == 1 }
+      scene(:second_place) { twos += 1 if waiting == 1 }
+      func(:visit) do
+        case_var(:place) do
+          when_val 1, :first_place
+          when_val 2, :second_place
+        end
+      end
+      water.scroll_each_row do |row|
+        if row == 0
+          waiting = 0
+          place = 2
+          call :visit
+          place = 1
+          waiting = 1
+        end
+        (twos * 4) + done
+      end
+      game_loop do
+        waiting = 1
+        place = 1
+        call :visit
+        passes += 1
+        done = 2 if passes >= 3
+        wait_vblank
+      end
+    end
+    b.finalize_program
+    assert_finished_like_interpreter(b.program, name: "BCASE")
   end
 
   # --- the cost is visible ---

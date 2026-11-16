@@ -62,6 +62,62 @@ class TestCopyReaderOnInterpreter < Minitest::Test
     assert_match "formats:", refused.message
   end
 
+  # TWO FORMATS OF ONE ROUTINE NAME A WORKING LIST ALIKE, at two sizes. Formats share a list of one
+  # name (Packing::BlockKit#list), which has one size, so the second size is refused naming both
+  # formats and the list, whichever runs first: the bigger one's blocks would run off the end of the
+  # smaller list, or the smaller one's would pass only in this order. Each keeps its first byte in
+  # its list and writes it back.
+  module KeptByteFormat
+    def routine(block)
+      kept = block.list(:kept, capacity: kept_capacity, width: :byte)
+      kept[0] = block.byte(block.from)
+      block.expect_size(1)
+      block.write(kept[0])
+    end
+  end
+
+  module FourKept
+    extend VBlank::Original::Packing::Format
+    extend KeptByteFormat
+    unpacks :four_kept
+
+    def self.kept_capacity = 4
+  end
+
+  module EightKept
+    extend VBlank::Original::Packing::Format
+    extend KeptByteFormat
+    unpacks :eight_kept
+
+    def self.kept_capacity = 8
+  end
+
+  private def build_refused_with(first, second)
+    Dir.mktmpdir do |folder|
+      assert_raises(ArgumentError) do
+        Builder.new.data_pack(from: original(folder), version: "1", formats: [FourKept, EightKept]) do |slots|
+          slots.numbers :kept, count: 2, width: :byte, signed: false
+          slots.fill_from_copy do |copy, pack|
+            copy.unpack(first, at: 0, into: pack[:kept])
+            copy.unpack(second, at: 1, into: pack[:kept], start: 1)
+          end
+        end
+      end
+    end
+  end
+
+  def test_two_formats_naming_a_list_alike_at_two_sizes_are_refused
+    [%i[four_kept eight_kept], %i[eight_kept four_kept]].each do |first, second|
+      refused = build_refused_with(first, second)
+
+      assert_match ":four_kept", refused.message
+      assert_match ":eight_kept", refused.message
+      assert_match ":kept", refused.message
+      assert_match "capacity: 4", refused.message
+      assert_match "capacity: 8", refused.message
+    end
+  end
+
   # A routine that never ends is stopped after as many frames as the copy and the pack have bytes,
   # not left to run for hours.
   def test_a_routine_that_never_ends_is_stopped

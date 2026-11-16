@@ -58,16 +58,24 @@ module VBlank
               program.walk.any? { |node| PAINTING.include?(node.kind) }
             end
 
+            # Whether +program+'s painted screen shows its pixels bigger (`screen :bitmap, pixel_size:
+            # 2`), on Mode 7 (Runtime::PaintDoubled). Such a screen has one layer and keeps its
+            # pictures a byte a pixel, so it has no text layer, no second picture and no inks.
+            def self.doubled?(program) = painted?(program) && !program.pixel_size.nil? && program.pixel_size > 1
+
             # The SNES::PaintedArt the game paints with.
             attr_reader :painted_art
 
             def prepare_paint
               @painted = Paint.painted?(@program)
+              @doubled = Paint.doubled?(@program)
               @painted_art = PaintedArt.new
               @picture_lists = [] # each a list of SNES::PaintedArt pictures' numbers
               @patches = {} # a backing buffer's name -> [its place, its width, its height]
               @column_routines = {} # a picture's name -> the routine that draws a column of it
               @column_tables = {} # a picture's name -> its columns' places
+              @column_flags = {} # a table of columns' starts -> the byte after each start
+              @doubled_column_pictures = {} # a picture drawn a column at a time on big pixels -> true (a Hash: LoweringState copies no Set)
               @inks = [] # each a TextInk, by its number
               @text_inks = {} # a draw_text node's object_id -> its ink's number, or nil for none
               # The text layer's tiles and texts, when the runtime keeps one (Runtime::TextLayer).
@@ -78,7 +86,7 @@ module VBlank
             # it writes text that can go there, and never moves the camera, whose room in video RAM
             # the layer takes.
             def self.text_layer?(program)
-              painted?(program) && program.walk.none? { |node| node.kind == :camera } &&
+              painted?(program) && !doubled?(program) && program.walk.none? { |node| node.kind == :camera } &&
                 program.walk.any? { |node| node.kind == :draw_text && layer_pixels(node) }
             end
 
@@ -98,6 +106,8 @@ module VBlank
             # last pass whole and never needs the other picture, and one that never clears again
             # never compares a pass with one; either keeps the whole log.
             def self.takes_turns?(program)
+              return false if doubled?(program)
+
               paintings = program.walk.select { |node| PAINTING.include?(node.kind) }
               paintings.any? { |node| node.kind == :clear_screen && node.parent&.kind != :program } &&
                 paintings.any? { |node| !painted_alike_each_pass?(node) }
@@ -198,10 +208,15 @@ module VBlank
             # Whether +program+ paints text in a colour picked as it runs, which an ink can paint
             # (#emit_draw_text): its colours then change as it runs (Runtime::Tint::COLORS_NOW).
             def self.inks?(program)
-              painted?(program) && program.walk.any? { |node| node.kind == :draw_text && node.picked }
+              painted?(program) && !doubled?(program) && program.walk.any? { |node| node.kind == :draw_text && node.picked }
             end
 
             def painted? = @painted
+
+            def doubled? = @doubled
+
+            # The painted picture's rows: the small picture's with big pixels.
+            def painted_height = @doubled ? Runtime::PaintDoubled::HEIGHT : Runtime::Picture::SCREEN_HEIGHT
 
             # Does the game draw columns of pictures on the console (Runtime::Paint's
             # rt_paint_column)? Columns drawn in a routine on the Super FX chip are the chip's own
@@ -214,21 +229,33 @@ module VBlank
             end
 
             # The numbers a column is handed over in, kept before any routine is made, since a routine
-            # can be lowered more than once.
+            # can be lowered more than once. A screen of big pixels keeps none: they go straight to
+            # the runtime's own place for them (#emit_doubled_column).
             def keep_column_numbers
-              return unless paints_columns?
+              return unless paints_columns? && !@doubled
 
               @column_numbers = COLUMN.to_h { |what| [what, keep_local(:"column_#{what}")] }
             end
 
+            # The code that draws columns on a screen of big pixels, as the cartridge counts it.
+            COLUMN_CODE = W65816::Holding.new(what: "the code that draws the game's pictures a column at a time",
+                                              fix: "draw columns of pictures of fewer different heights")
+
             # The routine that draws a column of each picture drawn so on the console, and the table of
             # its columns for each picture drawn so on the console or the Super FX chip. The chip's
             # tables are their own: a see-through pixel is place 0 there, and black another place
-            # (PaintedArt#place_never_nought).
+            # (PaintedArt#place_never_nought). On a screen of big pixels a column's start is followed
+            # by a byte that is 1 for a column with see-through pixels (Runtime::PaintDoubled).
             def column_sections
               @column_routines.each_key do |name|
                 image = @cache.image(picture_named(name))
-                @column_tables["column starts of #{name}"] = Array.new(image.width) { |slice| column_places(image, slice) }
+                @column_tables[column_starts_label(name)] = Array.new(image.width) { |slice| column_places(image, slice) }
+              end
+              @doubled_column_pictures.each_key do |name|
+                image = @cache.image(picture_named(name))
+                columns = Array.new(image.width) { |slice| column_places(image, slice) }
+                @column_tables[column_starts_label(name)] = columns
+                @column_flags[column_starts_label(name)] = columns.map { |places| places.include?(SEE_THROUGH) ? 1 : 0 }
               end
               chip_column_pictures.each do |name|
                 image = @cache.image(picture_named(name))
@@ -244,7 +271,7 @@ module VBlank
             # its room in work RAM.
             def reserve_patches
               @program.walk.select { |node| node.kind == :backing_buffer }.each do |node|
-                bytes = Runtime::Paint.patch_bytes(node.width, node.height)
+                bytes = (@doubled ? Runtime::PaintDoubled : Runtime::Paint).patch_bytes(node.width, node.height)
                 place = @memory.reserve_far("the patch under #{node.name.inspect}", bytes)
                 @patches[node.name] = [place, node.width, node.height]
               end
@@ -253,6 +280,8 @@ module VBlank
             # The tables Runtime::Paint reads, as sections for the Linker: the colours, every picture
             # and its rows, and the lists of pictures.
             def paint_sections
+              return doubled_paint_sections if @doubled
+
               tables = W65816.new("paint tables", holds: Picture::ART)
               tables.label("art colors")
               tables.data_bytes(@painted_art.cgram.bytes)
@@ -293,22 +322,85 @@ module VBlank
             # The most bytes of pictures' rows in one section: well inside a bank of the cartridge.
             ROWS_A_SECTION = 0x6000
 
+            # The same tables for a screen of big pixels (Runtime::PaintDoubled): the colours, each
+            # picture's place, width and height, the lists of pictures, and each picture's rows as
+            # runs of a byte a pixel.
+            def doubled_paint_sections
+              tables = W65816.new("paint tables", holds: Picture::ART)
+              tables.label("art colors")
+              tables.data_bytes(@painted_art.cgram.bytes)
+              tables.label("paint pictures")
+              @painted_art.pictures.each do |picture|
+                tables.data_longs("paint runs #{picture.number}")
+                tables.data_bytes(0)
+                tables.data_words(picture.width, picture.height)
+              end
+              tables.label("paint picture lists")
+              @picture_lists.each_index do |number|
+                tables.data_longs("paint picture list #{number}")
+                tables.data_bytes(0)
+              end
+              @picture_lists.each_with_index do |numbers, number|
+                tables.label("paint picture list #{number}")
+                tables.data_words(numbers.length, *numbers)
+              end
+              [tables.section, *doubled_picture_sections, *column_table_sections, *doubled_column_sections]
+            end
+
+            # Each picture's runs (Runtime::PaintDoubled's rt_paint_blit), as many pictures to a
+            # section as fit; a picture is never split, so its runs are read without crossing a bank.
+            def doubled_picture_sections
+              sections = []
+              asm = nil
+              bytes = 0
+              @painted_art.pictures.each do |picture|
+                runs = Paint.doubled_runs(picture)
+                if asm.nil? || bytes + runs.bytesize > ROWS_A_SECTION
+                  sections << asm.section if asm
+                  asm = W65816.new("paint runs #{sections.length}", holds: Picture::ART)
+                  bytes = 0
+                end
+                asm.label("paint runs #{picture.number}")
+                asm.data_bytes(runs.bytes)
+                bytes += runs.bytesize
+              end
+              sections << asm.section if asm
+              sections
+            end
+
+            # +picture+'s rows as Runtime::PaintDoubled reads them: each row its runs of pixels drawn,
+            # a word of how many, a word of how far from the left edge, then a byte for each pixel, its
+            # colour's place; and a word of nought after a row's last run.
+            def self.doubled_runs(picture)
+              Array.new(picture.height) do |y|
+                drawn = ->(x) { picture.places.key?([x, y]) }
+                runs = (0...picture.width).slice_when { |x, after| drawn.call(x) != drawn.call(after) }
+                runs.select { |xs| drawn.call(xs.first) }.map do |xs|
+                  [xs.length, xs.first].pack("v2") + xs.map { |x| picture.places.fetch([x, y]) }.pack("C*")
+                end.join + [0].pack("v")
+              end.join
+            end
+
             private
 
             # Each picture's columns, top to bottom, a place to a byte, as many to a section as fit, so
             # a wall of many pictures side by side can be bigger than a bank. Where each column
-            # starts is a table of its own, in the part that does not move.
+            # starts is a table of its own, in the part that does not move; on a screen of big
+            # pixels it is in the picture's record (#doubled_column_sections).
             def column_table_sections
               @column_tables.flat_map do |label, columns|
+                bytes = columns.each_slice(ROWS_A_SECTION / columns.first.length).with_index.map do |part, number|
+                  column_bytes_section(label, part, number * (ROWS_A_SECTION / columns.first.length))
+                end
+                next bytes if @column_flags.key?(label)
+
                 starts = W65816.new(label, holds: Picture::ART)
                 starts.label(label)
                 columns.each_index do |slice|
                   starts.data_longs("#{label}, column #{slice}")
                   starts.data_bytes(0)
                 end
-                [starts.section, *columns.each_slice(ROWS_A_SECTION / columns.first.length).with_index.map do |part, number|
-                  column_bytes_section(label, part, number * (ROWS_A_SECTION / columns.first.length))
-                end]
+                [starts.section, *bytes]
               end
             end
 
@@ -340,6 +432,8 @@ module VBlank
             # worked out. The picture's own routine works out where the walk starts, once a
             # column (#emit_column_walk), and the runtime walks it.
             def emit_draw_column_at(node)
+              return emit_doubled_column(node) if @doubled
+
               label = @column_routines[node.name] ||= "column of #{node.name}"
               value(node.height)
               store(@column_numbers.fetch(:height))
@@ -368,12 +462,12 @@ module VBlank
               2.times { @asm.asl(@asm.direct(R0)) } # four bytes to a column's start
               @asm.ldx(@asm.direct(R0))
               2.times do |half|
-                @asm.lda(@asm.long_x("column starts of #{name}", half * 2))
+                @asm.lda(@asm.long_x(column_starts_label(name), half * 2))
                 @asm.sta(at_place(place_of(pointer) + (half * 2)))
               end
               value(Build.clamped(Build.neg(top), Build.int(0), Build.int(Int32::MAX)))
               store(first)
-              value(Build.clamped(height, Build.int(Int32::MIN), Build.binop(:-, Build.int(Runtime::Picture::SCREEN_HEIGHT), top)))
+              value(Build.clamped(height, Build.int(Int32::MIN), Build.binop(:-, Build.int(painted_height), top)))
               store(last)
               done = fresh("no_rows")
               jump_unless(Build.binop(:<, Build.var_ref(first), Build.var_ref(last)), done)
@@ -383,6 +477,100 @@ module VBlank
                                                Build.binop(:-, Build.var_ref(last), Build.var_ref(first)),
                                                x, Build.binop(:+, top, Build.var_ref(first)), width])
               @asm.label(done)
+            end
+
+            # A COLUMN ON A SCREEN OF BIG PIXELS is handed to the runtime as it is (Runtime::PaintDoubled's
+            # rt_paint_column), which works out the rows and pixels across shown and draws it, with
+            # the picture's record (#doubled_column_sections). The step down the picture is its height
+            # in 65536ths over the height drawn, and a division of 32 bits is a routine of a bit at a
+            # time, so the runtime reads the step for a height below STEP_TABLE_HEIGHTS from a table
+            # worked out while the game is built, and only a taller column divides here. The table
+            # holds the division's own answers, so nothing changes but the time.
+            def emit_doubled_column(node)
+              @doubled_column_pictures[node.name] = true
+              @divides = true # a column taller than the step table divides (Runtime::Int32's rt_div32)
+              numbers = Runtime::PaintDoubled.column_numbers(@memory)
+              emit_column_number(value_node(node.height), numbers.height)
+              # A height of nought or less draws nothing, and the others are not worked out.
+              done = fresh("no_height")
+              @asm.lda(@asm.direct(numbers.height + 2))
+              @asm.branch_long(:bmi, done)
+              @asm.ora(@asm.direct(numbers.height))
+              @asm.branch_long(:beq, done)
+              [[node.slice, numbers.slice], [node.x, numbers.x], [node.top, numbers.top]].each do |part, at|
+                emit_column_number(value_node(part), at)
+              end
+              emit_column_number(Build.int(node.width || 1), numbers.width)
+              record = column_record_label(node.name)
+              @asm.lda(@asm.imm(record))
+              @asm.sta(@asm.direct(numbers.record))
+              @asm.lda(@asm.bank_of(record))
+              @asm.sta(@asm.direct(numbers.record + 2))
+              call_routine("rt_paint_column")
+              @asm.label(done)
+            end
+
+            # The number +node+ written to the direct page at +at+: a variable's or a number's two
+            # halves straight there, anything else worked out first, which leaves it in R0.
+            def emit_column_number(node, at)
+              halves = operand_halves(node)
+              unless halves
+                value(node)
+                return if at == R0
+
+                halves = [@asm.direct(R0), @asm.direct(R0 + 2)]
+              end
+              halves.each_with_index do |half, i|
+                @asm.lda(half)
+                @asm.sta(@asm.direct(at + (i * 2)))
+              end
+            end
+
+            def column_record_label(name) = "column record of #{name}"
+
+            def column_starts_label(name) = "column starts of #{name}"
+
+            def column_steps_label(picture_height) = "column steps #{picture_height}"
+
+            # For each picture drawn a column at a time on big pixels, its record (Runtime::PaintDoubled's
+            # RECORD_STARTS and the rest); and for each height of picture among them, its steps for
+            # every height below STEP_TABLE_HEIGHTS (none for a height of nought, which draws nothing)
+            # and the code that draws a column of it whole at each height on the screen
+            # (Runtime::PaintDoubled.scaler_sections).
+            def doubled_column_sections
+              heights = []
+              records = @doubled_column_pictures.each_key.map do |name|
+                image = @cache.image(picture_named(name))
+                heights |= [image.height]
+                asm = W65816.new(column_record_label(name), holds: Picture::ART)
+                asm.label(column_record_label(name))
+                asm.data_words(image.width, image.height)
+                asm.data_longs(column_steps_label(image.height))
+                asm.data_bytes(0)
+                (0..Runtime::PaintDoubled::HEIGHT).each do |tall|
+                  asm.data_longs(Runtime::PaintDoubled.scaler_label(image.height, [tall, 1].max))
+                  asm.data_bytes(0)
+                end
+                starts = column_starts_label(name)
+                @column_flags.fetch(starts).each_with_index do |flag, slice|
+                  asm.data_longs("#{starts}, column #{slice}")
+                  asm.data_bytes(flag)
+                end
+                asm.section
+              end
+              records + heights.flat_map do |picture_height|
+                steps = W65816.new(column_steps_label(picture_height), holds: Picture::ART)
+                steps.label(column_steps_label(picture_height))
+                Runtime::PaintDoubled::STEP_TABLE_HEIGHTS.times do |tall|
+                  step = tall.zero? ? 0 : IR::Int32.div(picture_height << Reference::FIXED, tall)
+                  steps.data_words(step & 0xFFFF, step >> 16)
+                end
+                scalers = Runtime::PaintDoubled.scaler_sections(picture_height, copy: @memory[Runtime::PaintDoubled::COPY],
+                                                                                holds: COLUMN_CODE, most_bytes: ROWS_A_SECTION)
+                # Named for a profile, as the game's routines are.
+                scalers.each { |section| @section_routines[section.name] = "columns of pictures #{picture_height} rows tall" }
+                [steps.section, *scalers]
+              end
             end
 
             # Each picture's rows, as many to a section as fit.
@@ -516,6 +704,8 @@ module VBlank
             # colour list, and they are not all met yet, so an ink takes a place only while more than
             # half the list is free, and a game has MOST_INKS at most.
             def text_ink(node)
+              return nil if @doubled
+
               @text_inks.fetch(node.object_id) do
                 @text_inks[node.object_id] =
                   if @inks.length < Runtime::Paint::MOST_INKS && @painted_art.places_left > PaintedArt::COLORS / 2

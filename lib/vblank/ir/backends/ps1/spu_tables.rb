@@ -53,34 +53,48 @@ module VBlank
 
           module_function
 
-          # The chip's numbers, then the Gaussian table. A recording's loudness is out of the mix's full
-          # (IR::Tunes::MIX_FULL) and its shape's level out of 1 << Audio::Envelope::SCALE, as
-          # Runtime::Recordings#emit_loudness scales a voice by them.
-          def rules
+          # The chip's numbers, then the Gaussian table. A recording's loudness times its shape's level
+          # (with the level's top bit added back) is shifted down Audio::Envelope::WHOLE_GAIN_SHIFT to be a
+          # whole number of 256ths, and a 256th is Runtime::Recordings::GAIN_TO_VOLUME_SHIFT up in the
+          # volume register, as Runtime::Recordings#emit_loudness sets a voice from them. The chip's
+          # main volume is the one +main_volume+ names (Program#main_volume; nil for the loudest), as
+          # the PlayStation program writes it (SPUWrites.main_volume_writes).
+          def rules(main_volume)
             [SPUWrites::SAMPLE_RATE, Runtime::Sound::ADSR_LOW, Runtime::Sound::ADSR_HIGH, SPUWrites::LOUDEST,
-             H::SPU_MAIN_LOUDEST, SPUWrites::PITCH_44100, SPUWrites::PITCH_TOP, SoundMemory::SQUARE_SAMPLES,
-             Audio::Sound::WAVE_SAMPLES, H::SPU_FIRST_FREE / 2, IR::Tunes::MIX_FULL, Audio::Envelope::SCALE, *GAUSS]
+             SPUWrites.main_volume_register(main_volume), SPUWrites::PITCH_44100, SPUWrites::PITCH_TOP, SoundMemory::SQUARE_SAMPLES,
+             Audio::Sound::WAVE_SAMPLES, H::SPU_FIRST_FREE / 2, Audio::Envelope::WHOLE_GAIN_SHIFT,
+             Runtime::Recordings::GAIN_TO_VOLUME_SHIFT, *GAUSS]
           end
 
           # Where each of +recordings+ (the declared samples, in the mixer's numbering) starts in +memory+,
           # three numbers each: played once through, how far back it reads when it holds, and played
-          # holding; -1 for a way the program never plays it.
+          # holding; -1 for a way the program never plays it. A recording laid out as the game starts
+          # (SoundMemory.laid_out_at_start) is played from loops of its own, which the runtime fills
+          # then; where its hold or its length is read from the start file, the second number is the
+          # runtime's to fill too.
           def recordings(memory, recordings)
             rows = recordings.map do |sample|
               info = Assets::Sample.of(sample)
               back = info.loop_length.positive? ? info.loop_length : info.length
-              [memory.recording_start(sample.name, 0) || -1, back, memory.recording_start(sample.name, back) || -1]
+              once = memory.laid_out_start(sample.name, :once) || memory.recording_start(sample.name, 0) || -1
+              held = memory.laid_out_start(sample.name, :held) || memory.recording_start(sample.name, back) || -1
+              [once, back, held]
             end
             [rows.size, *rows.flatten]
           end
 
           # Where each loop of +memory+ (a SoundMemory) starts, in 8-byte steps: the four squares by how
           # many eighths they are high, the hiss and the rattle (nought where the game makes no noise), and
-          # the loop of each of +waveforms+ (each 32 steps), in their order.
-          def loops(memory, waveforms)
+          # the loop of each of +waveforms+ (each 32 steps), in their order. The last +waves_from_file+ of
+          # them are the stand-ins of the waves read from the start file, each in its own loop.
+          def loops(memory, waveforms, waves_from_file: 0)
             squares = SoundMemory::SQUARE_EIGHTHS.map { |eighths| memory.start_of([:square, eighths]) }
             noise = %i[hiss rattle].map { |name| memory.loops.key?(name) ? memory.start_of(name) : 0 }
-            [*squares, *noise, waveforms.size, *waveforms.map { |steps| memory.start_of([:wave, steps]) }]
+            written = waveforms.size - waves_from_file
+            waves = waveforms.each_with_index.map do |steps, number|
+              memory.start_of(number < written ? [:wave, steps] : SoundMemory.wave_from_file(number - written))
+            end
+            [*squares, *noise, waveforms.size, *waves]
           end
 
           # The halfwords of +memory+'s loops, after how many there are.

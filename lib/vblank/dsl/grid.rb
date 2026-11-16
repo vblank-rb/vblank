@@ -90,7 +90,7 @@ module VBlank
       def whole_positive!(value, field)
         return value if Whole.positive?(value)
 
-        raise ArgumentError, "grid :#{@name} needs a positive #{field}, got #{value.inspect}"
+        raise ArgumentError, "grid :#{@name} needs a positive #{field}, got #{Messages::PlainWords.words_for_given(value)}"
       end
 
       # The board has to fit on the screen — a board wider or taller than the display
@@ -113,7 +113,7 @@ module VBlank
       # pixels at a time, so an odd width can't be filled that way.
       def even_cell!(cell)
         unless Whole.positive?(cell)
-          raise ArgumentError, "grid :#{@name} needs a positive cell size, got #{cell.inspect}"
+          raise ArgumentError, "grid :#{@name} needs a positive cell size, got #{Messages::PlainWords.words_for_given(cell)}"
         end
         return cell if cell.even?
 

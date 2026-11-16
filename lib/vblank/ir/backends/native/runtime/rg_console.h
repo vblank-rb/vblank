@@ -21,6 +21,34 @@
 #define RG_SCREEN_HEIGHT 160
 #endif
 
+/* The whole screen the window shows, and where the game's screen sits in it. They are the game's
+ * screen and (0, 0) but where the game's screen is shown in the middle of a bigger one, with a
+ * border round it (Console::Description#bordered?, a Game Boy Color's screen on the Advance). */
+#ifndef RG_WHOLE_WIDTH
+#define RG_WHOLE_WIDTH RG_SCREEN_WIDTH
+#endif
+#ifndef RG_WHOLE_HEIGHT
+#define RG_WHOLE_HEIGHT RG_SCREEN_HEIGHT
+#endif
+#ifndef RG_GAME_LEFT
+#define RG_GAME_LEFT 0
+#endif
+#ifndef RG_GAME_TOP
+#define RG_GAME_TOP 0
+#endif
+#define RG_SCREEN_BORDERED (RG_WHOLE_WIDTH != RG_SCREEN_WIDTH || RG_WHOLE_HEIGHT != RG_SCREEN_HEIGHT)
+
+/* How many of the window's pixels, across and down, each pixel of the picture is shown as at a scale
+ * of 1: 2 for a game of big pixels (`screen :bitmap, pixel_size: 2`, Console::Description#pixel_size),
+ * which plays a screen half the console's width and height. The window is sized from the picture as
+ * shown, RG_SHOWN_WIDTH by RG_SHOWN_HEIGHT, so it opens the console's size whatever the game's pixels,
+ * and its scale is counted in the console's pixels; the picture is stretched to fill it. */
+#ifndef RG_PIXEL_SIZE
+#define RG_PIXEL_SIZE 1
+#endif
+#define RG_SHOWN_WIDTH (RG_WHOLE_WIDTH * RG_PIXEL_SIZE)
+#define RG_SHOWN_HEIGHT (RG_WHOLE_HEIGHT * RG_PIXEL_SIZE)
+
 /* How many bits of each colour channel the console shows, from the top. */
 #ifndef RG_COLOR_BITS
 #define RG_COLOR_BITS 5
@@ -68,6 +96,31 @@
 #define RG_SPRITE_PIECES_A_LINE 0
 #endif
 
+/* Of those, how many slivers eight pixels wide it fetches, from the piece furthest back, or 0 where
+ * it counts none (Console::Description#sprite_slivers_drawn_a_line); and how many pixels it draws,
+ * from the front, each piece spending its whole width, or 0 where it counts none
+ * (Console::Description#sprite_pixels_drawn_a_line). */
+#ifndef RG_SPRITE_SLIVERS_A_LINE
+#define RG_SPRITE_SLIVERS_A_LINE 0
+#endif
+#ifndef RG_SPRITE_PIXELS_A_LINE
+#define RG_SPRITE_PIXELS_A_LINE 0
+#endif
+
+/* How many pieces of sprites the console's sprite table holds, the pieces furthest back left out
+ * of every line once it is full, or 0 where every piece is drawn
+ * (Console::Description#sprite_pieces_drawn_a_screen). */
+#ifndef RG_SPRITE_PIECES_A_SCREEN
+#define RG_SPRITE_PIECES_A_SCREEN 0
+#endif
+
+/* Whether the console's cartridge fills that table from the piece furthest back, so a full table
+ * leaves out the pieces in front, rather than front-most first
+ * (Console::Description#sprite_table_filled_from). */
+#ifndef RG_SPRITE_TABLE_FROM_BACK
+#define RG_SPRITE_TABLE_FROM_BACK 0
+#endif
+
 /* Whether the console's cartridge carries a motor that a game's `rumble` runs
  * (Console::Description#rumbles). */
 #ifndef RG_CONSOLE_RUMBLES
@@ -95,6 +148,13 @@
 #define RG_ONE_PLAYERS_BUTTONS 8191
 #endif
 
+/* The buttons the console has, a bit each in the same order (Computer::ConsoleNumbers): the ones
+ * the window gives keys and gamepad buttons to and lists in its menu. Every build writes it; this is
+ * the Advance's ten, for a file of the runtime read on its own. */
+#ifndef RG_CONSOLE_BUTTONS
+#define RG_CONSOLE_BUTTONS 1023
+#endif
+
 /* Where each number of a picture's tile and colour layouts sits in
  * the rules a start-file fill is handed (Computer::StartFileNumbers, which writes them into every
  * build). These are the same numbers, for a file of the runtime read on its own, as an editor's
@@ -111,7 +171,7 @@
  * RG_PIECE_UPSIDE_DOWN; and, at RG_PIECE_BANK_AT, which bank of the original's colours it is drawn
  * from, two bytes. */
 #ifndef RG_TILE_BYTES_AT
-#define RG_FILL_POSE_HEADER_NUMBERS 15
+#define RG_FILL_POSE_HEADER_NUMBERS 18
 #define RG_CHOSEN_COLORS_HEADER_NUMBERS 6
 #define RG_FRAME_ENTRY_BYTES 4
 #define RG_FRAME_HEADER_BYTES 4
@@ -140,7 +200,7 @@
 #define RG_COLOR_CHANNEL_BITS_AT 4
 #define RG_COLOR_FORMAT_NUMBERS 5
 #define RG_FILL_RULES_HEADER_NUMBERS 14
-#define RG_FILL_BACKGROUND_HEADER_NUMBERS 21
+#define RG_FILL_BACKGROUND_HEADER_NUMBERS 24
 #define RG_MARKED_COLOR 32768
 #endif
 

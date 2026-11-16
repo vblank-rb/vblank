@@ -51,23 +51,82 @@ module VBlank
           attr_reader :loops
 
           # The loops +program+ plays: every square width, each waveform it or its songs name, and the noise
-          # when it or a song makes any.
-          def initialize(program)
+          # when it or a song makes any. A desktop, web or Ruby build that reads a song's notes or waves
+          # from its start file hands what the program alone does not show: +waveforms+, the 32 steps of
+          # each waveform it plays (the ones those notes name included), and +waves_from_file+, how many
+          # waves it reads from the file, each given a loop of its own, made of the stand-in steps
+          # (IR::StartFile.wave_stand_in) and written again from the file as the game starts
+          # (rg_spu_fill_wave). A console's own build reads neither.
+          def initialize(program, waveforms: [], waves_from_file: 0)
             @loops = {}
             @next_free = Console::PS1Hardware::SPU_FIRST_FREE
             @kept_as = {} # a recording's name and read-back -> the loop that holds its samples
             made(program).each { |name, samples| keep(name, ADPCM.encode(samples, loop: true)) }
+            waveforms.each do |steps|
+              keep([:wave, steps], ADPCM.encode(self.class.wave_samples(steps), loop: true)) unless @loops.key?([:wave, steps])
+            end
+            waves_from_file.times do |number|
+              keep(self.class.wave_from_file(number), ADPCM.encode(self.class.wave_samples(StartFile.wave_stand_in), loop: true))
+            end
             # RECORDINGS ALIKE ARE KEPT ONCE. What sound memory keeps of a recording is its samples and where
             # it reads back to; the rate it was made at, the note it plays and its shape are the voice's pitch
             # and loudness, set for each play (Runtime::Recordings' row). So recordings declared under several
             # names with the same samples, as one instrument's recording shaped several ways is, read one
             # copy, each still under its own name.
-            recordings(program).each do |(name, back), (samples, loop_from)|
+            laid_out = self.class.laid_out_at_start(program)
+            ways = recordings(program)
+            ways.each do |(name, back), (samples, loop_from)|
+              next if laid_out.key?(name)
+
               kept = [:recording, samples, back]
               keep(kept, ADPCM.encode(samples, loop: back.positive?, loop_from: loop_from)) unless @loops.key?(kept)
               @kept_as[self.class.recording(name, back)] = kept
             end
+            laid_out.each_value { |node| keep_laid_out(node, ways) }
           end
+
+          # A RECORDING LAID OUT AS THE GAME STARTS (a desktop, web or Ruby build's): one whose samples,
+          # hold or length are read from the start file. Its samples, or how far back it reads, or both,
+          # are not known while building, so neither is what its loops hold. It is given loops of its
+          # own, never shared with a recording alike, and the runtime lays it out and encodes it there
+          # as the game starts (rg_spu_fill_recording), the way this file does for one written in the
+          # game. Each such recording, by its name. A console's own build reads no file. One in the Super
+          # Nintendo chip's format is decoded from the file then, its length and hold with it.
+          def self.laid_out_at_start(program)
+            program.walk.select { |node| node.kind == :sample && laid_out_at_start?(node) }.to_h { |node| [node.name, node] }
+          end
+
+          def self.laid_out_at_start?(node) = !node.from_file.nil? || back_read_at_start?(node)
+
+          # Whether how far back recording +node+ reads when it holds is known only as the game starts:
+          # its hold or its length is in the start file, or it is decoded from there.
+          def self.back_read_at_start?(node)
+            settings = node.settings_from_file or return false
+
+            !(settings.holds_from || settings.length || settings.brr).nil?
+          end
+
+          # Whether recording +node+ can come to hold from no sample as the game starts, when a note plays
+          # it once through: its hold is in the start file, or what it is decoded from there.
+          def self.hold_read_at_start?(node) = !(node.settings_from_file&.holds_from || node.settings_from_file&.brr).nil?
+
+          # The name of the loop recording +name+ is laid out in as the game starts: +way+ :once, played
+          # once through, or :held, played holding.
+          def self.laid_out(name, way) = [:laid_out, name, way]
+
+          # The most samples .recording_samples lays a recording of +length+ out as, over every way back.
+          def self.most_held_samples(length)
+            (1..length).map do |back|
+              from = length - back
+              aligned = from.ceildiv(ADPCM::SAMPLES_A_BLOCK) * ADPCM::SAMPLES_A_BLOCK
+              times = ADPCM::SAMPLES_A_BLOCK / back.gcd(ADPCM::SAMPLES_A_BLOCK)
+              aligned + (back * times <= MOST_LOOP_SAMPLES ? back * times : back + ((-back) % ADPCM::SAMPLES_A_BLOCK))
+            end.max
+          end
+
+          # Where the loop recording +name+ is laid out in as the game starts, played +way+ (.laid_out),
+          # begins, in 8-byte steps; nil for a recording not laid out then, or never played that way.
+          def laid_out_start(name, way) = @loops[self.class.laid_out(name, way)]&.start
 
           # The name of recording +name+ played going +back+ samples at its end (nought for once through).
           def self.recording(name, back) = [:recording, name, back]
@@ -127,6 +186,9 @@ module VBlank
           # The name of the loop of the waveform +shape+ (a name, or its 32 steps).
           def self.wave(shape) = [:wave, Audio::Sound.wavetable(shape)]
 
+          # The name of the loop of wave +number+ of those read from the start file, in their order.
+          def self.wave_from_file(number) = [:wave_from_file, number]
+
           def self.noise(metallic) = metallic ? :rattle : :hiss
 
           # One wave of a square high for +eighths+.
@@ -163,6 +225,27 @@ module VBlank
             @next_free += bytes.bytesize
           end
 
+          # The loops recording +node+, laid out as the game starts, is played from, by the ways +ways+
+          # (#recordings) has it played, each the stand-in the runtime writes over: once through, as long
+          # as all its samples; holding, as long as its layout where how far back it reads is written in
+          # the game, and as the longest layout of any way back where it is read from the start file
+          # (which a hold read from there needs, though nothing plays it holding yet).
+          def keep_laid_out(node, ways)
+            length = node.bytes.bytesize
+            played = ways.keys.filter_map { |name, back| back if name == node.name }
+            keep(self.class.laid_out(node.name, :once), stand_in(length)) if played.include?(0)
+            held = played.select(&:positive?)
+            return if held.empty? && !self.class.hold_read_at_start?(node)
+
+            room = if self.class.back_read_at_start?(node) then self.class.most_held_samples(length)
+                   else held.map { |back| ways.fetch([node.name, back]).first.size }.max
+                   end
+            keep(self.class.laid_out(node.name, :held), stand_in(room))
+          end
+
+          # Silence +samples+ long, a whole number of blocks.
+          def stand_in(samples) = "\0".b * ([samples, 1].max.ceildiv(ADPCM::SAMPLES_A_BLOCK) * ADPCM::BLOCK_BYTES)
+
           # Each recording the program plays, by [its name, how far back it reads at its end], as the
           # samples sound memory keeps and where their loop starts (SoundMemory.recording_samples).
           def recordings(program)
@@ -175,12 +258,18 @@ module VBlank
             end
             # A song's recorded note reads back to where its recording holds from (SongTable, recorded_note_row).
             notes = IR::Tunes.declared_songs(program).flat_map(&:voices).select { |part| IR::Tunes.part_kind(part) == :recorded }.flat_map do |part|
-              part.events.select { |event| event[1].positive? }.filter_map do |event|
-                sample = declared[event[2] || part.instrument] or next
+              # A part reading its notes from the start file (a desktop, web or Ruby build's) can play
+              # any instrument it names, its own included, which are known before its notes are.
+              named = part.from_file ? [part.instrument, *part.from_file.instruments] : []
+              written = part.events.select { |event| event[1].positive? }.map { |event| event[2] || part.instrument }
+              (named + written).filter_map do |name|
+                sample = declared[name] or next
                 [[sample.name, Assets::Sample.of(sample).loop_length], nil]
               end
             end
-            (plays + notes).uniq.to_h do |(name, back), _|
+            # One whose hold is read from the file can come to hold from none, and then a note plays it once through.
+            once = declared.values.select { |node| self.class.hold_read_at_start?(node) }.map { |node| [[node.name, 0], nil] }
+            (plays + notes + once).uniq.to_h do |(name, back), _|
               data = declared.fetch(name).bytes.unpack("c*").map { |sample| sample << 8 }
               [[name, back], self.class.recording_samples(data, back)]
             end

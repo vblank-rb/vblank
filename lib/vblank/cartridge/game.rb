@@ -116,15 +116,40 @@ module VBlank
         evaluated(settings, refuse_console_not_for!(console), variant).program
       end
 
+      # THE KEPT NUMBERS THAT DIFFERED FROM WHAT THEY WERE COPIED FROM, as the game plays on the
+      # interpreter for +frames+: a list of IR::Backends::Reference::CopyWatch::Difference, each
+      # naming the line that kept a local's number, the local, the game variables it was worked
+      # out from, the number kept and the one they read when the local was read, and the frame.
+      #
+      # A plain Ruby local keeps the number of its line, as Ruby's does (`kept = @x`, then a call
+      # that moves @x: `kept` is still the old number). A game written while such a local followed
+      # its variable may lean on the live read, and this finds the line. Where Ruby's local would
+      # also have kept the old number, the game's line is what to change: read the variable again
+      # after the call. The cartridge is not touched, and nor is any other run.
+      #
+      # The block, if given, is handed the interpreter before it plays, to hold buttons
+      # (`input_each_frame`). +settings+, +console+ and +variant+ are as for #program.
+      def copies_that_differed(frames:, settings: {}, console: @consoles.first, variant: variant_for(console))
+        evaluated = evaluated(settings, refuse_console_not_for!(console), variant)
+        watch = IR::Backends::Reference::CopyWatch
+        copies = evaluated.hidden_variable_notes.select { |note| note.why == :copy }
+                          .to_h { |note| [note.name, watch::CopyLine.new(source: note.source, local: note.local)] }
+        interpreter = IR::Backends::Reference.new.extend(watch).watch_copies(copies)
+        yield interpreter if block_given?
+        interpreter.run(evaluated.program, frames: frames)
+        interpreter.copy_differences
+      end
+
       # THE PROGRAM A GAME PLAYED AS RUBY RUNS: checked as a build checks it, every guardrail on and
       # their warnings printed to +err+, without making the cartridge (VBlank.build's +cartridge+).
       # +progress+, +settings+ and +console+ are as for #build_rom. +for_computer+ is what the game's
       # `built_for_computer?` answers: true, unless the run is to stand for the cartridge's game.
-      # +pack_at_start+ leaves the game's data pack out (Cartridge::Options).
+      # +pack_at_start+ leaves the game's data pack out (Cartridge::Options). +on_read+ is as for
+      # VBlank.build.
       def checked_program(err: $stderr, progress: Messages::Progress.silent, settings: {}, console: @consoles.first,
-                          for_computer: true, pack_at_start: false)
+                          for_computer: true, pack_at_start: false, on_read: nil)
         build_rom(out: nil, err: err, progress: progress, profile: false, settings: settings, console: console,
-                  cartridge: false, for_computer: for_computer, pack_at_start: pack_at_start)
+                  cartridge: false, for_computer: for_computer, pack_at_start: pack_at_start, on_read: on_read)
       end
 
       # What a shell is built from: the game's +program+ with its pack left out, its +data_pack+
@@ -133,14 +158,13 @@ module VBlank
       ShellParts = Data.define(:program, :data_pack, :first_screen)
 
       # WHAT A SHELL IS BUILT FROM (Original::Shell.build), a ShellParts: the program
-      # #checked_program makes with the pack left out, and the game's data pack and first screen.
-      # The block runs a second time for those two, since a checked build hands back only its program.
+      # #checked_program makes with the pack left out, and the game's data pack and first screen,
+      # taken from the same reading of the game (+on_read+): a big game takes seconds to read.
       def shell_parts(err: $stderr, progress: Messages::Progress.silent, settings: {}, console: @consoles.first)
-        program = checked_program(err: err, progress: progress, settings: settings, console: console, pack_at_start: true)
-        options = @options.with(console: console, variant: variant_for(console), consoles: @consoles, for_computer: true,
-                                pack_at_start: true)
-        evaluated = EvaluatedGame.new(@block, options: options, settings: settings)
-        ShellParts.new(program: program, data_pack: evaluated.declared_data_pack, first_screen: evaluated.declared_shell_screen)
+        read = nil
+        program = checked_program(err: err, progress: progress, settings: settings, console: console, pack_at_start: true,
+                                  on_read: ->(evaluated) { read = evaluated })
+        ShellParts.new(program: program, data_pack: read.declared_data_pack, first_screen: read.declared_shell_screen)
       end
 
       # THE DATA PACK FILE THE ALL-IN-ONE BUILD MAKES from the copy of the original the game reads,
@@ -182,17 +206,18 @@ module VBlank
       #
       # +for_computer+ is for a build that goes on to play on a computer, which the game can ask
       # about (`built_for_computer?`). +pack_at_start+ leaves the game's data pack out, for a build
-      # for a computer that makes no cartridge (+cartridge+ false); see Cartridge::Options.
+      # for a computer that makes no cartridge (+cartridge+ false); see Cartridge::Options. +on_read+
+      # is as for VBlank.build.
       def build_rom(out: $stdout, err: $stderr, validate: true, progress: Messages::Progress.silent,
                     profile: true, settings: {}, console: @consoles.first, variant: variant_for(console), cartridge: true,
-                    for_computer: false, pack_at_start: false)
+                    for_computer: false, pack_at_start: false, on_read: nil)
         console = refuse_console_not_for!(console)
         options = { code: @code, maker: @maker,
                     **@options.with(console: console, variant: variant, for_computer: for_computer, consoles: @consoles,
                                     pack_at_start: pack_at_start).to_h }
         options = options.except(*(Console.console_settings - Console.for(console).console_settings))
         VBlank.build(@title, validate: validate, out: out, err: err, progress: progress, profile: profile,
-                              settings: settings, cartridge: cartridge, **options, &@block)
+                              settings: settings, cartridge: cartridge, on_read: on_read, **options, &@block)
       end
 
       # A friendly output filename from the title, ending as the console's cartridges do:

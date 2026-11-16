@@ -182,7 +182,8 @@ module VBlank
         # of them; and nothing else in the program names either list. Both are the framework's own,
         # which nothing compares with the interpreter's, so a lowering that keeps the order in tables
         # of its own (SNES::Lowering#emit_keyed_sort, Genesis::Lowering#emit_keyed_sort) answers for
-        # what is drawn from it and nothing else.
+        # what is drawn from it and nothing else. The Color sorts the list itself, its places written
+        # out one by one (GBC::Lowering::KeyedSort).
         def sorts_kept_apart
           @sorts_kept_apart ||= begin
             uses = list_uses
@@ -190,22 +191,29 @@ module VBlank
           end
         end
 
-        # Which shape each `repeat` of the program can take (LoopForm). A loop is kept apart from the
-        # game's variables in a routine the frame boundary can call again while it is going, and in a
-        # timer's handler that can wait: the next frame's ticks run that handler again from its start
-        # while the call that waits is part way through its loop.
+        # Which shape each `repeat` of the program can take (LoopForm).
         def loop_form
           @loop_form ||= LoopForm.new(@program, apart_in: routines_reentered_at_frame_boundary.map { |name| @funcs.fetch(name) } +
-                                                          @tick_handlers.values.select { |handler| frame_ends_under?(handler) })
+                                                          tick_handlers_waiting.values)
         end
 
-        # Whether a frame can end part way through the statements under +root+: a wait of their own, or a
-        # call of a routine that waits.
-        def frame_ends_under?(root)
-          statements = Reach.statements_under(root)
-          statements.any? { |node| FRAME_ENDING_KINDS.include?(node.kind) } ||
-            Reach.routines_named(statements).uniq.any? { |called| @funcs.key?(called) && waits?(called) }
+        # THE TICK HANDLERS THAT CAN WAIT, by their timer's name. A handler runs at the frame boundary, so one
+        # that waits, itself or in a routine it calls, runs again inside its own wait, and the interpreter
+        # keeps each run's loop counts and ticks still to answer to itself (Reference#accrue_timer). A cartridge
+        # keeps them at fixed places, so it keeps them apart and puts them back as it does a routine's
+        # (#routines_reentered_at_frame_boundary).
+        def tick_handlers_waiting
+          @tick_handlers_waiting ||= @tick_handlers.select { |_, handler| statements_wait?(Reach.statements_under(handler)) }
         end
+
+        # Whether the build keeps the number of the last pass a reader of the running cartridge compares (each
+        # runtime's Frame::LAST_PASS). It otherwise marks the last pass as it reads it (Frame::LAST_PASS_TAKEN), and the
+        # boundary after it moves nothing on, as the interpreter's run stops there (Reference#advance_frame).
+        # A tick handler that waits ends a pass inside the boundary it runs at, so the pass the game loop
+        # ended and the handler's own end in one frame, and the reader sees neither: the boundary past the
+        # last pass would move the timers on before it could be marked. With the number written ahead, the
+        # runtime itself finds that boundary.
+        def keeps_last_pass_number? = tick_handlers_waiting.any?
 
         # THE ROUTINES A FRAME BOUNDARY CAN CALL WHILE A CALL OF THEM IS STILL GOING, by name. What a timer
         # does as it ticks, and a bend's steps, run at the frame boundary, which can be inside a routine's
@@ -242,8 +250,14 @@ module VBlank
         def waits?(name)
           (@waits ||= {}).fetch(name) do
             @waits[name] = false
-            @waits[name] = frame_ends_under?(@funcs.fetch(name))
+            @waits[name] = statements_wait?(Reach.statements_under(@funcs.fetch(name)))
           end
+        end
+
+        # Whether +statements+ reach a frame boundary of the game's own, among them or in a routine they call.
+        def statements_wait?(statements)
+          statements.any? { |node| FRAME_ENDING_KINDS.include?(node.kind) } ||
+            Reach.routines_named(statements).uniq.any? { |called| @funcs.key?(called) && waits?(called) }
         end
 
         # Every game loop of the program.
@@ -268,6 +282,26 @@ module VBlank
         # notes each background put up in a pass, so that write leaves it at its corner for the pass's frame
         # (Reference#put_up_background).
         def places_at_pass_end?(*kinds) = @program.walk.any? { |node| kinds.include?(node.kind) && placed_at_pass_end?(node) }
+
+        # The declared background a change to one by +node+'s name means, written in +scene+'s routine (nil
+        # outside every scene's): SceneHandover#background_named, raising the lowering's own error for a name
+        # nothing declares.
+        def background_named(node, scene:) = @handover.background_named(node, scene: scene, error: @error)
+
+        # A STACK A LOWERING'S LAYERS CANNOT SHOW: a scene's own background behind one every screen shows
+        # (SceneHandover#own_scenery_behind_shared?), where the lowering keeps a scene's own scenery in the
+        # layers in front of the shared. Refused with +not_made_yet+ (an error that includes
+        # Backends::NotMadeYet) naming +part+; the block picks the backgrounds the lowering stacks in its
+        # layers, as SceneHandover's does.
+        def refuse_unmade_stacking!(not_made_yet, part:, &stacked)
+          return unless @scenes.each_key.any? { |scene| @handover.own_scenery_behind_shared?(scene, &stacked) }
+
+          raise not_made_yet.new(
+            "This game puts a scene's own background in a layer behind a background that every screen shows. The " \
+            "#{@console.title} build does not make that yet. To fix this, build the game for the Game Boy Advance " \
+            "alone for now (`consoles: %i[gba]`).", part: part
+          )
+        end
 
         # THE REFUSALS EVERY CARTRIDGE LOWERING MAKES, IN ONE ORDER, before it makes anything; a
         # console's own refusals come after these. Written in each lowering they drifted, and one game
@@ -338,9 +372,10 @@ module VBlank
         end
 
         # What the console cannot do at all, the layers one screen cannot have, more sprites than
-        # it keeps places for, and a sprite of several lists of colours its build does not make,
-        # refused in the words a game's build and the interpreter refuse them in
-        # (Console::Answers#refusals, Checks::LayerRefusals, Checks::TooManySprites,
+        # it keeps places for, a picture the game paints shown beside other poses, and a sprite of
+        # several lists of colours its build does not make, refused in the words a game's build and
+        # the interpreter refuse them in (Console::Answers#refusals, Checks::LayerRefusals,
+        # Checks::TooManySprites, Checks::PaintedPictureWithOtherPoses,
         # Checks::PosesWithDifferentColors). A
         # program handed straight to a lowering, as a test's is, never passes the build's checks;
         # and one that names no console, or another, is asked about as this one's. It reads every
@@ -353,6 +388,7 @@ module VBlank
           asked = @program.console == @console.name ? @program : @program.copy.tap { |copy| copy.console = @console.name }
           refusal = refused&.words || Guardrails::Checks::LayerRefusals.message(asked) ||
                     Guardrails::Checks::TooManySprites.new.refusal_message(asked) ||
+                    Guardrails::Checks::PaintedPictureWithOtherPoses.new.refusal_message(asked) ||
                     Guardrails::Checks::PosesWithDifferentColors.new.refusal_message(asked)
           raise @error, refusal if refusal
 

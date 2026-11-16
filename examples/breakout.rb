@@ -12,7 +12,9 @@
 #   - Each brick you break scores points (the top rows are worth more).
 #   - Miss the ball and it falls off the bottom: you lose one of three lives.
 #   - Clear every brick to win; lose all three lives and it's game over.
-#   - Press START on the title screen to play.
+#   - Press START on the title screen to play, and START during a game to pause it.
+#   - After a game, START goes back to the title and START there begins a new one:
+#     `part :play` and `start_over :play` put the whole game back as it began.
 #
 # Why this one is drawn double-buffered (tear-free). Every frame we clear the
 # screen and repaint the whole wall of bricks, the paddle, the ball, and the HUD —
@@ -155,23 +157,36 @@ module Breakout
     define_sound :lose,        frequency: 160, duty: :half,    decay: :medium
 
     # --- RAM variables (each `var` hands back a handle we compare and mutate) ---
+    #
+    # First what the cartridge keeps from one game to the next. The best score so far is
+    # kept in the cartridge's save memory so it survives the console being turned off.
+    # `save_var` is used just like `var`; the framework loads it at boot and saves it
+    # automatically whenever it changes (see the two game-ending branches in update_ball).
+    # No save hardware to touch.
+    high        = save_var :high_score, 0
+    state       = 0   # 0=title, 1=playing, 2=cleared, 3=game_over
+    blink       = true # flashes the title prompt
+    drop        = layout.height # how far above the screen the title still is, as it drops in
+    _hit        = 0    # scratch: where on the paddle the ball landed
+
+    # Then one game's play. A new game needs every brick standing, the score at nought and
+    # the lives full again, and that is a lot of things to put back by hand. `part :play`
+    # says that every variable declared from this line on belongs to the play, and
+    # `start_over :play` (on the title, below) puts all of them back the way they are
+    # declared here, on one pass. What was declared above it stays as it is: the best score,
+    # the title's state.
+    part :play
     paddle_x    = var :paddle_x, layout.start_paddle_x
     ball_x      = var :ball_x, layout.ball_start[0]
     ball_y      = var :ball_y, layout.ball_start[1]
     ball_dx     = BALL_SPEED
     ball_dy     = var :ball_dy, -BALL_SPEED  # negative = heading up toward the wall
     score       = 0
-    # The best score so far, kept in the cartridge's save memory so it survives the
-    # console being turned off. `save_var` is used just like `var`; the framework
-    # loads it at boot and saves it automatically whenever it changes (see the two
-    # game-ending branches in update_ball). No save hardware to touch.
-    high        = save_var :high_score, 0
     lives       = START_LIVES
     bricks_left = var :bricks_left, bricks.length
     best_bar    = var :_best_bar, 0 # how much of the record this run has matched
-    state       = 0   # 0=title, 1=playing, 2=cleared, 3=game_over
-    blink       = true # flashes the title prompt
-    _hit        = 0    # scratch: where on the paddle the ball landed
+    ready       = true  # "READY" shows for the first second of a game
+    paused      = false # START during a game holds it still
 
     # One on/off flag per brick (1 = still there). Kept in a hash keyed by the
     # brick's name so the game code can look each one up while it loops the wall.
@@ -289,22 +304,17 @@ module Breakout
       end
     end
 
-    # Start a fresh game: stand every brick back up, reset the counters, centre the
-    # paddle, and serve.
-    func :new_game do
-      bricks.each { |b| alive[b[:name]] = 1 }
-      lives = START_LIVES
-      score = 0
-      bricks_left = bricks.length
-      paddle_x = layout.start_paddle_x
-      call :serve
-      state = 1
-    end
-
     # --- Scenes ---
 
     scene :title do
       clear_screen :black
+      # The title drops in from above when the console is switched on. `camera` moves the
+      # window the picture is seen through, not the picture: with the window `drop` pixels
+      # down, the picture shows that far up the screen, so bringing `drop` to nought slides
+      # it down into place. Nothing is redrawn to move it, which is also how `shake_screen`
+      # jolts it for free.
+      drop -= 4 if drop > 0
+      camera 0, drop
       draw_text "BREAKOUT", :center, 50, :cyan
       draw_text "BEST", :right, 70, :gray, within: layout.stat_label
       draw_number :high_score, :left, 70, :white, digits: 3, within: layout.stat_number
@@ -316,18 +326,47 @@ module Breakout
         end
       end
       draw_text "PRESS START", :center, 96, :gray if blink
-      call :new_game if pressed(:start)
+
+      # A fresh game: every brick standing, the score at nought, three lives, the paddle in
+      # the middle and the ball on it, all from the one word. A title left before it has
+      # finished dropping in puts the window straight back.
+      if pressed(:start)
+        drop = 0
+        camera 0, 0
+        start_over :play
+        state = 1
+      end
     end
 
     scene :playing do
       clear_screen :black
 
-      # Steer the paddle and keep it on screen.
-      paddle_x -= PADDLE_SPEED if held(:left)
-      paddle_x += PADDLE_SPEED if held(:right)
-      paddle_x.clamp! 0, layout.width - PADDLE_W
+      # START holds the game still and dims the screen to half, so the wall is still there
+      # to plan the next shot from; START again lets go. `fade` sets how far the screen is
+      # faded toward black, 0 (as drawn) to 100 (all black), and nothing is redrawn for it.
+      if pressed(:start)
+        if paused
+          paused = false
+          fade :black, 0
+        else
+          paused = true
+          fade :black, 50
+        end
+      end
 
-      call :update_ball
+      unless paused
+        # Steer the paddle and keep it on screen.
+        paddle_x -= PADDLE_SPEED if held(:left)
+        paddle_x += PADDLE_SPEED if held(:right)
+        paddle_x.clamp! 0, layout.width - PADDLE_W
+
+        call :update_ball
+
+        # "READY" goes after the first second of a game. `after` runs its block once, when its
+        # line has run for that long. It is written inside the part, so
+        # `start_over :play` counts it from nought again and every new game says READY.
+        after(1, :seconds) { ready = false }
+      end
 
       # Repaint the whole picture. Each standing brick draws itself; broken ones
       # simply aren't drawn. Safe to do wholesale every frame because we're buffered.
@@ -336,6 +375,7 @@ module Breakout
       end
       draw_rect_at :paddle_x, layout.paddle_y, PADDLE_W, PADDLE_H, :white
       draw_rect_at :ball_x, :ball_y, BALL_SIZE, BALL_SIZE, :white
+      draw_text "READY", :center, 100, :white if ready
 
       # HUD: score (up to three digits) and lives remaining.
       draw_number score, :left, HUD_Y, :white, digits: 3, within: layout.hud_sides

@@ -30,9 +30,11 @@ module ProbeByNameTests
     end
   end
 
-  # The probe on +cartridge+, played until the game's first pass is over.
+  # The probe on +cartridge+, played until the game's first pass is over. Its variables hold
+  # power-on memory until the game has started, so the step is not read before then.
   private def probe_on(cartridge)
     VBlank::Playthroughs::Probe.open(cartridge) do |probe|
+      probe.step_until_started(within: 120)
       probe.step_until("the first pass over", within: 120) { probe.var(:step) > 1 }
       yield probe
     end
@@ -51,6 +53,20 @@ module ProbeByNameTests
       assert_equal [7, 9], probe.list(:trail)
       assert_equal 1, probe.pool(:guards, :x).compact.size
       assert_equal interpreter.pool(:guards, :x), probe.pool(:guards, :x), "the slot the interpreter spawned into"
+    end
+  end
+
+  # A probe opens at power-on, before the game has set anything; stepped until the game has
+  # started, the numbers it starts with are in place.
+  def test_a_probe_stepped_until_the_game_starts_reads_its_starting_numbers
+    VBlank::Playthroughs::Probe.open(named_game) do |probe|
+      assert_equal 0, probe.frame, "opened at power-on"
+      refute probe.game_started?, "nothing has run at power-on"
+
+      probe.step_until_started(within: 120)
+
+      assert_predicate probe, :game_started?
+      assert_equal [3, -3, 2.5], [probe.var(:hearts), probe.var(:lift), probe.var(:pace)]
     end
   end
 

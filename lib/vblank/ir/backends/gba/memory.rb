@@ -110,7 +110,11 @@ module VBlank
           def roomy_free = @roomy_next ? @roomy_far - @roomy_next : 0
 
           # How much of this memory is spoken for, both ends added together.
-          def used = (@near - @base) + (@ceiling - @far)
+          def used = near_bytes + far_bytes
+
+          # How much the base end holds (the variables), and how much the far end (everything else).
+          def near_bytes = @near - @base
+          def far_bytes = @ceiling - @far
 
           # The gap left in the middle, which is what is still to be had. Negative would
           # mean the two ends have passed each other, so a caller asking how much room
@@ -122,9 +126,12 @@ module VBlank
           # that report it (see Divide and Placement) ask it here.
           def overrun = [@near - @far, 0].max
 
+          # +bytes+ rounded up to a whole word, as every claim here is.
+          def self.whole_words(bytes) = bytes + ((-bytes) % WORD)
+
           private
 
-          def whole_words(bytes) = bytes + ((-bytes) % WORD)
+          def whole_words(bytes) = Memory.whole_words(bytes)
         end
       end
     end

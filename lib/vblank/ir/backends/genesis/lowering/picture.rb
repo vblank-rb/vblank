@@ -153,16 +153,9 @@ module VBlank
               always = @handover.always_up.scenery
               own = @scenes.keys.map { |scene| @handover.arrival(scene).scenery }
               @scene_layers = own.map(&:length).max || 0
-              refuse_unmade_stacking!
+              @plan.refuse_unmade_stacking!(NotMadeYet, part: "the picture")
               always.each_with_index { |bg, i| @layers[bg] = @scene_layers + (always.length - 1 - i) }
               own.each { |scenery| scenery.each_with_index { |bg, i| @layers[bg] = scenery.length - 1 - i } }
-            end
-
-            # A stack the planes' order cannot show: a scene's own background behind one every screen shows.
-            def refuse_unmade_stacking!
-              return unless @scenes.each_key.any? { |scene| @handover.own_scenery_behind_shared?(scene) }
-
-              refuse_unmade!("a scene's own background in a layer behind a background every screen shows")
             end
 
             def layer_of(bg) = @layers.fetch(bg) { raise LoweringError, "the background #{bg.name.inspect} is on no plane" }
@@ -180,7 +173,7 @@ module VBlank
               return unless places_sprites?
 
               poses = @objects.values.flat_map(&:poses).uniq.sort_by { |name| @sprite_names.picture_number(name) }
-              refuse_hand_over_inside_test!(:colors) if @scene_colors == :sprites
+              refuse_hand_over_inside_test!(:colors) if sprite_colors_take_turns?
               allot_shared_colors(poses) if @scene_colors
               return make_art_by_scene(poses) if @scene_tiles
 
@@ -202,7 +195,8 @@ module VBlank
                        "colours. #{advance}"
               end
 
-              "The lists of colours this game draws with need more than the four a Genesis holds at once. The Genesis " \
+              "The lists of colours this game draws with need more than the four a Genesis holds at once. Short lists " \
+                "of a background share one of the four, and these lists do not fit even so. The Genesis " \
                 "build keeps each list for the whole game. It does not swap lists as the game runs yet. To fix this, draw " \
                 "with fewer lists of colours. To step through many sets of colours, draw the sprites and the background " \
                 "with one list, and change what it holds with `recolor`: that list keeps one of the four, whatever the " \
@@ -231,6 +225,8 @@ module VBlank
                   @art.cut_sprite_picture(name, image, palette: @art.reserve_held_palette([:sprites, list], own_colors(image)))
                 elsif recolored?(name) || follows_unchanging_list?(name)
                   @art.cut_sprite_picture(name, image, palette: @art.ordered_palette(own_colors(image)))
+                elsif pictures_in_list_order? && (list = list_order_of(name))
+                  @art.cut_sprite_picture(name, image, palette: @art.ordered_palette(own_colors(image), taker: "the list of colours :#{list}"))
                 else
                   @art.cut_sprite_picture(name, image)
                 end
@@ -243,23 +239,36 @@ module VBlank
             # sprites are drawn with; then the colours of the sprite pictures and the backgrounds every screen
             # shows. A scene's own pictures are made after, each from its scene's copy.
             def allot_shared_colors(poses)
+              scene_held = lists_take_turns? ? scene_held_lists : {}
               poses.each do |name|
                 list = followed_list_of(name)
-                @art.reserve_held_palette([:sprites, list], own_colors(@cache.image(picture_named(name)))) if list
+                next unless list && !scene_held.key?([:sprites, list])
+
+                @art.reserve_held_palette([:sprites, list], own_colors(@cache.image(picture_named(name))))
               end
-              @objects.each_value { |obj| recolor_palettes(obj) }
+              later, now = @objects.values.partition { |obj| object_draws_with_scene_held_list?(obj, scene_held) }
+              now.each { |obj| recolor_palettes(obj) }
               @backgrounds.each do |bg|
                 bg.tiles.uniq.each do |tile|
-                  run = run_painting(tile)
-                  image = run || @cache.image(picture_named(tile)) # a run answers list_drawn_from as a picture does
-                  next if bg.recolors.empty? && bg.list_followed_by(image.list_drawn_from).nil?
+                  palette = held_list_palette_of_tile(bg, tile) or next
+                  next unless palette.key && !scene_held.key?(palette.key)
 
-                  palette = list_palette_of(bg, image)
-                  @art.reserve_held_palette(palette.key, palette.colors) if palette.key
+                  @art.reserve_held_palette(palette.key, palette.colors, name: palette.name)
                 end
               end
               poses.each { |name| cut_sprite_picture(name) unless colors_scene_of_picture(name) }
               @backgrounds.each { |bg| make_background_art(bg) unless colors_scene_of(bg) }
+              scene_held.each { |key, held| @art.reserve_scene_held_palette(key, held.colors, held.scenes, name: held.name) }
+              later.each { |obj| @art.with_colors_of(object_scene(obj)) { recolor_palettes(obj) } }
+            end
+
+            # The palette of a list the game changes that the tile +tile+ of +bg+ is drawn from (#list_palette_of),
+            # or nil for a tile drawn in its own colours.
+            def held_list_palette_of_tile(bg, tile)
+              image = run_painting(tile) || @cache.image(picture_named(tile)) # a run answers list_drawn_from as a picture does
+              return nil if bg.recolors.empty? && bg.list_followed_by(image.list_drawn_from).nil?
+
+              list_palette_of(bg, image)
             end
 
             # THE SCENE WHOSE OWN COLOURS +bg+ IS DRAWN IN, in a game of +scene_colors+: the scene it is declared
@@ -267,20 +276,102 @@ module VBlank
             def colors_scene_of(bg) = @scene_colors ? scene_owning_background(bg) : nil
 
             # The same for the sprite picture +name+, when sprite colours take turns too (+scene_colors+ of
-            # :sprites).
-            def colors_scene_of_picture(name) = @scene_colors == :sprites ? scene_owning_picture(name) : nil
+            # :sprites or :lists).
+            def colors_scene_of_picture(name) = sprite_colors_take_turns? ? scene_owning_picture(name) : nil
+
+            def sprite_colors_take_turns? = %i[sprites lists list_order].include?(@scene_colors)
+            def lists_take_turns? = %i[lists list_order].include?(@scene_colors)
+            def pictures_in_list_order? = @scene_colors == :list_order
+
+            # THE LIST A PICTURE IS DRAWN IN ITS ORDER FROM, built with :list_order: the list of colours the
+            # picture was declared with (`colors:`, or the bank of a data pack's colours its frame names),
+            # where that list fits a palette. A console game draws each piece from the palette line its frame
+            # names, a line holding one bank of colours in the bank's order. Packed by their colours, pictures
+            # of three banks can need more than three palettes, the colours of one picture spread over two;
+            # in their lists' order, they need one palette for each list, and every picture of one list shares it.
+            # Nil for a picture drawn in no list.
+            def pictures_in_lists? = @objects.values.flat_map(&:poses).uniq.any? { |name| list_order_of(name) }
+
+            def list_order_of(name)
+              list = picture_named(name).colors_name or return nil
+              list if own_colors(@cache.image(picture_named(name))).length <= Art::OWN_COLORS
+            end
 
             # THE +scene_colors+ TO BUILD WITH after a build with +tried+ ran out of palettes (Genesis#build),
             # or nil when nothing is left to try: :backgrounds, each scene's own backgrounds in palettes of its
             # own while it is up, every sprite picture's colours kept for the whole game; then :sprites, a
-            # scene's own sprite pictures' colours taking turns too. Only in a game of one dispatch, as
-            # tiles are (#art_of_one_scene?), and a step that would change nothing is passed over.
+            # scene's own sprite pictures' colours taking turns too; then :lists, a list the game changes that
+            # only some scenes draw with keeping its palette in those scenes alone (#scene_held_lists); then
+            # :list_order, each picture declared with a list cut against a palette of that list (#list_order_of). Only
+            # in a game of one dispatch, as tiles are (#art_of_one_scene?), and a step that would change
+            # nothing is passed over.
             public def scene_colors_after(tried)
               backgrounds = one_dispatch? && @backgrounds.any? { |bg| scene_owning_background(bg) }
-              case tried
-              when false then (:backgrounds if backgrounds) || (:sprites if sprites_of_one_scene?)
-              when :backgrounds then :sprites if sprites_of_one_scene?
+              steps = [(:backgrounds if backgrounds), (:sprites if sprites_of_one_scene?),
+                       (:lists if one_dispatch? && !scene_held_lists.empty?),
+                       (:list_order if one_dispatch? && pictures_in_lists?)].compact
+              return steps.first unless tried
+
+              steps[steps.index(tried) + 1] if steps.include?(tried)
+            end
+
+            # A list the game changes whose palette only some scenes keep: the colours it starts with (15-bit,
+            # see-through left out), those scenes, and what a refusal calls it (ListPalette's +name+).
+            SceneHeldList = Data.define(:colors, :scenes, :name)
+
+            # EVERY LIST THE GAME CHANGES THAT ONLY SOME SCENES DRAW WITH, by the key its palette is kept under
+            # (Art#reserve_held_palette): the lists every sprite picture, sprite and background drawing with it
+            # belongs to a scene of, with those scenes. A scene that draws nothing with such a list needs nothing
+            # of its palette, so built with :lists every other scene has that palette for its own pictures
+            # (Art#reserve_scene_held_palette). A list anything every screen shows draws with is kept for every
+            # scene, as before. A sprite belongs to a scene when every pose it shows does.
+            def scene_held_lists
+              @scene_held_lists ||= begin
+                found = {}
+                drawn = lambda do |key, colors, scene, name = nil|
+                  (found[key] ||= SceneHeldList.new(colors: colors, scenes: [], name: name)).scenes << scene
+                end
+                @objects.values.flat_map(&:poses).uniq.each do |name|
+                  list = followed_list_of(name)
+                  drawn.call([:sprites, list], own_colors(@cache.image(picture_named(name))), scene_owning_picture(name)) if list
+                end
+                @objects.each_value do |obj|
+                  changing_lists_of(obj).each { |entry, colors| drawn.call([:sprites, entry], colors, object_scene(obj, owned: true)) }
+                end
+                @backgrounds.each do |bg|
+                  bg.tiles.uniq.each do |tile|
+                    palette = held_list_palette_of_tile(bg, tile)
+                    drawn.call(palette.key, palette.colors, scene_owning_background(bg), palette.name) if palette&.key
+                  end
+                end
+                found.reject { |_, held| held.scenes.include?(nil) }
+                     .transform_values { |held| held.with(scenes: held.scenes.uniq.sort_by { |scene| @scenes.fetch(scene) }) }
               end
+            end
+
+            # The lists the game changes that +obj+ can be drawn with (`draw_with`, `recolor`), each with the
+            # colours it starts with.
+            def changing_lists_of(obj)
+              obj.recolors.filter_map do |entry|
+                next unless entry.is_a?(Symbol)
+
+                list = color_list_named(entry)
+                [entry, list.colors.drop(1).map { |color| color & 0x7FFF }] unless list.recolors.empty?
+              end
+            end
+
+            # The scene every pose of +obj+ belongs to, or nil where they do not all belong to one. +owned+ asks
+            # it of the scenes the poses belong to, whatever the build; without it, of the scenes whose colours
+            # the poses are cut in (#colors_scene_of_picture).
+            def object_scene(obj, owned: false)
+              scenes = obj.poses.map { |name| owned ? scene_owning_picture(name) : colors_scene_of_picture(name) }.uniq
+              scenes.first if scenes.length == 1
+            end
+
+            # Whether +obj+ can be drawn with a list of +scene_held+, whose palettes are allotted after those
+            # every screen keeps: so its table of palettes is made then too, in its scene's copy.
+            def object_draws_with_scene_held_list?(obj, scene_held)
+              changing_lists_of(obj).any? { |entry, _| scene_held.key?([:sprites, entry]) }
             end
 
             # THE ART OF A GAME WHOSE SCENES EACH KEEP THEIR OWN TILES (Art's +scene_tiles+): what every
@@ -296,7 +387,7 @@ module VBlank
             # already. Kept in the room the scenes take turns with, that sprite would be drawn from
             # whatever the arriving scene put there. Built with :sprites, for a game whose sprite
             # pictures do not all fit beside a scene's backgrounds, a scene's own take turns too, and
-            # the one way of writing the loop that shows such a frame is refused
+            # the ways of writing the loop that show such a frame are refused
             # (#refuse_hand_over_inside_test!).
             def make_art_by_scene(poses)
               refuse_hand_over_inside_test!(:pictures) if @scene_tiles == :sprites
@@ -319,14 +410,54 @@ module VBlank
             # The same is so of a game whose scenes write their own sprite colours as they take over
             # (+scene_colors+ of :sprites): the leaving scene's sprites would be drawn in the arriving
             # scene's palettes. +shared+ names what the scenes take turns with, a key of TAKING_TURNS.
+            #
+            # A TIMER moves on at each wait for the screen (Reference#accrue_timer, Runtime::Frame's
+            # rt_wait_vblank). The loop's own wait ends the pass, after the frame's sprites are placed, so
+            # a timer's change there is noted with the next pass. A wait the pass reaches before the pick,
+            # in a routine it calls, lets the timer change the variable after it was noted.
+            #
+            # A PICK AFTER THE LOOP'S OWN WAIT, written partway down the loop, comes after the end of the
+            # pass that places the frame's sprites, so the first frame places the first scene's sprites
+            # before that scene has put its tiles in; refused wherever it is in the loop.
             def refuse_hand_over_inside_test!(shared)
               @program.walk.select { |node| node.kind == :loop }.each do |loop_node|
+                refuse_pick_after_wait!(loop_node, shared)
                 loop_node.children.reject { |node| Frames.scene_dispatch?(node) }.flat_map { |node| Frames.dispatches_inside(node) }.each do |dispatch|
-                  change = statements_run_before(loop_node, dispatch).find { |node| LightScenes.written_var(node) == dispatch.var && node.kind != :case }
-                  next unless change
+                  ran = statements_run_before(loop_node, dispatch)
+                  change = ran.find { |node| writes_scene_number?(node, dispatch.var) }
+                  raise LoweringError, hand_over_inside_test_message(dispatch, change, shared) if change
 
-                  raise LoweringError, hand_over_inside_test_message(dispatch, change, shared)
+                  wait = ran.find { |node| node.kind == :wait_vblank }
+                  timer_change = wait && timer_write_of(dispatch.var)
+                  raise LoweringError, timer_across_wait_message(dispatch, timer_change, wait, shared) if timer_change
                 end
+              end
+            end
+
+            def writes_scene_number?(node, var) = LightScenes.written_var(node) == var && node.kind != :case
+
+            # The first write of +var+ a timer's handler makes, in it or a routine it calls, with the timer's
+            # name; nil when none does.
+            def timer_write_of(var)
+              Nodes::OnTimer.of(@program).each do |timer, handler|
+                statements = handler.walk.to_a + statements_of_routines_called(handler)
+                change = statements.find { |node| writes_scene_number?(node, var) }
+                return [timer, change] if change
+              end
+              nil
+            end
+
+            # Refuses a scene picked in a statement of +loop_node+ that runs after the end of the pass, which
+            # the console's order puts before the loop's own wait (IR::Frames.loop_in_console_order).
+            def refuse_pick_after_wait!(loop_node, shared)
+              order = @plan.console_loop(loop_node)
+              return if order.pass_end.empty?
+
+              pass_end_at = order.each_time.index { |node| node.equal?(order.pass_end.first) }
+              wait = order.each_time[pass_end_at..].find { |node| node.kind == :wait_vblank }
+              order.each_time[pass_end_at..].each do |statement|
+                dispatch = Frames.dispatches_inside(statement).first
+                raise LoweringError, pick_after_wait_message(dispatch, wait, shared) if dispatch
               end
             end
 
@@ -348,6 +479,26 @@ module VBlank
                 "of the game loop, outside the `if`. Or change `#{name}` after the `case_var`."
             end
 
+            def timer_across_wait_message(dispatch, (timer, change), wait, shared)
+              name = dispatch.var
+              turns = TAKING_TURNS.fetch(shared)
+              "The scenes of this game share #{turns.shared}. " \
+                "The timer `#{timer}` changes `#{name}`#{line_words(change)}. A timer moves on each time " \
+                "the game waits for the screen. The game waits for the screen#{line_words(wait)}, and then, " \
+                "in the same pass, it uses `#{name}` to pick a scene inside an `if`#{line_words(dispatch)}. On that pass, the " \
+                "sprites of the last scene can show with the wrong #{turns.shown_wrong}. To fix this, move `case_var(:#{name})` to " \
+                "the top of the game loop, outside the `if`. Or change `#{name}` in the game loop, not in the timer."
+            end
+
+            def pick_after_wait_message(dispatch, wait, shared)
+              name = dispatch.var
+              turns = TAKING_TURNS.fetch(shared)
+              "The scenes of this game share #{turns.shared}. " \
+                "The game uses `#{name}` to pick a scene#{line_words(dispatch)}, after `wait_vblank`#{line_words(wait)} in the " \
+                "game loop. The sprites of a pass show before the pass picks its scene, so on the first pass the sprites " \
+                "show with the wrong #{turns.shown_wrong}. To fix this, move `case_var(:#{name})` above `wait_vblank`."
+            end
+
             # " at file.rb:12" for the line that wrote +node+, or the nearest line around it that the
             # build knows; nothing where it knows none.
             def line_words(node)
@@ -355,11 +506,12 @@ module VBlank
               node.source ? " at #{node.source}" : ""
             end
 
-            # Every statement a pass of +loop_node+ runs before it reaches +target+, in the order it runs
-            # them, with the bodies of the routines they call (not the scenes, which only the pick runs).
+            # Every statement a pass of +loop_node+ runs before it reaches +target+, in the order the console
+            # runs them (LoweringPlan#console_loop: a wait at the top of the loop ends the pass), with the
+            # bodies of the routines they call (not the scenes, which only the pick runs).
             def statements_run_before(loop_node, target)
               ran = []
-              collect_statements_before(loop_node.children, target, ran)
+              collect_statements_before(@plan.console_loop(loop_node).each_time, target, ran)
               ran
             end
 
@@ -429,6 +581,24 @@ module VBlank
               one_dispatch? && @objects.values.flat_map(&:poses).any? { |name| scene_owning_picture(name) }
             end
 
+            # THE +scene_tiles+ TO BUILD WITH after a build with +tried+ ran out of tiles (Genesis#build),
+            # or nil when nothing is left to try: :backgrounds, then :sprites.
+            public def scene_tiles_after(tried)
+              case tried
+              when false then :backgrounds if art_of_one_scene?
+              when :backgrounds then :sprites if sprites_of_one_scene?
+              end
+            end
+
+            # A TRY SURE TO RUN OUT OF TILES STOPS before its code is made. Every picture's tiles are
+            # in video memory's list by then but those a `set_tile` names in a game whose scenes share
+            # their tiles, made as its code is, and those only add to the count. So a count past the
+            # room now is past it at the end. Only where a later try can help: a game nothing can help
+            # is refused at the end (Art#refuse_too_many_tiles!), where its count is whole.
+            def refuse_tiles_past_room_early!
+              @art.refuse_too_many_tiles! if places_sprites? && scene_tiles_after(@scene_tiles)
+            end
+
             def one_dispatch? = tiled? && @program.walk.count { |node| node.kind == :case } == 1
 
             # THE COLOURS A SPRITE CAN BE DRAWN WITH (`draw_with`): every list it names, a palette each whose
@@ -483,9 +653,11 @@ module VBlank
             def own_colors(image) = image.colors.drop(1).map { |color| color & 0x7FFF }
 
             # The palette of each list +obj+ is drawn with, in the order the sprite is told them (`recolor` counts
-            # from 0 through them), kept for the table the runtime reads.
+            # from 0 through them), kept for the table the runtime reads. Worked out once for each sprite: a
+            # sprite drawing with a list only its scene keeps has them worked out in that scene's copy of the
+            # palettes (#allot_shared_colors).
             def recolor_palettes(obj)
-              return if obj.recolors.empty?
+              return if obj.recolors.empty? || @recolor_lines&.key?(obj)
 
               @recolor_lines ||= {}
               @recolor_lines[obj] = obj.recolors.map { |entry| palette_of_list(entry) }
@@ -514,11 +686,72 @@ module VBlank
               if backdrop_copied? && backdrop_list.name == node.name
                 runtime_call("rt_backdrop_hold", [LabelAddress.new(BACKDROP_COLORS), node.which])
               end
-              palette = @art.held_palette_of([:sprites, node.name]) or return
+              emit_held_list_write([:sprites, node.name], node.which)
+            end
 
-              list = color_list_named(node.name)
-              label = held_colors_label([:list, node.name], list.colors, list.recolors)
-              runtime_call("rt_colors_hold", [LabelAddress.new(label), node.which, Build.int(palette)])
+            # The list kept under +key+ (Art#reserve_held_palette) holds the set +which+ names: written over its
+            # palette, where it has one. A list only some scenes keep (Art#reserve_scene_held_palette) has the set
+            # noted, and is written only while one of them is up, since another scene's own pictures may be in
+            # its palette; one of them taking over writes the set noted (#emit_scene_held_lists).
+            #
+            # A list that shares its palette with other lists (Art#share_held_palette) is written to its own
+            # places alone (Runtime::Tint's rt_colors_hold_places), the first and how many.
+            def emit_held_list_write(key, which)
+              places = @art.held_places_of(key) or return
+              palette = places.palette
+              table = LabelAddress.new(held_colors_table(key))
+              if places.shared
+                first = (palette * Art::PLACES) + places.offset
+                return runtime_call("rt_colors_hold_places", [table, which, Build.int(first), Build.int(places.count - 1)])
+              end
+
+              scenes = @art.scenes_holding(key)
+              return runtime_call("rt_colors_hold", [table, which, Build.int(palette)]) unless scenes
+
+              noted = @held_sets.fetch(key)
+              value(which)
+              store(noted)
+              not_up = fresh("held_list_not_up")
+              jump_unless(scenes.map { |scene| Build.binop(:==, Build.var_ref(@scene), Build.int(@scenes.fetch(scene))) }
+                                .reduce { |either, other| Build.binop(:or, either, other) }, not_up)
+              runtime_call("rt_colors_hold", [table, Build.var_ref(noted), Build.int(palette)])
+              @asm.label(not_up)
+            end
+
+            # A SCENE TAKING OVER that keeps the palette of a list the game changes (Art#reserve_scene_held_palette):
+            # the scene's own colours (#emit_scene_colors) wrote the colours the list starts with over it, so the
+            # set the game last told the list to hold, noted as it was told, is written again. The note of the set
+            # each palette holds (Runtime::Tint's SETS) is cleared first: another scene's own colours have been
+            # there since, and the write would take the same set as written already.
+            def emit_scene_held_lists(scene)
+              (@held_sets || {}).each do |key, noted|
+                next unless @art.scenes_holding(key).include?(scene)
+
+                palette = @art.held_palette_of(key)
+                @asm.clr(:l, runtime_at(Runtime::Tint::SETS, palette * Art::PLACES * 4))
+                runtime_call("rt_colors_hold", [LabelAddress.new(held_colors_table(key)), Build.var_ref(noted), Build.int(palette)])
+              end
+            end
+
+            # For each list only some scenes keep, a number of the game's own noting the set it was last told to
+            # hold: -1 at power-on, which names no set, so the colours it was declared with (Runtime::Tint's
+            # rt_colors_hold).
+            def keep_scene_held_sets
+              return @held_sets = {} unless lists_take_turns?
+
+              @held_sets = scene_held_lists.keys.select { |key| @art.scenes_holding(key) }.to_h { |key| [key, keep_local(:held_set, start: -1)] }
+            end
+
+            # The table rt_colors_hold reads for the list kept under +key+.
+            def held_colors_table(key)
+              if key.first == :sprites
+                list = color_list_named(key[1])
+                return held_colors_label([:list, key[1]], list.colors, list.recolors)
+              end
+
+              _, id, index = key
+              bg = @backgrounds.find { |candidate| candidate.object_id == id }
+              held_colors_label(key, bg.palettes.fetch(index), bg.recolors.map { |step| step.fetch(index) })
             end
 
             # A BACKDROP THAT FOLLOWS A LIST (IR::Nodes::ColorList#backdrop_place). The video chip's register 7
@@ -538,10 +771,13 @@ module VBlank
               @backdrop_list = @program.walk.find { |node| node.kind == :color_list && node.backdrop_place }
             end
 
-            # Where in the colour memory the backdrop is pointed: a place of the list's own palette, or nil.
+            # Where in the colour memory the backdrop is pointed: a place of the list's own palette, or nil. A
+            # list only some scenes keep has its palette given to the other scenes' own pictures while they are
+            # up, so the backdrop is copied.
             def backdrop_pointed_at
               list = backdrop_list
               return nil unless tiled? && list && list.backdrop_place.positive?
+              return nil if @art.scenes_holding([:sprites, list.name])
 
               palette = @art.held_palette_of([:sprites, list.name]) or return nil
               (palette * Art::PLACES) + list.backdrop_place
@@ -575,11 +811,7 @@ module VBlank
               bg.drawn_lists.each_index do |index|
                 next if index == bg.followed_list_index
 
-                palette = @art.held_palette_of([:background, bg.object_id, index]) or next
-
-                steps = bg.recolors.map { |step| step.fetch(index) }
-                label = held_colors_label([:background, bg.object_id, index], bg.palettes.fetch(index), steps)
-                runtime_call("rt_colors_hold", [LabelAddress.new(label), node.which, Build.int(palette)])
+                emit_held_list_write([:background, bg.object_id, index], node.which)
               end
             end
 
@@ -701,7 +933,8 @@ module VBlank
                     if bg.recolors.empty? && bg.list_followed_by(image.list_drawn_from).nil?
                       @art.background_cell(image, of: bg.name)
                     else
-                      @art.background_cell(image, of: bg.name, palette: recolored_palette(bg, image))
+                      palette = recolored_palette(bg, image)
+                      @art.background_cell(image, of: bg.name, palette: palette, offset: recolored_offset(bg, image))
                     end
                   end
                 end
@@ -730,13 +963,21 @@ module VBlank
             # it is see-through and no palette keeps it.
             def recolored_palette(bg, image)
               palette = list_palette_of(bg, image)
-              palette.key ? @art.reserve_held_palette(palette.key, palette.colors) : @art.ordered_palette(palette.colors)
+              palette.key ? @art.reserve_held_palette(palette.key, palette.colors, name: palette.name) : @art.ordered_palette(palette.colors)
+            end
+
+            # The place before the first of the list that palette's tile is drawn from (#recolored_palette): 0,
+            # but for a background's list that shares a palette with others (Art#share_held_palette).
+            def recolored_offset(bg, image)
+              key = list_palette_of(bg, image).key
+              key ? @art.held_offset_of(key) : 0
             end
 
             # The palette a tile of +bg+ drawn with other colours is drawn from (#recolored_palette), before it is
             # allotted: +key+ is whose list keeps it to itself (Art#reserve_held_palette), or nil for a list in its
             # own order (Art#ordered_palette), and +colors+ the colours it starts with (15-bit, see-through left out).
-            ListPalette = Data.define(:key, :colors)
+            # +name+ is what a refusal calls a background's own list (Art#held_name), nil for a list the game named.
+            ListPalette = Data.define(:key, :colors, :name)
 
             def list_palette_of(bg, image)
               list = bg.recolored_list_of(image.list_drawn_from) or
@@ -744,9 +985,11 @@ module VBlank
               index = bg.drawn_lists.index(list)
               colors = bg.palettes.fetch(index).drop(1).map { |color| color & 0x7FFF }
               followed = bg.follows_several? ? bg.follows_each.fetch(index) : (bg.follows if index == bg.followed_list_index)
-              return ListPalette.new(key: nil, colors: colors) if !followed && unchanging_colors?(bg, index, colors)
+              return ListPalette.new(key: nil, colors: colors, name: nil) if !followed && unchanging_colors?(bg, index, colors)
+              return ListPalette.new(key: [:sprites, followed], colors: colors, name: nil) if followed
 
-              ListPalette.new(key: followed ? [:sprites, followed] : [:background, bg.object_id, index], colors: colors)
+              ListPalette.new(key: [:background, bg.object_id, index], colors: colors,
+                              name: "a list of colours of the background :#{bg.name}")
             end
 
             # Whether every set +bg+'s list number +index+ can be drawn with holds +colors+ (its own, place 0
@@ -762,72 +1005,27 @@ module VBlank
             def emit_background(node)
               return if @handover.on_arrival?(node)
 
-              emit_put_up(node, 0, reset_view: 1)
+              # Put up again, it keeps the cells its plane holds (SceneryWrites#emit_put_up_keeping_cells).
+              emit_put_up_keeping_cells(node, layer_of(node)) { |kept| emit_put_up(node, kept ? nil : 0, reset_view: 1) }
             end
 
+            # +which+ is the map whose cells go onto the plane, or nil to keep the cells the plane holds: then
+            # nothing is copied, and the view goes back to the corner as rt_background_put_up puts it there.
             def emit_put_up(bg, which, reset_view:)
-              runtime_call("rt_background_put_up", [Build.int(layer_of(bg)), Build.int(grid_of(bg, which).number), Build.int(reset_view)])
-              note = @put_up_this_pass&.fetch(layer_of(bg)) if reset_view.nonzero?
+              if which
+                runtime_call("rt_background_put_up", [Build.int(layer_of(bg)), Build.int(grid_of(bg, which).number), Build.int(reset_view)])
+              else
+                runtime_call("rt_background_scroll", [Build.int(layer_of(bg)), Build.int(0), Build.int(0)])
+              end
+              note = corner_note(layer_of(bg)) if reset_view.nonzero?
               statement(Build.set(note, 1)) if note
             end
 
-            # A BACKGROUND PUT UP IN A PASS SHOWS FROM ITS CORNER ON THAT PASS'S FRAME
-            # (Reference#put_up_background), and the place the game keeps for its view is written at the
-            # end of the pass (IR::Frames.loop_in_console_order), after the put-up. So a put-up notes
-            # itself for the rest of its pass, a note for each plane, and the write at the end of it leaves
-            # the background where it was put up. The wait forgets the notes (#emit_corners_forgotten),
-            # and the next pass's write moves it.
-            def keep_corner_notes
-              return unless @plan.places_at_pass_end?(:scroll_background)
-
-              @put_up_this_pass = (0...PLANES).to_h { |plane| [plane, keep_local(:"put_up_this_pass_#{plane}")] }
-            end
-
-            # The notes forgotten at a wait: the pass that put a background up has ended.
-            def emit_corners_forgotten
-              @put_up_this_pass&.each_value { |note| statement(Build.set(note, 0)) }
-            end
-
-            # +node+'s write, unless it is written at the end of a pass that put its background up (+note+,
-            # #keep_corner_notes).
-            def emit_unless_put_up(node, note)
-              return yield unless note && @plan.placed_at_pass_end?(node)
-
-              held = fresh("held_at_corner")
-              jump_unless(Build.binop(:==, Build.var_ref(note), Build.int(0)), held)
-              yield
-              @asm.label(held)
-            end
-
-            # THE DECLARED BACKGROUND a scroll, a changed cell or a map handed over names: the one by that name,
-            # or — where several scenes each declare their own by one name — the one of the scene whose routine
-            # is being lowered, or the one every screen shows. Nil where which it is cannot be told while the
-            # game is built (#for_background).
-            def background_declared_for(node) = @handover.background_named(node, scene: @lowering_scene, error: LoweringError)
-
-            # +node+'s change made to the background it names (#background_declared_for), yielded to the block.
-            # Where that is not known while the game is built — a change outside every scene's routine, to a
-            # name several scenes declare — the change is made to the one of the scene up when it runs, each
-            # scene's its own branch.
-            def for_background(node)
-              bg = background_declared_for(node)
-              return yield(bg) if bg
-
-              @scenes.each do |scene, number|
-                own = @handover.arrival(scene).scenery.find { |declared| declared.name == node.name }
-                next unless own
-
-                other = fresh("not_scene")
-                jump_unless(Build.binop(:==, Build.var_ref(@scene), Build.int(number)), other)
-                yield own
-                @asm.label(other)
-              end
-            end
-
-            # Reference#exec_scroll_background.
+            # Reference#exec_scroll_background. A put-up holds its plane at the corner through its pass
+            # (SceneryWrites#keep_corner_notes).
             def emit_scroll_background(node)
               for_background(node) do |bg|
-                emit_unless_put_up(node, @put_up_this_pass&.fetch(layer_of(bg))) do
+                emit_unless_put_up(node, corner_note(layer_of(bg))) do
                   runtime_call("rt_background_scroll", [Build.int(layer_of(bg)), node.x, node.y])
                 end
               end
@@ -989,6 +1187,7 @@ module VBlank
 
               emit_scene_tiles(scene)
               emit_scene_colors(scene)
+              emit_scene_held_lists(scene)
               return if @scene_layers.zero?
 
               arrival = @handover.arrival(scene)
@@ -1237,6 +1436,11 @@ module VBlank
             # its items four times over in a table of its own (Lowering#emit_keyed_sort), so its entry
             # is one read. The placing is here rather than a routine of its own, which took a long
             # JSR and an RTS more for every ordered sprite.
+            #
+            # The framework's own list (Build::DrawOrder#permutation) holds every place of the run in
+            # its slots, so each entry is read straight from its slot with nothing tested. Any other
+            # list — one written by hand, or one something takes items from the front of, whose slots
+            # move round — is walked as the interpreter reads it (DrawOrderWalk), through the same table.
             def emit_ordered_run(run)
               table = fresh("ordered_placings")
               past = fresh("past_ordered_placings")
@@ -1249,54 +1453,61 @@ module VBlank
                 emit_sprite_placing(object_named(name), returns: true)
               end
               @asm.label(past)
+              return emit_ordered_run_walked(run, table) unless order_read_by_slots?(run, @lists_dropped_from_front)
+
               keyed = @keyed_sorts&.fetch(run.order, nil)
-              outside = fresh("order_outside") unless keyed || @lists_dropped_from_front.include?(run.order)
               run.objects.each_index do |k|
                 if keyed
                   @asm.move(:w, at(keyed.entries, k * 2), @asm.d(0))
                 else
-                  outside ? emit_order_entry_read(run.order, k, outside) : emit_order_entry_called(run.order, k)
+                  emit_order_entry_read(run.order, k)
                   @asm.lsl(:l, 2, @asm.d(0))
                 end
-                @asm.lea(@asm.pc_rel(table), @asm.a(0))
-                @asm.movea(:l, @asm.idx(0, 0, 0, keyed ? :w : :l), @asm.a(0))
-                @asm.jsr(@asm.ind(0))
+                emit_ordered_placing_called(table, keyed ? :w : :l)
               end
-              emit_order_index_fault(run.order, outside) if outside
             end
 
             # D0 = entry +k+ of the order list +order+, whose first item is in its first slot, read from
-            # its slot's address: the index tested against how many the list holds (D1 = +k+ for the
-            # fault at +outside+), where reading it through the runtime would take a call, and the
-            # list's place found and the index scaled there. The entry is a place in the run, never
-            # below nought.
-            def emit_order_entry_read(order, k, outside)
+            # its slot's address, where reading it through the runtime would take a call, and the
+            # list's place found and the index scaled there.
+            def emit_order_entry_read(order, k)
               place, _capacity, bytes = @lists.fetch(order)
-              k.between?(-128, 127) ? @asm.moveq(k, @asm.d(1)) : @asm.move(:l, @asm.imm(k), @asm.d(1))
-              @asm.cmp(:w, @asm.abs_l(place, Runtime::Lists::LENGTH), @asm.d(1))
-              @asm.branch(:cc, outside)
               @asm.moveq(0, @asm.d(0)) unless bytes == 4
               @asm.move(Runtime::Lists::SLOT_SIZES.fetch(bytes), @asm.abs_l(place, Runtime::Lists::HEADER + (k * bytes)), @asm.d(0))
             end
 
-            # D0 = entry +k+ of an order list the game takes items from the front of, which only the
-            # runtime can find: a call, with the walk's registers kept on the stack meanwhile (#emit_sprite_placing).
-            def emit_order_entry_called(order, k)
+            # The placing D0 picks from +table+, by a +size+ (:w or :l) index four times the place, called.
+            def emit_ordered_placing_called(table, size)
+              @asm.lea(@asm.pc_rel(table), @asm.a(0))
+              @asm.movea(:l, @asm.idx(0, 0, 0, size), @asm.a(0))
+              @asm.jsr(@asm.ind(0))
+            end
+
+            # A run whose list is walked as the interpreter reads it (DrawOrderWalk).
+            def emit_ordered_run_walked(run, table)
+              emit_draw_order_walk(run) do |place|
+                @asm.move(:l, var(place), @asm.d(0))
+                @asm.lsl(:l, 2, @asm.d(0))
+                emit_ordered_placing_called(table, :l)
+              end
+            end
+
+            # DrawOrderWalk's: a read of the list may call the runtime, which can change anything, so
+            # the walk's registers go on the stack meanwhile (#emit_sprite_placing).
+            def emit_sprite_walk_read(name, value)
               @asm.movem_push(:l, *WALK_REGISTERS)
-              value(Build.list_get(order, Build.int(k)))
+              statement(Build.set(name, value))
               @asm.movem_pop(:l, *WALK_REGISTERS)
             end
 
-            # The run's entry D1 was outside the order list: the game stopped as the runtime stops it
-            # (Runtime::Lists#emit_faults), past the code the run's entries go on to.
-            def emit_order_index_fault(order, outside)
-              past = fresh("order_inside")
-              @asm.bra(past)
-              @asm.label(outside)
-              @asm.move(:l, @asm.imm(@lists.fetch(order).first), @asm.d(0))
-              @asm.movea(:l, @asm.d(0), @asm.a(0))
-              @asm.jmp(@asm.abs_l("rt_list_index_fault"))
-              @asm.label(past)
+            # DrawOrderWalk's: the place the variable +name+ holds and the run's +count+, the fault's two
+            # numbers, and no list, as the interpreter words it (Faults.draw_order_names_none).
+            def emit_draw_order_fault(name, count)
+              @asm.move(:l, @asm.imm(0), runtime_at(Runtime::Frame::FAULT, Runtime::Frame::FAULT_LIST))
+              @asm.move(:l, var(name), runtime_at(Runtime::Frame::FAULT, Runtime::Frame::FAULT_FIRST))
+              @asm.move(:l, @asm.imm(count), runtime_at(Runtime::Frame::FAULT, Runtime::Frame::FAULT_SECOND))
+              @asm.moveq(Runtime::Frame::DRAW_ORDER_NAMES_NONE, @asm.d(0))
+              @asm.jmp(@asm.abs_l("rt_fault"))
             end
 
             # The table of a sprite's pictures: how many, then where each one's pieces are. It is kept by

@@ -54,6 +54,30 @@ class TestPS1RecordedPan < Minitest::Test
     assert_equal [whole, 0], volumes(tune_game(pan: :right, note_pan: :left))
   end
 
+  # A note bent while it sounds to a side of its own (`glides: true` with `pan:`): its voice's two
+  # volumes are the glide's from then, with no key on.
+  def test_a_glide_moves_the_note_sounding_to_its_side
+    b = Builder.new(options: VBlank::Cartridge::Options.new(console: :ps1))
+    b.instance_eval do
+      enable_sound
+      instrument :tone, pcm: [60, -60] * 4000, rate: 8000, note: :C4
+      song :tune do
+        tempo 150
+        voice :melody, plays: :tone do
+          volume 15
+          note :C4, :eighth
+          note :D4, :half, glides: true, pan: -0.7
+        end
+      end
+      play_song :tune
+      game_loop { wait_vblank }
+    end
+    b.finalize_program
+
+    assert_equal [whole, whole], volumes(b.program, frames: 6), "in the middle before it"
+    assert_equal [whole, (whole * 19 / 64.0).round], volumes(b.program, frames: 20), "to the left after it"
+  end
+
   def test_a_shaped_note_keeps_its_shade_as_it_climbs
     envelope = { attack: 0.5, decay: 0.5, sustain: 0.5 }
     centred = volumes(tune_game(pan: nil, envelope: envelope), frames: 4).first

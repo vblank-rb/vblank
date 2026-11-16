@@ -114,18 +114,24 @@ module VBlank
 
           def blobs = { ROWS_BLOB => rows_bytes, TILES_BLOB => tiles_bytes, COLORS_BLOB => [0, *@colors].pack("v*") }
 
-          # Put the border up: its rows of the sprite table, its pictures and its colours. Run whenever
-          # the sprite table has just been cleared, which is at power-on and on coming back to a screen
-          # that painted over sprite memory, so it is in front from the first frame shown.
+          # Put the border up: its rows of the sprite table and its colours. Run whenever the sprite
+          # table has just been cleared, which is at power-on and on coming into a painted screen or
+          # back to a tiled one, so it is in front from the first frame shown.
+          #
+          # Its pictures are not sent again there. They sit where a painted screen never reaches, and
+          # nothing else writes there, so they go up once at power-on (#emit_at_power_on). Sent again
+          # on every change into a painted screen, their 240 tiles ran the frame of that change past
+          # its end in a game whose change fits without them (examples/pong_gbc.rb).
           def emit_put_up
             @uploads.emit_dma_blob(ROWS_BLOB, OAM_START, BORDER_ROWS * 4)
-            @uploads.emit_dma_blob(TILES_BLOB, SpriteDrawing::OBJ_TILE_BASE + (@first_tile * 32), tiles_for_pieces * 16)
             @uploads.emit_dma_blob(COLORS_BLOB, OBJ_PALETTE + (COLOR_GROUP * 32), @colors.size + 1)
           end
 
-          # The display's first window round the game's screen, and the painted screen's corner, once
-          # at power-on: both stay as they are told through every change of screen.
+          # The border's pictures, the display's first window round the game's screen, and the
+          # painted screen's corner, once at power-on: each stays as it is through every change of
+          # screen.
           def emit_at_power_on
+            @uploads.emit_dma_blob(TILES_BLOB, SpriteDrawing::OBJ_TILE_BASE + (@first_tile * 32), tiles_for_pieces * 16)
             emit_window
             emit_painted_screen_corner
           end

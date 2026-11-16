@@ -142,18 +142,57 @@ from samples it read ahead (`Z80_setBusProtection`, `inc/z80_ctrl.h`).
 (`Runtime::Boot#emit_sound_quiet`) and never reaches for the bus. It carries no bus request at its
 copies.
 
-**A game that plays recordings** asks for the Z80's bus and waits for it just before the word that
+**A game that plays recordings** asks for the Z80's bus and waits for it before the command that
 starts each copy, and gives it back after the copy (S1 step 1, as the games above do).
 
 **Every game** writes the command as two words read from work RAM, the stack (S1 step 2, S2).
 
 **Not done: S1's step 3**, the leading word written again after the copy. Neither game read does
-it, and nothing read says what it guards against.
+it, and nothing read says what it guards against, so it is left until a source does.
 
-**Not done: a bus request round the pad read** (S3). `Runtime::Frame`'s `rt_buttons_now` reads
-`$A10003` in the blank's interrupt with the Z80 running. By S3 a recording's byte can be misread at
-that moment, which would be heard as a click. Guarding it means a bus request inside an interrupt,
-which S4 says must then be kept apart from the main routine's requests.
+## The pad read
+
+Changed on 2026-11-14.
+
+**The controller is read with the Z80 stopped** (S3), in a game that plays recordings: the blank's
+interrupt asks for the bus, waits for it, reads the pad (`rt_pad_read`) and lets go
+(`Recordings#emit_bus_for_pad`). The version register, also at `$A100xx`, is read only with the
+Z80 stopped too (`rt_recordings_send`).
+
+**Every stop the main program makes holds interrupts off** from the request until it lets go
+(`Recordings#emit_bus_taken`, `#emit_bus_given_back`), which is S4's "interrupts go off before the
+request". So the interrupt never asks for the bus inside one of the main program's stops, and its
+own stop is over before the main program runs again. That covers each copy, each write into the
+Z80's queue and mailbox, and the version register's read.
+
+**One stop for the whole blank, as Sonic 3 & Knuckles makes, was tried and measured, and not
+taken.** The blank's interrupt asked for the bus and left it held through the copies, the buttons
+and the music, until the end of the pass's wait. The blank's work here is mostly the 68000 writing
+the picture's maps and tiles and playing the music, not copies, so the Z80 stood still for some
+sixty samples a frame: a recording playing alone, with nothing else going on, crossed its middle at
+422.0 Hz for 433.3, with gaps of two waves; with eighty sprites, 401.0; painted, 384.9. Sonic 3 &
+Knuckles makes its blank's work almost all copies. Here each copy and each write into the Z80's
+memory is a stop of its own, a few instructions long.
+
+**What it costs.** A game that plays recordings carries the interrupt's stop and three
+instructions more at each stop of the main program (the status register kept, interrupts held off,
+and the status register put back). A game with no recordings builds the same cartridge, byte for
+byte: every example built for the Genesis, a game of sprites, a painted one, and one with a song,
+a wave and a beep, each compared with the commit before.
+
+| | before | after |
+|---|---|---|
+| alone | 433.49 Hz | 433.49 Hz |
+| a wave part, a note every two frames | 433.68 Hz | 433.68 Hz |
+| 80 sprites | 433.46 Hz | 433.55 Hz |
+| painted, sixteen tiles a pass | 434.05 Hz | 434.14 Hz |
+
+`test_genesis_dma_guard.rb` holds the code: the pad read between the request and the release, and
+every copy's request with interrupts held off.
+
+**Not done:** nothing here ran on a console. The fault S3 describes is not modelled by Genesis Plus
+GX, so no test here can hear it; on a console, a game playing a long recording while a player
+presses buttons would click without the guard.
 
 ## What the guard costs
 
@@ -199,9 +238,9 @@ recording late by its length, and nothing made it up.
   tiles for the changed ones took the 68000 about 27000 cycles, 56 lines, and the blank is 38. So
   the sixteen copies began as the picture was being drawn, where the chip copies 18 bytes a line,
   and held the Z80 for about 50 lines each time the picture was sent.
-- **Every FM register the 68000 writes stops the Z80 too**, for the write and the chip's three
+- **Every FM register the 68000 writes stopped the Z80 too**, for the write and the chip's three
   waits round it. A song's note is some thirty registers. Measured with a wave part playing a note
-  every two frames: 398 Hz for 433. This one is not fixed here; see "Not done".
+  every two frames: 398 Hz for 433. See "A song's notes" below.
 
 ### What others do, and what it costs
 
@@ -251,9 +290,9 @@ sample from the cartridge as it sounds it, so when it reads has not changed and 
 has. A read-ahead that kept off the bus during a copy would still be bound by S1, which makes no
 exception for a Z80 that promises not to look.
 
-**The Z80 now writes two FM registers** (the DAC's and `$27`), and the 68000 can stop it between
-naming one and writing it. The Z80 notes the register it is on in its mailbox before naming it, and
-the 68000 names that one again before letting go (`Recordings#emit_bus_given_back`).
+**The Z80 now writes two FM registers** (the DAC's and `$27`). It was first made to note the one it
+was on for the 68000 to name again after its own writes; since the next change the 68000 writes no
+FM register at all in a game that plays recordings, and that went.
 
 **The chip's busy time.** Genesis Plus GX holds the chip busy for 32 of its cycles after each value
 written (`core/sound/sound.c`, `YM2612_Write`), a third of a sample. The program's two values a
@@ -293,16 +332,79 @@ A game with no recordings and no painted screen builds the same cartridge as bef
 The recording is 433.333 Hz. `test_genesis_sound.rb` holds the first, third and fourth to within
 2 Hz.
 
+## A song's notes
+
+Measured on 2026-11-14 the same way, with a wave part playing a note every two frames
+(`test_genesis_sound.rb`, `test_a_recording_keeps_every_wave_under_a_song_playing_a_note_every_two_frames`).
+
+### Where the time went
+
+A note sets its voice's every FM register, some thirty of them, and the 68000 wrote each one
+itself: it stopped the Z80, waited on the chip's busy bit before the register and before the value,
+wrote, named the DAC's register again and let go. With the timers making the time up afterwards,
+the DAC stood still through each note's writes and then passed over what they covered, which was
+whole waves: the recording crossed its middle at 379.3 Hz over a third of a second, with gaps
+between two waves of up to 2.5 waves' length.
+
+### What the console's own games do
+
+Their sound drivers run on the Z80 and write the FM chip themselves (Sonic 3 & Knuckles' `Sound/Z80
+Sound Driver.asm`, SGDK's XGM driver): the 68000 hands the Z80 what to play and never touches the
+chip. That is what VBlank does now.
+
+### What VBlank does now
+
+- **The FM chip is the Z80's.** In a game that plays recordings, `rt_fm_write` puts each write in a
+  queue in the Z80's memory (`Recordings::QUEUE`, 256 entries of three bytes, one byte on each of
+  three pages so one count finds an entry), and the Z80 makes one entry between two samples, after
+  the timer's flag is cleared, looking at the chip's busy bit first. A new play is an entry of the
+  same queue, so a play and the notes round it reach the Z80 in the order the game made them.
+- **A write that changes nothing is not queued.** The 68000 keeps each register's last value
+  (`Recordings::FM_KEPT`) and drops a write of the same value. A voice playing one instrument changes
+  a few registers from note to note, so a note is a few entries, not thirty. The key
+  register and the pitch registers are always sent: a key write is a key going down or up, and the
+  chip takes a pitch's high byte only as its low byte is written.
+- **A sample with an entry takes longer than a tick.** The tick it runs over is one the second
+  timer finds missing, so the recording is held one sample longer and then passes over one.
+- **The 68000 still stops the Z80 for each entry**, for a few writes into its memory and no chip
+  waits ("The pad read" says why not one stop for a frame).
+- **PAL.** The chip's clock is a little slower there (53203424 / 7 Hz, `MCLOCK_PAL`), so a timer's
+  ticks come further apart. `rt_recordings_send` reads the version register's PAL bit (with the Z80
+  stopped, as S3 asks) and makes the step `PAL_STEP_EXTRA` 65536ths longer. Genesis Plus GX plays a
+  cartridge whose header names Europe alone as PAL: 429.5 Hz before, 433.0 after.
+- **The third FM voice's mode** is the top two bits of `$27`, which the Z80 writes every sample. A
+  write of `$27` from the game's side is written into the value of each of the Z80's own writes of it
+  (`Recordings::TIMER_WRITES`). Nothing in VBlank sets that mode yet.
+- **The answers table** says the Z80 sounds about 13300 samples a second and plays a recording at the
+  rate it was recorded. The interpreter still counts a recording's place at 13000 a second, which is
+  what the game can tell of it.
+
+### What it costs
+
+| | before | after |
+|---|---|---|
+| the Z80's program | 422 bytes | 490 bytes, of 8192 |
+| the Z80's memory besides | 22 bytes of mailbox | 21 bytes of mailbox and 768 of queue |
+| work RAM, a game with recordings | | 1024 bytes more (the registers' last values) |
+
+A game with no recordings builds the same cartridge as before.
+
+### The pitch, before and after
+
+| | before | after |
+|---|---|---|
+| a wave part, a note every two frames | 379.3 Hz, a gap of 2.5 waves | 433.7 Hz, no gap past 1.14 waves |
+| a recording across two banks, going round, over 2.8 s | 433.50 Hz | 433.49 Hz |
+| PAL | 429.5 Hz | 433.0 Hz |
+
+The recording is 433.333 Hz. `test_genesis_sound.rb` holds each to within 2 Hz, and the first two
+to no gap of a quarter more than a wave.
+
 ### Not done
 
-- **A song's FM writes still hold the Z80 long enough to hear.** The timers make the time up, but a
-  note's thirty writes are thirty stops in a row, some milliseconds with the DAC standing still. The
-  fix is on the 68000's side: one stop for a note's writes, or fewer waits inside it
-  (`Sound`'s `rt_fm_write`).
-- **PAL.** The chip's clock is a little slower there (53203424 / 7 Hz, `MCLOCK_PAL`), so a recording plays about
-  one percent flat. The step is worked out for NTSC.
-- **The answers table still says 13000 samples a second**, which is the rate the interpreter counts
-  a recording's place at. The Z80 sounds 13316.8.
+- **Nothing ran on hardware.** The Z80 writes three values in a sample that has an entry (the DAC's,
+  `$27`, the entry's) and tests the busy bit before the entry's only. Whether a real chip takes the
+  DAC's and `$27` every time, spaced by instruction count, is not known from anything read.
 
 ## How to see it
 
@@ -316,6 +418,11 @@ No emulator read can show the fault. On a real console:
 3. Leave each running and watch the sprites, for hours: a sprite in the wrong place or of the wrong
    shape for one frame is the fault. By Kabuto's figure an ordinary game shows it about once a day,
    so a short watch that shows nothing proves nothing.
+
+For the pad read: build a game that loops a long recording of a pure tone and does nothing else,
+put it on a console, and press and hold buttons while listening for clicks. For one without that
+guard, build from the commit before `Read the pad with the Z80 stopped in Genesis
+Recordings#emit_bus_for_pad`.
 
 What the suite can hold is the code the cartridge carries, and it does:
 `test/lowering/genesis/vblank/ir/backends/genesis/test_genesis_dma_guard.rb`.

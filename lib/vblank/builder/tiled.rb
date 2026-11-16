@@ -191,12 +191,21 @@ module VBlank
       # This is a copy of the picture, once however many tilesets ask, and the picture itself keeps
       # its answer for any tileset that did not ask: the same tile stored twice, which is what two
       # answers about one tile cost.
+      #
+      # A PICTURE GIVEN AS COLOURS IN A LIST READ FROM THE DATA PACK AS THE GAME STARTS. Such a list
+      # holds a marker for each colour (IR::StartFile), and the picture's pixels are the game's own
+      # colours, so no pixel is at any place of it: the build cannot find the place the all-in-one
+      # build finds. Places added after the list's own would grow it past sixteen, or past what the
+      # list has. So the copy counts into a list of the colours its pixels draw, with no name, which
+      # shows the same picture. Swapping it for another list goes by place, and is refused as for the
+      # picture itself (Images#refuse_swapping_unplaced_pixels!, which asks #solid_black_source).
       private def solid_black_image(source)
         picture = @pictures[source]
         return source if picture.nil? || picture.places
 
         @solid_black_images[source] ||= begin
-          table = picture.colors&.dup || [nil]
+          unplaced = picture.colors&.any? { |color| IR::StartFile.marker?(color) }
+          table = unplaced ? [nil] : (picture.colors&.dup || [nil])
           places = Array.new(picture.width * picture.height) do |at|
             next 0 unless picture.drawn_at?(at)
 
@@ -206,10 +215,14 @@ module VBlank
           end
           name = free_name_after(source, :solid_black)
           define_placed_image(name, places: places, width: picture.width, height: picture.height,
-                                    colors: table.map { |color| color || :transparent }, colors_name: picture.colors_name)
+                                    colors: table.map { |color| color || :transparent },
+                                    colors_name: (picture.colors_name unless unplaced))
           name
         end
       end
+
+      # The picture +pose+ is the solid-black copy of (#solid_black_image), or nil for any other.
+      private def solid_black_source(pose) = @solid_black_images.key(pose)
 
       # Paint a tiled background: a tileset plus a map of which tile goes in each grid
       # cell. Author the map two ways:
@@ -535,7 +548,7 @@ module VBlank
         declared.held = held
         # Which map the game sets as showing, and which one is really in the cells — and, for
         # a background drawn from several sets of tiles, which set is really in tile memory.
-        choice = map_names.size > 1 ? [:"__bg_#{name}_map", :"__bg_#{name}_live"] : []
+        choice = map_names.size > 1 ? [:"__bg_#{name}_map", IR::Nodes::Background.map_in_cells_var(name)] : []
         choice += [IR::Nodes::Background.set_var(name)] if sets
         # ...and, for one brought into view a strip at a time, which map the strips come from:
         # back to the first with the rest. Not whether the cells around the view hold it yet.
@@ -1242,7 +1255,9 @@ module VBlank
                      "This row is #{row.inspect}."
           end
         end
-        raise ArgumentError, "background :#{name} has an empty map" if rows.empty?
+        # Rows with no cells in them are an empty map too: the Genesis copies a map a row at a
+        # time, and a row of no cells counted down from nought as the most its counter holds.
+        raise ArgumentError, "background :#{name} has an empty map" if rows.empty? || rows.all?(&:empty?)
 
         widths = rows.map(&:length).uniq
         unless widths.size == 1

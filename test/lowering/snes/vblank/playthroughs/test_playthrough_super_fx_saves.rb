@@ -7,14 +7,14 @@ require "zlib"
 
 # A PLAYTHROUGH OF A SUPER FX GAME THAT SAVES hands back the save alone, and starts the next one
 # in it. The chip's RAM on such a cartridge is 128K: the chip's own working 64K, where it paints
-# the screen, and then the save (Cartridge::SNESROM::SUPER_FX). The emulator keeps all 128K in its
+# the screen, and then the save, the other 64K (Cartridge::SNESROM::SUPER_FX). The emulator keeps all 128K in its
 # save file, so the save a playthrough hands back, the save it starts from and the save a tape
 # names are the second half of that file and never the first.
 #
 # The game counts a saved number up by two a pass from five, while the chip paints a rectangle
 # that moves with it. Started from a save, it counts on from where the save left it.
 class TestPlaythroughSuperFXSaves < Minitest::Test
-  SAVE_BYTES = 0x8000
+  SAVE_BYTES = 0x10000
 
   private def counting
     VBlank.build("FX SAVES", console: :snes, variant: :superfx, out: StringIO.new, err: StringIO.new) do

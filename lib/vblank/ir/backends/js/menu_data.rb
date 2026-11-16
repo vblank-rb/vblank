@@ -10,17 +10,18 @@ module VBlank
         # THE WINDOW MENU AS JAVASCRIPT DATA, for the page's copy of it (runtime/rg_page_menu.js),
         # from Live::WindowMenu, as the desktop build's MenuData is. A page has no window
         # size of its own, so that line is left out. +menu+ false is a game that has no menu, and +states+
-        # false one with no Save or Load (a shell's parts).
+        # false one with no Save or Load (a shell's parts). +buttons+ are the console's, which the
+        # Keys heading lists (Live::WindowMenu.headings).
         module MenuData
           module_function
 
-          def source(menu: true, states: true)
-            "const RG_PAGE_MENU = #{JSON.generate(menu ? description(states) : nil)};\n"
+          def source(menu: true, states: true, buttons: Console::ADVANCE.buttons)
+            "const RG_PAGE_MENU = #{JSON.generate(menu ? description(states, buttons) : nil)};\n"
           end
 
-          def description(states)
+          def description(states, buttons)
             window_menu = Live::WindowMenu
-            shown = states ? window_menu::HEADINGS : window_menu::HEADINGS.reject(&:states?)
+            shown = window_menu.headings(states: states, buttons: buttons)
             { headings: shown.map { |heading| heading_of(heading) },
               buttons: window_menu::BUTTON_NAMES, hotkeys: window_menu::HOTKEY_NAMES,
               colors: window_menu::COLORS.transform_values { |(red, green, blue, opacity)| "rgba(#{red},#{green},#{blue},#{opacity / 255.0})" } }

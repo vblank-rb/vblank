@@ -51,8 +51,9 @@
  * the numbers only the music player reads: the music volume a part sounds at in full and how far
  * to shift back down by it (IR::Tunes::FULL_LEVEL and LEVEL_SHIFT); sixteen numbers, the wave
  * voice's loudness in quarters for each volume from 0 to 15; and the part of a rank that is a
- * sound effect's order (IR::Tunes::ORDER_MASK), nought for the song; and the 256ths of a 64th of
- * a second a frame lasts (IR::Tunes::COUNTED_A_FRAME).
+ * sound effect's order (IR::Tunes::ORDER_MASK), nought for the song; the 256ths of a 64th of
+ * a second a frame lasts (IR::Tunes::COUNTED_A_FRAME); and the main volume the game named, in
+ * 127ths, or -1 for none (Program#main_volume).
  *
  * rg_game_waveforms: how many waveforms there are, then 32 steps for each.
  *
@@ -108,6 +109,10 @@
 #define WAVE_CLOCK_HZ (rg_game_sound_rules[1])
 #define NOISE_CLOCK_HZ (rg_game_sound_rules[2])
 #define OUTPUT_HZ (rg_game_sound_rules[3])
+/* The main volume the game named for all its sound, in 127ths of the loudest, or -1 for none: the
+ * last of the rules, after the wave voice's sixteen loudnesses and the two numbers past them. */
+#define MAIN_VOLUME (rg_game_sound_rules[6 + VOLUMES + 2])
+#define MAIN_VOLUME_LOUDEST 127
 
 /* --- the hooks a sound feature takes ---
  *
@@ -120,6 +125,7 @@ static void rg_hook_sound_frame(void);                           /* the frame be
 static void rg_hook_sound_frame_ended(void);                     /* ...and what follows the tune's frame */
 static void rg_hook_voice_taken_by_game(int32_t voice);          /* a beep, wave or stop_wave took a voice */
 static int32_t rg_hook_mixed_slice(const int32_t **samples);     /* the newest mixed slice, or 0 for none */
+static int32_t rg_hook_mixed_sample_shift(void);                 /* ...and how far the speaker takes it down */
 static inline void rg_hook_recordings_told(void);               /* the chip told what each mixer voice plays */
 static void rg_hook_moment_printed(void);                        /* a windowless run prints a moment */
 static void rg_hook_visit_sound_state(void);                     /* the state image visits each feature's fields */
@@ -458,6 +464,15 @@ static int16_t held_in_range(int32_t sum) {
   return (int16_t)sum;
 }
 
+/* THE MAIN VOLUME scales the whole mix, songs and effects alike, as a sound chip's main volume
+ * does after each voice's own: that many 127ths of the sum, rounded toward nought. A game that
+ * named none plays the sum as it is. (A console whose voices read sound memory plays its chip's
+ * own main volume instead, rg_spu.c.) */
+static int32_t at_main_volume(int32_t sum) {
+  if (MAIN_VOLUME < 0) return sum;
+  return (int32_t)(((int64_t)sum * MAIN_VOLUME) / MAIN_VOLUME_LOUDEST);
+}
+
 #include "rg_spu.c"
 
 int32_t rg_sound_render_frame(int16_t *left, int16_t *right) {
@@ -474,6 +489,7 @@ int32_t rg_sound_render_frame(int16_t *left, int16_t *right) {
    * It is asked once here and never once a sample. */
   const int32_t *mixed;
   int32_t mixed_count = heard_only == 0 ? rg_hook_mixed_slice(&mixed) : 0;
+  int32_t mixed_shift = rg_hook_mixed_sample_shift();
 
   for (int32_t i = 0; i < count; i++) {
     if (++slide_clock == SLIDE_TICK_SAMPLES) {
@@ -487,12 +503,12 @@ int32_t rg_sound_render_frame(int16_t *left, int16_t *right) {
     add_to_sides(RG_WAVE_VOICE, heard(RG_WAVE_VOICE, wave_sample()), &on_left, &on_right);
     add_to_sides(RG_NOISE_VOICE, heard(RG_NOISE_VOICE, noise_sample()), &on_left, &on_right);
     if (mixed_count > 0) { /* the recordings play from both */
-      int32_t sample = mixed[(int64_t)i * mixed_count / count] * MIX_STEP;
+      int32_t sample = (mixed[(int64_t)i * mixed_count / count] * MIX_STEP) >> mixed_shift;
       on_left += sample;
       on_right += sample;
     }
-    left[i] = held_in_range(on_left);
-    right[i] = held_in_range(on_right);
+    left[i] = held_in_range(at_main_volume(on_left));
+    right[i] = held_in_range(at_main_volume(on_right));
   }
   return count;
 }
@@ -510,7 +526,8 @@ void rg_sound_log(const char *format, ...) {
 /* --- the sounds the game makes itself --- */
 
 void rg_sound_enabled(void) {
-  rg_sound_log("enabled");
+  if (MAIN_VOLUME < 0) rg_sound_log("enabled");
+  else rg_sound_log("enabled %d", (int)MAIN_VOLUME);
   for (int32_t voice = 1; voice <= RG_NOISE_VOICE; voice++) sides[voice] = 0; /* every voice from both */
 }
 

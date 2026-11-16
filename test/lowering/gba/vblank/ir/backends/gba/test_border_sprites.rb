@@ -62,6 +62,19 @@ module BorderGames
     game_loop { clear_screen :black }
   end)
 
+  # A tiled game with two sprites standing still, for reading them back off the cartridge.
+  STILL = Ractor.make_shareable(VBlank.game("BORDERS", consoles: %i[gbc gba], variants: { gba: :color_screen }) do
+    screen :tiled
+    image :red_tile, "#" => :red do "########\n" * 8 end
+    tiles :ground, "r" => :red_tile
+    background :field, tiles: :ground, map: Array.new(32) { "r" * 32 }
+    image :square, "#" => :white do "########\n" * 8 end
+    image :bar, "#" => :blue do "################\n" * 8 end
+    sprite :square, at: [30, 20]
+    sprite :bar, at: [100, 120]
+    game_loop { wait_vblank }
+  end)
+
   # A tiled game that fades its whole picture half way to black.
   FADED = Ractor.make_shareable(VBlank.game("BORDERF", consoles: %i[gbc gba], variants: { gba: :color_screen }) do
     screen :tiled
@@ -151,6 +164,17 @@ class TestBorderSprites < Minitest::Test
     assert v.pixel_is?(0, 80, :magenta)
     assert v.pixel_is?(239, 159, :magenta)
     assert v.black?(LEFT, TOP), "the game's own screen covers the picture's middle"
+  end
+
+  # The sprites read back off the cartridge are the game's, at the places the game gave them on its
+  # own screen: none of the border's, and none moved by the border's corner.
+  def test_reading_the_sprites_back_gives_the_games_own_places
+    require_emulator!
+    v = assert_emulator_loads_rom(cartridge(BorderGames::STILL), frames: 6)
+
+    assert_equal %i[bar square], v.sprites.map(&:name).sort
+    assert_equal [[30, 20]], v.sprites(:square).map { |row| [row.x, row.y] }
+    assert_equal [[100, 120]], v.sprites(:bar).map { |row| [row.x, row.y] }
   end
 
   def test_a_fade_darkens_the_game_screen_and_not_the_border

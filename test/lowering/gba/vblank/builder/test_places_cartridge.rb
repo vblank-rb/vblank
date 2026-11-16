@@ -78,8 +78,83 @@ class TestPlacesCartridge < Minitest::Test
   end
 
   def test_a_wall_leaning_away_agrees_in_each_perspective
-    %i[none every_8_pixels every_pixel].each do |perspective|
+    %i[none every_16_pixels every_8_pixels every_pixel].each do |perspective|
       assert_backends_agree(PlaceGames.wall_down_the_side(perspective), frames: 3, console_frames: 30, name: "WALL")
+      assert_backends_agree(PlaceGames.striped_wall(perspective), frames: 3, console_frames: 30, name: "STRIPES")
+    end
+    # A game drawing every 8 pixels and every 16 has a run of whole stretches for each.
+    assert_backends_agree(PlaceGames.striped_wall(%i[every_8_pixels every_16_pixels]), frames: 3, console_frames: 30,
+                                                                                         name: "BOTHRUNS")
+  end
+
+  # ...and with see-through pixels, which in perspective take runs of whole stretches of their own
+  # (GBA::Faces.see_through_runs): bars and gaps crowded into one pair at the wall's far end, and
+  # stripes a picture pixel wide.
+  def test_a_see_through_wall_leaning_away_agrees_in_each_perspective
+    %i[none every_16_pixels every_8_pixels every_pixel].each do |perspective|
+      assert_backends_agree(PlaceGames.wall_down_the_side(perspective, see_through: true), frames: 3, console_frames: 30,
+                                                                                           name: "GRATE")
+      assert_backends_agree(PlaceGames.striped_wall(perspective, see_through: true), frames: 3, console_frames: 30,
+                                                                                    name: "GAPS")
+    end
+    both = PlaceGames.striped_wall(%i[every_8_pixels every_16_pixels], see_through: true)
+    assert_backends_agree(both, frames: 3, console_frames: 30, name: "BOTHGAPS")
+  end
+
+  # THE BIGGEST FILL ROUTINE THERE IS: lit, see-through, every 8 pixels and every 16 in one game, so
+  # it has every run and every twin. Its room in the quick memory (GBA::Faces.routine_bytes) leaves
+  # it little to spare, so a routine grown past it fails here, not in a game.
+  def test_a_lit_see_through_face_drawn_every_8_and_every_16_pixels_builds_and_agrees
+    program = PlaceGames.lit_square(left: 0.1, right: 0.95, perspective: %i[every_8_pixels every_16_pixels],
+                                    see_through: true, far: 3.0)
+
+    assert_equal [8, 16], VBlank::IR::Backends::GBA::Faces.see_through_runs(program)
+    assert_backends_agree(program, frames: 3, console_frames: 30, name: "LITBOTH")
+  end
+
+  # ...and beside two thousand variables it does not fit. The build says what takes the quick
+  # memory, the routine that fills the faces among it, and what to change.
+  def test_a_game_too_big_for_the_quick_memory_beside_the_fill_routine_is_told_what_takes_it
+    error = assert_raises(GBA::QuickMemoryOverrun) { GBA.new.lower(lit_grate_beside_variables(2000)) }
+
+    assert_match(/does not fit in the quick memory/, error.message)
+    assert_match(/the variables \(\d/, error.message)
+    assert_match(/the routine that fills the faces of a place \(\d/, error.message)
+    assert_match(/use fewer variables/, error.message)
+    assert_match(/fewer `perspective:` settings/, error.message)
+    refute_match(/internal memory/, error.message)
+  end
+
+  # The lit see-through face drawn every 8 and every 16 pixels, and +count+ variables each counted
+  # up every pass.
+  private def lit_grate_beside_variables(count)
+    clear = PlaceGames::SEE_THROUGH
+    b = Builder.new
+    b.instance_eval do
+      screen :bitmap, tear_free: true
+      image :white, width: 8, height: 8, data: Array.new(64) { |at| (at % 3).zero? ? clear : 0x7FFF }, transparent: clear
+      shading :fade, colors: PlaceGames::SHADES, levels: PlaceGames::SHADE_LEVELS
+      place :wall, shading: :fade do
+        face point(-1.0, 1.0, 2.0), point(1.0, 1.0, 3.0), point(1.0, -1.0, 3.0), point(-1.0, -1.0, 2.0),
+             picture: :white, on_picture: [[0, 0], [8, 0], [8, 8], [0, 8]], light: [0.1, 0.9, 0.9, 0.1]
+      end
+      numbers = (0...count).map { |k| var(:"n#{k}", k) }
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      game_loop do
+        numbers.each { |number| number += 1 }
+        %i[every_8_pixels every_16_pixels].each { |each| draw_place :wall, seen_by: eye, perspective: each }
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # A see-through face held to windows that cut its rows short at either end, so a run of whole
+  # stretches hands a row's last stretch back to be drawn a stretch at a time, a pixel kept back.
+  def test_a_see_through_face_through_windows_agrees
+    %i[square side].product([[0, 0, 150, 160], [61, 0, 240, 160], [73, 20, 141, 131]]).each do |shape, window|
+      program = PlaceGames.face_through_windows(shape, spin: 0.3, rise: 0.013, windows: [window], see_through: true)
+      assert_backends_agree(program, frames: 3, console_frames: 30, name: "GRATEWIN")
     end
   end
 
@@ -88,7 +163,7 @@ class TestPlacesCartridge < Minitest::Test
   # A face lit from its corners: each pixel the shading's colour for its blended light, leaning
   # away in each perspective, with see-through pixels, and with light the game adds as it runs.
   def test_a_lit_face_agrees_in_each_perspective
-    %i[none every_8_pixels every_pixel].each do |perspective|
+    %i[none every_16_pixels every_8_pixels every_pixel].each do |perspective|
       SEE_THROUGH_OR_NOT.each do |see_through|
         program = PlaceGames.lit_square(left: 0.1, right: 0.95, perspective: perspective, see_through: see_through,
                                         far: 3.0)
@@ -188,6 +263,74 @@ class TestPlacesCartridge < Minitest::Test
   # passes, so each frame compared is in the middle of a different pair of stances.
   def test_one_shape_drawn_at_two_moving_stances_agrees_at_each_change
     assert_backends_agree(PlaceGames.moved_shapes(passes: 8), frames: [6, 14, 22, 30, 38], name: "ROBOTS")
+  end
+
+  # Ten places and thirty, each a routine with words of its own: every square on the cartridge
+  # where the interpreter draws it.
+  def test_many_places_agree
+    assert_backends_agree(PlaceGames.many_places(10), frames: 3, console_frames: 30, name: "TENPLACES")
+    assert_backends_agree(PlaceGames.many_places(30), frames: 3, console_frames: 30, name: "THIRTYPLACES")
+  end
+
+  # The routine that fills a face is one for the whole game, and every word it reads is named
+  # before the places' own (GBA::Faces.words), so it is the same size however many places there are.
+  def test_the_fill_routine_is_the_same_size_for_one_place_or_thirty
+    sizes = [1, 10, 30].map { |count| fill_routine_bytes(PlaceGames.many_places(count)) }
+
+    assert_equal [sizes.first] * 3, sizes
+  end
+
+  # The runs for see-through pictures in perspective are in the routine only for a game that fills
+  # a face in perspective with one: the same wall solid, or see-through without perspective, keeps
+  # the routine it had.
+  def test_only_a_see_through_picture_in_perspective_grows_the_fill_routine
+    solid = fill_routine_bytes(PlaceGames.striped_wall(:every_16_pixels))
+    flat = fill_routine_bytes(PlaceGames.striped_wall(:none, see_through: true))
+
+    assert_operator fill_routine_bytes(PlaceGames.striped_wall(:every_16_pixels, see_through: true)), :>, solid
+    assert_equal fill_routine_bytes(PlaceGames.striped_wall(:none)), flat
+  end
+
+  # ...and only for the settings the see-through picture is drawn with: a grate drawn without
+  # perspective beside a solid wall drawn every 16 pixels has no twin, one drawn every 16 has that
+  # setting's alone.
+  def test_the_see_through_twins_follow_the_settings_the_see_through_picture_is_drawn_with
+    faces = VBlank::IR::Backends::GBA::Faces
+
+    assert_empty faces.see_through_runs(grate_beside_wall(grate: :none, wall: :every_16_pixels))
+    assert_equal [16], faces.see_through_runs(grate_beside_wall(grate: :every_16_pixels, wall: :every_8_pixels))
+    assert_equal [8, 16], faces.see_through_runs(PlaceGames.striped_wall(%i[every_8_pixels every_16_pixels], see_through: true))
+    assert_backends_agree(grate_beside_wall(grate: :every_8_pixels, wall: :every_16_pixels), frames: 3, console_frames: 30,
+                                                                                            name: "BESIDE")
+  end
+
+  # A see-through wall drawn with +grate+ and a solid one drawn with +wall+, the same pass.
+  private def grate_beside_wall(grate:, wall:)
+    b = Builder.new
+    b.instance_eval do
+      screen :bitmap, tear_free: true
+      image :solid, width: 8, height: 8, data: [0x001F] * 64
+      image :gaps, width: 8, height: 8, data: [0x001F, PlaceGames::SEE_THROUGH] * 32, transparent: PlaceGames::SEE_THROUGH
+      { grate: :gaps, wall: :solid }.each do |name, picture|
+        place name do
+          face point(-1.0, 1.0, 2.0), point(1.0, 1.0, 3.0), point(1.0, -1.0, 3.0), point(-1.0, -1.0, 2.0),
+               picture: picture, on_picture: [[0, 0], [8, 0], [8, 8], [0, 8]]
+        end
+      end
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      game_loop do
+        draw_place :grate, seen_by: eye, perspective: grate
+        draw_place :wall, seen_by: eye, perspective: wall
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  private def fill_routine_bytes(program)
+    backend = GBA.new
+    backend.lower(program)
+    backend.routine_addresses.fetch(VBlank::IR::Backends::GBA::Faces::ROUTINE).size
   end
 
   # A game that draws no place carries none of the machinery: no routine for filling a face in

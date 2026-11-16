@@ -215,6 +215,37 @@ class TestPackColorLists < Minitest::Test
     end
   end
 
+  # A tile kept solid black is a copy of its picture. The copy of a picture given as colours in a
+  # list read as the game starts counts into colours of its own (Tiled#solid_black_image), and is
+  # still drawn from the list for the refusal of a list recoloured under a background that does not
+  # follow it: refused alike all-in-one and with the pack left out.
+  def test_a_solid_black_tile_of_a_pack_list_recolored_unfollowed_is_refused_both_ways
+    [VBlank::Cartridge::Options.new, VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)].each do |options|
+      Dir.mktmpdir do |folder|
+        from = layout_original(folder, GENESIS)
+        test = self
+        builder = Builder.new(options: options)
+        error = assert_raises(ArgumentError, "refused built with #{options.inspect}") do
+          builder.instance_eval do
+            screen :tiled
+            pack = test.palette_pack_of(self, from)
+            colors :bank_1, pack[:palette].bank(1, size: BANK_SIZE)
+            colors :bank_2, pack[:palette].bank(2, size: BANK_SIZE)
+            image :brick, width: 8, height: 8, colors: :bank_1, data: Array.new(64) { |at| BANKS.fetch(1).fetch(1 + (at % 3)) }
+            tiles :wall_tiles, "#" => :brick, black: :solid
+            background :wall, tiles: :wall_tiles, map: ["##"]
+            image :ship, width: 8, height: 8, colors: :bank_1, places: SHIP
+            sprite(:ship, at: SHIP_AT).draw_with :bank_1
+            game_loop { recolor :bank_1, :bank_2 }
+          end
+          builder.finalize_program
+        end
+
+        assert_includes error.message, "was not told to draw with :bank_1"
+      end
+    end
+  end
+
   def test_a_slot_that_does_not_hold_colors_is_refused
     Dir.mktmpdir do |folder|
       builder = Builder.new

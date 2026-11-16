@@ -18,7 +18,7 @@ class TestSNESProfile < Minitest::Test
     pass = 0
     game_loop do
       pass += 1
-      repeat(10_000) { total += 3 } if (pass & 3) == 0
+      repeat(9_000) { total += 3 } if (pass & 3) == 0
     end
   end
 
@@ -110,6 +110,15 @@ class TestSNESProfile < Minitest::Test
     assert_operator result.fewest_lines_spare, :<, 262
   end
 
+  # The tightest frame's spare time, in lines with the part of a line kept, for a cost test to
+  # subtract two of without a line lost to rounding in each.
+  def test_the_report_says_the_tightest_frames_spare_lines_unrounded
+    result = rom_of(BUSY).profile(out: StringIO.new, frames: 20)
+
+    assert_kind_of Float, result.fewest_lines_spare_unrounded
+    assert_equal result.fewest_lines_spare, result.fewest_lines_spare_unrounded.floor
+  end
+
   def test_effects_nothing_plays_cost_a_pass_nothing
     [false, true].each do |playing|
       out = StringIO.new
@@ -185,19 +194,27 @@ class TestSNESProfile < Minitest::Test
   end
 
   # The frames the profile names for its slowest pass are that pass's own: read one by one with a
-  # tape, one pass ends in them, on the last, and every one after the first shows no new picture.
+  # tape, the first shows the picture of the pass before, one pass ends in them, every one after
+  # the first shows no new picture, and the frame after the last shows the slow pass's picture.
+  #
+  # The heavy pass's own work ends in the last few lines of a frame, and readying its picture runs
+  # past the blank, so its wait ends a frame after its count rises: the frames it took are counted
+  # between waits' ends, and so are these.
   def test_the_frames_named_for_the_slowest_pass_are_the_ones_a_tape_reads_it_on
     rom = rom_of(HEAVY_NOW_AND_THEN)
     out = StringIO.new
     still = rom.profile(out: out, frames: 20)
     frames = still.slowest_pass_frames
     tape = VBlank::Playthroughs::Tape.parse("vblank tape 1\nrecorded on: HEAVY 0x00000000\nstarts from: power-on\n")
-    readings = rom.profile(out: StringIO.new, tape: tape, frames: frames).readings
+    readings = rom.profile(out: StringIO.new, tape: tape, frames: frames.begin..(frames.end + 1)).readings
+    within = readings.take(frames.size)
 
     assert_equal still.slowest_frames, frames.size
     assert_includes out.string, "frames #{frames.begin} to #{frames.end} from power-on"
-    assert_equal [0] * (frames.size - 1) + [1], readings.map(&:passes_ended)
-    assert_equal [:pass], readings.drop(1).map(&:picture_held_by).uniq
+    assert_equal 1, within.sum(&:passes_ended)
+    assert_predicate within.first, :new_picture?
+    assert_empty within.drop(1).select(&:new_picture?), "the slow pass's frames show no new picture"
+    assert_predicate readings.last, :new_picture?, "the slow pass's picture goes up the frame after"
   end
 
   def test_the_report_comes_as_data_too

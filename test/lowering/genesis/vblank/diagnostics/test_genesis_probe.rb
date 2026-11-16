@@ -82,6 +82,24 @@ class TestGenesisProbe < Minitest::Test
     end
   end
 
+  # The vertical scroll memory is handed over high byte first, as the other memories are: a field
+  # whose view is moved five pixels down reads as the word 5, not 0x0500.
+  def test_the_scroll_memory_reads_high_byte_first
+    built = VBlank.build("SCROLLED", console: :genesis, out: StringIO.new, err: StringIO.new) do
+      screen :tiled
+      image(:sea, "." => :blue) { "........\n" * 8 }
+      tiles :set, "." => :sea
+      field = background :field, tiles: :set, map: Array.new(32) { "." * 40 }
+      field.scroll_to(0, 5)
+      game_loop {}
+    end
+    verifier = VBlank::Diagnostics::Verifier.new(built, frames: FRAMES)
+
+    assert_equal 5, verifier.scroll_ram.unpack1("n")
+  ensure
+    verifier&.close
+  end
+
   # The 68000 reads a word or a long word at any even address, so a game keeps long words at
   # addresses that are not a multiple of four; an odd address stops the processor and is refused.
   def test_a_long_word_reads_at_any_even_address_and_not_at_an_odd_one
@@ -91,6 +109,40 @@ class TestGenesisProbe < Minitest::Test
       assert_equal probe.read_bytes(between, 4).unpack1("N"), probe.read(between, as: :u32)
       assert_match "even", assert_raises(ArgumentError) { probe.read(ticks + 1, as: :u16) }.message
     end
+  end
+
+  # Each of the console's 512 colours as the picture's four bytes: every three-bit channel widened
+  # to five (Console::GenesisHardware.widen), then to eight by repeating its top bits, red first.
+  def test_every_colour_of_the_console_is_the_picture_bytes_it_always_was
+    expected = Array.new(512) do |color|
+      levels = Array.new(3) { |channel| (color >> (channel * 3)) & 7 }
+      levels.map { |level| ((level << 2) | (level >> 1)).then { |five| (five << 3) | (five >> 2) } }.pack("C3x")
+    end
+
+    assert_equal expected.join, VBlank::Diagnostics::GenesisProbe.picture_bytes((0...512).to_a)
+  end
+
+  # The picture is read again only when the console drew a different one, and a different one is
+  # never missed: the box that moved is where it moved to.
+  def test_the_picture_follows_a_box_that_moves
+    built = VBlank.build("MOVING", console: :genesis, out: StringIO.new, err: StringIO.new) do
+      screen :tiled
+      image(:box, "#" => :white) { "########\n" * 8 }
+      image(:sea, "." => :blue) { "........\n" * 8 }
+      tiles :set, "." => :sea
+      background :field, tiles: :set, map: Array.new(32) { "." * 40 }
+      box = sprite :box, at: [40, 60]
+      game_loop { box.x += 1 if box.x < 160 }
+    end
+    reader = VBlank::Diagnostics::Verifier.new(built, frames: FRAMES)
+    before = reader.picture
+    reader.step(150)
+
+    refute_equal before, reader.picture
+    assert reader.white?(164, 64), "the box has moved right"
+    assert reader.blue?(41, 64), "the box has left where it was"
+  ensure
+    reader&.close
   end
 
   def test_an_address_outside_work_ram_is_refused

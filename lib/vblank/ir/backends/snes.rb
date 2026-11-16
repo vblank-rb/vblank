@@ -21,6 +21,7 @@ require_relative "snes/memory"
 require_relative "snes/samples"
 require_relative "snes/dsp_writes"
 require_relative "snes/music"
+require_relative "snes/song_banks"
 require_relative "snes/text_layer_art"
 require_relative "snes/runtime"
 require_relative "snes/chip_code"
@@ -62,10 +63,13 @@ module VBlank
         # from, each entry of the interpreter's sound log by the number the cartridge's own log keeps
         # it as (empty for a game that makes no sound), what the DSP writes for those entries are
         # worked out with (DSPWrites::Voicing, Lowering::Sound#sound_voicing), and the game's
-        # recordings by the number a place playing one keeps (Runtime::Recordings), and each sprite
-        # picture's number as SpriteNames numbers the picture it shows (Lowering::Picture#sprite_picture_names).
+        # recordings by the number a place playing one keeps (Runtime::Recordings), each sprite
+        # picture's number as SpriteNames numbers the picture it shows (Lowering::Picture#sprite_picture_names),
+        # and the pieces it made of each picture (Lowering::Picture#sprite_pieces_built); and how much
+        # of the sound chip's memory the game uses (Cartridge::SNESROM::SoundMemory, nil for no sound).
         Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :routines, :sound_entries,
-                             :sound_voicing, :recording_names, :sprite_picture_names, :console_voice_bits) do
+                             :sound_voicing, :recording_names, :sprite_picture_names, :sprite_pieces, :console_voice_bits,
+                             :sound_memory) do
           # Where the runtime counts the times the game has waited for the screen (32 bits).
           def waits_counted_at = runtime.fetch(Runtime::Frame::PASSES)
 
@@ -88,6 +92,30 @@ module VBlank
         # and what it is to the author.
         GameRoutine = Data.define(:addresses, :routine)
 
+        # The settings of one try (#build, BuildTries), each the Lowering's setting of the same name
+        # (Art says what each does), and +far_tables+ Memory's. +one_sprite_tile_set+ is false, true,
+        # or :failed for a game that tried it and did not fit, which is not tried again.
+        Tried = Data.define(:sprite_squares, :screen_colors, :sprite_colors, :sprite_tiles, :background_tiles,
+                            :lean_square_scenes, :small_sprite_scenes, :one_sprite_tile_set, :scene_recordings,
+                            :shared_held_lists, :far_tables) do
+          # Everything the simple way: a game that fits so builds the bytes it always has.
+          def self.first = new(sprite_squares: true, screen_colors: false, sprite_colors: false, sprite_tiles: false,
+                               background_tiles: false, lean_square_scenes: {}, small_sprite_scenes: [],
+                               one_sprite_tile_set: false, scene_recordings: false, shared_held_lists: false,
+                               far_tables: false)
+        end
+
+        # A try that fit: the cartridge, the settings and lowering it was made with, what the
+        # lowering's findings, and the sprite pieces it made of each picture.
+        Fit = Data.define(:cartridge, :settings, :lowering, :findings, :sprite_pieces)
+
+        # +sleeps_every_pass+ builds the cartridge a checked run reads, in which every pass sleeps
+        # until the next blank, even one that ends inside a blank (Runtime::Frame#emit_sleep_unless_in_blank).
+        # Every other build leaves it unset, and a game without music is the same bytes either way.
+        def initialize(sleeps_every_pass: false)
+          @sleeps_every_pass = sleeps_every_pass
+        end
+
         # What the build found to say about what it decided (Cartridge::LoweredBuild).
         def findings = (@findings ||= [])
 
@@ -103,6 +131,10 @@ module VBlank
 
         # +program+ as a cartridge (Cartridge::SNESROM), carrying its Places.
         #
+        # A BUILD IS A SERIES OF TRIES (BuildTries), each a whole lowering with one Tried, until one
+        # fits; what each try finds it needs is kept for every try after it (#settings_after says
+        # what each thing that does not fit changes).
+        #
         # A sprite's squares of 16×16 keep their four tiles together, so they share fewer than 8×8
         # pieces do and a game that only just fits its sprite tiles can run out. It is built again
         # in 8×8 pieces, which fits, and takes more of the sprite table, which it says, since a
@@ -114,7 +146,12 @@ module VBlank
         # need of and is not built with: it stays the bytes it was. A game whose sprites do not fit
         # the console's 512 tiles has each scene's in video memory while it is up (+sprite_tiles+),
         # before it gives up squares, and the same for 1024 background tiles (+background_tiles+).
-        # A screen that still does not fit is cut small alone (+small_sprite_scenes+). Before any of
+        # A screen that still does not fit keeps a square only where it takes no more tiles than its
+        # quarters (+lean_square_scenes+), then spends the tiles that leaves free on squares that take
+        # more (#spare_tiles_attempt), and one that does not fit even so is cut small alone
+        # (+small_sprite_scenes+); each says what it gave up (Picture#crowded_scene_findings). A try
+        # finds every crowded screen before it stops (Art::ScreenSpritesFull), so a game of many takes
+        # a try for each of those steps, not one for each screen. Before any of
         # those, a game of sprites in several lists of colours is built with one set of their
         # pictures, worn in every list (+one_sprite_tile_set+): what it costs is a whole set of
         # colours for each list, so it is tried only where the sprites do not fit otherwise, and
@@ -133,71 +170,77 @@ module VBlank
         #
         # What every try works out from the program alone is worked out once, in +cache+
         # (BuildCache), made for this build and handed to each try.
-        def build(program, far_tables: false, cache: BuildCache.for(SNES, program), **choices)
-          build_laid_out(program, far_tables: far_tables, cache: cache, **choices)
-        rescue Memory::NearFull
-          raise if far_tables
+        def build(program, title: "VBLANK", cache: BuildCache.for(SNES, program))
+          @build_tries = BuildTries.new(Lowering::CONSOLE.title, Tried.first)
+          fit = @build_tries.run(next_settings: ->(error, try) { settings_after(error, try) },
+                                 better: ->(try, fitted) { spare_tiles_attempt(try.settings, fitted.lowering) }) do |try|
+            build_try(program, title, try, cache)
+          end
+          findings << small_pieces_finding unless fit.settings.sprite_squares
+          findings.concat(fit.findings)
+          program.record_sprite_pieces_built(Lowering::CONSOLE.name, fit.sprite_pieces)
+          fit.cartridge
+        end
 
-          build(program, **choices, far_tables: true, cache: cache)
+        # How many times the last #build lowered the game: one for a game that fits as it first tries.
+        def tries = @build_tries&.count || 0
+
+        # THE SPRITE PIECES THE BUILD MAKES OF EACH PICTURE OF +program+ (SpriteLines.pieces_built,
+        # Lowering::Picture#sprite_pieces_built), which can differ from the console's rule for
+        # cutting a picture wherever the build gives up squares: worked out by building the game,
+        # or nil where it cannot be built. A build records them on the program as it finishes
+        # (Program#record_sprite_pieces_built), so where the cartridge has been built already
+        # nothing asks here.
+        #
+        # A program no cartridge is made of has no cartridge's pieces to match: one handed a file
+        # as it starts, or one this build stops on in any way. Its build is not checked first, as a
+        # cartridge's is (Cartridge::LoweredBuild), so a program the checks would refuse can stop it
+        # with any error; that refusal is the cartridge build's to make, in its own words, and here
+        # the console's rule stands (SpriteLines.picture_places).
+        def self.sprite_pieces_built(program)
+          return nil if program.start_file
+
+          new.build(program).built.sprite_pieces
+        rescue StandardError
+          nil
         end
 
         private
 
-        # #build, its work RAM laid out with the runtime's tables near or far, as +far_tables+ sets.
-        def build_laid_out(program, title: "VBLANK", sprite_squares: true, screen_colors: false, sprite_colors: false,
-                           sprite_tiles: false, background_tiles: false, small_sprite_scenes: [], one_sprite_tile_set: false,
-                           scene_recordings: false, shared_held_lists: false, far_tables: false, cache:)
+        # One try of #build (BuildTries::Try), a Fit where it fits. Its lowering is the try's +made+,
+        # which #settings_after reads.
+        def build_try(program, title, try, cache)
+          settings = try.settings
           board = board_for(program)
-          memory = Memory.new(far_tables: far_tables)
-          carries = cache.facts.carries(board, screen_colors: screen_colors, sprite_colors: sprite_colors,
-                                               sprite_tiles: sprite_tiles, background_tiles: background_tiles)
+          memory = Memory.new(far_tables: settings.far_tables)
+          carries = cache.facts.carries(board, screen_colors: settings.screen_colors, sprite_colors: settings.sprite_colors,
+                                               sprite_tiles: settings.sprite_tiles, background_tiles: settings.background_tiles)
           Runtime.reserve(memory, carries)
-          lowering = Lowering.new(program, memory: memory, sprite_squares: sprite_squares, screen_colors: screen_colors,
-                                                sprite_colors: sprite_colors, sprite_tiles: sprite_tiles,
-                                                background_tiles: background_tiles, small_sprite_scenes: small_sprite_scenes,
-                                                one_sprite_tile_set: one_sprite_tile_set, chip: carries.chip?,
-                                                scene_recordings: scene_recordings, shared_held_lists: shared_held_lists,
-                                                cache: cache)
-          choices = { sprite_squares: sprite_squares, screen_colors: screen_colors, sprite_colors: sprite_colors,
-                      sprite_tiles: sprite_tiles, background_tiles: background_tiles,
-                      small_sprite_scenes: small_sprite_scenes, one_sprite_tile_set: one_sprite_tile_set,
-                      scene_recordings: scene_recordings, shared_held_lists: shared_held_lists, far_tables: far_tables,
-                      cache: cache }
+          Runtime::Frame.reserve_last_pass(memory) if cache.plan.keeps_last_pass_number?
+          lowering = try.made = Lowering.new(program, memory: memory, sprite_squares: settings.sprite_squares,
+                                                      screen_colors: settings.screen_colors,
+                                                      sprite_colors: settings.sprite_colors, sprite_tiles: settings.sprite_tiles,
+                                                      background_tiles: settings.background_tiles,
+                                                      lean_square_scenes: settings.lean_square_scenes,
+                                                      small_sprite_scenes: settings.small_sprite_scenes,
+                                                      one_sprite_tile_set: settings.one_sprite_tile_set == true,
+                                                      chip: carries.chip?, scene_recordings: settings.scene_recordings,
+                                                      shared_held_lists: settings.shared_held_lists, cache: cache)
           begin
             game = lowering.sections + lowering.art_sections
-          rescue Art::TooManyHeldBackgroundLists
-            return build(program, title: title, **choices, shared_held_lists: true)
-          rescue Art::ScreenSpritesFull => e
-            built = build_with_one_sprite_tile_set(program, title, choices, lowering)
-            return built if built
-
-            return build(program, title: title, **choices, small_sprite_scenes: [*small_sprite_scenes, e.scene])
-          rescue Art::TooManyBackgroundColors
-            return build(program, title: title, **choices, screen_colors: true)
-          rescue Art::TooManySpriteColors
-            return build(program, title: title, **choices, sprite_colors: true)
-          rescue Art::TooMuch => e
-            built = build_with_one_sprite_tile_set(program, title, choices, lowering) if e.is_a?(Art::TooManySpriteTiles)
-            return built if built
-
-            return build(program, title: title, **choices, sprite_tiles: true) if e.is_a?(Art::TooManySpriteTiles) && lowering.sprites_of_one_scene?
-            return build(program, title: title, **choices, background_tiles: true) if e.is_a?(Art::TooManyBackgroundTiles) && lowering.backgrounds_of_one_scene?
-            raise unless sprite_squares
-
-            findings << small_pieces_finding
-            return build(program, title: title, **choices, sprite_squares: false)
+          rescue LoweringError => e
+            # A screen whose sprites did not fit stops the try once every screen has been made,
+            # whatever the build refused after it (Art#refuse_crowded_scenes!), but backgrounds over
+            # their sets of colours, which no change to the sprites can help.
+            lowering.refuse_crowded_scenes! unless e.is_a?(Art::BackgroundColorsFull)
+            raise
           end
-          begin
-            runtime = Runtime.sections(memory, carries, lowering)
-          rescue Runtime::Sound::TooBig
-            raise if scene_recordings || !lowering.recordings_of_one_scene?
-
-            return build(program, title: title, **choices, scene_recordings: true)
-          end
-          findings.concat(lowering.sprite_table_findings)
-          findings.concat(lowering.scene_recording_findings)
-          findings.concat(routines_without_their_chip(program)) unless carries.chip?
-          linked =Linker.new(runtime + game, most_banks: board.most_banks).link
+          lowering.refuse_crowded_scenes!
+          runtime = Runtime.sections(memory, carries, lowering, sleeps_every_pass: @sleeps_every_pass)
+          try_findings = [*lowering.sprite_table_findings, *lowering.crowded_scene_findings, *lowering.scene_recording_findings]
+          try_findings.concat(routines_without_their_chip(program)) unless carries.chip?
+          sprite_pieces = lowering.sprite_pieces_built
+          linked = Linker.new(runtime.sections + game, most_banks: board.most_banks).link
           routines = lowering.section_routines.map do |label, routine|
             placed = linked.sections.fetch(label)
             GameRoutine.new(addresses: placed.address...(placed.address + placed.section.size), routine: routine)
@@ -207,30 +250,93 @@ module VBlank
                              source_program: program, code: linked.places, routines: routines,
                              sound_entries: lowering.sound_entries, sound_voicing: lowering.sound_voicing,
                              recording_names: lowering.recording_names,
-                             sprite_picture_names: lowering.sprite_picture_names,
-                             console_voice_bits: Music.voice_bits(DSPWrites::CONSOLE_VOICES.to_a - carries.recording_voices))
+                             sprite_picture_names: lowering.sprite_picture_names, sprite_pieces: sprite_pieces,
+                             console_voice_bits: Music.voice_bits(DSPWrites::CONSOLE_VOICES.to_a - carries.recording_voices),
+                             sound_memory: runtime.sound_memory)
           vectors = { reset: linked.address_of("rt_reset"), nmi: linked.address_of("rt_nmi"),
                       irq: linked.address_of("rt_irq"), brk: linked.address_of("rt_irq"),
                       cop: linked.address_of("rt_irq") }
-          Cartridge::SNESROM.new(linked.banks, title: title, vectors: vectors.transform_values { |at| at & 0xFFFF },
-                                               built: built, board: board,
-                                               save_bytes: carries.saves ? Runtime::Saving::SIZE : 0)
+          cartridge = Cartridge::SNESROM.new(linked.banks, title: title, vectors: vectors.transform_values { |at| at & 0xFFFF },
+                                                           built: built, board: board,
+                                                           save_bytes: carries.saves || 0)
+          Fit.new(cartridge: cartridge, settings: settings, lowering: lowering, findings: try_findings, sprite_pieces: sprite_pieces)
         end
 
-        # The game built with one set of its sprites' pictures (#build), or nil where that does not
-        # apply or does not fit, which leaves the other ways of fitting it to be tried, once, and with
-        # nothing the attempt found to say.
-        def build_with_one_sprite_tile_set(program, title, choices, lowering)
-          return nil if choices[:one_sprite_tile_set] || @one_sprite_tile_set_failed || !lowering.sprites_draw_with_lists?
-
-          said = findings.length
-          begin
-            build(program, title: title, **choices, one_sprite_tile_set: true)
-          rescue Art::TooMuch, Lowering::NotMadeYet
-            @one_sprite_tile_set_failed = true
-            findings.slice!(said..)
-            nil
+        # The settings of the try after +try+, which +error+ stopped (BuildTries), an Attempt, or nil
+        # where nothing left to change would help.
+        def settings_after(error, try)
+          settings = try.settings
+          lowering = try.made
+          case error
+          when Memory::NearFull then settings.with(far_tables: true) unless settings.far_tables
+          when Runtime::Sound::TooBig
+            settings.with(scene_recordings: true) unless settings.scene_recordings || !lowering.recordings_of_one_scene?
+          when Art::TooManyHeldBackgroundLists then settings.with(shared_held_lists: true)
+          when Art::ScreenSpritesFull
+            one_sprite_tile_set_attempt(error, settings, lowering) || crowded_scenes_settings(error, settings)
+          when Art::TooManyBackgroundColors then settings.with(screen_colors: true)
+          when Art::TooManySpriteColors then settings.with(sprite_colors: true)
+          when Art::TooMuch
+            (one_sprite_tile_set_attempt(error, settings, lowering) if error.is_a?(Art::TooManySpriteTiles)) ||
+              tiles_settings(error, settings, lowering)
           end
+        end
+
+        # The settings after the sprites' or the backgrounds' tiles did not fit with +settings+:
+        # each scene's in video memory while it is up, where some are one scene's, and the
+        # sprites' squares given up after that.
+        def tiles_settings(error, settings, lowering)
+          return settings.with(sprite_tiles: true) if error.is_a?(Art::TooManySpriteTiles) && lowering.sprites_of_one_scene?
+          if error.is_a?(Art::TooManyBackgroundTiles) && lowering.backgrounds_of_one_scene?
+            return settings.with(background_tiles: true)
+          end
+
+          settings.with(sprite_squares: false) if settings.sprite_squares
+        end
+
+        # The settings after the screens +error+ names did not fit their sprites (Art::ScreenSpritesFull):
+        # each keeps only the squares that waste no tile, and one that did not fit so is cut small.
+        # Nil where one of them was spending its spare tiles (#spare_tiles_attempt): that try is given
+        # up, and the one before it stands.
+        def crowded_scenes_settings(error, settings)
+          lean = settings.lean_square_scenes
+          return nil if error.scenes.any? { |scene| lean[scene]&.positive? }
+
+          fresh = error.scenes.reject { |scene| lean.key?(scene) }
+          lean_already = error.scenes.select { |scene| lean.key?(scene) }
+          settings.with(lean_square_scenes: lean.merge(fresh.to_h { |scene| [scene, 0] }),
+                        small_sprite_scenes: settings.small_sprite_scenes | lean_already)
+        end
+
+        # The game tried with one set of its sprites' pictures (+one_sprite_tile_set+), an Attempt, or
+        # nil where that does not apply or was tried already. If it does not fit, the build carries on
+        # from +settings+ as though it had not been tried, once.
+        #
+        # Backgrounds over their sets of colours are not given up on: as this try found them, the other
+        # tries change only how the sprites are kept, so each would fail too, and the last would
+        # report the sprites instead.
+        def one_sprite_tile_set_attempt(error, settings, lowering)
+          return nil if settings.one_sprite_tile_set || !lowering.sprites_draw_with_lists?
+
+          failed = settings.with(one_sprite_tile_set: :failed)
+          otherwise = error.is_a?(Art::ScreenSpritesFull) ? crowded_scenes_settings(error, failed) : tiles_settings(error, failed, lowering)
+          BuildTries::Attempt.new(settings: settings.with(one_sprite_tile_set: true), otherwise: otherwise,
+                                  given_up_on: [Art::TooMuch, Lowering::NotMadeYet], except: [Art::BackgroundColorsFull])
+        end
+
+        # One more try after +settings+ fit, with the tiles each crowded scene left free (as +lowering+
+        # made it) spent on squares that waste some (Art, "A crowded screen's sprites"), an Attempt, or
+        # nil where none is left free. If it does not fit, the try that fit stands. The first try keeps
+        # only the squares that waste nothing, so a picture with a blank quarter, the commonest kind,
+        # would lose its square there although the room was free.
+        def spare_tiles_attempt(settings, lowering)
+          lean = settings.lean_square_scenes
+          spare = lean.select { |_, tiles| tiles.zero? }
+                      .to_h { |scene, _| [scene, lowering.free_sprite_tiles(scene)] }
+                      .select { |_, tiles| tiles.positive? }
+          return nil if spare.empty?
+
+          BuildTries::Attempt.new(settings: settings.with(lean_square_scenes: lean.merge(spare)), given_up_on: [Art::TooMuch])
         end
 
         # A word that asks for a chip this cartridge does not have changes nothing, and a game much

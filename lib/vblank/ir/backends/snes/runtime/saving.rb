@@ -16,9 +16,23 @@ module VBlank
           # from power-on. Every routine reads it through a pointer on the direct page that holds
           # $70:0000, with the place in Y — the long indirect address [pointer],Y.
           #
-          # ON A SUPER FX CARTRIDGE bank $70 is the chip's working RAM, and the save is the first 32K
-          # of a second bank, $71 (Cartridge::SNESROM::SUPER_FX says why), so the pointer holds
-          # $71:0000 there; the routines are otherwise the same. The console's processor must not
+          # ON A SUPER FX CARTRIDGE bank $70 is the chip's working RAM, and the save is the whole of a
+          # second bank, $71, 64K of it (Cartridge::SNESROM::SUPER_FX says why), so the pointer holds
+          # $71:0000 there. The save layout is the same packed one (IR::SaveLayout::Memory), so its
+          # first 32K holds what a plain cartridge's does, byte for byte, and a game whose saves need
+          # more than 32K has the rest. The bank is 64K whole, so Y reaches all of it from the one
+          # pointer; the routines differ only where a place or a length can be 64K itself, which
+          # does not fit a 16-bit register (#emit_point_or_stop, #emit_sum).
+          #
+          # WHY A PLAIN CARTRIDGE STAYS AT 32K. bsnes takes a LoROM header asking for more (up to
+          # 256K) and shows it 32K a bank, $70:0000-7FFF, $71:0000-7FFF and on, so a save past 32K
+          # would cross a bank in the middle of a record, and every routine here would have to step
+          # the pointer's bank as it goes (measured in bsnes: $71:0000 is the RAM's byte $8000).
+          # 32K is the most one bank holds on that board. A game that needs more is refused by the
+          # build in plain words, naming the bytes it needs and the Super FX, whose 64K is one bank
+          # (Builder::SaveRecords#refuse_records_over_biggest_memory!).
+          #
+          # The console's processor must not
           # touch the chip's RAM while the chip runs (Chip), and these routines never do: they are
           # called only from the game's own code, which waits in Chip's rt_chip_run until the chip
           # has stopped, and the vertical blank's interrupt, which does go on meanwhile, never saves.
@@ -26,9 +40,14 @@ module VBlank
           # rt_save_read(at, width) and rt_save_write(at, value, width) take one, two or four bytes,
           # lowest first; rt_save_sum(at, length) is SaveLayout.checksum's two 16-bit sums;
           # rt_save_erase does nothing, battery-backed RAM needing no wiping before it is written. A
-          # place outside the 32K stops the game in the interpreter's words (Faults.save_outside).
+          # place outside the save stops the game in the interpreter's words (Faults.save_outside).
           module Saving
+            # A plain cartridge's save, the size a game that saves has there
+            # (Console::SNES_PLAIN_SAVE_MEMORIES).
             SIZE = 0x8000
+
+            # The most a save can be: one whole bank, all of it reached through Y.
+            BANK_BYTES = 0x10000
 
             R0 = Memory.register(0)
             R1 = Memory.register(1)
@@ -42,14 +61,17 @@ module VBlank
 
             def scratch(memory) = Scratch.new(pointer: memory.scratch(4), fault: memory.scratch(2))
 
-            # +bank+ is the bank the console sees the save in (Cartridge::SNESROM::Board#save_bank).
-            def emit(asm, memory, s, bank:)
+            # +bank+ is the bank the console sees the save in (Cartridge::SNESROM::Board#save_bank),
+            # and +size+ how many bytes the save is (IR::SaveLayout.memory_of), at most a bank.
+            def emit(asm, memory, s, bank:, size: SIZE)
+              raise ArgumentError, "a save of #{size} bytes is more than one bank" if size > BANK_BYTES
+
               emit_read(asm, s)
               emit_write(asm, s)
-              emit_sum(asm, s)
+              emit_sum(asm, s, whole_bank: size == BANK_BYTES)
               asm.label("rt_save_erase")
               asm.rtl
-              emit_point_or_stop(asm, memory, s, bank)
+              emit_point_or_stop(asm, memory, s, bank, size)
             end
 
             # rt_save_read: R0 = the +width+ (R1) bytes at +at+ (R0), lowest first, the rest nought.
@@ -95,7 +117,10 @@ module VBlank
             # rt_save_sum: R0 = SaveLayout.checksum of the +length+ (R1) bytes at +at+ (R0): a running
             # total of the bytes and a running total of those totals, each kept to 16 bits, the second
             # in R0's high half. A length below nought sums no bytes, as the interpreter's empty range.
-            def emit_sum(asm, s)
+            #
+            # On a save of a +whole_bank+ the length can be the whole 64K, whose low half is nought:
+            # then its high half says it is not empty, and is counted into the pointer's bank.
+            def emit_sum(asm, s, whole_bank: false)
               asm.label("rt_save_sum")
               asm.lda(Frame::SAVE_READ_OUTSIDE)
               asm.ldx(R1)
@@ -104,13 +129,14 @@ module VBlank
               asm.stz(asm.direct(R0 + 2))
               asm.lda(asm.direct(R1 + 2))
               asm.bmi("rt_save_sum_done")
-              # Inside the 32K, so the length's low half is all of it. Y counts up from minus the
-              # length to nought, and the pointer is moved back by as much, so one increase of Y both
-              # steps to the next byte and says when the last is summed: the pointer, $bank:0000,
-              # becomes the place past the last byte less 64K, which Y's 64K less the length brings
-              # back to the first. The loop sums two bytes a time round, and an odd length starts
-              # at its second.
+              # Inside the save, so the length's low half is all of it, but for a whole bank's.
+              # Y counts up from minus the length to nought, and the pointer is moved back by as
+              # much, so one increase of Y both steps to the next byte and says when the last is
+              # summed: the pointer, $bank:0000, becomes the place past the last byte less 64K,
+              # which Y's 64K less the length brings back to the first. The loop sums two bytes a
+              # time round, and an odd length starts at its second.
               asm.lda(asm.direct(R1))
+              asm.ora(asm.direct(R1 + 2)) if whole_bank
               asm.beq("rt_save_sum_done")
               asm.tya
               asm.clc
@@ -118,6 +144,10 @@ module VBlank
               asm.sta(asm.direct(s.pointer))
               asm.lda(asm.direct(s.pointer + 2))
               asm.adc(0xFFFF)
+              if whole_bank
+                asm.clc
+                asm.adc(asm.direct(R1 + 2))
+              end
               asm.sta(asm.direct(s.pointer + 2))
               asm.lda(0)
               asm.sec
@@ -312,12 +342,13 @@ module VBlank
 
             # rt_save_point_or_stop (JSR): +at+ in R0 and a count of bytes in the working number X
             # names, both 32 bits; A the fault to stop with when they do not fit. They fit, as
-            # SaveImage has it, when +at+ is nought or more and +at+ + count is no more than the 32K.
-            # Then the pointer holds the save's start, +bank+:0000, and Y is +at+. Otherwise the game
-            # stops, the place and the size as the fault's two numbers. A count below nought (only a sum's length can be)
-            # fits wherever it ends up no further than the 32K, even from a place far past it, and
-            # reads no bytes, so Y need not hold all of such a place.
-            def emit_point_or_stop(asm, memory, s, bank)
+            # SaveImage has it, when +at+ is nought or more and +at+ + count is no more than the
+            # save's +size+. Then the pointer holds the save's start, +bank+:0000, and Y is +at+.
+            # Otherwise the game stops, the place and the size as the fault's two numbers. A count
+            # below nought (only a sum's length can be) fits wherever it ends up no further than the
+            # save's end, even from a place far past it, and reads no bytes, so Y need not hold all
+            # of such a place. A save of a whole bank ends at $1:0000, whose high half is 1.
+            def emit_point_or_stop(asm, memory, s, bank, size)
               asm.label("rt_save_point_or_stop")
               asm.sta(asm.direct(s.fault))
               asm.lda(asm.direct(R0 + 2))
@@ -330,9 +361,17 @@ module VBlank
               asm.adc(asm.direct_x(2))
               asm.bvs("rt_save_outside") # a count so big the end came round past the top
               asm.bmi("rt_save_inside") # a count below nought ends before the place: no bytes
-              asm.bne("rt_save_outside")
-              asm.cpy(SIZE + 1)
-              asm.bcs("rt_save_outside")
+              if size == BANK_BYTES
+                asm.beq("rt_save_inside") # ends inside the bank
+                asm.cmp(1)
+                asm.bne("rt_save_outside")
+                asm.cpy(0)
+                asm.bne("rt_save_outside") # past the bank's end
+              else
+                asm.bne("rt_save_outside")
+                asm.cpy(size + 1)
+                asm.bcs("rt_save_outside")
+              end
               asm.label("rt_save_inside")
               asm.stz(asm.direct(s.pointer))
               asm.lda(bank)
@@ -344,9 +383,14 @@ module VBlank
               asm.sta(asm.abs(memory[Frame::FAULT], Frame::FAULT_FIRST))
               asm.lda(asm.direct(R0 + 2))
               asm.sta(asm.abs(memory[Frame::FAULT], Frame::FAULT_FIRST + 2))
-              asm.lda(SIZE)
+              asm.lda(size & 0xFFFF)
               asm.sta(asm.abs(memory[Frame::FAULT], Frame::FAULT_SECOND))
-              asm.stz(asm.abs(memory[Frame::FAULT], Frame::FAULT_SECOND + 2))
+              if (size >> 16).zero?
+                asm.stz(asm.abs(memory[Frame::FAULT], Frame::FAULT_SECOND + 2))
+              else
+                asm.lda(size >> 16)
+                asm.sta(asm.abs(memory[Frame::FAULT], Frame::FAULT_SECOND + 2))
+              end
               asm.lda(asm.direct(s.fault))
               asm.jml(asm.long("rt_fault"))
             end

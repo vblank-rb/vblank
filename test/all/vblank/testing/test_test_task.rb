@@ -77,6 +77,38 @@ class TestTestTask < Minitest::Test
     assert_equal Gem.loaded_specs["minitest"].version.to_s, written
   end
 
+  # A game that holds its cartridge to something other than the interpreter, the retail original
+  # it ports, says so in its run's heading.
+  def test_a_run_given_a_heading_prints_it
+    heading = heading_of_run { |t| t.heading = "the game held to the retail original" }
+
+    assert_match(/GBA lowering: the game held to the retail original$/, heading)
+  end
+
+  def test_a_run_given_no_heading_prints_what_its_lowering_does
+    assert_match(/GBA lowering: the game on the interpreter$/, heading_of_run { nil })
+  end
+
+  # What a run over one empty file prints before its tests, the block setting up its task.
+  private def heading_of_run
+    Dir.mktmpdir do |dir|
+      probe = File.join(dir, "probe.rb")
+      File.write(probe, "")
+      out, = capture_io do
+        with_environment("TEST" => nil, "TESTOPTS" => nil) do
+          Rake.with_application(Rake::Application.new) do
+            TestTask.new(:walking) do |t|
+              t.test_files = [probe]
+              yield t
+            end
+            Rake::Task[:walking].invoke
+          end
+        end
+      end
+      out
+    end
+  end
+
   private def yjit_enabled_in_run(lowering, test_options:, ruby_options: nil)
     record_from_run(lowering, test_options: test_options, ruby_options: ruby_options) do |record|
       "File.write(#{record.inspect}, RubyVM::YJIT.enabled?.to_s)\n"

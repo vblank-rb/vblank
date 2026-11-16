@@ -57,6 +57,30 @@ class TestSpriteTiles < Minitest::Test
     assert_equal GREEN, shown.pixel(48, 27), "tile 1 took its second, every row of it"
   end
 
+  # A set drawn from a list by name whose first place is a colour holds that list as every other
+  # picture drawn from it does: place 0 see-through. So one sprite showing a pose of the set and
+  # another picture of that list can be drawn with another list.
+  def test_a_pose_of_the_set_and_a_picture_of_its_named_list_are_drawn_with_another_list
+    b = Builder.new
+    b.instance_eval do
+      screen :tiled
+      colors :ball, %i[white red green]
+      colors :other, %i[white cyan yellow]
+      image :reds, width: 8, height: 8, colors: :ball, places: Array.new(64, 1)
+      image :greens, width: 8, height: 8, colors: :ball, places: Array.new(64, 2)
+      set = sprite_tiles :ball_tiles, count: 1, colors: :ball
+      image :spin, tiles_from: :ball_tiles, pieces: [[0, 0, 0]]
+      ball = sprite :ball, at: [40, 20], frames: %i[spin greens], rate: 2
+      ball.draw_with :other
+      set.copy_from :reds, at: 0, count: 1, to: 0
+      game_loop { wait_vblank }
+    end
+    b.finalize_program
+    seen = (3..8).map { |frames| screen_after(b.program, frames).pixel(40, 20) }.uniq.sort
+
+    assert_equal [VBlank::Graphics::Color.resolve(:cyan), VBlank::Graphics::Color.resolve(:yellow)].sort, seen
+  end
+
   def test_another_pose_draws_the_same_tiles_in_its_own_places
     program = ball_game do |set, ball, frame|
       set.copy_from :kinds, at: 0, count: 2, to: 0 if frame == 1

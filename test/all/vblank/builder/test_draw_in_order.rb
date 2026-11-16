@@ -101,6 +101,33 @@ module DrawInOrderGames
       game_loop {}
     end
   end
+
+  # A RUN DRAWN IN THE ORDER A LIST OF THE GAME'S OWN HOLDS, read as the interpreter reads it
+  # (Reference#names_in_draw_order): every entry the list holds, a place below nought counting back
+  # from the run's last sprite, and a place naming none of its sprites stopping the game. The builder
+  # keeps its own list full of the run's places, so only a run written onto the frame's drawing by hand
+  # reaches the rest. Two blocks overlap at OVERLAP: the red one first in the run, the green one second.
+  # The block is handed the list and writes the game.
+  private def hand_ordered_program(&game)
+    block = BLOCK
+    enemy_at = ENEMY_AT
+    prog = program do
+      screen :tiled
+      image(:enemy, "#" => :red) { block }
+      image(:hero, "#" => :green) { block }
+      sprite :enemy, at: enemy_at
+      sprite :hero, at: [enemy_at[0] + 8, enemy_at[1] + 6]
+      instance_exec(list(:order, capacity: 4, width: :byte), &game)
+    end
+    prog.walk.select { |node| node.kind == :present_objects }.each do |drawn|
+      run = VBlank::IR::Build::DrawOrder.new(objects: drawn.names, order: :order)
+      ordered = VBlank::IR::Build.present_objects(drawn.names, orders: [run])
+      beside = drawn.parent.children
+      beside[beside.index(drawn)] = ordered
+      ordered.parent = drawn.parent
+    end
+    prog
+  end
 end
 
 class TestDrawInOrder < Minitest::Test
@@ -112,6 +139,9 @@ class TestDrawInOrder < Minitest::Test
   BLUE = VBlank::Graphics::Color.resolve(:blue)
 
   OVERLAP = [70, 66].freeze
+
+  # Where the red block of DrawInOrderGames#hand_ordered_program shows and the green one does not reach.
+  RED_ALONE = [62, 62].freeze
 
   private def shown(prog, frames: 2) = game_player.run(prog, frames: frames).screen.pixel(*OVERLAP)
 
@@ -202,6 +232,30 @@ class TestDrawInOrder < Minitest::Test
     assert_equal RED, shown(keyed_program(-10, front: :highest))
     assert_equal GREEN, shown(keyed_program(-10, front: :lowest))
     assert_backends_agree(keyed_program(-10, front: :highest), frames: 2)
+  end
+
+  # NUMBERS THAT ALL HOLD A FRACTION are put in order the way Ruby orders them: 54.5 is behind
+  # 60.0, and 66.5 is in front of it. The hero's number is his y and a half, the enemy's its y,
+  # given a fraction with `.to_f` (mixing the two kinds is refused; see the refusals below).
+  private def fraction_program(hero_y)
+    block = BLOCK
+    enemy_at = ENEMY_AT
+    program do
+      screen :tiled
+      image(:enemy, "#" => :red) { block }
+      image(:hero, "#" => :green) { block }
+      half = var :half, 0.5
+      enemy = sprite :enemy, at: enemy_at
+      hero = sprite :hero, at: [enemy_at[0] + 8, hero_y]
+      draw_in_order(enemy, hero) { |thing| thing.equal?(hero) ? thing.y.to_f + half : thing.y.to_f }
+      game_loop {}
+    end
+  end
+
+  def test_numbers_that_all_hold_a_fraction_are_put_in_order
+    assert_equal RED, shown(fraction_program(54)), "54.5 is behind 60, so the enemy covers the hero"
+    assert_equal GREEN, shown(fraction_program(66)), "66.5 is in front of 60"
+    assert_backends_agree(fraction_program(54), frames: 2)
   end
 
   # A POOL'S THINGS TAKE PART ONE BY ONE. Two of them are spawned so that the older — which
@@ -303,6 +357,39 @@ class TestDrawInOrder < Minitest::Test
   def test_seven_standing_level_keep_the_order_they_were_declared_in
     assert_equal color_named(:white), seven_shown(seven_program([2] * 7))
     assert_equal color_named(:white), seven_shown(seven_program([2] * 7, front: :lowest))
+  end
+
+  # THE SEVEN STAND AT A NEW ROW OF HEIGHTS EACH PASS, one after another, then stay at the last:
+  # in a line, the line turned round, a turned-round run behind one that stands apart, the same with
+  # two level in it, all level, turned round again, and a falling line with level pairs. Each row is
+  # sorted from the order the row before left, so the order turns round whole and in part, and
+  # things level keep the order they had. A checked run compares every pass's sprites with the
+  # interpreter's; the last row, a muddle, puts the lowest, green, in front.
+  TURNING_ROWS = [[0, 1, 2, 3, 4, 5, 6], [6, 5, 4, 3, 2, 1, 0], [2, 6, 5, 4, 3, 1, 0], [2, 6, 5, 5, 3, 1, 0],
+                  [3] * 7, [6, 5, 4, 3, 2, 1, 0], [5, 4, 4, 3, 1, 0, 0], [3, 6, 0, 5, 1, 4, 2]].freeze
+
+  private def turning_seven_program
+    colors = SEVEN_COLORS
+    rows = TURNING_ROWS
+    small = Array.new(8) { "#" * 8 }.join("\n")
+    program do
+      screen :tiled
+      heights = table :heights, rows.flatten, width: :byte
+      row = var :row, 0
+      things = colors.each_with_index.map do |color, i|
+        image(:"small_#{color}", "#" => color) { small }
+        sprite :"small_#{color}", at: [60 + i, 30]
+      end
+      draw_in_order(*things)
+      game_loop do
+        things.each_with_index { |thing, i| thing.y = 30 + heights[(row * 7) + i] }
+        row += 1 if row < rows.length - 1
+      end
+    end
+  end
+
+  def test_seven_turned_round_whole_and_in_part_are_drawn_in_order
+    assert_equal color_named(:green), game_player.run(turning_seven_program, frames: 12).screen.pixel(*SEVEN_AT)
   end
 
   # --- taking turns in front, a frame each ---
@@ -419,6 +506,77 @@ class TestDrawInOrder < Minitest::Test
 
   private def refusal(&block)
     assert_raises(ArgumentError) { program(&block) }.message
+  end
+
+  # A block that gives one thing a number with a fraction and another a whole number is refused,
+  # naming both: the order would compare 54.5, kept multiplied up, against a plain 60.
+  def test_a_fraction_beside_a_whole_number_is_refused
+    block = BLOCK
+    message = refusal do
+      screen :tiled
+      image(:enemy, "#" => :red) { block }
+      image(:hero, "#" => :green) { block }
+      half = var :half, 0.5
+      enemy = sprite :enemy, at: [60, 60]
+      hero = sprite :hero, at: [68, 54]
+      draw_in_order(enemy, hero) { |thing| thing.equal?(hero) ? thing.y.to_f + half : thing.y }
+    end
+
+    assert_match(/a whole number for sprite :enemy/, message)
+    assert_match(/a fraction for sprite :hero/, message)
+    assert_match(/one kind only/, message)
+  end
+
+  def test_a_pools_fraction_beside_a_sprites_whole_number_is_refused
+    block = BLOCK
+    message = refusal do
+      screen :tiled
+      image(:walker, "#" => :red) { block }
+      image(:hero, "#" => :blue) { block }
+      walkers = pool :walker, x: 0, y: 0, lift: 0.0, capacity: 4, image: :walker
+      hero = sprite :hero, at: [62, 58]
+      draw_in_order(walkers, hero) { |thing| thing.equal?(hero) ? thing.y : thing.y.to_f + thing.lift }
+    end
+
+    assert_match(/a fraction for pool :walker/, message)
+    assert_match(/a whole number for sprite :hero/, message)
+  end
+
+  # With no block the numbers are the bottoms of the boxes, and a pool whose places hold a fraction
+  # has a bottom that holds one: the refusal then asks for a block.
+  def test_a_pools_fraction_bottom_beside_a_sprites_whole_one_asks_for_a_block
+    block = BLOCK
+    message = refusal do
+      screen :tiled
+      image(:walker, "#" => :red) { block }
+      image(:hero, "#" => :blue) { block }
+      walkers = pool :walker, x: 0.0, y: 0.0, capacity: 4, image: :walker
+      hero = sprite :hero, at: [62, 58]
+      draw_in_order walkers, hero
+    end
+
+    assert_match(/a fraction for pool :walker/, message)
+    assert_match(/Give draw_in_order a block/, message)
+  end
+
+  # Two fractions with different bits are refused the same way. A game's own fractions all have
+  # the default bits, so the coarse one is made by hand, as test_fraction_type.rb makes one.
+  def test_fractions_of_different_bits_are_refused
+    block = BLOCK
+    message = refusal do
+      screen :tiled
+      image(:enemy, "#" => :red) { block }
+      image(:hero, "#" => :green) { block }
+      var :coarse, 0
+      coarse = VBlank::DSL::Value.new(self, VBlank::IR::Build.var_ref(:coarse), name: :coarse, fraction_bits: 8)
+      enemy = sprite :enemy, at: [60, 60]
+      hero = sprite :hero, at: [68, 54]
+      draw_in_order(enemy, hero) { |thing| thing.equal?(hero) ? coarse : thing.y.to_f }
+    end
+
+    assert_match(/16 bits of fraction for sprite :enemy/, message)
+    assert_match(/8 bits of fraction for sprite :hero/, message)
+    assert_match(/the same bits/, message)
   end
 
   def test_a_bitmap_screen_is_refused
@@ -615,6 +773,42 @@ class TestDrawInOrder < Minitest::Test
     later = game_player.run(b.program, frames: 16).screen
     assert_equal 0x7C00, later.pixel(6, 13), "gone behind it"
     assert_equal 0x001F, later.pixel(6, 6), "and the sprite that stayed is where it was"
+  end
+
+  # --- an order list the game writes itself ---
+
+  # -1 is the green block, so it goes down first, under the red one; then the red one's entry is
+  # taken off the end, and the list names green alone.
+  def test_an_order_list_of_the_games_own_is_read_as_it_holds
+    prog = hand_ordered_program do |order|
+      order.push(-1)
+      order.push 0
+      n = var :n, 0
+      game_loop do
+        order.pop if n == 3
+        n += 1
+      end
+    end
+
+    assert_equal RED, shown(prog, frames: 2), "green goes down first, so red is in front"
+    assert_equal RED, game_player.run(prog, frames: 2).screen.pixel(*RED_ALONE), "and red is drawn"
+    assert_equal GREEN, shown(prog, frames: 6), "the list names green alone"
+    refute_equal RED, game_player.run(prog, frames: 6).screen.pixel(*RED_ALONE), "and red is not drawn"
+  end
+
+  # A place that names none of the run's sprites stops the game, on every console as in the interpreter:
+  # one past the last sprite, and one counting back past the first.
+  def test_an_order_entry_naming_no_sprite_stops_the_game
+    [2, -3].each do |none|
+      prog = hand_ordered_program do |order|
+        order.push 0
+        order.push none
+        game_loop {}
+      end
+
+      error = assert_raises(Reference::ProgramError) { game_player.run(prog, frames: 3) }
+      assert_match(/draw order names sprite #{none} of the 2/, error.message)
+    end
   end
 
   def test_an_unknown_front_is_refused

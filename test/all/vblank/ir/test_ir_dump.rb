@@ -52,6 +52,24 @@ class TestIRDump < Minitest::Test
     assert_same_shape node, rebuilt
   end
 
+  # A game whose data pack is left out holds its pictures and recordings as zeros, which Dump
+  # writes as their size: every binary String in the pacman port's tree, its pack left out, reads
+  # back as itself, and the zeros take a line, not a byte each.
+  def test_a_tree_with_its_pack_left_out_writes_its_zeros_as_their_size
+    require VBlank.root.join("test/fixtures/pacman_port/pacman_port").to_s
+    program = PacmanPort.game(PacmanPort.original(env: {})).checked_program(err: nil, pack_at_start: true)
+    binary = program.walk.flat_map { |node| node.attrs.values }.grep(String).select { |text| text.encoding == Encoding::ASCII_8BIT }
+    zeros = binary.select { |text| Dump.zeros_alone?(text) }
+
+    refute_empty zeros, "the port's pack left out leaves zeros big enough to be written as their size"
+    binary.each do |text|
+      read = eval(Dump.string_source(text)) # rubocop:disable Security/Eval
+      assert_equal text, read
+      assert_equal Encoding::ASCII_8BIT, read.encoding
+    end
+    zeros.each { |text| assert_operator Dump.string_source(text).bytesize, :<, 32 }
+  end
+
   # class_source's whole file, evaluated in a scratch module (so the class it defines
   # lands there and not in the real, global VBlank namespace) and run for real —
   # the strongest available proof that what a user gets back is exactly what the

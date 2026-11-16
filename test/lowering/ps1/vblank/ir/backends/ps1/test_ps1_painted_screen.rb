@@ -164,12 +164,31 @@ class TestPS1PaintedScreen < Minitest::Test
     refute_equal BLUE, run.screen.pixel(0, 0), "the fade is in force"
   end
 
+  # A faded screen of as many colours as there are numbers, 256 with black and the red behind, is shown
+  # exactly: the copy reads only the low byte of each pixel (PS1::PaintedNumbers), so a number of 128 or
+  # more is its own colour's, and every pass's picture is the interpreter's.
+  def test_a_faded_screen_of_as_many_colours_as_there_are_numbers_is_shown_exactly
+    picture = picture_of_colors(1, 256)
+    run = PS1::CheckedRun.new.run(program_of do
+      image :many, data: picture, width: 192, height: 256, transparent: true
+      n = var :n, 0
+      game_loop do
+        n += 1
+        fade :black, n * 20
+        clear_screen :red
+        blit :many, 40 + n, -8
+      end
+    end, frames: 5)
+
+    refute_equal RED, run.screen.pixel(0, 0), "the fade is in force"
+  end
+
   # The numbers a painted screen is drawn in are MOST_COLORS, so a game that fades a screen it draws in more
   # colours is refused in plain words, as not made yet.
   def test_a_faded_screen_of_more_colours_than_there_are_numbers_is_refused
     error = assert_raises(VBlank::IR::Backends::NotMadeYet) do
       PS1.new.build(program_of do
-        image :many, data: Array.new(16 * 16) { |i| (i * 97) | 1 }, width: 16, height: 16
+        image :many, data: Array.new(16 * 17) { |i| (i * 97) | 1 }, width: 16, height: 17
         game_loop do
           blit :many, 0, 0
           fade :black, 50
@@ -177,7 +196,7 @@ class TestPS1PaintedScreen < Minitest::Test
       end)
     end
 
-    assert_match(/more than 128 colours/, error.message)
+    assert_match(/more than 256 colours/, error.message)
   end
 
   private

@@ -138,6 +138,7 @@ module VBlank
                                   walks: walks, view: view, turned: Lowering::Sprites.turned_in?(program),
                                   stacked: Lowering::Scenery.stacks_sprites?(program),
                                   overlaps: Lowering.overlaps_in?(program))
+          memory.reserve(Runtime::Frame::LAST_PASS, 4) if cache.plan.keeps_last_pass_number?
           Lowering::Sprites.reserve(memory, program)
           Lowering::Scenery.reserve(memory, program)
           lowering = Lowering.new(program, memory: memory, cache: cache)

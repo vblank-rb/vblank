@@ -79,6 +79,19 @@ module VBlank
             end
           end
 
+          # +bytes+ of work memory for +name+ that all share one page (one high byte of the address), for a
+          # table read by putting its page in one register and its index in another. Asked first, it
+          # lands at FIRST with nothing lost; asked later, a place that would cross a page moves up
+          # to the next one.
+          def reserve_in_page(name, bytes)
+            raise ArgumentError, "#{bytes} bytes do not fit in one page" if bytes > 0x100
+
+            @places.fetch(name) do
+              @next = (@next | 0xFF) + 1 if (@next & 0xFF) + bytes > 0x100
+              reserve(name, bytes)
+            end
+          end
+
           # +bytes+ of quick memory, and its address.
           def quick(bytes)
             raise Full, "the processor's quick memory is full" if @next_quick + bytes > QUICK_END

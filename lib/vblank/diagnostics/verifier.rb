@@ -76,8 +76,18 @@ module VBlank
           file.byteslice(0, file.bytesize - clock_bytes)
         end
 
-        # The emulator's file holding +memory+ (the bytes of the save memory), for a run to start from.
-        def file_of(memory) = memory_at.zero? ? memory : ("\0".b * memory_at) + memory
+        # The clock's own bytes in +file+, after the save memory, or nil for a file with none.
+        def clock_in(file)
+          return nil unless clock_bytes.positive? && file.bytesize > whole && file.bytesize % whole == clock_bytes
+
+          file.byteslice(file.bytesize - clock_bytes, clock_bytes)
+        end
+
+        # The emulator's file holding +memory+ (the bytes of the save memory), for a run to start
+        # from, with the +clock+'s bytes after it where a run before left some (#clock_in).
+        def file_of(memory, clock = nil)
+          ("\0".b * memory_at) + memory + (clock || "".b)
+        end
       end
 
       # @param rom [VBlank::Cartridge::ROM, VBlank::Cartridge::GBCROM] a finished cartridge
@@ -120,13 +130,17 @@ module VBlank
         @count_passes = count_passes
         # What only this cartridge's console answers, read its own way (see "what each console's
         # cartridge is asked its own way" below).
-        @reading = Console.for(rom.console).reading
+        kit = Console.for(rom.console)
+        @reading = kit.reading
         extend @reading
         @rendered = false
         @played = 0
         @pixels = nil
         @sound = sound
-        Emulator.load! # fail fast if the emulator backend isn't built
+        # Fail fast if this console's emulator isn't built. Only its own: a Genesis cartridge has no
+        # use for the Advance's emulator, and a game for the Genesis may not have it.
+        kit.load_emulator!
+        @screen_questions = kit.screen_questions
       end
 
       # RUN ON, so a test can watch something HAPPEN rather than only see where it ended up.
@@ -207,7 +221,7 @@ module VBlank
       # The values line up with the reference interpreter's own framebuffer dump, so
       # the two backends' pictures can be compared directly.
       # @return [Array<Integer>] screen_width * screen_height colors in BGR555
-      def frame_gba = Emulator.screen_questions.color_list(picture)
+      def frame_gba = @screen_questions.color_list(picture)
 
       # How wide and tall the console's picture is, in pixels: the size the emulator draws for
       # the cartridge it was handed, which is 240 by 160 for an Advance cartridge.
@@ -227,7 +241,9 @@ module VBlank
       # {Emulator.screen_questions}). Going through the pixels in Ruby is a number made and
       # thrown away for every one of them, which is far more work than running the frame
       # was, so a test that asks something of the whole screen on every frame of a long run
-      # was spending nearly all of its time asking.
+      # was spending nearly all of its time asking. That is the Advance's emulator, for the
+      # Advance's and the Color's cartridges; every other console's are asked in Ruby
+      # (ScreenQuestions, see Console::Kit#screen_questions), since their games may not have it.
       #
       # THEY ARE ANSWERED AT THE PRECISION A CONSOLE SHOWS, the same fifteen bits
       # {#pixel_gba} reads: five each of red, green and blue. The emulator keeps eight, and
@@ -244,20 +260,20 @@ module VBlank
       # It is not a {#picture}: {#same_picture_as?} does not take one.
       #
       # @return [String]
-      def frame_colors = Emulator.screen_questions.colors(picture)
+      def frame_colors = @screen_questions.colors(picture)
 
       # The one colour every pixel is, as a 15-bit number, or nil when the screen holds more
       # than one: `only_color == Color.resolve(:white)` is a flash at its brightest.
       #
       # @return [Integer, nil]
-      def only_color = Emulator.screen_questions.only_color(picture)
+      def only_color = @screen_questions.only_color(picture)
 
       # How bright the screen is: every pixel's red, green and blue added up, each as the
       # level a console shows, 0 to 31. One number that rises and falls with a fade, which
       # is what watching one frame by frame wants.
       #
       # @return [Integer]
-      def brightness = Emulator.screen_questions.brightness(picture)
+      def brightness = @screen_questions.brightness(picture)
 
       # Whether this reader is showing THE SAME PICTURE as +other+: every pixel the same
       # colour. +other+ is another running cartridge, or a {#picture} kept from earlier.
@@ -269,7 +285,7 @@ module VBlank
       # It is the colours and nothing else. The same picture built by a different part of
       # the display — a background where the other has a sprite — is the same picture, and
       # so is one the emulator holds as different numbers below the five bits.
-      def same_picture_as?(other) = Emulator.screen_questions.same?(picture, picture_of(other))
+      def same_picture_as?(other) = @screen_questions.same?(picture, picture_of(other))
 
       # HOW this reader's picture differs from +other+'s — another running cartridge, or a
       # {#picture} kept from earlier — or nil when the two are one picture:
@@ -285,7 +301,7 @@ module VBlank
       #
       # @return [Hash, nil]
       def difference_from(other, looked_at: nil)
-        Emulator.screen_questions.difference(picture, picture_of(other), @width, looked_at)
+        @screen_questions.difference(picture, picture_of(other), @width, looked_at)
       end
 
       # THE PICTURE ON SCREEN AS THE EMULATOR HOLDS IT — the frame the run stopped on — to
@@ -327,7 +343,7 @@ module VBlank
       private def shown_picture(frame)
         return frame.freeze unless @backdrop_left_out
 
-        Emulator.screen_questions.without_commonest_color(frame)
+        @screen_questions.without_commonest_color(frame)
       end
 
       # THE PICTURE ON SCREEN WRITTEN AS A PNG at +path+, which is handed back: the frame the run
@@ -402,7 +418,7 @@ module VBlank
       # finer than the rest: a pixel the display has darkened to almost nothing is black to
       # {#black?} and to {#only_color}, and is not black to this. It is left that way so that
       # the frame a fade is called over on does not move for anybody already asking.
-      def all_black? = Emulator.screen_questions.only_color(picture, 8) == 0
+      def all_black? = @screen_questions.only_color(picture, 8) == 0
 
       # Check if every pixel in a rectangle matches a color.
       # @return [Boolean]
@@ -472,14 +488,18 @@ module VBlank
       # in that file, and nil is what it hands back.
       #
       # A cartridge with a clock keeps that clock's own state in the same file, after the save
-      # chip, and those bytes are the clock's and not the save chip's, so they are left out. How
-      # many there are is the console's (SaveFileLayout). A cartridge with a clock and no save
-      # chip has only the clock's bytes there, and hands back nil too.
+      # chip, and those bytes are the clock's and not the save chip's, so they are left out of
+      # the save memory and kept beside it (IR::SaveImage#clock_state): a run started from this
+      # save finds the clock as this one left it, as a cartridge carries its clock from one
+      # power-on to the next. How many there are is the console's (SaveFileLayout). A cartridge
+      # with a clock and no save chip has only the clock's bytes there, and hands back nil too.
       def save_image
-        memory = save_bytes&.then { |bytes| kit.save_file_of(@rom).memory_in(bytes) }
-        return nil if memory.nil? || memory.empty?
+        bytes = save_bytes or return nil
+        layout = kit.save_file_of(@rom)
+        memory = layout.memory_in(bytes)
+        return nil if memory.empty?
 
-        IR::SaveImage.from_sav(memory, from: "The bytes of this cartridge's save memory")
+        IR::SaveImage.from_sav(memory, from: "The bytes of this cartridge's save memory").keep_clock_state(layout.clock_in(bytes))
       end
 
       # The save chip as it is now, as the bytes of the file the emulator keeps it in, or nil
@@ -526,6 +546,22 @@ module VBlank
       def var?(name)
         refuse_unknown_variable_places! unless @var_addresses
         @var_addresses.key?(name)
+      end
+
+      # WHETHER THE GAME HAS STARTED: run the lines it has before its first wait for the screen, so
+      # what it keeps holds the numbers it set. Until then the memory a variable is kept in holds
+      # whatever it held at power-on, or the nought a runtime clears it to while it sets up, and a
+      # read by name would hand that back as the game's number. A Probe asks it to step to the
+      # start (Probe#step_until_started).
+      #
+      # On the Advance one frame played is the answer: its cartridge sets up and reaches the game's
+      # own lines within its first frame, so only a game whose own lines before its first wait take
+      # longer than a frame is read early. A console whose runtime counts its waits answers from
+      # that count (CountedPasses), since its setting up takes several frames.
+      def game_started?
+        refuse_missing_build_record!("when its game has started")
+        ensure_rendered!
+        @played.positive?
       end
 
       private def refuse_unknown_variable_places!
@@ -1032,11 +1068,12 @@ module VBlank
       # Fill the chip before the console is turned on. The emulator looks for it as a file
       # named after the ROM, in the save directory, and reads it in as the chip's contents.
       # The file is as big as the cartridge's chip: a save memory made without a size takes the
-      # cartridge's, and one of another size is refused, as the interpreter refuses it.
+      # cartridge's, and one of another size is refused, as the interpreter refuses it. The clock
+      # a run before left beside the save goes after it, where the emulator reads it back.
       def write_save_memory
         program = @rom.source_program
         @save.use_memory!(IR::SaveLayout.memory_of(program)) if program
-        File.binwrite(save_path, kit.save_file_of(@rom).file_of(@save.to_sav))
+        File.binwrite(save_path, kit.save_file_of(@rom).file_of(@save.to_sav, @save.clock_state))
       end
 
       def save_path = File.join(@save_dir, "#{File.basename(@tempfile.path, '.*')}#{kit.save_file_extension}")

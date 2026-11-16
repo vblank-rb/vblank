@@ -84,6 +84,8 @@ module VBlank
             def emit_console(asm, memory, s)
               r = Paint::R
               asm.label("rt_paint_fill")
+              # Passed over in a pass the same as the last, else written down (RepeatLog).
+              RepeatLog.emit_check(asm, memory, RepeatLog::KIND_FILL, 20) if RepeatLog.kept?(memory)
               %i[x y width height].each_with_index do |what, number|
                 HALVES.each do |half|
                   asm.lda(asm.direct(r.call(number) + half))

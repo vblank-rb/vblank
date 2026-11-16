@@ -43,10 +43,10 @@ class TestRubyResumable < Minitest::Test
      Statements::Prototype.new(name: c_name("rg_routine_inner")), inner, main]
   end
 
-  # A routine the runtime asks for an answer (a timer's tick) calling a routine the game is stopped
-  # inside. main sets the flag and calls stop_or_not, which marks 5, waits while the flag is set,
-  # and marks 6; then main marks 9. The tick clears the flag and calls stop_or_not too.
-  private def program_with_an_answer
+  # A routine the runtime asks for an answer (+answer+, a bend's lines by default) calling a routine
+  # the game is stopped inside. main sets the flag and calls stop_or_not, which marks 5, waits while
+  # the flag is set, and marks 6; then main marks 9. The answer clears the flag and calls stop_or_not too.
+  private def program_with_an_answer(answer = "rg_game_work_out_bends", clears_flag: true)
     flag = c_name("flag")
     stop_or_not = Statements::Function.new(name: c_name("rg_routine_stop_or_not"), body: [
                                     mark(5), Statements::If.new(condition: flag, body: [wait]), mark(6)
@@ -54,20 +54,25 @@ class TestRubyResumable < Minitest::Test
     main = Statements::Function.new(name: c_name("rg_game_main"), exported: true,
                            body: [Statements::Assign.new(target: flag, value: int(1)),
                                   Statements::Eval.new(call: call("rg_routine_stop_or_not")), mark(9)])
-    tick = Statements::Function.new(name: c_name("rg_game_timer_ticks"), exported: true,
-                           body: [Statements::Assign.new(target: flag, value: int(0)), Statements::Eval.new(call: call("rg_routine_stop_or_not"))])
+    tick = Statements::Function.new(name: c_name(answer), exported: true,
+                           body: [*(clears_flag ? [Statements::Assign.new(target: flag, value: int(0))] : []),
+                                  Statements::Eval.new(call: call("rg_routine_stop_or_not"))])
     [Statements::Global.new(name: c_name("trail")), Statements::Global.new(name: c_name("quick_seen")), Statements::Global.new(name: flag),
      Statements::Prototype.new(name: c_name("rg_routine_stop_or_not")), stop_or_not, main, tick]
   end
 
   # A class whose objects are the game, printed as Ruby from the resumable tree, with readers for
-  # the two globals the tests watch.
+  # the two globals the tests watch, and the runtime's half of a timer's handler that waits
+  # (runtime/rg_runtime.rb): whether one is stopped, set by the test, and whether the last one run stopped.
   private def game_class(items = program)
     text = Printer.new.print_file(Resumable.new(items).items)
     Class.new do
-      attr_reader :trail, :quick_seen
+      attr_reader :trail, :quick_seen, :handler_waited
+      attr_writer :handler_paused, :flag
 
       define_method(:rg_wait_vblank) { nil }
+      define_method(:rg_timer_handler_paused) { @handler_paused ? 1 : 0 }
+      define_method(:rg_timer_handler_waited) { |waited| @handler_waited = waited }
       class_eval(text)
     end
   end
@@ -104,10 +109,38 @@ class TestRubyResumable < Minitest::Test
     game.rg_game_setup
 
     assert_equal 1, game.rg_game_main
-    game.rg_game_timer_ticks
+    game.rg_game_work_out_bends
 
     assert_equal 556, game.trail
     assert_equal 0, game.rg_game_main
     assert_equal 55_669, game.trail
+  end
+
+  # A TIMER'S TICK THAT WAITS, in the routine the game is stopped inside: the tick starts stop_or_not
+  # afresh (5), stops in its wait and hands the runtime 1, and carries on from there when ticked again (6), and
+  # the game then carries on from where it had stopped (6, 9). A tick at a boundary inside the
+  # handler's wait runs it to its end (5, 6) and leaves it stopped where it was.
+  def test_a_timer_tick_that_waits_carries_on_from_its_wait_and_leaves_the_game_where_it_stopped
+    game = game_class(program_with_an_answer("rg_game_timer_ticks", clears_flag: false)).new
+    game.rg_game_setup
+
+    assert_equal 1, game.rg_game_main
+    game.rg_game_timer_ticks
+    assert_equal 1, game.handler_waited
+    assert_equal 55, game.trail
+
+    game.handler_paused = true
+    game.flag = 0
+    game.rg_game_timer_ticks
+    assert_equal 5556, game.trail
+
+    game.handler_paused = false
+    game.flag = 1
+    game.rg_game_timer_ticks
+    assert_equal 0, game.handler_waited
+    assert_equal 55_566, game.trail
+
+    assert_equal 0, game.rg_game_main
+    assert_equal 5_556_669, game.trail
   end
 end

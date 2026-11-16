@@ -107,7 +107,7 @@ module MadeUpOriginalLayouts
                tiles: FOUR_COLOR_TILES, bank_size: 4, tile_encoder: TWO_PLANES, color_encoder: FIFTEEN_BITS, high_byte_first: false)
   ].freeze
 
-  constants.each { |name| Ractor.make_shareable(const_get(name)) }
+  VBlank::Testing::InRactors.share_constants(self)
 
   # +layout+'s made-up original, written into +folder+.
   private def layout_original(folder, layout)

@@ -57,7 +57,8 @@
  *
  * With --picture-out FILE the picture of every moment is written to FILE, over the one before:
  * every pixel as shown and then every pixel as stored, row by row, each two bytes with the low
- * byte first. It is there before "buttons?" is asked, so whoever is feeding the buttons can read
+ * byte first, and for a game shown in a border then every pixel of the whole screen as the window
+ * shows it (rg_screen_framed). It is there before "buttons?" is asked, so whoever is feeding the buttons can read
  * that frame's picture, and need not when it has no use for it. The end then prints its
  * picture as a check number too, since the picture itself is in the file. A picture is far more
  * than a pipe holds at once, and a reader that takes it a pipeful at a time waits its turn for
@@ -244,6 +245,9 @@ static void write_picture(const uint16_t *shown) {
   rewind(picture_out);
   fwrite(shown, sizeof shown[0], pixels, picture_out);
   fwrite(rg_screen_stored(), sizeof shown[0], pixels, picture_out);
+#if RG_SCREEN_BORDERED
+  fwrite(rg_screen_framed(), sizeof shown[0], (size_t)RG_WHOLE_WIDTH * RG_WHOLE_HEIGHT, picture_out);
+#endif
   fflush(picture_out);
 }
 
@@ -327,19 +331,37 @@ static void answer_until_buttons(void) {
   finish();
 }
 
+/* A frame begun, counted, and 1 where it is shown now. The run stops before a new frame once it has
+ * played every frame it was asked for. A boundary that only ends the frame a waiting timer's handler
+ * held up is no new frame, and one that a handler stopped in shows nothing yet (rg_frame_begins); the
+ * interpreter reports neither and the frame it reaches twice, as this does.
+ *
+ * A frame's sound is written as the next boundary begins, once the sound has moved on once since the
+ * last was written. A held-up frame moves no sound, so the boundary after it writes none, and the
+ * late end writes the one before it: one written for each time the sound moves on. */
+static int sound_held_up; /* the frame just begun was held up, and moved no sound */
+
+static int begin_frame(void) {
+  if (rg_frame_ends_late()) {
+    if (!asked) write_frame_sound();
+    rg_frame_begins();
+    return 1;
+  }
+  if (!asked && !sound_held_up) write_frame_sound();
+  if (frame >= frames_to_play) finish();
+  int held_up = rg_frame_begins();
+  sound_held_up = held_up;
+  frame++;
+  return !held_up;
+}
+
 static void headless_wait_vblank(void) {
   state_at_boundary();
+  if (!begin_frame()) return;
   if (asked) {
-    if (frame >= frames_to_play) finish();
-    rg_frame_begins();
-    frame++;
     answer_until_buttons();
     return;
   }
-  write_frame_sound();
-  if (frame >= frames_to_play) finish();
-  rg_frame_begins();
-  frame++;
   char heading[32];
   snprintf(heading, sizeof heading, "frame %ld", frame);
   print_moment(heading, every_picture);
@@ -403,6 +425,10 @@ static _Noreturn void finish_final_state(void) {
 }
 
 static void final_state_wait_vblank(void) {
+  if (rg_frame_ends_late()) {
+    rg_frame_begins();
+    return;
+  }
   if (frame >= frames_to_play) finish_final_state();
   rg_frame_begins();
   frame++;

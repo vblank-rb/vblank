@@ -139,7 +139,7 @@ module PackBackgroundGames
   # ...and in all eight, the most the Color holds: it fits only with one list for each bank.
   EIGHT_BANKS_SCREEN = screen_in_banks(8)
 
-  constants.each { |name| Ractor.make_shareable(const_get(name)) }
+  VBlank::Testing::InRactors.share_constants(self)
 
   # The made-up Color original of +screen+: its two maps, the colours at COLORS_AT and the video at
   # TILES_AT, bank 0's tiles then bank 1's.

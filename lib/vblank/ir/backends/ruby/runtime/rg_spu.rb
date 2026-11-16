@@ -17,7 +17,7 @@ RG_ENVELOPE_SUSTAIN = 3
 RG_SPU_HISS_AT = 4 # Where the hiss's loop is in @rg_game_spu_loops
 RG_SPU_RATTLE_AT = 5 # ...the rattle's
 RG_SPU_WAVEFORMS_AT = 6 # ...and how many waveforms there are
-RG_SPU_GAUSS_AT = 12 # Where the Gaussian table starts in @rg_game_spu_rules, after a recording's full and a shape's shift
+RG_SPU_GAUSS_AT = 12 # Where the Gaussian table starts in @rg_game_spu_rules, after the two shifts a recording's volume takes
 RG_SPU_SLIDE_FRAMES_MOST = 1 << 20
 RG_BLOCK_LOOP_END = 1
 RG_BLOCK_LOOP_REPEAT = 2
@@ -103,6 +103,121 @@ end
 def rg_spu_memory_at(address)
   at = address - @rg_game_spu_rules[9]
   at >= 0 && at < @rg_game_spu_memory[0] ? @rg_game_spu_memory[1 + at] : 0
+end
+
+# A wave read from the start file, written into its loop of sound memory (rg_spu.c says each step).
+RG_SPU_WAVE_LOOP_BLOCKS = 8
+RG_SPU_BLOCK_SAMPLES = 28
+RG_SPU_BLOCK_HALFWORDS = 8
+
+def rg_spu_fill_wave(memory, waveforms, which)
+  wave_samples = @rg_game_spu_rules[8]
+  steps = 1 + (which * wave_samples)
+  loop_at = 1 + (@rg_game_spu_loops[RG_SPU_WAVEFORMS_AT + 1 + which] * 4) - @rg_game_spu_rules[9]
+  RG_SPU_WAVE_LOOP_BLOCKS.times do |block|
+    header = loop_at + (block * RG_SPU_BLOCK_HALFWORDS)
+    memory[header] &= 0xFF00
+    (1...RG_SPU_BLOCK_HALFWORDS).each do |half|
+      coded = 0
+      4.times do |i|
+        sample = (block * RG_SPU_BLOCK_SAMPLES) + ((half - 1) * 4) + i
+        coded |= ((waveforms[steps + (sample % wave_samples)] - 8) & 0xF) << (4 * i)
+      end
+      memory[header + half] = coded
+    end
+  end
+end
+
+# --- the encoder (rg_spu.c's, PS1::ADPCM.encode), for a recording laid out as the game starts ---
+
+# Must stay shareable: a shell plays its unpacking inside a Ractor, which cannot set a constant
+# holding a mutable Array (the inner pairs too).
+RG_SPU_ENCODE_WEIGHTS = Ractor.make_shareable([[0, 0], [60, 0], [115, -52], [98, -55], [122, -60]])
+RG_SPU_LARGEST_SHIFT = 12
+RG_SPU_MOST_LOOP_SAMPLES = 0x1_0000
+
+# rg_spu.c's spu_try_block: [error, nibbles, older, newer].
+def rg_spu_try_block(samples, at, filter, shift, older, newer)
+  first, second = RG_SPU_ENCODE_WEIGHTS[filter]
+  error = 0
+  nibbles = Array.new(RG_SPU_BLOCK_SAMPLES) do |i|
+    predicted = ((older * second) >> 6) + ((newer * first) >> 6)
+    nibble = (((samples[at + i] - predicted) * (1 << shift)) / 4096.0).round.clamp(-8, 7)
+    decoded = (((nibble << 12) >> shift) + predicted).clamp(-0x8000, 0x7FFF)
+    error += (decoded - samples[at + i])**2
+    older = newer
+    newer = decoded
+    nibble
+  end
+  [error, nibbles, older, newer]
+end
+
+# rg_spu.c's spu_encode: a +loop_block+ of -1 ends and goes quiet after the last block.
+def rg_spu_encode(samples, loop_block, memory, halves)
+  older = newer = 0
+  blocks = samples.size / RG_SPU_BLOCK_SAMPLES
+  blocks.times do |b|
+    flags = (b == loop_block ? 4 : 0) | (b == blocks - 1 ? (loop_block >= 0 ? 3 : 1) : 0)
+    filters = b.zero? || b == loop_block ? 1 : RG_SPU_ENCODE_WEIGHTS.size
+    best = nil
+    filters.times do |filter|
+      (0..RG_SPU_LARGEST_SHIFT).each do |shift|
+        tried = rg_spu_try_block(samples, b * RG_SPU_BLOCK_SAMPLES, filter, shift, older, newer)
+        best = [tried, filter, shift] if best.nil? || tried[0] < best[0][0]
+        break if best[0][0].zero?
+      end
+      break if best[0][0].zero?
+    end
+    (_, nibbles, older, newer), filter, shift = best
+    at = halves + (b * RG_SPU_BLOCK_HALFWORDS)
+    memory[at] = shift | (filter << 4) | (flags << 8)
+    (1...RG_SPU_BLOCK_HALFWORDS).each do |half|
+      memory[at + half] = (0...4).sum { |i| (nibbles[((half - 1) * 4) + i] & 0xF) << (4 * i) }
+    end
+  end
+end
+
+# The index in +memory+ of the first halfword of the loop starting at +room+, in 8-byte steps.
+def rg_spu_loop_halves(room) = 1 + (room * 4) - @rg_game_spu_rules[9]
+
+# rg_spu.c's spu_fill_once
+def rg_spu_fill_once(memory, recording_samples, start, length, room)
+  laid = Array.new(length.ceildiv(RG_SPU_BLOCK_SAMPLES) * RG_SPU_BLOCK_SAMPLES, 0)
+  length.times { |i| laid[i] = recording_samples[start + i] << 8 }
+  rg_spu_encode(laid, -1, memory, rg_spu_loop_halves(room))
+end
+
+# Where a recording's length is among its numbers in the mixer's table of recordings (rg_spu.c).
+RG_SPU_MIXER_RECORDING_NUMBERS = 7
+RG_SPU_MIXER_RECORDING_LENGTH_AT = 1
+
+# A recording whose samples, hold or length are read from the start file, encoded into its loops
+# (rg_sound.h, rg_spu_fill_recording).
+def rg_spu_fill_recording(memory, recordings, spu_recordings, recording_samples, rules)
+  number, start, once, held = rules
+  length = recordings[1 + (number * RG_SPU_MIXER_RECORDING_NUMBERS) + RG_SPU_MIXER_RECORDING_LENGTH_AT]
+  rg_spu_fill_once(memory, recording_samples, start, length, once) if once >= 0
+  rg_spu_fill_held(memory, recording_samples, start, length, spu_recordings[1 + (number * 3) + 1], held) if held >= 0
+end
+
+# rg_spu.c's spu_fill_held
+def rg_spu_fill_held(memory, recording_samples, start, length, way_back, room)
+  back = way_back.clamp(1, length)
+  from = length - back
+  aligned = from.ceildiv(RG_SPU_BLOCK_SAMPLES) * RG_SPU_BLOCK_SAMPLES
+  times = RG_SPU_BLOCK_SAMPLES / back.gcd(RG_SPU_BLOCK_SAMPLES)
+  body = back * times <= RG_SPU_MOST_LOOP_SAMPLES ? back * times : back + ((-back) % RG_SPU_BLOCK_SAMPLES)
+  count = aligned + body
+  turn = (aligned - from) % back
+  laid = Array.new(count.ceildiv(RG_SPU_BLOCK_SAMPLES) * RG_SPU_BLOCK_SAMPLES, 0)
+  count.times do |i|
+    held = if i < from then i
+           elsif i < aligned then from + ((i - from) % back)
+           else from + ((((i - aligned) % back) + turn) % back)
+           end
+    laid[i] = recording_samples[start + held] << 8
+  end
+  rg_spu_encode(laid, aligned / RG_SPU_BLOCK_SAMPLES, memory, rg_spu_loop_halves(room))
 end
 
 def rg_held_to_16_bits(sample)
@@ -403,8 +518,8 @@ def rg_spu_render_frame
 
   rg_spu_frame_begins
   chip_hz = @rg_game_spu_rules[0]
-  left = Array.new(count)
-  right = Array.new(count)
+  frame = rg_sound_frame_buffers(count) # rg_sound.rb
+  left, right = frame
   out = @rg_spu_out
   i = 0
   while i < count
@@ -417,13 +532,20 @@ def rg_spu_render_frame
     right[i] = out[1]
     i += 1
   end
-  [left, right]
+  frame
 end
 
-# What the mixer's voice +place+ plays, told to the chip's voice for it (rg_spu.c's spu_tell_recording).
-def rg_spu_tell_recording(place, sounding, recording, back, step, loudness, level)
+# What the mixer's voice +place+ plays, told to the chip's voice for it (rg_spu.c's spu_tell_recording):
+# one that +ran_out+ plays to its end, started all the same where it is struck now.
+def rg_spu_tell_recording(place, sounding, ran_out, recording, back, step, loudness, level, shaped)
   sounding = sounding && sounding != 0
   return if !sounding && @rg_spu_stopped_by_game[RG_SPU_GAME_VOICES + place] == 1
+
+  if ran_out
+    return unless (@rg_spu_struck | @rg_spu_struck_waiting)[RG_SPU_GAME_VOICES + place] == 1
+
+    sounding = true
+  end
 
   ways = @rg_game_spu_recordings
   loop = -1
@@ -436,7 +558,8 @@ def rg_spu_tell_recording(place, sounding, recording, back, step, loudness, leve
   end
   rules = @rg_game_spu_rules
   pitch = ((step + 8) >> 4).clamp(1, rules[6])
-  value = ((level + (level >> 7)) * (loudness * rules[3] / rules[10])) >> rules[11]
+  scaled = loudness * (level + (level >> 7))
+  value = shaped.zero? ? (scaled << rules[11]) >> rules[10] : (scaled >> rules[10]) << rules[11]
   rg_spu_tell(RG_SPU_GAME_VOICES + place, loop >= 0, loop, pitch, value, 0)
 end
 

@@ -74,4 +74,37 @@ class TestGBCLinker < Minitest::Test
     assert_equal Linker::MOST_CLOCK_BANKS, linked.banks.length
     assert_match(/A cartridge with a clock chip holds 128 banks/, error.message)
   end
+
+  # A TABLE OF ADDRESSES THE CODE JUMPS THROUGH (a draw order's placings, GBC::Lowering::Picture#emit_ordered_dispatch)
+  # reaches what a jump reaches: the part always in view and its own bank. One naming code in another
+  # bank is refused as the cartridge is built, where it would have jumped into whatever that bank holds.
+  # Each section is over half a bank, so two banked ones are never put in one bank by chance.
+  private def jump_table(name, target, home:)
+    asm = SM83.new(name, home: home)
+    asm.label(name)
+    asm.data_jump_targets([target])
+    asm.data_bytes(Array.new(Linker::BANK_SIZE / 2, 0)) unless home == :fixed
+    asm.section
+  end
+
+  private def routine(name, home:)
+    asm = SM83.new(name, home: home)
+    asm.label(name)
+    asm.ret
+    asm.data_bytes(Array.new(Linker::BANK_SIZE / 2, 0)) unless home.is_a?(String) || home == :fixed
+    asm.section
+  end
+
+  def test_a_jump_table_into_another_bank_is_refused
+    error = assert_raises(Linker::Error) do
+      link(jump_table("table", "far_routine", home: :banked), routine("far_routine", home: :banked))
+    end
+
+    assert_match(/table \(bank \d+\) jumps to far_routine in bank \d+/, error.message)
+  end
+
+  def test_a_jump_table_into_its_own_bank_or_the_part_in_view_is_built
+    link(jump_table("table", "fixed_routine", home: :fixed), routine("fixed_routine", home: :fixed))
+    link(jump_table("table", "near_routine", home: :banked), routine("near_routine", home: "table"))
+  end
 end

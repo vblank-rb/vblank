@@ -16,6 +16,26 @@ module VBlank
           Tunes.playable_songs(program).any? { |song| Tunes.recorded_parts(song).positive? }
       end
 
+      # DOES A BUILD FOR A COMPUTER MIX THIS PROGRAM AT SIXTEEN BITS? It does when any recording
+      # was given sixteen (Nodes::Sample#full_samples). Every recording is then read at sixteen, an
+      # 8-bit one as its byte shifted up eight bits, and each sum of the mix is held to what sixteen
+      # bits hold rather than a byte. A console's build mixes the eight bits it holds whatever
+      # this says, so it is asked by the interpreter and the builds for a computer alone.
+      def full_depth?(program)
+        program.walk.any? { |node| node.kind == :sample && node.full_samples }
+      end
+
+      # How far an 8-bit sample is shifted up to be heard in a mix at sixteen bits.
+      FULL_DEPTH_SHIFT = 8
+
+      # The samples a mix at sixteen bits reads of recording +node+: its own sixteen bits, or its
+      # bytes shifted up.
+      def full_depth_samples(node)
+        return node.full_samples.unpack("s<*") if node.full_samples
+
+        node.bytes.unpack("c*").map { |level| level << FULL_DEPTH_SHIFT }
+      end
+
       # DOES ANYTHING IN THIS PROGRAM SHAPE A NOTE? Asked once, of the whole program, because the
       # answer decides what the mix reads for EVERY voice: a voice's GAIN, which a shape moves,
       # in a program that shapes something, and its loudness as it stands in one that shapes

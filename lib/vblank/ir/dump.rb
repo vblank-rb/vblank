@@ -86,14 +86,52 @@ module VBlank
         "#{record.class.name}.new(#{args.join(', ')})"
       end
 
+      # WHAT #record_source LEAVES OUT, for a key that must change with what a tree means: the
+      # DEFAULTS of every record class +node+'s tree holds, one class a line, sorted by name. The
+      # dump alone keys how a tree is written, and a field at its default is not written, so a
+      # change to a class's DEFAULTS can change what the tree means and leave its dump as it was.
+      def record_defaults_source(node)
+        classes = record_classes_in(node, Set.new)
+        classes.sort_by(&:name).map { |record_class| "#{record_class.name} #{record_class::DEFAULTS.inspect}\n" }.join
+      end
+
+      # Every record class with a DEFAULTS table that +value+ holds, however deep, added to +found+.
+      def record_classes_in(value, found)
+        case value
+        when Node
+          value.attrs.each_value { |operand| record_classes_in(operand, found) }
+          value.children.each { |child| record_classes_in(child, found) }
+        when Array then value.each { |element| record_classes_in(element, found) }
+        when Data
+          found << value.class if value.class.const_defined?(:DEFAULTS)
+          value.to_h.each_value { |field| record_classes_in(field, found) }
+        end
+        found
+      end
+
       # #inspect alone loses a binary string's encoding — re-read as ordinary source,
       # the literal comes back tagged with the FILE's encoding, not the ASCII-8BIT a
       # sample or a packed asset was built with. Appending `.b` (the codebase's own
       # shorthand for that, e.g. in test/conformance_fixture.rb) restores it, so a
       # dumped `data`/`sample` round-trips byte-for-byte AND tag-for-tag.
+      #
+      # A GAME WHOSE DATA PACK IS LEFT OUT holds its pictures and recordings as zeros until the
+      # pack fills them, tens of millions of bytes, and a build's fingerprint (Network::Fingerprint)
+      # is a digest of this dump. So a binary String of zeros alone is written as its size, `("\x00"
+      # * 27904).b`, which builds the same String: the dump is a few lines where it was hundreds of
+      # megabytes, and still changes when the size does.
       def string_source(value)
-        value.encoding == Encoding::ASCII_8BIT ? "#{value.inspect}.b" : value.inspect
+        return value.inspect unless value.encoding == Encoding::ASCII_8BIT
+        return "(#{'"\\x00"'} * #{value.bytesize}).b" if zeros_alone?(value)
+
+        "#{value.inspect}.b"
       end
+
+      # Whether +value+ is longer than ZEROS_WRITTEN_AS_SIZE and every byte of it is 0.
+      def zeros_alone?(value) = value.bytesize > ZEROS_WRITTEN_AS_SIZE && value.count("\x00") == value.bytesize
+
+      # The size past which a String of zeros is written as its size, rather than inspected.
+      ZEROS_WRITTEN_AS_SIZE = 256
 
       # A complete, standalone Ruby file: +program+ (a :program-kind node) wrapped in
       # a class named +class_name+ that can rebuild the tree and lower it to machine

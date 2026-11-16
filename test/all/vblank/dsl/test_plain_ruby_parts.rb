@@ -243,6 +243,62 @@ class TestPlainRubyParts < Minitest::Test
     assert_match(/belongs to something else.*add `game_variables :held` to HandedHeldPart/, error.message)
   end
 
+  # A HOLDER HANDED A VARIABLE (test/plain_ruby_game_parts.rb). One taken from a slot of a Hash
+  # holds it for a while, and in Ruby a line giving the holder a number leaves the slot as it was;
+  # the build cannot copy into a variable the holder does not have, so it stops at the line,
+  # naming `game_variables`. One handed whole to a part is that part's to change.
+  private def played_with_cursor(holder, routine)
+    builder = Builder.new
+    holder.new(builder, HandedCursor.new)
+    builder.game_loop { builder.call(routine) }
+    builder.finalize_program
+    game_player.tap { |player| player.run(builder.program, frames: 3) }
+  end
+
+  private def assert_slot_holder_refused(holder, routine, variable)
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) { played(holder, routine) }
+
+    assert_match(/`@held` holds the game variable :#{variable}.*`game_variables :held` to #{holder.name}/m, error.message)
+    assert_match(/plain_ruby_game_parts\.rb:\d+/, error.message)
+  end
+
+  def test_an_unnamed_value_sharing_a_slot_of_a_hash_given_a_number_is_refused
+    assert_slot_holder_refused(HandedHeldNumberPart, :handed_held_number_tick, :handed_held_number_0)
+  end
+
+  def test_an_unnamed_value_sharing_a_slot_of_a_named_hash_counted_up_is_refused
+    assert_slot_holder_refused(NamedStatesHeldPart, :named_states_held_tick, :named_states_held_part_states_0)
+  end
+
+  # 1, 2, then set back to 0 and counted to 1.
+  def test_an_unnamed_value_given_a_variable_a_method_made_changes_it
+    assert_equal [1, 2, 1], (1..3).map { |frames| played(MadeByMethodPart, :made_by_method_tick, frames: frames)[:made_by_method_count] }
+  end
+
+  def test_a_value_handed_a_variable_whole_as_an_argument_changes_it
+    player = played_with_cursor(HandedArgumentMakerPart, :handed_argument_tick)
+
+    assert_equal 5, player[:handed_cursor_selection]
+  end
+
+  def test_a_value_handed_a_slot_whole_as_an_argument_changes_it
+    assert_equal 5, played(SlotArgumentMakerPart, :handed_argument_tick)[:slot_argument_0]
+  end
+
+  def test_a_named_value_handed_another_parts_variable_keeps_a_number_of_its_own
+    player = played_with_cursor(NamedHandedHolderPart, :named_handed_tick)
+
+    assert_equal [3, 5], [player[:handed_cursor_selection], player[:named_handed_holder_part_held]]
+  end
+
+  def test_a_var_line_after_a_part_chose_its_name_is_refused
+    builder = Builder.new
+    ChoosingNamePart.new
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) { builder.var(:chosen_by_a_part, 0) }
+
+    assert_match(/:chosen_by_a_part.*`@held` of ChoosingNamePart/m, error.message)
+  end
+
   def test_named_values_swapped_in_one_line_change_places_on_every_pass
     totals = (1..3).map { |frames| played(SwappingPart, :swapping_tick, frames: frames)[:swapping_part_total] }
 
@@ -539,13 +595,99 @@ class TestPlainRubyParts < Minitest::Test
   end
 
   # Plays +block+, rewritten as a game's block is, and hands back the player.
-  private def played_game(frames: 4, &block)
+  private def played_game(frames: 4, allow: [], &block)
     builder = Builder.new
-    builder.instance_eval(&VBlank::DSL::PlainRuby.rewrite(block))
+    builder.instance_eval(&VBlank::DSL::PlainRuby.rewrite(block, allow: allow))
     builder.finalize_program
     player = game_player
     player.run(builder.program, frames: frames)
     player
+  end
+
+  # A local given a method's answer (DitherPart#difference, test/plain_ruby_game_parts.rb) keeps
+  # that number when the next call changes the instance variable it came from, as Ruby's does:
+  # the seed goes 5, 16, 49, and the difference is 16 - 49.
+  def test_a_name_given_a_methods_answer_keeps_it_when_a_later_call_changes_its_source
+    player = played_game(frames: 3, allow: %w[DitherPart]) do
+      dither = DitherPart.new
+      done = var(:done, 0)
+      game_loop do
+        if done == 0
+          dither.difference
+          done = 1
+        end
+      end
+    end
+
+    assert_equal [49, -33], [player[:dither_part_seed], player[:dither_part_got]]
+  end
+
+  # The same, with the second answer taken inside a `repeat` (DitherPart#difference_in_repeat).
+  def test_a_name_given_a_methods_answer_keeps_it_across_a_call_in_a_repeat
+    player = played_game(frames: 3, allow: %w[DitherPart]) do
+      dither = DitherPart.new
+      done = var(:done, 0)
+      game_loop do
+        if done == 0
+          dither.difference_in_repeat(self)
+          done = 1
+        end
+      end
+    end
+
+    assert_equal [49, -33], [player[:dither_part_seed], player[:dither_part_got]]
+  end
+
+  # A name set straight from an instance variable (ColumnPart#make_shower) holds its number from
+  # that line, as Ruby's does, in the routine's block too: @col is 5 when the routine is made, and
+  # 6 once #nudge has run, while `col` keeps the 5.
+  def test_a_name_set_from_an_instance_variable_keeps_its_number_in_a_routines_block
+    player = played_game(frames: 3, allow: %w[ColumnPart]) do
+      ColumnPart.new(self)
+      done = var(:done, 0)
+      game_loop do
+        if done == 0
+          call :column_show
+          done = 1
+        end
+      end
+    end
+
+    assert_equal [6, 5], [player[:column_part_col], player[:column_part_seen]]
+  end
+
+  # `x = @hero_x` in a method, then a method that moves @hero_x (NudgedHeroPart#step): `x` keeps
+  # the 3 of its line, as Ruby's does.
+  def test_a_name_set_from_an_instance_variable_keeps_its_number_across_a_method_that_moves_it
+    player = played_game(frames: 3, allow: %w[NudgedHeroPart]) do
+      hero = NudgedHeroPart.new
+      done = var(:done, 0)
+      game_loop do
+        if done == 0
+          hero.step
+          done = 1
+        end
+      end
+    end
+
+    assert_equal [4, 3], [player[:nudged_hero_part_hero_x], player[:nudged_hero_part_seen]]
+  end
+
+  # A sound chip's mixer (MixerPart, test/plain_ruby_game_parts.rb): `bend = out; bend = 0 if
+  # additive` leaves `out` alone, so the channel mixes 30 and 10, as Ruby's does.
+  def test_a_name_given_another_names_number_and_then_0_leaves_the_other_alone
+    player = played_game(frames: 3, allow: %w[MixerPart MixerChip MixerOp MixerChannel]) do
+      mixer = MixerPart.new(MixerChip.new(self), MixerOp.new(0, 0), MixerOp.new(4, 0), MixerChannel.new(0, 1))
+      done = var(:done, 0)
+      game_loop do
+        if done == 0
+          mixer.run
+          done = 1
+        end
+      end
+    end
+
+    assert_equal [40, 10], [player[:mixer_part_mixed], player[:mixer_part_last_seen]]
   end
 
   # The answer key is the same lines written in the game loop: nil, read as a number, is 0.

@@ -8,8 +8,8 @@ require "test_helper"
 module HeldTilesGames
   COLS = 30      # a message box across the screen...
   ROWS = 8       # ...and eight cells down: 240 cells, which the Advance's cartridge is held to
-  # ...and two rows of it, 60 cells, on every run: a Genesis changes at most 64 cells in a pass
-  # (Console::GenesisAnswers, `background`), and the Color writes about 60 in the gap.
+  # ...and two rows of it, 60 cells, on every run: the Color writes about 60 in the gap. (A
+  # Genesis writes 256 there, Console::GenesisAnswers, `background`.)
   ALL_RUNS_ROWS = 2
   OPEN_AT = 3 # the pass that opens the one cell
 
@@ -89,6 +89,43 @@ module HeldTilesGames
           when_val 0, :first
           when_val 1, :second
         end
+      end
+    end
+  end
+
+  # A held room on a tiled screen and a scene on a painted one. On pass OPEN_AT a cell of the room
+  # changes and then, later in the same pass, the painted scene takes over and paints its picture
+  # once. The painted picture lives in the video memory the room's map was in, so a change still
+  # waiting there would land in it.
+  private def painted_scene_game
+    proc do
+      screen :tiled
+      image(:wall, "#" => :red) { Minitest::Test::SOLID_TILE }
+      image(:floor, "#" => :blue) { Minitest::Test::SOLID_TILE }
+      tiles :frame, "#" => :wall, "." => :floor
+      frames = var :frames, 0
+      state = var :state, 0
+      painted = var :painted, 0
+      scene(:room) do
+        room = background :room, tiles: :frame, map: Array.new(HeldTilesGames::ROWS) { "#" * HeldTilesGames::COLS },
+                                 held: true
+        if frames == HeldTilesGames::OPEN_AT
+          room.set_tile 3, 1, "."
+          state.store! 1
+        end
+      end
+      scene(:paint) do
+        screen :bitmap
+        if painted == 0
+          clear_screen :green
+          painted.store! 1
+        end
+      end
+      game_loop do
+        frames += 1
+        # Two choices, so the painted scene arrives in the pass the room's cell changed.
+        case_var(:state) { when_val 0, :room }
+        case_var(:state) { when_val 1, :paint }
       end
     end
   end

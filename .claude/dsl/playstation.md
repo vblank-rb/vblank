@@ -49,7 +49,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `grid` — works: the same as on the Advance.
 - `camera` — works: the same as on the Advance.
 - `keep_showing` — works: the same as on the Advance.
-- `fade` — works: `fade` and `tint` change the colours the console shows. On a screen drawn from tiles every list of colours the graphics chip reads is worked out again, once, on a pass that changes them. A painted screen that fades is drawn with a number for each colour, 128 colours at most. At the end of each pass, the graphics chip copies it onto the screen through a list of those colours. When the fade changes, the game changes that list. How the chip fades part of the screen (`inside:`, `outside:`, `under:`) is decided when that is made: until then the build refuses it and says so.
+- `fade` — works: `fade` and `tint` change the colours the console shows. On a screen drawn from tiles every list of colours the graphics chip reads is worked out again, once, on a pass that changes them. A painted screen that fades is drawn with a number for each colour, 256 colours at most. At the end of each pass, the graphics chip copies it onto the screen through a list of those colours. When the fade changes, the game changes that list. How the chip fades part of the screen (`inside:`, `outside:`, `under:`) is decided when that is made: until then the build refuses it and says so.
 - `tint` — works: the same as on the Advance.
 - `fade_in` — works: the same as on the Advance.
 - `fade_out` — works: the same as on the Advance.
@@ -78,7 +78,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `mirror` — works: the same as on the Advance.
 - `upside_down` — works: the same as on the Advance.
 - `blit` — works: the same as on the Advance.
-- `sprite` — works: a sprite is a picture the graphics chip draws each frame, any size up to 256 × 256. There is no limit of sprites on a row of the screen. A sprite that turns or resizes is drawn as a textured shape. A sprite whose poses are drawn from different lists of colors shows each pose in the colors of its own list. On a painted screen, a sprite with `over_picture: true` is drawn over a copy of the picture as it goes to the screen, so the picture stays as the game painted it. The build does not make a sprite painted into the picture yet: it refuses it and says so.
+- `sprite` — works: a sprite is a picture the graphics chip draws each frame, any size up to 256 × 256. There is no limit of sprites on a row of the screen. A sprite that turns or resizes is drawn as a textured shape. A sprite whose poses are drawn from different lists of colors shows each pose in the colors of its own list. It can follow those lists (`draw_with({ hero: :hero })`), or draw them all with one other list (`draw_with({ hero: :white, cape: :white })`). On a painted screen, a sprite with `over_picture: true` is drawn over a copy of the picture as it goes to the screen, so the picture stays as the game painted it. The build does not make a sprite painted into the picture yet: it refuses it and says so.
 - `draw_in_order` — works: the same as on the Advance.
 - `hide_sprites` — works: the same as on the Advance.
 - `picture_groups` — works: the same as on the Advance.
@@ -90,7 +90,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `canvas` — works: the same as on the Advance.
 - `tile_pictures` — works: the same as on the Advance.
 - `sprite_tiles` — works: the same as on the Advance.
-- `layers` — works: the same as on the Advance.
+- `layers` — works: a layer holds a background or sprites. A layer of backgrounds can be see-through by three amounts only. They are the amounts the graphics chip can mix. The first is half of the layer over half of what is behind it: `transparency:` from 50 to 56, or `shows: 50, shows_behind: 50`. The second is all of the layer added to all of what is behind it: `shows: 100, shows_behind: 100`. The third is a quarter of the layer added to all of what is behind it: `shows: 25, shows_behind: 100`. A layer can also be solid (`transparency: 0`) or not seen at all (`transparency: 100`). The build refuses other amounts. An amount the game works out as it runs is refused too. A see-through layer of sprites is refused: this build does not make it yet.
 - `layer` — works: see `layers`.
 - `draw_text` — works: the same as on the Advance.
 - `draw_number` — works: see `draw_text`.
@@ -148,7 +148,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `rand` — works: the same as on the Advance.
 - `chance` — works: the same as on the Advance.
 - `random_numbers` — works: the same as on the Advance.
-- `enable_sound` — works: the same as on the Advance.
+- `enable_sound` — works: `main_volume:` sets the main volume of the sound chip. It changes the loudness of all songs and effects by the same share.
 - `define_sound` — works: the sound chip plays a square as a short recording of one wave, on a voice of its own. A fade moves the voice's loudness a step at a time, at the same pace as on the Advance.
 - `beep` — works: see `define_sound`.
 - `noise` — works: the sound chip plays the Advance's noise as a recording, at the pitch the game names. A metallic noise is a recording of the Advance's rattle.
@@ -162,7 +162,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `music_volume` — works: the same as on the Advance.
 - `fade_music_in` — works: the same as on the Advance.
 - `fade_music_out` — works: the same as on the Advance.
-- `songs` — works: the same as on the Advance.
+- `songs` — works: see `song`. A recorded note with `glides: true` carries on the note sounding at a new pitch, loudness and side: it goes on from where it has got to, and the voice is not struck again. A note on the noise voice can have its own `metallic:`, and a note on the wave voice can have its own `wave:`. The note sets them when it starts. If the game sets its music volume, such a note is refused: this build does not make it yet.
 - `sound_effects` — works: see `song`.
 - `sample` — works: the sound chip plays recordings itself, each on a voice of its own with its own loudness and shape, 16 at once.
 - `instrument` — works: see `sample`.
@@ -174,5 +174,5 @@ and a game that reaches one of these steps is refused, naming the step, until it
 
 - the painted (bitmap) screen: the verbs `draw_column_at`, `camera`, `camera_follows`, `shake_screen`; the steps `draw_column_at`, `camera`
 - fades, lights and screen effects: the verbs `pixelate`, `pixelate_in`, `pixelate_out`, `spotlight`, `iris_in`, `iris_out`; the steps `pixelate`, `shade_outside`
-- sprites and tiled backgrounds: the verbs `canvas`, `tile_pictures`, `sprite_tiles`, `picture_groups`; the steps `copy_tiles`, `box_background`, `copy_owed_tiles`, `load_sprite_tiles`, `affine_background`, `scroll_rows`, `see_through`, `show_held_tiles`, `show_picture_group`
+- sprites and tiled backgrounds: the verbs `canvas`, `tile_pictures`, `sprite_tiles`, `picture_groups`; the steps `copy_tiles`, `box_background`, `copy_owed_tiles`, `load_sprite_tiles`, `affine_background`, `scroll_rows`, `show_held_tiles`, `show_picture_group`
 - save memory: the verbs `save_var`, `save_data`, `saves_keep_everything`; the steps `save_init`, `save_store`, `save_write`, `save_erase`, `save_read`, `save_sum`, `save_load_list`, `save_store_list`

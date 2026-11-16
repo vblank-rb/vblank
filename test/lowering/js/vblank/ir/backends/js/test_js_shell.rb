@@ -102,6 +102,7 @@ class TestJSShell < Minitest::Test
       assert_includes out, "picker 1"
       assert_nil said(out)
       assert_same_picture all_in_one_picture, pictures_in(out).last, "after the unpacking"
+      assert pose_shown_in?(pictures_in(out).last, 240), "the pose read from the pack's frame record is not shown"
     end
   end
 

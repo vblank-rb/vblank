@@ -15,8 +15,8 @@ module VBlank
         # keep apart. A sum of two works the left-hand side out into D0 and takes the right-hand side
         # from where it already is — a number written in the program is part of the instruction, a
         # variable is read where it lives — so `x + 1` is two instructions and no call. A right-hand
-        # side that has to be worked out first is worked out, pushed on the stack, and pulled into D1
-        # once the left-hand side is in D0. A runtime routine taking several numbers has them in
+        # side that has to be worked out first is worked out and kept in D2, or pushed on the stack,
+        # while the left-hand side is worked out into D0 (#with_right_operand). A runtime routine taking several numbers has them in
         # D0, D1, D2... Nothing is kept in a register from one statement to the next, so a statement
         # never has to know what came before it.
         #
@@ -36,12 +36,16 @@ module VBlank
             include Backends::NotMadeYet
           end
 
+          # Must come before Picture, whose emit_sprite_walk_read takes the place of the walk's own.
+          include DrawOrderWalk
           include Paint
           include Picture
           include Collision
           include Sound
           include Division
+          include Products
           include ControlFlow
+          include SceneryWrites
           include MeasuredOnCopies
           include TileRuns
 
@@ -224,6 +228,7 @@ module VBlank
             @routine_tables = {} # a list of routines a call picks from by number -> its table's label
             @cell_tables = {} # the words a picked tile's cells hold (Picture#emit_set_picked_tile_of) -> their table's label
             @section_routines = {}
+            @indexes_checked = {} # a loop's count -> the fewest items it is checked to be below (#index_checked_below?)
             @pictures = by_kind(:bitmap)
             prepare_paint
             prepare_picture
@@ -283,9 +288,11 @@ module VBlank
             end
             reserve_patches
             keep_tile_runs
+            refuse_tiles_past_room_early!
             @scene = keep_local(:scene, start: -1) unless @scenes.empty?
+            keep_scene_held_sets
             keep_timer_numbers
-            keep_corner_notes
+            keep_corner_notes((0...PLANES).to_a, bar: nil) # the Genesis build places no status bar yet
             keep_loop_running
             keep_order_tables
             routines = @called.flat_map do |name|
@@ -419,6 +426,8 @@ module VBlank
             @asm = M68000.new(label, holds: ROUTINES)
             @routine = label
             @labels = 0
+            @indexes_checked = {} # a routine is called from anywhere
+            @checks_kept_inside = nil
             @asm.label(label)
             body.each { |node| statement(node) }
             yield if block_given?
@@ -454,12 +463,15 @@ module VBlank
           # A count a loop holds in a data register (#with_counter_held) needs nothing: such a loop has
           # no call and no wait in it, so it is never part way through at a frame boundary, which comes
           # only inside rt_wait_vblank; its count is in its place again by the time a routine waits.
-          def with_call_numbers_kept
-            return yield if call_numbers.empty?
+          #
+          # Around the timers, +kept+ is those and what a tick handler that waits keeps
+          # (ControlFlow#numbers_kept_around_timers).
+          def with_call_numbers_kept(kept = call_numbers)
+            return yield if kept.empty?
 
-            call_numbers.each { |name| @asm.move(:l, at(place_of(name)), @asm.pre(M68000::SP)) }
+            kept.each { |name| @asm.move(:l, at(place_of(name)), @asm.pre(M68000::SP)) }
             yield
-            call_numbers.reverse_each { |name| @asm.move(:l, @asm.post(M68000::SP), at(place_of(name))) }
+            kept.reverse_each { |name| @asm.move(:l, @asm.post(M68000::SP), at(place_of(name))) }
           end
 
           # Where the variable +name+ (or a number of a routine's own) is kept, as an address.
@@ -516,10 +528,56 @@ module VBlank
 
           # --- statements ---
 
+          # Each statement made, with what it lets later ones know of the indexes checked
+          # (#index_checked_below?): a statement that runs straight through keeps what is known and
+          # adds its own checks, then forgets the variable it writes. Any other may jump about, run
+          # its parts again, call a routine that writes anything or wait out the frame, so inside it
+          # what was known holds until its first label (#place_label), and after it only what nothing
+          # but an enclosing loop writes, a loop's count, is still known. A test's body runs only
+          # after its test, so it starts knowing what was known before the test.
           def statement(node)
-            return call_routine(node.label) if node.is_a?(RoutineCuts::PartCall)
+            if node.is_a?(RoutineCuts::PartCall)
+              call_routine(node.label)
+              return @indexes_checked = checks_only_loops_write
+            end
+            return emit_straight_line_statement(node) if STRAIGHT_LINE_KINDS.include?(node.kind)
 
+            outside = @checks_kept_inside
+            @checks_kept_inside = checks_only_loops_write
+            @indexes_checked = @checks_kept_inside.dup unless node.kind == :if
+            begin
+              emit_statement(node)
+            ensure
+              @indexes_checked = @checks_kept_inside
+              @checks_kept_inside = outside
+            end
+          end
+
+          # The statements that run every part of themselves, once, in order, each writing at most
+          # one variable as it ends (#variable_written).
+          STRAIGHT_LINE_KINDS = %i[set add sub copy negate abs negate_abs clamp list_set].freeze
+
+          def emit_straight_line_statement(node)
+            @noting_checks = true
             emit_statement(node)
+          ensure
+            @noting_checks = false
+            @indexes_checked.delete(variable_written(node))
+          end
+
+          # The variable a statement of STRAIGHT_LINE_KINDS writes, or nil for a list's slot.
+          def variable_written(node)
+            case node.kind
+            when :copy then node.dest
+            when :list_set then nil
+            else node.var
+            end
+          end
+
+          # What is known of the indexes checked that holds wherever the code goes: checks of a count
+          # only its loop writes (#with_counter_held).
+          def checks_only_loops_write
+            @indexes_checked.select { |name, _| @counts_only_the_loop_writes&.include?(name) }
           end
 
           def emit_nothing(_node) = nil
@@ -629,7 +687,12 @@ module VBlank
           # --- what ControlFlow asks of a lowering, in the 68000's instructions ---
 
           def fresh_label(what) = fresh(what)
-          def place_label(label) = @asm.label(label)
+          # A label of a loop or a test can be jumped to from anywhere in it, so past one only what
+          # holds all through the statement is known of the indexes checked (#statement).
+          def place_label(label)
+            @indexes_checked = (@checks_kept_inside || checks_only_loops_write).dup
+            @asm.label(label)
+          end
           def jump(label) = @asm.bra(label)
           def emit_value(operand) = value(operand)
           def emit_store(name) = store(name)
@@ -660,10 +723,13 @@ module VBlank
                                 (node.stop_when.nil? || value_keeps_counters?(node.stop_when))
 
             @counters_held[counter] = @asm.d(register)
+            @indexes_checked.delete(counter)
+            (@counts_only_the_loop_writes ||= []) << counter if counter == node.index
             begin
               yield
             ensure
               @counters_held.delete(counter)
+              @counts_only_the_loop_writes&.delete(counter)
             end
             @asm.move(:l, @asm.d(register), var(counter))
           end
@@ -690,7 +756,8 @@ module VBlank
             end
           end
 
-          # Is +node+ a value worked out in place with D0, D1 and A0 alone?
+          # Is +node+ a value worked out in place with D0, D1, D2 and A0 alone? (D2 only for the right
+          # side of a sum, kept there while the left side is worked out: #with_right_operand.)
           def value_keeps_counters?(node)
             return true if node.is_a?(Symbol) || folded(node)
             return false unless node.is_a?(Node)
@@ -707,23 +774,17 @@ module VBlank
             end
           end
 
-          # A sum, a comparison, or a shift or a product by a number that is one shift: the ones
-          # written in place. A product, a quotient or a shift the runtime works out is a call.
+          # A sum, a comparison, a shift by a number, or a product by a number or a comparison (Products):
+          # the ones written in place. A product, a quotient or a shift the runtime works out is a call.
           def sum_keeps_counters?(node)
             both = value_keeps_counters?(node.lhs) && value_keeps_counters?(node.rhs)
             case node.op
             when *IN_PLACE_OPS, *COMPARISONS, :and, :or then both
             when :<<, :>> then both && folded(node.rhs)&.between?(0, 31) == true
-            when :* then both && [node.lhs, node.rhs].any? { |by| one_shift?(folded(by)) || few_doublings?(folded(by)) }
+            when :* then both && ([node.lhs, node.rhs].any? { |by| product_in_place?(folded(by)) } || product_by_comparison?(node))
             else false
             end
           end
-
-          # Is +number+ one a product by which is written as doublings and adds (#emit_product_by_small_number)?
-          def few_doublings?(number) = !number.nil? && number.between?(3, MOST_DOUBLED) && !one_shift?(number)
-
-          # Is +number+ a power of two a product by which is one shift (#emit_product_by_power_of_two)?
-          def one_shift?(number) = !number.nil? && number.positive? && number.nobits?(number - 1) && number <= (1 << 30)
 
           def emit_copy_variable(from, to)
             value(from)
@@ -889,13 +950,42 @@ module VBlank
             place, = @lists.fetch(node.name) { raise LoweringError, "the list #{node.name.inspect} is used and never declared" }
             full = always_full_lists[node.name]
             @asm.lea(at(place), @asm.a(0))
-            unless full && index_inside?(node.index, full)
+            unless full && (index_inside?(node.index, full) || index_checked_below?(node.index, full))
               emit_list_length(full, index + 1)
               @asm.cmp(:l, @asm.d(index + 1), @asm.d(index))
               @asm.branch_over(:cs, LIST_FAULT_JUMP_BYTES)
               @asm.jmp(@asm.abs_l(fault))
+              note_index_checked(node.index, full) if full
             end
             emit_slot_scaling(node, index)
+          end
+
+          # AN INDEX CHECKED ONCE. A variable nothing writes between two reads or writes of lists
+          # that always hold their capacity is the same at both, so once the first has checked it,
+          # the second needs no check if its list is at least as long: the first check stops the
+          # game, as the interpreter stops it, before anything after it runs. A walk over four lists
+          # at one index checks it once a turn, not at each of eight slots.
+          #
+          # What is known runs from one statement to the next only while each runs straight through
+          # (#statement): a variable a statement writes is forgotten, and so is every one at a call,
+          # a wait, a test's other side or a loop's next turn, except a loop's count held in a
+          # register, which only the loop writes (#with_counter_held) and so stays the same through
+          # a turn of its body.
+          #
+          # Is +index+ a variable already checked against +count+ items or fewer?
+          def index_checked_below?(index, count)
+            name = variable_named(index)
+            below = name && @indexes_checked.fetch(name, nil)
+            !below.nil? && below <= count
+          end
+
+          # +index+ checked just now against the +count+ items of a list that always holds them, in a
+          # statement that runs straight through.
+          def note_index_checked(index, count)
+            name = variable_named(index)
+            return unless name && @noting_checks
+
+            @indexes_checked[name] = [@indexes_checked.fetch(name, count), count].min
           end
 
           # JMP to a whole address: the instruction's word and the address's two.
@@ -1345,10 +1435,10 @@ module VBlank
           def timer_sections
             return [] if @timers.empty?
 
-            each_timer = @timers.flat_map { |name, _| timer_section(name) }
+            each_timer = @timers.flat_map { |name, _| with_tick_handler_numbers_recorded(name) { timer_section(name) } }
             @frame_begins = "timers frame"
             in_order = routine_section(@frame_begins, [], routine: "the timers") do
-              with_call_numbers_kept do
+              with_call_numbers_kept(numbers_kept_around_timers(@timer_crossed)) do
                 (1..@timers.size).each do |place_in_order|
                   @timers.each_key do |name|
                     skip = fresh("not_this_one")
@@ -1537,7 +1627,7 @@ module VBlank
             return value_of_comparison(node) if COMPARISONS.include?(node.op)
             return value_of_both_or_either(node) if %i[and or].include?(node.op)
             return if %i[<< >>].include?(node.op) && emit_shift_by_number(node)
-            return if node.op == :* && (emit_product_by_power_of_two(node) || emit_product_by_small_number(node))
+            return if node.op == :* && (emit_product_by_written_number(node) || emit_product_by_comparison(node))
             return if node.op == :/ && emit_divide_by_number(node)
             return if node.op == :% && emit_remainder_by_number(node)
 
@@ -1736,13 +1826,31 @@ module VBlank
           end
 
           # The left side worked out into D0, and the block handed where the right side is: in place
-          # when it needs nothing worked out, and otherwise worked out first, pushed, and pulled into
-          # D1 once the left side is in D0.
+          # when it needs nothing worked out, and otherwise worked out first and kept while the left
+          # side is worked out.
+          #
+          # It is kept in D2 where the left side is written in place, with no call
+          # (#value_keeps_counters?), and no sum round this one is keeping its right side there
+          # already: a move there and none back, where the stack takes a push and a pull of twelve
+          # cycles each. A sum inside the left side then pushes its own. Anywhere else the right side
+          # is pushed, and pulled into D1 once the left side is in D0.
           def with_right_operand(left, right)
             operand = operand_of(right)
             if operand
               value(left)
               return yield(operand)
+            end
+
+            unless @right_side_kept || !value_keeps_counters?(left)
+              value(right)
+              @asm.move(:l, @asm.d(0), @asm.d(2))
+              @right_side_kept = true
+              begin
+                value(left)
+              ensure
+                @right_side_kept = false
+              end
+              return yield @asm.d(2)
             end
 
             push_value(right)
@@ -1755,47 +1863,6 @@ module VBlank
           def push_value(node)
             value(node)
             @asm.move(:l, @asm.d(0), @asm.pre(M68000::SP))
-          end
-
-          # A product by a power of two written in the program, as a shift — none at all for a product
-          # by one. True when it was done so.
-          def emit_product_by_power_of_two(node)
-            [[node.rhs, node.lhs], [node.lhs, node.rhs]].each do |by, other|
-              number = folded(by)
-              next unless number&.positive? && (number & (number - 1)).zero? && number <= (1 << 30)
-
-              return emit_shift(other, :lsl, number.bit_length - 1)
-            end
-            false
-          end
-
-          # The biggest number a product by which is written as doublings and adds.
-          MOST_DOUBLED = 255
-
-          # A PRODUCT BY A SMALL NUMBER WRITTEN IN THE PROGRAM, as doublings and adds: the number's
-          # bits read from the top, the sum so far doubled for each and the other side added in where
-          # the bit is set, so ten times is three doublings and an add. The 68000 has no multiply of
-          # two long words, and the runtime's (rt_mul32) is three of its word multiplies and a call,
-          # several times as long as this for any number up to MOST_DOUBLED. The sum wraps as the
-          # product does. True when it was done so.
-          #
-          # These are the products the builder itself writes all through a game: a place in a table
-          # of records (an index times how many numbers a record has), a sprite's picture from the
-          # way it faces (the way times how many frames each has).
-          def emit_product_by_small_number(node)
-            [[node.rhs, node.lhs], [node.lhs, node.rhs]].each do |by, other|
-              number = folded(by)
-              next unless few_doublings?(number)
-
-              value(other)
-              @asm.move(:l, @asm.d(0), @asm.d(1))
-              (number.bit_length - 2).downto(0) do |bit|
-                @asm.add(:l, @asm.d(0), @asm.d(0))
-                @asm.add(:l, @asm.d(1), @asm.d(0)) if number[bit] == 1
-              end
-              return true
-            end
-            false
           end
 
           # `<<` and `>>` by a number written in the program, in range: one shift. True when done so.

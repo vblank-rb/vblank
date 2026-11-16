@@ -47,8 +47,11 @@ module VBlank
           # mistake in the code that wrote it.
           class Error < StandardError; end
 
+          # A table keyed by arrays is made with Ractor.make_shareable, not .freeze, where a game built
+          # in a Ractor reads it: .freeze leaves the arrays unfrozen, and the worker is refused the table.
+
           # The forms MOV has: [destination, source] -> opcode.
-          MOVES = {
+          MOVES = Ractor.make_shareable({
             %i[a imm] => 0xE8, %i[x imm] => 0xCD, %i[y imm] => 0x8D, %i[a x] => 0x7D, %i[x a] => 0x5D,
             %i[a y] => 0xDD, %i[y a] => 0xFD, %i[x sp] => 0x9D, %i[sp x] => 0xBD,
             %i[a direct] => 0xE4, %i[a direct_x] => 0xF4, %i[a abs] => 0xE5, %i[a abs_x] => 0xF5, %i[a abs_y] => 0xF6,
@@ -59,21 +62,21 @@ module VBlank
             %i[direct_x a] => 0xD4, %i[direct_x y] => 0xDB, %i[direct_y x] => 0xD9, %i[abs a] => 0xC5, %i[abs x] => 0xC9,
             %i[abs y] => 0xCC, %i[abs_x a] => 0xD5, %i[abs_y a] => 0xD6, %i[x_ind_inc a] => 0xAF,
             %i[x_ind a] => 0xC6, %i[direct_ind_y a] => 0xD7, %i[direct_x_ind a] => 0xC7
-          }.freeze
+          })
 
           # MOVW: YA to and from a word in the direct page.
           WORD_MOVES = { %i[ya direct] => 0xBA, %i[direct ya] => 0xDA }.freeze
 
           # OR, AND, EOR, CMP, ADC and SBC: each a row of the table, its forms the row's columns.
           SUMS = { or_: 0x00, and_: 0x20, eor: 0x40, cmp: 0x60, adc: 0x80, sbc: 0xA0 }.freeze
-          SUM_FORMS = {
+          SUM_FORMS = Ractor.make_shareable({
             %i[a imm] => 0x08, %i[a x_ind] => 0x06, %i[a direct] => 0x04, %i[a direct_x] => 0x14, %i[a abs] => 0x05,
             %i[a abs_x] => 0x15, %i[a abs_y] => 0x16, %i[a direct_ind_y] => 0x17, %i[a direct_x_ind] => 0x07,
             %i[direct direct] => 0x09, %i[direct imm] => 0x18, %i[x_ind y_ind] => 0x19
-          }.freeze
+          })
           # CMP's forms with X and Y.
-          COMPARES = { %i[x imm] => 0xC8, %i[x direct] => 0x3E, %i[x abs] => 0x1E, %i[y imm] => 0xAD, %i[y direct] => 0x7E,
-                       %i[y abs] => 0x5E }.freeze
+          COMPARES = Ractor.make_shareable({ %i[x imm] => 0xC8, %i[x direct] => 0x3E, %i[x abs] => 0x1E, %i[y imm] => 0xAD,
+                                             %i[y direct] => 0x7E, %i[y abs] => 0x5E })
 
           # ASL, ROL, LSR, ROR, DEC and INC on one operand.
           STEPS = { asl: 0x00, rol: 0x20, lsr: 0x40, ror: 0x60, dec: 0x80, inc: 0xA0 }.freeze
@@ -187,14 +190,19 @@ module VBlank
           def mov(destination, source) = emit_form(MOVES, :mov, destination, source)
           def movw(destination, source) = emit_form(WORD_MOVES, :movw, destination, source)
 
+          # Written out as source rather than made from a block, as W65816's are, where a game built in
+          # a Ractor calls it: a method made from a block carries the block, and Ruby will not let
+          # another Ractor call one.
           SUMS.each do |name, row|
-            define_method(name) do |destination, source|
-              form = [mode_of(destination), mode_of(source)]
-              opcode = (name == :cmp && COMPARES[form]) || (SUM_FORMS[form] && (row + SUM_FORMS[form]))
-              raise Error, "#{name} has no form #{form.inspect}" unless opcode
+            class_eval <<~RUBY, __FILE__, __LINE__ + 1
+              def #{name}(destination, source)
+                form = [mode_of(destination), mode_of(source)]
+                opcode = (:#{name} == :cmp && COMPARES[form]) || (SUM_FORMS[form] && (#{row} + SUM_FORMS[form]))
+                raise Error, "#{name} has no form \#{form.inspect}" unless opcode
 
-              emit_operands(opcode, destination, source)
-            end
+                emit_operands(opcode, destination, source)
+              end
+            RUBY
           end
 
           STEPS.each do |name, row|
@@ -280,11 +288,14 @@ module VBlank
             end
           end
 
+          # As source, for the same reason as SUMS's.
           BRANCHES.each do |name, opcode|
-            define_method(name) do |target|
-              emit(opcode)
-              emit_relative(target)
-            end
+            class_eval <<~RUBY, __FILE__, __LINE__ + 1
+              def #{name}(target)
+                emit(#{opcode})
+                emit_relative(target)
+              end
+            RUBY
           end
 
           # Compare A with a byte of the direct page (or at aa+X), and branch when they differ.

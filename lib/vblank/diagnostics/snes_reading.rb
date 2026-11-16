@@ -76,8 +76,8 @@ module VBlank
       )
 
       # A Super FX cartridge that saves has 128K of the chip's RAM, and bsnes keeps all of it in
-      # the file: the chip's working 64K, then the save (Cartridge::SNESROM::SUPER_FX).
-      SUPER_FX_SAVE_FILE = Verifier::SaveFileLayout.new(whole: SAVE_FILE.whole, clock_bytes: 0,
+      # the file: the chip's working 64K, then the save, the other 64K (Cartridge::SNESROM::SUPER_FX).
+      SUPER_FX_SAVE_FILE = Verifier::SaveFileLayout.new(whole: Cartridge::SNESROM::SUPER_FX.most_save_bytes, clock_bytes: 0,
                                                         memory_at: Cartridge::SNESROM::SUPER_FX.save_offset)
 
       # The layout of the save file of the cartridge whose bytes are +bytes+, read from its header.

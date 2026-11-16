@@ -150,9 +150,10 @@ module VBlank
         Nodes.build(:save_sum, at: at, length: length)
       end
 
-      # The program has +kilobytes+ of save memory (see Nodes::SaveMemory).
-      def save_memory(kilobytes, asked_for: true, records: [])
-        Nodes.build(:save_memory, kilobytes: kilobytes, asked_for: asked_for, records: records)
+      # The program has +kilobytes+ of save memory (see Nodes::SaveMemory), of +chip+ where it is
+      # not the Advance's chip of that size.
+      def save_memory(kilobytes, asked_for: true, records: [], chip: nil)
+        Nodes.build(:save_memory, kilobytes: kilobytes, chip: chip, asked_for: asked_for, records: records)
       end
 
       # Wipe the block of save memory holding +at+ (see Nodes::SaveErase). +wait: false+ only
@@ -222,9 +223,11 @@ module VBlank
       # A size the program works out is what a bar or a column needs: a health meter
       # that empties sideways, a wall column in a first-person view, a tower rising
       # out of the ground. A width or height of zero or less draws nothing.
-      def draw_rect_at(x, y, w, h, color)
+      # +written_as+ is the verb the author wrote, where it was not this one (Nodes::DrawRectAt).
+      def draw_rect_at(x, y, w, h, color, written_as: nil)
+        named = written_as ? { written_as: written_as } : {}
         Nodes.build(:draw_rect_at, x: to_value_node(x), y: to_value_node(y), w: to_value_node(w), h: to_value_node(h),
-                                   color: color)
+                                   color: color, **named)
       end
 
       def draw_column_at(name, slice, x, top, height, width: 1)
@@ -408,12 +411,16 @@ module VBlank
       # file (a StartFile::RecordingSettings), for those it reads from there. Nil otherwise.
       # +chip_recording+ is the recording as a console's sound chip keeps it (an Audio::SNESRecording),
       # with +bytes+ and +holds_from+ then what the chip decodes from it. Nil otherwise.
+      # +full_samples+ is a 16-bit recording's own samples (two bytes each, low byte first), with
+      # +bytes+ then the high byte of each, or as the recording's file reduced them to eight bits.
+      # Nil for an 8-bit recording.
       def sample(name, bytes, rate, note: :C4, envelope: nil, holds_from: nil, from_file: nil, chip_envelope: nil,
-                 settings_from_file: nil, chip_recording: nil)
+                 settings_from_file: nil, chip_recording: nil, full_samples: nil)
         attrs = { name: name, bytes: bytes, rate: rate, note: note, envelope: envelope, holds_from: holds_from,
                   from_file: from_file, chip_envelope: chip_envelope }
         attrs[:settings_from_file] = settings_from_file if settings_from_file
         attrs[:chip_recording] = chip_recording if chip_recording
+        attrs[:full_samples] = full_samples if full_samples
         Nodes.build(:sample, **attrs)
       end
 
@@ -1060,7 +1067,16 @@ module VBlank
 
       # One run of a frame's objects drawn in an order the program works out (see
       # #present_objects).
-      DrawOrder = Data.define(:objects, :order)
+      #
+      # +permutation+ promises that the list always holds every place of the run once, from before
+      # the first frame is drawn: the builder's own list (Builder::DrawOrder#declare_order_lists),
+      # filled as the game starts and from then on only sorted or copied whole from a table of the
+      # run's orders. What it holds then needs no reading as the interpreter reads any list
+      # (Reference#names_in_draw_order), so a cartridge lowering may read it a slot an entry. A run
+      # written by hand promises nothing.
+      DrawOrder = Data.define(:objects, :order, :permutation) do
+        def initialize(objects:, order:, permutation: false) = super
+      end
 
       # --- backing store (remembering the pixels under a moving object) ---
       #

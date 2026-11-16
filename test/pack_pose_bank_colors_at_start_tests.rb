@@ -7,7 +7,8 @@ require "all/vblank/builder/test_pack_pose_bank_colors"
 # (test/all/vblank/builder/test_pack_pose_bank_colors.rb) do built with `pack_at_start: true` beyond
 # what the registry holds alike (PackGames::PosesInBankColors, test/pack_games.rb): a frame whose
 # pieces name two banks, which the build that holds the pack refuses, and one sprite facing frames of
-# two banks that follows each one's list, which only a console that follows such lists plays.
+# two banks that follows each one's list, which that build plays only on a console that follows such
+# lists, and the build with the pack left out plays on every console.
 #
 # Only a build for a computer leaves its pack out, so these are played by the interpreter and the
 # game as C, JavaScript and Ruby, and are not in test/all/ (PackAtStartTests says more).
@@ -69,6 +70,61 @@ module PackPoseBankColorsAtStartTests
       assert_equal wanted.to_a, shown.to_a
       TILES.fetch(0).each_with_index do |place, at|
         assert_equal OTHER.fetch(place), shown.pixel(80 + (at % 8), 40 + (at / 8)), "the frame of bank 2, pixel #{at}"
+      end
+    end
+  end
+
+  # A pool told the list its pose's frame picks follows it for every instance (Pool
+  # #follow_lists_chosen_at_start), so it cannot also draw an instance with another list.
+  def test_a_pool_following_its_frames_list_and_told_another_list_is_refused_with_the_pack_left_out
+    test = self
+    other = see_through_first(OTHER)
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) do
+        game_of(folder, options: LEFT_OUT) do |pack|
+          test.declare_poses_for(self, pack, size: [16, 8])
+          colors :other, other
+          guards = pool :guard, x: 0, y: 0, capacity: 2, image: :second
+          guards.spawn x: 40, y: 40
+          guards.each do |guard|
+            guard.draw_with colors_name_of(:second)
+            guard.draw_with :other
+          end
+        end
+      end
+
+      assert_includes error.message, "pool :guard"
+      assert_includes error.message, "all-in-one"
+    end
+  end
+
+  # The same sprite as the Color and the Super Nintendo, whose cartridges keep a list for each pose
+  # and do not follow them, so the build that holds the pack refuses it. Which bank each frame names
+  # is in the player's file, and nothing in that file stops the game: with the pack left out the
+  # sprite follows each pose's list, as on the Genesis.
+  def test_a_sprite_facing_frames_of_two_banks_follows_each_list_as_a_console_that_keeps_a_list_a_pose
+    test = self
+    other = see_through_first(OTHER)
+    Dir.mktmpdir do |folder|
+      # The pack file is the one the build that holds the pack writes; it refuses only once it is
+      # told a console that does not follow such lists.
+      (_, file), (program, _) = [VBlank::Cartridge::Options.new, LEFT_OUT].map do |options|
+        game_and_file_of(folder, options: options) do |pack|
+          test.declare_poses_for(self, pack, size: [16, 8])
+          colors :other, other
+          facing = { first: :first, second: :second }
+          turned = sprite :turned, at: [80, 40], facing: facing
+          turned.draw_with(facing.values.map { |pose| colors_name_of(pose) }.uniq.to_h { |list| [list, list] })
+          turned.face :second
+          recolor :palette_2, :other
+        end
+      end
+      %i[gbc snes].each do |console|
+        shown = game_player.hand_file(file).run(program.copy.tap { |copy| copy.console = console }, frames: 6).screen
+
+        TILES.fetch(0).each_with_index do |place, at|
+          assert_equal OTHER.fetch(place), shown.pixel(80 + (at % 8), 40 + (at / 8)), "#{console}: the frame of bank 2, pixel #{at}"
+        end
       end
     end
   end

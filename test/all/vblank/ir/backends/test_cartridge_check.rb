@@ -21,6 +21,8 @@ class TestCartridgeCheck < Minitest::Test
     def hold(*buttons) = tap { @held = buttons }
     def build(_program) = nil
     def frames_took(_pass) = 1
+    def passes_missed = [] # every pass is read
+    def setting_up_counted = 0 # no frames pass before the game's first line
     def [](name) = @run[name]
 
     # The run the moments are read from, with :n one bigger from the pass +self.class.wrong_from+ on.
@@ -64,6 +66,12 @@ class TestCartridgeCheck < Minitest::Test
     def self.wrong_from = 3
   end
 
+  # The same, never finding the game waiting at the end of pass three, which the interpreter reports.
+  class MissingPassThree < CheckedStandIn
+    def passes_missed = [3]
+    def moments = super.reject { |moment| moment.frame == 3 }
+  end
+
   private def counting
     b = Builder.new
     b.instance_eval do
@@ -85,5 +93,14 @@ class TestCartridgeCheck < Minitest::Test
 
     assert_match(/Super Nintendo lowering and the interpreter disagree at frame 3/, error.message)
     assert_match(/n: cartridge has 3, Reference 2/, error.message)
+  end
+
+  # A pass the interpreter reports and the cartridge never read is a fault of the cartridge's. One the
+  # interpreter skips too, the boundary a waiting tick handler ends, is not
+  # (TestTimer#test_a_handler_waiting_inside_a_repeat_keeps_its_turn).
+  def test_a_pass_never_read_that_the_interpreter_reports_is_refused_by_number
+    error = assert_raises(Comparison::Disagreement) { MissingPassThree.new(save: SaveImage.new).run(counting, frames: 6) }
+
+    assert_match(/went on from pass 3 without waiting/, error.message)
   end
 end

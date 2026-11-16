@@ -30,16 +30,20 @@ module VBlank
                       "screen, so a painted (bitmap) screen is made of tiles internally. " \
                       "`tear_free: true` keeps one picture, because the picture is copied to the " \
                       "console whole before it shows. `screen :rotozoom` is refused: the build does " \
-                      "not use the one layer a Super Nintendo can turn. `pixel_size: 2` is refused: the " \
-                      "build does not show a painted screen bigger yet. `shown_rows:` works: the rows " \
-                      "outside the range are black. The screen is off on those rows, so the build " \
-                      "copies the picture to video memory on those rows and in the gap after each " \
-                      "picture. Then a picture that changes many tiles in each pass shows sooner."),
+                      "not use the one layer a Super Nintendo can turn. `screen :bitmap, pixel_size: 2` " \
+                      "shows each pixel of the game's 128×112 picture as a square of four. The build " \
+                      "keeps the picture as one byte for each pixel. It shows the picture on the layer " \
+                      "that can turn, at twice its size. Then a change to the picture copies a quarter " \
+                      "of the bytes, or fewer. `shown_rows:` works: the rows outside the range are black. The screen is " \
+                      "off on those rows, so the build copies the picture to video memory on those " \
+                      "rows and in the gap after each picture. Then a picture that changes many tiles " \
+                      "in each pass shows sooner. With `pixel_size: 2` the rows are rows of the small " \
+                      "picture."),
         setting: works,
         built_for_computer?: works("false on a cartridge."),
         built_for?: works("true when asked about :snes."),
-        screen_width: works("256 on a Super Nintendo."),
-        screen_height: works("224 on a Super Nintendo."),
+        screen_width: works("256 on a Super Nintendo. 128 with `pixel_size: 2`."),
+        screen_height: works("224 on a Super Nintendo. 112 with `pixel_size: 2`."),
         border: works("it does nothing on a Super Nintendo, which shows the game's screen whole."),
         wait_vblank: works("in a game loop, the sprites and scroll of a pass show on the frame after the wait. " \
                            "If a game writes the wait in a scene or an `if`, they show a frame later than that."),
@@ -129,14 +133,20 @@ module VBlank
         mirror: works,
         upside_down: works,
         blit: works,
-        sprite: works("a sprite is made of the console's pieces, 128 pieces at once and 34 pieces of 8×8 on " \
-                      "any one row of the screen. A sprite whose poses are drawn from different lists of colors " \
-                      "shows each pose in the colors of its own list. Such a sprite cannot follow those lists " \
+        sprite: works("a sprite is made of the console's pieces, 128 pieces at once. On any one row of the " \
+                      "screen it shows 32 pieces, and 34 strips of them 8 pixels wide. If there are more, some " \
+                      "are not shown: past 32 pieces on a row, the pieces furthest back; past 34 strips, the " \
+                      "right side of the pieces in front; past 128 pieces, the pieces in front, on the whole " \
+                      "screen. A sprite whose poses are drawn from different lists of colors " \
+                      "shows each pose in the colors of its own list. It can draw all those lists with one " \
+                      "other list (`draw_with({ hero: :white, cape: :white })`). It cannot follow those lists " \
                       "(`draw_with({ hero: :hero })`): this build does not make that yet, and refuses it. A square of 16×16 in a picture is one piece, so a screen of " \
                       "big sprites fits. A picture given with `pieces:` is those pieces, one each, 16×16 " \
-                      "pieces too, wherever they sit. Past 128 pieces, a sprite is not drawn and no error " \
-                      "shows as the game runs. The build warns when the sprites one screen declares pass " \
-                      "128, and when it gives up the squares of 16×16 to fit the tiles. It does not count " \
+                      "pieces too, wherever they sit. No error " \
+                      "shows as the game runs when a piece is not shown. The build warns when the sprites one screen declares pass " \
+                      "128, and when it gives up the squares of 16×16 to fit the tiles. On a screen whose " \
+                      "pictures do not all fit as squares, the pictures that fit keep their squares, and the " \
+                      "build names the pictures that do not and the rows they add. It does not count " \
                       "pools or letters of text. `scale`, `face_angle` and `turn` are refused: a Super " \
                       "Nintendo cannot turn or resize a sprite. Draw the turns as poses. A sprite with " \
                       "`over_picture: true` on a painted screen is not made yet: the build refuses it and says " \
@@ -151,8 +161,8 @@ module VBlank
         # --- backgrounds and layers ---
         tiles: works("tiles of sixteen colours each."),
         background: works("two backgrounds at a time, and a status bar or a background held above a row beside " \
-                          "them. Three backgrounds with neither among them are refused: this build does not make " \
-                          "that yet. The backgrounds are scrolled and changed as on the Advance. `above_row:` " \
+                          "them. A screen with three backgrounds and neither among them is refused before the " \
+                          "build. The backgrounds are scrolled and changed as on the Advance. `above_row:` " \
                           "keeps a background to the rows above that row, and takes no processor time as the " \
                           "screen is drawn. A game with it cannot have a status bar yet. With `alone: true`, the " \
                           "console shows only that background and the sprites above the row, so its see-through " \
@@ -212,9 +222,10 @@ module VBlank
         # --- numbers and logic ---
         var: works("a variable is the same 32-bit whole number as on the Advance."),
         save_var: works("kept in 32K of battery-backed RAM on the cartridge. A cartridge with a Super FX chip " \
-                        "keeps it too, in RAM of its own beside the chip's."),
+                        "keeps 64K, in RAM of its own beside the chip's."),
         save_data: works("kept in 32K of battery-backed RAM on the cartridge. A cartridge with a Super FX chip " \
-                         "keeps it too, in RAM of its own beside the chip's."),
+                         "keeps 64K, in RAM of its own beside the chip's. Records that need more than the " \
+                         "cartridge keeps are refused, naming the bytes they need."),
         part: works, start_over: works,
         clock: refused("a Super Nintendo cartridge built here has no clock chip. Ask the player for the time " \
                        "on a screen of the game's own, if the game needs it."),
@@ -259,7 +270,7 @@ module VBlank
         seed: works, randomize: works, roll: works, rand: works, chance: works, random_numbers: works,
 
         # --- sound and music ---
-        enable_sound: works,
+        enable_sound: works(Answers::MAIN_VOLUME_SETS_CHIP),
         define_sound: works("a Super Nintendo has no square voice: its sound chip plays recordings, so the " \
                             "square is played as a recording of one. The sound chip cannot make a note above " \
                             "16000 Hz, so a higher note plays at 16000 Hz."),
@@ -279,8 +290,12 @@ module VBlank
         music_volume: works,
         fade_music_in: works,
         fade_music_out: works,
-        songs: works("see `song`. A recorded note with `glides: true` carries on the note sounding at a new " \
-                     "pitch: it fades as it was, and the voice is not struck again."),
+        songs: works("see `song`. #{Answers::GLIDES_CARRY_ON} #{Answers::NOTE_VOICES_NOT_UNDER_VOLUME} The songs " \
+                     "stay in the cartridge, and the console reads their notes from there. They do not go into the " \
+                     "sound chip's memory. A song can be longer than a bank of the cartridge: the notes go into " \
+                     "as many banks as they need. Each note or rest takes 16 bytes, and a song that repeats " \
+                     "keeps its notes two times. The songs of a game can have 65536 notes and rests. If they have " \
+                     "more, the build stops and gives the number."),
         sound_effects: works("see `song`."),
         sample: works("each recording plays on a voice of the sound chip. The sound chip has eight voices. Four " \
                       "always play recordings, and each of the other four does when the game never uses it for a " \
@@ -289,7 +304,15 @@ module VBlank
                       "`envelope:` is the sound chip's own bytes (a `VBlank::Audio::SNESEnvelope`) has them " \
                       "written to its voice unchanged, and the sound chip shapes each note itself. A recording " \
                       "given in the sound chip's own format (`brr:`) is played byte for byte as given, from the " \
-                      "loop point given (`brr_loop:`)."),
+                      "loop point given (`brr_loop:`). The sound chip plays recordings from its own memory, which " \
+                      "has room for less than 64 KB of them. Recordings that need more room can still fit when each " \
+                      "scene plays recordings of its own. In a game with no scenes, each routine that `call mode` " \
+                      "picks can play recordings of its own in the same way. Those go into the sound memory when " \
+                      "the scene or routine starts, over the ones before, and the game stops for some frames while " \
+                      "they go. A recording that more than one of them plays, or that a song plays, stays in the " \
+                      "sound memory for all of the game. When the recordings do not fit, the build stops and gives " \
+                      "the bytes they need and the room there is. When they fit, `vblank build` gives how much " \
+                      "of the sound memory the game uses (`Sound memory: 47.8 KB of 64 KB`)."),
         instrument: works("see `sample`.")
       })
 

@@ -42,7 +42,8 @@ module VBlank
             attr_reader :sound_tables
 
             # Where the game keeps how loud its music is, or nil for a game that never sets it.
-            def music_level = @variables[Tunes::LEVEL]
+            # rt_music_level reads all four of its bytes there, so it is kept whole (Lowering#place_of).
+            def music_level = (place_of(Tunes::LEVEL) if keeps_variable?(Tunes::LEVEL))
 
             # Does a song's note swell by itself in a game that moves the music volume, and on which kinds
             # of voice? Asked before the variables have places, so the player can keep room to hold one
@@ -175,7 +176,15 @@ module VBlank
             def emit_stop_music(_node) = @asm.call("rt_music_stop")
             def emit_hold_music(node) = @asm.call(node.held ? "rt_music_hold_tune" : "rt_music_release_tune")
 
-            def emit_enable_sound(_node) = sound_writes(GameBoySound.enable, [:enabled])
+            # The main volume the game named is the level of both speakers in NR50, the nearest of
+            # its eight (GameBoySound.speaker_level). A main volume of nothing leaves the chip
+            # switched off (NR52), since its quietest level is still an eighth: the chip then takes
+            # no write until it is switched on, so every sound after is silent.
+            def emit_enable_sound(_node)
+              main_volume = @program.main_volume
+              writes = GameBoySound.enable(speaker_level: GameBoySound.speaker_level(main_volume), powered: main_volume != 0)
+              sound_writes(writes, [:enabled, *main_volume])
+            end
 
             # Reference#exec_rumble: the cartridge's motor, a frame at a time (Runtime::Rumble).
             def emit_rumble(node) = runtime_call("rt_rumble", [node.frames, node.pattern])

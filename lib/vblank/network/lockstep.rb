@@ -145,13 +145,15 @@ module VBlank
       def leave = @transport.close
 
       # The presses of the match so far, as a tape of passes (Playthroughs::Tape): the buttons each
-      # pass the game played was given, every player's, from the first pass that reads any. It plays on
-      # the interpreter like any tape.
+      # pass the game played was given, every player's, from the first pass that reads any, and the
+      # match: how many players the game was handed buttons for (#masks_for), and the seed. It plays on
+      # the interpreter, which plays the game as this match (IR::Backends::Reference#play_as_match).
       def tape
         taping = Playthroughs::Tape::Taping.new
         @played.each { |masks| taping.hold(button_names(masks), 1) }
         Playthroughs::Tape.new(title: @fingerprint.title, checksum: @fingerprint.checksum,
-                               starts_from: Playthroughs::Tape::POWER_ON, steps: taping.steps, in_passes: true)
+                               starts_from: Playthroughs::Tape::POWER_ON, steps: taping.steps, in_passes: true,
+                               match: Playthroughs::Tape::Match.new(players: @roster.max, seed: seed))
       end
 
       private

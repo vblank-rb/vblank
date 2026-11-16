@@ -18,7 +18,7 @@ module VBlank
 
           count = duration ? seconds_in_frames(duration, named) : (frames || default)
           unless DSL::Whole.positive?(count)
-            raise ArgumentError, "#{named} needs a positive whole number of frames. You gave #{(frames || duration).inspect}."
+            raise ArgumentError, "#{named} needs a positive whole number of frames. You gave #{Messages::PlainWords.words_for_given(frames || duration)}."
           end
 
           [count - 1, 1].max
@@ -26,7 +26,7 @@ module VBlank
 
         def seconds_in_frames(duration, named)
           unless duration.is_a?(Numeric) && duration.positive?
-            raise ArgumentError, "#{named} needs a positive duration in seconds. You gave #{duration.inspect}."
+            raise ArgumentError, "#{named} needs a positive duration in seconds. You gave #{Messages::PlainWords.words_for_given(duration)}."
           end
 
           (duration * Builder::ControlFlow::FRAMES_PER_SECOND).round

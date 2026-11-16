@@ -19,7 +19,7 @@ class TestJSPageMenu < Minitest::Test
   class KeyNames
     NAMES = { 27 => "X", 29 => "Z", 42 => "Backspace", 229 => "Right Shift", 40 => "Return", 79 => "Right", 80 => "Left", 81 => "Down",
               82 => "Up", 22 => "S", 4 => "A", 19 => "P", 17 => "N", 60 => "F3", 68 => "F", 16 => "M", 58 => "F1", 43 => "Tab",
-              20 => "Q", 26 => "W", 7 => "D" }.freeze
+              20 => "Q", 26 => "W", 7 => "D", 6 => "C" }.freeze
     def name(key) = NAMES[key]
     def key(name) = NAMES.key(name)
   end
@@ -58,8 +58,8 @@ class TestJSPageMenu < Minitest::Test
 
   # The Ruby copy's the same, as the page says it. A page has no window size, and its controllers
   # are numbered as a browser numbers them, so those two are left out.
-  private def ruby_says(menu)
-    lines = Live::WindowMenu::HEADINGS.find { |each| each.name == (menu.open_heading || "Game") }.lines.reject { |line| line.setting == :scale }
+  private def ruby_says(menu, headings)
+    lines = headings.find { |each| each.name == (menu.open_heading || "Game") }.lines.reject { |line| line.setting == :scale }
     [menu.open_heading, menu.chosen_line, lines.map { |line| [line.label, words_of(menu, line)] }, menu.controls.notice]
   end
 
@@ -67,32 +67,35 @@ class TestJSPageMenu < Minitest::Test
     menu.controls.text_for(line).to_s.split(" / ").first if %i[button hotkey].include?(line.kind)
   end
 
-  private def page_as_ruby_says(shown)
-    words = shown.fetch("lines").zip(page_kinds(shown)).map { |(label, right), bound| [label, (right.split(" / ").first if bound)] }
+  private def page_as_ruby_says(shown, headings)
+    words = shown.fetch("lines").zip(page_kinds(shown, headings)).map { |(label, right), bound| [label, (right.split(" / ").first if bound)] }
     [shown.fetch("heading"), shown.fetch("chosen"), words, shown.fetch("notice")]
   end
 
-  private def page_kinds(shown)
+  private def page_kinds(shown, headings)
     name = shown.fetch("heading") || "Game"
-    Live::WindowMenu::HEADINGS.find { |each| each.name == name }.lines.reject { |line| line.setting == :scale }.map { |line| %i[button hotkey].include?(line.kind) }
+    headings.find { |each| each.name == name }.lines.reject { |line| line.setting == :scale }.map { |line| %i[button hotkey].include?(line.kind) }
   end
 
   # Plays +walk+ through both and fails at the first step they differ.
   private def assert_same_menu(walk, game = walking_game)
     controls = VBlank::IR::ComputerControls.runtime_numbers(game.program.computer_controls)
-    menu = Live::Menu.new(controls: Live::Settings.new(key_names: KeyNames.new, game_controls: controls), states: EmptySlots.new)
-    expected = [ruby_says(menu)]
+    buttons = VBlank::Console.described(game.consoles.first).buttons
+    headings = Live::WindowMenu.headings(buttons: buttons)
+    settings = Live::Settings.new(key_names: KeyNames.new, game_controls: controls, buttons: buttons)
+    menu = Live::Menu.new(controls: settings, states: EmptySlots.new)
+    expected = [ruby_says(menu, headings)]
     codes = walk.map do |step|
       case step
       when :toggle then menu.toggle
       when Integer then menu.controls.capture_key(step)
       else menu.press(step)
       end
-      expected << ruby_says(menu)
+      expected << ruby_says(menu, headings)
       step == :toggle ? "F1" : step.is_a?(Integer) ? CHOSEN.fetch(step) : MOVES.fetch(step)
     end
     said = page_says(codes, game)
-    expected.each_with_index { |want, at| assert_equal want, page_as_ruby_says(said.fetch(at)), "after step #{at}, #{walk[at - 1]}" }
+    expected.each_with_index { |want, at| assert_equal want, page_as_ruby_says(said.fetch(at), headings), "after step #{at}, #{walk[at - 1]}" }
   end
 
   def test_the_page_menu_walks_as_the_ruby_menu_does
@@ -169,6 +172,62 @@ class TestJSPageMenu < Minitest::Test
 
     assert_equal ["ArrowRight", nil], kept.dig("keys", "right")
     assert_equal [15, nil], kept.dig("pads", "right")
+  end
+
+  # --- the buttons only some consoles have: X, Y and C ---
+
+  # A square lit along the top for each of +console+'s buttons held, in IR::Buttons::NAMES order.
+  private def buttons_game_for(console)
+    buttons = VBlank::Console.described(console).buttons
+    VBlank.game "BUTTONS", consoles: [console] do
+      screen :bitmap
+      game_loop do
+        clear_screen :black
+        buttons.each_with_index { |button, i| fill_rect i * 10, 0, 8, 8, :white if held(button) }
+      end
+    end
+  end
+
+  def test_the_c_key_and_the_left_controller_button_press_c_on_a_genesis_page
+    pressed_c = played_page(["down KeyC", "play 3", "picture one"], buttons_game_for(:genesis), html: page_with_menu(buttons_game_for(:genesis)))
+    pad_c = played_page(["pad connect", "pad press 2", "play 3", "picture one"], buttons_game_for(:genesis),
+                        html: page_with_menu(buttons_game_for(:genesis)))
+    nothing = played_page(["play 3", "picture one"], buttons_game_for(:genesis), html: page_with_menu(buttons_game_for(:genesis)))
+
+    refute_equal pictures_in(nothing).first, pictures_in(pressed_c).first, "the C key lights C's square"
+    assert_same_picture pictures_in(pressed_c).first, pictures_in(pad_c).first, "with the left controller button held"
+  end
+
+  def test_w_and_q_press_x_and_y_on_a_super_nintendo_page
+    game = buttons_game_for(:snes)
+    keys = played_page(["down KeyW", "down KeyQ", "play 3", "picture one"], game, html: page_with_menu(game))
+    pad = played_page(["pad connect", "pad press 3", "pad press 2", "play 3", "picture one"], game, html: page_with_menu(game))
+    nothing = played_page(["play 3", "picture one"], game, html: page_with_menu(game))
+
+    refute_equal pictures_in(nothing).first, pictures_in(keys).first
+    assert_same_picture pictures_in(keys).first, pictures_in(pad).first, "with the top and left controller buttons held"
+  end
+
+  # The Advance has no X, Y or C, so W, Q and C hold nothing and :any stays false.
+  def test_w_q_and_c_press_nothing_on_an_advance_page
+    game = VBlank.game "ANY", consoles: %i[gba] do
+      screen :bitmap
+      x = var :x, 0
+      game_loop do
+        x += 1 if held(:any)
+        clear_screen :black
+        draw_rect_at x, 20, 4, 4, :green
+      end
+    end
+    pressed = played_page(["down KeyW", "down KeyQ", "down KeyC", "play 5", "picture one"], game, html: page_with_menu(game))
+    nothing = played_page(["play 5", "picture one"], game, html: page_with_menu(game))
+
+    assert_same_picture pictures_in(nothing).first, pictures_in(pressed).first, "after five frames holding W, Q and C"
+  end
+
+  # A Genesis page's Keys heading lists C and no Select, as vblank run's does.
+  def test_a_genesis_pages_keys_heading_goes_as_it_does_in_ruby
+    assert_same_menu([:toggle, :right, :right, :right, *[:down] * 8, :enter, 26, :toggle], buttons_game_for(:genesis))
   end
 
   def test_p_pauses_the_page_and_the_menu_holds_the_game

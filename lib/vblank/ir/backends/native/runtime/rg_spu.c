@@ -51,8 +51,9 @@
  * rg_game_spu_rules: the chip's samples a second; the two halfwords of the envelope; a voice's volume
  * at its loudest; the main volume; the pitch that reads 44100 samples a second, and the highest the
  * chip reads at; the samples one wave of a square holds, and one wave of a waveform; where in sound
- * memory the game's loops start, in halfwords; a recording's loudness at full and the shift a shape's
- * level scales it by; and the 512 numbers of the Gaussian table.
+ * memory the game's loops start, in halfwords; the shift that makes a recording's loudness times its
+ * shape's level a whole number of 256ths, and the shift that makes a 256th a step of the volume
+ * register; and the 512 numbers of the Gaussian table.
  *
  * rg_game_spu_loops: where each loop starts, in the 8-byte steps the chip's start register counts:
  * the squares high for 1, 2, 4 and 6 eighths, the hiss and the rattle (nought for a game that makes
@@ -155,8 +156,8 @@ static inline void spu_recording_struck(int32_t place, int32_t by_game) {
  * lets its voice go where the pass's wait ends, so the voice sounds on to the end of the frame. */
 static inline void spu_recording_stopped_by_game(int32_t place) { spu_stopped_by_game |= 1 << (SPU_GAME_VOICES + place); }
 
-static inline void spu_tell_recording(int32_t place, int32_t sounding, int32_t recording, int32_t back, int32_t step,
-                                      int32_t loudness, int32_t level);
+static inline void spu_tell_recording(int32_t place, int32_t sounding, int32_t ran_out, int32_t recording, int32_t back,
+                                      int32_t step, int32_t loudness, int32_t level, int32_t shaped);
 
 #if RG_VOICES_READ_SOUND_MEMORY
 extern const int32_t rg_game_spu_rules[];
@@ -175,8 +176,8 @@ extern const int32_t rg_game_spu_recordings[];
 #define SPU_SQUARE_SAMPLES (rg_game_spu_rules[7])
 #define SPU_WAVE_SAMPLES (rg_game_spu_rules[8])
 #define SPU_MEMORY_BASE (rg_game_spu_rules[9])
-#define SPU_MIX_FULL (rg_game_spu_rules[10])
-#define SPU_SHAPE_SCALE (rg_game_spu_rules[11])
+#define SPU_WHOLE_GAIN_SHIFT (rg_game_spu_rules[10])
+#define SPU_GAIN_TO_VOLUME_SHIFT (rg_game_spu_rules[11])
 #define SPU_GAUSS (&rg_game_spu_rules[12])
 
 /* Where things are in rg_game_spu_loops. */
@@ -203,9 +204,164 @@ static int32_t spu_memory_at(int32_t address) {
   return at >= 0 && at < rg_game_spu_memory[0] ? rg_game_spu_memory[1 + at] : 0;
 }
 
-/* --- the decoder (Beetle PSX, SPU_RunDecoder) --- */
+/* A WAVE READ FROM THE START FILE, written into its loop of sound memory (rg_sound.h). The loop was
+ * made of a stand-in as the game was built (PS1::SoundMemory, waves_from_file:): the waveform's 32
+ * steps seven times over, in 8 blocks of 28 samples. Each step is a four-bit level at shift 0 and
+ * filter 0, as SoundMemory makes every waveform, so each block's samples are the steps less 8 as they
+ * are, four to a halfword with the first in the lowest bits; a block's header keeps its flags (where
+ * the loop starts and ends) and is set to shift 0 and filter 0. +memory+ is the game's own,
+ * written as it starts; +waveforms+ already holds the steps (rg_music_fill_wave). */
+#define SPU_WAVE_LOOP_BLOCKS 8
+#define SPU_BLOCK_SAMPLES 28
+#define SPU_BLOCK_HALFWORDS 8
+
+void rg_spu_fill_wave(int32_t *memory, const int32_t *waveforms, int32_t which) {
+  const int32_t *steps = waveforms + 1 + (which * SPU_WAVE_SAMPLES);
+  int32_t *loop = memory + 1 + ((rg_game_spu_loops[SPU_WAVEFORMS_AT + 1 + which] * 4) - SPU_MEMORY_BASE);
+  for (int32_t block = 0; block < SPU_WAVE_LOOP_BLOCKS; block++) {
+    int32_t *halves = loop + (block * SPU_BLOCK_HALFWORDS);
+    halves[0] &= 0xFF00;
+    for (int32_t half = 1; half < SPU_BLOCK_HALFWORDS; half++) {
+      int32_t coded = 0;
+      for (int32_t i = 0; i < 4; i++) {
+        int32_t sample = (block * SPU_BLOCK_SAMPLES) + ((half - 1) * 4) + i;
+        coded |= ((steps[sample % SPU_WAVE_SAMPLES] - 8) & 0xF) << (4 * i);
+      }
+      halves[half] = coded;
+    }
+  }
+}
 
 static const int32_t filter_weights[16][2] = {{0, 0}, {60, 0}, {115, -52}, {98, -55}, {122, -60}};
+
+/* --- the encoder (PS1::ADPCM.encode), for a recording laid out as the game starts --- */
+
+#define SPU_FILTERS 5
+#define SPU_LARGEST_SHIFT 12
+#define SPU_MOST_LOOP_SAMPLES 0x10000
+enum { SPU_LOOP_END = 1, SPU_LOOP_REPEAT = 2, SPU_LOOP_START = 4 };
+
+/* One block of 28 samples at +filter+ and +shift+, from +history+ (the two decoded before it, older
+ * first): its nibbles, the history after it, and the squared error (PS1::ADPCM.try_block). Each nibble
+ * is the nearest, its half rounded away from nought as Ruby's round does. */
+static int64_t spu_try_block(const int32_t *samples, int32_t filter, int32_t shift, const int32_t *history, int32_t *nibbles,
+                             int32_t *after) {
+  int32_t older = history[0], newer = history[1];
+  int32_t first = filter_weights[filter][0], second = filter_weights[filter][1];
+  int64_t error = 0;
+  for (int32_t i = 0; i < SPU_BLOCK_SAMPLES; i++) {
+    int32_t predicted = ((older * second) >> 6) + ((newer * first) >> 6);
+    int64_t scaled = (int64_t)(samples[i] - predicted) * ((int64_t)1 << shift);
+    int32_t nibble = (int32_t)(scaled < 0 ? -((-scaled + 2048) / 4096) : (scaled + 2048) / 4096);
+    nibble = nibble < -8 ? -8 : nibble > 7 ? 7 : nibble;
+    int32_t decoded = ((nibble * 4096) >> shift) + predicted;
+    decoded = decoded < -0x8000 ? -0x8000 : decoded > 0x7FFF ? 0x7FFF : decoded;
+    error += (int64_t)(decoded - samples[i]) * (decoded - samples[i]);
+    older = newer;
+    newer = decoded;
+    nibbles[i] = nibble;
+  }
+  after[0] = older;
+  after[1] = newer;
+  return error;
+}
+
+/* +count+ samples (a whole number of blocks) encoded into +halves+, the halfwords of sound memory
+ * from where the loop starts, going round for ever from block +loop_block+, or ending and going quiet
+ * after the last where it is -1 (PS1::ADPCM.encode): each block at the filter and shift that come
+ * nearest, the first and the loop's first at filter 0. */
+static void spu_encode(const int32_t *samples, int32_t count, int32_t loop_block, int32_t *halves) {
+  int32_t history[2] = {0, 0};
+  int32_t blocks = count / SPU_BLOCK_SAMPLES;
+  for (int32_t b = 0; b < blocks; b++) {
+    const int32_t *block = samples + (b * SPU_BLOCK_SAMPLES);
+    int32_t ends = SPU_LOOP_END | (loop_block >= 0 ? SPU_LOOP_REPEAT : 0);
+    int32_t flags = (b == loop_block ? SPU_LOOP_START : 0) | (b == blocks - 1 ? ends : 0);
+    int32_t filters = b == 0 || b == loop_block ? 1 : SPU_FILTERS;
+    int64_t best_error = -1;
+    int32_t best_filter = 0, best_shift = 0, best_nibbles[SPU_BLOCK_SAMPLES], best_after[2] = {0, 0};
+    for (int32_t filter = 0; filter < filters && best_error != 0; filter++) {
+      for (int32_t shift = 0; shift <= SPU_LARGEST_SHIFT && best_error != 0; shift++) {
+        int32_t nibbles[SPU_BLOCK_SAMPLES], after[2];
+        int64_t error = spu_try_block(block, filter, shift, history, nibbles, after);
+        if (best_error < 0 || error < best_error) {
+          best_error = error;
+          best_filter = filter;
+          best_shift = shift;
+          memcpy(best_nibbles, nibbles, sizeof nibbles);
+          best_after[0] = after[0];
+          best_after[1] = after[1];
+        }
+      }
+    }
+    history[0] = best_after[0];
+    history[1] = best_after[1];
+    int32_t *at = halves + (b * SPU_BLOCK_HALFWORDS);
+    at[0] = (best_shift | (best_filter << 4)) | (flags << 8);
+    for (int32_t half = 1; half < SPU_BLOCK_HALFWORDS; half++) {
+      int32_t coded = 0;
+      for (int32_t i = 0; i < 4; i++) coded |= (best_nibbles[((half - 1) * 4) + i] & 0xF) << (4 * i);
+      at[half] = coded;
+    }
+  }
+}
+
+static int32_t spu_gcd(int32_t a, int32_t b) { return b == 0 ? a : spu_gcd(b, a % b); }
+
+/* The halfwords of +memory+ (the game's own, after its count) from where a loop starts, in 8-byte steps. */
+static int32_t *spu_loop_halves(int32_t *memory, int32_t room) { return memory + 1 + ((room * 4) - SPU_MEMORY_BASE); }
+
+/* A recording's +length+ samples played once through: padded with silence to a whole block, and ending
+ * there (PS1::ADPCM.encode, loop: false). */
+static void spu_fill_once(int32_t *memory, const int8_t *data, int32_t length, int32_t room) {
+  int32_t padded = ((length + SPU_BLOCK_SAMPLES - 1) / SPU_BLOCK_SAMPLES) * SPU_BLOCK_SAMPLES;
+  int32_t *laid = calloc((size_t)padded, sizeof *laid);
+  if (!laid) rg_fault("there is no room to lay out a recording of %d samples", (int)padded);
+  for (int32_t i = 0; i < length; i++) laid[i] = data[i] * 256;
+  spu_encode(laid, padded, -1, spu_loop_halves(memory, room));
+  free(laid);
+}
+
+/* A recording's +length+ samples played holding, going +back+ samples at its end. */
+static void spu_fill_held(int32_t *memory, const int8_t *data, int32_t length, int32_t back, int32_t room) {
+  if (back < 1) back = 1;
+  if (back > length) back = length;
+  /* PS1::SoundMemory.recording_samples: the samples up to where the hold starts, the held part from
+   * the next block on, turned to start where those leave off, written over as many times as makes a
+   * whole number of blocks (or once, filled out to a block, past MOST_LOOP_SAMPLES). */
+  int32_t from = length - back;
+  int32_t aligned = ((from + SPU_BLOCK_SAMPLES - 1) / SPU_BLOCK_SAMPLES) * SPU_BLOCK_SAMPLES;
+  int32_t times = SPU_BLOCK_SAMPLES / spu_gcd(back, SPU_BLOCK_SAMPLES);
+  int32_t body = back * times <= SPU_MOST_LOOP_SAMPLES ? back * times : back + ((SPU_BLOCK_SAMPLES - (back % SPU_BLOCK_SAMPLES)) % SPU_BLOCK_SAMPLES);
+  int32_t count = aligned + body, padded = ((count + SPU_BLOCK_SAMPLES - 1) / SPU_BLOCK_SAMPLES) * SPU_BLOCK_SAMPLES;
+  int32_t *laid = calloc((size_t)padded, sizeof *laid);
+  if (!laid) rg_fault("there is no room to lay out a recording of %d samples", (int)padded);
+  int32_t turn = (aligned - from) % back;
+  for (int32_t i = 0; i < count; i++) {
+    int32_t held;
+    if (i < from) held = i;
+    else if (i < aligned) held = from + ((i - from) % back);
+    else held = from + (((i - aligned) % back + turn) % back);
+    laid[i] = data[held] * 256;
+  }
+  spu_encode(laid, padded, aligned / SPU_BLOCK_SAMPLES, spu_loop_halves(memory, room));
+  free(laid);
+}
+
+/* Where a recording's length is among its numbers in the mixer's rg_game_recordings (Computer::Sound,
+ * RECORDING_NUMBERS and RECORDING_LENGTH_AT). */
+#define SPU_MIXER_RECORDING_NUMBERS 7
+#define SPU_MIXER_RECORDING_LENGTH_AT 1
+
+void rg_spu_fill_recording(int32_t *memory, const int32_t *recordings, const int32_t *spu_recordings, const int8_t *recording_samples,
+                           const int32_t *rules) {
+  int32_t number = rules[0], once = rules[2], held = rules[3];
+  const int8_t *data = recording_samples + rules[1];
+  int32_t length = recordings[1 + (number * SPU_MIXER_RECORDING_NUMBERS) + SPU_MIXER_RECORDING_LENGTH_AT];  if (once >= 0) spu_fill_once(memory, data, length, once);
+  if (held >= 0) spu_fill_held(memory, data, length, spu_recordings[1 + (number * 3) + 1], held);
+}
+
+/* --- the decoder (Beetle PSX, SPU_RunDecoder) --- */
 
 static int32_t held_to_16_bits(int32_t sample) { return sample < -32768 ? -32768 : sample > 32767 ? 32767 : sample; }
 
@@ -444,21 +600,34 @@ static void spu_tell(int32_t n, int32_t sounding, int32_t loop, int32_t pitch, i
 
 /* WHAT THE MIXER'S VOICE +place+ PLAYS, told to the chip's voice for it once a frame: +sounding+, and
  * if so +recording+ (the mixer's number) read +step+ of its samples for each of the mix's, going +back+
- * at its end, at +loudness+ out of the mix's full and its shape at +level+. The voice reads the
- * recording's loop for that way back out of sound memory at a sixteenth of the step (the mix runs at
- * the chip's own 44100 a second, so a step of 65536 is a pitch of 1000h), at a loudness scaled by the
- * level as Runtime::Recordings#emit_loudness scales it: the level's top bit added back, so full is
- * the whole loudness. A way the game never plays it (nowhere in sound memory) is silent. */
-static inline void spu_tell_recording(int32_t place, int32_t sounding, int32_t recording, int32_t back, int32_t step,
-                                      int32_t loudness, int32_t level) {
+ * at its end, at +loudness+ out of the mix's full and, when it is +shaped+, its shape at +level+. The
+ * voice reads the recording's loop for that way back out of sound memory at a sixteenth of the step
+ * (the mix runs at the chip's own 44100 a second, so a step of 65536 is a pitch of 1000h), at the gain
+ * the mix gives it, as Runtime::Recordings#emit_loudness sets it: a shaped note's loudness scaled by
+ * the level (its top bit added back, so full is the whole loudness) to a whole number of 256ths; a
+ * note with no shape, held at full, its loudness with its half a 256th kept. A way the game never
+ * plays it (nowhere in sound memory) is silent.
+ *
+ * A recording played once through that +ran_out+ in the mix is not let go: its loop ends with a block
+ * that ends the sound, so the voice falls quiet there by itself, as the program's does
+ * (Runtime::Recordings#emit_frame). Struck at this frame boundary, it is started all the same, so a
+ * recording the mix was through inside a frame is heard. */
+static inline void spu_tell_recording(int32_t place, int32_t sounding, int32_t ran_out, int32_t recording, int32_t back,
+                                      int32_t step, int32_t loudness, int32_t level, int32_t shaped) {
   if (!sounding && ((spu_stopped_by_game >> (SPU_GAME_VOICES + place)) & 1)) return; /* let go a frame later */
+  if (ran_out) {
+    if (!(((spu_struck | spu_struck_waiting) >> (SPU_GAME_VOICES + place)) & 1)) return; /* playing to its end */
+    sounding = 1;
+  }
   int32_t loop = -1;
   if (sounding && recording >= 0 && recording < rg_game_spu_recordings[0]) {
     const int32_t *ways = &rg_game_spu_recordings[1 + (recording * 3)];
     loop = back == 0 ? ways[0] : back == ways[1] ? ways[2] : -1;
   }
   int32_t pitch = (step + 8) >> 4;
-  int32_t value = ((level + (level >> 7)) * ((loudness * SPU_LOUDEST) / SPU_MIX_FULL)) >> SPU_SHAPE_SCALE;
+  int32_t scaled = loudness * (level + (level >> 7));
+  int32_t value = shaped ? (scaled >> SPU_WHOLE_GAIN_SHIFT) << SPU_GAIN_TO_VOLUME_SHIFT
+                         : (scaled << SPU_GAIN_TO_VOLUME_SHIFT) >> SPU_WHOLE_GAIN_SHIFT;
   spu_tell(SPU_GAME_VOICES + place, loop >= 0, loop, pitch < 1 ? 1 : pitch > SPU_PITCH_TOP ? SPU_PITCH_TOP : pitch, value, 0);
 }
 
@@ -532,9 +701,9 @@ static int32_t spu_render_frame(int16_t *left, int16_t *right) {
   return count;
 }
 #else
-static inline void spu_tell_recording(int32_t place, int32_t sounding, int32_t recording, int32_t back, int32_t step,
-                                      int32_t loudness, int32_t level) {
-  (void)place, (void)sounding, (void)recording, (void)back, (void)step, (void)loudness, (void)level;
+static inline void spu_tell_recording(int32_t place, int32_t sounding, int32_t ran_out, int32_t recording, int32_t back,
+                                      int32_t step, int32_t loudness, int32_t level, int32_t shaped) {
+  (void)place, (void)sounding, (void)ran_out, (void)recording, (void)back, (void)step, (void)loudness, (void)level, (void)shaped;
 }
 #endif
 

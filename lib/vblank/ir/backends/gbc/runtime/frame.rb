@@ -48,6 +48,10 @@ module VBlank
             # one: the boundary after it is where the interpreter stops a run, before it moves
             # anything on, so the game's timers do not move on there either.
             LAST_PASS_TAKEN = "rt last pass taken"
+            # The number of the last pass that reader compares, in a game whose tick handler waits
+            # (LoweringPlan#keeps_last_pass_number?), nought until it is written: a boundary ending a later pass
+            # moves nothing on. Such a game can end two passes in one frame, the reader seeing neither.
+            LAST_PASS = "rt last pass"
             # HOW MANY FRAMES A PASS TOOK (IR::Frames). The screen's interrupt counts every frame it
             # draws (FRAMES, 32 bits, which a reader of the run reads too), whatever the game is
             # doing; where a pass's wait ends, the frames since the last wait ended are what that
@@ -130,6 +134,33 @@ module VBlank
               memory.reserve(PAD_PRESSED, 1)
               memory.reserve(MUSIC_OWED, 1)
               memory.reserve(PICTURE_NOT_UP_NOTED, 1)
+            end
+
+            # LAST_PASS, in a game whose tick handler waits (LoweringPlan#keeps_last_pass_number?).
+            def reserve_last_pass(memory) = memory.reserve(LAST_PASS, 4)
+
+            # Returns from rt_frame_begins_unless_last when LAST_PASS is written and the pass that just ended
+            # (PASSES) comes after it: LAST_PASS less PASSES, a byte at a time from the lowest, borrows out of
+            # the top byte. Neither count is ever negative, so the borrow is the answer.
+            def emit_return_past_last_pass(asm, memory)
+              asm.load(:hl, memory[LAST_PASS])
+              asm.load(:a, [:hli])
+              3.times do |i|
+                asm.or_a([:hl])
+                asm.inc(:hl) unless i == 2
+              end
+              asm.jump(:z, "rt_frame_begins")
+              asm.load(:hl, memory[PASSES])
+              asm.load(:de, memory[LAST_PASS])
+              4.times do |i|
+                asm.load(:a, [:de])
+                i.zero? ? asm.sub_a([:hl]) : asm.sbc_a([:hl])
+                next if i == 3
+
+                asm.inc(:hl)
+                asm.inc(:de)
+              end
+              asm.ret(:c)
             end
 
             # +together+ means the game has picture groups with more than one slot, which
@@ -224,6 +255,7 @@ module VBlank
               asm.xor_a(:a)
               asm.load_high(vblank, :a)
               asm.call("rt_frame_begins_unless_last")
+              asm.call("rt_tint_owed") # the colours the pass changed, walked once (Picture#emit_tint)
               asm.call("rt_paint_scan")
               if songs
                 emit_wait_with_songs(asm, memory, count_at)
@@ -265,9 +297,9 @@ module VBlank
                 asm.jump_relative(:nz, "rt_wait_vblank_sleep")
                 # The screen is still off: this is the first frame. Everything set up so far is
                 # copied while nothing is being drawn, and the screen comes on showing it.
-                emit_dark_end(asm, memory) if dark?(memory)
                 asm.call("rt_upload_whole")
-                asm.call("rt_shown_is_passes")
+                emit_dark_end(asm, memory) if dark?(memory)
+                asm.call("rt_shown_is_passes") # after the count is done, which a reader reads once it is shown
                 asm.call("rt_display_on")
                 asm.call("rt_sleep_until_vblank")
                 emit_add_dark_frames(asm, memory, count_at) if dark?(memory)
@@ -323,6 +355,7 @@ module VBlank
               asm.load(:a, [memory[LAST_PASS_TAKEN]])
               asm.and_a(:a)
               asm.ret(:nz)
+              emit_return_past_last_pass(asm, memory) if memory.reserved?(LAST_PASS)
               asm.jump("rt_frame_begins")
 
               asm.label("rt_shown_is_passes")
@@ -366,9 +399,9 @@ module VBlank
               asm.jump_relative(:nz, "rt_wait_vblank_sleep")
               # The screen is still off: this is the first frame. Everything set up so far is
               # copied while nothing is being drawn, and the screen comes on showing it.
-              emit_dark_end(asm, memory) if dark?(memory)
               asm.call("rt_upload_whole")
-              asm.call("rt_shown_is_passes")
+              emit_dark_end(asm, memory) if dark?(memory)
+              asm.call("rt_shown_is_passes") # after the count is done, which a reader reads once it is shown
               asm.call("rt_display_on")
               asm.call("rt_sleep_until_vblank")
               emit_add_dark_frames(asm, memory, count_at) if dark?(memory)
@@ -496,6 +529,10 @@ module VBlank
             # is the screen's interrupt's to count. In a game that plays a recording the timer is the
             # recording's from here, its interrupt left on, and a clip the game played while it set up
             # starts now (Runtime::Clips, rt_clip_start), as the interpreter's mix starts it.
+            #
+            # IT ENDS JUST BEFORE THE SCREEN COMES ON, after the first frame's copy of everything set
+            # up (rt_upload_whole): that copy runs with the screen off, and a frame that ends while it
+            # runs is one of the frames spent setting up.
             def emit_dark_end(asm, memory)
               h = Console::GBCHardware
               clips = Clips.any?(memory)
@@ -702,6 +739,7 @@ module VBlank
               asm.label("rt_stop_with_state")
               asm.load([memory[STATE]], :a)
               asm.call("rt_rumble_stop") if Rumble.any?(memory) # a game that has stopped shakes nothing
+              asm.call("rt_tint_owed")
               asm.call("rt_paint_scan")
               asm.load_high(:a, h::LCDC)
               asm.bit(7, :a)

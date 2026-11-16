@@ -169,14 +169,16 @@ module VBlank
     #   new_platform:   true for a new platform whose name is close to a known one (:ps2), which is
     #                   otherwise refused as a typo (Original.platform_named)
     #
-    # and one of two ways to accept the copy:
+    # and one of two ways to accept the copy, or both:
     #
     #   releases:   by digest. A decompilation's versions table as it is read from its file: each
     #               release by name ({"US" => {"sha1" => "9402...", "size" => 1048576}}), or a list
     #               of entries that name themselves ([{"name" => "USA", "sha1" => ...}]). Each has a
     #               SHA-1, and may have an MD5, a size, and "supported" => false for a release the
-    #               game knows and does not read. A copy no release is the length of is refused
-    #               unread. A copy of a release the game does not read is refused naming it.
+    #               game knows and does not read. Where every release has a size, a copy no release
+    #               is the length of is refused unread; where some lack one, a copy whose digest and
+    #               length are no release's is told its length beside the lengths known. A copy of a
+    #               release the game does not read is refused naming it.
     #               A release that is several files lists them instead of a SHA-1 and a size:
     #               {"WL6" => {"files" => {"VSWAP.WL6" => {"sha1" => ..., "size" => 1544376}, ...}}}.
     #               Its copy is the folder that holds them, each found without regard to case
@@ -184,6 +186,14 @@ module VBlank
     #   probe:      by its contents, for a copy that is a folder of files or has no one digest. It is
     #               called with the path and returns the release's name, or nil to refuse the copy.
     #               It may raise WrongCopy itself to say more.
+    #
+    # WITH BOTH, the digest alone accepts a copy, and the probe only names one it refuses. A copy
+    # whose SHA-1 is no release's is changed, damaged or cut short, and a person cannot tell which
+    # release they hold from a SHA-1; the probe reads what the copy says it is (a cartridge's
+    # header, which survives most damage) and the refusal names that release: "is the EU release
+    # of ..., but it is changed or damaged", or the copy's length beside that release's. A copy
+    # the digest accepts is never probed. A probe that cannot tell returns nil, and the refusal is
+    # the one releases: gives alone. A copy that is a folder is read only as releases: says.
     #
     # and, for a game that needs more of this machine than its copy (a decompilation's checkout and
     # the assembler that builds it, say), +paths+: each by a name of the game's choosing, with its
@@ -205,7 +215,7 @@ module VBlank
 
       def initialize(title:, setting:, settings_file:, key: "rom", releases: nil, probe: nil, not_set_help: nil, paths: {},
                      env: ENV, platform: DEFAULT_PLATFORM, new_platform: false)
-        raise ArgumentError, "#{title}: name releases: or probe:, one of the two" unless releases.nil? ^ probe.nil?
+        raise ArgumentError, "#{title}: name releases:, probe:, or both" if releases.nil? && probe.nil?
 
         @platform = Original.platform_named(platform, new_platform: new_platform)
         @title = title
@@ -236,7 +246,7 @@ module VBlank
         named = named_path(setting, key, WrongCopy)
         raise NotSet, not_set_message if named.nil?
         raise WrongCopy, "#{named.named_in} names #{named.path}. Nothing is there. Correct the path to your copy of #{title}." unless File.exist?(named.path)
-        return probed_copy(named.path) if @probe
+        return probed_copy(named.path) unless @releases
         return copy_in_folder(named.path) if File.directory?(named.path) && @releases.list.any?(&:several_files?)
 
         release, sha1 = release_by_digest(named.path)
@@ -347,11 +357,13 @@ module VBlank
         refusal = @releases.one_file_refusal(path)
         raise WrongCopy, refusal if refusal
 
-        refusal = @releases.size_refusal(path, File.size(path))
-        raise WrongCopy, refusal if refusal
+        size = File.size(path)
+        refusal = @releases.size_refusal(path, size)
+        raise WrongCopy, (@probe && @releases.claimed_size_refusal(path, @probe.call(path), size)) || refusal if refusal
 
         sha1 = Digest::SHA1.file(path).hexdigest
-        refusal = @releases.digest_refusal(path, sha1, md5: (Digest::MD5.file(path).hexdigest unless @releases.with_sha1(sha1)))
+        md5 = Digest::MD5.file(path).hexdigest unless @releases.with_sha1(sha1)
+        refusal = @releases.digest_refusal(path, sha1, md5: md5, size: size) { @probe&.call(path) }
         raise WrongCopy, refusal if refusal
 
         [@releases.with_sha1(sha1).name, sha1]

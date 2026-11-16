@@ -162,11 +162,13 @@ module VBlank
           # anything, that show no pass's whole picture — a pass's change half copied, or its colours
           # sent before its tiles. A pass's picture is the one read once the pass was shown, as the
           # checked run holds it to the interpreter's; every frame between two passes is the first
-          # of them or the second, unless the copy between is seen arriving.
+          # of them or the second, unless the copy between is seen arriving. A frame all black is
+          # not torn: it is the screen switched off for a big load (Runtime::Paint::LOAD_SCREEN_OFF),
+          # a frame that shows nothing, which #black_frames names.
           def torn_frames
             whole = @moments.map { |moment| moment.picture.is_a?(NearPicture) ? moment.picture.check : moment.picture }
             first_lit = @black_each_frame.index(false) || @black_each_frame.size
-            (first_lit...@picture_each_frame.size).reject { |frame| whole.include?(@picture_each_frame[frame]) }
+            (first_lit...@picture_each_frame.size).reject { |frame| @black_each_frame[frame] || whole.include?(@picture_each_frame[frame]) }
           end
 
           # The Advance's mix, a stream of sound its processor makes from every recording: a Super
@@ -188,6 +190,7 @@ module VBlank
 
           def start_run(program)
             @near = HeadlessRun.near_pictures?(program)
+            @pixel_size = program.described_console.pixel_size
             @logged_entries = []
             @sounds = 0
             @audio = []
@@ -200,7 +203,12 @@ module VBlank
             @loudest_each_frame = []
             @black_each_frame = []
             @picture_each_frame = []
+            @setting_up = nil
           end
+
+          # The count is written as the screen comes on for the first pass, which may be after the
+          # game was found waiting at that pass's end: read again as the pass's moment is.
+          def read_setting_up = @setting_up = half(runtime_place(Runtime::Frame::SETTING_UP))
 
           def power_on = set_buttons(@held)
 
@@ -215,19 +223,17 @@ module VBlank
           # the run ends on.
           def moment_ready?(pass, frames) = pass > frames || sounds_counted?(pass)
 
-          # A RUN OF NO FRAMES ends as the first pass does, before anything is shown: the screen is
-          # still switched off (Runtime::Frame turns it on as the first pass is shown). The interpreter
-          # shows a display switched off as a plain white picture (Reference::Framebuffer::HELD_OFF),
-          # so that is the picture the run ends on, and the game goes no further.
+          # A RUN OF NO FRAMES ends as the first pass does, before anything is shown
+          # (CartridgeHeadlessRun#end_before_first_picture): Runtime::Frame turns the screen on as the
+          # first pass is shown.
           def ends_before_first_picture?(frames) = frames.zero?
 
-          def end_before_first_picture(variables, lists, sprites, sounds, camera)
-            hold_after_this_pass
-            @sprites = sprites
-            off = Array.new(@core.width * @core.height, Reference::Framebuffer::HELD_OFF)
-            record_moment(:end, variables, lists, Picture.new(shown: off, width: @core.width, height: @core.height,
-                                                              camera_x: camera[0], camera_y: camera[1]), sounds)
-          end
+          # The screen held in forced blank, which bsnes draws as colour 0 on every pixel of its whole
+          # picture (every pixel, not only the ones a game of big pixels is read by). The probe gives
+          # no reading of the picture chip's own forced-blank bit, so the pixels are all there is to
+          # go on: a screen on that shows nothing but black reads the same, and is then held to the
+          # interpreter's switched-off white.
+          def screen_forced_off? = @core.colors.none?(&:positive?)
 
           # FRAME 1 CAN BE READ BEFORE IT IS DECIDED. An emulated frame ends as the console starts its
           # vertical blank, and the blank's interrupt reads the controller as it starts — so a first
@@ -265,11 +271,20 @@ module VBlank
 
           # Has the blank that reads frame 1 come, with the first pass ended and nothing shown? A
           # game that takes several frames to set up has not read frame 1 yet at all.
-          def frame_one_read_early? = word(runtime_place(Runtime::Frame::FRAMES)) == 1 && shown_pass.zero?
+          def frame_one_read_early? = set_up? && word(runtime_place(Runtime::Frame::FRAMES)) == 1 && shown_pass.zero?
+
+          # Whether the frames setting up took are counted, and the runtime counts from frame 1
+          # (Runtime::Frame::SETTING_UP, kept one more).
+          def set_up? = half(runtime_place(Runtime::Frame::SETTING_UP)).positive?
+
+          # Every frame before that reads frame 1's buttons, as the interpreter, which plays no frame
+          # setting up, reads them once for its first pass.
+          def next_screen_frame = set_up? ? super : 1
 
           # Frame 1 was handed over in time, so it is not decided again.
           def first_pass_ended
             @decided = 1 if @deciding && frame_one_read_early?
+            read_setting_up
           end
 
           # The moment of +frame+ — a pass's number, or :end for the moment the run ended on. +sounds+
@@ -282,6 +297,7 @@ module VBlank
           # which #play_passes waits for (#sounds_counted?). The moment the run ended on has no
           # boundary after it.
           def record_moment(frame, variables, lists, picture, sounds)
+            read_setting_up if frame == 1
             @vars = variables
             @lists = lists
             @screen = picture
@@ -425,9 +441,22 @@ module VBlank
           end
 
           # The emulator's picture, each pixel the 15-bit colour the console holds, and where the
-          # camera put the view, [x, y], as the pass left it.
-          def picture_now(camera) = Picture.new(shown: @core.colors, width: @core.width, height: @core.height,
-                                                camera_x: camera[0], camera_y: camera[1])
+          # camera put the view, [x, y], as the pass left it. A game of big pixels is read a pixel
+          # of its small picture at a time, the top left of each square the console shows it as, as
+          # the interpreter plays it (Testing::Pictures#pixel_squares_of).
+          def picture_now(camera)
+            shown = @core.colors
+            width = @core.width
+            height = @core.height
+            if @pixel_size > 1
+              shown = (0...(height / @pixel_size)).flat_map do |y|
+                (0...(width / @pixel_size)).map { |x| shown[(y * @pixel_size * width) + (x * @pixel_size)] }
+              end
+              width /= @pixel_size
+              height /= @pixel_size
+            end
+            Picture.new(shown: shown, width: width, height: height, camera_x: camera[0], camera_y: camera[1])
+          end
 
           # Where a painted screen's camera puts the view, as the game gave it (Runtime::Paint's
           # CAMERA); [0, 0] for a screen with no camera.

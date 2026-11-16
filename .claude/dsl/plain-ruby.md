@@ -37,7 +37,8 @@ plays.
 - **Each name is its own variable.** Two names given one number are two variables, and the same name in
   two routines is two, as it is in two files of one game.
 - **A name first set inside a game block is set again every time the block runs**, so it starts afresh
-  each pass. State that lasts is set up above the game loop.
+  each pass. State that lasts is set up above the game loop. That holds for one set from a working-out
+  too: `back = made - 3`, then `back += 1` in a `repeat` below it, moves on every round.
 - **A method's own names are set each time the method runs**, as in Ruby: `count = 0` on a method's
   first line, or at the top of a loop's body in it, sets `count` again on every call and every round,
   whether the method is called from a game loop, from an unpacking routine or twice while setting up,
@@ -76,7 +77,8 @@ instance variables.
   `cave_light_state_0_2`). Names with and without one mix on one line: `game_variables :seed,
   states: :cave_light_state`. A subclass can give its parent's instance variable another name.
   Refused: two instance variables of one class given one name, one given two names in one class,
-  and a name another variable of the game has already.
+  a name another variable of the game has already, and a `var` line after the part, naming the
+  variable the part made (in either order the two would be one variable).
 - **`game_variables :damage, :bonus, saved: false` marks them working room a save never keeps**:
   `saves_keep_everything` passes them over, as it does a `var` whose name starts with `_`
   (`variables.md`), and a `save_data` record that keeps one is refused. Their names do not change
@@ -84,7 +86,9 @@ instance variables.
   its line, those given a name of their own too (`game_variables :damage, bonus: :flash_bonus,
   saved: false`); a name marked on any line, in the class or a parent, stays marked. The mark counts
   for a variable made after the line runs, so it goes in the class's body (or, in the game block,
-  above the first `@flash = 0`), as `game_variables` always does. It works in the game block too. `saved:` takes only `true` or `false`; to name an instance variable `@saved`, write
+  above the first `@flash = 0`), as `game_variables` always does. A mark written after the variable
+  has its first number (a second line, or the class reopened) is refused, naming both lines, and so
+  is `game_variables saved: false` with no names. It works in the game block too. `saved:` takes only `true` or `false`; to name an instance variable `@saved`, write
   `game_variables({ saved: :its_name })`. Worked example:
   `test/all/vblank/builder/test_saves_keep_everything.rb`.
 - **A named value given another game value copies its number**: `@held = @states[0]`, `@best =
@@ -92,6 +96,12 @@ instance variables.
   in game code and while setting up, and never make it share the other's. So a rotation through a
   held value (`@held = @states[0]; @states[0] = @states[1]; @states[1] = @held`) and a swap (`@a,
   @b = @b, @a`) work as in Ruby.
+- **An instance variable nobody named that takes a slot's variable only holds it**: `@held =
+  @states[0]`, then `@held = 5` or `@held += 1` in game code, is refused at that line, naming
+  `game_variables :held`, since Ruby's line would leave `@states[0]` as it was and the game's would
+  change it. A variable a part is handed whole is that part's to change (`@selection = selection`
+  in `initialize`, or one read through another part's `attr_reader`), as is one a method makes for
+  the instance variable that first holds it (`@count = make.call(:count, 0)`).
 - A subclass has its parent's names and can name more; a module the class includes can name its own.
   `attr_reader`, `attr_writer` and `attr_accessor`, with names written out or from a list
   (`attr_accessor(*LEVELS)`), reach the same variable, so another part can test `tilt.busy` and write
@@ -114,40 +124,46 @@ instance variables.
   only while setting up (a counter that makes names, a count a setting-up method works out and game
   code uses as `repeat(@count)` or `@count.times`) is not refused. Nor is one that a routine gives a
   number outright before that routine reads it (`@rows = 2`, then `@rows.times`), one only put into a
-  String, or one read while it holds nil (`return if @laid_out`). Nor is a line of `initialize`,
-  wherever the object is made, or one holding `true` or `false`: that is a flag the build keeps for
-  itself (`plan unless @planned`, set true by `plan`). A number one routine gives and another reads is
-  refused: the game can run them in either order.
+  String, or a number read while it holds nil. Nor is a line of `initialize`, wherever the object is
+  made. A number one routine gives and another reads is refused: the game can run them in either order.
+- **A plain `true` or `false` (or nil) is refused when it is a game flag**: a test on it (`if @open`,
+  `unless @open`, `if !@open`) has game code on a side, and game code changes it and leaves it changed.
+  Ruby would decide that test once, while building. The build watches the side Ruby runs. A side Ruby
+  skips counts as game code unless the build ran that same side somewhere else and it recorded
+  nothing, or it holds nothing but a `return`, `break`, `next` or `raise`. So `seen += 1 if @open` with
+  `@open = true` anywhere in game code is refused, in one routine or two, naming both lines and the
+  fix, `game_variables :open` (and `@open = false` where it starts, for one left nil). Not refused: a
+  once-guard, whose test guards building work and no game code (`plan unless @planned`, with `plan`
+  setting `@planned = true` and declaring routines; `return if @laid_out` above `@laid_out = true`;
+  `raise "..." if @written`), and a switch a routine sets and puts back (`@white = true`, `yield`, then
+  `@white = false` in an `ensure`), which is the same on every pass.
 
 ## Changing a variable
 
 - `x = 5`, `x += n`, `x -= n`, `x *= 2`, `flags |= 4`, `flags &= ~4` all change it. `x ||= 2` changes
   only `false` or `nil`: a number is truthy, so `x ||= 2` leaves `x = 0` alone, as in Ruby.
 - `a, b = b, a` and splats work, on every pass.
-- **A name holds a value, as in Ruby.** `old = hp` in game code keeps hp's number from that line;
-  `d = hp + 1` keeps its line's answer. So does `flags = packed[at]` when a line below it, before
-  `flags` is used, changes `at` (`at += 1`, `at.increase!(1)`) or writes `packed` at a key worked
-  out as the game plays: it holds the item read before, in a game block, a game file and a method a
-  routine calls alike. A call of game code between the two lines counts as a change of what that
-  code can write, so `flags` keeps the item it read there too, and so does `high` in
-  `high = next_byte(c); (high << 8) | next_byte(c)` and `f` in `(f = t[at]) + bump(at) + f`.
-  A method the same file defines changes the instance variables it writes and what it is handed
-  when it writes through an argument; `call :step_on` changes what that `func`'s block writes; a
-  method of the game's own object from another file (`reader.next_byte(0)`) changes that object and
-  what it is handed. A method of another file called on nothing, a `func` made elsewhere,
-  `case_var` and `start_over` change everything. A call on one side of an `if` changes nothing
-  read on its other side. A write through a worked-out place (`state.fetch(:at)[c] = at + 1`)
-  changes everything read from `state`. A call that cannot reach what the name was read from
-  costs nothing. Calls count only for a name set in game code or a method: one set while setting
-  up and read by game code follows what it was read from, so `frame = frames_since_power_on` reads
-  the count live. A name set from a method's answer reads what that method reads: `at = get(:at, c)`
-  keeps its place when `set(:at, c, at + 1)` moves it, where both reach `@state`; and a name set
-  from another name reads what that one reads, so `envelope = @copy.byte(at + 1)` keeps its byte
-  too. A game variable a method hands back (`floors = routine_var(:floors)`) is that variable, as
-  the object a Ruby method hands back is, and counts itself up with `floors.increase!(1)` across
-  any call. One limit: an object of the game's that shares a variable with the code calling it
-  (handed it when the object was made) can change that variable unseen; read it into a `var` with
-  `store!` there.
+- **A name holds a value, as in Ruby.** A name given a game number keeps the number of its line,
+  however the code around it calls, branches or hands things on: `old = hp` keeps hp's number,
+  `d = hp + 1` its line's answer, `flags = packed[at]` the item it read, `noise = advance` the
+  draw it took, and `x = @hero_x` the number @hero_x had then, in a game block, a game file, a
+  method and a routine's block alike. Giving one name a new number never changes another: `bend =
+  out; bend = 0` leaves `out` alone.
+- **What stays the thing itself, as in Ruby: an object the game holds.** A list, a pool, a part, and
+  a game variable a verb or a `var` line hands back (`floors = routine_var(:floors)`, `frame =
+  frames_since_power_on`) are objects, so a name given one is that object: `floors.increase!(1)`
+  counts it up, and `frame` reads the count live. So is a game variable a name set up hands on,
+  whole, to the parts it builds (`setting = @sound_setting`, then `Menus.new(sound_setting:
+  setting)`), as `Ball.new(selection: menu.selection)` hands the variable itself.
+- **What a name's number costs.** Where the game can change the number before the name is read (a
+  line that writes it, a call of game code that can, a later pass), the name keeps it in a hidden
+  variable of its own, a word of memory. Where nothing can change it, the name costs nothing. The
+  build counts a call as changing what its code can write: the instance variables a method writes
+  and what it is handed, the names a `func`'s block writes, the object a method of another file is
+  called on, what it is handed and what any object was handed as it was made; code the build cannot
+  see changes everything. `rom.profile` lists each line that keeps a copy and what it costs, and a
+  game that runs out of memory is told the same lines. To need no copy, read the name before the
+  line that changes the number, or read the number again after the call that changes it.
 - **A method's argument and a value taken from a Hash are copies.** `def hurt(hp) = hp -= 1` does not
   change the caller's `hp`, and `hp = ball[:hp]; hp = 0` leaves `ball[:hp]` alone. Write
   `ball[:hp] = 0`, pass the Hash, or return the number. The build warns about each such line.
@@ -161,12 +177,16 @@ instance variables.
 - `if`, `elsif`, `else`, `unless`, the trailing forms and the ternary work as in Ruby.
 - **Truthiness is Ruby's**: only `nil` and `false` are false. Keep a yes or no as `true`/`false`, and
   compare a number: `if hp > 0`, never `if hp`.
+- **A number alone in an `if`, `unless`, `!` or ternary keeps Ruby's answer**, a game number too:
+  true, 0 included, decided while building. That is a presence check (`if floor` on an option that
+  is nil when left out), and it builds. To test the number's value, compare it: `left != 0`.
 - `&&`, `||`, `!`, `and`, `or` and `not` join tests, and the right side is skipped as in Ruby. `&`,
   `|` and `^` between tests evaluate both sides.
 - `== != < <= > >=`, and `zero?`, `positive?` and `negative?`, ask about a number. Either side can be
   the game's number: `3 == hp` is the test `hp == 3` is.
-- `x = test ? a : b`, `x = if … else … end` and `x = case … else … end` pick a value on every pass.
-- `case` on a game number takes `when` with a number, a symbol, a range, a comma list, a variable, or
+- `x = test ? a : b`, `x = if … else … end` and `x = case … else … end` pick a value on every pass, and
+  so does the same written into a list's slot (`answers[i] = test ? 1 : 0`) or a field (`box.count = …`).
+- `case` on a game number takes `when` with a number, a symbol, a range (`4..` and `..2` too), a comma list, a variable, or
   `true`/`false`. A `case` with no subject asks each `when` in turn. `case … in` takes the same
   values, with `a | b` between them; any other pattern (a binding, an array, a guard) is Ruby's, on
   a plain value only.
@@ -175,8 +195,16 @@ instance variables.
 
 ## Loops
 
+- **A loop on a game number alone is refused** at its line: `x while left`, `x until left`, `while
+  left … end`. In Ruby every number is true, 0 too, so a `while` would never stop (the build would
+  never end) and an `until` would never run. The words show the comparison: `left != 0`, `left > 0`,
+  `left == 0`. C's meaning, "is not 0", is not given to it: that is not Ruby's.
+
 - **`while` and `until` on a game test are loops in the game.** The build warns about one that never
-  waits for a frame. The whole test is asked again on every round, as Ruby asks it: `while count < 5
+  waits for a frame and whose test reads nothing the loop changes (a button, or a number nothing in
+  it or the routines it calls writes), since only a frame could end it. A loop that changes what its
+  test reads (`i += 1` under `while i < n`, a retry that clears its flag) is work inside the pass and
+  gets no warning (`test/all/vblank/ir/guardrails/test_ir_guardrail_loop_never_waits.rb`). The whole test is asked again on every round, as Ruby asks it: `while count < 5
   && marks[count] != 9`, and `while copy.byte(at) != 0` in an unpacking routine, whose read is
   checked against the copy's end on each round.
 - **A loop can start on plain numbers and become the game's.** `at = 3`, then `while at < size` with a
@@ -184,6 +212,8 @@ instance variables.
   Ruby's, written out once, and the rounds after it are a loop in the game.
 - **A loop on plain numbers inside a loop of the game's is written out on every round**: `column = 0`,
   then `while column < 2` with `column += 1`, in the body of `while row < rows`.
+- **A loop Ruby runs while building that goes round a million times is refused** at its line, as one
+  that never stops (`n -= 1 while n` on a plain number), so a build never hangs with no words.
 - **`repeat(n) { |i| … }` is the loop counted as the game plays** (`control-flow.md`).
 - **A block verb called on a builder held in a name means what it means bare**: `@build.repeat(n) { … }`
   or `build.every(2) { … }` in a method of a part is `repeat` or `every` in a game block.
@@ -219,14 +249,20 @@ Each is a friendly error naming the line.
 | a misspelt key of a Hash of game variables | one of the keys it has |
 | an instance variable that game code changes and reads back, not named | `game_variables :busy` in the class's body (or the game block) |
 | an instance variable named by `game_variables` that holds `nil` or an object (a String, a sprite) when game code reads it | start it with a number, `true` or `false`; keep the object in another instance variable |
-| an instance variable nobody named that holds another part's game variable, given another game variable in game code | `game_variables :held` in the class's body: then the line copies the number |
+| an instance variable nobody named that holds a slot's game variable (`@held = @states[0]`), given a number or changed in game code (`@held = 5`, `@held += 1`) | `game_variables :held` in the class's body: then the line copies the number |
+| a `var` line naming a variable a part already made for an instance variable (`game_variables held: :x` in a part made first, then `var :x, 0`) | a name of its own for the `var` |
 | two instance variables given one variable name (`game_variables a: :x, b: :x`), one given two, or a name another variable has | a name of its own for each |
 | `game_variables :busy, saved: :x` (`saved:` given something but `true` or `false`) | `saved: false`, or `game_variables({ saved: :x })` to name `@saved` |
+| `game_variables :flash, saved: false` after `@flash` has its first number | the mark above that line |
+| `game_variables saved: false` with no names | the names on the same line, `game_variables :busy, saved: false` |
 | `game_variables` in a method (`def self.setup` too) | a `game_variables` line in the class's body |
 | `game_variables` in a file loaded with `require` or `require_relative` | `VBlank.require_game_file` |
 | a named Hash or Array of numbers at a key the game works out | a key known while building, or a game's own list |
 | a `true`/`false` name given a number | a comparison: `ok = count > 0` |
 | a number name given `nil` later | start it with `n = nil` |
+| `nil`, `true`, `false` or a test's answer put into a list (`answers[i] = pass == 1`) | a number: `answers[i] = pass == 1 ? 1 : 0` |
+| a loop on a game number alone (`x while left`, `until left`) | a comparison: `left != 0`, `(flags & 4) != 0` |
+| a loop Ruby runs while building that goes round a million times | a test that can fail: `n != 0` |
 | `x = if …` with no `else`; a pick of something other than a number or `true`/`false` (a symbol picks only into a variable that already holds names) | an `else`; a number to pick with |
 | `case` asking about a game test, or `when String` of a number | `if` |
 | `case … in` on a game number with a pattern other than values and ranges | values, ranges and `\|`; or `case` with no subject and `when hp > 3` |
@@ -242,7 +278,8 @@ Each is a friendly error naming the line.
 
 ## What builds without a word and means something else
 
-- `if hp` or `seen += 1 if flags & 4`: always true, since 0 is truthy. Compare: `!= 0`.
+- `if hp` or `seen += 1 if flags & 4`: always true, since 0 is truthy. Compare: `!= 0`. (A loop on
+  a game number alone is refused instead.)
 - `x = 0` inside `game_loop`, a `func` or a method the game loop calls: set again every pass. State
   that lasts goes above the loop.
 - `3.times { … }` in a game block: written out three times, run every pass.

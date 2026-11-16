@@ -40,7 +40,7 @@ module VBlank
         end
 
         def where_lines
-          ["The two cartridges drifted on frame #{@drift.frame}.", lasted_sentence, moment_sentence, differed_sentence("on that frame")]
+          ["The two cartridges drifted on frame #{@drift.frame}.", lasted_sentence, moment_sentence, *differed_lines("on that frame")]
         end
 
         def played_lines = ["the tape: #{@tape.frames} frames, recorded on #{@tape.recorded_on_label}"]

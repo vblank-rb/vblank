@@ -24,7 +24,8 @@ module VBlank
       # in the program to say why. A pool bigger than this is kept in the console's other
       # work memory, which is eight times the size and slower to read (see #pool). A pool
       # bigger than that memory is refused at its own line, and a game whose collections do
-      # not fit the two memories together is refused by the whole-program check
+      # not fit the two memories together, or whose cold ones (these pools among them) do not
+      # fit the roomier one, is refused by the whole-program check
       # (IR::Guardrails::Checks::IwramBudget), which adds up everything it declares.
       POOL_MAX_QUICK_BYTES = 16 * 1024
 
@@ -122,7 +123,10 @@ module VBlank
       def declare_instance_routine(pool, name, &block)
         pool.instance_routines << name
         instance_routines[name] = pool
-        declare_func(name, wrote: "#{pool.name}.func :#{name}") { block.call(pool.current_instance) }
+        declare_func(name, wrote: "#{pool.name}.func :#{name}") do
+          own_var = pool.build_routine_body(name, &block)
+          ensure_var(own_var) if own_var
+        end
       end
 
       # A walk of +pool+ wrote down which instance it is on. Kept so the writes can be taken
@@ -327,7 +331,7 @@ module VBlank
       def validate_pool!(name, capacity, fields)
         raise ArgumentError, "A pool needs a name that is a Symbol. Got #{name.inspect}." unless name.is_a?(Symbol)
         unless DSL::Whole.positive?(capacity)
-          raise ArgumentError, "pool :#{name} needs a positive capacity. Got #{capacity.inspect}."
+          raise ArgumentError, "pool :#{name} needs a positive capacity. Got #{Messages::PlainWords.words_for_given(capacity)}."
         end
 
         refuse_pool_name_with_stray_underscores!(name)

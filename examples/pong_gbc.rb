@@ -18,7 +18,8 @@
 #   - Two difficulties, on a screen of their own, opening on the one the game recommends
 #   - Background music during gameplay, unless you turn it off on the title
 #   - Sound effects on paddle hits, wall bounces, and scoring
-#   - The screen stings red when the CPU scores on you
+#   - The screen stings red when the CPU scores on you, and stays a little red on GAME OVER
+#   - A cartridge with a rumble motor buzzes when your paddle hits the ball
 #
 # The red sting is one word — `flash_screen :red` — written where the point is lost, and
 # it is the cheapest thing in this file. A flash goes full on the frame it happens and
@@ -91,6 +92,23 @@ module PongGBC
   GAME = VBlank.game("PONG", consoles: %i[gbc gba], variants: { gba: :color_screen }) do
     screen :bitmap
     enable_sound
+
+    # The border round the Color's picture when an Advance plays this game. It is a picture
+    # like any other, here in text art: eight pixels square, so it repeats across the whole
+    # 240×160 screen, and the game's own screen covers its middle. The Color's own build shows
+    # its screen whole and keeps none of it.
+    border "#" => rgb(2, 2, 8), "+" => rgb(5, 5, 14), "o" => :gray do
+      <<~ART
+        ########
+        #++++++#
+        #+####+#
+        #+#oo#+#
+        #+#oo#+#
+        #+####+#
+        #++++++#
+        ########
+      ART
+    end
 
     # --- The screen this build is for ---
     width  = screen_width
@@ -214,9 +232,13 @@ module PongGBC
       player_pad = box(LEFT_X, player_y, PADDLE_W, PADDLE_H)
       cpu_pad    = box(right_x, cpu_y.to_i, PADDLE_W, PADDLE_H)
 
+      # A Color cartridge can carry a little motor, and `rumble` runs it: the player feels
+      # the ball meet their paddle. On a console with no motor it does nothing, and the game
+      # plays the same.
       if ball.overlaps?(player_pad)
         ball_dx.abs! # bounce right
         beep :paddle_hit
+        rumble frames: 4
       end
 
       # The CPU tops out at CPU_SPEED, slower than the ball, so a fast diagonal can
@@ -235,6 +257,9 @@ module PongGBC
         end
         beep :point
         flash_screen :red, frames: STING_FRAMES
+        # ...and a stutter in the hands to go with it: the pattern is eight frames, `#` on
+        # and `.` off, round and round until the frames run out.
+        rumble frames: STING_FRAMES, pattern: "##..##.."
         call :reset_ball
       end
 
@@ -361,14 +386,19 @@ module PongGBC
       end
     end
 
+    # Losing leaves the screen a little red for as long as it says so. `tint` holds the whole
+    # picture toward a colour, 0 (as drawn) to 100 (nothing but that colour), until something
+    # sets it again: a tint is the game's and outlasts a scene, so leaving puts it back to 0.
     scene :cpu_wins do
       clear_screen :black
+      tint :red, 25
       stop_music if music_volume == 0
       draw_text "GAME OVER", :center, 60, :white
       draw_text "PRESS START", :center, 100, :gray
 
       if pressed(:start)
         stop_music
+        tint :red, 0
         state = 0
       end
     end

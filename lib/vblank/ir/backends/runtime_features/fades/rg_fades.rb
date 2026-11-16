@@ -12,8 +12,9 @@
 # A TABLE here is a Hash that works a colour's answer out the first time it is asked and keeps it
 # (Hash.new with a block), so a lookup in the screen's loop is a plain table[color]. A fade that
 # animates changes every frame, and working out all 65536 colours a frame would cost more than the
-# reading it saves. So a new fade, tint or screen means a new table; a table kept past a change
-# would show the old fade.
+# reading it saves. So a fade, tint or screen that changes a setting the colours are worked out
+# from empties the table, to be worked out again; a table kept past a change would show the old
+# fade. One set again the same keeps its table.
 
 RG_FADE_WHOLE_SCREEN = 0
 RG_FADE_INSIDE = 1
@@ -45,8 +46,9 @@ def rg_fades_setup
   # The filter handed to the screen, and the rows it holds when a fade is held to a rectangle. Its
   # table is made again when +stale+ (a fade, a tint or a screen changed since).
   @rg_fade_rows = Array.new(RG_SCREEN_HEIGHT) { [0, 0, false] }
-  @rg_fade_filter = RgShownFilter.new(nil, true, @rg_fade_rows, false)
+  @rg_fade_filter = RgShownFilter.new(nil, true, @rg_fade_rows, false, 0)
   @rg_fade_filter_stale = true
+  @rg_fade_table_made_for = nil # The settings the filter's table was made for (rg_fades_table_still_fits?)
   # The table a placed fade paints through, and the direction and steps it was made for.
   @rg_placed_table = nil
   @rg_placed_table_white = nil
@@ -170,7 +172,7 @@ def rg_fades_fade_filter
 
   filter = @rg_fade_filter
   if @rg_fade_filter_stale
-    filter.table = Hash.new { |table, color| table[color] = rg_fades_color_through_fade(color) }
+    rg_fades_work_out_table_again unless rg_fades_table_still_fits?
     filter.everywhere = @rg_tint_mode != :none || @rg_fade_side == RG_FADE_WHOLE_SCREEN
     rg_fades_fill_rows unless filter.everywhere
     @rg_fade_filter_stale = false
@@ -180,6 +182,41 @@ def rg_fades_fade_filter
   # so it reaches each side before the two are added, and past a whole the order shows.
   filter.remix = @rg_tint_mode != :none && @rg_pixels.equal?(@rg_viewed)
   filter
+end
+
+# Whether the filter's table was made for the fade and tint in force now, every setting
+# rg_fades_color_through_fade reads the same. A game that sets its brightness every pass, as a
+# Super Nintendo game commonly does, sets the same one most passes; a new table each time throws
+# away every colour worked out, and the screen's Array of all of them (rg_colors_through) with it.
+def rg_fades_table_still_fits?
+  made = @rg_fade_table_made_for
+  return false unless made && @rg_fade_filter.table
+
+  made[0] == @rg_tint_mode && made[1] == @rg_tint_white && made[2] == @rg_tint_color && made[3] == @rg_tint_steps &&
+    made[4] == @rg_tint_by_display && made[5] == @rg_fade_white && made[6] == @rg_fade_steps
+end
+
+# The filter's table emptied, to be worked out for the fade and tint in force now a colour at a time
+# as the screen asks (its block reads the settings when it is asked, never when it was made), and
+# the settings it is for noted. A fade that moves changes its table most passes, so the one Hash is
+# kept and emptied rather than made again, and the filter counts the change (+changes+) for whoever
+# keeps answers of its own from it (rg_colors_through).
+def rg_fades_work_out_table_again
+  filter = @rg_fade_filter
+  if filter.table
+    filter.table.clear
+  else
+    filter.table = Hash.new { |table, color| table[color] = rg_fades_color_through_fade(color) }
+  end
+  filter.changes += 1
+  made = (@rg_fade_table_made_for ||= Array.new(7))
+  made[0] = @rg_tint_mode
+  made[1] = @rg_tint_white
+  made[2] = @rg_tint_color
+  made[3] = @rg_tint_steps
+  made[4] = @rg_tint_by_display
+  made[5] = @rg_fade_white
+  made[6] = @rg_fade_steps
 end
 
 # rg_hook_paint_fade_for. Reference#set_blend_for, the fade half, for the thing about to be painted:
@@ -199,7 +236,14 @@ def rg_fades_paint_fade_for(fade_place)
   white = placed.toward_white
   steps = placed.steps
   if @rg_placed_table_white != white || @rg_placed_table_steps != steps
-    @rg_placed_table = Hash.new { |table, color| table[color] = rg_faded_by_display(color, white, steps) }
+    # Kept and emptied rather than made again, as the filter's is (rg_fades_work_out_table_again).
+    if @rg_placed_table
+      @rg_placed_table.clear
+    else
+      @rg_placed_table = Hash.new do |table, color|
+        table[color] = rg_faded_by_display(color, @rg_placed_table_white, @rg_placed_table_steps)
+      end
+    end
     @rg_placed_table_white = white
     @rg_placed_table_steps = steps
   end

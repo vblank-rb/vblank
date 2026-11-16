@@ -32,6 +32,15 @@ class TestLiveGameControls < Minitest::Test
     assert_equal [79], settings.keys_of(:right), "the right arrow is still Right"
   end
 
+  # The game carries its console's buttons, which the window reads and lists (Live::SDL's
+  # +buttons+): a Genesis game's C and no Select.
+  def test_the_game_carries_its_consoles_buttons
+    game = VBlank.game("CARRIES C", consoles: %i[genesis]) { game_loop { wait_vblank } }
+    live = VBlank::IR::Backends::Ruby.new.live_game(game.program)
+
+    assert_equal VBlank::Console::GENESIS.buttons.sort, live.buttons.sort
+  end
+
   def test_a_game_that_adds_none_carries_none
     game = game_of { game_loop { wait_vblank } }
 

@@ -33,6 +33,16 @@ module PackPoseGames
   # and right, and a big piece upside down below.
   PIECES = [PIECE.(-8, -8, 1), PIECE.(0, -8, 1, mirrored: true), PIECE.(-8, 0, 2, upside_down: true, big: true)].freeze
   FRAME_BYTES = ([0xFF] + [PIECES.length] + PIECES.flatten).freeze
+  # The same pieces wholly below and right of the object's place, as the Minish Cap's anvil stars
+  # sit a row under theirs. With the place outside the picture, at [-8, -1], each lands where the
+  # PIECES above land from [8, 8].
+  PIECES_BELOW = [PIECE.(8, 1, 1), PIECE.(16, 1, 1, mirrored: true), PIECE.(8, 9, 2, upside_down: true, big: true)].freeze
+  FRAME_BELOW_BYTES = ([0xFF] + [PIECES_BELOW.length] + PIECES_BELOW.flatten).freeze
+  ORIGIN_ABOVE_LEFT = [-8, -1].freeze
+  # The same pieces far up and left of the place, which is past the picture's size, at [40, 30].
+  PIECES_FAR = [PIECE.(-40, -30, 1), PIECE.(-32, -30, 1, mirrored: true), PIECE.(-40, -22, 2, upside_down: true, big: true)].freeze
+  FRAME_FAR_BYTES = ([0xFF] + [PIECES_FAR.length] + PIECES_FAR.flatten).freeze
+  ORIGIN_PAST_SIZE = [40, 30].freeze
 
   TILES_AT = 0x100
   FRAMES_AT = 0x20
@@ -40,7 +50,7 @@ module PackPoseGames
   # The picture the frame's pieces reach: two tiles across and three down.
   REACH = [16, 24].freeze
 
-  constants.each { |name| Ractor.make_shareable(const_get(name)) }
+  VBlank::Testing::InRactors.share_constants(self)
 
   # The made-up original, its frames the bytes +frame_bytes+.
   private def original(folder, frame_bytes: FRAME_BYTES)
@@ -66,20 +76,34 @@ module PackPoseGames
     [b.program, b.made_data_pack_file]
   end
 
-  # The same game's builder, its program made, for a test of its pack's unpacking.
+  # The same game's builder, its program made, for a test of its pack's unpacking. +views+ keeps
+  # the frames and the colours after them as one slot of colours, and reads each part through a
+  # view of it (DSL::PackSlot#as_numbers, #as_colors), as a port keeps one stretch of the copy.
+  # +pose_colors+ is handed the slot of colours, or its view.
   private def pose_game_builder(from, origin: [8, 8], frame_at: 1, layout: FRAME, count: nil, frames_count: FRAME_BYTES.length,
-                                options: VBlank::Cartridge::Options.new, pose_colors: nil, turned: nil, **pose_options, &more)
+                                options: VBlank::Cartridge::Options.new, pose_colors: nil, turned: nil, views: false,
+                                **pose_options, &more)
     b = Builder.new(options: options)
     b.instance_eval do
       screen :tiled
       colors :hero, [:transparent, *COLORS.drop(1)]
       pack = data_pack from: from, version: "1" do |slots|
         slots.tiles :sprites, at: TILES_AT, count: 32, colors: 16
-        slots.numbers :frames, at: FRAMES_AT, count: frames_count, width: :byte, signed: false
-        slots.colors :palette, at: COLORS_AT, count: 16
+        if views
+          slots.colors :stretch, at: FRAMES_AT, count: (COLORS_AT + 32 - FRAMES_AT) / 2
+        else
+          slots.numbers :frames, at: FRAMES_AT, count: frames_count, width: :byte, signed: false
+          slots.colors :palette, at: COLORS_AT, count: 16
+        end
       end
-      image :pose, tiles: pack[:sprites], frame: pack[:frames].frame(frame_at, layout: layout, count: count),
-                   origin: origin, colors: pose_colors ? pose_colors.call(pack) : :hero, **pose_options
+      frames, palette = if views
+                          [pack[:stretch].as_numbers(at: 0, count: frames_count, width: :byte, signed: false),
+                           pack[:stretch].as_colors(at: COLORS_AT - FRAMES_AT, count: 16)]
+                        else
+                          [pack[:frames], pack[:palette]]
+                        end
+      image :pose, tiles: pack[:sprites], frame: frames.frame(frame_at, layout: layout, count: count),
+                   origin: origin, colors: pose_colors ? pose_colors.call(palette) : :hero, **pose_options
       shown = { mirror: -> { mirror(:pose) }, upside_down: -> { upside_down(:pose) } }.fetch(turned, -> { :pose }).call
       hero = sprite :hero, image: shown, at: [40, 40]
       instance_exec(hero, &more) if more
@@ -112,18 +136,79 @@ class TestPackPoses < Minitest::Test
     picture
   end
 
+  # The pose of expected_places shown at (40, 40) on +screen+.
+  private def assert_shows_expected_places(screen, what)
+    backdrop = screen.pixel(120, 120)
+    expected_places.each_with_index do |row, y|
+      row.each_with_index do |place, x|
+        want = place.zero? ? backdrop : COLORS.fetch(place)
+
+        assert_equal want, screen.pixel(40 + x, 40 + y), "#{what}: the pose's pixel at (#{x}, #{y})"
+      end
+    end
+  end
+
   def test_a_frames_pieces_show_their_tiles_turned_where_the_frame_puts_them
     Dir.mktmpdir do |folder|
-      screen = game_player.run(pose_game(original(folder)), frames: 4).screen
-      backdrop = screen.pixel(120, 120)
+      assert_shows_expected_places(game_player.run(pose_game(original(folder)), frames: 4).screen, "the frame")
+    end
+  end
 
-      expected_places.each_with_index do |row, y|
-        row.each_with_index do |place, x|
-          want = place.zero? ? backdrop : COLORS.fetch(place)
+  # The object's place need not be inside the picture: a frame whose pieces all sit below and right
+  # of it, or all far above and left, draws where its pieces land, as long as each lands inside.
+  def test_an_origin_outside_the_picture_draws_where_the_pieces_land
+    Dir.mktmpdir do |folder|
+      below = pose_game(original(folder, frame_bytes: FRAME_BELOW_BYTES), origin: ORIGIN_ABOVE_LEFT)
+      far = pose_game(original(folder, frame_bytes: FRAME_FAR_BYTES), origin: ORIGIN_PAST_SIZE, size: REACH)
 
-          assert_equal want, screen.pixel(40 + x, 40 + y), "the pose's pixel at (#{x}, #{y})"
-        end
+      assert_shows_expected_places(game_player.run(below, frames: 4).screen, "pieces below the place")
+      assert_shows_expected_places(game_player.run(far, frames: 4).screen, "pieces far above the place")
+    end
+  end
+
+  def test_an_origin_outside_the_picture_that_leaves_a_piece_outside_is_refused
+    Dir.mktmpdir do |folder|
+      from = original(folder, frame_bytes: FRAME_BELOW_BYTES)
+      left = assert_raises(ArgumentError) { pose_game(from, origin: [-9, -1]) }
+      past = assert_raises(ArgumentError) { pose_game(from, origin: [-7, -1], size: REACH) }
+
+      assert_includes left.message, "origin:"
+      assert_includes past.message, "size:"
+    end
+  end
+
+  def test_an_origin_that_is_not_two_whole_numbers_is_refused
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) { pose_game(original(folder), origin: [8.5, 8]) }
+
+      assert_includes error.message, "origin:"
+    end
+  end
+
+  # A frame read through a view of a slot of another shape (DSL::PackSlot#as_numbers) shows as the
+  # same frame read from a slot of its own, counted or of a given count, in colours read through a
+  # view as well.
+  def test_a_frame_through_a_view_shows_as_from_a_slot_of_its_own
+    uncounted = { frame_at: 2, layout: FRAME.with(counted: false), count: PIECES.length }
+    bank = ->(palette) { palette.bank(1, size: 4) }
+    Dir.mktmpdir do |folder|
+      from = original(folder)
+      [{}, uncounted, { pose_colors: bank }].each do |shape|
+        own = game_player.run(pose_game(from, **shape), frames: 4).screen.to_a
+        viewed = game_player.run(pose_game(from, views: true, **shape), frames: 4).screen.to_a
+
+        assert_operator own.flatten.uniq.length, :>, 2, "#{shape}: the pose shows"
+        assert_equal own, viewed, "#{shape}: the frame through a view shows as from a slot of its own"
       end
+    end
+  end
+
+  # A frame through a view starts at a byte of the view, and one that starts past its end is refused.
+  def test_a_frame_past_the_end_of_its_view_is_refused
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) { pose_game(original(folder), views: true, frame_at: FRAME_BYTES.length) }
+
+      assert_includes error.message, "byte #{FRAME_BYTES.length}"
     end
   end
 

@@ -18,6 +18,14 @@ class TestPlainRubyRefusals < Minitest::Test
     game_loop { hp -= 1 if hp > OWN_NUMBER - 7 }
   end
 
+  # Blocks kept in constants of a test class, which test_helper.rb makes shareable between
+  # Ractors: one with game code in it, and one of verbs alone.
+  COUNTING_KEPT = lambda do
+    count = var :count, 0
+    game_loop { count += 11 }
+  end
+  VERBS_KEPT = -> { game_loop { wait_vblank } }
+
   private def built(allow: [], &block)
     builder = Builder.new
     builder.instance_eval(&VBlank::DSL::PlainRuby.rewrite(block, allow: allow))
@@ -263,12 +271,17 @@ class TestPlainRubyRefusals < Minitest::Test
   end
 
   def test_a_warning_names_the_authors_own_line
-    line = __LINE__ + 4
+    line = __LINE__ + 8
     said = warnings_of do
-      n = 0
+      turns = 0
+      spins = 0
       game_loop do
-        while n >= 0
-          n += 1
+        turns += 1 # a game value, so the loop below is game code, not Ruby run while the game is built
+        n = turns
+        if pressed(:select) # no run presses it, so none spins in the loop below
+          while n >= 0 # nothing in it changes n, so it never waits and never ends
+            spins += 1
+          end
         end
       end
     end
@@ -332,6 +345,26 @@ class TestPlainRubyRefusals < Minitest::Test
 
     assert_predicate game, :frozen?
     refute_empty game.program.children
+  end
+
+  # A block made shareable cannot be read again, so its `+=` would run as plain Ruby and change
+  # nothing in the game.
+  def test_game_code_in_a_block_made_shareable_is_refused_naming_the_fix
+    assert Ractor.shareable?(COUNTING_KEPT), "a test class's constant is shareable"
+    [-> { Builder.new.instance_exec(&COUNTING_KEPT) }, -> { Builder.new.instance_eval(&COUNTING_KEPT) },
+     -> { VBlank::DSL::PlainRuby.game_block(COUNTING_KEPT) }].each do |handing|
+      error = assert_raises(Refused, &handing)
+
+      assert_includes error.message, "return the block from a method"
+    end
+  end
+
+  def test_verbs_alone_in_a_block_made_shareable_build
+    builder = Builder.new
+    builder.instance_exec(&VERBS_KEPT)
+    builder.finalize_program
+
+    refute_empty builder.program.children
   end
 
   private def warnings_of(&block)
@@ -435,6 +468,57 @@ class TestPlainRubyRefusals < Minitest::Test
     end
   end
 
+  # A build that would go round for ever is a fast failure here, not a test run that never ends.
+  private def refused_within_seconds(phrase, &block)
+    error = nil
+    worker = Thread.new do
+      built(&block)
+    rescue Refused => e
+      error = e
+    end
+    unless worker.join(10)
+      worker.kill
+      flunk "the build was still going after 10 seconds"
+    end
+    refute_nil error, "the build was not refused"
+    assert_includes error.message, phrase
+    error
+  end
+
+  # In Ruby every number is true, 0 too. So a game number standing alone as a loop's test makes a
+  # plain Ruby loop, run while building: a `while` never stops (the build went round for ever,
+  # writing the body out each time), and an `until` never runs. Each form is refused at the
+  # author's line, telling them to compare the number.
+  def test_a_game_number_alone_as_a_loop_test_is_refused_naming_the_line
+    line = __LINE__ + 3
+    error = refused_within_seconds("`left != 0`") do
+      left = 3
+      func(:drain) { left -= 1 while left }
+      game_loop { call :drain }
+    end
+    assert_includes error.message, "test_plain_ruby_refusals.rb:#{line}"
+
+    refused_within_seconds("`left != 0`") do
+      left = 3
+      game_loop { left += 1 until left }
+    end
+    # A `var` line's variable is an object `if` asks Ruby's question of, whether it is there
+    # (test_plain_ruby.rb, an option given), and a `while` on it could only go round for ever.
+    refused_within_seconds("`left != 0`") do
+      left = var :left, 3
+      game_loop { left.increase!(1) while left }
+    end
+    refused_within_seconds("`left != 0`") do
+      left = 3
+      game_loop do
+        while left
+          left -= 1
+        end
+      end
+    end
+  end
+
+  # An `if` on the same numbers is Ruby's presence check, and builds (test_plain_ruby.rb plays it).
   def test_a_number_tested_alone_builds_with_every_check_on
     rom = VBlank.build("TRUTHY", console: :gba, out: StringIO.new, err: StringIO.new) do
       flags = 3
@@ -445,6 +529,18 @@ class TestPlainRubyRefusals < Minitest::Test
     end
 
     assert rom, "the game builds"
+  end
+
+  # A plain Ruby loop whose test never fails, `n -= 1 while n` with n a plain number, would hang
+  # the build too. Past a million rounds while building it is refused, naming the line.
+  def test_a_plain_loop_that_never_stops_while_building_is_refused
+    line = __LINE__ + 4
+    error = refused_within_seconds("a million times") do
+      n = 3
+      game_loop { wait_vblank }
+      n -= 1 while n
+    end
+    assert_includes error.message, "test_plain_ruby_refusals.rb:#{line}"
   end
 
   def test_unless_on_a_yes_or_no_builds_with_every_check_on

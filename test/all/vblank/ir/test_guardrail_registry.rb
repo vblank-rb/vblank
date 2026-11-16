@@ -56,7 +56,7 @@ class TestGuardrailRegistry < Minitest::Test
   module BoomGame
     module_function
 
-    # The build's error message, or nil if it built.
+    # The class and message of the error the build stopped with, or nil if it built.
     def build_error_message
       VBlank.build("BOOM", console: :gba, out: StringIO.new, err: StringIO.new) do
         screen :bitmap
@@ -65,7 +65,7 @@ class TestGuardrailRegistry < Minitest::Test
       end
       nil
     rescue VBlank::ROMError => e
-      e.message
+      "#{e.class}: #{e.message}"
     end
   end
 
@@ -125,7 +125,8 @@ class TestGuardrailRegistry < Minitest::Test
     Guardrails.register(BoomCheck.new)
     message = without_experimental_warning { Ractor.new { BoomGame.build_error_message }.value }
 
-    assert_match(/stopped/, message.to_s, "the check registered on the main Ractor stopped the worker's build")
+    assert_match(/\AVBlank::StoppedByChecks: Fix the problem above/, message.to_s,
+                 "the check registered on the main Ractor stopped the worker's build")
   end
 
   def test_a_check_no_ractor_can_share_is_refused
@@ -163,7 +164,7 @@ class TestGuardrailRegistry < Minitest::Test
     Guardrails.register(BoomCheck.new)
     err = StringIO.new
 
-    ex = assert_raises(VBlank::ROMError) do
+    ex = assert_raises(VBlank::StoppedByChecks) do
       VBlank.build("BOOM", console: :gba, code: "BBOM", maker: "01", err: err) do
         screen :bitmap
         var :boom, 1
@@ -171,7 +172,8 @@ class TestGuardrailRegistry < Minitest::Test
       end
     end
 
-    assert_match(/stopped/, ex.message)
+    assert_match(/problem above/, ex.message)
+    assert_match(/Build stopped/, err.string)
     assert_match(/boom found/, err.string, "the check's explanation reached the person")
   end
 

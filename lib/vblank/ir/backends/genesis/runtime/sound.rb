@@ -10,8 +10,8 @@ module VBlank
           # console. The 68000 reaches it only while the sound processor (a Z80) has been asked to stay off
           # its bus (Runtime::Boot), and each of its registers is two writes, which register and then what
           # goes in it, with a wait between for the chip to signal it is ready. A game with a recording lets the
-          # Z80 run and plays through it (Runtime::Recordings); its FM writes each ask for the bus, write and
-          # give it back.
+          # Z80 run and plays through it (Runtime::Recordings), and the FM chip is then the Z80's: the
+          # 68000's writes to it go into the Z80's queue, and the Z80 makes them.
           #
           # NOTHING SOUNDS UNTIL `enable_sound`, as nothing does on the Advance: until then ON is nought and
           # the writes here go nowhere, and a voice's loudness does not move. A sound before it is still
@@ -134,7 +134,8 @@ module VBlank
               asm.label("rt_fm_write")
               asm.tst(:w, at.call(ON))
               asm.branch(:eq, "rt_fm_write_done")
-              Recordings.emit_bus_taken(asm) if samples
+              return emit_fm_write_queued(asm, at) if samples
+
               asm.lea(asm.abs_l(h::FM), asm.a(1))
               asm.move(:w, asm.d(0), asm.d(2))
               asm.lsr(:w, 7, asm.d(2))
@@ -143,7 +144,6 @@ module VBlank
               asm.move(:b, asm.d(0), asm.idx(1, 0, 2, :w))
               asm.jsr(asm.abs_l("rt_fm_wait"))
               asm.move(:b, asm.d(1), asm.idx(1, 1, 2, :w))
-              Recordings.emit_bus_given_back(asm) if samples
               asm.label("rt_fm_write_done")
               asm.rts
 
@@ -154,6 +154,61 @@ module VBlank
               asm.branch(:eq, "rt_fm_wait_done")
               asm.dbra(asm.d(3), "rt_fm_wait_next")
               asm.label("rt_fm_wait_done")
+              asm.rts
+            end
+
+            # rt_fm_write in a game that plays recordings, where the FM chip is the Z80's: the write put
+            # in the Z80's queue (Recordings#emit_queued), which the Z80 makes between two samples.
+            #
+            # THE TIMERS' REGISTER ($27) ALSO HOLDS THE THIRD VOICE'S MODE, and the Z80 writes it every
+            # sample. So a write to it from the game's side is not queued as it is: its mode is written
+            # into each of the Z80's own writes of it (Recordings::TIMER_WRITES), and what is queued is
+            # the mode with the timers left counting, which changes nothing of theirs while a recording
+            # plays and nothing that matters while none does.
+            #
+            # A WRITE THAT WOULD CHANGE NOTHING IS NOT QUEUED. Each register's last value is kept
+            # (Recordings::FM_KEPT, a word each, $FFFF for one not written yet), and a write of the same
+            # value again is dropped. A note sets its voice's every register, some thirty, and a voice
+            # playing one instrument changes only a few of them from note to note; each write the Z80
+            # makes costs it most of a sample. The key register is never dropped, since each write to it
+            # is a key going down or up, and nor are the pitch registers, since the chip takes a pitch's
+            # high byte only as its low byte is written.
+            def emit_fm_write_queued(asm, at)
+              r = Recordings
+              program = r.driver
+              asm.cmp(:w, asm.imm(ChipWrites::KEY), asm.d(0))
+              asm.branch(:eq, "rt_fm_write_sent")
+              asm.cmp(:w, asm.imm(r::TIMERS), asm.d(0))
+              asm.branch(:eq, "rt_fm_write_sent")
+              asm.move(:w, asm.d(0), asm.d(2))
+              asm.and(:w, asm.imm(r::PITCH_REGISTERS_MASK), asm.d(2))
+              asm.cmp(:w, asm.imm(r::PITCH_REGISTERS), asm.d(2))
+              asm.branch(:eq, "rt_fm_write_sent")
+              asm.and(:w, asm.imm(0xFF), asm.d(1))
+              asm.move(:w, asm.d(0), asm.d(2))
+              asm.add(:w, asm.d(2), asm.d(2))
+              asm.lea(at.call(r::FM_KEPT), asm.a(1))
+              asm.cmp(:w, asm.idx(1, 0, 2, :w), asm.d(1))
+              asm.branch(:eq, "rt_fm_write_done")
+              asm.move(:w, asm.d(1), asm.idx(1, 0, 2, :w))
+              asm.label("rt_fm_write_sent")
+              Recordings.emit_bus_taken(asm)
+              asm.cmp(:w, asm.imm(r::TIMERS), asm.d(0))
+              asm.branch(:ne, "rt_fm_write_queue")
+              asm.and(:w, asm.imm(r::MODE_BITS), asm.d(1))
+              r::TIMER_WRITES.each do |label, value|
+                asm.move(:b, asm.d(1), asm.d(2))
+                asm.or(:b, asm.imm(value), asm.d(2))
+                asm.move(:b, asm.d(2), asm.abs_l(r::Z80_MEMORY + program.address_of(label)))
+              end
+              asm.or(:w, asm.imm(r::TIMERS_COUNTING), asm.d(1))
+              asm.label("rt_fm_write_queue")
+              asm.move(:w, asm.d(0), asm.d(3))
+              asm.lsr(:w, 7, asm.d(3))
+              asm.and(:w, asm.imm(r::SECOND_PART), asm.d(3)) # the second part's ports are two along
+              asm.jsr(asm.abs_l("rt_z80_queued"))
+              Recordings.emit_bus_given_back(asm)
+              asm.label("rt_fm_write_done")
               asm.rts
             end
 

@@ -418,7 +418,7 @@ module VBlank
         "showing #{as_written(words.shows)} of itself and #{as_written(words.behind)} of what is behind"
       end
 
-      def as_written(amount) = (DSL::Value.fixed_number(amount) || amount.inspect).to_s
+      def as_written(amount) = (DSL::Value.fixed_number(amount) || Messages::PlainWords.words_for_given(amount)).to_s
 
       # A bitmap screen paints its scenery, its sprites and its text into ONE picture
       # before the display ever sees it. By the time an effect could apply there is
@@ -597,7 +597,7 @@ module VBlank
         # A verb drawing its own text names ITSELF here: a `menu`'s rows really cannot
         # belong to a layer on a bitmap screen, and the author wrote `menu`, not the
         # `draw_text` underneath it (see Text#with_text_owned_by).
-        verb = @verb_owns_text || Messages::PlainWords.verb(node.kind)
+        verb = @verb_owns_text || Messages::PlainWords.verb_written(node)
         raise ArgumentError,
               "`#{verb}` paints where you call it#{bitmap_screen_suffix(node)}, so it cannot " \
               "belong to the layer :#{@current_layer}. A layer holds the things the framework " \

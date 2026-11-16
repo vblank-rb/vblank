@@ -66,6 +66,27 @@ class TestComparisonIgnoringSprites < Minitest::Test
     assert_plays_alike bare_field, jumper, stand, ignoring_sprites: true
   end
 
+  # A TURNED SPRITE IS DRAWN IN A BOX TWICE ITS PICTURE'S SIZE, the double-size box the console
+  # swings its corners through, and a sprite made bigger fills it. The whole of that box is left
+  # out, not only a box of the picture's size at its corner.
+  def test_a_turned_sprite_made_bigger_is_left_out_where_it_was_drawn
+    grown = VBlank.build("GROWN", console: :gba, out: StringIO.new, err: StringIO.new) do
+      screen :tiled
+      image(:box, "#" => :white) { "################\n" * 16 }
+      image(:sea, "." => :blue) { "........\n" * 8 }
+      tiles :set, "." => :sea
+      background :water, tiles: :set, map: Array.new(20) { "." * 30 }
+      box = sprite :box, at: [64, 64]
+      game_loop do
+        box.face_angle 45
+        box.scale 1.9
+      end
+    end
+
+    assert_raises(Minitest::Assertion) { assert_plays_alike bare_field, grown, stand }
+    assert_plays_alike bare_field, grown, stand, ignoring_sprites: true
+  end
+
   # Lined up by passes, the frame before is each cartridge's own.
   def test_two_lined_up_by_passes_leave_out_the_sprites_too
     assert_plays_alike field, field(odd_cell: UNDER_THE_BOX), stand, ignoring_sprites: true, by_passes: true

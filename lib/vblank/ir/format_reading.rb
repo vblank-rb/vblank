@@ -17,9 +17,16 @@ module VBlank
 
       # Tiles kept one after another in +bytes+, each read as its 64 places row by row.
       def tiles(bytes, format)
-        (0...(bytes.bytesize / format.tile_bytes)).map do |tile|
-          (0...TILE_PIXELS).map { |at| place(bytes, format, tile * format.tile_bytes, at % TILE_SIDE, at / TILE_SIDE) }
-        end
+        (0...tile_count(bytes, format)).map { |index| tile(bytes, format, index) }
+      end
+
+      # How many whole tiles +bytes+ hold.
+      def tile_count(bytes, format) = bytes.bytesize / format.tile_bytes
+
+      # Tile +index+ (0 first) of the tiles kept in +bytes+, read as its 64 places row by row.
+      def tile(bytes, format, index)
+        start = index * format.tile_bytes
+        (0...TILE_PIXELS).map { |at| place(bytes, format, start, at % TILE_SIDE, at / TILE_SIDE) }
       end
 
       # The place of the pixel at column +x+ and row +y+ of the tile whose bytes start at +start+

@@ -23,6 +23,7 @@ module VBlank
           # which end in AL; rt_list_sort the other list's place in DI and which way in DL). Each keeps BX, BP
           # and the segment registers and may change the rest.
           module Lists
+            FIELD_BYTES = 2 # how many bytes each of the header's numbers is
             CAPACITY = 0
             FRONT = 2
             LENGTH = 4

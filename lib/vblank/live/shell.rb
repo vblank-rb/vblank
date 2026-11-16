@@ -31,12 +31,20 @@ module VBlank
       # +facts+ are the Original::ShellFacts every runtime is made from. +game+, +menu+ and each of
       # +unpackings+ (in the order of their numbers) are the programs as Ruby
       # (Backends::Ruby#live_source), each made a LiveGame afresh every time it plays.
-      def initialize(facts:, game:, menu:, unpackings:)
+      #
+      # +workers+ is how many Ractors an unpacking split in pieces plays on (ShellFacts#pieces);
+      # one plays the split's programs one after another. +worker_programs+ are the splits'
+      # programs as Ruby, in the order ShellFacts#pieces numbers them, and an unpacking that has a
+      # split is nil in +unpackings+. A shell given no worker programs (a Ruby script's) plays
+      # every unpacking whole.
+      def initialize(facts:, game:, menu:, unpackings:, workers: 1, worker_programs: [])
         @facts = facts
         @releases = facts.original_releases
         @game = game
         @menu = menu
         @unpackings = unpackings
+        @workers = workers
+        @worker_programs = worker_programs
       end
 
       # The name of the folder the pack is kept in (Original::Shell.folder_name).
@@ -48,11 +56,30 @@ module VBlank
       # The +choose_copy+ of #play for a +window+ (an SDL): its picker of a folder or of a file.
       def copy_chooser(window) = copy_is_folder? ? -> { window.choose_folder } : -> { window.choose_file }
 
-      # The Live::Shell for +shell+, an Original::Shell, its programs written as Ruby here.
-      def self.from(shell)
+      # The Live::Shell for +shell+, an Original::Shell, its programs written as Ruby here. A big
+      # game's game and unpacking each take a while to write, so +progress+ (a Messages::Progress)
+      # is told each as a phase; the menu is small and is written inside the first. +workers+ is
+      # how many an unpacking in pieces plays on (Original::PiecedUnpacking.worker_count: one a
+      # processor where it is nil).
+      def self.from(shell, progress: Messages::Progress.silent, workers: nil)
         ruby = IR::Backends::Ruby.new
-        new(facts: shell.facts, game: ruby.live_source(shell.game), menu: ruby.live_source(shell.menu),
-            unpackings: shell.unpackings.map { |unpacking| ruby.live_source(unpacking.program) })
+        workers = Original::PiecedUnpacking.worker_count(workers)
+        progress.step("Writing game as Ruby")
+        game = ruby.live_source(shell.game)
+        menu = ruby.live_source(shell.menu)
+        progress.step("Writing unpacking as Ruby")
+        # An unpacking split in pieces is played as its split however many workers there are, so
+        # its whole routine is not written: each part's code is written once.
+        whole = shell.unpackings.each_with_index.map { |unpacking, number| unpacking.program unless shell.facts.split?(number) }
+        programs = whole.compact + shell.worker_programs.map(&:program)
+        written = programs.each_with_index.map do |program, number|
+          progress.report_count(number, programs.size)
+          ruby.live_source(program)
+        end
+        progress.report_count(programs.size, programs.size)
+        whole_written = written.first(whole.compact.size)
+        new(facts: shell.facts, game: game, menu: menu, unpackings: whole.map { |program| whole_written.shift if program },
+            workers: workers, worker_programs: written.drop(whole.compact.size))
       end
 
       # Plays the shell on +device+ until the player stops it: the game, once there is a pack in
@@ -121,8 +148,17 @@ module VBlank
       #
       # The unpacking plays in a Ractor of its own (BackgroundUnpacking), so the window keeps
       # showing frames however long the routine works between them.
+      #
+      # An unpacking split in pieces plays as its split instead (WorkerUnpacking), on as many
+      # workers as this shell has.
       def unpack(named, sha1, bytes, device)
-        unpacking = BackgroundUnpacking.new(@unpackings.fetch(@facts.release_with_sha1(sha1).unpacking), bytes, @facts.unpacking)
+        number = @facts.release_with_sha1(sha1).unpacking
+        plan = @facts.pieces&.fetch(number)
+        unpacking = if plan && !@worker_programs.empty?
+                      WorkerUnpacking.new(@worker_programs, bytes, @facts.unpacking, plan: plan, bar: @facts.bar, workers: @workers)
+                    else
+                      BackgroundUnpacking.new(@unpackings.fetch(number), bytes, @facts.unpacking)
+                    end
         rate = Session.new(game: unpacking, uncapped: true, keep_last_picture: false).play(device)
         return nil unless rate.stopped_itself?
 

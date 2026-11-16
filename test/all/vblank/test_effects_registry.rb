@@ -237,7 +237,7 @@ class TestEffectsRegistry < Minitest::Test
     VBlank.register_effects(Watched)
     err = StringIO.new
 
-    ex = assert_raises(VBlank::ROMError) do
+    ex = assert_raises(VBlank::StoppedByChecks) do
       VBlank.build("WATCH", console: :gba, code: "BWCH", maker: "01", err: err) do
         screen :bitmap
         watched_verb
@@ -245,7 +245,8 @@ class TestEffectsRegistry < Minitest::Test
       end
     end
 
-    assert_match(/stopped/, ex.message)
+    assert_match(/problem above/, ex.message)
+    assert_match(/Build stopped/, err.string)
     assert_match(/boom found/, err.string, "the pack's own explanation reached the person")
   end
 

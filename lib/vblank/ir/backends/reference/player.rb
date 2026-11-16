@@ -225,7 +225,7 @@ module VBlank
                         play_recorded_note(owner: lane, rank: rank, name: instrument || part.instrument,
                                            frequency: sounds ? frequency : 0, envelope: envelope || part.envelope,
                                            loudness: song_loudness(volume || part.volume, follows_level: !level.nil?),
-                                           glides: IR::Tunes.glides?(event)) ||
+                                           glides: IR::Tunes.glides?(event), own_loudness: !volume.nil?) ||
                           !sounds
                       else
                         true
@@ -251,7 +251,7 @@ module VBlank
               end
               # A part on the WAVE or NOISE voice: the console makes the sound itself, so no
               # mixer voice is taken — the whole point of putting a part there.
-              log_wave_or_noise(kind, part, frequency) if %i[wave noise].include?(kind)
+              log_wave_or_noise(kind, part, event) if %i[wave noise].include?(kind)
               @cursors[number] += 1
             end
             advance_song_frame(song)
@@ -397,7 +397,7 @@ module VBlank
                                            frequency: sounds?(kind, part, event) ? frequency : 0,
                                            envelope: envelope || part.envelope,
                                            loudness: IR::Tunes.mix_loudness(volume || part.volume),
-                                           glides: IR::Tunes.glides?(event))
+                                           glides: IR::Tunes.glides?(event), own_loudness: !volume.nil?)
                 @log << [:note, name, frequency] if heard
                 next
               end
@@ -406,7 +406,7 @@ module VBlank
               @sounding.delete(channel) # the song's note there, if it had one, is gone
               @log << [:note, name, frequency]
               set_voice(channel, name, part, event)
-              log_wave_or_noise(kind, part, frequency) unless kind == :square
+              log_wave_or_noise(kind, part, event) unless kind == :square
             end
             run.frame += 1
           end
@@ -558,10 +558,11 @@ module VBlank
           # +loudness+ out of IR::Tunes::MIX_FULL, shaped by +envelope+ (or the recording itself),
           # and a rest gives the voice back. True when the note got a voice, or the rest had one
           # to give back. A note that +glides+ strikes nothing: the part's sounding note carries on
-          # at +frequency+, and it is true when there was one.
-          def play_recorded_note(owner:, rank:, name:, frequency:, envelope:, loudness:, glides: false)
+          # at +frequency+, at +loudness+ where the glide names its own volume (+own_loudness+) and
+          # at the loudness it had where it names none, and it is true when there was one.
+          def play_recorded_note(owner:, rank:, name:, frequency:, envelope:, loudness:, glides: false, own_loudness: false)
             return @mixer.release_music(owner) if frequency.zero?
-            return @mixer.glide_music_note(owner, frequency) if glides
+            return @mixer.glide_music_note(owner, frequency, (loudness if own_loudness)) if glides
 
             !@mixer.start_music_note(owner: owner, rank: rank, name: name, frequency: frequency,
                                      loudness: loudness, envelope: envelope).nil?
@@ -583,16 +584,20 @@ module VBlank
           # they really are the same voice: a game that plays a hit while its drum part is
           # playing one gets whichever came last, and a test that reads the log sees exactly
           # that.
-          def log_wave_or_noise(kind, part, frequency)
+          #
+          # The waveform is the note's own where it named one, and whether a hit rattles is the
+          # note's own where it said (IR::Tunes.said_wave, IR::Tunes.said_metallic).
+          def log_wave_or_noise(kind, part, event)
+            frequency = event[1]
             if kind == :wave
               return @log << [:stop_wave] if frequency.zero?
 
-              @log << [:wave, { shape: part.wave, frequency: frequency, volume: part.volume }]
+              @log << [:wave, { shape: IR::Tunes.said_wave(part, event), frequency: frequency, volume: part.volume }]
             else
               return @log << [:noise, nil] if frequency.zero?
 
               @log << [:noise, { pitch: frequency, decay: part.decay,
-                                 volume: part.volume, metallic: part.metallic }]
+                                 volume: part.volume, metallic: IR::Tunes.said_metallic(part, event) }]
             end
           end
 

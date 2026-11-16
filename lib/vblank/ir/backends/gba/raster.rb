@@ -150,9 +150,23 @@ module VBlank
             @dark_scenes = IR::LightScenes.switches?(program) ? IR::LightScenes.dark(program).keys : []
             # A game that places a fade in the stack keeps the object window's field of the
             # register switched on too (SpriteDrawing#emit_boot_object_windows).
-            places_fade = program.walk.any? { |node| IR::LightScenes.placed_fade?(node) }
-            @outside_window_shown = WIN_ALL_LAYERS | WIN_EFFECT | (places_fade ? WIN_ALL_LAYERS << WINOUT_OBJ_SHIFT : 0)
+            @places_fade = program.walk.any? { |node| IR::LightScenes.placed_fade?(node) }
+            @outside_window_shown = WIN_ALL_LAYERS | WIN_EFFECT | (@places_fade ? WIN_ALL_LAYERS << WINOUT_OBJ_SHIFT : 0)
+            # ...where a darkening light that is on darkens the sprites the fade keeps out as well
+            # as everything else outside it: the object window's field is the same as outside.
+            @lit_outside_shown = WIN_ALL_LAYERS | WIN_EFFECT | (@places_fade ? (WIN_ALL_LAYERS | WIN_EFFECT) << WINOUT_OBJ_SHIFT : 0)
           end
+
+          # THE LIGHT'S WINDOW AND THE WINDOW THAT KEEPS SPRITES OUT OF A PLACED FADE. The display
+          # has two kinds of window here: the first window, which is the light's circle, and the
+          # object window, the shape of the twin sprites that keep what is in front of a placed fade
+          # out of it (SpriteDrawing#emit_boot_object_windows). Where the two overlap, the first
+          # window wins. So in a scene the light is off in, the light's window is shut, top and
+          # bottom on the same line, and the object window is the only one there; the gap after a
+          # lit scene's pass opens it to the whole screen again. A scene that has both is refused
+          # (Guardrails::Checks::LightCannotShare), so no scene needs both at once.
+          def emit_light_window_shut = @emitter.write_reg16(REG_WIN0V, 0)
+          def emit_light_window_open = @emitter.write_reg16(REG_WIN0V, VISIBLE_LINES)
 
           # What the blend unit is told while the light is on: darken every layer, the sprites
           # and the backdrop, by however much the frame sets.
@@ -192,9 +206,12 @@ module VBlank
             return unless switches_light? && @dark_scenes.include?(scene)
 
             @emitter.write_reg16(REG_WININ, WIN_ALL_LAYERS | WIN_EFFECT)
+            emit_light_window_shut if @places_fade
             # A light that shows nothing outside it never held the blend unit: switching it off is
-            # switching the layers back on outside its window.
-            return @emitter.write_reg16(REG_WINOUT, @outside_window_shown) if light_shuts_out?
+            # switching the layers back on outside its window. A darkening light's outside has the
+            # layers on already, but darkens the sprites a placed fade keeps out with the rest.
+            @emitter.write_reg16(REG_WINOUT, @outside_window_shown) if light_shuts_out? || @places_fade
+            return if light_shuts_out?
 
             kept = @emitter.gensym
             @emitter.emit_number(ADDR, REG_BLDCNT)
@@ -380,7 +397,7 @@ module VBlank
               @emitter.write_reg16(REG_WINOUT, @outside_window_shown)
             else
               @emitter.write_reg16(REG_WININ, WIN_ALL_LAYERS)
-              @emitter.write_reg16(REG_WINOUT, WIN_ALL_LAYERS | WIN_EFFECT)
+              @emitter.write_reg16(REG_WINOUT, @lit_outside_shown)
               @emitter.write_reg16(REG_BLDCNT, LIGHT_CONTROL)
               @emitter.write_reg16(REG_BLDY, 0)
             end
@@ -402,8 +419,10 @@ module VBlank
             @primitives.load_var(ACC, IR::LightScenes::ON)
             @emitter.emit(ASM.cmp_imm(ACC, 0))
             @emitter.emit_branch(:bcond, off, cond: :eq)
+            emit_light_window_open if @places_fade
             if light_darkens?
               @emitter.write_reg16(REG_WININ, WIN_ALL_LAYERS)
+              @emitter.write_reg16(REG_WINOUT, @lit_outside_shown) if @places_fade
               @emitter.write_reg16(REG_BLDCNT, LIGHT_CONTROL)
             end
             emit_light_amount

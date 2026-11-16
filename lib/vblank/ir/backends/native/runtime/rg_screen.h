@@ -140,6 +140,12 @@ void rg_screen_frame_started(void);
  * RG_SCREEN_HEIGHT colors, row by row, with the fade or tint in force mixed in. */
 const uint16_t *rg_screen_shown(void);
 
+/* The picture as the window shows it: RG_WHOLE_WIDTH times RG_WHOLE_HEIGHT colors, row by row. The
+ * picture as shown, where the game's screen is the whole screen; and where it is shown in a border,
+ * the border (rg_game_border_pixels) with the picture as shown over its middle, at (RG_GAME_LEFT,
+ * RG_GAME_TOP). The fade and tint are the game's screen's alone, as on the cartridge. */
+const uint16_t *rg_screen_framed(void);
+
 /* The same page as it is STORED: no window moved over it, no fade or tint. What a test counts
  * drawn pixels in; a player never sees it. */
 const uint16_t *rg_screen_stored(void);
@@ -161,11 +167,14 @@ rg_drawn_sprite rg_screen_drawn_sprite(int32_t place);
 
 /* --- the art, from the generated game --- */
 
-/* Sprite pictures: each image is three numbers in rg_game_images (where its pixels start in
- * rg_game_image_pixels, its width and its height). A pixel is the fifteen bits of colour the
- * picture stores, or RG_NOT_DRAWN where what is behind shows, so sixteen signed bits hold every
- * one. A sprite drawn with another list of colors has a picture of its own for each list, made
- * when the game is built. */
+/* Sprite pictures: each image is four numbers in rg_game_images (where its pixels start in
+ * rg_game_image_pixels, its width, its height, and where the colours of its places start there,
+ * or RG_NO_IMAGE_COLORS). A pixel is the fifteen bits of colour the picture stores, or
+ * RG_NOT_DRAWN where what is behind shows, so sixteen signed bits hold every one. A sprite drawn
+ * with another list of colors has a picture of its own for each list, made when the game is
+ * built. A pose read from the file the game is handed is held once instead: its pixels are its
+ * places, and each image of it has the colours of its places, which a pixel is looked up in as it
+ * is drawn (rg_start_file_fill_pose). */
 #define RG_NOT_DRAWN (-1)
 extern const int16_t rg_game_image_pixels[];
 /* The +count+ image pixels the picture is drawn from, as an array that can be written: a copy of
@@ -177,7 +186,11 @@ int16_t *rg_screen_image_pixels_to_fill(int32_t count);
  * RG_NOT_DRAWN until then. Called before anything else asks for the copy. */
 void rg_screen_image_pixels_room(int32_t total, int32_t held);
 extern const int32_t rg_game_images[];
-#define RG_IMAGE_FIELDS 3
+#define RG_IMAGE_FIELDS 4
+#define RG_NO_IMAGE_COLORS (-1)
+/* The border round the game's screen, as a picture of the whole screen, a colour a pixel; nothing
+ * where the game's screen is the whole screen (Computer::Picture#border_pixels). */
+extern const int16_t rg_game_border_pixels[];
 /* The most sprites a game may have; the build refuses more. */
 #define RG_MAX_SPRITES 512
 /* For each sprite, by its number: which see-through layer it was declared in, counting through
@@ -206,11 +219,21 @@ extern const int32_t rg_game_image_pictures[];
 extern const int32_t rg_game_sprite_blocks[];
 extern const int32_t rg_game_sprite_boxes[];
 /* THE PIECES A CONSOLE'S SPRITE TABLE HOLDS each image as, for a console that draws only so many
- * on a line (RG_SPRITE_PIECES_A_LINE; Backends::SpriteLines). The first number is how tall a piece
- * is; then, for each image by its number, where its pieces start in this array; and there, how
- * many there are, then each one's across and down inside the picture, the one in front first. Only
- * the first number for a console that draws every piece. */
+ * on a line or on the screen (RG_SPRITE_PIECES_A_LINE, RG_SPRITE_PIECES_A_SCREEN;
+ * Backends::SpriteLines). The first number is how many images are listed; the second how far past
+ * the screen's left or top edge a piece still takes an entry of the table, 0 for its own width or
+ * height (SpriteLines.entry_reach); then, for each image by its number, where its pieces start in
+ * this array; and there, how many there are, then each one's across, down, width and height inside
+ * the picture, the one in front first. Only the first two numbers, 0, for a console that draws
+ * every piece. */
 extern const int32_t rg_game_image_pieces[];
+/* The pieces of image +image+, how many and then four numbers each as above: those the file the
+ * game is handed lists for it (rg_screen_read_image_pieces), or else the game's own. */
+const int32_t *rg_screen_image_pieces(int32_t image);
+/* +pieces+, laid out as rg_screen_image_pieces hands them back, are image +image+'s from now on: a
+ * pose whose frame is read from the file as the game starts (rg_start_file_fill_pose). The game
+ * holds a stand-in for it of no pieces of its own. +pieces+ must last as long as the game. */
+void rg_screen_read_image_pieces(int32_t image, const int32_t *pieces);
 
 /* Each layer the game can be seen through is RG_ST_FIELDS numbers in rg_game_see_through: 1 when
  * both its amounts are numbers written in the program, 1 when it was given one amount (how much

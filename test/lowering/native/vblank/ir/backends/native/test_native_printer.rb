@@ -55,6 +55,18 @@ class TestNativePrinter < Minitest::Test
     assert_match(/does not fit int8_t/, error.message)
   end
 
+  # A big table of zeros alone, as one the start file fills is until then, is its size: C sets the
+  # numbers its initializer leaves out to 0, so no file of zeros is embedded.
+  def test_a_big_table_of_zeros_is_its_size
+    values = Array.new(Printer::MOST_WRITTEN_AS_NUMBERS + 1, 0)
+    printer = Printer.new
+    text = printer.print_file([Statements::ConstArray.new(name: Statements::Name.new(text: "samples"), type: "int8_t",
+                                                          values: values, writable: true)])
+
+    assert_includes text, "static int8_t samples[#{values.size}] = {0};"
+    assert_empty printer.embedded
+  end
+
   # C has no empty initializer, so an array with nothing in it is one zero long.
   def test_an_empty_array_is_written_one_zero_long
     assert_equal "static const uint8_t none[1] = {\n  0,\n};\n", printed(Statements::ConstArray.new(name: Statements::Name.new(text: "none"), type: "uint8_t", values: []))

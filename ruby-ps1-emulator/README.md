@@ -38,5 +38,8 @@ then runs first and Beetle starts the program from inside it, as a console that 
 No BIOS ships with this gem. Beetle PSX is GPL-2.0, and `core/LICENSE.md` says what that covers here. This gem
 is a tool for testing, and VBlank never ships it: it is not in VBlank's gemspec.
 
-The binding is pure Ruby over Fiddle: there is no C extension to compile. Each `Core` loads a copy
-of the library of its own, so two of them in one process are two consoles.
+The core is played through a small C extension, a libretro frontend
+(`ext/ruby_ps1_emulator_ext/`), so a program plays in any Ractor, not only the main one. It needs a
+C compiler and nothing else: `rake compile` builds it into `lib/<this Ruby>/`, and a gem install
+builds it as any extension gem's is. Each `Core` loads a copy of the library of its own, so two of
+them in one process are two consoles.

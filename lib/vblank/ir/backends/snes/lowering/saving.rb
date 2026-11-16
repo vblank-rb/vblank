@@ -38,19 +38,23 @@ module VBlank
 
             private
 
-            # A Super Nintendo cartridge saves in 32K of battery-backed RAM (Runtime::Saving). A game
+            # A Super Nintendo cartridge saves in battery-backed RAM (Runtime::Saving): 32K on a plain
+            # board, 64K on a Super FX one (Cartridge::SNESROM::Board#most_save_bytes). A game built
+            # for the console is given one of those (Console::Description#save_memories). A program
             # that names flash or an EEPROM lays its save memory out for that chip — its blocks, and
-            # its save_vars kept in a record — which this RAM does not have. Every board keeps one:
-            # where it is on a Super FX board is Cartridge::SNESROM::SUPER_FX's to set.
+            # its save_vars kept in a record — which this RAM does not have, and one that names more
+            # than the board keeps has places past its end.
             def refuse_unsupported_save_memory!
               return unless SaveLayout.named_by?(@program)
 
               memory = SaveLayout.memory_of(@program)
-              return if memory.battery?
+              board = @chip_board ? Cartridge::SNESROM::SUPER_FX : Cartridge::SNESROM::PLAIN
+              return if memory.battery? && memory.size <= board.most_save_bytes
 
-              raise LoweringError, "This game saves in #{memory.kilobytes}K of #{memory.kind_words}, and a Super " \
-                                   "Nintendo cartridge saves in 32K of battery-backed RAM. To fix this, leave " \
-                                   "`save_memory:` out of the game."
+              raise LoweringError, "This game saves in #{memory.kilobytes}K of #{memory.kind_words}. This Super " \
+                                   "Nintendo cartridge saves in #{board.most_save_bytes / 1024}K of battery-backed " \
+                                   "RAM. To fix this, build the game for this console, and the build gives it " \
+                                   "the save memory that the cartridge keeps."
             end
 
             # Reference#exec_save_init: every `save_var` takes its saved number when save memory

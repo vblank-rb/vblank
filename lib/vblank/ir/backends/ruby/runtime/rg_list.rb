@@ -15,13 +15,31 @@
 # writes its whole pack into one list of bytes: a pack of hundreds of megabytes held that way
 # would want gigabytes. The two classes answer the same few methods, so nothing else knows which
 # it holds.
+#
+# A READ OR WRITE OF ONE ITEM IS ONE CALL (#get, #set), which the printer writes where the game
+# reads or writes (Printer#list_item_call): the check of the index and the ring's slot worked out
+# inside it, on the list's own instance variables. An unrolled routine paid for a few reads; a
+# routine that loops over a list by an index it works out as it runs pays for one at every turn,
+# and the chain of small calls it was before (rg_list_get, rg_list_check_index, rg_list_slot,
+# #item, each asking the list for its length, front or capacity) cost YJIT a call apiece, where
+# one method reads them as instance variables. An index outside the list gives nil and is kept
+# (#refused_index), and the printed code hands the list to rg_list_index_fault, which stops the
+# game in the interpreter's words; a list item is never nil, so nothing else reads as a refusal.
 
 class RgList
-  attr_reader :capacity, :width, :name
+  attr_reader :capacity, :width, :name, :refused_index
   attr_accessor :front, :length
 
-  # The list for the build's ListStorage: kept as bytes when +width+ is 1.
-  def self.build(capacity, width, name) = (width == 1 ? RgByteList : RgList).new(capacity, width, name)
+  # The list for the build's ListStorage: kept as bytes when +width+ is 1, and fitting each number
+  # to a half when it is 2.
+  def self.build(capacity, width, name)
+    kind = case width
+           when 1 then RgByteList
+           when 2 then RgHalfList
+           else RgList
+           end
+    kind.new(capacity, width, name)
+  end
 
   # +width+ is the bytes a slot takes, 1, 2 or 4; +name+ is the game's name for the list.
   def initialize(capacity, width, name)
@@ -37,6 +55,32 @@ class RgList
   def item(slot) = @items[slot]
   def set_item(slot, value) = (@items[slot] = value)
 
+  # Item +index+, oldest first, or nil (the index kept) when the list has no such item. The front
+  # and the index are each inside the capacity, so their sum is past it by less than a capacity,
+  # and one subtraction comes round the ring where a remainder would divide.
+  def get(index)
+    if index >= 0 && index < @length
+      slot = @front + index
+      @items[slot < @capacity ? slot : slot - @capacity]
+    else
+      @refused_index = index
+      nil
+    end
+  end
+
+  # Item +index+ set to +value+, giving true, or nil (the index kept) when the list has no such
+  # item. A list of words keeps the number as it is.
+  def set(index, value)
+    if index >= 0 && index < @length
+      slot = @front + index
+      @items[slot < @capacity ? slot : slot - @capacity] = value
+      true
+    else
+      @refused_index = index
+      nil
+    end
+  end
+
   # Every slot set to +value+, already fitted to the width.
   def fill_items(value) = @items.fill(value, 0, @capacity)
 
@@ -50,6 +94,9 @@ class RgList
   # +packed+ a list of bytes gives them as a binary String instead.
   def items_for_state(_packed) = items_in_order
 
+  # Called once a state read in has put back the list's front, length and slots (rg_state_list).
+  def state_read = nil
+
   private
 
   # +count+ slots holding nought, as this list keeps them.
@@ -57,13 +104,44 @@ class RgList
 end
 
 # A list of bytes (`width: :byte`), its slots one byte each of a binary String, read back signed.
+#
+# The String is the same one for the list's whole life, its capacity long from the start, and is
+# only ever changed in place. So the printer reads and writes an item of a list that is always full
+# as the String's own byte (+items+, Printer#byte_item_in_place), having tested the index against
+# the list's length: such a list never moves its front from the first slot.
 class RgByteList < RgList
+  attr_reader :items
+
   def item(slot)
     byte = @items.getbyte(slot)
     byte >= 0x80 ? byte - 0x100 : byte
   end
 
   def set_item(slot, value) = @items.setbyte(slot, value)
+
+  def get(index)
+    if index >= 0 && index < @length
+      slot = @front + index
+      byte = @items.getbyte(slot < @capacity ? slot : slot - @capacity)
+      byte >= 0x80 ? byte - 0x100 : byte
+    else
+      @refused_index = index
+      nil
+    end
+  end
+
+  # String#setbyte keeps the low byte of any number, as a byte slot keeps it.
+  def set(index, value)
+    if index >= 0 && index < @length
+      slot = @front + index
+      @items.setbyte(slot < @capacity ? slot : slot - @capacity, value)
+      true
+    else
+      @refused_index = index
+      nil
+    end
+  end
+
   def fill_items(value) = @items.replace((value & 0xFF).chr * @items.bytesize)
   def slots = Array.new(@capacity) { |slot| item(slot) }
 
@@ -82,6 +160,63 @@ class RgByteList < RgList
   def blank_slots(count) = "\0".b * count
 end
 
+# A list of halves (`width: :half`): its numbers kept as rg_to_half keeps them.
+class RgHalfList < RgList
+  def set(index, value)
+    if index >= 0 && index < @length
+      slot = @front + index
+      @items[slot < @capacity ? slot : slot - @capacity] = ((value & 0xFFFF) ^ 0x8000) - 0x8000
+      true
+    else
+      @refused_index = index
+      nil
+    end
+  end
+end
+
+# A LIST THAT IS ALWAYS FULL: one the game only ever declares full of a number (`full_of:`), and
+# never pushes onto, drops from or copies into, so it holds its whole capacity from its declaration
+# on, its first item in its first slot (Printer#always_full_lists picks these, of numbers wider
+# than a byte). A port keeps its chip's operators so, a list a field, and reads them at an index it
+# works out on every sample.
+#
+# Its Array holds no slots until the declaration, and then all of them, so the Array's own length
+# is the list's, and the printer reads an item as the Array's own `[]` (Printer#list_item_in_place),
+# which gives nil past the end, with no call: the game holds the Array itself as well as the list
+# (+items+, the same Array for the list's whole life, filled in place). Before the declaration every
+# slot reads as nought, as a ring's does, for a state written then.
+class RgFullList < RgList
+  attr_reader :items
+
+  def item(slot) = @items[slot] || 0
+  def fill_items(value) = @items.replace(Array.new(@capacity, value))
+  def slots = Array.new(@capacity) { |slot| item(slot) }
+
+  def set(index, value)
+    if index >= 0 && index < @length
+      @items[index] = @width == 2 ? ((value & 0xFFFF) ^ 0x8000) - 0x8000 : value
+      true
+    else
+      @refused_index = index
+      nil
+    end
+  end
+
+  # A state read in puts every slot back, which a list not yet declared does not hold.
+  def state_read
+    @items.clear if @length == 0
+  end
+
+  private
+
+  def blank_slots(_count) = []
+end
+
+# Stops the game for the index +list+ refused just now (RgList#get, #set), in the interpreter's words.
+def rg_list_index_fault(list) = rg_list_check_index(list, list.refused_index)
+
+# ...and for +index+, outside an always-full list the printer read or wrote in place.
+def rg_list_index_fault_at(list, index) = rg_list_check_index(list, index)
 def rg_list_fit(list, value)
   return rg_to_byte(value) if list.width == 1
   return rg_to_half(value) if list.width == 2

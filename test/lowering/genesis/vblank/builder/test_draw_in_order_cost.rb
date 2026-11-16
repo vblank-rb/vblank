@@ -50,6 +50,15 @@ class TestDrawInOrderCost < Minitest::Test
     assert_a_pass_a_frame(self.class.sprites_game(15))
   end
 
+  # A console's own games sort their sprites by height every frame with a list of indexes in work
+  # memory, and a pool of 32 so sorted fits in a frame even when every one of them passes every
+  # other (Lowering#emit_keyed_sort).
+  def test_a_pool_of_thirty_two_sorted_by_a_key_takes_a_frame_a_pass
+    passes = DrawOrderCostGames.passes_by_frames(:genesis, DrawOrderCostGames.reversed_pool_game(:genesis, 32))
+
+    assert_equal({ 1 => 20 }, passes, "every pass fits in one frame")
+  end
+
   # The order's own work is what the frame spends beyond the same pool with no order. Work that
   # grew with the square of the count would be four times as much for twice the things.
   def test_a_pool_taking_turns_takes_a_frame_a_pass_and_work_that_grows_with_its_size
@@ -64,41 +73,21 @@ class TestDrawInOrderCost < Minitest::Test
   end
 
   # AN ORDER WORKED OUT FROM WHERE EVERYTHING STANDS: seven things sorted by height every pass, as
-  # a console's own games sort their sprites, cost a few of the frame's 262 lines, and thirty under
-  # a thirteenth of them. The cost is each thing's number worked out, the sort, and each sprite's
-  # placing picked by the order (Lowering::Picture#emit_ordered_run).
+  # a console's own games sort their sprites, cost the tightest frame a few of its 262 lines, and
+  # thirty under a thirteenth of them. The cost is each thing's number worked out, the sort, and
+  # each sprite's placing picked by the order (Lowering::Picture#emit_ordered_run).
   BOUND_SEVEN = 3
   BOUND_THIRTY = 20
 
-  # The lines of the picture in one frame.
-  LINES_A_FRAME = 262
+  def test_an_order_of_seven_costs_its_tightest_frame_a_few_lines
+    cost = DrawOrderCostGames.lines_off_tightest_frame(:genesis, sprites: 4)
 
-  # The lines the order costs a frame, over the frames measured: the share of the frame it takes
-  # (DrawOrderCostGames.share_of_frame), which is read from the emulator's own count and never
-  # rounded.
-  private def lines_order_costs_each_frame(sprites)
-    DrawOrderCostGames.share_of_frame(:genesis, sprites: sprites) * LINES_A_FRAME
-  end
-
-  # The lines the order costs the tightest frame, one where two things pass: the whole lines that
-  # frame has to spare without the order, less those with it. Each of the two is rounded down to
-  # a line, so this reads a line over or under what the order costs, and the same order can read
-  # a line more when the game without it gets faster. Only a bound with more than a line of room
-  # is held to it.
-  private def lines_order_costs_tightest_frame(sprites)
-    spare = ->(ordered) { DrawOrderCostGames.profile(:genesis, ordered: ordered, sprites: sprites).fewest_lines_spare }
-    spare.call(false) - spare.call(true)
-  end
-
-  def test_an_order_of_seven_costs_a_few_lines
-    cost = lines_order_costs_each_frame(4)
-
-    assert_operator cost, :<=, BOUND_SEVEN, "an order of seven costs #{cost.round(2)} lines"
+    assert_operator cost, :<=, BOUND_SEVEN, "an order of seven costs its tightest frame #{cost.round(2)} lines"
   end
 
   def test_an_order_of_thirty_costs_under_a_thirteenth_of_the_frame
-    cost = lines_order_costs_tightest_frame(27)
+    cost = DrawOrderCostGames.lines_off_tightest_frame(:genesis, sprites: 27)
 
-    assert_operator cost, :<=, BOUND_THIRTY, "an order of thirty costs #{cost} lines"
+    assert_operator cost, :<=, BOUND_THIRTY, "an order of thirty costs #{cost.round(2)} lines"
   end
 end

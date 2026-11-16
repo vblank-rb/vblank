@@ -92,9 +92,10 @@ module VBlank
       end
 
       # THE SUPER NINTENDO'S EMULATOR is a gem of its own too, ruby-snes-emulator: bsnes, built as a
-      # libretro core with a patch that hands over the console's memories, driven through Fiddle.
-      # It is loaded the same way, the gem first and this repository's checkout second, and when
-      # it is missing it says how to get it.
+      # libretro core with a patch that hands over the console's memories, played through a small C
+      # extension of the gem's own, so a cartridge plays in any Ractor. It is loaded the same way,
+      # the gem first and this repository's checkout second, and when it is missing it says how to
+      # get it.
       def load_snes!
         return true if snes_loaded?
 
@@ -106,8 +107,8 @@ module VBlank
           raise LoadError, "An emulator is required to run a Super Nintendo cartridge, and ruby-snes-emulator will " \
                            "not load. To fix this, add it to the git block that names vblank and ruby-gba-emulator " \
                            "in your Gemfile: widen its glob to \"{,ruby-gba-emulator/,ruby-snes-emulator/}*.gemspec\" " \
-                           "and add `gem \"ruby-snes-emulator\"` inside it. Then run `rake compile_core` in " \
-                           "ruby-snes-emulator/ to build the bsnes core it plays cartridges in."
+                           "and add `gem \"ruby-snes-emulator\"` inside it. Then run `rake compile compile_core` in " \
+                           "ruby-snes-emulator/ to build the bsnes core it plays cartridges in, and its C extension."
         end
 
         $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
@@ -125,9 +126,10 @@ module VBlank
       end
 
       # THE SEGA GENESIS'S EMULATOR is a gem of its own too, ruby-genesis-emulator: Genesis Plus GX,
-      # built as a libretro core with a patch that hands over the console's memories, driven through
-      # Fiddle. It is loaded the same way, the gem first and this repository's checkout second, and
-      # when it is missing it says how to get it.
+      # built as a libretro core with a patch that hands over the console's memories, played through a
+      # small C extension of the gem's own, so a cartridge plays in any Ractor. It is loaded the same
+      # way, the gem first and this repository's checkout second, and when it is missing it says how
+      # to get it.
       def load_genesis!
         return true if genesis_loaded?
 
@@ -139,8 +141,9 @@ module VBlank
           raise LoadError, "An emulator is required to run a Sega Genesis cartridge, and ruby-genesis-emulator will " \
                            "not load. To fix this, add it to the git block that names vblank in your Gemfile: " \
                            "widen its glob to \"{,ruby-gba-emulator/,ruby-genesis-emulator/}*.gemspec\" and add " \
-                           "`gem \"ruby-genesis-emulator\"` inside it. Then run `rake compile_core` in " \
-                           "ruby-genesis-emulator/ to build the Genesis Plus GX core it plays cartridges in."
+                           "`gem \"ruby-genesis-emulator\"` inside it. Then run `rake compile compile_core` in " \
+                           "ruby-genesis-emulator/ to build its C extension and the Genesis Plus GX core it plays " \
+                           "cartridges in."
         end
 
         $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
@@ -158,9 +161,9 @@ module VBlank
       end
 
       # THE PLAYSTATION'S EMULATOR is a gem of its own too, ruby-ps1-emulator: Beetle PSX, built as a
-      # libretro core with a patch that hands over the console's memories, driven through Fiddle. It is
-      # loaded the same way, the gem first and this repository's checkout second, and when it is
-      # missing it says how to get it.
+      # libretro core with a patch that hands over the console's memories, played through a small C
+      # extension of the gem's own, so a program plays in any Ractor. It is loaded the same way, the
+      # gem first and this repository's checkout second, and when it is missing it says how to get it.
       def load_ps1!
         return true if ps1_loaded?
 
@@ -172,8 +175,9 @@ module VBlank
           raise LoadError, "An emulator is required to run a PlayStation program, and ruby-ps1-emulator will " \
                            "not load. To fix this, add it to the git block that names vblank in your Gemfile: " \
                            "widen its glob to \"{,ruby-gba-emulator/,ruby-ps1-emulator/}*.gemspec\" and add " \
-                           "`gem \"ruby-ps1-emulator\"` inside it. Then run `rake compile_core` in " \
-                           "ruby-ps1-emulator/ to build the Beetle PSX core it plays programs in."
+                           "`gem \"ruby-ps1-emulator\"` inside it. Then run `rake compile compile_core` in " \
+                           "ruby-ps1-emulator/ to build its C extension and the Beetle PSX core it plays " \
+                           "programs in."
         end
 
         $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
@@ -259,7 +263,8 @@ module VBlank
       # play left there comes back into the same image once the core is shut — the emulator writes
       # the file as it shuts — so one image handed to two plays is a power cycle. Where the save
       # memory is in that file (after a chip's own RAM, before a clock's state) is the kit's to give
-      # (Console::Kit#save_file_of).
+      # (Console::Kit#save_file_of). The clock's state goes in and comes back with it
+      # (IR::SaveImage#clock_state).
       def with_cartridge(rom, file_name:, save: nil)
         kit = Console.for(rom.console)
         Dir.mktmpdir("vblank-play") do |dir|
@@ -267,16 +272,23 @@ module VBlank
           sav = path.sub(/\.\w+\z/, "") + kit.save_file_extension
           rom.write(path)
           layout = kit.save_file_of(rom)
-          File.binwrite(sav, layout.file_of(save.to_sav)) if save
+          File.binwrite(sav, layout.file_of(save.to_sav, save.clock_state)) if save
           core = kit.open_core(path, save_dir: dir)
           begin
             yield core
           ensure
             core.destroy
-            save.replace_with_sav(layout.memory_in(File.binread(sav)), from: "The cartridge's save memory") if save && File.size?(sav)
+            keep_save_left(save, layout, File.binread(sav)) if save && File.size?(sav)
           end
         end
       end
+
+      # +save+ made to hold the save memory and the clock's state in +file+, the emulator's save file.
+      def keep_save_left(save, layout, file)
+        save.replace_with_sav(layout.memory_in(file), from: "The cartridge's save memory")
+        save.keep_clock_state(layout.clock_in(file))
+      end
+      private_class_method :keep_save_left
 
       # Open a high-level probe on a ROM file path — the API that runs frames, reads
       # memory, and measures how many of a frame's scanlines the CPU burns. The analyzer
@@ -306,6 +318,10 @@ module VBlank
       # and blue. The emulator keeps eight, and what it holds below the five is its own
       # working, which differs with how it reached a colour; so two screens that are
       # different bytes can still be one picture.
+      #
+      # This is the Advance's emulator's, for the Advance's and the Color's pictures. A console that
+      # plays in another emulator asks the same questions in Ruby (ScreenQuestions), and never
+      # loads this one to ask them (Console::Kit#screen_questions).
       def screen_questions
         load!
         RubyGBAEmulator::Screen

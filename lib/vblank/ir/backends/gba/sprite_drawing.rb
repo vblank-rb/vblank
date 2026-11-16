@@ -30,12 +30,13 @@ module VBlank
           include EmitterCalls
 
           def initialize(emitter:, primitives:, lowering:, divide:, framebuffer:, palette_tint:, uploads:,
-                         placement:)
+                         placement:, raster:)
             @emitter = emitter
             @primitives = primitives
             @lowering = lowering
             @divide = divide
             @framebuffer = framebuffer
+            @raster = raster
             @palette_tint = palette_tint
             @uploads = uploads
             @placement = placement
@@ -121,6 +122,7 @@ module VBlank
             emit_mark_still_sprites_unwritten
             @uploads.emit_dma_blob(@layout.screen.obj_palette_blob, OBJ_PALETTE, @layout.screen.obj_palette_units) # the shared sprite palette, once
             @palette_tint.emit_record_obj_palette_source(@layout.screen.obj_palette_blob) # ...which is the one a tint walks until a scene sends its own
+            emit_no_scene_colors_sent # ...so the scene taking over sends its own as it arrives
             @layout.screen.objects.each_value do |obj|
               # A sprite showing the same pictures as one already uploaded points at
               # those, so there is nothing of its own to send. A sprite that belongs to a
@@ -144,10 +146,13 @@ module VBlank
           # shape of whatever the twin sprites paint, so nothing here mentions a place on
           # screen. EFFECT_LINE starts past the front of the stack: until a fade is
           # placed, no twin shows.
+          #
+          # In a game with a light the light sets the register as it switches, since a light that
+          # is on reaches the kept sprites too (Raster#emit_light_window_shut).
           def emit_boot_object_windows
             return if placed_fade.none?
 
-            write_reg16(REG_WINOUT, WIN_ALL_LAYERS | WIN_EFFECT | (WIN_ALL_LAYERS << WINOUT_OBJ_SHIFT))
+            write_reg16(REG_WINOUT, WIN_ALL_LAYERS | WIN_EFFECT | (WIN_ALL_LAYERS << WINOUT_OBJ_SHIFT)) unless @raster.feeds_light?
             store_word_immediate(placed_fade.fade_stack_index, var_addr(EFFECT_LINE))
           end
 
@@ -246,6 +251,7 @@ module VBlank
             emit_switch_sprite_layer
             emit_unless_set_just_came_in do
               @scene_entry.emit_unless_scene_is_loading do
+                emit_scene_colors_on_change # before any row is written
                 @picture_group_copying.emit_calls_to_routines
                 emit_count_lending_frame
                 emit_hide_scene_rows_on_change
@@ -403,9 +409,22 @@ module VBlank
 
           # Each ordered run of +program+'s frame, with its copy given a place in +memory+ and
           # its table put in +blobs+; +lists+ gives where the program keeps each list.
+          #
+          # The copy reads the list from its first slot, one entry a sprite, with nothing tested, so it
+          # takes only the builder's own list (Build::DrawOrder#permutation), which holds every place
+          # of the run there. A list written by hand, or one something takes items from the front of
+          # (whose first item moves along its slots), is refused: the interpreter reads such a list as
+          # it holds (Reference#names_in_draw_order), and this copy does not.
           def self.plan_draw_runs(program, objects:, memory:, blobs:, lists:)
             present = program.walk.find { |node| node.kind == :present_objects } or return []
+            dropped = program.walk.filter_map { |node| node.name if node.kind == :list_drop && node.from == :front }
             (present.orders || []).each_with_index.map do |run, k|
+              unless DrawOrderWalk.read_by_slots?(run, dropped)
+                raise LoweringError, "the list #{run.order.inspect} orders sprites, and the game writes it or takes " \
+                                     "items from its front. The Game Boy Advance cartridge draws an order only from " \
+                                     "the list that draw_in_order keeps."
+              end
+
               sprites = run.objects.map { |name| objects.fetch(name) }
               first = sprites.map(&:slot).min
               slots = sprites.sum(&:pieces)
@@ -698,6 +717,68 @@ module VBlank
           # The body of that routine: hide every row the sprites +names+ are written at.
           def emit_hide_sprite_rows(names)
             emit_hide_rows_at(names.flat_map { |name| row_addresses_of(name) }.uniq.sort)
+          end
+
+          # The value of the variable that picks scenes when a scene's sprite colour table last went
+          # in, and whether one has gone in since power-on or the last change of screen.
+          SCENE_PICK_SENT_FOR = :__scene_pick_sent_for
+          SCENE_COLORS_SENT = :__scene_sprite_colors_sent
+          # The routine that sends the table of the scene picked now.
+          SCENE_COLORS_ROUTINE = Messages::MadeNames.make(:scene_sprite_colors)
+
+          # A SCENE'S SPRITE COLOURS GO IN WITH ITS SPRITES, in the gap between frames, on the frame
+          # the variable that picks it changes, and not as its routine first runs.
+          #
+          # Scenes never up together take turns at the same groups of sprite colours (see
+          # ScreenLayout#build_shared_object_palette), and which scene's sprites are in the table
+          # changes here, in the gap, when the variable that picks scenes does (see
+          # #emit_hide_scene_rows_on_change). Sent as the arriving scene's routine first runs, its
+          # colours would land in the middle of the frame under the leaving scene's sprites, which
+          # are on screen until this gap, and for that frame they would show in the arriving
+          # scene's colours. So they go in here, before any row is written, the same frame the
+          # rows change. Three loads, two compares and two branches a frame; nothing in a game
+          # whose scenes send no colours of their own, or are not all picked by one variable (see
+          # ScreenLayout#scene_colors_picker).
+          #
+          # WHAT WAS REMEMBERED CAN HOLD ANYTHING AT POWER-ON, and a stray match would leave the
+          # first scene with no colours. And a change of screen sends the table every screen shows
+          # again (#emit_boot_objects), over the scene's. So the table also goes in at the first
+          # gap after power-on or a change of screen, whether the variable changed or not.
+          def emit_scene_colors_on_change
+            picked = @layout.screen.scene_colors_picker or return
+
+            changed = gensym
+            same = gensym
+            load_var(ACC, picked.state)
+            load_var(TMP, SCENE_PICK_SENT_FOR)
+            emit(ASM.cmp_reg(ACC, TMP))
+            emit_branch(:bcond, changed, cond: :ne)
+            load_var(TMP, SCENE_COLORS_SENT)
+            emit(ASM.cmp_imm(TMP, 0))
+            emit_branch(:bcond, same, cond: :ne)
+            place_label(changed)
+            store_var(ACC, SCENE_PICK_SENT_FOR)
+            @lowering.statement(Build.call(SCENE_COLORS_ROUTINE))
+            place_label(same)
+          end
+
+          # The body of that routine: the table of the scene +picked+'s variable picks now, through
+          # the tint in force (PaletteTint#emit_send_scene_obj_palette), and the note that the
+          # table in is the right one. A value picking none of them leaves the table as it is, as a
+          # scene with no colours of its own does.
+          def emit_scene_colors_routine(picked)
+            picked.picks.each do |pick|
+              emit_while_scene_up(picked.state, pick.value) do
+                @palette_tint.emit_send_scene_obj_palette(pick.blob, @layout.screen.obj_palette_units, pick.scene)
+              end
+            end
+            store_word_immediate(1, var_addr(SCENE_COLORS_SENT))
+          end
+
+          # Note that no scene's table has gone in: at power-on, whatever screen the game starts on,
+          # and wherever the table every screen shows is sent again.
+          def emit_no_scene_colors_sent
+            store_word_immediate(0, var_addr(SCENE_COLORS_SENT)) if @layout.screen.scene_colors_picker
           end
 
           # Every address a row of sprite +name+ is written at: its rows in the table, the copy

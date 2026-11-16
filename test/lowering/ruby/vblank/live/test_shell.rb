@@ -78,6 +78,22 @@ class TestShell < Minitest::Test
       assert_empty played.refusals
       assert_equal GAME_PASSES, played.game_pictures.size
       assert_equal all_in_one_pictures, played.game_pictures
+      assert pose_shown_in?(played.game_pictures.last, 240), "the pose read from the pack's frame record is not shown"
+    end
+  end
+
+  # A WINDOW SEATS PLAYERS (SDL#seat_players) before each play the shell starts on it, the
+  # unpacking's among them, and Headless is told the same. The first start unpacks the copy and
+  # plays the game on the one device, each play told it seats no players.
+  def test_the_first_start_tells_the_device_each_play_seats_no_players
+    Dir.mktmpdir do |folder|
+      device = Headless.new(frames: 400, buttons: CHOOSE_LOAD_ROM)
+      shell(folder).play(device, folder_path: File.join(folder, "kept"), choose_copy: -> { copy_at(folder) }, refused: ->(_) {},
+                                 play_game: ->(game) { Session.new(game: game, stop_after_passes: GAME_PASSES).play(device) })
+
+      assert_equal [0, 0, 0], device.seat_counts, "the menu, the unpacking and the game were not each told how many players they seat"
+      assert_equal all_in_one_pack, kept_pack(folder)
+      assert_equal all_in_one_pictures, device.pictures.last(GAME_PASSES).map(&:pixels)
     end
   end
 
@@ -405,7 +421,7 @@ class TestShell < Minitest::Test
                                        "--settings-file", File.join(folder, "settings.txt"), chdir: folder)
 
       assert status.success?, played
-      assert_match(/3 frames in/, played)
+      assert_match(/2 frames in/, played)
       assert_holds_none_of original_pieces, File.binread(path), "the Ruby script"
     end
   end

@@ -118,15 +118,33 @@ module VBlank
       # half beside it, which is what keeps a save cut off half way from damaging the other one.
       # Like flash it keeps its save_vars in a record, since it too wears out a little with every
       # write and a number changing every frame would wear it out.
-      Memory = Data.define(:kilobytes) do
+      #
+      # +chip+ is :battery, :flash or :eeprom. Left out, it is the Advance's chip of that size: 8K
+      # is the EEPROM, 32K battery-backed memory, 64K and 128K flash. Battery-backed memory bigger
+      # than 32K is packed the way the 32K is, the first 32K of it laid out byte for byte the same:
+      # it is a longer run of the same memory, which some consoles' cartridges carry (a Super
+      # Nintendo cartridge with a Super FX chip keeps 64K, Console::Description#save_memories).
+      Memory = Data.define(:kilobytes, :chip) do
+        def initialize(kilobytes:, chip: nil)
+          chip ||= if kilobytes == EEPROM then :eeprom
+                   elsif kilobytes > MEMORIES.first then :flash
+                   else :battery
+                   end
+          super
+        end
+
+        # The chip a program names for this memory (Nodes::SaveMemory): nil where it is the
+        # Advance's chip of this size, so a program built for the Advance names none.
+        def named_chip = (chip unless self == Memory.new(kilobytes: kilobytes))
+
         # Battery-backed memory: any byte, written in place, as often as the game likes.
-        def battery? = kilobytes == MEMORIES.first
+        def battery? = chip == :battery
 
         # Flash: a byte only once between two wipes of the 4K block it is in.
-        def flash? = kilobytes > MEMORIES.first
+        def flash? = chip == :flash
 
         # The EEPROM: eight bytes at a time.
-        def eeprom? = kilobytes == EEPROM
+        def eeprom? = chip == :eeprom
 
         # Whether a `save_var`'s number is written in place as it changes (battery memory), or
         # its numbers are kept in a record saved now and then (see Builder::SaveVarRecord).
@@ -163,13 +181,9 @@ module VBlank
           256
         end
 
-        # Which kind of chip it is: :battery, :flash or :eeprom.
-        def chip
-          return :flash if flash?
-          return :eeprom if eeprom?
-
-          :battery
-        end
+        # How many bytes records taking +halves+ fill, from the start of save memory to the end of
+        # the last: what a cartridge must keep to hold them.
+        def bytes_filled(halves) = data_start + halves.sum { |half, copies| record_room(half, copies) }
 
         # What the chip is called, where a build says so.
         def kind_words = { battery: "battery-backed memory", flash: "flash", eeprom: "EEPROM" }.fetch(chip)
@@ -181,11 +195,11 @@ module VBlank
         def record_room(half, copies) = room(half) * 2 * copies
 
         # Do records taking +halves+ — one [half_bytes, copies] pair a record — all fit at once?
-        def fits?(halves) = halves.sum { |half, copies| record_room(half, copies) } <= size - data_start
+        def fits?(halves) = bytes_filled(halves) <= size
       end
 
-      # The save memory of +kilobytes+.
-      def memory(kilobytes) = Memory.new(kilobytes)
+      # The save memory of +kilobytes+, of +chip+ (the Advance's chip of that size when left out).
+      def memory(kilobytes, chip = nil) = Memory.new(kilobytes: kilobytes, chip: chip)
 
       # The packed 32K memory, which a table is read from and written to unless it declares otherwise.
       PACKED = memory(MEMORIES.first)
@@ -202,20 +216,45 @@ module VBlank
       # differently.
       def memory_of(program)
         named = program.walk.find { |node| node.kind == :save_memory }
-        named ? memory(named.kilobytes) : PACKED
+        named ? memory_named_by(named) : PACKED
       end
+
+      # The Memory a `save_memory` node declares.
+      def memory_named_by(node) = memory(node.kilobytes, node.chip)
+
+      # THE SAVE MEMORIES A CONSOLE'S CARTRIDGE CAN CARRY, smallest first, as Memory: what its
+      # description lists (Console::Description#save_memories).
+      def offered_by(console) = console.save_memories.map { |kilobytes, chip| memory(kilobytes, chip) }
+
+      # The Advance's, every size a game can name: the EEPROM, 32K of battery-backed memory, and
+      # flash of 64K or 128K.
+      ADVANCE_MEMORIES = NAMEABLE.map { |kilobytes| memory(kilobytes) }.freeze
 
       # Does a game whose records take +halves+ — one [half_bytes, copies] pair a record — fit
       # in +kilobytes+ of save memory?
       def fits?(kilobytes, halves) = memory(kilobytes).fits?(halves)
 
-      # The smallest save memory those records fit in, or nil when none holds them.
-      def smallest_fitting(halves) = MEMORIES.find { |kilobytes| fits?(kilobytes, halves) }
+      # The memories of +offered+ the build picks from for a game that names none: all but the
+      # EEPROM, which a game has to ask for (see EEPROM).
+      def pickable(offered) = offered.reject(&:eeprom?)
 
-      # HOW MUCH SAVE MEMORY A CARTRIDGE HAS, in kilobytes: the size the game +named+, else the
-      # size its records +needed+ (nil before they are laid out, or for a game with none), else
-      # the smallest there is. The one rule, so the program and its records cannot disagree.
-      def chosen(named, needed) = named || needed || MEMORIES.first
+      # The smallest save memory of +offered+ those records fit in, or nil when none holds them.
+      def smallest_fitting(halves, offered = ADVANCE_MEMORIES) = pickable(offered).find { |one| one.fits?(halves) }
+
+      # The memory of +offered+ that is +kilobytes+ big, or nil.
+      def offered_of_size(offered, kilobytes) = offered.find { |one| one.kilobytes == kilobytes }
+
+      # HOW MUCH SAVE MEMORY A CARTRIDGE HAS, a Memory: the size the game +named+ (in kilobytes)
+      # where the console +offered+ one of that size, else the memory its records +needed+ (nil
+      # before they are laid out, or for a game with none), else the smallest the console picks
+      # from. The one rule, so the program and its records cannot disagree.
+      #
+      # A size the console does not offer is a chip of another console's: a game names 128K of
+      # flash for the Advance, and the same game built for a console without it lets its records
+      # choose there.
+      def chosen(named, needed, offered = ADVANCE_MEMORIES)
+        (named && offered_of_size(offered, named)) || needed || pickable(offered).first
+      end
 
       MARKER = 0x5441_4453 # "SDAT" as its bytes
       HEADER = 20

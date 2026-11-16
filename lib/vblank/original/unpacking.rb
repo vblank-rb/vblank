@@ -46,10 +46,17 @@ module VBlank
     # it after the last slot as a record of VBlank's own (FrameRewrite), which is all that anything
     # drawing a pose reads. That is so for a slot copied as it is too, in a pack with no routine.
     # BYTES is the slots and then those records, as the pack's file is after its header.
-    Unpacking = Data.define(:program, :slots, :copy_size, :format_words, :copy_bytes, :frames)
+    #
+    # +files+ are the release's files (ReleaseFiles) where its copy is several, which a fault
+    # reading outside one names; nil for a copy that is one file.
+    Unpacking = Data.define(:program, :slots, :copy_size, :format_words, :copy_bytes, :frames, :files)
 
     class Unpacking
-      def initialize(program:, slots:, copy_size:, format_words:, copy_bytes: nil, frames: FrameRecord::Section.new(sources: [])) = super
+      def initialize(program:, slots:, copy_size:, format_words:, copy_bytes: nil, frames: FrameRecord::Section.new(sources: []),
+                     files: nil) = super
+
+      # The error the build stops with for +fault+ (a Fault this unpacking met), in words.
+      def fault_error(fault) = fault.error(slots, copy_size, format_words, files: files)
 
       # A run of the program on +player+ (the interpreter, or any computer runtime's player), handed
       # the copy the build read where it read one. +options+ are the player's `run`'s.
@@ -173,11 +180,16 @@ module VBlank
       # +frames+ frames, as the interpreter's `frames:` does, so a routine that never ends cannot
       # keep the build forever. It also keeps when the last frame ended, for the watchdog, which it
       # lets raise only while the run is still playing.
+      #
+      # Nobody watches or hears an unpacking, so it asks for no picture and no sound, and the runtime
+      # makes neither (rg_live.rb's rg_driver_wait_vblank). A test that measures what making them
+      # costs asks for both (+picture_and_sound+).
       class FrameLimitedPlayer
         NO_BUTTONS = [].freeze
 
-        def initialize(frames)
+        def initialize(frames, picture_and_sound: false)
           @left = frames
+          @picture_and_sound = picture_and_sound
           @lock = Mutex.new
           @watched = true
           @last_frame_at = now
@@ -185,6 +197,9 @@ module VBlank
 
         # Nobody is at the controls of an unpacking, so no state is ever asked for.
         def take_state_request = nil
+
+        def picture_wanted? = @picture_and_sound
+        def sound_wanted? = @picture_and_sound
 
         def buttons_after(_pixels, _left, _right)
           @lock.synchronize { @last_frame_at = now }
@@ -232,27 +247,55 @@ module VBlank
       SLOT_BYTES_DONE = Messages::MadeNames.make(:unpacking_part, part: :slot_bytes_done)
       FINISHED = Messages::MadeNames.make(:unpacking_part, part: :finished)
       PROGRESS = Messages::MadeNames.make(:unpacking_part, part: :progress)
+      PAINTED_WIDTH = Messages::MadeNames.make(:unpacking_part, part: :painted_width)
       FAULT_KIND = Messages::MadeNames.make(:unpacking_part, part: :fault_kind)
       FAULT_AT = Messages::MadeNames.make(:unpacking_part, part: :fault_at)
       FAULT_DETAIL = Messages::MadeNames.make(:unpacking_part, part: :fault_detail)
+      # Which piece a program of a part's pieces plays (PiecedUnpacking): a number of
+      # PIECE_NUMBER_BYTES, low byte first, in its start file after the copy.
+      PIECE_NUMBER = Messages::MadeNames.make(:unpacking_part, part: :piece_number)
+      PIECE_NUMBER_BYTES = 2
+      # The variable that holds the piece's number as the program plays it.
+      PIECE_PLAYED = Messages::MadeNames.make(:unpacking_part, part: :piece_played)
 
-      # WHAT WENT WRONG AS THE ROUTINE RAN, the first time anything did. +kind+ is one of the three
-      # below; +at+ is a place in the copy for the first two and a byte outside the slot for the
-      # third (a format's write names the first byte past the slot's end, whether it found the
-      # write did not fit when the size was expected or when the byte was written); +detail+ is the
-      # number of the format the routine was told (Unpacking#format_words), or the slot's number in
-      # the pack's order.
+      # WHAT WENT WRONG AS THE ROUTINE RAN, the first time anything did. +kind+ is one of the five
+      # below. For the first four, +at+ is a place in the copy for the first two, a byte outside the
+      # slot for the third (a format's write names the first byte past the slot's end, whether it
+      # found the write did not fit when the size was expected or when the byte was written), and
+      # for the fourth the first byte read outside one file of a copy that is several
+      # (CopyReader#file), counted from that file's start; +detail+ is the number of the format the
+      # routine was told (Unpacking#format_words), the slot's number in the pack's order, or the
+      # file's number in the release's list of files. The fifth gives its own two numbers.
       Fault = Data.define(:kind, :at, :detail)
 
       class Fault
         WRONG_FORMAT = 1
         READ_PAST_END = 2
         WRITE_OUTSIDE_SLOT = 3
+        READ_OUTSIDE_FILE = 4
+        # Frames of one slot that overlap name more pieces than the records keep room for
+        # (FrameRecord::Section#index_of_first_without_room): +at+ is where the first frame without room
+        # starts in its slot, and +detail+ the slot's number.
+        FRAMES_WITHOUT_ROOM = 5
+
+        # The words for frames without room, after who reads the frame ("image :hero ", "The
+        # unpacking "): the build that holds the pack and the unpacking say the same.
+        def self.frames_without_room_message(at, slot_name)
+          "reads the frame at byte #{at} of slot :#{slot_name}. Frames of this slot overlap. Together they have more " \
+            "pieces than the data pack has room for. To fix this, name frames that do not overlap, or name fewer frames " \
+            "of this slot."
+        end
 
         # The error the build stops with, in words, for a pack of +slots+ from a copy of +copy_size+
-        # bytes whose formats are called +format_words+.
-        def error(slots, copy_size, format_words)
+        # bytes whose formats are called +format_words+, and whose +files+ (ReleaseFiles) are the
+        # release's when it is several.
+        def error(slots, copy_size, format_words, files: nil)
           case kind
+          when READ_OUTSIDE_FILE
+            file = files.fetch(detail)
+            WrongCopy.new("The unpacking routine reads byte #{at} (0x#{at.to_s(16)}) of #{file.name}. #{file.name} has " \
+                          "bytes 0 to #{file.size - 1}. A read must stay in its file and must not go on into the next " \
+                          "file. Correct the place that it reads for this release.")
           when WRONG_FORMAT
             name = format_words.fetch(detail)
             WrongCopy.new("The unpacking routine reads a block packed with #{name} at #{at} (0x#{at.to_s(16)}) in the " \
@@ -261,8 +304,16 @@ module VBlank
           when READ_PAST_END
             WrongCopy.new("The unpacking routine reads byte #{at} (0x#{at.to_s(16)}) of the copy, and the copy has " \
                           "bytes 0 to #{copy_size - 1}. Correct the place it reads for this release.")
+          when FRAMES_WITHOUT_ROOM
+            ArgumentError.new("The unpacking #{Fault.frames_without_room_message(at, slots.fetch(detail).name)}")
           else
             slot = slots.fetch(detail)
+            if slot.pieced?
+              return ArgumentError.new("The unpacking routine writes byte #{at} of a piece of slot :#{slot.name}, and that " \
+                                       "piece holds fewer bytes. A write cannot go past its piece. Correct start:, count: " \
+                                       "or the place written, or make the piece bigger.")
+            end
+
             ArgumentError.new("The unpacking routine writes byte #{at} of slot :#{slot.name}, and the slot holds bytes " \
                               "0 to #{slot.byte_size - 1}. A write cannot go past its slot. Correct start:, count: or " \
                               "the place written, or make the slot bigger.")

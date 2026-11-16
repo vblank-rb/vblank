@@ -147,6 +147,7 @@ module VBlank
       options = options_by_switch(command_named(name))
       words = args.drop(1)
       checked = [name]
+      lists = {}
       until words.empty?
         word = words.shift
         if word == "--"
@@ -161,7 +162,17 @@ module VBlank
         switch, value = word.split("=", 2)
         switch = switch.tr("_", "-")
         option = options[switch] or refuse_unknown_option!(args, word, switch, options.keys)
-        if value || option.boolean? || option.type == :array || option.lazy_default
+        # An option that takes several words (--set, --keys) may be written more than once, and
+        # Thor keeps only the last: --set floors=1 --set ammo=90 dropped floors=1 without a word.
+        # So each writing's words join one list, which goes to Thor once, where the option was
+        # first written: the option stands in `checked` for its list until the end. A --set that
+        # names a setting twice keeps the later value, as one --set does.
+        if option.type == :array
+          checked << option unless lists.key?(option)
+          (lists[option] ||= []).concat([value].compact, take_list_words!(words))
+          next
+        end
+        if value || option.boolean? || option.lazy_default
           checked << word
           next
         end
@@ -173,7 +184,15 @@ module VBlank
         end
         checked << "#{option.switch_name}=#{words.shift}"
       end
-      checked
+      checked.flat_map { |part| part.is_a?(Thor::Option) ? [part.switch_name, *lists.fetch(part)] : [part] }
+    end
+
+    # Removes and returns the words at the front of +words+ that an option taking several words
+    # takes: every word up to the next option or `--`, as Thor would.
+    def self.take_list_words!(words)
+      taken = []
+      taken << words.shift while words.first && words.first != "--" && !switch?(words.first)
+      taken
     end
 
     # A word written the way an option is: one or two dashes, then a letter.
@@ -384,6 +403,12 @@ module VBlank
                                  makes the data pack from it, and keeps the
                                  pack. After that, the game starts at once.
                                  With native, the output is a folder.
+        --unpack-workers N       With --shell and --format web: the page makes
+                                 the data pack on N cores where the game cuts
+                                 its unpacking in pieces. Default: every core
+                                 of the player's computer. The page's address
+                                 can ask for another number:
+                                 page.html?unpack-workers=2.
         #{SET}
 
       Measuring (see vblank profile --help):
@@ -453,8 +478,10 @@ module VBlank
     option :data, default: "inline", enum: %w[inline separate]
     option :pack_at_start, type: :boolean, default: false
     option :shell, type: :boolean, default: false
+    option :unpack_workers, type: :numeric, banner: "N"
     def build(game_file)
       refuse_web_options_out_of_place!
+      refuse_unpack_workers_out_of_place!
       refuse_data_pack_options_on_cartridge!
       case options[:format]
       when "game" then build_cartridges(game_file)
@@ -462,17 +489,13 @@ module VBlank
       when "native" then build_native(game_file)
       when "web" then build_web(game_file)
       when "ruby" then build_ruby(game_file)
-      when "gbc"
-        raise Thor::Error, "There is no --format=gbc now. To build a Game Boy Color cartridge, use --console gbc."
-      else
-        raise Thor::Error, "#{options[:format].inspect} is not a build format. The formats are: game, ir, native, " \
-                           "ruby, web."
+      else refuse_build_format!(options[:format])
       end
     rescue ArgumentError, VBlank::BuildError => e
       # A setting the game does not ask for, or one it cannot read, or a build that stopped (the
       # guardrails' reasons are printed already; a lowering's are the message): say why, not a
       # backtrace.
-      raise Thor::Error, e.message
+      raise build_stopped(e)
     end
 
     desc "profile GAME_FILE", "Run the game and report what it costs"
@@ -551,7 +574,7 @@ module VBlank
       # the cartridge somebody would actually ship, not a differently-placed one.
       game.build_rom(settings: given_settings, console: console_to_run(game, "profile")).profile(format: format, **measuring)
     rescue ArgumentError, VBlank::BuildError => e
-      raise Thor::Error, e.message
+      raise build_stopped(e)
     end
 
     # The options `run` and `compare` both take: what sets which buttons to press, and the
@@ -766,7 +789,10 @@ module VBlank
         X, Z                     A, B
         Enter, Backspace         Start, Select
         A key, S key             L, R
-        the game's own keys      a game can add keys and gamepad buttons with
+        W, Q                     X, Y, on a console that has them (the Super
+                                 Nintendo, the PlayStation)
+        C key                    C, on a console that has it (the Genesis)
+        the game's own keys     a game can add keys and gamepad buttons with
                                  computer_keys and computer_gamepad. The menu's
                                  Controls shows every key a button has.
         F1 or `                  open the menu. On a Mac keyboard, ` (the key
@@ -788,8 +814,9 @@ module VBlank
 
       A gamepad plays the game too, alongside the keyboard: the D-pad or the left
       stick, the right face button for A and the bottom one for B, Start, Back
-      for Select, and the shoulder buttons for L and R. You can plug it in or
-      pull it out while the game plays. To open the menu with a gamepad, press
+      for Select, and the shoulder buttons for L and R. The top face button is X
+      and the left one is Y. On a Genesis, the left one is C. You can plug it in
+      or pull it out while the game plays. To open the menu with a gamepad, press
       Back and Start together, or the guide button in the middle (macOS can keep
       that button for itself). In the menu, the D-pad moves, A chooses and B
       closes the menu. Pause, fast forward and Escape need the keyboard.
@@ -882,6 +909,10 @@ module VBlank
         --pack-folder DIR        With --shell, keep the data pack in DIR.
                                  Default: the folder your computer keeps for
                                  the game.
+        --unpack-workers N       With --shell, make the data pack on N cores
+                                 where the game cuts its unpacking in pieces.
+                                 Default: every core of this computer. N is
+                                 never more than that.
         --pictures N             Stop after the window has shown N pictures.
         --uncapped               Do not wait for the end of each frame. The game
                                  then runs as fast as this computer can play it.
@@ -991,6 +1022,7 @@ module VBlank
     option :set, type: :array, banner: "NAME=VALUE", default: []
     option :shell, type: :boolean, default: false
     option :pack_folder, banner: "DIR"
+    option :unpack_workers, type: :numeric, banner: "N"
     def run_game(game_file)
       refuse_mismatched_play_options!
       refuse_mismatched_match_options!
@@ -1000,6 +1032,7 @@ module VBlank
       refuse_cartridge_file!(game_file)
       refuse_unless_whole_and_positive!("--scale", options[:scale]) if options[:scale]
       refuse_unless_whole_and_positive!("--pictures", options[:pictures]) if options[:pictures]
+      refuse_unless_whole_and_positive!("--unpack-workers", options[:unpack_workers]) if options[:unpack_workers]
       way = way_to_run
       # YJIT compiles the Ruby that runs most often to machine code as the game plays, which plays
       # a game several times faster. A Ruby built without it plays the game slower, and so does
@@ -1101,7 +1134,7 @@ module VBlank
       begin
         live_session(game, program, network).play(device)
       rescue *MATCH_FAILURES => e
-        raise Thor::Error, e.message
+        raise Thor::Error, match_failure_message(e)
       end
       say_match_summary(network, events_said: true)
     end
@@ -1175,7 +1208,7 @@ module VBlank
       end
       yield VBlank::Playthroughs::CommandLine.new(options, out: $stdout, build: build)
     rescue VBlank::Playthroughs::CommandLine::Refused => e
-      raise Thor::Error, e.message
+      raise build_stopped(e)
     end
 
     # --- run ---
@@ -1190,10 +1223,10 @@ module VBlank
       # A big game takes a while to read and check, and somebody is waiting for the window, so a
       # status line goes out before the first phase starts. It says what is happening and no more.
       say "Building #{game.title} - Please wait."
-      game.checked_program(progress: VBlank::Messages::Progress.to($stderr), settings: given_settings, console: console,
+      game.checked_program(progress: build_progress, settings: given_settings, console: console,
                            for_computer: for_computer)
     rescue ArgumentError, VBlank::BuildError => e
-      raise Thor::Error, e.message
+      raise build_stopped(e)
     end
 
     # "DEMO is for the Game Boy Advance and the Game Boy Color. This plays it as the Game Boy
@@ -1220,12 +1253,18 @@ module VBlank
 
     # The game built as Ruby, ready to play: a game that needs something the Ruby runtime cannot do
     # yet is refused here, before a window opens.
+    #
+    # Writing a big game as Ruby takes a while, so it is a phase of the build, closed before the
+    # window opens or the match starts.
     def live_session(game, program, network = nil)
+      build_progress.step("Writing game as Ruby")
       VBlank::Live::Session.new(program, uncapped: options[:uncapped], stop_after_passes: options[:pictures], network: network,
                                          collect_garbage: options[:collect_garbage] && !match_without_window?)
     rescue VBlank::IR::Backends::Ruby::RuntimeGap => e
       raise Thor::Error, "VBlank cannot play #{game.title} in a window yet. The game needs a part of VBlank " \
                          "that does not work in Ruby yet: #{e.part}. Build a cartridge, or use vblank preview."
+    ensure
+      build_progress.done
     end
 
     # How fast +rate+ (a play of +program+) went, printed once the play stops. The game moves on one
@@ -1234,10 +1273,8 @@ module VBlank
     def say_rate(game, program, rate)
       return unless rate
 
-      if rate.passes.positive?
-        say format("%<pictures>d frames in %<seconds>.1f s (%<per_second>.1f fps; the console shows %<console>.1f)",
-                   pictures: rate.passes, seconds: rate.seconds, per_second: rate.passes_per_second,
-                   console: 1 / program.described_console.frame_seconds)
+      if rate.passes_after_setup.positive?
+        say rate.words(console_frame_seconds: program.described_console.frame_seconds)
         say rate.lateness.words if rate.lateness && !match_without_window?
       end
       say_stopped_itself(game, rate) if rate.stopped_itself?
@@ -1249,14 +1286,17 @@ module VBlank
     def play_shell_in_window(game)
       say "Building #{game.title} as a shell - Please wait."
       built = VBlank::Original::Shell.build(game, console: console_to_play(game), settings: given_settings,
-                                                  progress: VBlank::Messages::Progress.to($stderr))
+                                                  progress: build_progress)
       require_relative "live"
-      shell = VBlank::Live::Shell.from(built)
-      console = built.game.described_console
-      window = VBlank::Live::SDL.new(title: game.title, scale: options[:scale], width: console.screen_width,
-                                     height: console.screen_height, menu: game.menu?,
+      shell = VBlank::Live::Shell.from(built, progress: build_progress, workers: options[:unpack_workers])
+      width, height = built.game.described_console.framed_screen_size
+      build_progress.step("Opening window")
+      window = VBlank::Live::SDL.new(title: game.title, scale: options[:scale], width: width,
+                                     height: height, pixel_size: built.game.described_console.pixel_size, menu: game.menu?,
                                      settings_file: options[:settings_file] || :usual, config_dir: options[:config_dir],
-                                     game_controls: VBlank::IR::ComputerControls.runtime_numbers(built.game.computer_controls))
+                                     game_controls: VBlank::IR::ComputerControls.runtime_numbers(built.game.computer_controls),
+                                     buttons: built.game.described_console.buttons)
+      build_progress.done
       warn window.settings_problems_message if window.settings_problems_message
       folder = options[:pack_folder] || window.folder_for(shell.folder) or
         raise Thor::Error, "#{game.title} cannot make the folder to keep its data pack in. Give one with --pack-folder."
@@ -1268,8 +1308,9 @@ module VBlank
                                 }, kept_pack_refused: ->(words) { warn words }, play_game: ->(playing) { play_shell_game(window, game, playing) })
       [built.game, rate]
     rescue ArgumentError, VBlank::BuildError, VBlank::Live::SDL::Missing, VBlank::Live::SDL::Failed, VBlank::IR::ProgramError => e
-      raise Thor::Error, e.message
+      raise build_stopped(e)
     ensure
+      build_progress.done # a phase that stopped leaves its line open
       window&.close
     end
 
@@ -1292,6 +1333,9 @@ module VBlank
     def refuse_mismatched_shell_options!
       if !options[:shell] && options[:pack_folder]
         raise Thor::Error, "--pack-folder is where a shell keeps its data pack. Add --shell, or take it out."
+      end
+      if !options[:shell] && options[:unpack_workers]
+        raise Thor::Error, "--unpack-workers is how many cores a shell makes its data pack on. Add --shell, or take it out."
       end
       return unless options[:shell]
 
@@ -1399,7 +1443,7 @@ module VBlank
       command = VBlank::Playthroughs::CommandLine.new(options, out: $stdout, build: nil)
       game = nil
       export = -> { game.build_rom(settings: given_settings, console: EXPORTED_CONSOLE) }
-      command.play(on: way, window: window, export_cartridge: export, progress: VBlank::Messages::Progress.to($stderr)) do
+      command.play(on: way, window: window, export_cartridge: export, progress: build_progress) do
         game = load_game(game_file)
         refuse_export_for_other_console!(game)
         program = exporting? ? program_to_run(game, console: EXPORTED_CONSOLE, for_computer: false) : program_to_run(game)
@@ -1407,7 +1451,7 @@ module VBlank
                                                        source: [File.binread(game_file), given_settings, program.console])
       end
     rescue VBlank::Playthroughs::CommandLine::Refused => e
-      raise Thor::Error, e.message
+      raise build_stopped(e)
     rescue VBlank::IR::Backends::Ruby::RuntimeGap => e
       raise Thor::Error, "VBlank cannot play #{game&.title || game_file} as Ruby yet. The game needs a part of VBlank " \
                          "that does not work in Ruby yet: #{e.part}. Give another way with --on, such as --on native."
@@ -1475,11 +1519,15 @@ module VBlank
       return play_match_without_window(session, network) if network && options[:window] == false
 
       console = program.described_console
-      window = VBlank::Live::SDL.new(title: game.title, scale: options[:scale], width: console.screen_width,
-                                     height: console.screen_height, menu: game.menu?,
+      width, height = console.framed_screen_size
+      build_progress.step("Opening window")
+      window = VBlank::Live::SDL.new(title: game.title, scale: options[:scale], width: width,
+                                     height: height, pixel_size: console.pixel_size, menu: game.menu?,
                                      settings_file: options[:settings_file] || :usual,
                                      config_dir: options[:config_dir], state_folder_name: state_folder_name(game, network),
-                                     game_controls: VBlank::IR::ComputerControls.runtime_numbers(program.computer_controls))
+                                     game_controls: VBlank::IR::ComputerControls.runtime_numbers(program.computer_controls),
+                                     buttons: console.buttons)
+      build_progress.done
       warn window.settings_problems_message if window.settings_problems_message
       say "Playing #{game.title} for the #{console.title} in Ruby #{RUBY_VERSION} with #{jit_in_use}. " \
           "#{'Press F1 or ` for the menu. ' if game.menu?}Press P to pause. Hold Tab to play fast. Press Escape to stop."
@@ -1489,8 +1537,9 @@ module VBlank
            VBlank::Live::SaveFile::NotThisGamesSave => e
       raise Thor::Error, e.message
     rescue *MATCH_FAILURES => e
-      raise Thor::Error, e.message
+      raise Thor::Error, match_failure_message(e)
     ensure
+      build_progress.done # a window that would not open leaves its phase open
       window&.close
       write_recorded_sound(recording) if recording # a play that went wrong is the one most worth hearing
     end
@@ -1499,6 +1548,16 @@ module VBlank
     MATCH_FAILURES = [VBlank::Network::Refused, VBlank::Network::Desync, VBlank::Network::ConnectionLost,
                       VBlank::Network::ConnectionFailed, VBlank::Network::VersionMismatch, VBlank::Network::RoomRefused,
                       VBlank::Network::BadMessage].freeze
+
+    # The words for what stopped a match. A machine whose game went another way than another machine's
+    # first writes the tape of the match and the report into a new folder, which nothing removes, and
+    # the words say where: the tape replays this machine's game on the interpreter, pass for pass.
+    def match_failure_message(error)
+      return error.message unless error.is_a?(VBlank::Network::Desync)
+
+      require "tmpdir"
+      error.report.written_message(error.report.write_in(Dir.mktmpdir("vblank-match-")))
+    end
 
     # The match this command is to play (--host or --join), not yet begun: the host has opened its port and
     # said where it can be found, or the joining computer has connected. Nil when it is not a match.
@@ -1609,10 +1668,12 @@ module VBlank
 
     def play_match_without_window(session, network)
       keys = options[:keys].map(&:to_sym)
-      device = VBlank::Live::Headless.new(frames: options[:pictures], buttons: keys, on_notice: ->(words) { say words })
+      # No save memory is kept, as a window keeps none in a match (#state_folder_name).
+      device = VBlank::Live::Headless.new(frames: options[:pictures], buttons: keys, on_notice: ->(words) { say words },
+                                          keeps_save: false)
       session.play(device).tap { say_match_summary(network, events_said: true) }
     rescue *MATCH_FAILURES => e
-      raise Thor::Error, e.message
+      raise Thor::Error, match_failure_message(e)
     end
 
     # +events_said+ is true where the events were said as they came, and need no telling again.
@@ -1689,6 +1750,17 @@ module VBlank
       "no JIT"
     end
 
+    # --unpack-workers on a build is the web page's: a shell's page is the build that unpacks.
+    def refuse_unpack_workers_out_of_place!
+      return unless options[:unpack_workers]
+
+      refuse_unless_whole_and_positive!("--unpack-workers", options[:unpack_workers])
+      return if options[:shell] && options[:format] == "web"
+
+      raise Thor::Error, "--unpack-workers is how many cores a shell's web page makes its data pack on. It needs --shell " \
+                         "and --format web. To play a shell with more cores, use vblank run --shell --unpack-workers N."
+    end
+
     def refuse_unless_whole_and_positive!(switch, value)
       return if value.is_a?(Integer) && value.positive?
 
@@ -1715,26 +1787,36 @@ module VBlank
       end
       built = {}
       failed = {}
+      stops = []
       consoles.each do |console|
         built[console] = write_cartridge_for(game, game_file, console)
       rescue VBlank::BuildError => e
         # A build the guardrails stopped (their reasons are printed already), or something the
         # checks let through that the console's lowering cannot make.
         failed[console] = e.message
+        stops << e
       end
       built.each_value { |rom| profile_rom(rom) } if options[:profile] || options[:scene] || options[:keys].any?
-      raise Thor::Error, not_built_message(game, failed, built.keys) unless failed.empty?
+      return if failed.empty?
+
+      # One headline for the command, over every console's reason, naming the consoles that did
+      # not build when others did.
+      stop = stops.find { |error| !error.is_a?(VBlank::StoppedByChecks) } || stops.first
+      unbuilt = failed.keys.map { |console| VBlank::Console.described(console).title }.join(" and the ") unless built.empty?
+      raise build_stopped(stop, message: not_built_message(game, failed, built.keys), console: unbuilt)
     end
 
     # One console's cartridge, written beside the game file or to --output, and handed back.
     def write_cartridge_for(game, game_file, console)
       # Somebody is sitting there waiting for this, so it says what it is doing.
       variant = options[:variant] || game.variant_for(console)
-      rom = game.build_rom(progress: VBlank::Messages::Progress.to($stderr), settings: given_settings, console: console,
+      rom = game.build_rom(progress: build_progress, settings: given_settings, console: console,
                            variant: variant)
       path = options[:output] || File.join(File.dirname(File.expand_path(game_file)), game.default_filename(console: console))
       rom.write(path)
       say "Built #{File.basename(path)} (#{rom.size} bytes)"
+      # A sound chip with a memory of its own that the game fills: how full it is.
+      say rom.sound_memory.line if rom.respond_to?(:sound_memory) && rom.sound_memory
       # What asset packing and the quick memory did is said for a console whose build does them:
       # the Color's packs nothing and has no quick memory to choose for.
       if options[:stats] && VBlank::Console.for(console).measured_builds?
@@ -1858,7 +1940,7 @@ module VBlank
         say "Building #{File.basename(path)} as a shell for #{target ? options[:target] : 'this computer'} - Please wait."
         VBlank::IR::Backends::Native.new.build_desktop_shell(game, path, console: console, settings: given_settings, target: target,
                                                                          strip: options[:strip],
-                                                                         progress: VBlank::Messages::Progress.to($stderr))
+                                                                         progress: build_progress)
         say "Built #{path}, a folder. Run the program in it called #{File.basename(path)}."
         return
       end
@@ -1866,10 +1948,10 @@ module VBlank
       VBlank::IR::Backends::Native.new.build_desktop(game, path, console: console, settings: given_settings, target: target,
                                                                  strip: options[:strip], pack_at_start: options[:pack_at_start],
                                                                  bios: options[:bios],
-                                                                 progress: VBlank::Messages::Progress.to($stderr))
+                                                                 progress: build_progress)
       say "Built #{path}"
     rescue VBlank::BuildError, VBlank::IR::Backends::Computer::Error => e
-      raise Thor::Error, e.message
+      raise build_stopped(e)
     end
 
     # The "ruby" format: the game as one Ruby file that plays in a window with Ruby, fiddle and SDL3
@@ -1883,7 +1965,7 @@ module VBlank
       say "Building #{File.basename(path)} - Please wait."
       VBlank::IR::Backends::Ruby.new.build_script(game, path, console: console, settings: given_settings,
                                                   pack_at_start: options[:pack_at_start], shell: options[:shell],
-                                                  progress: VBlank::Messages::Progress.to($stderr))
+                                                  progress: build_progress)
       say "Built #{path}. To play it, run: ruby #{File.basename(path)}"
     rescue VBlank::IR::Backends::Ruby::RuntimeGap => e
       raise Thor::Error, "VBlank cannot write #{game.title} as Ruby yet. The game needs a part of VBlank " \
@@ -1941,10 +2023,11 @@ module VBlank
       path = options[:output] || file_beside(game, game_file, console, WEB_OUTPUTS.fetch(js))
       web = VBlank::IR::Backends::JS.new
       data = options[:data].to_sym
-      progress = VBlank::Messages::Progress.to($stderr)
+      progress = build_progress
       if options[:shell]
         template = options[:template] ? File.expand_path(options[:template]) : VBlank::IR::Backends::JS::Page::DEFAULT
-        web.build_shell_page(game, path, console: console, settings: given_settings, template: template, progress: progress)
+        web.build_shell_page(game, path, console: console, settings: given_settings, template: template, progress: progress,
+                                         unpack_workers: options[:unpack_workers])
         say "Built #{path}"
         return
       end
@@ -1961,7 +2044,7 @@ module VBlank
       end
       say "Built #{path}"
     rescue VBlank::BuildError => e
-      raise Thor::Error, e.message
+      raise build_stopped(e)
     end
 
     # One line on what the build kept in the console's quick memory, for --stats. The
@@ -2001,6 +2084,21 @@ module VBlank
       buttons
     end
 
+    # A --format build does not know. A console's name is the usual one: native, web and ruby each
+    # name where the game runs, so a person who wants a cartridge writes --format gba. A cartridge
+    # needs no --format at all, and --console picks which, so that is the way forward given.
+    def refuse_build_format!(format)
+      kit = VBlank::Console::KITS[format.downcase.to_sym]
+      if kit
+        raise Thor::Error, "#{format} is a console, not a build format. To build a cartridge for each console " \
+                           "that the game names, leave out --format. To build only the #{kit.title} cartridge, " \
+                           "use --console #{kit.name}."
+      end
+
+      raise Thor::Error, "#{format.inspect} is not a build format. The formats are: game, ir, native, ruby, web. " \
+                         "To build a cartridge, leave out --format."
+    end
+
     # The settings --set named, as text: the game's own `setting` line reads each as the kind
     # of thing its default is.
     def given_settings
@@ -2020,17 +2118,43 @@ module VBlank
       path = File.expand_path(game_file)
       raise Thor::Error, "I cannot find the game file #{game_file}." unless File.file?(path)
 
+      @game_title = File.basename(game_file) # what a build that stops while the file loads is called
       VBlank.forget_registered_games!
       load path
-      VBlank.registered_games.last || raise(Thor::Error, <<~MSG.chomp)
+      game = VBlank.registered_games.last || raise(Thor::Error, <<~MSG.chomp)
         #{game_file} does not declare a game. Add:
           VBlank.game "NAME", consoles: %i[gba gbc] do
             # ...the game...
           end
       MSG
+      @game_title = game.title
+      game
     rescue VBlank::BuildError => e
       # A build that stopped while the file loaded: show the plain-language reason, not a backtrace.
-      raise Thor::Error, e.message
+      raise build_stopped(e)
+    end
+
+    # --- a build that stopped ---
+
+    # The progress every build of this command writes its phases to. One for the command, so a
+    # build that stops can close the line it left open before the reason is printed.
+    def build_progress = @build_progress ||= VBlank::Messages::Progress.to($stderr)
+
+    # +error+, which stopped the command, as the error the command ends with, saying +message+.
+    #
+    # A BUILD THAT STOPPED SAYS SO IN ITS FIRST LINE (Messages::BuildStopped), because its reason
+    # alone does not say that nothing was made. This is the one place the command line adds that
+    # line: every rescue of a build hands its error here. The error is a VBlank::BuildError, or one
+    # the playthroughs made from one (its cause). A build the guardrails stopped printed the line
+    # itself, above its findings, so it gets no second one; anything else is not a build that
+    # stopped, and its message goes out as it is. +console+ names the console that did not build,
+    # for a game whose other consoles did.
+    def build_stopped(error, message: error.message, console: nil)
+      stopped = [error, error.cause].find { |raised| raised.is_a?(VBlank::BuildError) }
+      return Thor::Error.new(message) if stopped.nil? || stopped.is_a?(VBlank::StoppedByChecks)
+
+      @build_progress&.done
+      Thor::Error.new(VBlank::Messages::BuildStopped.with_headline(message, @game_title || "The game", console: console))
     end
 
     def starter_source(name)

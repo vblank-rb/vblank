@@ -10,6 +10,7 @@ require "pack_sound_tests"
 require "pack_scores_at_start_tests"
 require "pack_background_tests"
 require "pack_slot_view_games"
+require "pack_table_tile_background_games"
 require "all/vblank/builder/test_pack_backdrops"
 require "all/vblank/builder/test_pack_color_lists"
 require "all/vblank/builder/test_pack_poses"
@@ -19,6 +20,7 @@ require "pack_pose_read_by_the_game_games"
 require "all/vblank/builder/test_pack_pose_bank_colors"
 require "all/vblank/dsl/test_pack_background_set_cell"
 require "all/vblank/builder/test_pack_tile_pictures"
+require "all/vblank/builder/test_pack_tile_poses"
 require "pack_place_games"
 require "m4a_answers"
 require "brr_recordings"
@@ -55,8 +57,9 @@ VBlank.require_game_file "plain_ruby_flagged_bytes_part"
 # saying so, and taking the mark off makes the test hold the two builds alike.
 #
 # A GAME THE TWO BUILDS SHOW DIFFERENTLY TODAY, a fault not yet mended, is marked `differs:` with
-# what differs. The test then requires that they differ, so it fails when the fault is mended and
-# the mark comes off. It is not a skip: the game is built and played both ways on every run.
+# what differs (a Difference), and the consoles it differs on where not all. The test then requires
+# that they differ there, so it fails when the fault is mended and the mark comes off. It is not a
+# skip: the game is built and played both ways on every run.
 #
 # test/interpreter/vblank/builder/test_pack_parity_coverage.rb fails when a line of the builder
 # that takes a pack handle, or asks whether the pack is left out, is reached by no game here.
@@ -67,16 +70,21 @@ module PackGames
   # WHICH RUNS REFUSE A GAME BUILT WITH ITS PACK LEFT OUT. The builder refuses on every run. A
   # lowering refuses only where a build for a computer is made, so the interpreter plays the game,
   # and must play it as the all-in-one build. A build for a computer refuses some games only as a
-  # console whose sound chip does what the Advance's does not: mixing recordings at their own
-  # rates, or playing every voice from sound memory (the PlayStation).
-  REFUSED_BY = %i[builder computer_build computer_build_mixing_at_recording_rates
-                  computer_build_voices_reading_sound_memory].freeze
+  # console whose sound chip does what the Advance's does not: mixing recordings at their own rates.
+  REFUSED_BY = %i[builder computer_build computer_build_mixing_at_recording_rates].freeze
 
   # A refusal: a phrase its words hold besides the fix, and who refuses (one of REFUSED_BY).
   # +names_fix+ is false for a refusal whose words do not say yet that building all-in-one works;
   # the test fails once they do, and the mark comes off.
   Refusal = Data.define(:phrase, :by, :names_fix) do
     def initialize(phrase:, by:, names_fix: true) = super
+  end
+
+  # What a game marked `differs:` shows differently: +what+, in words, on +consoles+, the runs
+  # playing as those consoles, or on every run where nil.
+  Difference = Data.define(:what, :consoles) do
+    def initialize(what:, consoles: nil) = super
+    def shown_on?(console) = consoles.nil? || consoles.include?(console)
   end
 
   # One registered game. +kit+ is the class its block runs on an instance of.
@@ -497,6 +505,80 @@ module PackGames
       built(b.program, b.made_data_pack_file)
     end
 
+    # A SUPER NINTENDO BACKGROUND OF FOUR BANKS: a quarter of its big cells takes turns through
+    # pictures, banks 1 and 2 are walked up from black, and banks 0 and 3 are left out of the walk,
+    # after a fade in. Each bank's place 0 is black in the copy, so the all-in-one build holds one
+    # list for each bank; built with the pack left out, a bank holds a marker at place 0 instead,
+    # and its tiles that take turns must still be drawn from the bank's one list.
+    ARENA_BANKS = 4
+    ARENA_COLORS_AT = 0x40
+    ARENA_TILES_AT = ARENA_COLORS_AT + (ARENA_BANKS * 32)
+    ARENA_WORDS = [SNES_CELL.(0), SNES_CELL.(2, bank: 1), SNES_CELL.(0, bank: 2), SNES_CELL.(2, bank: 3),
+                   SNES_CELL.(2, bank: 2, mirrored: true), SNES_CELL.(0, bank: 1), SNES_CELL.(2), SNES_CELL.(0, bank: 3)].freeze
+    # Two big cells of four tiles each: tiles 0, 1, 16 and 17, and 2, 3, 18 and 19.
+    ARENA_VIDEO = Array.new(20) { PLACES[0] }.tap do |video|
+      video[0] = PLACES[1]
+      video[1] = PLACES[2]
+      video[16] = PLACES[3]
+      video[17] = PLACES[1]
+      video[2] = PLACES[3]
+      video[3] = PLACES[1]
+      video[18] = PLACES[2]
+      video[19] = PLACES[3]
+    end.freeze
+    # The pictures tile 1 takes turns through, kept after the tiles.
+    ARENA_TURNS = [PLACES[2], PLACES[3], PLACES[1]].freeze
+    ARENA_TURNS_AT = ARENA_TILES_AT + (ARENA_VIDEO.length * 32)
+    ARENA_WALKED_BANKS = [1, 2].freeze
+    # Cells the game writes later, one in a walked bank and one in a bank left out of the walk.
+    ARENA_WRITTEN = [SNES_CELL.(2, bank: 2), SNES_CELL.(0, bank: 3)].freeze
+
+    private def arena_original(folder)
+      tiles = [*ARENA_VIDEO, *ARENA_TURNS].map(&MadeUpOriginalLayouts::FOUR_PLANES).join
+      copy = "\0".b * (ARENA_TILES_AT + tiles.bytesize)
+      copy[MAP_AT, ARENA_WORDS.length * 2] = ARENA_WORDS.pack("v*")
+      banks = Array.new(ARENA_BANKS) { |bank| [0, *MadeUpOriginalLayouts::PALETTE.rotate(1 + (bank * 3)).drop(1)] }
+      copy[ARENA_COLORS_AT, ARENA_BANKS * 32] = banks.flatten.pack("v*")
+      copy[ARENA_TILES_AT, tiles.bytesize] = tiles
+      path = File.join(folder, "made_up.bin")
+      File.binwrite(path, copy)
+      VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :snes,
+                                 settings_file: File.join(folder, "made_up.yml"),
+                                 releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
+    end
+
+    private def arena_walked_up_game(folder, options)
+      from = arena_original(folder)
+      b = VBlank::Builder.new(options: options)
+      b.instance_eval do
+        screen :tiled
+        pack = data_pack from: from, version: "1" do |slots|
+          slots.tiles :arena_video, at: ARENA_TILES_AT, count: ARENA_VIDEO.length, colors: 16
+          slots.tiles :arena_turns, at: ARENA_TURNS_AT, count: ARENA_TURNS.length, colors: 16
+          slots.numbers :arena_map, at: MAP_AT, count: ARENA_WORDS.length, width: :half, signed: false
+          slots.colors :arena_colors, at: ARENA_COLORS_AT, count: ARENA_BANKS * 16
+        end
+        flowers = tile_pictures :flowers, tiles: { pack[:arena_video].tile(1) => pack[:arena_turns].tiles(0, across: ARENA_TURNS.length) }
+        arena = background :arena, tiles: pack[:arena_video], map: pack[:arena_map], colors: pack[:arena_colors], across: 4, cell: 16,
+                                   set_cells: ARENA_WRITTEN
+        walks = ARENA_WALKED_BANKS.to_h do |bank|
+          list = :"arena_colors_#{bank}"
+          [list, color_walk(list, from: :black, steps: WALK_STEPS) + [list]]
+        end
+        step = var :step, 0
+        fade_in frames: 1
+        game_loop do
+          arena.draw_with(walks, showing: step)
+          flowers.show 1 if step == 2
+          ARENA_WRITTEN.each_with_index { |cell, at| arena.set_cell at, 1, cell } if step == 3
+          wait_vblank
+          step.store!(step + 1)
+        end
+      end
+      b.finalize_program
+      built(b.program, b.made_data_pack_file)
+    end
+
     GAMES = [
       game(:background_of_an_advance_original, passes: 3) do |folder, options|
         words = [ADVANCE_CELL.(1), ADVANCE_CELL.(1, mirrored: true), ADVANCE_CELL.(2, bank: 1, upside_down: true),
@@ -608,6 +690,10 @@ module PackGames
             step.store!(step + 1)
           end
         end
+      end,
+      # Banks 0 and 3 are left out of the walk, and every bank has a quarter that takes turns.
+      game(:background_banks_walked_up_beside_a_tile_taking_turns, passes: WALK_STEPS + 4) do |folder, options|
+        arena_walked_up_game(folder, options)
       end,
       game(:background_of_a_genesis_original_walked, passes: WALK_STEPS + 3) do |folder, options|
         words = [GENESIS_CELL.(1), GENESIS_CELL.(2, bank: 1, upside_down: true), GENESIS_CELL.(3, bank: 1, mirrored: true)]
@@ -731,6 +817,8 @@ module PackGames
     include PackBackgroundSetCellGames
 
     TURNED_LIST = ->(turn) { MadeUpOriginalLayouts::PALETTE.rotate(turn).each_with_index.map { |color, at| at.zero? ? :transparent : color } }
+    # The same, as long as a bank of four colours, the Color-layout original's.
+    FOUR_COLOR_LIST = ->(turn) { TURNED_LIST.(turn).first(4) }
 
     private def advance_cells_game(folder, options, words, **told, &more)
       from = original(folder, :gba, PLACES.map(&LOW_HALF_FIRST).join, words)
@@ -766,6 +854,61 @@ module PackGames
       end,
       game(:map_cell_records_written_on_map_cells, passes: 8) do |folder, options|
         built(*map_cells_text_game(folder, :gbc, records: true, blank_at: 6, options: options))
+      end,
+      # Cells told by a slot the unpacking fills (`set_cells: pack[:changes]`), written by place,
+      # whose tiles, banks and turns are known only once the file is read.
+      game(:cells_told_by_a_slot_written_by_place, passes: 8) do |folder, options|
+        built(*slot_told_text_game(folder, :gbc, blank_at: 6, options: options))
+      end,
+      game(:cells_told_by_a_slot_drawn_with_other_lists, passes: 7) do |folder, options|
+        lists = [3, 5].map(&FOUR_COLOR_LIST)
+        built(*map_cells_game_and_file(folder, :gbc, set_cells: ->(pack) { pack[:changes] }, changes: 3, options: options) do |world|
+          lists.each_with_index { |list, at| colors :"other_#{at}", list }
+          pass = var :pass, 0
+          game_loop do
+            world.draw_with({ palette_1: %i[other_0 other_1] }, showing: pass - 2)
+            wait_vblank
+            pass += 1
+            world.set_cell 1, 0, 1 if pass == 2
+          end
+        end)
+      end,
+      # A told cell whose tile takes turns through pictures (tile_pictures) takes turns as the map's do.
+      game(:cell_told_by_a_slot_taking_turns_through_pack_pictures, passes: 8) do |folder, options|
+        group = nil
+        before = proc do |pack|
+          group = tile_pictures :belt, tiles: { pack[:video].tile(MAP_CELLS_BANK_TILES) => pack[:video].tiles(1, across: 2) }
+        end
+        built(*map_cells_game_and_file(folder, :gbc, set_cells: ->(pack) { pack[:changes] }, changes: 3, before: before,
+                                                     options: options) do |world|
+          tick = var :tick, 0
+          game_loop do
+            wait_vblank
+            tick += 1
+            world.set_cell 1, 0, 0 if tick == 1
+            group.show((tick / 2) % 2)
+          end
+        end)
+      end,
+      game(:cells_told_by_a_slot_on_a_background_following_two_banks, passes: 8) do |folder, options|
+        first = FOUR_COLOR_LIST.(3)
+        second = FOUR_COLOR_LIST.(5)
+        built(*map_cells_game_and_file(folder, :gbc, set_cells: ->(pack) { pack[:changes] }, changes: 3, options: options) do |world|
+          colors :first, first
+          colors :second, second
+          world.draw_with({ palette_0: :palette_0, palette_1: :palette_1 })
+          %i[palette_0 palette_1].each_with_index do |bank, at|
+            image :"dot_#{at}", width: 8, height: 8, places: Array.new(64, 2), colors: bank
+            sprite(:"dot_#{at}", at: [40 + (at * 20), 40]).draw_with bank
+          end
+          pass = var :pass, 0
+          game_loop do
+            pass += 1
+            world.set_cell 2, 0, 1 if pass == 2
+            recolor :palette_0, :first if pass >= 3
+            recolor :palette_1, :second if pass >= 5
+          end
+        end)
       end,
       # A written cell is drawn with the list the background is told to draw its bank with.
       game(:written_cell_drawn_with_other_lists, passes: 7) do |folder, options|
@@ -956,6 +1099,30 @@ module PackGames
         builder.finalize_program
         built(builder.program, builder.made_data_pack_file)
       end,
+      # One sprite showing a pose of sprite tiles and a picture drawn by places, both of one list
+      # from the pack, drawn with another bank. Place 0 of a bank is a colour in the copy and a
+      # marker with the pack left out, and the set and the picture hold it see-through alike.
+      game(:pose_of_sprite_tiles_and_a_picture_of_a_pack_list_drawn_with_another, passes: 6) do |folder, options|
+        from = layout_original(folder, GENESIS)
+        test = self
+        builder = Builder.new(options: options)
+        builder.instance_eval do
+          screen :tiled
+          pack = test.palette_pack_of(self, from)
+          colors :ink, pack[:palette].bank(1, size: BANK_SIZE)
+          colors :other_ink, pack[:palette].bank(2, size: BANK_SIZE)
+          image :stripes, width: 8, height: 8, colors: :ink, places: Array.new(64) { |at| 1 + (at % 3) }
+          image :plain, width: 8, height: 8, colors: :ink, places: Array.new(64, 2)
+          set = sprite_tiles :ball_tiles, count: 1, colors: :ink
+          image :spin, tiles_from: :ball_tiles, pieces: [[0, 0, 0]]
+          ball = sprite :ball, at: [40, 20], frames: %i[spin plain], rate: 2
+          ball.draw_with :other_ink
+          set.copy_from :stripes, at: 0, count: 1, to: 0
+          game_loop { wait_vblank }
+        end
+        builder.finalize_program
+        built(builder.program, builder.made_data_pack_file)
+      end,
       # Drawn with another list, a picture given as colours is swapped by finding each pixel's
       # place in its own list, which a build that does not hold the list cannot do.
       game(:picture_of_colors_in_a_pack_list_drawn_with_another_list, passes: 3, refused: refused_by_builder("places:")) do |folder, options|
@@ -1021,7 +1188,23 @@ module PackGames
       game(:pose_turned_round, passes: 3) { |folder, options| pose(folder, options, size: [32, 24], turned: :mirror) },
       game(:pose_turned_upside_down, passes: 3) { |folder, options| pose(folder, options, size: [16, 40], turned: :upside_down) },
       game(:pose_in_a_bank_of_pack_colors, passes: 3) do |folder, options|
-        pose(folder, options, pose_colors: ->(pack) { pack[:palette].bank(1, size: 4) })
+        pose(folder, options, pose_colors: ->(palette) { palette.bank(1, size: 4) })
+      end,
+      # The frame and the colours read through views of one slot of colours.
+      game(:pose_of_a_frame_through_a_view, passes: 3) do |folder, options|
+        pose(folder, options, views: true, pose_colors: ->(palette) { palette.bank(1, size: 4) })
+      end,
+      # The object's place outside the picture: above and left of it, and past its size.
+      game(:pose_of_a_frame_wholly_below_its_place, passes: 3) do |folder, options|
+        built_by(pose_game_builder(original(folder, frame_bytes: FRAME_BELOW_BYTES), origin: ORIGIN_ABOVE_LEFT, size: REACH,
+                                                                                    options: options))
+      end,
+      game(:pose_of_a_frame_far_above_its_place, passes: 3) do |folder, options|
+        built_by(pose_game_builder(original(folder, frame_bytes: FRAME_FAR_BYTES), origin: ORIGIN_PAST_SIZE, size: REACH,
+                                                                                  options: options))
+      end,
+      game(:pose_of_a_frame_of_a_given_count_through_a_view, passes: 3) do |folder, options|
+        pose(folder, options, views: true, frame_at: 2, layout: FRAME.with(counted: false), count: PIECES.length)
       end,
       # A pose's size is worked out from its frame's pieces, which a build that leaves its pack
       # out does not hold.
@@ -1051,6 +1234,11 @@ module PackGames
 
   # A POSE WHOSE FRAME'S PIECES ARE EVERY SHAPE AND SIZE OF THE ADVANCE'S (PackPoseOfShapesGames):
   # each piece's size read through the console's table, as game code with the pack left out.
+  #
+  # On the Color it is more pieces than the console's sprite table holds, so the pieces furthest
+  # back are not drawn (Backends::SpriteLines). Read as the game starts, the pose keeps its frame's
+  # pieces in the frame's order as all-in-one (IR::StartFile.fill_pose and each runtime's), so the
+  # same pieces are left out.
   class PosesOfShapes < Kit
     include PackPoseOfShapesGames
 
@@ -1140,6 +1328,19 @@ module PackGames
           recolor :palette_2, :other
         end
       end,
+      # A pool whose things are each told to draw with the list their pose's frame picks, which
+      # then follows recolor of that list.
+      game(:pool_drawn_with_its_frames_list, passes: 5) do |folder, options|
+        other = OTHER_LIST
+        poses_in_bank_colors(folder, options) do |_pack|
+          colors :other, other
+          guards = pool :guard, x: 0, y: 0, capacity: 2, image: :second
+          guards.spawn x: 40, y: 40
+          guards.spawn x: 80, y: 40
+          guards.each { |guard| guard.draw_with colors_name_of(:second) }
+          recolor :palette_2, :other
+        end
+      end,
       # Several sprites sharing poses, each following the list its pose's frame picks, two of
       # those lists recoloured through sets of their own.
       game(:actors_sharing_poses_whose_lists_are_recolored, passes: 6) do |folder, options|
@@ -1173,6 +1374,10 @@ module PackGames
       game(:two_recordings_of_one_length_from_one_slot, passes: 10, presses: { 1 => [:a], 5 => [:b] }) do |folder, options|
         built(two_stretches_game(folder, options: options), sound_pack_file)
       end,
+      # The same stretches through views of samples, one of them a view of a view.
+      game(:two_recordings_through_views_of_one_slot, passes: 10, presses: { 1 => [:a], 5 => [:b] }) do |folder, options|
+        built_by(two_stretches_builder(folder, options: options, views: true))
+      end,
       game(:instrument_hold_and_envelope_from_the_pack, passes: 80,
                                                         presses: { 1 => [:a], 8 => [:b], 20 => [:up], 50 => [:down] }) do |folder, options|
         built(settings_at_start_game(folder, from_pack: %i[holds_from envelope], options: options), settings_pack_file)
@@ -1197,8 +1402,7 @@ module PackGames
       game(:instrument_length_from_the_pack, passes: 80, presses: { 1 => [:a], 8 => [:b], 20 => [:up], 50 => [:down] }) do |folder, options|
         built(settings_at_start_game(folder, from_pack: %i[holds_from envelope length], options: options), settings_pack_file)
       end,
-      game(:instrument_chip_envelope_from_the_pack, passes: 20, presses: { 1 => [:a] },
-                                                    refused: refused_by_builder("chip envelope")) do |folder, options|
+      game(:instrument_chip_envelope_from_the_pack, passes: 20, presses: { 1 => [:a] }) do |folder, options|
         from = original(folder)
         b = VBlank::Builder.new(options: options)
         b.instance_eval do
@@ -1219,8 +1423,7 @@ module PackGames
       end,
       # A recording in the Super Nintendo sound chip's own format and its loop point, from the pack
       # of a made-up Super Nintendo original (BRRRecordings).
-      game(:recording_in_brr_from_the_pack, passes: 10, presses: { 1 => [:a] },
-                                            refused: refused_by_builder("BRR recording")) do |folder, options|
+      game(:recording_in_brr_from_the_pack, passes: 10, presses: { 1 => [:a] }) do |folder, options|
         from = BRRRecordings.original_holding(folder)
         b = VBlank::Builder.new(options: options)
         b.instance_eval do
@@ -1231,6 +1434,40 @@ module PackGames
           game_loop do
             wait_vblank
             clip.play(loop: true) if pressed(:a)
+          end
+        end
+        b.finalize_program
+        built(b.program, b.made_data_pack_file)
+      end,
+      # Instruments in BRR from the pack as a port of a Super Nintendo game writes them: each loop
+      # point and rate written in the game, the chip's own envelope bytes, played by a song, by a
+      # sound effect and by the game. One recording loops and takes turns round its loop, and one
+      # plays once; the looping one is three instruments, one of them looping from its start.
+      game(:instruments_in_brr_from_the_pack_with_written_loops, passes: 70,
+                                                                 presses: { 1 => [:a], 20 => [:b], 40 => [:up], 55 => [:down] }) do |folder, options|
+        from = BRRRecordings.original_holding(folder)
+        score = VBlank::Audio::Score
+        held = score.new(tempo: 150, length: 60, plays_once: true,
+                         parts: [score::Part.new(plays: :horn, notes: [score::Note.new(at: 0, key: :C4, length: 48)])])
+        blip = score.new(tempo: 150, length: 12, parts: [score::Part.new(plays: :drum, notes: [score::Note.new(at: 0, key: :E4)])])
+        b = VBlank::Builder.new(options: options)
+        b.instance_eval do
+          screen :bitmap
+          enable_sound
+          pack = data_pack(from: from, version: "1") { |slots| BRRRecordings.declare_loud_slots(slots) }
+          chip = VBlank::Audio::SNESEnvelope.new(adsr1: 0x8E, adsr2: 0xE0)
+          instrument :horn, brr: pack[:turns], brr_loop: BRRRecordings::QUIET_LOOP, rate: 8000, note: :C4, envelope: chip
+          instrument :drum, brr: pack[:loud], rate: SOUND_RATE, note: :C4
+          bell = instrument :bell, brr: pack[:turns], brr_loop: BRRRecordings::QUIET_LOOP, rate: 12_000, note: :A4
+          gong = instrument :gong, brr: pack[:turns], brr_loop: 0, rate: 12_000, note: :A4
+          music = songs :music, [held]
+          effects = sound_effects :sfx, [blip]
+          game_loop do
+            wait_vblank
+            music.play 0 if pressed(:a)
+            effects.play 0 if pressed(:b)
+            bell.play(:C5) if pressed(:up)
+            gong.play(:C5) if pressed(:down)
           end
         end
         b.finalize_program
@@ -1266,22 +1503,31 @@ module PackGames
     # slot name and the instrument settings of the pack. It plays song 0 on A and effect 0 on B.
     # With +waves+ the pack has a slot of the copy's waves, and the block is handed a way to get
     # one for a part's `plays:` too.
-    private def scores_game(folder, options, parts, instruments: {}, waves: false, &scores)
+    # With +views+ the parts' records are one slot of bytes, each part's read through a view of
+    # notes (DSL::PackSlot#as_notes).
+    private def scores_game(folder, options, parts, instruments: {}, waves: false, views: false, &scores)
       from = score_original(folder, parts)
       b = VBlank::Builder.new(options: options)
       b.instance_eval do
         screen :bitmap
         enable_sound
         pack = data_pack(from: from, version: "1") do |slots|
-          parts.each_key.with_index { |name, place| slots.notes name, at: place * MOST * PackNote::BYTES, count: MOST }
+          if views
+            slots.numbers :records, at: 0, count: parts.length * MOST * PackNote::BYTES, width: :byte, signed: false
+          else
+            parts.each_key.with_index { |name, place| slots.notes name, at: place * MOST * PackNote::BYTES, count: MOST }
+          end
           slots.numbers :settings, at: SETTINGS_AT, count: SHAPE.length + 1, width: :byte, signed: false
           slots.numbers :timing, at: TIMING_AT, count: TIMING.length, width: :half, signed: false
           slots.numbers :waves, at: WAVES_AT, count: WAVES.flatten.length, width: :byte, signed: false if waves
         end
+        slot_of = lambda do |name|
+          views ? pack[:records].as_notes(at: parts.keys.index(name) * MOST * PackNote::BYTES, count: MOST) : pack[name]
+        end
         # A part takes the slot's handle itself too, where its notes name no instrument.
         # A word for the notes written by hand (`recorded:`) means nothing to the pack's.
         notes_of = lambda do |name, whole_slot: false, **|
-          whole_slot ? pack[name] : pack[name].notes(instruments: instruments.fetch(name, []))
+          whole_slot ? slot_of.(name) : slot_of.(name).notes(instruments: instruments.fetch(name, []))
         end
         settings = { envelope: pack[:settings].envelope(0), holds_from: pack[:settings].number(SHAPE.length) }
         timing = { length: pack[:timing].number(0), loop_from: pack[:timing].number(1) }
@@ -1303,6 +1549,14 @@ module PackGames
     GAMES = [
       game(:song_of_pack_notes, passes: 90, presses: { 1 => [:a] }) do |folder, options|
         scores_game(folder, options, { melody: MELODY, bass: BASS }) do |notes_of|
+          { songs: [Score.new(parts: [Part.new(notes: notes_of.(:melody), volume: 12),
+                                      Part.new(notes: notes_of.(:bass, whole_slot: true), volume: 10)],
+                              tempo: 150, length: 96, plays_once: true)] }
+        end
+      end,
+      # The same song, its two parts' records kept in one slot and read through views of notes.
+      game(:song_of_pack_notes_through_views, passes: 90, presses: { 1 => [:a] }) do |folder, options|
+        scores_game(folder, options, { melody: MELODY, bass: BASS }, views: true) do |notes_of|
           { songs: [Score.new(parts: [Part.new(notes: notes_of.(:melody), volume: 12),
                                       Part.new(notes: notes_of.(:bass, whole_slot: true), volume: 10)],
                               tempo: 150, length: 96, plays_once: true)] }
@@ -1349,8 +1603,7 @@ module PackGames
       end,
       # A song's wave part and a sound effect's, each playing a wave of the copy's, as a sound
       # driver keeps its wave voice's patterns; the effect's notes are written in the game.
-      game(:wave_parts_playing_pack_waves, passes: 120, presses: { 1 => [:a], 60 => [:b] },
-                                           refused: Refusal.new(phrase: "sound memory", by: :computer_build_voices_reading_sound_memory)) do |folder, options|
+      game(:wave_parts_playing_pack_waves, passes: 120, presses: { 1 => [:a], 60 => [:b] }) do |folder, options|
         scores_game(folder, options, { lead: LEAD, wave: WAVE }, waves: true) do |notes_of, _settings, _timing, wave_of|
           { songs: [Score.new(parts: [Part.new(notes: notes_of.(:lead)), Part.new(notes: notes_of.(:wave), plays: wave_of.(1))],
                               tempo: 150, length: 84, loop_from: 36)],
@@ -1377,9 +1630,12 @@ module PackGames
   # M4AAnswers by the pack's unpacking: its first track on the recording its voice names, every
   # setting of that from the voice, its second track's notes on the first square, its third's on
   # the noise voice, and the song's length and loop, played a tick a frame; and tracks that switch
-  # between the group's voices, a drum kit and a key split, each note on its own recording.
+  # between the group's voices, a drum kit and a key split, each note on its own recording; and a
+  # song whose tracks come round apart, written until they come round together.
   class MusicPlayer2000Songs < Kit
-    NOTES = 16
+    # The song of every command is written for as many rounds as the reader keeps (Packing::M4A,
+    # A SONG COMES ROUND).
+    NOTES = 176
 
     private def m4a_original(folder)
       path = File.join(folder, "made_up_m4a.bin")
@@ -1467,9 +1723,81 @@ module PackGames
           parts = mixed.each_with_index.map do |part, n|
             VBlank::Audio::Score::Part.new(plays: :looped, notes: pack[:"part_#{n}"].notes(instruments: part.instruments))
           end
-          # The song ends, so it plays once rather than coming round to the pack's NO_LOOP.
+          # The song ends, and the unpacking writes its loop as NO_LOOP, every bit set: it plays once.
           music = songs :music, [VBlank::Audio::Score.new(parts: parts, tempo: 3600, ticks_per_beat: 1, length: pack[:timing].number(0),
-                                                          plays_once: true, longest: 600)]
+                                                          loop_from: pack[:timing].number(1), longest: 600)]
+          game_loop do
+            wait_vblank
+            music.play 0 if pressed(:a)
+          end
+        end
+        b.finalize_program
+        built_by(b)
+      end,
+      # The two squares' tracks of the song whose tracks come round apart (M4AAnswers::ROUNDS_TRACKS),
+      # played past its loop.
+      game(:music_player_2000_tracks_coming_round_apart, passes: 120, presses: { 1 => [:a] }) do |folder, options|
+        from = m4a_original(folder)
+        b = VBlank::Builder.new(options: options)
+        b.instance_eval do
+          screen :bitmap
+          enable_sound
+          song = M4AAnswers::ROUNDS_SONG_AT
+          pack = data_pack(from: from, version: "1") do |slots|
+            2.times { |track| slots.notes :"track_#{track}", count: NOTES }
+            slots.numbers :timing, count: 2, width: :half, signed: false
+            slots.fill_from_copy do |copy, unpacked|
+              2.times { |track| copy.unpack_m4a_track at: song, into: unpacked[:"track_#{track}"], track: track }
+              copy.unpack_m4a_length at: song, into: unpacked[:timing]
+            end
+          end
+          parts = Array.new(2) { |track| VBlank::Audio::Score::Part.new(notes: pack[:"track_#{track}"].notes) }
+          music = songs :music, [VBlank::Audio::Score.new(parts: parts, tempo: 3600, ticks_per_beat: 1, length: pack[:timing].number(0),
+                                                          loop_from: pack[:timing].number(1), longest: 600)]
+          game_loop do
+            wait_vblank
+            music.play 0 if pressed(:a)
+          end
+        end
+        b.finalize_program
+        built_by(b)
+      end,
+      # The recorded notes of the song bent as they sound (M4AAnswers::BENDING_TRACKS), voiced: each
+      # off the middle, some between keys, and a glide for each bend.
+      game(:music_player_2000_notes_bent_as_they_sound, passes: 70, presses: { 1 => [:a] }) do |folder, options|
+        from = m4a_original(folder)
+        b = VBlank::Builder.new(options: options)
+        b.instance_eval do
+          screen :bitmap
+          enable_sound mix_rate: 13_379
+          song = M4AAnswers::BENDING_SONG_AT
+          voices = { looped: M4AAnswers::GROUP_AT, one_shot: M4AAnswers::GROUP_AT + (12 * 7) }
+          pack = data_pack(from: from, version: "1") do |slots|
+            slots.voiced_notes :bent, count: 24
+            slots.numbers :timing, count: 2, width: :half, signed: false
+            voices.each_key do |name|
+              slots.samples name, count: 32
+              slots.numbers :"#{name}_voice", count: 4, width: :word, signed: false
+            end
+            slots.fill_from_copy do |copy, unpacked|
+              copy.unpack_m4a_voiced_track at: song, into: unpacked[:bent], track: 0, kind: 0
+              copy.unpack_m4a_length at: song, into: unpacked[:timing]
+              voices.each do |name, at|
+                copy.unpack_m4a_recording at: at, into: unpacked[name]
+                copy.unpack_m4a_voice at: at, into: unpacked[:"#{name}_voice"], mix_rate: 13_379
+              end
+            end
+          end
+          voices.each_key do |name|
+            voice = pack[:"#{name}_voice"]
+            instrument name, pcm: pack[name], note: :C4, rate: voice.number(0), holds_from: voice.number(1), length: voice.number(2),
+                             envelope: voice.as_numbers(at: 12, count: 4, width: :byte, signed: false).envelope(0)
+          end
+          instruments = %i[looped looped looped looped looped looped looped one_shot]
+          parts = [VBlank::Audio::Score::Part.new(plays: :looped, notes: pack[:bent].notes(instruments: instruments))]
+          # The song ends: its loop is NO_LOOP, every bit set, so it plays once.
+          music = songs :music, [VBlank::Audio::Score.new(parts: parts, tempo: 3600, ticks_per_beat: 1, length: pack[:timing].number(0),
+                                                          loop_from: pack[:timing].number(1), longest: 600)]
           game_loop do
             wait_vblank
             music.play 0 if pressed(:a)
@@ -1501,6 +1829,28 @@ module PackGames
       end,
       game(:pixels_and_tables_viewed_in_a_slot_of_tiles, passes: 9) do |folder, options|
         built(*table_and_pixels_game_and_file(slot_view_original(folder), views: true, options: options))
+      end
+    ].freeze
+  end
+
+  # A TEXT LAYER OF 256 COLOURS (PackTableTileBackgroundGames): more tiles than a byte names, some
+  # turned, under map cells the unpacking writes or under the Advance's own cells of two bytes.
+  class TableTileBackgrounds < Kit
+    include PackTableTileBackgroundGames
+
+    GAMES = [
+      game(:background_of_map_cells_over_tiles_of_256_colors, passes: 4) do |folder, options|
+        built(*table_tile_pack_game_and_file(table_tile_original(folder), options: options) do |layer|
+          game_loop do
+            wait_vblank
+            layer.scroll_by 3, 1
+          end
+        end)
+      end,
+      game(:background_of_two_byte_cells_over_tiles_of_256_colors, passes: 3) do |folder, options|
+        built(*table_tile_pack_game_and_file(table_tile_original(folder), options: options, map: :two_byte_cells) do |_layer|
+          game_loop { wait_vblank }
+        end)
       end
     ].freeze
   end
@@ -1573,6 +1923,47 @@ module PackGames
         builder.finalize_program
         built(builder.program, builder.made_data_pack_file)
       end,
+      # A background of pictures given as colours in lists from the pack, in a tileset that keeps
+      # black as a colour: the bank of four, and the whole slot of sixteen, which a picture's list
+      # can grow no further than.
+      game(:background_of_pictures_of_colors_in_pack_lists_keeping_black_solid, passes: 3) do |folder, options|
+        from = layout_original(folder, GENESIS)
+        test = self
+        builder = Builder.new(options: options)
+        builder.instance_eval do
+          screen :tiled
+          pack = test.palette_pack_of(self, from)
+          colors :bank_1, pack[:palette].bank(1, size: BANK_SIZE)
+          colors :whole, pack[:palette]
+          image :brick, width: 8, height: 8, colors: :bank_1, data: Array.new(64) { |at| BANKS.fetch(1).fetch(1 + (at % 3)) }
+          image :stone, width: 8, height: 8, colors: :whole, data: Array.new(64) { |at| PALETTE.fetch(9 + (at % 3)) }
+          tiles :wall_tiles, "#" => :brick, "o" => :stone, black: :solid
+          background :wall, tiles: :wall_tiles, map: ["#o#"]
+          game_loop { wait_vblank }
+        end
+        builder.finalize_program
+        built(builder.program, builder.made_data_pack_file)
+      end,
+      # Kept solid, such a picture is still swapped by finding each pixel's place in its own list.
+      game(:background_of_a_picture_of_colors_in_a_pack_list_keeping_black_solid_drawn_with_another,
+           passes: 3, refused: refused_by_builder("places:")) do |folder, options|
+        from = layout_original(folder, GENESIS)
+        test = self
+        builder = Builder.new(options: options)
+        builder.instance_eval do
+          screen :tiled
+          pack = test.palette_pack_of(self, from)
+          colors :bank_1, pack[:palette].bank(1, size: BANK_SIZE)
+          colors :bank_2, pack[:palette].bank(2, size: BANK_SIZE)
+          image :brick, width: 8, height: 8, colors: :bank_1, data: Array.new(64) { |at| BANKS.fetch(1).fetch(1 + (at % 3)) }
+          tiles :wall_tiles, "#" => :brick, black: :solid
+          wall = background :wall, tiles: :wall_tiles, map: ["##"]
+          wall.draw_with :bank_2
+          game_loop { wait_vblank }
+        end
+        builder.finalize_program
+        built(builder.program, builder.made_data_pack_file)
+      end,
       # A canvas in a list from the pack stamps a picture drawn in that list, each pixel at the
       # place of its colour in the canvas's list.
       game(:canvas_in_a_pack_list_stamping_a_picture_in_that_list, passes: 4) do |folder, options|
@@ -1617,6 +2008,22 @@ module PackGames
                         colors: pack[:palette], size: SIZE
           sprite :both, at: [40, 40], frames: %i[left right], rate: 4
         end)
+      end,
+      # The same sprite told to follow the list each frame picks, which is one list, recoloured.
+      # All-in-one it is a sprite drawn with that list, which every console plays.
+      game(:one_sprite_following_two_frames_of_one_bank, passes: 8) do |folder, options|
+        other = see_through_first(OTHER)
+        built_by(game_builder_of(folder, options: options) do |pack|
+          image :left, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_1 + 2, layout: PIECE_FRAME, count: 1), origin: ORIGIN,
+                       colors: pack[:palette], size: SIZE
+          image :right, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_1 + 10, layout: PIECE_FRAME, count: 1), origin: ORIGIN,
+                        colors: pack[:palette], size: SIZE
+          colors :other, other
+          both = sprite :both, at: [40, 40], facing: { left: :left, right: :right }
+          both.draw_with(%i[left right].map { |pose| colors_name_of(pose) }.uniq.to_h { |list| [list, list] })
+          both.face :right
+          recolor :palette_1, :other
+        end)
       end
     ].freeze
   end
@@ -1657,8 +2064,30 @@ module PackGames
       game(:tile_taking_turns_on_a_background_of_many_cells_in_two_banks, passes: 8) do |folder, options|
         built(*title_belt_game_and_file(folder, words: PackTilePictureGames.title_belt_words(24), options: options))
       end,
+      game(:tile_taking_turns_on_a_background_drawn_with_other_lists, passes: 8) do |folder, options|
+        built(*title_belt_game_and_file(folder, words: PackTilePictureGames.title_belt_words(24), in_other_lists: true, options: options))
+      end,
       game(:cell_written_with_set_cell_taking_turns_through_pack_pictures, passes: 9) do |folder, options|
         built(*written_cell_game_and_file(folder, options: options))
+      end
+    ].freeze
+  end
+
+  # A POSE OF A SET OF SPRITE TILES WHOSE PIECES ARE ONE OF THE ORIGINAL'S FRAMES
+  # (PackTilePoseGames): a ball spinning through two frames of pieces two tiles tall.
+  class TilePosesOfFrames < Kit
+    include PackTilePoseGames
+
+    GAMES = [
+      game(:tile_poses_of_an_originals_frames, passes: 6) do |folder, options|
+        built_by(ball_game_builder(original(folder), options: options))
+      end,
+      # The object's place above and left of the picture, every piece inside it.
+      game(:tile_poses_of_frames_wholly_below_their_place, passes: 6) do |folder, options|
+        below = SPIN_BELOW
+        built_by(ball_game_builder(original(folder, frames: below), options: options, frames: below) do |pack, at|
+          PackTilePoseGames.frame_pose(pack, at, origin: ORIGIN_ABOVE_LEFT, size: SIZE)
+        end)
       end
     ].freeze
   end
@@ -1697,15 +2126,15 @@ module PackGames
   end
 
   KITS = [Pictures, ScreenPictures, StripFonts, Layouts, VBlankLayouts, Backgrounds, WrittenCells, Backdrops, ColorLists, Poses, PosesOfWords, PosesOfShapes, PosesReadByTheGame, PosesInBankColors,
-          Sounds, Scores, MusicPlayer2000Songs, SlotViews, ColorsComparedAtStart, PosesSharingTheirFramesBank, Places, TilePictures,
-          FlaggedBytesUnpacked].freeze
+          Sounds, Scores, MusicPlayer2000Songs, SlotViews, TableTileBackgrounds, ColorsComparedAtStart, PosesSharingTheirFramesBank, Places, TilePictures,
+          TilePosesOfFrames, FlaggedBytesUnpacked].freeze
 
   # Every registered game.
   ALL = KITS.flat_map { |kit| kit::GAMES }.freeze
 
   # Shareable, since a test may run in a Ractor: each game with its block, and each kit's constants.
   Ractor.make_shareable(ALL)
-  KITS.each { |kit| kit.constants(false).each { |name| Ractor.make_shareable(kit.const_get(name)) } }
+  KITS.each { |kit| VBlank::Testing::InRactors.share_constants(kit) }
 
   # The game registered as +name+.
   def self.named(name) = ALL.find { |game| game.name == name } || raise(KeyError, "no pack game is registered as #{name.inspect}")

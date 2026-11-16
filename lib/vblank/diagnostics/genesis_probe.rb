@@ -50,9 +50,22 @@ module VBlank
 
       # The picture as four bytes a pixel: red, green, blue and one unused, each of the console's
       # three-bit channels widened to five, as every console's colours are given, and then to eight.
+      #
+      # The core hands back the same list of colours while the picture has not changed, and then the
+      # bytes made from it last time are the answer again. They are frozen, as the reader keeps them.
       def frame_buffer
-        @core.colors.map { |color| PIXELS.fetch(color) }.pack("V*")
+        colors = @core.colors
+        return @frame_buffer if @frame_buffer_of.equal?(colors)
+
+        @frame_buffer_of = colors
+        @frame_buffer = GenesisProbe.picture_bytes(colors).freeze
       end
+
+      # The four bytes of each of +colors+ (the console's 9-bit colours), one after another. Each
+      # pixel is a lookup that Array#values_at makes in C, not a Ruby block run for every pixel,
+      # which cost ten times a frame of the console. Public for the probe's test, which holds every
+      # colour to its answer key.
+      def self.picture_bytes(colors) = PIXEL_BYTES.values_at(*colors).join
 
       # The sound of the last step, a String of samples for each frame of it: 16 bits each, left and
       # right by turns.
@@ -82,9 +95,10 @@ module VBlank
 
       # What only the Genesis has (GenesisReading): the square voices' and the noise voice's
       # registers (RubyGenesisEmulator::Core#psg_registers), the vertical scroll memory (80 bytes, two
-      # for each pair of columns), and the video chip's 24 registers, a byte each.
+      # for each pair of columns, high byte first like the memories above; the core keeps it low byte
+      # first), and the video chip's 24 registers, a byte each.
       def square_voice_registers = @core.psg_registers
-      def scroll_ram = @core.vsram
+      def scroll_ram = @core.vsram.unpack("v*").pack("n*")
       def video_registers = @core.vdp_registers.pack("C*")
 
       # Genesis Plus GX here mixes every voice together and draws every layer together.
@@ -120,6 +134,7 @@ module VBlank
       PIXELS = Ractor.make_shareable(COLORS.map do |color|
         Array.new(3) { |channel| ((color >> (channel * 5)) & 0x1F).then { |level| (level << 3) | (level >> 2) } << (channel * 8) }.sum
       end)
+      PIXEL_BYTES = Ractor.make_shareable(PIXELS.map { |pixel| [pixel].pack("V") })
 
       private
 

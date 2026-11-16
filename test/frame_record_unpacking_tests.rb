@@ -68,8 +68,9 @@ module FrameRecordUnpackingTests
 
   # The builder of a game with a pose for each way of keeping a frame, its program made. Where
   # +by_routine+, the slot of low-byte-first frames has no place in the copy and the game's
-  # unpacking routine fills it; every other slot is copied as it is.
-  private def frames_builder(folder, options: VBlank::Cartridge::Options.new, by_routine: false)
+  # unpacking routine fills it; every other slot is copied as it is. Where +every_pose+, each pose
+  # is a sprite of its own, all seven at one place.
+  private def frames_builder(folder, options: VBlank::Cartridge::Options.new, by_routine: false, every_pose: false)
     from = frames_original(folder)
     b = Builder.new(options: options)
     b.instance_eval do
@@ -98,8 +99,12 @@ module FrameRecordUnpackingTests
       end
       # Two of the poses are shown, one above the other: a Game Boy Color draws ten pieces of
       # sprites on a line, and one of these pictures is eight across.
-      sprite :counted, at: [0, 0]
-      sprite :across_rows, at: [72, 72]
+      if every_pose
+        frames.each_key { |name| sprite name, at: [0, 0] }
+      else
+        sprite :counted, at: [0, 0]
+        sprite :across_rows, at: [72, 72]
+      end
       game_loop { wait_vblank }
     end
     b.finalize_program
@@ -173,6 +178,145 @@ module FrameRecordUnpackingTests
 
     def builder(folder, options) = poses_read_by_the_game_builder(original(folder), options: options)
     def copy(folder) = File.binread(File.join(folder, "made_up_blocks.bin"))
+  end
+
+  # FRAMES OF TWO SLOTS NAMED IN TURN: the unpacking writes the frames of one slot kept one way
+  # in one loop, and its records land in the order the build lays them out too.
+  def test_the_records_of_frames_of_two_slots_named_in_turn_are_the_builds
+    Dir.mktmpdir do |folder|
+      whole = interleaved_builder(folder, VBlank::Cartridge::Options.new)
+      left_out = interleaved_builder(folder, LEFT_OUT)
+      release = VBlank::Original::Release.from("Test", { "sha1" => SHA1, "size" => COPY.bytesize })
+      unpacking = left_out.declared_data_pack.unpacking(release: release)
+      played = game_player.hand_file(COPY).run(unpacking.program, frames: 40)
+
+      assert_equal whole.made_data_pack_file.unpack1("H*"), unpacking.pack_file_in(played, sha1: SHA1, build_version: "1").unpack1("H*")
+    end
+  end
+
+  # A pose of the slot of bytes, one of the slot of words, then another of the slot of bytes.
+  private def interleaved_builder(folder, options)
+    from = frames_original(folder)
+    b = Builder.new(options: options)
+    b.instance_eval do
+      screen :tiled
+      colors :hero, [:transparent, *WORDS::COLORS.drop(1)]
+      pack = data_pack from: from, version: "1" do |slots|
+        slots.tiles :sprites, at: TILES_AT, count: WORDS::TILE_COUNT
+        slots.numbers :small, at: SMALL_AT, count: SMALL.bytesize, width: :byte, signed: false
+        slots.numbers :high_first, at: HIGH_FIRST_AT, count: HIGH_FIRST.bytesize, width: :byte, signed: false
+      end
+      given = BYTES::FRAME.with(counted: false)
+      frames = { all: pack[:small].frame(2, layout: given, count: BYTES::PIECES.length),
+                 words: pack[:high_first].frame(0, layout: WORDS::FRAME),
+                 two: pack[:small].frame(2, layout: given, count: 2) }
+      frames.each { |name, frame| image name, tiles: pack[:sprites], frame: frame, origin: [24, 24], colors: :hero, size: SIZE }
+      sprite :all, at: [0, 0]
+      game_loop { wait_vblank }
+    end
+    b.finalize_program
+    b
+  end
+
+  # SEVEN POSES OF 64x64 AT ONE PLACE, read from the pack as the game starts: more pieces than the
+  # Game Boy Color's sprite table holds, so the pieces furthest back are left out. The game as C,
+  # JavaScript and Ruby each leave out the ones the interpreter does (each run's player checks
+  # every frame against it), and the interpreter draws the same picture from the pack it is
+  # handed as from the pack it holds.
+  def test_seven_poses_at_one_place_play_alike_with_the_pack_left_out
+    Dir.mktmpdir do |folder|
+      whole = frames_builder(folder, every_pose: true)
+      left_out = frames_builder(folder, options: LEFT_OUT, every_pose: true)
+      shown = game_player.run(whole.program, frames: 3).screen.to_a
+
+      assert_equal shown, game_player.hand_file(whole.made_data_pack_file).run(left_out.program, frames: 3).screen.to_a
+    end
+  end
+
+  # AN UNPACKING ASKED FOR BEFORE THE GAME NAMES ALL ITS FRAMES writes no record of the frames
+  # named after it, so a frame named after it is refused, saying when to ask.
+  def test_a_frame_named_after_the_unpacking_was_made_is_refused
+    Dir.mktmpdir do |folder|
+      from = frames_original(folder)
+      release = VBlank::Original::Release.from("Test", { "sha1" => SHA1, "size" => COPY.bytesize })
+      [LEFT_OUT, VBlank::Cartridge::Options.new].each do |options|
+        b = Builder.new(options: options)
+        refused = assert_raises(ArgumentError) do
+          b.instance_eval do
+            colors :hero, [:transparent, *WORDS::COLORS.drop(1)]
+            pack = data_pack from: from, version: "1" do |slots|
+              slots.tiles :sprites, at: TILES_AT, count: WORDS::TILE_COUNT
+              slots.numbers :small, at: SMALL_AT, count: SMALL.bytesize, width: :byte, signed: false
+            end
+            image :first, tiles: pack[:sprites], frame: pack[:small].frame(1, layout: BYTES::FRAME), origin: [24, 24],
+                          colors: :hero, size: SIZE
+            options.pack_at_start ? pack.unpacking(release: release) : pack.unpacking
+            image :second, tiles: pack[:sprites], frame: pack[:small].frame(2, layout: BYTES::FRAME.with(counted: false), count: 2),
+                           origin: [24, 24], colors: :hero, size: SIZE
+          end
+        end
+
+        assert_match "image :second", refused.message
+        assert_match "unpacking", refused.message
+      end
+    end
+  end
+
+  # FRAMES OF ONE SLOT THAT OVERLAP can hold more pieces between them than the slot does, which is
+  # more than the pack keeps room for. The all-in-one build refuses them, and the unpacking stops
+  # with a fault, so a shell refuses the copy rather than drawing nothing.
+  def test_frames_that_overlap_past_the_packs_room_are_refused
+    Dir.mktmpdir do |folder|
+      overlapping = OverlappingFrames.new(folder)
+      refused = assert_raises(ArgumentError) { overlapping.builder(VBlank::Cartridge::Options.new) }
+
+      assert_match "overlap", refused.message
+      assert_match "image :inner", refused.message
+      left_out = overlapping.builder(LEFT_OUT)
+      copy = overlapping.copy
+      release = VBlank::Original::Release.from("Test", { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize })
+      unpacking = left_out.declared_data_pack.unpacking(release: release)
+      played = game_player.hand_file(copy).run(unpacking.program, frames: 40)
+      fault = unpacking.fault_in(played)
+
+      refute_nil fault, "the unpacking did not stop on frames that do not fit"
+      assert_match "overlap", unpacking.fault_error(fault).message
+    end
+  end
+
+  # Two frames of PackPoseGames' layout in a slot of eleven bytes: the outer frame at byte 0, of two
+  # pieces, and the inner one at byte 1, inside the outer frame's first piece, whose first byte (1)
+  # the inner frame reads as its count. Three pieces between them, where the slot holds two.
+  class OverlappingFrames
+    include PackPoseGames
+
+    FRAME_BYTES = [2, 1, 0, 0, 1, 0x0E, 8, 0, 0, 1, 0x0E].freeze
+
+    def initialize(folder)
+      @folder = folder
+    end
+
+    def copy = File.binread(File.join(@folder, "made_up.bin"))
+
+    def builder(options)
+      from = original(@folder, frame_bytes: FRAME_BYTES)
+      b = Builder.new(options: options)
+      b.instance_eval do
+        screen :tiled
+        colors :hero, [:transparent, *COLORS.drop(1)]
+        pack = data_pack from: from, version: "1" do |slots|
+          slots.tiles :sprites, at: TILES_AT, count: 32, colors: 16
+          slots.numbers :frames, at: FRAMES_AT, count: FRAME_BYTES.length, width: :byte, signed: false
+        end
+        image :outer, tiles: pack[:sprites], frame: pack[:frames].frame(0, layout: FRAME), origin: [8, 8], colors: :hero, size: [32, 32]
+        image :inner, tiles: pack[:sprites], frame: pack[:frames].frame(1, layout: FRAME), origin: [8, 8], colors: :hero, size: [32, 32]
+        sprite :outer, at: [40, 40]
+        sprite :inner, at: [80, 40]
+        game_loop { wait_vblank }
+      end
+      b.finalize_program
+      b
+    end
   end
 
   # The all-in-one build's unpacking writes the records too: it is the program every backend is

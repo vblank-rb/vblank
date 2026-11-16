@@ -35,7 +35,10 @@ class TestSnakeOnSNES < Minitest::Test
     gray = VBlank::Graphics::Color.resolve(:gray)
     assert_equal gray, run.screen.pixel(252, 100), "the right wall is at the screen's right edge"
     assert_equal gray, run.screen.pixel(100, 220), "the bottom wall is at the screen's bottom"
-    assert_empty run.black_frames
+    # The board's first picture is a big change, loaded with the screen off (Runtime::Paint's
+    # LOAD_SCREEN_OFF): a frame or two of black as the title gives way to it, and no other.
+    assert_operator run.black_frames.size, :<=, 2
+    assert_equal run.black_frames, (run.black_frames.min..run.black_frames.max).to_a, "one stretch of black" unless run.black_frames.empty?
     assert_empty run.torn_frames
     assert_includes states.values, 2, "the game was over before it was started again"
     # A screen is painted whole once, as the game arrives at it — in the pass after the one that

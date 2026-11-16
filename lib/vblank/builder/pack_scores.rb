@@ -33,8 +33,8 @@ module VBlank
     # turns them into events (#song_reading_notes_at_start), and its Score must give its length:
     # a number of its own, or one of the pack with the most it can be (`longest:`), which is then
     # read as the game starts too, with the tick it comes round to. So is the wave a part plays
-    # from a slot (`plays: pack[:waves].wave(0)`, #pack_wave_in_start_file).
-    # A chip envelope is not made that way yet, and the build says so.
+    # from a slot (`plays: pack[:waves].wave(0)`, #pack_wave_in_start_file). So is an envelope of
+    # three bytes as a Super Nintendo's sound chip keeps it, as the nearest ordinary envelope.
     module PackScores
       private
 
@@ -53,8 +53,25 @@ module VBlank
           part = part.with(plays: pack_wave_steps(part.plays, verb)) if part.plays.is_a?(DSL::PackWave)
           pack_notes?(part.notes) ? part.with(notes: notes_read_from_pack(part, verb)) : part
         end
-        score.with(parts: parts, length: pack_setting_value(score.length, "#{verb} reading a song's length", nil),
-                   loop_from: pack_setting_value(score.loop_from, "#{verb} reading where a song comes round", nil))
+        read = score.with(parts: parts, length: pack_setting_value(score.length, "#{verb} reading a song's length", nil))
+        read.with(**pack_loop_settings(read, "#{verb} reading where a song comes round"))
+      end
+
+      # +score+'s `loop_from:` and `plays_once:`, its loop point read here where it is a number of
+      # the pack, and held as the build that reads it as the game starts holds it
+      # (IR::StartFile::SongLength#frames_in): the pack is the player's, so only a loop point the
+      # game wrote is refused. One with every bit set is no loop (IR::StartFile.no_loop?), as a
+      # sound driver's unpacking writes a song that ends, so the song plays once; one below 0 is 0;
+      # and one at or past the song's end comes round to its start.
+      def pack_loop_settings(score, subject)
+        loop_from = score.loop_from
+        return { loop_from: loop_from } unless loop_from.is_a?(DSL::PackNumber)
+
+        tick = pack_setting_value(loop_from, subject, nil)
+        return { loop_from: nil, plays_once: true } if IR::StartFile.no_loop?(tick, loop_from.slot.layout.width)
+
+        held = [tick, 0].max
+        { loop_from: (held if score.comes_round_to?(held)) }
       end
 
       def pack_notes?(notes)
@@ -164,10 +181,12 @@ module VBlank
       def pack_notes_in_start_file(handle, score, number, recorded:, takes_slide:)
         slot = handle.slot.layout
         instruments = recorded ? handle.instruments.map { |named| named.is_a?(Symbol) ? named : named.name } : []
+        # A wave of the pack a note names is read from where it is in the start file, as a part's is.
+        waves = handle.waves.map { |wave| wave.is_a?(DSL::PackWave) ? pack_wave_in_start_file(wave, "A song") : written_wave(wave) }
         notes = IR::StartFile::Notes.new(at: @pack_slot_starts.fetch(slot.name), count: slot.count, instruments: instruments.freeze,
                                          part: score.parts[number], tempo: score.tempo, ticks_per_beat: score.ticks_per_beat,
                                          who: "Part #{number} of a Score", recorded: recorded,
-                                         voiced: slot.shape == :voiced_notes, takes_slide: takes_slide)
+                                         voiced: slot.shape == :voiced_notes, takes_slide: takes_slide, waves: waves.freeze)
         refuse_keys_part_cannot_play!(notes, slot)
         notes
       end
@@ -191,7 +210,7 @@ module VBlank
         refuse_slot_from_elsewhere!(handle.slot, subject)
         recorded = recorded_part?(part)
         clocked = IR::StartFile.takes_clock?(part)
-        handle.slot.layout.decode(@data_pack_contents.bytes_of(handle.slot.layout.name)).map do |note|
+        pack_slot_decoded(handle.slot.layout).map do |note|
           refuse_unnamed_side_or_clock!(note, subject, side: !recorded && note.shade.nil?, clock: clocked)
           refuse_voice_settings_out_of_range!(note, subject)
           key = note.key unless note.key == Original::PackNote::REST
@@ -202,13 +221,35 @@ module VBlank
           pitch = settings.delete(:pitch_number)
           # A voiced record's shade is the note's in place of its speaker, on a recorded part too.
           pan = settings.key?(:pan) ? settings.delete(:pan) : (note.side unless recorded)
-          # A gliding note carries on the one sounding, with its instrument and volume (Original::PackNote).
+          # A gliding note carries on the one sounding, with its recording, at its own volume (Original::PackNote).
           glides = settings[:glides]
+          wave = pack_note_wave(note, handle.waves, subject, verb) if key && note.wave
           Audio::Score::Note.new(at: note.at, length: (note.length unless note.length.zero?), key: (key unless clock || pitch || settings[:hz]),
-                                 volume: (pack_note_volume(note, recorded, subject) unless glides),
+                                 volume: pack_note_volume(note, recorded, subject),
                                  instrument: (pack_note_instrument(note, handle.instruments, subject) unless glides),
-                                 pan: pan, noise_clock: clock, pitch_number: pitch, **settings)
+                                 pan: pan, noise_clock: clock, pitch_number: pitch, wave: wave, **settings)
         end
+      end
+
+      # A wave the game wrote in a part's `notes(waves: [...])`: a shape or 32 steps, as a note's
+      # `wave:` keeps it (Audio::Score::Note#own_wave).
+      def written_wave(wave)
+        Audio::Music.resolve_plays(wave)[:wave] or
+          raise ArgumentError, "`notes(waves: [...])` names #{wave.inspect}. A wave is a shape " \
+                               "(#{Audio::Music::WAVE_SHAPES.map(&:inspect).join(', ')}), #{Audio::Sound::WAVE_SAMPLES} steps " \
+                               "of 0 to #{Audio::Sound::WAVE_STEP_MAX}, or a wave of the pack, like `pack[:waves].wave(0)`. " \
+                               "Give one of those."
+      end
+
+      # The wave a voiced record names among the part's +waves+ (`notes(waves: [...])`), as a note's
+      # `wave:` takes it: a wave of the pack read here as its steps.
+      def pack_note_wave(note, waves, subject, verb)
+        wave = waves.fetch(note.wave) do
+          raise ArgumentError, "#{subject}: the note at tick #{note.at} plays wave #{note.wave}. The part names " \
+                               "#{waves.length} waves. To fix this, name every wave its notes play, like " \
+                               "`notes(waves: [pack[:waves].wave(0), :sine])`."
+        end
+        wave.is_a?(DSL::PackWave) ? pack_wave_steps(wave, verb) : written_wave(wave)
       end
 
       def refuse_voice_settings_out_of_range!(note, subject)
@@ -285,8 +326,12 @@ module VBlank
           attack, decay, sustain, release = pack_slot_values(envelope.slot, :numbers, subject).slice(envelope.index * 4, 4)
           Audio::Envelope.new(attack: attack, decay: decay, sustain: sustain, release: release)
         when DSL::PackSNESEnvelope
-          refuse_chip_envelope_left_out!(subject)
-          adsr1, adsr2, gain = pack_slot_values(envelope.slot, :numbers, subject).slice(envelope.index * 3, 3)
+          if pack_left_out?
+            refuse_slot_from_elsewhere!(envelope.slot, subject)
+            return IR::StartFile.recording_stand_in_envelope
+          end
+          # The bytes as the file keeps them, as a runtime reads them (IR::StartFile.envelope_in).
+          adsr1, adsr2, gain = pack_slot_values(envelope.slot, :numbers, subject).slice(envelope.index * 3, 3).map { |byte| byte & 0xFF }
           Audio::SNESEnvelope.new(adsr1: adsr1, adsr2: adsr2, gain: gain)
         else envelope
         end
@@ -296,18 +341,29 @@ module VBlank
       # for those of +rate+, +holds_from+ and +envelope+ that are numbers of the pack, with the pack
       # left out; nil for a recording that reads none of them from there. A slot's place and the
       # width of its numbers are the game's own words, so the build knows where each number will
-      # be without knowing it.
-      def recording_settings_in_start_file(rate:, holds_from:, envelope:, length: nil)
+      # be without knowing it. +brr+ is where a recording in the Super Nintendo chip's format is
+      # (an IR::StartFile::BRR), or nil.
+      def recording_settings_in_start_file(rate:, holds_from:, envelope:, length: nil, brr: nil)
         return nil unless pack_left_out?
 
-        shape = if envelope.is_a?(DSL::PackEnvelope)
-                  IR::StartFile::EnvelopeBytes.new(at: @pack_slot_starts.fetch(envelope.slot.layout.name) + (envelope.index * 4),
-                                                   kept_as: :envelope)
-                end
         settings = IR::StartFile::RecordingSettings.new(rate: pack_number_in_start_file(rate),
-                                                        holds_from: pack_number_in_start_file(holds_from), envelope: shape,
-                                                        length: pack_number_in_start_file(length))
+                                                        holds_from: pack_number_in_start_file(holds_from),
+                                                        envelope: pack_envelope_in_start_file(envelope),
+                                                        length: pack_number_in_start_file(length), brr: brr)
         settings unless settings.to_h.values.all?(&:nil?)
+      end
+
+      # Where +envelope+ is in the start file (an IR::StartFile::EnvelopeBytes), for an envelope of
+      # the pack: four bytes, or three kept as the Super Nintendo's sound chip keeps them.
+      def pack_envelope_in_start_file(envelope)
+        case envelope
+        when DSL::PackEnvelope
+          IR::StartFile::EnvelopeBytes.new(at: @pack_slot_starts.fetch(envelope.slot.layout.name) + (envelope.index * 4),
+                                           kept_as: :envelope)
+        when DSL::PackSNESEnvelope
+          IR::StartFile::EnvelopeBytes.new(at: @pack_slot_starts.fetch(envelope.slot.layout.name) + (envelope.index * 3),
+                                           kept_as: :snes_envelope)
+        end
       end
 
       def pack_number_in_start_file(value)
@@ -318,17 +374,6 @@ module VBlank
                                   width: slot.width, signed: slot.signed, format: slot.format)
       end
 
-      # An envelope as the Super Nintendo's sound chip keeps it is turned into the nearest ordinary
-      # envelope as the game is built (Audio::SNESEnvelope#closest_envelope), from bytes a build
-      # that leaves its pack out does not hold.
-      def refuse_chip_envelope_left_out!(subject)
-        return unless pack_left_out?
-
-        raise ArgumentError, "#{subject} reads a Super Nintendo sound chip envelope from the data pack, and this build " \
-                             "reads its pack as the game starts. A chip envelope from the pack is not made that way " \
-                             "yet. To fix this, build the game all-in-one, or give the instrument four bytes with " \
-                             "`pack[:slot].envelope(0)`."
-      end
     end
   end
 end

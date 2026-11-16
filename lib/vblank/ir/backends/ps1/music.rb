@@ -19,10 +19,11 @@ module VBlank
 
           LoweringError = PS1::LoweringError
 
-          # The loops a game's songs play beside its own sounds: each wave part's waveform, and the noise
-          # when a song has a drum part (SoundMemory).
+          # The loops a game's songs play beside its own sounds: each waveform a wave part or its notes
+          # play, and the noise when a song has a drum part (SoundMemory).
           def self.waveforms(program)
-            IR::Tunes.declared_songs(program).flat_map(&:voices).select { |part| IR::Tunes.part_kind(part) == :wave }.map(&:wave)
+            IR::Tunes.declared_songs(program).flat_map(&:voices).select { |part| IR::Tunes.part_kind(part) == :wave }
+                                             .flat_map { |part| IR::Tunes.waves_of(part) }
           end
 
           def self.drums?(program) = IR::Tunes.declared_songs(program).flat_map(&:voices).any? { |part| IR::Tunes.part_kind(part) == :noise }
@@ -44,9 +45,9 @@ module VBlank
           def not_made_yet_error = Lowering::NotMadeYet
           def console_title = "PlayStation"
 
-          # A recorded note's loudness at a music volume, out of the mix's full, as its voice's volume
-          # register (SPUWrites::LOUDEST at full).
-          def recording_volume(value) = (value * SPUWrites::LOUDEST) / IR::Tunes::MIX_FULL
+          # A recorded note's loudness at a music volume, out of the mix's full, as the interpreter's mix
+          # keeps it: Runtime::Recordings works its voice's volume register out of it.
+          def recording_volume(value) = value
 
           # Every place in the table is a halfword, so all of it is within 64K.
           def refuse_table_too_long!(table)

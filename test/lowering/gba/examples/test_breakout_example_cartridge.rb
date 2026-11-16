@@ -12,9 +12,10 @@ class TestBreakoutExampleCartridge < Minitest::Test
   include VBlank::Console::Hardware
 
   # The title shows "BREAKOUT" in cyan — the simplest proof it isn't a black screen
-  # and that text renders through the buffered (indexed) screen.
+  # and that text renders through the buffered (indexed) screen. It drops in from above
+  # at four pixels a frame, so it is in place by the fortieth frame.
   def test_the_title_renders_on_the_console
-    v = assert_emulator_loads_rom(Breakout.build_rom(err: StringIO.new), frames: 4)
+    v = assert_emulator_loads_rom(Breakout.build_rom(err: StringIO.new), frames: 48)
     title_cyan = (50..57).any? { |y| (92..140).any? { |x| v.pixel_is?(x, y, :cyan) } }
     assert title_cyan, "the BREAKOUT title should render cyan in buffered mode"
   end

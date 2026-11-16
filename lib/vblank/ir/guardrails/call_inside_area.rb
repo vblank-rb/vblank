@@ -56,11 +56,11 @@ module VBlank
           private
 
           # Every call inside +area+'s block that can reach a routine that draws — with the
-          # first such routine and the kind of draw that convicts it.
+          # first such routine and the draw that convicts it.
           def calls_that_draw(area, funcs)
             area.children.flat_map { |child| find_calls(child) }.filter_map do |call_node|
               hits = call_node.callees.filter_map do |target|
-                drawn_by = unclipped_draw_kind_in(target, funcs)
+                drawn_by = unclipped_draw_in_func_named(target, funcs)
                 [target, drawn_by] if drawn_by
               end
               [call_node, *hits.first] unless hits.empty?
@@ -78,14 +78,14 @@ module VBlank
 
           # Does the func named +name+ draw on the bitmap screen OUTSIDE any area of its
           # own — directly, or through a routine it calls, however many hops away?
-          # Returns the kind that drew (for the message), or nil. +seen+ stops a call
+          # Returns the draw node (for the message), or nil. +seen+ stops a call
           # cycle.
           #
           # A draw the routine itself wraps in `inside` is not the hazard: that area is
           # baked into the routine's own instructions, so the console clips it there
           # exactly as the interpreter does — it is the fix this check recommends, and
           # a game that already did it must not be told to do it again.
-          def unclipped_draw_kind_in(name, funcs, seen = Set.new)
+          def unclipped_draw_in_func_named(name, funcs, seen = Set.new)
             return nil if seen.include?(name)
 
             func = funcs[name] or return nil
@@ -95,9 +95,9 @@ module VBlank
 
           def unclipped_draw_in(node, funcs, seen)
             return nil if node.kind == :inside
-            return node.kind if CLIPPED_DRAWS.include?(node.kind)
+            return node if CLIPPED_DRAWS.include?(node.kind)
             if CALLS.include?(node.kind)
-              return node.callees.lazy.filter_map { |target| unclipped_draw_kind_in(target, funcs, seen) }.first
+              return node.callees.lazy.filter_map { |target| unclipped_draw_in_func_named(target, funcs, seen) }.first
             end
 
             node.statement_bodies.each do |child|

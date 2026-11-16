@@ -39,6 +39,8 @@ module VBlank
           end
 
           include ControlFlow
+          include DrawOrderWalk
+          include SceneryWrites
 
           # EVERY KIND THIS LOWERING WRITES: its own, each by a method called by name in
           # #emit_statement and #value_of_kind, and each part's (Paint, Faces, and the loops and tests
@@ -138,7 +140,7 @@ module VBlank
                                                     "fades, lights and screen effects" => %i[pixelate shade_outside],
                                                     "sprites and tiled backgrounds" => %i[copy_tiles box_background
                                                                                           copy_owed_tiles load_sprite_tiles affine_background
-                                                                                          scroll_rows see_through show_held_tiles
+                                                                                          scroll_rows show_held_tiles
                                                                                           show_picture_group],
                                                     "save memory" => %i[save_init save_store save_write save_erase save_read save_sum
                                                                         save_load_list save_store_list]
@@ -227,16 +229,18 @@ module VBlank
             prepare_picture
           end
 
-          # The game's code, as sections for the Linker: its data, every routine a run can reach, and the
+          # The game's code, as sections for the Linker: the routines that fill faces first, straight after the
+          # runtime's (Faces#face_filling_routines), then its data, every other routine a run can reach, and the
           # program itself.
           def sections
             @plan.refuse_unbuildable!(not_lowered_yet: NOT_LOWERED_YET, not_made_yet: NotMadeYet)
             refuse_unmade_parts!
             refuse_unmade_picture!
             assign_planes
-            variables_most_read_first.each do |name|
-              @variables[name] = @memory.reserve_scratchpad("the variable #{name.inspect}", 4)
-            end
+            given = names_in_steps
+            named, unnamed = variables_most_read_first.partition { |name| given.include?(name) }
+            named.each { |name| @variables[name] = @memory.reserve_scratchpad("the variable #{name.inspect}", 4) }
+            unnamed.each { |name| @variables[name] = @memory.reserve("the variable #{name.inspect}", 4) }
             @declared_lists.each_value do |node|
               width = LoweringPlan::SLOT_BYTES.fetch(node.width)
               place = if node.name == corners_list_in_face
@@ -248,24 +252,26 @@ module VBlank
             end
             @scene = keep_local(:scene, start: -1) unless @scenes.empty?
             keep_timer_numbers
-            keep_corner_notes
+            keep_plane_corner_notes
             keep_loop_running
             keep_backdrop
             reserve_painted_numbers!
-            routines = @called.map do |name|
+            routines = @called.to_h do |name|
               @lowering_scene = @scenes.key?(name) ? name : nil
               with_call_numbers_recorded_for(name) do
-                routine_section(self.class.routine_label(name), @funcs.fetch(name).children, routine: @plan.routine_said(name))
+                [name, routine_section(self.class.routine_label(name), @funcs.fetch(name).children, routine: @plan.routine_said(name))]
               end
             end
             @lowering_scene = nil
             timers = timer_sections
             main = routine_section(MAIN, @program.children, routine: "the game loop")
             over_picture = sprites_over_picture_section
+            filling = face_filling_routines.map { |name| routines.fetch(name) }
+            others = routines.except(*face_filling_routines).values
             # The pictures are known once every routine is made, so their tables come last: a screen drawn
             # from tiles registers its sprites' pictures with the painted art first.
-            [data_section, *table_sections, *routines, *timers, main, *over_picture, *picture_sections, *paint_sections, *color_sections,
-             *face_sections, *sound_sections, *collision_sections]
+            [*filling, data_section, *table_sections, *others, *timers, main, *over_picture, *picture_sections, *paint_sections,
+             *color_sections, *face_sections, *sound_sections, *collision_sections]
           end
 
           private
@@ -321,6 +327,18 @@ module VBlank
             (Reach.variables(@program) | loop_variables).each_with_index.sort_by { |name, at| [-reads[name], at] }.map(&:first)
           end
 
+          # Every name a step of the program gives in one of its operands. A variable none of them names
+          # is the lowering's own, read by code it writes once a pass at most (the game loop's frame
+          # counts, a viewer's working numbers), or one nothing reads: it is kept in main RAM, and the
+          # scratchpad it would have had goes to the routines' own numbers (#keep_local), a loop's count
+          # among them, which are given it after every variable and are read on every round: a place's
+          # drawing reads its loop counts once a face, a thousand times a pass.
+          def names_in_steps
+            @program.walk.each_with_object(Set.new) do |node, names|
+              node.attrs.each_value { |operand| names << operand if operand.is_a?(Symbol) }
+            end
+          end
+
           # --- the data ---
 
           # The places that do not start at nought (each an address and a number, a word each, and an
@@ -333,8 +351,7 @@ module VBlank
             asm.data_words(0)
             asm.label("game_lists")
             @lists.each_value do |list|
-              asm.data_words(list.address)
-              asm.data_halves(list.capacity, list.slot_bytes.bit_length - 1)
+              asm.data_words(list.address, list.capacity, list.slot_bytes.bit_length - 1)
             end
             asm.data_words(0)
             @routine_tables.each do |targets, label|
@@ -629,7 +646,7 @@ module VBlank
           # both as the runtime counted them.
           def emit_wait_vblank(_node)
             call_routine("rt_wait_vblank")
-            emit_clear_corner_notes
+            emit_corners_forgotten
             emit_load_word(:t0, runtime_place(Runtime::Frame::FRAMES_TAKEN))
             emit_load_variable(Frames::COUNT)
             @asm.addu(:v0, :v0, :t0)
@@ -707,7 +724,7 @@ module VBlank
             if @lists_of_fixed_length.include?(list.name.to_sym) && list.capacity <= 0x7FFF # SLTIU's number, sign and all
               @asm.sltiu(:t7, :v0, list.capacity)
             else
-              @asm.lhu(:t6, *base_and_distance(list.address + lists::LENGTH))
+              @asm.lw(:t6, *base_and_distance(list.address + lists::LENGTH))
               @asm.sltu(:t7, :v0, :t6)
             end
             fault = @index_faults[list.address] ||= fresh_label("index_past_end")
@@ -800,7 +817,7 @@ module VBlank
 
             @asm.li(:a0, list.address)
             @asm.li(:a1, keys.address)
-            @asm.lhu(:t0, lists::LENGTH, :a0)
+            @asm.lw(:t0, lists::LENGTH, :a0)
             @asm.li(:t1, 1)
             @asm.slt(:t2, :t1, :t0)
             @asm.beq(:t2, :zero, done)
@@ -905,10 +922,10 @@ module VBlank
           def timer_sections
             return [] if @timers.empty?
 
-            each_timer = @timers.map { |name, _| timer_section(name) }
+            each_timer = @timers.map { |name, _| with_tick_handler_numbers_recorded(name) { timer_section(name) } }
             @frame_begins = "timers frame"
             in_order = routine_section(@frame_begins, [], routine: "the timers") do
-              with_call_numbers_kept do
+              with_call_numbers_kept(numbers_kept_around_timers(@timer_crossed)) do
                 (1..@timers.size).each do |place_in_order|
                   @timers.each_key do |name|
                     skip = fresh_label("not_this_one")
@@ -929,8 +946,11 @@ module VBlank
           # on from its own loop's turn, as the interpreter's does, whatever the handler's call left there. A bend's
           # steps run at the boundary too, but the PlayStation build does not make bends yet (NOT_LOWERED_YET), so the
           # timers are all that run there.
-          def with_call_numbers_kept
-            kept = call_numbers
+          #
+          # A handler that waits (LoweringPlan#tick_handlers_waiting) runs again inside its own wait: its own
+          # numbers are among +kept+, and so are the ticks its timer still has to answer this frame
+          # (ControlFlow#numbers_kept_around_timers).
+          def with_call_numbers_kept(kept)
             return yield if kept.empty?
 
             @asm.addiu(:sp, :sp, -4 * kept.length)

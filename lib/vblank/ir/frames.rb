@@ -37,6 +37,14 @@ module VBlank
         program.walk.any? { |node| node.kind == :var_ref && [COUNT, SEEN, STEP].include?(node.name) }
       end
 
+      # Does +program+ read how many frames the screen has shown since power-on (COUNT), and wait for
+      # the screen, so that a cartridge must count the frames it spends setting up as well? A game
+      # that never waits shows no frames and reads nought (Builder#frames_since_power_on).
+      def self.counts_from_power_on?(program)
+        program.walk.any? { |node| node.kind == :var_ref && node.name == COUNT } &&
+          program.walk.any? { |node| node.kind == :wait_vblank }
+      end
+
       # Is the only wait for the screen in +program+ the one at the top of its game loop, so that a
       # wait and a pass are the same thing?
       def self.waits_only_at_loop_top?(program)
@@ -67,6 +75,24 @@ module VBlank
         statement.walk.any? do |node|
           PLACED_AT_BOUNDARY.include?(node.kind) ||
             (node.kind == :call && BOUNDARY_ROUTINES.include?(Messages::MadeNames.read(node.target)&.first))
+        end
+      end
+
+      # WHERE THE GAP AFTER EACH GAME LOOP'S WAIT ENDS, as the statement it ends after: the last of
+      # the boundary's writes that follow the loop's own wait one after another
+      # (#placed_at_boundary?), or the wait itself where none does. What runs from waking to there
+      # belongs to the break the wait woke in, so a measured run can say whether it ran past the
+      # next one. Only the run straight after the wait: a statement of the game's own between two
+      # writes ends the gap early rather than being counted as the gap. A loop with no wait of its
+      # own has no gap. Read on a console that writes the boundary's writes straight after the wait
+      # (not Description#sprites_placed_before_wait), where the loop runs as written.
+      def self.gap_ends(program)
+        program.walk.select { |node| node.kind == :loop }.filter_map do |loop_node|
+          statements = loop_node.children
+          wait_at = statements.index { |node| node.kind == :wait_vblank } or next
+
+          placed = statements.drop(wait_at + 1).take_while { |node| placed_at_boundary?(node) }
+          placed.last || statements[wait_at]
         end
       end
 
@@ -122,7 +148,7 @@ module VBlank
         top_level = body.select { |node| scene_dispatch?(node) }
         deeper = body.flat_map { |node| dispatches_inside(node) }.reject { |node| top_level.any? { |top| top.equal?(node) } }
         scene_numbers = (top_level + deeper).map(&:var).uniq
-        read = ->(number) { :"__scene_read_#{number}" }
+        read = ->(number) { scene_read_name(number) }
         held = ->(number) { :"__scene_held_#{number}" }
         note = ->(number) { Build.set(read.call(number), Build.var_ref(number)) }
         noted = ->(nodes) { nodes.flat_map { |node| scene_dispatch?(node) ? [note.call(node.var), node] : [node] } }
@@ -143,6 +169,12 @@ module VBlank
         ConsoleLoop.new(before: [], each_time: [*noted_at_start, *noted.call(written_ahead), *pass_end, wait, *noted.call(written_after)],
                         placed: placed, pass_end: pass_end, variables: variables)
       end
+
+      # The variable a game loop in the console's order notes scene number +number+ in, for the
+      # boundary's writes to be placed with (#loop_in_console_order): read as a dispatch of the loop
+      # reads it, or, for one deeper in the loop, as the pass starts. A lowering compares it with the
+      # number itself to know whether the frame of the pass shows the scene a dispatch takes over.
+      def self.scene_read_name(number) = :"__scene_read_#{number}"
 
       # A game loop's order, knowing whether +node+ runs inside another pass: in another loop, or in
       # a routine or scene one calls.

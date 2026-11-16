@@ -5,41 +5,40 @@ require "draw_order_cost_games"
 
 # WHAT AN ORDER COSTS ON THE SUPER NINTENDO, measured in the emulator. The console's own games sort
 # every sprite on the screen by height each frame, about ten instructions a sprite, so an order of
-# seven must cost a few of the frame's 262 lines, not the thirty it cost written as list reads and
-# writes, and an order of thirty must leave most of the frame to the game.
+# seven must cost its tightest frame, where two things pass each other and the sort moves one, a
+# few of the frame's 262 lines, not the thirty it cost written as list reads and writes, and an
+# order of thirty must leave most of the frame to the game.
 class TestSNESDrawInOrderCost < Minitest::Test
   BOUND_SEVEN = 3
   BOUND_THIRTY = 28
 
-  # The lines of the picture in one frame.
-  LINES_A_FRAME = 262
+  def test_an_order_of_seven_costs_its_tightest_frame_a_few_lines
+    cost = DrawOrderCostGames.lines_off_tightest_frame(:snes, sprites: 4)
 
-  # The lines the order costs a frame, over the frames measured: the share of the frame it takes
-  # (DrawOrderCostGames.share_of_frame), which is read from the emulator's own count and never
-  # rounded.
-  private def lines_order_costs_each_frame(sprites)
-    DrawOrderCostGames.share_of_frame(:snes, sprites: sprites) * LINES_A_FRAME
-  end
-
-  # The lines the order costs the tightest frame, one where two things pass each other, so a move
-  # is in the cost: the whole lines that frame has to spare without the order, less those with it.
-  # Each of the two is rounded down to a line, so this reads a line over or under what the order
-  # costs, and the same order can read a line more when the game without it gets faster. Only a
-  # bound with more than a line of room is held to it.
-  private def lines_order_costs_tightest_frame(sprites)
-    spare = ->(ordered) { DrawOrderCostGames.profile(:snes, ordered: ordered, sprites: sprites).fewest_lines_spare }
-    spare.call(false) - spare.call(true)
-  end
-
-  def test_an_order_of_seven_costs_a_few_lines
-    cost = lines_order_costs_each_frame(4)
-
-    assert_operator cost, :<=, BOUND_SEVEN, "an order of seven costs #{cost.round(2)} lines"
+    assert_operator cost, :<=, BOUND_SEVEN, "an order of seven costs its tightest frame #{cost.round(2)} lines"
   end
 
   def test_an_order_of_thirty_costs_under_a_ninth_of_the_frame
-    cost = lines_order_costs_tightest_frame(27)
+    cost = DrawOrderCostGames.lines_off_tightest_frame(:snes, sprites: 27)
 
-    assert_operator cost, :<, BOUND_THIRTY, "an order of thirty costs #{cost} lines"
+    assert_operator cost, :<, BOUND_THIRTY, "an order of thirty costs #{cost.round(2)} lines"
+  end
+
+  # A pool of 32 whose whole order turns round every pass, every thing passing every other, still
+  # keeps a pass a frame: the sort turns a run of things that stand the wrong way round over at
+  # once rather than moving each back a place at a time (Lowering#emit_keyed_sort).
+  def test_a_pool_of_thirty_two_whose_order_turns_round_takes_a_frame_a_pass
+    passes = DrawOrderCostGames.passes_by_frames(:snes, DrawOrderCostGames.reversed_pool_game(:snes, 32))
+
+    assert_equal({ 1 => 20 }, passes, "every pass fits in one frame")
+  end
+
+  # The same pool drawn in the interpreter's order on every pass: the checked run compares the
+  # sprites drawn, back to front, after each one, and stops at the first that differs. The first
+  # thing spawned stands at the top left or, turned upside down, 127 pixels below it.
+  def test_a_pool_of_thirty_two_whose_order_turns_round_is_drawn_as_the_interpreter_draws_it
+    shown = game_player.run(DrawOrderCostGames.reversed_pool_game(:snes, 32).program, frames: 8).screen
+
+    assert_includes [[8, 8], [8, 135]].map { |at| shown.pixel(*at) }, VBlank::Graphics::Color.resolve(:red)
   end
 end

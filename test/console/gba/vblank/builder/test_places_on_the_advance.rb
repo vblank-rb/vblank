@@ -184,11 +184,12 @@ class TestPlacesOnTheAdvance < Minitest::Test
   def test_a_picture_on_a_wall_leaning_away_is_in_perspective_by_default
     red = shown(0x001F)
     blue = shown(0x7C00)
+    every_16 = game_player.run(PlaceGames.wall_down_the_side(:every_16_pixels), frames: 2).screen
     every_8 = game_player.run(PlaceGames.wall_down_the_side(:every_8_pixels), frames: 2).screen
     every_pixel = game_player.run(PlaceGames.wall_down_the_side(:every_pixel), frames: 2).screen
     none = game_player.run(PlaceGames.wall_down_the_side(:none), frames: 2).screen
 
-    [every_8, every_pixel].each do |screen|
+    [every_16, every_8, every_pixel].each do |screen|
       assert_equal red, screen.pixel(92, 80), "x 92 is under six wholes ahead"
       assert_equal blue, screen.pixel(104, 80), "x 104 is past six wholes ahead"
     end
@@ -244,11 +245,33 @@ class TestPlacesOnTheAdvance < Minitest::Test
     assert_equal((56..112).map { |x| alone.pixel(x, 80) }, (56..112).map { |x| after.pixel(x, 80) })
   end
 
-  def test_the_default_perspective_is_every_8_pixels
+  def test_the_default_perspective_is_every_16_pixels
     default = game_player.run(PlaceGames.wall_down_the_side(Builder::Places::PERSPECTIVE), frames: 2).screen
 
-    assert_equal :every_8_pixels, Builder::Places::PERSPECTIVE
+    assert_equal :every_16_pixels, Builder::Places::PERSPECTIVE
     assert_equal shown(0x001F), default.pixel(92, 80)
+  end
+
+  # The wall down the side goes from two wholes ahead to ten across 48 pixels, so its distance
+  # changes fast across every stretch of 16: each is cut in two, and the picture lands where every
+  # 8 pixels puts it.
+  def test_a_wall_leaning_away_steeply_is_drawn_in_stretches_of_8
+    every_16 = game_player.run(PlaceGames.wall_down_the_side(:every_16_pixels), frames: 2).screen
+    every_8 = game_player.run(PlaceGames.wall_down_the_side(:every_8_pixels), frames: 2).screen
+
+    assert_equal (0...160).map { |y| (56..112).map { |x| every_8.pixel(x, y) } },
+                 (0...160).map { |y| (56..112).map { |x| every_16.pixel(x, y) } }
+  end
+
+  # A wall that leans away gently, from two wholes ahead to three, is drawn in stretches of 16:
+  # its picture of narrow stripes lands a pixel off where every 8 pixels puts it, here and there.
+  def test_a_wall_leaning_away_gently_is_drawn_in_stretches_of_16
+    rows = %i[every_16_pixels every_8_pixels].map do |perspective|
+      screen = game_player.run(PlaceGames.striped_wall(perspective), frames: 2).screen
+      (0...160).map { |y| (0...240).map { |x| screen.pixel(x, y) } }
+    end
+
+    refute_equal rows[0], rows[1]
   end
 
   def test_listed_faces_are_drawn_in_the_order_the_list_gives
@@ -280,6 +303,29 @@ class TestPlacesOnTheAdvance < Minitest::Test
     refute_equal BLACK, screen.pixel(139, 119)
     [[99, 79], [140, 79], [120, 39], [120, 120]].each do |x, y|
       assert_equal BLACK, screen.pixel(x, y), "(#{x}, #{y}) is outside the window"
+    end
+  end
+
+  # A place drawn `inside` a rectangle is seen across the rectangle, and a lit face in perspective
+  # near enough to reach past its left side is cut there, row by row: the face's left side would
+  # land 20 pixels left of the rectangle's.
+  def test_a_lit_face_reaching_past_the_rectangle_it_is_drawn_inside_is_cut_at_its_side
+    screen = game_player.run(PlaceGames.held_and_faded_square(inside: [100, 40, 40, 80], ahead: 0.5), frames: 2).screen
+
+    [60, 80, 100].each do |y|
+      refute_equal BLACK, screen.pixel(100, y), "(100, #{y}) is the rectangle's first column"
+      assert_equal BLACK, screen.pixel(99, y), "(99, #{y}) is outside the rectangle"
+    end
+  end
+
+  # A fade over the whole screen darkens a lit face's pixels as it darkens the rest of the picture.
+  def test_a_lit_face_under_a_fade_is_darkened_with_the_picture
+    plain = game_player.run(PlaceGames.held_and_faded_square, frames: 2).screen
+    faded = game_player.run(PlaceGames.held_and_faded_square(faded: 50), frames: 2).screen
+
+    [[64, 24], [150, 80], [110, 80], [111, 80]].each do |x, y|
+      refute_equal BLACK, faded.pixel(x, y), "(#{x}, #{y}) is on the face"
+      refute_equal plain.pixel(x, y), faded.pixel(x, y), "(#{x}, #{y}) is darker under the fade"
     end
   end
 

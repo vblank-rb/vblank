@@ -128,6 +128,14 @@ module VBlank
       # cartridge file, and what that file is called.
       def open_probe(path, save_dir:) = Diagnostics::Emulator.probe(path, save_dir: save_dir)
 
+      # THE EMULATOR ITS CARTRIDGES PLAY IN, LOADED, and what answers questions about a whole screen
+      # of its picture. The Advance and the Color play in libmgba, the Advance's emulator, whose C
+      # extension answers those questions (Diagnostics::Emulator.screen_questions). Every other console
+      # loads its own emulator alone and asks them in Ruby (Diagnostics::ScreenQuestions): a game for
+      # it can have no Advance's emulator built at all.
+      def load_emulator! = Diagnostics::Emulator.load!
+      def screen_questions = Diagnostics::Emulator.screen_questions
+
       # Whether `vblank build --format ir` can write its games (IR::Dump builds the Advance's
       # cartridge, so only the Advance's).
       def dumps_ir? = false
@@ -148,6 +156,30 @@ module VBlank
       # console that draws a sprite as pieces of its sprite table draws all of them one size at a
       # time, so a game names one where it names its consoles (`sprite_piece_size:`).
       def sprite_piece_sizes = nil
+
+      # THE SPRITE PIECES ITS BUILD MADE OF EACH PICTURE OF +program+, where the build chooses them
+      # in ways the console's rule for cutting a picture cannot see (IR::Backends::SpriteLines
+      # .pieces_built says the shape); nil for a console whose build cuts every picture by the rule.
+      def sprite_pieces_built(_program) = nil
+
+      # WHETHER A COLLECTION THE GAME MARKS COLD (`fast: false`, or a pool too big to share the
+      # work memory) IS KEPT IN THE ROOMIER MEMORY ALONE. Where it is, those collections must fit
+      # that memory on their own, which the build's memory check counts (Checks::IwramBudget).
+      # False where the build places every collection itself and reads no such mark.
+      def cold_collections_kept_roomier? = false
+
+      # WHAT ITS BUILD KEEPS IN THE ROOMIER MEMORY FOR ITSELF FOR +program+, read before it is
+      # lowered, each with a label and its bytes, for the same check to count against what the
+      # game's collections may use there. Empty where nothing of the build's is counted there.
+      def roomier_memory_reserved(_program) = []
+
+      # HOW MANY BYTES ONE LIST OF +capacity+ SLOTS OF +width+ TAKES in its build, for the same
+      # check: its slots and two words of its own (where it starts and how full it is). +ring+
+      # marks a list the game shifts from (#ring_lists), which a build may lay out its own way.
+      def list_bytes(capacity, width, ring:) = (capacity * IR::Build::ELEMENT_BYTES.fetch(width)) + (2 * 4)
+
+      # The lists +program+ shifts from, whose build may lay them out as a ring: none counted apart here.
+      def ring_lists(_program) = Set.new
 
       # +size+, when this console's build draws pieces that size; a plain refusal when it does not.
       def refuse_unusable_sprite_piece_size!(size)
@@ -202,16 +234,17 @@ module VBlank
       # plumbed through them. A game that names no variant builds the same bytes as before.
       #
       # What else changes: the border is drawn with the console's own sprites, so the game has
-      # that many fewer (BORDER_SPRITES); a background held to a box is refused, since the box and
-      # the border would both need the display's windows; and the desktop build plays no start-up,
-      # whose logo is drawn for the whole 240×160.
+      # that many fewer (BORDER_SPRITES); and a background held to a box is refused, since the box
+      # and the border would both need the display's windows. The desktop, web and Ruby builds show
+      # the whole 240×160 with the border round the game (rg_screen_framed), so the desktop build
+      # plays the Advance's start-up before it as for any Advance game.
       BORDER_SPRITES = 32
 
       COLOR_SCREEN = Ractor.make_shareable(
         Variant.new(name: :color_screen, title: "a Game Boy Color's screen in a border",
                     changes: { screen_width: COLOR.screen_width, screen_height: COLOR.screen_height,
                                sprites: ADVANCE.sprites - BORDER_SPRITES, background_box: nil,
-                               plays_bios_start_up: false, whole_screen_size: ADVANCE.screen_size.freeze },
+                               whole_screen_size: ADVANCE.screen_size.freeze },
                     build: {},
                     note: "a game laid out for the Game Boy Color's 160×144 screen, shown at its own size " \
                           "in the middle of the Advance's, with a border round it")
@@ -231,6 +264,17 @@ module VBlank
       def compared_side_by_side? = true
       def inspector = Diagnostics::Inspector
       def original_formats = Hardware::ORIGINAL_FORMATS
+
+      # Its lowering keeps a cold collection in the roomy memory whatever room the quick one has
+      # (IR::Backends::GBA::Lists#place_list), and keeps its own sound, save and background buffers
+      # there (IR::Backends::GBA::Roomy.reserved_by_build says which it can count before lowering).
+      def cold_collections_kept_roomier? = true
+      def roomier_memory_reserved(program) = IR::Backends::GBA::Roomy.reserved_by_build(program)
+
+      # A list is laid out as the lowering lays it out (GBA::Lists#register_list): a ring's slots
+      # rounded up to a power of two, and a word for each counter it keeps.
+      def list_bytes(capacity, width, ring:) = IR::Backends::GBA::Lists.reserved_bytes(capacity, width, ring: ring)
+      def ring_lists(program) = IR::Backends::GBA.shifted_lists(program)
     end
 
     # THE KIT OF A CONSOLE WHOSE LOWERING IS CHECKED BY A RUN OF ITS OWN: its cartridge is made by
@@ -273,6 +317,8 @@ module VBlank
       def reading = Diagnostics::SNESReading
       def open_core(path, save_dir:) = Diagnostics::Emulator.open_snes(path, save_dir: save_dir)
       def open_probe(path, save_dir:) = Diagnostics::SNESProbe.new(path, save_dir: save_dir)
+      def load_emulator! = Diagnostics::Emulator.load_snes!
+      def screen_questions = Diagnostics::ScreenQuestions
       def save_file_extension = ".srm"
       def save_file_of(cartridge) = reading.save_file_of(cartridge.buffer)
       def compared_side_by_side? = true
@@ -283,6 +329,8 @@ module VBlank
       def original_formats = SNESHardware::ORIGINAL_FORMATS
       # Its build cuts every sprite into 8×8 pieces and has no setting for bigger ones yet.
       def sprite_piece_sizes = [[8, 8]].freeze
+      # Its build gives up squares of 16×16 where video memory has no room for them (SNES::Art).
+      def sprite_pieces_built(program) = lowering.sprite_pieces_built(program)
 
       # THE CHIPS A CARTRIDGE CAN CARRY that more than a handful of games used. The one-game chips
       # (the Cx4 of Mega Man X2 and X3, the S-DD1, the SPC7110, the ST010 and the rest) are left out
@@ -297,7 +345,9 @@ module VBlank
                              # Its 64K of RAM is where it draws, and where the console's processor
                              # keeps a painted screen's picture: one page of 56K, so a painted screen
                              # keeps one page there as on a plain cartridge.
-                             changes: { roomier_memory_bytes: (120 + 64) * 1024 },
+                             # Its save is the whole of the second bank of the chip's RAM.
+                             changes: { roomier_memory_bytes: (120 + 64) * 1024,
+                                        save_memories: SNES_SUPER_FX_SAVE_MEMORIES },
                              build: { board: :super_fx },
                              note: "the Super FX 2 (GSU-2), a 21 MHz processor of its own that draws into " \
                                    "the cartridge's RAM: Yoshi's Island, Doom, Star Fox 2"),
@@ -321,6 +371,8 @@ module VBlank
       def reading = Diagnostics::GenesisReading
       def open_core(path, save_dir:) = Diagnostics::Emulator.open_genesis(path, save_dir: save_dir)
       def open_probe(path, save_dir:) = Diagnostics::GenesisProbe.new(path, save_dir: save_dir)
+      def load_emulator! = Diagnostics::Emulator.load_genesis!
+      def screen_questions = Diagnostics::ScreenQuestions
       def save_file_extension = ".srm"
       def compared_side_by_side? = true
       def original_formats = GenesisHardware::ORIGINAL_FORMATS
@@ -340,6 +392,8 @@ module VBlank
       def reading = Diagnostics::PS1Reading
       def open_core(path, save_dir:) = Diagnostics::Emulator.open_ps1(path, save_dir: save_dir)
       def open_probe(path, save_dir:) = Diagnostics::PS1Probe.new(path, save_dir: save_dir)
+      def load_emulator! = Diagnostics::Emulator.load_ps1!
+      def screen_questions = Diagnostics::ScreenQuestions
       def save_file_extension = ".srm"
     end
 

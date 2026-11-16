@@ -32,8 +32,12 @@ typedef struct {
 /* The driver in use; set by whichever main() started the program. */
 extern const rg_driver *rg_active_driver;
 
-/* The most players the runtime reads (IR::Buttons::MOST_PLAYERS). */
+/* The most players the runtime reads (IR::Buttons::MOST_PLAYERS). Every build writes it
+ * (Computer::ConsoleNumbers); this is the same number for a file read on its own, and
+ * test_native_checker_flags.rb holds the two alike. */
+#ifndef RG_MOST_PLAYERS
 #define RG_MOST_PLAYERS 16
+#endif
 
 /* A driver reports which buttons are down at every frame boundary: one number for each of +count+
  * connected players, the first player's first (IR::Buttons.masks), a bit a button in the order
@@ -65,8 +69,15 @@ void rg_clock_starts_at(int64_t seconds, int64_t ticks, int32_t set);
 void rg_clock_reads(int32_t year, int32_t month, int32_t day, int32_t hour, int32_t minute, int32_t second);
 
 /* What every driver does as a frame begins, after deciding to play it: the picture's work for
- * the frame boundary, then one frame of the music — the interpreter's order. */
-void rg_frame_begins(void);
+ * the frame boundary, then one frame of the music — the interpreter's order.
+ *
+ * In a game whose timer's handler waits (rg_runtime.c, "A HANDLER THAT WAITS") it gives back 1 when
+ * the handler stopped part way through the timers: the frame has begun, but nothing of it is shown
+ * and no buttons are read until the boundary is over. A window can show it all the same. And when
+ * rg_frame_ends_late is 1 the boundary to come only ends the frame such a walk began: it is no new
+ * frame, so a driver counting frames neither counts it nor stops before it. Otherwise it gives back 0. */
+int32_t rg_frame_begins(void);
+int32_t rg_frame_ends_late(void);
 
 /* The windowless driver: plays FRAMES frames under the buttons on standard input and prints
  * every frame (see rg_headless.c). Its arguments are the number of frames, then nothing:

@@ -191,19 +191,17 @@ module PackParityTests
     when :computer_build_mixing_at_recording_rates
       console = VBlank::Console.described(game_console)
       VBlank::Testing.checked? && console.mixes_recordings && console.recording_voice_hz.nil?
-    when :computer_build_voices_reading_sound_memory
-      VBlank::Testing.checked? && VBlank::Console.described(game_console).voices_read_sound_memory
     end
   end
 
   private def assert_alike_or_registered_difference(game, difference)
-    unless game.differs
+    unless game.differs&.shown_on?(game_console)
       return assert_nil difference, "#{game.name}: built with its pack left out and handed its pack, the game does not " \
                                     "play as its all-in-one build. #{difference}"
     end
 
     refute_nil difference, "#{game.name} is registered as a game its two builds show differently today " \
-                           "(#{game.differs}), and they now play alike. Take `differs:` off its line in test/pack_games.rb."
+                           "(#{game.differs.what}), and they now play alike. Take `differs:` off its line in test/pack_games.rb."
   end
 
   # THE BUILD WITH ITS PACK LEFT OUT, WRITTEN OUT, HOLDS NONE OF THE NUMBERS THE FILE PUTS INTO IT.

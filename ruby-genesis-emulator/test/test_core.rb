@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
+require "weakref"
 
 class TestCore < Minitest::Test
   include HandMadeCartridge
@@ -126,5 +127,70 @@ class TestCore < Minitest::Test
 
   def test_a_button_a_genesis_pad_lacks_is_refused
     assert_raises(ArgumentError) { @core.set_buttons(%i[select]) }
+  end
+
+  # Save memory is a byte at each odd address from $200000. The core hands over as much of it as was
+  # written to, up to the last byte that is not $FF, which is what a chip nobody wrote to holds.
+  SAVE_CODE = [*move_byte(0x5A, 0x200001), *move_byte(0x5A, 0x200003), *LOOP].freeze
+
+  def test_save_memory_holds_what_the_cartridge_saved
+    @core.destroy
+    @core = RubyGenesisEmulator::Core.new(HandMadeCartridge.write(@dir, SAVE_CODE))
+    @core.run_frame
+    assert_equal "\xFF\x5A\xFF\x5A".b, @core.save_ram
+  end
+
+  # A console nobody destroyed is collected by Ruby in the end, and its copy of the core is handed to
+  # the next console made in this process. The next console must start with save memory of its own,
+  # never the dropped console's.
+  def test_a_console_left_without_destroy_hands_its_save_to_nobody
+    @core.destroy
+    @core = nil
+    dropped = Thread.new { drop_console(SAVE_CODE) }.value
+    collect_dropped_consoles
+    refute dropped.weakref_alive?, "the dropped console was collected, so its copy is free for the next"
+
+    @core = RubyGenesisEmulator::Core.new(HandMadeCartridge.write(@dir, LOOP))
+    @core.run_frame
+    assert_empty @core.save_ram, "the new console started from the dropped console's save"
+  end
+
+  # The copy of the core a dropped console gives back holds no cartridge: Ruby shuts the console as
+  # #destroy does. A copy left with the cartridge in it is a library never shut, which the next
+  # console's start goes on top of.
+  def test_a_console_left_without_destroy_leaves_no_cartridge_in_its_copy
+    @core.destroy
+    @core = nil
+    dropped = Thread.new { drop_console(CODE) }.value
+    collect_dropped_consoles
+    refute dropped.weakref_alive?, "the dropped console was collected, so its copy is free for the next"
+
+    refute_equal [0x12, 0x34], work_ram_in_next_copy(0x0100, 2), "the copy still holds the dropped console's work RAM"
+  end
+
+  # Made and played on a thread of its own and let go of there: Ruby looks for what is still held on
+  # every stack, and a word left on the test's own could keep the console from being collected. Hands
+  # back a weak reference, which says whether the console is still alive without keeping it so.
+  private def drop_console(code)
+    core = RubyGenesisEmulator::Core.new(HandMadeCartridge.write(Dir.mktmpdir, code))
+    3.times { core.run_frame }
+    WeakRef.new(core)
+  end
+
+  private def collect_dropped_consoles = 3.times { GC.start(full_mark: true, immediate_sweep: true) }
+
+  # +count+ bytes of work RAM from +address+, high byte first, in the copy of the core the next console
+  # would take, opened as that console opens it, before any cartridge goes in.
+  private def work_ram_in_next_copy(address, count)
+    copy = RubyGenesisEmulator::KeptCopy.take
+    dir = Dir.mktmpdir
+    frontend = RubyGenesisEmulator::Frontend.new(copy.path, dir, dir, RubyGenesisEmulator::Core::SETTINGS,
+                                                 RubyGenesisEmulator::Core::RGB565)
+    ram = RubyGenesisEmulator::Core::SYSTEM_RAM
+    Array.new(count) { |i| frontend.memory_read(ram, (address + i) ^ 1, 1).getbyte(0) }
+  ensure
+    frontend&.close
+    copy&.give_back
+    FileUtils.rm_rf(dir) if dir
   end
 end

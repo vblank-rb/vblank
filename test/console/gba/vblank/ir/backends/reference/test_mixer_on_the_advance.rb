@@ -345,7 +345,8 @@ class TestMixerOnTheAdvance < Minitest::Test
   end
 
   # ...and one the game starts and stops in its loop lands on the same frames, a frame's slice
-  # made after the pass that said it — mixed once at nothing before its shape first moves it.
+  # made after the pass that said it — its shape moved on once as it is played, so it is heard in
+  # that first slice.
   def test_a_shaped_recording_started_and_stopped_in_the_loop_is_the_same_bytes
     b = Builder.new
     b.instance_eval do
@@ -360,6 +361,23 @@ class TestMixerOnTheAdvance < Minitest::Test
     end
     b.finalize_program
     assert_mixes_agree(b.program, frames: 20, at_least: 6)
+  end
+
+  # ...and a shaped note the game plays that is over inside one frame is heard in it, the same bytes.
+  def test_a_shaped_note_shorter_than_a_frame_is_heard_and_the_same_bytes
+    b = Builder.new
+    b.instance_eval do
+      screen :bitmap
+      keys = instrument :keys, pcm: SAWTOOTH.first(32), rate: 7929, note: :C4, holds_from: 0,
+                               envelope: VBlank::Audio::Envelope.new(attack: 255, decay: 36, sustain: 73, release: 110)
+      passes = 0
+      game_loop do
+        passes += 1
+        keys.play(:E4) if passes == 3
+      end
+    end
+    b.finalize_program
+    assert_mixes_agree(b.program, frames: 8, at_least: 1)
   end
 
   # A recording declared twice under one name plays the second declaration's samples.
@@ -426,7 +444,7 @@ class TestMixerOnTheAdvance < Minitest::Test
 
   # WHAT A GAME DOES INSIDE ITS LOOP is mixed in the slice made just after its pass, so against a
   # tune that is already sounding, a sound the game starts or stops lands on the cartridge's
-  # frame — and a sound with a shape is mixed once at nothing before its shape first moves it.
+  # frame — and a sound with a shape is heard there, its shape moved on once as it is played.
   def test_a_sound_the_game_starts_and_stops_in_its_loop_lands_on_the_same_frame
     [{}, { envelope: { attack: 0.1, release: 0.2 } }].each do |shape|
       b = Builder.new

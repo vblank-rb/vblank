@@ -33,15 +33,25 @@
  * note's distance to its next gain is multiplied by to slide it there); how many voices there
  * are; and the shifts the arithmetic is done in — the gain's whole 256ths, the step's, the gain's
  * fraction, the slide's split, a shape's full level and the shift it scales by, how far a
- * loudness (out of 512) is shifted up to be its gain, and how far a loudness times a level is
- * shifted down to the whole 256ths a shaped note's gain aims at.
+ * loudness (out of 512) is shifted up to be its gain, how far a loudness times a level is
+ * shifted down to the whole 256ths a shaped note's gain aims at, and how far a byte is shifted up
+ * in a game that mixes at sixteen bits (IR::Mixing::FULL_DEPTH_SHIFT), nought in any other.
  *
  * rg_game_recordings: how many recordings, then seven numbers each — where its samples start in
  * rg_game_recording_samples, how many there are, 1 if it has a shape, and the shape's four
  * numbers (attack, decay, sustain, release).
  *
  * rg_game_recording_samples: every recording's samples, -128 to 127, a byte each.
+ *
+ * AT SIXTEEN BITS (IR::Mixing.full_depth?), for a game given a recording of sixteen bits:
+ * rg_game_recording_samples holds each sample's high byte and rg_game_recording_low_bytes, as
+ * long, its low byte (an 8-bit recording's are nought), so a sample is the high byte shifted up
+ * and the low byte added. The arithmetic is the same, and each total of the slice is held to what
+ * sixteen bits hold rather than a byte. The speaker takes the slice down by that shift again
+ * (rg_mix_mixed_sample_shift), so a recording is as loud as at eight bits; with the speaker's
+ * other half kept for the console's voices, it hears fifteen of the sixteen bits.
  */
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -66,6 +76,7 @@
 #define SHAPE_SCALE (rg_game_mix[10])
 #define LOUDNESS_TO_GAIN (rg_game_mix[11])
 #define WHOLE_GAIN_SHIFT (rg_game_mix[12])
+#define FULL_DEPTH_SHIFT (rg_game_mix[13])
 
 /* Which part of its shape a note is in, and the frame after it has fallen to nothing, which the
  * voice is held for so it comes free on the same frame the console's does. */
@@ -207,6 +218,17 @@ static void start_voice(int32_t at, int32_t recording, int32_t step, int32_t bac
                            .release = shape[4]};
 }
 
+static void step_shape(mix_voice *voice);
+static void slide_gain(mix_voice *voice, int32_t first);
+
+/* Reference::Mixer#step_shape_at_start: a sound the game plays with a shape takes its shape's first step
+ * as it is played, its gain at that level with no slide, so it has climbed before it is first
+ * mixed, as a song's note has. */
+static void step_shape_at_start(mix_voice *voice) {
+  step_shape(voice);
+  slide_gain(voice, 1);
+}
+
 static int32_t tickets; /* how many sounds the game has started */
 
 void rg_mix_play(int32_t recording, int32_t step, int32_t loudness, int32_t back, int32_t loops) {
@@ -219,6 +241,7 @@ void rg_mix_play(int32_t recording, int32_t step, int32_t loudness, int32_t back
   }
 
   start_voice(at, recording, step, back, loudness, &recording_numbers(recording)[2]);
+  if (voices[at].shaped) step_shape_at_start(&voices[at]);
   voices[at].loops = loops;
   voices[at].ticket = ++tickets;
   spu_recording_struck(at, 1);
@@ -267,11 +290,15 @@ int32_t rg_mix_start_music_note(int32_t effect, int32_t lane, int32_t rank, cons
   return 1;
 }
 
-/* Reference::Mixer#glide_music_note: the note sounding reads on at the row's pitch. */
-int32_t rg_mix_glide_music_note(int32_t effect, int32_t lane, const int32_t *sound) {
+/* Reference::Mixer#glide_music_note: the note sounding reads on at the row's pitch, at +loudness+, or at
+ * its own where that is -1. */
+int32_t rg_mix_glide_music_note(int32_t effect, int32_t lane, const int32_t *sound, int32_t loudness) {
   int32_t at = sounding_voice(effect, lane);
   if (at < 0) return 0;
   voices[at].step = sound[1];
+  if (loudness < 0) return 1;
+  voices[at].loudness = loudness;
+  if (!voices[at].shaped) voices[at].gain = loudness << LOUDNESS_TO_GAIN;
   return 1;
 }
 
@@ -317,12 +344,16 @@ void rg_mix_stop(int32_t recording) {
 static int32_t mix_voice_into(mix_voice *voice, int32_t *totals) {
   const int32_t *numbers = recording_numbers(voice->recording);
   const int8_t *data = &rg_game_recording_samples[numbers[0]];
+  int32_t full_depth = FULL_DEPTH_SHIFT;
+  int32_t high_scale = 1 << full_depth;
+  const uint8_t *low = full_depth ? &rg_game_recording_low_bytes[numbers[0]] : NULL;
   int32_t length = numbers[1];
   int32_t whole = voice->step >> STEP_SHIFT;
   int32_t part = voice->step & ((1 << STEP_SHIFT) - 1);
   int32_t gain = SHAPES ? voice->gain : voice->loudness << LOUDNESS_TO_GAIN;
   for (int32_t at = 0; at < SLICE_SAMPLES; at++) {
-    totals[at] += (int32_t)(((int64_t)gain * data[voice->position]) >> (VOL_SHIFT + GAIN_FRACTION));
+    int32_t sample = full_depth ? (data[voice->position] * high_scale) + low[voice->position] : data[voice->position];
+    totals[at] += (int32_t)(((int64_t)gain * sample) >> (VOL_SHIFT + GAIN_FRACTION));
     gain += voice->ramp;
     voice->fraction += part;
     voice->position += whole + (voice->fraction >> STEP_SHIFT);
@@ -346,9 +377,10 @@ static void rg_mix_sound_frame(void) {
   for (int32_t i = 0; i < VOICES; i++) {
     if (voices[i].sounding && !mix_voice_into(&voices[i], slice)) voices[i].sounding = 0;
   }
+  int32_t highest = (128 << FULL_DEPTH_SHIFT) - 1;
   for (int32_t at = 0; at < SLICE_SAMPLES; at++) {
-    if (slice[at] > 127) slice[at] = 127;
-    if (slice[at] < -128) slice[at] = -128;
+    if (slice[at] > highest) slice[at] = highest;
+    if (slice[at] < -highest - 1) slice[at] = -highest - 1;
   }
   slices_made++;
 }
@@ -417,12 +449,21 @@ static void rg_mix_sound_frame_ended(void) {
   }
 }
 
+/* Whether +voice+ stopped because its recording, played once through, ran out: not stopped by the
+ * game, let go by a rest or fallen away. A chip that plays the recording on a voice of its own plays
+ * it to its end itself, however soon the mix got there. */
+static int32_t ran_out(const mix_voice *voice) {
+  if (voice->sounding || voice->back != 0 || voice->recording < 0 || voice->recording >= rg_game_recordings[0]) return 0;
+  return voice->position >= recording_numbers(voice->recording)[1];
+}
+
 /* rg_hook_recordings_told: each voice told to the sound chip that plays recordings on voices of its
  * own (rg_spu.c), as it stands where the frame's tune and shapes have played. */
 static inline void rg_mix_recordings_told(void) {
   for (int32_t i = 0; i < VOICES; i++) {
     const mix_voice *voice = &voices[i];
-    spu_tell_recording(i, voice->sounding, voice->recording, voice->back, voice->step, voice->loudness, voice->level);
+    spu_tell_recording(i, voice->sounding, ran_out(voice), voice->recording, voice->back, voice->step, voice->loudness, voice->level,
+                       voice->shaped);
   }
 }
 
@@ -436,6 +477,10 @@ static int32_t rg_mix_mixed_slice(const int32_t **samples) {
   *samples = slice;
   return slices_made > 0 ? SLICE_SAMPLES : 0;
 }
+
+/* How many bits the speaker takes a sample of the slice down by (see rg_hook_mixed_sample_shift):
+ * eight at sixteen bits, so a sample is as loud as its byte would be, and none otherwise. */
+static int32_t rg_mix_mixed_sample_shift(void) { return FULL_DEPTH_SHIFT; }
 
 /* What a sounding voice is playing: the recording, its loudness out of 512, how far its shape has
  * climbed or fallen, and whose it is — +owner+ 0 for the game's own sound, 1 for the song's, 2 for
@@ -623,18 +668,317 @@ void rg_mix_fill_backs(int32_t *into, const int32_t *rules) {
   for (int32_t i = 0; i < rest[1]; i++) into[rest[2 + i]] = back;
 }
 
+/* An arithmetic shift down, as Ruby's >> is: a number below nought rounds toward below. */
+static int64_t shifted_down(int64_t number, int32_t by) { return number >= 0 ? number >> by : ~((~number) >> by); }
+
+/* --- THE NEAREST ORDINARY ENVELOPE TO THE SUPER NINTENDO CHIP'S THREE BYTES ---
+ * Audio::SNESEnvelope#closest_envelope, step for step: the chip's level frame by frame from key-on
+ * (#chip_levels), then the attack and the decay whose levels come nearest it. The chip's numbers
+ * are Audio::SNESEnvelope's. */
+enum { CHIP_SAMPLE_RATE = 32000, CHIP_TOP = 0x7FF, CHIP_ADSR_ON = 0x80, CHIP_BENDS_AT = 0x600, CHIP_MOST_FRAMES = 4096 };
+enum { CHIP_ATTACK, CHIP_DECAY, CHIP_SUSTAIN };
+static const int32_t chip_rate_samples[32] = {0,   2048, 1536, 1280, 1024, 768, 640, 512, 384, 320, 256,
+                                              192, 160,  128,  96,   80,   64,  48,  40,  32,  24,  20,
+                                              16,  12,   10,   8,    6,    5,   4,   3,   2,   1};
+
+/* A level of the chip's as one of an envelope's (#heard): its top seven bits out of 127, rounded,
+ * worked in whole numbers (no level falls halfway). */
+static int32_t chip_heard(int32_t level, int32_t full) { return (int32_t)(((int64_t)(level >> 4) * full * 2 + 127) / 254); }
+
+static int32_t chip_fallen_by_part(int32_t level) { return level - 1 - (int32_t)shifted_down(level - 1, 8); }
+
+/* #chip_step and #gain_step: the level the chip moves to, the rate it waits at, and the part of
+ * the note after it. */
+static void chip_step(int32_t adsr1, int32_t adsr2, int32_t gain, int32_t level, int32_t phase, int32_t *moved_to,
+                      int32_t *rate, int32_t *phase_after) {
+  int32_t moved;
+  *phase_after = phase;
+  if (!(adsr1 & CHIP_ADSR_ON)) {
+    int32_t mode = gain >> 5;
+    if (mode < 4) {
+      *moved_to = gain * 0x10;
+      *rate = 31;
+      return;
+    }
+    if (mode == 4) moved = level - 0x20;
+    else if (mode == 5) moved = chip_fallen_by_part(level);
+    else if (mode == 6) moved = level + 0x20;
+    else moved = level + (level + 0x20 >= CHIP_BENDS_AT ? 0x08 : 0x20);
+    *rate = gain & 0x1F;
+  } else {
+    if (phase == CHIP_ATTACK) {
+      *rate = ((adsr1 & 0x0F) * 2) + 1;
+      moved = level + (*rate < 31 ? 0x20 : 0x400);
+    } else {
+      moved = chip_fallen_by_part(level);
+      *rate = phase == CHIP_DECAY ? ((adsr1 >> 3) & 0x0E) + 0x10 : adsr2 & 0x1F;
+    }
+    if (phase == CHIP_DECAY && (moved >> 8) == (adsr2 >> 5)) *phase_after = CHIP_SUSTAIN;
+    if (phase == CHIP_ATTACK && moved > CHIP_TOP) *phase_after = CHIP_DECAY;
+  }
+  *moved_to = moved < 0 ? 0 : moved > CHIP_TOP ? CHIP_TOP : moved;
+}
+
+/* #record_frames: +level+ for every frame that ends before sample +now+ and is not in yet. */
+static void chip_record_frames(int32_t *frames, int32_t *count, int32_t level, int64_t now, int32_t full, int32_t frame_rate) {
+  while (*count < CHIP_MOST_FRAMES && ((int64_t)(*count + 1) * CHIP_SAMPLE_RATE / frame_rate) < now) frames[(*count)++] = chip_heard(level, full);
+}
+
+/* #chip_levels: the levels into +frames+, how many there are into +count+; whether it settled. */
+static int chip_levels(int32_t adsr1, int32_t adsr2, int32_t gain, int32_t full, int32_t frame_rate, int32_t *frames, int32_t *count) {
+  int32_t level = 0, phase = CHIP_ATTACK;
+  int64_t now = 0;
+  int settled = 0;
+  *count = 0;
+  while (*count < CHIP_MOST_FRAMES) {
+    int32_t moved, rate, phase_after;
+    chip_step(adsr1, adsr2, gain, level, phase, &moved, &rate, &phase_after);
+    int32_t wait = chip_rate_samples[rate];
+    if (phase_after != phase) {
+      now += 1;
+      phase = phase_after;
+      chip_record_frames(frames, count, level, now, full, frame_rate);
+      if (wait && now % wait == 0) level = moved;
+      continue;
+    }
+    if (wait == 0 || moved == level) {
+      settled = 1;
+      break;
+    }
+    now = ((now / wait) + 1) * wait;
+    chip_record_frames(frames, count, level, now, full, frame_rate);
+    level = moved;
+  }
+  if (settled && *count < CHIP_MOST_FRAMES) frames[(*count)++] = chip_heard(level, full);
+  return settled;
+}
+
+/* A sum of numbers with fractions as Ruby's Array#sum makes it (Kahan-Babuska), so the nearest
+ * number is picked from exactly the sums the build picks it from. */
+typedef struct { double sum, carried; } ruby_float_sum;
+static void ruby_float_add(ruby_float_sum *total, double x) {
+  double t = total->sum + x;
+  if (fabs(total->sum) >= fabs(x)) total->carried += (total->sum - t) + x;
+  else total->carried += (x - t) + total->sum;
+  total->sum = t;
+}
+static double ruby_float_total(const ruby_float_sum *total) { return total->sum + total->carried; }
+
+/* The levels attack +number+ climbs to over +frames+ frames (#closest_attack's): even steps, held at full. */
+static int64_t chip_attack_level(int32_t number, int32_t frame, int32_t full) {
+  int64_t level = (int64_t)number * frame;
+  return level < full ? level : full;
+}
+
+/* #closest_attack: the attack whose climb to full comes nearest the chip's levels up to +peak+. */
+static int32_t chip_closest_attack(const int32_t *climb, int32_t frames, int32_t peak, int32_t full) {
+  ruby_float_sum wanted_total = {0.0, 0.0};
+  for (int32_t f = 0; f < frames; f++) ruby_float_add(&wanted_total, (double)((int64_t)climb[f] * full) / (double)peak);
+  double wanted = ruby_float_total(&wanted_total);
+  /* #nearest_number: the first number whose levels' sum is not under the wanted sum, found by halving. */
+  int32_t low = 1, high = full, over = -1;
+  while (low <= high) {
+    int32_t middle = low + ((high - low) / 2);
+    int64_t sum = 0;
+    for (int32_t f = 0; f < frames; f++) sum += chip_attack_level(middle, f + 1, full);
+    if ((double)sum >= wanted) {
+      over = middle;
+      high = middle - 1;
+    } else {
+      low = middle + 1;
+    }
+  }
+  if (over < 0) over = full;
+  int32_t best = -1;
+  double best_out = 0.0;
+  for (int32_t number = over - 1; number <= over; number++) {
+    if (number < 1) continue;
+    ruby_float_sum out = {0.0, 0.0};
+    for (int32_t f = 0; f < frames; f++) {
+      double apart = (double)chip_attack_level(number, f + 1, full) - ((double)((int64_t)climb[f] * full) / (double)peak);
+      ruby_float_add(&out, apart * apart);
+    }
+    double total = ruby_float_total(&out);
+    if (best < 0 || total < best_out) {
+      best = number;
+      best_out = total;
+    }
+  }
+  return best;
+}
+
+/* How far the levels decay +number+ falls through over +frames+ frames from full, never below
+ * +floor+, are from +fall+: the sum of the squares of what each frame is out. The levels' own sum
+ * goes into +sum+. */
+static int64_t chip_decay_squared_error(int32_t number, const int32_t *fall, int32_t frames, int32_t floor_level, int32_t full,
+                              int32_t scale, int64_t *sum) {
+  int64_t level = full, out = 0;
+  *sum = 0;
+  for (int32_t f = 0; f < frames; f++) {
+    level = (level * number) >> scale;
+    if (level < floor_level) level = floor_level;
+    *sum += level;
+    out += (level - fall[f]) * (level - fall[f]);
+  }
+  return out;
+}
+
+/* #closest_decay: the decay whose fall from full to +floor+ comes nearest the chip's levels after its highest. */
+static int32_t chip_closest_decay(const int32_t *fall, int32_t frames, int32_t floor_level, int32_t full, int32_t scale) {
+  if (frames == 0) return 0;
+  int64_t wanted = 0, sum;
+  for (int32_t f = 0; f < frames; f++) wanted += fall[f];
+  int32_t low = 0, high = full, over = -1;
+  while (low <= high) {
+    int32_t middle = low + ((high - low) / 2);
+    chip_decay_squared_error(middle, fall, frames, floor_level, full, scale, &sum);
+    if (sum >= wanted) {
+      over = middle;
+      high = middle - 1;
+    } else {
+      low = middle + 1;
+    }
+  }
+  if (over < 0) over = full;
+  int32_t best = -1;
+  int64_t best_out = 0;
+  for (int32_t number = over - 1; number <= over; number++) {
+    if (number < 0) continue;
+    int64_t out = chip_decay_squared_error(number, fall, frames, floor_level, full, scale, &sum);
+    if (best < 0 || out < best_out) {
+      best = number;
+      best_out = out;
+    }
+  }
+  return best;
+}
+
+/* #closest_envelope: the four numbers, attack, decay, sustain and release, into +shape+. */
+static void chip_closest_envelope(int32_t adsr1, int32_t adsr2, int32_t gain, int32_t full, int32_t scale, int32_t frame_rate,
+                                  int32_t *shape) {
+  static int32_t frames[CHIP_MOST_FRAMES];
+  int32_t count;
+  int settled = chip_levels(adsr1, adsr2, gain, full, frame_rate, frames, &count);
+  int32_t peak = 0, climb = 0;
+  for (int32_t f = 0; f < count; f++) {
+    if (frames[f] > peak) {
+      peak = frames[f];
+      climb = f + 1;
+    }
+  }
+  if (peak == 0) {
+    shape[0] = 0, shape[1] = 0, shape[2] = full, shape[3] = 0;
+    return;
+  }
+  int32_t floor_level = settled ? frames[count - 1] : 0;
+  shape[0] = chip_closest_attack(frames, climb, peak, full);
+  shape[1] = chip_closest_decay(frames + climb, count - climb, floor_level, full, scale);
+  shape[2] = floor_level;
+  shape[3] = 0;
+}
+
 void rg_mix_fill_shapes(int32_t *into, const int32_t *rules) {
-  int32_t at = rules[0], full = rules[2], count = rules[3];
+  int32_t at = rules[0], kept_as = rules[1], full = rules[2], scale = rules[3], frame_rate = rules[4], count = rules[5];
   const uint8_t *kept = rg_start_file_bytes() + at;
-  int32_t attack = kept[0], decay = kept[1], sustain = kept[2], release = kept[3];
+  int32_t numbers[4];
+  if (kept_as == 1) {
+    chip_closest_envelope(kept[0], kept[1], kept[2], full, scale, frame_rate, numbers);
+  } else {
+    for (int32_t i = 0; i < 4; i++) numbers[i] = kept[i];
+  }
+  int32_t attack = numbers[0], decay = numbers[1], sustain = numbers[2], release = numbers[3];
   /* A shape that climbs at once, holds at full and stops dead is no shape (Audio::Envelope#plain?). */
   int32_t shaped = !(attack == full && sustain == full && release == 0);
   for (int32_t i = 0; i < count; i++) {
-    int32_t *shape = into + rules[4 + i];
+    int32_t *shape = into + rules[6 + i];
     shape[0] = shaped;
     shape[1] = shaped ? attack : 0;
     shape[2] = shaped ? decay : 0;
     shape[3] = shaped ? sustain : 0;
     shape[4] = shaped ? release : 0;
   }
+}
+
+/* --- A RECORDING IN THE SUPER NINTENDO CHIP'S FORMAT, DECODED AS THE GAME STARTS ---
+ * Audio::SNESRecording#decoded, held as IR::StartFile::BRR says, step for step. */
+enum { BRR_BLOCK_BYTES = 9, BRR_BLOCK_SAMPLES = 16, BRR_END_BIT = 0x01, BRR_LOOP_BIT = 0x02, BRR_MOST_SHIFT = 12, BRR_MOST_PASSES = 64 };
+
+/* #decode_block: the blocks from +first+ to before +past+ decoded onto the two samples before
+ * (+older+, the one before last, and +last+), each sample's top eight bits written from +samples+[*made]
+ * while there is +room+. */
+static void brr_decode_blocks(const uint8_t *bytes, int32_t first, int32_t past, int32_t *older, int32_t *last, int8_t *samples,
+                              int32_t *made, int32_t room) {
+  for (int32_t block = first; block < past; block++) {
+    const uint8_t *kept = bytes + (block * BRR_BLOCK_BYTES);
+    int32_t shift = kept[0] >> 4, filter = (kept[0] >> 2) & 3;
+    for (int32_t n = 0; n < BRR_BLOCK_SAMPLES; n++) {
+      int32_t nibble = n % 2 == 0 ? kept[1 + (n / 2)] >> 4 : kept[1 + (n / 2)] & 0xF;
+      int64_t sample = nibble >= 8 ? nibble - 16 : nibble;
+      sample = shift <= BRR_MOST_SHIFT ? shifted_down(sample * ((int64_t)1 << shift), 1) : (sample < 0 ? -2048 : 0);
+      int64_t newest = *last, before = shifted_down(*older, 1);
+      if (filter == 1) sample += shifted_down(newest, 1) + shifted_down(-newest, 5);
+      else if (filter == 2) sample += newest - before + shifted_down(before, 4) + shifted_down(newest * -3, 6);
+      else if (filter == 3) sample += newest - before + shifted_down(newest * -13, 7) + shifted_down(before * 3, 4);
+      if (sample < -0x8000) sample = -0x8000;
+      if (sample > 0x7FFF) sample = 0x7FFF;
+      int32_t kept_sample = (int32_t)((((sample * 2) + 0x8000) & 0xFFFF) - 0x8000);
+      *older = *last;
+      *last = kept_sample;
+      if (*made < room) samples[*made] = (int8_t)shifted_down(kept_sample, 8);
+      (*made)++;
+    }
+  }
+}
+
+void rg_mix_fill_brr(int8_t *samples, int32_t *decoded, const int32_t *rules) {
+  int32_t start = rules[0], room = rules[1], at = rules[2], count = rules[3], entry = rules[4], most_passes = rules[5];
+  int64_t loop_at = rules[6] ? start_file_setting(rules + 8) : rules[7];
+  const uint8_t *bytes = rg_start_file_bytes() + at;
+  /* The blocks up to the first that ends the recording; all of them, ending without a loop, where none does. */
+  int32_t blocks = count / BRR_BLOCK_BYTES, taken = blocks, loops = 0;
+  for (int32_t block = 0; block < blocks; block++) {
+    if (bytes[block * BRR_BLOCK_BYTES] & BRR_END_BIT) {
+      taken = block + 1;
+      loops = (bytes[block * BRR_BLOCK_BYTES] & BRR_LOOP_BIT) != 0;
+      break;
+    }
+  }
+  int64_t loop_block = (loop_at < 0 ? 0 : loop_at) / BRR_BLOCK_BYTES;
+  if (loop_block > taken - 1) loop_block = taken - 1;
+  int32_t older = 0, last = 0, made = 0, hold = -1;
+  int8_t *into = samples + start;
+  brr_decode_blocks(bytes, 0, loops ? (int32_t)loop_block : taken, &older, &last, into, &made, room);
+  if (loops) {
+    /* Round the loop until it would start from two samples a time round started from before. */
+    int32_t started_older[BRR_MOST_PASSES], started_last[BRR_MOST_PASSES], started_at[BRR_MOST_PASSES], passes = 0;
+    if (most_passes > BRR_MOST_PASSES) rg_fault("a BRR recording decodes round its loop %d times, and the most is %d", (int)most_passes, BRR_MOST_PASSES);
+    for (;;) {
+      int32_t found = -1;
+      for (int32_t pass = 0; pass < passes; pass++) {
+        if (started_older[pass] == older && started_last[pass] == last) found = pass;
+      }
+      if (found >= 0) {
+        hold = started_at[found];
+        break;
+      }
+      if (passes == most_passes) {
+        hold = made - ((taken - (int32_t)loop_block) * BRR_BLOCK_SAMPLES);
+        break;
+      }
+      started_older[passes] = older, started_last[passes] = last, started_at[passes] = made, passes++;
+      brr_decode_blocks(bytes, (int32_t)loop_block, taken, &older, &last, into, &made, room);
+    }
+  }
+  decoded[entry] = made < room ? made : room;
+  decoded[entry + 1] = hold;
+}
+
+void rg_mix_fill_decoded_length(int32_t *into, const int32_t *decoded, const int32_t *rules) {
+  for (int32_t i = 0; i < rules[1]; i++) into[rules[2 + i]] = decoded[rules[0]];
+}
+
+void rg_mix_fill_decoded_backs(int32_t *into, const int32_t *decoded, const int32_t *rules) {
+  int32_t length = decoded[rules[0]], hold = decoded[rules[0] + 1];
+  int32_t back = start_file_back(hold, hold < 0, length, rules[1]);
+  for (int32_t i = 0; i < rules[2]; i++) into[rules[3 + i]] = back;
 }

@@ -19,6 +19,13 @@ class TestSceneTilesOnTheGenesis < Minitest::Test
   # Where each scene's own sprite stands.
   MARK_AT = [160, 120].freeze
 
+  # The ways sprite_heavy_scenes can change the variable that picks the scene and wait for the screen
+  # (+changed_by+): in the loop before the pick (:loop), at the end of each scene's own routine
+  # (:scenes), in a timer's `on_tick` (:timer), or in that timer with a routine of the game's own that
+  # waits for the screen called before the pick (:timer_and_wait), built with `frame_sync: :manual`.
+  # And with the loop's own wait written partway down, the pick after it (:pick_after_wait).
+  CHANGED_BY = %i[loop scenes timer timer_and_wait pick_after_wait].freeze
+
   # +loads_first+ gives each scene's hand-over a pass of its own (`scene ..., loads_first: true`).
   # +handed_over_by_scene+ sets the variable at the end of each scene's own routine rather than in
   # the loop before the dispatch, so the next scene arrives on the pass after.
@@ -76,12 +83,16 @@ class TestSceneTilesOnTheGenesis < Minitest::Test
   HEAVY_PICTURES = 8
 
   # Two scenes whose own SPRITE pictures do not fit together, and fit one scene at a time, so each
-  # scene's sprite pictures come in as it takes over. The options are #two_scenes's. Built by the
-  # Genesis lowering's own tests too, for the way of writing the loop it refuses.
-  def self.sprite_heavy_scenes(dispatched_inside_test: false, handed_over_by_scene: false)
+  # scene's sprite pictures come in as it takes over. +dispatched_inside_test+ is #two_scenes's, and
+  # +changed_by+ one of CHANGED_BY. Built by the Genesis lowering's own tests too, for the ways of
+  # writing the loop it refuses.
+  def self.sprite_heavy_scenes(dispatched_inside_test: false, changed_by: :loop)
+    raise ArgumentError, "changed_by: is one of #{CHANGED_BY}" unless CHANGED_BY.include?(changed_by)
+
     switch = SWITCH_AT
     pictures = HEAVY_PICTURES
-    b = Builder.new
+    manual = %i[timer_and_wait pick_after_wait].include?(changed_by)
+    b = Builder.new(options: VBlank::Cartridge::Options.new(frame_sync: manual ? :manual : :auto))
     b.instance_eval do
       screen :tiled
       first = ManyTiles.declare_sprite_pictures(self, :one_pose, pictures, :red)
@@ -90,12 +101,21 @@ class TestSceneTilesOnTheGenesis < Minitest::Test
       tick = var :tick, 0
       scene(:one) do
         sprite :one_walker, at: [16, 16], frames: first, rate: 1
-        state = 1 if tick == switch if handed_over_by_scene
+        state = 1 if tick == switch if changed_by == :scenes
       end
       scene(:two) do
         sprite :two_walker, at: [16, 16], frames: second, rate: 1
-        state = 0 if tick == switch * 3 if handed_over_by_scene
+        state = 0 if tick == switch * 3 if changed_by == :scenes
       end
+      if %i[timer timer_and_wait].include?(changed_by)
+        # A tick a frame, so every frame of the pass that counts +switch+ sets the same number.
+        clock = timer :clock, per_second: 60
+        clock.on_tick do
+          state = 1 if tick == switch
+          state = 0 if tick == switch * 3
+        end
+      end
+      func(:pause) { wait_vblank } if changed_by == :timer_and_wait
       dispatch = lambda do
         case_var(:state) do
           when_val 0, :one
@@ -103,11 +123,14 @@ class TestSceneTilesOnTheGenesis < Minitest::Test
         end
       end
       game_loop do
+        wait_vblank if changed_by == :timer_and_wait
         tick += 1
-        unless handed_over_by_scene
+        if %i[loop pick_after_wait].include?(changed_by)
           state = 1 if tick == switch
           state = 0 if tick == switch * 3
         end
+        call :pause if changed_by == :timer_and_wait
+        wait_vblank if changed_by == :pick_after_wait
         if dispatched_inside_test
           dispatch.call if tick >= 0
         else
@@ -179,8 +202,17 @@ class TestSceneTilesOnTheGenesis < Minitest::Test
   # Picked inside an `if`, with the variable changed only by the scenes themselves: the scene up as
   # each pass starts is the one the pass shows.
   def test_sprite_pictures_taking_turns_with_a_dispatch_inside_a_test_changed_by_its_scenes
-    game_player.run(self.class.sprite_heavy_scenes(dispatched_inside_test: true, handed_over_by_scene: true), frames: SWITCH_AT * 5)
+    game_player.run(self.class.sprite_heavy_scenes(dispatched_inside_test: true, changed_by: :scenes), frames: SWITCH_AT * 5)
     pass
+  end
+
+  # Picked inside an `if`, with the variable changed by a timer: a timer moves on as the game waits
+  # for the screen, before the pass that picks the scene starts, so the scene up as each pass starts
+  # is the one the pass shows. Checked on every pass, both hand-overs included.
+  def test_sprite_pictures_taking_turns_with_a_dispatch_inside_a_test_changed_by_a_timer
+    run = game_player.run(self.class.sprite_heavy_scenes(dispatched_inside_test: true, changed_by: :timer), frames: SWITCH_AT * 5)
+
+    assert_equal 0, run[:state], "handed over to the second scene and back"
   end
 
   def test_each_scenes_sprite_is_drawn_from_its_own_tiles

@@ -35,7 +35,7 @@ module VBlank
     #
     # +cost+ is how much work one of the slot's bytes takes to unpack, against a plain copy's 1: a
     # slot the routine renders or decompresses slowly names more, so a shell's bar gives it its
-    # share of the time rather than of the bytes (Builder::DataPacks#define_unpacking_progress). It
+    # share of the time rather than of the bytes (Original::UnpackingProgress). It
     # changes nothing in the pack.
     #
     # A VIEW OF A SLOT is some of a slot's bytes read in a shape of their own: +count+ items of that
@@ -45,7 +45,10 @@ module VBlank
     # shape, size and layout, and no slot of the pack: its +name+ is a SlotView, which says whose
     # bytes it reads and from where, and the two things that find a slot's bytes by its name find
     # a view's by that (Pack#bytes_of, SlotStarts#fetch).
-    Slot = Data.define(:name, :shape, :at, :count, :width, :signed, :format, :cost)
+    #
+    # +pieces+ is how many items each piece of the slot holds, in order, or nil for a slot of one
+    # piece: a slot a part of the routine given `pieces:` writes a piece at a time (PiecedUnpacking).
+    Slot = Data.define(:name, :shape, :at, :count, :width, :signed, :format, :cost, :pieces)
 
     # THE NAME OF A VIEW (see Slot): +size+ bytes of +slot+, a slot the pack names, from its byte
     # +at+ on. It reads as text where a slot's name does, in a build's messages and in the names
@@ -236,7 +239,7 @@ module VBlank
       end
       private_class_method :formats_of, :tile_format_of, :number_format_of, :readable_layouts, :layout_title
 
-      def initialize(name:, shape:, at:, count:, width:, signed:, format:, cost: 1)
+      def initialize(name:, shape:, at:, count:, width:, signed:, format:, cost: 1, pieces: nil)
         unless (at.nil? || place?(at) || release_places?(at)) && count.is_a?(Integer) && count.positive?
           raise ArgumentError, "Slot :#{name} was given at: #{at.inspect} and count: #{count.inspect}. " \
                                "at: must be a place in the copy, 0 or more. " \
@@ -257,6 +260,9 @@ module VBlank
 
       # The slot of the pack the bytes are in: this one, or the one a view reads.
       def declared = view? ? name.slot : self
+
+      # Where this slot's bytes start in #declared's: 0, or the byte a view starts at.
+      def start_in_declared = view? ? name.at : 0
 
       # A VIEW OF THIS SLOT'S BYTES from byte +at+ on, in the shape the block makes: the block is
       # handed a name and a count and gives back a Slot of them (`Slot.tiles(name, count: count,
@@ -291,6 +297,42 @@ module VBlank
                              "these #{one.shape} is #{one.item_bytes} bytes, so the bytes do not make a whole number of " \
                              "them. To fix this, give count:, or correct at:."
       end
+
+      # THE SLOT IN PIECES (`pieces:` on its `slots.` line): +given+ is how many pieces of equal
+      # size, or the items of each piece in order, which together hold every item of the slot. A
+      # piece holds one item at least. Only a slot the routine fills can be in pieces: a slot copied
+      # as it is has no routine to write it a piece at a time.
+      def in_pieces(given)
+        items = given.is_a?(Integer) && given.positive? && (count % given).zero? ? Array.new(given, count / given) : given
+        unless items.is_a?(Array) && !items.empty? && items.all? { |each| each.is_a?(Integer) && each.positive? } && items.sum == count
+          raise ArgumentError, "Slot :#{name} was given pieces: #{given.inspect}, and it holds #{count} items. pieces: is " \
+                               "a number of pieces that divides #{count}, or a list of the items in each piece. Each " \
+                               "piece holds 1 item or more, and the list adds up to #{count}."
+        end
+        unless filled_by_routine?
+          raise ArgumentError, "Slot :#{name} has at: and pieces:. A slot in pieces is written by a part of the " \
+                               "routine, a piece at a time. To fix this, leave at: out, or leave pieces: out."
+        end
+
+        with(pieces: items.freeze)
+      end
+
+      # Whether the slot is in pieces.
+      def pieced? = !pieces.nil?
+
+      # How many pieces the slot is in: 1 for a slot that is not.
+      def piece_count = pieces ? pieces.length : 1
+
+      # Where each piece's bytes start in the slot's, in order.
+      def piece_starts = pieces.each_with_object([0]) { |items, starts| starts << (starts.last + (items * item_bytes)) }.first(pieces.length)
+
+      # PIECE +number+ (0 first) as a slot of its own: the same shape and layout, the piece's items,
+      # and a name that says whose piece it is, which its errors name.
+      def piece_slot(number) = with(name: :"#{name}_piece_#{number}", count: pieces.fetch(number), pieces: nil)
+
+      # The shape of any piece, for a piece the routine works out as it runs: the slot's shape and
+      # layout, as many items as its biggest piece, and a name that says it is a piece of the slot.
+      def piece_shape = with(name: :"#{name}_piece", count: pieces.max, pieces: nil)
 
       # Whether the slot names a cost other than a plain copy's.
       def costly? = cost != 1

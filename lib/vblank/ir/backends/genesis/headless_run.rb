@@ -102,18 +102,17 @@ module VBlank
           # one no cartridge for it can read, so it is not pressed.
           def set_buttons(buttons) = @core.set_buttons(buttons.map(&:to_sym) & PAD_BUTTONS)
 
-          # A RUN OF NO FRAMES ends as the first pass does, before anything is shown: the screen is
-          # still switched off. The interpreter shows a display switched off as a plain white picture
-          # (Reference::Framebuffer::HELD_OFF), so that is the picture the run ends on, and the game goes
-          # no further.
+          # A RUN OF NO FRAMES ends as the first pass does, before anything is shown
+          # (CartridgeHeadlessRun#end_before_first_picture): the runtime turns the screen on as the
+          # first pass is shown.
           def ends_before_first_picture?(frames) = frames.zero?
 
-          def end_before_first_picture(variables, lists, sprites, sounds, camera)
-            hold_after_this_pass
-            @sprites = sprites
-            off = Array.new(@core.width * @core.height, Reference::Framebuffer::HELD_OFF)
-            record_moment(:end, variables, lists, Picture.new(shown: off, width: @core.width, height: @core.height,
-                                                              camera_x: camera[0], camera_y: camera[1]), sounds)
+          # The screen switched off is the video chip's own: its screen bit clear. It then shows only
+          # the backdrop colour, which a game can set before its screen comes on, so the picture alone
+          # cannot tell.
+          def screen_forced_off?
+            hardware = Console::GenesisHardware
+            (@core.vdp_registers[hardware::REG_MODE2] & hardware::MODE2_SCREEN_ON_BIT).zero?
           end
 
           # A pass's moment waits for the count of its sounds (#sounds_counted?), but for the moment the run
@@ -184,6 +183,7 @@ module VBlank
           # frame before it is the first's, and the interrupts of those read the buttons the script gave
           # for it.
           def start_run(_program)
+            @setting_up = nil
             @frames_played = 0
             @deciding = true
             @logged_entries = []
@@ -197,12 +197,19 @@ module VBlank
 
           def next_screen_frame = screen_on? ? super : 1
 
+          # The count is written as the screen comes on for the first pass, which may be after the game was
+          # found waiting at that pass's end, so it is read again at every moment.
+          def read_setting_up
+            @setting_up = half(runtime_place(Runtime::Frame::SETTING_UP)) if @places.runtime.key?(Runtime::Frame::SETTING_UP)
+          end
+
           # The moment of +frame+ — a pass's number, or :end for the moment the run ended on. +sounds+ is how
           # many entries the sound log held as the game was found waiting (#read_sounds). A PASS'S SOUNDS
           # INCLUDE ITS FRAME BOUNDARY'S MUSIC, which the cartridge plays where the wait ends, after the game
           # was found waiting, so a pass's moment takes the count the cartridge kept as that wait ended
           # (Runtime::Sound::LOGGED_BY_PASS). The moment the run ended on has no boundary after it.
           def record_moment(frame, variables, lists, picture, sounds)
+            read_setting_up
             @vars = variables
             @lists = lists
             @screen = picture
@@ -320,8 +327,6 @@ module VBlank
           FAULT_WORDS = Ractor.make_shareable({
             CartridgeFaults::CPU_EXCEPTION => "the processor met something it cannot do (an odd address, a division " \
                                               "it cannot make, or an instruction it does not know)",
-            CartridgeFaults::CELLS_FULL => "the game changed more than #{Runtime::Tiles::MOST_CELLS} cells of its " \
-                                           "backgrounds in one pass, more than its queue for the blank holds",
             CartridgeFaults::CAMERA_TOO_FAR => "the game moved the camera past #{Runtime::Paint::CAMERA_ACROSS} pixels " \
                                                "across or #{Runtime::Paint::CAMERA_DOWN} down, further than a painted " \
                                                "screen can show on a Genesis"

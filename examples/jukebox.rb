@@ -14,7 +14,8 @@
 # plays the sound effect HOORAY and B plays BLIP, both on the same recording. The
 # piano tune alternates a small chord with a big one that uses every one of the
 # mixer's sixteen voices, which is where priority decides who is heard: HOORAY
-# ranks above the tune, BLIP below it.
+# ranks above the tune, BLIP below it. R plays a clack, a recording made of numbers rather
+# than read from a file. Under the heading, a clock says how long the tune has been playing.
 #
 # What to listen for (on PIANO CHORDS):
 #   1. Press A: HOORAY plays over the tune, and the tune never stops or slips.
@@ -38,6 +39,7 @@ require_relative "../lib/vblank"
 module Jukebox
   # --- Layout (pixels; the screen is 240x160, origin top-left) ---
   SCREEN_W   = 240
+  CLOCK_ROW  = 42
   FIRST_ROW  = 50
   ROW_GAP    = 14
   EFFECTS_ROW = 116
@@ -52,6 +54,14 @@ module Jukebox
 
   # How long a tune takes to fade out when the cursor moves, and the next to fade in.
   FADE_FRAMES = 12
+
+  # The clack R plays: a wave flipping up and down every six samples, dying away to nothing
+  # over a twentieth of a second.
+  CLACK_RATE = 8192
+  CLACK_LENGTH = CLACK_RATE / 20
+  CLACK = Ractor.make_shareable(
+    (0...CLACK_LENGTH).map { |n| ((n / 6).even? ? 1 : -1) * (100 * (CLACK_LENGTH - n) / CLACK_LENGTH) }
+  )
 
   # Each song gets an accent color, so moving the cursor recolors the screen as
   # well as changing the tune.
@@ -159,6 +169,11 @@ module Jukebox
     chorale = songs :chorale, [CHORALE]
     sfx = sound_effects :sfx, { hooray: HOORAY, blip: BLIP }
 
+    # A recording played as it was made, once through, is a `sample`, where `instrument` above
+    # is a voice the tunes play their notes on. It need not come from a file: `pcm:` takes the
+    # samples as numbers, -128 to 127, at `rate:` a second (CLACK, built in Ruby above).
+    clack = sample :clack, pcm: CLACK, rate: CLACK_RATE
+
     # --- Layout the font works out ---
     #
     # The rows are a left-aligned column so the cursor lines up under itself, and the
@@ -181,6 +196,17 @@ module Jukebox
     asked = 0
     holding = false # true while SELECT is holding the tune
     humming = false # true while START has the hum on
+
+    # How long the tune has been playing, in seconds, shown under the heading. Counting frames
+    # would not do: the screen shows a little under sixty a second, so a clock that takes sixty
+    # frames for a second falls behind, by about a second every few minutes. `timer` is a
+    # counter on the console's own clock, ticking as many times a second as it is asked for
+    # whatever the game is doing, and `ticks` reads how many so far. Starting it again under
+    # the same name, below, puts it back to nought for the next tune.
+    tune_clock = timer :tune_clock, per_second: 1
+    elapsed = 0 # this frame's reading of it
+    clock_x = (SCREEN_W - text_width("0:00")) / 2 # 0:07, centred: a figure in each of four places
+    place = VBlank::Graphics::Fonts.default.cell_w
 
     # --- Advance the bobbing blocks: move each by its speed, and reverse (snap
     # to the edge, flip the sign) whenever it reaches the top or bottom. ---
@@ -230,7 +256,15 @@ module Jukebox
         switching = false
         playing = songs.picked
         fade_music_in
+        timer :tune_clock, per_second: 1 # the new tune's time starts at 0:00
       end
+
+      # The minutes (round again after nine), then the seconds as two figures, 0:07 as a clock
+      # writes it.
+      elapsed = tune_clock.ticks
+      draw_number (elapsed / 60) % 10, clock_x, CLOCK_ROW, :gray, digits: 1
+      draw_text ":", clock_x + place, CLOCK_ROW, :gray
+      draw_number elapsed % 60, clock_x + (2 * place), CLOCK_ROW, :gray, digits: 2, leading_zeros: true
 
       # The picked row tints the bobbing blocks straight away; the tune follows once it has
       # faded. Naming the tune every frame is fine — it is the tune playing now — and naming a
@@ -255,6 +289,7 @@ module Jukebox
         sfx.play :blip
         asked = 2
       end
+      clack.play if pressed(:r)
       draw_text "A HOORAY", 64, EFFECTS_ROW, [:gray, :white], showing: asked == 1
       draw_text "B BLIP", 136, EFFECTS_ROW, [:gray, :white], showing: asked == 2
 

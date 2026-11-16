@@ -113,7 +113,15 @@ module VBlank
 
       # Why a copy +named+ whose SHA-1 is +sha1+ is refused, or nil when it is a release the game
       # reads. +md5+, when known, names a release listed by its MD5 alone.
-      def digest_refusal(named, sha1, md5: nil)
+      #
+      # A COPY NO RELEASE HAS THE DIGEST OF is changed, damaged or cut short. Two things say more
+      # about it, where the caller has them. +size+, the copy's length: when it is no length a
+      # release is listed with, the refusal says so (size_refusal refuses such a copy unread only
+      # when every release has a size). And the block, asked only here, gives the name of the
+      # release the copy says it is (read from its header, say) or nil: a damaged copy of that
+      # release is then refused naming it, and one that is the wrong length for it, with both
+      # lengths. A shell asks with neither, since each of its releases has a size.
+      def digest_refusal(named, sha1, md5: nil, size: nil)
         release = with_sha1(sha1)
         return nil if release&.read
         return unread_release_message(named, release) if release
@@ -121,7 +129,20 @@ module VBlank
         by_md5 = md5 && @list.find { |known| known.md5 == md5 }
         return unread_release_message(named, by_md5) if by_md5 && !by_md5.read
 
-        unknown_release_message(named, sha1)
+        claimed = block_given? ? yield : nil
+        return claimed_release_refusal(named, claimed, sha1, size) if claimed
+
+        unknown_release_message(named, sha1) + unknown_length_words(size).to_s
+      end
+
+      # Why a copy +named+ of +size+ bytes that says it is the release called +claimed+ (as
+      # digest_refusal's block gives it) is refused for its length, or nil when that release has no
+      # size or the copy is its length. A copy refused by size_refusal is named by this where it can be.
+      def claimed_size_refusal(named, claimed, size)
+        release = @list.find { |known| known.name == claimed }
+        return nil if release.nil? || release.size.nil? || release.size == size
+
+        claimed_length_message(named, release, size)
       end
 
       # A COPY THAT IS A FOLDER, for a game whose releases are several files. +names+ are the names
@@ -221,6 +242,31 @@ module VBlank
       def unknown_release_message(named, sha1)
         "#{named} is not a release of #{title} that this game knows. Its SHA-1 is #{sha1}. A changed or " \
           "damaged copy has a different SHA-1. This game reads #{readable_words}. Name a copy of one of these."
+      end
+
+      def claimed_release_refusal(named, claimed, sha1, size)
+        claimed_size_refusal(named, claimed, size) || damaged_release_message(named, claimed, sha1)
+      end
+
+      # The sentence that tells a copy its length, when releases have sizes and none is its.
+      def unknown_length_words(size)
+        sized = @list.reject { |release| release.size.nil? }
+        return nil if size.nil? || sized.empty? || sized.any? { |release| release.size == size }
+
+        lengths = sized.map { |release| "#{release.size} bytes for the #{release.name} release" }.join(", or ")
+        " It is #{size} bytes. A complete copy is #{lengths}."
+      end
+
+      def claimed_length_message(named, release, size)
+        "#{named} is the #{release.name} release of #{title}, but it is #{size} bytes. A complete copy of that release " \
+          "is #{release.size} bytes. Name a complete copy of #{title}."
+      end
+
+      def damaged_release_message(named, claimed, sha1)
+        release = @list.find { |known| known.name == claimed && known.sha1 }
+        wanted = release ? " A complete copy of that release has SHA-1 #{release.sha1}." : ""
+        "#{named} is the #{claimed} release of #{title}, but it is changed or damaged. Its SHA-1 is #{sha1}.#{wanted} " \
+          "This game reads #{readable_words}. Name a copy of one of these."
       end
 
       def one_file_message(named) = "#{named} is one file. A copy of #{title} is a folder that holds #{readable_words}. Name that folder."

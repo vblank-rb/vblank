@@ -203,8 +203,20 @@ module VBlank
       COPIED_FIELDS = %i[x y].freeze
 
       # The key the game's block gives for the thing in the slot the copy is on.
-      private def order_key_at_cursor
-        @order_key.call(Instance.new(self, Value.handed_to_block(@builder, Build.var_ref(stacking_cursor_var))))
+      private def order_key_at_cursor = key_at_cursor(@order_key)
+
+      # What +key+, given rather than the pool's own, gives for the thing in the slot the copy is on.
+      private def key_at_cursor(key)
+        key.call(Instance.new(self, Value.handed_to_block(@builder, Build.var_ref(stacking_cursor_var))))
+      end
+
+      # How many fraction bits +key+ gives a thing of this pool, or nil for a whole number. The
+      # number is worked out and dropped. Public for Builder::DrawOrder#order_key_bits, which asks
+      # before the pool is ordered, so an order whose numbers are of two kinds is refused.
+      def order_key_fraction_bits(key)
+        answer = key_at_cursor(key)
+        answer.discard! if answer.is_a?(Value)
+        Fraction.bits_of(answer)
       end
 
       # Whether +node+ reads the slot the copy is on only to read a copied field there.
@@ -445,8 +457,17 @@ module VBlank
       def stacked_objects = @stacked_objects ||= []
 
       # Draw the instance at slot +index+ with other colours — the same verb a sprite has, and
-      # the same rules (see HardwareSprite#draw_with). Each instance keeps its own choice.
+      # the same rules (see HardwareSprite#draw_with). Each instance keeps its own choice, except
+      # for the list a pose's frame picks as the game starts, which the whole pool follows.
       def draw_with(index, which, showing)
+        # A list a pose's frame picks as the game starts (Builder#list_chosen_at_start?) is
+        # followed, as a sprite told it is (Pool#follow_lists_chosen_at_start).
+        which = { which => which } if which.is_a?(Symbol) && @builder.list_chosen_at_start?(which)
+        if which.is_a?(Hash) && !@builder.one_list_for_pose_lists?(which) && which.keys.any? { |own| @builder.list_chosen_at_start?(own) }
+          return follow_lists_chosen_at_start(which, showing)
+        end
+
+        refuse_following_and_drawing_with! if @following
         @recolors ||= begin
           unless spriteful?
             raise ArgumentError,
@@ -461,6 +482,39 @@ module VBlank
         choice = FieldRef.new(builder: @builder, list: colors_list, index: index.node, pool: @name, field: :colors)
         @recolors.draw_with(choice, which, showing)
         self
+      end
+
+      # A POOL TOLD TO DRAW WITH THE LIST A POSE'S FRAME PICKS, in a build that reads its pack as
+      # the game starts: which list that is is in the player's file, so the build cannot write it
+      # into the instance's choice as the build that holds the pack does. Each sprite the pool's
+      # things are drawn as follows the lists instead (Builder::PackPoses
+      # #follow_lists_chosen_at_start), as one sprite told the same does, and a pose shows what the
+      # list its frame picks holds now.
+      #
+      # Those sprites show each instance in turn, so they follow for every instance, from the
+      # start. Where the game tells every instance, that is what the build that holds the pack
+      # shows. An instance never told, or not told yet, shows what the list holds as well, where
+      # that build shows the colours the list was declared with: the two differ once the list is
+      # recoloured. A pool also told another list is refused (#refuse_following_and_drawing_with!).
+      private def follow_lists_chosen_at_start(lists, showing)
+        unless spriteful?
+          raise ArgumentError, "pool :#{@name} was told to draw_with other colors, but its instances draw nothing. " \
+                               "Give the pool pictures with image:, facing: or frames:."
+        end
+        refuse_following_and_drawing_with! if @recolors
+        stacked_objects.each do |node|
+          @builder.follow_pose_lists(node, lists, poses: @art.poses, showing: showing, subject: "pool :#{@name}")
+        end
+        @following = true
+        self
+      end
+
+      private def refuse_following_and_drawing_with!
+        raise ArgumentError,
+              "pool :#{@name} was told to draw_with the list that a frame picks, and to draw_with another list. " \
+              "This build reads its pack as the game starts. So the pool follows the lists of its frames for all " \
+              "its instances. It cannot also draw with another list. To fix this, change the colors of the list " \
+              "with `recolor`. Or build the game all-in-one."
       end
 
       # A pool never told to draw with other colours takes back the writes every spawn made
@@ -619,6 +673,38 @@ module VBlank
       # to do with its instance never reads it. So its slot is a number handed over rather
       # than one worked out: left unused, it is not the game's to be blamed for.
       def current_instance = Instance.new(self, Value.handed_to_block(@builder, Build.var_ref(current_var)))
+
+      # Build the body of routine +name+ into the routine being built, yielding the instance
+      # it runs for.
+      #
+      # A ROUTINE THAT WALKS ITS OWN POOL — the stepper checked against every other thing —
+      # needs its instance in a variable of its own. The instance reads current_var, and a walk
+      # of the pool moves that on to each thing it visits, so inside the walk `e` would read
+      # the walk's thing. That holds for a read written inside the walk and for one made before
+      # it and kept in a name (`mover = e.index`), since both are reads of current_var. In plain
+      # Ruby `e` stays the routine's own thing under any walk.
+      #
+      # So the routine copies current_var into its own variable as it starts, and every read of
+      # current_var in its body reads that copy. Only a routine whose body walks its pool does
+      # this: any other keeps reading current_var, and builds the bytes it always did.
+      #
+      # Returns the routine's own variable, for the build to declare, or nil when it has none.
+      def build_routine_body(name)
+        own_var = part_name("routine#{instance_routines.index(name)}_at")
+        entry = Build.set(own_var, Build.var_ref(current_var))
+        record(entry)
+        walks_before = @walks.to_i
+        yield current_instance
+        body = entry.parent
+        if @walks.to_i == walks_before
+          body.children.delete(entry)
+          return nil
+        end
+
+        body.walk { |node| node.name = own_var if node.kind == :var_ref && node.name == current_var }
+        entry.value = Build.var_ref(current_var)
+        own_var
+      end
 
       # How many instances are live right now, as a {Value}.
       def count = Value.new(@builder, Build.var_ref(count_var))
@@ -854,12 +940,13 @@ module VBlank
       end
 
       # THE VARIABLES A POOL'S OWN WALKS HOLD A SLOT IN: the slot a walk is on (#walk_vars), the
-      # one a routine of the pool runs for (#record_current_slot), and the one the copy for its
+      # one a routine of the pool runs for (#record_current_slot) and that routine's own copy of
+      # it (#build_routine_body), and the one the copy for its
       # sprites is on (#stacking_nodes). Each is written only from the pool's chain once the walk
       # has seen that it holds a slot and not NONE, or put back from a copy of itself, and starts
       # at nought. So whenever one is read it is a slot below the pool's capacity, and a lowering
       # can read the pool's own lists there without testing the index first.
-      SLOT_PARTS = /\A(?:current|stacking_at|walk\d+_at)\z/
+      SLOT_PARTS = /\A(?:current|stacking_at|walk\d+_at|routine\d+_at)\z/
 
       # The name of the pool whose slot +var+ always holds (see SLOT_PARTS), or nil.
       def self.walked_by(var)

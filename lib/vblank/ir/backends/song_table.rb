@@ -247,8 +247,16 @@ module VBlank
         # the number the cartridge's sound log keeps an entry as. +recordings+ (the lowering) gives
         # the row of "recording_plays" a recorded part's note plays (Lowering::Sound#recorded_note_row),
         # for its recording, its pitch, its volume as written and its shape (the note's or the part's).
-        def words(voicing, recordings: nil, &number_of)
+        #
+        # SONGS' NOTES APART (+notes_apart+), for a console that keeps them out of the table because
+        # the table would not fit where its player reads it (SNES::SongBanks). Each song part's two
+        # lists of notes then go one after another in #apart_note_words instead of after the song's
+        # record, and the part's entry names where each list starts there as a note's number, counted
+        # from nought, not as a place in the table. A sound effect's notes stay in the table. The
+        # rest of the table is laid out as it always is, so a console that never asks is unchanged.
+        def words(voicing, recordings: nil, notes_apart: false, &number_of)
           @recordings = recordings
+          @apart_notes = notes_apart ? [] : nil
           @songs.each { |song| refuse_parts!(song) }
           @groups = [] # every group's commands, each once, in the order first met
           @wobble_records = [] # every wobble's record, each once
@@ -305,6 +313,10 @@ module VBlank
           refuse_table_too_long!(table)
           table
         end
+
+        # The song parts' notes, as words, from the last #words told +notes_apart+, each note
+        # NOTE_BYTES long and numbered by its place among them.
+        def apart_note_words = @apart_notes.dup
 
         # Whether the game sets its music volume (Music.follows_level?).
         def follows_level? = @follows_level
@@ -363,9 +375,14 @@ module VBlank
             parts.each_with_index do |part, p|
               entry = p * PART_BYTES / 2
               part[:lists].each_with_index do |notes, which|
-                entries[entry + (which * 2)] = (at + tail.size) * 2
                 entries[entry + (which * 2) + 1] = notes.size
-                notes.each { |note| tail.concat(note_words(note, places)) }
+                if @apart_notes
+                  entries[entry + (which * 2)] = @apart_notes.size * 2 / NOTE_BYTES
+                  notes.each { |note| @apart_notes.concat(note_words(note, places)) }
+                else
+                  entries[entry + (which * 2)] = (at + tail.size) * 2
+                  notes.each { |note| tail.concat(note_words(note, places)) }
+                end
               end
               if part[:loudness]
                 entries[entry + (LOUDNESS_GROUPS / 2)] = (at + tail.size) * 2
@@ -462,7 +479,7 @@ module VBlank
           head = [[:note, song.name, frequency],
                   IR::Tunes.voice_entry(channel, song.name, frequency, volume, fade: fade, slide: slide, vibrato: vibrato,
                                                                        side: side, duty: duty)]
-          commands = entry_commands(head + between + wave_or_noise_entries(part, frequency), voicing, song.name, &number_of)
+          commands = entry_commands(head + between + wave_or_noise_entries(part, event), voicing, song.name, &number_of)
           wobble = wobble_record(channel, frequency, vibrato, &number_of) if Audio::Vibrato.moves?(vibrato)
           shapes = shape_record(channel, frequency, duty, &number_of) if duty&.steps?
           written = frequency.zero? ? 0 : volume
@@ -578,6 +595,13 @@ module VBlank
           pan = IR::Tunes.note_pan(part, event)
           row_options = row_options.merge(pan: pan) unless VBlank::Audio::Pan.centered?(pan)
           if sounds
+            if IR::Tunes.glides?(event)
+              # A glide's pitch reads the recording its part's note sounds on (IR::Tunes.struck_instrument),
+              # and a glide that names no volume or side of its own keeps the note's.
+              instrument = IR::Tunes.struck_instrument(part, event)
+              row_options = row_options.merge(keeps_loudness: true) if event[3].nil?
+              row_options = row_options.merge(keeps_side: true) if event[VBlank::Audio::Music::Part::PAN_SLOT].nil?
+            end
             row = @recordings.recorded_note_row(instrument || part.instrument, frequency, volume,
                                                 envelope || part.envelope, **row_options) + 1
           else
@@ -668,14 +692,16 @@ module VBlank
         end
 
         # What a note on the wave or noise voice also logs, as Reference::Player#log_wave_or_noise
-        # says it: that voice's own entry, which is the note's writes.
-        def wave_or_noise_entries(part, frequency)
+        # says it: that voice's own entry, which is the note's writes — in the note's own waveform,
+        # or rattling as the note says, where it named them.
+        def wave_or_noise_entries(part, event)
+          frequency = event[1]
           case IR::Tunes.part_kind(part)
           when :wave
-            [frequency.zero? ? [:stop_wave] : [:wave, { shape: part.wave, frequency: frequency, volume: part.volume }]]
+            [frequency.zero? ? [:stop_wave] : [:wave, { shape: IR::Tunes.said_wave(part, event), frequency: frequency, volume: part.volume }]]
           when :noise
             [[:noise, frequency.zero? ? nil : { pitch: frequency, decay: part.decay, volume: part.volume,
-                                                metallic: part.metallic }]]
+                                                metallic: IR::Tunes.said_metallic(part, event) }]]
           else []
           end
         end
@@ -698,11 +724,26 @@ module VBlank
 
         def refuse_parts!(song)
           refuse_unmade_recorded_parts!(song)
+          refuse_unmade_note_voices!(song)
           kinds =song.voices.map { |part| IR::Tunes.part_kind(part) }
           return if kinds.count(:square) <= 2 && kinds.count(:wave) <= 1 && kinds.count(:noise) <= 1
 
           raise self.class::LoweringError, "The song #{song.name.inspect} has too many parts for one voice. A song can have two " \
                                "square parts, one wave part and one noise part. To fix this, remove the extra parts."
+        end
+
+        # A NOTE'S OWN WAVEFORM OR RATTLE IN A GAME THAT SETS ITS MUSIC VOLUME, which the build does not
+        # make yet: a new music volume reaching a held note is written from the part's waveform and
+        # rattle (#loudness_group), not the note's.
+        def refuse_unmade_note_voices!(song)
+          return unless follows_level?
+          return unless song.voices.any? { |part| IR::Tunes.notes_say_metallic?(part) } || IR::Tunes.notes_name_waves?([song])
+
+          raise not_made_yet_error.new(
+            "The song #{song.name.inspect} has a note with its own `wave:` or `metallic:`, and the game sets its music volume. " \
+            "The #{console_title} build does not make that yet. To fix this, give `plays:` or `metallic:` to the part and not " \
+            "to its notes. Or build the game for the Game Boy Advance alone for now (`consoles: %i[gba]`).", part: "the sound"
+          )
         end
 
         # A PART THAT PLAYS A RECORDING, where the build does not make it yet: in a game that sets its

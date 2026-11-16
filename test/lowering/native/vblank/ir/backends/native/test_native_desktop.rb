@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "native_comparison"
+require "border_frame_tests"
 require "fileutils"
 require "open3"
 require "tmpdir"
@@ -229,6 +230,52 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
+  # A GENESIS PAD'S C: the C key presses it in a Genesis game's window, and --help names it among
+  # the Genesis's buttons alone. Which key starts on which button is tested with no window
+  # (test_native_window.rb); this is that the build tells the window its console's buttons.
+  def test_the_c_key_presses_c_in_a_genesis_game
+    Dir.mktmpdir do |dir|
+      game = VBlank.game("PRESSES C", consoles: %i[genesis]) do
+        screen :bitmap
+        held_c = var(:held_c, 0)
+        game_loop do
+          clear_screen :black
+          held_c.increase! 1 if held(:c)
+        end
+      end
+      exe = Native.new.build_desktop(game, File.join(dir, "c"), err: nil)
+      help, = Open3.capture2e(exe, "--help", chdir: dir)
+      played = play_window(exe, dir, ["0", "0 keydown:C", "0", "0", "0", "0 keyup:C", "0"], frames: 10)
+
+      assert_match(/^  C +C$/, help)
+      refute_match(/^  Select /, help, "a Genesis pad has no Select")
+      assert_operator played.variables[:held_c], :>=, 3, "the C key presses C"
+    end
+  end
+
+  # Player 2's X and Y in a Super Nintendo game for two: H and Y, and --help names them.
+  def test_h_and_y_are_player_twos_x_and_y_in_a_super_nintendo_game
+    Dir.mktmpdir do |dir|
+      game = VBlank.game("TWO SNES", consoles: %i[snes], players: { computer: 1..2, else: 1 }) do
+        screen :bitmap
+        x_two = var(:x_two, 0)
+        y_two = var(:y_two, 0)
+        game_loop do
+          clear_screen :black
+          x_two.increase! 1 if held(:x, player: 2)
+          y_two.increase! 1 if held(:y, player: 2)
+        end
+      end
+      exe = Native.new.build_desktop(game, File.join(dir, "two"), err: nil)
+      help, = Open3.capture2e(exe, "--help", chdir: dir)
+      played = play_window(exe, dir, ["0", "0 keydown:H", "0", "0 keydown:Y", "0", "0 keyup:H keyup:Y", "0"], frames: 10)
+
+      assert_match(/H is X/, help)
+      assert_operator played.variables[:x_two], :>=, 3, "H is player 2's X"
+      assert_operator played.variables[:y_two], :>=, 2, "Y is player 2's Y"
+    end
+  end
+
   # PLAYER 2 ON THE KEYBOARD: the keyboard's right hand presses player 2's buttons, and player 1's
   # keys stay player 1's. Which key is which, and the gamepads' players, are tested with no window
   # (test_native_seats.rb); this is that the window hands player 2's buttons to the game. --help
@@ -369,6 +416,48 @@ class TestNativeDesktop < Minitest::Test
       assert_operator played.printed[/^start_up_frames (\d+)$/, 1].to_i, :>, 200, "about four and a half seconds of it"
       assert_equal 10, played.variables[:frames], "and then the game's own frames"
       assert_empty played.said
+    end
+  end
+
+  # A GAME LAID OUT FOR THE GAME BOY COLOR, BUILT FOR THE ADVANCE IN A BORDER, fills the Advance's
+  # window: 240×160 three times over, the border round the game's screen (test/border_frame_tests.rb
+  # holds every pixel of it), and the game's red bar at its corner, (40, 8).
+  def test_a_color_game_in_a_border_fills_the_advances_window
+    Dir.mktmpdir do |dir|
+      exe = Native.new.build_desktop(BorderFrameTests::PLAIN, File.join(dir, "bordered"), console: :gba, err: nil)
+      window, = picture_of_window(exe, dir, [], frames: 5)
+      border = VBlank::Graphics::Border.default(whole: [240, 160], inner: [160, 144])
+      seen_at = ->(x, y) { window.pixels[(((y * 3) + 1) * window.width) + (x * 3) + 1] }
+      sum_of = ->(color) { [0, 5, 10].sum { |shift| ((color >> shift) & 0x1F).then { |level| (level << 3) | (level >> 2) } } }
+
+      assert_equal [720, 480], [window.width, window.height]
+      [[0, 0], [239, 159], [39, 80], [120, 7]].each do |x, y|
+        assert_equal sum_of.call(border[(y * 240) + x]), seen_at.call(x, y), "the border at (#{x}, #{y})"
+      end
+      assert_equal 255, seen_at.call(40, 8), "the game's red bar at its screen's corner"
+    end
+  end
+
+  # A GAME OF BIG PIXELS (`pixel_size: 2`) draws a 120×80 picture and opens the Advance's window all
+  # the same: 240×160 three times over, each of its pixels a square of six of the window's. Its
+  # white last pixel fills the window's last six rows and columns, and the blue beside it starts
+  # just past them.
+  def test_a_game_of_big_pixels_opens_the_window_the_consoles_size
+    game = VBlank.game("BIGWINDOW", consoles: %i[gba]) do
+      screen :bitmap, pixel_size: 2
+      game_loop do
+        clear_screen :blue
+        pixel screen_width - 1, screen_height - 1, :white
+      end
+    end
+    Dir.mktmpdir do |dir|
+      exe = Native.new.build_desktop(game, File.join(dir, "big"), console: :gba, err: nil)
+      window, = picture_of_window(exe, dir, [], frames: 5)
+      seen_at = ->(x, y) { window.pixels[(y * window.width) + x] }
+
+      assert_equal [720, 480], [window.width, window.height]
+      assert_equal [765] * 4, [[714, 474], [719, 474], [714, 479], [719, 479]].map { |x, y| seen_at.call(x, y) }, "the white pixel"
+      assert_equal [255] * 2, [[713, 479], [719, 473]].map { |x, y| seen_at.call(x, y) }, "the blue beside it"
     end
   end
 

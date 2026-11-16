@@ -129,7 +129,7 @@ module VBlank
         return if @save_data.empty?
 
         refuse_records_over_save_memory!
-        @save_memory_layout = IR::SaveLayout.memory(save_memory)
+        @save_memory_layout = save_memory
         @halves = SaveHalf.new(@port, memory: @save_memory_layout)
         SavePlaces.new(@port, memory: @save_memory_layout, records: @save_data,
                               table_record: ->(kept, place:) { declare_table_record(kept, place: place) }).declare
@@ -301,31 +301,49 @@ module VBlank
       # what they keep is only known then.
       def refuse_records_over_save_memory!
         refuse_records_over_biggest_memory! unless needed_save_memory
-        named = @port.save_memory
-        return if named.nil? || IR::SaveLayout.fits?(named, record_halves)
+        named = named_save_memory
+        return if named.nil? || named.fits?(record_halves)
 
         records = "save_data records"
         records += ", with the record that keeps its save_var numbers," if save_vars_in_record?
-        smallest = named == IR::SaveLayout::EEPROM ? " #{named}K, the EEPROM, is the smallest save memory there is." : ""
-        raise ArgumentError, "This game asks for `save_memory: #{named}`, and its #{records} need " \
-                             "#{needed_save_memory}K.#{smallest} To fix this, ask for `save_memory: " \
-                             "#{needed_save_memory}`, or keep less in each record, or use fewer copies."
+        smallest = named.eeprom? ? " #{named.kilobytes}K, the EEPROM, is the smallest save memory there is." : ""
+        raise ArgumentError, "This game asks for `save_memory: #{named.kilobytes}`, and its #{records} need " \
+                             "#{needed_save_memory.kilobytes}K.#{smallest} To fix this, ask for `save_memory: " \
+                             "#{needed_save_memory.kilobytes}`, or keep less in each record, or use fewer copies."
       end
 
       # The records in the order they were declared, each with what it keeps laid out. The
-      # first that does not fit beside the ones before it is the one named.
+      # first that does not fit beside the ones before it is the one named, with the bytes the
+      # records need laid out in the biggest memory the console's cartridge can carry, and that
+      # memory's bytes.
       def refuse_records_over_biggest_memory!
         records = @save_data.values
-        over = records.each_index.find do |i|
-          !IR::SaveLayout.fits?(IR::SaveLayout::MEMORIES.last, records[0..i].map { |one| [one.half, one.copies] })
-        end
-        biggest = IR::SaveLayout.memory(IR::SaveLayout::MEMORIES.last)
+        biggest = IR::SaveLayout.pickable(@port.save_memories).last
+        over = records.each_index.find { |i| !biggest.fits?(records[0..i].map { |one| [one.half, one.copies] }) }
         sizes = records.map { |one| "#{record_words(one.name).delete_prefix('save_data ')} #{biggest.record_room(one.half, one.copies)}" }
-        raise ArgumentError, "#{record_words_first(records[over].name)} does not fit in save memory. The biggest save " \
-                             "memory a cartridge can have is #{IR::SaveLayout::MEMORIES.last}K, and the " \
-                             "records need more. Each copy is kept twice, so a save cut off half way cannot " \
-                             "lose it. The records take #{sizes.join(', ')} bytes. To fix this, keep less " \
-                             "in each record, or use fewer copies."
+        raise ArgumentError, "#{record_words_first(records[over].name)} does not fit in save memory. A " \
+                             "#{@port.console.title} cartridge keeps at most #{biggest.kilobytes}K of save memory " \
+                             "(#{biggest.size} bytes), and the records need #{biggest.bytes_filled(record_halves)} " \
+                             "bytes. The game keeps each copy two times, so that a save cut off half way cannot " \
+                             "lose it. The records take: #{sizes.join(', ')} bytes. To fix this, keep less in " \
+                             "each record, or use fewer copies.#{roomier_variant_words}"
+      end
+
+      # Where the console has a variant whose cartridge keeps the records, the words that name it:
+      # a Super Nintendo with a Super FX chip, which keeps more than a plain cartridge.
+      def roomier_variant_words
+        console = @port.console
+        kit = Console.for(console.name)
+        variant = kit.variants.each_value.find do |one|
+          memories = one.changes[:save_memories] or next false
+          offered = memories.map { |kilobytes, chip| IR::SaveLayout.memory(kilobytes, chip) }
+          memories != console.save_memories && IR::SaveLayout.smallest_fitting(record_halves, offered)
+        end
+        return "" unless variant
+
+        kept = variant.changes[:save_memories].last.first
+        " Or build the game for a #{kit.description.title} with #{variant.title} " \
+          "(`variants: { #{console.name}: :#{variant.name} }`), which keeps #{kept}K of save memory."
       end
 
       # +layout+ with what it keeps laid out — or a friendly error for a record that keeps

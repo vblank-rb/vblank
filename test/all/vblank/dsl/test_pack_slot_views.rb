@@ -66,12 +66,11 @@ class TestPackSlotViews < Minitest::Test
     assert_includes error.message, "colors:"
   end
 
-  def test_a_frame_read_from_a_view_is_refused
-    error = refusal do |pack|
-      pack[:video].as_numbers(at: 0, count: 64, width: :byte, signed: false).frame(0, layout: nil)
-    end
+  # A frame is read from bytes, so a slot of tiles names the view that reads it as bytes.
+  def test_a_frame_read_from_a_slot_of_tiles_names_a_view_of_bytes
+    error = refusal { |pack| pack[:video].frame(0, layout: nil) }
 
-    assert_includes error.message, "view of slot :video"
+    assert_includes error.message, "pack[:video].as_numbers(at:"
   end
 
   # A run of a slot does not start at the slot's first number, which these count from.

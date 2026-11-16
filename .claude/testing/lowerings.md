@@ -31,7 +31,7 @@ fails on the Color run until it is made — that failure is the work still owed.
 call its run cannot answer (`GBC::HeadlessRun::CannotAnswer`), counted by reason at the end;
 `skip_on_gbc` is there for a test the Color's build does not make yet. A game the Color's build
 refuses is refused by every run playing as the Color before it plays (`Testing::BuildChecks`, the
-guardrails a build runs), in the build's words, so a test of what the Color's hardware cannot do
+checks a build runs, from `IR::ProgramChecks`), in the build's words, so a test of what the Color's hardware cannot do
 fails there and belongs in the folders of the consoles that can. A port's unpacking is not checked
 (`IR::Nodes::Program#for_unpacking`), since it runs only on a computer and no shell checks it.
 `test/lowering/gbc/vblank/ir/backends/gbc/` is its own folder. A game built for both consoles
@@ -40,7 +40,7 @@ fails there and belongs in the folders of the consoles that can. A port's unpack
 `examples/pong.rb` changed for it, since the Advance's title zooms on a screen the Color cannot turn.
 **The Super Nintendo run is built the way the Color's is.** Its player (`CartridgeCheckedPlayer.for(:snes)`, over
 `SNES::CheckedRun`) plays each test's program as a Super Nintendo program in bsnes
-(ruby-snes-emulator, whose core `rake compile_snes_core` builds) and compares variables, lists,
+(ruby-snes-emulator, whose core and C extension `rake compile_snes_core` builds) and compares variables, lists,
 the picture and sprites with the interpreter's after every pass. A test whose program reaches a
 part its build does not make yet (`SNES::Lowering::NOT_LOWERED_YET`) skips, saying which part, and
 the run counts those skips by reason; `skip_on_snes` is there for a test it cannot play for a
@@ -50,7 +50,7 @@ mirrors `examples/`: a test there plays one example built for the Super Nintendo
 
 **The Sega Genesis run is built the same way.** Its player (`CartridgeCheckedPlayer.for(:genesis)`, over
 `Genesis::CheckedRun`) plays each test's program as a Genesis program in Genesis Plus GX
-(ruby-genesis-emulator, whose core `rake compile_genesis_core` builds), and
+(ruby-genesis-emulator, whose core and C extension `rake compile_genesis_core` builds), and
 `test/lowering/genesis/vblank/ir/backends/genesis/` is its own folder. The C, JavaScript and Ruby
 runs play the suite as the Genesis too, and skip a recording: it has no clock to play one by yet.
 
@@ -104,7 +104,7 @@ The run ends with its skips counted by reason, and fails if any is not a missing
   the sound, for songs (square, wave, noise and recordings; named or from a list; played once;
   the music volume), effects over the song, beeps, `wave`, `stop_wave`, `noise`, and recordings.
   The mixer's output is compared slice for slice (`mixed_sound`, `active_samples`,
-  `sound_owners`, `peak_voices`, `volume_of`, `level_of`, `sound_drops` answer). A test may clear
+  `sound_owners`, `peak_voices`, `volume_of`, `level_of`, `loudness_by_voice`, `sound_drops` answer). A test may clear
   `audio` as it watches; the run compares every entry the C logged regardless.
 - **`assert_backends_agree` and `backend_pictures` do not skip.** They play the program as C
   with the same buttons and compare with the interpreter on every frame; `backend_pictures`

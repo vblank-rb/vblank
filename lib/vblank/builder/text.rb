@@ -178,7 +178,7 @@ module VBlank
         unless text.is_a?(String)
           raise ArgumentError,
                 "draw_text draws words (a String, or a list of character codes). For a number like a score or a " \
-                "counter, use draw_number. Got #{text.inspect}."
+                "counter, use draw_number. You gave #{Messages::PlainWords.words_for_given(text)}."
         end
         if from || length
           raise ArgumentError, "draw_text takes from: and length: with a list of character codes. These words are a String."
@@ -195,6 +195,7 @@ module VBlank
         chosen = IR::FontTable.of(@program).get(font) # fail early with a friendly error on an unknown font name
         refuse_missing_characters!(text, chosen, font)
         x = column_for(x, chosen.text_width(text), within, "draw_text")
+        refuse_unwritten_row!(y, "draw_text")
 
         # A tiled screen has no framebuffer to paint into, so text is drawn as little
         # sprite glyphs the console composites each frame — declared once, like a
@@ -243,7 +244,8 @@ module VBlank
       # @param leading_zeros [Boolean] draw the places the number has not reached as 0
       def draw_number(value, x, y, color = nil, digits: DEFAULT_DIGITS, font: :default, within: nil, leading_zeros: false)
         unless DSL::Whole.positive?(digits)
-          raise ArgumentError, "draw_number needs a positive number of digits. Got #{digits.inspect}."
+          raise ArgumentError, "draw_number needs a positive number of digits, written in the program. " \
+                               "You gave #{Messages::PlainWords.words_for_given(digits)}."
         end
         unless [true, false].include?(leading_zeros)
           raise ArgumentError, "draw_number takes leading_zeros: as true or false. Got #{leading_zeros.inspect}."
@@ -260,6 +262,7 @@ module VBlank
         refuse_missing_color!("draw_number", color)
         chosen = IR::FontTable.of(@program).get(font)
         x = column_for(x, (digits * chosen.cell_w) - chosen.spacing, within, "draw_number")
+        refuse_unwritten_row!(y, "draw_number")
 
         # On a tiled screen, a number is drawn as sprite glyphs, declared once and
         # left to update itself each frame (see #draw_number_tiled).
@@ -289,7 +292,7 @@ module VBlank
       # @return [Integer] pixels across
       def text_width(text, font: :default)
         unless text.is_a?(String)
-          raise ArgumentError, "text_width measures words (a String). Got #{text.inspect}."
+          raise ArgumentError, "text_width measures words (a String). You gave #{Messages::PlainWords.words_for_given(text)}."
         end
 
         font_named(font).text_width(text)
@@ -380,14 +383,25 @@ module VBlank
         return placed_column(x, width, within, verb) if ALIGNMENTS.include?(x)
         unless x.is_a?(Integer)
           raise ArgumentError,
-                "#{verb} takes a left edge as a number, or as :left, :center or :right. " \
-                "Got #{x.inspect}. Use one of those three names, or give the column."
+                "#{verb} takes a left edge as a number written in the program, or as :left, :center or :right. " \
+                "You gave #{Messages::PlainWords.words_for_given(x)}. Use one of those three names, or write the column."
         end
         return x unless within
 
         raise ArgumentError,
               "#{verb} got both a column (#{x}) and `within:`. A column already says exactly where " \
               "the text goes. Put :center, :left or :right where the number is, or drop `within:`."
+      end
+
+      # The row is settled while the game is built too: on a bitmap screen the words are painted
+      # at a fixed place, and on a tiled one each letter is a sprite placed once. So the top edge
+      # must be a number written in the program.
+      def refuse_unwritten_row!(y, verb)
+        return if y.is_a?(Integer)
+
+        raise ArgumentError,
+              "#{verb} takes a top edge as a number written in the program. " \
+              "You gave #{Messages::PlainWords.words_for_given(y)}. To fix this, write the row."
       end
 
       def placed_column(align, width, within, verb)
@@ -413,8 +427,8 @@ module VBlank
         first = within.first if within.is_a?(Range)
         unless first.is_a?(Integer) && within.last.is_a?(Integer)
           raise ArgumentError,
-                "#{verb} takes `within:` as a span of columns, like `within: 8..119`. " \
-                "Got #{within.inspect}."
+                "#{verb} takes `within:` as a span of columns written in the program, like `within: 8..119`. " \
+                "You gave #{Messages::PlainWords.words_for_given(within)}."
         end
 
         [first, within.last - first + (within.exclude_end? ? 0 : 1)]

@@ -33,6 +33,31 @@ class PlainRubyPlaceMover
   def move_place_on(place) = place.increase!(1)
 end
 
+# A method of the game's in a file of its own that moves a place it is handed on by one, called on
+# nothing.
+def plain_ruby_helper_move_on(place) = place.increase!(1)
+
+# An object of the game's that keeps the place it is made with and moves it on in a method named
+# like Integer#step, which a game block calling it cannot see.
+class PlainRubyStepper
+  def initialize(place)
+    @place = place
+  end
+
+  def step = @place.increase!(1)
+end
+
+# An object of the game's that keeps the Hash it is made with, and moves on the place kept in it.
+class PlainRubySharedPlace
+  def initialize(state)
+    @state = state
+  end
+
+  def advance
+    @state.fetch(:at)[0] = @state.fetch(:at)[0] + 1
+  end
+end
+
 # A song reader in the shape a port writes the original's: each channel's state in lists reached
 # through a Hash by field name, read and written only through private methods of the object.
 # #next_byte hands back the byte at a channel's place before it moves the place on, and

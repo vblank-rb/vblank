@@ -48,6 +48,26 @@ class TestAboveRowOption < Minitest::Test
     assert_match(/not a row of the screen/, error.message)
   end
 
+  # Two backgrounds shown alone above a row on one screen: only one can be, whichever way each is
+  # alone, so the build stops naming both.
+  def test_two_backgrounds_shown_alone_on_one_screen_are_refused_in_plain_words
+    [true, :without_sprites].each do |alone|
+      err = StringIO.new
+      assert_raises(VBlank::BuildError, alone.inspect) do
+        VBlank.build("TWOALONE", console: :snes, out: StringIO.new, err: err) do
+          screen :tiled
+          image(:tile, "#" => :red) { (["#" * 8] * 8).join("\n") }
+          tiles :set, "#" => :tile
+          background :score, tiles: :set, map: ["#" * 8], above_row: 32, alone: alone
+          background :lives, tiles: :set, map: ["#" * 8], above_row: 16, alone: true
+          game_loop { nil }
+        end
+      end
+
+      assert_match(/:score and :lives alone above a row/, err.string, alone.inspect)
+    end
+  end
+
   def test_a_row_worked_out_as_the_game_runs_is_refused
     assert_raises(ArgumentError) { held_background(:snes, :thirty_two) }
   end

@@ -7,6 +7,8 @@ require "folder_original"
 VBlank.require_game_file "fixtures/record_walk/record_walk_part"
 VBlank.require_game_file "fixtures/name_search/name_search_part"
 VBlank.require_game_file "plain_ruby_flagged_bytes_part"
+VBlank.require_game_file "pair_runs_format"
+VBlank.require_game_file "back_copies_format"
 
 # A PORT'S UNPACKING ROUTINE, PLAYED (Original::CopyReader, Original::Unpacking): the routine a
 # port writes in `slots.fill_from_copy`, built as a program of its own and played by `game_player`.
@@ -14,30 +16,8 @@ VBlank.require_game_file "plain_ruby_flagged_bytes_part"
 # is a computer program. So these play on the run whose player is the interpreter and on the
 # native, JavaScript and Ruby runs, each its own build of the routine checked against the
 # interpreter, and never on a console's (test/interpreter/, test/lowering/{native,js,ruby}/, each
-# under vblank/original/, include this module). The made-up original is MadeUpOriginal's.
-
-# A MADE-UP PACKED FORMAT, written as a port writes one of its own (Original::Packing::Format):
-# pairs of a count and a byte, the byte written that many times, each count multiplied by the
-# `times:` setting, until a count of 0.
-module PairRuns
-  extend VBlank::Original::Packing::Format
-  unpacks :pair_runs, times: 1
-
-  # The most pairs a block can hold, a bound on the loop that reads them.
-  MOST_PAIRS = 4096
-
-  def self.routine(block)
-    at = block.variable(:at)
-    many = block.variable(:many)
-    at.store!(block.from)
-    many.store!(block.byte(at))
-    block.repeat(MOST_PAIRS, stop_when: (many == 0) | block.finished) do
-      block.repeat(many * block.setting(:times), stop_when: block.finished) { block.write(block.byte(at + 1)) }
-      at.increase!(2)
-      many.store!(block.byte(at))
-    end
-  end
-end
+# under vblank/original/, include this module). The made-up original is MadeUpOriginal's. A
+# format of a port's own, PairRuns, is test/pair_runs_format.rb.
 
 module CopyReaderTests
   include FolderOriginal
@@ -49,6 +29,71 @@ module CopyReaderTests
     played = unpacking.run_on(game_player, frames: 8)
 
     assert_equal({ palette: PALETTE.pack("v*"), walls: TILE_BYTES, heights: HEIGHTS.pack("C*") }, unpacking.slot_bytes_in(played))
+  end
+
+  # A READ OF ONE FILE AT A PLACE THE ROUTINE WORKS OUT AS IT RUNS is held to that file, as a place
+  # written in the program is: past DATA.MU1's 154 bytes it is a fault naming the file (1, the
+  # release's second) and the first byte read outside it, counted from the file's start, and not a
+  # read of whatever file comes next. The answer key is the release's file sizes (FolderOriginal).
+  # The build leaves its pack out, so the routine is played here and not first by the build.
+  PACK_LEFT_OUT = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
+  DATA_FILE_NUMBER = 1
+
+  private def fault_reading_data_file(count: 4, formats: [], &read)
+    b = VBlank::Builder.new(options: PACK_LEFT_OUT)
+    b.data_pack(from: folder_original(nil), version: "1", formats: formats) do |slots|
+      slots.numbers :read, count: count, width: :byte, signed: false
+      slots.fill_from_copy do |copy, pack, release|
+        read.call(copy.file("INDEX.#{release}"), copy.file("DATA.#{release}"), pack[:read])
+      end
+    end
+    unpacking = b.declared_data_pack.unpacking(release: VBlank::Original::Release.from("MU1", RELEASES.fetch("MU1")))
+    played = game_player.hand_file(folder_original.copy.read_bytes).run(unpacking.program, frames: 8)
+    unpacking.fault_in(played)
+  end
+
+  private def assert_read_outside_data_file(first_outside, fault)
+    refute_nil fault, "the read outside DATA.MU1 is a fault"
+    assert_equal [VBlank::Original::Unpacking::Fault::READ_OUTSIDE_FILE, first_outside, DATA_FILE_NUMBER],
+                 [fault.kind, fault.at, fault.detail]
+  end
+
+  def test_a_run_time_place_past_the_end_of_a_file_is_a_fault_naming_the_file
+    # The colours start at 16 in DATA.MU1, so this is byte 216 of a file of 154.
+    fault = fault_reading_data_file { |index, data, slot| data.copy_bytes at: index.word(6) + 200, count: 4, into: slot }
+
+    assert_read_outside_data_file 216, fault
+  end
+
+  def test_a_run_time_copy_that_starts_inside_a_file_and_runs_past_its_end_is_a_fault_at_the_end
+    # The heights start at 120, and 40 bytes from there run past byte 153.
+    fault = fault_reading_data_file(count: 40) { |index, data, slot| data.copy_bytes at: index.word(14), count: 40, into: slot }
+
+    assert_read_outside_data_file 154, fault
+  end
+
+  def test_a_fixed_place_with_a_run_time_count_past_the_end_of_a_file_is_a_fault_at_the_end
+    # INDEX.MU1 starts "MUIX": its first byte is 77, so 77 bytes from byte 150.
+    fault = fault_reading_data_file(count: 80) { |index, data, slot| data.copy_bytes at: 150, count: index.byte(0), into: slot }
+
+    assert_read_outside_data_file 154, fault
+  end
+
+  def test_a_run_time_byte_and_word_past_the_end_of_a_file_are_faults
+    byte = fault_reading_data_file { |index, data, slot| slot[0] = data.byte(index.word(6) + 200) }
+    word = fault_reading_data_file { |index, data, slot| slot[0] = data.word(index.word(6) + 136) }
+
+    assert_read_outside_data_file 216, byte
+    # The word is bytes 152 to 155.
+    assert_read_outside_data_file 154, word
+  end
+
+  def test_a_format_unpacking_from_a_run_time_place_past_the_end_of_a_file_is_a_fault
+    fault = fault_reading_data_file(formats: [PairRuns]) do |index, data, slot|
+      data.unpack_pair_runs at: index.word(6) + 150, into: slot
+    end
+
+    assert_read_outside_data_file 166, fault
   end
 
   # The port's format, named in `formats:`, gives the copy `unpack_pair_runs`, with its setting.
@@ -63,6 +108,35 @@ module CopyReaderTests
 
       assert_equal({ runs: ([7] * 6 + [9] * 4).pack("C*") }, unpacking.slot_bytes_in(played))
       assert_equal 10, unpacking.bytes_done_in(played)
+    end
+  end
+
+  # A FORMAT'S ROUTINE IN NORMAL RUBY (test/back_copies_format.rb): seven counters, each a local set
+  # with `=` and moved on with `+=` in loops inside loops and on both sides of the routine's tests,
+  # one set from the copy's bytes before the place it read them moves on. It unpacks what the Ruby
+  # answer key does, and so does the same format with each counter a `block.variable`.
+  private def back_copies_unpacked(folder, format)
+    from = copy_of(folder, ([0xAA] + BackCopies::PACKED + [0xAA]).pack("C*"))
+    size = BackCopies.unpacked(BackCopies::PACKED, BackCopies::TAG).length
+    unpacking = VBlank::Builder.new.data_pack(from: from, version: "1", formats: [format]) do |slots|
+      slots.numbers :out, count: size, width: :byte, signed: false
+      slots.fill_from_copy do |copy, pack|
+        case format.format_name
+        when :back_copies then copy.unpack_back_copies at: 1, into: pack[:out], tag: BackCopies::TAG
+        else copy.unpack_back_copies_by_variables at: 1, into: pack[:out], tag: BackCopies::TAG
+        end
+      end
+    end.unpacking
+    played = unpacking.run_on(game_player, frames: 4)
+    assert_nil unpacking.fault_in(played)
+    [unpacking.slot_bytes_in(played)[:out], unpacking.bytes_done_in(played)]
+  end
+
+  def test_a_formats_routine_in_normal_ruby_keeps_its_counters
+    wanted = BackCopies.unpacked(BackCopies::PACKED, BackCopies::TAG).pack("C*")
+    Dir.mktmpdir do |folder|
+      assert_equal [wanted, wanted.bytesize], back_copies_unpacked(folder, BackCopiesFormat), "in normal Ruby"
+      assert_equal [wanted, wanted.bytesize], back_copies_unpacked(folder, BackCopiesByVariablesFormat), "with block.variable"
     end
   end
 
@@ -221,7 +295,7 @@ module CopyReaderTests
   # ...and so does one whose test reads the copy at a place another read gives: the place is read
   # again each time round, in a `while` and in `stop_when:` alike. Bytes 0 to 7 are places of bytes
   # 8 to 15, and the byte at the place byte 5 gives is the first that is 0.
-  POINTED_COPY = Ractor.make_shareable(((8...16).to_a + [7, 6, 5, 4, 3, 0, 2, 1]).pack("C*"))
+  POINTED_COPY = VBlank::Testing::InRactors.shareable(((8...16).to_a + [7, 6, 5, 4, 3, 0, 2, 1]).pack("C*"))
 
   private def first_pointing_at_nought(copy) = (0..).find { |at| copy.getbyte(copy.getbyte(at)).zero? }
 
@@ -272,9 +346,9 @@ module CopyReaderTests
   PIECE_BYTES = 4
   MOST_PIECES = 5
   PIECES_END = 0x80
-  PIECES_IN_EACH_FRAME = Ractor.make_shareable([3, 7, 1])
-  ORDINARY_PIECE_BYTES = Ractor.make_shareable([1, 2, 3, 4])
-  FRAME_END_PIECE_BYTES = Ractor.make_shareable([PIECES_END, 0, 0, 0])
+  PIECES_IN_EACH_FRAME = VBlank::Testing::InRactors.shareable([3, 7, 1])
+  ORDINARY_PIECE_BYTES = VBlank::Testing::InRactors.shareable([1, 2, 3, 4])
+  FRAME_END_PIECE_BYTES = VBlank::Testing::InRactors.shareable([PIECES_END, 0, 0, 0])
 
   private def piece_copy
     PIECES_IN_EACH_FRAME.flat_map { |pieces| (ORDINARY_PIECE_BYTES * pieces) + FRAME_END_PIECE_BYTES }.pack("C*")
@@ -341,10 +415,71 @@ module CopyReaderTests
     end
   end
 
+  # A LOOP'S TEST READ PAST THE COPY'S END ON A LATER ROUND stops the routine there with the plain
+  # refusal, on every run's build of it. The copy holds two bytes and no 0, so the third round
+  # reads byte 2: in `stop_when:`, and in a `while` with no bound of its own, which a read past
+  # the end must end. The answer key is the copy's length.
+  NO_NOUGHT_COPY = VBlank::Testing::InRactors.shareable([9, 8].pack("C*"))
+
+  # The error the unpacking +b+ declared (with the pack left out) stops with, played on the run's
+  # player handed NO_NOUGHT_COPY.
+  private def refusal_reading_no_nought_copy(b)
+    release = VBlank::Original::Release.from("Test", { "sha1" => Digest::SHA1.hexdigest(NO_NOUGHT_COPY),
+                                                       "size" => NO_NOUGHT_COPY.bytesize })
+    unpacking = b.declared_data_pack.unpacking(release: release)
+    played = game_player.hand_file(NO_NOUGHT_COPY).run(unpacking.program, frames: 8)
+    refute unpacking.finished_in?(played), "the read past the end stops the routine"
+    fault = unpacking.fault_in(played)
+    refute_nil fault, "the read past the end is a fault"
+    unpacking.fault_error(fault)
+  end
+
+  def test_a_stop_when_that_reads_past_the_copys_end_on_a_later_round_stops_the_routine_there
+    Dir.mktmpdir do |folder|
+      from = copy_of(folder, NO_NOUGHT_COPY)
+      b = VBlank::Builder.new(options: PACK_LEFT_OUT)
+      b.instance_eval do
+        data_pack(from: from, version: "1") do |slots|
+          slots.numbers :reached, count: 1, width: :byte, signed: false
+          slots.fill_from_copy do |copy, pack|
+            at = var(:at, 0)
+            repeat(10, stop_when: copy.byte(at) == 0) { at.increase!(1) }
+            pack[:reached][0] = at
+          end
+        end
+      end
+      refused = refusal_reading_no_nought_copy(b)
+
+      assert_kind_of VBlank::Original::WrongCopy, refused
+      assert_match "reads byte 2 ", refused.message
+    end
+  end
+
+  def test_a_while_with_no_bound_that_reads_past_the_copys_end_stops_the_routine_there
+    Dir.mktmpdir do |folder|
+      from = copy_of(folder, NO_NOUGHT_COPY)
+      b = VBlank::Builder.new(options: PACK_LEFT_OUT)
+      b.instance_eval do
+        data_pack(from: from, version: "1") do |slots|
+          slots.numbers :reached, count: 1, width: :byte, signed: false
+          slots.fill_from_copy do |copy, pack|
+            at = 0
+            at += 1 while copy.byte(at) != 0
+            pack[:reached][0] = at
+          end
+        end
+      end
+      refused = refusal_reading_no_nought_copy(b)
+
+      assert_kind_of VBlank::Original::WrongCopy, refused
+      assert_match "reads byte 2 ", refused.message
+    end
+  end
+
   # A LIST WALKED UNTIL A RECORD SAYS IT IS THE LAST, as an original walks a group of pictures:
   # records of four words (where from, where to, how many, another follows), two of them here.
   RECORDS_AT = 100
-  RECORDS = Ractor.make_shareable([[1000, 0, 300, 1], [2000, 600, 200, 0]])
+  RECORDS = VBlank::Testing::InRactors.shareable([[1000, 0, 300, 1], [2000, 600, 200, 0]])
 
   private def record_copy
     bytes = (0...4096).map { |at| (at * 7) & 0xFF }.pack("C*")
@@ -390,7 +525,7 @@ module CopyReaderTests
   # ends with the header of a file longer than what is left, which ends every search: one that
   # never finds the name answers 0, and the bytes copied from there are the wrong ones, where a
   # search walking on would read past the end of the copy.
-  ARCHIVE_FILES = Ractor.make_shareable([["wall", "bricks"], ["dour", "no"], ["door", "hinges!"], ["ship", "sail"]])
+  ARCHIVE_FILES = VBlank::Testing::InRactors.shareable([["wall", "bricks"], ["dour", "no"], ["door", "hinges!"], ["ship", "sail"]])
   ARCHIVE_END = ("tail".b + [0xFFFF].pack("V")).freeze
   ARCHIVE = ("MU1".b + ARCHIVE_FILES.map { |name, held| name.b + [held.bytesize].pack("V") + held.b }.join + ARCHIVE_END).freeze
   ARCHIVE_NAME = "door"
@@ -475,7 +610,7 @@ module CopyReaderTests
   # pairs of a count and a byte, the byte written that many times, until a count of 0. The
   # decoder says what it wrote with `count_written`, so the count of bytes done moves on, and the
   # routine waits for the next frame as the building blocks do.
-  OWN_FORMAT_RUNS = Ractor.make_shareable([[200, 7], [150, 9], [255, 3], [255, 1], [140, 4]])
+  OWN_FORMAT_RUNS = VBlank::Testing::InRactors.shareable([[200, 7], [150, 9], [255, 3], [255, 1], [140, 4]])
   OWN_FORMAT_BYTES = OWN_FORMAT_RUNS.flat_map { |many, byte| [byte] * many }.pack("C*").freeze
 
   def test_count_written_moves_progress_on_in_a_decoder_of_the_games_own

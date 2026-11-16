@@ -56,7 +56,8 @@ module VBlank
           # are written down as it asks for them, and as it ends only the tiles that come out
           # different from what the copy holds are painted and sent, and only the cells of the map
           # that changed. A pass that draws what the last one drew sends nothing. A pass that has
-          # not cleared paints at once, as here.
+          # not cleared paints at once, as here. On a Super FX cartridge, whose chip paints, only a
+          # pass the same as the last is passed over (RepeatLog); any other paints at once.
           #
           # THE COPY TO VIDEO RAM IS SPREAD OVER BLANKS, WITH THE SCREEN ON (Blank says how): the
           # runs go one at a time, each when the blank has room and time for it. The map, the clear
@@ -64,7 +65,8 @@ module VBlank
           # colour still shows the clear tile, so a tile sent early is not seen early, and the
           # colours never show with the last pass's tiles. A tile painted in both passes shows as it
           # arrives; a pass that changes more than a blank holds of such tiles still shows them
-          # coming in down the screen.
+          # coming in down the screen. On a plain cartridge a change bigger than a few blanks hold
+          # goes with the screen off instead, in one go (LOAD_SCREEN_OFF).
           #
           # ON A SUPER FX CARTRIDGE THE SCREEN IS OFF WHERE THE PICTURE'S TOP AND BOTTOM ARE BLACK
           # (Letterbox), and the copy has those lines as well as the blank's: a first-person view in
@@ -200,6 +202,33 @@ module VBlank
             # leaves as it was while the screen still shows the last pass.
             CLEARS = "rt paint clears"
 
+            # A BIG CHANGE IS LOADED WITH THE SCREEN OFF, on a plain cartridge (PaintLog): a pass
+            # whose tiles to send are more than SCREEN_OFF_BLANKS blanks hold would take a frame for
+            # each with the screen on. The console's own games load a screen that size with the
+            # screen switched off (INIDISP's forced blank), when video RAM takes writes on every
+            # line, so here it goes in one go: the screen off as the blank starts, everything sent,
+            # and the screen on again in the blank the load ends in or the next. The frames between
+            # are black, a frame for a load of half the screen, and the frame after shows the pass's
+            # whole picture.
+            #
+            # A black frame is a frame the screen does not show: the interpreter has no frame
+            # between two passes, and the checked run holds each pass's picture as it is shown, so
+            # what it holds is the same either way. What a player sees is a frame of nothing in the
+            # place of many frames of the last picture, as at a retail game's change of screen.
+            #
+            # Only the first BIG_PASSES_SCREEN_OFF of a stretch of big passes are loaded so: two, so
+            # that two pictures taking turns (PaintTurns) each arrive so the first time they show.
+            # A third big pass running means the game changes most of the screen on every pass, and
+            # loaded with the screen off it would show a black frame between every two pictures, a
+            # flicker the console's own games never show: it is sent with the screen on, over the
+            # blanks it takes. (LOAD_SCREEN_OFF: this pass's change goes with the screen off;
+            # BIG_PASSES: how many big passes have run up to the last one, held at the most.)
+            SCREEN_OFF_BLANKS = 3
+            SCREEN_OFF_TILES = SCREEN_OFF_BLANKS * Blank::BLANK_BYTES / TILE_BYTES
+            BIG_PASSES_SCREEN_OFF = 2
+            LOAD_SCREEN_OFF = "rt paint load screen off"
+            BIG_PASSES = "rt paint big passes"
+
             # The direct page the routines work on.
             Scratch = Data.define(:left, :right, :top, :bottom, :area, :y, :row, :count, :chunk, :last,
                                   :shift, :mask, :not_mask, :planes, :left_planes, :right_planes,
@@ -242,7 +271,11 @@ module VBlank
               memory.reserve(IN_PLACE_START, 2)
               memory.reserve(SHOWN_GENERATION, 2)
               memory.reserve(CAMERA, CAMERA_BYTES)
-              PaintLog.reserve(memory, turns: turns) unless chip
+              unless chip
+                memory.reserve(LOAD_SCREEN_OFF, 2)
+                memory.reserve(BIG_PASSES, 2)
+              end
+              chip ? RepeatLog.reserve(memory) : PaintLog.reserve(memory, turns: turns)
               TextLayer.reserve(memory) if text_layer && !chip
             end
 
@@ -267,6 +300,7 @@ module VBlank
               emit_camera(asm, memory, s)
               emit_helpers(asm, memory, s, bank, logged)
               PaintLog.emit(asm, memory, s, bank) if logged
+              RepeatLog.emit(asm, memory) if RepeatLog.kept?(memory)
               emit_clear(asm, memory, s, logged)
               chip ? ChipFill.emit_console(asm, memory, s) : emit_fill(asm, memory, s, bank, logged)
               emit_column(asm, memory) if columns
@@ -341,7 +375,9 @@ module VBlank
               emit_no_generation_everywhere(asm, memory, "rt_paint_start")
               Picture.emit_fill_work_ram(asm, memory[SHOWN_IN], TILES, "rt_paint_no_generation")
               Picture.emit_fill_work_ram(asm, memory[MAP_COPY], MAP_BYTES, "rt_paint_clear_cell")
-              [GENERATION, CLEARS, CLEAR_PLACE, MAP_CHANGED, CLEAR_CHANGED, RUNS_END].each do |name|
+              cleared = [GENERATION, CLEARS, CLEAR_PLACE, MAP_CHANGED, CLEAR_CHANGED, RUNS_END]
+              cleared += [LOAD_SCREEN_OFF, BIG_PASSES] if logged
+              cleared.each do |name|
                 asm.stz(asm.abs(memory[name]))
               end
               asm.lda(NOTHING_SHOWN)
@@ -368,6 +404,7 @@ module VBlank
               asm.cpx(ROWS * 4)
               asm.bne("rt_paint_start_row")
               PaintLog.emit_start(asm, memory) if logged
+              RepeatLog.emit_start(asm, memory) if RepeatLog.kept?(memory)
               Letterbox.emit_start(asm, memory) if Letterbox.kept?(memory)
               asm.rtl
             end
@@ -394,8 +431,10 @@ module VBlank
 
             # rt_paint_area(x, y, w, h): painting held to the rectangle, as far as it is on the
             # screen. rt_paint_anywhere: the whole screen. The lowering keeps the area there was
-            # before an `inside` on the stack and puts it back after (Lowering::Paint).
-            def emit_area(asm, memory, s)
+            # before an `inside` on the stack and puts it back after (Lowering::Paint). +width+ and
+            # +height+ are the screen's, in the game's pixels (PaintDoubled's are smaller), and +top+
+            # the first row painted (PaintDoubled paints only the rows shown, +top+ to +height+).
+            def emit_area(asm, memory, s, width: WIDTH, height: HEIGHT, top: 0)
               area = memory[AREA]
               asm.label("rt_paint_area")
               # The right and bottom: the left and top plus the width and height.
@@ -409,11 +448,15 @@ module VBlank
                 asm.sta(asm.direct(out + 2))
               end
               asm.stz(asm.direct(s.temp))
-              asm.lda(WIDTH)
+              asm.lda(width)
               asm.sta(asm.direct(s.temp + 2))
               emit_clamp(asm, "area", R.call(0), s.temp, s.temp + 2, s.left)
               emit_clamp(asm, "area", R.call(4), s.temp, s.temp + 2, s.right)
-              asm.lda(HEIGHT)
+              if top.positive?
+                asm.lda(top)
+                asm.sta(asm.direct(s.temp))
+              end
+              asm.lda(height)
               asm.sta(asm.direct(s.temp + 2))
               emit_clamp(asm, "area", R.call(1), s.temp, s.temp + 2, s.top)
               emit_clamp(asm, "area", R.call(5), s.temp, s.temp + 2, s.bottom)
@@ -423,7 +466,7 @@ module VBlank
               end
               asm.lda(PART_OF_SCREEN)
               asm.sta(asm.abs(area + AREA_PART))
-              [[s.left, 0], [s.top, 0], [s.right, WIDTH], [s.bottom, HEIGHT]].each do |at, whole|
+              [[s.left, 0], [s.top, top], [s.right, width], [s.bottom, height]].each do |at, whole|
                 asm.lda(asm.direct(at))
                 asm.cmp(whole)
                 asm.bne("rt_paint_area_part")
@@ -435,10 +478,15 @@ module VBlank
               asm.label("rt_paint_anywhere")
               asm.stz(asm.abs(area + AREA_PART))
               asm.stz(asm.abs(area))
-              asm.stz(asm.abs(area + 2))
-              asm.lda(WIDTH)
+              if top.positive?
+                asm.lda(top)
+                asm.sta(asm.abs(area + 2))
+              else
+                asm.stz(asm.abs(area + 2))
+              end
+              asm.lda(width)
               asm.sta(asm.abs(area + 4))
-              asm.lda(HEIGHT)
+              asm.lda(height)
               asm.sta(asm.abs(area + 6))
               asm.rtl
             end
@@ -783,8 +831,10 @@ module VBlank
               # its planes, kept for making tiles ready, and its 64 bytes, for the blank to send.
               asm.label("rt_paint_clear_whole")
               asm.inc(asm.abs(memory[CLEARS]))
-              Letterbox.emit_cleared(asm, memory) if Letterbox.follows_rows?(memory)
+              repeats = RepeatLog.kept?(memory)
+              Letterbox.emit_cleared(asm, memory) if Letterbox.follows_rows?(memory) && !repeats
               PaintLog.emit_clear_deferred(asm, memory) if logged
+              RepeatLog.emit_clear_deferred(asm, memory) if repeats
               asm.jsr(asm.abs("rt_paint_layer_clear_all")) if TextLayer.kept?(memory)
               asm.lda(asm.direct(R.call(0)))
               asm.cmp(asm.abs(memory[CLEAR_PLACE]))
@@ -805,6 +855,14 @@ module VBlank
                 asm.jsr(asm.abs("rt_paint_next_generation"))
                 PaintLog.emit_clear(asm, memory)
               else
+                if repeats
+                  # rt_paint_clear_made (JSR): the clear made, here or once deferred (RepeatLog).
+                  asm.jsr(asm.abs("rt_paint_clear_made"))
+                  asm.rtl
+                  asm.label("rt_paint_clear_made")
+                  Letterbox.emit_cleared(asm, memory) if Letterbox.follows_rows?(memory)
+                  RepeatLog.emit_cleared(asm, memory)
+                end
                 emit_next_generation(asm, memory, logged)
                 # Every cell shows the clear tile, and nothing painted before is to be sent.
                 Picture.emit_fill_work_ram(asm, memory[MAP_COPY], MAP_BYTES, "rt_paint_clear_cell")
@@ -823,7 +881,7 @@ module VBlank
               emit_dirty_rows_until(asm, memory, logged, "rt_paint_clear_rows")
               asm.label("rt_paint_clear_rows_done")
               PaintLog.emit_no_rows(asm, memory, DIRTY) if logged
-              asm.rtl
+              repeats ? asm.rts : asm.rtl
               return unless logged
 
               # rt_paint_next_generation (JSR): the clear made, as a clear or once deferred
@@ -861,14 +919,15 @@ module VBlank
             # row stands. Rows that land on one colour are one rectangle, so a wall stretched
             # up close, which holds each colour for many rows, costs a few rectangles and not a
             # rectangle for every row. A place of 0xFF is see-through.
-            def emit_column(asm, memory)
+            # +label+ names the routine (PaintDoubled calls it by another name, for an area).
+            def emit_column(asm, memory, label: "rt_paint_column")
               # A painted screen's scratch fills the direct page, so all but the pointer are in work RAM.
               pointer = R.call(7)
               kept = %i[step at x y width].to_h { |what| [what, memory.reserve("rt paint column #{what}", 4)] }
               rows = memory.reserve("rt paint column rows", 2)
               shown = memory.reserve("rt paint column shown", 2)
               run = memory.reserve("rt paint column run", 2)
-              asm.label("rt_paint_column")
+              asm.label(label)
               2.times do |half|
                 asm.lda(asm.direct(R.call(0) + (half * 2)))
                 asm.sta(asm.direct(pointer + (half * 2)))
@@ -989,6 +1048,7 @@ module VBlank
               asm.lda(asm.direct(s.top))
               asm.sta(asm.direct(s.y))
               asm.label("rt_paint_fill_row")
+              emit_fill_band(asm, s, fill_tiles_by_dma?(memory) ? "rt_paint_fill_band_copied" : "rt_paint_fill_band_stored")
               asm.jsr(asm.abs("rt_paint_row_start"))
               asm.lda(asm.direct(s.chunk))
               6.times { asm.asl }
@@ -1029,17 +1089,203 @@ module VBlank
               asm.rtl
 
               # One tile's row at X, through a mask's planes (+planes+: the mask's opposite, then the
-              # four pairs of planes held to the mask).
-              [["rt_paint_fill_left", s.left_planes], ["rt_paint_fill_right_tile", s.right_planes]].each do |label, planes|
+              # four pairs of planes held to the mask); and all eight of its rows, for a band.
+              [["rt_paint_fill_left", s.left_planes, 1], ["rt_paint_fill_right_tile", s.right_planes, 1],
+               ["rt_paint_fill_band_left", s.left_planes, 8], ["rt_paint_fill_band_right_tile", s.right_planes, 8]].each do |label, planes, rows|
                 asm.label(label)
                 4.times do |pair|
-                  asm.lda(asm.abs_x(pair * 16))
-                  asm.and_a(asm.direct(planes))
-                  asm.ora(asm.direct(planes + 2 + (pair * 2)))
-                  asm.sta(asm.abs_x(pair * 16))
+                  rows.times do |row|
+                    asm.lda(asm.abs_x((pair * 16) + (row * 2)))
+                    asm.and_a(asm.direct(planes))
+                    asm.ora(asm.direct(planes + 2 + (pair * 2)))
+                    asm.sta(asm.abs_x((pair * 16) + (row * 2)))
+                  end
                 end
                 asm.rts
               end
+              fill_tiles_by_dma?(memory) ? emit_fill_band_copied(asm, s, bank) : emit_fill_band_stored(asm, s)
+            end
+
+            # Whether a band's whole tiles are copied by the copying engine (rt_paint_fill_band_copied)
+            # rather than stored by the processor (rt_paint_fill_band_stored): only on a cartridge
+            # that never writes registers a line at a time as the screen is drawn (HDMA: Letterbox,
+            # and Picture's bar and bends, which keep HDMA_CHANNELS). The fill copies while the
+            # screen is drawn, and on the console's first processor (CPU revision 1) a copy (DMA)
+            # ending as a line's register writes (HDMA) start can lock the console up. bsnes does
+            # not show that; the console does, so a cartridge with HDMA keeps to stores.
+            def fill_tiles_by_dma?(memory)
+              !Letterbox.kept?(memory) && !memory.reserved?(Picture::HDMA_CHANNELS)
+            end
+
+            # rt_paint_fill_band_stored (JSR, the data bank the copy's, in a band of rt_paint_fill):
+            # what rt_paint_fill_band_copied does, by the processor: +count+ tiles side by side from
+            # X, each 32 stores of the colour's four words of planes, and X left at the last of them.
+            def emit_fill_band_stored(asm, s)
+              asm.label("rt_paint_fill_band_stored")
+              asm.bra("rt_paint_fill_band_stored_tile")
+              asm.label("rt_paint_fill_band_stored_next")
+              asm.txa
+              asm.clc
+              asm.adc(TILE_BYTES)
+              asm.tax
+              asm.label("rt_paint_fill_band_stored_tile")
+              4.times do |pair|
+                asm.lda(asm.direct(s.planes + (pair * 2)))
+                8.times { |row| asm.sta(asm.abs_x((pair * 16) + (row * 2))) }
+              end
+              asm.dec(asm.direct(s.count))
+              asm.bne("rt_paint_fill_band_stored_next")
+              asm.rts
+            end
+
+            # The channels of the copying engine rt_paint_fill_band_copied works. Channels 1 to 3
+            # and 7 write registers a line at a time as the screen is drawn (Picture's bar and
+            # bends, Letterbox, on a plain cartridge too), so they are never touched here. Channel
+            # 0 is every other copy's, and each sets it up whole before it copies, never while a
+            # fill is painting; 4 to 6 nothing else uses.
+            FILL_CHANNELS = [0, 4, 5, 6].freeze
+
+            # A row of bytes $FF, $00 by turns, long enough for every tile of a row of the screen:
+            # read from its start it is a pair of planes whose first is set and second not, from its
+            # second byte the other way round, and one byte of it, read again and again, is a pair
+            # both set or both not.
+            PLANE_RUN_BYTES = (COLUMNS * 16) + 1
+
+            # rt_paint_fill_band_copied (JSR, the data bank the copy's, in a band of rt_paint_fill):
+            # +count+ tiles side by side from X, each all eight rows of the colour's planes, and X
+            # left at the last of them. A tile is four runs of sixteen bytes, eight rows of each
+            # pair of planes, and every one of its bytes is $00 or $FF; so instead of 32 stores the
+            # processor makes, the copying engine copies each pair's run from PLANE_RUN_BYTES to the
+            # work RAM port (WMDATA), four channels one after another, a tile at a time. The engine
+            # moves a byte in a third of the time the processor stores one, and the port's place
+            # moves on by itself, so only the counts are set again for each tile.
+            def emit_fill_band_copied(asm, s, bank)
+              h = Console::SNESHardware
+              channel = ->(index, register) { asm.long(h::DMA_BASE + (FILL_CHANNELS.fetch(index) << 4) + register) }
+              run = "rt_paint_plane_run"
+              asm.label("rt_paint_fill_band_copied")
+              asm.txa
+              asm.sta(asm.long(h::WMADDL)) # and WMADDM
+              # The last tile, kept for the end (+row+ is a word to spare: each band works it out).
+              asm.lda(asm.direct(s.count))
+              asm.dec
+              6.times { asm.asl }
+              asm.sta(asm.direct(s.row))
+              asm.txa
+              asm.clc
+              asm.adc(asm.direct(s.row))
+              asm.pha
+              # Each pair of planes: a byte of the run read again and again when its two planes are
+              # alike, else the run from where its first plane's byte is; sixteen bytes to copy.
+              4.times do |pair|
+                planes = asm.direct(s.planes + (pair * 2))
+                asm.lda(planes)
+                asm.xba
+                asm.eor(planes)
+                asm.and_a(0x00FF)
+                asm.beq("rt_paint_fill_band_copied_alike_#{pair}")
+                asm.lda((h::WMDATA & 0xFF) << 8 | h::DMA_TO_ONE_PORT)
+                asm.bra("rt_paint_fill_band_copied_way_#{pair}")
+                asm.label("rt_paint_fill_band_copied_alike_#{pair}")
+                asm.lda((h::WMDATA & 0xFF) << 8 | h::DMA_TO_ONE_PORT | h::DMA_FIXED_SOURCE)
+                asm.label("rt_paint_fill_band_copied_way_#{pair}")
+                asm.sta(channel.call(pair, h::DMAP)) # and BBAD
+                asm.lda(planes)
+                asm.and_a(0x00FF)
+                asm.beq("rt_paint_fill_band_copied_from_#{pair}")
+                asm.lda(asm.imm(run))
+                asm.bra("rt_paint_fill_band_copied_start_#{pair}")
+                asm.label("rt_paint_fill_band_copied_from_#{pair}")
+                asm.lda(asm.imm(run, 1))
+                asm.label("rt_paint_fill_band_copied_start_#{pair}")
+                asm.sta(channel.call(pair, h::A1TL))
+                asm.lda(16)
+                asm.sta(channel.call(pair, h::DASL)) # and DASH, nought
+              end
+              asm.sep(0x20)
+              asm.lda(bank & 1)
+              asm.sta(asm.long(h::WMADDL + 2))
+              asm.lda(asm.bank_of(run))
+              4.times { |pair| asm.sta(channel.call(pair, h::A1B)) }
+              asm.bra("rt_paint_fill_band_copied_go")
+              asm.label("rt_paint_fill_band_copied_tile")
+              asm.lda(16)
+              4.times { |pair| asm.sta(channel.call(pair, h::DASL)) }
+              asm.label("rt_paint_fill_band_copied_go")
+              asm.lda(FILL_CHANNELS.sum { |each| 1 << each })
+              asm.sta(asm.long(h::MDMAEN))
+              asm.dec(asm.direct(s.count)) # its low byte: a band is 32 tiles at most
+              asm.bne("rt_paint_fill_band_copied_tile")
+              asm.rep(0x20)
+              asm.plx
+              asm.rts
+              asm.label(run)
+              asm.data_bytes(Array.new(PLANE_RUN_BYTES) { |at| at.even? ? 0xFF : 0x00 })
+            end
+
+            # In rt_paint_fill, at a row +y+ that is the top of a row of tiles whose eight rows the
+            # rectangle covers: the whole BAND painted a tile at a time, its eight rows together,
+            # and on to the next row of pixels after it. The tiles the rectangle covers whole go to
+            # +whole_tiles+ (rt_paint_fill_band_copied or rt_paint_fill_band_stored) together, not
+            # eight rows of the loop for a row; a fill of half the screen is mostly such tiles.
+            # Else on to the row at a time.
+            def emit_fill_band(asm, s, whole_tiles)
+              asm.lda(asm.direct(s.y))
+              asm.bit(0x0007)
+              asm.branch_long(:bne, "rt_paint_fill_by_row")
+              asm.clc
+              asm.adc(8)
+              asm.cmp(asm.direct(s.bottom))
+              asm.beq("rt_paint_fill_band")
+              asm.branch_long(:bcs, "rt_paint_fill_by_row")
+              asm.label("rt_paint_fill_band")
+              asm.jsr(asm.abs("rt_paint_row_start"))
+              asm.lda(asm.direct(s.chunk))
+              6.times { asm.asl }
+              asm.clc
+              asm.adc(asm.direct(s.row))
+              asm.tax
+              # The band's tiles, and of them an edge the rectangle covers only in part (its mask's
+              # opposite not nought) painted through its mask; the rest are whole, copied.
+              asm.lda(asm.direct(s.last))
+              asm.sec
+              asm.sbc(asm.direct(s.chunk))
+              asm.inc
+              asm.sta(asm.direct(s.count))
+              asm.lda(asm.direct(s.left_planes))
+              asm.beq("rt_paint_fill_band_left_whole")
+              asm.jsr(asm.abs("rt_paint_fill_band_left"))
+              asm.dec(asm.direct(s.count))
+              asm.beq("rt_paint_fill_band_done")
+              asm.txa
+              asm.clc
+              asm.adc(TILE_BYTES)
+              asm.tax
+              asm.label("rt_paint_fill_band_left_whole")
+              asm.lda(asm.direct(s.right_planes))
+              asm.beq("rt_paint_fill_band_right_whole")
+              asm.dec(asm.direct(s.count))
+              asm.beq("rt_paint_fill_band_right")
+              asm.jsr(asm.abs(whole_tiles))
+              asm.txa
+              asm.clc
+              asm.adc(TILE_BYTES)
+              asm.tax
+              asm.label("rt_paint_fill_band_right")
+              asm.jsr(asm.abs("rt_paint_fill_band_right_tile"))
+              asm.bra("rt_paint_fill_band_done")
+              asm.label("rt_paint_fill_band_right_whole")
+              asm.jsr(asm.abs(whole_tiles))
+              asm.label("rt_paint_fill_band_done")
+              asm.lda(asm.direct(s.y))
+              asm.clc
+              asm.adc(8)
+              asm.sta(asm.direct(s.y))
+              asm.cmp(asm.direct(s.bottom))
+              asm.branch_long(:bcc, "rt_paint_fill_row")
+              asm.plb
+              asm.rtl
+              asm.label("rt_paint_fill_by_row")
             end
 
             # A painting's start, on a plain cartridge: passed over if it is the last pass's (a clear
@@ -1218,6 +1464,7 @@ module VBlank
               # A picture's number and its place: the place is held near the screen (below), where
               # its low word holds it all, and the low word is all that is hashed.
               emit_op_begin(asm, memory, PaintLog::KIND_BLIT, 12, "rt_paint_blit_now") if logged
+              RepeatLog.emit_check(asm, memory, RepeatLog::KIND_BLIT, 12) if RepeatLog.kept?(memory)
               # Near enough the screen to paint anything at all.
               [[R.call(1), WIDTH], [R.call(2), HEIGHT]].each do |at, edge|
                 asm.clc
@@ -1549,6 +1796,7 @@ module VBlank
             # inside the area, its own pixels alone — nothing if none was kept.
             def emit_patches(asm, memory, s, bank, logged)
               asm.label("rt_paint_save")
+              asm.jsr(asm.abs("rt_repeat_at_once")) if RepeatLog.kept?(memory) # it reads the screen
               asm.jsr(asm.abs("rt_paint_patch_start"))
               asm.branch_long(:bcc, "rt_paint_save_some")
               asm.rtl
@@ -1647,6 +1895,7 @@ module VBlank
               asm.rtl
 
               asm.label("rt_paint_restore")
+              asm.jsr(asm.abs("rt_repeat_at_once")) if RepeatLog.kept?(memory) # it paints unwritten
               asm.jsr(asm.abs("rt_paint_patch_start"))
               asm.branch_long(:bcc, "rt_paint_restore_kept")
               asm.label("rt_paint_restore_none")
@@ -1897,9 +2146,11 @@ module VBlank
                 asm.stz(asm.abs(memory[RUNS_END]))
                 asm.lda(MOST_RUNS * 4)
                 asm.sta(asm.abs(memory[IN_PLACE_START]))
+                asm.stz(asm.abs(memory[BIG_PASSES])) # nothing to send is a small pass
                 asm.rtl
                 asm.label("rt_paint_prepare_cleared")
               end
+              RepeatLog.emit_pass_end(asm, memory) if RepeatLog.kept?(memory)
               asm.jsr(asm.abs("rt_letterbox_rows")) if Letterbox.follows_rows?(memory) # before the rows are marked unchanged
               asm.stz(asm.abs(memory[RUNS_END]))
               asm.lda(MOST_RUNS * 4)
@@ -1960,7 +2211,9 @@ module VBlank
               asm.lda(asm.abs(memory[GENERATION]))
               asm.sta(asm.abs(memory[SHOWN_GENERATION]))
               asm.jsr(asm.abs("rt_paint_map_runs")) if logged # after the tiles, which ask the map as it is shown
+              asm.jsr(asm.abs("rt_paint_choose_load")) if loads_screen_off?(memory, logged)
               asm.rtl
+              emit_choose_load(asm, memory, s) if loads_screen_off?(memory, logged)
 
               # rt_paint_run_end (JSR): the run started at +chunk+, if one is, ended before +tile+
               # and put on its list: the runs of tiles not on the screen from the start, the others
@@ -2008,6 +2261,53 @@ module VBlank
               asm.lda(0xFFFF)
               asm.sta(asm.direct(s.chunk))
               asm.label("rt_paint_run_end_none")
+              asm.rts
+            end
+
+            # Whether a big pass can be loaded with the screen off (rt_paint_choose_load): on a plain
+            # cartridge (+logged+) whose picture does not stop early. Letterbox turns the screen on
+            # and off itself, a line at a time, so it would show a load meant to be unseen.
+            def loads_screen_off?(memory, logged) = logged && !Letterbox.kept?(memory)
+
+            # rt_paint_choose_load (JSR, as a pass on a plain cartridge is prepared, its runs listed):
+            # LOAD_SCREEN_OFF set for a pass whose runs, both lists, hold more than SCREEN_OFF_TILES
+            # tiles, while BIG_PASSES big passes running are no more than BIG_PASSES_SCREEN_OFF;
+            # BIG_PASSES kept for the next. Before the first pass is shown the screen is off
+            # already, and that load counts as none. (+count+ is the tiles.)
+            def emit_choose_load(asm, memory, s)
+              asm.label("rt_paint_choose_load")
+              asm.stz(asm.abs(memory[LOAD_SCREEN_OFF]))
+              asm.lda(asm.abs(memory[Frame::DISPLAY_ON]))
+              asm.beq("rt_paint_choose_load_small")
+              asm.stz(asm.direct(s.count))
+              [[nil, RUNS_END], [IN_PLACE_START, nil]].each_with_index do |(from, to), list|
+                tag = "rt_paint_choose_load_list#{list}"
+                from ? asm.ldx(asm.abs(memory[from])) : asm.ldx(0)
+                asm.label(tag)
+                to ? asm.cpx(asm.abs(memory[to])) : asm.cpx(MOST_RUNS * 4)
+                asm.bcs("#{tag}_done")
+                asm.lda(asm.long_x(memory[RUNS] + 2))
+                asm.clc
+                asm.adc(asm.direct(s.count))
+                asm.sta(asm.direct(s.count))
+                4.times { asm.inx }
+                asm.bra(tag)
+                asm.label("#{tag}_done")
+              end
+              asm.lda(asm.direct(s.count))
+              asm.cmp(SCREEN_OFF_TILES + 1)
+              asm.bcc("rt_paint_choose_load_small")
+              asm.lda(asm.abs(memory[BIG_PASSES]))
+              asm.cmp(BIG_PASSES_SCREEN_OFF)
+              asm.bcs("rt_paint_choose_load_done") # held there: the stretch goes on
+              asm.inc
+              asm.sta(asm.abs(memory[BIG_PASSES]))
+              asm.lda(1)
+              asm.sta(asm.abs(memory[LOAD_SCREEN_OFF]))
+              asm.rts
+              asm.label("rt_paint_choose_load_small")
+              asm.stz(asm.abs(memory[BIG_PASSES]))
+              asm.label("rt_paint_choose_load_done")
               asm.rts
             end
 
@@ -2280,6 +2580,18 @@ module VBlank
             def emit_upload(asm, memory, s, bank, logged)
               h = Console::SNESHardware
               asm.label("rt_paint_upload")
+              if logged
+                # A big change: the screen off, and Blank's routines told so, so nothing waits for
+                # a blank (LOAD_SCREEN_OFF). The blank has started, so the frame before is whole.
+                asm.lda(asm.abs(memory[LOAD_SCREEN_OFF]))
+                asm.beq("rt_paint_upload_screen_on")
+                asm.sep(0x20)
+                asm.lda(Picture::DISPLAY_FORCED_OFF)
+                asm.sta(asm.abs(h::INIDISP))
+                asm.rep(0x20)
+                asm.stz(asm.abs(memory[Frame::DISPLAY_ON]))
+                asm.label("rt_paint_upload_screen_on")
+              end
               asm.lda(asm.abs(memory[RUNS_END]))
               asm.sta(asm.direct(s.last))
               asm.ldx(0)
@@ -2380,7 +2692,31 @@ module VBlank
               asm.sta(asm.abs(h::WH1))
               asm.rep(0x20)
               asm.label("rt_paint_upload_done")
+              emit_screen_on_after_load(asm, memory) if logged
               asm.rts
+            end
+
+            # After a load with the screen off (LOAD_SCREEN_OFF): the screen on again in a blank, so
+            # the frame it shows next is the whole picture and none shows it from part of the way
+            # down — at once if the load ended inside one, else as the next starts. A game that
+            # dims sets its brightness after this, in the same blank (Frame's rt_show_pass).
+            def emit_screen_on_after_load(asm, memory)
+              h = Console::SNESHardware
+              asm.lda(asm.abs(memory[LOAD_SCREEN_OFF]))
+              asm.beq("rt_paint_upload_loaded")
+              asm.stz(asm.abs(memory[LOAD_SCREEN_OFF]))
+              Blank.emit_line_now(asm)
+              asm.cmp(Blank::FIRST_BLANK_LINE)
+              asm.bcs("rt_paint_upload_in_blank")
+              asm.jsr(asm.abs("rt_blank_next"))
+              asm.label("rt_paint_upload_in_blank")
+              asm.sep(0x20)
+              asm.lda(h::FULL_BRIGHTNESS)
+              asm.sta(asm.abs(h::INIDISP))
+              asm.rep(0x20)
+              asm.lda(1)
+              asm.sta(asm.abs(memory[Frame::DISPLAY_ON]))
+              asm.label("rt_paint_upload_loaded")
             end
 
             # In rt_paint_upload where the screen is off above and below the picture (Letterbox): the
@@ -2485,7 +2821,11 @@ module VBlank
               asm.adc(asm.direct(s.y))
               asm.sta(asm.long_x(memory[RUNS]))
               asm.label("rt_paint_send_runs_full")
+              # With the screen off there is no blank to wait for: the next piece goes now.
+              asm.lda(asm.abs(memory[Frame::DISPLAY_ON]))
+              asm.beq("rt_paint_send_runs_next")
               asm.jsr(asm.abs("rt_blank_next"))
+              asm.label("rt_paint_send_runs_next")
               asm.brl("rt_paint_send_runs")
               asm.label("rt_paint_send_runs_go")
               asm.jsr(asm.abs("rt_paint_send_ready"))

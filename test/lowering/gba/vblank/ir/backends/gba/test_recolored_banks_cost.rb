@@ -56,10 +56,14 @@ class TestRecoloredBanksCost < Minitest::Test
   # Bytes of the whole cartridge's code.
   private def code_bytes(program) = GBA.new.lower(program).bytesize
 
-  # A tint each pass, told something new every time, so every pass walks the table.
-  TINT_EVERY_PASS = lambda do |tick|
-    tint :red, 10 if (tick & 1) == 0 # rubocop:disable Style/NumericPredicate -- a game's number has no zero?
-    tint :red, 20 if (tick & 1) == 1
+  # A tint each pass, told something new every time, so every pass walks the table. Made by a
+  # method, not kept in a constant: a constant's block is shareable and cannot be read as normal
+  # Ruby, so its `if` would be decided once, while building (DSL::PlainRuby).
+  private def tint_every_pass
+    lambda do |tick|
+      tint :red, 10 if (tick & 1) == 0 # rubocop:disable Style/NumericPredicate -- a game's number has no zero?
+      tint :red, 20 if (tick & 1) == 1
+    end
   end
 
   # +count+ tints, each in a place of its own.
@@ -89,8 +93,8 @@ class TestRecoloredBanksCost < Minitest::Test
 
   def test_a_tint_after_the_colours_are_given_back_costs_what_it_did_before
     require_emulator!
-    given_back = per_frame(walking_game(borrow: true, &TINT_EVERY_PASS))
-    never = per_frame(walking_game(borrow: false, &TINT_EVERY_PASS))
+    given_back = per_frame(walking_game(borrow: true, &tint_every_pass))
+    never = per_frame(walking_game(borrow: false, &tint_every_pass))
 
     assert_operator given_back - never, :<, CHEAP
   end

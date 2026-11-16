@@ -30,7 +30,7 @@ module FolderOriginal
                             "DATA.MU1" => { "sha1" => "14687c66a75899e0d39ad00b230306d0d287ad3b", "size" => 154 } } }
   }.freeze
 
-  constants.each { |name| Ractor.make_shareable(const_get(name)) }
+  VBlank::Testing::InRactors.share_constants(self)
 
   # The made-up original from a computer, whose copy is +folder+ (the fixture unless given; nil for a
   # machine with no copy).

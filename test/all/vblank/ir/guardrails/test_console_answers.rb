@@ -297,10 +297,12 @@ class TestConsoleAnswers < Minitest::Test
   end
 
   def test_a_color_build_stops_on_a_refusal
-    error = assert_raises(VBlank::ROMError) do
-      SHOULDERS.build_rom(console: :gbc, out: StringIO.new, err: StringIO.new, profile: false)
+    said = StringIO.new
+    assert_raises(VBlank::StoppedByChecks) do
+      SHOULDERS.build_rom(console: :gbc, out: StringIO.new, err: said, profile: false)
     end
 
-    assert_match(/stopped/, error.message)
+    assert_match(/Build stopped: SHOULDERS for the Game Boy Color/, said.string)
+    assert_match(/:l button/, said.string, "the refusal is printed under the headline")
   end
 end

@@ -13,7 +13,8 @@ module VBlank
     # it and none of them is taught a layout: the layout is asked for each part of a piece as
     # sums of the piece's bytes (FrameLayout#piece_from), and those sums are the routine. The
     # build that holds the pack asks the layout the same question with numbers
-    # (FrameRecord::Section#bytes), and the two must write the same bytes.
+    # (FrameRecord::Section#bytes), and the two must write the same bytes. Why there are two, and
+    # why the pack keeps a frame's slot beside its record, is told atop FrameRecord.
     #
     # The frames of one slot kept one way are a table of where each starts, and one loop over it.
     # This file is read as game code, so each `if` on a test the routine makes is a branch in it.
@@ -26,22 +27,23 @@ module VBlank
 
       # +pack+ is the list of the pack's bytes and +section+ the FrameRecord::Section to write
       # from byte +section_at+ of it; +slot_places+ is where each slot starts in the list, by name;
-      # +wait+ makes the routine wait for the next frame.
-      def initialize(builder, pack:, section:, section_at:, slot_places:, wait:)
+      # +wait+ makes the routine wait for the next frame. +faults+ (UnpackingFaults) keeps the
+      # first frame that has no room for all its pieces (Unpacking::Fault::FRAMES_WITHOUT_ROOM).
+      def initialize(builder, pack:, section:, section_at:, slot_places:, wait:, faults:)
         @builder = builder
         @pack = pack
         @section = section
         @section_at = section_at
         @slot_places = slot_places
         @wait = wait
+        @faults = faults
       end
 
       def emit
         return if @section.sources.empty?
 
         variable(:out).store!(@section_at + @section.records_at)
-        groups = @section.sources.each_with_index.group_by { |source, _| [source.slot.name, source.layout] }
-        groups.each_value.with_index { |entries, number| emit_frames(entries, number) }
+        @section.groups_in_writing_order.each_with_index { |entries, number| emit_frames(entries, number) }
       end
 
       private
@@ -95,10 +97,15 @@ module VBlank
               held.store!(most)
             end
           end
+          # Frames that overlap can name more pieces than the section keeps room for
+          # (FrameRecord::Section#index_of_first_without_room): the record is cut to the room, or left
+          # out, and the unpacking stops with a fault, so a shell refuses the copy rather than
+          # drawing a pose short of its pieces.
           if out + FrameRecord::HEADER_BYTES <= section_end
             most.store!((value_of(section_end - FrameRecord::HEADER_BYTES) - out) / FrameRecord::PIECE_BYTES)
             if held > most
               held.store!(most)
+              emit_frames_without_room_fault(frames[frame * row], source)
             end
             emit_bytes(value_of(@section_at) + (frames[(frame * row) + 2] * FrameRecord::ENTRY_BYTES), entry_bytes(out - @section_at))
             emit_bytes(out, FrameRecord.header_bytes(held, named))
@@ -114,8 +121,18 @@ module VBlank
               waited.store!(0)
               @wait.call
             end
+          else
+            emit_frames_without_room_fault(frames[frame * row], source)
           end
         end
+      end
+
+      # The number of the slot of +source+ in the pack's order, which a fault names it by.
+      # The fault of a frame of +source+'s slot, starting at +at+ in it, that has no room for all its
+      # pieces (Unpacking::Fault::FRAMES_WITHOUT_ROOM). The slot is given by its number in the pack's
+      # order, which is the order of +slot_places+ (Unpacking.places_of).
+      def emit_frames_without_room_fault(at, source)
+        @faults.emit_fault(Unpacking::Fault::FRAMES_WITHOUT_ROOM, at, @slot_places.keys.index(source.slot.name))
       end
 
       # A directory entry's bytes: +offset+, low byte first.

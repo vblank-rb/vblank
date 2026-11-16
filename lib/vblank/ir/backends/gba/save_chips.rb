@@ -38,11 +38,23 @@ module VBlank
           # cartridge from wherever the code is (see Placement#emit_call_cold_routine).
           def self.for(memory, emitter:, lowering:, placement:, roomy_bytes:)
             parts = { emitter: emitter, lowering: lowering, placement: placement }
-            return EepromChip.new(area: roomy_bytes.call(EepromChip::AREA_BYTES), **parts) if memory.eeprom?
+            return EepromChip.new(area: roomy_bytes.call(roomy_bytes_of(memory)), **parts) if memory.eeprom?
             return BatteryChip.new(**parts) unless memory.flash?
-            return FlashChip.new(**parts) if memory.size <= 0x10000
+            return FlashChip.new(**parts) unless banked?(memory)
 
-            BankedFlashChip.new(bank_word: roomy_bytes.call(4), **parts)
+            BankedFlashChip.new(bank_word: roomy_bytes.call(roomy_bytes_of(memory)), **parts)
+          end
+
+          # Whether +memory+ is flash bigger than one bank of 64K, which shows one bank at a time.
+          def self.banked?(memory) = memory.flash? && memory.size > 0x10000
+
+          # How many bytes of the roomy memory the chip for +memory+ keeps for itself: the EEPROM's
+          # copies of a block, the word saying which bank of a 128K flash is showing, or none.
+          # Asked before the program is lowered too, by the build's memory check (Roomy.reserved_by_build).
+          def self.roomy_bytes_of(memory)
+            return EepromChip::AREA_BYTES if memory.eeprom?
+
+            banked?(memory) ? Memory::WORD : 0
           end
 
           def initialize(emitter:, lowering:, placement:)
@@ -742,6 +754,7 @@ module VBlank
           # is told what to move, so an interrupt that copies something of its own cannot land
           # between two of those writes. Spends r0, r1, r2 and r3.
           def emit_copy(from:, to:, count:)
+            Primitives.refuse_copy_of_nothing!(count)
             ends = { bits: @area + BITS_AT, chip: EEPROM_AT }
             @emitter.emit(ASM.load_immediate(1, REG_IME))
             @emitter.emit(ASM.load_halfword(2, 1))                     # r2 = whether interrupts were on

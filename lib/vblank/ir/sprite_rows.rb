@@ -61,6 +61,17 @@ module VBlank
                  keys: key_of, between: standing_between(stretches, key_of))
       end
 
+      # Every screen of +program+ as what can be up on it together, whatever rows a machine gives
+      # them: for a machine that hands out rows as it places the sprites that show, rather than
+      # settling them as the program is built. A sprite drawn in an order the game works out
+      # keeps a row of its own in the plan above only because of how those rows are copied into
+      # the table; it is still up only when its scene is, so here it is counted on its scene's
+      # screen alone. For a program with no such order this is the plan's own screens.
+      def screens_shown_together(program, &weight)
+        groups = Movement.objects_shown_by_scene(program)
+        screens(Stacking.objects_in_draw_order(program), shared_keys(groups, []), groups, weight)
+      end
+
       # The variable and value each sprite that shares is put up by, by name.
       def shared_keys(groups, ordered)
         return {} if groups.empty?

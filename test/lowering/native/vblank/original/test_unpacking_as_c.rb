@@ -38,6 +38,24 @@ class TestUnpackingAsC < Minitest::Test
     Thread.current[RECORDING] = nil
   end
 
+  # Each copy of an original a build finds, kept while a test asks for them (#copies_read_by).
+  COPIES_READ = :vblank_copies_read
+  module RecordsCopiesRead
+    def copy
+      super.tap { |found| Thread.current[COPIES_READ]&.push(found) }
+    end
+  end
+  VBlank::Original::Game.prepend(RecordsCopiesRead)
+
+  # The copies (Original::Copy) the block's builds found.
+  private def copies_read_by
+    Thread.current[COPIES_READ] = []
+    yield
+    Thread.current[COPIES_READ]
+  ensure
+    Thread.current[COPIES_READ] = nil
+  end
+
   # The pack +run+ wrote, as bytes: every slot, then the frame records.
   private def pack_in(unpacking, run) = [unpacking.slot_bytes_in(run).transform_values(&:b), unpacking.frame_records_in(run).b]
 
@@ -79,13 +97,16 @@ class TestUnpackingAsC < Minitest::Test
 
   # Every registered pack game's all-in-one build, whose routine its build played, and the unpacking
   # of every game that keeps its data pack with its pack left out (the one a shell plays), each played
-  # three ways.
+  # three ways. A game may build with its pack left out from an original with no copy set, as a
+  # shell is built on a machine without one (PackSoundTests#original_nowhere), so the left-out
+  # unpacking is handed the copy the all-in-one build read: the same release, in the same folder.
   def test_every_registered_pack_games_unpacking_writes_the_interpreters_pack_as_c_and_as_ruby
     compared = PackGames::ALL.sum do |game|
       Dir.mktmpdir do |folder|
         left_out = nil
+        read = nil
         played = unpackings_built_by do
-          game.kit.new.build(game, folder, PackGames::ALL_IN_ONE)
+          read = copies_read_by { game.kit.new.build(game, folder, PackGames::ALL_IN_ONE) }
           left_out = begin
             game.kit.new.build(game, folder, PackGames::LEFT_OUT)
           rescue ArgumentError, VBlank::BuildError
@@ -93,7 +114,7 @@ class TestUnpackingAsC < Minitest::Test
           end
         end
         if left_out&.data_pack
-          copy = left_out.data_pack.original.copy
+          copy = read.last || left_out.data_pack.original.copy
           played << left_out.data_pack.unpacking(release: left_out.data_pack.original.releases.with_sha1(copy.sha1))
                                      .with(copy_bytes: File.binread(copy.path))
         end

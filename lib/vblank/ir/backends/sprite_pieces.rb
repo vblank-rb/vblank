@@ -17,6 +17,9 @@ module VBlank
       # covered takes a dozen.
       module SpritePieces
         SIZE = 8
+        BIG = 16 # A side of the Super Nintendo's bigger pieces
+        BIG_LEAST_SQUARES = 2 # The fewest drawn 8×8 squares that make one of them: one saves no entry
+        RECTANGLE_SQUARES = 4 # The most squares across, and down, of the Genesis's pieces
 
         # A piece of a picture's cover: where it sits in the picture (+across+ and +down+, in pixels), how
         # many squares across (+columns+) and down (+rows+) it is, and its squares' numbers, 64 to each,
@@ -119,6 +122,65 @@ module VBlank
             Block.new(across: column * SIZE, down: row * SIZE, columns: wide, rows: tall,
                       squares: (0...wide).flat_map { |c| (0...tall).map { |r| squares[row + r][column + c] } })
           end
+        end
+
+        # SQUARES OF 16×16 FROM SQUARES OF 8×8, for a console whose table entry can draw four of them
+        # as one (the Super Nintendo's): each square of the picture's grid of 16 that has +least+ or
+        # more of its four quarters among +drawn+ ([across, down] of the 8×8 squares with something
+        # drawn), as [across, down], the top row first. A square with one quarter drawn saves no entry.
+        def self.big_squares(drawn, width, height, least:)
+          drawn = drawn.to_set
+          downs = (0..(height - BIG)).step(BIG).to_a
+          acrosses = (0..(width - BIG)).step(BIG).to_a
+          downs.product(acrosses).filter_map do |down, across|
+            [across, down] if big_square_quarters(across, down).count { |quarter| drawn.include?(quarter) } >= least
+          end
+        end
+
+        # The four 8×8 squares of the square of 16×16 at +across+, +down+: left top, right top, left
+        # bottom, right bottom.
+        def self.big_square_quarters(across, down)
+          [[across, down], [across + SIZE, down], [across, down + SIZE], [across + SIZE, down + SIZE]]
+        end
+
+        # The 8×8 squares of a piece a game made a picture of (Assets::Image#pieces), [across, down,
+        # places] each: the piece itself, or a piece of 16×16 as its four quarters.
+        def self.piece_squares(piece)
+          dx, dy, own = piece
+          return [[dx, dy, own]] if Assets::Image.side(own) == Assets::PIECE_SIZE
+
+          Assets::Image.quarters(own).map { |across, down, quarter| [dx + across, dy + down, quarter] }
+        end
+
+        # +squares+ ([across, down, places] each) as one rectangle, [left, top, columns, rows, its
+        # squares' places down each column and then across], or nil where they are not every square of
+        # a rectangle of up to +most+ squares each way.
+        def self.rectangle(squares, most:)
+          left = squares.map { |x, _, _| x }.min
+          top = squares.map { |_, y, _| y }.min
+          return nil unless squares.all? { |x, y, _| ((x - left) % SIZE).zero? && ((y - top) % SIZE).zero? }
+
+          placed = squares.to_h { |x, y, own| [[(x - left) / SIZE, (y - top) / SIZE], own] }
+          columns = placed.keys.map(&:first).max + 1
+          rows = placed.keys.map(&:last).max + 1
+          return nil if columns > most || rows > most || placed.length != squares.length || columns * rows != squares.length
+
+          [left, top, columns, rows, (0...columns).flat_map { |column| (0...rows).map { |row| placed.fetch([column, row]) } }]
+        end
+
+        # A PICTURE MADE OF A CONSOLE'S OWN PIECES IN GROUPS (Assets::Image#piece_groups), as rectangles
+        # of up to +most+ squares each way: each group one rectangle where its pieces make a whole one,
+        # and a rectangle for each piece of it where they do not, in the picture's order, the first in
+        # front. A rectangle that draws nothing is left out.
+        def self.group_rectangles(image, most:)
+          at = 0
+          rectangles = image.piece_groups.flat_map do |count|
+            group = image.pieces[at, count]
+            at += count
+            whole = rectangle(group.flat_map { |piece| piece_squares(piece) }, most: most)
+            whole ? [whole] : group.map { |piece| rectangle(piece_squares(piece), most: most) }
+          end
+          rectangles.reject { |_, _, _, _, squares| squares.all? { |own| own.bytes.all?(&:zero?) } }
         end
 
         # The square of +SIZE+ across and +tall+ down whose top left is +across+, +down+ in the picture, its

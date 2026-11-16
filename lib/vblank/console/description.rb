@@ -5,6 +5,15 @@ require_relative "dos_hardware"
 
 module VBlank
   module Console
+    # The save memory an Advance cartridge can carry: an 8K EEPROM, 32K of battery-backed memory,
+    # or 64K or 128K of flash (IR::SaveLayout says what each keeps where).
+    ADVANCE_SAVE_MEMORIES = Ractor.make_shareable([[8, :eeprom], [32, :battery], [64, :flash], [128, :flash]])
+
+    # A plain Super Nintendo cartridge's: 32K of battery-backed RAM. One with a Super FX chip keeps
+    # 64K, the whole of the second bank of the chip's RAM (Cartridge::SNESROM::SUPER_FX).
+    SNES_PLAIN_SAVE_MEMORIES = Ractor.make_shareable([[32, :battery]])
+    SNES_SUPER_FX_SAVE_MEMORIES = Ractor.make_shareable([[64, :battery]])
+
     # WHAT A CONSOLE IS, AS FAR AS A GAME CAN TELL: how big its screen is, which buttons it has, how
     # many sprites it shows, and which of the picture's tricks it can do at all. The builder, the
     # build checks and the interpreter read these, so a game is laid out, checked and played for the
@@ -24,15 +33,27 @@ module VBlank
     # Advance's does (Backends::GBA::SpriteDrawing::HeldTable), and the same where it does not.
     # +sprites_a_row+ is how many pieces of sprites, eight pixels wide, it draws on one row of the
     # screen before it leaves the rest of that row's out, or nil where the build does not count
-    # them. +sprite_pieces_drawn_a_line+ is the same limit as every backend draws it, or nil where
-    # none does: on each line of the screen the first that many pieces the console's sprite table
-    # holds there, front-most first, are drawn, and the rest are left out of that line alone
-    # (Backends::SpriteLines). It is nil where the console counts a line some other way than
-    # pieces eight pixels wide in its table's order, until that way is drawn too.
+    # them. +sprite_pieces_drawn_a_line+ is how many entries of the console's sprite table every
+    # backend draws on one line of the screen, or nil where none counts them: the first that many the
+    # table holds there, front-most first, and the rest are left out of that line alone
+    # (Backends::SpriteLines). Of those, +sprite_slivers_drawn_a_line+ is how many slivers eight
+    # pixels wide the console fetches, starting from the entry furthest back (the Super Nintendo's
+    # 34), and +sprite_pixels_drawn_a_line+ how many pixels it draws, starting from the front, each
+    # entry spending its whole width (the Genesis's 320); either is nil where it counts no such thing.
+    # +sprite_piece_shape+ is what one entry of its table draws, which is how a picture is cut into
+    # entries: :small, a square of 8×8 (or 8×16, as a game asks); :squares, those or squares of 16×16;
+    # :rectangles, up to four squares of 8×8 across and four down (Backends::SpriteLines.picture_places).
+    # +sprite_pieces_drawn_a_screen+ is how many of those pieces its sprite table holds, or nil where
+    # every backend draws every sprite: the table is filled with each piece on the screen from the end
+    # +sprite_table_filled_from+ names (:front, front-most first, or :back), and a piece that finds it
+    # full is left out of every line (Backends::SpriteLines).
     # +backgrounds+ is how many tiled layers it stacks, +turning_backgrounds+ how many of
     # them can turn and resize, and +backgrounds_beside_turning+ how many still scroll on a screen
     # where one turns. +bar_is_a_background+ marks whether a status bar is one of those layers, or a
-    # layer the console keeps beside them. +bar_shares_display+ marks whether the bar takes a part of the
+    # layer the console keeps beside them. +layer_for_held_rows+ marks a console with one layer more
+    # than +backgrounds+, of fewer colours, for one background shown on some rows only: a status bar,
+    # or a background kept above a row (Nodes::Background#held_to_rows?). The Super Nintendo's third
+    # layer of mode 1 is one, and Checks::TooManyBackgroundLayers counts such a background apart. +bar_shares_display+ marks whether the bar takes a part of the
     # display something else needs as well (a window the Advance's lights use, the memory the Color's
     # painted screen keeps its picture in), which Checks::StatusBarCannotShare asks about; where it is
     # false the bar is a picture drawn like any other. +turning_sprites+ marks whether a sprite can turn and resize.
@@ -122,6 +143,10 @@ module VBlank
     # +holds_background_above_row+ marks that a background can be kept to the rows above a row (`above_row:`),
     # and +glides_recordings+ that a recorded note can carry on at a new pitch (`glides: true`).
     #
+    # +sets_main_volume+ marks that the console's build writes the main volume a game names
+    # (`enable_sound main_volume:`) to its sound chip, which scales everything the chip plays. Where it
+    # is false the build refuses such a game (Console::Questions), rather than play it louder.
+    #
     # +background_box+ sets how a background is held to a box the game moves (`show_only_inside`):
     # :shared_windows where the display's windows do it and the light, a status bar and a fade held
     # to part of the screen use the same windows (the Advance); :own_window where a window does it
@@ -133,11 +158,19 @@ module VBlank
     # false the build works each shape's clipping out from the edges as it writes the shape (the
     # Advance's ARM), so a routine built once, outside any area, draws past the area of whoever calls
     # it, and the build refuses such a call (Checks::CallInsideArea).
+    #
+    # +save_memories+ is the save memory a cartridge of the console can carry, smallest first, each
+    # [kilobytes, chip] (chip :battery, :flash or :eeprom): the build gives a game that saves the
+    # smallest its records fit in (IR::SaveLayout.chosen), never the EEPROM unasked. The Advance's
+    # are every size a game can name (ADVANCE_SAVE_MEMORIES), which is the default.
     Description = Data.define(:name, :title, :screen_width, :screen_height, :buttons, :controllers,
                               :holds_background_above_row, :background_box, :area_clips_called_routines,
-                              :glides_recordings, :sprites, :sprite_places,
-                              :sprites_a_row, :sprite_pieces_drawn_a_line, :turning_sprites, :sprite_sizes, :tile_planes, :backgrounds, :turning_backgrounds,
-                              :backgrounds_beside_turning, :bar_is_a_background, :bar_shares_display, :changes_cells_while_drawing,
+                              :glides_recordings, :sets_main_volume, :sprites, :sprite_places,
+                              :sprites_a_row, :sprite_pieces_drawn_a_line, :sprite_slivers_drawn_a_line,
+                              :sprite_pixels_drawn_a_line, :sprite_piece_shape, :sprite_pieces_drawn_a_screen,
+                              :sprite_table_filled_from, :turning_sprites, :sprite_sizes, :tile_planes, :backgrounds, :turning_backgrounds,
+                              :backgrounds_beside_turning, :bar_is_a_background, :layer_for_held_rows, :bar_shares_display,
+                              :changes_cells_while_drawing,
                               :blends, :fades_by_brightness, :mixes_by_half, :list_colors, :color_bits, :painted_pages,
                               :clock_keeps_date, :cycles_a_second, :cycles_a_frame, :samples_a_copy,
                               :sample_timer_step, :sample_timer_counts, :recordings_at_once, :mixes_recordings,
@@ -147,7 +180,7 @@ module VBlank
                               :whole_screen_size, :extension, :code_cache_bytes, :face_fill_skips_outside_window,
                               :face_fill_by_row_middles, :pixel_size, :shows_bigger_pixels,
                               :pose_lists, :sprites_in_blocks, :voices_read_sound_memory, :big_background_tiles,
-                              :shown_rows, :gives_up_rows) do
+                              :shown_rows, :gives_up_rows, :save_memories) do
       # +code_cache_bytes+ is how much of the game's code the processor keeps in a cache of its own and
       # runs without going out to memory for each instruction, or nil for a processor with none (it
       # reads every instruction from memory as it runs it, or memory as quick as a cache). Where it is
@@ -207,7 +240,9 @@ module VBlank
       def initialize(code_cache_bytes: nil, face_fill_skips_outside_window: false, face_fill_by_row_middles: true,
                      pixel_size: 1, shows_bigger_pixels: false, pose_lists: :one, sprites_in_blocks: true,
                      voices_read_sound_memory: false, big_background_tiles: false, shown_rows: nil,
-                     gives_up_rows: false, **rest) = super
+                     gives_up_rows: false, sprite_pieces_drawn_a_screen: nil, sprite_slivers_drawn_a_line: nil,
+                     sprite_pixels_drawn_a_line: nil, sprite_piece_shape: :small, sprite_table_filled_from: :front,
+                     save_memories: ADVANCE_SAVE_MEMORIES, layer_for_held_rows: false, **rest) = super
 
       # Whether one sprite can show poses drawn from different lists of colours (see +pose_lists+).
       def poses_keep_own_lists? = pose_lists != :one
@@ -244,6 +279,10 @@ module VBlank
 
       # Whether the game's screen is shown in a border, inside a bigger screen (#whole_screen_size).
       def bordered? = !whole_screen_size.nil?
+
+      # The size of the picture a window shows the game in, [width, height]: the whole screen, with
+      # the border round the game's where it has one, or else the game's screen.
+      def framed_screen_size = whole_screen_size || screen_size
 
       # Where the game's screen starts inside the whole screen, [left, top] in pixels: the middle.
       # [0, 0] for a console showing the game's screen whole.
@@ -293,7 +332,7 @@ module VBlank
     # The Game Boy Advance.
     ADVANCE = Description.new(name: :gba, title: "Game Boy Advance", screen_width: 240, screen_height: 160,
                               buttons: %i[a b select start right left up down r l].freeze, controllers: 1,
-                              holds_background_above_row: false, background_box: :shared_windows, glides_recordings: false, sprites: 128,
+                              holds_background_above_row: false, background_box: :shared_windows, glides_recordings: true, sets_main_volume: true, sprites: 128,
                               # Each shape is clipped against the area's edges as the ARM is
                               # written (Backends::GBA::Statements#emit_inside).
                               area_clips_called_routines: false,
@@ -346,12 +385,14 @@ module VBlank
     # each verb does on it is Console::ColorAnswers's to say.
     COLOR = Description.new(name: :gbc, title: "Game Boy Color", screen_width: 160, screen_height: 144,
                             buttons: %i[a b select start right left up down].freeze, controllers: 1,
-                            holds_background_above_row: false, background_box: nil, glides_recordings: false, sprites: 40, sprite_places: 40,
+                            holds_background_above_row: false, background_box: nil, glides_recordings: false, sets_main_volume: true, sprites: 40, sprite_places: 40,
                             # rt_paint_area keeps the area in memory (GBC::Lowering::Picture#emit_inside).
                             area_clips_called_routines: true,
                             # The first ten pieces its table holds on a line, every other left out
-                            # (each piece is a sprite of its own, 8 wide).
-                            sprites_a_row: 10, sprite_pieces_drawn_a_line: 10, turning_sprites: false, sprite_sizes: nil, tile_planes: 2,
+                            # (each piece is a sprite of its own, 8 wide), and forty pieces on the
+                            # whole screen, the forty entries of its table.
+                            sprites_a_row: 10, sprite_pieces_drawn_a_line: 10, sprite_pieces_drawn_a_screen: 40,
+                            turning_sprites: false, sprite_sizes: nil, tile_planes: 2,
                             backgrounds: 1, turning_backgrounds: 0, backgrounds_beside_turning: 0,
                             # A status bar is the window, a layer beside the one background.
                             bar_is_a_background: false, bar_shares_display: true,
@@ -398,29 +439,38 @@ module VBlank
     # verb does on it is Console::SNESAnswers's to say.
     SUPER_NINTENDO = Description.new(name: :snes, title: "Super Nintendo", screen_width: 256, screen_height: 224,
                                      buttons: %i[a b select start right left up down r l x y].freeze, controllers: 2,
-                                     holds_background_above_row: true, background_box: nil, glides_recordings: true, sprites: 128,
+                                     holds_background_above_row: true, background_box: nil, glides_recordings: true, sets_main_volume: true, sprites: 128,
                                      # rt_paint_area keeps the area in memory, and a routine on a
                                      # Super FX chip is handed it (SNES::Lowering::Paint#emit_inside,
                                      # SNES::ChipCode#area_places).
                                      area_clips_called_routines: true,
                                      sprite_places: 128,
-                                     # A row of the screen shows at most 32 sprites and 34 of their
-                                     # 8-pixel pieces; a piece is what this counts.
-                                     # Which are left out is not drawn yet: the first 32 in range
-                                     # of a line are kept, its squares of 16×16 count as one sprite
-                                     # and two slivers, and a piece just off an edge is in range.
-                                     sprites_a_row: 34, sprite_pieces_drawn_a_line: nil, turning_sprites: false,
+                                     # A row of the screen shows at most 32 entries of the sprite
+                                     # table and 34 slivers 8 pixels wide of them; a sliver is what
+                                     # the build's warning counts. The first 32 entries that reach the
+                                     # line are kept, front-most first, and their slivers fetched from
+                                     # the back, so past 34 the entries in front lose theirs. A square
+                                     # of 16×16 is one entry and two slivers, and a sliver off the
+                                     # screen is not fetched (measured in bsnes).
+                                     sprites_a_row: 34, sprite_pieces_drawn_a_line: 32, sprite_slivers_drawn_a_line: 34,
+                                     sprite_piece_shape: :squares,
+                                     # The table's 128 rows, filled from the sprite furthest back,
+                                     # so past them the pieces in front are not drawn (measured in
+                                     # bsnes).
+                                     sprite_pieces_drawn_a_screen: 128, sprite_table_filled_from: :back,
+                                     turning_sprites: false,
                                      # Every sprite picture is cut into 8×8 pieces (Backends::SNES::Art).
                                      sprite_sizes: nil, tile_planes: 4,
                                      # The build shows a game's backgrounds on the arrangement of
                                      # layers called mode 1: two of sixteen colours and one of four.
                                      # The build puts a status bar, or a background held above a
                                      # row, on the one of four, beside two other backgrounds
-                                     # (Backends::SNES::Lowering::Picture.third_layer?); three with
-                                     # neither among them it does not make yet, and says so.
-                                     # Mode 7 turns one layer, alone; the build does not use it.
-                                     backgrounds: 3, turning_backgrounds: 0, backgrounds_beside_turning: 0,
-                                     bar_is_a_background: true, bar_shares_display: true,
+                                     # (Backends::SNES::Lowering::Picture.third_layer?), so that is
+                                     # the layer for held rows; a third plain background is refused.
+                                     # Mode 7 turns one layer, alone; the build uses it only to
+                                     # show a painted screen of big pixels.
+                                     backgrounds: 2, turning_backgrounds: 0, backgrounds_beside_turning: 0,
+                                     bar_is_a_background: true, layer_for_held_rows: true, bar_shares_display: true,
                                      # Its colour maths adds, subtracts or halves, never the
                                      # Advance's sixteen steps, so a fade is walked colour by colour.
                                      changes_cells_while_drawing: false,
@@ -464,6 +514,14 @@ module VBlank
                                      # Video memory takes writes only in the blank or with the screen
                                      # off, and the screen can be switched off line by line.
                                      gives_up_rows: true,
+                                     # A painted screen of big pixels is shown on Mode 7's layer,
+                                     # whose matrix reads half a pixel a step
+                                     # (Backends::SNES::Runtime::PaintDoubled).
+                                     shows_bigger_pixels: true,
+                                     # 32K of battery-backed RAM: the most a plain LoROM board of the
+                                     # console's day carries, in one bank, $70 (SNES::Runtime::Saving).
+                                     # A Super FX cartridge keeps more (SNES_VARIANTS).
+                                     save_memories: SNES_PLAIN_SAVE_MEMORIES,
                                      extension: ".sfc")
 
     # The Sega Genesis: a 320×224 screen, a pad of seven buttons (the D-pad, A, B, C and Start: no
@@ -472,14 +530,21 @@ module VBlank
     # channel. What each verb does on it is Console::GenesisAnswers's to say.
     GENESIS = Description.new(name: :genesis, title: "Sega Genesis", screen_width: 320, screen_height: 224,
                               buttons: %i[a b c start right left up down].freeze, controllers: 1,
-                              holds_background_above_row: false, background_box: nil, glides_recordings: false, sprites: 80, sprite_places: 80,
+                              holds_background_above_row: false, background_box: nil, glides_recordings: true, sets_main_volume: false, sprites: 80, sprite_places: 80,
                               # The area is kept in memory (Genesis::Lowering::Paint#emit_inside).
                               area_clips_called_routines: true,
-                              # A row of the screen shows at most 20 sprites (16 on a screen of 256
-                              # across), and a sprite here is one piece of a picture, up to 32×32.
-                              # Which are left out is not drawn yet: a piece up to 32 wide is one
-                              # of the twenty, and the 320 pixels a line counts blank ones too.
-                              sprites_a_row: 20, sprite_pieces_drawn_a_line: nil, turning_sprites: false,
+                              # A row of the screen shows at most 20 entries of the sprite table (16
+                              # on a screen of 256 across), and an entry here is one piece of a
+                              # picture, up to 32×32. The first 20 that reach the line are kept,
+                              # front-most first, and drawn front-most first until 320 pixels are
+                              # spent: each spends its whole width, its blank pixels and those off
+                              # the screen too (measured in Genesis Plus GX).
+                              sprites_a_row: 20, sprite_pieces_drawn_a_line: 20, sprite_pixels_drawn_a_line: 320,
+                              sprite_piece_shape: :rectangles,
+                              # The table's 80 rows, filled from the sprite furthest back, so past
+                              # them the pieces in front are not drawn (measured in Genesis Plus GX).
+                              sprite_pieces_drawn_a_screen: 80, sprite_table_filled_from: :back,
+                              turning_sprites: false,
                               # Every sprite picture is covered by pieces of whole 8×8 tiles, up to
                               # four across and four down (Backends::SpritePieces.cover).
                               sprite_sizes: nil, tile_planes: nil,
@@ -535,12 +600,16 @@ module VBlank
                                   # A background is a picture the graphics chip draws, so it can be held to
                                   # a box (the chip's drawing area) that nothing else uses. A recorded note
                                   # can glide: its voice's pitch is a register written while it plays.
-                                  holds_background_above_row: false, background_box: :own_window, glides_recordings: true,
+                                  holds_background_above_row: false, background_box: :own_window, glides_recordings: true, sets_main_volume: true,
                                   # The area is kept in memory (PS1::Lowering::Paint#emit_inside).
                                   area_clips_called_routines: true,
                                   # The graphics chip draws every sprite each frame as a textured rectangle,
-                                  # so the number is the framework's, not the hardware's.
-                                  sprites: 128, sprite_places: 512,
+                                  # so the number is the framework's, not the hardware's: every place a game
+                                  # can keep is drawn, as the interpreter draws every sprite a frame shows.
+                                  # The build's table of a pass's sprites has a row for each place, and
+                                  # the build refuses more places (PS1::Runtime::Tiles::MOST_SPRITES), so
+                                  # sprite_pieces_drawn_a_screen stays nil.
+                                  sprites: 512, sprite_places: 512,
                                   # Nothing limits a row: the chip draws whatever it is sent.
                                   # The chip draws a turned or resized sprite as a textured quad.
                                   sprites_a_row: nil, sprite_pieces_drawn_a_line: nil, turning_sprites: true,
@@ -615,6 +684,8 @@ module VBlank
                           # screen's area is (the same as the PlayStation's).
                           # ...and kept to the rows above a row the same way, which costs nothing more.
                           holds_background_above_row: true, background_box: :own_window, glides_recordings: false,
+                          # No sound is built for DOS yet, so a main volume is refused until there is.
+                          sets_main_volume: false,
                           area_clips_called_routines: true,
                           # Nothing in the card limits sprites: the processor draws each one, so the limit is
                           # time. 256 shown, as many as a 386 draws in a frame of small ones.

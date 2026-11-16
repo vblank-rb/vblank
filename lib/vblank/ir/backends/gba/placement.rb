@@ -567,6 +567,7 @@ module VBlank
           # Patch in the transfer's size and start it: whole words, both ends advancing.
           def resolve_hot_size(fix)
             words = @hot_bytes / 4
+            Primitives.refuse_copy_of_nothing!(words)
             @emit.patch16(fix.pos, ASM.load_immediate_fixed(fix.reg, words | DMA_32BIT | DMA_ENABLE))
           end
 

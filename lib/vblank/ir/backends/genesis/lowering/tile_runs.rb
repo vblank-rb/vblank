@@ -101,7 +101,9 @@ module VBlank
                 @art.with_colors_of(colors_scene_of(bg)) do
                   # A run answers list_drawn_from as a picture does (Nodes::TileRun).
                   if !drawn_in_own_colors?(bg, run)
-                    @art.run_cell(name, run.colors, palette: recolored_palette(bg, run))
+                    palette = recolored_palette(bg, run)
+                    refuse_run_in_shared_palette!(name) unless recolored_offset(bg, run).zero?
+                    @art.run_cell(name, run.colors, palette: palette)
                   elsif (drawn = run_places_drawn(run))
                     known_run_cell_of(name, run, drawn)
                   else
@@ -109,6 +111,15 @@ module VBlank
                   end
                 end
               end
+            end
+
+            # A painted tile copies the places of its list as the game paints them (#emit_run_copy), from place
+            # 1, so it cannot be drawn from a list that starts further into a palette it shares with other lists
+            # (Art#share_held_palette).
+            def refuse_run_in_shared_palette!(name)
+              raise NotMadeYet.new("The painted tiles #{name.inspect} are drawn from a list of colours that shares a set " \
+                                   "of colours with other lists. The Genesis build does not make that yet. To fix this, " \
+                                   "draw the background with fewer lists of colours.", part: "pictures painted from a list")
             end
 
             # Whether +bg+ draws +run+'s tiles in the run's own colours: not drawn with other lists,

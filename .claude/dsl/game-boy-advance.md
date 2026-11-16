@@ -20,6 +20,8 @@ and a test fails when the two differ.
 - `shading` — works: the processor finds each lit pixel's colour in a table the build makes from the shading, one load a pixel. Each pixel is the colour the shading gives, exactly.
 - `recolor` — works: a background that draws with more than one list the game changes has one group of 16 background colors for each of those lists. When a list changes, the build copies its colors into that group. A background that walks between areas is refused there: this build does not make it yet.
 - `sprite` — works: a sprite with `over_picture: true` on a painted screen is the console's own sprite. The painted picture uses half of the sprites' memory, so their pictures have 16K, not 32K. A sprite whose poses are drawn from different lists of colors is refused: this build draws all the poses of one sprite from one list. Use one sprite for the poses of each list.
+- `layers` — works: a see-through layer cannot hold a background and a sprite on one screen. The display mixes a see-through sprite with one thing behind it, not two. Over the layer's own background, the sprite cannot also show what is behind the layer. The build refuses such a layer.
+- `layer` — works: see `layers`.
 - `background` — works: `above_row:` is refused: this build does not make it yet. `show_only_inside` uses the display's second window. One background at a time can be held to a box. A game that holds one cannot also have a light, a status bar, a fade held to part of the screen, or a fade under a layer, because these need the same windows. With `held: true`, the cells a pass changes with `set_tile` wait in work memory and go into video memory together in the gap between frames, so they all show on the next frame. Up to 1024 changes wait. A pass that makes more writes the waiting ones at once.
 - `status_bar` — works: the bar takes one of the four background layers. A game with a bar cannot also have a light, a fade held to part of the screen, or a fade under a layer, because these need the same part of the display.
 - `font` — works: a font of the game's own pictures (`pictures:` or `strip:`) draws each character as its picture: a `blit` on a painted screen, a sprite on a tiled one.
@@ -36,8 +38,9 @@ and a test fails when the two differ.
 - `rumble` — works: nothing is felt. A Game Boy Advance cartridge with a rumble motor is not made yet, so the game plays the same without it.
 - `computer_keys` — works: they are for the game built for a computer (the window, `vblank run`, the web page): the cartridge is built byte for byte as without it.
 - `computer_gamepad` — works: they are for the game built for a computer (the window, `vblank run`, the web page): the cartridge is built byte for byte as without it.
+- `enable_sound` — works: `main_volume:` sets the main volume of the sound chip to the nearest of its eight steps, from an eighth to all. At 0, the sound stays off. The square, wave and noise voices can also play at a half or a quarter of each step, so a quiet main volume is nearer. Recordings play at half or at all, whichever is nearer.
 - `song` — works: a part can sit between the speakers. A square, wave or noise part between the speakers (`pan -0.7`) plays from one speaker if that side is two or more times as loud as the other side. If not, it plays from both speakers. A part that plays a recording plays from both speakers, wherever `pan` puts it: all recordings are mixed into one sound, and both speakers play it.
-- `songs` — works: a recorded note with `glides: true` is refused: this build does not make it yet.
+- `songs` — works: A recorded note with `glides: true` carries on the note sounding at a new pitch, loudness and side: it goes on from where it has got to, and the voice is not struck again. A note on the noise voice can have its own `metallic:`, and a note on the wave voice can have its own `wave:`. The note sets them when it starts.
 
 These work as their group files say:
 
@@ -49,12 +52,12 @@ These work as their group files say:
 `pixelate_out`, `pixelate_size`, `spotlight`, `iris_in`, `iris_out`, `iris_shut?`, `pulse`,
 `camera_follows`, `image`, `color`, `rgb`, `rgb8`, `colors`, `colors_in_use`, `colors_name_of`,
 `color_walk`, `mirror`, `upside_down`, `blit`, `draw_in_order`, `hide_sprites`,
-`picture_groups`, `pool`, `box`, `tiles`, `canvas`, `tile_pictures`, `sprite_tiles`, `layers`,
-`layer`, `draw_text`, `draw_number`, `text_width`, `text_height`, `menu`, `var`, `save_var`,
-`save_data`, `clock`, `saves_keep_everything`, `part`, `start_over`, `set`, `add`, `add_var`,
-`sub`, `sub_var`, `copy`, `negate`, `negate!`, `flip`, `flip!`, `abs`, `abs!`, `negate_abs`,
+`picture_groups`, `pool`, `box`, `tiles`, `canvas`, `tile_pictures`, `sprite_tiles`,
+`draw_text`, `draw_number`, `text_width`, `text_height`, `menu`, `var`, `save_var`, `save_data`,
+`clock`, `saves_keep_everything`, `part`, `start_over`, `set`, `add`, `add_var`, `sub`,
+`sub_var`, `copy`, `negate`, `negate!`, `flip`, `flip!`, `abs`, `abs!`, `negate_abs`,
 `negate_abs!`, `clamp`, `clamp!`, `approach`, `approach!`, `list`, `func`, `call`, `scene`,
 `case_var`, `most_players`, `seed`, `randomize`, `roll`, `rand`, `chance`, `random_numbers`,
-`enable_sound`, `define_sound`, `beep`, `noise`, `wave`, `stop_wave`, `play_song`, `stop_music`,
-`hold_music`, `release_music`, `music_volume`, `fade_music_in`, `fade_music_out`,
-`sound_effects`, `sample`, `instrument`.
+`define_sound`, `beep`, `noise`, `wave`, `stop_wave`, `play_song`, `stop_music`, `hold_music`,
+`release_music`, `music_volume`, `fade_music_in`, `fade_music_out`, `sound_effects`, `sample`,
+`instrument`.

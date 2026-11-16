@@ -39,8 +39,8 @@ module VBlankScript
   def self.play(options)
     game = VBlank::IR::Backends::Ruby::LiveGame.new(SOURCE)
     window = VBlank::Live::SDL.new(title: TITLE, scale: options[:scale], width: game.width, height: game.height,
-                                   menu: MENU, settings_file: options[:"settings-file"] || :usual,
-                                   config_dir: options[:"config-dir"], game_controls: game.controls)
+                                   pixel_size: game.pixel_size, menu: MENU, settings_file: options[:"settings-file"] || :usual,
+                                   config_dir: options[:"config-dir"], game_controls: game.controls, buttons: game.buttons)
     warn window.settings_problems_message if window.settings_problems_message
     puts "Playing #{TITLE}. #{'Press F1 or ` for the menu. ' if MENU}Press P to pause. Hold Tab to play fast. " \
          "Press Escape to stop."
@@ -52,10 +52,8 @@ module VBlankScript
     rate = SHELL_FACTS ? play_shell(window, options, play_game) : play_game.call(game)
     return unless rate
 
-    if rate.passes.positive?
-      puts format("%<pictures>d frames in %<seconds>.1f s (%<per_second>.1f fps; the console shows %<console>.1f)",
-                  pictures: rate.passes, seconds: rate.seconds, per_second: rate.passes_per_second,
-                  console: 1 / game.frame_seconds)
+    if rate.passes_after_setup.positive?
+      puts rate.words(console_frame_seconds: game.frame_seconds)
       puts rate.lateness.words if rate.lateness
     end
     puts "#{TITLE} stopped itself. Its last picture stayed in the window." if rate.stopped_itself?

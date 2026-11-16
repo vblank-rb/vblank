@@ -22,7 +22,7 @@ void rg_screen_column(int32_t image, int32_t slice, int32_t x, int32_t top, int3
   int64_t past = (int64_t)RG_SCREEN_HEIGHT - top < height ? (int64_t)RG_SCREEN_HEIGHT - top : height;
   for (int64_t row = first; row < past; row++) {
     int64_t source = clamp32((row * step) >> 16, 0, art.height - 1);
-    int32_t color = art.pixels[source * art.width + column];
+    int32_t color = picture_pixel(art, source * art.width + column);
     if (color == RG_NOT_DRAWN) continue;
     for (int32_t across = 0; across < width; across++) set_pixel((int64_t)x + across, top + row, color);
   }

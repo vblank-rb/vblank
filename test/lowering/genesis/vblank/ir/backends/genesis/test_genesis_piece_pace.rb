@@ -116,7 +116,29 @@ module PiecePaceGames
   MAP_AT = 0x400
   TILES_AT = MAP_AT + (MAP.length * 2)
 
-  constants.each { |name| Ractor.make_shareable(const_get(name)) }
+  VBlank::Testing::InRactors.share_constants(self)
+
+  # Forty sprites of one picture, each drawn in one of two lists of colours by turns when
+  # +recolored+, and in its own otherwise.
+  def self.recolor_game(recolored:)
+    VBlank.game("RECOLOR PACE", consoles: %i[genesis]) do
+      screen :tiled
+      colors :hull, %i[transparent red green]
+      colors :warm, %i[transparent yellow orange]
+      colors :cold, %i[transparent cyan blue]
+      rows = ["##..##..##..##..#.#.#...", "#.#.#.#.##..#..#.##..#.."] * 4
+      image(:ship, "#" => :red, "." => :transparent, colors: :hull) { (rows + ["#" * 8 + "." * 16] * 8).join("\n") }
+      things = Array.new(40) { |i| sprite :"thing_#{i}", at: [(i % 8) * 28, (i / 8) * 30], facing: { down: :ship } }
+      t = var :t, 0
+      game_loop do
+        t += 1
+        things.each_with_index do |thing, i|
+          thing.move_to ((i % 8) * 28) + (t & 3), (i / 8) * 30
+          thing.draw_with %i[warm cold], showing: t & 1 if recolored
+        end
+      end
+    end
+  end
 
   # The made-up original, written into +folder+.
   def self.original(folder)
@@ -205,9 +227,12 @@ class TestGenesisPiecePace < Minitest::Test
   # piece, the video chip copies the table in by itself, and the sums that say where each stands
   # are added to in place. The third is about a fifth more: three rows of the table a sprite
   # where the flat picture takes fewer, against a pass that is itself a sixth of a frame.
-  MOST_OF_A_FRAME = 0.32
-  MOST_OF_AN_ORDINARY_FRAME = 0.21
-  MOST_OVER_FLAT = 1.25
+  MOST_OF_A_FRAME = 0.305
+  MOST_OF_AN_ORDINARY_FRAME = 0.2
+  MOST_OVER_FLAT = 1.2
+
+  # How much more a sprite drawn in a list of colours takes to place than a plain one.
+  MOST_RECOLORED_OVER_PLAIN = 1.5
 
   PASSES = 32
 
@@ -270,6 +295,21 @@ class TestGenesisPiecePace < Minitest::Test
       assert_operator with_pieces, :<=, MOST_OF_AN_ORDINARY_FRAME,
                       "an ordinary pass takes #{(with_pieces * 100).round(1)}% of a frame"
     end
+  end
+
+  # A sprite drawn in a list of colours copies its pieces into the table as a plain sprite does,
+  # each piece's palette bits put in on the way: measured, a piece is two instructions more and the
+  # list's palette is found once a sprite, so its placing is under half as much again as a plain
+  # sprite's.
+  def test_a_sprite_in_a_list_of_colours_places_its_pieces_as_a_plain_one_does
+    plain, recolored = [false, true].map do |drawn_with|
+      rom = PiecePaceGames.recolor_game(recolored: drawn_with).build_rom(console: :genesis, out: StringIO.new, err: StringIO.new,
+                                                                          profile: false)
+      rom.profile(out: StringIO.new, settle: 4, frames: 8).runtime.select { |spent| spent.routine.to_s.start_with?("rt_sprite_place") }
+    end
+
+    assert_operator recolored.sum(&:share), :<=, plain.sum(&:share) * MOST_RECOLORED_OVER_PLAIN
+    refute recolored.any? { |spent| spent.routine.to_s.include?("tested") }, "every piece is copied, none tested one by one"
   end
 
   # Every piece is a row of the sprite table: the build cuts none in two and joins none.

@@ -2,6 +2,7 @@
 
 require "set"
 
+require_relative "reference/copy_watch"
 require_relative "reference/framebuffer"
 require_relative "reference/list_value"
 require_relative "reference/mixer"
@@ -108,6 +109,10 @@ module VBlank
         # mixer writes for that frame (see Mixer#mix). Empty for a program with no recording.
         def mixed_sound = @mixer.slices
 
+        # ...and as a build for a computer mixes it: all sixteen bits of a program with a 16-bit
+        # recording, and the same slices as #mixed_sound for any other (see Mixer#full_depth_slices).
+        def full_depth_sound = @mixer.full_depth_slices
+
         # ...and whose each of them is — see {Mixer#owners}.
         def sound_owners = @mixer.owners
 
@@ -120,6 +125,11 @@ module VBlank
         # How far through its own shape a sounding note is — see {Mixer#level_of}. What a test
         # reads to watch a note fall away rather than stop.
         def level_of(name) = @mixer.level_of(name)
+
+        # How loud each sounding voice plays, out of 512 — see {Mixer#loudness_by_voice}. Asked by the
+        # checked run of a console that plays each recording on a voice of its own sound chip
+        # (PS1::CheckedRun), which holds its voices' loudness to these after every pass.
+        def loudness_by_voice = @mixer.loudness_by_voice
 
         # THE SPRITES THIS RUN IS DRAWING, each knowing which one the game declared it for.
         #
@@ -293,6 +303,7 @@ module VBlank
         # budget: it stops the run wherever it has got to (at the next frame boundary
         # if the program has frames), and #stopped_at_budget? then returns true.
         def run(node, max_steps: nil, frames: nil)
+          as_built = node
           node = StartFile.filled(node, @handed_file) if node.kind == :program
           @read_program = (node if node.kind == :program)
           frames = DEFAULT_FRAMES if frames.nil? && max_steps.nil?
@@ -310,6 +321,7 @@ module VBlank
           @setting_up_uncounted = @frames_setting_up # counted at the first frame (#store_frame_counters)
           @placing_at_pass_end = false # while a boundary write placed at the end of a pass runs (#exec_loop)
           @loops_running = [] # the game loops running, innermost last (#place_pass_end_before_halt)
+          @match_joined = false # whether a match's players and seed are in the game yet (#join_match_at_first_wait)
           @rumble_left = 0 # frames the motor has still to run for (#exec_rumble)
           @rumble_bits = 0 # ...and its pattern, the next frame's bit at the top
           @motor_on = false
@@ -319,7 +331,8 @@ module VBlank
           @save.use_memory!(SaveLayout.memory_of(node))
           refuse_too_many_layers!(node)
           refuse_too_many_sprites!(node)
-          refuse_poses_with_different_colors!(node)
+          refuse_painted_picture_with_other_poses!(node) # Must come before the next: the lowerings' order
+          refuse_poses_with_different_colors!(node, as_built)
           refuse_two_see_through_layers!(node)
           # How the picture stacks: what scenery and objects there are, in what order,
           # and how deep each sits. Scenery in FRONT of an object means the save-under
@@ -374,12 +387,17 @@ module VBlank
         def size_screen_for(node)
           program = node.kind == :program ? node : Build.program
           @console = program.described_console
+          # Whose build's sprite pieces the lines count (#sprite_piece_places).
+          @program_played = program
           # How tall a piece of a sprite is on that console, for the lines it counts (#mark_slices_left_out).
           @sprite_piece_height = (program.sprite_piece_size_on(@console.name) || [SpritePieces::SIZE] * 2).last
+          # And how far past the screen's edge one still takes an entry of its table.
+          @sprite_entry_reach = SpriteLines.entry_reach(program, piece_height: @sprite_piece_height)
           width, height = @console.screen_size
           unless [@screen.width, @screen.height] == [width, height]
             @screen = Framebuffer.new(width: width, height: height, color_bits: @console.color_bits)
           end
+          @screen.see_through_mixer = @see_through_mixer
           @screen.dims = @console.fades_by_brightness
           @screen.shown_rows = @console.shown_rows
         end
@@ -484,6 +502,17 @@ module VBlank
           self
         end
 
+        # MIX EACH SEE-THROUGH LAYER THE WAY A CONSOLE'S CHIP DOES, not by Framebuffer#mix_see_through's
+        # own rule: +mixer+'s mix(color, under, near, far) gives the colour a pixel of the layer shows over
+        # what is under it, at its two shares in sixteenths. Which pixels are mixed, with what and at what
+        # shares, is still the interpreter's; only the arithmetic is the chip's (PS1::CheckedRun). Returns
+        # self.
+        def mix_see_through_with(mixer)
+          @see_through_mixer = mixer
+          @screen.see_through_mixer = mixer
+          self
+        end
+
         # SET THAT SETTING UP TOOK +count+ FRAMES WITH THE SCREEN OFF, before the first frame it
         # shows. A console whose screen draws nothing while it is off — the Color's — reads its
         # buttons and plays its music from the screen's interrupt, which those frames never raise,
@@ -525,6 +554,25 @@ module VBlank
         # looks at it. Returns self.
         def hand_file(bytes)
           @handed_file = bytes
+          self
+        end
+
+        # PLAY THE GAME AS ONE MACHINE OF A MATCH (Network::Lockstep) of +players+ players and the seed
+        # +seed+, so a tape of the match replays it. Two things make a match's game another game than
+        # the same presses played alone, and both happen at the end of the first pass, the one the game
+        # sets itself up in (the computer builds' first wait):
+        #
+        # - every machine adds the match's seed to the game's random numbers, once (rg_game_mix_seed),
+        #   so a game that chose `seed 7` keeps its own choice and every machine draws the same numbers.
+        #   A game that draws no random numbers has nothing to add it to.
+        # - every machine is handed a number for each player of the match from the first buttons it
+        #   reads, so `players_connected` counts them all from then, whoever has pressed a button. Alone,
+        #   a player counts from the first press (#count_connected_players).
+        #
+        # The interpreter does both at that moment (#join_match_at_first_wait). Returns self.
+        def play_as_match(seed:, players:)
+          @match_seed = seed
+          @match_players = players
           self
         end
 
@@ -584,8 +632,22 @@ module VBlank
         # ...and about a sprite's colors: this picture paints each of a sprite's pictures in
         # whatever colors it holds, and the console draws them all from one list. See
         # Guardrails::Checks::PosesWithDifferentColors.
-        def refuse_poses_with_different_colors!(node)
-          refusal = Guardrails::Checks::PosesWithDifferentColors.new.refusal_message(node)
+        #
+        # +as_built+ is +node+ before the file it is handed was read into it (StartFile.filled): the
+        # check tells a pose drawn in the bank its frame names by what the build left to read from
+        # the file, which the filled program no longer holds. Without it, a sprite following such
+        # poses whose frames name two banks would be refused here and played by the build for a
+        # computer, which the check lets through. The colours are compared as filled.
+        def refuse_poses_with_different_colors!(node, as_built)
+          refusal = Guardrails::Checks::PosesWithDifferentColors.new.refusal_message(node, as_built: as_built)
+          raise ProgramError, refusal if refusal
+        end
+
+        # ...and about a picture the game paints from a list: this picture could show it as one
+        # pose of several, and no console's build lays one out beside other poses. See
+        # Guardrails::Checks::PaintedPictureWithOtherPoses.
+        def refuse_painted_picture_with_other_poses!(node)
+          refusal = Guardrails::Checks::PaintedPictureWithOtherPoses.new.refusal_message(node)
           raise ProgramError, refusal if refusal
         end
 
@@ -616,7 +678,7 @@ module VBlank
             when :sound_effect_list
               @player.declare_effects(n.name, n.effects)
             when :sample
-              @mixer.declare(n.name, Assets::Sample.of(n), n.bytes)
+              @mixer.declare(n)
             when :list_new
               # A list is room the cartridge sets aside, so it is there, empty, from power-on —
               # wherever it is declared. A scene that shows tiles painted from a list declared
@@ -1177,8 +1239,11 @@ module VBlank
           @screen.camera_to(eval_value(node.x), eval_value(node.y))
         end
 
+        # The sound switched on, and the main volume the game named for everything it plays
+        # (Program#main_volume), which a console with one writes as it switches its sound on: the
+        # log says it only where the game named one.
         def exec_enable_sound(node)
-          @audio << [:enabled]
+          @audio << [:enabled, *@read_program&.main_volume]
         end
 
         # SHAKE THE PLAYER'S HANDS (Nodes::Rumble): the motor runs on the frames the screen shows
@@ -1284,13 +1349,30 @@ module VBlank
           return unless IR::Mixing.mixes?(program)
 
           @mixer.start_clock(clock: @console.sample_clock(IR::Mixing.requested_rate(program)),
-                             shapes: IR::Mixing.shapes_any_note?(program), voices: @console.recordings_at_once)
+                             shapes: IR::Mixing.shapes_any_note?(program), voices: @console.recordings_at_once,
+                             full_depth: IR::Mixing.full_depth?(program))
+        end
+
+        # The match's players and seed into the game, at the first wait of the run and never again
+        # (#play_as_match). Only a game that keeps random numbers has them to add the seed to, as only
+        # such a game's computer build has the routine that adds it (Computer::Lowering#mix_seed).
+        def join_match_at_first_wait
+          return if @match_players.nil? || @match_joined
+
+          @match_joined = true
+          @connected = [@connected, @match_players].max
+          stream = Builder::Randomness::RNG_STATE
+          return unless @read_program && Reach.variables(@read_program).include?(stream)
+
+          @vars[stream] = Int32.add(@vars[stream], @match_seed)
         end
 
         # One vblank: snapshot the current buttons as "previous" (so an edge can
         # be spotted), advance the frame counter, and pull the next frame's input
         # if a script is driving it.
         def advance_frame
+          join_match_at_first_wait
+
           # A console that sends the frame's scroll from a copy as the wait ends has placed it
           # already, so the bends go out beside it (#work_out_bends).
           work_out_bends if @console.sprites_placed_before_wait
@@ -1358,7 +1440,8 @@ module VBlank
           # starts; the mix is made as the next picture starts, after the pass. So what the game
           # plays or stops in its pass is in the very next slice, and a note the tune starts has
           # climbed before it is heard (see GBA::Mixer#emit_envelope_step) — and a sound the game
-          # starts with a shape is mixed once at nothing before its shape first moves it.
+          # starts with a shape takes its shape's first step as it is played, so it has climbed
+          # before it is heard too (Mixer#start).
           took.times do
             @mixer.mix
             # A program that never called `music_volume` has no level, rather than a level of 0.
@@ -3084,33 +3167,44 @@ module VBlank
         end
 
         # THE SLICES OF THIS FRAME'S SPRITES A CROWDED LINE LEAVES OUT, on a console that draws only
-        # so many pieces of sprites on a line of the screen (Backends::SpriteLines, which says how
+        # so many pieces of sprites on a line of the screen, and THE PIECES ITS SPRITE TABLE HAS NO
+        # ROOM FOR, on one whose table holds only so many (Backends::SpriteLines, which says how
         # the console picks). Its table lists them front-most first: the deepest layer last, and
         # inside a layer the one drawn last first. Each sprite that loses a slice has it kept as
         # its +:left_out+, which drawing it reads.
         def mark_slices_left_out(drawn)
-          most = @console.sprite_pieces_drawn_a_line or return
-          return if drawn.empty?
+          limit = SpriteLines::Limit.of(@console)
+          entries = @console.sprite_pieces_drawn_a_screen
+          return if (limit.nil? && entries.nil?) || drawn.empty?
 
           order = drawn.each_index.sort_by { |at| [object_level(drawn[at][:object]), at] }.reverse
-          sprites = order.map { |at| [drawn[at][:x], drawn[at][:y], sprite_piece_places(drawn[at][:picture])] }
-          cuts = SpriteLines.left_out(sprites, most: most, piece_height: @sprite_piece_height,
+          sprites = order.map do |at|
+            on = drawn[at]
+            colors = object_color_list(on[:object], on[:picture]) if @bitmaps.key?(on[:picture])
+            [on[:x], on[:y], sprite_piece_places(on[:picture], colors)]
+          end
+          cuts = SpriteLines.left_out(sprites, limit: limit, table_entries: entries, table_from: @console.sprite_table_filled_from,
+                                               entry_reach: @sprite_entry_reach,
                                                screen_width: @screen.width, screen_height: @screen.height)
           order.zip(cuts).each { |at, lines| drawn[at][:left_out] = lines if lines }
         end
 
-        # Where the pieces of the picture +name+ stand in it, as the console's sprite table holds
-        # them: a picture painted from a list or drawn from loaded tiles by its grid or its tiles,
-        # any other by what it draws.
-        def sprite_piece_places(name)
+        # Where the pieces of the picture +name+, drawn in +colors+ (nil for its own), stand in it,
+        # as the console's sprite table holds them: a picture painted from a list or drawn from
+        # loaded tiles by its grid or its tiles, any other as the console's build made it where it
+        # says (SpriteLines.places_built), or else by what it draws.
+        def sprite_piece_places(name, colors = nil)
           @sprite_piece_places ||= {}
-          @sprite_piece_places[name] ||= if (run = @tile_runs.each_value.find { |r| r.picture == name })
-                                           SpriteLines.painted_places(run.width, run.height, piece_height: @sprite_piece_height)
-                                         elsif (pose = @tile_poses[name])
-                                           SpriteLines.tile_pose_places(pose.pieces, piece_height: @sprite_piece_height)
-                                         else
-                                           SpriteLines.picture_places(@bitmaps.fetch(name), piece_height: @sprite_piece_height)
-                                         end
+          shape = @console.sprite_piece_shape
+          @sprite_piece_places[[name, colors]] ||=
+            if (run = @tile_runs.each_value.find { |r| r.picture == name })
+              SpriteLines.painted_places(run.width, run.height, piece_height: @sprite_piece_height, shape: shape)
+            elsif (pose = @tile_poses[name])
+              SpriteLines.tile_pose_places(pose.pieces, piece_height: @sprite_piece_height)
+            else
+              SpriteLines.places_built(@program_played, name, colors) ||
+                SpriteLines.picture_places(@bitmaps.fetch(name), piece_height: @sprite_piece_height, shape: shape)
+            end
         end
 
         # SPRITES OVER A PICTURE THE GAME PAINTS (`sprite ..., over_picture: true`). The console
@@ -3144,11 +3238,16 @@ module VBlank
         end
 
         # The frame's objects in the order they are drawn: as listed, except that each run the
-        # program puts in order is drawn in the order its list holds (see Build#present_objects).
+        # program puts in order is drawn in the order its list holds (see Build#present_objects):
+        # every entry the list holds, however many, a place below nought counting back from the
+        # run's last sprite as a Ruby array's does. A place naming none of the run's sprites stops
+        # the game, before anything of the frame is drawn.
         def names_in_draw_order(node)
           (node.orders || []).reduce(node.names) do |names, run|
             first = names.index(run.objects.first)
-            ordered = @lists.fetch(run.order).to_a.map { |at| run.objects.fetch(at) }
+            ordered = @lists.fetch(run.order).to_a.map do |at|
+              run.objects.fetch(at) { raise ProgramError, Faults.draw_order_names_none(at, run.objects.length) }
+            end
             names[0...first] + ordered + names[(first + run.objects.length)..]
           end
         end
@@ -3589,8 +3688,9 @@ module VBlank
         # Without perspective (+spans+ nought) the place on the picture steps by one equal amount a
         # pixel. In perspective, u, v and w are the place over the distance and one over the
         # distance (FaceEdges.in_perspective), which do step equally; every +spans+ pixels along
-        # the row, and at its end, the place is worked out from them (#place_in_perspective), and
-        # between it steps equally from one to the next.
+        # the row (or eight, where a long stretch is cut in two: #stretch_ends), and at its end, the
+        # place is worked out from them (#place_in_perspective), and between it steps equally from
+        # one to the next.
         #
         # Lit with +shade+ (a Shade), each pixel's colour is looked up at its level of light, the
         # shade stepping by one equal amount a pixel whatever the perspective.
@@ -3609,7 +3709,7 @@ module VBlank
             u, v = if spans == Nodes::FillFace::PERSPECTIVE_NONE
                      (0..1).map { |part| Int32.add(from[part + 1], Int32.mul(steps[part], along)) }
                    else
-                     place_between(along, spans, count, places) { |at| place_in_perspective(from, steps, at) }
+                     place_between(along, spans, count, places, from[3], steps[2]) { |at| place_in_perspective(from, steps, at) }
                    end
             across = Int32.bit_and(Int32.shift_right(u, 16), picture.width - 1)
             down = Int32.bit_and(Int32.shift_right(v, 16), picture.height - 1)
@@ -3623,17 +3723,45 @@ module VBlank
         end
 
         # [u, v] at +along+ pixels into a row in perspective: from the places worked out exactly
-        # at the last multiple of +spans+ before it and at the next (or the row's end, +count+
-        # along), one equal step a pixel between, each step the difference divided by how many
-        # pixels apart they are. +places+ keeps what the block worked out, by how far along.
-        def place_between(along, spans, count, places)
-          from = (along / spans) * spans
-          to = [from + spans, count].min
+        # at the stretch's two ends (#stretch_ends), one equal step a pixel between, each step the
+        # difference divided by how many pixels apart they are. +places+ keeps what the block
+        # worked out, by how far along. One over the distance is +w_left+ at the row's start and
+        # steps +w_step+ a pixel.
+        def place_between(along, spans, count, places, w_left, w_step)
+          from, to = stretch_ends(along, spans, count, w_left, w_step)
           near = (places[from] ||= yield(from))
           far = (places[to] ||= yield(to))
           near.zip(far).map do |start, finish|
             Int32.add(start, Int32.mul(Int32.div(Int32.sub(finish, start), to - from), along - from))
           end
+        end
+
+        # [near, far] along the row, the ends of the stretch +along+ is in: the last multiple of
+        # +spans+ at or before it and the next (or the row's end, +count+ along).
+        #
+        # A STRETCH LONGER THAN Nodes::FillFace::SPLIT_PIXELS IS CUT IN TWO, the first part that
+        # many pixels long, where one over the distance changes fast across it: by more than a
+        # sixteenth of its value at the stretch's start over SPLIT_PIXELS pixels, either way. Stepping
+        # straight across a stretch strays from the exact place most where that change is big, on a
+        # face seen at a slant close by; there the stretch is as short as :every_8_pixels's, and
+        # everywhere else as long as asked. How fast it changes is the row's step a pixel
+        # (+w_step+), so the test is the same for every stretch of a row but for the value at the
+        # start (+w_left+ stepped on). The second part is not tested again.
+        def stretch_ends(along, spans, count, w_left, w_step)
+          near = (along / spans) * spans
+          far = [near + spans, count].min
+          cut = near + Nodes::FillFace::SPLIT_PIXELS
+          return [near, far] unless far > cut && fast_change?(Int32.add(w_left, Int32.mul(w_step, near)), w_step)
+
+          along < cut ? [near, cut] : [cut, far]
+        end
+
+        # Whether one over the distance, +w+ at a stretch's start and stepping +w_step+ a pixel,
+        # changes over SPLIT_PIXELS pixels by more than a sixteenth of +w+, up or down.
+        def fast_change?(w, w_step)
+          change = Int32.mul(w_step, Nodes::FillFace::SPLIT_PIXELS)
+          limit = Int32.shift_right(w, 4)
+          change > limit || change < -limit
         end
 
         # [u, v] exactly +along+ pixels into a row whose left end is +from+ ([x, u/z, v/z, 1/z]) and

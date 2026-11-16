@@ -64,6 +64,28 @@ module VBlank
       RECORDINGS_WHERE_PANNED = "A part that plays a recording is heard where `pan` puts it: each voice " \
                                 "of the sound chip has a volume for the left speaker and one for the right."
 
+      # What a recorded note that glides does, on a console whose build makes it.
+      GLIDES_CARRY_ON = "A recorded note with `glides: true` carries on the note sounding at a new pitch, " \
+                        "loudness and side: it goes on from where it has got to, and the voice is not struck again."
+
+      # What a Score note's own rattle and its own waveform do (Audio::Score::Note#metallic, #wave), a
+      # sentence of its own: played as the note starts, or on a console whose player puts a new music
+      # volume on a held note from the part's own settings, refused where the game sets that volume.
+      NOTE_VOICES = "A note on the noise voice can have its own `metallic:`, and a note on the wave voice can " \
+                    "have its own `wave:`. The note sets them when it starts."
+      NOTE_VOICES_NOT_UNDER_VOLUME = "#{NOTE_VOICES} If the game sets its music volume, such a note is refused: " \
+                                     "this build does not make it yet."
+
+      # What `enable_sound main_volume:` does on a console whose sound chip takes a main volume of
+      # 127 steps or finer (the Super Nintendo's, the PlayStation's).
+      MAIN_VOLUME_SETS_CHIP = "`main_volume:` sets the main volume of the sound chip. It changes the loudness " \
+                              "of all songs and effects by the same share."
+
+      # ...and on a console whose chip is the Game Boy's: it has eight steps, and its quietest is not
+      # silent, so a main volume of 0 leaves the sound off (Backends::GameBoySound.enable).
+      MAIN_VOLUME_EIGHTHS = "`main_volume:` sets the main volume of the sound chip to the nearest of its eight " \
+                            "steps, from an eighth to all. At 0, the sound stays off."
+
       # How the reference names each verdict.
       VERDICT_WORDS = { works: "works", refused: "**refused**" }.freeze
 

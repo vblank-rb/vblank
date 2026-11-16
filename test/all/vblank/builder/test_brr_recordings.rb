@@ -12,6 +12,7 @@ require "brr_recordings"
 class TestBRRRecordings < Minitest::Test
   RATE = 8000
   FRAMES = 8
+  PACK_AT_START = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
 
   # A game that plays the recording :clip, declared by the block (given the builder), from its first
   # pass, going round it when +loop+.
@@ -115,13 +116,44 @@ class TestBRRRecordings < Minitest::Test
     assert_includes error.message, "blocks of 9 bytes"
   end
 
-  def test_a_build_reading_its_pack_as_it_starts_is_told_it_is_not_made_yet
-    Dir.mktmpdir do |folder|
-      b = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true))
-      pack = b.data_pack(from: BRRRecordings.original_holding(folder), version: "1") { |slots| BRRRecordings.declare_slots(slots) }
-      error = assert_raises(ArgumentError) { b.sample :clip, brr: pack[:clip], rate: RATE }
+  # The slot's size and a loop point the game writes are the game's own words, so a build that
+  # reads its pack as the game starts refuses them where they are not a recording's, as the build
+  # that holds the pack does.
+  def test_a_slot_of_part_of_a_block_is_refused_both_ways
+    [VBlank::Cartridge::Options.new, PACK_AT_START].each do |options|
+      Dir.mktmpdir do |folder|
+        b = VBlank::Builder.new(options: options)
+        pack = b.data_pack(from: BRRRecordings.original_holding(folder), version: "1") do |slots|
+          slots.samples :clip, at: BRRRecordings::RECORDING_AT, count: 40
+        end
+        error = assert_raises(ArgumentError) { b.sample :clip, brr: pack[:clip], rate: RATE }
 
-      assert_includes error.message, "not made that way yet"
+        assert_includes error.message, "sample :clip"
+        assert_includes error.message, "blocks of 9 bytes"
+      end
+    end
+  end
+
+  def test_a_loop_point_written_inside_a_block_is_refused_both_ways
+    [VBlank::Cartridge::Options.new, PACK_AT_START].each do |options|
+      Dir.mktmpdir do |folder|
+        b = VBlank::Builder.new(options: options)
+        pack = b.data_pack(from: BRRRecordings.original_holding(folder), version: "1") { |slots| BRRRecordings.declare_slots(slots) }
+        error = assert_raises(ArgumentError) { b.sample :clip, brr: pack[:clip], brr_loop: 20, rate: RATE }
+
+        assert_includes error.message, "loop point is 20"
+      end
+    end
+  end
+
+  # Bytes the game wrote, with the loop point from the pack: the runtime would have no bytes to decode.
+  def test_brr_written_with_a_loop_point_from_the_pack_left_out_is_refused
+    Dir.mktmpdir do |folder|
+      b = VBlank::Builder.new(options: PACK_AT_START)
+      pack = b.data_pack(from: BRRRecordings.original_holding(folder), version: "1") { |slots| BRRRecordings.declare_slots(slots) }
+      error = assert_raises(ArgumentError) { b.sample :clip, brr: BRRRecordings::QUIET, brr_loop: pack[:loops].number(0), rate: RATE }
+
+      assert_includes error.message, "give brr: from the pack too"
     end
   end
 end

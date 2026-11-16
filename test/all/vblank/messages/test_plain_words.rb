@@ -139,7 +139,7 @@ class TestPlainWords < Minitest::Test
 
     both = while_it_says(:verb, said) do
       [assert_raises(ArgumentError) { a_number_drawn_in_a_layer }.message,
-       VBlank::IR::Guardrails::TiledDisplay.verb_for(:draw_digit)]
+       VBlank::IR::Guardrails::TiledDisplay.verb_for(VBlank::IR::Build.draw_digit(:score, 0, 0, :white))]
     end
 
     both.each { |said_by_a_reader| assert_includes said_by_a_reader, said }

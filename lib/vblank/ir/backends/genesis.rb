@@ -28,6 +28,7 @@ require_relative "genesis/lowering/paint"
 require_relative "genesis/lowering/collision"
 require_relative "genesis/lowering/sound"
 require_relative "genesis/lowering/division"
+require_relative "genesis/lowering/products"
 require_relative "genesis/lowering/tile_runs"
 require_relative "genesis/lowering"
 require_relative "genesis/headless_run"
@@ -98,13 +99,56 @@ module VBlank
         # with each scene's own colours written into the palettes as it takes over (+scene_colors+,
         # Art), so what has to fit is one scene's with what every screen keeps: :backgrounds first,
         # every sprite picture's colours kept for the whole game, then :sprites, a scene's own sprite
-        # pictures' colours taking turns too (Lowering::Picture#scene_colors_after). Those palettes are
-        # written through the game's own colours in work RAM (Runtime::Tint), so such a game carries
-        # that part of the runtime even if it never fades.
+        # pictures' colours taking turns too, then :lists, a list the game changes that only some scenes
+        # draw with keeping its palette in those scenes alone, then :list_order, each picture declared
+        # with a list of colours drawn from a palette of that list in its order
+        # (Lowering::Picture#scene_colors_after).
+        # Those palettes are written through the game's own colours in work RAM (Runtime::Tint), so such
+        # a game carries that part of the runtime even if it never fades.
+        #
+        # Each of those is a try of the build (BuildTries), and a later try keeps what every earlier
+        # one found it needs (#settings_after). A try sure to run out of tiles stops before its code
+        # is made (Lowering::Picture#refuse_tiles_past_room_early!).
         #
         # What every try works out from the program alone is worked out once, in +cache+
         # (BuildCache), made for this build and handed to each try.
-        def build(program, title: "VBLANK", scene_tiles: false, scene_colors: false, cache: BuildCache.for(Genesis, program))
+        def build(program, title: "VBLANK", cache: BuildCache.for(Genesis, program))
+          @build_tries = BuildTries.new(Lowering::CONSOLE.title, Tried.first)
+          @build_tries.run(next_settings: ->(error, try) { settings_after(error, try) }) do |try|
+            build_try(program, title, try, cache)
+          end
+        end
+
+        # How many times the last #build lowered the game: one for a game that fits as it first tries.
+        def tries = @build_tries&.count || 0
+
+        # The settings of one try (#build, BuildTries): +scene_tiles+ and +scene_colors+, each the
+        # Lowering's setting of the same name.
+        Tried = Data.define(:scene_tiles, :scene_colors) do
+          def self.first = new(scene_tiles: false, scene_colors: false)
+        end
+
+        private
+
+        # The settings of the try after +try+, which +error+ stopped (BuildTries), or nil where
+        # nothing left to try would help.
+        def settings_after(error, try)
+          settings = try.settings
+          case error
+          when Art::TooManyTiles
+            later = try.made.scene_tiles_after(settings.scene_tiles)
+            settings.with(scene_tiles: later) if later
+          when Art::TooManyColors
+            later = try.made.scene_colors_after(settings.scene_colors)
+            settings.with(scene_colors: later) if later
+          end
+        end
+
+        # One try of #build (BuildTries::Try): the cartridge where it fits. Its lowering is the
+        # try's +made+, which #settings_after reads.
+        def build_try(program, title, try, cache)
+          scene_tiles = try.settings.scene_tiles
+          scene_colors = try.settings.scene_colors
           memory = Memory.new
           picture = Lowering.picture_of(program)
           colors = scene_colors ? true : Lowering.changing_colors?(program)
@@ -114,26 +158,18 @@ module VBlank
           effects = songs ? IR::Tunes.effects(program).uniq.size : 0
           samples = Lowering::Sound.samples?(program)
           over = picture == :painted && IR::SpritesOverPicture.any?(program)
-          Runtime.reserve(memory, picture: picture, colors: colors, sprites_over_picture: over, sound: sound, songs: songs,
+          counted = IR::Frames.counts_from_power_on?(program)
+          Runtime.reserve(memory, picture: picture, colors: colors, sprites_over_picture: over, sound: sound, songs: songs, counted: counted,
                                   music_follows_level: follows_level,
                                   effects: effects, holds_music: Lowering::Sound.holds_music?(program),
                                   wobbles: Music.wobbles?(program), steps_shapes: Music.steps_shapes?(program),
                                   swells: Music.swells_under_level?(program), slides: Music.slides?(program),
-                                  sides: Music.sides_under_level?(program), samples: samples, scene_tiles: scene_tiles)
-          lowering = Lowering.new(program, memory: memory, scene_tiles: scene_tiles, scene_colors: scene_colors, cache: cache)
-          begin
-            game = lowering.sections
-          rescue Art::TooManyTiles
-            later = scene_tiles_after(scene_tiles, lowering)
-            raise unless later
-
-            return build(program, title: title, scene_tiles: later, scene_colors: scene_colors, cache: cache)
-          rescue Art::TooManyColors
-            later = lowering.scene_colors_after(scene_colors)
-            raise unless later
-
-            return build(program, title: title, scene_tiles: scene_tiles, scene_colors: later, cache: cache)
-          end
+                                  sides: Music.sides_under_level?(program), samples: samples, scene_tiles: scene_tiles,
+                                  glides: samples && Music.glides?(program), recorded_sides: samples && IR::Tunes.recorded_pans?(program))
+          Runtime::Frame.reserve_last_pass(memory) if cache.plan.keeps_last_pass_number?
+          lowering = try.made = Lowering.new(program, memory: memory, scene_tiles: scene_tiles, scene_colors: scene_colors,
+                                                      cache: cache)
+          game = lowering.sections
           runtime = Runtime.sections(memory, main: Lowering::MAIN, registers: lowering.register_count,
                                              frame_begins: lowering.frame_begins, picture: picture,
                                              columns: lowering.plane_size.first, collision: lowering.collides?, fractions: lowering.fractions?,
@@ -145,7 +181,8 @@ module VBlank
                                              recorded_parts: lowering.recorded_parts?,
                                              backdrop: lowering.backdrop_copied?, sprites_over_picture: over,
                                              scene_tiles: scene_tiles, scene_colors: scene_colors,
-                                             runs: picture == :tiled && lowering.paints_tiles?)
+                                             runs: picture == :tiled && lowering.paints_tiles?,
+                                             count_at: (lowering.variables.fetch(IR::Frames::COUNT) if counted))
           linked = Linker.new(runtime + game).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists,
                              runtime: memory.places.select { |name, _| name.start_with?("rt ") },
@@ -154,17 +191,6 @@ module VBlank
                              sound_voicing: lowering.sound_voicing, recording_names: lowering.recording_names,
                              video_tiles: lowering.video_tiles)
           Cartridge::GenesisROM.new(linked.image, title: title, vectors: vectors(linked), built: built)
-        end
-
-        private
-
-        # The +scene_tiles+ to build with after a build with +tried+ ran out of tiles (#build), or nil
-        # when nothing is left to try.
-        def scene_tiles_after(tried, lowering)
-          case tried
-          when false then :backgrounds if lowering.art_of_one_scene?
-          when :backgrounds then :sprites if lowering.sprites_of_one_scene?
-          end
         end
 
         # How many bytes of the cartridge are code and how many are data: the sections that hold the

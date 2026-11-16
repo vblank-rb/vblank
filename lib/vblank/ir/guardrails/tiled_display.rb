@@ -36,10 +36,11 @@ module VBlank
           program.each.any? { |node| PAINTS.include?(node.kind) }
         end
 
-        # The verb the developer typed for a node, e.g. :fill_rect -> "fill_rect". The table is
-        # {Messages::PlainWords}', shared with the builder's own layer refusal, which has to name the
-        # same verbs back to the same person.
-        def verb_for(kind) = Messages::PlainWords.verb(kind)
+        # The verb the developer typed for +node+, e.g. a fill_rect node -> "fill_rect", and a
+        # `fill_rect` drawn as a `draw_rect_at` -> "fill_rect" too. The words are
+        # {Messages::PlainWords}', shared with the builder's own layer refusal, which has to name
+        # the same verbs back to the same person.
+        def verb_for(node) = Messages::PlainWords.verb_written(node)
       end
     end
   end

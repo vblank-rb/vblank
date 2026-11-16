@@ -182,14 +182,28 @@ module VBlank
 
           # The words of the chip's RAM a painting run reads and writes (Runtime::ChipColumns::Places).
           def paint_places
-            @paint_places ||= Runtime::ChipColumns::Places.new(
-              **Runtime::ChipColumns::BYTES.to_h { |what, bytes| [what, place_of(:"chip columns #{what}", bytes: bytes)] },
-              generation: place_of(:"chip paint generation", bytes: 2),
-              clear: place_of(:"chip paint clear", bytes: 8), dirty: place_of(:"chip paint dirty", bytes: Runtime::Paint::ROWS * 4),
-              readied_count: Runtime::ChipPaint::READIED_COUNT - Runtime::ChipPaint::COPY,
-              readied: Runtime::ChipPaint::READIED - Runtime::ChipPaint::COPY, area: area_places
-            )
+            @paint_places ||= begin
+              @placing_paint = true
+              Runtime::ChipColumns::Places.new(
+                **Runtime::ChipColumns::BYTES.to_h { |what, bytes| [what, place_of(:"chip columns #{what}", bytes: bytes)] },
+                generation: place_of(:"chip paint generation", bytes: PAINT_OWN_BYTES.fetch(:generation)),
+                clear: place_of(:"chip paint clear", bytes: PAINT_OWN_BYTES.fetch(:clear)),
+                dirty: place_of(:"chip paint dirty", bytes: PAINT_OWN_BYTES.fetch(:dirty)),
+                readied_count: Runtime::ChipPaint::READIED_COUNT - Runtime::ChipPaint::COPY,
+                readied: Runtime::ChipPaint::READIED - Runtime::ChipPaint::COPY, area: area_places
+              )
+            ensure
+              @placing_paint = false
+            end
           end
+
+          # The bytes of the chip's RAM a painting run keeps besides ChipColumns's own: the screen's
+          # generation, the clear colour's planes, each row of tiles' changed tiles, and the area.
+          PAINT_OWN_BYTES = Ractor.make_shareable({ generation: 2, clear: 8, dirty: Runtime::Paint::ROWS * 4,
+                                                    area: AREA.length * 4 })
+          # All the bytes of the chip's RAM that drawing columns on the chip takes (paint_places), which
+          # the lists the chip reaches must leave free beside its numbers (Lowering::Chip).
+          PAINT_BYTES = Runtime::ChipColumns::BYTES.values.sum + PAINT_OWN_BYTES.values.sum
 
           # Where painting is held to (`inside`), as the console hands it over: its left, top, right
           # and bottom, each a whole number of four bytes.
@@ -272,6 +286,7 @@ module VBlank
           def place_of(key, bytes: 4)
             @places.fetch(key) do
               if @next_place + bytes > @numbers_end
+                refuse_no_room_to_paint! if @placing_paint
                 raise LoweringError, "The routines marked on_chip: true use more numbers than the Super FX chip can " \
                                      "hold beside their lists. The chip holds #{(@numbers_end - FIRST_NUMBER) / 4} " \
                                      "numbers. To fix this, use fewer variables in those routines, fewer sums inside " \
@@ -281,6 +296,21 @@ module VBlank
               @next_place += bytes
               @places[key]
             end
+          end
+
+          # The variables of the routines that draw, and their lists, leave too little of the chip's
+          # RAM for what drawing columns keeps there.
+          def refuse_no_room_to_paint!
+            raise LoweringError, self.class.no_room_to_paint_message
+          end
+
+          # The words for a chip whose RAM has no room left for draw_column_at, shared with the
+          # lists' refusal (Lowering::Chip#refuse_chip_lists_too_big!).
+          def self.no_room_to_paint_message
+            "A routine marked on_chip: true uses draw_column_at. On the Super FX chip, draw_column_at uses " \
+              "#{PAINT_BYTES} bytes of the chip's RAM. The routines' numbers and lists use the rest of that RAM, " \
+              "and the build cannot find #{PAINT_BYTES} bytes free. To fix this, give the lists that the chip " \
+              "uses smaller capacities, or use fewer variables in those routines."
           end
 
           def local_place(node, what) = place_of([what, node.object_id])

@@ -15,6 +15,9 @@ class TestSDL < Minitest::Test
   SDL = VBlank::Live::SDL
   RATE = 48_000
   FRAME_SAMPLES = 804 # a frame's share of a second at RATE, near enough
+  # Refreshes of a 60 a second screen that close a whole second, one more than 60 for the sum of
+  # sixtieths falling just short of 1.
+  SECOND_OF_REFRESHES = 61
 
   def setup
     @drivers_before = ENV.to_h.slice("SDL_VIDEODRIVER", "SDL_AUDIODRIVER")
@@ -41,16 +44,25 @@ class TestSDL < Minitest::Test
 
   # A picture said to repeat the one before is no new picture, so a game of two refreshes a pass
   # reads half the rate.
+  #
+  # The window's first second begins on the real clock as it opens, before the test stubs the
+  # clock, so it is short by however long that took. The second counted is the next one, which
+  # begins and ends on the stubbed clock.
   def test_the_frame_rate_leaves_out_a_repeated_picture
     window = open_window
+    sleep 0.1 # time a busy machine loses between the window opening and the clock being stubbed
     clock = window.now
     window.define_singleton_method(:now) { clock }
     pixels = Array.new(240 * 160, 0)
-    61.times do |refresh|
+    refreshes = 0
+    show_refresh = lambda do
       clock += 1.0 / 60
-      window.repeating_picture = refresh.odd?
+      window.repeating_picture = refreshes.odd?
       window.show(pixels, 240, 160)
+      refreshes += 1
     end
+    show_refresh.call while window.frame_rate.zero? && refreshes <= SECOND_OF_REFRESHES
+    SECOND_OF_REFRESHES.times { show_refresh.call }
 
     assert_includes 29..31, window.frame_rate
   ensure
@@ -391,6 +403,51 @@ class TestSDL < Minitest::Test
     end
   end
 
+  # A Genesis game's window has C in its Keys heading, after the D-pad, and a key chosen there is
+  # C's, written to the file every console's window reads.
+  def test_a_genesis_window_lists_c_and_a_key_chosen_for_it_is_written
+    flunk "SDL3 is not installed: #{SDL::INSTALL_LINE}" unless SDL.available?
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "settings.txt")
+      window = SDL.new(title: "TEST", settings_file: path, buttons: VBlank::Console::GENESIS.buttons)
+      press_key(SDL::MENU)
+      window.show(Array.new(240 * 160, 0), 240, 160)
+      %i[right right right].each { |key| press_key(SDL::MENU_KEYS.key(key)) }
+      8.times { press_key(SDL::MENU_KEYS.key(:down)) }
+      press_key(SDL::MENU_KEYS.key(:enter))
+      window.show(Array.new(240 * 160, 0), 240, 160)
+      press_key(7) # D
+      window.show(Array.new(240 * 160, 0), 240, 160)
+      press_key(SDL::MENU)
+      window.hold_while_paused
+      window.close
+
+      assert_includes File.read(path), "key.c = D\n"
+    end
+  end
+
+  # Escape while a key is being chosen gives up the choice and keeps the window open; pressed again,
+  # with nothing being chosen, it stops the play.
+  def test_escape_gives_up_choosing_a_key_without_stopping_the_play
+    window = open_window
+    press_key(SDL::MENU)
+    window.show(Array.new(240 * 160, 0), 240, 160)
+    %i[right right right down enter].each { |key| press_key(SDL::MENU_KEYS.key(key)) }
+    window.show(Array.new(240 * 160, 0), 240, 160)
+    press_key(SDL::ESCAPE)
+    window.show(Array.new(240 * 160, 0), 240, 160)
+
+    refute window.stop?
+
+    press_key(SDL::ESCAPE, down: false)
+    press_key(SDL::ESCAPE)
+    window.show(Array.new(240 * 160, 0), 240, 160)
+
+    assert window.stop?
+  ensure
+    window&.close
+  end
+
   # A folder named for the play (--config-dir) holds the settings folders, the same ones as the
   # desktop build's, and is made if it is not there.
   def test_a_config_dir_holds_the_settings_files
@@ -463,6 +520,34 @@ class TestSDL < Minitest::Test
 
     error = assert_raises(ArgumentError) { window.show(Array.new(160 * 144, 0), 160, 144) }
     assert_match(/240x160 picture/, error.message)
+  ensure
+    window&.close
+  end
+
+  # A game of big pixels hands the window its small picture, and the window opens as big as the
+  # console's whole screen would at that scale: each of the picture's pixels a square of four.
+  def test_a_picture_of_big_pixels_opens_the_window_the_consoles_size
+    flunk "SDL3 is not installed: #{SDL::INSTALL_LINE}" unless SDL.available?
+    window = SDL.new(title: "TEST", scale: 2, width: 120, height: 80, pixel_size: 2)
+    window.show(Array.new(120 * 80, 0), 120, 80)
+
+    assert_equal [480, 320], window.window_size
+  ensure
+    window&.close
+  end
+
+  # The menu's size of a window of big pixels is the console's whole screen times the scale, as for
+  # any game.
+  def test_the_menu_sizes_a_window_of_big_pixels_as_the_consoles_screen
+    flunk "SDL3 is not installed: #{SDL::INSTALL_LINE}" unless SDL.available?
+    window = SDL.new(title: "TEST", scale: 1, width: 120, height: 80, pixel_size: 2)
+    press_key(SDL::MENU)
+    window.show(Array.new(120 * 80, 0), 120, 80)
+    %i[right down right].each { |key| press_key(SDL::MENU_KEYS.key(key)) }
+    press_key(SDL::MENU)
+    window.hold_while_paused
+
+    assert_equal [480, 320], window.window_size
   ensure
     window&.close
   end

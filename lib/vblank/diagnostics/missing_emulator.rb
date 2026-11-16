@@ -41,7 +41,8 @@ module VBlank
 
       def not_built_advice
         <<~NOT_BUILT
-          An emulator is required to run a ROM. This copy of VBlank was installed without one:
+          To run a Game Boy Advance or Game Boy Color cartridge, you must have an emulator.
+          This copy of VBlank was installed without one:
 
               #{not_built.strip}
 
@@ -53,8 +54,9 @@ module VBlank
 
       def stale_advice
         <<~STALE
-          An emulator is required to run a ROM. The ruby-gba-emulator extension is built, but a
-          different Ruby built it, and an extension loads only in the Ruby that made it.
+          To run a Game Boy Advance or Game Boy Color cartridge, you must have an emulator.
+          The ruby-gba-emulator extension is built, but a different Ruby built it, and an
+          extension loads only in the Ruby that made it.
 
               rake compile_emulator
 
@@ -64,8 +66,9 @@ module VBlank
 
       def unbuilt_advice
         <<~BUILD
-          An emulator is required to run a ROM. ruby-gba-emulator is in your bundle, but its C
-          extension is not built — bundler does not build one for a `path:` source.
+          To run a Game Boy Advance or Game Boy Color cartridge, you must have an emulator.
+          ruby-gba-emulator is in your bundle, but its C extension is not built — bundler
+          does not build one for a `path:` source.
 
               rake compile_emulator
         BUILD
@@ -73,7 +76,8 @@ module VBlank
 
       def missing_gem_advice
         <<~ADD
-          An emulator is required to run a ROM, and ruby-gba-emulator will not load.
+          To run a Game Boy Advance or Game Boy Color cartridge, you must have an emulator.
+          ruby-gba-emulator, that emulator, will not load.
           Put this in your Gemfile, then run bundle install:
 
               git "https://github.com/vblank-rb/vblank.git",

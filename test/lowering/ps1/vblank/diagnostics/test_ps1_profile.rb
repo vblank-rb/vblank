@@ -90,6 +90,8 @@ class TestPS1Profile < Minitest::Test
     assert_operator result.idle_share, :<, 1
     assert_operator result.fewest_lines_spare, :>, 10
     assert_operator result.fewest_lines_spare, :<, 263
+    assert_equal result.fewest_lines_spare, result.fewest_lines_spare_unrounded.floor, "the same frame, unrounded"
+    assert_kind_of Float, result.fewest_lines_spare_unrounded
     assert_match(/hard_work/, result.game.first.routine)
     assert_operator result.game.first.share, :>, 0.05
     assert_match(/PlayStation: 20 passes/, out.string)

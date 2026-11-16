@@ -39,7 +39,7 @@ module PackPlaceGames
   PASSES = 6
 
   # Shareable, since a test may run in a Ractor.
-  constants(false).each { |name| Ractor.make_shareable(const_get(name)) }
+  VBlank::Testing::InRactors.share_constants(self)
 
   module_function
 

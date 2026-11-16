@@ -143,6 +143,16 @@ class TestPS1Sound < Minitest::Test
     assert_includes run.audio, [:sample, :clip]
   end
 
+  # Thirty samples are over inside a frame, by the interpreter's count, before the frame boundary
+  # that starts the chip's voice: the voice still plays them, to the block that ends the sound.
+  def test_a_recording_over_inside_a_frame_is_heard
+    run = PS1::HeadlessRun.new
+    run.run(recording_program(loop: false), frames: 10)
+
+    assert_operator run.loudest_each_frame.max, :>, 1000, "the thirty samples sound"
+    assert_operator run.loudest_each_frame.last(3).max, :<, 50, "and then the voice is quiet"
+  end
+
   def test_a_looping_recording_is_heard_at_the_rate_it_was_recorded
     run = PS1::CheckedRun.new.run(recording_program(loop: true), frames: 20)
 
@@ -181,6 +191,60 @@ class TestPS1Sound < Minitest::Test
     end
 
     assert_operator run.audio.count { |entry| entry.first == :note }, :>=, 2
+  end
+
+  # HOW LOUD A RECORDED NOTE PLAYS is the interpreter's, voice by voice (Reference#loudness_by_voice): two
+  # parts at volumes of their own, and the music volume moved twice while both sound.
+  def test_recorded_notes_play_as_loud_as_the_interpreters_voices
+    program = held_parts_game do |pass|
+      music_volume 50 if pass == 5
+      music_volume 80 if pass == 9
+    end
+    run = PS1::CheckedRun.new.run(program, frames: 14)
+
+    assert_equal Reference.new.run(program, frames: 14).loudness_by_voice, run.loudness_by_voice
+  end
+
+  # A NOTE THAT GLIDES strikes nothing, so the part's note goes on at the loudness it was struck at
+  # (Reference::Mixer#glide_music_note), though the glide is the part's volume and the note its own; the
+  # music volume moving after it is what brings the part's in (Reference::Player#apply_music_volume).
+  def test_a_gliding_note_keeps_the_loudness_its_note_was_struck_at
+    score = VBlank::Audio::Score
+    root = VBlank::Audio::Music::NOTE_FREQUENCIES.fetch(:C4)
+    notes = [score::Note.new(at: 0, hz: root, volume: 6), score::Note.new(at: 2, hz: root * 2, length: 20, glides: true)]
+    program = program_of do
+      enable_sound
+      instrument :tone, pcm: [60, -60] * 4000, rate: 8000, note: :C4, holds_from: 100
+      music = songs :music, [score.new(parts: [score::Part.new(plays: :tone, notes: notes)], tempo: 150, ticks_per_beat: 4)]
+      music.play 0
+      pass = 0
+      game_loop do
+        pass += 1
+        music_volume 70 if pass == 1
+        music_volume 40 if pass == 30
+      end
+    end
+    run = PS1::CheckedRun.new.run(program, frames: 34)
+
+    assert_equal Reference.new.run(program, frames: 34).loudness_by_voice, run.loudness_by_voice
+  end
+
+  # ...and its voice's volume register is the interpreter's gain for it. A shaped note's gain is a whole
+  # number of 256ths of full (Audio::Envelope.whole_gain), the rest dropped, and the register is that
+  # many sixteenths of SPUWrites::LOUDEST's: the part at volume 12 climbing through a level its 256ths do
+  # not divide.
+  def test_a_shaped_recorded_notes_voice_is_set_to_the_interpreters_gain
+    program = held_parts_game(envelope: { attack: 0.3, decay: 0.3, sustain: 0.6 }) { |_pass| nil }
+    interpreter = Reference.new.run(program, frames: 6)
+    loudness = interpreter.loudness_by_voice.last
+    level = interpreter.level_of(:tone) # both parts' shapes climb alike
+    gain = VBlank::Audio::Envelope.whole_gain(loudness, level) >> VBlank::Audio::Sound::GAIN_FRACTION
+    register = gain * (SPU::LOUDEST >> VBlank::Audio::Envelope::SCALE)
+    registers = PS1::CheckedRun.new.run(program, frames: 6).spu_reads.last.last
+
+    kept_fraction = (loudness * SPU::LOUDEST / VBlank::IR::Tunes::MIX_FULL * (level + (level >> 7))) >> VBlank::Audio::Envelope::SCALE
+    refute_equal register, kept_fraction, "the part of a 256th the interpreter drops, kept, sets another volume"
+    assert_equal register, registers[SPU.register(PS1::Runtime::Recordings::FIRST_VOICE + 1, H::SPU_VOLUME_LEFT)]
   end
 
   def test_a_held_recording_reads_back_from_a_block_as_it_does_from_its_hold
@@ -229,6 +293,32 @@ class TestPS1Sound < Minitest::Test
   end
 
   def checked(frames:, &game) = PS1::CheckedRun.new.run(program_of(&game), frames: frames)
+
+  # A song of two recorded parts holding one note each, at volumes 7 and 12, shaped by +envelope+ when it
+  # is given; the game runs +body+ on each pass with the pass number.
+  def held_parts_game(envelope: nil, &body)
+    program_of do
+      enable_sound
+      instrument :tone, pcm: [60, -60] * 4000, rate: 8000, note: :C4, holds_from: 100
+      song(:tune) do
+        tempo 60
+        voice(:low, plays: :tone, envelope: envelope) do
+          volume 7
+          note :C4, :whole
+        end
+        voice(:high, plays: :tone, envelope: envelope) do
+          volume 12
+          note :G4, :whole
+        end
+      end
+      play_song :tune
+      pass = 0
+      game_loop do
+        pass += 1
+        instance_exec(pass, &body)
+      end
+    end
+  end
 
   def recording_program(loop:)
     build = VBlank::IR::Build

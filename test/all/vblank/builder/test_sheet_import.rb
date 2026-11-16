@@ -200,6 +200,46 @@ class TestSheetImport < Minitest::Test
     assert_equal Color.resolve(:yellow), game_player.run(program, frames: 3).screen.pixel(12, 12)
   end
 
+  # Frames cut from a sheet given a list by name keep its name, so the sprite can name the list it
+  # draws with another.
+  def test_a_sheet_sprite_draws_its_named_list_with_another
+    program = with_default_adapter(two_tile_fake) do
+      builder = VBlank::Builder.new
+      builder.instance_eval do
+        screen :tiled
+        colors :own_art, %i[transparent red blue]
+        colors :hurt, %i[transparent yellow white]
+        hero = sprite :hero, at: [10, 10], frames_from: "/sheet/walk.png", tile: 8, rate: 1000, colors: :own_art
+        hero.draw_with({ own_art: :hurt })
+        game_loop {}
+      end
+      builder.finalize_program
+      builder.program
+    end
+
+    assert_equal Color.resolve(:yellow), game_player.run(program, frames: 3).screen.pixel(12, 12)
+  end
+
+  # The same for poses cut from a sheet of facings.
+  def test_a_facing_sheet_sprite_draws_its_named_list_with_another
+    program = with_default_adapter(two_tile_fake) do
+      builder = VBlank::Builder.new
+      builder.instance_eval do
+        screen :tiled
+        colors :own_art, %i[transparent red blue]
+        colors :hurt, %i[transparent yellow white]
+        hero = sprite :hero, at: [10, 10], facing_from: "/sheet/walk.png", dirs: %i[down], tile: 8, rate: 1000,
+                             colors: :own_art
+        hero.draw_with({ own_art: :hurt })
+        game_loop {}
+      end
+      builder.finalize_program
+      builder.program
+    end
+
+    assert_equal Color.resolve(:yellow), game_player.run(program, frames: 3).screen.pixel(12, 12)
+  end
+
   # Pictures the game declared carry their own list, so colors: on a sprite drawn from them
   # has nowhere to go, and says where the list belongs instead.
   def test_colors_on_a_sprite_that_imports_nothing_says_where_the_list_goes

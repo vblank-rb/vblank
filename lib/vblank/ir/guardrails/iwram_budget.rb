@@ -24,11 +24,21 @@ module VBlank
         # go further on (Console::Description#variables_go_far). There a variable can move as
         # a list can, and only the whole is counted.
         #
-        # So this checks two things, and both are real ceilings rather than budgets anybody
-        # chose. What must be in the quick memory has to fit in it. And everything the
-        # program declares, together, has to fit in the two memories added up. Past either
-        # the build stops with a plain-language error: how much is needed, how much there
-        # is, and the biggest users so the fix is obvious.
+        # So this checks three things, and all are real ceilings rather than budgets anybody
+        # chose. What must be in the quick memory has to fit in it. What is kept OUT of it —
+        # a collection marked cold, where the console's build keeps such a one in the roomier
+        # memory whatever room the quick one has (Console::Kit#cold_collections_kept_roomier?)
+        # — has to fit the roomier one alone. And everything the program declares, together,
+        # has to fit in the two memories added up. Past any of them the build stops with a
+        # plain-language error: how much is needed, how much there is, and the biggest users
+        # so the fix is obvious.
+        #
+        # THE ROOMIER MEMORY IS NOT ALL THE GAME'S. The build keeps buffers of its own there
+        # (the sound mixer's, the sound effects table, the save chip's), and the console's kit
+        # says which, read off the program before it is lowered (Console::Kit#roomier_memory_reserved).
+        # Both of the last two checks count against what is left. What the kit cannot read off
+        # the program (the sprite drawing's records, which only laying out the sprites can size)
+        # is not counted, and the lowering still refuses a game that runs out over those.
         #
         # THE NUMBERS ARE THE CONSOLE'S (Console::Description#work_memory_bytes and the two
         # beside it), since a game for the Color is checked against the Color. That console has
@@ -50,95 +60,130 @@ module VBlank
           # How many names of variables made with no `var` line to give.
           NAMES_SHOWN = 6
 
+          # How many lines of the game's that keep a copy of a name's number to give, most first.
+          COPY_LINES_SHOWN = 5
+
+          # How to write the Ruby so a name needs no copy, here and in the profile
+          # (Diagnostics::HiddenVariables).
+          COPY_ADVICE = "To need no copy, read the name before the line that changes the number. Or, after the " \
+                        "call that changes it, read the number again."
+
           # +made_names+ are the variables that came from no line of the author's, names normal
-          # Ruby made variables of, and +hidden_count+ how many hidden ones (#told_of).
-          def initialize(made_names: [], hidden_count: 0)
+          # Ruby made variables of, and +hidden_notes+ the hidden ones (Builder#hidden_variable_notes,
+          # #told_of), each with the game's line that made it.
+          def initialize(made_names: [], hidden_notes: [])
             @made_names = made_names
-            @hidden_count = hidden_count
+            @hidden_notes = hidden_notes
           end
 
           # The same check, knowing which variables came from no line of the author's. A game can
           # fill the memory with variables it never declared, and "2205 variables" would not help
-          # it look.
-          def told_of(names, hidden) = self.class.new(made_names: names, hidden_count: hidden)
+          # it look. The class is named rather than asked of self (`self.class`), which crashed
+          # Ruby once with several Ractors building at once (Validator#plain_name says why).
+          def told_of(names, hidden_notes) = IwramBudget.new(made_names: names, hidden_notes: hidden_notes)
+
+          # ONE THING THE PROGRAM KEEPS IN MEMORY, as the messages name it: its +label+ ("pool
+          # :enemy", "120 variables"), its +bytes+, and the +node+ of the line that declared it
+          # (nil for a sum over the whole program). +movable+ marks one that can go in the roomier
+          # memory; +saved+ a save_data record's lists, whose fix is different (#save_record_advice);
+          # +cold_bytes+ how much of it is in lists set `fast: false` (#cold_overflow_findings).
+          MemoryUser = Data.define(:label, :bytes, :node, :movable, :saved, :cold_bytes) do
+            def initialize(node: nil, saved: false, cold_bytes: 0, **rest) = super
+          end
 
           def detect(program)
             console = program.described_console
-            users = contributors(program, console)
-            pinned = users.reject { |user| user[:movable] }.sum { |user| user[:bytes] }
-            total = users.sum { |user| user[:bytes] }
+            kit = Console.for(console.name)
+            users = contributors(program, console, kit)
+            pinned = users.reject(&:movable).sum(&:bytes)
+            total = users.sum(&:bytes)
             if console.roomier_memory? && pinned > console.free_work_memory_bytes
               return pinned_overflow_findings(users, pinned, console)
             end
-            return [] if total <= console.free_work_memory_bytes + console.roomier_memory_bytes
+
+            reserved = kit.roomier_memory_reserved(program)
+            roomier = console.roomier_memory_bytes - reserved.sum(&:bytes)
+            if kit.cold_collections_kept_roomier?
+              cold = users.select { |user| user.cold_bytes.positive? }.sort_by { |user| -user.cold_bytes }
+              cold_bytes = cold.sum(&:cold_bytes)
+              return cold_overflow_findings(cold, cold_bytes, roomier, reserved, console) if cold_bytes > roomier
+            end
+            return [] if total <= console.free_work_memory_bytes + roomier
 
             # Blame the biggest user, which is the capacity to shrink. The plain
             # variable count and the sprites' save-buffers are sums over the whole
             # program with no one declaration behind them, so a program whose biggest
             # user is one of those blames the program itself.
-            [Finding.new(check: NAME, severity: :error, message: message(total, users, console),
-                         node: users.first[:node] || :program)]
+            [Finding.new(check: NAME, severity: :error, message: message(total, users, reserved, console),
+                         node: users.first.node || :program)]
           end
 
           # The things that can only be in the quick memory are over it on their own, and
           # no other memory can take them.
           def pinned_overflow_findings(users, pinned, console)
-            worst = users.reject { |user| user[:movable] }.first
-            [Finding.new(check: NAME, severity: :error, node: worst&.dig(:node) || :program,
+            worst = users.reject(&:movable).first
+            [Finding.new(check: NAME, severity: :error, node: worst&.node || :program,
                          message: pinned_message(pinned, users, console))]
           end
 
           private
 
-          # Everything the program reserves IWRAM for, each as { label:, bytes:, node: },
-          # largest first — so the message can name the total and point at the biggest
-          # users, and the finding can send the author to the biggest one's line.
-          def contributors(program, console)
-            items = list_and_pool_items(program)
+          # The cold collections are over the roomier memory on their own. A collection marked
+          # cold (`fast: false`, or a pool too big to share the quick memory, which the builder
+          # marks so: Builder::Composition#pool) goes in the roomier memory whatever room the quick
+          # one has, so the two memories added up are not what it has to fit: the roomier one is,
+          # less what the build reserves there for itself. The biggest is blamed, at its own line.
+          def cold_overflow_findings(cold, cold_bytes, roomier, reserved, console)
+            [Finding.new(check: NAME, severity: :error, node: cold.first.node || :program,
+                         message: cold_message(cold, cold_bytes, roomier, reserved, console))]
+          end
+
+          # Everything the program reserves IWRAM for, each a MemoryUser, largest first — so the
+          # message can name the total and point at the biggest users, and the finding can send
+          # the author to the biggest one's line.
+          def contributors(program, console, kit)
+            items = list_and_pool_items(program, kit)
 
             var_count = variable_names(program).size
             if var_count.positive?
-              items << { label: pluralize(var_count, "variable"), bytes: var_count * WORD,
-                         node: nil, movable: console.variables_go_far }
+              items << MemoryUser.new(label: pluralize(var_count, "variable"), bytes: var_count * WORD,
+                                      movable: console.variables_go_far)
             end
 
             buffers = backing_bytes(program)
-            if buffers.positive?
-              items << { label: "sprite save-buffers", bytes: buffers, node: nil, movable: false }
-            end
+            items << MemoryUser.new(label: "sprite save-buffers", bytes: buffers, movable: false) if buffers.positive?
 
-            items.sort_by { |item| -item[:bytes] }
+            items.sort_by { |item| -item.bytes }
           end
 
           # Lists as contributors — but the lists the build made up for one thing the author
           # declared collapse into that thing ("pool :name", "save_data :name": the author
           # declared one pool, not five lists), while a standalone list stays "list :name". The
           # node kept under a label is its first declaration, which is the line the author wrote.
-          # +saved+ marks a save_data record's lists, whose fix is different (#save_record_advice).
-          def list_and_pool_items(program)
+          def list_and_pool_items(program, kit)
             grouped = {}
-            list_declarations(program).each do |name, (bytes, node)|
+            list_declarations(program, kit).each do |name, (bytes, node)|
               label = Messages::MadeNames.collection_words(name)
-              item = (grouped[label] ||= { label: label, bytes: 0, node: node, movable: true,
-                                           saved: Messages::MadeNames.save_list?(name) })
-              item[:bytes] += bytes
+              item = grouped[label] || MemoryUser.new(label: label, bytes: 0, node: node, movable: true,
+                                                      saved: Messages::MadeNames.save_list?(name))
+              grouped[label] = item.with(bytes: item.bytes + bytes,
+                                         cold_bytes: item.cold_bytes + (node.fast == false ? bytes : 0))
             end
             grouped.values
           end
 
           # name => [bytes, node] for every list the program creates (deduped by name — a
-          # list re-declared to reset it reserves its storage once). A list is its
-          # `capacity` slots plus two hidden bookkeeping words (where it starts and how
-          # full it is).
-          def list_declarations(program)
+          # list re-declared to reset it reserves its storage once). A list is its slots, at
+          # its own element width, and its hidden bookkeeping words, as the console's build
+          # lays it out (Console::Kit#list_bytes): a list the game shifts from can take more.
+          def list_declarations(program, kit)
+            rings = kit.ring_lists(program)
             declarations = {}
             program.walk do |node|
               next unless node.kind == :list_new
 
-              # ...at the list's own element width, so a byte-wide list is counted as the
-              # quarter of the memory it really takes rather than as a word-wide one.
-              slot = Build::ELEMENT_BYTES.fetch(node.width || :word)
-              declarations[node.name] = [(node.capacity * slot) + (2 * WORD), node]
+              bytes = kit.list_bytes(node.capacity, node.width || :word, ring: rings.include?(node.name))
+              declarations[node.name] = [bytes, node]
             end
             declarations
           end
@@ -178,9 +223,9 @@ module VBlank
 
           def round_up_word(bytes) = (bytes + 3) & ~3
 
-          def message(total, users, console)
+          def message(total, users, reserved, console)
             "This program reserves about #{human_size(total)} of memory for its data. But " \
-              "#{memory_message(console)} The biggest users are #{top_users(users)}. To fix this, use a " \
+              "#{memory_message(console)}#{reserved_message(reserved)} The biggest users are #{top_users(users)}. To fix this, use a " \
               "smaller capacity for a pool or a list. Or use fewer fields. Or use narrower items " \
               "(`width: :byte`).#{variables_advice(console)}#{save_record_advice(users)} Then it all " \
               "fits.#{made_variables_message}"
@@ -189,14 +234,31 @@ module VBlank
           # What the author can look for, since no line of theirs writes `var` for these.
           def made_variables_message
             names = @made_names.to_a
-            hidden = @hidden_count.to_i
+            hidden = @hidden_notes.length
             return "" if names.empty? && hidden.zero?
 
             shown = names.first(NAMES_SHOWN).map { |name| "`#{name}`" }.join(", ")
             more = names.length > NAMES_SHOWN ? " and #{names.length - NAMES_SHOWN} more" : ""
             made = names.empty? ? "" : " These names are variables with no `var` line: #{shown}#{more}."
             kept = hidden.zero? ? "" : " The build also made #{pluralize(hidden, 'hidden variable')}."
-            "#{made}#{kept}"
+            "#{made}#{kept}#{copies_message}"
+          end
+
+          # The copies plain Ruby takes (PlainRuby::Steps.kept_answer): a local given a game value
+          # keeps the number of its line, as Ruby's does, in a hidden variable of its own wherever
+          # the game can change that number before the local is read. Named by the game's own file
+          # and line, with what each costs, and the change to the Ruby that needs none.
+          def copies_message
+            lines = @hidden_notes.select { |note| note.why == :copy }.group_by(&:source)
+            return "" if lines.empty?
+
+            count = lines.values.sum(&:length)
+            shown = lines.sort_by { |_, copies| -copies.length }.first(COPY_LINES_SHOWN)
+                         .map { |source, copies| "#{source ? File.basename(source) : 'the library'} (#{human_size(copies.length * WORD)})" }
+            more = lines.length > COPY_LINES_SHOWN ? ", and #{lines.length - COPY_LINES_SHOWN} more lines" : ""
+            " Of these, #{count} are copies (#{human_size(count * WORD)}): a name keeps the number it got on its line, " \
+              "as in Ruby. #{shown.join(', ')}#{more}. The game can change that number before it reads the name. " \
+              "#{COPY_ADVICE}"
           end
 
           # What memory the console has, said the way that console has it: two memories, or one.
@@ -221,9 +283,9 @@ module VBlank
           # A save_data record has no capacity of its own: its buffers are as big as what it
           # keeps, so the fix for one among the biggest users is to keep less.
           def save_record_advice(users)
-            record = top(users).find { |user| user[:saved] } or return ""
+            record = top(users).find { |user| user.saved } or return ""
 
-            " A save_data record holds a copy of everything it keeps, so for #{record[:label]}, " \
+            " A save_data record holds a copy of everything it keeps, so for #{record.label}, " \
               "keep fewer variables and lists in it, or make its lists narrower."
           end
 
@@ -237,12 +299,35 @@ module VBlank
               "and about #{human_size(console.free_work_memory_bytes)} of that is free for your data — the rest holds the call stack " \
               "and the framework's own state. A list or a pool can move to the roomier memory; a variable " \
               "cannot, because a variable is reached by its distance from the start of the quick one. The " \
-              "biggest users are #{top_users(users.reject { |u| u[:movable] })}. To fix this, use fewer " \
+              "biggest users are #{top_users(users.reject { |u| u.movable })}. To fix this, use fewer " \
               "variables. Or keep the same numbers in a list, which can move.#{made_variables_message}"
           end
 
+          # The lists and pools kept out of the quick memory, against the roomier memory alone.
+          def cold_message(cold, cold_bytes, roomier, reserved, console)
+            quick = Messages::PlainWords::QUICK_MEMORY
+            biggest = top(cold).map { |user| "#{user.label} (#{human_size(user.cold_bytes)})" }.join(", ")
+            "This program keeps about #{human_size(cold_bytes)} of lists and pools out of the #{quick}. These are " \
+              "the lists and pools with `fast: false`, and the pools that are bigger than " \
+              "#{human_size(VBlank::Builder::Composition::POOL_MAX_QUICK_BYTES)}. They can only go in the roomier memory. The " \
+              "console has only #{human_size(console.roomier_memory_bytes)} of roomier memory.#{reserved_message(reserved)}" \
+              "#{reserved.empty? ? '' : " So about #{human_size(roomier)} is free for these lists and pools."} " \
+              "#{cold.one? ? 'It is' : 'The biggest of them are'} #{biggest}. " \
+              "To fix this, use a smaller capacity for a pool or a list. Or use fewer fields. Or use narrower items " \
+              "(`width: :byte`). If a list or a pool is small, remove `fast: false` from it. Then the build can put " \
+              "it in the #{quick}."
+          end
+
+          # What the build reserves in the roomier memory for itself, where it reserves anything there.
+          def reserved_message(reserved)
+            return "" if reserved.empty?
+
+            parts = reserved.map { |item| "#{item.label} (#{human_size(item.bytes)})" }.join(", ")
+            " The build keeps about #{human_size(reserved.sum(&:bytes))} of the roomier memory for its own use: #{parts}."
+          end
+
           def top_users(users)
-            top(users).map { |user| "#{user[:label]} (#{human_size(user[:bytes])})" }.join(", ")
+            top(users).map { |user| "#{user.label} (#{human_size(user.bytes)})" }.join(", ")
           end
 
           # Bytes as a short human size: whole KB where it's exact, one decimal otherwise,

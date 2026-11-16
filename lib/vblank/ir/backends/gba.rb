@@ -41,12 +41,14 @@ require_relative "gba/placement"
 require_relative "gba/buffered"
 require_relative "gba/faces" # a face of a place filled with its picture, on the tear-free screen
 require_relative "gba/sound_registers"
+require_relative "gba/main_volume" # the main volume a game names, as SOUNDCNT's three settings
 require_relative "gba/audio"
 require_relative "gba/divide"
 require_relative "gba/expressions"
 require_relative "gba/primitives"
 require_relative "gba/collision"
 require_relative "gba/timers"
+require_relative "gba/frame_boundary_calls" # A bend or tick calling a routine the game is inside
 require_relative "gba/frames" # how many frames a pass of the game loop really took
 require_relative "gba/pass_bookkeeping" # how the run stands, in a cartridge built to be checked
 require_relative "gba/clock_chip" # the cartridge's clock chip, read once a pass
@@ -450,11 +452,13 @@ module VBlank
                                          divide: @divide)
           @raster = Raster.new(emitter: @emit, primitives: @primitives, memory: @memory,
                                lowering: @lowering, framebuffer: @framebuffer)
+          @boundary_calls = FrameBoundaryCalls.new(emitter: @emit, primitives: @primitives, lowering: @lowering,
+                                                   functions: @functions)
           @mixer = Mixer.new(emitter: @emit, memory: @memory, timers: @timers, primitives: @primitives)
           @audio = Audio.new(emitter: @emit, primitives: @primitives, lowering: @lowering, mixer: @mixer,
                              memory: @memory, sounds: @defined_sounds, songs: @songs,
                              frames: @frames, expressions: @expressions, raster: @raster, drawing: self,
-                             bookkeeping: @bookkeeping,
+                             bookkeeping: @bookkeeping, boundary_calls: @boundary_calls,
                              uses_pressed: -> { @uses_pressed }, any_buffered: -> { @modes.any_buffered? },
                              # an EEPROM's last block of the pass is written back before the console sleeps
                              end_of_pass: -> { @save.emit_chip_end_of_pass if @uses_save })
@@ -476,7 +480,7 @@ module VBlank
           @sprite_drawing = SpriteDrawing.new(emitter: @emit, primitives: @primitives, lowering: @lowering,
                                               divide: @divide, framebuffer: @framebuffer,
                                               palette_tint: @palette_tint, uploads: @uploads,
-                                              placement: self)
+                                              placement: self, raster: @raster)
           @background_drawing = BackgroundDrawing.new(emitter: @emit, primitives: @primitives, lowering: @lowering,
                                                       divide: @divide, raster: @raster,
                                                       palette_tint: @palette_tint, uploads: @uploads, lists: @lists,
@@ -595,6 +599,7 @@ module VBlank
                                    routines: routine_addresses,
                                    timer_handlers: timer_handler_addresses,
                                    video_copies: video_copy_addresses, late_pages: late_page_addresses,
+                                   gap_ends: gap_end_addresses,
                                    lists: @lists.list_places,
                                    voices: voice_table,
                                    sound_drops: drop_table,
@@ -718,6 +723,12 @@ module VBlank
           @emit.late_pages_shown.flat_map do |shown|
             runtime_sites(shown.at).map { |site| { tears: shown.tears, **site } }
           end
+        end
+
+        # WHERE THE GAP AFTER A GAME LOOP'S WAIT ENDS, the same way (see Emit#note_gap_end): the
+        # first instruction after it, which a pass reaches once.
+        def gap_end_addresses
+          @emit.gap_ends.flat_map { |at| runtime_sites(at) }
         end
 
         # The address an instruction at +at+ in the emitted code runs from: by the routine it sits
@@ -855,7 +866,9 @@ module VBlank
           @top = TopOfQuickMemory.for(program, stack_room: @stack_room, divides: needs_divide_routine?(program),
                                                divides_fractions: needs_divide_fix_routine?(program),
                                                fills_faces: Faces.fills_faces?(program),
-                                               lights_faces: Faces.lights_faces?(program))
+                                               lights_faces: Faces.lights_faces?(program),
+                                               stretch_runs: Faces.stretch_runs(program),
+                                               see_through_runs: Faces.see_through_runs(program))
           @memory.ceiling = @top.ceiling
           Faces.words.each { |name| var_addr(name) } if @top.fill_face_at
           variables_first.each { |name| var_addr(name) }
@@ -886,11 +899,13 @@ module VBlank
           @mixer.prepare_direct_sound(program) # embed the program's samples as ROM data
           @audio.prepare_music(program) # number its tunes, and keep the mixer voices they play on
           @uses_vblank = program.walk.any? { |node| node.kind == :wait_vblank }
+          @lowering.gap_ends = IR::Frames.gap_ends(program) # where a measured run reads how late each gap ended
           @clock_chip.prepare(program) # whether anything reads the clock
           @mixer.prepare_mixer(program) # the software mixer's rate, buffers, voice slots, timer
           @audio.register_audio_blobs # every tune as one score — after the mixer's rate, which sets each note's step
           refuse_samples_without_vblank!
           register_timers(program) # assign each named timer its hardware timer index(es)
+          @boundary_calls.prepare(program) # Which handlers wait, and what bends and ticks save
           prepare_pixel_masks(program) # solid-pixel tables for any per-pixel collision test
           resolve_modes(program)
           # `screen :rotozoom` is tile hardware too — a different pair of layers (BG2/BG3,
@@ -1023,6 +1038,7 @@ module VBlank
           @picture_group_copying.emit_clear_groups_at_power_on # no picture group wanted or up yet
           @sprite_drawing.emit_sprites_shown_at_power_on # no frame without sprites asked for yet
           @sprite_drawing.emit_held_table_at_power_on # no sprite left out of a full table yet
+          @sprite_drawing.emit_no_scene_colors_sent # no scene's sprite colours sent yet
           @background_drawing.emit_held_tiles_at_power_on(program) # no cell change waiting yet
           emit_copy_hot_code_to_iwram unless @fast_funcs.empty?
           emit_call_power_on_swap # the scenes' own routines that fit side by side, the ones the game loop runs first
@@ -1069,7 +1085,7 @@ module VBlank
             @drawing.emit_default_screen(program) # a game with no `screen` line is on a bitmap one
             emit_top_level(program)
           end
-          refuse_variables_overlapping_divide!
+          refuse_variables_past_quick_memory!
           emit_functions
           emit_hot_functions # the routines worth running from the quick memory, as one block
           emit_mix_routine # the mixer's inner loop, placed in ROM and copied to IWRAM at boot
@@ -1219,10 +1235,23 @@ module VBlank
         def emit_add_const(rd, rn, imm, scratch) = @primitives.emit_add_const(rd, rn, imm, scratch)
         def emit_and_const(rd, rn, imm, scratch) = @primitives.emit_and_const(rd, rn, imm, scratch)
 
+        # THE VARIABLES GROW UP FROM THE BASE and the lists and buffers grow down from the
+        # routines held at the top (TopOfQuickMemory), so a program with a great many of either
+        # has to be told rather than quietly overwriting the other. Asked once the game's own code
+        # is written and before the routines kept in the quick memory are, where only a game
+        # with a divide routine was ever asked it; the measuring pass moves lists out to make
+        # room (Placement#measure_routines) before a game is told.
+        def refuse_variables_past_quick_memory!
+          over = @memory.overrun
+          return unless @top.divide_at && over.positive?
+
+          message = @top.overrun_message(over: over, variables: @memory.near_bytes, kept: @memory.far_bytes)
+          raise QuickMemoryOverrun.new(message, bytes: over)
+        end
+
         # Forwards to @divide (see {Divide}).
         def needs_divide_routine?(program) = @divide.needs_divide_routine?(program)
         def needs_divide_fix_routine?(program) = @divide.needs_divide_fix_routine?(program)
-        def refuse_variables_overlapping_divide! = @divide.refuse_variables_overlapping_divide!
         def emit_copy_divide_routines_to_iwram = @divide.emit_copy_divide_routines_to_iwram
         def emit_divide_routine = @divide.emit_divide_routine
         def emit_divide_fix_routine = @divide.emit_divide_fix_routine
@@ -1448,7 +1477,13 @@ module VBlank
               # way, because a copy is a copy. Whoever reads it adds the routine's own runtime
               # base (see #routine_addresses).
               @timer_handlers[name] = { hz: info[:hz], at: pos - start }
-              info[:handler].children.each { |child| @lowering.statement(child) }
+              # A handler that waits runs as the game wakes, and here its tick is only counted
+              # (see FrameBoundaryCalls).
+              next @boundary_calls.emit_tick_seen(name) if @boundary_calls.answered_at_wait?(name)
+
+              @boundary_calls.with_handler_state_saved(name) do
+                info[:handler].children.each { |child| @lowering.statement(child) }
+              end
             end
           end
           emit(ASM.pop(*IRQ_SAVED_REGS))
@@ -1460,6 +1495,7 @@ module VBlank
           # Audio#calling_interrupt_routines_from_cartridge).
           @mixer.emit_music_voice_routines if @mixer.music_takes_voices?
           @audio.emit_sound_effects_routine if @audio.plays_sound_effects?
+          @audio.emit_note_wave_routine
           # ...and, in a game that asks for a tune `this_frame: true`, the player's big steps as
           # routines the music step above calls too (see Audio#emit_tune_routines), and the
           # routine the game's own code calls to start a tune (Audio#emit_start_song_here_routine).
@@ -1848,6 +1884,9 @@ module VBlank
           @gated_sprites.group_by(&:state).each do |state, groups|
             names = groups.flat_map(&:names)
             @functions.define_generated_func(SpriteDrawing.hide_rows_routine(state)) { @sprite_drawing.emit_hide_sprite_rows(names) }
+          end
+          if (picked = @screen.scene_colors_picker)
+            @functions.define_generated_func(SpriteDrawing::SCENE_COLORS_ROUTINE) { @sprite_drawing.emit_scene_colors_routine(picked) }
           end
         end
 

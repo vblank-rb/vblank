@@ -17,14 +17,68 @@ module VBlank
     # - +pack_rules+ (IR::StartFile::Rules), the check that tells a pack for this build from any other;
     # - +menu+ (Menu), the menu's variable and what each number it is set to means;
     # - +unpacking+ (UnpackingNames), what an unpacking's answer is read from;
-    # - +words+ (Words), the shell's own sentences.
+    # - +words+ (Words), the shell's own sentences;
+    # - +pieces+, for each unpacking by its number, its split for several workers (a PiecePlan), or
+    #   nil for one with no part in pieces; and +bar+ (Bar), where a shell draws the bar that adds
+    #   up its workers.
     #
     # A game written out as one Ruby file carries this file as it is (Backends::Ruby#script), with
     # IR::StartFile and Releases, so it needs nothing else of the library.
     ShellFacts = Data.define(:title, :folder, :pack_file, :releases_title, :releases, :release_words, :pack_before_sha1,
-                             :pack_after_sha1, :pack_rules, :menu, :unpacking, :words)
+                             :pack_after_sha1, :pack_rules, :menu, :unpacking, :words, :pieces, :bar)
 
     class ShellFacts
+      # AN UNPACKING SPLIT FOR SEVERAL WORKERS, as a runtime plays it (Original::PiecedUnpacking
+      # makes it): +main+, the number of the program of the parts not in pieces in the runtime's
+      # list of worker programs, which holds +main_bytes+ of slots and is +main_work+ to make;
+      # +pieces+, each a PlannedPiece; +whole_work+, the whole pack's; and +queue+, the pieces'
+      # places in +pieces+ in the order they are handed out, the most work first.
+      PiecePlan = Data.define(:main, :main_bytes, :main_work, :whole_work, :queue, :pieces) do
+        # The pack's list of bytes: +main_bytes+ (what the main program wrote) with each piece's
+        # bytes (+piece_bytes+, one String for each of #pieces in their order) copied over its
+        # places, in the order the pieces are declared.
+        def join(main_bytes, piece_bytes)
+          joined = main_bytes.b
+          pieces.each_with_index do |piece, index|
+            bytes = piece_bytes.fetch(index).b
+            from = 0
+            piece.places.each do |at, size|
+              joined.bytesplice(at, size, bytes.byteslice(from, size))
+              from += size
+            end
+          end
+          joined
+        end
+
+        # How wide the bar is, of +across+ pixels, once each program has written so many bytes
+        # (+done+, a count for the main program and then each piece, from its BYTES_DONE): each
+        # count held to its program's size and weighed by its work.
+        def bar_width(done, across)
+          sizes = [main_bytes, *pieces.map(&:bytes)]
+          works = [main_work, *pieces.map(&:work)]
+          shown = done.each_with_index.sum do |count, index|
+            size = sizes.fetch(index)
+            size.zero? ? 0 : Rational(count.clamp(0, size) * works.fetch(index), size)
+          end
+          whole_work.zero? ? across : (across * shown / whole_work).floor.clamp(0, across)
+        end
+      end
+
+      # One piece of a PiecePlan: its +program+'s number in the list of worker programs (the program
+      # of its part, which plays any of the part's pieces), the piece's +number+ in its part, which
+      # the program is handed after the copy (#start_file), its +places+ in the pack's list ([at,
+      # size] pairs, in the order its program holds them), how many +bytes+ of the program's list
+      # are the piece's and how much +work+ they are.
+      PlannedPiece = Data.define(:program, :number, :places, :bytes, :work) do
+        # The file the piece's program is handed as it starts (ShellFacts.piece_start_file).
+        def start_file(copy) = ShellFacts.piece_start_file(copy, number)
+      end
+
+      # WHERE A SHELL DRAWS THE BAR OF SEVERAL WORKERS, over the picture the main program draws
+      # (Original::UnpackingProgress, whose look this is): +side+ pixels in from the picture's left
+      # and right, +height+ tall and in the middle from top to bottom, its done part +filled+ and the
+      # rest +empty+, each a colour of fifteen bits as the picture keeps them.
+      Bar = Data.define(:side, :height, :filled, :empty)
       # The name of the file the pack is kept in, inside the game's folder.
       PACK_FILE = "data.pack"
 
@@ -47,8 +101,11 @@ module VBlank
       def self.menu_start_file(line, read_again: false) = [line, read_again ? 1 : 0].pack("C*")
 
       # The names in an unpacking a shell reads its answer from (Original::Unpacking): the list of
-      # the pack's bytes, and the variables set when it gets to its end and when something went wrong.
-      UnpackingNames = Data.define(:bytes, :finished, :fault_kind)
+      # the pack's bytes, and the variables set when it gets to its end and when something went wrong;
+      # and +bytes_done+, the count of bytes written so far, which a shell of several workers adds up.
+      UnpackingNames = Data.define(:bytes, :finished, :fault_kind, :bytes_done) do
+        def initialize(bytes:, finished:, fault_kind:, bytes_done: Unpacking::BYTES_DONE.to_s) = super
+      end
 
       # The shell's sentences: for a kept pack it does not read (+kept_pack_refused+, {path} and
       # {refusal}), an unpacking that stopped part way (+unpacking_stopped+, {named} for the file and
@@ -91,6 +148,15 @@ module VBlank
       # The release whose SHA-1 is +sha1+, or nil.
       def release_with_sha1(sha1) = releases.find { |release| release.sha1 == sha1 }
 
+      # Whether the unpacking numbered +number+ is split in pieces (a PiecePlan in #pieces), which
+      # a runtime that unpacks on workers plays in place of its whole routine.
+      def split?(number) = !pieces&.fetch(number).nil?
+
+      # THE FILE A PIECE'S PROGRAM IS HANDED AS IT STARTS: the copy, +copy+, then the piece's
+      # +number+ in Original::Unpacking::PIECE_NUMBER_BYTES, low byte first (rg_shell.js writes
+      # the same).
+      def self.piece_start_file(copy, number) = copy.b + [number].pack("v")
+
       # The pack file for a copy whose SHA-1 is +sha1+, holding +bytes+, what the unpacking wrote.
       def pack_for(sha1, bytes) = [pack_before_sha1, [sha1].pack("H*"), pack_after_sha1, bytes].join.b
 
@@ -104,7 +170,16 @@ module VBlank
           "pack_before_sha1" => pack_before_sha1.bytes, "pack_after_sha1" => pack_after_sha1.bytes,
           "pack_rules" => { "numbers" => pack_rules.numbers, "words" => ShellFacts.plain_record(pack_rules.words) },
           "menu" => ShellFacts.plain_record(menu), "unpacking" => ShellFacts.plain_record(unpacking),
-          "words" => ShellFacts.plain_record(words) }
+          "words" => ShellFacts.plain_record(words),
+          "pieces" => pieces.map { |plan| plan && ShellFacts.plain_plan(plan) }, "bar" => ShellFacts.plain_record(bar) }
+      end
+
+      def self.plain_plan(plan)
+        plain_record(plan).merge("pieces" => plan.pieces.map { |piece| plain_record(piece) })
+      end
+
+      def self.plan_from_plain(plain)
+        record(PiecePlan, plain.merge("pieces" => plain.fetch("pieces").map { |piece| record(PlannedPiece, piece) }))
       end
 
       # The facts #to_plain gave.
@@ -117,7 +192,8 @@ module VBlank
             pack_rules: IR::StartFile::Rules.new(numbers: plain.fetch("pack_rules").fetch("numbers"),
                                                  words: record(IR::StartFile::Words, plain.fetch("pack_rules").fetch("words"))),
             menu: record(Menu, plain.fetch("menu")), unpacking: record(UnpackingNames, plain.fetch("unpacking")),
-            words: record(Words, plain.fetch("words")))
+            words: record(Words, plain.fetch("words")),
+            pieces: plain.fetch("pieces").map { |plan| plan && plan_from_plain(plan) }, bar: record(Bar, plain.fetch("bar")))
       end
 
       def self.plain_record(record) = record.to_h.transform_keys(&:to_s)

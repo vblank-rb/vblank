@@ -44,11 +44,46 @@ class TestPS1PlaceWindowPace < Minitest::Test
     assert_operator outside, :<, drawn / 3.0
   end
 
+  # The same wall seen turned a little, so it reaches into the view; the setting window: :whole draws it
+  # four times a pass on the whole screen, :half through a window from x 40 on, over half of it, and
+  # :narrow through a window 20 pixels wide and 40 high on its near part.
+  NEAR_WALL = VBlank.game("NEAR WALL", consoles: %i[ps1]) do
+    screen :bitmap, tear_free: true
+    image :tile, width: 8, height: 8, data: Array.new(64) { |k| k.even? ? 0x7FFF : 0x001F }
+    place :side do
+      STRIPS.times do |k|
+        low = -1.0 + (2.0 * k / STRIPS)
+        high = -1.0 + (2.0 * (k + 1) / STRIPS)
+        face point(-1.0, high, -1.0), point(-1.0, high, 6.0), point(-1.0, low, 6.0), point(-1.0, low, -1.0),
+             picture: :tile, on_picture: [[0, 0], [8, 0], [8, 8], [0, 8]]
+      end
+    end
+    window = { whole: nil, half: [40, 0, 240, 160], narrow: [80, 60, 100, 100] }.fetch(setting(:window, :whole))
+    eye = viewer :eye, at: [0.0, 0.0, 0.0]
+    eye.turn :left, by: 0.3
+    game_loop do
+      clear_screen :black
+      4.times { draw_place :side, seen_by: eye, window: window }
+    end
+  end
+
+  # A face reaching past its window is cut into the cells the whole screen cuts it into, so through the
+  # window the chip draws each pixel as on the whole screen; but the cells wholly outside the window are
+  # not made (FacePieces.each_cell). So through a narrow window on the wall's near part, where its cells
+  # are smallest, the wall costs well under half of drawing it on the whole screen, and through a window
+  # over half of it, less than drawing all of it.
+  def test_cells_outside_the_window_are_not_made
+    whole = busy_frames(profile(game: NEAR_WALL, window: :whole))
+
+    assert_operator busy_frames(profile(game: NEAR_WALL, window: :narrow)), :<, whole * 0.4, "through the narrow window"
+    assert_operator busy_frames(profile(game: NEAR_WALL, window: :half)), :<, whole * 0.85, "through the window over half"
+  end
+
   # How much of a frame the processor was at work for, a pass.
   private def busy_frames(result) = (1 - result.idle_share) * result.frames / result.passes
 
-  private def profile(**settings)
-    rom = WALL.build_rom(console: :ps1, settings: settings, out: StringIO.new, err: StringIO.new, profile: false)
+  private def profile(game: WALL, **settings)
+    rom = game.build_rom(console: :ps1, settings: settings, out: StringIO.new, err: StringIO.new, profile: false)
     rom.profile(out: StringIO.new, frames: 48)
   end
 end

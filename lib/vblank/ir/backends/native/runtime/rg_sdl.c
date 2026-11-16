@@ -56,10 +56,12 @@
  *
  * THE PICTURE is the console's 240x160 screen, its 15-bit colors handed to SDL as they are (SDL
  * has a pixel format for exactly that layout), and scaled up by a whole number with each pixel
- * kept square and sharp — never smoothed — and the window's spare room left black.
+ * kept square and sharp — never smoothed — and the window's spare room left black. A game of big
+ * pixels (RG_PIXEL_SIZE, rg_console.h) hands over a smaller picture, which is stretched to the
+ * console's size first, so its window and its scale are the console's as for any game.
  *
  * THE BUTTONS ARE A GAMEPAD'S, AND THE KEYBOARD IS A GAMEPAD. The game is asked one question —
- * which of the console's ten buttons are down on any gamepad — and the keyboard answers it by
+ * which of the console's buttons are down on any gamepad — and the keyboard answers it by
  * pressing the buttons of a gamepad SDL makes up for it (a "virtual joystick"), which is then
  * read exactly as a real one plugged in beside it is. One way in means a real controller needs
  * nothing of its own, and a test that presses keys goes down the same path a player's fingers do.
@@ -69,9 +71,11 @@
  *
  * The keys start as mGBA's, so a player who has used it already knows them: the arrows for
  * the pad, X for A, Z for B, A and S for the shoulders, Return for Start and Backspace for
- * Select — and Right Shift for Select as well, for a keyboard with no Backspace. They are read by
+ * Select — and Right Shift for Select as well, for a keyboard with no Backspace. A console that has
+ * them has W for X, Q for Y and the C key for C. They are read by
  * where they sit on the keyboard, not by what is printed on them. On a gamepad the buttons are
- * where the console has them: A on the right, B below it. A player can choose others (rg_window.h
+ * where the console has them: A on the right, B below it, X on top, Y and C on the left. Only the
+ * buttons the game's console has are read (RG_CONSOLE_BUTTONS). A player can choose others (rg_window.h
  * keeps which key is which button and which gamepad button is which; the menu and the settings
  * file change them). The keyboard's own gamepad always has the console's layout: what a player
  * chooses is which button of a REAL gamepad is which.
@@ -160,7 +164,7 @@
 /* One frame of the console, in nanoseconds. */
 #define FRAME_NS ((Uint64)RG_CONSOLE_TICKS_A_FRAME * 1000000000ull / RG_CONSOLE_TICKS_A_SECOND)
 
-#define BUTTONS 10
+#define BUTTONS 13
 /* As many gamepads as are read at once, the keyboard's among them. */
 #define MOST_PADS 8
 
@@ -170,6 +174,9 @@
 SAME_AS_SDL(SDL_SCANCODE_UNKNOWN, RG_NO_KEY);
 SAME_AS_SDL(SDL_SCANCODE_ESCAPE, RG_KEY_ESCAPE);
 SAME_AS_SDL(SDL_SCANCODE_A, 4);
+SAME_AS_SDL(SDL_SCANCODE_C, 6);
+SAME_AS_SDL(SDL_SCANCODE_Q, 20);
+SAME_AS_SDL(SDL_SCANCODE_W, 26);
 SAME_AS_SDL(SDL_SCANCODE_M, 16);
 SAME_AS_SDL(SDL_SCANCODE_N, 17);
 SAME_AS_SDL(SDL_SCANCODE_P, 19);
@@ -205,7 +212,9 @@ SAME_AS_SDL(SDL_GAMEPAD_BUTTON_DPAD_RIGHT, 14);
 _Static_assert(BUTTONS == RG_WINDOW_BUTTONS, "the window and the runtime count the console's buttons differently");
 
 /* The gamepad the keyboard presses has the console's own layout whatever a player has chosen for
- * a real one: A on the right, B below it. Console buttons in the order rg_runtime.h numbers them. */
+ * a real one: A on the right, B below it. Console buttons in the order rg_runtime.h numbers them.
+ * Y and C are both the left face button, as they start on a real one: only the one the console has
+ * is read. */
 static const SDL_GamepadButton keyboard_pad_buttons[BUTTONS] = {
   SDL_GAMEPAD_BUTTON_EAST,           /* a */
   SDL_GAMEPAD_BUTTON_SOUTH,          /* b */
@@ -217,8 +226,11 @@ static const SDL_GamepadButton keyboard_pad_buttons[BUTTONS] = {
   SDL_GAMEPAD_BUTTON_DPAD_DOWN,      /* down */
   SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, /* r */
   SDL_GAMEPAD_BUTTON_LEFT_SHOULDER,  /* l */
+  SDL_GAMEPAD_BUTTON_NORTH,          /* x */
+  SDL_GAMEPAD_BUTTON_WEST,           /* y */
+  SDL_GAMEPAD_BUTTON_WEST,           /* c */
 };
-static const char *const button_names[BUTTONS] = {"a", "b", "select", "start", "right", "left", "up", "down", "r", "l"};
+static const char *const button_names[BUTTONS] = {"a", "b", "select", "start", "right", "left", "up", "down", "r", "l", "x", "y", "c"};
 
 static SDL_Window *window;
 static SDL_Renderer *renderer;
@@ -265,7 +277,7 @@ static long frames_held_by_clock; /* frames the monitor was pacing and the windo
  * window to be drawn (it was uncovered, resized, moved to another screen, or lost its drawing
  * surface), and +picture_due_ns+ is, where the monitor paces the game, when the picture handed over
  * last is due to be replaced. */
-static uint16_t texture_holds[RG_SCREEN_WIDTH * RG_SCREEN_HEIGHT];
+static uint16_t texture_holds[RG_WHOLE_WIDTH * RG_WHOLE_HEIGHT];
 static bool texture_has_picture;
 static bool window_owed_a_drawing = true;
 static Uint64 picture_due_ns;
@@ -775,6 +787,7 @@ static char *settings_file_in(const char *folder) {
 static void load_settings(const char *asked, int usual_files_asked) {
   rg_window_use_key_names(scancode_name, scancode_named);
   rg_window_use_game_controls(rg_game_controls);
+  rg_window_use_console_buttons(RG_CONSOLE_BUTTONS);
   rg_window_use_defaults();
   char said[2048] = "";
 
@@ -848,7 +861,7 @@ static void apply_window_changes(void) {
     else rg_window_fullscreen_happened((SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) != 0);
   }
   if (size_owed && !rg_window_fullscreen()) {
-    SDL_SetWindowSize(window, RG_SCREEN_WIDTH * rg_window_scale(), RG_SCREEN_HEIGHT * rg_window_scale());
+    SDL_SetWindowSize(window, RG_SHOWN_WIDTH * rg_window_scale(), RG_SHOWN_HEIGHT * rg_window_scale());
     size_owed = 0;
   }
 }
@@ -906,7 +919,7 @@ static double pixel_density(void) {
 static int largest_scale_that_fits(void) {
   SDL_Rect room;
   if (!SDL_GetDisplayUsableBounds(SDL_GetDisplayForWindow(window), &room)) return RG_WINDOW_SCALE_MOST;
-  int fits = SDL_min(room.w / RG_SCREEN_WIDTH, room.h / RG_SCREEN_HEIGHT);
+  int fits = SDL_min(room.w / RG_SHOWN_WIDTH, room.h / RG_SHOWN_HEIGHT);
   return SDL_min(fits, RG_WINDOW_SCALE_MOST);
 }
 
@@ -1104,7 +1117,8 @@ static void wait_out_undrawn_picture(void) {
  * up, with nothing over it and nothing owed to the window, is neither uploaded nor drawn. */
 static void present_picture(const uint16_t *picture, bool game_is_ours);
 
-static void present(void) { present_picture(rg_screen_shown(), true); }
+/* The whole screen, with the border round a game shown in one (rg_screen_framed). */
+static void present(void) { present_picture(rg_screen_framed(), true); }
 
 /* ...+picture+, which is the game's own unless +game_is_ours+ is false: an unpacking plays on another
  * thread, and its variables are not this thread's to read. */
@@ -1118,7 +1132,7 @@ static void present_picture(const uint16_t *picture, bool game_is_ours) {
     return;
   }
   if (!same_picture) {
-    SDL_UpdateTexture(texture, NULL, picture, RG_SCREEN_WIDTH * (int)sizeof(uint16_t));
+    SDL_UpdateTexture(texture, NULL, picture, RG_WHOLE_WIDTH * (int)sizeof(uint16_t));
     memcpy(texture_holds, picture, sizeof texture_holds);
     texture_has_picture = true;
   }
@@ -1332,6 +1346,7 @@ static void key_changed(const SDL_KeyboardEvent *key) {
   /* In a game for several players, a key no button of player 1's and no hotkey has may be one of
    * player 2's (rg_seats.h). */
   int second = rg_seats_several_players(rg_game_seats[0]) ? rg_seats_second_player_button(code) : -1;
+  if (!rg_window_console_has(second)) second = -1; /* a button the console lacks */
   if (button < 0 && second >= 0 && key->down) {
     second_keys_down |= 1u << (uint32_t)second;
     second_keys_tapped |= 1u << (uint32_t)second;
@@ -1423,7 +1438,7 @@ static bool read_events(void) {
       break;
     case SDL_EVENT_WINDOW_RESIZED:
       window_owed_a_drawing = true;
-      rg_window_size_changed(event.window.data1, event.window.data2, RG_SCREEN_WIDTH, RG_SCREEN_HEIGHT);
+      rg_window_size_changed(event.window.data1, event.window.data2, RG_SHOWN_WIDTH, RG_SHOWN_HEIGHT);
       break;
     case SDL_EVENT_WINDOW_ENTER_FULLSCREEN:
       window_owed_a_drawing = true;
@@ -1535,7 +1550,8 @@ static void trace_frame(uint32_t held) {
 static int32_t players_held(uint32_t *masks) {
   uint32_t keyboard = keys_down | keys_tapped;
   keys_tapped = 0;
-  for (uint32_t i = 0; i < BUTTONS; i++) SDL_SetJoystickVirtualButton(keyboard_pad, keyboard_pad_buttons[i], (keyboard >> i) & 1u);
+  for (uint32_t i = 0; i < BUTTONS; i++)
+    if (rg_window_console_has((int)i)) SDL_SetJoystickVirtualButton(keyboard_pad, keyboard_pad_buttons[i], (keyboard >> i) & 1u);
   SDL_UpdateGamepads();
 
   bool several = rg_seats_several_players(rg_game_seats[0]);
@@ -1550,6 +1566,7 @@ static int32_t players_held(uint32_t *masks) {
     if (player < 1 || player > RG_MOST_PLAYERS) continue;
     uint32_t *held = &masks[player - 1];
     for (uint32_t i = 0; i < BUTTONS; i++) {
+      if (!rg_window_console_has((int)i)) continue; /* a button the console lacks presses nothing */
       if (keyboards) {
         if (SDL_GetGamepadButton(pads[pad], keyboard_pad_buttons[i])) *held |= 1u << i;
         continue;
@@ -1820,15 +1837,18 @@ static void read_computer_clock(void) {
 }
 
 /* The frame boundary: the picture the frame drew is shown, the clock comes round, and the
- * buttons for the next frame are read. */
+ * buttons for the next frame are read. A boundary that only ends the frame a waiting timer's
+ * handler held up is no new frame, so a scripted run neither counts it nor stops before it
+ * (rg_frame_ends_late), as the windowless run does; the window still shows it. */
 static void sdl_wait_vblank(void) {
   serve_state_request();
-  if (scripted && frames_played >= frames_to_play) finish_script();
+  int late = rg_frame_ends_late();
+  if (scripted && !late && frames_played >= frames_to_play) finish_script();
   Uint64 frame_ended = SDL_GetTicksNS();
   rg_window_frame_played(frame_ended, game_resumed_ns ? frame_ended - game_resumed_ns : 0);
   play_frame_sound();
   rg_frame_begins();
-  frames_played++;
+  if (!late) frames_played++;
   bool shown = end_of_slot();
   if (shown) present();
   write_files_due();
@@ -2402,6 +2422,33 @@ static void attach_keyboard_pad(void) {
   read_events(); /* takes it up as a gamepad, with any real ones already plugged in */
 }
 
+/* Player 2's keys for the console's buttons other than the pad, as --help says them ("O is A"),
+ * after the words before them on the line, kept within 80 columns, with a full stop. */
+static void print_second_player_keys(void) {
+  /* O, U, 7, 9, 8, 0, H, Y and B, in the order they are said; rg_seats.h says which button each is. */
+  static const int keys[] = {18, 24, 36, 38, 37, 39, 11, 28, 5};
+  int column = 57; /* the end of "  Player 2 can also use these keys: I, J, K and L move," */
+  int left = 0;
+  for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    if (rg_window_console_has(rg_seats_second_player_button(keys[i]))) left++;
+  for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++) {
+    int button = rg_seats_second_player_button(keys[i]);
+    if (!rg_window_console_has(button)) continue;
+    char words[48];
+    left--;
+    snprintf(words, sizeof words, "%s is %s%s", rg_window_key_name(keys[i]), rg_window_button_name(button), left ? "," : ".");
+    int length = (int)strlen(words);
+    if (column + 1 + length > 78) {
+      printf("\n  %s", words);
+      column = 2 + length;
+    } else {
+      printf(" %s", words);
+      column += 1 + length;
+    }
+  }
+  printf("\n\n");
+}
+
 /* What --help prints: the keys as the window starts with them, read from the window's own table so
  * this cannot say a key the window does not use, and the options a player has a use for. The rest
  * (--headless, --scripted-keys, --trace, --window-picture, --usual-settings, and --frame-times and
@@ -2415,12 +2462,14 @@ static void print_usage(const char *program) {
   }
   rg_window_use_key_names(scancode_name, scancode_named);
   rg_window_use_game_controls(rg_game_controls);
+  rg_window_use_console_buttons(RG_CONSOLE_BUTTONS);
   rg_window_use_defaults();
 
   printf("Usage: %s [options]\n\n", name);
   printf("Play %s, a game built with VBlank.\n\n", rg_game_title);
   printf("Keys:\n");
   for (int button = 0; button < RG_WINDOW_BUTTONS; button++) {
+    if (!rg_window_console_has(button)) continue;
     printf("  %-18s", rg_window_button_name(button));
     const char *between = "";
     for (int slot = 0; slot < RG_WINDOW_KEYS_A_BUTTON; slot++) {
@@ -2446,12 +2495,13 @@ static void print_usage(const char *program) {
     printf("To open the menu with a gamepad, press Back and Start together, or the guide\n"
            "button. In the menu, the D-pad moves, A chooses and B closes the menu.\n");
   printf("The settings file changes the keys and the gamepad buttons.\n\n");
-  if (rg_seats_several_players(rg_game_seats[0]))
+  if (rg_seats_several_players(rg_game_seats[0])) {
     printf("More players:\n"
            "  Each gamepad is one player. The first gamepad is player 1, the second is\n"
            "  player 2, and so on. A gamepad keeps its player until you disconnect it.\n"
-           "  Player 2 can also use these keys: I, J, K and L move, O is A, U is B,\n"
-           "  7 is L, 9 is R, 8 is Select and 0 is Start.\n\n");
+           "  Player 2 can also use these keys: I, J, K and L move,");
+    print_second_player_keys();
+  }
   printf("Files:\n"
          "  The save and the settings are kept in a folder named for the game, among\n"
          "  the files this computer keeps for each program. The settings are a text\n"
@@ -2520,21 +2570,23 @@ int main(int argc, char **argv) {
    * window opens the size it was left at, and fullscreen if that is how it was left. */
   SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
   if (rg_window_fullscreen()) flags |= SDL_WINDOW_FULLSCREEN;
-  window = SDL_CreateWindow(rg_game_title, RG_SCREEN_WIDTH * rg_window_scale(), RG_SCREEN_HEIGHT * rg_window_scale(), flags);
+  window = SDL_CreateWindow(rg_game_title, RG_SHOWN_WIDTH * rg_window_scale(), RG_SHOWN_HEIGHT * rg_window_scale(), flags);
   if (!window) refuse_to_start("the window cannot be opened");
   note_window_opened();
-  SDL_SetWindowMinimumSize(window, RG_SCREEN_WIDTH, RG_SCREEN_HEIGHT);
+  SDL_SetWindowMinimumSize(window, RG_SHOWN_WIDTH, RG_SHOWN_HEIGHT);
   rg_window_consume_changes(); /* the window opened as the settings ask: nothing is left to do to it */
   renderer = SDL_CreateRenderer(window, NULL);
   if (!renderer) refuse_to_start("nothing can draw into the window");
-  SDL_SetRenderLogicalPresentation(renderer, RG_SCREEN_WIDTH, RG_SCREEN_HEIGHT, SDL_LOGICAL_PRESENTATION_INTEGER_SCALE);
-  texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_XBGR1555, SDL_TEXTUREACCESS_STREAMING, RG_SCREEN_WIDTH,
-                              RG_SCREEN_HEIGHT);
+  /* The picture is drawn over the whole of the logical size, so a game of big pixels has each of its
+   * pixels stretched to RG_PIXEL_SIZE of the console's, and the window's scale counts those. */
+  SDL_SetRenderLogicalPresentation(renderer, RG_SHOWN_WIDTH, RG_SHOWN_HEIGHT, SDL_LOGICAL_PRESENTATION_INTEGER_SCALE);
+  texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_XBGR1555, SDL_TEXTUREACCESS_STREAMING, RG_WHOLE_WIDTH,
+                              RG_WHOLE_HEIGHT);
   if (!texture) refuse_to_start("the picture cannot be made");
   SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
   /* The menu's boxes are see-through, and fade at their edges. */
   SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-  rg_window_menu_reset(RG_SCREEN_WIDTH, RG_SCREEN_HEIGHT);
+  rg_window_menu_reset(RG_SHOWN_WIDTH, RG_SHOWN_HEIGHT);
   /* If the windows of keys and variables cannot start the window says so, and the menu and the
    * hotkeys still work. */
   if (!rg_menu_start(window, renderer)) {

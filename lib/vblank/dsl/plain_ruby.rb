@@ -60,7 +60,34 @@ module VBlank
       # made from a method, or one this module made already.
       def game_block(block, allow: [])
         refuse_block_with_no_file!(block)
+        refuse_shareable_block_with_game_code!(block)
         rewritable?(block) ? rewrite(block, allow: allow, checked: game_blocks_checked?) : block
+      end
+
+      # A BLOCK MADE SHAREABLE BETWEEN RACTORS (`Ractor.make_shareable`) IS CUT LOOSE FROM THE
+      # SCOPE IT WAS WRITTEN IN, and Ruby then gives out no binding for it, so it cannot be
+      # rewritten: run as it stands, `x += 1` changes a Ruby local and nothing in the game, and an
+      # `if` on a game number is decided once, while building. A test class's constants are made
+      # shareable (Testing::InRactors), so a block kept in one did exactly that, with no error.
+      # A block whose source reads the same rewritten has nothing to lose, and runs as it is.
+      def refuse_shareable_block_with_game_code!(block)
+        return unless Ractor.shareable?(block) && file_block?(block)
+
+        source, node = source_and_block_of(block)
+        return if Rewriter.new(source, node, follows_instance_variables: !library_file?(block.source_location.first))
+                          .rewritten_block == node.slice
+
+        file, line = block.source_location
+        raise Refused, "The block at #{File.basename(file)}:#{line} is shareable between Ractors, so VBlank cannot " \
+                       "read it as normal Ruby. Its game code, such as `+=` or `if` on a game number, will do " \
+                       "nothing in the game. In a test, a constant makes the block it keeps shareable. To fix this, " \
+                       "return the block from a method, not from a constant."
+      end
+
+      # Whether +block+ was written in a file, not made by `eval` or by this module.
+      def file_block?(block)
+        iseq = RubyVM::InstructionSequence.of(block)
+        !iseq&.absolute_path.nil? && File.file?(iseq.absolute_path)
       end
 
       def game_blocks_checked? = true
@@ -94,8 +121,7 @@ module VBlank
       # Can +block+ be rewritten? It takes a file to read and a scope to run in, and a proc this
       # module made already has no file of its own, which is how it is not rewritten twice.
       def rewritable?(block)
-        iseq = RubyVM::InstructionSequence.of(block)
-        return false unless iseq&.absolute_path && File.file?(iseq.absolute_path)
+        return false unless file_block?(block)
 
         block.binding
         true
@@ -174,6 +200,7 @@ module VBlank
         # file's strings is there, and so is every line the numbers after it count from.
         opening = source.byteslice(0, root.location.start_offset).force_encoding(Encoding::UTF_8)
         library = library_file?(path)
+        CallChanges.record_game_method_names(root) unless library
         rewriter = Rewriter.new(source, source_label: File.expand_path(path), follows_instance_variables: !library)
         rewritten = "#{opening}#{rewriter.rewritten(root)}"
         return rewritten if library
@@ -191,6 +218,10 @@ module VBlank
         INSTANCE_VARIABLES = "::VBlank::DSL::PlainRuby::InstanceVariables"
         NEW_VALUE = "__plain_ruby_new"
         JUMPS = [Prism::ReturnNode, Prism::BreakNode, Prism::NextNode].freeze
+
+        # Values written out, which a jump can hand back without recording anything.
+        LITERALS = [Prism::NilNode, Prism::TrueNode, Prism::FalseNode, Prism::IntegerNode, Prism::FloatNode,
+                    Prism::SymbolNode, Prism::StringNode].freeze
 
         attr_reader :block_node
 
@@ -563,14 +594,20 @@ module VBlank
           "#{STEPS}.bits(#{argument(node.receiver)}, :#{node.name}, #{argument(node.arguments.arguments.first)})"
         end
 
+        # `slots[i] = value`. The value is written for its value, so a ternary, an `if` with an
+        # `else` or a `case` there picks the number that goes into the slot, as it does into
+        # `x = ...`; as a statement it would record its two sides and hand on nothing.
         def index_write_text(node)
-          *keys, value = node.arguments.arguments.map { |each_argument| argument(each_argument) }
-          slot_write_text(argument(node.receiver), keys, value, written_place(node, node.arguments))
+          *keys, value = node.arguments.arguments
+          keys = keys.map { |key| argument(key) }
+          slot_write_text(argument(node.receiver), keys, "(#{value_text(value)})", written_place(node, node.arguments))
         end
 
+        # ...and `thing.field = value`, the same way.
         def attribute_write_text(node)
           label = node.slice[/\A[^=]*/].strip
-          attribute_write(argument(node.receiver), node.name.to_s.delete_suffix("="), argument(node.arguments.arguments.first), label)
+          value = "(#{value_text(node.arguments.arguments.first)})"
+          attribute_write(argument(node.receiver), node.name.to_s.delete_suffix("="), value, label)
         end
 
         def written_place(node, arguments) = "#{node.receiver.slice}[#{arguments.arguments[0...-1].map(&:slice).join(', ')}]"
@@ -684,9 +721,10 @@ module VBlank
         def instance_variable_write_text(node)
           prefix = between(node.location.start_offset, node.value.location.start_offset)
           value = value_text(node.value)
-          return "#{prefix}#{WRITES}.keep_as_own(#{value})" if LocalNames.makes_variable?(node.value)
+          return "#{prefix}#{WRITES}.keep_as_own((#{value}), self, :#{node.name})" if LocalNames.makes_variable?(node.value)
 
           copies = @names.moved_in_game_code?(node.name) ? ", copies: true" : ""
+          copies += ", shares: true" if @names.argument_read?(node.value)
           "#{prefix}#{write_call(instance_variable_place_text(node.name), "(#{value})", node.name,
                                  options: ", moves: true#{copies}#{owner_option}")}"
         end
@@ -695,7 +733,7 @@ module VBlank
         def instance_variable_or_text(node)
           return instance_variable_logic_text(node, "join_either") unless LocalNames.makes_variable?(node.value)
 
-          "#{node.name} ||= #{WRITES}.keep_as_own(#{value_text(node.value)})"
+          "#{node.name} ||= #{WRITES}.keep_as_own((#{value_text(node.value)}), self, :#{node.name})"
         end
 
         # `@x ||= value` and `@x &&= value`. On an instance variable the game names, in game code,
@@ -754,7 +792,7 @@ module VBlank
           prefix = between(node.location.start_offset, node.value.location.start_offset)
           # A name kept for a read past its `if` can stay a plain name under a test further out, so
           # it keeps its answer the way any plain name does.
-          return "#{prefix}#{second_name_write(node.name, "(#{promoted_value_text(node)})", node)}" if promoted?(node)
+          return "#{prefix}#{second_name_write(node.name, "(#{kept_value_text(node.value, node)})", node)}" if promoted?(node)
           return picked_into_text(node) if picks_into_variable?(node)
           return joined_into_text(node, prefix) if joins_into_variable?(node)
 
@@ -765,11 +803,17 @@ module VBlank
           # The line that makes a variable in game code sets it on every pass, as Ruby would.
           when :start then "#{prefix}#{start_text(node)}"
           when :assign then "#{prefix}#{assign_text(node.name, "(#{value_text(node.value)})")}"
-          else "#{prefix}#{noted_if_handed(node, kept_value_text(node.value, node))}"
+          else "#{prefix}#{noted_if_handed(node, local_value_text(node))}"
           end
         end
 
-        def promoted_value_text(node) = @names.read_after_it_changes?(node) ? kept_value_text(node.value, node) : value_text(node.value)
+        # A local a `var` line makes keeps the variable as its own (Writes.keep_as_local).
+        def local_value_text(node)
+          value = kept_value_text(node.value, node)
+          return value unless LocalNames.var_call?(node)
+
+          "#{WRITES}.keep_as_local((#{value}), :#{node.name})"
+        end
 
         # A write to a plain name that already holds something, which may turn out to be a game
         # variable it was handed (Writes.note_handed_name_written). The name's first line holds
@@ -811,19 +855,17 @@ module VBlank
           "#{WRITES}.variable_set_where_reached(self, :#{name}, #{start}#{", sets: #{sets}" if sets}#{source_option_text})"
         end
 
-        def kept_value_text(value, write = nil)
-          if write && @names.read_after_it_changes?(write)
-            # A game variable the line hands back (`floors = routine_var(:floors)`, `col_x = @col_x`)
-            # is the variable itself, as the object a Ruby name is given is: kept only for a call,
-            # it stays that variable and follows its own `floors.increase!(1)`. A change the source
-            # writes to a name the line reads still copies one, as `old = hp` keeps hp's number.
-            handed_back = !@names.kept_for_named_change?(write)
-            copy_variable_text = handed_back ? ", copy_variable: false" : ""
-            return "#{STEPS}.kept_answer((#{value_text(value)})#{copy_variable_text})"
-          end
-          return value_text(value) unless value.is_a?(Prism::LocalVariableReadNode) && @names.variable_read?(value)
+        # What a plain local is given: its value, kept as Ruby keeps it where LocalNames#copy_kept
+        # cannot prove that nothing changes it before it is read.
+        #
+        # A button read while setting up and kept for game code is noted for the build's warning
+        # (Steps.kept_answer's +button_kept+).
+        def kept_value_text(value, write)
+          kept = @names.copy_kept(write)
+          return value_text(value) unless kept
 
-          "#{STEPS}.copy_of_variable(#{rewritten_text(value)})"
+          button = ", button_kept: true" if @names.button_read_later?(write)
+          "#{STEPS}.kept_answer((#{value_text(value)}), copy: :#{kept}, name: :#{write.name}#{button})"
         end
 
         def value_text(value)
@@ -957,7 +999,7 @@ module VBlank
           given = [answer, *outer].join(", ")
           names = @names.names_to_promote(node, sides).map do |name|
             stays = @names.written_on_every_side?(name, sides) ? "" : ", may_stay_nil: true"
-            "#{name} = #{WRITES}.promote(#{name}, #{given}#{stays}); "
+            "#{name} = #{WRITES}.promote(#{name}, #{given}#{stays}, name: :#{name}); "
           end
           (names + @names.places_changed_in(sides).filter_map { |place| place_promotion_text(place, given) }).uniq.join
         end
@@ -1074,7 +1116,7 @@ module VBlank
           promotions = promotions_text(node, [node.statements], test)
           body = under_open_test(test) { side_body_text(node, shut_at) }
           first = node.begin_modifier? ? "#{body}; " : ""
-          "(#{test} = #{STEPS}.#{step} { #{rewritten_text(node.predicate)} }; #{first}" \
+          "(#{test} = #{STEPS}.#{step}(#{as_written(node.predicate)}) { #{rewritten_text(node.predicate)} }; #{first}" \
             "while #{test}.go_round#{" { #{promotions} }" unless promotions.empty?}; #{body}; end)"
         end
 
@@ -1096,10 +1138,48 @@ module VBlank
           answer = "__plain_ruby_#{@answers += 1}"
           shut_at = node.end_keyword_loc&.start_offset || node.location.end_offset
           promotions = promotions_text(node, [node.statements, other_side(node)], answer)
+          watched = kept ? nil : flag_tested(node)
           sides = under_open_test(answer) do
             "#{yes_side_text(node, answer, shut_at, kept)}#{no_side_text(node, answer, shut_at, kept)}"
           end
-          "(#{answer} = #{STEPS}.branch_test(#{test_text(node)}); #{promotions}#{sides}#{answer}.#{value_step(kept)})"
+          watch = watched ? "#{answer}.watch_flag(#{flag_watch_arguments(node, watched)}); " : ""
+          "(#{answer} = #{STEPS}.branch_test(#{test_text(node)}); #{watch}#{promotions}#{sides}#{answer}.#{value_step(kept)})"
+        end
+
+        # The instance variable a conditional tests standing alone (`if @open`, `unless @planned`,
+        # `if !@open`), where the rewrite follows instance variables, or nil. A plain `true` or
+        # `false` tested so is a once-guard or a game flag, and what its sides record tells which
+        # (Steps::BuildTest#watch_flag).
+        def flag_tested(node)
+          return unless @follows_instance_variables
+
+          tested = node.predicate
+          tested = tested.receiver if tested.is_a?(Prism::CallNode) && tested.name == :! && tested.arguments.nil?
+          tested.name if tested.is_a?(Prism::InstanceVariableReadNode)
+        end
+
+        # What BuildTest#watch_flag is handed: the object, the instance variable and what it holds
+        # now, where the test is written (so a side skipped here can be matched with the same side
+        # run where the build reached the line before or after), and whether each side records
+        # nothing whatever runs it, read off the source: nothing written, a `return`, `break` or
+        # `next` alone, or a `raise`, which stops the build (`raise ArgumentError, "..." if @written`,
+        # a guard on how the game is put together).
+        def flag_watch_arguments(node, name)
+          other = other_side(node)
+          quiet_no = other.nil? || (other.is_a?(Prism::ElseNode) && quiet_side?(other.statements))
+          site = "#{@source_label}:#{node.location.start_offset}"
+          "self, :#{name}, #{name}, site: #{site.inspect}, quiet_yes: #{quiet_side?(node.statements)}, quiet_no: #{quiet_no}"
+        end
+
+        def quiet_side?(statements)
+          statements.nil? || statements.body.all? { |statement| quiet_statement?(statement) }
+        end
+
+        def quiet_statement?(statement)
+          return true if statement.is_a?(Prism::CallNode) && statement.receiver.nil? && %i[raise fail].include?(statement.name)
+
+          JUMPS.any? { |kind| statement.is_a?(kind) } &&
+            (statement.arguments.nil? || statement.arguments.arguments.all? { |given| LITERALS.any? { |kind| given.is_a?(kind) } })
         end
 
         def value_step(kept)
@@ -1263,6 +1343,10 @@ module VBlank
         def test_text(node)
           node.is_a?(Prism::UnlessNode) ? "#{STEPS}.opposite(#{argument(node.predicate)})" : argument(node.predicate)
         end
+
+        # A loop's test as the author wrote it, as a String literal on one line, for the words a
+        # step says when the test is a game number standing alone (Steps.refuse_number_as_loop_test!).
+        def as_written(node) = node.slice.inspect
 
         def other_side(node) = node.is_a?(Prism::UnlessNode) ? node.else_clause : node.subsequent
 

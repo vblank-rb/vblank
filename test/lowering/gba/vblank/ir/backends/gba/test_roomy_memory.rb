@@ -552,6 +552,46 @@ class TestRoomyMemory < Minitest::Test
     refute_match(/__pool/, printed, "none of the names the build made up")
   end
 
+  # WHAT THE BUILD KEEPS THERE FOR ITSELF, as the memory check reads it off the program before the
+  # game is lowered (GBA::Roomy.reserved_by_build), is what the lowering then claims: a song and sound
+  # effects on a recording, a held background and 128K of flash, with no collection of the game's
+  # in the roomy memory, so everything there is the build's own.
+  def test_what_the_memory_check_counts_as_the_builds_own_is_what_the_lowering_claims
+    score = VBlank::Audio::Score
+    notes = %i[C4 E4].each_with_index.map { |key, n| score::Note.new(at: n * 10, key: key) }
+    game = VBlank.game("KEPT", consoles: %i[gba], save_memory: 128) do
+      screen :tiled
+      enable_sound
+      instrument :piano, pcm: [60, -60] * 400, rate: 8000, note: :C4
+      music = songs :music, [score.new(tempo: 150, parts: [score::Part.new(plays: :piano, notes: notes)])]
+      sfx = sound_effects :sfx, [score.new(tempo: 150, parts: [score::Part.new(plays: :piano, notes: notes)]),
+                                 score.new(tempo: 150, parts: [score::Part.new(plays: nil, notes: notes)])]
+      image(:wall, "#" => :red) { Minitest::Test::SOLID_TILE }
+      tiles :frame, "#" => :wall, "." => :wall
+      box = background :box, tiles: :frame, map: Array.new(4) { "#" * 8 }, held: true
+      hearts = 3
+      file = save_data(:file) { keep hearts }
+      game_loop do
+        music.play 0
+        sfx.play 0 if pressed(:a)
+        box.set_tile 1, 1, "."
+        if pressed(:b)
+          hearts = 7
+          file[0].save
+        end
+      end
+    end
+    kept = GBA::Roomy.reserved_by_build(game.program)
+    roomy = roomy_of(game.build_rom(out: StringIO.new, err: StringIO.new, profile: false))
+
+    assert_equal ["the sound mixer's buffers", "the sound effects table", "the save memory's working space",
+                  "the background cell changes"], kept.map(&:label)
+    # The save record's list, which no frame reads, goes there too: its slots and the word
+    # saying how many it holds. That is the game's, which the check counts as a list.
+    record = roomy.collections.sum { |_name, bytes| bytes + GBA::Memory::WORD }
+    assert_equal roomy.used, kept.sum(&:bytes) + record
+  end
+
   # A game whose state fits reads nothing about a second memory it never met.
   def test_a_game_that_fits_says_nothing_about_it
     rom = build("SMALL") do

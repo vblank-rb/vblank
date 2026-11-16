@@ -291,8 +291,21 @@ module VBlank
         #
         # A check from a pack or a game that declares none is named by its class, so every
         # check in the list still has something to show.
+        #
+        # THE CHECK'S CLASS IS FOUND THROUGH Kernel#class BOUND TO IT (bind_call), NOT BY
+        # `check.class`, because the plain call crashes Ruby (4.0.9, and 4.1 as it stands, on
+        # Apple's arm64) when several Ractors build at once. This one line sees some sixty classes
+        # in turn, in the same order in every Ractor. Ruby keeps what it found for the last class
+        # at the call site itself, in memory every Ractor shares, and for Kernel#class (one of
+        # Ruby's own methods written in Ruby around a call into C, a "leaf builtin") that call
+        # races between Ractors: about one build run in fifty jumped to address zero. The crash
+        # report then loops for ever printing the C backtrace, so the run hung rather than
+        # stopped. Ruby alone shows it, with no VBlank: Ractors each asking `.class` of objects
+        # of two thousand classes crash most runs, while the same through bind_call, or with
+        # #hash (a plain C method), or with one or two classes, never did. bind_call keeps
+        # nothing at the call site, and reaching around the plain call is the point here.
         def plain_name(check)
-          klass = check.class
+          klass = Kernel.instance_method(:class).bind_call(check)
           return klass::PLAIN_NAME if klass.const_defined?(:PLAIN_NAME, false)
 
           klass.name.to_s.split("::").last
@@ -315,6 +328,7 @@ require_relative "guardrails/tint_never_lifted"
 require_relative "guardrails/dropped_frame_sync"
 require_relative "guardrails/estimate_does_nothing"
 require_relative "guardrails/handed_name_written"
+require_relative "guardrails/press_kept_from_setting_up"
 require_relative "guardrails/vblank_sync"
 require_relative "guardrails/termination"
 require_relative "guardrails/loop_never_waits"
@@ -346,10 +360,11 @@ require_relative "guardrails/layer_solid_while_fading"
 require_relative "guardrails/stack_not_honored"
 require_relative "guardrails/too_many_background_layers"
 require_relative "guardrails/too_many_status_bars"
+require_relative "guardrails/too_many_backgrounds_alone"
 require_relative "guardrails/status_bar_cannot_share"
 require_relative "guardrails/boxed_background_cannot_share"
 require_relative "guardrails/sprite_over_picture_beside_tiles"
-require_relative "guardrails/layer_refusals" # the five above, which each backend asks itself
+require_relative "guardrails/layer_refusals" # The six above, which each backend asks itself
 require_relative "guardrails/sprite_words" # shared by the two sprite checks below
 require_relative "guardrails/too_many_sprites"
 require_relative "guardrails/poses_with_different_colors"
@@ -401,6 +416,7 @@ module VBlank
         Checks::LayerSolidWhileFading.new,
         Checks::TooManyBackgroundLayers.new,
         Checks::TooManyStatusBars.new,
+        Checks::TooManyBackgroundsAlone.new,
         Checks::StatusBarCannotShare.new,
         Checks::BoxedBackgroundCannotShare.new,
         Checks::SpriteOverPictureBesideTiles.new,

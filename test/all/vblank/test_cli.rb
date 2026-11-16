@@ -45,6 +45,75 @@ class TestCLI < Minitest::Test
       assert_match(/Built demo\.gba \(\d+ bytes\)/, build_out)
       assert_match(/Built demo\.gbc \(\d+ bytes\)/, build_out)
       refute_match(/warning/, build_out, "the starter builds with nothing to warn about")
+      refute_match(/Build stopped/, build_out, "a build that worked does not say it stopped")
+    end
+  end
+
+  # A game whose `while` tests a number with no comparison, which stops the build as it reads the game.
+  LOOP_ON_A_NUMBER = <<~GAME
+    require "vblank"
+    VBlank.game("OOPS", consoles: %i[gba]) do
+      screen :bitmap
+      count = var :count, 0
+      game_loop { count += 1 while count }
+    end
+  GAME
+
+  # A game the guardrails stop: drawing on a tiled screen.
+  DRAWS_ON_TILES = <<~GAME
+    require "vblank"
+    VBlank.game("TILED", consoles: %i[gba]) do
+      screen :tiled
+      game_loop { fill_rect 0, 0, 8, 8, :red }
+    end
+  GAME
+
+  # What a command said once its build's phases ("  Reading game  0.1s") and its "Building ... -
+  # Please wait." are taken out: the refusal, whose first line is what a person reads first.
+  private def refusal_lines(out)
+    out.lines.map(&:chomp).reject { |line| line.start_with?("  ") || line.start_with?("Building ") }
+  end
+
+  # A build that stops says so in its first line, before the reason, so nobody reads the reason
+  # and wonders whether the game will still play.
+  def test_a_build_that_stops_says_so_before_the_reason
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "oops.rb"), LOOP_ON_A_NUMBER)
+      out, status = cli("build", "oops.rb", dir: dir)
+
+      refute status.success?, out
+      lines = refusal_lines(out)
+      assert_match(/\ABuild stopped: OOPS .*Nothing was built/, lines.first, out)
+      assert_equal "", lines[1], "a blank line comes between the headline and the reason"
+      assert_match(/with no comparison/, lines[2], out)
+      refute File.exist?(File.join(dir, "oops.gba"))
+    end
+  end
+
+  def test_run_says_its_build_stopped_before_the_reason
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "oops.rb"), LOOP_ON_A_NUMBER)
+      out, status = cli("run", "oops.rb", dir: dir)
+
+      refute status.success?, out
+      lines = refusal_lines(out)
+      assert_match(/\ABuild stopped: OOPS .*nothing will play/, lines.first, out)
+      assert_match(/with no comparison/, out)
+    end
+  end
+
+  # The guardrails print their findings themselves: the headline goes above them, once.
+  def test_a_build_the_guardrails_stop_says_so_once_above_the_findings
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "tiled.rb"), DRAWS_ON_TILES)
+      out, status = cli("build", "tiled.rb", dir: dir)
+
+      refute status.success?, out
+      lines = refusal_lines(out)
+      assert_match(/\ABuild stopped: TILED /, lines.first, out)
+      assert_match(/1 problem about this game:/, lines[2], out)
+      assert_equal 1, out.scan("Build stopped").size, out
+      assert_match(/Fix the problem above/, out)
     end
   end
 
@@ -107,6 +176,36 @@ class TestCLI < Minitest::Test
       refute status.success?
       assert_match(/:floors has no default, and this build did not give it\. This build gave :flors/, out)
       refute_match(/\.rb:\d+:in/, out, "should not leak a backtrace")
+    end
+  end
+
+  # A game that needs two settings, neither with a default.
+  NEEDS_TWO_SETTINGS = <<~RUBY
+    require "vblank"
+    VBlank.game "TWOSETS", consoles: %i[gba] do
+      screen :bitmap
+      var :floors, Integer(setting(:floors))
+      var :ammo, Integer(setting(:ammo))
+      game_loop { wait_vblank }
+    end
+  RUBY
+
+  # --set written once for each setting gives the game every one of them, on every command that
+  # takes it, as one --set with several does. The same name twice keeps the later value.
+  def test_a_repeated_set_gives_every_setting
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "two.rb"), NEEDS_TWO_SETTINGS)
+      File.write(File.join(dir, "idle.rb"), "VBlank.playthrough('idle') { wait frames: 2 }\n")
+
+      out, status = cli("build", "two.rb", "--set", "floors=1", "--set", "ammo=90", dir: dir)
+      assert status.success?, out
+
+      out, status = cli("run", "two.rb", "--no-window", "--script", "idle.rb", "--set", "floors=1",
+                        "--set", "ammo=90", dir: dir)
+      assert status.success?, out
+
+      out, status = cli("build", "two.rb", "--set", "floors=x", "ammo=90", "--set", "floors=1", dir: dir)
+      assert status.success?, "the later floors=1 is the one kept: #{out}"
     end
   end
 
@@ -590,7 +689,7 @@ class TestCLI < Minitest::Test
       assert status.success?, out
       assert_match(/DEMO for the Game Boy Advance in Ruby #{Regexp.escape(RUBY_VERSION)} with (YJIT|ZJIT|no JIT)\./o, out)
       assert_match(/DEMO is for the Game Boy Advance and the Game Boy Color\. This plays it as the Game Boy Advance\. To play it as the Game Boy Color, add --console gbc\./, out)
-      assert_match(/5 frames in [\d.]+ s/, out)
+      assert_match(/4 frames in [\d.]+ s/, out)
       assert_match(/the console shows 59\.7\)/, out)
     end
   end
@@ -667,7 +766,7 @@ class TestCLI < Minitest::Test
 
         assert status.success?, played
         assert_match(/Playing DEMO/, played)
-        assert_match(/3 frames in/, played)
+        assert_match(/2 frames in/, played)
       end
     end
   end
@@ -705,7 +804,7 @@ class TestCLI < Minitest::Test
 
       assert status.success?, out
       assert_match(/COLORONLY for the Game Boy Color/, out)
-      assert_match(/3 frames in/, out)
+      assert_match(/2 frames in/, out)
     end
   end
 
@@ -860,6 +959,37 @@ class TestCLI < Minitest::Test
 
       refute status.success?
       assert_match(/--console gbc/, out)
+    end
+  end
+
+  # A person who wants a cartridge reaches for the console's name, since native, web and ruby
+  # each name where the game runs. Every console's name is answered with the way forward: a
+  # cartridge needs no --format, and --console picks the console.
+  def test_format_naming_a_console_says_to_leave_it_out_or_use_console
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "both.rb"), BOTH)
+      out, status = cli("build", "both.rb", "--format", "gba", dir: dir)
+
+      refute status.success?
+      assert_match(/gba is a console, not a build format/, out)
+      assert_match(/leave out --format/, out)
+      assert_match(/--console gba/, out)
+      refute File.exist?(File.join(dir, "both.gba")), "a refused build writes nothing"
+
+      out, = cli("build", "both.rb", "--format", "SNES", dir: dir)
+      assert_match(/SNES is a console.*--console snes/m, out, "any console, written in capitals too")
+    end
+  end
+
+  # A format that is no console's name still says how to get a cartridge.
+  def test_an_unknown_format_says_a_cartridge_needs_no_format
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "both.rb"), BOTH)
+      out, status = cli("build", "both.rb", "--format", "rom", dir: dir)
+
+      refute status.success?
+      assert_match(/"rom" is not a build format/, out)
+      assert_match(/To build a cartridge, leave out --format/, out)
     end
   end
 

@@ -196,6 +196,28 @@ class TestTimers < Minitest::Test
     assert_raises(ArgumentError) { tree { every(2.5) { nil } } }
   end
 
+  # A beat is counted while the game is built, so a variable there is refused, and the message
+  # names the variable the author wrote rather than printing a Ruby object.
+  def test_every_given_a_variable_names_it
+    err = assert_raises(ArgumentError) { tree { speed = var(:speed, 3); every(speed) { nil } } }
+    assert_match(/every/, err.message)
+    assert_match(/`speed`/, err.message)
+    refute_match(/#</, err.message, "the message prints no Ruby object")
+  end
+
+  def test_after_given_a_variable_names_it
+    err = assert_raises(ArgumentError) { tree { delay = var(:delay, 3); after(delay) { nil } } }
+    assert_match(/after/, err.message)
+    assert_match(/`delay`/, err.message)
+    refute_match(/#</, err.message, "the message prints no Ruby object")
+  end
+
+  def test_every_given_a_worked_out_number_says_so
+    err = assert_raises(ArgumentError) { tree { speed = var(:speed, 3); every(speed * 2) { nil } } }
+    assert_match(/works out/, err.message)
+    refute_match(/#</, err.message, "the message prints no Ruby object")
+  end
+
   def test_every_needs_a_block
     err = assert_raises(ArgumentError) { tree { every(3) } }
     assert_match(/block/, err.message)

@@ -20,14 +20,15 @@ module VBlank
     # 5. plays the tape on both starts and on the all-in-one build, and compares every picture and
     #    every sample of sound.
     #
-    # The shell is played as Ruby (Live::Shell), the way `vblank run --shell` plays it. A machine
+    # The shell is played as Ruby (Live::Shell), the way `vblank run --shell` plays it, on a Headless
+    # device asked what the window is asked and opened at the window's size. A machine
     # that names no copy stops at step 2 with Original::NotSet, whose words say how to name one. Any
     # other step that goes wrong raises Failed, saying which step and where it went wrong.
     class ShellCheck
       class Failed < StandardError; end
 
       PASSES_WITHOUT_TAPE = 300         # Passes played with nothing pressed, when no tape is given
-      MENU_PRESSES = { 2 => [:a] }.freeze # A on the menu's second pass: LOAD ROM, the line it starts on
+      MENU_PRESSES = Ractor.make_shareable({ 2 => [:a] }) # A on the menu's second pass: LOAD ROM, the line it starts on
       MOST_UNPACKING_PASSES = 1_000_000 # The menu and the unpacking together, before the check gives up
 
       # What one run of a game showed and sounded: each pass's picture's pixels, and each pass's
@@ -67,6 +68,8 @@ module VBlank
         shell = Original::Shell.build(@game, console: console, err: nil)
         copy = shell.original.copy
         live = Shell.from(shell)
+        # The size `vblank run --shell` opens its window at, which refuses a picture of any other.
+        @screen = shell.game.described_console.framed_screen_size
         Dir.mktmpdir("vblank-shell-check") { |folder| compare_starts_with_all_in_one(live, console, copy, folder) }
       end
 
@@ -108,7 +111,7 @@ module VBlank
         refusals = []
         asked = 0
         played = nil
-        live.play(Headless.new(frames: MOST_UNPACKING_PASSES, buttons: MENU_PRESSES), folder_path: kept_in,
+        live.play(Headless.new(frames: MOST_UNPACKING_PASSES, buttons: MENU_PRESSES, screen: @screen), folder_path: kept_in,
                   choose_copy: lambda {
                     asked += 1
                     handed
@@ -172,7 +175,7 @@ module VBlank
 
       # What +session+ showed and sounded over the tape.
       def record_play(session)
-        device = Headless.new(frames: passes, buttons: buttons_by_pass)
+        device = Headless.new(frames: passes, buttons: buttons_by_pass, screen: @screen)
         session.play(device)
         Played.new(pictures: device.pictures.map(&:pixels), sounds: device.sounds)
       end

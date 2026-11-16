@@ -65,7 +65,9 @@ module VBlank
     # game starts gives `length:` and `loop_from:` as numbers of the pack (`pack[:song].number(0)`,
     # Builder::PackScores), which no build can read until the player's copy is unpacked. +longest+
     # is then the most ticks the song can last, the one number such a build must know: it holds room
-    # for that many. Any other Score leaves it out, and one that gives it plays as without it.
+    # for that many. Any other Score leaves it out, and one that gives it plays as without it. A
+    # `loop_from:` of the pack with every bit set is no loop (IR::StartFile.no_loop?): the song
+    # plays once, as with `plays_once: true`.
     Score = Data.define(:parts, :tempo, :ticks_per_beat, :length, :loop_from, :plays_once, :priority, :group,
                         :low_notes_intended, :keeps_voices, :longest)
 
@@ -104,6 +106,15 @@ module VBlank
 
         Checks.loop_from!(loop_from, ticks) { frames.at(loop_from) < total }
         song.merge(loop_frame: frames.at(loop_from))
+      end
+
+      # Whether the song can come round to +tick+: one before its end, counted in ticks and in the
+      # frames they fall on, as #to_song asks of `loop_from:`. Builder::PackScores asks it of a loop
+      # point read from the pack, which it holds rather than refuses.
+      def comes_round_to?(tick)
+        frames = Timing.new(self)
+        ticks = length || last_tick
+        tick < ticks && frames.at(tick) < [frames.at(ticks), 1].max
       end
 
       private def last_tick
@@ -169,7 +180,7 @@ module VBlank
       # +slide_down+ how it slides its pitch, +vibrato+ how it wobbles, +pan+ the speaker it plays
       # from, and +duty+ its shape or the shapes it steps through (see Part).
       Note = Data.define(:at, :key, :length, :instrument, :volume, :envelope, :hz, :decay, :swell, :slide_up,
-                         :slide_down, :vibrato, :pan, :duty, :pitch_number, :noise_clock, :glides)
+                         :slide_down, :vibrato, :pan, :duty, :pitch_number, :noise_clock, :glides, :metallic, :wave)
 
       class Note
         # A NOTE ON A SQUARE VOICE OR THE WAVE VOICE CAN GIVE +pitch_number+ IN PLACE OF A KEY: the
@@ -193,13 +204,28 @@ module VBlank
         # A NOTE ON A RECORDING CAN GIVE +hz+ IN PLACE OF A KEY too, for a pitch no key reaches: the
         # recording's own note, as a frequency, reads it at the rate it was recorded. And it can set
         # +glides: true+: it does not strike. The note sounding on its part carries on from where
-        # it has got to, fading as it was, at this pitch from here. If the part has no note sounding
-        # by then, nothing sounds.
+        # it has got to, fading as it was, at this pitch from here, and at this note's +volume+ and
+        # +pan+ where it names them; else the note keeps its own. If the part has no note sounding by then,
+        # nothing sounds.
+        #
+        # A NOTE ON THE NOISE VOICE CAN SAY WHETHER IT RATTLES, `metallic: true` or `false`, in place
+        # of its part's +metallic+: the short, metallic hiss or the full one. Another Game Boy game's
+        # sound engine sets that bit for each drum hit it strikes, so a converted drum part has some
+        # hits that rattle and some that do not.
+        #
+        # A NOTE ON THE WAVE VOICE CAN NAME ITS OWN +wave+, in place of the one its part plays: a
+        # shape (:sine, :triangle, :sawtooth, or :wave for the middle one) or 32 steps of 0 to 15,
+        # as a part's `plays:` takes them. The voice holds one waveform, so the note puts its own in
+        # as it starts, on the notes where the waveform changes.
         def initialize(at:, key: nil, length: nil, instrument: nil, volume: nil, envelope: nil, hz: nil,
                        decay: nil, swell: nil, slide_up: nil, slide_down: nil, vibrato: nil, pan: nil, duty: nil,
-                       pitch_number: nil, noise_clock: nil, glides: nil)
+                       pitch_number: nil, noise_clock: nil, glides: nil, metallic: nil, wave: nil)
           super
         end
+
+        # The waveform this note names for itself (a shape or 32 steps, as Music.resolve_plays gives a
+        # part's), or nil to play its part's.
+        def own_wave = wave && Music.resolve_plays(wave)[:wave]
 
         # How this note fades or swells, when it sets one (an Audio::NoteFade), or nil. +part+ names its
         # part, for a friendly error.
@@ -281,7 +307,8 @@ module VBlank
           events = notes.each_with_index.flat_map do |note, n|
             said = Music.without_trailing_nils([note.fade(who), note.slide(who), note.wobble(who), note.side(who),
                                                 note.shape(who), note.noise_clock, note.glides || nil,
-                                                SNESEnvelope.chip_envelope_of(note.envelope)])
+                                                SNESEnvelope.chip_envelope_of(note.envelope), note.metallic,
+                                                note.own_wave])
             on = [frames.at(note.at), note.frequency(kind), note.instrument_name, note.volume,
                   SNESEnvelope.nearest_shape(note.envelope, "a note"), *said]
             next [on] unless note.length
@@ -415,7 +442,36 @@ module VBlank
           refuse_bad_glide!(note, where, voice) unless note.glides.nil?
           pitch_number!(note, where, voice) unless note.pitch_number.nil?
           noise_clock!(note, where, voice) unless note.noise_clock.nil?
+          refuse_bad_metallic!(note, where, voice) unless note.metallic.nil?
+          refuse_bad_wave!(note, where, voice) unless note.wave.nil?
           volume!(note.volume, where, recording?(voice)) if note.volume
+        end
+
+        # A note that says +metallic+ is on the noise voice, and says true or false.
+        def refuse_bad_metallic!(note, where, voice)
+          unless noise?(voice)
+            raise ArgumentError, "#{where} gives `metallic:`. Only a note on the noise voice (`plays: :noise`) can " \
+                                 "rattle. Remove `metallic:` from the note."
+          end
+          return if [true, false].include?(note.metallic)
+
+          raise ArgumentError, "#{where} has `metallic: #{note.metallic.inspect}`. It must be true or false. Give it true or " \
+                               "false, or remove it."
+        end
+
+        # A note that names a +wave+ is on the wave voice, and names a waveform that voice has.
+        def refuse_bad_wave!(note, where, voice)
+          unless voice.key?(:wave)
+            raise ArgumentError, "#{where} gives `wave:`. Only a note on the wave voice (`plays: :wave`) has a " \
+                                 "waveform. Remove `wave:` from the note."
+          end
+          # 32 steps refuse a wrong length or step in their own words.
+          Sound.wave_steps!(note.wave) if note.wave.is_a?(Array)
+          return if note.wave.is_a?(Array) || Music::WAVE_SHAPES.include?(note.wave) || note.wave == :wave
+
+          raise ArgumentError, "#{where} has `wave: #{note.wave.inspect}`. A wave is a shape " \
+                               "(#{Music::WAVE_SHAPES.map(&:inspect).join(', ')}) or #{Sound::WAVE_SAMPLES} steps of 0 to " \
+                               "#{Sound::WAVE_STEP_MAX}. Give one of those."
         end
 
         # Does a part play a recording, rather than one of the console's own voices?
@@ -428,9 +484,10 @@ module VBlank
         NOISE_CLOCK_HZ_TEXT = Ractor.make_shareable(Sound::NOISE_CLOCK_HZ.digits.each_slice(3).map(&:join)
                                                                          .join(",").reverse)
 
-        # A note that sets +glides+ plays a recording and has a pitch to glide to. Everything else
-        # about the note it carries on is that note's, so it sets nothing else: an instrument, a
-        # volume or a shape here would have nothing to act on.
+        # A note that sets +glides+ plays a recording and has a pitch to glide to. It changes what
+        # the note sounding plays as it sounds: its pitch, and its loudness and side (its own
+        # `volume:` and `pan:`; where it names none, the note keeps its own). The recording and its shape are
+        # the note's, so an instrument or a shape here would have nothing to act on.
         def refuse_bad_glide!(note, where, voice)
           unless [true, false].include?(note.glides)
             raise ArgumentError, "#{where} has `glides: #{note.glides.inspect}`. It must be true or false."
@@ -441,11 +498,11 @@ module VBlank
             raise ArgumentError, "#{where} has `glides: true`. Only a note of a part that plays a recording can glide. " \
                                  "It must have a `key:` or `hz:` to glide to."
           end
-          return unless note.instrument || note.volume || note.envelope
+          return unless note.instrument || note.envelope
 
-          raise ArgumentError, "#{where} has `glides: true` and its own instrument, volume or envelope. A note that " \
-                               "glides carries on the note that sounds, so it keeps that note's. Remove them, or " \
-                               "remove `glides: true` to strike a new note."
+          raise ArgumentError, "#{where} has `glides: true` and its own instrument or envelope. A note that " \
+                               "glides carries on the note that sounds, so it keeps that note's recording and " \
+                               "shape. Remove them, or remove `glides: true` to strike a new note."
         end
 
         # A note that gives +hz+ is on the noise voice or a recording, gives no key as well, and

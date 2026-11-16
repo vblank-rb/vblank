@@ -43,7 +43,9 @@ module VBlank
         # A sprite's lists are the ones a changing list can stand among, so the build keeps
         # track of who draws with what (see Builder::ColorLists).
         @builder.remember_sprite_recolors(self) if colors_for.nil?
-        @colors_for = colors_for || ->(names) { @builder.colors_to_draw_with(names, poses: @poses, subject: @subject) }
+        @sprite = colors_for.nil?
+        @across_lists = [] # lists told to stand for every list the poses are drawn from, by a hash
+        @colors_for = colors_for || ->(names) { sprite_colors_for(names) }
         @words = words
         @names = []
         @lists = []   # the colours of each of those, checked against the sprite as it was named
@@ -91,6 +93,8 @@ module VBlank
                 "and :#{OWN} is not a list. Leave out showing:."
         end
         return [which] if which.is_a?(Symbol) && showing.nil?
+
+        return [list_for_every_pose_list!(which, showing)] if @sprite && which.is_a?(Hash)
 
         if which.is_a?(Symbol)
           raise ArgumentError,
@@ -150,6 +154,24 @@ module VBlank
       end
 
       private
+
+      # A HASH NAMING ONE LIST FOR EVERY LIST THE POSES ARE DRAWN FROM (`{ warm: :white, cold: :white }`),
+      # checked by the builder (Builder::Images#list_for_every_pose_list!): that list, which is then
+      # checked against each pose's own list rather than one list all the poses share.
+      def list_for_every_pose_list!(lists, showing)
+        name = @builder.list_for_every_pose_list!(lists, poses: @poses, showing: showing, subject: @subject)
+        @across_lists << name
+        name
+      end
+
+      # The colours of the lists +names+, checked against the poses as a sprite's other lists are.
+      def sprite_colors_for(names)
+        if names.all? { |name| @across_lists.include?(name) }
+          @builder.colors_to_draw_across_lists(names, poses: @poses, subject: @subject)
+        else
+          @builder.colors_to_draw_with(names, poses: @poses, subject: @subject)
+        end
+      end
 
       # Where +names+ sit side by side among the lists, adding them at the end when they do not.
       def list_offset_for(names)

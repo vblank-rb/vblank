@@ -282,10 +282,10 @@ module VBlank
         places = pixels.map do |color|
           next 0 if color.nil?
 
-          @colors.index(color) || raise(ArgumentError,
-                                        "canvas :#{@name} stamps image :#{image}, which draws a colour the canvas " \
-                                        "does not have (#{Graphics::Color.name_for(color)}). To fix this, add it to the " \
-                                        "canvas's colors:.")
+          drawn_place_of(color) ||
+            raise(ArgumentError,
+                  "canvas :#{@name} stamps image :#{image}, which draws a colour the canvas does not have " \
+                  "(#{Graphics::Color.name_for(color)}). To fix this, add it to the canvas's colors:.")
         end
         @tables ||= {}
         @tables[image] ||= @builder.table(name, places, width: :byte, signed: false)
@@ -294,11 +294,15 @@ module VBlank
       def place_of(color)
         return 0 if color == :transparent
 
-        resolved = Graphics::Color.resolve(color)
-        at = @colors.each_index.find { |i| i.positive? && @colors[i] == resolved }
-        at || raise(ArgumentError, "canvas :#{@name} draws in #{color.inspect}, which is not one of its colours. " \
-                                   "To fix this, add it to the canvas's colors:.")
+        drawn_place_of(Graphics::Color.resolve(color)) ||
+          raise(ArgumentError, "canvas :#{@name} draws in #{color.inspect}, which is not one of its colours. " \
+                               "To fix this, add it to the canvas's colors:.")
       end
+
+      # The place of +color+ (fifteen bits, or a marker) among the canvas's colours, or nil. Never
+      # place 0, which is see-through: a pixel drawn in the colour the list holds there (black,
+      # for a list that starts :transparent) would be left out.
+      def drawn_place_of(color) = (1...@colors.length).find { |place| @colors[place] == color }
 
       def refuse_written_position_outside!(x, y)
         return unless (x.is_a?(Integer) && !x.between?(0, @width - 1)) ||

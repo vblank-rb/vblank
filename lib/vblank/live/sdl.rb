@@ -16,7 +16,8 @@ module VBlank
     # The keys are the player's, kept in the settings file the desktop build keeps them in
     # (Settings, SettingsFile), and to begin with as mGBA and the desktop build have them: the
     # arrows are the pad, X is A, Z is B, Enter is Start, Backspace is Select, A and S are the
-    # shoulder buttons L and R. A gamepad plugged in plays too (PAD_BUTTONS); in a game for several
+    # shoulder buttons L and R; on a console that has them, W and Q are X and Y and the C key is C.
+    # A gamepad plugged in plays too (PAD_BUTTONS); in a game for several
     # players each one is the next player, and the keyboard's right hand is player 2 (Seats). As in the desktop
     # build, P pauses and carries on, Tab held fast forwards, F3, F11 and M switch the frame rate,
     # fullscreen and mute, and F1 opens the menu (Menu, WindowMenu), which holds the game while it
@@ -161,6 +162,17 @@ module VBlank
         held.uniq
       end
 
+      # Why a window opened at +screen+ ([width, height]; nil takes the picture's own size) refuses a
+      # picture of +pixels+ given as +width+ by +height+, or nil when it shows it (#show). Headless
+      # asks it too, so a picture this window refuses is not shown there.
+      def self.picture_refusal_message(pixels, width, height, screen:)
+        screen ||= [width, height]
+        return nil if [width, height] == screen && pixels.length == width * height
+
+        "The window shows a #{screen.join('x')} picture, and it was given a #{width}x#{height} picture of " \
+          "#{pixels.length} pixels."
+      end
+
       # The keys the menu is worked with while it is open, by scancode: the arrows, and Enter.
       MENU_KEYS = Ractor.make_shareable(WindowMenu::MOVE_KEYS.to_h do |name, key|
         [KEY_CODES.fetch(name), key]
@@ -195,16 +207,28 @@ module VBlank
       # +game_controls+ is the keys and gamepad buttons the game adds to the layout, as the list of
       # numbers the game is built with (LiveGame#controls), nil for none: Settings says what is done
       # with them.
-      def initialize(title:, scale: nil, width: 240, height: 160, library: nil, menu: true, settings_file: nil, config_dir: nil,
-                     caption: nil, state_folder_name: nil, game_controls: nil)
+      #
+      # +pixel_size+ is how many of the window's pixels, across and down, each of the picture's is
+      # shown as at a scale of 1 (Console::Description#pixel_size): a game of big pixels hands over
+      # a picture half the console's width and height, and its window is the console's size all the
+      # same, the scale counted in the console's pixels as for any game.
+      #
+      # +buttons+ are the console's (Console::Description#buttons): the window reads and lists only
+      # those, so a Genesis game's has C, and the Advance's has no X, Y or C.
+      def initialize(title:, scale: nil, width: 240, height: 160, pixel_size: 1, library: nil, menu: true, settings_file: nil,
+                     config_dir: nil, caption: nil, state_folder_name: nil, game_controls: nil,
+                     buttons: WindowMenu::ADVANCE_BUTTONS)
         @sdl = self.class.binding_for(library)
         @title = title
         @config_dir = config_dir
         @width = width
         @height = height
+        @shown_width = width * pixel_size # the picture as the window shows it at a scale of 1
+        @shown_height = height * pixel_size
         @closed = false
         @has_menu = menu
-        @player_settings = Settings.new(key_names: KeyNames.new(@sdl), game_controls: game_controls)
+        @player_settings = Settings.new(key_names: KeyNames.new(@sdl), game_controls: game_controls, buttons: buttons)
+        @console_buttons = buttons # the ones read, of player 2's keys too
         @settings_file = settings_file && SettingsFile.new(title: title, folder_of: ->(name) { settings_folder(name) },
                                                            asked: (settings_file unless settings_file == :usual))
         @settings_problems = @settings_file ? @settings_file.load(@player_settings) : []
@@ -226,7 +250,8 @@ module VBlank
         end
         @states = states_in(state_folder_name) if menu && state_folder_name
         @save_file = save_file_in(state_folder_name) if state_folder_name
-        @menu = Menu.new(settings: @player_settings.window.with(scale: scale), picture: [width, height], controls: @player_settings,
+        @menu = Menu.new(settings: @player_settings.window.with(scale: scale), picture: [@shown_width, @shown_height],
+                         controls: @player_settings,
                          scales: WindowMenu::SCALES.min..[largest_scale_that_fits, scale].max, states: @states)
         @settings = @menu.settings # as the window last made them so
         @sdl.SDL_SetWindowFullscreen(@window, 1) if @settings.fullscreen
@@ -308,10 +333,7 @@ module VBlank
       # The picture into the window, and whatever SDL has heard from the window since. The
       # picture is the size the window was opened for.
       def show(pixels, width, height)
-        unless [width, height] == [@width, @height] && pixels.length == width * height
-          raise ArgumentError, "The window shows a #{@width}x#{@height} picture, and it was given a " \
-                               "#{width}x#{height} picture of #{pixels.length} pixels."
-        end
+        refusal = SDL.picture_refusal_message(pixels, width, height, screen: [@width, @height]) and raise ArgumentError, refusal
 
         read_events
         write_settings_when_due
@@ -341,7 +363,7 @@ module VBlank
         from_keys = @player_settings.buttons_held(&down)
         return (from_keys + @pads.values.flat_map { |pad| pad_held(pad) }).uniq unless @several_players
 
-        second = Seats.second_player_buttons(down: down, free: ->(code) { key_free?(code) })
+        second = Seats.second_player_buttons(down: down, free: ->(code) { key_free?(code) }, buttons: @console_buttons)
         from_pads = @pads.flat_map { |id, pad| Seats.buttons_as_player(pad_held(pad), @seats.player_of(id)) }
         (from_keys + second + from_pads).uniq
       end
@@ -361,7 +383,23 @@ module VBlank
         bytes = samples.length * MOMENT_BYTES
         return if @sdl.SDL_GetAudioStreamQueued(speaker) > SOUND_BEHIND_FRAMES * bytes
 
-        @sdl.SDL_PutAudioStreamData(speaker, samples.zip(right).flatten.pack("s<*"), bytes)
+        @sdl.SDL_PutAudioStreamData(speaker, interleaved_bytes(samples, right), bytes)
+      end
+
+      # The two speakers' samples one after the other, left then right, as the bytes SDL takes: into
+      # the same Array and String every frame, which SDL copies from, so a frame's sound takes no
+      # new memory here (a frame's worth of pairs made new each frame were for Ruby to collect).
+      private def interleaved_bytes(left, right)
+        both = (@sound_both ||= [])
+        count = left.length
+        both.pop while both.length > 2 * count
+        i = 0
+        while i < count
+          both[2 * i] = left[i]
+          both[(2 * i) + 1] = right[i]
+          i += 1
+        end
+        both.pack("@0s<*", buffer: (@sound_bytes ||= String.new(encoding: Encoding::BINARY)))
       end
 
       # Seconds of sound waiting for the speaker, or nil before the first frame's sound opens one,
@@ -376,9 +414,11 @@ module VBlank
       # seen without anything drawn over the picture.
       def notice(words) = @sdl.SDL_SetWindowTitle(@window, "#{@title} - #{words}")
 
-      # The window was closed, or Escape is down, as SDL last heard it (#show reads what SDL has
-      # heard, and Session shows each picture before it asks).
-      def stop? = @closed || @sdl.SDL_GetKeyboardState(nil)[ESCAPE] != 0
+      # The window was closed, or Escape went down and was not taken for a key being chosen
+      # (#read_key_down), as SDL last told it (#show reads what SDL has told, and Session shows each
+      # picture before it asks). Escape's press is read, not whether it is down now: Escape giving up
+      # a choice is still down as the next picture is shown, and must not stop the play then.
+      def stop? = @closed
 
       # The speed the menu sets while Tab is held, as SDL last heard it (#show reads what SDL has
       # heard), and 1 while it is not, whichever pass it is asked for.
@@ -582,13 +622,15 @@ module VBlank
 
       def open_window(title, scale)
         raise_failed!("start its video") if @sdl.SDL_Init(INIT_VIDEO).zero?
-        @window = @sdl.SDL_CreateWindow(title, @width * scale, @height * scale,
+        @window = @sdl.SDL_CreateWindow(title, @shown_width * scale, @shown_height * scale,
                                         WINDOW_RESIZABLE | WINDOW_HIGH_PIXEL_DENSITY)
         raise_failed!("open the window") if @window.null?
         @renderer = @sdl.SDL_CreateRenderer(@window, nil)
         raise_failed!("draw in the window") if @renderer.null?
+        # The picture is drawn over the whole of the logical size, so a picture of big pixels is
+        # stretched to it, each pixel the same whole number of the window's.
         raise_failed!("keep the picture's shape") if @sdl.SDL_SetRenderLogicalPresentation(
-          @renderer, @width, @height, LOGICAL_PRESENTATION_LETTERBOX
+          @renderer, @shown_width, @shown_height, LOGICAL_PRESENTATION_LETTERBOX
         ).zero?
         @texture = @sdl.SDL_CreateTexture(@renderer, PIXELFORMAT_XBGR1555, TEXTUREACCESS_STREAMING, @width, @height)
         raise_failed!("make the picture") if @texture.null?
@@ -661,7 +703,7 @@ module VBlank
         return WindowMenu::SCALES.max if @sdl.SDL_GetDisplayUsableBounds(@sdl.SDL_GetDisplayForWindow(@window), room).zero?
 
         _, _, wide, high = room[0, 16].unpack("l4")
-        [[wide / @width, high / @height].min, WindowMenu::SCALES.max].min
+        [[wide / @shown_width, high / @shown_height].min, WindowMenu::SCALES.max].min
       end
 
       def live?(pointer) = pointer && !pointer.null?
@@ -722,7 +764,7 @@ module VBlank
         begin
           drawing.each { |part| part.is_a?(WindowMenu::Box) ? draw_box(part) : draw_words(part) }
         ensure
-          @sdl.SDL_SetRenderLogicalPresentation(@renderer, @width, @height, LOGICAL_PRESENTATION_LETTERBOX)
+          @sdl.SDL_SetRenderLogicalPresentation(@renderer, @shown_width, @shown_height, LOGICAL_PRESENTATION_LETTERBOX)
         end
       end
 
@@ -808,7 +850,7 @@ module VBlank
         @settings = @menu.settings
         @closed = true if @menu.quit?
         if @settings.scale != was.scale
-          @sdl.SDL_SetWindowSize(@window, @width * @settings.scale, @height * @settings.scale)
+          @sdl.SDL_SetWindowSize(@window, @shown_width * @settings.scale, @shown_height * @settings.scale)
         end
         @sdl.SDL_SetWindowFullscreen(@window, @settings.fullscreen ? 1 : 0) if @settings.fullscreen != was.fullscreen
         set_speaker_volume
@@ -964,6 +1006,8 @@ module VBlank
           @kept_from_game << scancode
           return write_settings_soon
         end
+        return @closed = true if scancode == ESCAPE && !repeat
+
         hotkey = @player_settings.hotkey_of_key(scancode)
         if menu_opener?(scancode, hotkey) && @has_menu
           @menu.toggle unless repeat

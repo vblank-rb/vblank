@@ -60,7 +60,7 @@ module PackTilePictureGames
   # The three lists the game changes, each a sprite's, and the set each is told to hold on even passes.
   CHANGING_LISTS = { sky: [5, 6], sea: [6, 6], sun: [7, 6] }.freeze
 
-  constants(false).each { |name| Ractor.make_shareable(const_get(name)) }
+  VBlank::Testing::InRactors.share_constants(self)
 
   # The made-up Genesis original of the lair and the title: their maps, their banks and the tiles.
   private def lair_original(folder)
@@ -141,16 +141,16 @@ module PackTilePictureGames
   # A BELT ON A TITLE'S SCREEN: a background of the made-up Genesis original whose map is +words+
   # (its map kept after its tiles, so it can be as long as a test wants), tile 2 taking turns through
   # the belt in both banks. With +in_other_lists+ each bank is drawn with two other lists of its own
-  # in turn as the game plays, as a title's colours cycle; such a game is built and measured, and
-  # not yet played alike by every build (the registry plays the game without). Gives back the
+  # in turn as the game plays, as a title's colours cycle; the registry plays it both ways. Gives back the
   # program and the pack file the build made (nil for a build that leaves its pack out). Public,
-  # since PackStandInSizeTests builds it from an object of its own.
-  def title_belt_game_and_file(folder, words:, in_other_lists: false, options: VBlank::Cartridge::Options.new)
+  # since PackStandInSizeTests builds it from an object of its own. +banks+ is how many banks of
+  # sixteen colours its slot of colours holds, two or more; the map draws from the first two.
+  def title_belt_game_and_file(folder, words:, in_other_lists: false, banks: 2, options: VBlank::Cartridge::Options.new)
     tiles = [*PLACES, *BELT].map(&MadeUpOriginalLayouts::HIGH_HALF_FIRST).join
     map_at = TILES_AT + tiles.bytesize
     copy = "\0".b * (map_at + (words.length * 2))
     levels = MadeUpOriginalLayouts::LEVELS
-    copy[COLORS_AT, 64] = GENESIS_COLORS.(levels + levels.rotate(7))
+    copy[COLORS_AT, banks * 32] = GENESIS_COLORS.((0...banks).flat_map { |bank| levels.rotate(7 * bank) })
     copy[TILES_AT, tiles.bytesize] = tiles
     copy[map_at, words.length * 2] = words.pack("n*")
     path = File.join(folder, "made_up.bin")
@@ -166,7 +166,7 @@ module PackTilePictureGames
         slots.tiles :video, at: TILES_AT, count: PLACES.length
         slots.tiles :belt, at: BELT_AT, count: BELT.length
         slots.numbers :map, at: map_at, count: words.length, width: :half, signed: false
-        slots.colors :palette, at: COLORS_AT, count: 32
+        slots.colors :palette, at: COLORS_AT, count: banks * 16
       end
       lists.each { |name, colors| colors name, colors }
       belt = tile_pictures :belt, tiles: { pack[:video].tile(2) => pack[:belt].tiles(0, across: BELT.length) }
@@ -401,6 +401,31 @@ class TestPackTilePictures < Minitest::Test
       assert_cell_shows(screen, 2, PLACES[3], 2, why: why, color_of: lair)
       assert_cell_shows(screen, 3, BELT[picture], 1, upside_down: true, why: why, color_of: lair)
       assert_cell_shows(screen, 4, PLACES[1], 3, why: why, color_of: lair)
+    end
+  end
+
+  # A BELT DRAWN WITH OTHER LISTS OF COLOURS: the background's banks are drawn with lists of the
+  # game's own, a list a pass in turn, and the cells naming the moving tile show its picture in the
+  # list shown, as its still cells do.
+  def test_a_belt_drawn_with_other_lists_shows_its_pictures_in_them
+    words = PackTilePictureGames.title_belt_words(24)
+    program = Dir.mktmpdir { |folder| title_belt_game_and_file(folder, words: words, in_other_lists: true).first }
+    lists = [OTHER, LATER]
+
+    (2..9).each do |frames|
+      screen = screen_after(program, frames)
+      # The pass whose numbers the framework drew the background's colours and the belt from.
+      tick = frames - framework_drawing_lag
+      shown = tick % 3
+      next if shown == 2
+
+      picture = (tick / 2) % 3
+      bank_0, bank_1 = lists.fetch(shown), lists.fetch(1 - shown)
+      why = "after #{frames} frames"
+      assert_cell_shows(screen, 0, BELT[picture], 0, why: "#{why}, the belt in bank 0", color_of: ->(_, place) { bank_0.fetch(place) })
+      assert_cell_shows(screen, 1, PLACES[1], 0, mirrored: true, why: "#{why}, a still tile in bank 0",
+                                                  color_of: ->(_, place) { bank_0.fetch(place) })
+      assert_cell_shows(screen, 6, BELT[picture], 1, why: "#{why}, the belt in bank 1", color_of: ->(_, place) { bank_1.fetch(place) })
     end
   end
 

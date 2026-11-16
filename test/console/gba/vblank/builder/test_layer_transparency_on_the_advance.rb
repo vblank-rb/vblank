@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "differential"
+require "see_through_scenery_tests"
 
 # THE TESTS OF vblank/builder/test_layer_transparency.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY, kept apart so that the
 # Game Boy Color's run never loads them (test/console/gba); the rest are in that file. The same
@@ -22,8 +23,12 @@ require "differential"
 # what the console does, so the tests below read as the picture rather than as a rule.
 # The one thing a reader would not guess is that a see-through sprite never shows another
 # sprite through it, only scenery; that has tests of its own below.
+#
+# The tests of a see-through layer of scenery that the PlayStation plays too are in
+# SeeThroughSceneryTests (test/see_through_scenery_tests.rb).
 class TestLayerTransparencyOnTheAdvance < Minitest::Test
   include Differential
+  include SeeThroughSceneryTests
 
   RED = VBlank::Graphics::Color.resolve(:red)
   WHITE = VBlank::Graphics::Color.resolve(:white)
@@ -361,29 +366,6 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
     end
   end
 
-  # A TINT does not take the blend, and the warning above sends people here — so it is a
-  # promise the suite has to keep. On a tiled screen a tint moves the colors themselves
-  # rather than asking the display to blend, so the layer keeps seeing through them: a
-  # `flash_screen :red` reaches a game the water can be seen through and a white one does
-  # not. What shows is the layer blending TINTED colors, so it is neither the plain
-  # see-through value nor the solid one.
-  private def tinted_program(amount, hold)
-    tile = SOLID_TILE
-    program do
-      screen :tiled
-      image(:back, "#" => :red) { tile }
-      image(:front, "#" => :white) { tile }
-      tiles :backset, "#" => :back
-      tiles :frontset, "#" => :front
-      layers :deep, :glass
-      layer(:deep) { background :floor, tiles: :backset, map: Array.new(20) { "#" * 30 } }
-      layer(:glass, transparency: amount) do
-        background :pane, tiles: :frontset, map: Array.new(20) { "#" * 20 }
-      end
-      game_loop { tint :blue, hold }
-    end
-  end
-
   # A fade PLACED in the stack is still a fade — it takes the same blend unit, whatever it
   # leaves alone — so the rule and the hand-back have to reach it too.
   private def placed_fade_program(amount, hold)
@@ -444,53 +426,6 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
     end
   end
 
-  # --- a see-through layer in a game that has SCENES ---
-  #
-  # The display is told which layers to blend by NUMBER, and scenes take turns with the
-  # console's layers — so the number a background sits on depends on which scene it was
-  # declared in, and a scene that sees through nothing must have the blend off rather than
-  # pointed at whatever background inherited that number.
-
-  SWITCH_AT = 6 # frames of the first scene before the game hands over to the second
-
-  # A banner scene that sees through nothing, handing over to a floor with a pane of glass
-  # over it. The pane is the SIXTH thing in the program's list of scenery and the SECOND on
-  # the hardware, which is the whole of what this is about.
-  private def scenes_that_take_turns
-    tile = SOLID_TILE
-    program do
-      screen :tiled
-      image(:back, "#" => :red) { tile }
-      image(:front, "#" => :white) { tile }
-      image(:other, "#" => :green) { tile }
-      tiles :backset, "#" => :back
-      tiles :frontset, "#" => :front
-      tiles :otherset, "#" => :other
-      full = Array.new(20) { "#" * 30 }
-      layers :banner, :sky, :deep, :glass
-      state = 0
-
-      scene :title do
-        layer(:banner) { background :banner, tiles: :otherset, map: full }
-        layer(:sky) { background :sky, tiles: :otherset, map: full }
-      end
-
-      scene :play do
-        layer(:deep) { background :floor, tiles: :backset, map: full }
-        layer(:glass, transparency: 50) { background :pane, tiles: :frontset, map: full }
-      end
-
-      tick = 0
-      game_loop do
-        tick += 1
-        state = 1 if tick > SWITCH_AT
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
-      end
-    end
-  end
 
   # A PLAIN BITMAP TITLE AND A MISTY ROOM, in either order, with nothing faded until a block
   # says so. +first+ is the scene the game starts in and +swap_at+ the pass the other takes
@@ -580,12 +515,6 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
     end
   end
 
-  def test_a_see_through_layer_of_scenery_shows_what_is_behind_it
-    seen = [0, 50, 100].map { |amount| shown(scenery_program(amount), *SCENERY_XY) }
-
-    assert_equal [WHITE, HALF_WHITE_OVER_RED, RED], seen
-  end
-
   def test_a_see_through_layer_of_sprites_shows_what_is_behind_it
     seen = [0, 50, 100].map { |amount| shown(sprite_program(amount), *SPRITE_XY) }
 
@@ -671,18 +600,6 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
     end
   end
 
-  # FADING TO WHITE IS THE OTHER DIRECTION AND NOT A MIRROR OF THE FIRST. Toward white a
-  # channel adds a share of the headroom it has left; toward black it keeps a share of
-  # what it has, and the two truncate opposite ways — so one direction can be right while
-  # the other is a step out at every pixel. Both halves of the picture are asserted: the
-  # layer is still blending, and the two backends land on the same color.
-  def test_a_fade_to_white_leaves_the_layer_see_through_too
-    solid = shown(faded_program(:scenery, 0, 25, toward: :white), *SCENERY_XY)
-
-    refute_equal solid, shown(faded_program(:scenery, 50, 25, toward: :white), *SCENERY_XY),
-                 "the see-through layer went solid while a fade to white ran"
-  end
-
   # ...and a fade of nothing is a lifted fade, not a fade of zero left in force.
   def test_a_lifted_fade_leaves_the_layer_see_through
     %i[scenery sprite].each do |kind|
@@ -759,13 +676,6 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
     assert_equal seen_through_mist, game_player.run(room, frames: 12).screen.pixel(200, 100)
   end
 
-  def test_a_tint_leaves_the_layer_see_through
-    solid = shown(tinted_program(0, 50), *SCENERY_XY)
-
-    refute_equal solid, shown(tinted_program(50, 50), *SCENERY_XY),
-                 "a tint took the layer's blend away"
-  end
-
   def test_one_flash_does_not_cost_the_layer_for_the_rest_of_the_game
     %i[scenery sprite].each do |kind|
       screen = game_player.run(flashing_program(kind), frames: AFTER_THE_FLASH).screen
@@ -779,16 +689,6 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
   def test_the_two_backends_draw_the_same_screen_after_a_fade
     assert_backends_agree(flashing_program(:scenery), frames: AFTER_THE_FLASH)
     assert_backends_agree(flashing_program(:sprite), frames: AFTER_THE_FLASH)
-  end
-
-  def test_a_scene_sees_through_its_own_layer
-    assert_equal HALF_WHITE_OVER_RED,
-                 shown(scenes_that_take_turns, *SCENERY_XY, frames: SWITCH_AT + 4),
-                 "the scene's pane does not show the floor under it"
-  end
-
-  def test_the_two_backends_draw_the_same_screen_when_a_scene_sees_through_a_layer
-    assert_backends_agree(scenes_that_take_turns, frames: SWITCH_AT + 4)
   end
 
   # A tint said on the title is still in force as the room takes over: both backends tint the
@@ -845,13 +745,91 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
     [2, 3, 4, 6, 7, 9, 10, 12].each { |frames| assert_backends_agree(rooms, frames: frames, console_frames: frames + 1) }
   end
 
-  # ...and the scene BEFORE it, which sees through nothing, must not have picked up the
-  # blend. Its two backgrounds sit on the layers the dive's floor and pane later use, so a
-  # blend set up once at boot would quietly make the banner see-through.
-  def test_a_scene_that_sees_through_nothing_is_drawn_solid
-    green = VBlank::Graphics::Color.resolve(:green)
+  # --- a see-through layer holding a background and a sprite ---
+  #
+  # The display mixes a see-through sprite with the one thing directly behind it. Over the
+  # layer's own background that is the background as drawn, before it was mixed with the floor,
+  # so the console cannot show the sprite over both the bar and the floor behind it, which is
+  # what the interpreter draws. The build refuses the arrangement, as it refuses two see-through
+  # layers on one screen.
+  def test_a_see_through_layer_holding_a_background_and_a_sprite_is_refused
+    %i[declared pool put_in_layer showing scene_sprite].each do |how|
+      error = assert_raises(VBlank::IR::Guardrails::ValidationError, "a sprite #{how} in the layer is not refused") do
+        refuse_on_the_advance!(glass_of_bars_and_a_sprite(how))
+      end
 
-    assert_equal green, shown(scenes_that_take_turns, *SCENERY_XY, frames: 2),
-                 "the banner scene is blended on the oracle"
+      assert_match(/:glass/, error.message)
+      assert_match(/background and a sprite/, error.message)
+    end
+  end
+
+  # NEAR-MISS: the layer's background and its sprite on different screens never meet.
+  def test_a_see_through_layer_with_its_background_and_sprite_in_different_scenes_is_built
+    game = glass_of_bars_and_a_sprite(:other_scene)
+
+    refuse_on_the_advance!(game)
+    [1, 4].each { |frames| assert_backends_agree(game, frames: frames) }
+  end
+
+  # Raises the Advance's build's error for +game+, as the console's answers give it.
+  private def refuse_on_the_advance!(game)
+    for_the_advance = game.copy.tap { |copy| copy.console = :gba }
+    checks = [VBlank::IR::Guardrails::Checks::ConsoleAnswers.new]
+    VBlank::IR::Guardrails::Validator.new(checks: checks).run(for_the_advance, autofix: false).raise_on_error!
+  end
+
+  # A red floor and a half see-through layer of blue bars with gaps, and a white sprite that is
+  # in that layer as +how+ says: declared there, a pool's thing declared there, put there as the
+  # game runs, put there by a `showing:` list, declared there in a scene while the bars are on
+  # every screen, or declared there in a scene of its own that the bars are not in.
+  private def glass_of_bars_and_a_sprite(how)
+    tile = SOLID_TILE
+    program do
+      screen :tiled
+      image(:floor, "#" => :red) { tile }
+      image(:bar, "#" => :blue) { tile }
+      image(:ghost, "#" => :white) { tile }
+      tiles :floors, "#" => :floor
+      tiles :bars, "#" => :bar
+      layers :deep, :glass, :front
+      layer(:deep) { background :floor_bg, tiles: :floors, map: Array.new(20) { "#" * 30 } }
+      bars = proc { layer(:glass, transparency: 50) { background :bars_bg, tiles: :bars, map: Array.new(20) { "# " * 15 } } }
+      case how
+      when :declared
+        bars.call
+        layer(:glass) { sprite :ghost, at: [100, 16] }
+        game_loop {}
+      when :pool
+        bars.call
+        ghosts = layer(:glass) { pool :ghosts, x: 0, y: 0, capacity: 2, image: :ghost }
+        ghosts.spawn x: 100, y: 16
+        game_loop {}
+      when :put_in_layer
+        bars.call
+        ghost = layer(:front) { sprite :ghost, at: [100, 16] }
+        game_loop { ghost.put_in_layer :glass }
+      when :showing
+        bars.call
+        ghost = layer(:front) { sprite :ghost, at: [100, 16] }
+        depth = var :depth, 0
+        game_loop { ghost.put_in_layer %i[front glass], showing: depth }
+      when :scene_sprite
+        bars.call
+        scene(:haunted) { layer(:glass) { sprite :ghost, at: [100, 16] } }
+        var :where, 0
+        game_loop { case_var(:where) { when_val 0, :haunted } }
+      when :other_scene
+        scene(:barred, &bars)
+        scene(:haunted) { layer(:glass) { sprite :ghost, at: [100, 16] } }
+        where = var :where, 0
+        game_loop do
+          where.approach! 1, 1
+          case_var(:where) do
+            when_val 0, :barred
+            when_val 1, :haunted
+          end
+        end
+      end
+    end
   end
 end

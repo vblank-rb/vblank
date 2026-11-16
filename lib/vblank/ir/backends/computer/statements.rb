@@ -130,6 +130,16 @@ module VBlank
             def initialize(name:, type:, values:, exported: false, writable: false, grows: false)
               super
             end
+
+            # Whether every value is the number 0, as a table the start file fills is until then (a
+            # game's recordings and pictures with its data pack left out: tens of millions of
+            # zeros). A printer writes such a table as its size. Asked of the whole Array at once,
+            # since a block for each value would take seconds.
+            def all_zeros?
+              return false unless values.first.is_a?(Integer)
+
+              values.minmax == [0, 0]
+            end
           end
 
           # A constant of a type that is not a number: a struct, a pointer. +value+ is any expression,

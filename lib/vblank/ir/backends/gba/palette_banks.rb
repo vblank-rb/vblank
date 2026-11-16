@@ -121,6 +121,10 @@ module VBlank
           # +indices+ maps each of its colours to the number to write for that pixel.
           Placement = Data.define(:bank, :indices) do
             def narrow? = !bank.nil?
+
+            # Every group of sixteen its colours sit in: its bank, or each group a wide picture's
+            # colours are spread over.
+            def groups = narrow? ? [bank] : indices.values.map { |slot| slot / BANK_SIZE }.uniq
           end
 
           # +pictures+ is a list of Picture. Everything is decided here, in the
@@ -168,9 +172,7 @@ module VBlank
           # Every group of sixteen something here draws from: a narrow picture's bank, and each
           # group a wide picture's colours sit in.
           def banks_used
-            @placements.each_value.flat_map do |place|
-              place.narrow? ? [place.bank] : place.indices.values.map { |slot| slot / BANK_SIZE }
-            end.uniq
+            @placements.each_value.flat_map(&:groups).uniq
           end
 
           protected

@@ -65,10 +65,15 @@ module VBlank
 
           # THE SONG THE COLOR'S PLAYER TAKES UP at its next step (CartridgeHeadlessRun#next_song_number),
           # from its byte fields: a song the game named is taken up when START is set, and a stop
-          # quiets the music where the game asks, so PLAYING already says it.
+          # quiets the music where the game asks, so PLAYING already says it. A tune that played once
+          # and has ended (Runtime::Music::ENDED) is none while it is the one the game names.
           def next_song_number
             playing = music_field(Runtime::Music::PLAYING, 1) or return nil
-            music_field(Runtime::Music::START, 1).zero? ? playing : music_field(Runtime::Music::NAMED, 1)
+            taken_up = music_field(Runtime::Music::START, 1).zero? ? playing : music_field(Runtime::Music::NAMED, 1)
+            ended = music_field(Runtime::Music::ENDED, 1)
+            return 0 if ended&.nonzero? && taken_up == ended
+
+            taken_up
           end
 
           def start_run(_program)
@@ -104,11 +109,18 @@ module VBlank
             @core.use_counting_clock((said.to_r * 1000).to_i, counters.pack("C*"), !@clock_counters.nil?)
           end
 
-          # Read once the first pass has ended, by when the screen is on and the count is done.
+          # Once the first pass has ended. The frames the screen was off for are read here, and again
+          # as the first pass's moment is (#record_moment): the count goes on until the screen comes
+          # on, after the first frame's copy, and a frame can end while that copy runs, the pass
+          # already waiting.
           def first_pass_ended
+            read_dark_frames
+            hold_back_cells_shown_now
+          end
+
+          def read_dark_frames
             dark = @places.runtime[Runtime::Frame::DARK_FRAMES]
             @dark_frames = dark ? half(dark) : 0
-            hold_back_cells_shown_now
           end
 
           # A PASS'S PICTURE IS READ FROM THE FRAME DRAWN AFTER IT, while the next pass runs, and the
@@ -139,6 +151,7 @@ module VBlank
           # of the run has no boundary after it, so its moment counts the log as the game was found
           # waiting.
           def record_moment(frame, variables, lists, picture, sounds)
+            read_dark_frames if frame == 1 # shown, so the count is done (Runtime::Frame)
             sounds = sounds_after_pass(frame) unless frame == :end
             @vars = variables
             @lists = lists
@@ -171,6 +184,11 @@ module VBlank
           # How many entries of the sound log are pass +pass+'s, the frame boundary after it included
           # (GBC::SoundLog).
           def sounds_after_pass(pass) = @sound_log.any? ? @sound_log.size_after_pass(pass) : 0
+
+          # A pass's moment waits for its sounds to be counted, but for the moment the run ends on.
+          # The first pass's picture can be shown before then: the screen comes on showing it, and
+          # its first blank comes while the processor sleeps in the wait (Runtime::Frame).
+          def moment_ready?(pass, frames) = pass > frames || !@sound_log.any? || @sound_log.counted?(pass)
 
           # One frame of the emulator, with its buttons decided, and what the cartridge played in it
           # into the sound log.
@@ -218,8 +236,8 @@ module VBlank
           # only its own bytes read, and is sign-extended as the game reads it.
           def read_variables
             @places.variables.to_h do |name, address|
-              width = @places.source_program.kept_width_of(name)
-              [name, width ? kept_number(address, KeptWidths::BYTES.fetch(width)) : word(address)]
+              bytes = @places.variable_bytes(name)
+              [name, bytes < 4 ? kept_number(address, bytes) : word(address)]
             end
           end
 

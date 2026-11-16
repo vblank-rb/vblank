@@ -47,6 +47,10 @@ module VBlank
       # a literal that had already been wrapped answered "the game works it out" and took the
       # run-time path for nothing. The report and the reference call these two fixed and
       # worked out, so the code uses fixed too.
+      #
+      # A fraction's bits are not checked, because no handle a game holds is a fraction over a
+      # literal: the one place that makes one is #coerce, whose handle is used up by the operator
+      # it was made for. A verb that ever hands one back must check them here.
       def self.fixed_number(operand)
         node = operand.is_a?(Value) ? operand.node : operand
         return node if node.is_a?(Integer)
@@ -107,11 +111,71 @@ module VBlank
 
       def note_made_with_no_var_line = @builder.note_variable_with_no_var_line(@name)
 
+      # Was this variable made by normal Ruby with no `var` line: a name given a number (`hp = 10`,
+      # `@seed = 5` named by `game_variables`)?
+      def made_with_no_var_line? = @builder.variable_with_no_var_line?(@name)
+
+      # Is this variable a number in Ruby's eyes, which a local given it copies
+      # (PlainRuby::Steps.kept_answer)? One made with no `var` line is, and so is a hidden one
+      # the build made for a number. One a `var` line or a verb made is a handle the game holds.
+      def number_in_ruby? = made_with_no_var_line? || hidden?
+
+      # Is this a hidden variable, one the build made for a number the author never named
+      # (Builder#hidden_variable)?
+      def hidden? = @name.to_s.start_with?(Build::KEPT_VARIABLE_PREFIX)
+
+      # The kinds of node whose number no line of the game can change: a number written out, a
+      # cartridge table's item, and arithmetic on them.
+      FIXED_KINDS = %i[int table_get binop neg absolute clamped].freeze
+
+      # Can the number this stands for change as the game plays? Only a working-out of fixed
+      # numbers cannot, and a local given one needs no copy.
+      def changes_as_game_plays? = @node.walk.any? { |each_node| !FIXED_KINDS.include?(each_node.kind) }
+
       # Mark this variable as scratch no save keeps (`game_variables ..., saved: false`).
       def note_unsaved = @builder.note_unsaved_variable(@name)
 
-      # Was this variable made for the instance variable holding it (see PlainRuby::Steps.reassign)?
-      attr_accessor :own_to_its_name
+      # The place this variable was made for (PlainRuby::Writes.keep_as_own): the object and the
+      # label of an instance variable, a Hash or an Array and its key for a slot, or no object for
+      # a place in VBlank's own files. An instance variable handed a slot's variable only holds it,
+      # and a write there must not change the slot (PlainRuby::Writes.handed_only?).
+      Holder = Data.define(:object, :label) do
+        # Is this a slot of a Hash or an Array (PlainRuby::Writes.claim_unheld)?
+        def slot? = object.is_a?(Hash) || object.is_a?(Array)
+      end
+
+      # The object of a Holder that is a local a `var` line made (PlainRuby::Writes.keep_as_local).
+      LOCAL_HOLDER = Ractor.make_shareable(Object.new)
+
+      attr_reader :holder
+
+      def note_holder(object, label) = @holder = Holder.new(object, label)
+
+      # The instance variables of parts this variable was handed to whole, as an argument, which
+      # each own it too (PlainRuby::Writes.share_argument).
+      def note_sharer(object, label) = (@sharers ||= []) << Holder.new(object, label)
+
+      # Was this variable made for +label+ of +object+, or handed to it to change? A place in
+      # VBlank's own files names no object, and takes any variable made for a place but a local
+      # as its own.
+      def held_by?(object, label)
+        return !@holder.nil? && !@holder.object.equal?(LOCAL_HOLDER) if object.nil?
+
+        [@holder, *@sharers].any? { |place| place && place.object.equal?(object) && place.label == label }
+      end
+
+      # The plain name this hidden variable was made for, by PlainRuby::Writes.promote or
+      # PlainRuby::Steps.kept_answer, or nil. The build's note of a hidden one names it too.
+      attr_reader :owner_name
+
+      def owner_name=(name)
+        @builder.record_hidden_variable_local(@name, name) if name && hidden?
+        @owner_name = name
+      end
+
+      # This copy keeps a button read while setting up, for game code to read
+      # (PlainRuby::Steps.kept_answer): noted for Guardrails::Checks::PressKeptFromSettingUp.
+      def record_kept_button = @builder.record_kept_button(@owner_name)
 
       # A game has no nil, and a number variable has no false. A name that can hold those as well
       # as a number keeps which it holds in a hidden variable beside it: NIL_HELD, FALSE_HELD or
@@ -167,12 +231,6 @@ module VBlank
       # difference the orphaned-expression guardrail turns on.
       def handle?
         !@name.nil?
-      end
-
-      # This variable's number kept as it is now, for `old = hp` in normal Ruby (see
-      # PlainRuby::Steps.copy_of_variable). In setting up there is nothing to keep yet, so a second name will do.
-      def kept_copy
-        @builder.recording_game_code? ? hidden_copy : self
       end
 
       # A hidden variable holding this number as it is now, whatever changes it later.

@@ -84,6 +84,83 @@ module VBlank
       VERBS = { blit_pose: "sprite", draw_digit: "draw_number", show_light_now: "light.show_now" }.freeze
 
       def self.verb(kind) = VERBS.fetch(kind) { kind.to_s }
+
+      # The verb the author wrote for +node+. One kind can stand for more than one verb: a
+      # `fill_rect` given a number the game works out is drawn as a `draw_rect_at`, and the node
+      # remembers the verb it was written as (IR::Nodes::DrawRectAt#written_as).
+      def self.verb_written(node)
+        written = node.kind == :draw_rect_at ? node.written_as : nil
+        written ? written.to_s : verb(node.kind)
+      end
+
+      # How a message names a game's own number. Many verbs take a number that must be
+      # written in the program (a beat, a column, a count of digits) and refuse one the game
+      # works out as it runs. What they were handed is then a handle, a symbol or a node of the
+      # tree, and none of those reads well printed as Ruby prints it: a handle's inspect is a
+      # screenful of the builder. So the refusal names the variable the author wrote, and gives
+      # "a number that the game works out as it runs" for anything else (an expression, a pool's
+      # field, a variable the framework made for itself).
+      WORKED_OUT_NUMBER_WORDS = "a number that the game works out as it runs"
+
+      # Is +given+ one of the game's numbers: a handle, or a value node? A handle is known by what
+      # it answers rather than by its class, since this loads before the DSL that defines it.
+      def self.game_number?(given)
+        node = given.respond_to?(:node) ? given.node : given
+        node.is_a?(IR::Node) && node.value?
+      end
+
+      # How a message names +given+: a game's number as words, and anything else as Ruby writes
+      # it, which for a number, a string or a symbol is what the author typed. A variable is named
+      # with why it does not fit ("the variable `speed`, which the game works out as it runs"),
+      # since the author can see that `speed` holds a number. A list (a place, `at: [x, y]`) is
+      # written item by item, and so is a span (`within: 0..width`), so a variable in either is
+      # named too.
+      def self.words_for_given(given)
+        if given.is_a?(Array) && given.any? { |item| game_number?(item) }
+          return "[#{given.map { |item| short_words_for(item) }.join(', ')}]"
+        end
+        if given.is_a?(Range) && [given.begin, given.end].any? { |item| game_number?(item) }
+          dots = given.exclude_end? ? "..." : ".."
+          return "#{short_words_for(given.begin)}#{dots}#{short_words_for(given.end)}"
+        end
+        return given.inspect unless game_number?(given)
+
+        worked_out_clause(short_words_for(given))
+      end
+
+      # How a message names the variable called +name+, with why it does not fit, as
+      # #words_for_given does: for a symbol that names a variable where a number goes.
+      def self.words_for_variable(name) = worked_out_clause(variable_words(name))
+
+      # A game's number by its variable's name, or as WORKED_OUT_NUMBER_WORDS; anything else as Ruby
+      # writes it.
+      def self.short_words_for(given)
+        return given.inspect unless game_number?(given)
+
+        name = variable_name_of(given)
+        name ? variable_words(name) : WORKED_OUT_NUMBER_WORDS
+      end
+
+      # A name the framework made for itself (two underscores first, like a sprite's place) is
+      # nothing the author wrote, so it is given as a number the game works out.
+      def self.variable_words(name)
+        name.to_s.start_with?("__") ? WORKED_OUT_NUMBER_WORDS : "the variable `#{name}`"
+      end
+
+      def self.worked_out_clause(words)
+        words == WORKED_OUT_NUMBER_WORDS ? words : "#{words}, which the game works out as it runs"
+      end
+
+      # The variable a handle or a node reads, or nil for a working-out. A hidden copy the build
+      # made for a plain Ruby name is named by that name (DSL::Value#owner_name).
+      def self.variable_name_of(given)
+        return given.owner_name if given.respond_to?(:owner_name) && given.owner_name
+
+        name = given.name if given.respond_to?(:name) && !given.is_a?(IR::Node)
+        node = given.respond_to?(:node) ? given.node : given
+        name || (node.name if node.kind == :var_ref)
+      end
+      private_class_method :short_words_for, :variable_words, :worked_out_clause, :variable_name_of
     end
   end
 end

@@ -8,12 +8,17 @@ module VBlank
         # runtime made into a class of its own each time, so two games never share a thing, with
         # the live driver (runtime/rg_live.rb) as the machine it runs on.
         #
-        # #play hands it whoever plays it, which is asked one thing at the end of every frame:
+        # #play hands it whoever plays it, which is asked three things at the end of every frame:
         #
+        #   sound_wanted?          whether it wants the frame's sound; when not, the sound is not
+        #                          mixed and +left+ and +right+ are nil
+        #   picture_wanted?        whether it wants the picture; when not, it is not built and
+        #                          +pixels+ is nil (a data pack's unpacking wants neither)
         #   buttons_after(pixels, left, right)  the picture as the screen shows it, a 15-bit colour
         #                          a pixel, a row at a time, drawn over next frame, and the sound of
         #                          the frame just played, the left speaker's 16-bit samples and the
-        #                          right's at #sound_rate; gives back the buttons held for the pass
+        #                          right's at #sound_rate, both written over next frame too;
+        #                          gives back the buttons held for the pass
         #                          that starts, a number for each connected player
         #                          (IR::Buttons.masks), or nil to stop the play
         class LiveGame
@@ -21,14 +26,44 @@ module VBlank
           # (Program#fraction_vars); nil for a game made from its Ruby alone.
           attr_reader :program
 
-          def initialize(source, program: nil)
-            @game = Class.new { class_eval(source, "(the game, as Ruby)") }.new
+          # +game_class+ is a class of the game's Ruby made already (LiveGame.shareable_class), or nil
+          # to make one from +source+. Every part of a game's state is its own, set up as the
+          # runtime makes each game, so games of one class share nothing but their methods.
+          def initialize(source, program: nil, game_class: nil)
+            @game = (game_class || Class.new { class_eval(source, "(the game, as Ruby)") }).new
             @program = program
           end
 
-          # The size of the picture it shows.
-          def width = @game.class::RG_SCREEN_WIDTH
-          def height = @game.class::RG_SCREEN_HEIGHT
+          # A CLASS OF THE GAME'S RUBY THAT GAMES IN SEVERAL RACTORS ARE EACH MADE FROM (#initialize's
+          # +game_class+): made once, its constants made shareable, so a Ractor can read them.
+          #
+          # Why one class and not one in each Ractor: what YJIT compiles is kept for the class's
+          # methods, and its room for compiled code is one for the whole process. A class made in
+          # each of a dozen Ractors compiled the same big program a dozen times over, filled that
+          # room, and YJIT then threw code away and compiled it again, stopping every Ractor each
+          # time: a dozen workers played slower together than one alone. Made once, the methods are
+          # compiled once for every Ractor that plays them (Live::WorkerUnpacking).
+          #
+          # One game is made of it here first, so every instance variable a game sets as it is made
+          # has its place in Ruby's record of objects' layouts before any Ractor makes one. With
+          # none made here, four Ractors that each made their first game of a class at once once
+          # read one of its variables as nil; laying the class's variables out once, here, keeps
+          # the Ractors from laying them out at the same time.
+          def self.shareable_class(source)
+            game_class = Class.new { class_eval(source, "(the game, as Ruby)") }
+            game_class.constants.each { |name| Ractor.make_shareable(game_class.const_get(name)) }
+            game_class.new
+            game_class
+          end
+
+          # The size of the picture it shows: the whole screen, with the border round a game's screen
+          # shown in one (rg_screen_framed).
+          def width = @game.class::RG_WHOLE_WIDTH
+          def height = @game.class::RG_WHOLE_HEIGHT
+
+          # How many of the window's pixels across and down each of the picture's is shown as at a
+          # scale of 1 (Live::SDL's +pixel_size+).
+          def pixel_size = @game.class::RG_PIXEL_SIZE
 
           # The file the game reads as it starts (IR::StartFile), +bytes+ a String, handed over before
           # #play. A game that reads one and is handed none stops at its first statement, in the sentence
@@ -41,6 +76,11 @@ module VBlank
           # The keys and gamepad buttons the game adds to the window's layout (Live::SDL's
           # +game_controls+).
           def controls = @game.rg_live_controls
+
+          # The buttons its console has, by their names in IR::Buttons::NAMES (Live::SDL's +buttons+).
+          def buttons
+            IR::Buttons::NAMES.each_with_index.filter_map { |name, at| name if @game.class::RG_CONSOLE_BUTTONS[at] == 1 }
+          end
 
           # The most players the build seats, 0 for a game that names none (Live::Seats.several_players?).
           def seats = @game.rg_live_seats
@@ -84,6 +124,10 @@ module VBlank
           # +byte_lists_packed+, a list of bytes (`width: :byte`) is a binary String, a byte an item,
           # not an Array of numbers: a data pack's build reads hundreds of megabytes that way.
           def state(byte_lists_packed: false) = @game.rg_live_state(byte_lists_packed)
+
+          # Every variable of the game by name (`{ "x" => 3 }`), as they stand now, and none of its
+          # lists: #state's +vars+, cheaply enough to ask each frame of a game whose lists are large.
+          def vars = @game.rg_live_vars
         end
       end
     end

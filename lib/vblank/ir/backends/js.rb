@@ -103,15 +103,17 @@ module VBlank
         end
 
         # The web build's own check, on a program however it was made: every console-only step,
-        # said in plain words to +err+, and a Guardrails::ValidationError when the game can reach
-        # one. One in a routine nothing calls is a warning, since the lowering leaves it out
+        # said in plain words, in a Guardrails::ValidationError when the game can reach one and to
+        # +err+ when it cannot. One in a routine nothing calls is a warning, since the lowering leaves it out
         # (Lowering#reachable_steps is how the two agree on which those are).
         def refuse_console_only_steps!(program, err = $stderr)
           reached = Lowering.new(program).reachable_steps
           check = Guardrails::Checks::WebPortability.new(severity: :error, reached: reached)
           report = Guardrails::Validator.new(checks: [check]).run(program, autofix: false)
-          report.print_findings(to: err) if err
+          # A step the game reaches stops the build, and the error's message is those steps: printed
+          # here as well, they would come before the line that says the build stopped, and twice.
           report.raise_on_error!
+          report.print_findings(to: err) if err
         end
 
         # The program written out as JavaScript: the game alone, with no runtime.
@@ -138,7 +140,7 @@ module VBlank
           lowering = Lowering.new(program, title: title)
           text, data_file = lowering.text_and_data_file(data: data)
           [["function #{name}(host) {\n", console_text(program.described_console), Computer::StateFile.js_text(program),
-            fingerprint_text(program), "const RG_GAME_CODE = #{JSON.generate((code || Cartridge::GameCode.for(title)).to_s)};\n", MenuData.source(menu: menu, states: states),
+            fingerprint_text(program), "const RG_GAME_CODE = #{JSON.generate((code || Cartridge::GameCode.for(title)).to_s)};\n", MenuData.source(menu: menu, states: states, buttons: program.described_console.buttons),
             *runtime_text(runtime_for(program) + ["rg_page_menu.js", "rg_page.js"]), RuntimeFeatures.js_text(lowering.runtime_features),
             text, "return page_create(host || {});\n}\n"].join, data_file]
         end
@@ -180,8 +182,8 @@ module VBlank
                        pack_at_start: pack_at_start) do |text, data_file, described, program|
             script = WRITTEN_BY + in_own_function(data_beside_declaration(data_file, JSON.generate(data_file_name(path))),
                                                   text, *runtime_text(["rg_mount.js"]), "rg_mount_page(createGame);\n")
-            Page.html(title: game.title, script: script, scale: scale, template: template, screen: described.screen_size,
-                      shoulders: described.buttons.include?(:l), players: program.most_players || 1)
+            Page.html(title: game.title, script: script, scale: scale, template: template, screen: described.framed_screen_size,
+                      pixel_size: described.pixel_size, buttons: described.buttons, players: program.most_players || 1)
           end
         end
 
@@ -189,8 +191,12 @@ module VBlank
         # of the original's data. It plays the game's pack kept in the browser (IndexedDB), or else the
         # menu, a file picker and the release's unpacking, and keeps the pack it makes (runtime/rg_shell.js).
         # Each program is a createGame of its own, with a runtime of its own, so none shares state.
+        #
+        # An unpacking in pieces has the programs of its split too (Original::Shell#worker_programs),
+        # which the page plays on several Web Workers; +unpack_workers+ is how many the page plays
+        # them on unless its address says (rg_shell_worker_count), nil for one a processor.
         def build_shell_page(game, path, console: nil, settings: {}, scale: 3, template: Page::DEFAULT, err: $stderr,
-                             progress: Messages::Progress.silent)
+                             progress: Messages::Progress.silent, unpack_workers: nil)
           unless File.file?(template)
             raise LoweringError, "There is no page template at #{template}. Name an .html.erb file that exists."
           end
@@ -199,15 +205,21 @@ module VBlank
           shell = Original::Shell.build(game, console: console, settings: settings, err: err, progress: progress)
           shell.parts.each { |part| refuse_console_only_steps!(part.program, err) }
           progress.step("Writing JavaScript")
-          functions = shell.parts.map do |part|
+          functions = shell.parts.reject { |part| split_unpacking?(shell, part) }.map do |part|
             factory_and_data_file(part.program, title: game.title, data: :inline, menu: part.window_menu, name: shell_factory_name(part),
                                   code: game.identifying_code, states: part.keeps_states?).first
           end
+          functions += shell.worker_programs.each_with_index.map do |unpacking, number|
+            refuse_console_only_steps!(unpacking.program, err)
+            factory_and_data_file(unpacking.program, title: game.title, data: :inline, menu: false, name: "createWorker#{number}",
+                                  code: game.identifying_code, states: false).first
+          end
           script = WRITTEN_BY + in_own_function(*functions, *runtime_text(%w[rg_refusal.js rg_shell.js rg_mount.js]),
-                                                shell_start_text(shell))
+                                                shell_start_text(shell, unpack_workers))
           File.write(path, Page.html(title: game.title, script: script, scale: scale, template: template,
-                                     screen: shell.game.described_console.screen_size,
-                                     shoulders: shell.game.described_console.buttons.include?(:l)))
+                                     screen: shell.game.described_console.framed_screen_size,
+                                     pixel_size: shell.game.described_console.pixel_size,
+                                     buttons: shell.game.described_console.buttons))
           progress.done
           path
         end
@@ -254,12 +266,21 @@ module VBlank
         # createMenu, and createUnpacking0, 1... by the unpacking's number.
         def shell_factory_name(part) = { game: "createGame", menu: "createMenu", unpacking: "createUnpacking#{part.number}" }.fetch(part.role)
 
+        # Whether +part+ is an unpacking split in pieces, which the page plays as its split however
+        # many workers it has (rg_shell_unpack_on_workers), so its whole routine is not written.
+        def split_unpacking?(shell, part) = part.role == :unpacking && shell.facts.split?(part.number)
+
         # The line that starts the page on the programs of +shell+, handed its facts as data
-        # (Original::ShellFacts#to_plain), which the page's runtime reads.
-        def shell_start_text(shell)
-          unpackings = shell.parts.select { |part| part.role == :unpacking }.map { |part| shell_factory_name(part) }
+        # (Original::ShellFacts#to_plain), which the page's runtime reads, with the worker programs and
+        # +unpack_workers+, the workers the build asked for.
+        def shell_start_text(shell, unpack_workers)
+          unpackings = shell.parts.select { |part| part.role == :unpacking }.map do |part|
+            split_unpacking?(shell, part) ? "null" : shell_factory_name(part)
+          end
+          workers = Array.new(shell.worker_programs.length) { |number| "createWorker#{number}" }
           "rg_mount_page(rg_shell_game(#{JSON.generate(shell.facts.to_plain)}, " \
-            "{ game: createGame, menu: createMenu, unpackings: [#{unpackings.join(', ')}] }));\n"
+            "{ game: createGame, menu: createMenu, unpackings: [#{unpackings.join(', ')}], workers: [#{workers.join(', ')}], " \
+            "unpackWorkers: #{JSON.generate(unpack_workers)} }));\n"
         end
 
         # The runtime files of +names+, their text in that order.

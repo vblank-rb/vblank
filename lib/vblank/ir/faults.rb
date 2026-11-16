@@ -44,6 +44,12 @@ module VBlank
         "a sprite is showing picture #{pose} of its #{count}"
       end
 
+      # A run of sprites drawn in the order a list holds (Reference#names_in_draw_order), whose list holds
+      # +place+, which names none of its +count+ sprites. The runtimes' rg_place_in_ordered_run says it too.
+      def draw_order_names_none(place, count)
+        "a draw order names sprite #{place} of the #{count} it puts in order"
+      end
+
       # The sprite +sprite+ shows +picture+, which the picture groups +groups+ hold only in the
       # groups numbered +holding+, and the groups up are +up+ (their numbers, none or more).
       #

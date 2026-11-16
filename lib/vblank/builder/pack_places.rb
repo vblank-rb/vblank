@@ -133,7 +133,7 @@ module VBlank
       # by the build all-in-one, from the file with the pack left out. +where+ names the line.
       def pack_number_table(name, number, where)
         unless number.is_a?(DSL::PackNumber)
-          raise ArgumentError, "#{where} was given #{number.inspect}. It must be one number of the data pack. To fix " \
+          raise ArgumentError, "#{where} was given #{Messages::PlainWords.words_for_given(number)}. It must be one number of the data pack. To fix " \
                                "this, give it like `pack[:sizes].number(0)`."
         end
 

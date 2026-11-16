@@ -78,14 +78,17 @@ module VBlank
           # The layout for +program+. +stack_room+ is the bytes a game asked for its stack, or nil
           # for the build to decide; +divides+ and +divides_fractions+ whether it needs each divide
           # routine, and +fills_faces+ whether it needs the routine that fills a face (+lights_faces+
-          # whether it needs that routine's larger form, that lights them too).
+          # whether it needs that routine's larger form, that lights them too, +stretch_runs+ which of
+          # its runs of whole stretches it has, Faces.stretch_runs, and +see_through_runs+ which of
+          # those have a twin for see-through pictures, Faces.see_through_runs).
           def self.for(program, stack_room: nil, divides: false, divides_fractions: false, fills_faces: false,
-                       lights_faces: false)
+                       lights_faces: false, stretch_runs: Faces::STRETCH_RUNS, see_through_runs: [])
             stack = stack_room || stack_needed(program).clamp(DEFAULT_STACK_BYTES, MOST_STACK_BYTES)
             starts_at = END_OF_QUICK - CONSOLE_BYTES - interrupt_room_needed(program)
             fix_at = starts_at - stack - (divides_fractions ? Divide::FIX_ROUTINE_BYTES : 0)
             divide_at = fix_at - (divides ? Divide::ROUTINE_BYTES : 0)
-            fill_at = divide_at - (fills_faces ? Faces.routine_bytes(lit: lights_faces) : 0)
+            fill_bytes = Faces.routine_bytes(lit: lights_faces, runs: stretch_runs, see_through_runs: see_through_runs)
+            fill_at = divide_at - (fills_faces ? fill_bytes : 0)
             new(ceiling: fill_at, divide_at: (divide_at if divides), divide_fix_at: (fix_at if divides_fractions),
                 fill_face_at: (fill_at if fills_faces), stack_bytes: stack, stack_starts_at: starts_at)
           end
@@ -94,27 +97,81 @@ module VBlank
           # boot code has to set it.
           def stack_moved? = stack_starts_at != END_OF_QUICK - CONSOLE_BYTES
 
+          # What each piece held back takes, in bytes: the console's own with the interrupt
+          # stack's room, the divide routines, and the routine that fills a face.
+          def console_bytes = END_OF_QUICK - stack_starts_at
+          def divide_bytes = below_stack - divide_bottom
+          def fill_face_bytes = divide_bottom - ceiling
+
+          # THE QUICK MEMORY IS FULL: the variables, +variables+ bytes, ran +over+ bytes into the
+          # far end, which holds +kept+ bytes of lists, tables and buffers. The author is told
+          # what takes the room, piece by piece, and what to change.
+          def overrun_message(over:, variables:, kept:)
+            pieces = [["the variables", variables], ["the lists and tables in it", kept],
+                      ["the routine that fills the faces of a place", fill_face_bytes],
+                      ["the routines that divide", divide_bytes], ["the stack", stack_bytes],
+                      ["the part that the console keeps", console_bytes]].reject { |_, bytes| bytes.zero? }
+            listed = pieces.map { |name, bytes| "#{name} (#{size_words(bytes)})" }
+            quick = Messages::PlainWords::QUICK_MEMORY
+            "The game does not fit in the #{quick}. It needs #{size_words(over)} more than the " \
+              "#{size_words(IWRAM_SIZE)} that the #{quick} has. The #{quick} holds these parts of the game: " \
+              "#{listed[0...-1].join(', ')}, and #{listed.last}. To make the game fit, use fewer variables. " \
+              "Or keep the same numbers in a list. The build can move a list to the roomier memory." \
+              "#{fill_face_advice}"
+          end
+
+          private
+
+          def below_stack = stack_starts_at - stack_bytes
+          def divide_bottom = divide_at || divide_fix_at || below_stack
+
+          # A game that fills faces can make that routine smaller (Faces.routine_bytes).
+          def fill_face_advice
+            return "" if fill_face_bytes.zero?
+
+            " Or draw the places with fewer `perspective:` settings. Each setting makes the routine that " \
+              "fills the faces larger. A see-through picture drawn in perspective makes it larger again."
+          end
+
+          # Bytes as a short size: whole KB where it is exact, one decimal otherwise, and plain
+          # bytes under 1KB, as the build's other sizes are written (Guardrails::IwramBudget).
+          def size_words(bytes)
+            return "#{bytes}B" if bytes < 1024
+
+            kb = bytes / 1024.0
+            kb == kb.round ? "#{kb.round}KB" : "#{format('%.1f', kb)}KB"
+          end
+
           # THE STACK THE DEEPEST CHAIN OF CALLS NEEDS, from the game loop's body: the longest run of
           # routines each calling the next. What the console runs on an interrupt is not counted
           # here, since it runs on the console's own stack (see .interrupt_room_needed).
+          #
+          # A TIMER'S HANDLER THAT WAITS runs on the game's stack, from any wait, and again inside its
+          # own wait (FrameBoundaryCalls): calls going round in a circle, which get the room for those.
           def self.stack_needed(program)
             depth = deepest_call_depth(program, program.walk.select { |node| node.kind == :loop })
             return UNBOUNDED_STACK_BYTES if depth == Float::INFINITY
+            return UNBOUNDED_STACK_BYTES if boundary_plan(program).waiting.any?
 
             STACK_FLOOR_BYTES + (depth * STACK_BYTES_PER_CALL)
           end
 
           # THE ROOM BELOW THE CONSOLE'S 256 BYTES THAT THE INTERRUPT STACK NEEDS, past the 100 the
           # console leaves it: the deepest chain of calls from a timer's handler, or from a bend
-          # worked out a line at a time, each call held at its dearest. The console's 100 stay for
+          # worked out a line at a time, each call held at its dearest, and the most any handler
+          # saves around itself (FrameBoundaryCalls::SavedState#bytes). The console's 100 stay for
           # what a handler does itself. A handler that calls nothing needs none, which is every
           # game that does not write one that does, so the game's stack stays where it always was.
           def self.interrupt_room_needed(program)
             depth = deepest_call_depth(program, interrupt_bodies(program))
             return UNBOUNDED_INTERRUPT_BYTES if depth == Float::INFINITY
 
-            depth * STACK_BYTES_PER_CALL
+            saved = boundary_plan(program).for_handler.values.map(&:bytes).max || 0
+            (depth * STACK_BYTES_PER_CALL) + saved
           end
+
+          def self.boundary_plan(program) = FrameBoundaryCalls.plan(program)
+          private_class_method :boundary_plan
 
           # A handler whose calls go round in a circle has no deepest chain to count either, so it
           # gets room for a deep one.
@@ -126,10 +183,12 @@ module VBlank
           #
           # A bend in a paced program is not among them: its block runs in the frame like
           # ordinary code, into a table, and what the announcement then does is read one
-          # number out of it (see {BendForm}).
+          # number out of it (see {BendForm}). Nor is a timer's handler that waits, which runs on the
+          # game's stack (FrameBoundaryCalls).
           def self.interrupt_bodies(program)
             kinds = BendForm.rows_per_scanline?(program) ? %i[scroll_rows on_timer] : %i[on_timer]
-            program.walk.select { |node| kinds.include?(node.kind) }
+            waiting = boundary_plan(program).waiting.values
+            program.walk.select { |node| kinds.include?(node.kind) && waiting.none? { |handler| handler.equal?(node) } }
           end
 
           # How many calls deep the deepest of +roots+ goes.

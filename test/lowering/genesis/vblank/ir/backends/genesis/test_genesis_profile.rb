@@ -22,6 +22,8 @@ class TestGenesisProfile < Minitest::Test
     assert_operator result.idle_share, :<, 1
     assert_operator result.fewest_lines_spare, :>, 10
     assert_operator result.fewest_lines_spare, :<, 262
+    assert_equal result.fewest_lines_spare, result.fewest_lines_spare_unrounded.floor, "the same frame, unrounded"
+    assert_kind_of Float, result.fewest_lines_spare_unrounded
     assert_match(/hard_work/, result.game.first.routine)
     assert_match(/lines to spare/, out.string)
   end

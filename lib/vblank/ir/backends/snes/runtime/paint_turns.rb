@@ -73,9 +73,10 @@ module VBlank
             # same key, PaintLog::KEYS_COPY, checked as the pass ends): it is kept on a list, and each
             # turn puts the tiles on it in the generation shown. Each entry is the tile and its key
             # then (SHARED_ENTRY_BYTES); a pass sharing more than MOST_SHARED touches the other.
+            # Walls on all four edges of the screen are 116 tiles.
             SHARED = "rt paint shared"
             SHARED_COUNT = "rt paint shared count"
-            MOST_SHARED = 96
+            MOST_SHARED = 128
             SHARED_ENTRY_BYTES = 8
             SHARED_KEY = "rt paint shared key"
 

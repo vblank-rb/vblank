@@ -36,8 +36,23 @@ module VBlank
       def self.scene?(name) = Modes.strip_scene_prefix(name) != name.to_s
 
       def initialize(program)
+        @program = program
         @any = program.walk.any? { |node| node.kind == :screen && node.late }
         @game_screen = program.children.find { |node| node.kind == :screen }
+      end
+
+      # THE CONSOLE'S LINES a late page on a screen of +setting+ is still shown at once above,
+      # counted from the top of the console's whole screen, or nil to wait. A game shown in a
+      # border (Console::Description#bordered?) starts its screen the border's height down, so
+      # its row is that many lines further down; and a setting of the game's whole height
+      # (:show_now) is every line, the border's below the game's included, where nothing the
+      # game draws can tear.
+      def lines_above(setting)
+        rows = setting.rows or return nil
+        console = @program.described_console
+        return console.framed_screen_size[1] if rows >= console.screen_height
+
+        rows + console.border_corner[1]
       end
 
       # Does any screen in the program show a late page at once?

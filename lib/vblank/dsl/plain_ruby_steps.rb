@@ -46,8 +46,11 @@ module VBlank
         # `x.nil?`. A name that keeps what it holds is asked as the game plays.
         def nil_test(value) = value.is_a?(Value) && value.truth ? value.truth == Value::NIL_HELD : value.nil?
 
-        # A conditional's test, as an object the rewritten `if` asks which sides to run. A number
-        # worked out for it is truthy and used for nothing more, so no check counts it as dropped.
+        # A conditional's test, as an object the rewritten `if` asks which sides to run. A game
+        # number alone (`if floor`, `secret ? a : b`) is truthy, as any object is in Ruby: that is a
+        # presence check on a value that may be nil (an option given or not), decided while
+        # building, and it is what the author meant. It is used for nothing more, so no check
+        # counts it as dropped.
         def branch_test(value)
           return GameTest.new(as_condition(value)) if game_test?(value)
 
@@ -60,6 +63,24 @@ module VBlank
           return !value unless value.is_a?(Value) && game_test?(value)
 
           value.truth ? value.truth != Value::TRUTHY_HELD : value == 0
+        end
+
+        # A game number standing alone as a loop's test: `x while left`, `x until left`, `while left
+        # ... end`. Ruby's answer is that every number is true, 0 too, so the loop is plain Ruby,
+        # run while building: a `while` is written out for ever and the build never ends, and an
+        # `until` never runs its body. An `if` on the same number keeps Ruby's answer (#branch_test),
+        # since a presence check there means something; a loop on an object that is always there
+        # can only go round for ever. C's answer, "is not 0", is not given to it, since that is not
+        # Ruby's: the words show the comparison instead. A number that can hold nil (`target =
+        # nil`) is a test of its own (#game_test?), and so is a yes or no; neither reaches this.
+        def refuse_number_as_loop_test!(value, written)
+          return unless value.is_a?(Value) && !game_test?(value)
+
+          number = written.nil? || written.match?(/\A[@\w.]+\z/) ? written || "n" : "(#{written})"
+          refuse_game_code!("This loop's test is a number that the game keeps, `#{written || number}`, with no " \
+                            "comparison. In Ruby, every number is true, 0 too. So a `while` on it never stops, " \
+                            "and an `until` on it never runs. To fix this, compare the number. For a number " \
+                            "that is not 0, write `#{number} != 0` or `#{number} > 0`. For 0, write `#{number} == 0`.")
         end
 
         # `&&`. Two tests that only compare numbers join into one, both worked out as the game
@@ -153,9 +174,16 @@ module VBlank
           end
         end
 
+        # A range with no start (`..2`) or no end (`4..`) tests only the side it has, as Ruby's
+        # Range#=== does. `nil..nil` holds every number, so it is a test that always passes: the
+        # number against itself.
         def test_of_range(subject, range)
-          below_top = range.exclude_end? ? subject < range.end : subject <= range.end
-          (subject >= range.begin) & below_top
+          tests = []
+          tests << (subject >= range.begin) unless range.begin.nil?
+          tests << (range.exclude_end? ? subject < range.end : subject <= range.end) unless range.end.nil?
+          return subject == subject if tests.empty? # rubocop:disable Lint/BinaryOperatorWithIdenticalOperands
+
+          tests.reduce(:&)
         end
 
         # `target || 7` on a name that may hold nil: its number if it is truthy, and the right side
@@ -260,8 +288,13 @@ module VBlank
           end
         end
 
-        def loop_while(&test) = LoopTest.new(test, stops_when: false)
-        def loop_until(&test) = LoopTest.new(test, stops_when: true)
+        def loop_while(written = nil, &test) = LoopTest.new(test, stops_when: false, written: written)
+        def loop_until(written = nil, &test) = LoopTest.new(test, stops_when: true, written: written)
+
+        # How many rounds a loop Ruby runs while building may go before it is taken as one that
+        # never stops. A loop that lays out a table or a row of sprites goes round a few thousand
+        # times at most; one whose test can never fail would hang the build with no words.
+        MOST_BUILD_ROUNDS = 1_000_000
 
         # The left of a join whose right side changes a name, asked like an `if`'s test.
         class JoinSide
@@ -279,12 +312,38 @@ module VBlank
         # A right side of `a, b = b, a`, kept before the writes reach what it reads.
         def number_now(value) = value.is_a?(Value) ? value.hidden_copy(:swap) : value
 
-        # What a name was given, kept as it is on this line, since something it was worked out from
-        # changes before it is read. A number needs no keeping.
-        # +copy_variable+ false leaves a game variable itself as it is (Rewriter#kept_value_text).
-        def kept_answer(value, copy_variable: true)
-          return value if !copy_variable && variable?(value)
-          return value.hidden_copy if value.is_a?(Value)
+        # What a plain local holds, as Ruby holds it, for a line LocalNames#copy_kept could not
+        # prove safe to leave as a working-out: a number in a hidden variable of its own, holding
+        # the number of this line.
+        #
+        # +copy+ :numbers keeps every number: a working-out (`d = hp + 1`, `flags = packed[at]`),
+        # a test's answer, and a game variable that is a name's number in Ruby (`hp = 10`, `@seed`
+        # named by `game_variables`, a hidden one). :every_variable, for `first = hp` with `hp` a
+        # local the game changes, keeps hp's number whatever made its variable.
+        #
+        # What stays as it is, as in Ruby: a plain Ruby value; a handle the game holds as an
+        # object, a variable a `var` line or a verb made (`routine_var(:floors)`,
+        # `frames_since_power_on`), which the game hands about to change and to read live; and a
+        # working-out of numbers the cartridge holds fixed, which no line can change.
+        #
+        # +name+ is the local's: a copy is that name's own (Writes.promote), so another name given
+        # it later and then a number never writes it.
+        #
+        # +button_kept+ marks a line outside game code that keeps a button for game code to read
+        # (LocalNames#button_read_later?), which the build warns of.
+        def kept_answer(value, copy: :numbers, name: nil, button_kept: false)
+          copied = copy_for_local(value, copy)
+          return copied if copied.equal?(value)
+
+          copied.owner_name = name
+          copied.record_kept_button if button_kept
+          copied
+        end
+
+        def copy_for_local(value, copy)
+          return value.hidden_copy if copy == :every_variable && variable?(value)
+          return number_of_variable(value) if variable?(value)
+          return (value.changes_as_game_plays? ? value.hidden_copy : value) if value.is_a?(Value)
           return value unless value.is_a?(Condition)
 
           kept = value.hidden_variable(:copy)
@@ -293,9 +352,7 @@ module VBlank
           kept
         end
 
-        # `old = hp`. While the game plays that must keep hp's number as it is now, where a plain
-        # second name would follow hp when it changes.
-        def copy_of_variable(value) = variable?(value) ? value.kept_copy : value
+        def number_of_variable(variable) = variable.number_in_ruby? ? variable.hidden_copy : variable
 
         def refuse_game_code!(message)
           raise Refused, "#{message}#{Messages::AuthorSource.at_author_line}"
@@ -313,10 +370,61 @@ module VBlank
           end
 
           def game? = false
-          def open_yes_side = !!@value
-          def open_no_side = !@value
-          def close_side(value) = @answer = value
+          def open_yes_side = open_side(!!@value, :yes)
+          def open_no_side = open_side(!@value, :no)
+
+          def close_side(value)
+            note_measured_side
+            @answer = value
+          end
+
           def keep_side_value(value) = @answer = value
+
+          # A TEST ON A PLAIN FLAG (`if @open`, `unless @planned`) in game code, which Ruby decides
+          # here, once. Whether that is right depends on what the flag guards (InstanceVariables::Uses,
+          # #refuse_game_flags!): a once-guard keeps work that is built, and a game flag keeps what the
+          # game does as it plays. The side Ruby runs is watched for statements recorded into the
+          # game, and the answer is kept for the side where it is written (+site+). The side Ruby
+          # skips is noted, and judged once the build is over by what that side recorded wherever
+          # the build did run it; a side never run is taken to record game code, unless the source
+          # shows it records nothing (+quiet_yes+, +quiet_no+). Nothing here depends on how the
+          # build is run, so every run of a game gets one answer.
+          def watch_flag(owner, label, current, site:, quiet_yes:, quiet_no:)
+            @builder = InstanceVariables.builder_watching_flag(owner, label, current)
+            return unless @builder
+
+            @owner = owner
+            @label = label
+            @current = current
+            @site = site
+            @quiet_yes = quiet_yes
+            @quiet_no = quiet_no
+          end
+
+          private
+
+          def open_side(taken, side)
+            return taken unless @builder
+
+            site = "#{@site}:#{side}"
+            if taken
+              @measured = [@builder.statement_mark, site]
+            elsif !(side == :yes ? @quiet_yes : @quiet_no)
+              InstanceVariables.note_flag_side_skipped(@owner, @label, @current, site)
+            end
+            taken
+          end
+
+          def note_measured_side
+            return unless @measured
+
+            mark, site = @measured
+            InstanceVariables.note_flag_side_run(@owner, @label, @current, site, records: @builder.recorded_since?(mark))
+            @measured = nil
+          end
+
+          public
+
           def keep_tail_value(value) = @answer = value
           def store_side(target, value) = @answer = Writes.give_variable(target, value)
           def refuse_jump!(_word) = nil
@@ -331,6 +439,9 @@ module VBlank
 
           def game? = true
           def hidden_variable(why, like: nil) = @condition.hidden_variable(why, like: like)
+
+          # A flag that turned out to be the game's (BuildTest#watch_flag): both sides run anyway.
+          def watch_flag(*, **) = nil
 
           def open_yes_side
             @if_node = @condition.open_branch
@@ -395,9 +506,11 @@ module VBlank
         # is all it is. On a game test the body runs ONCE, recording itself into a loop in the
         # game, and the second asking closes that loop.
         class LoopTest
-          def initialize(test, stops_when:)
+          def initialize(test, stops_when:, written: nil)
             @test = test
             @stops_when = stops_when
+            @written = written
+            @build_rounds = 0
           end
 
           # The block runs once it is known this is a game's loop, and before the loop opens.
@@ -406,7 +519,8 @@ module VBlank
 
             mark = statement_mark
             value = @test.call
-            return @stops_when ? !value : !!value unless Steps.game_test?(value)
+            Steps.refuse_number_as_loop_test!(value, @written)
+            return build_round(value) unless Steps.game_test?(value)
 
             open_game_loop(value, mark, &before_loop)
           end
@@ -420,16 +534,34 @@ module VBlank
 
           private
 
+          # One round of a loop Ruby runs while building: its answer, as Ruby's `while` takes it.
+          def build_round(value)
+            goes_on = @stops_when ? !value : !!value
+            refuse_endless_build_loop! if goes_on && (@build_rounds += 1) > MOST_BUILD_ROUNDS
+            goes_on
+          end
+
+          def refuse_endless_build_loop!
+            Steps.refuse_game_code!("This loop went round a million times while the game was built, and it " \
+                                    "did not stop. Ruby runs a loop on plain values while it builds the game. " \
+                                    "If the test is a number alone, the test is always true, because every " \
+                                    "number is true in Ruby, 0 too. To fix this, compare the number: write " \
+                                    "`n != 0` or `n > 0`.")
+          end
+
           # A name given a variable by the block must be read as that variable from now on, in the
           # test too, or the loop would ask about the number it held before.
           #
           # What working the test out records (a read's check of its place, the answer of a join
           # whose right side does something) moves into the loop, to run on every round before the
           # test is asked: left before the loop it would run once, and the test would ask the same
-          # answer for ever. +mark+ is where the test started recording.
+          # answer for ever. +mark+ is where the test started recording. Where the block runs first,
+          # the test is asked again after it, so what the first asking recorded is taken out and
+          # dropped with its answer.
           def open_game_loop(value, mark, &before_loop)
             @game_loop = stopping_test(value)
             if before_loop
+              take_statements_since(mark)
               yield
               @game_loop.discard!
               mark = statement_mark

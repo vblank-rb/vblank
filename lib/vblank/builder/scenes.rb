@@ -37,6 +37,11 @@ module VBlank
         declare_func(name, fast: fast, on_chip: on_chip, wrote: "func :#{name}", &block)
       end
 
+      # The names of the routines declared so far, scenes' among them. Asked by the build of an
+      # unpacking routine, to tell which routines each of its parts declared
+      # (Original::PartPrograms).
+      def declared_function_names = @functions.keys
+
       # Call a named subroutine. The target is resolved by name when the tree is
       # lowered, so it may be defined before or after this call.
       #

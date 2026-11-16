@@ -21,10 +21,12 @@ module VBlank
       # about what the game declared, and its `save_var`s. +handle+ is the Builder itself, for the numbers and
       # conditions (DSL::Value, DSL::Condition) the saves hand back to a game — those build
       # program through it. +save_memory+ is the size the game named with `save_memory:`, in
-      # kilobytes, or nil to let the records decide.
+      # kilobytes, or nil to let the records decide, and +save_memories+ the memories the console's
+      # cartridge can carry (IR::SaveLayout.offered_by), which the records pick from. +console+ is
+      # the console's Console::Description, named where the records fit none of them.
       Port = Data.define(:handle, :record, :repeat, :at_boot, :ensure_var, :declare_func, :run_each_pass,
                          :start_value, :list_new_node, :save_var, :saved_vars, :pool_refill, :save_memory,
-                         :fraction_bits, :loop_counter)
+                         :save_memories, :console, :fraction_bits, :loop_counter)
 
       include SaveProgram
       include SaveRecords
@@ -46,13 +48,19 @@ module VBlank
 
       def records? = @save_data.any?
 
-      # The save memory the cartridge has, in kilobytes (see IR::SaveLayout.chosen). Before the
-      # records are laid out, what they need is not known yet, so it is the size named or the
-      # smallest.
-      def save_memory = IR::SaveLayout.chosen(@port.save_memory, needed_save_memory)
+      # The save memory the cartridge has, an IR::SaveLayout::Memory (see IR::SaveLayout.chosen).
+      # Before the records are laid out, what they need is not known yet, so it is the size named
+      # or the smallest.
+      def save_memory = IR::SaveLayout.chosen(@port.save_memory, needed_save_memory, @port.save_memories)
 
-      # The smallest save memory that holds the records, in kilobytes, once they are laid out.
-      def needed_save_memory = @save_data_settled ? IR::SaveLayout.smallest_fitting(record_halves) : nil
+      # The smallest save memory that holds the records, once they are laid out.
+      def needed_save_memory
+        @save_data_settled ? IR::SaveLayout.smallest_fitting(record_halves, @port.save_memories) : nil
+      end
+
+      # The memory of the size the game named with `save_memory:`, where the console's cartridge
+      # can carry one of that size, or nil.
+      def named_save_memory = @port.save_memory && IR::SaveLayout.offered_of_size(@port.save_memories, @port.save_memory)
 
       # Each record as one [half bytes, copies] pair, which is what decides how much room it takes.
       def record_halves = @save_data.values.map { |one| [one.half, one.copies] }
@@ -230,7 +238,7 @@ module VBlank
       # picked. Nothing to lay out for a game with no records — unless it named flash or the
       # EEPROM and has a `save_var`, which there is kept in a record (see SaveVarRecord).
       def lay_out_save_records
-        saves if @persisted.any? && IR::SaveLayout.memory(save_memory).save_vars_in_record?
+        saves if @persisted.any? && save_memory.save_vars_in_record?
         @saves&.lay_out_save_records
         refuse_recorded_save_var_without_loop!
       end
@@ -240,7 +248,7 @@ module VBlank
       def refuse_recorded_save_var_without_loop!
         return unless @saves&.save_vars_in_record? && @frame_boundaries.empty?
 
-        raise ArgumentError, "This game has a save_var and #{save_memory}K of save memory, and it has no " \
+        raise ArgumentError, "This game has a save_var and #{save_memory.kilobytes}K of save memory, and it has no " \
                              "game_loop. On 8K, 64K or 128K a save_var is saved by the game loop after it " \
                              "changes, so without one it is never saved. To fix this, write a game_loop, " \
                              "or give the game 32K of save memory."
@@ -255,17 +263,23 @@ module VBlank
         stores.each { |node| swap_node(node, @saves.save_var_changed_node) }
       end
 
-      # How much save memory the cartridge has, in kilobytes (see IR::SaveLayout.chosen): the
-      # records answer when there are any, since only they know what they need.
-      def save_memory = @saves ? @saves.save_memory : IR::SaveLayout.chosen(@save_memory, nil)
+      # How much save memory the cartridge has, an IR::SaveLayout::Memory (see
+      # IR::SaveLayout.chosen): the records answer when there are any, since only they know what
+      # they need.
+      def save_memory = @saves ? @saves.save_memory : IR::SaveLayout.chosen(@save_memory, nil, save_memories)
+
+      # The memories the console's cartridge can carry.
+      def save_memories = IR::SaveLayout.offered_by(@console)
 
       # Declare in the program how much save memory it has, so every backend runs it on the same
       # kind. A game that saves nothing has none to speak of.
       def declare_save_memory
         return if @persisted.empty? && @saves.nil?
 
-        prepend_to_program(Build.save_memory(save_memory, asked_for: !@save_memory.nil?,
-                                                          records: @saves&.laid_out_records || []))
+        memory = save_memory
+        prepend_to_program(Build.save_memory(memory.kilobytes, chip: memory.named_chip,
+                                                               asked_for: !@save_memory.nil?,
+                                                               records: @saves&.laid_out_records || []))
       end
 
       # Put each peek's reading where the game wrote it, once the whole program is built.
@@ -289,7 +303,7 @@ module VBlank
           save_var: ->(name) { persisted?(name) },
           saved_vars: -> { @persisted },
           pool_refill: ->(pool) { pool_refill_nodes(pool) },
-          save_memory: @save_memory,
+          save_memory: @save_memory, save_memories: save_memories, console: @console,
           fraction_bits: ->(name) { @fraction_vars[name] || @fraction_lists[name] },
         ))
       end

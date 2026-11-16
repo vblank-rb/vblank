@@ -59,18 +59,24 @@ module VBlank
 
       def files_of_entry(name, entry)
         found = beneath(entry.chomp("/"))
-        found = @files.select { |file| File.fnmatch(File.join(@root, entry), file, File::FNM_PATHNAME) } if found.empty?
+        found = @files.select { |file| File.fnmatch("#{root_prefix}#{entry}", file, File::FNM_PATHNAME) } if found.empty?
         raise ArgumentError, "The broad group #{name} names #{entry}, and no test is there. Correct the entry or remove it." if found.empty?
 
         found
       end
 
-      def beneath(folder) = @files.select { |file| file.start_with?("#{@root}/#{folder}/") }
+      def beneath(folder) = @files.select { |file| file.start_with?("#{root_prefix}#{folder}/") }
 
-      # Every folder some test sits in or beneath, from the root, the support folder left out.
+      # What every file under the root starts with: nothing where the root is the folder rake runs
+      # in, since a clean path from there starts with no "./".
+      def root_prefix = @root == "." ? "" : "#{@root}/"
+
+      # Every folder some test sits in or beneath, from the root, the support folder left out. A test
+      # file outside the root (a game's run can reach past it, to the framework half's tests) is in
+      # no folder's group.
       def folders
-        @files.flat_map do |file|
-          parts = File.dirname(file.delete_prefix("#{@root}/")).split("/")
+        @files.select { it.start_with?(root_prefix) }.flat_map do |file|
+          parts = File.dirname(file.delete_prefix(root_prefix)).split("/")
           parts.first == "." ? [] : Array.new(parts.size) { |depth| parts[0..depth].join("/") }
         end.uniq.reject { |folder| folder == SUPPORT || folder.start_with?("#{SUPPORT}/") }.sort
       end

@@ -37,6 +37,8 @@ module VBlank
             @places[name]
           end
 
+          def reserved?(name) = @places.key?(name)
+
           def [](name) = @places.fetch(name) { raise LoweringError, "#{name.inspect} has no place in the data segment" }
 
           # Every place reserved, by name.

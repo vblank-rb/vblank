@@ -34,12 +34,27 @@
  * them; see rg_sound.c for the layouts). */
 extern const int32_t rg_game_sound_rules[];
 /* A game with a part that reads its wave from the start file writes it into this table as it
- * starts (rg_music_fill_wave, rg_music.h), and says so before this header (RG_WAVEFORMS_WRITABLE). */
+ * starts (the music feature does, through its own header), and defines RG_WAVEFORMS_WRITABLE
+ * before this header. */
 #ifdef RG_WAVEFORMS_WRITABLE
 extern int32_t rg_game_waveforms[];
 #else
 extern const int32_t rg_game_waveforms[];
 #endif
+/* On a console whose voices read sound memory, the wave numbered +which+ (just written from the
+ * start file into +waveforms+) written into its loop of +memory+, the game's sound memory
+ * (rg_spu.c). */
+void rg_spu_fill_wave(int32_t *memory, const int32_t *waveforms, int32_t which);
+/* On such a console, a recording whose samples, hold or length are read from the start file, encoded
+ * into the loops of +memory+ kept for it (PS1::SoundMemory.laid_out_at_start), as the build encodes
+ * one written in the game: once through, and laid out round its way back. +recordings+ is the mixer's
+ * rg_game_recordings, whose length for it is filled already; +spu_recordings+ rg_game_spu_recordings,
+ * its way back filled already where it is read from the file (rg_mix_fill_holds, rg_mix_fill_backs);
+ * +recording_samples+ the mixer's samples, filled already. +rules+: the recording's number, where its
+ * samples start, and where its loop played once through and its loop played holding start, in 8-byte
+ * steps, -1 for a way it is never played. */
+void rg_spu_fill_recording(int32_t *memory, const int32_t *recordings, const int32_t *spu_recordings, const int8_t *recording_samples,
+                           const int32_t *rules);
 extern const int32_t rg_game_beeps[];
 extern const int32_t rg_game_waves[];
 extern const int32_t rg_game_hits[];

@@ -86,7 +86,7 @@ module VBlank
               emit_passes(asm, at, count)
               emit_frame(asm, at, memory, level_at, recorded)
               emit_finish(asm, at, memory, recorded)
-              emit_recorded_parts(asm, at) if recorded
+              emit_recorded_parts(asm, at, glides: memory.reserved?(Recordings::GLIDES)) if recorded
               emit_claim_routine(asm, at)
               emit_select(asm, at)
               emit_effect_holds(asm, at)
@@ -458,7 +458,7 @@ module VBlank
             # (Reference::Player#finish_effect).
             #
             # rt_sfx_owner: D1 = the owner number of the effect's part on channel D0.
-            def emit_recorded_parts(asm, at)
+            def emit_recorded_parts(asm, at, glides: false)
               m = Genesis::Music
               asm.label("rt_sfx_recorded_note")
               asm.jsr(asm.abs_l("rt_sfx_owner"))
@@ -469,6 +469,14 @@ module VBlank
               asm.jsr(asm.abs_l("rt_recordings_note_release"))
               asm.bra("rt_sfx_recorded_note_heard")
               asm.label("rt_sfx_recorded_note_plays")
+              if glides # a note that glides (SongTable::GLIDES, the row's top bit) carries the part's note on
+                asm.branch(:pl, "rt_sfx_recorded_note_strikes")
+                asm.and(:w, asm.imm(m::GLIDES - 1), asm.d(0))
+                asm.subq(:w, 1, asm.d(0))
+                asm.jsr(asm.abs_l("rt_recordings_glide"))
+                asm.bra("rt_sfx_recorded_note_heard")
+                asm.label("rt_sfx_recorded_note_strikes")
+              end
               asm.subq(:w, 1, asm.d(0))
               asm.movea(:l, at.call(RECORD), asm.a(0))
               asm.move(:w, asm.disp(0, m::EFFECT_RANK), asm.d(2))

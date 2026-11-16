@@ -123,12 +123,22 @@ def rg_headless_main(argv)
   rg_headless_finish
 end
 
+# A boundary that only ends the frame a waiting timer's handler held up is no new frame, and one a
+# handler stopped in shows nothing yet (rg_frame_begins), as rg_headless.c's begin_frame has it, and a
+# frame's sound is written once for each time the sound moves on, as it says.
 def rg_driver_wait_vblank
   rg_headless_state_at_boundary
-  rg_headless_write_frame_sound
-  rg_headless_finish if @rg_frame >= @rg_frames_to_play
-  rg_frame_begins
-  @rg_frame += 1
+  if rg_frame_ends_late == 1
+    rg_headless_write_frame_sound
+    rg_frame_begins
+  else
+    rg_headless_write_frame_sound unless @rg_sound_held_up
+    rg_headless_finish if @rg_frame >= @rg_frames_to_play
+    held_up = rg_frame_begins
+    @rg_sound_held_up = held_up == 1
+    @rg_frame += 1
+    return if held_up == 1
+  end
   rg_headless_print_moment("frame #{@rg_frame}", @rg_every_picture)
   $stdout.write("buttons?\n")
   $stdout.flush
@@ -221,6 +231,7 @@ end
 def rg_headless_write_picture(shown)
   @rg_picture_out.rewind
   @rg_picture_out.write(shown.pack("v*"), rg_screen_stored.pack("v*"))
+  @rg_picture_out.write(rg_screen_framed.pack("v*")) if rg_screen_bordered? # rg_headless.c's write_picture
   @rg_picture_out.flush
 end
 

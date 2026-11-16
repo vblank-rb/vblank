@@ -24,8 +24,9 @@ module VBlank
 
           # The C text. +menu+ false is a game that has no menu. +states+ false is a window that keeps no
           # save states (a shell's parts, which run one after another): it has no Save or Load heading.
-          def source(menu: true, states: true)
-            [header, headings(states), sizes_and_colors, "const int rg_game_has_menu = #{menu ? 1 : 0};\n" \
+          # +buttons+ are the console's, which the Keys heading lists (Live::WindowMenu.headings).
+          def source(menu: true, states: true, buttons: Console::ADVANCE.buttons)
+            [header, headings(states, buttons), sizes_and_colors, "const int rg_game_has_menu = #{menu ? 1 : 0};\n" \
                                                           "const int rg_game_has_states = #{menu && states ? 1 : 0};\n", *[1, 2].map { |density| atlas(density) },
              "const rg_menu_atlas rg_menu_atlases[2] = {#{[1, 2].map { |density| atlas_entry(density) }.join(', ')}};\n"].join("\n")
           end
@@ -40,8 +41,8 @@ module VBlank
             C
           end
 
-          def headings(states)
-            shown = states ? Live::WindowMenu::HEADINGS : Live::WindowMenu::HEADINGS.reject(&:states?)
+          def headings(states, buttons)
+            shown = Live::WindowMenu.headings(states: states, buttons: buttons)
             lines = shown.each_with_index.map do |heading, index|
               "static const rg_menu_line heading_#{index}[] = {\n#{heading.lines.map { |line| "  #{line_entry(line)},\n" }.join}};\n"
             end

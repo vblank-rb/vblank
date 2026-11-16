@@ -28,6 +28,17 @@ module VBlank
 
       PLAIN = "the same as on the Advance."
 
+      # Why a recording plays at full loudness on the Genesis. The cycles are counted from the sound
+      # processor's sample loop (Backends::Genesis::Runtime::Recordings#driver) in the Z80's own timings,
+      # the common path a sample takes, against its clock over the samples a second it sounds; the
+      # look-up is an estimate of two instructions, not code that exists.
+      RECORDING_LOUDNESS = "A recording plays at full loudness, whatever its volume: the DAC has no volume of " \
+                           "its own. To play it more quietly, the sound processor must scale each sample, about " \
+                           "13300 times a second, through a table for each volume. This build does not do that " \
+                           "yet. Its sample loop takes about 204 of the 269 cycles it has for each sample, so the " \
+                           "look-up fits, and 16 tables take 4 KB of its 8 KB of memory. Until then, the music " \
+                           "volume and a sound's volume are only in the sound log."
+
       ANSWERS = Ractor.make_shareable({
         # --- building, the screen and settings ---
         screen: works("`screen :tiled` and `screen :bitmap` work. A Genesis has no painted screen, so a " \
@@ -121,13 +132,22 @@ module VBlank
                       "sprites and a background told `draw_with` that list use the same one. If the pictures of " \
                       "all the scenes need more than four lists, each scene gets the lists that every scene does " \
                       "not use, and writes its own colours into them when it starts. A list that the game changes " \
-                      "keeps the same one of the four in every scene."),
+                      "keeps the same one of the four in every scene that draws with it. If the scenes still need " \
+                      "more, a scene that does not draw with that list uses its one for its own colours. If the " \
+                      "scenes still need more, each picture declared with a list of 15 colours or fewer is drawn " \
+                      "from one list that holds that list's colours in order, as a Genesis game's pieces each name " \
+                      "a palette line. If a " \
+                      "scene does not fit, the build stops and says what each kept list holds."),
         recolor: works("a list told to hold other colours keeps one of the four lists to itself for the whole " \
-                       "game, written over in the blank. The sprites and the backgrounds drawn with it are drawn " \
+                       "game, written over in the blank. In a game whose scenes need more than four lists, it keeps " \
+                       "that one only in the scenes that draw with it (see `colors`). The sprites and the backgrounds drawn with it are drawn " \
                        "from that one list, however many sets it holds in turn. A background with tiles from other " \
                        "lists too draws only its tiles of that list from it, since each cell names its own list. " \
                        "A background that draws with several lists the game changes draws its tiles of each " \
                        "list from that list, so every list of a screen can change on one frame. " \
+                       "If a background draws with more lists than the four, its short lists share one of the four. " \
+                       "A list of three colours uses three of the fifteen places, so five such lists fit in one. " \
+                       "A sprite's list does not share. " \
                        "A sprite whose pictures are drawn " \
                        "in the list's colours, and drawn with that list alone, keeps no list for its own colours. " \
                        "A sprite drawn with several lists " \
@@ -142,6 +162,8 @@ module VBlank
                       "of 32×32 or smaller is one piece, and the build covers a bigger picture with few pieces. " \
                       "A sprite whose poses are drawn from different lists of colors shows each pose in the " \
                       "colors of its own list, and it can follow those lists (`draw_with({ hero: :hero })`). " \
+                      "It can also draw all those lists with one other list " \
+                      "(`draw_with({ hero: :white, cape: :white })`). " \
                       "Each list that it follows uses one of the four palettes. Sprites that show the same " \
                       "poses use one table of them. " \
                       "The build draws a pose read from the frames of a data pack as the pieces of its frame. " \
@@ -152,7 +174,10 @@ module VBlank
                       "need more squares than the video memory holds, the build stops. It says how many they " \
                       "need and which pictures use the most. " \
                       "The Genesis shows 80 pieces at once, and 20 pieces and 320 pixels of sprites on any one " \
-                      "row of the screen. Past 80 pieces, a sprite is not drawn and no error shows " \
+                      "row of the screen. A piece spends its whole width of those 320 pixels, its clear pixels and " \
+                      "the pixels off the screen too. If there are more, some are not shown: past 20 pieces on a " \
+                      "row, the pieces furthest back; past 320 pixels, the rest of the pieces furthest back; past " \
+                      "80 pieces, the pieces in front, on the whole screen. No error shows " \
                       "as the game runs. `scale`, `face_angle` and `turn` are refused: a Genesis cannot " \
                       "turn or resize a sprite. Draw the turns as poses. A sprite with `over_picture: true` shows " \
                       "over a painted screen, as on the Advance. The painted picture uses one of the four lists of " \
@@ -173,10 +198,11 @@ module VBlank
                           "ordinary background. A background is " \
                           "at most 64 tiles across and 64 down, as on the Advance. `rotate` and `scale` are " \
                           "refused: a Genesis cannot turn a background. A `scroll_each_row` block runs for " \
-                          "all 224 rows each pass. A game can change 64 tiles with `set_tile` in one pass. " \
-                          "If it changes more, the game stops and says so. `held: true` changes nothing: a " \
-                          "Genesis writes its video memory only between frames, so the cells a pass changes " \
-                          "already show together."),
+                          "all 224 rows each pass. A Genesis writes the tiles that `set_tile` changes " \
+                          "between frames, 256 at most for one pass. If a pass changes more, each 256 are " \
+                          "written while the pass runs, in the order the game changed them, and a frame can " \
+                          "show part of the change. `held: true` changes nothing: up to 256 cells that a pass " \
+                          "changes already show together."),
         status_bar: works("the bar is the window, a layer the console keeps beside its two backgrounds. " \
                           "`set_tile` with `now: true` is refused: a Genesis writes its video memory only " \
                           "between frames, so a change shows on the frame after the pass."),
@@ -242,7 +268,7 @@ module VBlank
         seed: works, randomize: works, roll: works, rand: works, chance: works, random_numbers: works,
 
         # --- sound and music ---
-        enable_sound: works,
+        enable_sound: works("`main_volume:` is refused: the sound chips of a Sega Genesis have no main volume."),
         define_sound: works("a Genesis plays a square on its PSG, which has three square voices. Each square is " \
                             "half up and half down, so `duty:` is not heard, and a PSG voice sounds from both " \
                             "speakers. A fade or a swell moves in the same time as on the Advance. The lowest " \
@@ -254,8 +280,10 @@ module VBlank
         stop_wave: works,
         song: works("see `define_sound` for the square and wave voices. A wave part between the speakers " \
                     "(`pan -0.7`) plays from one speaker if that side is two or more times as loud as the other " \
-                    "side. If not, it plays from both speakers. A part that plays a recording plays from both " \
-                    "speakers, wherever `pan` puts it: the FM chip's sixth voice plays it from both."),
+                    "side. If not, it plays from both speakers. A part that plays a recording plays from the " \
+                    "left speaker, the right speaker or both, the nearest to where `pan` puts it, by the same " \
+                    "rule: the DAC plays through the FM chip's sixth voice, which has a switch for each speaker. " \
+                    "For its loudness, see `sample`."),
         play_song: works,
         stop_music: works,
         hold_music: works,
@@ -263,11 +291,13 @@ module VBlank
         music_volume: works,
         fade_music_in: works,
         fade_music_out: works,
-        songs: works("a recorded note with `glides: true` is refused: this build does not make it yet. For the rest, see `song`."),
+        songs: works("see `song`. #{Answers::GLIDES_CARRY_ON} It moves to the nearest speaker, as `song` says, and its " \
+                     "new loudness is not heard, as no recording's is. #{Answers::NOTE_VOICES_NOT_UNDER_VOLUME}"),
         sound_effects: works("see `song`."),
         sample: works("a recording is played on the FM chip's sixth voice, which can play a recording of eight " \
-                      "bits. The sound processor reads it 13000 samples a second. Only one recording plays at a " \
-                      "time, at one loudness, and a recording cannot have a shape (`envelope:`)."),
+                      "bits. The sound processor sounds about 13300 samples a second, and plays each recording at " \
+                      "the rate it was recorded at. Only one recording plays at a time, and a recording cannot " \
+                      "have a shape (`envelope:`). #{RECORDING_LOUDNESS}"),
         instrument: works("see `sample`.")
       })
 

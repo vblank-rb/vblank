@@ -965,7 +965,6 @@ module VBlank
             def emit_flush(asm, memory, s)
               keys_now = memory[KEYS_NOW]
               keys_copy = memory[KEYS_COPY]
-              generation = asm.abs(memory[Paint::GENERATION])
               kept = memory[KEPT_PAGE]
               asm.label("rt_paint_flush_keeping")
               # With nothing written down nothing is painted, and the flush itself changes only
@@ -1006,14 +1005,14 @@ module VBlank
               emit_pointer(asm, s.pointer, memory[PAINTED_IN])
               emit_pointer(asm, s.planes, memory[REPAINT])
               emit_pointer(asm, s.planes + 4, memory[UNSENT])
-              asm.stz(asm.direct(s.count)) # tiles to paint
+              asm.stz(asm.direct(s.count)) # not nought once there is a tile to paint
               dirty = memory[Paint::DIRTY]
               dirty_rows = memory[ROWS_OF.fetch(Paint::DIRTY)]
               # Every tile covered is looked at, so the rows are looked at with the data bank at
               # the first bank of work RAM, where the keys and the tiles' bytes are: a 16-bit
               # address reaches them, and the first 8K, where the rest is kept, is the same memory
               # there as in bank 0.
-              far = [keys_now, keys_copy, memory[PAINTED_IN], memory[UNSENT]]
+              far = [keys_now, keys_copy, memory[KEYS_SHOWN], memory[PAINTED_IN], memory[REPAINT], memory[UNSENT]]
               raise ArgumentError, "a tile's keys and bytes share work RAM's first bank" unless far.all? { |at| at >> 16 == Picture::WORK_RAM >> 16 }
 
               asm.phb
@@ -1047,77 +1046,16 @@ module VBlank
               asm.asl
               asm.asl
               asm.tax
-              # Every tile covered since the pass's clear is of this generation: rt_paint_mark put it
-              # there, and the clear forgot what was covered before it. A tile settled at an earlier
-              # flush of the pass and not covered since has its two keys the same, and is passed
-              # over. Y counts the tiles and X their keys; +pointer+ points at PAINTED_IN, +planes+
-              # at REPAINT and UNSENT.
-              asm.label("rt_paint_flush_tile")
-              asm.lda(asm.abs_x(keys_now & 0xFFFF))
-              asm.cmp(asm.abs_x(keys_copy & 0xFFFF))
-              asm.bne("rt_paint_flush_changed")
-              asm.lda(asm.abs_x((keys_now & 0xFFFF) + 2))
-              asm.cmp(asm.abs_x((keys_copy & 0xFFFF) + 2))
-              asm.bne("rt_paint_flush_changed")
-              # The copy holds it already: nothing painted it since it was painted (in this
-              # generation), or it is painted the way it was in an older one.
-              asm.sep(0x20)
-              asm.lda(generation)
-              asm.sta(asm.abs_y(memory[PAINTED_IN] & 0xFFFF))
-              asm.rep(0x20)
+              # Sending or not is the same for every tile of the flush, so each has a loop of its own
+              # and SENDING is read once a row, not once a tile.
               asm.lda(asm.abs(memory[SENDING]))
-              asm.beq("rt_paint_flush_tile_done")
-              # It may be unsent from an earlier flush; one that is not, with no run started, is
-              # nothing to send, and is passed over here rather than in a call.
-              asm.lda(asm.abs_y(memory[UNSENT] & 0xFFFF))
-              asm.and_a(0x00FF)
-              asm.bne("rt_paint_flush_tile_send")
-              asm.lda(asm.direct(s.chunk))
-              asm.bmi("rt_paint_flush_tile_done")
-              asm.label("rt_paint_flush_tile_send")
-              asm.jsr(asm.abs("rt_paint_flush_send_tile"))
-              asm.bra("rt_paint_flush_tile_done")
-              asm.label("rt_paint_flush_changed")
-              asm.lda(asm.ind_long_y(s.pointer))
-              asm.and_a(0x00FF)
-              asm.cmp(generation)
-              asm.beq("rt_paint_flush_paint") # painted in this generation already: again, on top
-              asm.sep(0x20)
-              asm.lda(generation)
-              asm.sta(asm.ind_long_y(s.pointer))
-              asm.rep(0x20)
-              emit_unless_clear_already(asm, memory, "rt_paint_flush_paint") # (X its key)
-              asm.sty(asm.direct(s.tile))
-              asm.jsr(asm.abs("rt_paint_blank_tile"))
-              asm.label("rt_paint_flush_paint")
-              2.times do |half|
-                asm.lda(asm.long_x(keys_now, half * 2))
-                asm.sta(asm.long_x(keys_copy, half * 2))
-              end
-              asm.sep(0x20)
-              asm.lda(asm.abs(memory[STAMP]))
-              asm.sta(asm.ind_long_y(s.planes))
-              asm.rep(0x20)
-              asm.inc(asm.direct(s.count))
-              # Sending, it goes on a run now; else it is unsent until then.
-              asm.lda(asm.abs(memory[SENDING]))
-              asm.beq("rt_paint_flush_unsent")
-              asm.jsr(asm.abs("rt_paint_flush_send_changed"))
-              asm.bra("rt_paint_flush_tile_done")
-              asm.label("rt_paint_flush_unsent")
-              asm.sep(0x20)
-              asm.lda(1)
-              asm.sta(asm.ind_long_y(s.planes + 4))
-              asm.rep(0x20)
-              asm.label("rt_paint_flush_tile_done")
-              4.times { asm.inx }
-              asm.iny
-              asm.cpy(asm.direct(s.last))
-              asm.branch_long(:bcc, "rt_paint_flush_tile")
+              asm.branch_long(:bne, "rt_paint_flush_sending_row_tile")
+              emit_flush_tiles(asm, memory, s, "rt_paint_flush_row", sending: false)
+              asm.plx
+              asm.brl("rt_paint_flush_next_row")
+              emit_flush_tiles(asm, memory, s, "rt_paint_flush_sending_row", sending: true)
               asm.plx
               # Sending, the row's last run is ended and the row marked unchanged.
-              asm.lda(asm.abs(memory[SENDING]))
-              asm.beq("rt_paint_flush_next_row")
               asm.sty(asm.direct(s.tile))
               asm.phx
               asm.jsr(asm.abs("rt_paint_run_end"))
@@ -1165,6 +1103,164 @@ module VBlank
               emit_send_tile(asm, memory, s)
             end
 
+            # In rt_paint_flush, the tiles of a row, +tag+ the loop's labels: Y counts the tiles and X
+            # their keys, up to +last+. Every tile covered since the pass's clear is of this
+            # generation: rt_paint_mark put it there, and the clear forgot what was covered before
+            # it. A tile settled at an earlier flush of the pass and not covered since has its two
+            # keys the same, and is passed over.
+            #
+            # The data bank is the keys', so everything a tile has in work RAM's first bank is an
+            # address of 16 bits; this runs once for every tile a pass changes, which for a big new
+            # picture is hundreds. +sending+, each tile changed goes on a run as it is found
+            # (rt_paint_flush_sending), what rt_paint_flush_send_changed and rt_paint_slot_behind
+            # do for it written out here rather than called (emit_flush_tile_on_run); else it is
+            # UNSENT until then.
+            def emit_flush_tiles(asm, memory, s, tag, sending:)
+              now = memory[KEYS_NOW] & 0xFFFF
+              copy = memory[KEYS_COPY] & 0xFFFF
+              painted_in = memory[PAINTED_IN] & 0xFFFF
+              generation = asm.abs(memory[Paint::GENERATION])
+              asm.label("#{tag}_tile")
+              asm.lda(asm.abs_x(now))
+              asm.cmp(asm.abs_x(copy))
+              asm.bne("#{tag}_changed")
+              asm.lda(asm.abs_x(now + 2))
+              asm.cmp(asm.abs_x(copy + 2))
+              asm.bne("#{tag}_changed")
+              # The copy holds it already: nothing painted it since it was painted (in this
+              # generation), or it is painted the way it was in an older one.
+              asm.sep(0x20)
+              asm.lda(generation)
+              asm.sta(asm.abs_y(painted_in))
+              asm.rep(0x20)
+              if sending
+                # It may be unsent from an earlier flush; one that is not, with no run started, is
+                # nothing to send, and is passed over here rather than in a call.
+                asm.lda(asm.abs_y(memory[UNSENT] & 0xFFFF))
+                asm.and_a(0x00FF)
+                asm.bne("#{tag}_send")
+                asm.lda(asm.direct(s.chunk))
+                asm.branch_long(:bmi, "#{tag}_done")
+                asm.label("#{tag}_send")
+                asm.jsr(asm.abs("rt_paint_flush_send_tile"))
+              end
+              asm.brl("#{tag}_done")
+              # Changed: stamped to be painted again by this flush, and a tile to paint (+count+ not
+              # nought), whatever else is to be done; unsent until the blank, if not sending.
+              asm.label("#{tag}_changed")
+              asm.sep(0x20)
+              asm.lda(asm.abs(memory[STAMP]))
+              asm.sta(asm.abs_y(memory[REPAINT] & 0xFFFF))
+              asm.lda(1)
+              asm.sta(asm.direct(s.count)) # (its high byte nought)
+              asm.sta(asm.abs_y(memory[UNSENT] & 0xFFFF)) unless sending
+              asm.lda(asm.abs_y(painted_in))
+              asm.cmp(generation)
+              asm.beq("#{tag}_again") # painted in this generation already: again, on top
+              asm.lda(generation)
+              asm.sta(asm.abs_y(painted_in))
+              asm.rep(0x20)
+              # Made the clear colour, unless the copy's tile is so throughout already: its key SEED.
+              asm.lda(asm.abs_x(copy))
+              asm.cmp(asm.abs(memory[SEED]))
+              asm.bne("#{tag}_blank")
+              asm.lda(asm.abs_x(copy + 2))
+              asm.cmp(asm.abs(memory[SEED] + 2))
+              asm.beq("#{tag}_paint")
+              asm.label("#{tag}_blank")
+              asm.sty(asm.direct(s.tile))
+              asm.jsr(asm.abs("rt_paint_blank_tile"))
+              asm.bra("#{tag}_paint")
+              asm.label("#{tag}_again")
+              asm.rep(0x20)
+              asm.label("#{tag}_paint")
+              emit_key_copy = lambda do
+                asm.lda(asm.abs_x(now))
+                asm.sta(asm.abs_x(copy))
+                asm.lda(asm.abs_x(now + 2))
+                asm.sta(asm.abs_x(copy + 2))
+              end
+              if sending
+                # A tile not UNSENT has its slot of video RAM holding what the copy held, and
+                # KEYS_SHOWN the copy's key: rt_paint_slot_behind sets the one as it sends, and
+                # everything that changes the copy without sending marks the tile unsent. The
+                # copy's key is changing, so the slot is behind, and the keys are not compared.
+                asm.lda(asm.abs_y(memory[UNSENT] & 0xFFFF))
+                asm.and_a(0x00FF)
+                asm.bne("#{tag}_paint_unsent")
+                emit_key_copy.call
+                asm.bra("#{tag}_behind")
+                asm.label("#{tag}_paint_unsent")
+                emit_key_copy.call
+                emit_flush_tile_on_run(asm, memory, s, tag)
+              else
+                emit_key_copy.call
+              end
+              asm.label("#{tag}_done")
+              4.times { asm.inx }
+              asm.iny
+              asm.cpy(asm.direct(s.last))
+              asm.branch_long(:bcc, "#{tag}_tile")
+            end
+
+            # In the sending loop of emit_flush_tiles, a tile just painted, its key at X (KEYS_NOW,
+            # the copy's too, its high half in A) and its number in Y: what rt_paint_slot_behind
+            # works out, then the tile on a run of its kind as rt_paint_flush_send_changed puts it,
+            # both written out again here. A change to either is made here too. Keeps X and Y.
+            def emit_flush_tile_on_run(asm, memory, s, tag)
+              now = memory[KEYS_NOW] & 0xFFFF
+              shown = memory[KEYS_SHOWN] & 0xFFFF
+              # A key of nought is a tile painted at once, which no key names: always sent.
+              asm.ora(asm.abs_x(now))
+              asm.beq("#{tag}_behind")
+              asm.lda(asm.abs_x(now))
+              asm.cmp(asm.abs_x(shown))
+              asm.bne("#{tag}_behind")
+              asm.lda(asm.abs_x(now + 2))
+              asm.cmp(asm.abs_x(shown + 2))
+              asm.bne("#{tag}_behind")
+              # Its slot holds it already: as a tile not sent.
+              asm.lda(asm.direct(s.chunk))
+              asm.branch_long(:bmi, "#{tag}_done")
+              emit_run_end_keeping(asm, s)
+              asm.brl("#{tag}_done")
+              asm.label("#{tag}_behind")
+              asm.lda(asm.abs_x(now))
+              asm.sta(asm.abs_x(shown))
+              asm.lda(asm.abs_x(now + 2))
+              asm.sta(asm.abs_x(shown + 2))
+              # On the screen now if its cell of the map as video RAM has it points at it: a run of
+              # the other kind (+mask+ 1 for one on the screen) is ended, and one started.
+              asm.tya
+              asm.asl
+              asm.tax
+              asm.tya
+              asm.cmp(asm.long_x(memory[Paint::MAP_COPY]))
+              asm.beq("#{tag}_on_screen")
+              [false, true].each do |on_screen|
+                kind = on_screen ? "#{tag}_on_screen" : "#{tag}_off_screen"
+                asm.label(kind) if on_screen
+                asm.tya
+                asm.asl
+                asm.asl
+                asm.tax
+                asm.lda(asm.direct(s.chunk))
+                asm.bmi("#{kind}_start")
+                asm.lda(asm.direct(s.mask))
+                on_screen ? asm.bne("#{tag}_done") : asm.beq("#{tag}_done") # a run of its kind goes on
+                emit_run_end_keeping(asm, s)
+                asm.label("#{kind}_start")
+                asm.sty(asm.direct(s.chunk))
+                if on_screen
+                  asm.lda(1)
+                  asm.sta(asm.direct(s.mask))
+                else
+                  asm.stz(asm.direct(s.mask))
+                  asm.brl("#{tag}_done")
+                end
+              end
+            end
+
             # rt_paint_flush_send_tile (JSR, Y the tile): a tile whose slot of video RAM is behind the
             # copy (UNSENT) put on a run to send, one on the screen now (its cell of the map as video
             # RAM has it points at it) on a run of its own kind; any other ends the run. Keeps X
@@ -1185,8 +1281,8 @@ module VBlank
               asm.lda(0)
               asm.sta(asm.ind_long_y(s.planes + 4))
               asm.rep(0x20)
-              # rt_paint_flush_send_changed (JSR): the same for a tile the flush has just painted,
-              # never marked unsent.
+              # rt_paint_flush_send_changed: the same for a tile whose slot may hold what the copy
+              # does. The flush's sending loop writes this out again (emit_flush_tile_on_run).
               asm.label("rt_paint_flush_send_changed")
               asm.jsr(asm.abs("rt_paint_slot_behind")) # (X its key)
               asm.bne("rt_paint_flush_send_tile_sent")
@@ -1226,7 +1322,9 @@ module VBlank
             # slot's key set to the copy's, if the tile's slot of video RAM is behind the copy;
             # nought if it holds what the copy holds already, as when a pass painted a tile on its
             # way (a flush with the log full) and ended where the last pass did. A key of nought is
-            # a tile painted at once, which no key names: always sent. Keeps X and Y.
+            # a tile painted at once, which no key names: always sent. Keeps X and Y. The flush's
+            # sending loop writes this out again (emit_flush_tile_on_run): a change here is made
+            # there too.
             def emit_slot_behind(asm, memory)
               copy = memory[KEYS_COPY]
               shown = memory[KEYS_SHOWN]
@@ -1403,17 +1501,64 @@ module VBlank
               asm.lda(0)
               asm.rts
 
-              emit_entry_tiles(asm, memory, s, "rt_paint_entry_repaint") do
-                asm.cmp(asm.abs(memory[STAMP]))
-                asm.beq("rt_paint_entry_repaint_already")
-                asm.sep(0x20)
-                asm.lda(asm.abs(memory[STAMP]))
-                asm.sta(asm.ind_long_y(s.pointer))
-                asm.rep(0x20)
-                asm.lda(1)
-                asm.sta(asm.direct(s.column)) # a tile taken in: another round
-                asm.label("rt_paint_entry_repaint_already")
-              end
+              emit_entry_repaint(asm, memory, s)
+            end
+
+            # rt_paint_entry_repaint (JSR, X the log entry): each tile the entry's painting covers
+            # stamped to be painted, +column+ set when one was not yet. Keeps X. It looks at every
+            # tile of a painting that is painted again, which for a big new picture is hundreds, so
+            # the data bank is REPAINT's while it does, and the stamp is in A, a byte wide, for each
+            # tile to be compared with (+mark_row+ is the row, +mark_count+ the row's last tile and
+            # one).
+            def emit_entry_repaint(asm, memory, s)
+              log = memory[LOG]
+              repaint = memory[REPAINT]
+              asm.label("rt_paint_entry_repaint")
+              asm.phb
+              asm.sep(0x20)
+              asm.lda(repaint >> 16)
+              asm.pha
+              asm.plb
+              asm.rep(0x20)
+              asm.lda(asm.long_x(log, ENTRY_TOP))
+              asm.sta(asm.direct(s.mark_row))
+              asm.label("rt_paint_entry_repaint_row")
+              asm.lda(asm.direct(s.mark_row))
+              5.times { asm.asl }
+              asm.pha
+              asm.clc
+              asm.adc(asm.long_x(log, ENTRY_LAST))
+              asm.inc
+              asm.sta(asm.direct(s.mark_count))
+              asm.pla
+              asm.clc
+              asm.adc(asm.long_x(log, ENTRY_FIRST))
+              asm.tay
+              asm.sep(0x20)
+              asm.lda(asm.abs(memory[STAMP]))
+              asm.label("rt_paint_entry_repaint_tile")
+              asm.cmp(asm.abs_y(repaint & 0xFFFF))
+              asm.bne("rt_paint_entry_repaint_take")
+              asm.label("rt_paint_entry_repaint_next")
+              asm.iny
+              asm.cpy(asm.direct(s.mark_count))
+              asm.bcc("rt_paint_entry_repaint_tile")
+              asm.bra("rt_paint_entry_repaint_row_done")
+              asm.label("rt_paint_entry_repaint_take")
+              asm.sta(asm.abs_y(repaint & 0xFFFF))
+              asm.lda(1)
+              asm.sta(asm.direct(s.column)) # a tile taken in: another round (its high byte nought)
+              asm.lda(asm.abs(memory[STAMP]))
+              asm.bra("rt_paint_entry_repaint_next")
+              asm.label("rt_paint_entry_repaint_row_done")
+              asm.rep(0x20)
+              asm.lda(asm.direct(s.mark_row))
+              asm.cmp(asm.long_x(log, ENTRY_BOTTOM))
+              asm.beq("rt_paint_entry_repaint_done")
+              asm.inc(asm.direct(s.mark_row))
+              asm.bra("rt_paint_entry_repaint_row")
+              asm.label("rt_paint_entry_repaint_done")
+              asm.plb
               asm.rts
             end
 

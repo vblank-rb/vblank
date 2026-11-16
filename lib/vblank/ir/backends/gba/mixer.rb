@@ -393,6 +393,10 @@ module VBlank
           # sounds, so it needs to find the voice the note is on.
           def music_follows_level! = @music_follows_level = true
 
+          # ...and that a recorded note can glide, bending the note its part has sounding, which
+          # finds that note's voice the same way (Audio#emit_glide).
+          def music_glides! = @music_glides = true
+
           # The routines that find a song's note a voice, stop it, and find the voice it is on
           # (#emit_music_voice_routines).
           MUSIC_VOICE = :__music_voice
@@ -402,6 +406,7 @@ module VBlank
           # Register the samples: embed each one's PCM data as a ROM blob and note the
           # program plays sound. #prepare_mixer reserves the timer and memory.
           def prepare_direct_sound(program)
+            @main_volume = MainVolume.settings(program.main_volume)
             program.walk.each do |node|
               case node.kind
               when :sample
@@ -481,7 +486,7 @@ module VBlank
             @mix_totals = @memory.alloc(@mixer_spf * 2)
             # ...and in a game whose notes can find no voice at all, one slot more past the end,
             # which nothing mixes: where such a note is written (see #unmixed_slot_address).
-            @voice_base = @memory.alloc_roomy((MAX_VOICES + (ranks_voices? ? 1 : 0)) * SLOT_BYTES)
+            @voice_base = @memory.alloc_roomy(Mixer.voice_slots_bytes(ranks_voices?))
             @mix_routine_iwram = @memory.alloc(MIX_ROUTINE_IWRAM_MAX) # the mix routine is copied here from ROM at boot
             @timers.reserve!(COUNT_TIMER + 1, because: "Sampled sound uses two of them: one to play the " \
                                                        "sound, and one to count how much of it has played.")
@@ -489,9 +494,29 @@ module VBlank
 
           # THE LOTS EACH BUFFER CARRIES PAST ITS END: enough of the next buffer's start to cover
           # a hand-over LATE_ROOM late, rounded up to whole lots.
-          def guard_lots
-            lot = Timers::DMA_SAMPLES_A_LOT * @sample_clock.period
+          def guard_lots = Mixer.guard_lots(@sample_clock)
+
+          def self.guard_lots(clock)
+            lot = Timers::DMA_SAMPLES_A_LOT * clock.period
             (LATE_ROOM + lot - 1) / lot
+          end
+
+          # One output buffer's bytes at +clock+: a frame's samples and the guard lots past them.
+          def self.buffer_bytes(clock) = clock.samples_a_frame + (guard_lots(clock) * Timers::DMA_SAMPLES_A_LOT)
+
+          # The voice slots' bytes, with the slot nothing mixes where notes are +ranked+ (#ranks_voices?).
+          def self.voice_slots_bytes(ranked) = (MAX_VOICES + (ranked ? 1 : 0)) * SLOT_BYTES
+
+          # HOW MUCH OF THE ROOMY MEMORY THE MIXER WILL KEEP FOR +program+, read off the program
+          # before it is lowered, for the build's memory check (Roomy.reserved_by_build): the two
+          # output buffers and the voice slots, as #prepare_mixer claims them, or nought for a
+          # program that mixes nothing. +ranked+ is whether a sound effect's recorded part ranks
+          # the voices (Audio#prepare_sound_effects calls #ranks_voices! for one).
+          def self.roomy_bytes(program, ranked:)
+            return 0 unless IR::Mixing.mixes?(program)
+
+            clock = Timers.sample_clock(IR::Mixing.requested_rate(program))
+            (2 * Memory.whole_words(buffer_bytes(clock))) + Memory.whole_words(voice_slots_bytes(ranked))
           end
 
           # HOW FAR OFF THE NEXT SAMPLE HAS TO BE, in cycles, for the hand-over to read the count
@@ -503,7 +528,7 @@ module VBlank
 
           def lots_a_frame = @mixer_spf / Timers::DMA_SAMPLES_A_LOT
 
-          def buffer_bytes = @mixer_spf + (guard_lots * Timers::DMA_SAMPLES_A_LOT)
+          def buffer_bytes = Mixer.buffer_bytes(@sample_clock)
 
           # Bring the mixer up at boot: silence the voice slots and both buffers, power on
           # the sound hardware, point the DMA at the first buffer and the sample clock at the
@@ -525,8 +550,8 @@ module VBlank
             @emitter.emit(ASM.load_immediate(ACC, 0x8000_0000))
             @primitives.store_var(ACC, MIX_LOT)
 
-            @emitter.write_reg16(REG_SOUNDCNT_X, SOUND_MASTER_ENABLE)   # master sound on
-            @emitter.write_reg16(REG_SOUNDCNT_H, direct_sound_a_config) # channel A, full volume, FIFO reset
+            @emitter.write_reg16(REG_SOUNDCNT_X, sound_power)           # master sound on (off at a main volume of nothing)
+            @emitter.write_reg16(REG_SOUNDCNT_H, direct_sound_a_config) # channel A at the main volume, FIFO reset
             @emitter.emit(ASM.load_immediate(ACC, @mix_buf0))
             store_reg_ioreg(ACC, REG_DMA1SAD)                      # DMA source = buffer 0
             @primitives.store_word_immediate(REG_FIFO_A, REG_DMA1DAD) # DMA dest = the sound FIFO
@@ -649,7 +674,7 @@ module VBlank
               @emitter.emit(ASM.str_offset(TMP, 0, SLOT_LOOP))         # how far back at the end
               @emitter.emit(ASM.load_immediate(TMP, MIX_LEVELS.fetch(node.volume, MIX_LEVELS[:full])))
               @emitter.emit(ASM.str_offset(TMP, 0, SLOT_VOL))          # slot.volume (0..512 loudness)
-              emit_start_envelope(0, TMP, sample.envelope) if @uses_envelopes
+              emit_start_envelope(0, TMP, sample.envelope, MIX_LEVELS.fetch(node.volume, MIX_LEVELS[:full])) if @uses_envelopes
               @emitter.emit(ASM.load_immediate(TMP, voice_step(node, sample)))
               @emitter.emit(ASM.str_offset(TMP, 0, SLOT_STEP))         # slot.step (pitch + rate, 16.16)
               @emitter.emit(ASM.load_immediate(TMP, 0))
@@ -676,25 +701,34 @@ module VBlank
             held.positive? ? held : sample.length
           end
 
-          # THE FOUR NUMBERS AND WHERE THE NOTE STARTS, written onto a voice that is about to
-          # sound. A voice with no envelope writes 0 for the four, which is what tells the pass
-          # before the mix to leave it alone — its gain is its loudness, and moves only when the
-          # music volume does.
+          # THE FOUR NUMBERS AND WHERE THE SOUND STARTS, written onto a voice the game is about to
+          # sound at +loudness+ (out of 512). A voice with no envelope writes 0 for the four, which
+          # is what tells the pass before the mix to leave it alone — its gain is its loudness, and
+          # moves only when the music volume does.
+          #
+          # A SHAPED SOUND STARTS ITS SHAPE AS IT IS PLAYED (Reference::Mixer#start): the game plays
+          # in its pass, after the pass that moves the shapes and before the frame's mix, so one
+          # started at nothing would be mixed once at nothing — a strike at full silent for a frame,
+          # and a recording shorter than a frame never heard. So it starts one step up, at the level
+          # its attack gives it, and its gain there with no slide (Audio::Envelope.whole_gain). The
+          # shape and the volume are both known as the game is built, so the level, the phase and
+          # the gain are numbers the build works out, and the voice is only told them.
           # +slot+ holds the voice's address and +scratch+ is a register free to be clobbered.
-          def emit_start_envelope(slot, scratch, envelope)
+          def emit_start_envelope(slot, scratch, envelope, loudness)
             shape = envelope && !envelope.plain? ? envelope : nil
+            level, phase = shape ? shape.step(0, VBlank::Audio::Envelope::CLIMBING) : [VBlank::Audio::Envelope::FULL, nil]
             @emitter.emit(ASM.load_immediate(scratch, shape ? shape.packed : 0))
             @emitter.emit(ASM.str_offset(scratch, slot, SLOT_ENV))
-            @emitter.emit(ASM.load_immediate(scratch, shape ? 0 : VBlank::Audio::Envelope::FULL))
-            @emitter.emit(ASM.str_offset(scratch, slot, SLOT_LEVEL)) # a shaped note climbs from nothing
-            @emitter.emit(ASM.load_immediate(scratch, PHASE_CLIMBING))
+            @emitter.emit(ASM.load_immediate(scratch, level))
+            @emitter.emit(ASM.str_offset(scratch, slot, SLOT_LEVEL))
+            @emitter.emit(ASM.load_immediate(scratch, phase == VBlank::Audio::Envelope::HOLDING ? PHASE_HOLDING : PHASE_CLIMBING))
             @emitter.emit(ASM.str_offset(scratch, slot, SLOT_PHASE))
-            # The gain the mix reads, and no slide. A shaped note is climbed by the pass before the
-            # first mix, which is the same frame, so nothing of the note is lost by starting it at
-            # nothing.
+            # The gain the mix reads, and no slide.
             @emitter.emit(ASM.load_immediate(scratch, 0))
             @emitter.emit(ASM.str_offset(scratch, slot, SLOT_RAMP))
-            unless shape
+            if shape
+              @emitter.emit(ASM.load_immediate(scratch, VBlank::Audio::Envelope.whole_gain(loudness, level)))
+            else
               @emitter.emit(ASM.ldr_offset(scratch, slot, SLOT_VOL))
               @emitter.emit(ASM.lsl_imm(scratch, scratch, LOUDNESS_TO_GAIN))
             end
@@ -811,7 +845,7 @@ module VBlank
           def emit_music_voice_routines
             emit_take_music_voice_routine
             emit_music_voice_off_routine
-            emit_music_voice_find_routine if @music_follows_level
+            emit_music_voice_find_routine if @music_follows_level || @music_glides
           end
 
           # A TUNE'S MARK COMES WITHOUT ITS RANK, and each routine below puts it on as it starts,
@@ -1405,22 +1439,32 @@ module VBlank
             @emitter.emit_call_through(ADDR)
           end
 
-          # WHICH BITS OF SOUNDCNT_H SEND THE RECORDED SOUND TO THE SPEAKERS: channel A at full
-          # volume, out to both, clocked by timer 0. They are asked for from outside because
-          # SOUNDCNT_H is a SHARED register — its low bits are the PSG's volume — and whoever
-          # writes it whole has to put these back or the recordings stop (see
+          # The main volume the game named, as the Advance's three settings of it (MainVolume).
+          attr_reader :main_volume
+
+          # WHICH BITS OF SOUNDCNT_H SEND THE RECORDED SOUND TO THE SPEAKERS: channel A at the
+          # main volume (all, or half), out to both, clocked by timer 0. They are asked for from
+          # outside because SOUNDCNT_H is a SHARED register — its low bits are the PSG's volume —
+          # and whoever writes it whole has to put these back or the recordings stop (see
           # Audio#emit_enable_sound). Nothing at all for a program that plays no recording.
           def direct_sound_routing
             return 0 unless plays_samples?
 
-            DSOUND_A_VOLUME_FULL | DSOUND_A_LEFT | DSOUND_A_RIGHT | DSOUND_A_TIMER0
+            (@main_volume.recordings_full ? DSOUND_A_VOLUME_FULL : 0) | DSOUND_A_LEFT | DSOUND_A_RIGHT | DSOUND_A_TIMER0
           end
 
-          # Channel A's SOUNDCNT_H setup at boot: that routing, the PSG kept at full volume
-          # beside it, and A's FIFO reset so playback starts clean. The reset belongs to boot
-          # alone — doing it again later would throw away whatever sound was queued.
+          # SOUNDCNT_H's low bits: the Game Boy voices' share of the main volume (PSG_VOLUME_FULL at
+          # the loudest).
+          def psg_share = @main_volume.share_bits
+
+          # SOUNDCNT_X: the sound switched on, unless the main volume is nothing.
+          def sound_power = @main_volume.powered ? SOUND_MASTER_ENABLE : 0
+
+          # Channel A's SOUNDCNT_H setup at boot: that routing, the PSG's share of the main
+          # volume beside it, and A's FIFO reset so playback starts clean. The reset belongs to
+          # boot alone — doing it again later would throw away whatever sound was queued.
           def direct_sound_a_config
-            PSG_VOLUME_FULL | direct_sound_routing | DSOUND_A_RESET_FIFO
+            psg_share | direct_sound_routing | DSOUND_A_RESET_FIFO
           end
 
           # The DMA1 control word for feeding the sound FIFO: enabled, 32-bit transfers to a

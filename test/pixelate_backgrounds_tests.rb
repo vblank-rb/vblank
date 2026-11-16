@@ -15,21 +15,21 @@ module PixelateBackgroundsTests
   include SharedConstants
 
   # Two tiles with nothing flat about them, so a block's colour depends on where it starts.
-  STRIPES = Ractor.make_shareable((0...8).map { |row| (0...8).map { |col| (col * 3) + row < 9 ? "#" : "." }.join }.join("\n"))
-  STEPS = Ractor.make_shareable((0...8).map { |row| (0...8).map { |col| col > row ? "#" : "." }.join }.join("\n"))
-  ROOM = Ractor.make_shareable((0...32).map { |row| (0...32).map { |col| (((row * 2) + col) % 3).zero? ? "a" : "b" }.join })
+  STRIPES = VBlank::Testing::InRactors.shareable((0...8).map { |row| (0...8).map { |col| (col * 3) + row < 9 ? "#" : "." }.join }.join("\n"))
+  STEPS = VBlank::Testing::InRactors.shareable((0...8).map { |row| (0...8).map { |col| col > row ? "#" : "." }.join }.join("\n"))
+  ROOM = VBlank::Testing::InRactors.shareable((0...32).map { |row| (0...32).map { |col| (((row * 2) + col) % 3).zero? ? "a" : "b" }.join })
 
   # A 16x16 sprite with a different colour at every corner and holes along two edges.
-  PATCH = Ractor.make_shareable((0...16).map do |row|
+  PATCH = VBlank::Testing::InRactors.shareable((0...16).map do |row|
     (0...16).map do |col|
       next "." if (col.zero? && row.even?) || (col == 15 && row < 4)
 
       "ABCD"[(col + (2 * row)) % 4]
     end.join
   end.join("\n"))
-  PATCH_COLORS = Ractor.make_shareable({ "." => :transparent, "A" => :red, "B" => :green, "C" => :blue, "D" => :white })
+  PATCH_COLORS = VBlank::Testing::InRactors.shareable({ "." => :transparent, "A" => :red, "B" => :green, "C" => :blue, "D" => :white })
 
-  HERO = Ractor.make_shareable([37, 21])
+  HERO = VBlank::Testing::InRactors.shareable([37, 21])
   HERO_SIZE = 16
 
   # The room scrolled off the tile grid, the hero standing on it, and a fade to black begun on the

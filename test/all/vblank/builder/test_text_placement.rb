@@ -284,6 +284,53 @@ class TestTextPlacement < Minitest::Test
     assert_match(/span of columns/, err.message)
   end
 
+  # A line of words is placed while the game is built, so a variable for its place is refused,
+  # and the message names the variable the author wrote rather than printing a Ruby object.
+  def test_a_variable_for_the_left_edge_is_named
+    err = assert_raises(ArgumentError) { bitmap_screen { left = var(:left, 3); draw_text "IM", left, Y, :white } }
+
+    assert_match(/draw_text/, err.message)
+    assert_match(/`left`/, err.message)
+    refute_match(/#</, err.message, "the message prints no Ruby object")
+  end
+
+  def test_a_variable_for_the_top_edge_is_named
+    err = assert_raises(ArgumentError) { bitmap_screen { top = var(:top, 3); draw_text "IM", 8, top, :white } }
+
+    assert_match(/draw_text/, err.message)
+    assert_match(/`top`/, err.message)
+    refute_match(/#</, err.message, "the message prints no Ruby object")
+  end
+
+  def test_a_variable_for_the_span_is_named
+    err = assert_raises(ArgumentError) do
+      bitmap_screen { span = var(:span, 3); draw_text "IM", :center, Y, :white, within: span }
+    end
+
+    assert_match(/span of columns/, err.message)
+    assert_match(/`span`/, err.message)
+    refute_match(/#</, err.message, "the message prints no Ruby object")
+  end
+
+  def test_a_variable_at_the_end_of_the_span_is_named
+    err = assert_raises(ArgumentError) do
+      bitmap_screen { span = var(:span, 3); draw_text "IM", :center, Y, :white, within: 0..span }
+    end
+
+    assert_match(/span of columns/, err.message)
+    assert_match(/`span`/, err.message)
+    refute_match(/#</, err.message, "the message prints no Ruby object")
+  end
+
+  # Words are known while the game is built; a variable is a number, which draw_number draws.
+  def test_a_variable_for_the_words_is_named
+    err = assert_raises(ArgumentError) { bitmap_screen { score = var(:score, 3); draw_text score, 8, Y, :white } }
+
+    assert_match(/String/, err.message)
+    assert_match(/`score`/, err.message)
+    refute_match(/#</, err.message, "the message prints no Ruby object")
+  end
+
   def test_a_number_field_reports_the_same_way
     err = assert_raises(ArgumentError) do
       bitmap_screen { draw_number 5, :middle, Y, :white }

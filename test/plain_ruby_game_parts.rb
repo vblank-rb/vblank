@@ -188,6 +188,143 @@ class SeedWithVarPart
   end
 end
 
+# A dither: #advance moves @seed on and answers it, and #difference takes one answer from the
+# next. `noise` holds the first answer, a number, so the second #advance changing @seed leaves it
+# alone: 16 - 49 is -33. #difference_in_repeat takes the second answer inside a `repeat`, whose
+# block runs right where it is written.
+class DitherPart
+  game_variables :seed, :got
+
+  def initialize
+    @seed = 5
+    @got = 0
+  end
+
+  def advance
+    @seed = (@seed * 3) + 1
+    @seed
+  end
+
+  def difference
+    noise = advance
+    noise -= advance
+    @got = noise
+  end
+
+  def difference_in_repeat(builder)
+    noise = advance
+    builder.repeat(1) { @got = noise - advance }
+  end
+end
+
+# A column a routine shows: `col` is set straight from @col, so it holds @col's number from that
+# line, and the routine's block reads that number after #nudge moves @col on.
+class ColumnPart
+  game_variables :col, :seen
+
+  def initialize(builder)
+    @col = 5
+    @seen = 0
+    make_shower(builder)
+  end
+
+  # Written above #make_shower, so @col changes there only through the call.
+  def nudge
+    @col += 1
+  end
+
+  def make_shower(builder)
+    col = @col
+    builder.func(:column_show) do
+      nudge
+      @seen = col
+    end
+  end
+end
+
+# `x` is set straight from @hero_x in a method, and #nudge moves @hero_x on before `x` is read:
+# `x` keeps the 3 of its line, as Ruby's does.
+class NudgedHeroPart
+  game_variables :hero_x, :seen
+
+  def initialize
+    @hero_x = 3
+    @seen = 0
+  end
+
+  def nudge
+    @hero_x += 1
+  end
+
+  def step
+    x = @hero_x
+    nudge
+    @seen = x
+  end
+end
+
+# A sound chip's mixer, cut down, in the shape a port writes it. MixerChip#step changes an operator and answers a sum of its
+# locals; MixerPart#step_channel keeps the first answer in `out` across the second call, and gives
+# `bend` the first answer and then 0. Setting `bend` never changes `out`: the carrier's step adds
+# nothing, its answer is 30, and with `out` the channel mixes 40.
+MixerOp = Struct.new(:phase, :wave) do
+  game_variables :phase, :wave
+end
+
+MixerChannel = Struct.new(:last, :additive) do
+  game_variables :last, :additive
+end
+
+class MixerChip
+  def initialize(build)
+    @gain = build.table(:mixer_gain, [1, 2, 3, 4, 5, 6, 7, 8], width: :byte)
+  end
+
+  def step(op, bend)
+    op.phase = (op.phase + 1) & 7
+    loss = op.phase
+    loss = 7 if loss > 7
+    wave = 0
+    wave = 10 + bend if op.wave == 0
+    (wave * @gain[loss]) >> 1
+  end
+end
+
+class MixerPart
+  game_variables :mixed, :last_seen
+
+  def initialize(chip, modulator, carrier, channel)
+    @chip = chip
+    @modulator = modulator
+    @carrier = carrier
+    @channel = channel
+    @mixed = 0
+    @last_seen = 0
+  end
+
+  def step_channel
+    out = 0
+    if @modulator.wave == 0
+      bend = 0
+      out = @chip.step(@modulator, bend)
+      @channel.last = out
+    end
+    heard = 0
+    if @carrier.wave == 0
+      bend = out
+      bend = 0 if @channel.additive == 1
+      heard = @chip.step(@carrier, bend)
+    end
+    heard += out if @channel.additive == 1
+    heard
+  end
+
+  def run
+    @mixed = step_channel
+    @last_seen = @channel.last
+  end
+end
+
 # Two of one part, each counting in an instance variable of its own.
 class TickerPart
   game_variables :ticks
@@ -367,6 +504,142 @@ class PlannedOncePart
   end
 end
 
+# The same once-guard reached from two routines: the first sets it while it plans, and the second
+# reads it true and plans nothing. Every change to it is made where it was just read.
+class PlannedTwicePart < PlannedOncePart
+  def initialize(builder)
+    super
+    builder.func(:planned_twice_tick) { step }
+  end
+end
+
+# A switch held for the length of one call and put back after it, which picks how the code inside
+# is built: the same on every pass, so a test on it is rightly Ruby's, though both its sides are
+# game code.
+class SwitchedPart
+  def initialize(builder)
+    @fast = false
+    @slow_steps = builder.var(:switched_slow, 0)
+    @fast_steps = builder.var(:switched_fast, 0)
+    builder.func(:switched_tick) do
+      step
+      while_fast { step }
+    end
+  end
+
+  def while_fast
+    @fast = true
+    yield
+  ensure
+    @fast = false
+  end
+
+  def step
+    if @fast
+      @fast_steps += 1
+    else
+      @slow_steps += 1
+    end
+  end
+end
+
+# A guard on how the game is put together: a routine declared once a part is written refuses more
+# lines added to it. The test's side stops the build, so it records no game code.
+class WrittenOncePart
+  def initialize(builder)
+    @builder = builder
+    @written = false
+    @steps = builder.var(:written_once_steps, 0)
+    builder.func(:written_once_tick) do
+      add_step
+      write
+    end
+  end
+
+  def add_step
+    raise ArgumentError, "the part is written already" if @written
+
+    @steps += 1
+  end
+
+  def write = @written = true
+end
+
+# A DOOR FLAG THE GAME KEEPS, NAMED NOWHERE: one routine opens the door outright, and another
+# tests it. The game can run them in either order, and Ruby decides the test while building, so
+# the build stops at whichever line comes second. Declared in each order.
+class UnnamedDoorOpenedFirstPart
+  def initialize(builder)
+    @open = false
+    @seen = builder.var(:door_opened_first_seen, 0)
+    builder.func(:door_opened_first_open) { @open = true }
+    builder.func(:door_opened_first_test) { @seen += 1 if @open }
+  end
+end
+
+class UnnamedDoorTestedFirstPart
+  def initialize(builder)
+    @open = false
+    @seen = builder.var(:door_tested_first_seen, 0)
+    builder.func(:door_tested_first_test) { @seen += 1 if @open }
+    builder.func(:door_tested_first_open) { @open = true }
+  end
+end
+
+# The door tested and then opened in one routine. It has the shape of a once-guard, but the side
+# of the test holds game code, so the flag decides what the game does as it plays. Once with the
+# side Ruby skips (the door starts shut), once with the side it runs.
+class UnnamedDoorOneRoutinePart
+  def initialize(builder)
+    @open = false
+    @seen = builder.var(:door_one_routine_seen, 0)
+    builder.func(:door_one_routine_tick) do
+      @seen += 1 if @open
+      @open = true
+    end
+  end
+end
+
+class UnnamedDoorOneRoutineRunSidePart
+  def initialize(builder)
+    @open = false
+    @seen = builder.var(:door_one_routine_run_seen, 0)
+    builder.func(:door_one_routine_run_tick) do
+      @seen += 1 unless @open
+      @open = true
+    end
+  end
+end
+
+# The door again, named: a game variable, which plays as its twin with `var`.
+class NamedDoorPart
+  game_variables :open
+
+  def initialize(builder)
+    @open = false
+    @passes = builder.var(:named_door_passes, 0)
+    @seen = builder.var(:named_door_seen, 0)
+    builder.func(:named_door_test) { @seen += 1 if @open }
+    builder.func(:named_door_open) do
+      @passes += 1
+      @open = true if @passes == 2
+    end
+  end
+end
+
+class DoorWithVarPart
+  def initialize(builder)
+    @open = builder.var(:door_var_open, false)
+    @passes = builder.var(:door_var_passes, 0)
+    @seen = builder.var(:door_var_seen, 0)
+    builder.func(:door_var_test) { @seen += 1 if @open }
+    builder.func(:door_var_open) do
+      @passes += 1
+      @open = true if @passes == 2
+    end
+  end
+end
+
 # A number a part is made with, inside a routine, and only read after: its `initialize` gives it a
 # start, which is no change the game makes as it plays.
 class ScrolledSpot
@@ -391,4 +664,84 @@ class UnsetNamedPart
     @hits = builder.var(:unset_named_hits, 0)
     builder.func(:unset_named_tick) { @hits += 1 if @aim == 1 }
   end
+end
+
+# VALUES HANDED A VARIABLE. A cursor names its selection. A part handed that variable whole, as an
+# argument, as it is made, was given it to change; one that names its own copies the number.
+class HandedCursor
+  game_variables :selection
+  attr_reader :selection
+
+  def initialize = @selection = 3
+end
+
+# The fix the refusal names: the holder named, so it keeps a number of its own.
+class NamedHandedHolderPart
+  game_variables :held
+
+  def initialize(builder, cursor)
+    @held = cursor.selection
+    builder.func(:named_handed_tick) { @held = 5 }
+  end
+end
+
+# A part handed the cursor's variable whole, as an argument, as it is made: the caller gave it
+# that variable to change, so its line in game code changes the cursor's selection.
+class HandedArgumentHolderPart
+  def initialize(builder, selection)
+    @selection = selection
+    builder.func(:handed_argument_tick) { @selection = 5 }
+  end
+end
+
+class HandedArgumentMakerPart
+  def initialize(builder, cursor) = HandedArgumentHolderPart.new(builder, cursor.selection)
+end
+
+# The same handed a slot of a Hash, which it is given to change all the same.
+class SlotArgumentMakerPart
+  def initialize(builder)
+    @states = { 0 => builder.var(:slot_argument_0, 1) }
+    HandedArgumentHolderPart.new(builder, @states[0])
+  end
+end
+
+# A holder sharing the first of its own Hash's variables from setting up, given a number in game
+# code. In Ruby the first slot keeps 0, so the line is refused.
+class HandedHeldNumberPart
+  def initialize(builder)
+    @states = (0..1).to_h { |light| [light, builder.var(:"handed_held_number_#{light}", light)] }
+    @held = @states[0]
+    builder.func(:handed_held_number_tick) { @held = 5 }
+  end
+end
+
+# The same with the Hash named, and the holder counted up.
+class NamedStatesHeldPart
+  game_variables :states
+
+  def initialize(builder)
+    @states = { 0 => 1, 1 => 2 }
+    @held = @states[0]
+    builder.func(:named_states_held_tick) { @held += 1 }
+  end
+end
+
+# A value given a variable a method makes is the first place to hold it, so it is its own.
+class MadeByMethodPart
+  def initialize(builder)
+    make = ->(name, start) { builder.var(name, start, width: :half) }
+    @count = make.call(:made_by_method_count, 0)
+    builder.func(:made_by_method_tick) do
+      @count = 0 if @count > 1
+      @count += 1
+    end
+  end
+end
+
+# A part that chose a variable name for its value, made before a `var` line takes that name.
+class ChoosingNamePart
+  game_variables held: :chosen_by_a_part
+
+  def initialize = @held = 0
 end

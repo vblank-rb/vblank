@@ -26,6 +26,9 @@ module VBlank
             WIDTH = 2
             FRONT = 4
             LENGTH = 6
+            # How many bytes each count of the header is (CartridgeHeadlessRun#read_lists). The 8K of
+            # work memory never holds a list of more than 65,535 slots.
+            FIELD_BYTES = 2
 
             # The word in the names of the quick routines for a list whose slots are this many bytes
             # (#emit_narrow_push, #emit_narrow_item).

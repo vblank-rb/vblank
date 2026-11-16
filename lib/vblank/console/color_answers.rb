@@ -97,9 +97,9 @@ module VBlank
 
         # --- fades, tints and screen effects ---
         fade: works("`fade` and `tint` change the colours the console shows, not the picture, as on " \
-                    "the Advance. `under:` works where it falls between the background and the " \
-                    "sprites; `inside:` and `outside:` are refused, since a Game Boy Color cannot " \
-                    "fade part of the screen."),
+                    "the Advance. The background and every sprite read the same colours, so a fade " \
+                    "reaches all of them. A Game Boy Color cannot fade part of the screen, so " \
+                    "`under:`, `inside:` and `outside:` are refused."),
         tint: works,
         fade_in: works,
         fade_out: works,
@@ -146,8 +146,10 @@ module VBlank
         upside_down: works,
         blit: works("on a painted screen, its colours count towards the four colours of each square that it covers."),
         sprite: works("a sprite is made of the console's 8×8 pieces, forty at once and ten on any one " \
-                      "row of the screen. A sprite whose poses are drawn from different lists of colors shows " \
-                      "each pose in the colors of its own list. Such a sprite cannot follow those lists " \
+                      "row of the screen. If there are more, the pieces furthest back are not shown: " \
+                      "past forty, on the whole screen; past ten, on that row. A sprite whose poses are drawn from different lists of colors shows " \
+                      "each pose in the colors of its own list. It can draw all those lists with one " \
+                      "other list (`draw_with({ hero: :white, cape: :white })`). It cannot follow those lists " \
                       "(`draw_with({ hero: :hero })`): this build does not make that yet, and refuses it. If the game says `sprite_piece_size: { gbc: [8, 16] }` where it is " \
                       "named, every piece is 8×16: two 8×8 squares one above the other are one of the forty, " \
                       "and a square with none under it is one too, with an empty lower half. " \
@@ -271,7 +273,7 @@ module VBlank
         seed: works, randomize: works, roll: works, rand: works, chance: works, random_numbers: works,
 
         # --- sound and music ---
-        enable_sound: works,
+        enable_sound: works(Answers::MAIN_VOLUME_EIGHTHS),
         define_sound: works,
         beep: works,
         noise: works,
@@ -288,8 +290,8 @@ module VBlank
         music_volume: works,
         fade_music_in: works,
         fade_music_out: works,
-        songs: works("a recorded note with `glides: true` is refused: this build does not make it yet. For " \
-                     "the rest of recordings, see `song`."),
+        songs: works("a part played on a recording is refused, as `song` says, so a recorded note with " \
+                     "`glides: true` is refused too. #{Answers::NOTE_VOICES}"),
         sound_effects: works("see `song` for recordings. A game can have as many effects as the " \
                              "cartridge's banks hold. If the effects do not fit in the part of the " \
                              "cartridge always in view, the build keeps them in the banks."),

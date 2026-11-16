@@ -23,6 +23,10 @@ module VBlank
 
           private
 
+          # The cartridge built to sleep at the end of every pass, so the run reads every one
+          # (Runtime::Frame#emit_sleep_unless_in_blank).
+          def cartridge_builder = SNES.new(sleeps_every_pass: true)
+
           def further_difference(program, before)
             difference = self.class.sounds_difference(@interpreter_sounds, audio_played)
             difference ||= dsp_difference

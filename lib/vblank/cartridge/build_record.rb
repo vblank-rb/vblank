@@ -63,6 +63,11 @@ module VBlank
     # finished too late for its break (see IR::LatePages), so a profile counts those pages the
     # same way — each saying whether it shows the page part way down the picture, where it can
     # tear, or in the break, where it cannot. Empty for a game whose screens all wait.
+    # +gap_ends+ is where the instruction runs from that ends the gap after a game loop's wait (see
+    # IR::Frames.gap_ends), where the screen's updates for the break the wait woke in are done. A
+    # profile reads the line the screen is on as each pass reaches it, so a gap that ran past the
+    # next break is named, though nothing is added to the cartridge. Empty for a game with no loop
+    # that waits.
     # +sprite_slots+ is which of the console's 128 places each declared sprite was given — one
     # each for most, several in a row for a picture too big to draw in one go. The console's own
     # table shows which place a sprite is in and nothing more, so without this nothing can get
@@ -119,11 +124,11 @@ module VBlank
                                     :sprite_slots, :sprite_offsets, :streamed_sprite_pose_vars,
                                     :video_copies, :late_pages, :lists, :sprite_runs, :scene_sets,
                                     :missed_routine_parts, :colors_short_at, :sprite_turns, :held_sprites,
-                                    :runtime, :data_assets)
+                                    :runtime, :data_assets, :gap_ends)
       def initialize(findings: [], emitted: nil, routines: {}, video_memory: nil,
                      roomy_memory: nil, timer_handlers: {}, voices: nil, sound_drops: nil,
                      sprite_slots: {}, sprite_offsets: {}, streamed_sprite_pose_vars: {},
-                     video_copies: [], late_pages: [], lists: {}, sprite_runs: [], scene_sets: nil,
+                     video_copies: [], late_pages: [], gap_ends: [], lists: {}, sprite_runs: [], scene_sets: nil,
                      missed_routine_parts: {}, colors_short_at: nil, sprite_turns: {}, held_sprites: nil, runtime: {},
                      data_assets: [], **rest)
         super

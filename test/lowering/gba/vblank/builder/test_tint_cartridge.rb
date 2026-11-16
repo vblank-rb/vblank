@@ -9,6 +9,7 @@ require "all/vblank/builder/test_tint"
 # a tint costs a frame there. What a tint looks like on every run is in
 # test/all/vblank/builder/test_tint.rb.
 class TestTintCartridge < Minitest::Test
+  include Differential
   include TintGames
 
   # --- the console agrees, which is the point of having two backends ---
@@ -106,6 +107,49 @@ class TestTintCartridge < Minitest::Test
     console = assert_emulator_loads_rom(assemble_rom(crossing_program, name: "TINTX"), frames: 14)
 
     assert_equal GREEN, console.pixel_gba(120, 80)
+  end
+
+  # A tint set on every pass of the loop, and moving as it goes, in a game that goes back and
+  # forth between a painted scene and a tiled one.
+  private def tint_in_loop_across_screens
+    tile = SOLID_TILE
+    b = VBlank::Builder.new
+    b.instance_eval do
+      screen :bitmap
+      image(:ground, "#" => :green) { tile }
+      tiles :grass, "#" => :ground
+      state = var :state, 0
+      ticks = var :ticks, 0
+      scene :painted do
+        screen :bitmap
+        clear_screen :green
+      end
+      scene :tiles do
+        screen :tiled
+        background :floor, tiles: :grass, map: Array.new(20) { "#" * 30 }
+      end
+      game_loop do
+        ticks += 1
+        state = (ticks / 5) % 2
+        tint :red, (ticks * 4) % 100
+        case_var(:state) do
+          when_val 0, :painted
+          when_val 1, :tiles
+        end
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # Every pixel, on the frames either side of each change of scene. A game of two kinds of
+  # screen is lined up by hand: it starts on the painted one, which the console takes two
+  # frames to start.
+  def test_the_console_agrees_on_a_tint_set_in_the_loop_across_painted_and_tiled_scenes
+    game = tint_in_loop_across_screens
+    [4, 5, 6, 10, 11, 15, 16, 20, 21].each do |frame|
+      assert_backends_agree(game, frames: frame, console_frames: frame + 2, name: "TLOOP")
+    end
   end
 
   # --- and a tint that is not moving costs nothing ---

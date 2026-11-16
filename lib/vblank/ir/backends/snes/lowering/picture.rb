@@ -51,8 +51,9 @@ module VBlank
             # (Runtime::Picture's rt_bar_place).
             def self.status_bar?(program) = program.walk.any? { |node| node.kind == :background && node.bar? }
 
-            # WHETHER +program+ PUTS A BACKGROUND HELD TO SOME ROWS ON THE THIRD LAYER (#held_to_rows?: a
-            # status bar, or a background held above a row): some screen shows it beside two other
+            # WHETHER +program+ PUTS A BACKGROUND HELD TO SOME ROWS ON THE THIRD LAYER (Nodes::Background#held_to_rows?:
+            # a status bar, or a background held above a row, which the line table switches,
+            # Runtime::Picture's BAR_TABLE): some screen shows it beside two other
             # backgrounds. Mode 1 has two layers of sixteen-colour tiles and a third of four, and the
             # held background is the one that goes there: it is what Super Bomberman puts there (its
             # stages show an arena on the two, each at its own scroll, and the bar on the third, which
@@ -71,15 +72,11 @@ module VBlank
 
               Stacking.screenfuls(program).any? do |screenful|
                 scenery = screenful.scenery
-                (scenery.any? { |bg| held_to_rows?(bg) } && scenery.length > BACKGROUND_LAYERS) ||
+                (scenery.any?(&:held_to_rows?) && scenery.length > BACKGROUND_LAYERS) ||
                   (scenery.any?(&:bar?) &&
                    Stacking.scenery_over_objects?(screenful.depths, scenery: scenery, objects: screenful.objects))
               end
             end
-
-            # Whether +bg+ is shown on some rows of the screen and not the rest, which the line table
-            # switches (Runtime::Picture's BAR_TABLE): a status bar, or a background held above a row.
-            def self.held_to_rows?(bg) = bg.bar? || !bg.above_row.nil?
 
             # Whether +program+ holds a background above a row, which takes the bar's line table.
             def self.background_rows_held?(program) = program.walk.any? { |node| node.kind == :background && node.above_row }
@@ -164,19 +161,111 @@ module VBlank
             # picture came to. A pool's sprites and letters of text are left out of the count: how
             # many show at once is decided as the game runs, so this counts what is certain, the
             # sprites a screen declares, each at its largest pose.
+            #
+            # NO ROW IS A SPRITE'S OWN HERE. The runtime hands the rows out on every pass, one for
+            # each piece of each sprite that shows, as rt_sprite_place places it (Runtime::Picture,
+            # "SPRITES"), so the table holds what is up on that pass and nothing else: a hidden
+            # sprite, or one of a scene that is not up, takes no row, ordered or not. So the count
+            # is of the sprites that can be up together (SpriteRows.screens_shown_together), never
+            # the layout SpriteRows.plan makes for a console that settles each sprite's rows as the
+            # game is built, where a sprite drawn in an order keeps rows on every screen. It is
+            # still the most a screen can hold, not what any one pass holds: the build cannot tell
+            # a walking sprite the game hides before it shows a dying one from two that show
+            # together. So the warning says it is that bound and names what it added.
             def sprite_table_findings
               return [] if painted?
 
-              screen = IR::SpriteRows.plan(@program) { |node| rows_of_declared_sprite(node) }.busiest
+              screens = IR::SpriteRows.screens_shown_together(@program) { |node| rows_of_declared_sprite(node) }
+              screen = screens.max_by(&:count)
               return [] if screen.nil? || screen.count <= Runtime::Picture::MOST_SPRITES
 
-              [Guardrails::Finding.new(
-                check: :snes_sprite_table, severity: :warning, node: :program,
-                message: "The sprites of one screen take #{screen.count} rows of the sprite table. A Super " \
-                         "Nintendo has #{Runtime::Picture::MOST_SPRITES}, and a sprite past the last row is not " \
-                         "drawn. Each piece of a picture takes one row. To fix this, use fewer sprites, or make " \
-                         "their pictures of fewer pieces."
-              )]
+              [Guardrails::Finding.new(check: :snes_sprite_table, severity: :warning, node: :program,
+                                       message: sprite_table_message(screen))]
+            end
+
+            def sprite_table_message(screen)
+              where = screen.scenes.empty? ? "one screen" : "the scene #{scenes_named(screen.scenes)}"
+              "The sprites of #{where} can take #{screen.count} rows of the sprite table. A Super Nintendo has " \
+                "#{Runtime::Picture::MOST_SPRITES}. A sprite past the last row is not drawn. Each piece of a " \
+                "picture takes one row. This count adds every sprite on the screen at its biggest picture, shown " \
+                "or hidden: #{counted_sprites_named(screen)}. If some of these sprites never show at the same " \
+                "time, the screen can fit. To fix this, use fewer sprites, or make their pictures of fewer pieces."
+            end
+
+            def scenes_named(scenes) = scenes.map { |scene| ":#{Modes.strip_scene_prefix(scene)}" }.join(" and ")
+
+            # The sprites a count added, by their biggest picture, the most rows first, in the
+            # author's names (a sprite's own name is the framework's): ":banner (50 rows) 2 times".
+            def counted_sprites_named(screen)
+              nodes = IR::Stacking.objects_in_draw_order(@program).to_h { |node| [node.name, node] }
+              biggest = screen.names.filter_map do |name|
+                next if rows_of_declared_sprite(nodes.fetch(name)).zero?
+
+                @objects.fetch(name).poses.map { |pose| [pose, @art.sprite_pictures.fetch(pose).pieces.length] }.max_by(&:last)
+              end
+              biggest.tally.sort_by { |(_pose, rows), times| -rows * times }
+                     .map { |(pose, rows), times| ":#{pose} (#{rows} #{rows == 1 ? 'row' : 'rows'})#{" #{times} times" if times > 1}" }
+                     .join(", ")
+            end
+
+            # What a crowded scene gave up to fit its sprites (Art, "A crowded screen's sprites"): the
+            # pictures drawn in pieces of 8×8 where a square would take more tiles, and a scene
+            # drawn in pieces of 8×8 alone. Each piece is a row the runtime places on every frame, so
+            # a frame that was in time can run late, and the author is told which pictures and how
+            # many rows.
+            def crowded_scene_findings
+              lean = @art.lost_squares.map do |scene, pictures|
+                Guardrails::Finding.new(check: :snes_crowded_scene_squares, severity: :warning, node: :program,
+                                        message: lost_squares_message(scene, pictures))
+              end
+              lean + @small_sprite_scenes.map do |scene|
+                Guardrails::Finding.new(check: :snes_crowded_scene_small_pieces, severity: :warning, node: :program,
+                                        message: small_scene_message(scene))
+              end
+            end
+
+            # THE PIECES EACH SPRITE PICTURE WAS MADE OF (Art#sprite_pictures), as the interpreter and
+            # the runtimes count them on a line and in the table (SpriteLines.pieces_built): by
+            # [picture's name, the colours a copy drawn with other colours is drawn in, or nil], each
+            # piece's [across, down, width, height] with the one in front first. The art lists a
+            # picture's pieces in the order they go into the table, which is back-most first
+            # (#emit_present_objects), so they are turned round.
+            public def sprite_pieces_built
+              @art.sprite_pictures.to_h do |key, picture|
+                places = picture.pieces.reverse.map do |piece|
+                  side = piece.big ? SpritePieces::BIG : SpritePieces::SIZE
+                  [piece.dx, piece.dy, side, side]
+                end
+                [key.is_a?(Array) ? key : [key, nil], places]
+              end
+            end
+
+            # How many sprite tiles +scene+ leaves free (Art#free_sprite_tiles), for SNES#build.
+            def free_sprite_tiles(scene) = @art.free_sprite_tiles(scene)
+
+            # Stops the try where a screen's sprites did not fit, once every screen is made
+            # (Art#refuse_crowded_scenes!), for SNES#build.
+            public def refuse_crowded_scenes! = @art&.refuse_crowded_scenes!
+
+            # Pictures named in a warning before the rest are counted.
+            PICTURES_NAMED = 3
+
+            def lost_squares_message(scene, pictures)
+              names = pictures.keys.map { |name| ":#{Array(name).first}" }
+              named = names.first(PICTURES_NAMED).join(", ")
+              named += " and #{names.length - PICTURES_NAMED} more" if names.length > PICTURES_NAMED
+              "The sprites of the scene :#{Modes.strip_scene_prefix(scene)} do not all fit in video memory as squares " \
+                "of 16×16. #{names.length} pictures are drawn in pieces of 8×8 where a square takes more tiles: #{named}. " \
+                "When one of each shows, they take #{pictures.values.sum} more rows of the sprite table. The console " \
+                "places each row again on every frame, so each frame takes more time. To keep the squares, use fewer " \
+                "different pictures in this scene."
+            end
+
+            def small_scene_message(scene)
+              "The sprites of the scene :#{Modes.strip_scene_prefix(scene)} do not fit in video memory as squares of " \
+                "16×16. All of its pictures are drawn in pieces of 8×8. Each sprite takes more rows of the sprite " \
+                "table. The console places each row again on every frame, so each frame takes more time. To keep " \
+                "the squares, use fewer different pictures in this scene."
             end
 
             def rows_of_declared_sprite(node)
@@ -191,7 +280,8 @@ module VBlank
               @alone_flag_in_line_table = Picture.alone_flag_in_line_table?(@program)
               @art = Art.new(backdrop: @cache.handover.game_backdrop, sprite_squares: @sprite_squares,
                              screen_colors: @screen_colors, sprite_colors: @sprite_colors, scene_tiles: @sprite_tiles,
-                             background_tiles: @scene_background_tiles, small_sprite_scenes: @small_sprite_scenes,
+                             background_tiles: @scene_background_tiles, lean_square_scenes: @lean_square_scenes,
+                             small_sprite_scenes: @small_sprite_scenes,
                              third_layer: @third_layer, shared_held_lists: @shared_held_lists, tile_memo: @tile_memo)
               sizes = @program.walk.select { |node| node.kind == :background }.map(&:tile_w).uniq
               @art.reserve_blank_big_tile if sizes.length > 1
@@ -221,6 +311,7 @@ module VBlank
                 refuse_unmade!("a background on a painted (bitmap) screen") unless @backgrounds.empty?
                 refuse_unmade!("a hardware sprite on a painted (bitmap) screen") unless @objects.empty?
               end
+              refuse_unmade_doubled_screen! if doubled?
               @program.walk.select { |node| node.kind == :background }.each do |bg|
                 unless bg.tile_w == bg.tile_h && [8, BIG_TILE].include?(bg.tile_w)
                   refuse_unmade!("background tiles of #{bg.tile_w}×#{bg.tile_h}")
@@ -229,6 +320,23 @@ module VBlank
                 refuse_unmade!("a background whose maps are of different sizes or too big to hold") if bg.streams?
               end
             end
+
+            # What a painted screen of big pixels (Runtime::PaintDoubled) does not paint yet: a Super
+            # FX cartridge. The chip's PLOT writes the planar tiles of Paint's screen
+            # (Runtime::ChipPaint, ChipFill, ChipBlit, ChipColumns), and every routine it runs
+            # paints that layout; Mode 7's tiles are a byte a pixel, which PLOT has no mode for. The
+            # chip could store bytes itself, but that is every chip routine written again.
+            def refuse_unmade_doubled_screen!
+              return unless @chip_board
+
+              raise NotMadeYet.new(DOUBLED_ON_CHIP, part: "the picture")
+            end
+
+            DOUBLED_ON_CHIP = "This game has big pixels (`pixel_size: 2`) on a Super FX cartridge. The Super FX chip " \
+                              "paints its pixels in the tiles of a screen with small pixels. A screen with big pixels " \
+                              "keeps one byte for each pixel, on the Super Nintendo's turning layer. The build does " \
+                              "not make the chip paint that layout yet. To fix this, remove `pixel_size: 2`, or build " \
+                              "the game without the Super FX."
 
             # Every picture a sprite can show, made into sprite pieces in the order SpriteNames numbers
             # them, a canvas's picture among them (#make_run_art), so the number a picture is made
@@ -878,6 +986,37 @@ module VBlank
 
               place = Runtime::Picture::SPRITE_TILES + (first * Art::TILE_BYTES / 2)
               runtime_call("rt_scene_sprite_tiles", [LongAddress.new(scene_sprite_tiles_label(scene)), Build.int(bytes.bytesize), Build.int(place)])
+              emit_scene_sprite_tiles_held(scene)
+            end
+
+            # A SCENE PICKED INSIDE A TEST, after the game changed the variable that picks it in the
+            # same pass: the frame of that pass shows the scene up as the pass started, with its
+            # sprites, since the loop notes the number for the frame's sprites as the pass starts
+            # (IR::Frames.loop_in_console_order). The arriving scene's tiles would go in under the
+            # leaving scene's sprites, so they are held for one blank (Runtime::Picture's
+            # SCENE_TILES_HELD) and go in after the next pass, the first to show the arriving scene's
+            # sprites. The note and the number differ only then: a dispatch at the top of the loop
+            # is noted as it reads the number. A scene picked by more than one variable is not held.
+            def emit_scene_sprite_tiles_held(scene)
+              vars = scene_dispatch_vars.fetch(scene, [])
+              return unless vars.one?
+
+              read = Frames.scene_read_name(vars.first)
+              return unless @variables.key?(read)
+
+              shown = fresh("scene_tiles_shown")
+              jump_unless(Build.binop(:!=, Build.var_ref(vars.first), Build.var_ref(read)), shown)
+              @asm.lda(1)
+              @asm.sta(@asm.abs(@memory[Runtime::Picture::SCENE_TILES] + Runtime::Picture::SCENE_TILES_HELD))
+              @asm.label(shown)
+            end
+
+            # The variables each scene is picked by, by the scene.
+            def scene_dispatch_vars
+              @scene_dispatch_vars ||= @program.walk.select { |node| Frames.scene_dispatch?(node) }
+                                               .each_with_object(Hash.new { |hash, key| hash[key] = [] }) do |node, vars|
+                node.clauses.each { |_, target| vars[target] |= [node.var] }
+              end
             end
 
             # What each scene brings in of its background tiles (#emit_scene_background_tiles).
@@ -1125,11 +1264,19 @@ module VBlank
             def emit_background(node)
               return if @handover.on_arrival?(node)
 
-              emit_put_up(node)
+              # Put up again, it keeps the cells its layer holds (SceneryWrites#emit_put_up_keeping_cells).
+              emit_put_up_keeping_cells(node, layer_of(node)) { |kept| emit_put_up(node, keeps_cells: kept) }
+              emit_bar_beside(node)
             end
 
-            def emit_put_up(bg)
-              runtime_call("rt_background_put_up", [Build.int(layer_of(bg)), Build.int(grid_of(bg, 0).number), Build.int(1)])
+            # +keeps_cells+ puts it up keeping the cells its layer holds: nothing is copied, and the view goes
+            # back to the corner as rt_background_put_up puts it there. Otherwise its declared map is copied.
+            def emit_put_up(bg, keeps_cells: false)
+              if keeps_cells
+                runtime_call("rt_background_scroll", [Build.int(layer_of(bg)), Build.int(0), Build.int(0)])
+              else
+                runtime_call("rt_background_put_up", [Build.int(layer_of(bg)), Build.int(grid_of(bg, 0).number), Build.int(1)])
+              end
               # A status bar put up shows from the top it was declared with (Reference#bar_top_shown), and
               # covers sprites as that bar was last set to (IR::SceneHandover#bar_covers_on_put_up).
               if bg.bar?
@@ -1141,42 +1288,16 @@ module VBlank
                 alone = @alone_flag_in_line_table ? [Build.int(bg.shown_above_row)] : []
                 runtime_call("rt_background_held_above", [Build.int(layer_of(bg)), Build.int(bg.above_row), *alone])
               end
-              [@put_up_this_pass&.fetch(layer_of(bg)), (@bar_up_this_pass if bg.bar?)].compact.each { |note| statement(Build.set(note, 1)) }
-            end
-
-            # A BACKGROUND PUT UP IN A PASS SHOWS FROM ITS CORNER ON THAT PASS'S FRAME
-            # (Reference#put_up_background), and the place the game keeps for its view, or the top it
-            # keeps for a status bar, is written at the end of the pass (IR::Frames
-            # .loop_in_console_order), after the put-up. So a put-up notes itself for the rest of its
-            # pass, a note for each layer, and the write at the end of it leaves the background or bar
-            # where it was put up. The wait forgets the notes (#emit_corners_forgotten), and the next
-            # pass's write moves it.
-            def keep_corner_notes
-              if @plan.places_at_pass_end?(:scroll_background)
-                layers = @third_layer ? [*LAYERS, THIRD_LAYER] : LAYERS
-                @put_up_this_pass = layers.to_h { |layer| [layer, keep_local(:"put_up_this_pass_#{layer}")] }
-              end
-              @bar_up_this_pass = keep_local(:bar_up_this_pass) if @plan.places_at_pass_end?(:place_bar)
+              [corner_note(layer_of(bg)), (bar_note if bg.bar?)].compact.each { |note| statement(Build.set(note, 1)) }
             end
 
             # The two layers a background can be on.
             LAYERS = [0, 1].freeze
 
-            # The notes forgotten at a wait: the pass that put a background up has ended.
-            def emit_corners_forgotten
-              [*@put_up_this_pass&.values, @bar_up_this_pass].compact.each { |note| statement(Build.set(note, 0)) }
-            end
-
-            # +node+'s write, unless it is written at the end of a pass that put its background or bar
-            # up (+note+, #keep_corner_notes).
-            def emit_unless_put_up(node, note)
-              return yield unless note && @plan.placed_at_pass_end?(node)
-
-              held = fresh("held_at_corner")
-              jump_unless(Build.binop(:==, Build.var_ref(note), Build.int(0)), held)
-              yield
-              @asm.label(held)
-            end
+            # Every layer a background goes up on, the third among them where the game has one: those a put-up
+            # holds at its corner through its pass (SceneryWrites#keep_corner_notes). A status bar's top is held
+            # by a note of its own, since a bar is placed by its top rather than its layer's view.
+            def corner_layers = @third_layer ? [*LAYERS, THIRD_LAYER] : LAYERS
 
             # WHICH OF THE TWO LAYERS EACH BACKGROUND IS ON (#assign_background_layers). A scene's own
             # scenery is in front of the scenery every screen shows, as the interpreter paints it over
@@ -1200,9 +1321,9 @@ module VBlank
               if always.length + @scene_layers > BACKGROUND_LAYERS
                 refuse_unmade!(@third_layer ? "more than two backgrounds on the screen at once beside a status bar or a background held above a row" : "more than two backgrounds on the screen at once")
               end
-              @scene_bars = @scenes.keys.any? { |scene| @handover.arrival(scene).scenery.any? { |bg| Picture.held_to_rows?(bg) } }
+              @scene_bars = @scenes.keys.any? { |scene| @handover.arrival(scene).scenery.any?(&:held_to_rows?) }
               refuse_unmade!("a background kept above a row beside a status bar") if Picture.background_rows_held?(@program) && Picture.status_bar?(@program)
-              refuse_unmade_stacking!
+              @plan.refuse_unmade_stacking!(NotMadeYet, part: "the picture") { |bg| !on_third_layer?(bg) }
               refuse_unmade_bends!
               always.each_with_index { |bg, i| @layers[bg] = @scene_layers + (always.length - 1 - i) }
               own.each { |scenery| scenery.each_with_index { |bg, i| @layers[bg] = scenery.length - 1 - i } }
@@ -1215,10 +1336,10 @@ module VBlank
             THIRD_LAYER = 2
 
             # +scenery+ less a background on the third layer.
-            def layered_scenery(scenery) = @third_layer ? scenery.reject { |bg| Picture.held_to_rows?(bg) } : scenery
+            def layered_scenery(scenery) = @third_layer ? scenery.reject(&:held_to_rows?) : scenery
 
             # Whether +bg+ is on the third layer.
-            def on_third_layer?(bg) = @third_layer && Picture.held_to_rows?(bg)
+            def on_third_layer?(bg) = @third_layer && bg.held_to_rows?
 
             # +bg+ on the third layer, as a refusal names it (the answers name when one is there).
             def third_layer_refusal_words(bg) = bg.bar? ? "a status bar on the third layer" : "a background held above a row beside two other backgrounds"
@@ -1228,8 +1349,8 @@ module VBlank
             # are among the places it can name. Every tile its maps show and every tile the game sets in
             # it is made now, so none comes later, after a scene has taken its copy of the tiles.
             def make_third_layer_art
-              refuse_unmade!("two backgrounds held to rows on one screen beside two other backgrounds") if Stacking.screenfuls(@program).any? { |screenful| screenful.scenery.count { |bg| Picture.held_to_rows?(bg) } > 1 }
-              backgrounds_declared.select { |bg| Picture.held_to_rows?(bg) }.each do |held|
+              refuse_unmade!("two backgrounds held to rows on one screen beside two other backgrounds") if Stacking.screenfuls(@program).any? { |screenful| screenful.scenery.count(&:held_to_rows?) > 1 }
+              backgrounds_declared.select(&:held_to_rows?).each do |held|
                 @layers[held] = THIRD_LAYER
                 refuse_unmade_third_layer!(held)
                 held.every_map.each_index { |which| grid_of(held, which) }
@@ -1316,36 +1437,6 @@ module VBlank
 
             def layer_of(bg) = @layers.fetch(bg) { raise LoweringError, "the background #{bg.name.inspect} is on no layer" }
 
-            # A stack the layers' order cannot show: a scene's own background behind one every screen
-            # shows (see #assign_background_layers).
-            def refuse_unmade_stacking!
-              stacked = @scenes.each_key.any? { |scene| @handover.own_scenery_behind_shared?(scene) { |bg| !on_third_layer?(bg) } }
-              refuse_unmade!("a scene's own background in a layer behind a background every screen shows") if stacked
-            end
-
-            # THE DECLARED BACKGROUND a scroll, a changed cell or a map handed over names
-            # (SceneHandover#background_named); nil where that cannot be told while the game is built.
-            def background_declared_for(node) = @handover.background_named(node, scene: @lowering_scene, error: LoweringError)
-
-            # +node+'s change made to the background it names (#background_declared_for), yielded
-            # to the block. Where that is not known while the game is built — a change outside every
-            # scene's routine, to a name several scenes declare — the change is made to the one of
-            # the scene up when it runs, each scene's its own branch.
-            def for_background(node)
-              bg = background_declared_for(node)
-              return yield(bg) if bg
-
-              @scenes.each do |scene, number|
-                own = @handover.arrival(scene).scenery.find { |declared| declared.name == node.name }
-                next unless own
-
-                other = fresh("not_scene")
-                jump_unless(Build.binop(:==, Build.var_ref(@scene), Build.int(number)), other)
-                yield own
-                @asm.label(other)
-              end
-            end
-
             # A scene taking over (Lowering#emit_scene): the tiles its scenery and its sprites paint
             # from lists copied in again, as each list is now; what it shows of its own goes up from
             # its corner, as declared, with every map it chooses back at the first; and the layers its
@@ -1374,7 +1465,8 @@ module VBlank
               ((0...@scene_layers).to_a - arrival.scenery.map { |bg| layer_of(bg) }).each do |layer|
                 runtime_call("rt_background_put_up", [Build.int(layer), Build.int(empty_grid.number), Build.int(1)])
               end
-              runtime_call("rt_bar_gone", []) if scene_bars? && arrival.scenery.none? { |bg| Picture.held_to_rows?(bg) }
+              runtime_call("rt_bar_gone", []) if scene_bars? && arrival.scenery.none?(&:held_to_rows?)
+              emit_bar_beside_arrival(arrival)
             end
 
             # The layers some scene bends and the one taking over does not: their rows go straight.
@@ -1428,7 +1520,7 @@ module VBlank
             def emit_scroll_background(node) = for_background(node) { |bg| emit_scroll_background_on(node, bg) }
 
             def emit_scroll_background_on(node, bg)
-              emit_unless_put_up(node, @put_up_this_pass&.fetch(layer_of(bg))) do
+              emit_unless_put_up(node, corner_note(layer_of(bg))) do
                 runtime_call("rt_background_scroll", [Build.int(layer_of(bg)), node.x, node.y])
               end
             end
@@ -1549,7 +1641,7 @@ module VBlank
                 next unless bg.bar?
 
                 runtime_call("rt_bar_covers", [node.covers]) if node.covers
-                emit_unless_put_up(node, @bar_up_this_pass) { runtime_call("rt_bar_place", [Build.int(layer_of(bg)), node.top]) }
+                emit_unless_put_up(node, bar_note) { runtime_call("rt_bar_place", [Build.int(layer_of(bg)), node.top]) }
               end
             end
 
@@ -2105,22 +2197,21 @@ module VBlank
             # the depth being placed, by sprite, for a frame with sprites that change layer; a sprite
             # not named has no place at that depth.
             #
-            # The list is the framework's own (Builder::DrawOrder#declare_order_lists): a place of the
-            # run pushed for each sprite as the game starts, before anything is drawn, and from then on
-            # only sorted or copied whole from a table of places, never made shorter or taken from the
-            # front. So every entry is in its slot and names a place of the run, and nothing is tested:
-            # each is read straight from its slot and doubled into X, and JSR (table,X) jumps to the entry's
-            # stub in a table of them written here: the sprite's placing itself, written out once for
-            # the run, and an RTS. Five instructions an entry however long the run, where comparing the
-            # entry with each place in turn would grow with the square of the run. The table is in this
-            # routine's own code, so in its bank, which is where JSR (table,X) reads it. A sprite with no
-            # place at this depth has a stub that only returns.
+            # Each entry is doubled into X, and JSR (table,X) jumps to the entry's stub in a table of
+            # them written here: the sprite's placing itself, written out once for the run, and an
+            # RTS. Five instructions an entry however long the run, where comparing the entry with
+            # each place in turn would grow with the square of the run. The table is in this routine's
+            # own code, so in its bank, which is where JSR (table,X) reads it. A sprite with no place
+            # at this depth has a stub that only returns.
+            #
+            # The framework's own list (Build::DrawOrder#permutation) holds every place of the run in
+            # its slots, so each entry is read straight from its slot with nothing tested. Any other
+            # list — one written by hand, or one something takes items from the front of, whose slots
+            # move round — is walked as the interpreter reads it (DrawOrderWalk), through the same table.
             #
             # The placing is in the stub rather than a routine the stub calls: the JSL there and the
             # RTL back were two of the seven instructions an ordered sprite cost beyond its placing.
             def emit_ordered_run(run, depths = nil)
-              return emit_ordered_run_by_reads(run, depths) if front_dropped_lists.include?(run.order)
-
               place, _capacity, width = @lists.fetch(run.order) do
                 raise LoweringError, "the list #{run.order.inspect} orders sprites and is never declared"
               end
@@ -2136,6 +2227,8 @@ module VBlank
                 @asm.rts
               end
               @asm.label(placing)
+              return emit_ordered_run_walked(run, table) unless order_read_by_slots?(run, front_dropped_lists)
+
               keyed = @keyed_sorts&.fetch(run.order, nil)
               run.objects.each_index do |k|
                 if keyed
@@ -2151,24 +2244,33 @@ module VBlank
               end
             end
 
-            # The same run for an order list something takes from the front, whose slots move round:
-            # each entry read as any list read is.
-            def emit_ordered_run_by_reads(run, depths)
-              entry = keep_local(:ordered_entry)
-              run.objects.each_index do |k|
-                statement(Build.set(entry, Build.list_get(run.order, Build.int(k))))
-                past = fresh("past_the_ordered")
-                run.objects.each_with_index do |name, at|
-                  next if depths && !depths.key?(name)
-
-                  other = fresh("not_sprite")
-                  jump_unless(Build.binop(:==, Build.var_ref(entry), Build.int(at)), other)
-                  call_routine(sprite_placing_label(name, depths&.fetch(name)))
-                  @asm.brl(past)
-                  @asm.label(other)
-                end
-                @asm.label(past)
+            # A run whose list is walked as the interpreter reads it (DrawOrderWalk), each entry's
+            # place doubled into X for JSR (table,X), as the run read a slot an entry does.
+            def emit_ordered_run_walked(run, table)
+              emit_draw_order_walk(run) do |place|
+                @asm.lda(at_place(place_of(place)))
+                @asm.asl
+                @asm.tax
+                @asm.jsr(@asm.ind_abs_x(table))
               end
+            end
+
+            # DrawOrderWalk's: the place the variable +name+ holds and the run's +count+, the fault's two
+            # numbers, and no list, as the interpreter words it (Faults.draw_order_names_none).
+            def emit_draw_order_fault(name, count)
+              fault = @memory[Runtime::Frame::FAULT]
+              entry = place_of(name)
+              @asm.stz(@asm.abs(fault + Runtime::Frame::FAULT_LIST))
+              @asm.stz(@asm.abs(fault + Runtime::Frame::FAULT_LIST + 2))
+              @asm.lda(at_place(entry))
+              @asm.sta(@asm.abs(fault + Runtime::Frame::FAULT_FIRST))
+              @asm.lda(at_place(entry + 2))
+              @asm.sta(@asm.abs(fault + Runtime::Frame::FAULT_FIRST + 2))
+              @asm.lda(count)
+              @asm.sta(@asm.abs(fault + Runtime::Frame::FAULT_SECOND))
+              @asm.stz(@asm.abs(fault + Runtime::Frame::FAULT_SECOND + 2))
+              @asm.lda(Runtime::Frame::DRAW_ORDER_NAMES_NONE)
+              @asm.jml(@asm.long("rt_fault"))
             end
 
             # Sprite +name+ of an ordered run placed, or placed when it is at the depth +depths+ names
@@ -2177,23 +2279,6 @@ module VBlank
               return emit_sprite_placing(object_named(name)) unless depths
 
               emit_sprite_placed_at(object_named(name), depths.fetch(name), @cache.stacking.depths)
-            end
-
-            # The routine placing sprite +name+, or placing it when it is at the depth called +at+.
-            def sprite_placing_label(name, at = nil)
-              (@sprite_placings ||= {})[[name, at]] ||= "sprite placing #{@sprite_placings.length}"
-            end
-
-            # The routine each sprite of an ordered run is placed by (#emit_ordered_run), made once the
-            # game's routines are.
-            def sprite_placing_sections
-              (@sprite_placings || {}).map do |(name, at), label|
-                routine_section(label, [], routine: "placing the sprite #{name.inspect}") do
-                  next emit_sprite_placing(object_named(name)) unless at
-
-                  emit_sprite_placed_at(object_named(name), at, @cache.stacking.depths)
-                end
-              end
             end
 
             # A FRAME WITH SPRITES THAT CHANGE LAYER as the game runs (`put_in_layer`,

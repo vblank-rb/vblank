@@ -47,7 +47,7 @@ module PackSlotViewGames
   # How many bytes one sixteen-colour tile of the Advance is.
   GROUND_TILE_BYTES = 32
 
-  constants.each { |name| Ractor.make_shareable(const_get(name)) }
+  VBlank::Testing::InRactors.share_constants(self)
 
   private def slot_view_original(folder)
     copy = "\0".b * (VIDEO_AT + VIDEO_BYTES)

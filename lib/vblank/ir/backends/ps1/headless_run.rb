@@ -70,6 +70,17 @@ module VBlank
           # level, as the program keeps it (Reference#level_of); nil when it is not sounding.
           def level_of(name) = (@sounding || []).find { |held| held.name == name }&.level
 
+          # How loud each recording sounding plays, out of the mix's full, place by place as the program keeps
+          # them (Reference#loudness_by_voice).
+          def loudness_by_voice = (@sounding || []).map(&:loudness)
+
+          # THE RECORDINGS SOUNDING in +run+ (this run, or the interpreter it is checked against), a voice
+          # each in the order of the voices: its name, its shape's level and its loudness. A pass's moment
+          # holds them, so a recorded note at the wrong loudness is a moment the two disagree on.
+          def self.sounding_voices(run)
+            run.active_samples.zip(run.loudness_by_voice).map { |name, loudness| [name, run.level_of(name), loudness] }
+          end
+
           # Whose each recording sounding is as the run ended (Reference#sound_owners): :game for the game's
           # own, [:song, part] for a song's recorded part, [effect, part] for a sound effect's.
           def sound_owners
@@ -91,8 +102,18 @@ module VBlank
             Diagnostics::SoundDrops::Reading.new(dropped: dropped, music_held: music_held, voices: places)
           end
 
+          # The Advance's mix, a stream of sound its processor makes from every recording (Reference#mixed_sound):
+          # a PlayStation plays each recording on a voice of its own sound chip (Runtime::Recordings), and
+          # makes no such stream. What its chip makes of them is what Beetle PSX hands over (#sound_made); the
+          # desktop builds' model of it (runtime/rg_spu.c) is held to that within each voice's tolerance, not
+          # to the interpreter's mix, so no number here stands for the mix.
+          def mixed_sound
+            refuse_question!("a PlayStation plays each recording on a voice of its own sound chip, so it has no " \
+                             "mixed sound to read.")
+          end
+
           # The rest of what the interpreter answers, each refused by name.
-          refuses :clock_at, :mixed_sound
+          refuses :clock_at
 
           # HOW MANY LINES THE SCREEN HAD DRAWN since the last blank began when +pass+ went to sleep, by
           # the pass's number as #frames_took has it, read off the console's line timer
@@ -128,21 +149,23 @@ module VBlank
             held = if frame == :end
                      Array.new(r::PLACES) do |place|
                        at = runtime_place(r::PLACES_STATE) + (place * r::PLACE_BYTES)
-                       [read32(at + r::HELD), read32(at + r::LEVEL), read32(at + r::OWNER)]
+                       [read32(at + r::HELD), read32(at + r::LEVEL), read32(at + r::LOUD), read32(at + r::OWNER)]
                      end
                    else
                      kept = (frame % Runtime::Frame::STEPS_KEPT) * r::PLACES
                      Array.new(r::PLACES) do |place|
-                       [byte(runtime_place(r::KEPT_BY_PASS) + kept + place), byte(runtime_place(r::LEVELS_BY_PASS) + kept + place), nil]
+                       [byte(runtime_place(r::KEPT_BY_PASS) + kept + place), byte(runtime_place(r::LEVELS_BY_PASS) + kept + place),
+                        half(runtime_place(r::LOUDNESS_BY_PASS) + ((kept + place) * 2)), nil]
                      end
                    end
-            held.reject { |number, *| number.zero? }.map do |number, level, owner|
-              HeldRecording.new(name: @places.recording_names.fetch(number - 1), level: level, owner: owner)
+            held.reject { |number, *| number.zero? }.map do |number, level, loudness, owner|
+              HeldRecording.new(name: @places.recording_names.fetch(number - 1), level: level, loudness: loudness, owner: owner)
             end
           end
 
-          # A place's recording as a run reads it: its name, its level, and whose it is (nil where not read).
-          HeldRecording = Data.define(:name, :level, :owner)
+          # A place's recording as a run reads it: its name, its level, its loudness, and whose it is (nil
+          # where not read).
+          HeldRecording = Data.define(:name, :level, :loudness, :owner)
 
           def power_on = set_buttons(@held)
 
@@ -150,21 +173,24 @@ module VBlank
           # it is not pressed.
           def set_buttons(buttons) = @core.set_buttons(buttons.filter_map { |button| PAD_BUTTONS[button.to_sym] })
 
-          # A RUN OF NO FRAMES ends as the first pass does, before anything is shown: the picture is still
-          # off. The interpreter shows a display switched off as a plain white picture
-          # (Reference::Framebuffer::HELD_OFF), so that is the picture the run ends on, and the game goes no
-          # further.
+          # A RUN OF NO FRAMES ends as the first pass does, before anything is shown
+          # (CartridgeHeadlessRun#end_before_first_picture): the runtime turns the display on as the
+          # first pass is shown (Runtime::Frame::DISPLAY_ON).
           def ends_before_first_picture?(frames) = frames.zero?
 
-          def end_before_first_picture(variables, lists, sprites, sounds, _camera)
-            hold_after_this_pass
-            @sprites = sprites
-            off = Array.new(@core.width * @core.height, Reference::Framebuffer::HELD_OFF)
-            record_moment(:end, variables, lists, Picture.new(shown: off, width: @core.width, height: @core.height,
-                                                              camera_x: 0, camera_y: 0), sounds)
+          # The display switched off is the graphics chip's own (its display-off bit, set by GP1(03h)).
+          # The picture alone cannot tell: video RAM keeps whatever was drawn into it while the
+          # display was off, and the chip shows nothing of it.
+          def screen_forced_off? = @core.gpu_state.fetch(:display_off) != 0
+
+          # The count is written as the picture comes on for the first pass, which may be after the game was
+          # found waiting at that pass's end, so it is read again at every moment.
+          def read_setting_up
+            @setting_up = read32(runtime_place(Runtime::Frame::SETTING_UP)) if @places.runtime.key?(Runtime::Frame::SETTING_UP)
           end
 
           def start_run(_program)
+            @setting_up = nil
             @frames_played = 0
             @lines_after_blank = {}
             @logged_entries = []
@@ -227,9 +253,15 @@ module VBlank
           # (Runtime::Paint::PASS_PAGE_Y). The graphics chip draws into video RAM the moment it is told
           # to, and on a screen of one page that is the page shown: by the time the reader finds the pass
           # on the screen, the game has gone on into the next pass and drawn some of it there.
+          #
+          # A screen shown from pages of its own (Runtime::Paint::PAGE_X) is the exception: the pass's page is
+          # the copy the chip makes as it ends, which may still be being drawn as the game is found waiting,
+          # and is whole before it is shown (Runtime::Paint's rt_paint_flip). Nothing draws on it until the
+          # pass after next, the next pass's copy going into the other page shown, so it is read once it is
+          # shown (#picture_of_pass).
           def read_picture_drawn
             top = read32(runtime_place(Runtime::Paint::PASS_PAGE_Y))
-            PageRead.new(top_line: top, colors: read_page_colors(top))
+            PageRead.new(top_line: top, colors: shown_apart? ? nil : read_page_colors(top))
           end
 
           # ...AND IT COUNTS ONLY IF IT IS THE PAGE SHOWN. As the pass went on the screen the runtime kept
@@ -246,7 +278,7 @@ module VBlank
             return picture_now(nil) unless state.fetch(:display_x) == page_x && state.fetch(:display_y) == told
 
             shown_top = read32(runtime_place(Runtime::Paint::PASS_SHOWN_PAGE_Y))
-            picture_of_colors(shown_top == drawn.top_line ? drawn.colors : read_page_colors(shown_top))
+            picture_of_colors(shown_top == drawn.top_line ? drawn.colors || read_page_colors(shown_top) : read_page_colors(shown_top))
           end
 
           # The sprites the pass placed, as the runtime keeps them (Runtime::Tiles::DRAWN): none on a painted
@@ -259,6 +291,7 @@ module VBlank
           # as the music of the frame boundary will be played there. The moment the run ended on has no
           # boundary after it.
           def record_moment(frame, variables, lists, picture, sounds)
+            read_setting_up
             @vars = variables
             @lists = lists
             @screen = picture
@@ -271,7 +304,7 @@ module VBlank
             end
             @moments << Moment.new(frame: frame, variables: variables, picture: picture_check_of(picture.shown),
                                    sounds: @sounds, sprites: @sprites, collections: game_state.except(:vars),
-                                   sounding: active_samples.map { |name| [name, level_of(name)] })
+                                   sounding: HeadlessRun.sounding_voices(self))
             @on_vblank&.call(frame) unless frame == :end
           end
 
@@ -317,9 +350,10 @@ module VBlank
 
           # The column the pages shown start at: the left edge, or for a painted screen drawn by number the
           # column its own pages shown start at (Runtime::Paint::PAGE_X).
-          def page_x
-            @places.runtime.key?(Runtime::Paint::PAGE_X) ? read32(runtime_place(Runtime::Paint::PAGE_X)) : 0
-          end
+          def page_x = shown_apart? ? read32(runtime_place(Runtime::Paint::PAGE_X)) : 0
+
+          # Whether the painted screen is shown from pages of its own (Runtime::Paint::PAGE_X).
+          def shown_apart? = @places.runtime.key?(Runtime::Paint::PAGE_X)
 
           # The picture's check, worked out once for a picture shown frame after frame.
           def picture_check_of(shown)

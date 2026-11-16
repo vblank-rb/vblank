@@ -34,6 +34,15 @@ module VBlank
         # inside that very routine, so the call keeps the counters and locals of every resumable
         # routine it can reach, runs from step 0, and puts them back (Statements::RunToEnd).
         #
+        # A TIMER'S HANDLER THAT WAITS is the one answer that can stop for a frame, as the interpreter
+        # lets it (Reference#accrue_timer runs it inside the frame boundary, and its wait is a boundary
+        # of its own). Where the routine answering a tick (TIMER_TICKS) can reach a wait, its body
+        # becomes a resumable routine of its own (TIMER_STEPS), and the answer calls that: carrying on
+        # from its step and telling the runtime whether it stopped (TIMER_HANDLER_WAITED), which then
+        # finishes that boundary on a later frame (runtime/rg_runtime.c, "A HANDLER THAT WAITS"). A
+        # tick at a boundary inside that wait (TIMER_HANDLER_PAUSED) runs the handlers from their
+        # start to their end, as any answer does. A game whose handlers never wait is not touched.
+        #
         # One transform of the statement tree, before any printer sees it: the C, JavaScript and Ruby
         # printers each print the steps their own way, and none of them has to know which routines
         # wait.
@@ -44,6 +53,14 @@ module VBlank
           MAIN = "rg_game_main"
           # What a wait in a routine that answers the runtime becomes: a fault, as the answer is wanted now.
           WAIT_WHILE_ANSWERING = "rg_wait_vblank_while_answering"
+          # The answer the runtime asks for each tick of a timer (Lowering#timer_ticks)...
+          TIMER_TICKS = "rg_game_timer_ticks"
+          # ...its body as a resumable routine, in a game where a handler can wait...
+          TIMER_STEPS = "rg_game_timer_steps"
+          # ...whether a handler is stopped at the boundary that ran it, so this tick is at one inside its wait...
+          TIMER_HANDLER_PAUSED = "rg_timer_handler_paused"
+          # ...and the runtime told whether the handler just run stopped to wait (1) or ended (0).
+          TIMER_HANDLER_WAITED = "rg_timer_handler_waited"
 
           # +items+ is the file's top level (Lowering#top_level).
           def initialize(items)
@@ -51,6 +68,7 @@ module VBlank
             @functions = items.grep(Statements::Function).to_h { |function| [function.name.text, function] }
             @tables = items.grep(Statements::FunctionTable).to_h { |table| [table.name.text, table.functions.map(&:text)] }
             @resumable = resumable_names
+            add_timer_steps if handlers_wait?
             @cuts = @resumable.select { |name| @functions.key?(name) }.to_h { |name| [name, cut_routine(name)] }
           end
 
@@ -166,15 +184,82 @@ module VBlank
             CutRoutine.new(counter: counter, steps: steps, locals: cut.locals.uniq(&:name))
           end
 
-          # The counters and locals of every resumable routine, as globals.
+          # The counters and locals of every resumable routine, as globals, and where a waiting
+          # handler keeps the game's own place in the routines it calls (#kept_by_handlers).
           def step_globals
-            @cuts.values.flat_map do |cut|
+            cuts = @cuts.values.flat_map do |cut|
               [Statements::Global.new(name: cut.counter), *cut.locals.map { |local| Statements::Global.new(name: local.name, type: local.type) }]
+            end
+            cuts + kept_by_handlers.map { |kept| Statements::Global.new(name: kept.place, type: kept.type) }
+          end
+
+          # --- a timer's handler that waits ---
+
+          # Whether the answer to a tick can reach a wait: a handler that waits, or calls a routine that can.
+          def handlers_wait?
+            ticks = @functions[TIMER_TICKS]
+            ticks && reaches_wait?(ticks.body)
+          end
+
+          # TIMER_STEPS, the handlers as a resumable routine, made just before the answer that calls it.
+          def add_timer_steps
+            steps = Statements::Function.new(name: Statements::Name.new(text: TIMER_STEPS), body: @functions.fetch(TIMER_TICKS).body)
+            @items = @items.flat_map { |item| item.equal?(@functions[TIMER_TICKS]) ? [steps, item] : [item] }
+            @functions[TIMER_STEPS] = steps
+            @resumable.add(TIMER_STEPS)
+          end
+
+          # One number a waiting handler keeps while it runs: a routine's counter (+counter+ true) or local
+          # (+name+), of a routine it calls, held at +place+ from the handler's start to its end.
+          KeptNumber = Data.define(:name, :type, :counter, :place)
+
+          # THE GAME'S PLACE IN THE ROUTINES A WAITING HANDLER CALLS. The game can be stopped inside one
+          # of them when the handler calls it, which runs it from its start (Reference#call_func). Each
+          # routine keeps one counter, so the handler's run, which spans frames, keeps the game's counters
+          # and locals of every routine it can reach in globals of their own from its start, and puts
+          # them back at its end; nothing else runs in between but the boundaries inside its wait, whose
+          # ticks run to their end and put back what they change (Statements::RunToEnd).
+          def kept_by_handlers
+            return [] unless @cuts.key?(TIMER_STEPS)
+
+            @kept_by_handlers ||= begin
+              reached = resumable_calls_in(@functions.fetch(TIMER_STEPS).body).flat_map do |name|
+                resumable_reached_by(Statements::Call.new(function: Statements::Name.new(text: name))).to_a
+              end
+              cuts = reached.uniq.map { |name| @cuts.fetch(name) }
+              numbers = cuts.map { |cut| [cut.counter, "int32_t", true] } +
+                        cuts.flat_map(&:locals).map { |local| [local.name, local.type, false] }
+              numbers.each_with_index.map do |(name, type, counter), k|
+                KeptNumber.new(name: name, type: type, counter: counter, place: Statements::Name.new(text: "rg_game_timer_kept_#{k}"))
+              end
             end
           end
 
+          # The answer to a tick in a game whose handler can wait. At a boundary inside a handler's wait,
+          # the handlers run from their start to their end. Otherwise TIMER_STEPS carries on from its step
+          # (its start, when no handler is stopped), the game's place in what it calls kept from that
+          # start and put back at its end (#kept_by_handlers), and the runtime is told whether it stopped.
+          def timer_ticks_body
+            steps = Statements::Call.new(function: Statements::Name.new(text: TIMER_STEPS))
+            cut = @cuts.fetch(TIMER_STEPS)
+            nested = answer_call(Statements::Eval.new(call: steps))
+            kept = kept_by_handlers
+            starting = kept.map { |number| Statements::Assign.new(target: number.place, value: number.name) } +
+                       kept.select(&:counter).map { |number| Statements::Assign.new(target: number.name, value: Statements::Int.new(0)) }
+            ending = kept.map { |number| Statements::Assign.new(target: number.name, value: number.place) }
+            waited = Statements::Name.new(text: "rg_game_timer_waited")
+            resumed = [*(starting.empty? ? [] : [Statements::If.new(condition: runtime_call("rg_eq", cut.counter, Statements::Int.new(0)), body: starting)]),
+                   Statements::Local.new(name: waited, value: steps),
+                   *(ending.empty? ? [] : [Statements::If.new(condition: runtime_call("rg_eq", waited, Statements::Int.new(0)), body: ending)]),
+                   Statements::Eval.new(call: runtime_call(TIMER_HANDLER_WAITED, waited))]
+            [Statements::If.new(condition: runtime_call(TIMER_HANDLER_PAUSED), body: [nested], otherwise: resumed)]
+          end
+
+          def runtime_call(function, *args) = Statements::Call.new(function: Statements::Name.new(text: function), args: args)
+
           def rewritten_routine(function)
             name = function.name.text
+            return function.with(body: timer_ticks_body) if name == TIMER_TICKS && @cuts.key?(TIMER_STEPS)
             return function.with(body: answer_body(function.body)) if function.exported && name != MAIN
 
             cut = @cuts[name]

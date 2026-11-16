@@ -139,7 +139,7 @@ module VBlank
         unless default.is_a?(Integer)
           raise ArgumentError,
                 "save_var's default must be a whole number. This is the value on a " \
-                "fresh cartridge. You gave #{default.inspect}."
+                "fresh cartridge. You gave #{Messages::PlainWords.words_for_given(default)}."
         end
 
         refuse_conflicting_declaration!(name, default, saved: true)
@@ -356,6 +356,7 @@ module VBlank
       # whole number, or two different numbers) can only be the second. So can a `save_var`
       # and a `var` of one name: the plain one would quietly be saved and loaded too.
       def refuse_conflicting_declaration!(name, value, saved: false, width: :word)
+        instance_variable_uses.refuse_var_on_part_variable!(name) if @var_declarations.key?(name)
         start = value.is_a?(DSL::Value) ? value.node : value
         here = Declaration.new(start: start, saved: saved, width: width, at: Messages::AuthorSource.author_file_and_line)
         first = (@var_declarations[name] ||= here)
@@ -418,7 +419,7 @@ module VBlank
       # variable every frame rather than allocating forever.
       def next_approach_var
         @approach_seq += 1
-        :"__approach_#{@approach_seq}"
+        :"__approach_#{@approach_seq}".tap { |name| @unique_names << name }
       end
 
       # How far one approach call may move, in each direction — the pair of bounds its

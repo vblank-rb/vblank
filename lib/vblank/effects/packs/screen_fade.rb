@@ -410,7 +410,7 @@ module VBlank
                   end
           unless DSL::Whole.positive?(count)
             raise ArgumentError,
-                  "a fade needs a positive whole number of frames. You gave #{(frames || duration).inspect}."
+                  "a fade needs a positive whole number of frames. You gave #{Messages::PlainWords.words_for_given(frames || duration)}."
           end
 
           record_fade_length(count)
@@ -468,7 +468,7 @@ module VBlank
         def fade_seconds_in_frames(duration)
           unless duration.is_a?(Numeric) && duration.positive?
             raise ArgumentError,
-                  "a fade needs a positive duration in seconds. You gave #{duration.inspect}."
+                  "a fade needs a positive duration in seconds. You gave #{Messages::PlainWords.words_for_given(duration)}."
           end
 
           (duration * Builder::ControlFlow::FRAMES_PER_SECOND).round

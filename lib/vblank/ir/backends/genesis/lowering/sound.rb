@@ -59,9 +59,9 @@ module VBlank
             def recordings_sections
               table = M68000.new("recording plays", holds: PLAYS)
               table.label("recording_plays")
-              @plays.each do |name, length, back, advance, logged, step|
+              @plays.each do |name, length, back, advance, logged, step, side|
                 Runtime::Recordings.emit_row(table, start: recording_label(name), length: length, back: back, advance: advance, logged: logged,
-                                                    name: @samples.keys.index(name), step: step)
+                                                    name: @samples.keys.index(name), step: step, side: (side if @sides))
               end
               table.data_words(0) if @plays.empty? # a label has to be somewhere
               [table.section, *@plays.map { |name, *| recording_kept_as(name) }.uniq.map { |name| recording_section(name) }]
@@ -97,10 +97,14 @@ module VBlank
             # round. A Genesis plays a recording all or nothing, so a loudness is the log's alone, and a shape
             # is one thing it does not do yet. Its number in "recording_plays". +chip_envelope+ is
             # another console's sound chip's bytes for the shape, which nothing here reads. +pan+ is where
-            # the note sits between the speakers, which nothing here reads either: every recording is
-            # mixed into the one stream the sixth FM voice plays, from both speakers.
-            def recorded_note_row(name, frequency, _volume, envelope = nil, chip_envelope: nil, pan: nil)
-              _ = pan
+            # the note sits between the speakers: the sixth FM voice, which the DAC plays through, sounds from
+            # the left, the right or both, so the nearest of the three (Audio::Pan.side_of). +walks+ asks for a
+            # row whose place is walked a sample at a time, for a part with a note that glides: every place here is.
+            # A glide that names no side of its own (+keeps_side+) keeps the note's: its row's SIDE is
+            # Runtime::Recordings::SIDE_KEPT. A loudness is the log's alone here, kept or not (+keeps_loudness+).
+            def recorded_note_row(name, frequency, _volume, envelope = nil, chip_envelope: nil, pan: nil, walks: false,
+                                  keeps_loudness: false, keeps_side: false)
+              _ = [walks, keeps_loudness]
               info = Assets::Sample.of(declared_sample(name))
               shape = envelope || info.envelope
               if shape && !shape.plain?
@@ -108,8 +112,12 @@ module VBlank
                                      "that yet.", part: "recordings with a shape")
               end
             
-              play_row(name, frequency, info.loop_length, Runtime::Recordings::NOT_LOGGED)
+              side = keeps_side ? Runtime::Recordings::SIDE_KEPT : SPEAKER_BITS_BY_SIDE.fetch(Audio::Pan.side_of(pan))
+              play_row(name, frequency, info.loop_length, Runtime::Recordings::NOT_LOGGED, side: side)
             end
+
+            # The speakers' bits of the sixth FM voice for each side Audio::Pan.side_of names (nil both).
+            SPEAKER_BITS_BY_SIDE = { nil => ChipWrites::BOTH_SPEAKERS, left: ChipWrites::LEFT_SPEAKER, right: ChipWrites::RIGHT_SPEAKER }.freeze
             
             def declared_sample(name) = @samples.fetch(name) { raise LoweringError, "the instrument #{name.inspect} is not declared" }
             
@@ -135,17 +143,19 @@ module VBlank
               @music = Genesis::Music.new(@program)
               @samples = @program.walk.select { |node| node.kind == :sample }.to_h { |node| [node.name, node] }
               @plays = [] # each play's row of "recording_plays"
+              # A game with a recorded note off the middle names each play's side (Runtime::Recordings::SIDES).
+              @sides = IR::Tunes.recorded_pans?(@program)
             end
             
             # The row of a play of +name+ at +frequency+, going +back+ at its end and logging +logged+ as it comes
             # round: how fast it is read as the interpreter works it out (IR::Mixing.step), and how far that goes
-            # in a frame. Its number.
-            def play_row(name, frequency, back, logged)
+            # in a frame, and the speakers it plays from, both for the game's own. Its number.
+            def play_row(name, frequency, back, logged, side: ChipWrites::BOTH_SPEAKERS)
               declared = declared_sample(name)
               info = Assets::Sample.of(declared)
               clock = Console::GENESIS.sample_clock(declared.rate)
               step = IR::Mixing.step(info, frequency, clock.rate)
-              row = [name, info.length, back, step * clock.samples_a_frame, logged, Runtime::Recordings.z80_step(step, clock.rate)]
+              row = [name, info.length, back, step * clock.samples_a_frame, logged, Runtime::Recordings.z80_step(step, clock.rate), side]
               @plays << row unless @plays.include?(row)
               @plays.index(row)
             end

@@ -1,0 +1,133 @@
+# frozen_string_literal: true
+
+# ONE RECORDED NOTE MOVING THROUGH EXACT PITCHES, struck once, on every console whose build glides a
+# recorded note (Console::Description#glides_recordings): the Advance, the Super Nintendo, the Genesis
+# and the PlayStation. Each console's folder has a test file that includes these (GlidingShapedNoteTests
+# where the console shapes a recording, every one but the Genesis):
+#
+#   test/console/gba/vblank/audio/test_gliding_notes_on_the_advance.rb
+#   test/console/snes/vblank/audio/test_gliding_notes_on_the_super_nintendo.rb
+#   test/console/genesis/vblank/audio/test_gliding_notes_on_the_genesis.rb
+#   test/console/ps1/vblank/audio/test_gliding_notes_on_the_playstation.rb
+#
+# A recording that runs for 40 frames at its own pitch is the clock here: read twice as fast from
+# half way it ends at 30, and a note struck again would start over and last until 40 or past it.
+module GlidingNoteTests
+  Score = VBlank::Audio::Score
+  ROOT = VBlank::Audio::Music::NOTE_FREQUENCIES.fetch(:C4)
+  RATE = 8000
+  FRAMES = 40
+
+  private def effect(*notes)
+    b = VBlank::Builder.new
+    b.instance_eval do
+      enable_sound
+      instrument :tone, pcm: [60, -60] * (RATE * FRAMES / 60 / 2), rate: RATE, note: :C4
+      sfx = sound_effects :sfx, { chirp: Score.new(parts: [Score::Part.new(plays: :tone, notes: notes)], tempo: 150, ticks_per_beat: 4) }
+      passes = var :passes, 0
+      game_loop do
+        passes += 1
+        sfx.play 0 if passes == 2
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # A tick is six frames at this tempo, so the second note comes 18 frames in. Its length keeps the
+  # effect going past the recording's end, so that the recording ending is what is measured.
+  private def second_note(**said) = Score::Note.new(at: 3, hz: ROOT * 2, length: 20, **said)
+
+  # The same notes as a song, which the music's player walks and not the effects'.
+  private def song_of(*notes, envelope: nil)
+    b = VBlank::Builder.new
+    b.instance_eval do
+      enable_sound
+      instrument :tone, pcm: [60, -60] * (RATE * FRAMES / 60 / 2), rate: RATE, note: :C4
+      music = songs :music, [Score.new(parts: [Score::Part.new(plays: :tone, envelope: envelope, notes: notes)], tempo: 150,
+                                       ticks_per_beat: 4, plays_once: true)]
+      music.play 0
+      game_loop { nil }
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # The same as a `song` block, the second note a `glide` of the part's (or a note struck).
+  private def song_block(glides:)
+    b = VBlank::Builder.new
+    b.instance_eval do
+      enable_sound
+      instrument :tone, pcm: [60, -60] * (RATE * FRAMES / 60 / 2), rate: RATE, note: :C4
+      song(:tune) do
+        tempo 150 # a quarter is 24 frames, an eighth 12
+        voice(:keys, plays: :tone) do |v|
+          v.note :C4, :eighth
+          v.note :C5, :quarter, glides: glides
+          v.rest :whole
+        end
+      end
+      play_song :tune
+      game_loop { nil }
+    end
+    b.finalize_program
+    b.program
+  end
+
+  def test_a_song_note_that_glides_reads_on_too
+    steady = song_of(Score::Note.new(at: 0, hz: ROOT, length: 23))
+    glided = song_of(Score::Note.new(at: 0, hz: ROOT), second_note(glides: true))
+
+    assert_operator frame_it_ends(glided), :<, frame_it_ends(steady)
+  end
+
+  # A `song` block's note says `glides: true` the same way: the recording reads on at the new pitch
+  # from where it has got to, so it runs out sooner than the same note struck again.
+  def test_a_song_blocks_note_that_glides_reads_on
+    assert_operator frame_it_ends(song_block(glides: true)), :<, frame_it_ends(song_block(glides: false))
+  end
+
+  # A glide with a volume and a side of its own plays on, struck once: the checked runs hold its voice's
+  # loudness to the interpreter's on every pass where the console's build keeps one (the PlayStation's).
+  def test_a_glide_with_its_own_volume_and_side_is_not_struck_again
+    quiet = song_of(Score::Note.new(at: 0, hz: ROOT, volume: 15), second_note(glides: true, volume: 4, pan: -0.5))
+    struck = song_of(Score::Note.new(at: 0, hz: ROOT, volume: 15), second_note(volume: 4, pan: -0.5))
+
+    assert_operator frame_it_ends(quiet), :<, frame_it_ends(struck)
+  end
+
+  # The frame the note stops sounding, played a frame at a time.
+  private def frame_it_ends(program)
+    (1..60).find { |frames| frames > 3 && game_player.run(program, frames: frames).active_samples.empty? }
+  end
+
+  def test_a_note_that_glides_reads_on_from_where_it_was_at_its_new_pitch
+    steady = effect(Score::Note.new(at: 0, hz: ROOT, length: 23))
+    glided = effect(Score::Note.new(at: 0, hz: ROOT), second_note(glides: true))
+
+    assert_operator frame_it_ends(glided), :<, frame_it_ends(steady)
+  end
+
+  def test_a_note_struck_again_starts_over
+    glided = effect(Score::Note.new(at: 0, hz: ROOT), second_note(glides: true))
+    struck = effect(Score::Note.new(at: 0, hz: ROOT), second_note)
+
+    assert_operator frame_it_ends(glided), :<, frame_it_ends(struck)
+  end
+end
+
+# ...and on every console whose build also shapes a recording (the Genesis plays one flat out), a note
+# falling away goes on falling through a glide, where a strike starts it over.
+module GlidingShapedNoteTests
+  include GlidingNoteTests
+
+  def test_a_glide_keeps_the_fade_a_strike_starts_over
+    fade = { decay: 0.5, sustain: 0.2 }
+    level_of = lambda do |*notes|
+      game_player.tap { |run| run.run(song_of(*notes, envelope: fade), frames: 24) }.level_of(:tone)
+    end
+    first = Score::Note.new(at: 0, hz: ROOT)
+
+    assert_operator level_of.call(first, second_note(glides: true)), :<, level_of.call(first, second_note)
+  end
+end

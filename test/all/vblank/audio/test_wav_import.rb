@@ -40,20 +40,20 @@ class TestWavImport < Minitest::Test
 
   def test_reads_8bit_mono_recentering_to_signed
     got = Wav.parse(wav_bytes(samples: [128, 200, 128, 56], rate: 11_025))
-    assert_equal 11_025, got[:rate]
-    assert_equal [0, 72, 0, -72], got[:bytes].unpack("c*"), "unsigned 8-bit is recentered to signed"
+    assert_equal 11_025, got.rate
+    assert_equal [0, 72, 0, -72], got.bytes.unpack("c*"), "unsigned 8-bit is recentered to signed"
   end
 
   def test_reads_16bit_mono_keeping_the_high_byte
     got = Wav.parse(wav_bytes(samples: [0, 25_600, 0, -25_600], rate: 22_050, bits: 16))
-    assert_equal 22_050, got[:rate]
-    assert_equal [0, 100, 0, -100], got[:bytes].unpack("c*")
+    assert_equal 22_050, got.rate
+    assert_equal [0, 100, 0, -100], got.bytes.unpack("c*")
   end
 
   def test_downmixes_stereo_to_mono
     # two stereo frames (L,R),(L,R): (128,128) -> 0, (200,56) -> (72 + -72)/2 = 0
     got = Wav.parse(wav_bytes(samples: [128, 128, 200, 56], rate: 8000, channels: 2))
-    assert_equal [0, 0], got[:bytes].unpack("c*"), "the two channels are averaged to one"
+    assert_equal [0, 0], got.bytes.unpack("c*"), "the two channels are averaged to one"
   end
 
   def test_rejects_a_non_wav_file

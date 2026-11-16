@@ -13,4 +13,7 @@ VBlank::Testing::RakeTasks.new do |t|
   t.golden_sample = Float(ENV["GAME_SUITE_GOLDEN_SAMPLE"]) if ENV["GAME_SUITE_GOLDEN_SAMPLE"]
   t.golden_list = ENV["GAME_SUITE_GOLDEN_LIST"] if ENV["GAME_SUITE_GOLDEN_LIST"]
   t.groups = "test" if ENV["GAME_SUITE_GROUPS"]
+  if ENV["GAME_SUITE_HEADING"]
+    t.headings = { ENV.fetch("GAME_SUITE_HEADING_ON", "gba").to_sym => ENV["GAME_SUITE_HEADING"] }
+  end
 end

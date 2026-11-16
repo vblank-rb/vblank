@@ -336,6 +336,21 @@ class TestPlaythroughTape < Minitest::Test
     assert_match(/line 4: "3 - a".*`-` means no button/m, dash_and_button)
   end
 
+  # A tape of a match names its players and seed after the counts; a tape without the line has no match.
+  def test_a_tape_of_a_match_reads_back_its_players_and_seed
+    heading = "vblank tape 1\nrecorded on: HERO 0x00000001\nstarts from: power-on\ncounts: passes\n"
+    text = "#{heading}match: 3 players, seed 1234567\n\n4 right\n"
+    tape = Tape.parse(text)
+    old = Tape.parse("#{heading}\n4 right\n")
+    unreadable = assert_raises(ArgumentError) { Tape.parse("#{heading}match: seven\n\n4 right\n", from: "m.tape") }
+
+    assert_equal Tape::Match.new(players: 3, seed: 1_234_567), tape.match
+    assert_equal text, tape.to_s
+    assert_equal 4, tape.frames
+    assert_nil old.match
+    assert_match(/m\.tape cannot be read at line 5: "match: seven".*players and the seed/m, unreadable.message)
+  end
+
   def test_a_button_only_the_super_nintendo_has_cannot_be_read
     only_there = unreadable("3 y\n")
 

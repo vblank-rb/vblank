@@ -120,7 +120,8 @@ module VBlank
         title = Tape.title_and_checksum_of(game).first
         window = Live::SDL.new(title: title, caption: "#{title} (automated playthrough)", width: console.screen_width,
                                height: console.screen_height, scale: options[:scale],
-                               settings_file: options[:settings_file] || :usual, config_dir: options[:config_dir])
+                               settings_file: options[:settings_file] || :usual, config_dir: options[:config_dir],
+                               buttons: console.buttons)
         say window.settings_problems_message if window.settings_problems_message
         say "Press F1 or ` for the menu. Press P to pause. Hold Tab to play fast. Press Escape to stop."
         yield window

@@ -45,7 +45,7 @@ module MadeUpVBlankLayoutOriginals
   TILES_AT = 0xC0
   TILE_BYTES = 32
 
-  constants.each { |name| Ractor.make_shareable(const_get(name)) }
+  VBlank::Testing::InRactors.share_constants(self)
 
   # A channel of five bits widened to +depth+ bits, its bits repeated, so its +depth+ - 5 lowest bits
   # dropped give it back.

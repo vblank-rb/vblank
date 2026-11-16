@@ -3,7 +3,8 @@
 The whole story of `data_pack`, listed on `tables.md`. The map of every page is `.claude/rules/dsl-reference.md`.
 
 A port of a retail game may not ship that game's data. It names the original (`VBlank::Original::Game`,
-which finds the player's copy and checks its SHA-1) and reads what it needs from a **data pack** made
+which finds the player's copy and checks its SHA-1; given `probe:` as well as `releases:`, a copy it refuses
+is named by what the probe reads from it, "the EU release, but changed or damaged") and reads what it needs from a **data pack** made
 from that copy. The game's code says each piece's shape and size; it never depends on the bytes.
 
 - `data_pack from: ORIGINAL, version: "1.0" do |slots| … end` → a `DSL::DataPack`. `from:` is an
@@ -14,8 +15,8 @@ from that copy. The game's code says each piece's shape and size; it never depen
   - `slots.tiles :walls, at: 0x1020, count: 40` — 8x8 tiles; `colors: 4` or `colors: 16` where the
     console keeps both (the Super Nintendo). **`colors: 256` is a tile kept a byte a pixel**, 64 bytes row
     by row, each byte a place in a table of 256 colours, in any layout: the pictures of a layer a console
-    turns and resizes (the Advance's turning layer, the Super Nintendo's Mode 7), for a `background` from
-    the pack (`backgrounds.md`).
+    turns and resizes (the Advance's turning layer, the Super Nintendo's Mode 7), or of a layer of 256
+    colours that scrolls, for a `background` from the pack (`backgrounds.md`).
   - `slots.numbers :speeds, at: 0x2000, count: 8, width: :byte, signed: false` — numbers one, two or four bytes wide; `signed:` must be said.
     `pack[:video_bytes].numbers(first, count)` is `count` of them from number `first` on, for a
     background's `map:` kept among other things in a bigger slot, as a console keeps a map in a block of
@@ -36,9 +37,15 @@ from that copy. The game's code says each piece's shape and size; it never depen
     `test/pack_sound_tests.rb`. **A recording kept in the Super Nintendo sound chip's own format** (BRR)
     takes the slot as `brr:`, and its loop point can be a number of the pack: `sample :horn, brr:
     pack[:horn], brr_loop: pack[:loops].number(3), rate: 16_000` (`sound.md`), so the unpacking routine
-    copies the original's bytes and converts nothing. It is built all-in-one only for now: the build
-    decodes it, and a build that leaves its pack out refuses it at the line. Worked example:
-    `test/all/vblank/builder/test_brr_recordings.rb`.
+    copies the original's bytes and converts nothing. Built all-in-one, the build decodes it. With the pack
+    left out, the program holds zeros of the most samples it can decode to and the runtime decodes it at
+    power-on (`IR::StartFile::BRR`, `rg_mix_fill_brr`), so it works in a shell. **Nothing the pack holds
+    stops the game**, built either way: the blocks after one that ends the recording are not played, a
+    recording no block ends plays once to its last block, and a loop point inside a block or past the last
+    block is that block's start or the last block's. A slot that is not whole blocks, and a loop point the
+    game writes that is not a block's start, are friendly errors both ways; bytes the game writes with
+    `brr_loop:` from the pack are refused with the pack left out. Worked examples:
+    `test/all/vblank/builder/test_brr_recordings.rb`, `test/pack_sound_tests.rb`.
   - `slots.notes :title_0, count: 200` — **notes of music, twelve bytes each in a record of VBlank's own**
     (`Original::PackNote`, whose `LAYOUT` and `bytes_of` a port's tests can use): the tick it starts on and
     how many it lasts (two bytes each, low byte first, 0 for until the next note), a MIDI key (255 a rest),
@@ -61,7 +68,13 @@ from that copy. The game's code says each piece's shape and size; it never depen
     comes round to can be numbers of the pack too**, which the driver's commands say (where its track
     ends, where it jumps back to): `Score.new(..., length: pack[:song].number(0), loop_from:
     pack[:song].number(1), longest: 2000)`, `longest:` being the most ticks the song can last, which a
-    build that reads its pack as the game starts makes room for. **A driver that runs once a frame**
+    build that reads its pack as the game starts makes room for. **A loop tick with every bit set is no
+    loop** (65535 in a slot of two bytes, 255 in one, -1 in a signed one): the song plays once and ends,
+    as one written with `plays_once: true`, so one Score line serves a song that comes round and one that
+    ends, and the unpacking decides which. A loop tick from the pack at or past the song's end comes round
+    to the start, and one below 0 is 0: the pack is the player's, so only a `loop_from:` the game writes
+    is refused. Built all-in-one or with the pack left out, both play the same (`IR::StartFile.no_loop?`,
+    `IR::StartFile::SongLength#frames_in`). **A driver that runs once a frame**
     writes its notes a tick a frame, and its Score says `tempo: 3600, ticks_per_beat: 1`, which puts
     each tick on its own frame. That is the whole of what VBlank asks of a port's sound driver: a port
     with a driver of its own writes these in its unpacking routine and needs nothing more (worked
@@ -80,8 +93,16 @@ from that copy. The game's code says each piece's shape and size; it never depen
     which is the note's in place of the speaker byte on any part, a recorded part too; and **a pitch
     between keys** (bytes 22-24, in 16ths of a hertz: `hz: n / 16r`, on a part that plays a recording or
     the noise voice, as a driver's chip pitch word sets it) and **a glide** (the names' GLIDES bit:
-    `glides: true`, on a recorded part, its instrument, volume and loudness left as the part's own,
-    where the console glides at all: the Super Nintendo and the PlayStation). A setting the
+    `glides: true`, on a recorded part, its instrument the part's own and its volume, loudness and
+    shade its own or, where it names none, the note's, on every console that plays a recorded part), and **a rattle** (byte 25,
+    1 for a hit that rattles and 0 for one that does not, on the noise voice: `metallic:`) and **a wave**
+    (byte 26, which of the part's waves, counting from 0, on the wave voice: `wave:`). A part names its
+    waves as it names instruments, `pack[:pad].notes(waves: [pack[:waves].wave(0), :sine])`, each a
+    shape, 32 steps or a wave of the pack, and a wave number past them is the part's own from the
+    player's file and refused all-in-one (worked examples:
+    `test_a_drum_that_rattles_and_a_wave_part_that_changes_wave_from_the_pack_play_as_written_by_hand` in
+    `test/all/vblank/builder/test_pack_scores.rb`, and its twin read as the game starts in
+    `test/pack_scores_at_start_tests.rb`). A setting the
     part's voice lacks (a duty off the squares, a fade on the wave, a slide off the song's first square,
     a pitch number off the squares and the wave), or one past its range, is refused all-in-one as a note
     written by hand is, and from the player's file is the part's own; a note whose slide and vibrato
@@ -213,8 +234,17 @@ from that copy. The game's code says each piece's shape and size; it never depen
     `copy.unpack_m4a_track at: SONG, into: pack[:title_0], track: 0` writes a track's notes as pack notes
     (`kind: 4` keeps only its notes on the noise voice, `0` on recordings, `1` to `3` the squares and the
     wave), a tick a frame as the driver's tempo lands them; `copy.unpack_m4a_length at: SONG, into:` writes
-    the song's length in frames and the frame it comes round to (65535 for a song that ends), two numbers
-    of two bytes; `copy.unpack_m4a_recording at: VOICE, into:` a recording voice's samples; and
+    the song's length in frames and the frame it comes round to (65535 for a song that ends, which
+    `loop_from:` takes as no loop, so the song plays once), two numbers of two bytes. **A song comes
+    round where the whole driver is as it was before**: each track jumps
+    back on its own, so a short figure goes round many times to a melody's once, and a round that differs
+    from the one before (a MEMACC counting rounds, a round starting a frame later in the tempo's count)
+    is played as it falls. The reader writes the notes until every track comes round together, so a song
+    whose tracks come round apart takes more notes than one pass of its longest track: size its slots
+    and the Score's `longest:` for that. One that does not come round in 8 rounds of its slowest track
+    is written for those 8 and comes round to the first. The rounds are written out because every song
+    player comes round at one moment for all its parts (`Packing::M4A`, "WHY THE READER WRITES THE
+    ROUNDS OUT"). `copy.unpack_m4a_recording at: VOICE, into:` a recording voice's samples; and
     `copy.unpack_m4a_voice at: VOICE, into:` its rate, the sample it loops back to (every bit set for a voice
     that does not loop, which `holds_from:` takes as none), its length and its
     envelope's four bytes, four numbers of four bytes (`mix_rate:` names the rate a voice played at a
@@ -224,7 +254,12 @@ from that copy. The game's code says each piece's shape and size; it never depen
     `voiced_notes`, each note with its voice's duty (the squares), sweep (the first square, as a slide) and
     envelope (the squares and the noise: an attack swells from silence, a decay fades from the note's
     volume past the driver's sustain level, and with neither the note holds at the sustain level),
-    as the driver sets the voice up for the note. SONG is where a song's header is in the copy and VOICE a voice's twelve bytes (a
+    as the driver sets the voice up for the note; and each recording's note with where it sits between
+    the speakers (its shade, from PAN and a drum kit voice's own pan), a pitch between keys where TUNE
+    and BEND leave one (its hz), and **a change while it sounds** — a KEYSH, BEND, BENDR, TUNE, VOL or PAN
+    while the part's newest note sounds — as a record that glides (`glides: true`) to its pitch, loudness
+    and shade then, on that frame, one a frame at most, so a slot of voiced notes is sized for the glides
+    as well as the notes. A change of a note on a console voice is not kept. SONG is where a song's header is in the copy and VOICE a voice's twelve bytes (a
     drum kit's voice for key k is 12 × k past where its voices are, the second word of the kit's entry
     in the group, and a key split's entry e is 12 × e past its own). **A recorded part's instrument numbers** are the voices' numbers in the song's
     voice group (0 to 127); a drum kit's voice for key k is `kit_from:` + k, and a key split's entry e is
@@ -280,7 +315,10 @@ from that copy. The game's code says each piece's shape and size; it never depen
     that is not colours. Worked example: `vblank_layout_game_and_file` in
     `test/made_up_vblank_layout_originals.rb`.
   - `copy.file("MAPHEAD.#{release}")` — one file of a copy that is several files (below), with the same
-    verbs, each place counted from that file's start. A fixed place outside the file is refused.
+    verbs, each place counted from that file's start. A fixed place outside the file is refused. A
+    place worked out as the routine runs is held to the file too, for every byte a verb reads (a
+    `copy_bytes` or a format's `unpack_<name>` included): a read outside it stops the unpacking,
+    naming the file and the first byte read outside it, and never reads on into the next file.
 
   **An original that is several files** (a computer game's folder: Wolfenstein 3D's VSWAP.WL6,
   GAMEMAPS.WL6 and the rest) lists each release's files instead of a SHA-1 and a size:
@@ -309,17 +347,63 @@ from that copy. The game's code says each piece's shape and size; it never depen
   **Keep what the unpacking wrote between builds** with `data_pack from: ..., version: ..., cache:
   ".cache/packs"`, a folder git ignores. With `cache:` a later build with the same copy, the same
   routine, the same slots, the same version and the same VBlank reads the pack file back instead
-  (`Original::PackCache`).
+  (`Original::PackCache`). "The same VBlank" means the part of VBlank a pack is built and played
+  with (`Original::PackLibrary`): every file under its `lib` except the folders no unpacking uses,
+  such as each console's cartridge lowering, the cartridge and emulator tools, the network and the
+  window. So a VBlank commit to the Game Boy Color's lowering leaves the kept pack hitting, and a
+  commit to the interpreter or the C build plays the routine again. A test holds that list to what
+  a build really runs and reads. The key also holds the routine's defaults (the `DEFAULTS` of the
+  records it uses), so a changed default plays it again. A pack kept by an older VBlank misses
+  once, and the build keeps it again under the new key.
   The key is the whole routine, so a change to any of it runs all of it again, unless the routine is
   in named parts. Then each part is kept apart, and a change to one part plays that part again and takes
   the rest from the cache (`Original::UnpackingParts`). Two parts are played together when one reads a
   slot the other writes, or both name one variable, list or routine. Hand nothing from one part to
   another in Ruby (an instance variable, a local both blocks share) or through `copy.bytes_done`:
-  the cache cannot see it, so pass it through a slot. The pack is the whole routine's,
-  byte for byte. A part that cannot be built alone (it calls a routine another part defines) keeps the
-  whole routine as one entry. `pack.unpacking_parts` gives the parts to a game's own test. Leave it out and
+  pass it through a slot. A part whose program built alone is not the one it makes after the parts
+  before it (Ruby an earlier part left changed it) is a friendly error naming the part
+  (`Original::PartBuiltApartError`, from `Original::PartPrograms`), and so is `copy.bytes_done` read in
+  any part but the first, or in a part with pieces, since the count goes on from the parts before.
+  Ruby both blocks reach that changes no program is no fault, and a variable's start is not
+  compared. Every way a part writes a slot records it, where the byte is written (`SlotBytes`'s
+  one reader and writer of its bytes, and `CopyReader#emit_block_call` for a format). The pack is
+  the whole routine's, byte for byte. A part that cannot be built alone (it calls a routine another part defines) keeps the
+  whole routine as one entry. `pack.unpacking_parts` gives the parts to a game's own test. A test that
+  wants the slots, not a pack file, keeps them the same way with
+  `Original::PackCache.new(folder).slot_bytes(pack.unpacking, parts: pack.unpacking_parts) { |playing, parts| playing.slot_bytes_in(playing.run_fastest) }`:
+  the block plays the unpacking it is handed (`playing`, which holds only the parts named), not the
+  whole one. Without `parts:` it caches the whole routine as one entry. Leave `cache:` out and
   every build runs the routine. A build that leaves the pack out never runs the routine, so it keeps
   nothing.
+
+  **A part in pieces**, so a player's machine unpacks it on several cores. The game declares the pieces;
+  VBlank never works out what can run side by side (`Original::PiecedUnpacking` says why). A slot with
+  no `at:` takes `pieces:`, a number of equal pieces or the items of each piece in order
+  (`slots.samples :music, count: rooms.sum, pieces: rooms`; `slots.numbers :lengths, count: n, width:
+  :word, signed: false, pieces: n`). A part takes `pieces: n`, and its block is built once, handed the
+  piece's number after the release as a game value, 0 first, read as the routine runs as a `repeat`'s
+  index is: `slots.fill_from_copy(:music, pieces: n) { |copy, pack, release, song| ... }`. So the
+  part's code is in the program once, and it can use `song` as game code uses a number it works out
+  (a table's index, arithmetic), never in a plain Ruby `if` or as a Ruby Array's index. It writes
+  `pack[:music].piece(song)[i] = sample`, `i` counted from the piece's first item and held to the piece
+  as a write is held to a slot; `copy.count_written room, into: pack[:music].piece(song)` counts it. A
+  piece the copy lacks counts its room as written and leaves it zeros. The pack is byte for byte the one
+  the same part writes with no pieces, and `pieces: 1` the same as `pieces: 2`. Refused as the routine is
+  built, in plain words: a part in pieces that writes a whole slot or another piece's number; a part in
+  pieces that reads a slot, other than its own piece; a part without pieces that reads a slot in pieces;
+  a slot in pieces written by two parts; a part whose `pieces:` is not the piece count of a slot it
+  writes; a frame of a sprite from a slot in pieces. A piece must set every variable before it reads it:
+  on several workers each piece plays on its own, so a number one piece leaves for the next is not
+  there. The whole routine is one program, a part in pieces a loop over its pieces: every build here,
+  every test, the desktop program's shell and a Ruby script's play that. The Ruby shell of `vblank run`
+  and the web page play the parts without pieces as one program and each piece on its own (one program
+  a part in pieces, handed the piece's number after the copy), on as many workers as they have, one
+  too, the pieces of most work first, and join them in the order declared. How many workers is the
+  player's machine's choice, not the game's: one a processor, never more; `vblank run --shell
+  --unpack-workers N`; `vblank build --shell --format web --unpack-workers N`, the page's own number;
+  and a page's address, `page.html?unpack-workers=N`. `pack.pieced_unpacking` gives the split to a
+  game's own test, which holds it to `pack.unpacking`'s pack
+  (`test/all/vblank/builder/test_data_pack_pieces.rb`).
 
   **A format of the port's own** is a module that does `extend VBlank::Original::Packing::Format`,
   `unpacks :name` (with any settings and their defaults: `unpacks :enigma, base: 0`), and defines
@@ -331,8 +415,38 @@ from that copy. The game's code says each piece's shape and size; it never depen
   length, a count), `block.finished`,
   `block.finish!` and `block.emit_wrong_format_fault`. Each write is checked against the slot and
   counted toward the progress bar. Put the module in a file the game loads with
-  `VBlank.require_game_file`, so an `if` in it is a branch of the routine. Worked example: `PairRuns`
-  in `test/copy_reader_tests.rb`; the library's are `lib/vblank/original/packing/<platform>.rb`.
+  `VBlank.require_game_file`, so an `if` in it is a branch of the routine. **The names of
+  `block.variable` and `block.list` are shared by every format** of a routine: two formats that name
+  a list alike use one list (the song formats of `Packing::M4A` share theirs this way), so one name
+  at two capacities or widths is refused, naming both formats and the list. Give a format's lists a
+  name of its own (`:sprite_even_bytes`) unless it means to share them.
+
+  **The routine's counters are plain Ruby locals**, as a method's are anywhere in a game
+  (`plain-ruby.md`): `at = block.from`, then `at += 2` inside a `block.repeat`. A local the routine
+  changes inside a `block.repeat` is a variable of the unpacking, set where its line runs; one only
+  carried down the lines is not, and costs nothing. A local first set inside a `block.repeat` (or on
+  one side of an `if` there) and moved on in a `block.repeat` below it is a variable too, set again
+  each round: `back = made - block.byte(at)`, then `back += 1` in the repeat that copies. No
+  `game_variables` line is needed or taken: a format is a module with no object to keep instance
+  variables in. `block.variable(:name)` with `store!` and `increase!` still works and builds what it
+  built.
+
+  ```ruby
+  def self.routine(block)
+    at = block.from
+    many = block.byte(at)
+    block.repeat(MOST_PAIRS, stop_when: (many == 0) | block.finished) do
+      block.repeat(many * block.setting(:times), stop_when: block.finished) { block.write(block.byte(at + 1)) }
+      at += 2
+      many = block.byte(at)
+    end
+  end
+  ```
+
+  Worked examples: `PairRuns` in `test/pair_runs_format.rb`, and `BackCopiesFormat` in
+  `test/back_copies_format.rb` (seven counters, copies back into what it made, loops inside loops),
+  beside the same format written with `block.variable`; the library's are
+  `lib/vblank/original/packing/<platform>.rb`.
 
   **Nothing goes past its place.** A write outside its slot is not made, and a read outside the copy reads
   nothing that matters; either, or a block not in the format asked for, stops the build, naming the first that
@@ -364,26 +478,32 @@ from that copy. The game's code says each piece's shape and size; it never depen
   - `pack[:video].as_tiles(at: 0x8000, count: 256, colors: 256)`
   - `pack[:video].as_numbers(at: 0xC000, count: 1024, width: :byte, signed: false)`
   - `pack[:video].as_colors(at: 0x40, count: 16)`, `.as_pixels(at:, count:)`, `.as_samples(at:, count:)`
+  - `pack[:music].as_notes(at: 0x200, count: 40)`, `voiced: true` for records of `slots.voiced_notes`
 
   `at:` is a byte of the slot, 0 first, whatever the slot's own shape, and `count:` how many tiles,
-  numbers, colours, pixels or samples the view holds; **`count:` left out reads to the slot's end**. Each
+  numbers, colours, pixels, samples or notes the view holds; **`count:` left out reads to the slot's end**. Each
   takes what the `slots.` line of its shape takes (`colors:`, `width:` and `signed:`, `layout:`,
   `byte_order:`) and is read in the original's layout unless it names one. What comes back is a handle
   like any other: every verb takes it as it takes a slot of that shape, all-in-one and with the pack
   left out, and it narrows as one does (`.tile(4)`, `.tiles(...)`, `.numbers(first, count)`, `.bank(n)`,
-  `.pixels(...)`, `.number(i)`, `.envelope(i)`). A view of a view counts its `at:` from the first view's
-  start. The pack holds the slot and nothing for a view, and nothing in a runtime knows of one: to a
-  build that reads its pack as the game starts a view is a place in the file, as a slot is. The banks of
-  a view of colours are the lists `:<slot>_at_<byte>_<bank>` (`:video_at_64_0`).
+  `.pixels(...)`, `.number(i)`, `.envelope(i)`, `.notes(instruments:)`). A view of a view counts its
+  `at:` from the first view's start. The pack holds the slot and nothing for a view, and nothing in a
+  runtime knows of one: to a build that reads its pack as the game starts a view is a place in the file,
+  as a slot is. The banks of a view of colours are the lists `:<slot>_at_<byte>_<bank>` (`:video_at_64_0`).
+  **`.frame` on a view of bytes** (`as_numbers(..., width: :byte)`) reads a frame from a byte of the
+  view, and the unpacking writes its record from the same bytes of the slot the view reads. A frame that
+  gives its own count may read on past the view's end into the rest of that slot, as in the original.
   **Friendly errors at the line**: a view that ends after its slot ends; an `at:` that is no byte of the
   slot; bytes to the slot's end that are no whole number of items when `count:` is left out; a view
-  asked of tiles, a bank or a run of a slot (ask the slot itself); `.frame` on a view (a frame is read
-  from a slot the pack names); and a view given to a verb that reads another shape, as for a slot.
-  Not offered: a view as notes, which are records the unpacking writes into a slot of their own.
+  asked of tiles, a bank or a run of a slot (ask the slot itself); a frame that starts past its view's
+  end; and a view given to a verb that reads another shape, as for a slot.
   Worked examples: `test/pack_slot_view_games.rb` (one slot of video read by a background as
   sixteen-colour tiles and by a turning one as a byte map over tiles of 256 colours),
   `test/console/gba/vblank/builder/test_pack_slot_views_on_the_advance.rb`,
-  `test/all/vblank/dsl/test_pack_slot_views.rb`.
+  `test/all/vblank/dsl/test_pack_slot_views.rb`; a frame and its colours through views of one slot of
+  colours (`test/all/vblank/builder/test_pack_poses.rb`), a song's parts through views of one slot of
+  bytes (`test_pack_scores.rb`), and recordings through views of samples, one a view of a view
+  (`test/pack_sound_tests.rb`).
 - **`number`, `envelope`, `snes_envelope` and `frame` count from the slot's first number**, so each is
   refused on a run (`pack[:bytes].numbers(8, 16).number(0)`): ask the slot itself, or a view of it.
 
@@ -446,6 +566,8 @@ Two layouts are no one console's, since a byte is a byte in every layout: a tile
 pixel (`Console::BYTE_A_PIXEL_TILES`, `slots.tiles ..., colors: 256`), and a map of one byte a cell, each
 the number of a tile with no turn and no bank (`Console::BYTE_MAP_CELLS`, a background's `map:` given a
 slot of numbers `width: :byte`). Together they are how a console keeps the layer it turns and resizes.
+Tiles of 256 colours also take a map of map cells or of the console's own two-byte cells, for a layer
+that scrolls: such a cell's tile and turns are read, and its bank is not (`backgrounds.md`).
 
 Each console's layout is numbers in its hardware file (`Console::GBCHardware::ORIGINAL_FORMATS` and the
 rest), named by its kit (`Console::Kit#original_formats`); one reader reads any of them
@@ -511,8 +633,10 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   sound is mixed at the rate most recordings have unless the game names one, and a build that does not know the
   rates cannot work that out, so without `mix_rate:` it is refused naming the recording. A console whose
   recordings play at one rate (the Super Nintendo, the PlayStation) needs nothing. `holds_from:` and `envelope:`
-  work everywhere. `envelope: pack[:adsr].snes_envelope(3)` and `brr: pack[:horn]` are refused at the line for
-  now. Worked example: `test/pack_sound_tests.rb`.
+  work everywhere. `envelope: pack[:adsr].snes_envelope(3)`, three bytes as the Super Nintendo's sound chip keeps
+  them, is worked into the nearest ordinary envelope at power-on (`Audio::SNESEnvelope#closest_envelope`, written
+  again in each runtime's `rg_mix_fill_shapes`), and `brr: pack[:horn]` is decoded at power-on (above). Worked
+  example: `test/pack_sound_tests.rb`.
 - `Score::Part.new(notes: pack[:title_0].notes(instruments: %i[horn bass]), ...)` in `songs` and `sound_effects` — a
   part's notes. **The Score must give `length:`**, in ticks, since where the last note ends is in the pack; one
   without it is refused at the line. **A `length:` (and a `loop_from:`) that is a number of the pack** comes with
@@ -520,7 +644,9 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   writes the song's own over it at power-on (`IR::StartFile::SongLength`, `rg_music_fill_song_length`), before
   its parts' notes are made. Then every part of the Score reads its notes from the pack, since a part written in
   the game is worked out as it is built; each is refused at the line otherwise. A length past `longest:` in the
-  player's file plays as `longest:`, and a loop tick on or past the end comes round to the start. The build knows how many notes the slot holds and none of them, so the
+  player's file plays as `longest:`, a loop tick on or past the end comes round to the start, and one with every
+  bit set is no loop: the song plays once, and its parts' notes are made for a song that ends. The build
+  knows how many notes the slot holds and none of them, so the
   program holds room for the most events they can make (two for each note, a note and the rest it ends in) and
   the runtime makes the part's events from the file at power-on (`IR::StartFile::Notes`,
   the music feature's `rg_music_fill_notes`), by the rule a Score's notes become events by: in the order of their ticks, a rest
@@ -552,7 +678,12 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   (`rg_start_file_fill_picture`) and drawn in its bank's list, and `set_cell` writes it. A told tile that draws
   nothing is a picture that is see-through all over. The program's tiles for such a background are a stand-in
   for each bank, then the told tiles, then the map's. Plain `set_tile` on it stays a friendly error, since which
-  tiles the map draws is in the file.
+  tiles the map draws is in the file. **Cells told by a slot of map cells (`set_cells: pack[:changes]`)**, which
+  the unpacking fills with every cell the screen changes to, are known only once the file is read: the program
+  holds a stand-in tile for each place of the slot, and the runtime paints each from its cell at power-on as it
+  paints a cell of the map (`IR::StartFile::Background#told_at`, `rg_start_file_fill_background`), in every set
+  of colours and following its bank's list (`rg_start_file_fill_followed_tiles`); `set_cell` names a place.
+  Nothing the file holds stops the game: a cell naming a tile past the slot draws nothing.
   Worked examples: `test/pack_background_tests.rb`, and `test/pack_background_set_cell_at_start_tests.rb` for the
   cells written later.
 - `screen :tiled, backdrop: pack[:palette]` (also `.bank(n)` and `backdrop_place:`) — the screen's backdrop,
@@ -601,14 +732,20 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   colours. The build cannot NAME that list, so `colors_name_of` of such a pose is a name standing for it
   (`IR::StartFile::Pose#bank_lists` keeps the bank lists' names): once the file is read the pose is a picture of the list
   `:<slot>_<bank>` its frame picks, and a sprite told `draw_with` that name, or to follow its poses' lists (`draw_with` given a
-  hash), follows that list, the runtime writing which one as it starts (`rg_start_file_frame_bank`). `bank:` paints only the
+  hash), follows that list, the runtime writing which one as it starts (`rg_start_file_frame_bank`). A pool's instance told
+  `draw_with` that name makes the pool follow the list for all its instances from power-on, since the build cannot write the
+  list into one instance's choice: an instance never told then shows what the list holds as well, and a pool told that
+  name and another list is a friendly error. `bank:` paints only the
   pieces whose record names that bank, drawn from that bank's list. A frame of two banks in the player's file, which the
   all-in-one build refuses, is drawn whole in its front piece's bank and follows that bank's list. On a
   console whose build keeps one list for a whole sprite (the Advance), one sprite may show two such poses of one slot, as
   all-in-one where their frames name one bank; where the player's file names two, which the all-in-one build refuses, each
-  pose is drawn in its own frame's bank. Nothing the file holds stops the
+  pose is drawn in its own frame's bank. On a console whose build keeps a list for each pose and does not follow them (the
+  Super Nintendo, the Color), one sprite of such poses of one slot may follow their lists, which all-in-one is a sprite drawn
+  with one list where their frames name one bank; where the file names two, each pose follows its own frame's list. Nothing the file holds stops the
   game: pieces are read while they end inside the slot, a piece outside the picture is not painted, and a tile past the
-  slot paints nothing. The build sees a whole box, as for a picture. Worked example: `test/pack_pose_at_start_tests.rb`.
+  slot paints nothing. `origin:` may be outside the picture (`[32, -1]` for a frame wholly below its place) as built
+  all-in-one: each piece is painted at the origin plus its offset, and only what lands inside the picture. The build sees a whole box, as for a picture. Worked example: `test/pack_pose_at_start_tests.rb`.
   **The layout is read once, by the pack's unpacking.** A frame's slot holds the original's bytes, and the game's
   `Original::FrameLayout` says how the original keeps a frame. Once every slot is filled, copied as it is or by
   `slots.fill_from_copy`, the unpacking reads each frame the game names and writes it after the pack's last slot as a
@@ -624,6 +761,21 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   source does not change: the
   slot is still a slot of bytes and the frame still `frame(at, layout:)`. Worked example:
   `test/frame_record_unpacking_tests.rb`.
+- `image :spin0, tiles_from: :ball_tiles, frame: pack[:frames].frame(at, layout: FRAME), first_tile: 0x40, origin: [8,
+  16], size: [16, 16]` — **a pose of a set of sprite tiles whose pieces are one of the original's frames**
+  (`sprites.md`, `sprite_tiles`): a retail game whose sprite memory holds a few tiles it rewrites, and whose frames name
+  them. `first_tile:` is the number the frames give the set's first tile, so a frame's tile 0x42 is the set's tile 2;
+  each tile of each piece is a piece of the pose, its top left from `origin:` as a pack pose places them, an origin
+  outside the picture too. The pose draws
+  no pixel of the pack: its pieces say which of the set's tiles go where, and the tiles are what the game loads with
+  `copy_from`. Built all-in-one the frame is read as the game is built and the pose is the pose of pieces a port would
+  write by hand, so every console that draws a set's poses draws it; a frame the set cannot draw is refused at the line
+  (a piece naming a tile outside the set, a piece turned, off the 8-pixel grid, or left of or above the picture). With
+  the pack left out the game gives `size:`, the program holds a stand-in piece for each place of the pose's grid and
+  where the frame's record is (`IR::StartFile::TilePose`), and the runtime writes the frame's pieces over them at power-on
+  (`rg_start_file_fill_tile_pose`). Nothing the file holds stops the game: a tile the all-in-one build refuses draws
+  nothing, and of two tiles at one place the earlier is drawn. Worked example:
+  `test/all/vblank/builder/test_pack_tile_poses.rb`, and `test/pack_tile_pose_at_start_tests.rb` with the pack left out.
 
 - `place :mine, points: pack[:points], faces: pack[:faces], faces_used: pack[:sizes].number(0), pictures: [...]`,
   `shading :fade, colors: pack[:palette], levels: pack[:fades]` and `viewer :eye, at: ..., facing: ...` given

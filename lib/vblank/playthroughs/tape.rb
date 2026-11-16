@@ -52,7 +52,15 @@ module VBlank
     # line of heading marks it, `counts: passes`, or `counts: variable steps` for a variable of the
     # game. Such a tape plays the same game at any speed on any way of running it, where a tape of
     # frames holds its presses to one cartridge's timing. A tape of frames does not have the line.
-    Tape = Data.define(:title, :checksum, :starts_from, :steps, :in_passes)
+    #
+    # A TAPE OF A MATCH played by several machines (Network::Lockstep#tape) holds the match as well
+    # (+match+, a Match), on a line of heading after the counts: `match: 2 players, seed 1234567`.
+    # Every machine of a match sees all its players connected from the first pass that reads
+    # buttons, whoever has pressed one, and adds the host's seed to the game's random numbers once the
+    # game has set itself up; the same presses without either are another game. Only the interpreter
+    # plays a game as a match (Reference#play_as_match), so a tape of one plays there and is refused
+    # anywhere else. A tape with no such line, every tape written before matches kept theirs, has none.
+    Tape = Data.define(:title, :checksum, :starts_from, :steps, :in_passes, :match)
 
     class Tape
       # What a tape's file opens with: what it is, and which way of writing one this is.
@@ -65,6 +73,18 @@ module VBlank
       COUNTS = "counts: "
       COUNTS_PASSES = "passes"
       COUNTS_VARIABLE = "variable "
+
+      # The match a tape replays: how many players it had, and the seed the host picked.
+      Match = Data.define(:players, :seed) do
+        def heading_line = "#{MATCH_LINE}#{players} players, seed #{seed}"
+      end
+
+      # The line of heading a tape of a match has, and what follows it.
+      MATCH_LINE = "match: "
+      MATCH_SAID = /\A(\d+) players, seed (-?\d+)\z/
+
+      # The way of running a game that plays it as a match, which a tape of a match plays on.
+      MATCH_WAY = "interpreter"
 
       # Where a playthrough starts, as the tape records it: the console switched on with a
       # cartridge nobody has played, or with one holding a save. A save is recorded with a
@@ -84,10 +104,11 @@ module VBlank
       # title in the cartridge's own header and a checksum of every byte of it. +save+ is
       # the save memory the cartridge held when the console was switched on, or nil, and
       # +led_in+ whether a lead-in was played before the first of the steps. +in_passes+ is
-      # what the tape counts, nil for frames.
-      def self.recorded_on(cartridge, steps, save:, led_in: false, in_passes: nil)
+      # what the tape counts, nil for frames, and +match+ the Match it replays, nil for none.
+      def self.recorded_on(cartridge, steps, save:, led_in: false, in_passes: nil, match: nil)
         title, checksum = title_and_checksum_of(cartridge)
-        new(title: title, checksum: checksum, starts_from: start_said(save: save, led_in: led_in), steps: steps, in_passes: in_passes)
+        new(title: title, checksum: checksum, starts_from: start_said(save: save, led_in: led_in), steps: steps,
+            in_passes: in_passes, match: match)
       end
 
       # Where a playing started, as a tape records it. +save+ is the save memory the
@@ -143,9 +164,9 @@ module VBlank
 
       # A tape holds nothing but names and numbers, and is made so that every core can read
       # it: it can be kept in a constant, and handed from one Ractor to another.
-      def initialize(title:, checksum:, starts_from:, steps:, in_passes: nil)
+      def initialize(title:, checksum:, starts_from:, steps:, in_passes: nil, match: nil)
         super(**Ractor.make_shareable({ title: title.dup, checksum: checksum, starts_from: starts_from.dup, steps: steps.dup,
-                                        in_passes: in_passes }))
+                                        in_passes: in_passes, match: match }))
       end
 
       # Play the tape on +cartridge+, exactly as a playthrough plays its script: the block is
@@ -158,9 +179,20 @@ module VBlank
                progress: Messages::Progress.silent, &at_each_moment)
         refuse_missing_save!(save)
         refuse_missing_lead_in!(lead_in)
+        refuse_match_elsewhere!(on)
         Playthrough::Playing.play(title, steps, cartridge, save: save, lead_in: lead_in, pictures_in: pictures_in, on: on,
-                                                           window: window, in_passes: in_passes, progress: progress,
-                                                           &at_each_moment)
+                                                           window: window, in_passes: in_passes, match: match,
+                                                           progress: progress, &at_each_moment)
+      end
+
+      # A tape of a match plays the same game only where the game is played as that match.
+      private def refuse_match_elsewhere!(on)
+        return if match.nil? || on == MATCH_WAY
+
+        raise ArgumentError, "This tape is of a match. Only the interpreter plays a game as a match, with the seed and " \
+                             "the players of the match. On #{on || 'the emulator'}, the same presses play a different " \
+                             "game. To fix this, play the tape on the interpreter: `on: \"#{MATCH_WAY}\"`, or " \
+                             "`--on #{MATCH_WAY}`."
       end
 
       # Play the tape on +first+ and on +second+ together, comparing the two pictures after
@@ -213,6 +245,7 @@ module VBlank
 
         cartridge = Playthrough.cartridge_from(cartridge)
         refuse_export_from_elsewhere!
+        refuse_match_elsewhere!(nil)
         Playthrough.refuse_unusable_pass_count!(cartridge, in_passes)
         running = Playthrough.power_on(cartridge, count_passes: in_passes == true)
         stepper = PassStepper.new(running, in_passes)
@@ -372,7 +405,8 @@ module VBlank
 
       # The tape as the text of a file.
       def to_s
-        heading = [FIRST_LINE, "recorded on: #{recorded_on_label}", "starts from: #{starts_from}", *counts_line, ""]
+        heading = [FIRST_LINE, "recorded on: #{recorded_on_label}", "starts from: #{starts_from}", *counts_line,
+                   *match&.heading_line, ""]
         (heading + steps.map(&:tape_line)).join("\n") << "\n"
       end
 
@@ -434,9 +468,12 @@ module VBlank
           refuse_unknown_first_line!
           title, checksum = read_recorded_on
           starts_from = read_starts_from
+          @heading_lines = HEADING_LINES
           in_passes = read_counts
-          @lines.each_with_index.drop(in_passes ? HEADING_LINES + 1 : HEADING_LINES).each { |line, at| read_step(line, at + 1) }
-          Tape.new(title: title, checksum: checksum, starts_from: starts_from, steps: @taping.steps, in_passes: in_passes)
+          match = read_match
+          @lines.each_with_index.drop(@heading_lines).each { |line, at| read_step(line, at + 1) }
+          Tape.new(title: title, checksum: checksum, starts_from: starts_from, steps: @taping.steps, in_passes: in_passes,
+                   match: match)
         end
 
         private
@@ -468,17 +505,31 @@ module VBlank
 
         # What the optional fourth line names as what the tape counts, or nil for frames.
         def read_counts
-          line = @lines[HEADING_LINES].to_s
+          line = @lines[@heading_lines].to_s
           return unless line.start_with?(COUNTS)
 
+          @heading_lines += 1
           said = line.delete_prefix(COUNTS)
           return true if said == COUNTS_PASSES
 
           name = said.delete_prefix(COUNTS_VARIABLE)
           return name.to_sym if said != name && !name.empty?
 
-          raise_unreadable_line!(HEADING_LINES + 1, "Line 4 must say what the tape counts: `#{COUNTS}#{COUNTS_PASSES}`, " \
-                                                    "or `#{COUNTS}#{COUNTS_VARIABLE}steps` with the name of a variable.")
+          raise_unreadable_line!(@heading_lines, "Line 4 must say what the tape counts: `#{COUNTS}#{COUNTS_PASSES}`, " \
+                                                 "or `#{COUNTS}#{COUNTS_VARIABLE}steps` with the name of a variable.")
+        end
+
+        # The match the tape replays, from the optional line after the counts, or nil for none.
+        def read_match
+          line = @lines[@heading_lines].to_s
+          return unless line.start_with?(MATCH_LINE)
+
+          @heading_lines += 1
+          said = line.delete_prefix(MATCH_LINE).match(MATCH_SAID)
+          return Match.new(players: said[1].to_i, seed: said[2].to_i) if said
+
+          raise_unreadable_line!(@heading_lines, "This line must give the players and the seed of the match, " \
+                                                 "like `#{Match.new(players: 2, seed: 1_234_567).heading_line}`.")
         end
 
         def read_step(line, number)

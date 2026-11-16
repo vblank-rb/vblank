@@ -177,7 +177,30 @@ module VBlank
       # A value on its way INTO the list, checked against what the list holds. The rules are
       # the ones a variable follows, and they live in {Scale} so there is one copy of them.
       def item_node(value, verb)
+        refuse_numberless_item!(value)
         item_scale.node_matching(value, verb)
+      end
+
+      # A slot keeps a number and nothing else: no mark beside it says "this was nil" or
+      # "this was a yes or no", as a game variable's does. So nil, true, false and a test's
+      # answer would come back as some number that Ruby never gave, and they are refused here,
+      # at the game's line, saying how to write the number instead.
+      def refuse_numberless_item!(value)
+        problem = numberless_item_problem(value)
+        return unless problem
+
+        raise ArgumentError, "`list :#{@name}` keeps numbers. #{problem}#{Messages::AuthorSource.at_author_line}"
+      end
+
+      def numberless_item_problem(value)
+        if value.nil?
+          "This item is nil, and a list item cannot be nil. Give the item a number, for example 0."
+        elsif [true, false].include?(value) || value.is_a?(Condition)
+          "This item is the answer to a test, true or false, and a list item cannot be true or false. " \
+            "To keep the answer, write `test ? 1 : 0`. When you read the item, compare it with 1."
+        elsif !(value.is_a?(Numeric) || value.is_a?(Symbol) || value.is_a?(Value) || value.is_a?(IR::Node))
+          "This item is a #{value.class.name}, and a list item must be a number. Give the item a number."
+        end
       end
 
       # What this list keeps, as something that can answer the alignment questions on its

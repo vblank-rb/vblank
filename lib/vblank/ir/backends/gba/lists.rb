@@ -430,11 +430,9 @@ module VBlank
                     "(#{existing[:capacity]} and #{capacity})"
             end
 
-            slots = ring ? Build.round_up_capacity(capacity) : capacity
+            slots = Lists.slots_of(capacity, ring: ring)
             bytes = Build::ELEMENT_BYTES.fetch(width)
-            # Rounded up to a whole word so the NEXT thing allocated stays word-aligned — a
-            # narrow list is allowed to be an odd number of bytes long, but nothing after it is.
-            want = ((slots * bytes) + 3) & ~3
+            want = Lists.slot_bytes(capacity, width, ring: ring)
             base, in_roomy = at ? [at, false] : place_list(name, want, roomy ? false : fast)
             fast = true if at
             # Placed before its counters are named, since where they go follows where it went.
@@ -445,6 +443,24 @@ module VBlank
               @counter_owners[counter] = name
               @primitives.var_addr(counter)
             end
+          end
+
+          # How many slots a list of +capacity+ has: a ring's are rounded up to a power of two, so
+          # its wrap is one AND.
+          def self.slots_of(capacity, ring:) = ring ? Build.round_up_capacity(capacity) : capacity
+
+          # The bytes a list's slots take, rounded up to a whole word so the NEXT thing allocated
+          # stays word-aligned — a narrow list is allowed to be an odd number of bytes long, but
+          # nothing after it is.
+          def self.slot_bytes(capacity, width, ring:)
+            Memory.whole_words(slots_of(capacity, ring: ring) * Build::ELEMENT_BYTES.fetch(width))
+          end
+
+          # EVERYTHING ONE LIST TAKES, its slots and the counters that go where it goes (#register_list:
+          # how many it holds, and a ring's oldest), read before the program is lowered by the
+          # build's memory check (Console::AdvanceKit#list_bytes).
+          def self.reserved_bytes(capacity, width, ring:)
+            slot_bytes(capacity, width, ring: ring) + ((ring ? 2 : 1) * Memory::WORD)
           end
 
           # WHETHER +var+ IS A NUMBER A COLLECTION IN THE ROOMY MEMORY KEEPS FOR ITSELF, and so

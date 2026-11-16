@@ -112,27 +112,30 @@ class TestDOSView < Minitest::Test
   end
 
   # A picture with nothing flat in it, a pixel of each of four colours in turn and a row further on each row.
-  DETAILED = proc do
-    image :strip, width: 4, height: 1, data: STRIP
-    row = var :row, 0
-    column = var :column, 0
-    repeat 24 do
-      column = 0
-      repeat 12 do
-        blit :strip, column + row, row
-        column += 4
+  private def detailed
+    proc do
+      image :strip, width: 4, height: 1, data: STRIP
+      row = var :row, 0
+      column = var :column, 0
+      repeat 24 do
+        column = 0
+        repeat 12 do
+          blit :strip, column + row, row
+          column += 4
+        end
+        row += 1
       end
-      row += 1
     end
   end
 
   # Blocks are fixed to the screen and each is the colour of its top left pixel. Seven does not go into
   # the screen's width, so the last block of a row is cut off by the edge.
   def test_the_picture_in_blocks_takes_each_block_from_its_top_left_pixel
+    picture = detailed
     run = checked do
       screen :bitmap
       clear_screen :blue
-      instance_exec(&DETAILED)
+      instance_exec(&picture)
       pixelate 7
       halt
     end
@@ -145,11 +148,12 @@ class TestDOSView < Minitest::Test
   # stands over the picture and the view moves, to the left of the picture too, where the blocks count
   # from the picture's first column.
   def test_blocks_of_every_size_under_a_moving_view_and_a_sprite
+    picture = detailed
     run = checked(frames: 44) do
       screen :bitmap
       image :block, width: 5, height: 5, data: [:white] * 25
       clear_screen :blue
-      instance_exec(&DETAILED)
+      instance_exec(&picture)
       over = sprite :block, at: [30, 10], over_picture: true
       size = var :size, -2
       passes = var :passes, 0

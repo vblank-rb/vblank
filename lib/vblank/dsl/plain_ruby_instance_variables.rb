@@ -48,19 +48,33 @@ module VBlank
         # `saved: false` marks every instance variable on the line as scratch: a save record
         # never keeps one, and `saves_keep_everything` passes it over. That is what a name starting
         # with _ says for a `var`, without making the game write a second name for each.
+        #
+        # The mark must come before the variable's first number, since that line makes the variable
+        # (#note_made_variable): a mark after it is refused (Uses#refuse_late_unsaved_mark!).
         def name_game_variables(owner, *names, saved: true, **chosen_by_keyword)
           refuse_saved_not_true_or_false!(saved)
           names += [chosen_by_keyword] unless chosen_by_keyword.empty?
           labels, chosen = labels_and_chosen_names(names)
+          refuse_unsaved_naming_nothing! if !saved && labels.empty?
+          uses = owner.is_a?(Builder) ? owner.instance_variable_uses : Builder.in_use&.instance_variable_uses
+          uses&.refuse_late_unsaved_mark!(owner, labels) unless saved
           case owner
-          when Builder then owner.instance_variable_uses.name_on_builder(labels, chosen, unsaved: saved ? [] : labels)
+          when Builder then uses.name_on_builder(labels, chosen, unsaved: saved ? [] : labels)
           when Module
             name_in_module(owner, labels)
             name_in_module(owner, labels, constant: UNSAVED_NAMES_CONSTANT) unless saved
             store_chosen_names(owner, chosen) unless chosen.empty?
+            # A class reopened while a game builds: the build's cache of class names is out of date.
+            uses&.clear_class_name_cache
           else refuse_named_outside_class!(owner)
           end
           nil
+        end
+
+        def refuse_unsaved_naming_nothing!
+          raise Refused, "`game_variables saved: false` names no instance variable, so it marks nothing. To fix " \
+                         "this, name the variables on the same line, like `game_variables :busy, saved: false`." \
+                         "#{Messages::AuthorSource.at_author_line}"
         end
 
         # +names+ as instance variable labels, and the names the game chose for some of them.
@@ -151,11 +165,12 @@ module VBlank
         def free_name_for(owner, label, name)
           builder = Builder.in_use
           uses = builder.instance_variable_uses
-          free = builder.free_variable_name(name)
+          free = builder.reserve_free_variable_name(name)
           if free != name && uses.chosen_name(owner, label) && !uses.made_for?(name, owner, label)
             refuse_chosen_name_taken!(label, name)
           end
           uses.note_made_for(name, owner, label)
+          uses.note_part_variable(free, owner, label)
           free
         end
 
@@ -354,6 +369,29 @@ module VBlank
           builder.instance_variable_uses
         end
 
+        # The builder, where a test of +owner+'s +label+, holding +current+, is a test in game code of
+        # a plain flag: what its sides record says whether it guards game code
+        # (Steps::BuildTest#watch_flag, Uses#refuse_game_flags!). Nil for any other.
+        def builder_watching_flag(owner, label, current)
+          return unless Uses::FLAGS.include?(current)
+
+          uses = uses_while_recording(owner)
+          return if uses.nil? || uses.named?(owner, label)
+
+          Builder.in_use
+        end
+
+        # The side of a test of +owner+'s plain flag +label+ written at +site+ ran, and +records+
+        # says whether it recorded game code.
+        def note_flag_side_run(owner, label, current, site, records:)
+          Builder.in_use.instance_variable_uses.note_flag_side_run(owner, label, current, site, records: records)
+        end
+
+        # ...and the side at +site+ was skipped.
+        def note_flag_side_skipped(owner, label, current, site)
+          Builder.in_use.instance_variable_uses.note_flag_side_skipped(owner, label, current, site)
+        end
+
         # The game variable a named instance variable holding +current+ is: made now from a number
         # it still holds as Ruby, or the one it holds already.
         def game_variable_of(owner, current, label)
@@ -408,11 +446,21 @@ module VBlank
           return held if held.is_a?(KeyedVariables)
 
           base = variable_name(owner, label)
-          if held.is_a?(Hash)
-            KeyedHash[held.map { |key, value| [key, element_variable(owner, label, base, key, value)] }].freeze
-          else
-            KeyedArray.new(held.each_with_index.map { |value, index| element_variable(owner, label, base, index, value) }).freeze
-          end
+          keyed = if held.is_a?(Hash)
+                    KeyedHash[held.map { |key, value| [key, element_variable(owner, label, base, key, value)] }]
+                  else
+                    KeyedArray.new(held.each_with_index.map { |value, index| element_variable(owner, label, base, index, value) })
+                  end
+          keep_as_slots(keyed, owner, label).freeze
+        end
+
+        # Each variable made here is its slot's, so an instance variable handed one
+        # (`@held = @states[0]`) holds it without owning it (Writes.handed_only?).
+        def keep_as_slots(keyed, owner, label)
+          made_here = Value::Holder.new(owner, label)
+          keys = keyed.is_a?(Hash) ? keyed.keys : keyed.each_index.to_a
+          keys.each { |key| keyed[key].note_holder(keyed, key) if keyed[key].holder == made_here }
+          keyed
         end
 
         def element_variable(owner, label, base, key, start)
@@ -527,9 +575,10 @@ module VBlank
         # A game variable just made for +owner+'s +label+: noted as made with no `var` line, and as
         # unsaved where the line naming it set `saved: false`. Kept as the instance variable's own.
         def note_made_variable(builder, variable, owner, label)
+          builder.instance_variable_uses.note_first_number(owner, label)
           variable.note_made_with_no_var_line
           variable.note_unsaved if builder.instance_variable_uses.marked_unsaved?(owner, label)
-          Writes.keep_as_own(variable)
+          Writes.keep_as_own(variable, owner, label)
         end
 
         # One holding nil, first given +value+ in game code: a variable of +value+'s kind, which
@@ -595,7 +644,20 @@ module VBlank
           # line last gave it a number. A Struct, since each field is set as the build reaches it.
           Use = Struct.new(:read_before_change, :changed_at, :changed_from_ruby_at, :given_in)
 
+          # One plain flag of one object (#note_flag_change): what it held before game code first
+          # changed it, the line and routine of a change that still stands, the line of a test on it
+          # whose side Ruby ran and recorded game code, the sides of tests on it Ruby skipped (each
+          # [site, line]), and whether a test found it nil.
+          Flag = Struct.new(:started, :start, :changed_at, :changed_in, :tested_at, :skipped, :tested_nil)
+
+          # A skipped side of a test on a flag, where it is written and the line the build was at.
+          SkippedSide = Data.define(:site, :at)
+
+          # The instance variable a variable was made for: its object and its label.
+          PartVariable = Data.define(:owner, :label)
+
           TRACKED = [Integer, Float, Symbol].freeze # What a plain instance variable is noted holding
+          FLAGS = [true, false, nil].freeze # What a plain flag holds
 
           def initialize
             @named_on_builder = Set.new
@@ -605,7 +667,88 @@ module VBlank
             @unsaved_by_class = {}
             @chosen_by_class = {}
             @makers_by_name = {}
+            @part_variables = {}
+            @first_numbers = {}
             @uses = {}.compare_by_identity
+            @flags = {}.compare_by_identity
+            @flag_sides = {}
+          end
+
+          # A side of a test on +owner+'s plain flag +label+, which held +current+, ran: written at
+          # +site+, and recording game code or not (+records+). A side that records game code once
+          # is taken to record it wherever it is reached.
+          def note_flag_side_run(owner, label, current, site, records:)
+            @flag_sides[site] = :records if records
+            @flag_sides[site] ||= :quiet
+            return unless records
+
+            flag = flag_of(owner, label)
+            flag.tested_at ||= Messages::AuthorSource.author_file_and_line
+            flag.tested_nil ||= current.nil?
+          end
+
+          # ...and one was skipped, which is judged once every routine is recorded (#refuse_game_flags!).
+          def note_flag_side_skipped(owner, label, current, site)
+            flag = flag_of(owner, label)
+            flag.skipped[site] ||= SkippedSide.new(site: site, at: Messages::AuthorSource.author_file_and_line)
+            flag.tested_nil ||= current.nil?
+          end
+
+          # A PLAIN TRUE OR FALSE (OR NIL) IN GAME CODE is decided while building wherever a test asks
+          # it. That is right for a flag the build keeps for itself, and wrong for one the game keeps,
+          # and two facts together tell the second: a test on it guards game code, and game code
+          # leaves it changed. Asked once every routine is recorded, so the order the build met them
+          # in does not matter.
+          #
+          # A test guards game code where a side Ruby ran recorded statements, or where Ruby skipped
+          # a side that, wherever else the build ran it, recorded statements, or that the build never
+          # ran at all (Steps::BuildTest#watch_flag). A side never run is unknown, so it counts, unless
+          # the source shows it records nothing: refusing then costs a game one variable it names,
+          # where letting it pass would freeze the flag with no word. Nothing here runs a side Ruby
+          # skipped, so the answer is the same however and wherever the game is built.
+          #
+          # - `@seen += 1 if @open` with `@open = true` anywhere in game code: refused.
+          # - `plan unless @planned` with `plan` setting `@planned = true`: the side guards building
+          #   work (routines declared), not game code, as the first reach shows, and the later reaches
+          #   that skip it skip that same side. Left alone. So is `return if @laid_out`.
+          # - `@white = true`, then `yield`, then `@white = false` in an `ensure`: a switch set for
+          #   the length of one call and put back, which is the same on every pass. Left alone.
+          def refuse_game_flags!
+            @flags.each do |owner, labels|
+              labels.each do |label, flag|
+                next unless flag.changed_at
+
+                tested_at = flag.tested_at || flag.skipped.values.find { |side| @flag_sides[side.site] != :quiet }&.at
+                refuse_game_flag!(owner, label, flag, tested_at) if tested_at
+              end
+            end
+          end
+
+          # A variable was just made for +owner+'s +label+, at the line running now. Recorded with
+          # that line, under the class a mark would be written in (#first_number_owner).
+          def note_first_number(owner, label)
+            @first_numbers[[first_number_owner(owner), label]] ||= Messages::AuthorSource.author_file_and_line
+          end
+
+          # `saved: false` on +labels+, written in +marker+: the game block, or a class or module. A
+          # label already given its first number has its variable made, as one a save keeps, so
+          # the mark is too late. A label already marked is left alone: the line run again. A first
+          # number recorded under a class counts where that class is +marker+ or is made from it.
+          def refuse_late_unsaved_mark!(marker, labels)
+            marking_class = marker.is_a?(Builder) ? Builder : marker
+            labels.each do |label|
+              next if marked_unsaved_by?(marker, label)
+
+              made_at = @first_numbers.find { |(made_by, made_label), _| made_label == label && made_by <= marking_class }&.last
+              refuse_late_mark!(label, made_at) if made_at
+            end
+          end
+
+          # Clear the cache of what each class names, after a class names more.
+          def clear_class_name_cache
+            @names_by_class.clear
+            @unsaved_by_class.clear
+            @chosen_by_class.clear
           end
 
           def name_on_builder(labels, chosen = {}, unsaved: [])
@@ -627,6 +770,23 @@ module VBlank
           def made_for?(name, owner, label) = @makers_by_name[name] == maker(owner, label)
 
           def note_made_for(name, owner, label) = @makers_by_name[name] ||= maker(owner, label)
+
+          # The variable named +name+ is made for +owner+'s +label+ (#free_name_for).
+          def note_part_variable(name, owner, label) = @part_variables[name] = PartVariable.new(owner, label)
+
+          # A `var` or `save_var` line names +name+, which a variable of the build has already. One
+          # made for an instance variable is that part's, and the line would share it with no word
+          # (the other order, a part choosing a name a `var` line took, is refused at the part).
+          def refuse_var_on_part_variable!(name)
+            made = @part_variables[name]
+            return unless made
+
+            part = made.owner.is_a?(Builder) ? "the game block" : made.owner.class.name || "a part"
+            raise Refused, "This `var` line makes the variable :#{name}. The game has a variable with that name " \
+                           "already: `#{made.label}` of #{part}. One name is one variable, so this line " \
+                           "changes `#{made.label}` too. To fix this, give this `var` a name of its own." \
+                           "#{Messages::AuthorSource.at_author_line}"
+          end
 
           def named?(owner, label)
             return @named_on_builder.include?(label) if owner.is_a?(Builder)
@@ -656,6 +816,7 @@ module VBlank
           # from what it holds. Only a plain number held is the game's to lose; nil counts, given a
           # number.
           def note_change(owner, label, current, value, operator:)
+            return note_flag_change(owner, label, current, value) if FLAGS.include?(current) && [true, false].include?(value)
             return unless (current.nil? || plain_number?(current)) && plain_number?(value)
 
             use = use_of(owner, label)
@@ -669,10 +830,39 @@ module VBlank
           private
 
           # A number or a symbol: what a game keeps and a line of game code can mean to change.
-          # `true` and `false` are left out. A plain one in game code is a flag the build keeps for
-          # itself, as a part's `plan unless @planned` is, and nothing the game runs can read it:
-          # a test on it is Ruby's, decided while building.
+          # `true` and `false` have rules of their own (#refuse_game_flags!).
           def plain_number?(value) = TRACKED.any? { |kind| value.is_a?(kind) }
+
+          # A line of game code gives a plain flag +value+ outright, where it held +current+. A change
+          # stands until the routine that made it puts the flag back as it was before game code first
+          # changed it (nil and false are one answer to a test), which is a switch held for a while
+          # and the same on every pass. Put back from another routine, it is the game turning the
+          # flag on and off, and the change still stands.
+          def note_flag_change(owner, label, current, value)
+            flag = flag_of(owner, label)
+            routine = Builder.in_use.recorded_routine_body
+            flag.start = current unless flag.started
+            flag.started = true
+            if !value == !flag.start
+              flag.changed_at = flag.changed_in = nil if flag.changed_in.equal?(routine)
+            elsif flag.changed_at.nil?
+              flag.changed_at = Messages::AuthorSource.author_file_and_line
+              flag.changed_in = routine
+            end
+          end
+
+          def flag_of(owner, label) = (@flags[owner] ||= {})[label] ||= Flag.new(false, nil, nil, nil, nil, {}, false)
+
+          def refuse_game_flag!(owner, label, flag, tested_at)
+            name = label.to_s.delete_prefix("@")
+            where = owner.is_a?(Builder) ? "the game block" : owner.class.name || "its class"
+            start = " Then give `#{label}` `false` where it is first set." if flag.tested_nil
+            raise Refused, "`#{label}` is changed while the game plays (at #{flag.changed_at}), and a test on it " \
+                           "decides what the game does (at #{tested_at}). `#{label}` is a plain Ruby value, so " \
+                           "the game does not see the change. Ruby decided the test once, while it built the game, " \
+                           "from the value (`true` or `false`) it held then. To fix this, add `game_variables " \
+                           ":#{name}` to #{where}.#{start}"
+          end
 
           # Who a variable name is made for: the game block, or the class or module that chose the
           # name (so the objects of two subclasses share its run of names), else the object's class.
@@ -687,6 +877,23 @@ module VBlank
           end
 
           def use_of(owner, label) = (@uses[owner] ||= {})[label] ||= Use.new(false, nil, nil, nil)
+
+          # +owner+ is the game block or an object: the class its first numbers are recorded under.
+          def first_number_owner(owner) = owner.is_a?(Builder) ? Builder : owner.class
+
+          # Has +marker+, the game block or a class or module, marked +label+ `saved: false` already?
+          def marked_unsaved_by?(marker, label)
+            return @unsaved_on_builder.include?(label) if marker.is_a?(Builder)
+
+            InstanceVariables.names_in_module(marker, constant: UNSAVED_NAMES_CONSTANT).include?(label)
+          end
+
+          def refuse_late_mark!(label, made_at)
+            raise Refused, "`game_variables` marks `#{label}` with `saved: false` here, but `#{label}` got its first " \
+                           "number before this line (at #{made_at}). Its game variable is made already, and a save " \
+                           "keeps it. To fix this, move the mark above the line that gives `#{label}` its first " \
+                           "number.#{Messages::AuthorSource.at_author_line}"
+          end
 
           def refuse_unnamed_change!(owner, label, changed_at)
             name = label.to_s.delete_prefix("@")

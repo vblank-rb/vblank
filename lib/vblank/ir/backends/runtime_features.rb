@@ -152,6 +152,12 @@ module VBlank
           # frame, never once a sample.
           Hook.new(name: :mixed_slice, way: :one, params: %i[samples], default: 0, joins: :sound,
                    c_signature: "static int32_t rg_hook_mixed_slice(const int32_t **samples)"),
+          # How many bits the render takes each sample of that slice down by, after it scales a
+          # byte's worth up to the speaker: IR::Mixing::FULL_DEPTH_SHIFT for a slice mixed at sixteen
+          # bits, so a recording is as loud as at eight, and 0 otherwise. The speaker keeps half its
+          # range for the console's voices, so it hears fifteen of the sixteen. Asked once a frame.
+          Hook.new(name: :mixed_sample_shift, way: :one, default: 0, joins: :sound,
+                   c_signature: "static int32_t rg_hook_mixed_sample_shift(void)"),
           # Where the console's sound chip plays each recording on a voice of its own (rg_spu.c), the
           # chip is told once a frame what each of the mixer's voices plays (spu_tell_recording).
           # Must be inline in C: only a console whose voices read sound memory asks it.

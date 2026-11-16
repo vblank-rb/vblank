@@ -94,12 +94,25 @@ module VBlank
             # keeps it a layer of its own (Checks::TooManyStatusBars counts those).
             scrolling = screenful.scrolling
             scrolling = scrolling.reject(&:bar?) unless console.bar_is_a_background
+            held = held_on_own_layer(scrolling, console)
+            scrolling = scrolling.reject { |bg| bg.equal?(held) }
             return nil if scrolling.size <= room
 
             # The layer blamed is the first one with nowhere to go, so the author is sent to
             # a line that really is past the end rather than to the stack's first layer,
             # which fits.
-            error_finding(scrolling[room], too_many_scrolling_message(scrolling, sharing, screenful.scene, console))
+            error_finding(scrolling[room], too_many_scrolling_message(scrolling, sharing, held, screenful.scene, console))
+          end
+
+          # THE ONE BACKGROUND OF THE SCREEN THAT GOES ON A LAYER BEYOND THE COUNT, or nil. A
+          # console with such a layer (Console::Description#layer_for_held_rows: the Super
+          # Nintendo's third layer of mode 1, four colours a tile) keeps there a background shown
+          # on some rows only, a status bar or one kept above a row, beside its two others. Only
+          # one fits it, so a second such background on the screen is counted with the rest.
+          def held_on_own_layer(scrolling, console)
+            return nil unless console.layer_for_held_rows
+
+            scrolling.find(&:held_to_rows?)
           end
 
           def error_finding(node, message)
@@ -125,16 +138,36 @@ module VBlank
               "the scene that turns it."
           end
 
-          def too_many_scrolling_message(scrolling, sharing, scene, console)
-            return scrolling_limit_message(scrolling, scene, console) if sharing.empty?
+          def too_many_scrolling_message(scrolling, sharing, held, scene, console)
+            return scrolling_limit_message(scrolling, held, scene, console) if sharing.empty?
 
             scrolling_beside_turner_message(scrolling, sharing.first, scene, console)
           end
 
-          def scrolling_limit_message(scrolling, scene, console)
+          def scrolling_limit_message(scrolling, held, scene, console)
             most = scrolling_count_words(console.backgrounds, console)
-            "#{scrolling_count_sentence(scrolling, scene, console)} The #{console.title} shows #{most} at one time. " \
-              "To fix this, show #{most}.#{move_into_scene_hint(scene)}"
+            "#{scrolling_count_sentence(scrolling, scene, console)} The #{console.title} shows #{most} at one time" \
+              "#{beside_held_words(held)}. To fix this, show #{most}.#{held_layer_hint(held, console)}" \
+              "#{move_into_scene_hint(scene)}"
+          end
+
+          # The background already on the console's layer beyond the count, named after the count
+          # so that the author can see why it is not in the list.
+          def beside_held_words(held)
+            return "" unless held
+            return " beside the status bar :#{held.name}" if held.bar?
+
+            " beside :#{held.name}, the background that the game keeps above a row"
+          end
+
+          # The way out a console with a layer beyond the count has, where nothing is on it yet:
+          # a background shown on some rows only goes there (#held_on_own_layer).
+          def held_layer_hint(held, console)
+            return "" if held || !console.layer_for_held_rows
+
+            " Or make one of them a status bar (`status_bar`). Or keep one above a row (`above_row:`). " \
+              "The #{console.title} can show one background of these two kinds as a third background. " \
+              "The tiles of that background must show 3 colours or fewer."
           end
 
           def scrolling_beside_turner_message(scrolling, turner, scene, console)

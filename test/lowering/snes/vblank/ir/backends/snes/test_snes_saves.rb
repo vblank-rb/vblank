@@ -199,14 +199,28 @@ class TestSNESSaves < Minitest::Test
     assert_equal 0, run[:from_far]
   end
 
-  def test_save_memory_other_than_32k_of_battery_is_refused_in_plain_words
+  # `save_memory: 128` is the Advance's flash. A Super Nintendo cartridge has none, so the game
+  # built for it saves in the 32K of battery-backed RAM its records fit in.
+  def test_a_game_naming_the_advances_flash_saves_in_the_cartridges_battery_backed_ram
     game = VBlank.game("FLASHY", consoles: %i[gba snes], save_memory: 128) do
       best = save_var :best, 5
       game_loop { best += 1 }
     end
+    store = SaveImage.new
+    SNES::CheckedRun.new(save: store).run(game.program(console: :snes), frames: 3)
 
-    error = assert_raises(SNES::LoweringError) { SNES.new.build(game.program(console: :snes)) }
+    assert_equal VBlank::IR::SaveLayout::PACKED, store.memory
+    assert_equal 8, store.word(VBlank::IR::SaveLayout.save_var_at(0))
+  end
 
+  # A program that names save memory the cartridge does not keep is refused in plain words.
+  def test_save_memory_the_cartridge_does_not_keep_is_refused_in_plain_words
+    build = VBlank::IR::Build
+    flash = build.program(build.save_memory(128), build.save_write(build.int(0), build.int(7)), build.halt)
+
+    error = assert_raises(SNES::LoweringError) { SNES.new.build(flash) }
+
+    assert_match(/128K of flash/, error.message)
     assert_match(/32K of battery-backed RAM/, error.message)
   end
 
@@ -273,8 +287,8 @@ class TestSNESSaves < Minitest::Test
   end
 
   # The header asks for 128K of the chip's RAM kept by a battery, and bsnes gives the cartridge
-  # that: the GSU board, with a save file of all 128K, the save 64K into it and the painted
-  # screen still in the first 64K. A Super FX game that does not save keeps its 64K.
+  # that: the GSU board, with a save file of all 128K, the save the second 64K of it and the
+  # painted screen still in the first 64K. A Super FX game that does not save keeps its 64K.
   def test_bsnes_keeps_a_super_fx_save_in_the_second_bank_of_the_chips_ram
     rom = SNES.new.build(fx_counting)
     board, ram = with_core(rom) { |core| [core.board, core.save_ram] }
@@ -284,11 +298,89 @@ class TestSNESSaves < Minitest::Test
     assert_equal "GSU-RAM", board
     assert_equal 0x20000, ram.bytesize
     saved = VBlank::Diagnostics::SNESReading.save_file_of(rom.bytes).memory_in(ram)
-    assert_equal 0x8000, saved.bytesize
+    assert_equal 0x10000, saved.bytesize
     best = saved.byteslice(VBlank::IR::SaveLayout.save_var_at(0), 4).unpack1("V")
     assert_predicate best, :odd?, "counted up from 5 by twos"
     assert_operator best, :>, 5
     assert ram.byteslice(0, 0x10000).bytes.any?(&:positive?), "the painted screen is in the first 64K"
+  end
+
+  # SAVES OF MORE THAN 32K ON A SUPER FX CARTRIDGE. The save is the whole of the chip's second
+  # bank, $71, 64K of it: a record of a list of 3600 words is 14424 bytes a half, and its two
+  # halves end past 32K. Saved twice, so both halves are written, then emptied and loaded back.
+  FX_BIG_RECORDS = VBlank.game("FX BIG SAVES", consoles: %i[gba snes], variants: { snes: :superfx }) do
+    marks = list :marks, capacity: 3600
+    passes = 0
+    loaded = 0
+    files = save_data(:files) { keep marks }
+    game_loop do
+      passes += 1
+      if passes == 2
+        marks.push 7
+        files[0].save
+        marks.push 9
+        files[0].save
+      end
+      if passes == 130
+        marks.pop
+        marks.pop
+        files[0].load
+        loaded = marks[1]
+      end
+    end
+  end
+
+  private def fx_big_records = FX_BIG_RECORDS.program(console: :snes, variant: :superfx)
+
+  def test_a_super_fx_game_whose_saves_need_more_than_32k_saves_and_loads_them_as_the_interpreter_does
+    store = SaveImage.new
+    run = SNES::CheckedRun.new(save: store).run(fx_big_records, frames: 132)
+
+    assert_equal 9, run[:loaded], "the second save, loaded back"
+    assert_equal 0x10000, store.to_sav.bytesize, "the whole spare bank"
+    assert store.written.keys.any? { |at| at >= 0x8000 }, "the record's second half is past 32K"
+  end
+
+  def test_a_super_fx_save_past_32k_is_the_interpreters_byte_for_byte
+    interpreters = SaveImage.new
+    Reference.new(save: interpreters).run(fx_big_records, frames: 132)
+
+    cartridges = SaveImage.new
+    SNES::HeadlessRun.new(save: cartridges).run(fx_big_records, frames: 132)
+
+    assert_equal interpreters.to_sav, cartridges.to_sav
+  end
+
+  # The last word of the 64K is inside and a word one byte later is not; a sum of the whole bank,
+  # a length whose low half is nought, sums every byte of it, as the interpreter does.
+  def test_a_super_fx_save_ends_at_its_64k_as_the_interpreters_does
+    build = VBlank::IR::Build
+    fx = lambda do |*steps|
+      build.program(build.save_memory(64, chip: :battery), *steps, build.halt, console: :snes, variant: :superfx)
+    end
+    inside = fx.call(build.save_write(build.int(0xFFFC), build.int(0x0102_0304)),
+                     build.set(:read, build.save_read(build.int(0xFFFC))),
+                     build.set(:whole, build.save_sum(build.int(0), build.int(0x10000))))
+    run = SNES::CheckedRun.new.run(inside, frames: 1)
+
+    assert_equal 0x0102_0304, run[:read]
+    assert_equal VBlank::IR::SaveLayout.checksum(([0xFF] * 0xFFFC) + [4, 3, 2, 1]), run[:whole]
+
+    outside = fx.call(build.save_write(build.int(0xFFFD), build.int(7)))
+    expected = assert_raises(VBlank::IR::ProgramError) { Reference.new.run(outside, frames: 1) }
+    error = assert_raises(VBlank::IR::ProgramError) { SNES::HeadlessRun.new.run(outside, frames: 1) }
+    assert_equal expected.message, error.message
+  end
+
+  # A plain cartridge keeps 32K: the same game is refused, naming the bytes it needs, the bytes
+  # the cartridge keeps, and what to change.
+  def test_a_plain_cartridge_refuses_saves_of_more_than_32k_naming_the_bytes
+    error = assert_raises(ArgumentError) { FX_BIG_RECORDS.program(console: :snes, variant: VBlank::Console::NO_VARIANT) }
+
+    assert_match(/need 33528 bytes/, error.message, "the table's 4680, and two halves of 20 + 4 + 14400")
+    assert_match(/32768 bytes/, error.message)
+    assert_match(/fewer copies/, error.message)
+    assert_match(/:superfx/, error.message)
   end
 
   def test_a_super_fx_game_that_does_not_save_keeps_64k_of_the_chips_ram

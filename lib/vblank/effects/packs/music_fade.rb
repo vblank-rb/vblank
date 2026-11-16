@@ -171,7 +171,7 @@ module VBlank
           count = duration ? music_fade_seconds(duration) : frames
           unless DSL::Whole.positive?(count)
             raise ArgumentError,
-                  "a music fade needs a positive whole number of frames. You gave #{(frames || duration).inspect}."
+                  "a music fade needs a positive whole number of frames. You gave #{Messages::PlainWords.words_for_given(frames || duration)}."
           end
 
           [count - 1, 1].max.to_f
@@ -180,7 +180,7 @@ module VBlank
         def music_fade_seconds(duration)
           unless duration.is_a?(Numeric) && duration.positive?
             raise ArgumentError,
-                  "a music fade needs a positive duration in seconds. You gave #{duration.inspect}."
+                  "a music fade needs a positive duration in seconds. You gave #{Messages::PlainWords.words_for_given(duration)}."
           end
 
           (duration * Builder::ControlFlow::FRAMES_PER_SECOND).round

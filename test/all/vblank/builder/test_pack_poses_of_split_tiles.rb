@@ -49,7 +49,7 @@ module PackPoseOfSplitTileGames
   TILES_AT = 0x100
   FRAMES_AT = 0x20
 
-  constants.each { |name| Ractor.make_shareable(const_get(name)) }
+  VBlank::Testing::InRactors.share_constants(self)
 
   private def original(folder)
     tiles = VIDEO.map(&MadeUpOriginalLayouts::TWO_PLANES).join

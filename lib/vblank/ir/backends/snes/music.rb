@@ -41,14 +41,15 @@ module VBlank
           # The bits of +voices+ in KON and KOFF.
           def self.voice_bits(voices) = voices.sum { |voice| 1 << voice }
 
-          # Each wave part's waveform at each volume its notes play it at, as a `wave` names them
-          # (DSPWrites.wave_steps): a note's own volume, or the part's — and, in a game that follows
+          # Each waveform a wave part plays (its own, and any its notes name) at each volume its notes
+          # play it at, as a `wave` names them (DSPWrites.wave_steps): a note's own volume, or the
+          # part's — and, in a game that follows
           # the music volume, at every one of the wave voice's loudnesses, which a level can take it to.
           def waves
             @songs.flat_map(&:voices).select { |part| IR::Tunes.part_kind(part) == :wave }.flat_map do |part|
               volumes = part.events.map { |_, _, _, volume| volume || part.volume }
               volumes += VBlank::Audio::Sound::WAVE_LEVEL_STEPS if follows_level?
-              volumes.uniq.map { |volume| { shape: part.wave, volume: volume } }
+              IR::Tunes.waves_of(part).product(volumes.uniq).map { |shape, volume| { shape: shape, volume: volume } }
             end
           end
 
@@ -61,7 +62,7 @@ module VBlank
           def console_title = "Super Nintendo"
 
           # A recorded note's voice volume: the mix's scale turned to the DSP's.
-          def recording_volume(value) = (value * DSPWrites::MAIN_VOLUME / IR::Tunes::MIX_FULL.to_f).round
+          def recording_volume(value) = (value * DSPWrites::VOICE_VOLUME_LOUDEST / IR::Tunes::MIX_FULL.to_f).round
         end
       end
     end

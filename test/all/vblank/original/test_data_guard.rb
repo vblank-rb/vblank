@@ -72,6 +72,25 @@ class TestDataGuard < Minitest::Test
     assert_empty guard(most_bytes: 1_000_000).refusals([staged("art/big.png", size: 600_000)])
   end
 
+  # A port's harvested numbers can be big and hold none of the original's data. Naming the path lets
+  # it past the size limit alone; every other file keeps the limit.
+  def test_a_big_file_the_game_names_passes_the_size_limit_and_no_other
+    layout = guard(big_files: %w[data/sprite_layout.json harvest/**/*.json])
+
+    assert_empty layout.refusals([staged("data/sprite_layout.json", size: 2_189_189)])
+    assert_empty layout.refusals([staged("harvest/rooms/town.json", size: 900_000)])
+    assert_match "art/big.png", layout.refusals([staged("art/big.png", size: 600_000)]).join
+    assert_match "data/sprite_layout.json.bak", layout.refusals([staged("data/sprite_layout.json.bak", size: 600_000)]).join
+  end
+
+  def test_a_big_file_the_game_names_is_still_refused_for_everything_else
+    named = guard(big_files: %w[dumps/*], folders: %w[dumps/], generated_mark: MARK)
+
+    assert_match "dumps/game.gbc", named.refusals([staged("dumps/game.gbc", size: 600_000)]).join
+    assert_match "dumps/table.rb",
+                 named.refusals([staged("dumps/table.rb", size: 600_000, first_line: "#{MARK}, by a tool")]).join
+  end
+
   def test_the_staged_files_of_a_repository_are_read_from_its_index
     Dir.mktmpdir do |folder|
       git(folder, "init", "--quiet")

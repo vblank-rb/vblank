@@ -199,8 +199,9 @@ module VBlank
 
       # The perspective `screen_spot` asks for, which fills no face. Where the nearness is worked out as
       # the point routine turns a point, a question asks for it, so the drawings in perspective that
-      # follow read the points it turned; where it is worked out as it is first read, none.
-      def spot_perspective = @corners_in_a_loop ? :none : :every_8_pixels
+      # follow read the points it turned; where it is worked out as it is first read, none. It is
+      # the drawings' default, so a question and a drawing that names no perspective share their view.
+      def spot_perspective = @corners_in_a_loop ? :none : Nodes::FillFace::DEFAULT_PERSPECTIVE
 
       # The variable the routine reads the viewer's +part+ from.
       def viewer_var(part) = name(:"viewer_#{part}")

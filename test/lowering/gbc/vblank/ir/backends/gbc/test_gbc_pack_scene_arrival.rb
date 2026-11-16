@@ -52,7 +52,7 @@ class TestGBCPackSceneArrival < Minitest::Test
     starts from: power-on
   TAPE
 
-  constants.each { |name| Ractor.make_shareable(const_get(name)) }
+  VBlank::Testing::InRactors.share_constants(self)
 
   # The profile of each frame says whether a new picture went up in it, and none from the first
   # scene taking over to the second is held, though the colours change as each arrives.

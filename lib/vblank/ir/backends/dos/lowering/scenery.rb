@@ -271,6 +271,7 @@ module VBlank
               @scenery_tile_places[number] = places
               (@scenery_mask_deltas ||= [])[number] = mask_delta
               (@scenery_color_blocks ||= [])[number] = block
+              emit_bar_top_at_start(bg, number) if bg.bar?
               map = bg.map
               maps = bg.maps.empty? ? [map] : bg.maps
               wraps = !bg.streams? && !bg.bar? # a status bar's map starts at its top-left corner and never comes round
@@ -293,6 +294,13 @@ module VBlank
                copies.first.last, table, copies.size, 0, bg.bar? ? -bg.bar_top.clamp(0, @memory.screen.height) & 0xFFFF : 0,
                bg.above_row || 0, Scenery.bends_in(@program).key?(bg.name) ? @memory[Scenery.bend_rows_place(bg.name)] : 0,
                bg.scene ? @plan.scenes.fetch(bg.scene) + 1 : 0]
+            end
+
+            # A status bar starts placed at the top it was declared with: the top the interpreter shows it at until the
+            # game places it, where it goes up before its own line has put it at its corner (#emit_bar_beside).
+            def emit_bar_top_at_start(bg, number)
+              top = bg.bar_top.clamp(0, @memory.screen.height)
+              @starts << [Runtime::Scenery.state_at(@memory, number) + Runtime::Scenery::SCROLL_Y, -top & 0xFFFF_FFFF] unless top.zero?
             end
 
             # +map+'s cells, +cols+ across and +rows+ down, into the art segment: a word a cell, where its tile's pixels
@@ -526,7 +534,34 @@ module VBlank
               return emit_scene_stamp(number) if node.scene
 
               emit_put_up(node, number)
+              emit_bar_beside(node)
             end
+
+            # A STATUS BAR SHOWN BEFORE ITS OWN LINE RUNS (IR::SceneHandover#bar_shown_early) goes up beside every
+            # background put up until it has gone up once, as the interpreter's picture shows it from the first. The
+            # bar's own line notes that it is up; any other background puts it up unless the note is set. Called
+            # after +node+ is put up, by a line or as a scene takes over (nil there). Nothing in a game with no such
+            # bar. (The other cartridges write this in Backends::SceneryWrites#emit_bar_beside, where their
+            # backgrounds are held at a corner for the pass; DOS holds none.)
+            def emit_bar_beside(node)
+              bar = @plan.handover.bar_shown_early or return
+              note = X86.mem(nil, bar_shown_early_note, size: 32)
+              return @asm.mov(note, 1) if node.equal?(bar)
+              return if node&.bar?
+
+              up = fresh_label("bar_up")
+              @asm.cmp(note, 0)
+              @asm.jne(up)
+              number = background_number(bar)
+              emit_put_up(bar, number)
+              # Not held at its corner for the pass: the interpreter shows it at the top the game last placed it at.
+              @asm.mov(X86.mem(nil, Runtime::Scenery.state_at(@memory, number) + Runtime::Scenery::FROM_CORNER, size: 32), 0)
+              @asm.mov(note, 1)
+              @asm.label(up)
+            end
+
+            # Where the note #emit_bar_beside keeps is: a word of the data segment, nought as the program starts.
+            def bar_shown_early_note = (@bar_shown_early_note ||= @memory.reserve(:"__bar_shown_early", 4, what: "the note that the status bar is up"))
 
             # A scene's own background on a painted screen, stamped onto the picture where its statement is
             # (Reference#stamp_background).
@@ -749,6 +784,7 @@ module VBlank
               arrival.scenery.each { |bg| emit_put_back(bg) }
               arrival.painted_tiles.each { |run| emit_paint_run(run.name) }
               arrival.scenery.each { |bg| emit_put_up(bg, background_number(bg)) }
+              emit_bar_beside(nil) if @plan.handover.bar_put_up_on_arrival?(arrival)
               emit_sprites_over_arrival(arrival)
             end
 

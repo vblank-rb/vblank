@@ -138,6 +138,7 @@ module VBlank
       # video memory only while it is not drawing has those rows to copy in as well as the gap
       # between pictures, so a picture that changes a lot each pass arrives sooner. It is the whole
       # game's, so it goes on the game's first `screen` line, and every later screen is a painted one.
+      # With `pixel_size: 2` the rows are the small picture's.
       #
       # @example A view 160 rows high, with more time each frame to send it
       #   screen :bitmap, shown_rows: 32...192
@@ -247,10 +248,6 @@ module VBlank
         unless mode == :bitmap
           raise ArgumentError, "`shown_rows:` works only with `screen :bitmap`. To fix this, write " \
                                "`screen :bitmap, shown_rows: #{rows.inspect}`."
-        end
-        if @program.pixel_size
-          raise ArgumentError, "`shown_rows:` does not work with `pixel_size: #{@program.pixel_size}`. No console " \
-                               "that gives up rows shows big pixels. To fix this, remove one of the two."
         end
         if @screen_line_written || @building_scene
           raise ArgumentError, "`shown_rows:` must be on the game's first `screen` line, outside any scene. It " \
@@ -375,7 +372,7 @@ module VBlank
           next if value.is_a?(Integer)
 
           raise ArgumentError,
-                "`inside` needs edges settled while you build. Got #{name}: #{value.inspect}. " \
+                "`inside` needs edges settled while you build. Got #{name}: #{Messages::PlainWords.words_for_given(value)}. " \
                 "Where a part of the screen is belongs to how the screen is laid out, not to " \
                 "something the game works out as it runs."
         end
@@ -415,7 +412,7 @@ module VBlank
       # @param h [Integer, Symbol, Value] height in pixels
       # @param c [Symbol, String, Integer] fill color
       def fill_rect(x, y, w, h, c)
-        record_fixed_or_runtime_rect(x, y, w, h, c) { |*fixed| Build.fill_rect(*fixed, c) }
+        record_fixed_or_runtime_rect(:fill_rect, x, y, w, h, c) { |*fixed| Build.fill_rect(*fixed, c) }
       end
 
       # Clear the entire screen to a solid color.
@@ -667,7 +664,7 @@ module VBlank
         return if rect.is_a?(Array) && rect.size == 4 && rect.all?(Integer)
 
         raise ArgumentError, "fade `#{word}:` takes a rectangle as four whole numbers you write: " \
-                             "[x, y, width, height], in pixels. You gave #{rect.inspect}."
+                             "[x, y, width, height], in pixels. You gave #{Messages::PlainWords.words_for_given(rect)}."
       end
 
       public
@@ -877,7 +874,7 @@ module VBlank
       # @param h [Integer, Symbol, Value] height in pixels
       # @param c [Symbol, String, Integer] fill color
       def dma_fill_rect(x, y, w, h, c)
-        record_fixed_or_runtime_rect(x, y, w, h, c) { |*fixed| Build.dma_fill_rect(*fixed, c) }
+        record_fixed_or_runtime_rect(:dma_fill_rect, x, y, w, h, c) { |*fixed| Build.dma_fill_rect(*fixed, c) }
       end
 
       # Draw ONE COLUMN of a picture, stretched to a height the game works out.
@@ -919,7 +916,7 @@ module VBlank
         unless width.is_a?(Integer) && width.positive?
           raise ArgumentError,
                 "draw_column_at needs a `width:` of 1 or more, settled while you build. " \
-                "Got #{width.inspect}. A strip's width is a property of the view, not " \
+                "Got #{Messages::PlainWords.words_for_given(width)}. A strip's width is a property of the view, not " \
                 "something the game works out as it runs."
         end
 
@@ -949,12 +946,7 @@ module VBlank
       # @param estimate [Object] does nothing but earn a warning (see Builder#record_estimate_line)
       def draw_rect_at(x_pos, y_pos, w, h, c, estimate: nil)
         record_estimate_line(estimate)
-        record(Build.draw_rect_at(DSL::Value.node_for(x_pos), DSL::Value.node_for(y_pos),
-                                  DSL::Value.node_for(w), DSL::Value.node_for(h), c))
-        ensure_var(x_pos)
-        ensure_var(y_pos)
-        ensure_var(w)
-        ensure_var(h)
+        record_runtime_rect(x_pos, y_pos, w, h, c)
       end
 
       # Lay out a board of equal cells and get a handle for painting them one at a
@@ -980,12 +972,24 @@ module VBlank
 
       # Record the node the block builds from the rectangle's four numbers when each was
       # written in the program (a bare number, or a handle standing for one), or a
-      # `draw_rect_at` when the game works any of them out as it runs.
-      def record_fixed_or_runtime_rect(x, y, w, h, c)
+      # `draw_rect_at` when the game works any of them out as it runs. That one remembers
+      # +verb+, the verb the author wrote, so a message about the line names it.
+      def record_fixed_or_runtime_rect(verb, x, y, w, h, c)
         fixed = [x, y, w, h].map { |operand| DSL::Value.fixed_number(operand) }
-        return draw_rect_at(x, y, w, h, c) if fixed.include?(nil)
+        return record_runtime_rect(x, y, w, h, c, written_as: verb) if fixed.include?(nil)
 
         record(yield(*fixed))
+      end
+
+      # Record a rectangle whose four numbers are read as the program runs. +written_as+ is the
+      # verb the author wrote, where it was not `draw_rect_at`.
+      def record_runtime_rect(x, y, w, h, c, written_as: nil)
+        record(Build.draw_rect_at(DSL::Value.node_for(x), DSL::Value.node_for(y),
+                                  DSL::Value.node_for(w), DSL::Value.node_for(h), c, written_as: written_as))
+        ensure_var(x)
+        ensure_var(y)
+        ensure_var(w)
+        ensure_var(h)
       end
 
       # A block is a whole number of pixels, and the console has sizes from one pixel, which
@@ -1143,7 +1147,7 @@ module VBlank
                                  "the number outside the shape into a variable, and read that variable in the shape."
           end
           unless (node.value? ? LIGHT_SHAPE_VALUES : LIGHT_SHAPE_STATEMENTS).include?(node.kind)
-            did = LIGHT_SHAPE_CANNOT.fetch(node.kind) { "use `#{Messages::PlainWords.verb(node.kind)}`" }
+            did = LIGHT_SHAPE_CANNOT.fetch(node.kind) { "use `#{Messages::PlainWords.verb_written(node)}`" }
             raise ArgumentError, "The light's shape tries to #{did}. A shape can only work numbers out from " \
                                  "the game's numbers and tables, keep them in variables it declares, branch and " \
                                  "repeat. To fix this, do the work outside the shape, keep the number in a " \
@@ -1266,18 +1270,18 @@ module VBlank
         unless at.is_a?(Array) && at.length == 2 && at.all?(Integer)
           raise ArgumentError,
                 "`spotlight at:` is where the light starts, as two whole numbers: `at: [120, 80]`. " \
-                "You gave #{at.inspect}. To move it as the game runs, use the handle: `light.move_to x, y`."
+                "You gave #{Messages::PlainWords.words_for_given(at)}. To move it as the game runs, use the handle: `light.move_to x, y`."
         end
         unless radius.is_a?(Integer) && radius >= 0
           raise ArgumentError,
                 "`spotlight radius:` is how far the light reaches, as a whole number of pixels, 0 or " \
-                "more. You gave #{radius.inspect}. To change it as the game runs, use `light.radius`."
+                "more. You gave #{Messages::PlainWords.words_for_given(radius)}. To change it as the game runs, use `light.radius`."
         end
         return if dark.is_a?(Integer) && (0..100).cover?(dark)
 
         raise ArgumentError,
               "`spotlight dark:` is how dark the picture is outside the light, as a whole number from " \
-              "0 to 100. You gave #{dark.inspect}. To change it as the game runs, use `light.dark`."
+              "0 to 100. You gave #{Messages::PlainWords.words_for_given(dark)}. To change it as the game runs, use `light.dark`."
       end
 
       # A fade's or a tint's amount for the tree, and how many bits of fraction it carries

@@ -889,7 +889,16 @@ module RubyGBAEmulator
     # picture it was making came that many pictures later. +ended_before+ is how many lines before
     # the next break it went to sleep, which is how close it came to missing one more. Below nothing
     # for a pass asleep inside a break it missed: how many lines into that break it slept.
-    Pass = Data.define(:missed, :ended_before) do
+    #
+    # +gap_overran_by+ is about the GAP after the wait the pass woke from: the screen's updates a
+    # game loop does first, which belong to the break it woke in. For a gap that ended after the
+    # next break began, how many lines into that break it ended (one on the break's first line,
+    # and a whole frame more for each further break it ran through); nil for a gap that ended in
+    # time, and for a pass whose gap end was not seen or not asked about (see #profile's +gap_ends+).
+    # Such a pass lost that picture in its gap, however many lines it had to spare at the end.
+    Pass = Data.define(:missed, :ended_before, :gap_overran_by) do
+      def initialize(missed:, ended_before:, gap_overran_by: nil) = super
+
       # For a pass asleep inside a break it missed, how many lines sooner it had to end to make
       # it; nil for any other.
       def lines_late = ended_before.negative? ? -ended_before : nil
@@ -961,15 +970,21 @@ module RubyGBAEmulator
     # of a title screen, or of a game standing still, is a profile of the wrong
     # thing.
     #
+    # +gap_ends+ are the addresses whose arrival ends the gap after a game loop's wait, which only
+    # the build that made the ROM knows; each pass then says whether its gap ran past a break
+    # ({Pass#gap_overran_by}). Empty asks nothing.
+    #
     # @return [Profile]
-    def profile(frames: 1, settle: 0, keys: nil)
+    def profile(frames: 1, settle: 0, keys: nil, gap_ends: [])
       ensure_open!
       step(settle, keys: keys) if settle.positive?
-      raw = @core.profile(frames, keys_mask(keys))
+      raw = @core.profile(frames, keys_mask(keys), gap_ends.to_a)
       @frames_run += frames
       @prev_pixels = @pixels
       @pixels = @core.video_buffer
-      passes = raw[:passes].map { |missed, ended_before| Pass.new(missed:, ended_before:) }
+      passes = raw[:passes].map do |missed, ended_before, gap|
+        Pass.new(missed:, ended_before:, gap_overran_by: gap.negative? ? nil : gap)
+      end
       Profile.new(frames: raw[:frames], samples: raw[:samples], halted: raw[:halted],
                   elsewhere: raw[:elsewhere], finished: raw[:finished], pc: raw[:pc],
                   cycles: raw[:cycles], late: passes.filter_map(&:lines_late), cycles_per_frame: frame_cycles,

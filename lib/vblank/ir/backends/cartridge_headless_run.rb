@@ -29,6 +29,9 @@ module VBlank
       #   power_on                what is done before the first frame, past the buttons held
       #   read_fault              what the runtime kept of a fault: [code, list's place, first, second]
       #   picture_now(camera)     the emulator's picture, as a Picture
+      #   screen_forced_off?      for a console whose run of no frames ends before the first
+      #                           picture (#ends_before_first_picture?): whether the console has its
+      #                           screen switched off now
       #   read_picture_drawn, picture_of_pass
       #                           for a console whose picture is read as the game waits (optional)
       #   record_moment, finish_after_halt
@@ -106,7 +109,7 @@ module VBlank
         # all, so whatever the lowering does not make is raised before the interpreter plays a frame of a
         # game it could never be held to.
         def build(program)
-          @rom = kit.lowering.new.build(program, title: "CHECKED")
+          @rom = cartridge_builder.build(program, title: "CHECKED")
           @built_for = program
           @rom
         end
@@ -124,6 +127,7 @@ module VBlank
           @deciding = false
           @decided = nil
           @moments = []
+          @passes_missed = []
           @vars = {}
           @lists = {}
           @sprites = []
@@ -141,6 +145,13 @@ module VBlank
 
         def stopped_at_budget? = false
 
+        # THE PASSES THE RUN NEVER READ, by number: each one ended and went on to the next without the
+        # game being found waiting at its end, so it has no moment, and the moments after it keep the
+        # numbers the runtime counted them by. A console whose runtime can go on without waiting (the
+        # Super Nintendo's, in a pass that ends inside the blank) leaves these; a checked run, which
+        # must compare every pass, builds its cartridge so that none is left (#cartridge_builder).
+        attr_reader :passes_missed
+
         # Which song is playing, by its name, or nil for none (Reference#music_playing), as the
         # console's player kept it on the frame the run's picture is.
         attr_reader :music_playing
@@ -154,14 +165,23 @@ module VBlank
         def sprites(name = nil) = name ? @drawn_sprites.rows_named(@sprites, name) : @sprites
         def sprites_by_depth = sprites # A console's sprite table holds them that way round
 
+        # How many frames the cartridge spent setting up before the one its first pass was shown in, as
+        # the interpreter is told it (Reference#frames_setting_up, CartridgeCheck#prepare_interpreter):
+        # the count the console's runtime keeps one more, so nought is not counted yet, which its run reads
+        # into @setting_up. None before the first pass is shown, and none on a cartridge that counts none.
+        def setting_up_counted = [(@setting_up || 0) - 1, 0].max
+
         # The rest of what the interpreter answers that no console's run can, each refused by name.
         refuses :peak_voices, :sound_drops, :sound_owners, :frame, :log, :screen_mode, :buffered, :volume_of,
-                :level_of, :write_save_copy, :write_save_vars
+                :level_of, :loudness_by_voice, :write_save_copy, :write_save_vars, :full_depth_sound,
+                :play_as_match
 
         # Two the interpreter is told rather than asked, and no console's run will ever take.
         def frames_each_pass(&) = raise(RunComparison::AsksTheInterpreter, "for a pass to take several frames (`frames_each_pass`)")
         def frames_setting_up(*) = raise(RunComparison::AsksTheInterpreter, "how many frames setting up takes (`frames_setting_up`)")
         def fill_faces_with(*) = raise(RunComparison::AsksTheInterpreter, "to fill faces by a console chip's rules (`fill_faces_with`)")
+        def mix_see_through_with(*) = raise(RunComparison::AsksTheInterpreter,
+                                            "to mix a see-through layer by a console chip's rules (`mix_see_through_with`)")
 
         # Which player the person at this machine is. A cartridge is never one machine of a match:
         # its person is always the first player, so that is the one answer it takes.
@@ -192,15 +212,22 @@ module VBlank
         # What a console's run sets up for itself as a run starts, past what every one does.
         def start_run(_program) = nil
 
+        # The console's lowering, made ready to build the cartridge played, as a game is built.
+        def cartridge_builder = kit.lowering.new
+
         # Where each of the runtime's names is kept.
         def runtime = kit.lowering::Runtime
 
         # THE SAVE MEMORY goes in as the file the emulator keeps a cartridge's battery-backed memory
         # in, and what the run left there comes back into the same image when the console is off
         # again — so one image handed to two runs is a power cycle, as it is for the interpreter.
+        # The image takes the program's save memory first, as the interpreter's does, so its size
+        # is the cartridge's (a Super FX cartridge's 64K, not the 32K an image starts as).
         def play(frames)
-          saves = SaveLayout.named_by?(@rom.built.source_program)
+          program = @rom.built.source_program
+          saves = SaveLayout.named_by?(program)
           refuse_power_cut! if saves
+          @save.use_memory!(SaveLayout.memory_of(program)) if saves
           Diagnostics::Emulator.with_cartridge(@rom, file_name: "game#{kit.description.extension}",
                                                      save: (@save if saves)) do |core|
             @core = core
@@ -221,11 +248,17 @@ module VBlank
         # is found waiting at its end, its picture once the screen shows it. The interpreter, told
         # to play +frames+ frames, plays one pass more and stops as that one ends, without a frame
         # boundary for it: the end of the run is that pass.
+        #
+        # Each pass is named by the runtime's count (#passes). One found waiting further on than the
+        # pass after the last one read means the passes between ended without being found waiting
+        # (#passes_missed).
         def play_passes(frames)
           pending = nil # [pass, variables, lists, sprites, sounds, camera] whose picture is not on the screen yet
+          last_read = 0
           waited = 0
           loop do
             play_frame
+            write_last_pass(frames)
             waited += 1
             refuse_stuck_game! if waited > LONGEST_PASS_FRAMES
             if pending && shown_pass == pending.first && moment_ready?(pending.first, frames)
@@ -242,8 +275,11 @@ module VBlank
               return finish_after_halt
             when runtime::Frame::WENT_WRONG then raise_cartridge_fault!
             end
-            next unless pending.nil? && waiting? && passes > @moments.size
+            next unless pending.nil? && waiting? && passes > last_read
 
+            missed = ((last_read + 1)...passes).to_a
+            @passes_missed.concat(missed)
+            last_read = passes
             pending = [passes, read_variables, read_lists, read_sprites, read_sounds, read_camera, read_picture_drawn]
             @song_at_pass_end = read_music_playing
             pass_taken(passes)
@@ -252,7 +288,9 @@ module VBlank
               return end_before_first_picture(*pending[1..5])
             end
 
-            note_frames_took(passes - 1) if passes > 1
+            # The pass before this one, and every one missed (the last of which is that pass), as far
+            # back as the runtime keeps their frames.
+            [*missed, passes - 1].uniq.last(runtime::Frame::STEPS_KEPT).each { |pass| note_frames_took(pass) if pass.positive? }
             mark_last_pass_taken if passes == frames
             hold_after_this_pass if passes > frames
             waited = 0
@@ -267,6 +305,25 @@ module VBlank
 
         # Whether a run of +frames+ ends as the first pass does, before anything is shown.
         def ends_before_first_picture?(_frames) = false
+
+        # A RUN OF NO FRAMES, on a console whose runtime turns the screen on only as the first pass is
+        # shown, ends as that pass does, and the game goes no further. The picture is the one the
+        # console shows then. Where the console really has its screen switched off
+        # (#screen_forced_off?), that is the interpreter's picture of a display switched off, plain
+        # white (Reference::Framebuffer::HELD_OFF). Anything else is reported as shown, so a runtime
+        # that lets the screen come on while it sets up disagrees with the interpreter.
+        def end_before_first_picture(variables, lists, sprites, sounds, camera)
+          hold_after_this_pass
+          @sprites = sprites
+          record_moment(:end, variables, lists, picture_before_first_pass(camera), sounds)
+        end
+
+        def picture_before_first_pass(camera)
+          shown = picture_now(camera)
+          return shown unless screen_forced_off?
+
+          shown.with(shown: Array.new(shown.shown.size, Reference::Framebuffer::HELD_OFF))
+        end
 
         # What is read once the first pass has ended.
         def first_pass_ended = nil
@@ -358,13 +415,15 @@ module VBlank
         end
 
         # Every list as the runtime keeps it: a header (each runtime's Lists sets where in it the
-        # capacity, the front and the length are) and then its slots, a ring from the front.
+        # capacity, the front and the length are, and how many bytes each is) and then its slots, a ring
+        # from the front.
         def read_lists
           layout = runtime::Lists
+          field = layout::FIELD_BYTES
           @places.lists.to_h do |name, (address, _capacity, width, _label)|
-            capacity = half(address + layout::CAPACITY)
-            front = half(address + layout::FRONT)
-            length = half(address + layout::LENGTH)
+            capacity = number_at(address + layout::CAPACITY, field)
+            front = number_at(address + layout::FRONT, field)
+            length = number_at(address + layout::LENGTH, field)
             items = Array.new(length) do |i|
               slot = (front + i) % capacity
               read_slot(address + layout::HEADER + (slot * width), width)
@@ -400,6 +459,16 @@ module VBlank
         # The interpreter stops a run at the boundary after the last pass compared, before it
         # moves its timers on (Frame::LAST_PASS_TAKEN).
         def mark_last_pass_taken = write32(runtime_place(runtime::Frame::LAST_PASS_TAKEN), 1)
+
+        # The same stop, in a build that keeps the last pass by number (LoweringPlan#keeps_last_pass_number?):
+        # +frames+, the passes the interpreter reports, written to Frame::LAST_PASS after every frame played,
+        # since what the cartridge does as it starts can clear its memory after the first.
+        def write_last_pass(frames)
+          place = @places.runtime[runtime::Frame::LAST_PASS] or return
+
+          write32(place, frames)
+        end
+
         def passes = word(runtime_place(runtime::Frame::PASSES))
         def shown_pass = read32(runtime_place(runtime::Frame::SHOWN))
 
@@ -432,6 +501,7 @@ module VBlank
           when CartridgeFaults::COPY_TOO_LONG then Faults.copy_too_long(list, first, second)
           when CartridgeFaults::COPY_PAST_TABLE then Faults.copy_past_table(first, second)
           when CartridgeFaults::PICTURE_NOT_THERE then Faults.picture_missing(first, second)
+          when CartridgeFaults::DRAW_ORDER_NAMES_NONE then Faults.draw_order_names_none(first, second)
           when CartridgeFaults::SAVE_READ_OUTSIDE then Faults.save_outside("read", first, second)
           when CartridgeFaults::SAVE_WRITE_OUTSIDE then Faults.save_outside("wrote to", first, second)
           else console_fault_message(code, first, second)

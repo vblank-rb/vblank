@@ -137,6 +137,9 @@ module VBlank
             ALL = 0xFFFF
             # Kept in a game with a note that glides, whose runtime then carries what moves one.
             GLIDES = "rt recordings glides"
+            # What a glide's row holds for a loudness, and its word of "recording_sides" for its sides, where
+            # the glide names none of its own and keeps the note's (Lowering::Sound#recorded_note_row).
+            KEPT = 0xFFFF
 
             # THE SOUND CHIP'S OWN ENVELOPE. A recording can be given the three bytes the S-DSP shapes
             # a voice by (Audio::SNESEnvelope: ADSR1, ADSR2, GAIN), and its voice is told them as
@@ -342,22 +345,26 @@ module VBlank
                 asm.lda(row.call(from))
                 asm.sta(place.call(to))
               end
-              if memory.reserved?(SIDES) # the row's word of "recording_sides", a word for each row's ROW_BYTES
-                asm.txa
-                (ROW_BYTES / 2).bit_length.pred.times { asm.lsr }
-                asm.tax
-                asm.lda(asm.long_x("recording_sides", 0))
-                asm.sta(place.call(PLACE_SIDES))
-                asm.ldx(at.call(ROW))
-              end
-              # Its shape: one with none sounds at full from its first sample; one with a shape starts at
-              # nothing and climbs (Reference::Mixer#recording_fields).
+              emit_row_sides_copied(asm, at, place) if memory.reserved?(SIDES)
+              # Its shape: one with none sounds at full from its first sample; a song's or an effect's
+              # note with a shape starts at nothing and climbs (Reference::Mixer#recording_fields), and
+              # the game's own sound takes its shape's first step as it is played
+              # (Reference::Mixer#step_shape_at_start): its attack, which reaches full only when it is 255.
               asm.lda(row.call(SHAPED))
               asm.and_a(SHAPED_BIT) if memory.reserved?(CHIP_ENVELOPES)
               asm.beq("rt_recordings_take_plain")
               asm.lda(0)
               asm.sta(place.call(LEVEL))
               asm.lda(CLIMBING)
+              asm.sta(place.call(PHASE))
+              asm.lda(place.call(OWNER))
+              asm.bne("rt_recordings_take_shaped")
+              asm.lda(place.call(PLACE_AD))
+              asm.and_a(0xFF) # the attack
+              asm.sta(place.call(LEVEL))
+              asm.cmp(FULL)
+              asm.bne("rt_recordings_take_shaped")
+              asm.lda(HOLDING)
               asm.sta(place.call(PHASE))
               asm.bra("rt_recordings_take_shaped")
               asm.label("rt_recordings_take_plain")
@@ -645,10 +652,27 @@ module VBlank
               asm.jmp(asm.abs("rt_recordings_take"))
             end
 
+            # The row at ROW's word of "recording_sides" (a word for each row's ROW_BYTES, X the row) into the
+            # place's PLACE_SIDES, X the row again after.
+            # With +unless_kept+, a label, a word of KEPT leaves the place's sides as they are.
+            def emit_row_sides_copied(asm, at, place, unless_kept: nil)
+              asm.txa
+              (ROW_BYTES / 2).bit_length.pred.times { asm.lsr }
+              asm.tax
+              asm.lda(asm.long_x("recording_sides", 0))
+              if unless_kept
+                asm.cmp(KEPT)
+                asm.beq(unless_kept)
+              end
+              asm.sta(place.call(PLACE_SIDES))
+              asm.label(unless_kept) if unless_kept
+              asm.ldx(at.call(ROW))
+            end
+
             # rt_recordings_glide(row, owner): the note +owner+'s part sounds, if it has one, reads on at
-            # the row's pitch (Reference::Mixer#glide_music_note): how far a frame takes it, and its
-            # voice's pitch registers, with no key-on, so its fade goes on where it was. A = 1
-            # when it had a note, nought when not.
+            # the row's pitch and loudness, from the sides the row names (Reference::Mixer#glide_music_note):
+            # how far a frame takes it, its voice's pitch registers and its volumes, with no key-on, so its
+            # fade goes on where it was. A = 1 when it had a note, nought when not.
             def emit_glide(asm, at, memory, heard)
               place = place_field(asm, memory)
               row = ->(field) { asm.long_x("recording_plays", field) }
@@ -669,10 +693,20 @@ module VBlank
                 asm.lda(row.call(from))
                 asm.sta(place.call(to))
               end
+              # Its loudness and sides where it names them; a row holding KEPT leaves the note's.
+              asm.lda(row.call(VOLUME))
+              asm.cmp(KEPT)
+              asm.beq("rt_recordings_glide_loud_kept")
+              asm.sta(place.call(LOUD))
+              asm.label("rt_recordings_glide_loud_kept")
+              emit_row_sides_copied(asm, at, place, unless_kept: "rt_recordings_glide_sides_kept") if memory.reserved?(SIDES)
               asm.lda(at.call(PLACE))
               asm.cmp(heard)
               asm.bcs("rt_recordings_glide_done")
               emit_queued_entry(asm, at, Sound::NOTE_PITCH)
+              # ...and its loudness and sides from the row, as a struck note's (a music volume scales
+              # it after, as it does one: the player's rt_recordings_loud).
+              asm.jsr(asm.abs("rt_recordings_heard_volume"))
               asm.label("rt_recordings_glide_done")
               asm.lda(1)
               asm.rtl

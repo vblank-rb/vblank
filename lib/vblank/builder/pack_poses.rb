@@ -212,7 +212,7 @@ module VBlank
         refuse_pose_without_size!(name) unless size
         tiles = opts[:tiles]
         colors = opts[:colors]
-        record = pack_frame_number(frame_source(name, opts[:frame]))
+        record = pack_frame_number(frame_source(name, opts[:frame]), name)
         entry_at = @pack_frames_at + (record * Original::FrameRecord::ENTRY_BYTES)
         colors_from_file = colors.is_a?(DSL::PackSlot) && !from_banks
         if colors.is_a?(DSL::PackSlot)
@@ -298,6 +298,11 @@ module VBlank
       # words, so they are held to the slot's size here, whichever way the game is built. A frame
       # that says its own count is in the player's copy: the build that holds the pack refuses one
       # that runs past its slot (#frame_pieces), and a build that does not draws the pieces that fit.
+      #
+      # A FRAME READ THROUGH A VIEW (DSL::PackSlot#as_numbers) is told of as the frame at the same
+      # bytes of the slot the view reads: the unpacking finds a frame's bytes by a slot the pack
+      # names. Its start is held to the view; a frame that says its own count may run on past the
+      # view's end into the rest of that slot, as it would in the original.
       def frame_source(name, frame)
         layout = frame.piece_layout
         slot_bytes = frame.slot.layout.count
@@ -308,29 +313,68 @@ module VBlank
           refuse_frame_count!(name, frame, frame.count)
           refuse_frame_past_slot!(name, frame) if first + (frame.count * layout.piece_bytes) > slot_bytes
         end
-        Original::FrameRecord::Source.new(slot: frame.slot.layout, at: frame.at, count: (frame.count unless layout.counted),
-                                          layout: layout, pose: frame.pose)
+        read = frame.slot.layout
+        Original::FrameRecord::Source.new(slot: read.declared, at: read.start_in_declared + frame.at,
+                                          count: (frame.count unless layout.counted), layout: layout, pose: frame.pose)
       end
 
       # THE FRAMES THE GAME HAS NAMED SO FAR, each once, in the order it named them: the frames
       # the pack keeps a record of after its last slot (Original::FrameRecord::Section). The number
       # of +source+ among them is its place in that section's directory. Both builds of one game
       # name the same frames in the same order, so the pack one makes is the file the other reads.
-      def pack_frame_number(source)
+      # +picture+ is the image the frame is first read for, which an error gives.
+      #
+      # AN UNPACKING MADE ALREADY WRITES NO RECORD OF A FRAME NAMED AFTER IT (DSL::DataPack#unpacking
+      # makes it from the frames named so far), so a new frame named then is refused rather than
+      # left out of the pack in silence.
+      def pack_frame_number(source, picture)
         @pack_frames ||= []
-        @pack_frames.index(source) || (@pack_frames << source).length - 1
+        found = @pack_frames.index(source)
+        return found if found
+
+        refuse_frame_after_unpacking!(picture, source) if @pack_unpacking_made
+        (@pack_frame_pictures ||= {})[source] = picture
+        (@pack_frames << source).length - 1
       end
 
       # The section those frames make.
       def pack_frame_section = Original::FrameRecord::Section.new(sources: (@pack_frames || []).dup.freeze)
 
+      # The section for DSL::DataPack#unpacking, which makes its program from it: a frame named
+      # after this is refused (#pack_frame_number).
+      def pack_frame_section_for_unpacking!
+        @pack_unpacking_made = true
+        pack_frame_section
+      end
+
       # ONCE THE WHOLE PROGRAM IS DECLARED: a program that reads its pack as it starts is told the
       # file's whole size, its frames' records after its slots. The size follows from the frames
       # the game named and never from what a frame holds (Original::FrameRecord::Section#size).
+      # The build that holds the pack refuses frames that overlap past the room that size keeps.
       def finalize_pack_frames
-        return unless pack_left_out? && @pack_frames
+        return unless @pack_frames
+
+        return refuse_frames_without_room! unless pack_left_out?
 
         @program.start_file = @program.start_file.with(size: @pack_frames_at + pack_frame_section.size)
+      end
+
+      # Frames of one slot that overlap can hold more pieces between them than the pack keeps room
+      # for (Original::FrameRecord::Section#index_of_first_without_room). The pack is made already,
+      # so its bytes say which frame is the first without room.
+      def refuse_frames_without_room!
+        index = pack_frame_section.index_of_first_without_room(@data_pack_contents.slots)
+        return unless index
+
+        source = @pack_frames.fetch(index)
+        raise ArgumentError, "image :#{@pack_frame_pictures.fetch(source)} " \
+                             "#{Original::Unpacking::Fault.frames_without_room_message(source.at, source.slot.name)}"
+      end
+
+      def refuse_frame_after_unpacking!(name, source)
+        raise ArgumentError, "image :#{name} reads the frame at byte #{source.at} of slot :#{source.slot.name}. The data " \
+                             "pack's unpacking was made before this line, so it writes no record of this frame. To fix " \
+                             "this, ask for `pack.unpacking` after the game names all its frames."
       end
 
       # The pieces of +frame+ (a DSL::PackFrame), read from its record: the bytes the pack's
@@ -341,7 +385,7 @@ module VBlank
         record = Original::FrameRecord.read(source.record(@data_pack_contents.bytes_of(source.slot.name)))
         refuse_frame_count!(name, frame, record.named)
         refuse_frame_past_slot!(name, frame) if record.pieces.length < record.named
-        pack_frame_number(source)
+        pack_frame_number(source, name)
         record.pieces
       end
 
@@ -360,21 +404,8 @@ module VBlank
           end
         end
         rows = turned_rows(rows, mirrored: piece.mirrored, upside_down: piece.upside_down)
-        block_places(piece.columns, piece.rows).map do |column, row, tiles|
+        piece.blocks.map do |column, row, tiles|
           [column * side, row * side, rows[row * side, tiles * side].flat_map { |line| line[column * side, tiles * side] }]
-        end
-      end
-
-      # Where each block of a piece +columns+ by +rows+ tiles starts, in tiles, and how many tiles
-      # a side it is (1 or 2): each [column, row, tiles].
-      def block_places(columns, rows)
-        (0...rows).step(2).flat_map do |row|
-          (0...columns).step(2).flat_map do |column|
-            next [[column, row, 2]] if column + 2 <= columns && row + 2 <= rows
-
-            [row, row + 1].select { |r| r < rows }.product([column, column + 1].select { |c| c < columns })
-                          .map { |r, c| [c, r, 1] }
-          end
         end
       end
 
@@ -397,11 +428,18 @@ module VBlank
       end
 
 
+      # THE ORIGIN NEED NOT BE INSIDE THE PICTURE. A frame whose pieces all sit below the object's
+      # place (the Minish Cap's anvil stars sit a row under theirs) puts the place above the
+      # picture: origin [32, -1]. What must be inside is each piece, origin plus its offset, and
+      # that is held where the pieces are known: here when the build holds the pack
+      # (#refuse_piece_left_of_origin!, and the size the pieces reach), and as the game starts
+      # otherwise, where each backend paints only what lands inside the picture.
       def refuse_bad_origin!(name, origin)
-        return origin if origin.is_a?(Array) && origin.length == 2 && origin.all? { |at| at.is_a?(Integer) && !at.negative? }
+        return origin if origin.is_a?(Array) && origin.length == 2 && origin.all?(Integer)
 
-        raise ArgumentError, "image :#{name} needs origin: [x, y], where the object's place is in the picture, in " \
-                             "whole pixels 0 or more. Got #{origin.inspect}."
+        raise ArgumentError, "image :#{name} was given origin: #{origin.inspect}. origin: must be [x, y] in whole pixels: " \
+                             "the place of the object, counted from the top left of the picture. It can be outside the " \
+                             "picture."
       end
 
       def refuse_piece_left_of_origin!(name, pieces)

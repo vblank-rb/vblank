@@ -40,9 +40,14 @@ class TestNativeShell < Minitest::Test
   BMP_ROW_BYTES = 720 * 3
   BMP_ROWS = 480
   MARKER_ROWS = (120...135)
+  # The rows the port's pose stands on (screen rows 100 to 107), drawn from the record of its
+  # frame that the unpacking writes.
+  POSE_ROWS = ((ShellTests::POSE_TOP * 3)...((ShellTests::POSE_TOP + ShellTests::POSE_SIZE[1]) * 3))
 
-  private def marker_rows_of(bmp)
-    MARKER_ROWS.map { |from_top| bmp.byteslice(BMP_HEADER_BYTES + ((BMP_ROWS - 1 - from_top) * BMP_ROW_BYTES), BMP_ROW_BYTES) }
+  private def game_rows_of(bmp) = window_rows_of(bmp, MARKER_ROWS) + window_rows_of(bmp, POSE_ROWS)
+
+  private def window_rows_of(bmp, rows)
+    rows.map { |from_top| bmp.byteslice(BMP_HEADER_BYTES + ((BMP_ROWS - 1 - from_top) * BMP_ROW_BYTES), BMP_ROW_BYTES) }
   end
 
   # What one run of the program printed (its variables at the end of the script), the window as it
@@ -57,7 +62,8 @@ class TestNativeShell < Minitest::Test
       end
       answer = play(all_in_one, dir, "answer")
 
-      assert_includes marker_rows_of(answer.picture).join, "\xFF\xFF\xFF".b, "the marker is on the picture"
+      assert_includes game_rows_of(answer.picture).join, "\xFF\xFF\xFF".b, "the marker is on the picture"
+      refute_empty window_rows_of(answer.picture, POSE_ROWS).join.delete("\0"), "the pose is on the picture"
 
       assert_equal %w[made-up-shell parts], Dir.children(shell).sort
       assert_holds_none_of original_pieces, folder_bytes(shell), "the desktop shell's folder"
@@ -95,26 +101,82 @@ class TestNativeShell < Minitest::Test
     end
   end
 
+  # Timeouts for a check that fails, never reached by one that passes; and how often it looks.
+  MOST_SECONDS_UNTIL_UNPACKING_RUNS = 60
+  MOST_SECONDS_UNTIL_SHELL_ENDS = 60
+  POLL_SECONDS = 0.05
+
   # The window closed while the unpacking works (SDL takes the signal a system sends a program it
-  # asks to end as the window closing): the program ends at once, without waiting for the unpacking,
-  # which ends with it, and nothing is left in the pack's folder to make a pack from.
+  # asks to end as the window closing): the program ends without waiting for the unpacking to
+  # finish, which ends with it, and nothing is left in the pack's folder to make a pack from.
+  #
+  # HELD TO WHAT HAPPENS, NOT TO THE CLOCK. The window is closed once the unpacking is seen running,
+  # however long the shell takes to get there: a fixed wait before closing it missed the unpacking
+  # on a busy machine, where the shell had not yet got through its menu. And the unpacking is paused
+  # before the window closes, so it can never finish: a shell that waited for it would never end,
+  # where a time bound on the shell's end could be broken by a busy machine alone. The shell stops
+  # the paused unpacking as it would a working one (a paused program still takes the stop) and waits
+  # for it to end before it ends itself (rg_sdl.c's quit), so the unpacking is gone once the shell is.
   private def assert_a_window_closed_part_way_keeps_no_pack(shell, dir)
     kept = File.join(dir, "kept-closed")
     pid = Process.spawn(NO_SCREEN_OR_SPEAKER, shell_exe(shell), "--pack-folder", kept, "--shell-menu-keys", File.join(dir, "menu.keys"),
                         "--shell-copy", copy_at(dir), "--scripted-keys", GAME_FRAMES.to_s,
                         "--settings-file", File.join(dir, "none-closed.txt"), in: File::NULL, err: File::NULL, out: File::NULL)
-    sleep 0.6
-    unpacking = unpackings_running(shell)
-    closed_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    Process.kill("TERM", pid)
-    Process.wait(pid)
-    took = Process.clock_gettime(Process::CLOCK_MONOTONIC) - closed_at
-    sleep 0.2
+    unpacking = unpacking_once_running(shell, pid)
+    begin
+      refute_empty unpacking, "the unpacking did not start in #{MOST_SECONDS_UNTIL_UNPACKING_RUNS} s, so this shows nothing"
+      begin
+        unpacking.each { |part| Process.kill("STOP", Integer(part)) }
+      rescue Errno::ESRCH
+        flunk "the unpacking ended before the window was closed, so this shows nothing"
+      end
+      Process.kill("TERM", pid)
 
-    refute_empty unpacking, "the window was not closed while the unpacking worked, so this shows nothing"
-    assert_operator took, :<, 0.4, "the window waited for the unpacking"
-    assert_empty Dir.children(kept), "the shell left these behind in the pack's folder"
-    assert_empty unpackings_running(shell), "the unpacking went on with its window closed"
+      assert poll_until(MOST_SECONDS_UNTIL_SHELL_ENDS) { Process.wait(pid, Process::WNOHANG) }, "the window waited for the unpacking"
+      assert_empty Dir.children(kept), "the shell left these behind in the pack's folder"
+      assert_empty unpackings_running(shell), "the unpacking went on with its window closed"
+    ensure
+      stop_left_running(pid, unpackings_running(shell))
+    end
+  end
+
+  # The process numbers of this shell's unpacking once it is running; empty if the shell ended
+  # first (it is then waited for) or MOST_SECONDS_UNTIL_UNPACKING_RUNS went by.
+  private def unpacking_once_running(shell, pid)
+    found = poll_until(MOST_SECONDS_UNTIL_UNPACKING_RUNS) do
+      running = unpackings_running(shell)
+      running.empty? ? Process.wait(pid, Process::WNOHANG) && [] : running
+    end
+    found || []
+  end
+
+  # The block's first answer that is not nil or false, asked every POLL_SECONDS; nil once +seconds+
+  # go by without one.
+  private def poll_until(seconds)
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + seconds
+    loop do
+      answer = yield
+      return answer if answer
+      return nil if Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+
+      sleep POLL_SECONDS
+    end
+  end
+
+  # Kills what a failed check left running: its unpacking +parts+, and the shell +pid+ unless it was
+  # waited for already (its number may then be another program's), waited for.
+  private def stop_left_running(pid, parts)
+    parts.each do |part|
+      Process.kill("KILL", Integer(part))
+    rescue Errno::ESRCH
+      nil
+    end
+    return if Process.wait(pid, Process::WNOHANG)
+
+    Process.kill("KILL", pid)
+    Process.wait(pid)
+  rescue Errno::ECHILD
+    nil
   end
 
   # The process numbers of this shell's unpacking still running, by the path of its program.
@@ -259,7 +321,7 @@ class TestNativeShell < Minitest::Test
     played = play(shell_exe(shell), dir, "first", options: shell_options(dir, copy: copy_at(dir)))
 
     assert_equal answer.variables, played.variables
-    assert_equal marker_rows_of(answer.picture), marker_rows_of(played.picture)
+    assert_equal game_rows_of(answer.picture), game_rows_of(played.picture)
     assert_equal all_in_one_pack, kept_pack(dir), "the pack is the all-in-one build's, byte for byte"
   end
 
@@ -268,7 +330,7 @@ class TestNativeShell < Minitest::Test
     played = play(shell_exe(shell), dir, "second", options: ["--pack-folder", File.join(dir, "kept")])
 
     assert_equal answer.variables, played.variables
-    assert_equal marker_rows_of(answer.picture), marker_rows_of(played.picture)
+    assert_equal game_rows_of(answer.picture), game_rows_of(played.picture)
   end
 
   # A pack names the build of the game it was made for: a new build refuses the pack the first one

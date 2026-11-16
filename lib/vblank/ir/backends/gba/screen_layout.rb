@@ -558,6 +558,58 @@ module VBlank
           # Does any scene send a sprite colour table of its own?
           def scene_obj_palettes? = @scene_sends.each_value.any?(&:obj_palette)
 
+          # A scene whose sprite colour table goes in where the frame's sprites are written, picked
+          # by +value+ in the variable that picks it, and the table's blob.
+          ScenePickedColors = Data.define(:scene, :value, :blob)
+
+          # THE SPRITE COLOUR TABLES SENT WITH THE SPRITES (see
+          # SpriteDrawing#emit_scene_colors_on_change), and the one variable that picks their scenes.
+          # Only in a game whose loop writes the frame's sprites, and where every scene sending a
+          # table of its own is reached one way: by one clause of a `case_var` on that one variable,
+          # and by nothing else. There the variable says which scene's sprites are up, so it can say
+          # which table goes in. A scene also called by name, or picked by a second variable, is up
+          # when the variable does not say so, and two variables could each send a table over the
+          # other's; such a game keeps sending each table as its scene takes over. nil then.
+          ScenesPicked = Data.define(:state, :picks)
+
+          def scene_colors_picker
+            return @scene_colors_picker if defined?(@scene_colors_picker)
+
+            @scene_colors_picker = find_picked_color_scenes
+          end
+
+          # Does +scene+'s sprite colour table go in with the sprites (#scene_colors_picker),
+          # rather than as the scene takes over?
+          def scene_colors_picked?(scene) = scene_colors_picker&.picks&.any? { |pick| pick.scene == scene } || false
+
+          def find_picked_color_scenes
+            return nil unless scene_obj_palettes? && @program.walk.any? { |node| node.kind == :present_objects }
+
+            colored = @scene_sends.select { |_scene, send| send.obj_palette }
+            reached = scene_reaches
+            return nil unless colored.each_key.all? { |scene| reached[scene].one? && reached[scene].first }
+
+            states = colored.each_key.map { |scene| reached[scene].first.first }.uniq
+            return nil unless states.one?
+
+            picks = colored.map do |scene, send|
+              ScenePickedColors.new(scene: scene, value: reached[scene].first.last, blob: send.obj_palette)
+            end
+            ScenesPicked.new(state: states.first, picks: picks)
+          end
+
+          # Every way each scene is reached: [variable, value] for each `case_var` clause naming it,
+          # nil for each call by name.
+          def scene_reaches
+            @program.walk.each_with_object(Hash.new { |hash, scene| hash[scene] = [] }) do |node, reached|
+              case node.kind
+              when :case then node.clauses.each { |value, target| reached[target] << [node.var, value] }
+              when :call then reached[node.target] << nil
+              when :call_one_of then node.targets.each { |target| reached[target] << nil }
+              end
+            end
+          end
+
           # Does any scene send a background colour table of its own as it takes over?
           def scene_bg_palettes? = @scene_sends.each_value.any?(&:bg_palette)
 
@@ -2054,9 +2106,10 @@ module VBlank
           # about which sprite is on top.
           def prepare_objects(program)
             nodes = @picture.objects
-            # The guardrails have these two rules and their words; this is the lowering's own
+            # The guardrails have these rules and their words; this is the lowering's own
             # invariant, for a program that reached it without passing the guardrails.
             refusal = Guardrails::Checks::TooManySprites.new.refusal_message(program) ||
+                      Guardrails::Checks::PaintedPictureWithOtherPoses.new.refusal_message(program) ||
                       Guardrails::Checks::PosesWithDifferentColors.new.refusal_message(program)
             raise LoweringError, refusal if refusal
             build_shared_object_palette(nodes)
@@ -2691,7 +2744,8 @@ module VBlank
                     "#{PaletteBanks::BANKS} groups of colors the console holds for sprites. The sets given to " \
                     "`colors_in_use` take #{shared.length} of these groups. The biggest is " \
                     "#{@color_list_nodes.fetch(shared.first).busiest_set}. Each list in no set takes one group, " \
-                    "and so does each sprite with different colors.#{shared_sprites_note(node.scene)} To fix " \
+                    "and so does each sprite with different colors.#{shared_sprites_note(node.scene)}" \
+                    "#{wide_pictures_note(node.scene)} To fix " \
                     "this, give that set fewer lists, or tell sprites to draw_with fewer lists that are in no set."
             end
             unless @lent_lists.empty?
@@ -2699,14 +2753,16 @@ module VBlank
                     "#{whose_sprites(node.scene)} draw with more lists of colors than the console can hold. The " \
                     "console holds #{PaletteBanks::BANKS} groups of colors for sprites. Each sprite with " \
                     "different colors takes one group, and so does each list told to `recolor` or given to " \
-                    "`colors_in_use`.#{shared_sprites_note(node.scene)} The other lists use the groups that " \
+                    "`colors_in_use`.#{shared_sprites_note(node.scene)}#{wide_pictures_note(node.scene)} " \
+                    "The other lists use the groups that " \
                     "are left, in turn, but no group is left. To fix this, give more sprites the same " \
                     "`colors:` list."
             end
             raise LoweringError,
                   "#{whose_sprites(node.scene)} and the lists of colors they draw with need more than the " \
                   "#{PaletteBanks::BANKS} groups of colors the console holds for sprites. Each different list " \
-                  "takes one group, and so does each sprite with different colors.#{shared_sprites_note(node.scene)} " \
+                  "takes one group, and so does each sprite with different colors.#{shared_sprites_note(node.scene)}" \
+                  "#{wide_pictures_note(node.scene)} " \
                   "To fix this, tell sprites to draw_with fewer different lists, or give more sprites the same " \
                   "`colors:` list. Or tell the sprites to draw_with one list. Then change the colors that " \
                   "list holds with `recolor`. If no one room uses all these lists, say which lists each room " \
@@ -2744,6 +2800,27 @@ module VBlank
             return "" unless scene && @picture.objects.any? { |node| node.scene.nil? }
 
             " This count includes the sprites that every scene shows."
+          end
+
+          # The note, for a refusal of too many groups, of the groups the sprites of +scene+ with
+          # too many colours for one group took, which the count of lists and sprites leaves out.
+          # Such a picture is read across the whole table, and its colours fill whole groups there
+          # that no list can have. Named in the author's own words, the pictures; empty when no
+          # sprite of +scene+'s is one.
+          def wide_pictures_note(scene)
+            table = @obj_banks.fetch(scene)
+            wide = @picture.objects.select { |node| node.scene.nil? || node.scene == scene }.filter_map do |node|
+              place = table.placement(node.name) if table.known?(node.name)
+              [node, place] if place && !place.narrow? && place.indices.size > PaletteBanks::BANK_COLORS
+            end
+            return "" if wide.empty?
+
+            groups = wide.flat_map { |_node, place| place.groups }
+            pictures = wide.map { |node, _place| ":#{node.poses.first}" }.uniq
+            named = pictures.join(", ")
+            " A picture with more than #{PaletteBanks::BANK_COLORS} colors also takes groups, because its colors " \
+              "fill whole groups. Here #{named} #{pictures.one? ? 'takes' : 'take'} #{groups.uniq.length} of " \
+              "these groups. To get these groups back, draw #{named} from #{PaletteBanks::BANK_COLORS} colors or fewer."
           end
 
           # The bank each of a sprite's other lists landed in, in the order the program counts

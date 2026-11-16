@@ -74,7 +74,7 @@ module PackPoseReadByTheGameGames
   CRAFT_AT = [40, 40].freeze
   TEXT_AT = [100, 40].freeze
 
-  constants.each { |name| Ractor.make_shareable(const_get(name)) }
+  VBlank::Testing::InRactors.share_constants(self)
 
   private def original(folder)
     tiles = VIDEO.map(&MadeUpOriginalLayouts::FOUR_PLANES).join

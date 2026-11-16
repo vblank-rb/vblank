@@ -102,6 +102,10 @@ module VBlank
             @palette_tint.emit_record_bg_palette_source # ...the first area's, for a game that walks between areas
             @palette_tint.emit_changed_bg_lists_again # ...and the groups drawn from another list put back over it
             emit_boot_box_window
+            # The bar shown early, not up yet (Drawing#emit_bar_beside)
+            return unless @layout.screen.handover.bar_shown_early
+
+            @primitives.store_word_immediate(0, @primitives.var_addr(Drawing::BAR_SHOWN_EARLY))
           end
 
           # Point one layer's hardware at its data: DMA its map into its own screen block,
@@ -954,6 +958,7 @@ module VBlank
               place = run.moves? ? var_addr(ScreenLayout::PaintedRun.place_var(name)) | 1 : VRAM_START + run.at
               held = held_tile_run?(run)
               from = held ? var_addr(ScreenLayout::PaintedRun.held_var(name)) | 1 : list[:base]
+              Primitives.refuse_copy_of_nothing!(run.bytes / 4) # the walk writes this control word by hand
               { name: name, what: run.what, bytes: run.bytes, held: held,
                 words: [var_addr(node.masks.fetch(i / per)), 1 << (i % per), from, place,
                         (run.bytes / 4) | DMA_ENABLE | DMA_32BIT] }

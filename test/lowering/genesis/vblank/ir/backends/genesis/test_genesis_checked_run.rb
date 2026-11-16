@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "delegate"
+require "no_frames_games"
 
 # A game built as a Genesis cartridge and played in Genesis Plus GX does what the interpreter does,
 # pass for pass (Genesis::CheckedRun): the game's numbers, its lists, its buttons and its routines, each
@@ -294,6 +296,43 @@ class TestGenesisCheckedRun < Minitest::Test
     error = assert_raises(Genesis::LoweringError) { Genesis.new.build(program) }
 
     assert_match(/can call itself again/, error.message)
+  end
+
+  # A run of no frames ends before the first pass is shown: the video chip still has the screen
+  # switched off, which the interpreter shows as its plain white picture of a display switched off,
+  # and the game's numbers are the first pass's.
+  def test_a_run_of_no_frames_ends_with_the_screen_still_off
+    run = Genesis::CheckedRun.new.run(NoFramesGames.room_counting_passes(:genesis), frames: 0)
+
+    assert_equal Color.resolve(:white), run.screen.pixel(3, 3)
+    assert_equal 0, run[:n]
+  end
+
+  # A STAND-IN FOR A RUNTIME THAT LETS THE SCREEN COME ON WHILE IT SETS UP: the video chip's second
+  # mode register reads with the screen bit set, where the real cartridge still has it clear. The run
+  # reports the picture Genesis Plus GX shows, not the interpreter's switched-off white, so a check
+  # against the interpreter would fail.
+  class ScreenOnWhileSettingUp < Genesis::HeadlessRun
+    # The emulator, but its video chip's screen bit always set.
+    class ScreenOnCore < SimpleDelegator
+      def vdp_registers
+        hardware = VBlank::Console::GenesisHardware
+        registers = __getobj__.vdp_registers.dup
+        registers[hardware::REG_MODE2] |= hardware::MODE2_SCREEN_ON_BIT
+        registers
+      end
+    end
+
+    private def power_on
+      @core = ScreenOnCore.new(@core)
+      super
+    end
+  end
+
+  def test_a_run_of_no_frames_reports_the_picture_shown_when_the_screen_is_on
+    run = ScreenOnWhileSettingUp.new.run(NoFramesGames.room_counting_passes(:genesis), frames: 0)
+
+    assert_equal [0], run.screen.to_a.uniq, "the picture Genesis Plus GX drew: the backdrop, black, on every pixel"
   end
 
   private

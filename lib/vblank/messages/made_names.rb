@@ -109,6 +109,8 @@ module VBlank
                                 words: ->(_) { "writing the sprites nothing moves" }),
         held_sprite_table: Kind.new(spelling: "__held_sprite_table", parts: {},
                                     words: ->(_) { "copying the sprites that show into the console's table" }),
+        scene_sprite_colors: Kind.new(spelling: "__scene_sprite_colors", parts: {},
+                                      words: ->(_) { "sending the sprite colors of the scene that takes over" }),
         tile_run_tile: Kind.new(spelling: "__tile_run_%{run}__%{number}", parts: { run: ANY, number: "\\d+" },
                                 words: nil),
         tile_pictures_part: Kind.new(spelling: "__tile_pictures_%{group}__%{part}", parts: { group: ANY, part: PLAIN }, words: nil),

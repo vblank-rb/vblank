@@ -9,9 +9,6 @@ class TestPicturesOnTheSuperNintendoInterpreter < Minitest::Test
   include VBlank::Testing::Pictures
   include MovingPictureGames
 
-  # bsnes is opened through Fiddle, a C extension Ruby refuses to run outside the main Ractor.
-  runs_on_the_main_ractor!
-
   SUPER_NINTENDO = VBlank::Console::SUPER_NINTENDO
 
   def test_a_super_nintendo_program_is_compared_as_its_cartridge

@@ -253,7 +253,7 @@ module VBlank
             def emit_copy_owed_tiles(node)
               per = Nodes::CopyOwedTiles::RUNS_PER_MASK
               node.runs.each_with_index do |name, i|
-                mask = @variables.fetch(node.masks.fetch(i / per))
+                mask = place_of(node.masks.fetch(i / per))
                 bit = i % per
                 past = fresh("past_the_run")
                 @asm.load(:a, [mask + (bit / 8)])

@@ -18,6 +18,10 @@ module VBlank
         # (PolygonFill). Everything the place's drawing works out — turning, cutting at
         # the near limit, where each corner lands, `screen_spot` — is still the interpreter's own, and the
         # whole picture is still compared, every pixel with none let off.
+        #
+        # SO IS THE MIX OF A SEE-THROUGH LAYER. The chip mixes in five bits a channel (SemiTransparency), and
+        # the interpreter widens to eight first, so the interpreter is told to mix the chip's way: which pixels
+        # are mixed, with what, at which shares, stays its own.
         class CheckedRun < HeadlessRun
           include CartridgeCheck
 
@@ -36,10 +40,17 @@ module VBlank
 
           private
 
-          def prepare_interpreter(interpreter) = interpreter.fill_faces_with(@faces)
+          # The faces filled the chip's way, and a see-through layer mixed the chip's way, besides the frames
+          # setting up took (CartridgeCheck).
+          def prepare_interpreter(interpreter)
+            super
+            interpreter.fill_faces_with(@faces)
+            interpreter.mix_see_through_with(SemiTransparency)
+          end
 
-          # The recordings sounding at a moment, each with its level, as both sides keep them.
-          def sounding_levels(run) = run.active_samples.map { |name| [name, run.level_of(name)] }
+          # The recordings sounding at a moment, each with its level and its loudness, as both sides keep
+          # them (HeadlessRun.sounding_voices).
+          def sounding_levels(run) = HeadlessRun.sounding_voices(run)
 
           # THE SOUND LOG AND THE SOUND CHIP ITSELF, past the moments: every entry of the log, and the first
           # time the game was found waiting with a register of the chip holding something other than what
