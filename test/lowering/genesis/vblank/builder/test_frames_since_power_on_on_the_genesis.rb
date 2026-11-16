@@ -23,6 +23,51 @@ class TestFramesSincePowerOnOnTheGenesis < Minitest::Test
     assert_frames_setting_up_counted(:genesis, busy: BUSY)
   end
 
+  # The frame a game's first pass is seen on, from power-on: setting up clears the video chip's memory
+  # with its own fill while the processor clears work RAM (Runtime::Boot). Cleared a long word at a
+  # time through the data port, then work RAM a long word a turn, it was frame 9 for a small game and
+  # 11 for one of 700 numbers and 40 lists. The fill is the longer of the two, and with neither clear
+  # at all the first pass is seen on frames 3 and 4: the clearing costs one frame.
+  SMALL_GAME_FIRST_PASS_FRAME = 4
+  BIG_GAME_FIRST_PASS_FRAME = 5
+
+  def test_a_small_game_shows_its_first_pass_early
+    frame, reading = first_pass_frame_and_reading(:genesis, declaring_game(2, 2))
+
+    assert_equal SMALL_GAME_FIRST_PASS_FRAME, frame
+    assert_equal frame - 1, reading, "the first pass reads the frames shown before it"
+  end
+
+  def test_a_game_of_many_numbers_and_lists_shows_its_first_pass_early
+    frame, reading = first_pass_frame_and_reading(:genesis, declaring_game(700, 40))
+
+    assert_equal BIG_GAME_FIRST_PASS_FRAME, frame
+    assert_equal frame - 1, reading, "the first pass reads the frames shown before it"
+  end
+
+  private
+
+  # A game of +numbers+ variables and +lists+ lists, each set from power-on, whose first pass keeps
+  # what frames_since_power_on read in `first`, and counts its passes in `passes`.
+  def declaring_game(numbers, lists)
+    b = Builder.new
+    b.instance_eval do
+      screen :tiled, backdrop: :black
+      many = Array.new(numbers) { |n| var :"number_#{n}", n + 1 }
+      held = Array.new(lists) { |n| list :"list_#{n}", capacity: 16, full_of: n + 1 }
+      passes = 0
+      first = -1
+      sum = 0
+      game_loop do
+        first = frames_since_power_on if passes.zero?
+        passes += 1
+        sum = many.first(2).sum + held.first(2).sum { |each| each[0] }
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
   # Clearing the console's memories takes frames before the game's first line, and copying its
   # painted screen whole more before its first pass is shown. They are shown frames too.
   def test_a_screen_held_to_a_frame_changes_on_it_with_or_without_songs
