@@ -735,8 +735,9 @@ module VBlank
               # One that follows several lists the game changes looks different whenever one of
               # them is told what to hold, so it is rebuilt from the map as a recoloured one is.
               # So is one that keeps the sprites out above its row, which is painted over them as
-              # the view is built (#paint_held_over_sprites).
-              @repaints = true if n.follows_several? || n.hides_sprites
+              # the view is built (#paint_held_over_sprites), and one with cells in front of the
+              # sprites, painted over them the same way (#paint_cells_in_front).
+              @repaints = true if n.follows_several? || n.hides_sprites || n.cells_in_front?
             when :scroll_background, :place_bar, :box_background
               # A program that scrolls even once can put its background at a non-zero
               # offset, so the whole scene has to be repainted every frame — the static
@@ -2301,7 +2302,7 @@ module VBlank
               index = row[mx / tile_w]
               # A tile's see-through pixels are nil in its decoded art, so they're left
               # alone and whatever is behind this layer keeps showing there.
-              if index
+              if tile_painted_now?(index)
                 @screen.paint_row(px, py, tile_colors(tiles[index], swapped), from: (ty * tile_w) + tx,
                                                                               count: span)
               end
@@ -2340,7 +2341,7 @@ module VBlank
               tx = mx % tile_w # Ruby % keeps this 0...tile_w for a negative place too
               span = [tile_w - tx, width - px].min
               index = mx.negative? || mx >= map_w ? nil : row[mx / tile_w]
-              if index
+              if tile_painted_now?(index)
                 @screen.paint_row(px, py, tile_colors(tiles[index], swapped), from: (ty * tile_w) + tx,
                                                                               count: span)
               end
@@ -2619,12 +2620,40 @@ module VBlank
               paint_snapshot_object(obj)
             end
           end
+          paint_cells_in_front(levels, kept)
           paint_bar_over_sprites(bar, kept) if bar && @bar_covers[bar.name]
           held = showing_scenery.find(&:hides_sprites)
           paint_held_over_sprites(held, kept) if held
           @screen.set_paint_fade(nil, nil)
           @screen.set_paint_see_through(nil)
         end
+
+        # CELLS IN FRONT OF THE SPRITES (Nodes::Background#in_front): once every level is painted,
+        # each background's cells whose tiles are in front are painted again, back to front, so
+        # their drawn pixels are over every sprite and over the other cells of every background,
+        # and their see-through pixels leave what is there. It is what a console that keeps a
+        # priority bit in each cell draws (the Genesis: the planes' marked cells over every sprite
+        # and every cell not marked, plane A's over plane B's), with every sprite in front of every
+        # background, which is the only stack such a console's build draws.
+        def paint_cells_in_front(levels, kept)
+          (0...levels.count).each do |level|
+            showing_scenery.each do |bg|
+              next if bg.bar? || levels.of_scenery(bg) != level || bg.in_front.nil? || bg.in_front.empty?
+
+              set_blend_for(bg.name, kept)
+              @tiles_painted_only = bg.in_front.to_set
+              begin
+                paint_scenery(bg)
+              ensure
+                @tiles_painted_only = nil
+              end
+            end
+          end
+        end
+
+        # Is the tile +index+ of the background being painted to be painted now: every tile, or
+        # only those in front while the cells in front are painted again (#paint_cells_in_front)?
+        def tile_painted_now?(index) = !index.nil? && (@tiles_painted_only.nil? || @tiles_painted_only.include?(index))
 
         # A STATUS BAR THAT COVERS SPRITES (StatusBar#covers_sprites=): its rows painted again over
         # everything, from the backdrop up, so a sprite under it is gone and its see-through pixels

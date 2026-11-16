@@ -109,7 +109,18 @@ module VBlank
         operands name: :name, tiles: :list, map: :list, maps: :list, choice: :list, tile_w: :int,
                  tile_h: :int, layer: :name, scene: :name, affine: :flag, recolors: :list, palettes: :list,
                  palette_names: :list, sets: :list, set_starts: :list, map_sets: :list, bar_top: :int,
-                 above_row: :int, alone: :flag, hides_sprites: :flag, boxed: :name, follows: :name, follows_each: :list, from_file: :file_background
+                 above_row: :int, alone: :flag, hides_sprites: :flag, boxed: :name, follows: :name, follows_each: :list, from_file: :file_background,
+                 in_front: :list
+
+        # +in_front+, on a background some of whose cells are drawn IN FRONT OF THE SPRITES (a
+        # background from the data pack told `cells_in_front: true`), lists the numbers of its
+        # +tiles+ drawn so: a cell showing one of them hides every sprite under its drawn pixels,
+        # and the other cells of every background too, as a console that keeps a priority bit in
+        # each cell of its map draws it (the Genesis, the Super Nintendo). Being in front is the
+        # tile's, not the cell's, so writing a cell (`set_tile`, `set_cell`) brings its tile's place
+        # with it. Read from the start file (+from_file+), the cells' own tiles are known only as
+        # it is read, and the reader adds those in front. Absent on every other background, which
+        # draws all its cells behind the sprites; present and empty on one that asked and has none.
 
         # How alone it is shown above its row, as the number a runtime keeps it by: with the other
         # backgrounds, alone with the sprites (+alone+), or alone without them (+hides_sprites+).
@@ -122,6 +133,9 @@ module VBlank
 
           alone ? SHOWN_ALONE : SHOWN_WITH_OTHERS
         end
+
+        # Whether it asked for cells in front of the sprites (see +in_front+), whether it has any yet or not.
+        def cells_in_front? = !in_front.nil?
 
         # Whether it follows several lists the game changes (see +follows_each+).
         def follows_several? = !follows_each.nil? && !follows_each.empty?

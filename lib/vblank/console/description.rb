@@ -151,6 +151,10 @@ module VBlank
     # to part of the screen use the same windows (the Advance); :own_window where a window does it
     # that nothing else in the game uses (the Super Nintendo); nil where nothing can.
     #
+    # +cells_in_front+ marks that the console's build draws a background's cells marked in front of
+    # the sprites in front of them (`cells_in_front: true`), as a console whose map keeps a priority
+    # bit in each cell does. Where it is false the build refuses such a background (Console::Questions).
+    #
     # +area_clips_called_routines+ marks that a routine called from inside `inside` has its drawing held to
     # that area, as the interpreter holds it: the console's build keeps the area as numbers in memory
     # while the game runs, and every drawing routine reads them, wherever it was built. Where it is
@@ -163,7 +167,7 @@ module VBlank
     # smallest its records fit in (IR::SaveLayout.chosen), never the EEPROM unasked. The Advance's
     # are every size a game can name (ADVANCE_SAVE_MEMORIES), which is the default.
     Description = Data.define(:name, :title, :screen_width, :screen_height, :buttons, :controllers,
-                              :holds_background_above_row, :background_box, :area_clips_called_routines,
+                              :holds_background_above_row, :background_box, :cells_in_front, :area_clips_called_routines,
                               :glides_recordings, :sets_main_volume, :sprites, :sprite_places,
                               :sprites_a_row, :sprite_pieces_drawn_a_line, :sprite_slivers_drawn_a_line,
                               :sprite_pixels_drawn_a_line, :sprite_piece_shape, :sprite_pieces_drawn_a_screen,
@@ -241,7 +245,7 @@ module VBlank
                      voices_read_sound_memory: false, big_background_tiles: false, shown_rows: nil,
                      gives_up_rows: false, sprite_pieces_drawn_a_screen: nil, sprite_slivers_drawn_a_line: nil,
                      sprite_pixels_drawn_a_line: nil, sprite_piece_shape: :small, sprite_table_filled_from: :front,
-                     save_memories: ADVANCE_SAVE_MEMORIES, layer_for_held_rows: false, **rest) = super
+                     save_memories: ADVANCE_SAVE_MEMORIES, layer_for_held_rows: false, cells_in_front: false, **rest) = super
 
       # Whether one sprite can show poses drawn from different lists of colours (see +pose_lists+).
       def poses_keep_own_lists? = pose_lists != :one
@@ -529,7 +533,8 @@ module VBlank
     # channel. What each verb does on it is Console::GenesisAnswers's to say.
     GENESIS = Description.new(name: :genesis, title: "Sega Genesis", screen_width: 320, screen_height: 224,
                               buttons: %i[a b c start right left up down].freeze, controllers: 1,
-                              holds_background_above_row: false, background_box: nil, glides_recordings: true, sets_main_volume: false, sprites: 80, sprite_places: 80,
+                              holds_background_above_row: false, background_box: nil, cells_in_front: true, glides_recordings: true,
+                              sets_main_volume: false, sprites: 80, sprite_places: 80,
                               # The area is kept in memory (Genesis::Lowering::Paint#emit_inside).
                               area_clips_called_routines: true,
                               # A row of the screen shows at most 20 entries of the sprite table (16

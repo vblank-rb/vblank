@@ -920,9 +920,17 @@ module VBlank
               @grids[[bg.object_id, which]] ||= begin
                 map = bg.every_map.fetch(which)
                 columns, rows = TileMap.size_of(map)
-                cells = map.map { |row| Array(row).map { |tile| cell_of(bg, tile) } }
+                cells = map.map { |row| Array(row).map { |tile| placed_cell_of(bg, tile) } }
                 @art.grid(cells, columns, rows)
               end
+            end
+
+            # The cell of +bg+'s map showing tile +tile+ (#cell_of), with its priority set where the tile is
+            # one of the background's in front of the sprites (Nodes::Background#in_front), as Art.cell_word
+            # reads it.
+            def placed_cell_of(bg, tile)
+              cell = cell_of(bg, tile)
+              cell && bg.in_front&.include?(tile) ? [*cell.take(2), true] : cell
             end
 
             # A cell showing tile +tile+ of +bg+'s, as [tile number, palette], or nil for none. Made once
@@ -1121,11 +1129,8 @@ module VBlank
             def low_word_of(name) = at(place_of(name), 2)
 
             # The word a cell of +bg+ showing its tile +tile+ holds in the plane's map: the tile's number
-            # in video memory and its palette, and nought for no tile.
-            def cell_word_of(bg, tile)
-              cell = cell_of(bg, tile)
-              cell ? cell[0] | (cell[1] << Art::PALETTE_SHIFT) : 0
-            end
+            # in video memory, its palette and its priority, and nought for no tile.
+            def cell_word_of(bg, tile) = Art.cell_word(placed_cell_of(bg, tile))
 
             # A word no cell holds, since no tile has the top number with every other bit set: what
             # an entry of a table of cells holds for a number that stands for no tile.

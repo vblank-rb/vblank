@@ -79,13 +79,14 @@ module VBlank
       # The background +name+ from +tiles+, +map+ and +colors+ (DSL::PackSlot handles), +across+
       # cells to a row of the map, each cell +cell+ pixels square. +others+ are the background's
       # own settings, handed on.
-      def declare_pack_background(name, tiles:, map:, colors:, across:, cell:, set_cells: nil, **others)
+      def declare_pack_background(name, tiles:, map:, colors:, across:, cell:, set_cells: nil, cells_in_front: nil, **others)
         subject = "background :#{name}"
         refuse_tiles_not_from_slot!(tiles, subject)
         refuse_map_not_of_cells!(name, map)
         refuse_colors_not_whole_slot!(name, colors)
         words = pack_map_word_format!(name, map)
         words = cell_format_without_banks(words) if drawn_from_whole_table?(tiles)
+        words = front_read_format!(name, words) if refuse_bad_cells_in_front!(name, cells_in_front)
         refuse_colors_short_of_table!(name, tiles, colors)
         refuse_bad_pack_background_shape!(name, map, across, cell, words)
         refuse_set_cells_of_table_tiles!(name, tiles, set_cells)
@@ -131,7 +132,59 @@ module VBlank
         # Tiles drawn from the whole table have no list, so there is none to name.
         named = drawn_from_whole_table?(tiles) ? [] : bank_lists
         told = told_slot ? made.told.by_place(set_cells.map { |word| made.told.tiles_of(word) }) : made.told
-        background(name, tiles: tileset, map: made.rows, **others).allow_undrawn_lists(named).allow_set_cells(told)
+        handle = background(name, tiles: tileset, map: made.rows, **others).allow_undrawn_lists(named).allow_set_cells(told)
+        mark_tiles_in_front(name, made.pictures) if words.reads_front
+        handle
+      end
+
+      # CELLS IN FRONT OF THE SPRITES (`cells_in_front: true`). A console that keeps a priority bit
+      # in each cell of its map (the Genesis, the Super Nintendo) draws a cell with it set over the
+      # sprites, and a retail game sets it on the scenery a character walks behind: the machine in
+      # the middle of a room, the top of a doorway. A cell's mark is read with the rest of it
+      # (Console::MapWordFormat#in_front?), so each tile as drawn that is in front is a picture of
+      # its own beside the same tile behind, and the background is told which of its tiles those
+      # are (Nodes::Background#in_front). Being the tile's, the mark goes wherever the tile does: a
+      # cell `set_cell` writes takes its own. A tile that is in front and behind is held twice;
+      # a console that keeps each 8x8 square once (the Genesis) holds the square once all the same.
+      #
+      # ONLY A BACKGROUND THAT ASKS READS THE MARK. A port that copies the original's map whole
+      # copies a priority bit on every cell, and a game written before the mark was read draws
+      # those cells behind, so it builds the same as it always did.
+      def refuse_bad_cells_in_front!(name, cells_in_front)
+        return cells_in_front if [true, false, nil].include?(cells_in_front)
+
+        raise ArgumentError, "background :#{name} was given cells_in_front: #{cells_in_front.inspect}. It takes true, " \
+                             "to draw each cell its map marks in front of the sprites, or false."
+      end
+
+      # +words+ reading each cell's mark for being in front, where the layout keeps one.
+      def front_read_format!(name, words)
+        return words.with_front_read if words.front_bit
+
+        raise ArgumentError, "background :#{name} was given cells_in_front: true, and its map holds no mark for a cell " \
+                             "in front of the sprites. A cell of the Advance's own map, or a map of one byte a cell, " \
+                             "keeps no such mark. To fix this, give map: a slot of map cells, and write each cell with " \
+                             "`write_cell(at, tile:, in_front: true)` in the unpacking. Or put the whole background in " \
+                             "front of the sprites with `layers`."
+      end
+
+      # Tells the background +name+ which of its tiles are in front of the sprites: the pictures
+      # among +pictures+ (by what each was made from, nil for one that draws nothing) of a tile as
+      # drawn in front, or of a 16x16 cell whose quarters are.
+      def mark_tiles_in_front(name, pictures)
+        front = pictures.filter_map { |made_from, picture| picture if picture && pack_tile_in_front?(made_from) }
+        node = @backgrounds.fetch(name).node
+        node.in_front = node.tiles.each_index.select { |at| front.include?(node.tiles[at]) }
+      end
+
+      # Is +made_from+ (a Console::CellTile, the quarters of a 16x16 cell, or a key of a blank told
+      # tile) a tile in front of the sprites?
+      def pack_tile_in_front?(made_from)
+        case made_from
+        when Console::CellTile then made_from.in_front
+        when Array then made_from.first.is_a?(Console::CellTile) && made_from.first.in_front
+        else false
+        end
       end
 
       # `set_cells: pack[:changes]`: A SLOT OF MAP CELLS TELLS THE CELLS THE BACKGROUND MAY BE
@@ -145,7 +198,7 @@ module VBlank
                                "#{slot.shape}. To tell the cells set_cell can write from the pack, give a slot of map " \
                                "cells, like `slots.map_cells :changes, count: 216`."
         end
-        return slot if words == Original::MapCell::FORMAT
+        return slot if words.without_front_read == Original::MapCell::FORMAT
 
         raise ArgumentError, "background :#{name} was given set_cells: slot :#{slot.layout.name}, a slot of map cells, " \
                              "and its map: holds numbers in the layout of the original's console. Only a map of map " \
@@ -452,6 +505,8 @@ module VBlank
         tiles(tileset, held.to_h { |picture| [picture, picture] })
         handle = background(name, tiles: tileset, map: Array.new(where.rows) { Array.new(where.columns, stand_ins.first) }, **others)
         @backgrounds.fetch(name).node.from_file = where
+        # The told cells' tiles are known here, and the map's are marked as the file is read.
+        mark_tiles_in_front(name, told) if words.reads_front
         return handle.allow_undrawn_lists([]) if whole_table
 
         # Which bank the map uses is in the file, so one list given alone is every bank's.

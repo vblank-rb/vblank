@@ -205,7 +205,7 @@ module VBlank
                           "between frames, 256 at most for one pass. If a pass changes more, each 256 are " \
                           "written while the pass runs, in the order the game changed them, and a frame can " \
                           "show part of the change. `held: true` changes nothing: up to 256 cells that a pass " \
-                          "changes already show together."),
+                          "changes already show together. With `cells_in_front: true`, each cell that the map marks is in front of every sprite, as the console draws a cell with its priority bit set."),
         status_bar: works("the bar is the window, a layer the console keeps beside its two backgrounds. " \
                           "`set_tile` with `now: true` is refused: a Genesis writes its video memory only " \
                           "between frames, so a change shows on the frame after the pass."),

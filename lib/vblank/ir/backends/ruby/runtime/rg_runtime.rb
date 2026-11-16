@@ -1041,6 +1041,25 @@ def rg_start_file_fill_moving_cells(painted, rules, moving, pointed)
   end
 end
 
+# Which tiles of such a background are in front of the sprites (rg_runtime.h,
+# rg_start_file_fill_front_tiles). The game writes +front+ unfrozen.
+def rg_start_file_fill_front_tiles(front, rules, start, front_bit)
+  map_at, cells, across, side, map_high_byte_first = rules[2, 5]
+  held, cell_bytes, told_at, told_count, told_first = rules[19, 5]
+  columns = across * side
+  kept_as = rg_start_file_cell_unpacking(cell_bytes, map_high_byte_first)
+  @rg_start_file.byteslice(map_at, cells * cell_bytes).unpack(kept_as).each_with_index do |word, cell|
+    side.times do |down|
+      side.times do |along|
+        front[start + held + ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along] = word[front_bit]
+      end
+    end
+  end
+  @rg_start_file.byteslice(told_at, told_count * cell_bytes).unpack(kept_as).each_with_index do |word, told|
+    front[start + told_first + told] = word[front_bit]
+  end
+end
+
 # One tile of a cell of such a background, shown as a run's tile where it takes turns, and that
 # run marked in +pointed+ (rg_runtime.c's start_file_mark_moving_tile).
 def rg_start_file_mark_moving_tile(painted, rules, moving, pointed, word, down, along, slot)

@@ -558,6 +558,11 @@ static void lay_scenery(int64_t px, int64_t py, uint16_t color) {
  * With no fade painted in and no see-through layer being mixed, lay_scenery comes to storing the
  * colour, marking the cell as no mix, and keeping it in the picture without sprites where that is
  * kept; so that is done here, and anything else goes through lay_scenery. */
+/* While the cells in front of the sprites are painted again (paint_cells_in_front), the bytes of the
+ * background's tiles in rg_game_tiles_in_front, 1 for a tile in front; NULL the rest of the time,
+ * when every tile is painted. */
+static const uint8_t *tiles_painted_only = NULL;
+
 static void paint_map_row(int32_t background, int64_t my, int64_t off_x, int64_t wrap_w, int64_t py) {
   int32_t tile_w = background_field(background, RG_BG_TILE_W), tile_h = background_field(background, RG_BG_TILE_H);
   const int32_t *map = map_now(background);
@@ -583,7 +588,7 @@ static void paint_map_row(int32_t background, int64_t my, int64_t off_x, int64_t
     int64_t col = mx / tile_w, tx = mx - col * tile_w, run = tile_w - tx;
     if (run > RG_SCREEN_WIDTH - px) run = RG_SCREEN_WIDTH - px;
     int32_t cell = col < cols ? row_cells[col] : RG_CELL_EMPTY;
-    if (cell >= 0) {
+    if (cell >= 0 && (!tiles_painted_only || tiles_painted_only[cell])) {
       int32_t slow = painted != RG_NOT_PAINTED && rg_game_painted_tiles[painted + 2 * cell] != RG_NOT_PAINTED;
       int64_t from = set_start + (int64_t)cell * tile_w * tile_h + tx;
       for (int64_t i = 0; i < run; i++) {
@@ -904,10 +909,26 @@ static void paint_bar_over_sprites(int32_t bar) {
   paint_status_bar(bar);
 }
 
+/* Reference#paint_cells_in_front: once every level is painted, each background's cells whose tiles
+ * are in front of the sprites painted again, level by level, so their drawn pixels are over every
+ * sprite. */
+static void paint_cells_in_front(void) {
+  for (int32_t level = 0, levels = rg_game_picture_sizes[RG_SIZE_DEPTHS]; level < levels; level++)
+    for (int32_t bg = 0; bg < rg_game_picture_sizes[RG_SIZE_BACKGROUNDS]; bg++) {
+      int32_t front = background_field(bg, RG_BG_FRONT);
+      if (front == RG_NOT_IN_FRONT || !showing(bg) || background_field(bg, RG_BG_LEVEL) != level) continue;
+      blend_as_background(bg);
+      tiles_painted_only = rg_game_tiles_in_front + front;
+      paint_scenery(bg);
+      tiles_painted_only = NULL;
+    }
+}
+
 /* The end of Reference#repaint_view */
 static void rg_tiled_repaint_ending(void) {
   int32_t bar = bar_in_rebuild;
   bar_in_rebuild = -1;
+  paint_cells_in_front();
   if (bar >= 0 && bar_covers[keeper_of(bar)]) paint_bar_over_sprites(bar);
   for (int32_t bg = 0; bg < rg_game_picture_sizes[RG_SIZE_BACKGROUNDS]; bg++)
     if (showing(bg) && background_field(bg, RG_BG_ALONE) == RG_SHOWN_WITHOUT_SPRITES) {

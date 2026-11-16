@@ -402,7 +402,23 @@ module VBlank
               eval_call("rg_start_file_fill_moving_cells", @names.own("painted_tiles"), rules.fetch(cells.entry), cells.rules,
                         runs_pointed_array)
             end
-            rules.values.map { |background| eval_call("rg_start_file_fill_background", background) } + followed + moving
+            in_front = (@start_file_tiles_in_front || []).map do |front|
+              eval_call("rg_start_file_fill_front_tiles", @names.own("tiles_in_front"), rules.fetch(front.entry),
+                        Statements::Int.new(front.start), Statements::Int.new(front.front_bit))
+            end
+            rules.values.map { |background| eval_call("rg_start_file_fill_background", background) } + followed + moving + in_front
+          end
+
+          # THE TILES OF A BACKGROUND READ FROM THE FILE THAT ARE IN FRONT OF THE SPRITES
+          # (Picture#tiles_in_front_of). Which cells the file marks is known only as it is read, and
+          # each cell has a tile of its own, so the routine reading the file sets each such cell's
+          # tile's byte, from +start+ in the table, reading the mark at bit +front_bit+ of each cell
+          # (rg_start_file_fill_front_tiles). The tiles the game holds keep what the build set.
+          StartFileTilesInFront = Data.define(:entry, :start, :front_bit)
+
+          def record_start_file_tiles_in_front(bg, start)
+            (@start_file_tiles_in_front ||= []) <<
+              StartFileTilesInFront.new(entry: entry_of(bg), start: start, front_bit: bg.from_file.map_words.front_bit_read)
           end
 
           # THE CELLS OF A BACKGROUND READ FROM THE FILE THAT NAME A TILE TAKING TURNS THROUGH

@@ -37,8 +37,15 @@ module VBlank
 
           TILE_BYTES = 32
 
-          # A cell of a map: the tile in the low eleven bits, the palette in the two bits at 13.
+          # A cell of a map: the tile in the low eleven bits, the palette in the two bits at 13, and its
+          # priority in the top bit: a cell with it set is drawn in front of every sprite whose own
+          # priority is clear, which is every sprite this build draws.
           PALETTE_SHIFT = 13
+          PRIORITY = 0x8000
+
+          # The word of a plane's map for +cell+ ([tile number, palette], with a third part true for a
+          # cell in front of the sprites), or 0 for none.
+          def self.cell_word(cell) = cell ? cell[0] | (cell[1] << PALETTE_SHIFT) | (cell[2] ? PRIORITY : 0) : 0
 
           # A sprite's picture, cut into pieces: each piece where it sits in the picture, its first tile, its
           # palette, and how many tiles across (+columns+) and down (+rows+) it is, one to four each. +tile+
@@ -233,13 +240,12 @@ module VBlank
           # Every number the painted tile +name+ has in video memory: one for each store that shows it.
           def run_tile_numbers(name) = @run_tiles.filter_map { |(_, tile), number| number if tile == name }
 
-          # The map +cells+ ([tile, palette] or nil, by row and column) made into a grid of +columns+ ×
+          # The map +cells+ ([tile, palette] or nil, by row and column, Art.cell_word) made into a grid of +columns+ ×
           # +rows+ cells, and its number.
           def grid(cells, columns, rows)
             words = Array.new(rows) do |row|
               Array.new(columns) do |column|
-                cell = cells.dig(row, column)
-                cell ? cell[0] | (cell[1] << PALETTE_SHIFT) : 0
+                Art.cell_word(cells.dig(row, column))
               end
             end.flatten
             @grids << Grid.new(number: @grids.length, columns: columns, rows: rows, words: words)

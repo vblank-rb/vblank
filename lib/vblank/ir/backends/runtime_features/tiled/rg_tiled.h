@@ -120,7 +120,12 @@ void rg_game_work_out_bends(void);
  * RG_BG_ABOVE_ROW is RG_NOT_A_BAR, or the row a background is held above (Nodes::Background#above_row).
  * RG_BG_ALONE is RG_SHOWN_ALONE for one shown alone above that row (Nodes::Background#alone),
  * RG_SHOWN_WITHOUT_SPRITES for one that keeps the sprites out there too (#hides_sprites), and
- * RG_SHOWN_WITH_OTHERS otherwise. */
+ * RG_SHOWN_WITH_OTHERS otherwise.
+ *
+ * RG_BG_FRONT is RG_NOT_IN_FRONT for a background that did not ask for cells in front of the
+ * sprites, and for one that did, where its tiles start in rg_game_tiles_in_front: a byte a tile, 1
+ * for a tile in front (Nodes::Background#in_front), which the view's rebuild paints again over every
+ * sprite once every level is painted (Reference#paint_cells_in_front). */
 #define RG_SHOWN_WITH_OTHERS 0
 #define RG_SHOWN_ALONE 1
 #define RG_SHOWN_WITHOUT_SPRITES 2
@@ -128,15 +133,19 @@ void rg_game_work_out_bends(void);
 #define RG_NEVER_ARRIVES (-2)
 
 #define RG_NOT_A_BAR (-1)
+#define RG_NOT_IN_FRONT (-1)
 /* The most backgrounds a game may have; the build refuses more. */
 #define RG_MAX_BACKGROUNDS 64
 enum {
   RG_BG_TILE_W, RG_BG_TILE_H, RG_BG_FIRST_MAP, RG_BG_SHOWABLE_MAPS, RG_BG_KEPT_BY, RG_BG_NEVER_WRAPS,
   RG_BG_TILES_START, RG_BG_SCENE, RG_BG_LEVEL, RG_BG_ON_ARRIVAL, RG_BG_STACK_PLACE,
   RG_BG_SEE_THROUGH, RG_BG_BENT, RG_BG_FADE_PLACE, RG_BG_TILES, RG_BG_COLOR_STEPS, RG_BG_IN_BLOCKS,
-  RG_BG_CAN_TURN, RG_BG_PAINTED, RG_BG_RUN_COLORS, RG_BG_BAR_TOP, RG_BG_ABOVE_ROW, RG_BG_ALONE, RG_BG_FIELDS
+  RG_BG_CAN_TURN, RG_BG_PAINTED, RG_BG_RUN_COLORS, RG_BG_BAR_TOP, RG_BG_ABOVE_ROW, RG_BG_ALONE, RG_BG_FRONT,
+  RG_BG_FIELDS
 };
 extern const int32_t rg_game_backgrounds[];
+/* Written as a game whose background is read from the start file starts (rg_start_file_fill_front_tiles). */
+extern uint8_t rg_game_tiles_in_front[];
 #define RG_NOT_PAINTED (-1)
 /* A game whose background read from the start file has tiles taking turns through pictures marks
  * the cells naming them as it starts (rg_start_file_fill_moving_cells), and says so before this

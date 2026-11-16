@@ -638,7 +638,7 @@ class TestPackBackgroundSetCell < Minitest::Test
 
   def test_a_number_past_a_map_cell_record_is_refused
     Dir.mktmpdir do |folder|
-      error = assert_raises(ArgumentError) { map_cells_game_and_file(folder, :gbc, set_cells: [0x0400_0000]) }
+      error = assert_raises(ArgumentError) { map_cells_game_and_file(folder, :gbc, set_cells: [0x0800_0000]) }
 
       assert_includes error.message, "set_cells:"
     end
@@ -671,7 +671,7 @@ class TestPackBackgroundSetCell < Minitest::Test
   def test_a_number_past_the_record_written_in_the_game_is_refused
     Dir.mktmpdir do |folder|
       error = assert_raises(ArgumentError) do
-        map_cells_game_and_file(folder, :gbc, set_cells: [MAP_CELLS_FONT]) { |world| world.set_cell 0, 0, MAP_CELLS_FONT | 0x0400_0000 }
+        map_cells_game_and_file(folder, :gbc, set_cells: [MAP_CELLS_FONT]) { |world| world.set_cell 0, 0, MAP_CELLS_FONT | 0x0800_0000 }
       end
 
       assert_includes error.message, "set_cells:"

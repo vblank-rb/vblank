@@ -338,15 +338,15 @@ module VBlank
       #   original's cell numbers `set_cell` may write later (Builder::PackBackgrounds)
       # @return [Background] a handle: scroll_by / scroll_to / show_map
       def background(name, tiles:, map: nil, from: nil, walls: nil, above_row: nil, alone: false, held: false, colors: nil,
-                     across: nil, cell: nil, set_cells: nil)
+                     across: nil, cell: nil, set_cells: nil, cells_in_front: nil)
         if tiles.is_a?(DSL::PackSlot)
           # The original's own tiles, map and colours, from the data pack (Builder::PackBackgrounds).
           return declare_pack_background(name, tiles: tiles, map: map, colors: colors, across: across, cell: cell || 8,
-                                               set_cells: set_cells, walls: walls, above_row: above_row, alone: alone,
-                                               held: held)
+                                               set_cells: set_cells, cells_in_front: cells_in_front, walls: walls,
+                                               above_row: above_row, alone: alone, held: held)
         end
 
-        refuse_pack_background_settings!(name, colors, across, cell, set_cells)
+        refuse_pack_background_settings!(name, colors, across, cell, set_cells, cells_in_front)
         refuse_bad_above_row!(name, above_row)
         refuse_bad_alone!(name, alone, above_row)
         refuse_bad_held!(name, held)
@@ -391,9 +391,10 @@ module VBlank
 
       private
 
-      # colors:, across:, cell: and set_cells: describe a background whose tiles come from the data pack.
-      def refuse_pack_background_settings!(name, colors, across, cell, set_cells)
-        given = { colors: colors, across: across, cell: cell, set_cells: set_cells }.compact.keys
+      # colors:, across:, cell:, set_cells: and cells_in_front: describe a background whose tiles come
+      # from the data pack.
+      def refuse_pack_background_settings!(name, colors, across, cell, set_cells, cells_in_front)
+        given = { colors: colors, across: across, cell: cell, set_cells: set_cells, cells_in_front: cells_in_front }.compact.keys
         return if given.empty?
 
         raise ArgumentError, "background :#{name} was given #{given.map { |key| "#{key}:" }.join(', ')}, which only a " \

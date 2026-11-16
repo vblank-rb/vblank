@@ -56,7 +56,8 @@ module VBlank
           numbers: NumberFormat.new(high_byte_first: true),
           # A cell of a plane's map: a tile number of eleven bits, mirrored, upside down, the bank
           # of colours in the next two, then the priority.
-          map_words: MapWordFormat.new(tile_bits: 11, mirror_bit: 11, flip_bit: 12, bank_at: 13, bank_bits: 2, row_tiles: nil)
+          map_words: MapWordFormat.new(tile_bits: 11, mirror_bit: 11, flip_bit: 12, bank_at: 13, bank_bits: 2, row_tiles: nil,
+                                       front_bit: 15)
         )
       )
 

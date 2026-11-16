@@ -95,6 +95,9 @@ module VBlank
         when :background
           if node.above_row
             Question.new(:background, "This background shows only above a row (`above_row:`)", console.holds_background_above_row)
+          elsif node.cells_in_front?
+            Question.new(:background, "Background :#{node.name} draws some of its cells in front of the sprites " \
+                                      "(`cells_in_front: true`)", console.cells_in_front)
           end
         when :box_background
           Question.new(:background, "This line shows a background only inside a box (`show_only_inside`)",

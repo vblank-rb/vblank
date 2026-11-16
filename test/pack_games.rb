@@ -9,6 +9,7 @@ require "pack_at_start_tests"
 require "pack_sound_tests"
 require "pack_scores_at_start_tests"
 require "pack_background_tests"
+require "pack_cells_in_front_tests"
 require "pack_slot_view_games"
 require "pack_table_tile_background_games"
 require "all/vblank/builder/test_pack_backdrops"
@@ -807,6 +808,24 @@ module PackGames
             world.scroll_by 3, 1
           end
         end
+      end
+    ].freeze
+  end
+
+  # CELLS OF A BACKGROUND FROM THE PACK IN FRONT OF THE SPRITES (PackCellsInFrontGames): marked by the
+  # Genesis's own priority bit, or by map cells the unpacking writes, and a cell written in front.
+  class CellsInFront < Kit
+    include PackCellsInFrontGames
+
+    GAMES = [
+      game(:background_cells_in_front_of_a_sprite, passes: 3) do |folder, options|
+        built(*front_game_and_file(folder, options: options))
+      end,
+      game(:background_map_cells_in_front_of_a_sprite, passes: 3) do |folder, options|
+        built(*front_game_and_file(folder, map: :map_cells, options: options))
+      end,
+      game(:background_cell_written_in_front_of_a_sprite, passes: WRITTEN_PASS + 3) do |folder, options|
+        built(*front_game_and_file(folder, written: true, options: options))
       end
     ].freeze
   end
@@ -2125,7 +2144,7 @@ module PackGames
     ].freeze
   end
 
-  KITS = [Pictures, ScreenPictures, StripFonts, Layouts, VBlankLayouts, Backgrounds, WrittenCells, Backdrops, ColorLists, Poses, PosesOfWords, PosesOfShapes, PosesReadByTheGame, PosesInBankColors,
+  KITS = [Pictures, ScreenPictures, StripFonts, Layouts, VBlankLayouts, Backgrounds, CellsInFront, WrittenCells, Backdrops, ColorLists, Poses, PosesOfWords, PosesOfShapes, PosesReadByTheGame, PosesInBankColors,
           Sounds, Scores, MusicPlayer2000Songs, SlotViews, TableTileBackgrounds, ColorsComparedAtStart, PosesSharingTheirFramesBank, Places, TilePictures,
           TilePosesOfFrames, FlaggedBytesUnpacked].freeze
 

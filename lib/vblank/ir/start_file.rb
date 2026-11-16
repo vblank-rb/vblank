@@ -1161,6 +1161,7 @@ module VBlank
         words = FormatReading.numbers(bytes.byteslice(from.map_at, from.cells * cells.cell_bytes), from.number_format,
                                       width: cells.cell_width, signed: false)
         pictures = {}
+        fronts = {}
         side = from.cell_tiles
         moving = from.moving.to_h { |each| [each.tile, each] }
         drawn = words.each_slice(from.across).flat_map do |row|
@@ -1168,8 +1169,12 @@ module VBlank
             row.flat_map do |word|
               Array.new(side) do |along|
                 tile = from.map_words.cell_tile(word, along, down, side)
-                # A tile taking turns shows the tile the program holds for its bank and turn, by number.
-                next moving[tile.tile].tile_of(tile.bank, tile.mirrored, tile.upside_down) if moving.key?(tile.tile) && tile.bank < from.bank_count
+                # A tile taking turns shows the tile the program holds for its bank and turn, by
+                # number; in front of the sprites, a number of its own for the same tile.
+                if moving.key?(tile.tile) && tile.bank < from.bank_count
+                  held_number = moving[tile.tile].tile_of(tile.bank, tile.mirrored, tile.upside_down)
+                  next tile.in_front ? (fronts[held_number] ||= FrontOfHeld.new(held_number)) : held_number
+                end
 
                 pictures.fetch(tile) { pictures[tile] = declare_background_tile(program, node, tile, banks, bytes, pictures.length) }
               end
@@ -1193,10 +1198,28 @@ module VBlank
                                          declare_background_tile(program, node, tile, banks, bytes, "told #{at}", keep_blank: true)
                                        end
         end
-        node.tiles = [*held, *pictures.values.compact]
-        numbers = pictures.values.compact.each_with_index.to_h { |picture, at| [picture, held.length + at] }
+        drawn_pictures = pictures.values.compact
+        node.tiles = [*held, *drawn_pictures, *fronts.keys.map { |number| held.fetch(number) }]
+        numbers = drawn_pictures.each_with_index.to_h { |picture, at| [picture, held.length + at] }
+        fronts.values.each_with_index { |front, at| numbers[front] = held.length + drawn_pictures.length + at }
         node.map = drawn.map { |row| row.map { |picture| picture.is_a?(Integer) ? picture : picture && numbers.fetch(picture) } }
+        mark_tiles_in_front(node, from, pictures, numbers, fronts, told) if from.map_words.reads_front
         node.from_file = nil
+      end
+
+      # A TILE THE PROGRAM HOLDS SHOWN IN FRONT OF THE SPRITES by a cell of the file: a number of its
+      # own in the background's tiles naming the same picture, since being in front is the
+      # number's (Nodes::Background#in_front) and the same tile behind keeps +held+.
+      FrontOfHeld = Data.define(:held)
+
+      # The background +node+'s tiles in front of the sprites, once its file is read: those it was
+      # built knowing (its told cells'), each picture of a tile as drawn in front (+pictures+, by
+      # its tile, numbered by +numbers+), each tile it holds shown in front by a cell (+fronts+), and
+      # each cell a slot told it (+told+, its words) marked in front.
+      def self.mark_tiles_in_front(node, from, pictures, numbers, fronts, told)
+        drawn = pictures.filter_map { |tile, picture| numbers.fetch(picture) if picture && tile.in_front }
+        places = told.each_index.select { |at| from.map_words.cell_tile(told[at], 0, 0, 1).in_front }.map { |at| from.told_first + at }
+        node.in_front = [*node.in_front, *places, *drawn, *fronts.values.map { |front| numbers.fetch(front) }].uniq.sort
       end
 
       # Each bank's colours as a list of colours keeps them, see-through first.
@@ -1233,7 +1256,7 @@ module VBlank
                                              colors: colors, places: picture.places, colors_name: picture.colors_name))
         name
       end
-      private_class_method :fill_node, :fill_recording, :hold_in, :fill_song, :fill_table, :fill_shading, :fill_picture, :picture_places, :fill_background, :fill_backdrop,
+      private_class_method :mark_tiles_in_front, :fill_node, :fill_recording, :hold_in, :fill_song, :fill_table, :fill_shading, :fill_picture, :picture_places, :fill_background, :fill_backdrop,
                            :bank_lists, :colors_held, :hold_marked_colors, :declare_background_tile, :hold_read_picture, :fill_pose, :pose_places,
                            :paint_pose_piece, :fill_tile_pose, :pose_frame_pieces, :pose_piece_blocks, :pose_piece_place
     end

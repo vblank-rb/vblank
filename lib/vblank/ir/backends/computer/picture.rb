@@ -155,7 +155,7 @@ module VBlank
           def rebuilt_every_frame?
             @program.walk.any? do |node|
               REBUILT_FOR.include?(node.kind) || (node.kind == :fade && node.under) ||
-                (node.kind == :background && node.hides_sprites)
+                (node.kind == :background && (node.hides_sprites || node.cells_in_front?))
             end ||
               see_through_picture_changes? ||
               Stacking.scenery_over_objects?(@stacking.depths, scenery: @stacking.scenery, objects: @stacking.objects)
@@ -549,6 +549,7 @@ module VBlank
             maps = []
             painted_tiles = []
             run_colors = []
+            tiles_in_front = []
             tiles_starts = lay_out_background_tiles(tile_pixels)
             fields = @stacking.scenery.flat_map do |bg|
               tiles_start = tiles_starts.fetch(bg)
@@ -569,14 +570,36 @@ module VBlank
                @handover.on_arrival?(bg) ? 1 : 0, stack_place(bg.layer),
                see_through_number(bg), @bends.key?(bg.name) ? 1 : 0, fade_place(bg),
                tile_count, steps.length, background_in_blocks?(bg) ? 1 : 0, bg.affine ? 1 : 0,
-               painted_start, colors_start, bg.bar_top || NOT_A_BAR, bg.above_row || NOT_A_BAR, bg.shown_above_row]
+               painted_start, colors_start, bg.bar_top || NOT_A_BAR, bg.above_row || NOT_A_BAR, bg.shown_above_row,
+               tiles_in_front_of(bg, tile_count, tiles_in_front)]
             end
             [runtime_array("tile_pixels", "uint16_t", tile_pixels, grows: @tile_pixel_count > tile_pixels.length),
              runtime_array("backgrounds", "int32_t", fields),
              runtime_array("maps", "int32_t", maps), runtime_array("map_cells", "int16_t", cells),
              runtime_array("painted_tiles", "int32_t", painted_tiles, writable: paints_moving_cells?),
-             runtime_array("run_colors", "uint16_t", run_colors, writable: marked_numbers_in?(:run_colors))]
+             runtime_array("run_colors", "uint16_t", run_colors, writable: marked_numbers_in?(:run_colors)),
+             # Writable for a background read from the start file, whose cells' marks are read as it
+             # starts (rg_start_file_fill_front_tiles); one entry at least, so the array is there.
+             runtime_array("tiles_in_front", "uint8_t", tiles_in_front.empty? ? [0] : tiles_in_front, writable: true)]
           end
+
+          # WHICH OF A BACKGROUND'S TILES ARE IN FRONT OF THE SPRITES (Nodes::Background#in_front): a
+          # byte for each of its +tile_count+ tiles, 1 for one in front, added to +tiles_in_front+;
+          # hands back where they start there, the background's RG_BG_FRONT, or NOT_IN_FRONT for a
+          # background that did not ask for cells in front. The runtime paints the cells showing
+          # those tiles again once every level is painted (Reference#paint_cells_in_front). Read
+          # from the start file, the cells' own tiles are marked as it is read.
+          def tiles_in_front_of(bg, tile_count, tiles_in_front)
+            return NOT_IN_FRONT unless bg.cells_in_front?
+
+            start = tiles_in_front.length
+            tiles_in_front.concat(Array.new(tile_count) { |tile| bg.in_front.include?(tile) ? 1 : 0 })
+            record_start_file_tiles_in_front(bg, start) if bg.from_file
+            start
+          end
+
+          # RG_BG_FRONT of a background with no cells in front of the sprites.
+          NOT_IN_FRONT = -1
 
           # EVERY BACKGROUND'S TILES, written into +tile_pixels+, and where each background's start
           # there, by background.

@@ -134,11 +134,12 @@ from that copy. The game's code says each piece's shape and size; it never depen
     `tiles:` (0 to 65535; a second bank of video memory is more tiles of the same slot); the bank of
     colours in one (0 to 255; `write_cell` refuses a number past either written in the routine, and one
     worked out as it runs keeps its low bits, as a write of a byte does); and
-    the turns in one, 1 mirrored and 2 upside down, the other bits 0. Read as one number, low byte first,
-    the record is `tile | bank << 16 | turns << 24` (`Original::MapCell.number(tile:, bank:, mirrored:,
-    upside_down:)`, or `MapCell::Cell.new(...).number`), which fits a game's number: it is how
-    `set_cells:` and `set_cell` take a cell of such a map (`backgrounds.md`). No
-    bit a console keeps for itself (a priority) is in it: a background's layer says where it is drawn. A
+    the turns in one, 1 mirrored, 2 upside down and 4 in front of the sprites, the other bits 0. Read as
+    one number, low byte first, the record is `tile | bank << 16 | turns << 24` (`Original::MapCell.number(tile:,
+    bank:, mirrored:, upside_down:, in_front:)`, or `MapCell::Cell.new(...).number`), which fits a game's
+    number: it is how `set_cells:` and `set_cell` take a cell of such a map (`backgrounds.md`). The in-front
+    mark is the original's priority, read only by a background told `cells_in_front: true` (`backgrounds.md`);
+    every other background draws the cell behind the sprites. A
     cell is one tile of 8x8. The record is the same whatever console the original ran on, so the unpacking
     routine writes the original's maps into it (`write_cell`, below), and `background ..., map:
     pack[:title_map]` reads it on every console and build that draws a tiled background
@@ -295,9 +296,9 @@ from that copy. The game's code says each piece's shape and size; it never depen
     pack names its `cost:`, the count must name the slot it went to,
     `copy.count_written 256, into: pack[:music]`; a count with no `into:` is then refused. Worked example:
     `test/all/vblank/builder/test_data_packs.rb` (`numbers_written`).
-  - `pack[:title_map].write_cell(at, tile:, bank: 0, mirrored: false, upside_down: false)` writes cell `at`
-    of a slot of map cells as its record. Each part may be a number or worked out as the routine runs, as
-    `at` may; `mirrored:` and `upside_down:` are true or false, or a number whose lowest bit is read, so a
+  - `pack[:title_map].write_cell(at, tile:, bank: 0, mirrored: false, upside_down: false, in_front: false)` writes
+    cell `at` of a slot of map cells as its record. Each part may be a number or worked out as the routine runs, as
+    `at` may; `mirrored:`, `upside_down:` and `in_front:` are true or false, or a number whose lowest bit is read, so a
     Game Boy Color port writes `tile: number + (((attributes >> 3) & 1) * 384), bank: attributes & 7,
     mirrored: attributes >> 5, upside_down: attributes >> 6`, with `attributes = copy.byte(attribute_map +
     at)` and `number` the cell's tile counted from $8000: `copy.byte(map + at)` on a screen that counts

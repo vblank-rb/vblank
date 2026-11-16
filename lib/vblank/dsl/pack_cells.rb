@@ -34,7 +34,7 @@ module VBlank
       def tiles_of(word) = tiles_by_word[read_part(word)]
 
       # Is the layout VBlank's own record (Original::MapCell), a map of map cells?
-      def map_cells? = format == Original::MapCell::FORMAT
+      def map_cells? = format.without_front_read == Original::MapCell::FORMAT
 
       # The highest number a told cell can be: the record's on a map of map cells, and two bytes on
       # a map in the layout of the original's console.

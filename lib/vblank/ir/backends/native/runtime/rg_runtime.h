@@ -221,6 +221,12 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * background's own, as rg_start_file_fill_background has them. A cell naming a bank past the
  * colours follows no list.
  *
+ * rg_start_file_fill_front_tiles: which tiles of such a background are in front of the sprites:
+ * the byte of each cell's own tile in +front+, from +start+ on, set to the cell's bit +front_bit+
+ * (Nodes::Background#in_front), the map's cells and then the cells a slot told it. +rules+ are the
+ * background's own, as rg_start_file_fill_background has them. The tiles the game holds keep
+ * the bytes the build gave them.
+ *
  * rg_start_file_fill_moving_cells: the cells of such a background that name a tile taking turns
  * through pictures (IR::StartFile::MovingTile), each shown as a tile of a run of tiles the game
  * paints, chosen by the cell's bank and turn. +painted+ is rg_game_painted_tiles, written where it
@@ -356,6 +362,7 @@ void rg_start_file_fill_picture(const int32_t *rules);
 void rg_start_file_fill_background(const int32_t *rules);
 void rg_start_file_fill_followed_tiles(int32_t *followed, const int32_t *rules, int32_t banks);
 void rg_start_file_fill_moving_cells(int32_t *painted, const int32_t *rules, const int32_t *moving, int32_t *pointed);
+void rg_start_file_fill_front_tiles(uint8_t *front, const int32_t *rules, int32_t start, int32_t front_bit);
 void rg_start_file_fill_painted_tiles(uint8_t *table, int32_t tiles, const int32_t *rules);
 void rg_start_file_fill_pose(const int32_t *rules);
 void rg_start_file_fill_tile_pose(int32_t *pieces, const int32_t *rules);
