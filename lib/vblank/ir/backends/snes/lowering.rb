@@ -2371,6 +2371,7 @@ module VBlank
           def compare_absolute_below(node)
             distance, limit = absolute_and_limit(node)
             return unless distance
+            return compare_half_distance_below(distance.operand, limit) if half_slot_sum?(distance.operand)
 
             held = fresh("near")
             far = fresh("far")
@@ -2397,6 +2398,57 @@ module VBlank
             @asm.label(held)
             @asm.cmp(limit)
             :bcs
+          end
+
+          # HOW FAR APART TWO HALF-WORD SLOTS ARE, TESTED AGAINST A SMALL NUMBER: a pool whose places
+          # are kept in half words (`widths: { x: :half }`), checking one thing against another. Each
+          # slot reads back as a number from -32768 to 32767, so the difference fits in 17 bits, and
+          # the processor's 16-bit subtract says all of it: when it does not overflow, the 16 bits are
+          # the difference; when it does, the difference is 32768 or more away from nought and the test
+          # cannot hold. So the left side is read into R0 (first, as the interpreter reads it), the
+          # right read at X and the two subtracted, and how far apart is made positive in A, with no high half worked out at all. A sum is the
+          # same with an add. The branch taken when the test does not hold, as #compare gives.
+          def compare_half_distance_below(node, limit)
+            held = fresh("near")
+            within = fresh("within_half")
+            @asm.lda(half_slot_operand(node.lhs))
+            @asm.sta(@asm.direct(R0))
+            operand = half_slot_operand(node.rhs)
+            emit_carry_for(node.op)
+            @asm.lda(@asm.direct(R0))
+            emit_half_sum(node.op, operand)
+            @asm.bvc(within)
+            @asm.lda(0xFFFF) # overflowed: 32768 or more apart
+            @asm.bra(held)
+            @asm.label(within)
+            @asm.bpl(held)
+            @asm.eor(0xFFFF)
+            @asm.inc(:a)
+            @asm.label(held)
+            @asm.cmp(limit)
+            :bcs
+          end
+
+          # Whether +node+ is a sum or difference of two half-word slots of lists, each read where it
+          # is (#compare_half_distance_below).
+          def half_slot_sum?(node)
+            sum_in_halves?(node) && %i[+ -].include?(node.op) && !folded(node) &&
+              [node.lhs, node.rhs].all? { |side| half_slot_read?(side) }
+          end
+
+          def half_slot_read?(node)
+            node.is_a?(Node) && node.kind == :list_get && !folded(node) && !front_dropped_lists.include?(node.name) &&
+              list_placed(node)[2] == 2 && !operand_halves(node.index).nil?
+          end
+
+          # Where the half-word slot +node+ (#half_slot_read?) is, with X set to reach it.
+          def half_slot_operand(node)
+            place, _capacity, width = list_placed(node)
+            slot = fixed_slot_address(node, place, width)
+            return @asm.long(slot) if slot
+
+            emit_slot_into_x(place, width, operand_halves(node.index), checked: !index_inside_full_list?(node.name, node.index))
+            @asm.long_x(place + Runtime::Lists::HEADER)
           end
 
           # The `abs` and the number it must be below, for a test #compare_absolute_below takes, or nil.

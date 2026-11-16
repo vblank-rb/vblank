@@ -15,15 +15,19 @@ require "stringio"
 class TestSNESPoolPairCheckCost < Minitest::Test
   PLACES = [[40, 40], [120, 72], [72, 120], [160, 100], [200, 30]].freeze
 
-  # The game with +others+ things besides the one the routine runs for.
-  def self.game(others)
+  # The places kept in half words, as a game whose things stay on a screen of 256 can.
+  HALF_PLACES = { place_x: :half, place_y: :half }.freeze
+
+  # The game with +others+ things besides the one the routine runs for, its fields as wide as
+  # +widths+ says.
+  def self.game(others, widths: {})
     places = PLACES.first(others + 1)
     VBlank.game("PAIRS #{others}", consoles: %i[snes]) do
       screen :tiled
       image(:floor, "#" => :blue) { (["#" * 8] * 8).join("\n") }
       tiles :set, "#" => :floor
       background :field, tiles: :set, map: Array.new(28) { "#" * 32 }
-      enemies = pool :enemy, place_x: 0, place_y: 0, near: 0, capacity: 8
+      enemies = pool :enemy, place_x: 0, place_y: 0, near: 0, capacity: 8, widths: widths
       places.each { |x, y| enemies.spawn(place_x: x, place_y: y) }
       bumped = var :bumped, 0
       enemies.func(:step_straight) do |e|
@@ -57,6 +61,15 @@ class TestSNESPoolPairCheckCost < Minitest::Test
     per_pair = (routine_clocks(self.class.game(4)) - routine_clocks(self.class.game(2))) / 2
 
     assert_operator per_pair, :<, 1470
+  end
+
+  # With the places in half words, the difference and its test are worked out in 16 bits
+  # (SNES::Lowering#compare_half_distance_below): nearer to the retail game's 8.
+  def test_one_more_thing_to_check_in_half_words_costs_under_1260_master_clocks
+    halves = ->(others) { self.class.game(others, widths: HALF_PLACES) }
+    per_pair = (routine_clocks(halves.call(4)) - routine_clocks(halves.call(2))) / 2
+
+    assert_operator per_pair, :<, 1260
   end
 
   # The checks find what the interpreter finds on every pass, the meeting included.

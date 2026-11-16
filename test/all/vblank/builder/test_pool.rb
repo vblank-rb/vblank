@@ -140,6 +140,30 @@ class TestPool < Minitest::Test
     assert_equal BLACK, i.screen.pixel(30, 100), "not the instance tagged 3"
   end
 
+  # Fields kept in half words, each pair tested for how far apart it is: just inside and just
+  # outside on each side, and the two ends of a half word, 65535 apart either way, whose 16-bit
+  # difference alone would look near. Each pair's test sets its own bit.
+  def test_half_word_fields_tested_for_how_far_apart
+    b = Builder.new
+    b.instance_eval do
+      near = 0
+      pairs = pool :pair, a: 0, b: 0, bit: 0, capacity: 8, widths: { a: :half, b: :half }
+      [[20, 5, 1], [21, 5, 2], [5, 20, 4], [5, 21, 8], [32_767, -32_768, 16], [-32_768, 32_767, 32],
+       [-32_768, -32_768, 64], [32_767, 32_752, 128]].each { |a, b_, bit| pairs.spawn(a: a, b: b_, bit: bit) }
+      game_loop do
+        near = 0
+        pairs.each do |pair|
+          near += pair.bit if (pair.a - pair.b).abs < 16
+          near += pair.bit * 256 if (pair.a + pair.b).abs <= 1
+        end
+      end
+    end
+    b.finalize_program
+    i = game_player.run(b.program, frames: 2)
+
+    assert_equal 1 + 4 + 64 + 128 + (32 * 256) + (16 * 256), i[:near]
+  end
+
   # --- baked guardrails (build-time, friendly errors) ---
 
   # A POOL TOO BIG TO SHARE THE QUICK MEMORY. The console has 32K of quick memory, which the
