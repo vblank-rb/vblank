@@ -726,6 +726,7 @@ module VBlank
 
             @asm.tax
             @asm.note_x_holds(key)
+            @asm.note_a_holds(key.first)
           end
 
           # A number written in the program, straight into the variable at +at+.
@@ -877,9 +878,20 @@ module VBlank
             names = [node.lhs, node.rhs].map { |side| variable_named(side) }
             return unless names.all? { |name| name && DSL::Pool.walked_by(name) }
 
-            @asm.lda(at_place(place_of(names[0])))
+            emit_low_half_load(at_place(place_of(names[0])))
             @asm.cmp(at_place(place_of(names[1])))
             node.op == :== ? :bne : :beq
+          end
+
+          # LDA of a variable's low half, unless A holds it already (W65816#a_holds): a pool's walk
+          # stores the slot it is on and then compares it and reads lists at it straight after. Only
+          # where what follows sets the flags itself (a compare, a shift), as the load it saves would.
+          def emit_low_half_load(operand)
+            address = operand.value + operand.plus if operand.is_a?(W65816::Operand) && operand.mode == :abs && operand.value.is_a?(Integer)
+            return if address && @asm.a_holds == address
+
+            @asm.lda(operand)
+            @asm.note_a_holds(address) if address
           end
 
           # The low half of a short counter compared, unsigned, with a number written in the program
@@ -1226,7 +1238,7 @@ module VBlank
               key = slot_key(index[0], width)
               return if key && @asm.x_holds == key
 
-              @asm.lda(index[0])
+              emit_low_half_load(index[0])
               (width - 1).bit_length.times { @asm.asl }
               @asm.tax
               return @asm.note_x_holds(key) if key
@@ -2371,7 +2383,7 @@ module VBlank
             with_both_halves(left, right) do |lefts, halves|
               if %i[== !=].include?(op)
                 differ = fresh("differ")
-                @asm.lda(lefts[0])
+                emit_low_half_load(lefts[0])
                 @asm.cmp(halves[0])
                 @asm.bne(differ)
                 @asm.lda(lefts[1])
