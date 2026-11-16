@@ -59,7 +59,11 @@ module VBlank
               "Genesis" => "A 68000 instruction that counts or compares in a data register is a third of the time of " \
                            "the same on a place in work RAM, and a body that reads its index reads it for a quarter. " \
                            "Genesis::Lowering#with_counter_held keeps the count in D7, D6 or D5 through a loop whose " \
-                           "body is written with D0 to D2 and A0 alone, and puts it back as the loop ends."
+                           "body is written with D0 to D2 and A0 alone, and puts it back as the loop ends.",
+              "SNES" => "The 65816 adds and compares 16 bits at a time, so a 32-bit count's turn end is thirteen " \
+                        "instructions. A count to a number written in the program below $8000 never leaves its low " \
+                        "half, so SNES::Lowering#with_counter_held has its turn end INC the low half and compare it " \
+                        "unsigned, three instructions; a pool's walk takes a turn for every thing it visits."
             }
           }
         )
