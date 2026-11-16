@@ -108,7 +108,9 @@ class TestSNESPaintDoubled < Minitest::Test
   end
 
   # A full view of 128 columns of a wall stretched to heights that change across the view and
-  # from pass to pass, with a ceiling and a floor, measured in passes a second.
+  # from pass to pass, with a ceiling and a floor, measured in passes a second. The console's own
+  # 3D games drew such a view 15 to 20 times a second: each wall column by code made for its
+  # height, and the next picture painted while the last was still being sent.
   # VBLANK_DOUBLED_BYTES=1 prints it with the bytes above.
   def test_a_full_view_of_columns_is_measured
     wall = (0...16).map { |y| (0...16).map { |x| "rgby"[((x / 4) + (y / 4)) % 4] }.join }.join("\n")
@@ -132,6 +134,6 @@ class TestSNESPaintDoubled < Minitest::Test
     rate = (reader.var(:step) - first) / 5.0
     warn "a full view of 128 columns: #{rate} passes a second" if ENV["VBLANK_DOUBLED_BYTES"]
 
-    assert_operator rate, :>=, 3, "a full view goes at three passes a second or more"
+    assert_operator rate, :>=, 15, "a full view goes at fifteen passes a second or more"
   end
 end

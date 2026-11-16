@@ -9,6 +9,7 @@ require_relative "runtime/lists"
 require_relative "runtime/picture"
 require_relative "runtime/paint"
 require_relative "runtime/paint_doubled"
+require_relative "runtime/paint_doubled_send"
 require_relative "runtime/paint_log"
 require_relative "runtime/paint_turns"
 require_relative "runtime/repeat_log"
@@ -52,7 +53,8 @@ module VBlank
           def reserve(memory, carries)
             c = carries
             if c.doubled
-              PaintDoubled.reserve(memory)
+              PaintDoubled.reserve(memory, band: c.shown_band,
+                                           behind: PaintDoubledSend.behind_for?(band: c.shown_band, dims: c.dims, mosaic: c.mosaic))
             elsif c.painted
               Paint.reserve(memory, chip: c.chip?, text_layer: c.text_layer, turns: c.paint_turns)
             end

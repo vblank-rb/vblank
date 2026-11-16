@@ -432,8 +432,9 @@ module VBlank
             # rt_paint_area(x, y, w, h): painting held to the rectangle, as far as it is on the
             # screen. rt_paint_anywhere: the whole screen. The lowering keeps the area there was
             # before an `inside` on the stack and puts it back after (Lowering::Paint). +width+ and
-            # +height+ are the screen's, in the game's pixels (PaintDoubled's are smaller).
-            def emit_area(asm, memory, s, width: WIDTH, height: HEIGHT)
+            # +height+ are the screen's, in the game's pixels (PaintDoubled's are smaller), and +top+
+            # the first row painted (PaintDoubled paints only the rows shown, +top+ to +height+).
+            def emit_area(asm, memory, s, width: WIDTH, height: HEIGHT, top: 0)
               area = memory[AREA]
               asm.label("rt_paint_area")
               # The right and bottom: the left and top plus the width and height.
@@ -451,6 +452,10 @@ module VBlank
               asm.sta(asm.direct(s.temp + 2))
               emit_clamp(asm, "area", R.call(0), s.temp, s.temp + 2, s.left)
               emit_clamp(asm, "area", R.call(4), s.temp, s.temp + 2, s.right)
+              if top.positive?
+                asm.lda(top)
+                asm.sta(asm.direct(s.temp))
+              end
               asm.lda(height)
               asm.sta(asm.direct(s.temp + 2))
               emit_clamp(asm, "area", R.call(1), s.temp, s.temp + 2, s.top)
@@ -461,7 +466,7 @@ module VBlank
               end
               asm.lda(PART_OF_SCREEN)
               asm.sta(asm.abs(area + AREA_PART))
-              [[s.left, 0], [s.top, 0], [s.right, width], [s.bottom, height]].each do |at, whole|
+              [[s.left, 0], [s.top, top], [s.right, width], [s.bottom, height]].each do |at, whole|
                 asm.lda(asm.direct(at))
                 asm.cmp(whole)
                 asm.bne("rt_paint_area_part")
@@ -473,7 +478,12 @@ module VBlank
               asm.label("rt_paint_anywhere")
               asm.stz(asm.abs(area + AREA_PART))
               asm.stz(asm.abs(area))
-              asm.stz(asm.abs(area + 2))
+              if top.positive?
+                asm.lda(top)
+                asm.sta(asm.abs(area + 2))
+              else
+                asm.stz(asm.abs(area + 2))
+              end
               asm.lda(width)
               asm.sta(asm.abs(area + 4))
               asm.lda(height)

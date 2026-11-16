@@ -115,6 +115,31 @@ class TestScreenPixelSizeOnTheSuperNintendo < Minitest::Test
                     "a column reaches the top or the bottom row"
   end
 
+  # Columns that start far off the screen and reach onto it: one far off the left whose width
+  # reaches the first pixels across, and one far above the top so tall it reaches most of the way
+  # down, which is walked from the first row shown.
+  def test_columns_from_far_off_the_screen_show_as_the_interpreter_does
+    game = VBlank.game("BIGFAROFF", consoles: %i[snes]) do
+      screen :bitmap, pixel_size: 2
+      image(:wall, "r" => :red, "g" => :green, "b" => :blue, "y" => :yellow, "w" => :white,
+                   "." => :transparent) { WALL }
+      step = var :step, 0
+      game_loop do
+        step += 1
+        clear_screen :black
+        draw_column_at :wall, slice: 1, x: -3000 + step, top: 10, height: 40, width: 3010
+        draw_column_at :wall, slice: 5, x: 60, top: -5000 - step, height: 5100, width: 3
+        draw_column_at :wall, slice: 1, x: -40_000, top: 70, height: 20, width: 40_100
+      end
+    end
+    run = game_player.run(game.program(console: :snes), frames: 6)
+
+    assert_equal Color.resolve(:red), run.screen.pixel(5, 10), "the column from far off the left reaches the screen"
+    assert_equal Color.resolve(:red), run.screen.pixel(90, 70), "a column wider than 16 bits reaches the screen"
+    # Row 50 is about 5056 rows into the 5100, so the picture's last row, slice 5's blue.
+    assert_equal Color.resolve(:blue), run.screen.pixel(61, 50), "the tall column reaches down the screen"
+  end
+
   # A view of walls a column at a time, as a first-person game draws one: in the top half every
   # column of the small screen is a slice of a wall stretched to a height that changes across the
   # view and from pass to pass, with see-through pixels. The bottom half

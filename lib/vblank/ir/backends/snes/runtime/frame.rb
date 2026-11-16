@@ -178,7 +178,11 @@ module VBlank
               at = ->(name, plus = 0) { asm.abs(memory[name], plus) }
 
               asm.label("rt_vblank_interrupt")
-              emit_interrupt_body(asm, memory) { asm.jsr(asm.abs("rt_pad_read")) }
+              emit_interrupt_body(asm, memory) do
+                asm.jsr(asm.abs("rt_pad_read"))
+                # A picture of big pixels sent behind the game, a blank at a time.
+                asm.jsr(asm.abs("rt_paint_doubled_behind")) if PaintDoubledSend.behind?(memory)
+              end
 
               # The end of a pass: count it, move on what keeps time by the frame, mark the game as
               # waiting, and wait for the screen. What keeps time by the frame moves on here, before
@@ -334,10 +338,14 @@ module VBlank
               Mosaic.emit_write(asm, memory) if Mosaic.kept?(memory)
               asm.label("rt_show_pass_shown")
               asm.jsr(asm.abs("rt_letterbox_shown")) if Letterbox.kept?(memory)
+              # A picture of big pixels still being sent behind the game has SHOWN set when it is all
+              # there (PaintDoubledSend).
+              PaintDoubledSend.emit_branch_if_sending(asm, memory, "rt_show_pass_sending")
               asm.lda(at.call(PASSES))
               asm.sta(at.call(SHOWN))
               asm.lda(at.call(PASSES, 2))
               asm.sta(at.call(SHOWN, 2))
+              asm.label("rt_show_pass_sending")
               asm.rts
 
               emit_sleep_unless_in_blank(asm, at) if goes_on_in_blank
