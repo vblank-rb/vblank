@@ -71,6 +71,17 @@ class TestGBCToldCellsCost < Minitest::Test
     end
   end
 
+  # A cell picked by a number lives only while its line writes it, so the lines that write one
+  # share the work memory it is kept in: a game of more such lines than the Color's work memory
+  # has room for at eight bytes a line, builds, and plays as the interpreter does.
+  MANY_WRITES = 800
+
+  def test_many_lines_writing_a_worked_out_cell_fit_work_memory
+    Dir.mktmpdir do |folder|
+      game_player.run(busy_game(folder, 4, writes: MANY_WRITES).program, frames: 4)
+    end
+  end
+
   # How many bytes of the cartridge's banks +game+'s Color build fills: each bank is filled from
   # its start and the rest left at 0xFF (as tools/emitted_color_probe.rb reads them).
   private def banked_bytes(game)

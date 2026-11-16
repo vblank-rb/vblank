@@ -1521,11 +1521,11 @@ module VBlank
 
               table = picked_cells_table(cells)
               outside = fresh("picked_cell_outside")
-              place = Build.var_ref(keep_local(:picked_place))
+              place = Build.var_ref(keep_step_local(:picked_place))
               value(Build.binop(:-, node.picked_by.copy, Build.int(node.picks_from)))
               store(place.name)
               jump_unless(Build.binop(:and, Build.binop(:>=, place, Build.int(0)), Build.binop(:<, place, Build.int(cells.length))), outside)
-              cell = Build.var_ref(keep_local(:picked_cell))
+              cell = Build.var_ref(keep_step_local(:picked_cell))
               value(Entry.new(label: table, bytes: 2, signed: false, index: place, banked: true))
               store(cell.name)
               jump_if(Build.binop(:==, cell, Build.int(NO_GRID_CELL)), outside) if cells.include?(NO_GRID_CELL)

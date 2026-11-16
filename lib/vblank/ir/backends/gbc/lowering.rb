@@ -283,6 +283,7 @@ module VBlank
             @slot_places = {} # where a pool's lists keep their slots, by list (#place_pools)
             @variables = {}
             @locals = {} # a routine's own numbers, by the name the lowering gave each
+            @step_locals = {} # [routine, what] -> the one number its steps share (#keep_step_local)
             @starts = [] # [address, value] for a place that does not start at nought
             @routine_tables = {} # a list of routines a call picks from by number -> its table's label
             @cuts = RoutineCuts.for(self, cache)
@@ -552,6 +553,18 @@ module VBlank
           def table_keeping(table) = @plan.table_keeping(table)
 
           def little_endian(value, size) = Array.new(size) { |i| (value >> (8 * i)) & 0xFF }
+
+          # A NUMBER THAT LIVES FOR ONE STEP AND NO LONGER, by +what+, kept once a routine however
+          # many of its steps keep one (#keep_local): a step stores it and reads it back before the
+          # step ends, and nothing it runs between can reach another step of the routine, so every
+          # step of the routine can use the one place. A routine cut into parts (RoutineCuts) keeps
+          # one for each part, and a routine the frame boundary comes inside keeps it with its call's
+          # numbers, as any number of its own (#record_call_number).
+          def keep_step_local(what)
+            return keep_local(what) if @measuring
+
+            @step_locals[[@routine, what]] ||= keep_local(what)
+          end
 
           # --- routines ---
 
