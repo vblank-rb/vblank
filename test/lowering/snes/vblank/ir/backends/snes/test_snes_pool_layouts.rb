@@ -49,7 +49,9 @@ class TestSNESPoolLayouts < Minitest::Test
 
   # Things removed only between walks, the oldest each time a fourth is spawned, so every thing on
   # the chain is live and a walk passes none it must skip (LoweringPlan#dead_on_chain?); and a
-  # second pool removed from inside its own walk, whose walk must still skip what it removed.
+  # second pool removed from inside its own walk, whose walk must still skip what it removed; and a
+  # third spawned into during its own walk, whose walk must still stop at the thing last when it
+  # began (LoweringPlan#chain_changed_during_walks?).
   def self.game_removing_outside_walks
     VBlank.game("REMOVED BETWEEN WALKS", consoles: %i[snes]) do
       screen :tiled
@@ -58,6 +60,7 @@ class TestSNESPoolLayouts < Minitest::Test
       background :field, tiles: :set, map: Array.new(28) { "#" * 32 }
       things = pool :thing, x: 0, hits: 0, capacity: 5, widths: { hits: :byte }
       sparks = pool :spark, x: 0, age: 0, capacity: 5, widths: { age: :byte }
+      seeds = pool :seed, x: 0, age: 0, capacity: 6, widths: { age: :byte }
       fired = var :fired, 0
       total = var :total, 0
       oldest = var :oldest, 0
@@ -65,6 +68,7 @@ class TestSNESPoolLayouts < Minitest::Test
         fired += 1
         things.spawn(x: fired * 3, hits: 0)
         sparks.spawn(x: fired, age: 0)
+        seeds.spawn(x: fired, age: 0) if fired % 3 == 0
         things.each(newest_first: true) { |t| oldest = t.index }
         things.remove_at(oldest) if things.count > 3
         total = 0
@@ -77,6 +81,12 @@ class TestSNESPoolLayouts < Minitest::Test
           sparks.each { |other| other.remove if other.age > 2 && other.index != s.index }
           total += s.x
         end
+        seeds.each do |s|
+          s.age += 1
+          seeds.spawn(x: s.x + 1, age: 0) if s.age == 2
+          seeds.each { |other| total += other.x }
+        end
+        seeds.each { |s| s.remove if s.age > 4 }
       end
     end
   end

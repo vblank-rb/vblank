@@ -268,14 +268,77 @@ module VBlank
         # walk of the pool runs: in a walk's body, in a routine it calls, or in what a timer's tick
         # or a bend runs, which can come in the middle of one. Where none of those removes a thing of
         # the pool, every thing on its chain is live.
-        def dead_on_chain?(pool)
-          (@dead_on_chain ||= {}).fetch(pool) do
+        def dead_on_chain?(pool) = written_during_walks?(pool, DSL::Pool.retired_list(pool))
+
+        # WHETHER +pool+'S CHAIN CAN CHANGE WHILE A WALK OF IT RUNS. A walk stops after the thing
+        # that was last when it began (DSL::Pool#each), because a thing spawned during it is added
+        # after that one. The chain is changed only by the pool's routines that write its links:
+        # adding a spawn at the end, and taking a thing out, which outside a walk is at once and
+        # during one waits until the walks end. Where no walk can reach a write of the links, the
+        # last thing's link is NONE all through the walk, as the chain's end always is, so a walk
+        # can stop on that link alone.
+        def chain_changed_during_walks?(pool)
+          written_during_walks?(pool, DSL::Pool.next_list(pool)) || written_during_walks?(pool, DSL::Pool.prev_list(pool))
+        end
+
+        # Whether a statement that can run while a walk of +pool+ runs writes the list +list+.
+        def written_during_walks?(pool, list)
+          statements_during_walks(pool).any? { |node| !LIST_READS.include?(node.kind) && node.attrs.values.flatten.include?(list) }
+        end
+
+        # The steps that name a list and only read it.
+        LIST_READS = %i[list_get list_len].freeze
+
+        # THE STATEMENTS THAT CAN RUN WHILE A WALK OF +pool+ RUNS: a walk's body, the routines it
+        # calls, and what a timer's tick or a bend runs, which can come in the middle of one. The
+        # pool's own routines test whether a walk of it is in progress before they change its chain
+        # (DSL::Pool#not_walking): what they do only when none is, is left out, since a walk is.
+        def statements_during_walks(pool)
+          (@statements_during_walks ||= {}).fetch(pool) do
+            walking = DSL::Pool.part_name(pool, :walking)
             walks = @reachable.select { |node| node.kind == :repeat && node.pool_walk&.pool.to_s == pool.to_s }
-            roots = walks + @tick_handlers.values + @bend_roots
-            statements = Reach.statements_from(*roots) +
-                         Reach.routines_called_from(@program, roots).flat_map { |name| Reach.statements_under(@funcs.fetch(name)) }
-            retired = DSL::Pool.retired_list(pool)
-            @dead_on_chain[pool] = statements.any? { |node| node.kind == :list_push && node.name == retired }
+            found = []
+            routines = []
+            waiting = walks + @tick_handlers.values + @bend_roots
+            until waiting.empty?
+              before = found.length
+              statements_while_walking(waiting.shift, walking, found)
+              Reach.routines_named(found.drop(before)).each do |name|
+                next if routines.include?(name) || !@funcs.key?(name)
+
+                routines << name
+                waiting << @funcs.fetch(name)
+              end
+            end
+            @statements_during_walks[pool] = found
+          end
+        end
+
+        # The statements under +root+ added to +found+, as Reach.statements_under finds them, but for
+        # what an `if` does only while no walk is in progress (+walking+ nought).
+        def statements_while_walking(root, walking, found)
+          found << root
+          nodes = root.children + root.operand_nodes
+          nodes = [root.cond, root.else].compact if root.kind == :if && only_when_not_walking?(root.cond, walking)
+          nodes.each do |node|
+            case node.kind
+            when :func then next
+            when :scroll_rows, :on_timer then found << node
+            else statements_while_walking(node, walking, found)
+            end
+          end
+        end
+
+        # Whether +cond+ holds only while the count of walks +walking+ is nought: that test, or one
+        # side of an `and`.
+        def only_when_not_walking?(cond, walking)
+          return false unless cond.is_a?(Node) && cond.kind == :binop
+
+          if cond.op == :and
+            only_when_not_walking?(cond.lhs, walking) || only_when_not_walking?(cond.rhs, walking)
+          else
+            cond.op == :== && cond.lhs.is_a?(Node) && cond.lhs.kind == :var_ref && cond.lhs.name == walking &&
+              folded(cond.rhs) == 0
           end
         end
 

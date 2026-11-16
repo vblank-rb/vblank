@@ -37,7 +37,7 @@ class TestSNESPoolBulletsCost < Minitest::Test
     rom = self.class.game.build_rom(console: :snes, out: StringIO.new, err: StringIO.new, profile: false)
     rows = rom.profile(out: StringIO.new, settle: 60, frames: 60).game
 
-    assert_operator rows.sum(&:share), :<=, 0.071
+    assert_operator rows.sum(&:share), :<=, 0.069
   end
 
   # The bullets move, leave and are fired as on the interpreter, on every pass.

@@ -39,11 +39,11 @@ class TestSNESPoolFiveWalkersCost < Minitest::Test
 
   # Measured before the walk and its checks were made cheaper (a363791a7), the routine took 16.2% of
   # every frame; the bound holds what they cost now.
-  def test_five_walkers_checking_each_other_take_under_9_and_a_half_percent_of_a_frame
+  def test_five_walkers_checking_each_other_take_under_9_percent_of_a_frame
     rom = self.class.game.build_rom(console: :snes, out: StringIO.new, err: StringIO.new, profile: false)
     spent = rom.profile(out: StringIO.new, settle: 10, frames: 20).game.find { |row| row.routine.to_s.include?("step_straight") }
 
-    assert_operator spent.share, :<, 0.095
+    assert_operator spent.share, :<, 0.09
   end
 
   # The walkers meet and turn round as on the interpreter, on every pass.

@@ -1374,7 +1374,11 @@ module VBlank
             body = without_live_test(walk, node.children.drop(walk.step_statements))
             current = scaled_current(walk, body, at, links.stride)
             store_number(index, 0)
-            [[walk.ahead, ahead], [walk.last, last]].each { |from, to| emit_slot_scaled(place_of(from), to, shifts) }
+            # Where the chain cannot change while the walk runs, the last thing's link is NONE and
+            # the walk stops on it alone (LoweringPlan#chain_changed_during_walks?).
+            last = nil unless @plan.chain_changed_during_walks?(walk.pool)
+            emit_slot_scaled(place_of(walk.ahead), ahead, shifts)
+            emit_slot_scaled(place_of(walk.last), last, shifts) if last
             current&.partners&.each { |name, scaled| emit_slot_scaled(place_of(name), scaled, shifts) }
             store_number(current.scaled, DSL::Pool::NONE) if current
             counter = turns_countable_in_y?(node, body)
@@ -1543,11 +1547,19 @@ module VBlank
           end
 
           # The next thing (+ahead+): NONE once the thing at X is the last, else its link, scaled.
+          # Without +last+, the link alone, which is NONE at the last thing.
           def emit_walk_link_read(links, width, ahead, last, shifts)
             none = fresh("walk_link_none")
             stepped = fresh("walk_stepped")
-            @asm.cpx(at_place(last))
-            @asm.beq(none)
+            if links.scale == links.stride && last.nil?
+              @asm.lda(@asm.long_x(links.base))
+              return @asm.sta(at_place(ahead))
+            end
+
+            if last
+              @asm.cpx(at_place(last))
+              @asm.beq(none)
+            end
             if links.scale == links.stride
               # Kept as the slot times the stride already, NONE as $FFFF: the next thing as it is.
               @asm.lda(@asm.long_x(links.base))

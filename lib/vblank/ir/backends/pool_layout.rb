@@ -167,11 +167,11 @@ module VBlank
             snes: {
               tables: "One X, the slot times the pool's widest slot, reaches every field of the thing a walk " \
                       "is on, and the walk is stepped in X (SNES::Lowering#emit_stepped_walk). Measured in bsnes, " \
-                      "one more pair of things checked: 1010 master clocks as lists, 684 as tables (half " \
-                      "words: 900, 566); the bullets test 7.77% of a frame, 7.05%.",
+                      "one more pair of things checked: 1010 master clocks as lists, 532 as tables (half " \
+                      "words: 900, 388); the bullets test 7.77% of a frame, 6.82%.",
               records: "A record for each thing: one X reaches every field, " \
                        "but the record's stride is the sum of the widths rounded up, more doublings to set X. " \
-                       "Measured in bsnes, one more pair: 684 master clocks (half words 566); the bullets test 7.48%."
+                       "Measured in bsnes, one more pair: 532 master clocks (half words 388); the bullets test 7.24%."
             }
           }
         )
