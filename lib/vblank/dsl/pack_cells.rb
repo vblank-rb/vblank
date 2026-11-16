@@ -117,12 +117,13 @@ module VBlank
       # WRITE THE CELL AT +place+ OF THE SLOT THAT TOLD THEM. A place written in the game is its
       # cell's tiles, and one past the slot is refused here. A place worked out as the game runs
       # picks its tile from the list of every place's (Background#set_tile_picked), one step of the
-      # game however many cells the slot holds, and a place past the slot leaves the cell alone. A
-      # background whose walls follow its tiles keeps tests that halve the places, since the wall
-      # goes with the tile.
+      # game however many cells the slot holds, and a place past the slot leaves the cell alone. The
+      # place is kept only while the line writes the cell, in the one variable every such line of
+      # the routine shares (Value#step_copy). A background whose walls follow its tiles keeps tests
+      # that halve the places, since the wall goes with the tile.
       def write_place(background, col, row, place, now)
         if place.is_a?(Value)
-          kept = place.hidden_copy
+          kept = place.step_copy(:cell_number)
           return write_place_between(background, col, row, kept, (0...place_tiles.length).to_a, now) if background.walls_follow_tiles?
 
           (side * side).times do |at|
@@ -174,7 +175,7 @@ module VBlank
       # A background whose walls follow its tiles keeps the tests that halve the told numbers,
       # each with a `set_tile` of its own, since the wall goes with the tile.
       def write_picked_by(background, col, row, word, now)
-        kept = (word & format.read_bits).hidden_copy
+        kept = (word & format.read_bits).step_copy(:cell_number)
         words = tiles_by_word.keys.sort
         return write_between(background, col, row, kept, words, now) if background.walls_follow_tiles?
 

@@ -581,6 +581,76 @@ class TestPackBackgroundSetCell < Minitest::Test
     end
   end
 
+  # MANY LINES WRITING A CELL BY A PLACE THE GAME WORKS OUT, as a port whose one wrapper of
+  # `set_cell` is written out at every caller: each line keeps its place while it picks the tile,
+  # and no longer, so the lines of one routine share where they keep it. Three hundred lines in the
+  # game loop and three hundred in a routine it calls draw what their last write to each cell draws,
+  # and keep no more hidden numbers than the last eight lines of each alone.
+  def test_many_lines_writing_worked_out_places_keep_one_number_a_routine
+    Dir.mktmpdir do |folder|
+      many, many_notes = many_place_lines_game(folder, lines: 300)
+      last, last_notes = many_place_lines_game(folder, lines: 300, only_last: true)
+
+      assert_equal game_player.run(last, frames: 24).screen.to_a, game_player.run(many, frames: 24).screen.to_a
+      assert_equal last_notes.length, many_notes.length
+    end
+  end
+
+  # A line in a timer's handler can run between the steps of any line it interrupts, so it keeps
+  # its place apart from the routine it is written in.
+  def test_a_line_in_a_timers_handler_keeps_its_place_apart
+    Dir.mktmpdir do |folder|
+      notes = nil
+      map_cells_game_and_file(folder, :gbc, set_cells: ->(pack) { pack[:changes] }, changes: 3) do |world|
+        notes = hidden_variable_notes
+        pass = var :pass, 0
+        beat = timer :beat, per_second: 4
+        game_loop do
+          wait_vblank
+          pass += 1
+          world.set_cell 0, 0, pass & 1
+          world.set_cell 1, 0, (pass + 1) & 1
+          beat.on_tick { world.set_cell 2, 0, pass & 1 }
+        end
+      end
+
+      assert_equal 2, notes.length
+    end
+  end
+
+  # The game of the many-lines test: +lines+ `set_cell`s in the game loop and as many in a routine it
+  # calls, each a place worked out from the pass, the cells taken in turn, LINES_A_PASS of each on
+  # each pass from the second, so no pass changes more cells than a console writes in one blank.
+  # With +only_last+ only the last line writing each cell is kept. Handed back with its hidden
+  # numbers.
+  LINES_A_PASS = 16
+
+  private def many_place_lines_game(folder, lines:, only_last: false)
+    notes = nil
+    program, = map_cells_game_and_file(folder, :gbc, set_cells: ->(pack) { pack[:changes] }, changes: 3) do |world|
+      notes = hidden_variable_notes
+      pass = var :pass, 0
+      cells = 8
+      written = (0...lines).to_a
+      written = written.last(cells) if only_last
+      write = lambda do |shift|
+        written.group_by { |at| at / LINES_A_PASS }.each do |chunk, ats|
+          if pass == 2 + chunk
+            ats.each { |at| world.set_cell at % 4, (at / 4) % 2, (pass + at + shift) % 3 }
+          end
+        end
+      end
+      func(:more_lines) { write.(1) }
+      game_loop do
+        wait_vblank
+        pass += 1
+        write.(0)
+        call :more_lines
+      end
+    end
+    [program, notes]
+  end
+
   def test_a_place_past_a_told_slot_written_in_the_game_is_refused
     Dir.mktmpdir do |folder|
       error = assert_raises(ArgumentError) do

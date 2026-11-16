@@ -201,6 +201,7 @@ module VBlank
       @hidden_variables = 0    # counts the variables a picked value keeps its answer in
       @unique_names = Set.new  # variable names this build made unique (#unique_names)
       @hidden_variable_notes = []
+      @step_variables = {}.compare_by_identity # routine body → why → its shared hidden variable (#step_variable)
       @held_expressions = {}   # variable name → the value node it was set to (#register_held_expression)
       @value_statements = {}.compare_by_identity # value node → the statements it needs (#register_statements_for_value)
       @open_repeat_container_counts = [] # containers each #open_repeat opened, for #close_repeat
@@ -1182,6 +1183,32 @@ module VBlank
       @hidden_variable_notes << HiddenVariableNote.new(name:, source: Messages::AuthorSource.author_source, why:)
       value_handle_for(name)
     end
+
+    # A HIDDEN VARIABLE FOR A NUMBER ONE STEP STORES AND READS BACK BEFORE IT ENDS, one for each
+    # +why+ in the routine being recorded (outside every routine, the outermost body being recorded,
+    # #recorded_routine_body), however many of its steps keep one (DSL::Value#step_copy). A step that
+    # stores it reaches no other such step before its last read, so the steps of one routine can
+    # share it, and a routine with hundreds of them keeps one word, not hundreds.
+    #
+    # Shared wider than the routine it would not be safe. A timer's handler runs whenever the timer
+    # ticks: on the Advance from the timer's interrupt, which stops the game between any two
+    # instructions (GBA::FrameBoundaryCalls). A step written in a handler could then store over a
+    # number that a step of the routine it stopped had not read yet. A bend's steps are worked out
+    # where the game wrote no call too, as the game wakes from a wait on the Advance, and a console
+    # may work them out as the screen draws each row. So a step inside a handler or a bend keeps its
+    # number apart from the routine it is written in, one for each handler and each bend. A routine
+    # that a handler calls is no worse off than with a variable for each step: stopped part way
+    # through one of its steps and run again by the handler, it would write over that step's own
+    # variable too.
+    def step_variable(why)
+      owner = @container_stack.reverse_each.find { |node| UNCALLED_BODY_KINDS.include?(node.kind) } ||
+              @container_stack[1] || @container_stack.first
+      name = ((@step_variables[owner] ||= {})[why] ||= hidden_variable(why).name)
+      value_handle_for(name)
+    end
+
+    # The bodies that run where the game wrote no call: a timer's handler and a bend's steps.
+    UNCALLED_BODY_KINDS = %i[on_timer scroll_rows].freeze
 
     # Variable +name+ holds the value node +node+, set where it is written, so the text of a
     # program does not repeat the expression wherever its answer is used

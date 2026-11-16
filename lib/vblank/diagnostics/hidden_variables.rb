@@ -15,6 +15,7 @@ module VBlank
                IR::Guardrails::Checks::IwramBudget::COPY_ADVICE],
         swap: ["keeps one number while the others are written.", nil],
         picked: ["keeps the number the test picked.", nil],
+        cell_number: ["keeps the cell number set_cell works out. Every such line of the routine uses this one.", nil],
         join: ["keeps the answer of `&&` or `||`.", "Unneeded in an `if` with no `else`."],
         promoted: ["makes this name a variable, as a test the game makes changes it.", nil],
         truth: ["keeps a second hidden variable for nil, or for false beside a number.",

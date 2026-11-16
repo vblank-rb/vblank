@@ -243,6 +243,16 @@ module VBlank
         kept
       end
 
+      # A hidden variable holding this number for one step that reads it back before the step
+      # ends, shared with every such step of +why+ in the routine (Builder#step_variable). A number
+      # that carries a truth, a fraction or a yes or no keeps a variable of its own (#hidden_copy),
+      # since the shared one would take on what it carries for every step.
+      def step_copy(why)
+        return hidden_copy(why) if truth || fraction? || boolean?
+
+        @builder.step_variable(why).tap { |kept| kept.store!(self) }
+      end
+
       # This number is used for nothing: Ruby took it as truthy (see PlainRuby::Steps.branch_test).
       def discard! = @builder.forget_expression(self)
 
