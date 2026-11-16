@@ -1809,6 +1809,9 @@ module VBlank
               swaps = step && swaps_for(bg, step)
               palettes = {}
               (@plans_background_rooms ? tiles_shown(bg) : bg.tiles.compact.uniq).each do |name|
+                # A tile that draws nothing is drawn from a palette other tiles fill (GBC::Art#blank_tile).
+                next if !run_painting(name) && @art.draws_nothing?(tile_image(name))
+
                 _, palette = background_tile_named(name, bg, tile_room(bg))
                 colors = tile_colors_with(name, swaps)
                 if palettes.key?(palette) && palettes[palette] != colors

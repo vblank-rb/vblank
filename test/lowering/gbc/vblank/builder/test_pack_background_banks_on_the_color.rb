@@ -33,6 +33,53 @@ class TestPackBackgroundBanksOnTheColor < Minitest::Test
     end
   end
 
+  # A TOLD CELL THAT DRAWS NOTHING shows only the backdrop, as an empty cell does, so it costs no
+  # list of its own: the screen in all eight banks, every bank walked up from black, still fits
+  # the eight with a see-through cell told beside a drawn one, and both written over the map. The
+  # checked run holds every pass to the interpreter.
+  def test_a_told_cell_that_draws_nothing_takes_no_list_of_its_own
+    Dir.mktmpdir do |folder|
+      from = color_original(folder, EIGHT_BANKS_SCREEN)
+      game_player.run(eight_banks_with_a_blank_told_cell(from), frames: COLOR_WALK_STEPS + 4)
+    end
+  end
+
+  # The eight-bank screen walked up from black, told a cell of tile 0 (which draws nothing) and one
+  # of tile 1, both in bank 3: the blank one is written over a drawn cell on the second pass, and
+  # the drawn one over the next on the third.
+  private def eight_banks_with_a_blank_told_cell(from)
+    shown = EIGHT_BANKS_SCREEN
+    blank = VBlank::Original::MapCell::Cell.new(tile: 0, bank: 3)
+    drawn = VBlank::Original::MapCell::Cell.new(tile: 1, bank: 3)
+    b = Builder.new
+    b.instance_eval do
+      screen :tiled
+      pack = data_pack from: from, version: "1" do |slots|
+        slots.tiles :video, at: TILES_AT, count: shown.video.length
+        slots.colors :palette, at: COLORS_AT, count: shown.palette.length
+        slots.map_cells :map, count: shown.cells.length
+        slots.fill_from_copy do |copy, filled|
+          repeat(shown.cells.length) do |at|
+            filled[:map].write_cell(at, tile: copy.byte(COLOR_TILE_MAP_AT + at), bank: copy.byte(COLOR_ATTRIBUTES_AT + at) & 7)
+          end
+        end
+      end
+      world = background :world, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: shown.across,
+                                 set_cells: [blank, drawn]
+      walks = Array.new(8) { |at| [:"palette_#{at}", color_walk(:"palette_#{at}", from: :black, steps: COLOR_WALK_STEPS)] }.to_h
+      step = var :step, 0
+      game_loop do
+        world.draw_with(walks, showing: step)
+        wait_vblank
+        step.store!(step + 1)
+        world.set_cell 3, 0, blank if step == 2
+        world.set_cell 4, 0, drawn if step == 3
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
   # A map whose cells name nine banks needs nine lists at once, one more than the Color holds,
   # and the refusal names the eight. The made-up original holds eight banks of colours; the ninth
   # is read from past them, where the copy is empty.

@@ -745,7 +745,8 @@ module VBlank
               drawing = TileDrawing.new(room: room, recolor_steps: recolor_steps, any_first: !empty_cells_shown && !recolor_steps.nil?)
               order = list_order(image)
               placed = recolor_steps && !order && drawn_places(image)
-              if pack_places_kept?(image) then kept_tile(image, drawing)
+              if draws_nothing?(image) then blank_tile(drawing, empty_cells_shown)
+              elsif pack_places_kept?(image) then kept_tile(image, drawing)
               elsif order then listed_tile(image, order, drawing)
               elsif placed then placed_tile(image, placed, drawing)
               else drawn_tile(name, image, drawing)
@@ -969,6 +970,49 @@ module VBlank
           # The palette of the backdrop alone (black unless the game names another), where an empty
           # cell is drawn from while nothing else is first.
           def backdrop_alone = BackgroundPalette.new(colors: padded([@backdrop]), swaps: nil)
+
+          # Is every pixel of the tile see-through? Such a tile shows only the backdrop, as an empty
+          # cell does: a data pack's told cell whose tile draws nothing is one (the font's space a
+          # port writes to take its words away again).
+          def draws_nothing?(image) = tile_fact(:draws_nothing, image) { (0...64).all? { |i| image.tile_see_through_at?(i) } }
+
+          # A TILE THAT DRAWS NOTHING (#draws_nothing?): every pixel shows its palette's first colour,
+          # so any palette whose first colour is the backdrop with every list it is drawn with shows
+          # it rightly, and it takes no palette of its own. Where the palette of the backdrop alone
+          # is there already, or no palette is yet, it is drawn from that one, as it always was. Where
+          # that palette would be one more, it is drawn from one already made instead: where an empty
+          # cell can show, the first, whose first colour is the backdrop as an empty cell shows it
+          # (#list_order, Lowering::Picture#empty_cells_shown_with?), and elsewhere the first that
+          # keeps the backdrop first (#backdrop_first_palette_number). Only where there is none of
+          # those is the backdrop's own palette made.
+          def blank_tile(drawing, empty_cells_shown)
+            number = tile_number_in(drawing.room, TileBytes.of(Array.new(64, 0)))
+            alone = padded([@backdrop])
+            return [number, drawn_palette_number(alone, drawing)] if @background_palettes.empty? || backdrop_alone_made?(drawing.room)
+
+            palette = empty_cells_shown ? 0 : backdrop_first_palette_number(drawing.room)
+            [number, palette || drawn_palette_number(alone, drawing)]
+          end
+
+          # Is the palette of the backdrop alone one +room+ shows already, made by a tile's asking?
+          # The first palette held as black alone counts (#background_palette_number), but not every
+          # screen's first left for each room's own.
+          def backdrop_alone_made?(room)
+            kept = @background_palettes.each_with_index.any? { |palette, number| palette == backdrop_alone && (number.positive? || !@first_free) }
+            kept || (room && room_colors? && (room.first_palette_in_chain == backdrop_alone || room.chain_palettes.any? { |_, palette| palette == backdrop_alone }))
+          end
+
+          # The number of a palette +room+ shows already whose first colour is the backdrop with
+          # every list it is drawn with, or nil for none.
+          def backdrop_first_palette_number(room)
+            shown = @background_palettes.each_with_index.map { |palette, number| [number, palette] }
+            shown = shown.reject { |number, _| number.zero? && @first_free } + room.chain_palettes if room && room_colors?
+            shown.find { |_, palette| backdrop_first_always?(palette) }&.first
+          end
+
+          def backdrop_first_always?(palette)
+            palette.colors.first == @backdrop && (palette.swaps.nil? || palette.swaps.last.all? { |colors| colors.first == @backdrop })
+          end
 
           # A tile drawn any other way — from colours, or from a list with a see-through place or
           # more than four colours: three colours of its own after the backdrop, in the order it
