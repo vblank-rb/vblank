@@ -218,6 +218,7 @@ module VBlank
             @handover = @plan.handover
             @scenes = @plan.scenes
             @lists = {}
+            @slot_places = {} # where a pool's lists keep their slots, by list (#place_pools)
             @lists_dropped_from_front = program.walk.filter_map { |node| node.name if node.kind == :list_drop && node.from == :front }.uniq
             @lists_of_fixed_length = lists_of_fixed_length(program)
             @variables = {}
@@ -250,6 +251,7 @@ module VBlank
                       end
               @lists[node.name] = ListPlace.new(address: place, capacity: node.capacity, slot_bytes: width, name: node.name.to_s)
             end
+            place_pools
             @scene = keep_local(:scene, start: -1) unless @scenes.empty?
             keep_timer_numbers
             keep_plane_corner_notes
@@ -692,7 +694,7 @@ module VBlank
             list = @lists.fetch(node.name) { raise LoweringError, "the list #{node.name.inspect} is used and never declared" }
             emit_value(node.index)
             distance, base = emit_slot_place(list)
-            @asm.load(Runtime::Lists::LOADS.fetch(list.slot_bytes), :v0, distance, base)
+            @asm.load(Runtime::Lists::LOADS.fetch(slot_place(list).width), :v0, distance, base)
           end
 
           # The index and the value worked out in the order rt_list_set takes them (#runtime_call): the
@@ -714,7 +716,7 @@ module VBlank
               emit_restore_temporary(:v0)
             end
             distance, base = emit_slot_place(list)
-            @asm.store(Runtime::Lists::STORES.fetch(list.slot_bytes), :v1, distance, base)
+            @asm.store(Runtime::Lists::STORES.fetch(slot_place(list).width), :v1, distance, base)
           end
 
           # The index in v0 checked against +list+'s length, and the slot it names put in t9: [distance,
@@ -729,11 +731,68 @@ module VBlank
             end
             fault = @index_faults[list.address] ||= fresh_label("index_past_end")
             @asm.beq(:t7, :zero, fault) { @asm.move(:t8, :v0) }
-            shift = list.slot_bytes.bit_length - 1
+            slot = slot_place(list)
+            shift = slot.stride.bit_length - 1
             shift.zero? ? @asm.move(:t9, :v0) : @asm.sll(:t9, :v0, shift)
-            distance, base = base_and_distance(list.address + lists::HEADER)
+            distance, base = base_and_distance(list.address + lists::HEADER + slot.offset)
             @asm.addu(:t9, :t9, base)
             [distance, :t9]
+          end
+
+          # --- pools (Backends::PoolLayout) ---
+          #
+          # A POOL IS KEPT IN THE LAYOUT ITS PLACEMENT GIVES: where slot s of each of its lists is, in
+          # bytes from the list's first slot (PoolLayout::SlotPlace), and how wide its value is. Every
+          # read and write of a slot by an index (#emit_slot_place, and the load or store at the slot's
+          # width) asks #slot_place for that, a pool's list and any other alike, and the headless run
+          # reads a pool's lists back through the same (Places#slot_places). The PlayStation keeps every
+          # pool as lists today (Console::Description#pool_layouts): each slot list a block of its own
+          # after its header, slot s at s times its width. A walk of a pool kept so is stepped by the
+          # statements the tree gives it (IR::WalkShape#step_statements).
+          #
+          # WHAT THE LISTS COST AGAINST THE CONSOLE'S HABIT. An R3000 game keeps a thing as a record and
+          # holds its address in a register through the code that works on it, so a field is one LW, LH or
+          # SW with a 16-bit immediate offset from that base, the instruction after a load filled with
+          # other work while the load delay passes, and the next thing is the base plus the record's size
+          # (psx-spx, "CPU Load/Store Opcodes" and "CPU Load Delay Slots",
+          # https://psx-spx.consoledev.net/cpuspecifications/). A field kept as a list is reached from the
+          # thing's number instead: the number checked against the list's length, shifted by the slot's
+          # width and added to the list's place before the load, and again for the store. A layout of
+          # records is an adapter of PoolLayout and a base register held through a walk's body.
+          def place_pools
+            @slot_places = {}
+            (@program.pools || []).each do |shape|
+              placement = PoolLayout.chosen(shape, Console::PLAYSTATION, PoolLayout.steps_on(@program, shape)).place(shape)
+              refuse_unmade_pool_placement!(shape, placement)
+              @slot_places.merge!(placement.slots)
+            end
+          end
+
+          # Where the slots of +list+ (a ListPlace) are: a pool's list as its layout placed it, any other a
+          # slot of its width after another.
+          def slot_place(list)
+            name = list.name.to_sym
+            @slot_places.fetch(name) do
+              PoolLayout::SlotPlace.new(area: name, offset: 0, stride: list.slot_bytes, width: list.slot_bytes, scale: 1)
+            end
+          end
+
+          # The slots' places as the headless run reads them, by list.
+          public def slot_places = @slot_places.dup
+
+          # A placement the PlayStation cannot keep yet: an area that is not one list of the tree, a value
+          # kept multiplied, or slots not one after another as wide as the list. Today's lists are none of
+          # those.
+          def refuse_unmade_pool_placement!(shape, placement)
+            placement.slots.each do |list, slot|
+              kept = @lists[list] or next
+              next if slot.area == list && slot.scale == 1 && slot.offset.zero? && slot.stride == slot.width &&
+                      slot.width == kept.slot_bytes
+
+              raise NotMadeYet.new("Pool :#{shape.name} is kept as #{placement.layout}. The PlayStation build keeps a " \
+                                   "pool only as lists for now. To fix this, give the pool `layout: :lists`, or no layout.",
+                                   part: "a pool's layout")
+            end
           end
 
           # THE LISTS WHOSE LENGTH IS ALWAYS THEIR CAPACITY, so an index is checked against a number written
