@@ -684,27 +684,101 @@ module VBlank
       # it and kept in a name (`mover = e.index`), since both are reads of current_var. In plain
       # Ruby `e` stays the routine's own thing under any walk.
       #
-      # So the routine copies current_var into its own variable as it starts, and every read of
-      # current_var in its body reads that copy. Only a routine whose body walks its pool does
-      # this: any other keeps reading current_var, and builds the bytes it always did.
+      # Every walk already keeps the instance it began on, to put current_var back as it ends
+      # (#preserving_current_slot). In a routine that instance is the routine's own, so the
+      # routine's variable IS that kept copy: each outermost walk of the pool in the body keeps
+      # current_var in the routine's variable, and the reads of current_var inside the walk read
+      # it there. Outside the walks current_var is the routine's own thing anyway, and those
+      # reads stay as they were. So the routine does no more work than one reading current_var
+      # throughout: the copy is the store the walk made before.
+      #
+      # A walk inside the walk keeps the thing the outer walk is on, as before, so a routine of
+      # the pool called inside the outer walk after it still runs for that thing.
+      #
+      # Every read of `e` is one node, the instance's slot, wherever it is used, and so is a
+      # read kept in a name (`here = e.x`), which can be used both before a walk and inside it.
+      # So a read inside a walk is not renamed where it stands: each value worked out inside the
+      # walk that reads current_var is replaced by a copy of its own reading the routine's
+      # variable, and the reads outside are left alone.
+      #
+      # Only a routine whose body walks its pool does any of this: any other keeps reading
+      # current_var, and builds the bytes it always did.
       #
       # Returns the routine's own variable, for the build to declare, or nil when it has none.
       def build_routine_body(name)
         own_var = part_name("routine#{instance_routines.index(name)}_at")
-        entry = Build.set(own_var, Build.var_ref(current_var))
-        record(entry)
-        walks_before = @walks.to_i
+        walks_before = walk_saves.length
         yield current_instance
-        body = entry.parent
-        if @walks.to_i == walks_before
-          body.children.delete(entry)
-          return nil
-        end
+        walks = walk_saves.drop(walks_before)
+        return nil if walks.empty?
 
-        body.walk { |node| node.name = own_var if node.kind == :var_ref && node.name == current_var }
-        entry.value = Build.var_ref(current_var)
+        outermost = outermost_walks(walks)
+        inner_saves = Set.new.compare_by_identity.merge((walks - outermost).map(&:first))
+        outermost.each do |saved, restored|
+          walk_statements(saved, restored).each { |statement| retarget_current_reads(statement, own_var, inner_saves) }
+          saved.var = own_var
+          restored.value = Build.var_ref(own_var)
+        end
         own_var
       end
+
+      # The walks of this pool, each as the statement keeping current_var before it and the one
+      # putting it back after (#preserving_current_slot), in the order they were finished.
+      private def walk_saves = @walk_saves ||= []
+
+      # The statements a walk runs between keeping current_var and putting it back.
+      def walk_statements(saved, restored)
+        siblings = saved.parent.children
+        first = siblings.index { |node| node.equal?(saved) }
+        last = siblings.index { |node| node.equal?(restored) }
+        siblings[(first + 1)...last]
+      end
+
+      # The walks of +walks+ that no other of them runs inside.
+      def outermost_walks(walks)
+        inner = Set.new.compare_by_identity
+        walks.each do |saved, restored|
+          walk_statements(saved, restored).each { |statement| inner.merge(statement.walk.to_a) }
+        end
+        walks.reject { |saved, _restored| inner.include?(saved) }
+      end
+
+      # Make every value +statement+ and the statements in it work out read +own_var+ where it
+      # read current_var. +skipped+ are the inner walks' statements keeping current_var, which
+      # keep reading it.
+      def retarget_current_reads(statement, own_var, skipped)
+        return if skipped.include?(statement)
+
+        statement.children.each { |child| retarget_current_reads(child, own_var, skipped) }
+        statement.attrs.each do |_field, held|
+          fresh = retargeted_operand(held, own_var, skipped)
+          statement.replace_operand(held, fresh) unless fresh.equal?(held)
+        end
+      end
+
+      # +operand+ as it reads inside the walk: a value reading current_var as a copy reading
+      # +own_var+, a list with each element so, a statement changed where it stands, and
+      # anything else as it is.
+      def retargeted_operand(operand, own_var, skipped)
+        case operand
+        when Array
+          fresh = operand.map { |element| retargeted_operand(element, own_var, skipped) }
+          fresh.zip(operand).all? { |now, before| now.equal?(before) } ? operand : fresh
+        when IR::Node
+          unless operand.value?
+            retarget_current_reads(operand, own_var, skipped)
+            return operand
+          end
+          return operand unless operand.walk.any? { |node| current_read?(node) }
+
+          operand.copy.tap { |copy| copy.walk { |node| node.name = own_var if current_read?(node) } }
+        else operand
+        end
+      end
+
+      # Whether +node+ reads current_var.
+      def current_read?(node) = node.kind == :var_ref && node.name == current_var
+      private :walk_statements, :outermost_walks, :retarget_current_reads, :retargeted_operand, :current_read?
 
       # How many instances are live right now, as a {Value}.
       def count = Value.new(@builder, Build.var_ref(count_var))
@@ -986,6 +1060,7 @@ module VBlank
         yield
         restored = Build.set(current_var, Build.var_ref(held))
         record(restored)
+        walk_saves << [saved, restored]
         @builder.record_walk_instance_writes(self, saved, restored)
       end
 
