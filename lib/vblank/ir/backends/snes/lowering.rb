@@ -675,6 +675,16 @@ module VBlank
             end
             @asm.sta(low)
             @asm.lda(0xFFFF)
+            if DSL::Pool.next_slot_of_walk?(name)
+              # The walk's next slot holds a slot as its link is read (DSL::Pool::NEXT_SLOT_PARTS),
+              # so its high half is nought already, and only NONE writes it.
+              @asm.sta(high)
+              @asm.bra(spread)
+              @asm.label(positive)
+              @asm.sta(low)
+              return @asm.label(spread)
+            end
+
             @asm.bra(spread)
             @asm.label(positive)
             @asm.sta(low)

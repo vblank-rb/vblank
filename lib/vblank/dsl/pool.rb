@@ -1041,6 +1041,19 @@ module VBlank
         kind == :pool_part && SLOT_ONLY_PARTS.match?(parts[:part])
       end
 
+      # THE SLOT A WALK GOES TO NEXT (#walk_vars), a slot or NONE. It is set from the chain's links
+      # on one line only, on a turn the walk began because it held a slot, and that slot is the one
+      # whose link is read (`at = ahead`, then `ahead = links[at]`). So as that line runs it holds a
+      # slot, with a high half of nought, and a lowering that keeps numbers in halves need only write
+      # the high half when the link read is NONE.
+      NEXT_SLOT_PARTS = /\Awalk\d+_ahead\z/
+
+      # Whether +var+ is a walk's next slot (see NEXT_SLOT_PARTS).
+      def self.next_slot_of_walk?(var)
+        kind, parts = Messages::MadeNames.read(var)
+        kind == :pool_part && NEXT_SLOT_PARTS.match?(parts[:part])
+      end
+
       # The name of the pool +list+ belongs to, a field's list or one of the pool's own, or nil.
       def self.owner_of_list(list)
         kind, parts = Messages::MadeNames.read(list)
