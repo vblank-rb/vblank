@@ -418,20 +418,14 @@ module VBlank
         def read_lists
           layout = runtime::Lists
           field = layout::FIELD_BYTES
-          @places.lists.to_h do |name, (address, _capacity, width, _label, base, stride)|
+          @places.lists.to_h do |name, (address, _capacity, width, _label)|
             capacity = number_at(address + layout::CAPACITY, field)
             front = number_at(address + layout::FRONT, field)
             length = number_at(address + layout::LENGTH, field)
-            # Two ways a run says a list's slots moved, to be made one: the Super Nintendo hands its
-            # slot 0 and stride beside the list's place, the Genesis answers #slot_place_of.
             place = slot_place_of(name, width)
             items = Array.new(length) do |i|
               slot = (front + i) % capacity
-              if base || stride
-                read_slot((base || (address + layout::HEADER)) + (slot * (stride || width)), width)
-              else
-                read_slot(address + layout::HEADER + place.at(slot), place.width) / place.scale
-              end
+              read_slot(address + layout::HEADER + place.at(slot), place.width) / place.scale
             end
             [name, items]
           end

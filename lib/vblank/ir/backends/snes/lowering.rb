@@ -64,7 +64,8 @@ module VBlank
             when :abs then emit_abs(node)
             when :negate_abs then emit_negate_abs(node)
             when :clamp then emit_clamp(node)
-            when :repeat then with_invariant_reads_kept(node) { emit_control_flow_statement(node) }
+            when :repeat
+              with_invariant_reads_kept(node) { stepped_walk?(node) ? emit_stepped_walk(node) : emit_control_flow_statement(node) }
             when *ControlFlow::STATEMENT_KINDS then emit_control_flow_statement(node)
             when :call then emit_call(node)
             when :call_one_of then emit_call_one_of(node)
@@ -218,18 +219,21 @@ module VBlank
           end
 
           # Where each of the game's variables went, by its name, and each of its lists — [its place,
-          # its capacity, the bytes a slot, its name], and where a pool's layout put its slots elsewhere
-          # than after its header, slot 0's place and the bytes from one slot to the next — once
-          # #sections has placed them; the label of the routine the runtime runs at each frame
-          # boundary, or nil for a game with no timers; and each routine's section, by its label,
-          # beside what that routine is to the author.
-          attr_reader :variables, :frame_begins, :section_routines
+          # its capacity, the bytes a slot, its name] — once #sections has placed them; the label of
+          # the routine the runtime runs at each frame boundary, or nil for a game with no timers; and
+          # each routine's section, by its label, beside what that routine is to the author.
+          attr_reader :variables, :lists, :frame_begins, :section_routines
 
-          def lists
-            @lists.to_h do |name, entry|
-              slots = @list_slots[name]
-              moved = slots && (slots.base != entry.first + Runtime::Lists::HEADER || slots.stride != entry[2])
-              [name, moved ? [*entry, slots.base, slots.stride] : entry]
+          # Where each list a pool's layout moved keeps its slots, by the list, as a SlotPlace counted
+          # from the end of the list's header (CartridgeHeadlessRun#slot_place_of): the headless run
+          # reads them there.
+          def slot_places
+            @list_slots.each_with_object({}) do |(name, slots), places|
+              place, _capacity, width, = @lists.fetch(name)
+              next if slots.base == place + Runtime::Lists::HEADER && slots.stride == width
+
+              places[name] = PoolLayout::SlotPlace.new(area: name, offset: slots.base - (place + Runtime::Lists::HEADER),
+                                                       stride: slots.stride, width: width, scale: 1)
             end
           end
 
@@ -311,14 +315,17 @@ module VBlank
             loops = @plan.game_loops.flat_map { |node| console_loop(node).variables }
             place_variables(Reach.variables(@program) | loops)
             place_chip_lists
+            strided = strided_pool_placements
             @declared_lists.each_value do |node|
               width = LoweringPlan::SLOT_BYTES.fetch(node.width)
+              # A list a pool's layout keeps elsewhere has only its header here.
+              slots = strided.key?(node.name) ? 0 : node.capacity * width
               place = chip_list_place(node.name) ||
-                      @memory.reserve_far("the list #{node.name.inspect}", Runtime::Lists::HEADER + (node.capacity * width))
+                      @memory.reserve_far("the list #{node.name.inspect}", Runtime::Lists::HEADER + slots)
               @lists[node.name] = [place, node.capacity, width, node.name.to_s]
               @list_slots[node.name] = ListSlots.new(header: place, base: place + Runtime::Lists::HEADER, stride: width)
             end
-            place_pool_slots
+            place_pool_slots(strided)
             @scene = keep_local(:scene, start: -1) unless @scenes.empty?
             keep_timer_numbers
             keep_corner_notes(corner_layers, bar: :own_note)
@@ -734,13 +741,25 @@ module VBlank
               @asm.lda(halves[i])
               @asm.sta(at_place(at + (2 * i)))
             end
-            key = slot_key(at_place(at), 1)
+            stride = walk_stride(name)
+            key = slot_key(at_place(at), stride)
             # A holds the low half, the slot, only when that was the one half copied.
             return unless DSL::Pool.walk_slot?(name) && key && copied == 1
 
+            (stride - 1).bit_length.times { @asm.asl }
             @asm.tax
             @asm.note_x_holds(key)
-            @asm.note_accumulator_holds(key.first)
+            @asm.note_accumulator_holds(key.first) if stride == 1
+          end
+
+          # The stride X is set to the walked slot at: the one every slot list of the walk's pool
+          # shares in a layout of the console's own, so every field of the thing is read at that X;
+          # one, for the byte lists a pool kept as lists steps along.
+          def walk_stride(name)
+            pool = DSL::Pool.walked_by(name)
+            shape = pool && (@program.pools || []).find { |each| each.name.to_s == pool.to_s }
+            strided = shape && shape.slot_lists.keys.filter_map { |list| strided_pool_placements[list] }.first
+            strided ? strided.stride : 1
           end
 
           # A number written in the program, straight into the variable at +at+.
@@ -1074,9 +1093,36 @@ module VBlank
             return list_call("rt_list_empty", node) unless node.full_of
 
             list_call("rt_list_at_capacity", node)
+            return emit_strided_slots_filled(node) if strided_list?(node.name)
             return emit_slots_zeroed(node) if slots_zeroed_by_copying_engine?(node)
 
             list_call("rt_list_fill", node, Build.int(0), Build.int(node.capacity), Build.int(node.full_of))
+          end
+
+          # A pool list kept at its layout's stride, every slot made +full_of+: the runtime's fill
+          # writes slots one after another from the header, so the slots are written here, each at
+          # its place, a byte slot with A eight bits wide so the bytes beside it in a record are kept.
+          def emit_strided_slots_filled(node)
+            slots = list_slots(node)
+            width = list_placed(node)[2]
+            again = fresh("strided_fill")
+            number = node.full_of & 0xFFFF
+            @asm.ldx(0)
+            @asm.label(again)
+            @asm.lda(number)
+            @asm.sep(0x20) if width == 1
+            @asm.sta(@asm.long_x(slots.base))
+            @asm.rep(0x20) if width == 1
+            if width == 4
+              @asm.lda((node.full_of >> 16) & 0xFFFF)
+              @asm.sta(@asm.long_x(slots.base, 2))
+            end
+            @asm.txa
+            @asm.clc
+            @asm.adc(slots.stride)
+            @asm.tax
+            @asm.cpx(node.capacity * slots.stride)
+            @asm.bcc(again)
           end
 
           # A LIST FULL OF NOUGHT in work RAM has its slots cleared by the copying engine, a byte in
@@ -1219,20 +1265,133 @@ module VBlank
             def at(slot) = base + (slot * stride)
           end
 
-          # Each pool's slot lists placed by the layout the pool is kept in (Backends::PoolLayout).
-          # A layout keeping a slot list in an area of its own puts its slots after the list's
-          # header, where #sections reserved it.
-          def place_pool_slots
-            (@program.pools || []).each do |shape|
+          # The SlotPlace of each slot list of a pool kept in a layout other than :lists, by the list:
+          # the layout chosen for each pool (Backends::PoolLayout.chosen), unless one of its lists
+          # is in a Super FX's RAM, where the chip reads it as a list.
+          def strided_pool_placements
+            @strided_pool_placements ||= (@program.pools || []).each_with_object({}) do |shape, places|
               placement = PoolLayout.chosen(shape, CONSOLE, PoolLayout.steps_on(@program, shape)).place(shape)
-              placement.slots.each do |list, place|
-                next unless @lists.key?(list) && @lists.key?(place.area)
+              next if placement.layout == :lists || shape.slot_lists.keys.any? { |list| chip_list_place(list) }
 
-                header = @lists.fetch(list).first
-                base = @lists.fetch(place.area).first + Runtime::Lists::HEADER + place.offset
-                @list_slots[list] = ListSlots.new(header: header, base: base, stride: place.stride)
-              end
+              (@pool_areas ||= {}).merge!(placement.areas)
+              places.merge!(placement.slots)
             end
+          end
+
+          # Each pool's slot lists placed by the layout the pool is kept in (Backends::PoolLayout):
+          # a list kept as :lists has its slots after its header, where #sections reserved them; one
+          # kept in another layout has them in an area of the pool's, reserved here, at the layout's
+          # stride.
+          def place_pool_slots(strided)
+            areas = (@pool_areas || {}).to_h { |area, bytes| [area, @memory.reserve_far("the pool area #{area.inspect}", bytes)] }
+            strided.each do |list, place|
+              next unless @lists.key?(list)
+
+              @list_slots[list] = ListSlots.new(header: @lists.fetch(list).first, base: areas.fetch(place.area) + place.offset,
+                                                stride: place.stride)
+            end
+          end
+
+          # Whether +name+'s slots are kept other than straight after its header, a slot as wide as the
+          # list: a pool list of a layout of the console's own.
+          def strided_list?(name) = strided_pool_placements.key?(name)
+
+          # Whether the repeat +node+ is a walk of a pool kept at one stride (IR::WalkShape) that
+          # #emit_stepped_walk can step its own way: its count written in the program, an index to
+          # count in, and no frame boundary anywhere in it, so nothing but the walk itself runs
+          # while its own numbers are held.
+          def stepped_walk?(node)
+            walk = node.pool_walk
+            return false unless walk && node.index && strided_list?(walk.links) && walk.step_statements == 2
+
+            capacity = folded(node.count)
+            !capacity.nil? && capacity.between?(1, 0x7FFF) && !@plan.statements_wait?(node.walk.to_a)
+          end
+
+          # A WALK OF A POOL STEPPED AS THE CONSOLE'S OWN GAMES STEP ONE. The tree's walk keeps the
+          # thing it goes to next and the last it visits as 32-bit numbers, tests the next against
+          # NONE in both halves, copies it into the thing it is on, compares that with the last, reads
+          # the link out as 32 bits with its sign spread, and counts its turns to the pool's capacity.
+          # Super Bomberman's walk (check_for_enemy_with_enemy_collision) holds the next object's
+          # place in a register, loads the link in one instruction and ends when it is $FFFF. Here
+          # the next and the last are kept as the slot times the pool's stride, so the slot to visit
+          # is X at once, NONE is $FFFF, a negative number, and every field of the thing is read at
+          # that X; the thing it is on is written to its variable, as the body reads it.
+          #
+          # Every variable of the walk ends as the tree leaves it: the thing it was on, the next
+          # (NONE), and the repeat's index, which counts the turns and stays one below the count
+          # where the walk took every one (Reference#exec_repeat).
+          def emit_stepped_walk(node)
+            walk = node.pool_walk
+            links = list_slots(walk.links)
+            shifts = (links.stride - 1).bit_length
+            ahead = place_of(keep_local(:walk_ahead))
+            last = place_of(keep_local(:walk_last))
+            at = place_of(walk.at)
+            index = place_of(node.index)
+            # X, INC and DEC reach only the first 64K by their short address; a walk whose numbers
+            # went further is walked the tree's way.
+            return emit_control_flow_statement(node) if [ahead, last, at, index].any? { |place| place > 0xFFFF }
+
+            top = fresh("walk")
+            done = fresh("walk_done")
+            store_number(index, 0)
+            [[walk.ahead, ahead], [walk.last, last]].each { |from, to| emit_slot_scaled(place_of(from), to, shifts) }
+            @asm.label(top)
+            @asm.ldx(at_place(ahead))
+            @asm.branch_long(:bmi, done)
+            @asm.txa
+            shifts.times { @asm.lsr }
+            @asm.sta(at_place(at))
+            @asm.note_x_holds([at, links.stride])
+            @asm.note_accumulator_holds(at)
+            emit_walk_link_read(links, @lists.fetch(walk.links)[2], ahead, last, shifts)
+            node.children.drop(walk.step_statements).each { |child| statement(child) }
+            @asm.inc(at_place(index))
+            @asm.brl(top)
+            @asm.label(done)
+            store_number(place_of(walk.ahead), DSL::Pool::NONE)
+            emit_walk_index_kept_below(index, folded(node.count))
+          end
+
+          # The variable at +from+, a slot or NONE, into the word at +to+ as the slot times the stride
+          # (+shifts+ doublings); NONE, whose low half is $FFFF, as it is.
+          def emit_slot_scaled(from, to, shifts)
+            kept = fresh("walk_none")
+            @asm.lda(at_place(from))
+            @asm.bmi(kept)
+            shifts.times { @asm.asl }
+            @asm.label(kept, join: true)
+            @asm.sta(at_place(to))
+          end
+
+          # The next thing (+ahead+): NONE once the thing at X is the last, else its link, scaled.
+          def emit_walk_link_read(links, width, ahead, last, shifts)
+            none = fresh("walk_link_none")
+            stepped = fresh("walk_stepped")
+            @asm.cpx(at_place(last))
+            @asm.beq(none)
+            @asm.lda(@asm.long_x(links.base))
+            @asm.and_a(0x00FF) if width == 1
+            @asm.cmp(width == 1 ? 0x00FF : 0xFFFF)
+            @asm.beq(none)
+            shifts.times { @asm.asl }
+            @asm.bra(stepped)
+            @asm.label(none, join: true)
+            @asm.lda(0xFFFF)
+            @asm.label(stepped, join: true)
+            @asm.sta(at_place(ahead))
+          end
+
+          # The repeat's index as the tree leaves it: the turns taken, or one below the count where
+          # the walk took every one of them.
+          def emit_walk_index_kept_below(index, count)
+            kept = fresh("walk_counted")
+            @asm.lda(at_place(index))
+            @asm.cmp(count)
+            @asm.bne(kept)
+            @asm.dec(at_place(index))
+            @asm.label(kept, join: true)
           end
 
           def list_slots(node)
