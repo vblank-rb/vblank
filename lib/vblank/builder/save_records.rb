@@ -85,7 +85,7 @@ module VBlank
 
       # A PART KEPT WHOLE (`keep part: :play`): every variable, list and pool the part declares, or a
       # scene's, as `start_over` puts back (Builder::Parts). Its members are only all known once every
-      # routine is built, so it is held as it is until then, and #settle_kept_parts! puts its members
+      # routine is built, so it is held as it is until then, and #expand_kept_parts! puts its members
       # where it stands in the record, in the order the part declared them. A member added to the part
       # later is kept with no change to the record; it changes the record's shape, so a save made
       # before reads as empty, as a moved keep does.
@@ -103,7 +103,7 @@ module VBlank
       #     named by the order the build made them, so their names are left out of the record's shape
       #     (#save_shape_name): a timer added elsewhere in the game renumbers them, and must not make
       #     every save read as empty. What they are, in what order, still is the shape.
-      def settle_kept_parts!
+      def expand_kept_parts!
         @save_data_keeping.each do |record, keeping|
           next unless keeping.any?(KeptPart)
 

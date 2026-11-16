@@ -65,7 +65,7 @@ module VBlank
       # One thing a part puts back: +kind+ is :var (a variable's name), :list (a list's name),
       # :pool (the pool) or :shown (a SpriteShown). +framework+ is true for state the framework made
       # and named for itself (a timer's count, a sprite's place), and +saved+ false for state a
-      # save_data record keeping the part leaves out (SaveRecords#settle_kept_parts!).
+      # save_data record keeping the part leaves out (SaveRecords#expand_kept_parts!).
       Member = Data.define(:kind, :thing, :framework, :saved) do
         def initialize(kind:, thing:, framework: false, saved: true) = super
       end
