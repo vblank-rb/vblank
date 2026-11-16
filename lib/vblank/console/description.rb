@@ -441,6 +441,10 @@ module VBlank
                             # Each piece's attributes name its list (Backends::GBC::Lowering::Picture
                             # #pose_rows). A sprite that follows its poses' lists is not made yet.
                             pose_lists: :own,
+                            # A pool as tables side by side where it fits, else as lists; a record
+                            # for each thing where a game asks (Backends::PoolLayout::OWN_LAYOUTS
+                            # says why).
+                            pool_layouts: %i[tables lists records].freeze,
                             sprites_placed_before_wait: true,
                             # A cartridge with a motor, for a game that rumbles (Runtime::Rumble).
                             rumbles: true,

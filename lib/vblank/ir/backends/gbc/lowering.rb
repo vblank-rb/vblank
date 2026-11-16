@@ -63,6 +63,7 @@ module VBlank
             when :abs then emit_abs(node)
             when :negate_abs then emit_negate_abs(node)
             when :clamp then emit_clamp(node)
+            when :repeat then stepped_walk?(node) ? emit_stepped_walk(node) : emit_control_flow_statement(node)
             when *ControlFlow::STATEMENT_KINDS then emit_control_flow_statement(node)
             when :call then emit_call(node)
             when :call_one_of then emit_call_one_of(node)
@@ -1106,7 +1107,32 @@ module VBlank
             return list_call("rt_list_empty", node) unless node.full_of
 
             list_call("rt_list_at_capacity", node)
+            return emit_pool_area_filled(node) if @pool_areas.key?(slot_place(node.name).area)
+
             list_call("rt_list_fill", node, Build.int(0), Build.int(node.capacity), Build.int(node.full_of))
+          end
+
+          # A pool's list kept in an area of the pool's page made full of its number, a slot at a time
+          # at the pool's stride, the number kept multiplied where the slot keeps it so (a link, whose
+          # NONE stays NONE).
+          def emit_pool_area_filled(node)
+            slot = slot_place(node.name)
+            base, stride = list_slots(node.name)
+            number = node.full_of.negative? ? node.full_of : node.full_of * slot.scale
+            again = fresh("pool_fill")
+            @asm.load(:hl, base)
+            @asm.load(:c, node.capacity)
+            @asm.label(again)
+            slot.width.times do |i|
+              @asm.load(:a, (number >> (8 * i)) & 0xFF)
+              @asm.load([:hli], :a)
+            end
+            if stride > slot.width
+              @asm.load(:de, stride - slot.width)
+              @asm.add_hl(:de)
+            end
+            @asm.dec(:c)
+            @asm.jump(:nz, again)
           end
 
           # A push onto a list of bytes or halves, with its value already in registers (Runtime::Lists
@@ -1337,7 +1363,50 @@ module VBlank
           # the index is held to the length the header holds — every field of a pool is such a list.
           # An index out of range goes the whole way round, so the game stops as the interpreter's.
           def value_of_list_get(node)
+            value_of_slot(node)
+            emit_slot_unscaled(node) if scaled_list?(node.name)
+          end
+
+          # A LINK KEPT AS THE SLOT TIMES THE STRIDE (PoolLayout.strided_place), two bytes with NONE
+          # as $FFFF, read back into BCDE as the tree holds it: its sign is spread already, so NONE
+          # is -1, and an arithmetic shift right of the low two bytes brings any other back to the
+          # slot and leaves -1 as it is.
+          def emit_slot_unscaled(node)
+            (slot_place(node.name).scale.bit_length - 1).times do
+              @asm.sra(:d)
+              @asm.rr(:e)
+            end
+          end
+
+          # The low bytes of BCDE, a slot or NONE about to be written to a link kept multiplied, made
+          # the slot times the stride; NONE is kept as it is.
+          def emit_slot_scaled(node)
+            kept = fresh("link_none")
+            @asm.bit(7, :b)
+            @asm.jump_relative(:nz, kept)
+            (slot_place(node.name).scale.bit_length - 1).times do
+              @asm.sla(:e)
+              @asm.rl(:d)
+            end
+            @asm.label(kept)
+          end
+
+          # The value a list_set +node+ writes, its low +width+ bytes in BCDE as the slot keeps them:
+          # the whole number first, and scaled, for a link kept multiplied.
+          def slot_value(node, width)
+            return low_value(node.value, width) unless scaled_list?(node.name)
+
+            value(node.value)
+            emit_slot_scaled(node)
+          end
+
+          # The item +node+ reads, as the list keeps it.
+          def value_of_slot(node)
             place, capacity, width = list_placed(node)
+            if held_field?(node)
+              emit_held_field_address(node)
+              return @asm.call(TABLE_KEPT.fetch([width, true]).last)
+            end
             if (slot = fixed_slot(node))
               return emit_slot_widened(slot, width) if width < 4
 
@@ -1355,7 +1424,8 @@ module VBlank
 
             out_of_range = fresh("list_index_out_of_range")
             done = fresh("list_item_read")
-            emit_list_slot_of_index(node.index, place, capacity, width, out_of_range, fixed: fixed_length_lists.include?(node.name))
+            emit_list_slot_of_index(node.index, place, capacity, width, out_of_range, fixed: fixed_length_lists.include?(node.name),
+                                                                          list: node.name)
             @asm.call(TABLE_KEPT.fetch([width, true]).last) # a slot reads back with its top bit as the sign
             @asm.jump(done)
             @asm.label(out_of_range)
@@ -1373,16 +1443,24 @@ module VBlank
 
             place, capacity, width = list_placed(node)
             if (slot = fixed_slot(node))
-              low_value(node.value, width)
+              slot_value(node, width)
               @asm.load(:hl, slot)
+              return emit_slot_written(width)
+            end
+            if held_field?(node)
+              return if emit_held_field_stepped(node)
+
+              slot_value(node, width)
+              emit_held_field_address(node)
               return emit_slot_written(width)
             end
 
             out_of_range = fresh("list_index_out_of_range")
             done = fresh("list_item_written")
-            emit_list_slot_of_index(node.index, place, capacity, width, out_of_range, fixed: fixed_length_lists.include?(node.name))
+            emit_list_slot_of_index(node.index, place, capacity, width, out_of_range, fixed: fixed_length_lists.include?(node.name),
+                                                                          list: node.name)
             @asm.push(:hl)
-            low_value(node.value, width) # a slot keeps only its own bytes
+            slot_value(node, width) # a slot keeps only its own bytes
             @asm.pop(:hl)
             emit_slot_written(width)
             @asm.jump(done)
@@ -1417,16 +1495,19 @@ module VBlank
           # HL = the slot the index in BCDE names in the list at +place+, whose slots are +width+
           # bytes, a list whose first item is in its first slot; a jump to +out_of_range+, BCDE as
           # it was, for an index past 16 bits, below nought, or not below the length its header holds.
-          def emit_list_slot_address(place, width, out_of_range, length: nil)
+          def emit_list_slot_address(place, width, out_of_range, length: nil, slots: nil)
             @asm.load(:a, :b)
             @asm.or_a(:c)
             @asm.jump(:nz, out_of_range)
-            emit_list_slot_of_de(place, width, out_of_range, length: length)
+            emit_list_slot_of_de(place, width, out_of_range, length: length, slots: slots)
           end
 
           # The same for an index in DE alone. +length+ is the list's, for one that never changes
-          # it (#fixed_length_lists), or nil to read it from the list's header.
-          def emit_list_slot_of_de(place, width, out_of_range, length: nil)
+          # it (#fixed_length_lists), or nil to read it from the list's header. +slots+ is where its
+          # slot nought is and how far apart its slots are (#list_slots), where that is not straight
+          # after the header at +width+.
+          def emit_list_slot_of_de(place, width, out_of_range, length: nil, slots: nil)
+            base, stride = slots || [place + Runtime::Lists::HEADER, width]
             if length
               @asm.load(:a, :e)
               @asm.sub_a(length & 0xFF)
@@ -1443,8 +1524,8 @@ module VBlank
             @asm.jump(:nc, out_of_range)
             @asm.load(:h, :d)
             @asm.load(:l, :e)
-            (width / 2).times { @asm.add_hl(:hl) } # × the slot's width: 1, 2 or 4
-            @asm.load(:de, place + Runtime::Lists::HEADER)
+            (stride.bit_length - 1).times { @asm.add_hl(:hl) } # × the slots' stride, a power of two
+            @asm.load(:de, base)
             @asm.add_hl(:de)
           end
 
@@ -1464,8 +1545,9 @@ module VBlank
             index = folded(node.index)
             return nil unless index && fixed_length_lists.include?(node.name)
 
-            place, capacity, = list_placed(node)
-            place + Runtime::Lists::HEADER + slot_place(node.name).at(index) if index.between?(0, capacity - 1)
+            _place, capacity, = list_placed(node)
+            base, stride = list_slots(node.name)
+            base + (index * stride) if index.between?(0, capacity - 1)
           end
 
           # The names of the lists #fixed_slot reads straight from.
@@ -1521,16 +1603,14 @@ module VBlank
             runtime_call(routine, [Build.int(place), *args])
           end
 
-          # The list +node+ names, as #sections placed it: [its place, its capacity, the bytes a slot,
-          # its name]. Every read and write of a slot starts here, so a pool's list is reached where
-          # its layout placed its slots (#slot_place): the area's place, and its slots' width, which
-          # #refuse_unmade_pool_placement! holds to one slot after another from the header's end.
+          # The list +node+ names, as #sections placed it: [its place, which is its header's, its
+          # capacity, the bytes a slot's value is kept in, its name]. Where its slots are, a pool's
+          # in its layout's area, is #list_slots.
           def list_placed(node)
             place, capacity, _width, label = @lists.fetch(node.name) do
               raise LoweringError, "the list #{node.name.inspect} is used and never declared"
             end
-            slot = slot_place(node.name)
-            [slot.area == node.name ? place : @lists.fetch(slot.area).first, capacity, slot.width, label]
+            [place, capacity, slot_place(node.name).width, label]
           end
 
           # --- pools (Backends::PoolLayout) ---
@@ -1539,36 +1619,285 @@ module VBlank
           # bytes from the start of the list's area (PoolLayout::SlotPlace), how wide its value is, and
           # the number it is kept multiplied by. Every read and write of a slot asks for that through
           # #list_placed, and the headless run reads a pool's lists back through the same
-          # (Places#slot_places). The Color keeps every pool as lists today
-          # (Console::Description#pool_layouts): each slot list an area of its own, which is the list
-          # with its header, slot s at s times its width. Its width is the one the Color keeps the list
-          # in (#list_width, GBC::ListWidths), which can be narrower than the game declared, so the
-          # pool is placed with those widths. A walk of a pool kept so is stepped by the statements the
-          # tree gives it (IR::WalkShape#step_statements), lowered as any other.
+          # (Places#slot_places). Kept as :lists, each slot list is an area of its own, which is the
+          # list with its header, slot s at s times its width. Its width is the one the Color keeps the
+          # list in (#list_width, GBC::ListWidths), which can be narrower than the game declared, so
+          # the pool is placed with those widths.
           #
-          # A layout of the Color's own is an adapter that places a pool another way; this lowering then
-          # needs only its areas reserved and a walk stepped its way, and refuses one until it has.
+          # WHAT THE LISTS COST ON THIS PROCESSOR. The SM83 has no indexed addressing, and HL is the
+          # register pair that reaches memory cheaply: a byte through it is one instruction, ADD [HL] or
+          # INC [HL] (https://gbdev.io/pandocs/CPU_Instruction_Set.html). A pool kept as lists cannot
+          # use that: each field read or write checks the index, multiplies it by the slot's width and
+          # adds the list's place, and the walk steps through link lists in memory. Kept at one stride,
+          # a field of the thing a walk is on is HL set from one byte (#emit_stepped_walk).
           #
-          # WHAT THE LISTS COST ON THIS PROCESSOR. A Color game keeps each thing as a record and points
-          # HL (or DE) at it for as long as it works on that thing: a byte field is then one instruction
-          # (ADD [HL], or INC [HL]), and a 16-bit field a few, since the SM83 has no indexed addressing
-          # and HL is the register that reaches memory cheaply (https://gbdev.io/pandocs/CPU_Instruction_Set.html;
-          # the pret decompilations on github.com/pret show the habit routine after routine). A pool kept
-          # as lists cannot do that: each field read or write checks the index, multiplies it by the
-          # slot's width and adds the list's place, and the walk steps through link lists in memory,
-          # several times the record's instructions for every field. A layout of records with HL kept on
-          # the thing through the walk's body is the Color's way.
+          # Kept at one stride (:tables, :records), each of a pool's areas is reserved here inside one
+          # page of work memory, so the high byte of a slot's address is the area's page and the low
+          # byte is the area's low byte plus the slot times the stride, which never carries: H is set
+          # from a number written in the program and L from one byte (#emit_stepped_walk). A pool
+          # with an area bigger than a page keeps :lists. Each list keeps its header, and so its
+          # length, where the list itself is.
           def place_pools
             @slot_places = {}
+            @pool_areas = {}
             console = @program.described_console
             (@program.pools || []).each do |shape|
               kept = shape.with(slot_lists: shape.slot_lists.to_h { |list, width| [list, pool_list_width(list, width)] })
               layout = PoolLayout.chosen(kept, console, PoolLayout.steps_on(@program, kept))
               placement = layout.place(kept)
-              refuse_unmade_pool_placement!(shape, placement)
+              placement = PoolLayout::ADAPTERS.fetch(:lists).place(kept) if placement.areas.values.any? { |bytes| bytes > 0x100 }
+              if placement.layout == :lists
+                refuse_unmade_pool_placement!(shape, placement)
+              else
+                placement.areas.each do |area, bytes|
+                  @pool_areas[area] = @memory.reserve_in_page("the pool #{shape.name.inspect}'s #{area}", bytes)
+                end
+              end
               @slot_places.merge!(placement.slots)
             end
           end
+
+          # A WALK OF A POOL STEPPED THE PROCESSOR'S WAY. The tree's walk keeps the thing it goes to
+          # next and the last it visits as whole numbers, tests the next against NONE, copies it into
+          # the thing it is on, compares that with the last and reads the link out of a list at an
+          # index checked and scaled each time; and every field the body reads or writes checks and
+          # scales the index again. The SM83 has no indexed addressing: HL is the register pair that
+          # reaches memory cheaply, a byte through it in one instruction (Pan Docs, "CPU Instruction
+          # Set"). So the walk keeps one byte, the thing's distance into its pool's areas (the slot
+          # times the stride, which is what the links keep), and every field of the thing is HL set
+          # from it: H the area's page, written in the program, and L the area's low byte plus the
+          # distance, which never carries (#place_pools). The next thing's distance is the low byte of
+          # its link, NONE's being $FF, which no distance is, and the walk stops at the last thing as
+          # the tree does only where the chain can change during it
+          # (LoweringPlan#chain_changed_during_walks?). The turns are a byte. The walk's variables end
+          # as the tree leaves them: the thing it was on, the next (NONE), and the index, one below
+          # the count where the walk took every turn (Reference#exec_repeat).
+          #
+          # Only where nothing in the body waits, reads the repeat's index or writes the walk's own
+          # variables. What it keeps is in work memory, so a call in the body leaves it alone; a
+          # routine's own walk keeps its own. One walk at a time is held.
+          def stepped_walk?(node)
+            walk = node.pool_walk
+            return false unless walk && node.index && walk.step_statements == 2 && @held_walk.nil?
+            return false unless @pool_areas.key?(slot_place(walk.links).area) && children_of(node).first == node.children
+
+            capacity = folded(node.count)
+            nodes = @plan.walk_body(node).flat_map { |child| child.walk.to_a }
+            !capacity.nil? && capacity.between?(1, 0xFF) && !@plan.statements_wait?(node.walk.to_a) &&
+              nodes.none? { |each| each.attrs.values.flatten.include?(node.index) } &&
+              nodes.none? { |each| [walk.at, walk.ahead, walk.last].any? { |name| each.kind != :var_ref && each.attrs.values.flatten.include?(name) } }
+          end
+
+          def emit_stepped_walk(node)
+            walk = node.pool_walk
+            links = slot_place(walk.links)
+            shifts = links.stride.bit_length - 1
+            body = @plan.walk_body(node)
+            stops_at_last = @plan.chain_changed_during_walks?(walk.pool)
+            reads_at = body.flat_map { |child| child.walk.to_a }.any? { |each| reads_current_beyond_fields?(each, walk) }
+            distance, ahead, last, turns = %w[distance next last turns].map { |what| @memory.reserve("the walk's #{what} in #{@routine}", 1) }
+            top = fresh("walk")
+            done = fresh("walk_done")
+            @asm.xor_a(:a)
+            @asm.load([turns], :a)
+            if stops_at_last
+              emit_walk_distance_of(walk.last, shifts)
+              @asm.load([last], :a)
+            end
+            value(Build.var_ref(walk.ahead))
+            @asm.bit(7, :b)
+            @asm.jump(:nz, done)
+            emit_distance_from_e(shifts)
+            @asm.label(top)
+            @asm.load([distance], :a)
+            emit_walk_link_read(links, distance, ahead, stops_at_last ? last : nil)
+            emit_walk_current_written(walk, distance, shifts) if reads_at
+            @held_walk = [walk, distance]
+            begin
+              body.each { |child| statement(child) }
+            ensure
+              @held_walk = nil
+            end
+            @asm.load(:hl, turns)
+            @asm.inc([:hl])
+            @asm.load(:a, [ahead])
+            @asm.cp_a(0xFF)
+            @asm.jump(:nz, top)
+            @asm.label(done)
+            emit_walk_ends(node, walk, turns, reads_at)
+          end
+
+          # A = the distance of the thing whose slot or NONE the variable +name+ holds.
+          def emit_walk_distance_of(name, shifts)
+            value(Build.var_ref(name))
+            emit_distance_from_e(shifts)
+          end
+
+          # A = the slot in E times the stride (+shifts+ doublings).
+          def emit_distance_from_e(shifts)
+            @asm.load(:a, :e)
+            shifts.times { @asm.add_a(:a) }
+          end
+
+          # The next thing's distance, the low byte of the link of the thing at +distance+, into
+          # +ahead+; or NONE where the thing is the +last+ (when that is kept).
+          def emit_walk_link_read(links, distance, ahead, last)
+            stepped = fresh("walk_stepped")
+            address = @pool_areas.fetch(links.area) + links.offset
+            @asm.add_a(address & 0xFF)
+            @asm.load(:l, :a)
+            @asm.load(:h, address >> 8)
+            @asm.load(:a, [:hl])
+            @asm.load([ahead], :a)
+            return unless last
+
+            @asm.load(:a, [distance])
+            @asm.load(:hl, last)
+            @asm.cp_a([:hl])
+            @asm.jump_relative(:nz, stepped)
+            @asm.load(:a, 0xFF)
+            @asm.load([ahead], :a)
+            @asm.label(stepped)
+          end
+
+          # The walk's variable for the thing it is on, written from its distance, for a body that
+          # reads it other than to reach a field.
+          def emit_walk_current_written(walk, distance, shifts)
+            @asm.load(:a, [distance])
+            shifts.times { @asm.srl(:a) }
+            @asm.load(:e, :a)
+            @asm.xor_a(:a)
+            @asm.load(:d, :a)
+            @asm.load(:c, :a)
+            @asm.load(:b, :a)
+            store(walk.at)
+          end
+
+          # The walk's variables as the tree leaves them (#emit_stepped_walk).
+          def emit_walk_ends(node, walk, turns, reads_at)
+            untouched = fresh("walk_untouched")
+            counted = fresh("walk_counted")
+            unless reads_at
+              @asm.load(:a, [turns])
+              @asm.or_a(:a)
+              @asm.jump(:z, untouched)
+              statement(Build.set(walk.at, Build.var_ref(walk.last)))
+              @asm.label(untouched)
+            end
+            statement(Build.set(walk.ahead, Build.int(DSL::Pool::NONE)))
+            @asm.load(:a, [turns])
+            @asm.cp_a(folded(node.count))
+            @asm.jump_relative(:nz, counted)
+            @asm.dec(:a)
+            @asm.label(counted)
+            @asm.load(:e, :a)
+            @asm.xor_a(:a)
+            @asm.load(:d, :a)
+            @asm.load(:c, :a)
+            @asm.load(:b, :a)
+            store(node.index)
+          end
+
+          # Whether +node+ reads the walk's current thing other than as the index of a field the walk
+          # reaches from its distance (#held_field_address).
+          def reads_current_beyond_fields?(node, walk)
+            node.attrs.values.flatten.any? do |operand|
+              next false unless operand.is_a?(Node) && operand.kind == :var_ref && operand.name == walk.at
+
+              !(%i[list_get list_set].include?(node.kind) && node.index.equal?(operand) && pool_field?(node.name, walk.pool))
+            end
+          end
+
+          # Whether +list+ is one of +pool+'s lists kept in its areas.
+          def pool_field?(list, pool)
+            slot = @slot_places[list]
+            !slot.nil? && @pool_areas.key?(slot.area) && DSL::Pool.owner_of_list(list).to_s == pool.to_s
+          end
+
+          # Whether +node+ reads or writes a field of the thing the held walk is on.
+          def held_field?(node) = held_field_at?(node.index, node.name)
+
+          # Whether +index+ is the held walk's thing and +list+ one of its pool's fields.
+          def held_field_at?(index, list)
+            walk, = @held_walk
+            !walk.nil? && index.is_a?(Node) && index.kind == :var_ref && index.name == walk.at && pool_field?(list, walk.pool)
+          end
+
+          # HL = the slot of the list +list+ (a node or a name) for the thing the held walk is on: H
+          # the area's page, L its low byte plus the thing's distance.
+          def emit_held_field_address(list)
+            _walk, distance = @held_walk
+            address = list_slots(list.is_a?(Node) ? list.name : list).first
+            @asm.load(:a, [distance])
+            @asm.add_a(address & 0xFF)
+            @asm.load(:l, :a)
+            @asm.load(:h, address >> 8)
+          end
+
+          # A FIELD OF THE HELD THING MOVED ON BY A NUMBER WRITTEN IN THE PROGRAM, `t.x += 2`: each of
+          # its bytes added where it is, lowest first, the carry taken up, as the slot keeps the low
+          # bytes of the sum the interpreter works out in 32 bits. True where it was made so.
+          def emit_held_field_stepped(node)
+            value = node.value
+            return false unless value.is_a?(Node) && value.kind == :binop && %i[+ -].include?(value.op)
+
+            read = value.lhs
+            by = folded(value.rhs)
+            return false unless by && read.is_a?(Node) && read.kind == :list_get && read.name == node.name &&
+                                read.index.is_a?(Node) && read.index.kind == :var_ref && read.index.name == node.index.name &&
+                                !scaled_list?(node.name)
+
+            by = -by if value.op == :-
+            width = slot_place(node.name).width
+            emit_held_field_address(node)
+            return emit_held_field_nudged(by, width) if by.abs.between?(1, 0xFF) && width > 1
+
+            width.times do |i|
+              @asm.load(:a, [:hl])
+              i.zero? ? @asm.add_a((by >> (8 * i)) & 0xFF) : @asm.adc_a((by >> (8 * i)) & 0xFF)
+              i == width - 1 ? @asm.load([:hl], :a) : @asm.load([:hli], :a)
+            end
+            true
+          end
+
+          # The field at HL, +width+ bytes, moved on by +by+, a number of one byte either way: the
+          # low byte added or taken away, and only where that carried or borrowed is the next byte
+          # moved on by one, and so on up, which a small step seldom does.
+          def emit_held_field_nudged(by, width)
+            done = fresh("field_moved")
+            @asm.load(:a, [:hl])
+            by.positive? ? @asm.add_a(by) : @asm.sub_a(-by)
+            @asm.load([:hli], :a)
+            @asm.jump_relative(:nc, done)
+            (width - 1).times do |i|
+              if by.positive?
+                @asm.inc([:hl])
+                @asm.jump_relative(:nz, done) unless i == width - 2
+              else
+                @asm.load(:a, [:hl])
+                @asm.dec([:hl])
+                unless i == width - 2
+                  @asm.or_a(:a)
+                  @asm.jump_relative(:nz, done)
+                end
+              end
+              @asm.inc(:hl) unless i == width - 2
+            end
+            @asm.label(done)
+            true
+          end
+
+          # Where slot nought of the list +name+ is, and how far apart its slots are: straight after
+          # its header at its width, or in its pool's area at the pool's stride.
+          def list_slots(name)
+            slot = slot_place(name)
+            return [@pool_areas.fetch(slot.area) + slot.offset, slot.stride] if @pool_areas.key?(slot.area)
+
+            [@lists.fetch(name).first + Runtime::Lists::HEADER, slot.stride]
+          end
+
+          # Whether the list +name+ keeps its values multiplied (a pool's link at the stride).
+          def scaled_list?(name) = slot_place(name).scale > 1
 
           # The width the Color keeps the list +name+ in, declared +width+ (#list_width).
           def pool_list_width(name, width)
@@ -1585,8 +1914,14 @@ module VBlank
             end
           end
 
-          # The slots' places as the headless run reads them, by list.
-          public def slot_places = @slot_places.dup
+          # The slots' places as the headless run reads them, by list, each counted from the end of
+          # its list's own header (CartridgeHeadlessRun#slot_place_of).
+          public def slot_places
+            @slot_places.select { |list, _slot| @lists.key?(list) }.to_h do |list, slot|
+              moved = list_slots(list).first - slot.offset - (@lists.fetch(list).first + Runtime::Lists::HEADER)
+              [list, moved.zero? ? slot : slot.with(offset: slot.offset + moved)]
+            end
+          end
 
           # A placement this lowering cannot keep yet: an area that is not one list of the tree, a
           # value kept multiplied, or slots not one after another as wide as the list keeps them.
@@ -2035,7 +2370,8 @@ module VBlank
               place, capacity, width = list_placed(item)
               out_of_range = fresh("list_index_out_of_range")
               read = fresh("list_item_read")
-              emit_list_slot_of_index(item.index, place, capacity, width, out_of_range, fixed: fixed_length_lists.include?(item.name))
+              emit_list_slot_of_index(item.index, place, capacity, width, out_of_range, fixed: fixed_length_lists.include?(item.name),
+                                                                          list: item.name)
               @asm.load(:a, [:hl])
               @asm.jump(read)
               @asm.label(out_of_range)

@@ -99,8 +99,9 @@ module VBlank
       end
 
       # A list here is its slots, with its length and, for one the game shifts, where its oldest
-      # item is, kept apart from them (IR::Backends::GBA::Lists#list_places).
-      private def kept_list_items(place)
+      # item is, kept apart from them (IR::Backends::GBA::Lists#list_places). The Advance keeps every
+      # pool as lists, so no list of it is moved by a layout.
+      private def kept_list_items(place, _slot = nil)
         front = place.head_at ? var_at(place.head_at) : 0
         Array.new(var_at(place.length_at)) do |i|
           little_slot(place.base + (((front + i) % place.slots) * place.bytes), place.bytes)

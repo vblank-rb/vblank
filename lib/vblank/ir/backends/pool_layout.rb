@@ -175,6 +175,17 @@ module VBlank
                        "but the record's stride is the sum of the widths rounded up, more doublings to set X. " \
                        "Measured in bsnes, one more pair: 532 master clocks (half words 388); the bullets test 7.24%."
             },
+            gbc: {
+              tables: "Each table in a page of its own, so a field of the thing a walk is on is HL with H the " \
+                      "page and L the table's low byte plus the thing's distance, and the walk steps by its links " \
+                      "(GBC::Lowering#emit_stepped_walk). Measured in the emulator, one more pair of things checked: " \
+                      "932 cycles as lists, 604 as tables; the bullets test 15.71% of a frame, 10.17%; five " \
+                      "walkers 20.41%, 15.79%.",
+              records: "A record for each thing, reached the same way, but the record's stride is the sum of the " \
+                       "widths rounded up, so fewer things fit the one page it must keep to. Measured in the " \
+                       "emulator, one more pair: 678 cycles; five walkers 16.68%; the bullets' pool is past a page " \
+                       "and keeps :lists."
+            },
             genesis: {
               tables: "The pool's tables in one block, so one address register on the thing a walk is on reaches " \
                       "every field at a distance written in the instruction, and the walk steps by its links " \
