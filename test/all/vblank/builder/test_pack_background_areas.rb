@@ -20,7 +20,10 @@ module PackBackgroundAreaGames
   CASTLE_COLORS_AT = 0x80
   TOWN_TILES_AT = 0x100
   CASTLE_TILES_AT = 0x180
-  COPY_SIZE = 0x200
+  TURNS_AT = 0x200
+  COPY_SIZE = 0x240
+  # The pictures the town's tile 1 takes turns through, in a game that asks (`turning: true`).
+  TURNS = [PLACES[2], PLACES[3]].freeze
 
   # Each area of the original: its tiles' places, its two banks of colours, and its map's cells, each
   # [tile, bank, mirrored, upside down], two to a row.
@@ -49,6 +52,7 @@ module PackBackgroundAreaGames
       copy[area.colors_at, 64] = area.banks.flatten.pack("v*")
       copy[area.tiles_at, 128] = area.places.map(&LOW_HALF_FIRST).join
     end
+    copy[TURNS_AT, 64] = TURNS.map(&LOW_HALF_FIRST).join
     path = File.join(folder, "made_up_areas.bin")
     File.binwrite(path, copy)
     VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :gba,
@@ -57,9 +61,10 @@ module PackBackgroundAreaGames
   end
 
   # The game reading both areas from the pack, built as +options+ say. The block, run on the
-  # builder, is the game loop, handed the background. Hands back the program and the pack file the
+  # builder, is the game loop, handed the background and, with +turning+, the group of pictures the
+  # town's tile 1 takes turns through (nil without). Hands back the program and the pack file the
   # build made (nil for a build that leaves its pack out).
-  private def areas_game_and_file(from, options: VBlank::Cartridge::Options.new, &loop_body)
+  private def areas_game_and_file(from, options: VBlank::Cartridge::Options.new, turning: false, &loop_body)
     b = VBlank::Builder.new(options: options)
     b.instance_eval do
       screen :tiled
@@ -69,11 +74,14 @@ module PackBackgroundAreaGames
           slots.numbers :"#{name}_map", at: area.map_at, count: area.cells.length, width: :half, signed: false
           slots.colors :"#{name}_colors", at: area.colors_at, count: 32
         end
+        slots.tiles :turns, at: TURNS_AT, count: TURNS.length
       end
+      groups = []
+      groups << tile_pictures(:blocks, tiles: { pack[:town_video].tile(1) => pack[:turns].tiles(0, across: TURNS.length) }) if turning
       world = background :world, tiles: AREAS.keys.to_h { |name| [name, pack[:"#{name}_video"]] },
                                  map: AREAS.keys.to_h { |name| [name, pack[:"#{name}_map"]] },
                                  colors: AREAS.keys.to_h { |name| [name, pack[:"#{name}_colors"]] }, across: ACROSS
-      instance_exec(world, &loop_body)
+      instance_exec(world, groups.first, &loop_body)
     end
     b.finalize_program
     [b.program, b.made_data_pack_file]
@@ -142,6 +150,27 @@ class TestPackBackgroundAreas < Minitest::Test
     by_hand = areas_drawn_by_hand { |world| PackBackgroundAreaGames.emit_walk(self, world) }
 
     refute_equal screen_at(by_hand, 2), screen_at(by_hand, 5)
+  end
+
+  # The town's tile 1 takes turns through two pictures of the pack: the second is chosen on the
+  # second pass, the game walks to the castle and back, and the town shows the second still.
+  def test_a_tile_taking_turns_in_one_area_keeps_its_picture_through_a_walk
+    Dir.mktmpdir do |folder|
+      walked, = areas_game_and_file(areas_original(folder), turning: true) do |world, blocks|
+        tick = var :tick, 0
+        game_loop do
+          tick += 1
+          blocks.show 1 if tick == 2
+          world.show_map :castle if tick == 4
+          world.show_map :town if tick == 6
+        end
+      end
+      first = game_player.run(walked, frames: 1).screen.pixel(1, 0)
+      second = game_player.run(walked, frames: 3).screen.pixel(1, 0)
+
+      refute_equal first, second, "the second picture shows in the town"
+      assert_equal second, game_player.run(walked, frames: 9).screen.pixel(1, 0), "and again after the walk"
+    end
   end
 
   private def refusal_with(set_cells: nil, **given)

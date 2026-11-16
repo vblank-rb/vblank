@@ -238,7 +238,8 @@ module VBlank
         refuse_colors_short_of_table!(own, tiles, colors)
         refuse_bad_pack_background_shape!(own, map, across, cell, words)
         record_pack_background_slot(tiles)
-        refuse_moving_tiles_on_areas!(name, area) unless moving_pack_tiles_of(tiles).empty?
+        moving = moving_pack_tiles_of(tiles)
+        refuse_moving_table_tiles!(own, tiles) unless moving.empty?
         tile_places = pack_tile_places(tiles, subject)
         bank_lists = if drawn_from_whole_table?(tiles)
                        pack_color_tables(colors, tiles.layout.format.colors, "#{subject}'s colors:")
@@ -250,22 +251,21 @@ module VBlank
         shape = PackMapShape.new(name: own, words: words, tiles_a_side: cell / Original::Slot::TILE_SIDE, tile_places: tile_places,
                                  bank_lists: bank_lists)
         rows = map_cells.each_slice(across).to_a
-        made = if big_pack_cells?(shape.tiles_a_side) && !drawn_from_whole_table?(tiles)
-                 pack_background_of_big_cells(shape, rows, nil, [], {})
+        # A tile taking turns through pictures (PackTilePictures) is a tile of a run, made for the
+        # area as for a background of one area: each area showing the group has runs of its own,
+        # and the group's `show` copies into every run.
+        big = big_pack_cells?(shape.tiles_a_side) && !drawn_from_whole_table?(tiles)
+        turning = (turning_big_cells(shape, rows, nil, moving) if big)
+        made = if turning && big_cells_turn_in_one_group?(turning, moving)
+                 pack_background_of_big_cells(shape, rows, nil, turning, moving)
                else
-                 pack_background_of_tiles(shape, rows, nil, {})
+                 pack_background_of_tiles(shape, rows, nil, moving)
                end
         drawn = made.pictures.values.compact
         refuse_pack_background_drawing_nothing!(own) if drawn.empty?
         tileset = :"background :#{own} tiles"
         tiles(tileset, drawn.to_h { |picture| [picture, picture] })
         PackAreaArt.new(tileset: tileset, rows: made.rows, lists: drawn_from_whole_table?(tiles) ? [] : bank_lists)
-      end
-
-      def refuse_moving_tiles_on_areas!(name, area)
-        raise ArgumentError, "background :#{name} walks between areas of the data pack, and the area :#{area} shows tiles " \
-                             "that take turns through pictures (tile_pictures). VBlank does not make that yet for areas. " \
-                             "To fix this, give that area a background of its own."
       end
 
       # CELLS IN FRONT OF THE SPRITES (`cells_in_front: true`). A console that keeps a priority bit
