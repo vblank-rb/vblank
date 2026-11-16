@@ -1197,6 +1197,9 @@ module VBlank
               asm.call("rt_bends_copy")
               asm.call("rt_picture_display_back_on")
               asm.jump_relative(:c, "rt_upload_more")
+              asm.load(:a, [memory[CELLS]]) # cells the blank did not reach (rt_picture_cells_kept)
+              asm.and_a(:a)
+              asm.jump_relative(:nz, "rt_upload_more")
               if groups
                 asm.load(:a, [pending])
                 asm.add_a(:a) # carry from 0xFF
@@ -1341,12 +1344,21 @@ module VBlank
               asm.load(:b, :a)
               asm.xor_a(:a)
               asm.load([:hli], :a)
-              # As long as the blank lasts each goes straight in. What it does not reach waits for
-              # the display, and shows from the rows the display has not drawn yet.
+              # As long as the blank lasts each goes straight in. What it does not reach is kept, first
+              # in CELLS, for the next blank (rt_picture_cells_kept), and rt_upload says there is more
+              # to copy: the wait copies it in the blanks after, and the pass is shown once all of it
+              # is in, as a pass that runs late is. Written while the display draws, a cell shows
+              # only from the rows it has not reached yet, so a frame would show the top of the
+              # screen without the pass's changes and the rest with them. With the display off every
+              # cell goes in now.
               asm.label("rt_picture_cells_next")
               asm.load_high(:a, h::LY)
               asm.cp_a(h::SCREEN_HEIGHT)
-              asm.jump(:c, "rt_cells_write_rest")
+              asm.jump_relative(:nc, "rt_picture_cells_in_blank")
+              asm.load_high(:a, h::LCDC)
+              asm.bit(7, :a)
+              asm.jump_relative(:nz, "rt_picture_cells_kept")
+              asm.label("rt_picture_cells_in_blank")
               asm.load(:a, [:hli])
               asm.load(:e, :a)
               asm.load(:a, [:hli])
@@ -1361,6 +1373,23 @@ module VBlank
               asm.jump_relative(:nz, "rt_picture_cells_next")
               asm.xor_a(:a)
               asm.load_high(h::VBK, :a)
+              asm.ret
+
+              # The B cells from HL on, moved to the front of CELLS for the next blank, in order.
+              asm.label("rt_picture_cells_kept")
+              asm.xor_a(:a)
+              asm.load_high(h::VBK, :a)
+              asm.load(:a, :b)
+              asm.load([memory[CELLS]], :a)
+              asm.load(:de, memory[CELLS] + 1)
+              asm.label("rt_picture_cells_move")
+              4.times do # four bytes a cell
+                asm.load(:a, [:hli])
+                asm.load([:de], :a)
+                asm.inc(:de)
+              end
+              asm.dec(:b)
+              asm.jump_relative(:nz, "rt_picture_cells_move")
               asm.ret
 
               # rt_upload in as many blanks as it takes.

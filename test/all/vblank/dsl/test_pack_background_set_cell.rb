@@ -596,6 +596,15 @@ class TestPackBackgroundSetCell < Minitest::Test
     end
   end
 
+  # A PASS THAT WRITES MANY CELLS shows them on the frame the interpreter does: 120 writes in one
+  # pass, 60 in the game loop and 60 in a routine it calls, every frame held to the interpreter's.
+  def test_a_pass_writing_many_cells_shows_them_on_the_interpreters_frame
+    Dir.mktmpdir do |folder|
+      program, = many_place_lines_game(folder, lines: 60, lines_a_pass: 60)
+      game_player.run(program, frames: 6)
+    end
+  end
+
   # A line in a timer's handler can run between the steps of any line it interrupts, so it keeps
   # its place apart from the routine it is written in.
   def test_a_line_in_a_timers_handler_keeps_its_place_apart
@@ -619,13 +628,13 @@ class TestPackBackgroundSetCell < Minitest::Test
   end
 
   # The game of the many-lines test: +lines+ `set_cell`s in the game loop and as many in a routine it
-  # calls, each a place worked out from the pass, the cells taken in turn, LINES_A_PASS of each on
-  # each pass from the second, so no pass changes more cells than a console writes in one blank.
+  # calls, each a place worked out from the pass, the cells taken in turn, +lines_a_pass+ of each on
+  # each pass from the second, so no pass changes more cells than a console queues for the blank.
   # With +only_last+ only the last line writing each cell is kept. Handed back with its hidden
   # numbers.
   LINES_A_PASS = 16
 
-  private def many_place_lines_game(folder, lines:, only_last: false)
+  private def many_place_lines_game(folder, lines:, only_last: false, lines_a_pass: LINES_A_PASS)
     notes = nil
     program, = map_cells_game_and_file(folder, :gbc, set_cells: ->(pack) { pack[:changes] }, changes: 3) do |world|
       notes = hidden_variable_notes
@@ -634,7 +643,7 @@ class TestPackBackgroundSetCell < Minitest::Test
       written = (0...lines).to_a
       written = written.last(cells) if only_last
       write = lambda do |shift|
-        written.group_by { |at| at / LINES_A_PASS }.each do |chunk, ats|
+        written.group_by { |at| at / lines_a_pass }.each do |chunk, ats|
           if pass == 2 + chunk
             ats.each { |at| world.set_cell at % 4, (at / 4) % 2, (pass + at + shift) % 3 }
           end
