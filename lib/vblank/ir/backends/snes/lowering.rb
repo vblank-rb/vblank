@@ -911,10 +911,27 @@ module VBlank
 
             names = [node.lhs, node.rhs].map { |side| variable_named(side) }
             return unless names.all? { |name| name && DSL::Pool.walked_by(name) }
+            return compare_scaled_current(node.op, *names) if @scaled_currents&.key?(names[0])
+            return compare_scaled_current(node.op, *names.reverse) if @scaled_currents&.key?(names[1])
 
             emit_low_half_load(at_place(place_of(names[0])))
             @asm.cmp(at_place(place_of(names[1])))
             node.op == :== ? :bne : :beq
+          end
+
+          # The thing a walk is on, held as a ScaledCurrent under +name+, compared with the thing in
+          # +other+, scaled before the walk: X with it where X holds the walk's place, else the place
+          # stored. Equal places are equal slots, and NONE, $FFFF, is no slot's place.
+          def compare_scaled_current(op, name, other)
+            current = @scaled_currents.fetch(name)
+            partner = at_place(current.partners.fetch(other))
+            if @asm.x_holds == [current.at, current.stride]
+              @asm.cpx(partner)
+            else
+              @asm.lda(at_place(current.scaled))
+              @asm.cmp(partner)
+            end
+            op == :== ? :bne : :beq
           end
 
           # LDA of a variable's low half, unless A holds it already (W65816#accumulator_holds): a pool's walk
@@ -1354,23 +1371,114 @@ module VBlank
 
             top = fresh("walk")
             done = fresh("walk_done")
+            body = node.children.drop(walk.step_statements)
+            current = scaled_current(walk, body, at, links.stride)
             store_number(index, 0)
             [[walk.ahead, ahead], [walk.last, last]].each { |from, to| emit_slot_scaled(place_of(from), to, shifts) }
+            current&.partners&.each { |name, scaled| emit_slot_scaled(place_of(name), scaled, shifts) }
+            store_number(current.scaled, DSL::Pool::NONE) if current
             @asm.label(top)
             @asm.ldx(at_place(ahead))
             @asm.branch_long(:bmi, done)
-            @asm.txa
-            shifts.times { @asm.lsr }
-            @asm.sta(at_place(at))
+            if current
+              @asm.stx(at_place(current.scaled))
+            else
+              @asm.txa
+              shifts.times { @asm.lsr }
+              @asm.sta(at_place(at))
+              @asm.note_accumulator_holds(at)
+            end
             @asm.note_x_holds([at, links.stride])
-            @asm.note_accumulator_holds(at)
             emit_walk_link_read(links, @lists.fetch(walk.links)[2], ahead, last, shifts)
-            node.children.drop(walk.step_statements).each { |child| statement(child) }
+            with_scaled_current(walk.at, current) { body.each { |child| statement(child) } }
             @asm.inc(at_place(index))
             @asm.brl(top)
             @asm.label(done)
+            emit_current_unscaled(current, at, shifts) if current
             store_number(place_of(walk.ahead), DSL::Pool::NONE)
             emit_walk_index_kept_below(index, folded(node.count))
+          end
+
+          # THE THING A WALK IS ON, KEPT ONLY AS X HOLDS IT. Each turn of #emit_stepped_walk loads the
+          # thing's place, the slot times the stride, into X, and the slot itself is worked out of
+          # it by halving and written to the walk's variable for the body to read. Where the body
+          # reads that variable only as the index of a slot of the pool's lists, or to compare it with
+          # another thing of the pool held still through the walk (`other.index != e.index`), the
+          # halving and the write are dropped: X is stored as it is, a slot reached again from that,
+          # the other thing scaled once before the walk and compared with X; and the variable is
+          # written once, as the walk ends.
+          #
+          # +scaled+ is where X is stored each turn, +stride+ the pool's, and +partners+ the other
+          # things compared with it, by their variables, each with where its scaled place is kept.
+          ScaledCurrent = Data.define(:at, :scaled, :stride, :partners)
+
+          # The ScaledCurrent for +walk+ whose +body+ reads its variable (at +at+) only so, or nil.
+          def scaled_current(walk, body, at, stride)
+            partners = []
+            nodes = body.flat_map { |child| child.walk.to_a }
+            return if nodes.any? { |each| each.callees.any? || names?(each, walk.at, :var_ref) }
+
+            nodes.each do |each|
+              operands = each.attrs.values.flatten.grep(Node).select { |operand| operand.kind == :var_ref && operand.name == walk.at }
+              next if operands.empty?
+              return unless slot_index_read?(each, operands, stride)
+
+              partner = compared_partner(each, walk, nodes)
+              return unless partner || each.kind != :binop
+
+              partners << partner if partner
+            end
+            ScaledCurrent.new(at: at, scaled: place_of(keep_local(:walk_at_scaled)), stride: stride,
+                              partners: partners.uniq.to_h { |name| [name, place_of(keep_local(:walk_partner_scaled))] })
+          end
+
+          # Whether +node+ reads +operands+, the walk's variable, only as the index of a slot of a list
+          # kept at +stride+ and known to be inside, or as one side of an equality compare.
+          def slot_index_read?(node, operands, stride)
+            return %i[== !=].include?(node.op) && operands.length == 1 if node.kind == :binop
+            return false unless %i[list_get list_set].include?(node.kind) && operands == [node.index]
+
+            strided_list?(node.name) && list_slots(node.name).stride == stride && index_inside_full_list?(node.name, node.index)
+          end
+
+          # For a compare +node+ of the walk's variable with another variable, that variable's name:
+          # one holding a slot of the same pool or NONE, never written in the walk's +nodes+. Nil
+          # for any other compare.
+          def compared_partner(node, walk, nodes)
+            return unless node.kind == :binop
+
+            other = [node.lhs, node.rhs].find { |side| !(side.is_a?(Node) && side.kind == :var_ref && side.name == walk.at) }
+            name = variable_named(other)
+            return unless name && DSL::Pool.walked_by(name).to_s == walk.pool.to_s && !@scaled_currents&.key?(name)
+            return if nodes.any? { |each| names?(each, name, :var_ref) }
+
+            name
+          end
+
+          # Runs the block with +current+ (a ScaledCurrent, or nil) known as how the walk's variable
+          # +name+ is held.
+          def with_scaled_current(name, current)
+            outer = @scaled_currents
+            @scaled_currents = current ? (outer || {}).merge(name => current) : outer
+            yield
+          ensure
+            @scaled_currents = outer
+          end
+
+          # The ScaledCurrent whose slot X is set from for +key+ (#slot_key), or nil.
+          def scaled_current_for(key)
+            @scaled_currents&.each_value&.find { |current| [current.at, current.stride] == key }
+          end
+
+          # The walk's variable as the tree leaves it, from the place last stored: the slot it was on,
+          # or as it was where the walk took no turn.
+          def emit_current_unscaled(current, at, shifts)
+            untouched = fresh("walk_untouched")
+            @asm.lda(at_place(current.scaled))
+            @asm.bmi(untouched)
+            shifts.times { @asm.lsr }
+            @asm.sta(at_place(at))
+            @asm.label(untouched, join: true)
           end
 
           # The variable at +from+, a slot or NONE, into the word at +to+ as the slot times the stride
@@ -1526,6 +1634,11 @@ module VBlank
             unless checked
               key = slot_key(index[0], width)
               return if key && @asm.x_holds == key
+
+              if key && (current = scaled_current_for(key))
+                @asm.ldx(at_place(current.scaled))
+                return @asm.note_x_holds(key)
+              end
 
               emit_low_half_load(index[0])
               (width - 1).bit_length.times { @asm.asl }

@@ -10,7 +10,8 @@ class TestSNESPoolLayouts < Minitest::Test
   LAYOUTS = %i[lists tables records].freeze
 
   # Things of mixed widths that move, meet, are removed and spawned again, walked both ways, with a
-  # routine checking each against the others and a field read by an index the game kept.
+  # routine checking each against the others, then finding itself among them to turn it back, and a
+  # field read by an index the game kept.
   def self.game(layout)
     VBlank.game("LAYOUT #{layout}", consoles: %i[snes]) do
       screen :tiled
@@ -26,6 +27,9 @@ class TestSNESPoolLayouts < Minitest::Test
         e.x += e.dx
         things.each do |other|
           e.hits += 1 if other.index != e.index && (other.x - e.x).abs < 12 && (other.y - e.y).abs < 40
+        end
+        things.each do |other|
+          other.dx = 0 - other.dx if other.index == e.index && other.hits > 20 && other.hits < 23
         end
       end
       game_loop do
