@@ -59,6 +59,7 @@ module VBlank
               picture = Lowering::Picture
               songs = Lowering::Sound.songs?(program)
               backdrops = picture.scene_backdrops?(program, handover)
+              walks_areas = picture.walks_areas?(program) # an area's tiles and colours come in as the scene's do
               new(board: board, painted: Lowering::Paint.painted?(program),
                   saves: (SaveLayout.memory_of(program).size if SaveLayout.named_by?(program)),
                   sound: Lowering::Sound.sounds?(program), songs: songs, follows_level: songs && SNES::Music.follows_level?(program),
@@ -72,13 +73,13 @@ module VBlank
                   bends: picture.bends?(program),
                   scene_bends: picture.scene_bends?(program, handover), tile_runs: picture.tile_run_bytes(program),
                   straight_tile_runs: picture.tile_runs(program).any?(&:console_format), held_runs: picture.held_runs(program),
-                  changing_colors: screen_colors || sprite_colors || backdrops || picture.changing_colors?(program) ||
+                  changing_colors: screen_colors || sprite_colors || backdrops || picture.changing_colors?(program) || walks_areas ||
                                    Lowering::Paint.inks?(program),
                   scene_backdrops: backdrops, backdrop_follows: picture.backdrop_follows_list?(program),
                   dims: picture.fades_to_black?(program),
                   math_turns: picture.see_through_turns_solid?(program, stacking), bar_covers: picture.bar_covers_sprites?(program),
                   tile_sizes: picture.two_tile_sizes?(program), scene_tiles: sprite_tiles,
-                  scene_background_tiles: background_tiles, extra_buttons: Frame.reads_extra_buttons?(program),
+                  scene_background_tiles: background_tiles || walks_areas, extra_buttons: Frame.reads_extra_buttons?(program),
                   second_controller: Frame.reads_second_controller?(program), glides: SNES::Music.glides?(program),
                   text_layer: board.name != :super_fx && Lowering::Paint.text_layer?(program),
                   paint_turns: board.name != :super_fx && Lowering::Paint.takes_turns?(program),

@@ -317,7 +317,7 @@ module VBlank
                 unless bg.tile_w == bg.tile_h && [8, BIG_TILE].include?(bg.tile_w)
                   refuse_unmade!("background tiles of #{bg.tile_w}×#{bg.tile_h}")
                 end
-                refuse_unmade!("a background drawn from several sets of tiles") if bg.several_sets?
+                refuse_unmade_walking!(bg) if bg.several_sets?
                 refuse_unmade!("a background whose maps are of different sizes or too big to hold") if bg.streams?
               end
             end
@@ -618,15 +618,27 @@ module VBlank
             # shows, and each one the game changes a cell of it to. A tile of its set that is on neither
             # is never drawn, so it takes no colours. Then the runs a scene keeps to itself, which are
             # the first to take a copy.
+            #
+            # In a game with a background walking between areas the same goes for every area's copy, so
+            # every other background's cells, a scene's too, are made before the first area takes one.
             def make_shared_background_colors
-              return unless @screen_colors || @scene_background_tiles
+              walking = walking_backgrounds
+              return unless @screen_colors || @scene_background_tiles || !walking.empty?
 
-              backgrounds_declared.reject(&:scene).each do |bg|
-                shown = bg.every_map.flat_map { |map| map.flat_map { |row| Array(row) } }
-                changed = @set_tiles_by_name.fetch(bg.name, []).flat_map(&:tiles_named)
-                (shown + changed).uniq.each { |tile| cell_of(bg, tile) if tile.nil? || tile < bg.tiles.length }
-              end
+              plain = backgrounds_declared - walking
+              plain.reject(&:scene).each { |bg| make_cells_shown(bg) }
               @tile_runs.each_index { |number| make_run_art(number) unless @run_places[number] }
+              return if walking.empty?
+
+              plain.select(&:scene).each { |bg| make_cells_shown(bg) }
+              walking.each { |bg| make_cells_shown(bg) }
+            end
+
+            # Each cell +bg+ can show: those on its maps, and each tile the game changes a cell to.
+            def make_cells_shown(bg)
+              shown = bg.every_map.flat_map { |map| map.flat_map { |row| Array(row) } }
+              changed = @set_tiles_by_name.fetch(bg.name, []).flat_map(&:tiles_named)
+              (shown + changed).uniq.each { |tile| cell_of(bg, tile) if tile.nil? || tile < bg.tiles.length }
             end
 
             # A scene taking over, in a game of screen colours: its sets into the colours drawn now and
@@ -860,9 +872,10 @@ module VBlank
             def art_sections
               tables, *pieces = art_tables(pieces_apart: false)
               tables, *pieces = art_tables(pieces_apart: true) if tables.size > Linker::BANK_SIZE
-              [tables, *pieces, *bytes_section("art background tiles", @art.background_tile_data(opening_scene)),
+              [tables, *pieces, *bytes_section("art background tiles", @art.background_tile_data(power_on_background_key)),
                *bytes_section("art sprite tiles", @art.sprite_tile_data(opening_scene)), *scene_sprite_tile_sections,
-               *scene_background_tile_sections, *@art.grids.map { |grid| bytes_section(grid_label(grid.number), grid.bytes) },
+               *scene_background_tile_sections, *area_tile_sections,
+               *@art.grids.map { |grid| bytes_section(grid_label(grid.number), grid.bytes) },
                *(painted? ? paint_sections : []), *collision_sections]
             end
 
@@ -878,12 +891,12 @@ module VBlank
               data = W65816.new("art", holds: ART)
               apart = []
               data.label("art background tiles bytes")
-              data.data_words(@art.background_tile_data(opening_scene).bytesize)
+              data.data_words(@art.background_tile_data(power_on_background_key).bytesize)
               data.label("art sprite tiles bytes")
               data.data_words(@art.sprite_tile_data(opening_scene).bytesize)
               unless painted? # Lowering::Paint's colours, then
                 data.label("art colors")
-                data.data_bytes(@art.cgram.bytes)
+                data.data_bytes(@art.cgram(power_on_colors_key).bytes)
               end
               data.label("art sprite pictures")
               pictures = @art.sprite_pictures.values.sort_by(&:number)
@@ -905,6 +918,7 @@ module VBlank
                 data.data_words(grid.bytes.bytesize, grid.size_bits, grid.columns)
               end
               write_scene_background_tile_tables(data)
+              write_area_tile_tables(data)
               data.label("art tile runs")
               @tile_runs.each_with_index do |run, number|
                 list = @lists.fetch(run.list).first
@@ -961,6 +975,8 @@ module VBlank
               statement(Build.set(@scene_tiles_up, number))
               emit_scene_sprite_tiles(scene)
               emit_scene_background_tiles(scene)
+              # A scene's own tiles go in over an area's, so no area is up after them.
+              statement(Build.set(area_up_var, Build.int(-1))) if @scene_background_tiles && !area_keys.empty?
               @asm.label(same)
             end
 
@@ -1054,6 +1070,104 @@ module VBlank
               return unless @scene_background_tiles
 
               runtime_call("rt_scene_background_tiles", [LongAddress.new(scene_background_table_label(scene))])
+            end
+
+            # --- backgrounds that walk between areas ---
+            #
+            # A BACKGROUND THAT WALKS BETWEEN AREAS (`tiles: { shrine: ..., clearing: ... }`) shows one
+            # area's tiles at a time: video memory has room for one area's beside what every screen
+            # keeps, and the areas take turns in it. Each area keeps its own copy of the tiles and the
+            # sets of colours (Art::AreaKey), made after everything else on the screen is made
+            # (#make_shared_background_colors), so an area's tiles and colours land past all of those.
+            # Walking into another area (#emit_area_up) brings in its tiles the way a scene taking over
+            # brings in its own (Runtime::Picture's rt_scene_background_tiles: the display off for the
+            # copy, as a Super Nintendo game turns it off to load a screen, and on again once the pass's
+            # picture is in), and its colours through the fade in force (Runtime::Tint's rt_colors_hold).
+            # Then the map goes up as any map does, so no frame shows a map over the wrong area's tiles.
+
+            # Whether a background of +program+ walks between areas.
+            def self.walks_areas?(program) = program.walk.any? { |node| node.kind == :background && node.several_sets? }
+
+            def walking_backgrounds = backgrounds_declared.select(&:several_sets?)
+
+            # The area +set+ (counted in +bg+'s sets) of +bg+'s, as the Art keeps it.
+            def area_key(bg, set)
+              Art::AreaKey.new(scene: bg.scene, area: bg.sets.fetch(set), tiles_base: tiles_scene_of(bg), colors_base: colors_scene_of(bg))
+            end
+
+            # Every area of the game, numbered by its place here: the number the area up is kept as.
+            def area_keys = @area_keys ||= walking_backgrounds.flat_map { |bg| bg.sets.each_index.map { |set| area_key(bg, set) } }.uniq
+
+            # The area tile +tile+ of +bg+ belongs to.
+            def area_of_tile(bg, tile) = area_key(bg, bg.set_starts.rindex { |start| start <= tile })
+
+            # The area up as the game starts: the first area of a background every screen shows, or of
+            # one the opening scene shows. Nil where neither walks.
+            def power_on_area
+              walking = walking_backgrounds
+              bg = walking.find { |one| one.scene.nil? } || walking.find { |one| one.scene == opening_scene }
+              area_key(bg, 0) if bg
+            end
+
+            def power_on_background_key = power_on_area || opening_scene
+            def power_on_colors_key = power_on_area
+
+            # Which area's tiles are in video memory, by its number in #area_keys; -1 for none, after a
+            # scene brought its own tiles in over them.
+            def area_up_var
+              @area_up_var ||= keep_local(:area_up, start: power_on_area ? area_keys.index(power_on_area) : -1)
+            end
+
+            # Bring area +key+ in, unless it is up: its tiles and its colours, for the next blank. With
+            # +colors_always+ its colours come in either way, as a scene taking over has just copied its
+            # own over them.
+            def emit_area_up(key, colors_always: false)
+              number = area_keys.index(key)
+              up = area_up_var
+              same = fresh("area_up")
+              jump_unless(Build.binop(:!=, Build.var_ref(up), Build.int(number)), same)
+              statement(Build.set(up, Build.int(number)))
+              runtime_call("rt_scene_background_tiles", [LongAddress.new(area_tiles_table_label(number))])
+              emit_area_colors(number) unless colors_always
+              @asm.label(same)
+              emit_area_colors(number) if colors_always
+            end
+
+            def emit_area_colors(number)
+              label = held_colors_label(:areas) { area_keys.map { |key| @art.scene_colors(key) } }
+              runtime_call("rt_colors_hold", [LongAddress.new(label), Build.int(number - 1)])
+            end
+
+            def area_tiles_label(number) = "art background tiles of area #{number}"
+            def area_tiles_table_label(number) = "art background table of area #{number}"
+
+            # Each area's tiles past what every screen keeps (Art#area_background_tiles).
+            def area_tile_sections
+              area_keys.each_index.flat_map { |number| bytes_section(area_tiles_label(number), @art.area_background_tiles(area_keys[number]).last) }
+            end
+
+            # For each area, where its tiles are on the cartridge, how many bytes and where they go: the
+            # table rt_scene_background_tiles reads, as #write_scene_background_tile_tables writes a scene's.
+            def write_area_tile_tables(data)
+              area_keys.each_with_index do |key, number|
+                first, bytes = @art.area_background_tiles(key)
+                data.label(area_tiles_table_label(number))
+                data.data_longs(area_tiles_label(number))
+                data.data_bytes(0)
+                data.data_words(bytes.bytesize, Runtime::Picture::BG_TILES + (first * Art::TILE_BYTES / 2))
+              end
+            end
+
+            # What this build does not make yet of a background walking between areas.
+            def refuse_unmade_walking!(bg)
+              refuse_unmade!("a background walking between areas drawn with other colours (`draw_with`)") unless Array(bg.recolors).empty?
+              refuse_unmade!("a background walking between areas on a status bar or held above a row") if bg.held_to_rows?
+              if bg.scene.nil? && (@screen_colors || @scene_background_tiles)
+                refuse_unmade!("a background walking between areas on every screen, in a game whose scenes bring in their own colours or tiles")
+              end
+              return unless @tile_runs.any? { |run| bg.tiles.intersect?(Array(run.tiles)) }
+
+              refuse_unmade!("a background walking between areas showing tiles painted from a list")
             end
 
             ART = W65816::Holding.new(what: "the game's pictures", fix: "use fewer different pictures and maps")
@@ -1276,6 +1390,9 @@ module VBlank
               if keeps_cells
                 runtime_call("rt_background_scroll", [Build.int(layer_of(bg)), Build.int(0), Build.int(0)])
               else
+                # A walking background goes up in its first area, whose colours come in again since a
+                # scene taking over has just copied its own over them.
+                emit_area_up(area_key(bg, 0), colors_always: true) if bg.several_sets?
                 runtime_call("rt_background_put_up", [Build.int(layer_of(bg)), Build.int(grid_of(bg, 0).number), Build.int(1)])
               end
               # A status bar put up shows from the top it was declared with (Reference#bar_top_shown), and
@@ -1509,7 +1626,8 @@ module VBlank
                 image = @cache.image(picture_named(name))
                 held = held_background_palette(bg, image)
                 offset = held ? @art.held_offset_of(held_list_key(bg, image.list_drawn_from)) : 0
-                places = { held: held, held_offset: offset, scene: colors_scene_of(bg), tile_scene: tiles_scene_of(bg) }
+                area = area_of_tile(bg, tile) if bg.several_sets?
+                places = { held: held, held_offset: offset, scene: area || colors_scene_of(bg), tile_scene: area || tiles_scene_of(bg) }
                 bg.tile_w == BIG_TILE ? @art.background_big_cell(image, **places) : @art.background_cell(image, **places)
               end
             end
@@ -2149,6 +2267,7 @@ module VBlank
               bg.every_map.each_index do |number|
                 other = fresh("not_map")
                 jump_unless(Build.binop(:==, Build.var_ref(which), Build.int(number)), other)
+                emit_area_up(area_key(bg, bg.map_sets.fetch(number))) if bg.several_sets?
                 runtime_call("rt_background_put_up", [Build.int(layer_of(bg)), Build.int(grid_of(bg, number).number), Build.int(0)])
                 @asm.brl(done)
                 @asm.label(other)
