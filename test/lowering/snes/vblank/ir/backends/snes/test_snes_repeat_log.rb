@@ -28,30 +28,42 @@ class TestSNESRepeatLog < Minitest::Test
     MEASURED_PASSES.map { |pass| run.frames_took(pass) }.max
   end
 
-  TWO_HUNDRED_PIXELS = proc do
-    screen :bitmap
-    game_loop do
-      clear_screen :black
-      200.times { |n| pixel (n * 7) % 256, (n * 13) % 224, :white }
+  # Games returned from methods, not kept in constants: a constant's block is made shareable
+  # between Ractors, and VBlank cannot then read the game code inside it.
+  private def two_hundred_pixels
+    proc do
+      screen :bitmap
+      game_loop do
+        clear_screen :black
+        200.times { |n| pixel (n * 7) % 256, (n * 13) % 224, :white }
+      end
     end
   end
 
-  TEN_TEXTS = proc do
-    screen :bitmap
-    game_loop do
-      clear_screen :black
-      10.times { |n| draw_text "SCORE #{n}", 8, 8 + (n * 20), :white }
+  private def ten_texts
+    proc do
+      screen :bitmap
+      game_loop do
+        clear_screen :black
+        10.times { |n| draw_text "SCORE #{n}", 8, 8 + (n * 20), :white }
+      end
     end
+  end
+
+  private def assert_no_slower_on_the_chip(name, game)
+    plain = slowest_pass(program_of(nil, &game))
+    chip = slowest_pass(superfx(&game))
+
+    assert_operator chip, :<=, plain, "#{name}: #{chip} frames a pass on the Super FX, #{plain} on a plain cartridge"
   end
 
   # The same screen every pass takes no more frames on the Super FX than on a plain cartridge.
-  { "200_pixels" => TWO_HUNDRED_PIXELS, "10_texts" => TEN_TEXTS }.each do |name, game|
-    define_method(:"test_#{name}_take_no_longer_than_on_a_plain_cartridge") do
-      plain = slowest_pass(program_of(nil, &game))
-      chip = slowest_pass(superfx(&game))
+  def test_200_pixels_take_no_longer_than_on_a_plain_cartridge
+    assert_no_slower_on_the_chip("200 pixels", two_hundred_pixels)
+  end
 
-      assert_operator chip, :<=, plain, "#{name}: #{chip} frames a pass on the Super FX, #{plain} on a plain cartridge"
-    end
+  def test_10_texts_take_no_longer_than_on_a_plain_cartridge
+    assert_no_slower_on_the_chip("10 texts", ten_texts)
   end
 
   def test_the_same_screen_every_pass_looks_as_on_the_interpreter
