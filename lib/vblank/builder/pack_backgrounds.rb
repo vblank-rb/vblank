@@ -137,6 +137,137 @@ module VBlank
         handle
       end
 
+      # A BACKGROUND OF THE PACK THAT WALKS BETWEEN AREAS. A port keeps each level's art as slots of
+      # one shape: its video image, its map, its lists of colours. So `tiles:`, `map:` and `colors:`
+      # can each be a Hash of slots by area, or one slot every area shares:
+      #
+      #   background :arena, tiles: { town: pack[:town_video], castle: pack[:castle_video] },
+      #                      map: { town: pack[:town_map], castle: pack[:castle_map] },
+      #                      colors: { town: pack[:town_colors], castle: pack[:castle_colors] }, across: 32
+      #   arena.show_map :castle
+      #
+      # Each area is made as a background of the pack is built all-in-one (#pack_area_art), and the
+      # areas become one background walking between tilesets (Builder::Tiled#background_from_sets),
+      # each area's map named for its area. So every console that walks a background between areas
+      # walks this one, and `show_map` takes the area's name or its number.
+      def pack_areas?(tiles, map, colors) = [tiles, map, colors].any? { |given| given.is_a?(Hash) && given.each_value.any?(DSL::PackSlot) }
+
+      def declare_pack_background_areas(name, tiles:, map:, colors:, across:, cell:, set_cells: nil, cells_in_front: nil, **others)
+        areas = pack_area_names!(name, tiles: tiles, map: map, colors: colors)
+        refuse_written_cells_on_areas!(name, set_cells, cells_in_front)
+        if pack_left_out?
+          raise ArgumentError, "background :#{name} walks between areas of the data pack, and this build reads its pack as " \
+                               "the game starts. VBlank does not make that yet. To fix this, build the game all-in-one."
+        end
+
+        slots = areas.to_h do |area|
+          [area, { tiles: slot_of_area(tiles, area), map: slot_of_area(map, area), colors: slot_of_area(colors, area) }]
+        end
+        refuse_areas_of_two_shapes!(name, slots)
+        art = slots.to_h { |area, given| [area, pack_area_art(name, area, across: across, cell: cell, **given)] }
+        handle = background(name, tiles: art.transform_values(&:tileset), map: art.transform_values(&:rows), **others)
+        handle.allow_undrawn_lists(art.values.flat_map(&:lists).uniq)
+      end
+
+      # One area's art: the name of its tileset, its map's rows of pictures, and the lists of
+      # colours the game may name for it.
+      PackAreaArt = Data.define(:tileset, :rows, :lists)
+
+      # The slot +given+ names for +area+: its own in a Hash of slots by area, or the one slot every
+      # area shares.
+      def slot_of_area(given, area) = given.is_a?(Hash) ? given.fetch(area) : given
+
+      # The areas of a background of the pack, from whichever of +given+ (tiles:, map:, colors:) are
+      # a Hash by area: each must name the same areas in the same order, since the maps are counted
+      # in that order.
+      def pack_area_names!(name, **given)
+        named = given.select { |_, value| value.is_a?(Hash) }
+        (setting, areas), *others = named.map { |key, value| [key, value.keys] }
+        other, differing = others.find { |_, keys| keys != areas }
+        return areas unless other
+
+        raise ArgumentError, "background :#{name} names the areas #{areas.map(&:inspect).join(', ')} in #{setting}: and the " \
+                             "areas #{differing.map(&:inspect).join(', ')} in #{other}:. Each Hash of slots by area must " \
+                             "name the same areas, in the same order."
+      end
+
+      # A cell written later is picked from the tiles of one map, and each area has tiles of its own.
+      def refuse_written_cells_on_areas!(name, set_cells, cells_in_front)
+        given = { set_cells: set_cells, cells_in_front: (cells_in_front if cells_in_front) }.compact.keys
+        return if given.empty?
+
+        raise ArgumentError, "background :#{name} walks between areas of the data pack, and was given " \
+                             "#{given.map { |key| "#{key}:" }.join(' and ')}. VBlank does not make that yet for areas. " \
+                             "To fix this, give each look of a room a map of its own and use show_map."
+      end
+
+      # All the areas of one background are drawn alike: their maps keep a cell the same way, and
+      # their tiles have the same number of colours. Each area is checked for what each slot must be
+      # first, so the words name the area.
+      def refuse_areas_of_two_shapes!(name, slots)
+        shapes = slots.to_h do |area, given|
+          subject = "background :#{name}'s area :#{area}"
+          refuse_tiles_not_from_slot!(given[:tiles], subject)
+          refuse_map_not_of_cells!(:"#{name}'s area :#{area}", given[:map])
+          refuse_colors_not_whole_slot!(:"#{name}'s area :#{area}", given[:colors])
+          [area, [pack_map_word_format!(name, given[:map]), given[:tiles].layout.format.colors]]
+        end
+        (first, (words, colors)), *rest = shapes.to_a
+        rest.each do |area, (other_words, other_colors)|
+          if other_words != words
+            raise ArgumentError, "background :#{name} reads the map of the area :#{area} in another layout than the map of " \
+                                 "the area :#{first}. Each cell of the two maps is kept another way. All the areas of " \
+                                 "one background must keep a cell the same way. To fix this, give every area a map slot " \
+                                 "of one kind."
+          end
+          next if other_colors == colors
+
+          raise ArgumentError, "background :#{name} has tiles of #{other_colors} colors in the area :#{area}, and tiles of " \
+                               "#{colors} colors in the area :#{first}. All the areas of one background must have tiles " \
+                               "of the same number of colors."
+        end
+      end
+
+      # THE ART OF ONE AREA, made as #declare_pack_background makes a background built all-in-one,
+      # its pictures named for the area so two areas' never meet. Hands back a PackAreaArt.
+      def pack_area_art(name, area, tiles:, map:, colors:, across:, cell:)
+        own = :"#{name}'s area :#{area}"
+        subject = "background :#{own}"
+        words = pack_map_word_format!(own, map)
+        words = cell_format_without_banks(words) if drawn_from_whole_table?(tiles)
+        refuse_colors_short_of_table!(own, tiles, colors)
+        refuse_bad_pack_background_shape!(own, map, across, cell, words)
+        record_pack_background_slot(tiles)
+        refuse_moving_tiles_on_areas!(name, area) unless moving_pack_tiles_of(tiles).empty?
+        tile_places = pack_tile_places(tiles, subject)
+        bank_lists = if drawn_from_whole_table?(tiles)
+                       pack_color_tables(colors, tiles.layout.format.colors, "#{subject}'s colors:")
+                     else
+                       declare_pack_color_banks(colors, tiles.layout.format.colors, "#{subject}'s colors:")
+                     end
+        map_cells = pack_map_cells(map, "#{subject}'s map:")
+        refuse_banks_over_table_tiles!(own, tiles, map, map_cells)
+        shape = PackMapShape.new(name: own, words: words, tiles_a_side: cell / Original::Slot::TILE_SIDE, tile_places: tile_places,
+                                 bank_lists: bank_lists)
+        rows = map_cells.each_slice(across).to_a
+        made = if big_pack_cells?(shape.tiles_a_side) && !drawn_from_whole_table?(tiles)
+                 pack_background_of_big_cells(shape, rows, nil, [], {})
+               else
+                 pack_background_of_tiles(shape, rows, nil, {})
+               end
+        drawn = made.pictures.values.compact
+        refuse_pack_background_drawing_nothing!(own) if drawn.empty?
+        tileset = :"background :#{own} tiles"
+        tiles(tileset, drawn.to_h { |picture| [picture, picture] })
+        PackAreaArt.new(tileset: tileset, rows: made.rows, lists: drawn_from_whole_table?(tiles) ? [] : bank_lists)
+      end
+
+      def refuse_moving_tiles_on_areas!(name, area)
+        raise ArgumentError, "background :#{name} walks between areas of the data pack, and the area :#{area} shows tiles " \
+                             "that take turns through pictures (tile_pictures). VBlank does not make that yet for areas. " \
+                             "To fix this, give that area a background of its own."
+      end
+
       # CELLS IN FRONT OF THE SPRITES (`cells_in_front: true`). A console that keeps a priority bit
       # in each cell of its map (the Genesis, the Super Nintendo) draws a cell with it set over the
       # sprites, and a retail game sets it on the scenery a character walks behind: the machine in

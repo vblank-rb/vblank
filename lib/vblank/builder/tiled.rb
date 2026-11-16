@@ -320,7 +320,9 @@ module VBlank
       #
       # @param name [Symbol] the background's name
       # @param tiles [Symbol, Hash] a tileset defined with {#tiles}, or a Hash of area =>
-      #   tileset for a background that walks between areas (see #background_from_sets)
+      #   tileset for a background that walks between areas (see #background_from_sets). From the
+      #   data pack, tiles:, map: and colors: can each be a Hash of slots by area
+      #   (Builder::PackBackgrounds#declare_pack_background_areas)
       # @param map [String, Array<String>, Array<Array>, Hash, nil] the grid of tileset
       #   keys — rows of characters, or rows of keys — or a Hash of name => grid for a
       #   background with several maps; for one that walks between areas, a Hash of
@@ -339,6 +341,12 @@ module VBlank
       # @return [Background] a handle: scroll_by / scroll_to / show_map
       def background(name, tiles:, map: nil, from: nil, walls: nil, above_row: nil, alone: false, held: false, colors: nil,
                      across: nil, cell: nil, set_cells: nil, cells_in_front: nil)
+        if pack_areas?(tiles, map, colors)
+          # Each area's own slots from the data pack (Builder::PackBackgrounds), walked between.
+          return declare_pack_background_areas(name, tiles: tiles, map: map, colors: colors, across: across, cell: cell || 8,
+                                                     set_cells: set_cells, cells_in_front: cells_in_front, walls: walls,
+                                                     above_row: above_row, alone: alone, held: held)
+        end
         if tiles.is_a?(DSL::PackSlot)
           # The original's own tiles, map and colours, from the data pack (Builder::PackBackgrounds).
           return declare_pack_background(name, tiles: tiles, map: map, colors: colors, across: across, cell: cell || 8,

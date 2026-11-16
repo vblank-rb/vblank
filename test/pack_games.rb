@@ -20,6 +20,7 @@ require "pack_pose_of_shapes_games"
 require "pack_pose_read_by_the_game_games"
 require "all/vblank/builder/test_pack_pose_bank_colors"
 require "all/vblank/dsl/test_pack_background_set_cell"
+require "all/vblank/builder/test_pack_background_areas"
 require "all/vblank/builder/test_pack_tile_pictures"
 require "all/vblank/builder/test_pack_tile_poses"
 require "pack_place_games"
@@ -808,6 +809,20 @@ module PackGames
             world.scroll_by 3, 1
           end
         end
+      end
+    ].freeze
+  end
+
+  # A BACKGROUND FROM THE PACK THAT WALKS BETWEEN AREAS (PackBackgroundAreaGames): each area its own
+  # slots of tiles, map and colours, walked into and back. A build that leaves its pack out does not
+  # make it yet.
+  class BackgroundAreas < Kit
+    include PackBackgroundAreaGames
+
+    GAMES = [
+      game(:background_walking_between_areas_of_slots, passes: 9,
+                                                       refused: refused_by_builder("walks between areas of the data pack")) do |folder, options|
+        built(*areas_game_and_file(areas_original(folder), options: options) { |world| PackBackgroundAreaGames.emit_walk(self, world) })
       end
     ].freeze
   end
@@ -2152,7 +2167,7 @@ module PackGames
     ].freeze
   end
 
-  KITS = [Pictures, ScreenPictures, StripFonts, Layouts, VBlankLayouts, Backgrounds, CellsInFront, WrittenCells, Backdrops, ColorLists, Poses, PosesOfWords, PosesOfShapes, PosesReadByTheGame, PosesInBankColors,
+  KITS = [Pictures, ScreenPictures, StripFonts, Layouts, VBlankLayouts, Backgrounds, BackgroundAreas, CellsInFront, WrittenCells, Backdrops, ColorLists, Poses, PosesOfWords, PosesOfShapes, PosesReadByTheGame, PosesInBankColors,
           Sounds, Scores, MusicPlayer2000Songs, SlotViews, TableTileBackgrounds, ColorsComparedAtStart, PosesSharingTheirFramesBank, Places, TilePictures,
           TilePosesOfFrames, FlaggedBytesUnpacked].freeze
 
