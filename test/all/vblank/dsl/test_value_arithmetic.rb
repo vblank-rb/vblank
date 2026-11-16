@@ -148,4 +148,39 @@ class TestValueArithmetic < Minitest::Test
 
     assert_equal [-5, 0, 1 + 2 + 4 + 16 + 32], [run[:held], run[:size], run[:flags]]
   end
+
+  # How far apart two numbers are, tested against a small number, as things that check whether
+  # another is near do: just inside and just outside on each side, differences whose low half alone
+  # looks near, and the lowest number, which `abs` leaves as itself, below every number.
+  def test_how_far_apart_against_a_small_number_at_the_edges
+    run = played do
+      zero = 0
+      lowest = 0
+      near = 0
+      single = 0
+      game_loop do
+        zero = zero * 0
+        lowest = (zero - 2_147_483_647) - 1
+        near = 0
+        near += 1 if ((zero + 20) - (zero + 5)).abs < 16
+        near += 2 if ((zero + 21) - (zero + 5)).abs < 16
+        near += 4 if ((zero + 5) - (zero + 20)).abs < 16
+        near += 8 if ((zero + 5) - (zero + 21)).abs < 16
+        near += 16 if (zero - (zero + 65_536)).abs < 16
+        near += 32 if (zero - (zero + 65_535)).abs < 16
+        near += 64 if ((zero + 65_539) - zero).abs < 16
+        near += 128 if (lowest - zero).abs < 16
+        near += 256 if ((lowest + 1) - zero).abs < 16
+        near += 512 if 16 > ((zero + 5) - (zero + 20)).abs
+        near += 1024 if ((zero + 5) - (zero + 21)).abs <= 16
+        single = 0
+        single += 1 if (zero - 15).abs <= 15
+        single += 2 if (zero - 16).abs <= 15
+        single += 4 if lowest.abs <= 15
+        single += 8 if (zero + 16).abs < 16
+      end
+    end
+
+    assert_equal [1 + 4 + 128 + 512 + 1024, 1 + 4], [run[:near], run[:single]]
+  end
 end

@@ -48,13 +48,15 @@ class TestSNESPoolPairCheckCost < Minitest::Test
     spent.share * FRAME_CLOCKS
   end
 
-  # Measured before this was made cheaper, a pair took more than twice what the retail game's walk
-  # (Super Bomberman's check_for_enemy_with_enemy_collision) spends on an object and an enemy's x;
-  # the bound holds the cheaper turn and test.
-  def test_one_more_thing_to_check_costs_under_2100_master_clocks
+  # The retail game's walk (Super Bomberman's check_for_enemy_with_enemy_collision) spends about 372
+  # master clocks on an enemy whose x it tests, in 8 bits with the object in X. Ours keeps every
+  # number in 32 bits; the bound holds the cheaper turn and test: short branches where the target is
+  # near (W65816#branch_long), the walk's slot copies a half long, and `abs(d) < 16` decided from
+  # d's high half (SNES::Lowering#compare_absolute_below).
+  def test_one_more_thing_to_check_costs_under_1550_master_clocks
     per_pair = (routine_clocks(self.class.game(4)) - routine_clocks(self.class.game(2))) / 2
 
-    assert_operator per_pair, :<, 2100
+    assert_operator per_pair, :<, 1550
   end
 
   # The checks find what the interpreter finds on every pass, the meeting included.

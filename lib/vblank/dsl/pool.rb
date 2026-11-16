@@ -1016,16 +1016,29 @@ module VBlank
       # THE VARIABLES A POOL'S OWN WALKS HOLD A SLOT IN: the slot a walk is on (#walk_vars), the
       # one a routine of the pool runs for (#record_current_slot) and that routine's own copy of
       # it (#build_routine_body), and the one the copy for its
-      # sprites is on (#stacking_nodes). Each is written only from the pool's chain once the walk
-      # has seen that it holds a slot and not NONE, or put back from a copy of itself, and starts
-      # at nought. So whenever one is read it is a slot below the pool's capacity, and a lowering
-      # can read the pool's own lists there without testing the index first.
+      # sprites is on (#stacking_nodes). Each starts at nought, and is read for the pool's lists
+      # only once the walk has seen that it holds a slot and not NONE. So whenever one is read
+      # there it is a slot below the pool's capacity, and a lowering can read the pool's own lists
+      # there without testing the index first.
       SLOT_PARTS = /\A(?:current|stacking_at|walk\d+_at|routine\d+_at)\z/
+
+      # THE ONES OF THOSE THAT NEVER HOLD NONE: each is written only with a slot the walk has seen
+      # is not NONE, or put back from a copy of itself. The copy for the sprites steps its slot
+      # along the chain, NONE at the end included (#stacking_nodes), so it is not one of these. A
+      # number in one of these is always below the pool's capacity, so a lowering that keeps
+      # numbers in halves knows its high half is nought for good.
+      SLOT_ONLY_PARTS = /\A(?:current|walk\d+_at|routine\d+_at)\z/
 
       # The name of the pool whose slot +var+ always holds (see SLOT_PARTS), or nil.
       def self.walked_by(var)
         kind, parts = Messages::MadeNames.read(var)
         parts[:pool] if kind == :pool_part && SLOT_PARTS.match?(parts[:part])
+      end
+
+      # Whether +var+ only ever holds one of its pool's slots, never NONE (see SLOT_ONLY_PARTS).
+      def self.holds_only_slots?(var)
+        kind, parts = Messages::MadeNames.read(var)
+        kind == :pool_part && SLOT_ONLY_PARTS.match?(parts[:part])
       end
 
       # The name of the pool +list+ belongs to, a field's list or one of the pool's own, or nil.

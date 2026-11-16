@@ -692,10 +692,14 @@ module VBlank
           # One variable into another, a half at a time from where it is: four instructions, where
           # working it out into R0 first and storing it from there is eight. A pool's walk does this
           # several times for each thing it visits.
+          #
+          # A variable a pool keeps only slots in (DSL::Pool::SLOT_ONLY_PARTS) is only ever set to a
+          # slot, below the pool's capacity, and starts at nought, so its high half is nought for good:
+          # only the low half is copied into one.
           def copy_variable(from, name)
             halves = operand_halves(from)
             at = place_of(name)
-            2.times do |i|
+            (DSL::Pool.holds_only_slots?(name) ? 1 : 2).times do |i|
               @asm.lda(halves[i])
               @asm.sta(at_place(at + (2 * i)))
             end
@@ -2308,7 +2312,7 @@ module VBlank
           # which case the sign came out the wrong way round and is flipped back.
           def compare(node)
             op = node.op
-            short = compare_short_counter(node) || compare_pool_slots(node)
+            short = compare_short_counter(node) || compare_pool_slots(node) || compare_absolute_below(node)
             return short if short
             return compare_narrow_slot(op, *narrow_slot_and_number(node)) if narrow_slot_and_number(node)
 
@@ -2335,6 +2339,89 @@ module VBlank
             end
             # The negative flag now shows left < right, where for > and <= the two were swapped.
             { :== => :bne, :!= => :beq, :< => :bpl, :> => :bpl, :>= => :bmi, :<= => :bmi }.fetch(op)
+          end
+
+          # HOW FAR APART, TESTED AGAINST A SMALL NUMBER: `(other.x - e.x).abs < 16`, a thing checking
+          # whether another is near it, which a game asks for every pair of things every frame. Worked
+          # out the long way, the difference is made positive (a negate of both halves when it is not)
+          # and then compared, signed, in both halves with the number. Here the difference's high half
+          # is left in A as it is worked out, and that alone says which of three cases it is:
+          #
+          #   nought      the difference is its low half, compared, unsigned, with the number;
+          #   all ones    it is below nought, and nearer than 65536 unless the low half is nought, so
+          #               nought less the low half is how far apart, compared the same way;
+          #   otherwise   too far apart, with one exception the interpreter keeps: the most negative
+          #               number has no positive and stays itself (IR::Int32.neg), which is below any
+          #               number, so its test holds.
+          #
+          # Each case ends with A holding how far apart (or $FFFF, never below the number, for too
+          # far) and one compare with the number, so the branch after it is the same for all three.
+          # Only for a number written in the program from 1 to $7FFF: below that the test never holds
+          # but for the most negative number, and the long way says so.
+          def compare_absolute_below(node)
+            distance, limit = absolute_and_limit(node)
+            return unless distance
+
+            held = fresh("near")
+            far = fresh("far")
+            too_far = fresh("too_far")
+            positive = fresh("near_positive")
+            emit_high_half_in_a(distance.operand)
+            @asm.beq(positive)
+            @asm.inc(:a)
+            @asm.bne(far)
+            @asm.lda(0)
+            @asm.sec
+            @asm.sbc(@asm.direct(R0))
+            @asm.bcc(held) # a borrow: the low half was not nought, and A is how far apart
+            @asm.label(far) # A is the high half plus one: $8001 for the most negative number
+            @asm.cmp(0x8001)
+            @asm.bne(too_far)
+            @asm.lda(@asm.direct(R0))
+            @asm.beq(held) # the most negative number: nought, which is below the number
+            @asm.label(too_far)
+            @asm.lda(0xFFFF)
+            @asm.bra(held)
+            @asm.label(positive)
+            @asm.lda(@asm.direct(R0))
+            @asm.label(held)
+            @asm.cmp(limit)
+            :bcs
+          end
+
+          # The `abs` and the number it must be below, for a test #compare_absolute_below takes, or nil.
+          def absolute_and_limit(node)
+            distance, bound, inclusive = case node.op
+                                         when :< then [node.lhs, node.rhs, false]
+                                         when :<= then [node.lhs, node.rhs, true]
+                                         when :> then [node.rhs, node.lhs, false]
+                                         when :>= then [node.rhs, node.lhs, true]
+                                         end
+            return unless distance.is_a?(Node) && distance.kind == :absolute && !folded(distance)
+
+            limit = folded(bound)
+            return unless limit
+
+            limit += 1 if inclusive
+            [distance, limit] if limit.between?(1, 0x7FFF)
+          end
+
+          # +node+ worked out with its low half in R0 and its high half in A. A sum or difference
+          # ends on its high half, which is not stored.
+          def emit_high_half_in_a(node)
+            unless sum_in_halves?(node) && %i[+ -].include?(node.op) && !folded(node)
+              value(node)
+              return @asm.lda(@asm.direct(R0 + 2))
+            end
+
+            with_both_halves(without_added_nought(node.lhs), node.rhs) do |lefts, halves|
+              emit_carry_for(node.op)
+              @asm.lda(lefts[0])
+              emit_half_sum(node.op, halves[0])
+              @asm.sta(@asm.direct(R0))
+              @asm.lda(lefts[1])
+              emit_half_sum(node.op, halves[1])
+            end
           end
 
           # A BYTE OR HALF SLOT OF A LIST TESTED EQUAL, OR NOT, TO A NUMBER WRITTEN IN THE PROGRAM. A

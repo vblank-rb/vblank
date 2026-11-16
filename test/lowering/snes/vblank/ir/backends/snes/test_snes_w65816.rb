@@ -146,4 +146,33 @@ class TestSNESW65816 < Minitest::Test
     end.banks.first
     assert_equal [0xD0, 0x03, 0x82, 0x2C, 0x01], bank.bytes.first(5)
   end
+
+  # Where the target turns out to be near, the long branch is the short one, and every label and
+  # address after it moves back three bytes: the second branch only comes in reach once the first
+  # is short, and the third, to another section, stays long.
+  def test_a_conditional_branch_to_a_near_label_is_short
+    asm = W65816.new("test", home: :first)
+    asm.instance_eval do
+      label "top"
+      branch_long :beq, "near"
+      nop
+      label "near"
+      branch_long :bne, "top"
+      120.times { nop }
+      branch_long :bcc, "top"
+      branch_long :bcs, "elsewhere"
+      lda imm("near")
+      rtl
+    end
+    other = W65816.new("other")
+    other.label("elsewhere")
+    other.rtl
+    linked_bank = Linker.new([asm.section, other.section]).link
+    bytes = linked_bank.banks.first.bytes
+    assert_equal [0xF0, 0x01, 0xEA, 0xD0, 0xFB], bytes.first(5)
+    assert_equal [0x90, 0x100 - 127], bytes[125, 2]
+    assert_equal [0x90, 0x03, 0x82], bytes[127, 3]
+    assert_equal [0xA9, 0x03, 0x80], bytes[132, 3]
+    assert_equal 0x808003, linked_bank.address_of("near")
+  end
 end

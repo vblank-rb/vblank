@@ -97,6 +97,13 @@ module VBlank
           # Each conditional branch's opposite, for a branch too far for one byte (#branch_long).
           OPPOSITES = { bpl: :bmi, bmi: :bpl, bvc: :bvs, bvs: :bvc, bcc: :bcs, bcs: :bcc, bne: :beq, beq: :bne }.freeze
 
+          # A long branch is the opposite branch and a BRL; a short one, the branch alone.
+          LONG_BRANCH_BYTES = 5
+          SHORT_BRANCH_BYTES = 2
+
+          # Where #branch_long wrote one, its condition, and the label it goes to.
+          LongBranch = Data.define(:at, :condition, :label)
+
           # The one-byte instructions that take no operand.
           SINGLES = {
             clc: 0x18, sec: 0x38, cli: 0x58, sei: 0x78, cld: 0xD8, sed: 0xF8, clv: 0xB8,
@@ -128,6 +135,7 @@ module VBlank
             @bytes = +"".b
             @labels = {}
             @fixups = []
+            @long_branches = []
             @wide_a = true
             @wide_x = true
           end
@@ -181,7 +189,8 @@ module VBlank
           def wide_xy? = @wide_x
 
           def section
-            Section.new(name: @name, bytes: @bytes.dup.freeze, labels: @labels.dup.freeze, fixups: @fixups.dup.freeze,
+            bytes, labels, fixups = shorten_long_branches
+            Section.new(name: @name, bytes: bytes.freeze, labels: labels.freeze, fixups: fixups.freeze,
                         home: @home, holds: @holds)
           end
 
@@ -261,8 +270,11 @@ module VBlank
             emit(0, 0)
           end
 
-          # A conditional branch to anywhere in the bank: the opposite branch over a BRL.
+          # A conditional branch to anywhere in the bank: the opposite branch over a BRL. Where the
+          # target turns out to be in this section and in reach of one byte, #section makes it the
+          # short branch instead (#shorten_long_branches).
           def branch_long(condition, target)
+            @long_branches << LongBranch.new(at: here, condition: condition, label: target.to_s)
             emit(BRANCHES.fetch(OPPOSITES.fetch(condition)), 3)
             brl(target)
           end
@@ -353,6 +365,76 @@ module VBlank
           def fixup(kind, label, plus = 0) = @fixups << Fixup.new(offset: here, kind: kind, label: label.to_s, plus: plus)
 
           def emit(*values) = @bytes << values.pack("C*")
+
+          # LONG BRANCHES MADE SHORT WHERE THEY REACH. A conditional branch carries one signed byte, so
+          # #branch_long writes the opposite branch over a BRL, five bytes, for a target that may be
+          # anywhere in the bank: where a label will be is not known while code is written, and most
+          # are written after the branch to them. On the path a branch does not take, that is two
+          # instructions and six or seven cycles where one short branch is two or three. Once the
+          # section is whole every label in it is known, so each long branch whose target is in this
+          # section and in reach of one byte becomes the two-byte branch, and everything after it
+          # moves three bytes back. Moving back only brings branches nearer, so this is done again
+          # until no more reach. A target in another section is left long, since where that section
+          # goes is the Linker's.
+          #
+          # The bytes, labels and fixups with the short branches in.
+          def shorten_long_branches
+            return [@bytes.dup, @labels.dup, @fixups.dup] if @long_branches.empty?
+
+            shortened = shortened_long_branches
+            [bytes_with_short_branches(shortened), @labels.transform_values { |offset| moved_back(offset, shortened) },
+             fixups_with_short_branches(shortened)]
+          end
+
+          # The places of the long branches that reach their targets as short ones, in order.
+          def shortened_long_branches
+            shortened = []
+            waiting = @long_branches.select { |branch| @labels.key?(branch.label) }
+            loop do
+              reach = waiting.select do |branch|
+                distance = moved_back(@labels.fetch(branch.label), shortened) - (moved_back(branch.at, shortened) + SHORT_BRANCH_BYTES)
+                distance.between?(-128, 127)
+              end
+              return shortened if reach.empty?
+
+              shortened = (shortened + reach.map(&:at)).sort
+              waiting -= reach
+            end
+          end
+
+          # Where the byte at +offset+ goes once each of the long branches at +shortened+ (in order)
+          # is made short.
+          def moved_back(offset, shortened)
+            before = shortened.bsearch_index { |at| at + LONG_BRANCH_BYTES > offset } || shortened.length
+            offset - (before * (LONG_BRANCH_BYTES - SHORT_BRANCH_BYTES))
+          end
+
+          def bytes_with_short_branches(shortened)
+            conditions = @long_branches.to_h { |branch| [branch.at, branch.condition] }
+            bytes = +"".b
+            from = 0
+            shortened.each do |at|
+              bytes << @bytes.byteslice(from, at - from) << [BRANCHES.fetch(conditions.fetch(at)), 0].pack("C*")
+              from = at + LONG_BRANCH_BYTES
+            end
+            bytes << @bytes.byteslice(from, @bytes.bytesize - from)
+          end
+
+          # Every fixup moved back, the BRL's of a shortened branch left out, and a one-byte
+          # distance for each short branch.
+          def fixups_with_short_branches(shortened)
+            inside = lambda do |offset|
+              before = shortened.bsearch_index { |start| start > offset } || shortened.length
+              before.positive? && offset < shortened[before - 1] + LONG_BRANCH_BYTES
+            end
+            kept = @fixups.reject { |fixup| inside.call(fixup.offset) }.map do |fixup|
+              fixup.with(offset: moved_back(fixup.offset, shortened))
+            end
+            labels = @long_branches.to_h { |branch| [branch.at, branch.label] }
+            kept + shortened.map do |at|
+              Fixup.new(offset: moved_back(at, shortened) + 1, kind: :relative, label: labels.fetch(at), plus: 0)
+            end
+          end
         end
       end
     end
