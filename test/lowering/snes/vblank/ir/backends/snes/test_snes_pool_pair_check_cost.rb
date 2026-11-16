@@ -73,11 +73,11 @@ class TestSNESPoolPairCheckCost < Minitest::Test
 
   # With the places in half words, the difference and its test are worked out in 16 bits
   # (SNES::Lowering#compare_half_distance_below): nearer to the retail game's 8.
-  def test_one_more_thing_to_check_in_half_words_costs_under_600_master_clocks
+  def test_one_more_thing_to_check_in_half_words_costs_under_563_master_clocks
     halves = ->(others) { self.class.game(others, widths: HALF_PLACES) }
     per_pair = (routine_clocks(halves.call(4)) - routine_clocks(halves.call(2))) / 2
 
-    assert_operator per_pair, :<, 600
+    assert_operator per_pair, :<, 563
   end
 
   # The checks find what the interpreter finds on every pass, the meeting included.

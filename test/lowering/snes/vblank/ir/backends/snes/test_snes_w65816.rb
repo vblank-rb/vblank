@@ -176,6 +176,27 @@ class TestSNESW65816 < Minitest::Test
     assert_equal 0x808003, linked_bank.address_of("near")
   end
 
+  # A jump back to a label in reach is a BRA, two bytes where the BRL is three; one beside a short
+  # branch moves back by what each saved, and one out of reach stays a BRL.
+  def test_a_jump_in_reach_is_a_bra
+    asm = W65816.new("test", home: :first)
+    asm.instance_eval do
+      label "top"
+      branch_long :beq, "after"
+      nop
+      label "after"
+      jump "top"
+      200.times { nop }
+      jump "top"
+      lda imm("after")
+      rtl
+    end
+    bytes = Linker.new([asm.section]).link.banks.first.bytes
+    assert_equal [0xF0, 0x01, 0xEA, 0x80, 0x100 - 5], bytes.first(5)
+    assert_equal [0x82, 0x30, 0xFF], bytes[205, 3]
+    assert_equal [0xA9, 0x03, 0x80], bytes[208, 3]
+  end
+
   # What X holds, as noted, lasts until something could make it untrue: a store to the variable it
   # came from, an instruction that writes X, a call, or a label anything could jump to. At a join,
   # it is what every way in agrees on.

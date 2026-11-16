@@ -867,7 +867,7 @@ module VBlank
           end
 
           def place_label(label) = @asm.label(label, join: (@join_labels || {}).key?(label))
-          def jump(label) = @asm.brl(label)
+          def jump(label) = @asm.jump(label)
           def emit_value(operand) = value(operand)
           def emit_store(name) = store(name)
           def emit_store_zero(name) = store_number(place_of(name), 0)
@@ -1397,7 +1397,7 @@ module VBlank
             with_scaled_current(walk.at, current) { body.each { |child| statement(child) } }
             counted_in_y = counter && section.equal?(@asm) && @asm.y_changes == y_changes
             counted_in_y ? @asm.iny : @asm.inc(at_place(index))
-            @asm.brl(top)
+            @asm.jump(top)
             @asm.label(done)
             emit_current_unscaled(current, at, shifts) if current
             store_number(place_of(walk.ahead), DSL::Pool::NONE)

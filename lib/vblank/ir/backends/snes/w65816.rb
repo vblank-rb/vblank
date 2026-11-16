@@ -129,12 +129,18 @@ module VBlank
           WRITTEN_PLACES = %i[dp abs].freeze
           REGISTERS_FROM = 0x2100
 
-          # A long branch is the opposite branch and a BRL; a short one, the branch alone.
+          # A long branch is the opposite branch and a BRL; a short one, the branch alone. A jump
+          # (#jump) is a BRL alone, and its short form a BRA.
           LONG_BRANCH_BYTES = 5
+          JUMP_BYTES = 3
           SHORT_BRANCH_BYTES = 2
 
-          # Where #branch_long wrote one, its condition, and the label it goes to.
-          LongBranch = Data.define(:at, :condition, :label)
+          # Where #branch_long or #jump wrote one, its condition (:bra for a jump), and the label it
+          # goes to.
+          LongBranch = Data.define(:at, :condition, :label) do
+            # The bytes it takes while long.
+            def long_bytes = condition == :bra ? JUMP_BYTES : LONG_BRANCH_BYTES
+          end
 
           # The one-byte instructions that take no operand.
           SINGLES = {
@@ -356,6 +362,15 @@ module VBlank
             emit_brl(target)
           end
 
+          # Always to +target+, anywhere in the bank: a BRL, made a BRA where the target is in this
+          # section and in reach of one byte (#shorten_long_branches), a byte and a cycle less.
+          def jump(target)
+            note_way_in(target)
+            @long_branches << LongBranch.new(at: here, condition: :bra, label: target.to_s)
+            emit_brl(target)
+            @held = GONE
+          end
+
           # REP and SEP clear and set the processor's flags; the widths of A and of X and Y follow.
           # Making X 8 bits wide empties its high byte, and A's width changes what a load of it reads,
           # so the note of what either holds is forgotten.
@@ -524,47 +539,61 @@ module VBlank
           # section and in reach of one byte becomes the two-byte branch, and everything after it
           # moves three bytes back. Moving back only brings branches nearer, so this is done again
           # until no more reach. A target in another section is left long, since where that section
-          # goes is the Linker's.
+          # goes is the Linker's. A jump (#jump), a BRL alone, is made a BRA the same way: a loop's
+          # jump back to its top, taken every turn, is then three cycles rather than four.
           #
           # The bytes, labels and fixups with the short branches in.
           def shorten_long_branches
             return [@bytes.dup, @labels.dup, @fixups.dup] if @long_branches.empty?
 
             shortened = shortened_long_branches
-            [bytes_with_short_branches(shortened), @labels.transform_values { |offset| moved_back(offset, shortened) },
+            [bytes_with_short_branches(shortened), @labels.transform_values { |offset| shortened.moved_back(offset) },
              fixups_with_short_branches(shortened)]
           end
 
-          # The places of the long branches that reach their targets as short ones, in order.
+          # The long branches made short, in order, with the bytes saved by all those before each:
+          # a branch saves three, a jump one.
+          Shortened = Data.define(:branches, :saved_before) do
+            def self.of(branches)
+              sorted = branches.sort_by(&:at)
+              new(branches: sorted, saved_before: sorted.each_with_object([0]) { |branch, sums| sums << (sums.last + branch.long_bytes - SHORT_BRANCH_BYTES) })
+            end
+
+            # Where the byte at +offset+ goes once each branch is made short.
+            def moved_back(offset)
+              before = branches.bsearch_index { |branch| branch.at + branch.long_bytes > offset } || branches.length
+              offset - saved_before[before]
+            end
+
+            # Whether +offset+ is inside a long branch made short, past its first two bytes.
+            def inside?(offset)
+              before = branches.bsearch_index { |branch| branch.at > offset } || branches.length
+              before.positive? && offset < branches[before - 1].at + branches[before - 1].long_bytes
+            end
+          end
+
+          # The long branches that reach their targets as short ones.
           def shortened_long_branches
-            shortened = []
+            shortened = Shortened.of([])
             waiting = @long_branches.select { |branch| @labels.key?(branch.label) }
             loop do
               reach = waiting.select do |branch|
-                distance = moved_back(@labels.fetch(branch.label), shortened) - (moved_back(branch.at, shortened) + SHORT_BRANCH_BYTES)
+                distance = shortened.moved_back(@labels.fetch(branch.label)) - (shortened.moved_back(branch.at) + SHORT_BRANCH_BYTES)
                 distance.between?(-128, 127)
               end
               return shortened if reach.empty?
 
-              shortened = (shortened + reach.map(&:at)).sort
+              shortened = Shortened.of(shortened.branches + reach)
               waiting -= reach
             end
           end
 
-          # Where the byte at +offset+ goes once each of the long branches at +shortened+ (in order)
-          # is made short.
-          def moved_back(offset, shortened)
-            before = shortened.bsearch_index { |at| at + LONG_BRANCH_BYTES > offset } || shortened.length
-            offset - (before * (LONG_BRANCH_BYTES - SHORT_BRANCH_BYTES))
-          end
-
           def bytes_with_short_branches(shortened)
-            conditions = @long_branches.to_h { |branch| [branch.at, branch.condition] }
             bytes = +"".b
             from = 0
-            shortened.each do |at|
-              bytes << @bytes.byteslice(from, at - from) << [BRANCHES.fetch(conditions.fetch(at)), 0].pack("C*")
-              from = at + LONG_BRANCH_BYTES
+            shortened.branches.each do |branch|
+              bytes << @bytes.byteslice(from, branch.at - from) << [BRANCHES.fetch(branch.condition), 0].pack("C*")
+              from = branch.at + branch.long_bytes
             end
             bytes << @bytes.byteslice(from, @bytes.bytesize - from)
           end
@@ -572,16 +601,11 @@ module VBlank
           # Every fixup moved back, the BRL's of a shortened branch left out, and a one-byte
           # distance for each short branch.
           def fixups_with_short_branches(shortened)
-            inside = lambda do |offset|
-              before = shortened.bsearch_index { |start| start > offset } || shortened.length
-              before.positive? && offset < shortened[before - 1] + LONG_BRANCH_BYTES
+            kept = @fixups.reject { |fixup| shortened.inside?(fixup.offset) }.map do |fixup|
+              fixup.with(offset: shortened.moved_back(fixup.offset))
             end
-            kept = @fixups.reject { |fixup| inside.call(fixup.offset) }.map do |fixup|
-              fixup.with(offset: moved_back(fixup.offset, shortened))
-            end
-            labels = @long_branches.to_h { |branch| [branch.at, branch.label] }
-            kept + shortened.map do |at|
-              Fixup.new(offset: moved_back(at, shortened) + 1, kind: :relative, label: labels.fetch(at), plus: 0)
+            kept + shortened.branches.map do |branch|
+              Fixup.new(offset: shortened.moved_back(branch.at) + 1, kind: :relative, label: branch.label, plus: 0)
             end
           end
         end
