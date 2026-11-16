@@ -102,13 +102,15 @@ module VBlank
             # +colors+ for a game that changes its colours as it runs (Tint).
             # +scene_tiles+ for a game whose scenes each bring their own tiles in (#emit_scene_tiles).
             # +samples+ for a game that plays recordings (Picture#emit_dma_started).
-            def emit(asm, memory, columns:, colors: false, scene_tiles: false, samples: false, runs: false)
+            # +poses+ for a game with a sprite kept to one pose in video memory (Lowering::PoseRooms).
+            def emit(asm, memory, columns:, colors: false, scene_tiles: false, samples: false, runs: false, poses: false)
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
               emit_start(asm, colors: colors)
               emit_maps(asm, memory, at)
               emit_sprites(asm, memory, at)
               emit_scene_tiles(asm, at) if scene_tiles
-              emit_upload(asm, memory, at, columns, colors: colors, scene_tiles: scene_tiles, samples: samples, runs: runs)
+              emit_upload(asm, memory, at, columns, colors: colors, scene_tiles: scene_tiles, samples: samples, runs: runs,
+                                                    poses: poses)
             end
 
             # A SCENE'S OWN TILES, brought in as it takes over. rt_scene_tiles(table) notes the table of
@@ -567,12 +569,18 @@ module VBlank
             # In a game whose scenes each bring their own tiles in, an arriving scene's go first, with the
             # screen switched off (#emit_scene_tiles), and the screen comes back on in the blank after
             # everything else is in.
-            def emit_upload(asm, memory, at, columns, colors: false, scene_tiles: false, samples: false, runs: false)
+            #
+            # A sprite kept to one pose in video memory has the pose it changed to copied in before the
+            # sprite table that shows it (Lowering::PoseRooms#pose_rooms_section), so the frame that first
+            # shows the pose draws it from its own tiles. The copy is the video chip's, from the cartridge,
+            # and the rooms together are held to what it moves in the blank (Lowering::PoseRooms::MOST_TILES).
+            def emit_upload(asm, memory, at, columns, colors: false, scene_tiles: false, samples: false, runs: false, poses: false)
               asm.label("rt_upload")
               asm.label("rt_upload_whole")
               asm.jsr(asm.abs_l("rt_scene_tiles_copied")) if scene_tiles
               asm.jsr(asm.abs_l("art runs uploaded")) if runs # Lowering::TileRuns#tile_runs_section, after a scene's own tiles
               asm.jsr(asm.abs_l("rt_colors_written")) if colors
+              asm.jsr(asm.abs_l("art poses sent")) if poses
               emit_sprite_table_written(asm, memory, at)
               emit_scroll_written(asm, memory)
               asm.jsr(asm.abs_l("rt_maps_and_cells_written"))

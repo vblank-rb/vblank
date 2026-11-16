@@ -60,6 +60,8 @@ module VBlank
           # scenes each bring their own tiles in as they take over (Tiles#emit_scene_tiles), and
           # +scene_colors+ for one whose scenes each write their own palettes (Tint#emit_scene_colors).
           # +runs+ for a tiled game that paints tiles from a list, whose blank writes them (Lowering::TileRuns).
+          # +poses+ for a tiled game with a sprite kept to one pose in video memory, whose blank copies the
+          # pose it changed to (Lowering::PoseRooms).
           # +count_at+ is where a game that reads how many frames it has shown since power-on keeps that
           # count, which then counts setting up too (Boot#emit), and nil for any other.
           # +fractions+ for a game that holds numbers with a fraction (Int32).
@@ -75,7 +77,7 @@ module VBlank
           def sections(memory, main:, registers:, frame_begins: nil, picture: :none, columns: 32, collision: false, fractions: false, camera: false,
                          colors: false, sound: false, music: nil, music_level_at: nil, effects: 0, plays: nil, recorded_parts: false,
                          backdrop: false, sprites_over_picture: false, scene_tiles: false, scene_colors: false, runs: false,
-                         count_at: nil)
+                         poses: false, count_at: nil)
             entry = M68000.new("runtime entry")
             Boot.emit_vectors(entry)
             asm = M68000.new("runtime")
@@ -86,7 +88,7 @@ module VBlank
             Lists.emit(asm, memory)
             Picture.emit(asm, memory, picture: picture, columns: columns, camera: camera, colors: colors, backdrop: backdrop,
                                       sprites: sprites_over_picture, scene_tiles: scene_tiles, scene_colors: scene_colors,
-                                      samples: !plays.nil?, runs: runs)
+                                      samples: !plays.nil?, runs: runs, poses: poses)
             Collide.emit(asm, memory) if collision
             Sound.emit(asm, memory, songs: !music.nil?, samples: !plays.nil?) if sound
             Music.emit(asm, memory, level_at: music_level_at, effects: effects, recorded: recorded_parts) if music

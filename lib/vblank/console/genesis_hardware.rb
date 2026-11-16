@@ -118,6 +118,9 @@ module VBlank
       # moves 205 bytes a line, and the blank is 38 lines: about 240 tiles.
       COMMAND_DMA = 0x80
 
+      # What such a copy moves in one blank: 205 bytes a line, 38 lines.
+      BLANK_DMA_BYTES = 205 * 38
+
       MODE4_40_CELLS = 0x81 # 320 pixels across
       INCREMENT_WORD = 2
 

@@ -48,6 +48,7 @@ module VBlank
           include SceneryWrites
           include MeasuredOnCopies
           include TileRuns
+          include PoseRooms
 
           # EVERY KIND THIS LOWERING WRITES: its own, each by a method called by name in
           # #emit_statement and #value_of_kind, and each part's (Paint, Picture, Sound, Collision, and
@@ -199,14 +200,16 @@ module VBlank
           # game whose tiles together do not fit (Genesis#build): :backgrounds for its backgrounds'
           # tiles alone, :sprites for its sprite pictures' too. +scene_colors+ the same for its colours,
           # each scene's own written into the palettes as it takes over (Art), for a game whose colours
-          # together do not fit. +cache+ is what the build works out from the program once for all its
-          # tries (BuildCache).
-          def initialize(program, memory:, scene_tiles: false, scene_colors: false, cache: BuildCache.for(Genesis, program))
+          # together do not fit. +streamed+ names the sprites kept to one pose in video memory at a time
+          # (PoseRooms), for a game whose tiles do not fit even so. +cache+ is what the build works out
+          # from the program once for all its tries (BuildCache).
+          def initialize(program, memory:, scene_tiles: false, scene_colors: false, streamed: [], cache: BuildCache.for(Genesis, program))
             @program = program
             @cache = cache
             @memory = memory
             @scene_tiles = scene_tiles
             @scene_colors = scene_colors
+            @streamed = streamed
             # What the program is before any instruction is made, worked out as the Color's and the
             # Super Nintendo's are (LoweringPlan), once a build, and kept here under the names the
             # rest of the lowering reads.
@@ -305,7 +308,7 @@ module VBlank
             @lowering_scene = nil
             main = routines_fitting(MAIN, @program.children, routine: "the game loop")
             [data_section, video_registers_section, *table_sections, *routines, *timers, *main,
-             *paint_sections, *art_sections, *tile_runs_section, *collision_sections]
+             *paint_sections, *art_sections, *tile_runs_section, *pose_rooms_sections, *collision_sections]
           end
 
           private

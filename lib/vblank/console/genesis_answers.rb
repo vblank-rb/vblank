@@ -171,7 +171,10 @@ module VBlank
                       "square of picture one time. Every sprite and background that shows the square uses it, " \
                       "mirrored or upside down too. So a screen drawn from one slot of tiles uses each tile of " \
                       "the slot one time. If the pictures of a screen " \
-                      "need more squares than the video memory holds, the build stops. It says how many they " \
+                      "need more squares than the video memory holds, a sprite whose pose changes keeps room for " \
+                      "one pose, as on the Advance. When the sprite changes pose, the console copies that pose in " \
+                      "from the cartridge between two frames. Poses from the frames of a data pack work the same " \
+                      "way. If the pictures do not fit even so, the build stops. It says how many squares they " \
                       "need and which pictures use the most. " \
                       "The Genesis shows 80 pieces at once, and 20 pieces and 320 pixels of sprites on any one " \
                       "row of the screen. A piece spends its whole width of those 320 pixels, its clear pixels and " \

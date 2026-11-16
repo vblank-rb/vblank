@@ -54,6 +54,7 @@ module VBlank
               @grids = {}
               @cells_made = {}
               @pose_tables = {}
+              @pose_rooms = {}
               @layers = {}.compare_by_identity
             end
 
@@ -168,13 +169,17 @@ module VBlank
 
             # Every picture a sprite can show, made into sprite pieces in the order SpriteNames numbers
             # them, so the number a picture is made with is the one a reader of the drawn sprites turns
-            # back into its name.
+            # back into its name. A picture only sprites kept to one pose show is drawn from their rooms
+            # alone (PoseRooms#make_pose_rooms), and is not kept in video memory whole.
             def make_sprite_art
               return unless places_sprites?
 
               poses = @objects.values.flat_map(&:poses).uniq.sort_by { |name| @sprite_names.picture_number(name) }
+              kept_whole = @objects.values.reject { |obj| streamed?(obj) }.flat_map(&:poses).uniq
               refuse_hand_over_inside_test!(:colors) if sprite_colors_take_turns?
               allot_shared_colors(poses) if @scene_colors
+              make_pose_rooms
+              poses &= kept_whole
               return make_art_by_scene(poses) if @scene_tiles
 
               make_sprite_pictures(poses)
@@ -596,7 +601,9 @@ module VBlank
             # room now is past it at the end. Only where a later try can help: a game nothing can help
             # is refused at the end (Art#refuse_too_many_tiles!), where its count is whole.
             def refuse_tiles_past_room_early!
-              @art.refuse_too_many_tiles! if places_sprites? && scene_tiles_after(@scene_tiles)
+              return unless places_sprites? && @art.too_many_tiles?
+
+              @art.refuse_too_many_tiles! if scene_tiles_after(@scene_tiles) || streamed_after(@streamed)
             end
 
             def one_dispatch? = tiled? && @program.walk.count { |node| node.kind == :case } == 1
@@ -843,7 +850,7 @@ module VBlank
             end
 
             # The picture each picture of the art is, by number, as SpriteNames numbers it.
-            def sprite_picture_names = @art.sprite_pictures.map { |name, _| @sprite_names.picture_number(name) }
+            def sprite_picture_names = @art.sprite_pictures.map { |_, picture| @sprite_names.picture_number(picture.name) }
 
             # The art, and each sprite's table of pictures, as sections for the Linker.
             def art_sections
@@ -1323,6 +1330,7 @@ module VBlank
               else
                 emit_sprite_numbers_worked_out(obj.active, numbers, skip)
               end
+              emit_pose_wanted(obj)
               @asm.lea(@asm.abs_l(pose_table(obj)), @asm.a(0))
               emit_operand_load(@asm.imm(@sprite_names.name_number(obj.declared)), 0)
               routine = "rt_sprite_place"
@@ -1513,7 +1521,13 @@ module VBlank
             # The table of a sprite's pictures: how many, then where each one's pieces are. It is kept by
             # the pictures it lists, so sprites that face the same poses, in the same order, read one
             # table: a pool's things, or thirty actors that can each show any frame of one sheet.
-            def pose_table(obj) = @pose_tables[obj.poses] ||= "poses #{@pose_tables.length}"
+            #
+            # A sprite kept to one pose reads a table of its own, of its pictures drawn from its room
+            # (PoseRooms), each kept under the sprite's name and the pose's.
+            def pose_table(obj)
+              pictures = streamed?(obj) ? obj.poses.map { |name| room_key(obj, name) } : obj.poses
+              @pose_tables[pictures] ||= "poses #{@pose_tables.length}"
+            end
 
             # Reference#exec_hide_sprites: the next placing of the sprites places none.
             def emit_hide_sprites(_node) = store_number(sprites_hidden_flag, 1)

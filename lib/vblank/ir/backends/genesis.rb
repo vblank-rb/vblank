@@ -30,6 +30,7 @@ require_relative "genesis/lowering/sound"
 require_relative "genesis/lowering/division"
 require_relative "genesis/lowering/products"
 require_relative "genesis/lowering/tile_runs"
+require_relative "genesis/lowering/pose_rooms"
 require_relative "genesis/lowering"
 require_relative "genesis/headless_run"
 require_relative "genesis/checked_run"
@@ -121,6 +122,12 @@ module VBlank
         # Those palettes are written through the game's own colours in work RAM (Runtime::Tint), so such
         # a game carries that part of the runtime even if it never fades.
         #
+        # A game whose tiles still do not fit once its scenes take turns, or that has no scenes to take
+        # turns, is built again with the sprite whose poses give back the most kept to ONE POSE in video
+        # memory at a time, the pose it shows copied in from the cartridge as it changes to it (+streamed+,
+        # Lowering::PoseRooms), and again with another such sprite, until the tiles fit or no sprite
+        # would give any back. A game that fits without it builds as it did.
+        #
         # Each of those is a try of the build (BuildTries), and a later try keeps what every earlier
         # one found it needs (#settings_after). A try sure to run out of tiles stops before its code
         # is made (Lowering::Picture#refuse_tiles_past_room_early!).
@@ -137,10 +144,10 @@ module VBlank
         # How many times the last #build lowered the game: one for a game that fits as it first tries.
         def tries = @build_tries&.count || 0
 
-        # The settings of one try (#build, BuildTries): +scene_tiles+ and +scene_colors+, each the
-        # Lowering's setting of the same name.
-        Tried = Data.define(:scene_tiles, :scene_colors) do
-          def self.first = new(scene_tiles: false, scene_colors: false)
+        # The settings of one try (#build, BuildTries): +scene_tiles+, +scene_colors+ and +streamed+, each
+        # the Lowering's setting of the same name.
+        Tried = Data.define(:scene_tiles, :scene_colors, :streamed) do
+          def self.first = new(scene_tiles: false, scene_colors: false, streamed: [].freeze)
         end
 
         private
@@ -152,7 +159,10 @@ module VBlank
           case error
           when Art::TooManyTiles
             later = try.made.scene_tiles_after(settings.scene_tiles)
-            settings.with(scene_tiles: later) if later
+            return settings.with(scene_tiles: later) if later
+
+            streamed = try.made.streamed_after(settings.streamed)
+            settings.with(streamed: streamed) if streamed
           when Art::TooManyColors
             later = try.made.scene_colors_after(settings.scene_colors)
             settings.with(scene_colors: later) if later
@@ -183,7 +193,7 @@ module VBlank
                                   glides: samples && Music.glides?(program), recorded_sides: samples && IR::Tunes.recorded_pans?(program))
           Runtime::Frame.reserve_last_pass(memory) if cache.plan.keeps_last_pass_number?
           lowering = try.made = Lowering.new(program, memory: memory, scene_tiles: scene_tiles, scene_colors: scene_colors,
-                                                      cache: cache)
+                                                      streamed: try.settings.streamed, cache: cache)
           game = lowering.sections
           runtime = Runtime.sections(memory, main: Lowering::MAIN, registers: lowering.register_count,
                                              frame_begins: lowering.frame_begins, picture: picture,
@@ -197,6 +207,7 @@ module VBlank
                                              backdrop: lowering.backdrop_copied?, sprites_over_picture: over,
                                              scene_tiles: scene_tiles, scene_colors: scene_colors,
                                              runs: picture == :tiled && lowering.paints_tiles?,
+                                             poses: lowering.streams_poses?,
                                              count_at: (lowering.variables.fetch(IR::Frames::COUNT) if counted))
           linked = Linker.new(runtime + game).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists,
