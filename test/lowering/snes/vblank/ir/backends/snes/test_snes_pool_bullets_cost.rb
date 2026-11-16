@@ -31,12 +31,13 @@ class TestSNESPoolBulletsCost < Minitest::Test
     end
   end
 
-  # Measured at 31243f643, before the Super Nintendo kept a pool its own way: 7.8% of every frame.
+  # Measured at 31243f643, before the Super Nintendo kept a pool its own way: 7.8% of every frame;
+  # kept as tables and walked a turn at a time in X (Backends::PoolLayout::Tables), 7.25%.
   def test_bullets_take_no_more_of_a_frame_than_before
     rom = self.class.game.build_rom(console: :snes, out: StringIO.new, err: StringIO.new, profile: false)
     rows = rom.profile(out: StringIO.new, settle: 60, frames: 60).game
 
-    assert_operator rows.sum(&:share), :<=, 0.079
+    assert_operator rows.sum(&:share), :<=, 0.074
   end
 
   # The bullets move, leave and are fired as on the interpreter, on every pass.

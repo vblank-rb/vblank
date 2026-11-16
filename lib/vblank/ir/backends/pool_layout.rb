@@ -150,7 +150,7 @@ module VBlank
                       "is on, and the walk is stepped in X (SNES::Lowering#emit_stepped_walk). Measured in bsnes, " \
                       "one more pair of things checked: 1010 master clocks as lists, 876 as tables (half " \
                       "words: 900, 758); the bullets test 7.77% of a frame, 7.25%.",
-              records: "A record for each thing, as Super Bomberman keeps its objects: one X reaches every field, " \
+              records: "A record for each thing: one X reaches every field, " \
                        "but the record's stride is the sum of the widths rounded up, more doublings to set X. " \
                        "Measured in bsnes, one more pair: 924 master clocks (half words 806); the bullets test 7.77%."
             }

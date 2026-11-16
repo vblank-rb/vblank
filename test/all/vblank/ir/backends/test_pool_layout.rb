@@ -37,15 +37,49 @@ class TestPoolLayout < Minitest::Test
     assert_nil placement.shared_stride
   end
 
-  # A pool naming no layout, or :lists, is kept as lists on every console today.
-  def test_a_pool_is_kept_as_lists_where_no_other_layout_fits
-    [nil, :lists].each do |layout|
-      program = program_with_pool(layout: layout)
-      shape = guard_shape(program)
-      VBlank::Console::DESCRIPTIONS.each_value do |console|
-        assert_equal :lists, PoolLayout.chosen(shape, console, PoolLayout.steps_on(program, shape)).name
-      end
+  # A pool naming :lists is kept as lists on every console; one naming none is kept in the first of
+  # its console's layouts that fits it, which for a pool of mixed widths is :tables on the Super
+  # Nintendo and :lists everywhere else.
+  def test_a_pool_is_kept_as_named_or_in_the_consoles_first_layout_that_fits
+    program = program_with_pool(layout: :lists)
+    shape = guard_shape(program)
+    VBlank::Console::DESCRIPTIONS.each_value do |console|
+      assert_equal :lists, PoolLayout.chosen(shape, console, PoolLayout.steps_on(program, shape)).name
     end
+    program = program_with_pool
+    shape = guard_shape(program)
+    steps = PoolLayout.steps_on(program, shape)
+    VBlank::Console::DESCRIPTIONS.each_value do |console|
+      first = console.pool_layouts.find { |name| PoolLayout::ADAPTERS.fetch(name).fits?(shape, steps) }
+      assert_equal first, PoolLayout.chosen(shape, console, steps).name, console.title
+    end
+    assert_equal :tables, PoolLayout.chosen(shape, VBlank::Console::SUPER_NINTENDO, steps).name
+  end
+
+  # A pool whose lists are all one width is kept as lists, since tables would be the same; one
+  # that is filled, copied, sorted or saved by the runtime is kept as lists too.
+  def test_tables_fit_only_mixed_widths_kept_slot_by_slot
+    shape = guard_shape(program_with_pool)
+    tables = PoolLayout::ADAPTERS.fetch(:tables)
+
+    assert tables.fits?(shape, %i[list_new list_get list_set])
+    refute tables.fits?(shape, %i[list_new list_get list_fill])
+    refute tables.fits?(shape.with(slot_lists: shape.slot_lists.transform_values { :byte }), %i[list_get])
+  end
+
+  # Tables put every slot list at the pool's widest slot; records put a thing's values side by
+  # side, widest first, in a record rounded up to a power of two.
+  def test_tables_and_records_share_one_stride
+    shape = guard_shape(program_with_pool)
+    tables = PoolLayout::ADAPTERS.fetch(:tables).place(shape)
+    records = PoolLayout::ADAPTERS.fetch(:records).place(shape)
+    x = VBlank::DSL::Pool.field_list(:guard, :x)
+
+    assert_equal 4, tables.shared_stride
+    assert_equal [20, 4], [tables.place_of(x).at(5), tables.place_of(x).width]
+    assert_equal 0, records.shared_stride % 4
+    assert_equal 0, records.place_of(x).offset
+    assert_equal 1, records.areas.size
   end
 
   # The steps a program takes on a pool's lists, which a layout reads to know whether it can keep it.

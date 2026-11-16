@@ -1312,8 +1312,9 @@ module VBlank
           # thing it goes to next and the last it visits as 32-bit numbers, tests the next against
           # NONE in both halves, copies it into the thing it is on, compares that with the last, reads
           # the link out as 32 bits with its sign spread, and counts its turns to the pool's capacity.
-          # Super Bomberman's walk (check_for_enemy_with_enemy_collision) holds the next object's
-          # place in a register, loads the link in one instruction and ends when it is $FFFF. Here
+          # The 65816's way is to hold the next thing's place in an index register, load its link
+          # with one indexed load and end on a link of $FFFF (indexed addressing: fullsnes, "65XX CPU
+          # Addressing Modes"; the SNESdev wiki's 65816 reference). Here
           # the next and the last are kept as the slot times the pool's stride, so the slot to visit
           # is X at once, NONE is $FFFF, a negative number, and every field of the thing is read at
           # that X; the thing it is on is written to its variable, as the body reads it.

@@ -22,7 +22,7 @@ class TestSNESSuperFXBoard < Minitest::Test
   PLAIN_DIGESTS = {
     Tiles => "3826df7f8a7bcbdb27669e6bdf09c71e44954019bf8b2437496b2fe761e11145",
     BufferedBounce => "b50a2b560237cb47f7a77ecf6b2ace75478ca8dda6ed8ce289307cd022d53f3d",
-    Sparks => "ffe0ae8bc7b82fc4f53df26203bfe7a108d19e50cb22789e3b7b57d1f4649965"
+    Sparks => "62c21bee9ea34e97ef55614f49265de3d817c1a1d8edb783f7b9f3ecec534db1"
   }.freeze
 
   def test_a_plain_cartridge_is_byte_for_byte_what_it_was

@@ -520,9 +520,10 @@ module VBlank
                                      # Each picture's pieces name its palette (Backends::SNES::Art). A
                                      # sprite that follows its poses' lists is not made yet.
                                      pose_lists: :own,
-                                     # A pool as lists, tables side by side, or a record for each
-                                     # thing (Backends::PoolLayout::OWN_LAYOUTS says why).
-                                     pool_layouts: %i[lists tables records].freeze,
+                                     # A pool as tables side by side where it fits, else as lists;
+                                     # a record for each thing where a game asks
+                                     # (Backends::PoolLayout::OWN_LAYOUTS says why).
+                                     pool_layouts: %i[tables lists records].freeze,
                                      sprites_placed_before_wait: true,
                                      # No cartridge with a motor is made for it.
                                      rumbles: false, plays_bios_start_up: false, whole_screen_size: nil,
