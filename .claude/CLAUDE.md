@@ -446,6 +446,16 @@ The rules are in `.claude/rules/shared/all-projects.md`. Here, the reader isn't 
 what VRAM, DMA, a page flip, or a palette is, so a few plain-language lines on *what the hardware
 is doing and why* are welcome — that teaching is the point.
 
+**A comment here states the console's habit in its own terms, never one game's.** Here, unlike
+`shared/all-projects.md`, which welcomes "what the original game does" (true in a port), a comment
+in VBlank says how the processor or hardware is used and cites hardware documentation for it:
+GBATEK, Pan Docs, fullsnes, the SNESdev wiki, plutiedev, psx-spx. A particular game is named only
+where that documentation or the console's community itself points to it as the example. A retail
+original we happen to port, or one of our ports, does not qualify: "Pokemon Pinball's Seel routine
+does this" or "measured on the Wolfenstein port" becomes the habit it shows, with its source. A
+measurement against a game or a port goes on the tracker, never in a comment. Comments that name a
+game now are fixed as their files are worked in, not swept.
+
 ### Writing user-facing errors and warnings — use the `simple-english` skill
 
 When you write or change a guardrail finding, a DSL error message, or a validator
