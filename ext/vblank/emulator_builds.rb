@@ -9,7 +9,7 @@ require "tmpdir"
 #
 # VBlank is one gem. ruby-gba-emulator/, ruby-snes-emulator/ and ruby-dos-emulator/ are folders inside
 # it, and each holds source that has to be compiled on the machine it runs on: a C extension over
-# libmgba, bsnes itself with the small C extension it is played through, and DOSBox (the last two
+# libmgba, and bsnes and DOSBox, each with the small C extension it is played through (both
 # downloaded at the install, at the commit each names). They are built in place, into the same
 # folders a checkout builds them in, so everything that finds an emulator finds it the same way in a
 # checkout and in an installed gem.
@@ -29,7 +29,7 @@ module EmulatorBuilds
   def build_all(root: ROOT)
     attempt(File.join(root, "ruby-gba-emulator")) { build_advance_emulator(File.join(root, "ruby-gba-emulator")) }
     attempt(File.join(root, "ruby-snes-emulator")) { build_snes_emulator(File.join(root, "ruby-snes-emulator")) }
-    attempt(File.join(root, "ruby-dos-emulator")) { build_dos_core(File.join(root, "ruby-dos-emulator")) }
+    attempt(File.join(root, "ruby-dos-emulator")) { build_dos_emulator(File.join(root, "ruby-dos-emulator")) }
   end
 
   # Runs the block and leaves NOT_BUILT in +folder+ saying why if it raised, or no such file if not.
@@ -90,7 +90,11 @@ module EmulatorBuilds
     end
   end
 
-  def build_dos_core(folder)
+  # What `rake compile compile_core` does in ruby-dos-emulator/: the C extension DOSBox is played
+  # through, then DOSBox.
+  def build_dos_emulator(folder)
+    load File.join(folder, "lib", "ruby_dos_emulator", "built_for.rb")
+    build_extension(folder, "ruby_dos_emulator", RubyDOSEmulator::BUILT_FOR)
     require File.join(folder, "lib", "ruby_dos_emulator", "core_library")
     require File.join(folder, "lib", "ruby_dos_emulator", "core_build")
     RubyDOSEmulator::CoreBuild.make(RubyDOSEmulator::CoreLibrary::BUILT)

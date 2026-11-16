@@ -1,2 +1,13 @@
 # The DOSBox core `rake compile_core` builds (see the Rakefile)
 /core/build/
+
+# The C extension `rake compile` builds, one directory per Ruby (see the Rakefile), and what its
+# build leaves beside the source.
+/lib/[0-9]*/
+/ext/ruby_dos_emulator_ext/Makefile
+/ext/ruby_dos_emulator_ext/*.o
+/ext/ruby_dos_emulator_ext/*.so
+/ext/ruby_dos_emulator_ext/*.bundle
+/ext/ruby_dos_emulator_ext/*.bundle.dSYM/
+/ext/ruby_dos_emulator_ext/mkmf.log
+/ext/ruby_dos_emulator_ext/.sitearchdir.*.time

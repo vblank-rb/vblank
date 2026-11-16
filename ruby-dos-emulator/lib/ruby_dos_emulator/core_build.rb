@@ -51,7 +51,7 @@ module RubyDOSEmulator
     ARCHIVE = "https://codeload.github.com/libretro/dosbox-svn/tar.gz/#{REVISION}".freeze
     COMMON_REVISION = "fa8a1b572a444fcb552007019f8caf68281108aa"
     COMMON_ARCHIVE = "https://codeload.github.com/libretro/libretro-common/tar.gz/#{COMMON_REVISION}".freeze
-    PATCH = File.expand_path("../../core/dosbox-vblank-probe.patch", __dir__)
+    PATCH = File.expand_path("../../core/dosbox-vblank-probe.patch", __dir__).freeze
     MAKE_SETTINGS = %w[WITH_FAKE_SDL=1 WITH_IPX=0 WITH_DYNAREC=].freeze
 
     # Why a core could not be made, in words for the person installing.

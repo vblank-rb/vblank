@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "securerandom"
 require "tmpdir"
 
 module RubyDOSEmulator
@@ -12,15 +13,15 @@ module RubyDOSEmulator
   # The library is also unloaded when its machine is destroyed, and its static memory goes with it. That
   # needs the core to export nothing but libretro's functions and the probe's, which the probe patch sees
   # to (CoreBuild says why).
+  #
+  # Each copy's name is made up at random rather than counted: a machine may be made in any Ractor, and
+  # only the main one may change a count the class keeps.
   class CoreCopy
-    @count = 0
-
     class << self
       # A new copy of +library+ in +folder+.
       def make(library = CoreLibrary.path, folder: Dir.tmpdir)
         FileUtils.mkdir_p(folder)
-        @count += 1
-        path = File.join(folder, "ruby-dos-emulator-core-#{Process.pid}-#{@count}.so")
+        path = File.join(folder, "ruby-dos-emulator-core-#{Process.pid}-#{SecureRandom.hex(8)}.so")
         FileUtils.cp(library, path)
         new(path)
       end

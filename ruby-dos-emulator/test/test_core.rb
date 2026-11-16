@@ -71,7 +71,7 @@ class TestCore < Minitest::Test
   end
 
   def test_a_library_without_the_probe_patch_is_refused_saying_so
-    not_a_core = $LOADED_FEATURES.grep(/fiddle\.(bundle|so)\z/).first # a library that loads and has none of the functions
+    not_a_core = $LOADED_FEATURES.grep(/ruby_dos_emulator_ext\.(bundle|so)\z/).first # a library that loads and has none of the functions
     setting = RubyDOSEmulator::CoreLibrary::SETTING
     kept = ENV.fetch(setting, nil)
     ENV[setting] = not_a_core

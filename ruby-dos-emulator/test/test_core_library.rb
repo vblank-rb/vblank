@@ -26,4 +26,17 @@ class TestCoreLibrary < Minitest::Test
     assert_includes message, "/nowhere/core.so"
     refute_includes message, "gem pristine"
   end
+
+  # The extension is required before the core is looked for, so an install that could not build either says
+  # so there too.
+  def test_an_install_that_could_not_build_the_extension_repeats_why_and_the_fix
+    message = CoreLibrary.extension_missing_message("cannot load such file", not_built: "a C compiler (cc) is not installed\n")
+
+    assert_includes message, "a C compiler (cc) is not installed"
+    assert_includes message, "gem pristine vblank"
+  end
+
+  def test_a_checkout_with_no_extension_is_told_to_build_one
+    assert_includes CoreLibrary.extension_missing_message("cannot load such file", not_built: nil), "rake compile"
+  end
 end

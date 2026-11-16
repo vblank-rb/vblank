@@ -49,6 +49,7 @@ takes the same steps and has not been run.
 The core is GPL-2.0, and `core/LICENSE.md` says what that covers here. This gem is a tool for
 testing, and VBlank never ships it: it is not in VBlank's gemspec.
 
-The binding is pure Ruby over Fiddle: there is no C extension to compile. Each `Core` loads a copy of
+The core is played through a small C extension, `RubyDOSEmulator::Machine`, which works in any
+Ractor; `rake compile` builds it, and `rake test` builds it first. Each `Core` loads a copy of
 the library of its own (see `CoreCopy`), and `destroy` shuts the machine and unloads it again, so a
 process that opens many machines does not grow.

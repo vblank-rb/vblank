@@ -27,6 +27,7 @@ Gem::Specification.new do |spec|
                        Dir.glob("ruby-snes-emulator/ext/ruby_snes_emulator_ext/*.{c,h,rb}") +
                        Dir.glob("ruby-snes-emulator/core/*.{patch,md}") +
                        Dir.glob("ruby-dos-emulator/lib/**/*.rb") +
+                      Dir.glob("ruby-dos-emulator/ext/ruby_dos_emulator_ext/*.{c,h,rb}") +
                        Dir.glob("ruby-dos-emulator/core/*.{patch,md}") +
                        %w[vblank.gemspec Rakefile LICENSE.md]
   spec.bindir        = "bin"

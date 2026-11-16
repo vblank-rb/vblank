@@ -1,9 +1,27 @@
 # frozen_string_literal: true
 
-# A headless DOS machine for checking programs from Ruby: DOSBox, built as a libretro core with
-# a small patch that hands over the PC's memories, driven through Fiddle. See RubyDOSEmulator::Core
-# for what it plays and reads, and RubyDOSEmulator::CoreLibrary for where the core comes from.
+# A headless DOS machine for checking programs from Ruby: DOSBox, built as a libretro core with a
+# small patch that hands over the PC's memories, played through this gem's C extension
+# (RubyDOSEmulator::Machine), so a program plays in any Ractor. See RubyDOSEmulator::Core for what it
+# plays and reads, and RubyDOSEmulator::CoreLibrary for where the core comes from.
 require_relative "ruby_dos_emulator/version"
+require_relative "ruby_dos_emulator/built_for"
+require_relative "ruby_dos_emulator/built_from"
 require_relative "ruby_dos_emulator/core_library"
+
+# The compiled half. A checkout's build lands under lib/<the Ruby that built it>/, put first on
+# the load path so a Ruby finds its own build or none; a gem's is the one RubyGems built per ABI.
+# A checkout's build is checked against the source beside it (built_from.rb).
+built = File.join(__dir__, RubyDOSEmulator::BUILT_FOR)
+checkout_build = File.directory?(built)
+$LOAD_PATH.unshift(built) if checkout_build && !$LOAD_PATH.include?(built)
+
+begin
+  require "ruby_dos_emulator/ruby_dos_emulator_ext"
+rescue LoadError => e
+  raise LoadError, RubyDOSEmulator::CoreLibrary.extension_missing_message(e.message)
+end
+RubyDOSEmulator.refuse_out_of_date_build! if checkout_build
+
 require_relative "ruby_dos_emulator/core_copy"
 require_relative "ruby_dos_emulator/core"

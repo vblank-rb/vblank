@@ -87,9 +87,9 @@ module VBlank
       #   drawn with 480-line timing (525 lines of 800 dots), as the 640 x 480 mode is: more lines a frame
       #   at the same dot clock, so fewer frames a second.
       #   Console::DOSHardware::LINES_A_FRAME has the numbers and the variants' descriptions use them.
-      # - THE EMULATOR GEM IS PURE RUBY OVER FIDDLE, with a frontend written in C inside the core (see
-      #   ruby-dos-emulator): the core runs the machine on a stack of its own and calls its frontend from
-      #   there, which a Ruby callback cannot answer.
+      # - THE EMULATOR'S FRONTEND IS WRITTEN IN C INSIDE THE CORE (see ruby-dos-emulator): the keys must
+      #   reach the keyboard at a moment in the machine's own time, which only the core can schedule. A
+      #   small C extension calls it, so a DOS program plays in any Ractor, as each console's does.
       # - A PROGRAM TELLS THE READER WHERE ITS DATA IS. DOS loads an EXE wherever it finds room, so the
       #   program's first act is to store its data segment at 0040:00F0, the 16 bytes the PC's designers
       #   kept for programs to share (Diagnostics::DOSMemory), and a variable's address is an offset in it.

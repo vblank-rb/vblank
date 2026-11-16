@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "fiddle"
 require "fileutils"
 require "tmpdir"
 
@@ -36,11 +35,11 @@ module RubyDOSEmulator
   # (CoreBuild says more). So #run_frame is one vertical retrace, a program that waits for the retrace
   # makes one pass in it, and what is read afterwards is the machine stopped between two pictures.
   #
-  # THE FRONTEND IS IN THE CORE, NOT IN RUBY. The machine runs on a stack of its own (a coroutine the
-  # core switches into) and hands its pictures over from there, and Ruby cannot be called from a stack
-  # it does not know. So the probe patch carries the frontend's half too (the vblank_* functions): it
-  # answers the core's questions and keeps the last picture and the sound made, and this class hands
-  # the core their addresses and reads them.
+  # THE FRONTEND IS IN THE CORE, NOT IN RUBY. The probe patch carries the frontend's half (the vblank_*
+  # functions): it answers the core's questions, takes the keys at a moment in the machine's own time,
+  # and keeps the last picture and the sound made. Machine, this gem's C extension, hands the core those
+  # functions and calls them (ext/ruby_dos_emulator_ext/ruby_dos_emulator_ext.c says why that is C and
+  # not Fiddle). So a Core can be made and played in any Ractor.
   class Core
     # libretro's name for system RAM, and the probe patch's own (core/dosbox-vblank-probe.patch).
     SYSTEM_RAM = 2
@@ -84,7 +83,6 @@ module RubyDOSEmulator
       @drive = in_place ? File.dirname(File.expand_path(program)) : copied_folder_of(program)
       @frames = 0
       @held = []
-      @kept = [] # what the core holds a pointer to, kept from the garbage collector
       start(File.basename(program))
     end
 
@@ -94,8 +92,8 @@ module RubyDOSEmulator
       raise ArgumentError, "a DOS keyboard has no #{unknown.join(', ')} key here" unless unknown.empty?
 
       codes = keys.map { |key| KEYS.fetch(key) }
-      (@held - codes).each { |code| @call[:vblank_key_event].call(0, code) }
-      (codes - @held).each { |code| @call[:vblank_key_event].call(1, code) }
+      (@held - codes).each { |code| @machine.key_event(false, code) }
+      (codes - @held).each { |code| @machine.key_event(true, code) }
       @held = codes
     end
 
@@ -103,7 +101,7 @@ module RubyDOSEmulator
     # in mode 13h. The machine is stopped when this returns, so everything read after it is what the
     # program had done by the end of that picture, whatever the host's speed.
     def run_frame
-      @call[:retro_run].call
+      @machine.run
       @frames += 1
       self
     end
@@ -120,7 +118,7 @@ module RubyDOSEmulator
     # says too. A machine never told reads the host's clock. Tell it before the first frame, since a
     # program reads the clock as it starts.
     def clock_at(time, kept: true)
-      @call[:vblank_clock_at].call(time.year, time.month, time.day, time.hour, time.min, time.sec, time.wday, kept ? 1 : 0)
+      @machine.clock_at(time.year, time.month, time.day, time.hour, time.min, time.sec, time.wday, kept)
       self
     end
 
@@ -134,23 +132,19 @@ module RubyDOSEmulator
 
     # The last picture the core handed over (a Picture), or nil before the first.
     def picture
-      size = Fiddle::Pointer.malloc(8, Fiddle::RUBY_FREE)
-      count = @call[:vblank_copy_picture].call(nil, 0, size, size + 4)
-      return nil if count.zero?
+      bytes, wide, high = @machine.picture
+      return nil unless bytes
 
-      pixels = Fiddle::Pointer.malloc(count * 4, Fiddle::RUBY_FREE)
-      @call[:vblank_copy_picture].call(pixels, count, size, size + 4)
-      wide, high = size.to_str(8).unpack("L<2")
-      Picture.new(width: wide, height: high, pixels: pixels.to_str(count * 4).unpack("V*").map { |pixel| pixel & 0xFF_FFFF })
+      Picture.new(width: wide, height: high, pixels: bytes.unpack("V*").map { |pixel| pixel & 0xFF_FFFF })
     end
 
     # --- the memories ---
 
     # +count+ bytes of the PC's first megabyte, from linear address +address+ (segment * 16 + offset).
-    def peek(address, count) = live(SYSTEM_RAM, 0x10_0000)[address, count]
+    def peek(address, count) = @machine.memory_read(SYSTEM_RAM, address, count)
 
     # Writes +bytes+ into the PC's first megabyte at linear address +address+, as a program's own store would.
-    def poke(address, bytes) = (live(SYSTEM_RAM, 0x10_0000)[address, bytes.bytesize] = bytes)
+    def poke(address, bytes) = @machine.memory_write(SYSTEM_RAM, address, bytes)
 
     # The video card's memory as DOSBox keeps it: four planes interleaved (byte 4n + plane). A mode
     # that is unchained (Mode X) reads that as it is. Mode 13h is chained, and DOSBox spreads its
@@ -175,12 +169,7 @@ module RubyDOSEmulator
 
     # The sound made since this was last asked: pairs of signed 16-bit samples as [left, right], at
     # #sample_rate a second.
-    def take_audio
-      room = 1 << 20
-      buffer = Fiddle::Pointer.malloc(room * 2, Fiddle::RUBY_FREE)
-      held = @call[:vblank_take_sound].call(buffer, room)
-      buffer.to_str([held, room].min * 2).unpack("s<*").each_slice(2).to_a
-    end
+    def take_audio = @machine.take_sound.unpack("s<*").each_slice(2).to_a
 
     # --- the files ---
 
@@ -192,10 +181,9 @@ module RubyDOSEmulator
 
     # Unloads the program, shuts the core and lets go of its library, and the machine's memory with it.
     def destroy
-      return unless @call
+      return unless @machine
 
-      @call[:retro_unload_game].call
-      @call[:retro_deinit].call
+      @machine.close
       release
     end
 
@@ -208,94 +196,31 @@ module RubyDOSEmulator
       drive
     end
 
-    # Loads a library of its own and starts the machine on +program+. A machine that cannot start
-    # leaves nothing behind: not its library, and not its folder.
+    # Opens a copy of the core of its own and starts the machine on +program+. A machine that cannot
+    # start leaves nothing behind: not its library, and not its folder.
     def start(program)
-      load_library
-      hand_over_callbacks
-      @call[:retro_init].call
+      copy = CoreCopy.make
+      @machine = Machine.new(copy.path, @dir)
       load_program(program)
       # The core asks for key presses when it is told what is plugged in, which it can only take once it has a machine.
-      @call[:retro_set_controller_port_device].call(0, KEYBOARD)
+      @machine.set_controller_port_device(0, KEYBOARD)
+    rescue Machine::Unpatched
+      release
+      raise LoadError, CoreLibrary.unpatched_message(CoreLibrary.path)
     rescue StandardError, LoadError
       release
       raise
-    end
-
-    def release
-      @handle&.close
-      @call = nil
-      FileUtils.rm_rf(@dir)
-    end
-
-    def memory(id)
-
-      size = @call[:retro_get_memory_size].call(id)
-      return "".b if size.zero?
-
-      Fiddle::Pointer.new(@call[:retro_get_memory_data].call(id).to_i)[0, size]
-    end
-
-    def live(id, size) = Fiddle::Pointer.new(@call[:retro_get_memory_data].call(id).to_i, size)
-
-    FUNCTIONS = {
-      retro_set_environment: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
-      retro_set_video_refresh: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
-      retro_set_audio_sample: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
-      retro_set_audio_sample_batch: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
-      retro_set_input_poll: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
-      retro_set_input_state: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
-      retro_init: [[], Fiddle::TYPE_VOID],
-      retro_deinit: [[], Fiddle::TYPE_VOID],
-      retro_load_game: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_BOOL],
-      retro_unload_game: [[], Fiddle::TYPE_VOID],
-      retro_run: [[], Fiddle::TYPE_VOID],
-      retro_set_controller_port_device: [[Fiddle::TYPE_UINT, Fiddle::TYPE_UINT], Fiddle::TYPE_VOID],
-      retro_get_system_av_info: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
-      retro_get_memory_data: [[Fiddle::TYPE_UINT], Fiddle::TYPE_VOIDP],
-      retro_get_memory_size: [[Fiddle::TYPE_UINT], Fiddle::TYPE_SIZE_T],
-      vblank_set_directory: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
-      vblank_clock_at: [[Fiddle::TYPE_INT] * 8, Fiddle::TYPE_VOID],
-      vblank_key_event: [[Fiddle::TYPE_INT, Fiddle::TYPE_UINT], Fiddle::TYPE_VOID],
-      vblank_copy_picture: [[Fiddle::TYPE_VOIDP, Fiddle::TYPE_SIZE_T, Fiddle::TYPE_VOIDP, Fiddle::TYPE_VOIDP], Fiddle::TYPE_SIZE_T],
-      vblank_take_sound: [[Fiddle::TYPE_VOIDP, Fiddle::TYPE_SIZE_T], Fiddle::TYPE_SIZE_T]
-    }.freeze
-
-    # The core's own frontend functions the setters are handed (see the comment atop this class).
-    FRONTEND = { retro_set_environment: :vblank_environment, retro_set_video_refresh: :vblank_video_refresh,
-                 retro_set_audio_sample: :vblank_audio_sample, retro_set_audio_sample_batch: :vblank_audio_batch,
-                 retro_set_input_poll: :vblank_input_poll, retro_set_input_state: :vblank_input_state }.freeze
-
-    def load_library
-      library = CoreLibrary.path
-      copy = CoreCopy.make(library)
-      @handle = Fiddle::Handle.new(copy.path, Fiddle::Handle::RTLD_NOW)
-      @call = FUNCTIONS.to_h { |name, (args, result)| [name, Fiddle::Function.new(function_address(name, library), args, result)] }
     ensure
       copy&.delete
     end
 
-    # Where the library keeps the function +name+. A core built without the probe patch has none of the
-    # vblank_* ones, and is refused in words that say so.
-    def function_address(name, library)
-      @handle[name.to_s]
-    rescue Fiddle::DLError
-      raise LoadError, CoreLibrary.unpatched_message(library)
+    def release
+      @machine&.close
+      @machine = nil
+      FileUtils.rm_rf(@dir)
     end
 
-    def hand_over_callbacks
-      FRONTEND.each { |setter, function| @call.fetch(setter).call(Fiddle::Pointer.new(function_address(function, CoreLibrary.path))) }
-      @call[:vblank_set_directory].call(kept_string(@dir))
-    end
-
-    def kept_string(text) = kept_bytes("#{text}\0".b)
-
-    def kept_bytes(bytes)
-      pointer = Fiddle::Pointer.malloc([bytes.bytesize, 1].max, Fiddle::RUBY_FREE)
-      pointer[0, bytes.bytesize] = bytes
-      @kept << pointer
-      pointer
-    end
+    def memory(id) = @machine.memory(id)
 
     # The DOSBox configuration this machine is made from (see the comment atop this class).
     def configuration(program)
@@ -327,20 +252,14 @@ module RubyDOSEmulator
       CONF
     end
 
-    # libretro's retro_game_info: the path, the bytes and their count, and nothing for meta.
+    # The machine is loaded with its configuration file, as libretro loads a game by its path.
     def load_program(program)
       path = File.join(@dir, "machine.conf")
       File.write(path, configuration(program))
-      info = kept_bytes([kept_string(path).to_i, 0, 0, 0].pack("J4"))
-      raise ArgumentError, "DOSBox would not load #{program}" unless @call[:retro_load_game].call(info)
+      raise ArgumentError, "DOSBox would not load #{program}" unless @machine.load_game(path)
     end
 
-    # retro_system_av_info: four numbers for the picture's size, its aspect ratio, then the frame rate
-    # and the sound's rate, both doubles. Asked each time, since the frame rate is the mode's.
-    def timing
-      info = Fiddle::Pointer.malloc(40, Fiddle::RUBY_FREE)
-      @call[:retro_get_system_av_info].call(info)
-      info.to_str(40).unpack("x24E2")
-    end
+    # The frame rate and the sound's rate, asked each time, since the frame rate is the mode's.
+    def timing = @machine.timing
   end
 end
