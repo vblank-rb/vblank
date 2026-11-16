@@ -23,7 +23,7 @@ module VBlank
           # - sound is switched on, and the vertical-blank interrupt, which signals a frame has been
           #   drawn, is switched on;
           # - in a game that reads `frames_since_power_on`, the timer counts the frames the screen
-          #   is off for, from the moment the processor is at its speed (Runtime::Frame#emit_dark_start).
+          #   is off for, from the moment it goes off (Runtime::Frame#emit_dark_start).
           #
           # Then the game's main routine is called. A game whose routine ends stops there.
           module Boot
@@ -59,8 +59,7 @@ module VBlank
             # (+clips+), the timer is stopped and its interrupt switched on, for a clip to start.
             # +backdrop+ is the colour the screen shows before the game's first frame (Art#backdrop_at_power_on).
             # In a game that counts the frames its screen is off for (+memory+ where its count is,
-            # Runtime::Frame#emit_dark_start), the count starts as soon as the processor is at its
-            # speed.
+            # Runtime::Frame#emit_dark_start), the count starts as the screen goes off.
             def emit(asm, main:, clips: false, backdrop: Art::BACKDROP, memory: nil)
               h = Console::GBCHardware
               dark = memory && Frame.dark?(memory)
@@ -77,8 +76,8 @@ module VBlank
               asm.load_high(h::KEY1, :a)
               asm.stop
               asm.label("rt_boot_fast")
-              Frame.emit_dark_start(asm, memory) if dark
               asm.call("rt_display_off")
+              Frame.emit_dark_start(asm, memory) if dark
               backdrop_written = backdrop != Art::BACKDROP
               emit_backdrop(asm, backdrop) if backdrop_written
               asm.load(:a, 1)
