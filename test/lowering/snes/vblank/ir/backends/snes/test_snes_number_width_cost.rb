@@ -18,7 +18,10 @@ class TestSNESNumberWidthCost < Minitest::Test
   # variable against a number, 105 then 65; a half slot shifted down by 4, 780 then 158; a table of
   # bytes against a variable, 813 then 250. With the variables kept in two bytes the instructions of
   # a test are the same, and the shift reads 166 or 176 as the rest of the pass moves round it.
-  BOUNDS = { pair: 650, number: 75, shift: 185, table: 270 }.freeze
+  # With the byte lists written every pass (they were never written, so the build knew them),
+  # before and after each variable's real range was known (NumberRanges): 531 then 531, 71 then
+  # 33, 176 then 64, 244 then 244.
+  BOUNDS = { pair: 560, number: 40, shift: 75, table: 270 }.freeze
 
   BOUNDS.each do |shape, bound|
     define_method(:"test_a_#{shape}_test_costs_under_#{bound}_master_clocks") do

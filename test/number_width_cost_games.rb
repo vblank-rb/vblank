@@ -40,6 +40,9 @@ module NumberWidthCostGames
       j = 0
       game_loop do
         t = (t + 1) & 31
+        # Written every pass, so the build cannot know a test of them before the game runs.
+        xs[t] = (t * 3) & 63
+        ys[t] = (t * 5) & 63
         i = t
         j = (t + 3) & 31
         v = (v + 17) & 1023

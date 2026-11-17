@@ -18,8 +18,10 @@ class TestGBCNumberWidthCost < Minitest::Test
   # number, 102 then 74; a half slot shifted down by 4, 408 then 180; a table of bytes against a
   # variable, 613 then 283. With the variables proven to stay in two bytes kept in two, a mask's
   # byte of all ones or of nought left out, and a table read at an index of two bytes: 416, 66, 164
-  # and 227.
-  BOUNDS = { pair: 440, number: 72, shift: 180, table: 245 }.freeze
+  # and 227. With the byte lists written every pass (they were never written, so the build knew
+  # them), before and after each variable's real range was known (NumberRanges): 373 then 373, 66
+  # then 66, 164 then 136, 227 then 227.
+  BOUNDS = { pair: 400, number: 72, shift: 150, table: 245 }.freeze
 
   BOUNDS.each do |shape, bound|
     define_method(:"test_a_#{shape}_test_costs_under_#{bound}_cycles") do
