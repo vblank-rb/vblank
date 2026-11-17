@@ -57,15 +57,16 @@ class TestSNESDirectPageVariablesCost < Minitest::Test
   end
 
   # Measured: a turn was 637 master clocks with the three numbers at 16-bit addresses, crowded or
-  # not; on the direct page, 544. What is left is the numbers worked in 32 bits.
-  def test_a_turn_working_three_numbers_costs_under_570_master_clocks
+  # not; on the direct page, 544; with `b`, which stays in a byte, kept in two bytes
+  # (SNES::HalfVariables), 495.
+  def test_a_turn_working_three_numbers_costs_under_520_master_clocks
     cost = clocks_a_turn(0)
-    assert_operator cost, :<, 570, "a turn costs #{cost.round(1)} master clocks"
+    assert_operator cost, :<, 520, "a turn costs #{cost.round(1)} master clocks"
   end
 
-  def test_a_turn_in_a_crowded_game_costs_under_570_master_clocks
+  def test_a_turn_in_a_crowded_game_costs_under_520_master_clocks
     cost = clocks_a_turn(CROWD)
-    assert_operator cost, :<, 570, "a turn costs #{cost.round(1)} master clocks"
+    assert_operator cost, :<, 520, "a turn costs #{cost.round(1)} master clocks"
   end
 
   # The numbers are the interpreter's on every pass, the crowded game's too.

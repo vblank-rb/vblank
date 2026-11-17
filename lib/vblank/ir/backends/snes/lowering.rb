@@ -216,6 +216,21 @@ module VBlank
               @carries[[board, choices]] ||= Runtime::Carries.of(@cache.program, board: board, handover: @cache.handover,
                                                                                  stacking: @cache.stacking, **choices)
             end
+
+            # The variables kept in two bytes (HalfVariables), worked out once a build and again after
+            # a try hands some over (#keep_whole).
+            def half_variables
+              @half_variables ||= HalfVariables.proven(@cache.program, @cache.plan, also_whole: handed_over.to_a)
+            end
+
+            # The variables a try found it needed whole (Lowering#place_of), kept whole on every try
+            # after.
+            def handed_over = @handed_over ||= Set.new
+
+            def keep_whole(names)
+              handed_over.merge(names)
+              @half_variables = nil
+            end
           end
 
           # Where each of the game's variables went, by its name, and each of its lists — [its place,
@@ -236,6 +251,9 @@ module VBlank
                                                        stride: slots.stride, width: slots.width, scale: slots.scale)
             end
           end
+
+          # The variables this build keeps in two bytes (HalfVariables), for reading them back.
+          def half_variables_kept = @variables.keys.select { |name| half_variable?(name) }.to_set
 
           # Whether the cartridge counts the frames it spends setting up into the game's count of
           # frames since power-on, from the top of setting up (Runtime::Boot#emit).
@@ -295,6 +313,9 @@ module VBlank
             prepare_collision
             prepare_sound
             prepare_chip(chip)
+            # A Super FX reads and writes the variables its routines name in four bytes (ChipCode).
+            @half_variables = chip ? Set.new : cache.facts.half_variables
+            @handed_over = Set.new
           end
 
           # The game's code, as sections for the Linker: its data, every routine a run can reach, and
@@ -549,9 +570,38 @@ module VBlank
             end
           end
 
+          # Where all four bytes of +name+ are. A variable kept in two (#half_variable?) has no such
+          # place: asking for one notes it, and the try ends handing it over (#refuse_handed_over!),
+          # so the next try keeps it whole. Code that reads or writes only a variable's low half asks
+          # #kept_place_of.
           def place_of(name)
+            @handed_over << name if half_variable?(name)
+            kept_place_of(name)
+          end
+
+          # Where +name+'s first byte is, for code reading or writing only the bytes it is kept in.
+          def kept_place_of(name)
             @variables.fetch(name) { @locals.fetch(name) { raise LoweringError, "#{name.inspect} is not a variable the program keeps" } }
           end
+
+          # Whether the variable +name+ is kept in two bytes (HalfVariables).
+          def half_variable?(name) = @half_variables.include?(name)
+
+          # A try asked for the whole place of a variable kept in two bytes (#place_of); the next try
+          # keeps it whole (SNES#settings_after).
+          class VariableHandedOver < StandardError; end
+
+          # The try ends where it asked for the whole place of a variable kept in two bytes: its code
+          # read four bytes there. The facts keep each whole from the next try on. Asked by SNES#build.
+          public def refuse_handed_over!
+            return if @handed_over.empty?
+
+            @cache.facts.keep_whole(@handed_over)
+            raise VariableHandedOver, "the try needs #{@handed_over.to_a.inspect} whole"
+          end
+
+          # The low half of variable +name+, as an operand: all of a variable kept in two bytes.
+          def low_half_of(name) = at_place(kept_place_of(name))
 
           # What the lowering reads and writes a number at: a variable on the direct page, named by
           # its low byte; one in the rest of the first 8K, which every bank the code runs in can see;
@@ -598,14 +648,16 @@ module VBlank
             direct.each { |name| @variables[name] = @memory.reserve_direct(variable_label(name), variable_bytes(name)) }
             (names - direct).each do |name|
               label = variable_label(name)
-              @variables[name] = far.include?(name) ? @memory.reserve_far(label, 4) : @memory.reserve(label, 4)
+              bytes = variable_bytes(name)
+              @variables[name] = far.include?(name) ? @memory.reserve_far(label, bytes) : @memory.reserve(label, bytes)
             end
           end
 
           def variable_label(name) = "the variable #{name.inspect}"
 
-          # The bytes the variable +name+ is kept in: all four of its number.
-          def variable_bytes(_name) = 4
+          # The bytes the variable +name+ is kept in: two for one proven to stay in 16 bits
+          # (#half_variable?), all four of its number otherwise.
+          def variable_bytes(name) = half_variable?(name) ? 2 : 4
 
           # What may go on the direct page, and how much the game names it: a variable, or (with no
           # variable) a number a stepped walk keeps of its own every turn, ranked as the walk's
@@ -693,7 +745,7 @@ module VBlank
             copied: [Memory, Art, PaintedArt, TextLayerArt],
             shared: [Integer, Symbol, String, NilClass, TrueClass, FalseClass, IR::Node, SceneHandover,
                      SpriteNames, Music, W65816, RoutineCuts::PartCall, LoweringPlan, ChipCode, Sound::ModeCall],
-            unchanged: %i[@cuts @cache @tile_memo @keyed_sorts @keys_by_place]
+            unchanged: %i[@cuts @cache @tile_memo @keyed_sorts @keys_by_place @half_variables @handed_over]
           )
 
           # --- statements ---
@@ -707,10 +759,13 @@ module VBlank
           def emit_nothing(_node) = nil
           def emit_children(node) = node.children.each { |child| statement(child) }
 
-          # R0 into the variable +name+.
+          # R0 into the variable +name+: its low half alone into one kept in two bytes, whose every
+          # write is proven to fit them (HalfVariables).
           def store(name)
-            at = place_of(name)
             @asm.lda(@asm.direct(R0))
+            return @asm.sta(low_half_of(name)) if half_variable?(name)
+
+            at = place_of(name)
             @asm.sta(at_place(at))
             @asm.lda(@asm.direct(R0 + 2))
             @asm.sta(at_place(at + 2))
@@ -719,6 +774,7 @@ module VBlank
           # A variable set to itself changes nothing, so nothing is made for one.
           def emit_set(node)
             return if node.value.is_a?(Node) && node.value.kind == :var_ref && node.value.name == node.var
+            return emit_set_half(node.var, node.value) if half_variable?(node.var)
 
             known = folded(node.value)
             return store_number(place_of(node.var), known) if known
@@ -728,6 +784,33 @@ module VBlank
 
             value(node.value)
             store(node.var)
+          end
+
+          # A VARIABLE KEPT IN TWO BYTES SET TO +value+: only the low half of the number is worked out
+          # (#emit_low_half), since the variable keeps nothing else, and stored with one STA. The
+          # value is proven to fit 16 bits (HalfVariables), so those are the whole number with its sign.
+          def emit_set_half(name, value)
+            known = folded(value)
+            return store_half_number(name, known) if known
+
+            emit_low_half(value, 16)
+            @asm.sta(low_half_of(name))
+          end
+
+          # A number written in the program into the variable +name+, kept in two bytes.
+          def store_half_number(name, number)
+            half = number & 0xFFFF
+            return @asm.stz(low_half_of(name)) if half.zero? && kept_place_of(name) <= 0xFFFF
+
+            @asm.lda(half)
+            @asm.sta(low_half_of(name))
+          end
+
+          # A number written in the program into variable +name+, whatever it is kept in.
+          def store_number_into(name, number)
+            return store_half_number(name, number) if half_variable?(name)
+
+            store_number(place_of(name), number)
           end
 
           # Whether +node+ is a list's slot read where it is, as #value_of_list_get reads one.
@@ -806,6 +889,9 @@ module VBlank
           # where reading it back for each list is two, on each side of the walk's test of whether
           # this is its last thing.
           def copy_variable(from, name)
+            return copy_into_half(from, name) if half_variable?(name)
+            return copy_half_into_whole(variable_named(from), name) if half_variable?(variable_named(from))
+
             halves = operand_halves(from)
             at = place_of(name)
             copied = DSL::Pool.holds_only_slots?(name) ? 1 : 2
@@ -822,6 +908,36 @@ module VBlank
             @asm.tax
             @asm.note_x_holds(key)
             @asm.note_accumulator_holds(key.first) if stride == 1
+          end
+
+          # The variable +from+ names into +name+, kept in two bytes: its low half, all a copy proven
+          # to fit them needs.
+          def copy_into_half(from, name)
+            @asm.lda(low_half_of(variable_named(from)))
+            @asm.sta(low_half_of(name))
+          end
+
+          # The variable +from+, kept in two bytes, into +name+, kept whole: its low half, and its
+          # sign spread over the high half.
+          def copy_half_into_whole(from, name)
+            at = place_of(name)
+            @asm.lda(low_half_of(from))
+            @asm.sta(at_place(at))
+            emit_sign_of_a
+            @asm.sta(at_place(at + 2))
+          end
+
+          # A = $FFFF where the 16-bit number the flags were last set from is below nought, and nought
+          # otherwise: the high half of that number made whole. Its N flag decides, as a load sets it.
+          def emit_sign_of_a
+            positive = fresh("half_positive")
+            spread = fresh("half_spread")
+            @asm.bpl(positive)
+            @asm.lda(0xFFFF)
+            @asm.bra(spread)
+            @asm.label(positive)
+            @asm.lda(0)
+            @asm.label(spread)
           end
 
           # The stride X is set to the walked slot at: the one every slot list of the walk's pool
@@ -883,6 +999,12 @@ module VBlank
           # When n has to be worked out it is worked out into R0 first and added from there: x is
           # only read and written by the sum itself, so working n out first reads the same x.
           def emit_sum(name, op, operand)
+            return emit_set_half(name, Build.binop(op, Build.var_ref(name), operand)) if half_variable?(name)
+            # INC and DEC reach only the first 64K (#emit_sum_of_half).
+            if %i[+ -].include?(op) && half_variable?(variable_named(operand)) && kept_place_of(name) <= 0xFFFF
+              return emit_sum_of_half(name, op, variable_named(operand))
+            end
+
             right = operand_halves(operand)
             unless right
               value(operand)
@@ -896,6 +1018,38 @@ module VBlank
               emit_half_sum(op, right[i])
               @asm.sta(at_place(at + (2 * i)))
             end
+          end
+
+          # `x += h` and `x -= h` for a whole x and an h kept in two bytes, whose high half is nought or
+          # all ones by its sign. The low halves are added with the carry, and the high half of x
+          # takes the carry and the sign each as a step of one, where both are usually nought: an INC
+          # or DEC of memory, branched past, rather than h made whole first.
+          def emit_sum_of_half(name, op, half)
+            at = place_of(name)
+            past_carry = fresh("no_carry")
+            past_sign = fresh("not_negative")
+            emit_carry_for(op)
+            @asm.lda(at_place(at))
+            emit_half_sum(op, low_half_of(half))
+            @asm.sta(at_place(at))
+            # The carry is set by a carry out of an add, and by no borrow out of a subtract.
+            if op == :+
+              @asm.bcc(past_carry)
+              @asm.inc(at_place(at + 2))
+            else
+              @asm.bcs(past_carry)
+              @asm.dec(at_place(at + 2))
+            end
+            @asm.label(past_carry)
+            @asm.lda(low_half_of(half))
+            @asm.bpl(past_sign)
+            # A negative h has a high half of all ones: one less, added; one more, taken away.
+            if op == :+
+              @asm.dec(at_place(at + 2))
+            else
+              @asm.inc(at_place(at + 2))
+            end
+            @asm.label(past_sign)
           end
 
           def emit_copy(node)
@@ -947,7 +1101,7 @@ module VBlank
           def emit_value(operand) = value(operand)
           def emit_store(name) = store(name)
           def emit_store_zero(name)
-            store_number(place_of(name), 0)
+            store_number_into(name, 0)
             return unless name == @y_counter
 
             @asm.ldy(0)
@@ -962,8 +1116,8 @@ module VBlank
               return note_y_counter(name)
             end
 
-            at = place_of(name)
-            return @asm.inc(at_place(at)) if short_counter?(name) && at <= 0xFFFF
+            at = kept_place_of(name)
+            return @asm.inc(at_place(at)) if (short_counter?(name) || half_variable?(name)) && at <= 0xFFFF
 
             emit_sum(name, :+, Build.int(1))
           end
@@ -989,11 +1143,11 @@ module VBlank
             known = short_count_of(node, loaded)
             return yield unless known && known < 0x8000
 
-            in_y = @y_counter.nil? && place_of(counter) <= 0xFFFF && turns_countable_in_y_register?(node, counter, loaded)
+            in_y = @y_counter.nil? && kept_place_of(counter) <= 0xFFFF && turns_countable_in_y_register?(node, counter, loaded)
             (@short_counters ||= {})[counter] = known
             @y_counter = counter if in_y
             if in_y && loaded
-              @asm.ldy(at_place(place_of(counter)))
+              @asm.ldy(low_half_of(counter))
               note_y_counter(counter)
             end
             begin
@@ -1002,7 +1156,7 @@ module VBlank
               @short_counters.delete(counter)
               @y_counter = nil if in_y
             end
-            @asm.sty(at_place(place_of(counter))) if in_y
+            @asm.sty(low_half_of(counter)) if in_y
           end
 
           # Whether a short count of the loop +node+, +counter+, can be counted in Y: only the loop
@@ -1133,7 +1287,7 @@ module VBlank
               @asm.cpy(number)
               return :bcs
             end
-            @asm.lda(at_place(place_of(node.lhs.name)))
+            @asm.lda(low_half_of(node.lhs.name))
             @asm.cmp(number)
             :bcs
           end
@@ -1422,7 +1576,7 @@ module VBlank
               return emit_write_slot_at_x(slot, width, halves, x: false)
             end
 
-            index = operand_halves(node.index)
+            index = index_in_place(node.index)
             checked = !index_inside_full_list?(node.name, node.index)
             if halves
               emit_slot_into_x(place, stride, index_halves(node.index), checked: checked)
@@ -1440,10 +1594,21 @@ module VBlank
             emit_write_slot_at_x(list_slots(node).base, width, halves)
           end
 
+          # Where a list's index can be read without working anything out, as #emit_slot_into_x takes
+          # it: both halves of a written number or a whole variable (#operand_halves), or the low half
+          # alone of a variable kept in two bytes, with no high half; nil otherwise.
+          def index_in_place(index)
+            halves = operand_halves(index)
+            return halves if halves
+
+            name = variable_named(index)
+            [low_half_of(name), nil] if half_variable?(name)
+          end
+
           # Where the two halves of a list's index are: where a variable or a written number already
           # is, or R0 once it is worked out.
           def index_halves(index)
-            halves = operand_halves(index)
+            halves = index_in_place(index)
             return halves if halves
 
             value(index)
@@ -1793,7 +1958,7 @@ module VBlank
             stored = fresh("link_stored")
             checked = !index_inside_full_list?(node.name, node.index)
             slot = fixed_slot_address(node)
-            index = operand_halves(node.index)
+            index = index_in_place(node.index)
             if slot || index
               value(node.value)
               emit_slot_into_x(slots.header, slots.stride, index, checked: checked) unless slot
@@ -1892,15 +2057,26 @@ module VBlank
 
             inside = fresh("inside_the_list")
             out = fresh("outside_the_list")
-            @asm.lda(index[1])
-            @asm.bne(out)
-            @asm.lda(index[0])
+            if index[1]
+              @asm.lda(index[1])
+              @asm.bne(out)
+              @asm.lda(index[0])
+            else
+              # A variable kept in two bytes: below nought is outside the list.
+              @asm.lda(index[0])
+              @asm.bmi(out)
+            end
             full = full_length_at(place)
             @asm.cmp(full || @asm.long(place, Runtime::Lists::LENGTH))
             @asm.bcc(inside)
             @asm.label(out)
             outside = index.first == @asm.direct(R0) ? "rt_list_outside_from_r0" : "rt_list_outside"
-            unless [@asm.direct(R0), @asm.direct(R1)].include?(index.first)
+            if index[1].nil?
+              @asm.lda(index[0])
+              @asm.sta(@asm.direct(R1))
+              emit_sign_of_a
+              @asm.sta(@asm.direct(R1 + 2))
+            elsif ![@asm.direct(R0), @asm.direct(R1)].include?(index.first)
               2.times do |half|
                 @asm.lda(index[half])
                 @asm.sta(@asm.direct(R1 + (2 * half)))
@@ -1920,7 +2096,7 @@ module VBlank
           # an AND of one half, where the whole number is both halves stored and read back.
           def emit_slot_of_index_into_x(place, stride, node)
             inside = index_inside_full_list?(node.name, node.index)
-            unless inside && operand_halves(node.index).nil?
+            unless inside && index_in_place(node.index).nil?
               return emit_slot_into_x(place, stride, index_halves(node.index), checked: !inside)
             end
 
@@ -2047,7 +2223,7 @@ module VBlank
             return @asm.imm(known & 0xFFFF) if known
 
             if (var = variable_named(node))
-              return at_place(place_of(var))
+              return low_half_of(var)
             end
             return unless plain_slot_read?(node)
 
@@ -3320,7 +3496,7 @@ module VBlank
 
           def half_slot_read?(node)
             plain_slot_read?(node) && !folded(node) &&
-              list_placed(node)[2] == 2 && !operand_halves(node.index).nil?
+              list_placed(node)[2] == 2 && !index_in_place(node.index).nil?
           end
 
           # Where the half-word slot +node+ (#half_slot_read?) is, with X set to reach it, or the low
@@ -3334,7 +3510,7 @@ module VBlank
             slot = fixed_slot_address(node)
             return @asm.long(slot) if slot
 
-            emit_slot_into_x(place, list_slots(node).stride, operand_halves(node.index), checked: !index_inside_full_list?(node.name, node.index))
+            emit_slot_into_x(place, list_slots(node).stride, index_in_place(node.index), checked: !index_inside_full_list?(node.name, node.index))
             @asm.long_x(list_slots(node).base)
           end
 
@@ -3657,7 +3833,16 @@ module VBlank
             1 << (Buttons::NAMES.index(button) or raise LoweringError, "unknown button #{button.inspect}")
           end
 
+          # R0 = the variable +name+; one kept in two bytes made whole, its sign spread over the high
+          # half.
           def load_variable(name)
+            if half_variable?(name)
+              @asm.lda(low_half_of(name))
+              @asm.sta(@asm.direct(R0))
+              emit_sign_of_a
+              return @asm.sta(@asm.direct(R0 + 2))
+            end
+
             at = place_of(name)
             @asm.lda(at_place(at))
             @asm.sta(@asm.direct(R0))
@@ -3752,13 +3937,14 @@ module VBlank
           end
 
           # Where the two halves of +node+ can be read without working anything out: the number itself
-          # for one written in the program, the variable's place for a variable; or nil.
+          # for one written in the program, the variable's place for a variable; or nil. A variable
+          # kept in two bytes has no high half to read (HalfVariables), so it is worked out.
           def operand_halves(node)
             known = folded(node)
             return [@asm.imm(known & 0xFFFF), @asm.imm((known >> 16) & 0xFFFF)] if known
 
             name = variable_named(node)
-            return nil unless name
+            return nil unless name && !half_variable?(name)
 
             at = place_of(name)
             [at_place(at), at_place(at + 2)]
@@ -3819,7 +4005,7 @@ module VBlank
           # A slot narrower than a word has its sign worked out first, and is not read so.
           def slot_read_at_x?(node)
             plain_slot_read?(node) && !folded(node) &&
-              list_placed(node)[2] == 4 && !operand_halves(node.index).nil?
+              list_placed(node)[2] == 4 && !index_in_place(node.index).nil?
           end
 
           # Where the two halves of +node+ (#slot_read_at_x?) are, with X set to reach them.
@@ -3828,7 +4014,7 @@ module VBlank
             slot = fixed_slot_address(node)
             return [@asm.long(slot), @asm.long(slot, 2)] if slot
 
-            emit_slot_into_x(place, list_slots(node).stride, operand_halves(node.index), checked: !index_inside_full_list?(node.name, node.index))
+            emit_slot_into_x(place, list_slots(node).stride, index_in_place(node.index), checked: !index_inside_full_list?(node.name, node.index))
             [@asm.long_x(list_slots(node).base), @asm.long_x(list_slots(node).base, 2)]
           end
 
@@ -4216,7 +4402,7 @@ module VBlank
           # slot found into X first); nil for anything else.
           def place_reader(node)
             name = variable_named(node)
-            if name && !folded(node)
+            if name && !folded(node) && !half_variable?(name)
               at = place_of(name)
               return ->(along) { at_place(at + along) }
             end
@@ -4377,7 +4563,7 @@ module VBlank
             return true if node.is_a?(LongAddress)
 
             node.is_a?(Node) && node.kind == :list_get && !front_dropped_lists.include?(node.name) &&
-              !operand_halves(node.index).nil?
+              !index_in_place(node.index).nil?
           end
         end
       end

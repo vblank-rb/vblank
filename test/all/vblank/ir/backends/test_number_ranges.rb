@@ -59,6 +59,47 @@ class TestNumberRanges < Minitest::Test
     assert_equal(0..9, ranges.range_of_value(build.var_ref(:climbing)) { |name| (0..9 if name == :climbing) })
   end
 
+  # THE EDGES OF 16 BITS: variables proven to stay in two bytes, which a console may keep in two,
+  # driven to 32767 and -32768 and read on every pass, and whole numbers one past each made of them.
+  # Every run plays it, each console's build checked against the interpreter after every pass.
+  def test_numbers_at_the_edges_of_16_bits_keep_the_interpreters_answers
+    program = edges_game.program(console: VBlank::Testing.console)
+    ranges = NumberRanges.new(program)
+    %i[up down copied_down].each { |name| assert_equal NumberRanges::HALF, ranges.variable(name), name }
+    assert_nil ranges.variable(:past)
+
+    player = game_player
+    player.run(program, frames: 8)
+
+    assert_equal [32_767, -32_768, -32_768, 32_768, -32_769, 7], %i[up down copied_down past below read].map { |name| player[name] }
+    assert_operator player[:hits], :>, 0
+  end
+
+  private def edges_game
+    VBlank.game("HALF EDGES", consoles: %i[gba gbc snes genesis ps1]) do
+      screen :bitmap
+      items = list :items, capacity: 8, full_of: 7
+      up = 0
+      down = 0
+      copied_down = 0
+      step = 0
+      past = 0
+      below = 0
+      hits = 0
+      read = 0
+      game_loop do
+        up = (up + 9000).clamp(-32_768, 32_767)
+        down = (down - 9000).clamp(-32_768, 32_767)
+        copied_down = down
+        past = up + 1
+        below = copied_down - 1
+        hits += 1 if up > 32_766 && down < -32_767
+        step = (step + 3) & 7
+        read = items[step]
+      end
+    end
+  end
+
   private def built = counting_game.program(console: VBlank::Testing.console)
 
   private def counting_game

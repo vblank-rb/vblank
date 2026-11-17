@@ -14,6 +14,15 @@ module VBlank
 
       private def list_layout = IR::Backends::SNES::Runtime::Lists
 
+      # A VARIABLE KEPT IN TWO BYTES (IR::Backends::SNES::HalfVariables), with the next variable
+      # straight after it, so only its own bytes are read, and its sign is put back from the top one.
+      private def variable_kept_at(name, address)
+        return super unless @rom.built&.variable_bytes(name) == 2
+
+        number = mem8(address) | (mem8(address + 1) << 8)
+        number >= 0x8000 ? number - 0x10000 : number
+      end
+
       # Eight lists of sixteen colours for the backgrounds, then eight for the sprites.
       PALETTE = Verifier::PaletteLayout.new(half: 128, group: 16)
 
