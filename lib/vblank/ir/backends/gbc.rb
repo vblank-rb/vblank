@@ -33,7 +33,7 @@ require_relative "gbc/lowering/clock"
 require_relative "gbc/lowering/written_numbers"
 require_relative "gbc/lowering/small_numbers"
 require_relative "gbc/lowering/division"
-require_relative "gbc/byte_variables"
+require_relative "gbc/narrow_variables"
 require_relative "gbc/list_widths"
 require_relative "gbc/lowering/kept_variables"
 require_relative "gbc/lowering/keyed_sort"
@@ -81,7 +81,7 @@ module VBlank
         # run one stops says what stopped it in the interpreter's words.
         #
         # +kept_bytes+ is each variable the cartridge keeps narrower than four bytes, by its name: one
-        # the game declared narrow, or one only ever holding a byte (GBC::ByteVariables).
+        # the game declared narrow, or one only ever holding a byte or two (GBC::NarrowVariables).
         #
         # +slot_places+ is where each of a pool's lists keeps its slots, as its layout placed it
         # (Backends::PoolLayout::SlotPlace, Lowering#place_pools), by list.

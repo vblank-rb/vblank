@@ -75,8 +75,8 @@ module VBlank
 
       private def list_layout = IR::Backends::GBC::Runtime::Lists
 
-      # A VARIABLE KEPT NARROW — one the game declared narrow, or one only ever holding a byte
-      # (IR::Backends::GBC::ByteVariables) — is kept in a byte or two here, with the next variable
+      # A VARIABLE KEPT NARROW — one the game declared narrow, or one only ever holding a byte or two
+      # (IR::Backends::GBC::NarrowVariables) — is kept in a byte or two here, with the next variable
       # straight after it, so only its own bytes are read, and its sign is put back from the top one.
       private def variable_kept_at(name, address)
         bytes = @rom.built&.variable_bytes(name)

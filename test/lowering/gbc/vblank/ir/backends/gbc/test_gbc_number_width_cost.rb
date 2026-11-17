@@ -16,8 +16,10 @@ class TestGBCNumberWidthCost < Minitest::Test
   # Measured, cycles a test, with every number worked in four bytes and then with the numbers proven
   # small worked in one or two: how far apart two byte slots are, 740 then 448; a variable against a
   # number, 102 then 74; a half slot shifted down by 4, 408 then 180; a table of bytes against a
-  # variable, 613 then 283.
-  BOUNDS = { pair: 480, number: 80, shift: 195, table: 300 }.freeze
+  # variable, 613 then 283. With the variables proven to stay in two bytes kept in two, a mask's
+  # byte of all ones or of nought left out, and a table read at an index of two bytes: 416, 66, 164
+  # and 227.
+  BOUNDS = { pair: 440, number: 72, shift: 180, table: 245 }.freeze
 
   BOUNDS.each do |shape, bound|
     define_method(:"test_a_#{shape}_test_costs_under_#{bound}_cycles") do

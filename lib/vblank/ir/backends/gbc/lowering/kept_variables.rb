@@ -26,13 +26,13 @@ module VBlank
             end
 
             # The width variable +name+ is kept at: the one the game declared, or :byte for one
-            # only ever holding a byte (GBC::ByteVariables), or nil for the whole number. One whose
+            # only ever holding a byte or two (GBC::NarrowVariables), or nil for the whole number. One whose
             # place the lowering hands over is whole (Lowering#place_of): a declared one still
             # holds only its width's numbers, since the wrap after each write is in the program.
             def kept_width(name)
               return nil if @cache.facts.handed_over.include?(name)
 
-              @program.kept_width_of(name) || (:byte if byte_variables.include?(name))
+              @program.kept_width_of(name) || narrow_variables[name]
             end
 
             # Whether the program keeps a variable named +name+.
@@ -44,7 +44,7 @@ module VBlank
               @variables.fetch(name) { @locals.fetch(name) { raise LoweringError, "#{name.inspect} is not a variable the program keeps" } }
             end
 
-            def byte_variables = @byte_variables ||= @cache.facts.byte_variables.to_set
+            def narrow_variables = @narrow_variables ||= @cache.facts.narrow_variables
 
             def kept_variable_named(node)
               name = any_variable_named(node)

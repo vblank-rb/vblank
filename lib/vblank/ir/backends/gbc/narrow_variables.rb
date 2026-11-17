@@ -4,28 +4,32 @@ module VBlank
   module IR
     module Backends
       class GBC
-        # THE VARIABLES THAT ONLY EVER HOLD A BYTE, though the game never declared them narrow, so
-        # the Color's lowering keeps each in one byte (Lowering::KeptVariables). The Color's
-        # processor works a byte at a time, and a four-byte variable read as a list's index is four
-        # loads, a bounds check through general code and a whole number made of it; most of a
-        # pool's own variables (where its walk is, the slot it took, its links) never hold more
-        # than a byte. Keeping one in a byte changes nothing the game computes: every write to it
-        # is proven to give a number from -128 to 127 (Backends::NumberRanges says how), which a
-        # byte holds exactly, and a read copies its sign upward to make the whole number again
+        # THE VARIABLES THAT ONLY EVER HOLD A BYTE OR TWO, though the game never declared them
+        # narrow, so the Color's lowering keeps each in one byte or two (Lowering::KeptVariables).
+        # The Color's processor works a byte at a time, and a four-byte variable read as a list's
+        # index is four loads, a bounds check through general code and a whole number made of it;
+        # most of a pool's own variables (where its walk is, the slot it took, its links) never hold
+        # more than a byte, and a place on the screen or a step never more than two. Keeping one
+        # narrow changes nothing the game computes: every write to it is proven to give a number
+        # its bytes hold exactly, -128 to 127 or -32768 to 32767 (Backends::NumberRanges says how),
+        # and a read copies its sign upward to make the whole number again
         # (KeptVariables#load_kept_variable).
         #
         # Kept whole besides what the proof cannot bound: one a sprite is placed from as it stands
         # (#sprite_numbers_read_whole), and the ones the lowering names (+also_whole+).
-        class ByteVariables
+        class NarrowVariables
           # +also_whole+ is variables the lowering writes or reads in four bytes itself, outside
           # any statement of +program+.
           def initialize(program, also_whole: [])
             sprites = program.walk.select { |node| node.kind == :object }.flat_map { |object| sprite_numbers_read_whole(object) }
-            @names = NumberRanges.new(program, also_whole: also_whole + sprites).variables_within(NumberRanges::BYTE)
+            ranges = NumberRanges.new(program, also_whole: also_whole + sprites)
+            @bytes = ranges.variables_within(NumberRanges::BYTE)
+            @halves = ranges.variables_within(NumberRanges::HALF) - @bytes
           end
 
-          # The variables kept in a byte, in the order the program first writes them.
-          attr_reader :names
+          # The variables kept in a byte, and those kept in two, each in the order the program first
+          # writes them.
+          attr_reader :bytes, :halves
 
           private
 

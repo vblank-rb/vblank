@@ -184,6 +184,10 @@ module VBlank
 
               name = variable_kept_at_least(operand, bytes)
               return emit_low_bytes_at(kept_place_of(name), bytes) if name
+
+              # A variable kept in one byte, wanted in two: its sign copied into D.
+              byte = kept_variable_named(operand)
+              return emit_byte_widened_at(kept_place_of(byte)) if byte && kept_bytes(byte) == 1
               return emit_item_low_bytes(operand, bytes) if list_item_in_place?(operand)
               return emit_low_negative(operand, bytes) if operand.is_a?(Node) && operand.kind == :neg
               if operand.is_a?(Node) && operand.kind == :absolute && proven_within?(operand.operand, NumberRanges::HALF)
@@ -266,6 +270,15 @@ module VBlank
               @asm.load(:d, [:hl])
             end
 
+            # DE = the byte at +address+ with its sign: E the byte, D its top bit spread.
+            def emit_byte_widened_at(address)
+              @asm.load(:a, [address])
+              @asm.load(:e, :a)
+              @asm.rla
+              @asm.sbc_a(:a)
+              @asm.load(:d, :a)
+            end
+
             # A variable shifted down by whole bytes, its low bytes read from where they are kept,
             # higher up; anything else worked out whole.
             def emit_low_bytes_shifted_down(node, bytes)
@@ -304,8 +317,14 @@ module VBlank
 
               if number
                 %i[e d].first(bytes).each_with_index do |register, i|
+                  byte = (number >> (8 * i)) & 0xFF
+                  # A mask's byte of all ones, or nought ORed or XORed in, leaves the byte as it is;
+                  # a mask's byte of nought empties it. Neither carries into the byte above.
+                  next if byte_kept_by?(node.op, byte)
+                  next @asm.load(register, 0) if node.op == :& && byte.zero?
+
                   @asm.load(:a, register)
-                  emit_byte_sum(node.op, (number >> (8 * i)) & 0xFF, carried: !i.zero?)
+                  emit_byte_sum(node.op, byte, carried: !i.zero?)
                   @asm.load(register, :a)
                 end
                 return
@@ -323,6 +342,10 @@ module VBlank
                 @asm.load(register, :a)
               end
             end
+
+            # Whether a byte +op+ +byte+ leaves the byte it works on as it was: an AND with all ones,
+            # an OR or XOR with nought.
+            def byte_kept_by?(op, byte) = (op == :& && byte == 0xFF) || (%i[| ^].include?(op) && byte.zero?)
 
             # --- comparisons with a number written in the program ---
 

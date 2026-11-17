@@ -725,24 +725,26 @@ module VBlank
               @sprite_slots = {}
             end
 
-            # The variables kept in a byte though the game never declared them narrow
-            # (GBC::ByteVariables). A game loop's own numbers (IR::Frames::ConsoleLoop) are written
-            # by statements the program does not hold, and a variable whose place the lowering
-            # hands over (#handed_over) is read there whole, so they stay whole.
-            def byte_variables
-              @byte_variables ||= begin
+            # The variables kept in a byte or two though the game never declared them narrow
+            # (GBC::NarrowVariables), each with its width, :byte or :half. A game loop's own numbers
+            # (IR::Frames::ConsoleLoop) are written by statements the program does not hold, and a
+            # variable whose place the lowering hands over (#handed_over) is read there whole, so
+            # they stay whole.
+            def narrow_variables
+              @narrow_variables ||= begin
                 plan = @cache.plan
                 loops = plan.game_loops.flat_map { |node| plan.console_loop(node).variables }
-                ByteVariables.new(@cache.program, also_whole: loops + handed_over.to_a).names
+                narrow = NarrowVariables.new(@cache.program, also_whole: loops + handed_over.to_a)
+                narrow.bytes.to_h { |name| [name, :byte] }.merge(narrow.halves.to_h { |name| [name, :half] })
               end
             end
 
             # The lists kept in narrower slots than declared (GBC::ListWidths), each with its slot,
-            # :byte or :half. Their proof reads the variables kept in a byte, so it is made again
+            # :byte or :half. Their proof reads the variables kept narrow, so it is made again
             # whenever those are.
             def list_widths
               @list_widths ||= begin
-                narrow = (@cache.program.kept_widths || []).to_h.merge(byte_variables.to_h { |name| [name, :byte] })
+                narrow = (@cache.program.kept_widths || []).to_h.merge(narrow_variables)
                 ListWidths.new(@cache.program, narrow_variables: narrow).widths
               end
             end
@@ -756,7 +758,7 @@ module VBlank
             # Keep +name+ whole from the next try on (Lowering::VariableHandedOver).
             def keep_whole(name)
               handed_over << name
-              @byte_variables = nil
+              @narrow_variables = nil
               @list_widths = nil
             end
 
@@ -1984,9 +1986,16 @@ module VBlank
             table = @tables.fetch(node.name) { raise LoweringError, "the table #{node.name.inspect} is read and never declared" }
             count = table.values.length
             bytes, signed = table_keeping(table)
-            value(LoweringPlan.index_kept_in_range(node.index, count))
+            kept = LoweringPlan.index_kept_in_range(node.index, count)
             reader = TABLE_KEPT.fetch([bytes, signed]).last
-            return emit_far_entry_read(table, bytes, reader) if bytes * count > 0x10000
+            if bytes * count > 0x10000
+              value(kept)
+              return emit_far_entry_read(table, bytes, reader)
+            end
+
+            # The index held inside the table is below 64K, so its low two bytes, DE, are all of it:
+            # a variable kept narrow, or a mask of one, is worked in those bytes alone.
+            low_value(kept, 2)
 
             # HL = the table + the index × the entry's size; the offset is never past 16 bits.
             (bytes / 2).times do

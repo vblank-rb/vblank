@@ -13,7 +13,7 @@ module VBlank
         # slot, which keeps it exactly, and a read copies its sign upward as a word slot's would have
         # read it (Reference::ListValue).
         #
-        # THE RULE, conservative, the lists' kin of GBC::ByteVariables: a list is narrowed when every
+        # THE RULE, conservative, the lists' kin of GBC::NarrowVariables: a list is narrowed when every
         # statement naming it is a read of an item or of its length, a write of an item (`list_set`,
         # `list_push`), an item dropped, or a sort (which moves items and writes none), and every
         # number written is proven to lie between two bounds. The bounds are worked out together for
@@ -23,7 +23,7 @@ module VBlank
         # WIDENING_ROUNDS rounds (a number read, added to and masked, creeps up a round at a time)
         # is taken to hold anything a byte can, then two bytes, then its slot, which ends the rounds.
         # The numbers a write is worked out from: numbers written in the program, a variable kept in
-        # a byte or two (declared, or proven by GBC::ByteVariables), an item of a list, a list's
+        # a byte or two (declared, or proven by GBC::NarrowVariables), an item of a list, a list's
         # length, a number ANDed with a mask at or above nought, and sums and differences of those.
         #
         # NOT narrowed: a list any other statement names (a save, a copy from a table, a fill, a

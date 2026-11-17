@@ -3,11 +3,11 @@
 require "test_helper"
 require "stringio"
 
-# The variables the Color's lowering keeps in one byte though the game never said so
-# (GBC::ByteVariables): every write to one is proven to give a number a byte holds, so the
-# cartridge keeps it in that byte and reads it back with its sign, and the game's numbers are the
+# The variables the Color's lowering keeps in one byte or two though the game never said so
+# (GBC::NarrowVariables): every write to one is proven to give a number its bytes hold, so the
+# cartridge keeps it in those bytes and reads it back with its sign, and the game's numbers are the
 # interpreter's on every pass.
-class TestGBCByteVariables < Minitest::Test
+class TestGBCNarrowVariables < Minitest::Test
   include VBlank::IR::Build
 
   GBC = VBlank::IR::Backends::GBC
@@ -36,15 +36,21 @@ class TestGBCByteVariables < Minitest::Test
   end
 
   def test_variables_proven_to_hold_a_byte_are_named
-    names = GBC::ByteVariables.new(linked_program).names
+    names = GBC::NarrowVariables.new(linked_program).bytes
 
     assert_equal %i[ahead at filled held turn], names.sort
   end
 
-  def test_a_variable_with_a_write_not_proven_is_not_named
-    names = GBC::ByteVariables.new(linked_program).names
+  def test_variables_proven_to_hold_two_bytes_are_named_apart
+    narrow = GBC::NarrowVariables.new(linked_program)
 
-    %i[big follows_big drift pair].each { |name| refute_includes names, name }
+    assert_equal %i[big follows_big], narrow.halves.sort
+  end
+
+  def test_a_variable_with_a_write_not_proven_is_not_named
+    narrow = GBC::NarrowVariables.new(linked_program)
+
+    %i[drift pair].each { |name| refute_includes narrow.bytes + narrow.halves, name }
   end
 
   def test_a_variable_the_game_declared_narrow_is_left_as_declared
@@ -55,14 +61,17 @@ class TestGBCByteVariables < Minitest::Test
     end
     builder.finalize_program
 
-    refute_includes GBC::ByteVariables.new(builder.program).names, :small
+    narrow = GBC::NarrowVariables.new(builder.program)
+
+    refute_includes narrow.bytes + narrow.halves, :small
   end
 
-  def test_the_cartridge_keeps_a_proven_variable_in_one_byte_and_an_unproven_one_in_four
+  def test_the_cartridge_keeps_proven_variables_in_one_byte_or_two_and_an_unproven_one_in_four
     built = GBC.new.build(program(*linked_program.children, halt)).built
 
     assert_equal 1, built.variable_bytes(:at)
-    assert_equal 4, built.variable_bytes(:big)
+    assert_equal 2, built.variable_bytes(:big)
+    assert_equal 4, built.variable_bytes(:drift)
   end
 
   # The music's level is only ever 0 to 16, but the runtime's player reads it where it is kept,

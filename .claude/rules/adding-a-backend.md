@@ -126,8 +126,10 @@ writing an instruction is shared, because two copies of a decision drift apart:
   variables are proven to stay in a byte or two, so a lowering whose processor works 8 or 16 bits at a
   time compares and works such a number at that width and still gives `IR::Int32`'s answer: the SNES in
   its 16-bit accumulator (`SNES::Lowering#compare_within_halves`), the Color a byte or two at a time
-  (`GBC::Lowering::SmallNumbers`), and the Color keeps its byte variables in a byte
-  (`GBC::ByteVariables`). `test/all/vblank/ir/backends/test_number_ranges.rb` holds the proof to the game.
+  (`GBC::Lowering::SmallNumbers`); and each keeps such variables narrow, the Color in a byte or two
+  (`GBC::NarrowVariables`), the SNES in two bytes (`SNES::HalfVariables`).
+  `test/all/vblank/ir/backends/test_number_ranges.rb` holds the proof to the game, at the edges of 16
+  bits too.
 - `Backends::VariableUse` (`LoweringPlan#variable_use`) — how often a run names each variable, each
   place weighted by the loops around it and a routine's by its calls, so a lowering whose console has
   a little memory quicker than the rest keeps its busiest variables there: the SNES's direct page
