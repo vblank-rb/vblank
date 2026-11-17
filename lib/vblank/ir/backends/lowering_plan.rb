@@ -365,6 +365,13 @@ module VBlank
           end
         end
 
+        # What range each number of the program stays in (NumberRanges), for a lowering that works a
+        # small one at a narrower width. A game loop's own numbers (IR::Frames::ConsoleLoop) are
+        # written by statements the program does not hold, so nothing is proven of them.
+        def number_ranges
+          @number_ranges ||= NumberRanges.new(@program, also_whole: game_loops.flat_map { |node| console_loop(node).variables })
+        end
+
         # Every game loop of the program.
         def game_loops = @game_loops ||= @program.walk.select { |node| node.kind == :loop }
 

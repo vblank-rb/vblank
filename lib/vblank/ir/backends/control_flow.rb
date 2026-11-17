@@ -293,6 +293,16 @@ module VBlank
           divisor if divisor.is_a?(Integer) && divisor.positive?
         end
 
+        # WHAT RANGE A NUMBER STAYS IN while the statement being written runs, for a lowering that
+        # works a small one at a narrower width: what the plan proves of it (LoweringPlan#number_ranges),
+        # and a loop's variable below its count through the loop's body (#index_below). Nil where
+        # nothing is known.
+        def proven_range(node)
+          @plan.number_ranges.range_of_value(node) { |name| (below = index_below(name)) && (0..(below - 1)) }
+        end
+
+        def proven_within?(node, bounds) = NumberRanges.inside?(proven_range(node), bounds)
+
         def with_index_below(name, count)
           return yield unless name
 
