@@ -728,12 +728,13 @@ module VBlank
           # so what comes after reads what it always did.
           COUNTER_REGISTERS = [7, 6, 5].freeze
 
-          def with_counter_held(node, counter)
+          def with_counter_held(node, counter, loaded: false)
             @counters_held ||= {}
             register = COUNTER_REGISTERS[@counters_held.size]
             return yield unless register && children_of(node).first.all? { |child| statement_keeps_counters?(child) } &&
                                 (node.stop_when.nil? || value_keeps_counters?(node.stop_when))
 
+            @asm.move(:l, var(counter), @asm.d(register)) if loaded
             @counters_held[counter] = @asm.d(register)
             @indexes_checked.delete(counter)
             (@counts_only_the_loop_writes ||= []) << counter if counter == node.index

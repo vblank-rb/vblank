@@ -58,7 +58,9 @@ module ListReadCostGames
               x = c[n]
               x = d[n]
             end
-            kept += 1
+            # Read in both games, so the count is kept the same way in both: a count nothing reads
+            # can be kept where a read cannot reach it (SNES::Lowering#with_counter_held).
+            kept += n
           end
         end
         kept = x

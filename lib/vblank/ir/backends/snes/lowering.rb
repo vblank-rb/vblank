@@ -892,8 +892,8 @@ module VBlank
           # three. A pool's walk is such a loop, with a turn for every thing it visits. The count is
           # still a whole number in its variable, for the body and for after the loop, since the high
           # half is never written but by the nought the loop starts with.
-          def with_counter_held(node, counter)
-            known = folded(node.count)
+          def with_counter_held(node, counter, loaded: false)
+            known = short_count_of(node, loaded)
             return yield unless known && known < 0x8000
 
             (@short_counters ||= {})[counter] = known
@@ -902,6 +902,18 @@ module VBlank
             ensure
               @short_counters.delete(counter)
             end
+          end
+
+          # The number a loop's count stays below, where it is written in the program: a repeat's
+          # count, or a counted while's limit where its start is written just before it at nought or
+          # above (LoopForm#counted_while), so its high half is the nought that start gave it. Nil
+          # where either is not known.
+          def short_count_of(node, loaded)
+            return folded(node.count) unless loaded
+
+            counted = loop_form.counted_while(node)
+            limit = folded(counted.limit)
+            limit if counted.starts_at&.between?(0, limit || -1)
           end
 
           # Whether +name+ is a loop's count that stays in its low half (#with_counter_held).

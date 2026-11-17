@@ -194,7 +194,7 @@ module VBlank
         # Which shape each `repeat` of the program can take (LoopForm).
         def loop_form
           @loop_form ||= LoopForm.new(@program, apart_in: routines_reentered_at_frame_boundary.map { |name| @funcs.fetch(name) } +
-                                                          tick_handlers_waiting.values)
+                                                          tick_handlers_waiting.values) { |statements| statements_wait?(statements) }
         end
 
         # THE TICK HANDLERS THAT CAN WAIT, by their timer's name. A handler runs at the frame boundary, so one

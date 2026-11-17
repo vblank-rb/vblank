@@ -118,7 +118,9 @@ writing an instruction is shared, because two copies of a decision drift apart:
   down what it was asked for. A step of the walk a lowering writes its own way is listed in
   `ControlFlow::OWN_WAYS` with its reason, and that test holds the lowerings to the list.
   `Backends::LoopForm` says which shape a `repeat` can take (its count kept in the game's own
-  variable), and `ControlFlow#index_below` what a loop's variable is known to stay under while its
+  variable) and which game `while` loops are counted ones (`while i < n` ending `i += 1`, with
+  nothing else in the loop writing `i`: `LoopForm#counted_while`), which `ControlFlow#emit_counted_while`
+  lowers as a counted loop held as a repeat's count is, and `ControlFlow#index_below` what a loop's variable is known to stay under while its
   body is written, so a read of a table or a list there needs no check of the index.
 - `Backends::BuildTries` — a build as a series of tries, each a whole lowering with one set of
   settings (a Data), until one fits: each try timed and logged, what a try found kept for the
