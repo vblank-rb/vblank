@@ -55,6 +55,36 @@ class TestBackgroundTileSets < Minitest::Test
     assert_equal GREEN, pixel(two_areas(1))
   end
 
+  # Three areas, two of them drawn from one tileset: the shrine's hall is red, the shrine's
+  # cellar (an area of its own over the shrine's tiles) green where its map names grass, and the
+  # clearing's glade blue. Walking hall, cellar, glade and back to the hall shows each map.
+  private def areas_sharing_a_tileset
+    program do
+      screen :tiled
+      image(:floor, "#" => :red) { (["#" * 8] * 8).join("\n") }
+      image(:grass, "#" => :green) { (["#" * 8] * 8).join("\n") }
+      image(:water, "#" => :blue) { (["#" * 8] * 8).join("\n") }
+      tiles :shrine, "#" => :floor, "," => :grass
+      tiles :clearing, "#" => :water
+      ground = background :ground, tiles: { shrine: :shrine, cellar: :shrine, clearing: :clearing },
+                                   map: { shrine: { hall: (0...20).map { "#" * 30 } }, cellar: { stores: (0...20).map { "," * 30 } },
+                                          clearing: { glade: (0...20).map { "#" * 30 } } }
+      tick = var :tick, 0
+      game_loop do
+        tick += 1
+        ground.show_map :stores if tick == 2
+        ground.show_map :glade if tick == 4
+        ground.show_map :hall if tick == 6
+      end
+    end
+  end
+
+  def test_areas_drawn_from_one_tileset_show_each_their_own_map
+    shown = [1, 3, 5, 8].map { |frames| pixel(areas_sharing_a_tileset, frames: frames) }
+
+    assert_equal [RED, GREEN, BLUE, RED], shown
+  end
+
   def test_both_backends_draw_the_first_area
     assert_backends_agree(two_areas(0), frames: 3, name: "SETA")
   end
@@ -179,7 +209,8 @@ class TestBackgroundTileSets < Minitest::Test
       screen :tiled
       image(:a, "#" => :red) { (["#" * 8] * 8).join("\n") }
       tiles :one, "#" => :a
-      tiles :two, "#" => :a
+      image(:b, "#" => :blue) { (["#" * 8] * 8).join("\n") }
+      tiles :two, "#" => :b
       background :ground, tiles: { shrine: :one, clearing: :two }, map: { hall: ["#"] }
     end
 
@@ -191,7 +222,8 @@ class TestBackgroundTileSets < Minitest::Test
       screen :tiled
       image(:a, "#" => :red) { (["#" * 8] * 8).join("\n") }
       tiles :one, "#" => :a
-      tiles :two, "#" => :a
+      image(:b, "#" => :blue) { (["#" * 8] * 8).join("\n") }
+      tiles :two, "#" => :b
       background :ground, tiles: { shrine: :one, clearing: :two },
                           map: { shrine: { room: ["#"] }, clearing: { room: ["#"] } }
     end
@@ -204,7 +236,8 @@ class TestBackgroundTileSets < Minitest::Test
       screen :tiled
       image(:a, "#" => :red) { (["#" * 8] * 8).join("\n") }
       tiles :one, "#" => :a
-      tiles :two, "#" => :a
+      image(:b, "#" => :blue) { (["#" * 8] * 8).join("\n") }
+      tiles :two, "#" => :b
       ground = background :ground, tiles: { shrine: :one, clearing: :two },
                                    map: { shrine: { hall: ["#"] }, clearing: { glade: ["#"] } }
       game_loop { ground.set_tile 0, 0, "#" }
@@ -232,7 +265,8 @@ class TestBackgroundTileSets < Minitest::Test
       screen :rotozoom
       image(:a, "#" => :red) { (["#" * 8] * 8).join("\n") }
       tiles :one, "#" => :a
-      tiles :two, "#" => :a
+      image(:b, "#" => :blue) { (["#" * 8] * 8).join("\n") }
+      tiles :two, "#" => :b
       square = (0...16).map { "#" * 16 }
       background :ground, tiles: { shrine: :one, clearing: :two },
                           map: { shrine: { hall: square }, clearing: { glade: square } }
@@ -247,7 +281,8 @@ class TestBackgroundTileSets < Minitest::Test
       screen :tiled
       image(:a, "#" => :red) { (["#" * 8] * 8).join("\n") }
       tiles :one, "#" => :a
-      tiles :two, "#" => :a
+      image(:b, "#" => :blue) { (["#" * 8] * 8).join("\n") }
+      tiles :two, "#" => :b
       background :ground, tiles: { shrine: :one, clearing: :two },
                           map: { shrine: { hall: ["#"] }, clearing: { glade: ["#"] } }
       background :scenery, tiles: { clearing: :two, shrine: :one },

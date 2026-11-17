@@ -822,6 +822,13 @@ module PackGames
       game(:background_walking_between_areas_of_slots, passes: 9) do |folder, options|
         built(*areas_game_and_file(areas_original(folder), options: options) { |world| PackBackgroundAreaGames.emit_walk(self, world) })
       end,
+      # Two maps over one slot of tiles and one of colours, a sprite stepping across the walk.
+      game(:background_walking_between_areas_over_one_tile_slot, passes: WALKS_ON + 4) do |folder, options|
+        made = areas_game_and_file(areas_original(folder), options: options, one_tile_slot: true) do |world|
+          PackBackgroundAreaGames.emit_walk_beside_sprite(self, world)
+        end
+        built(*made)
+      end,
       game(:cells_written_in_each_area_of_a_walking_background, passes: 11) do |folder, options|
         told = [PackBackgroundAreaGames.advance_word(*WRITTEN)]
         made = areas_game_and_file(areas_original(folder), options: options, set_cells: told) do |world|

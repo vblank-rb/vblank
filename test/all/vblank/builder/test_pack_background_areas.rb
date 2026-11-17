@@ -37,8 +37,13 @@ module PackBackgroundAreaGames
                      cells: [[2, 1, false, false], [1, 0, false, true], [0, 0, false, false], [3, 1, true, true]],
                      map_at: CASTLE_MAP_AT, colors_at: CASTLE_COLORS_AT, tiles_at: CASTLE_TILES_AT)
   }.freeze
+  # The same two areas drawn over ONE set of tiles: the castle's map read with the town's tiles and
+  # colours, as `one_tile_slot: true` declares them.
+  AREAS_OVER_ONE_SLOT = AREAS.transform_values { |area| area.with(places: PLACES, banks: BANKS) }.freeze
   # The cell each area may be written with later: [tile, bank, mirrored, upside down].
   WRITTEN = [3, 1, false, false].freeze
+  # The pass the walk with a sprite (emit_walk_beside_sprite) walks to the castle.
+  WALKS_ON = 4
 
   VBlank::Testing::InRactors.share_constants(self)
 
@@ -66,8 +71,13 @@ module PackBackgroundAreaGames
   # builder, is the game loop, handed the background and, with +turning+, the group of pictures the
   # town's tile 1 takes turns through (nil without). Hands back the program and the pack file the
   # build made (nil for a build that leaves its pack out).
-  private def areas_game_and_file(from, options: VBlank::Cartridge::Options.new, turning: false, set_cells: nil, &loop_body)
+  #
+  # With +one_tile_slot+ every area names the town's tiles and colours, and only its map is its own:
+  # an original keeping two maps over one set of tiles in video memory.
+  private def areas_game_and_file(from, options: VBlank::Cartridge::Options.new, turning: false, set_cells: nil, one_tile_slot: false,
+                                  &loop_body)
     told = set_cells ? { set_cells: set_cells } : {}
+    art_of = ->(name) { one_tile_slot ? :town : name }
     b = VBlank::Builder.new(options: options)
     b.instance_eval do
       screen :tiled
@@ -81,9 +91,9 @@ module PackBackgroundAreaGames
       end
       groups = []
       groups << tile_pictures(:blocks, tiles: { pack[:town_video].tile(1) => pack[:turns].tiles(0, across: TURNS.length) }) if turning
-      world = background :world, tiles: AREAS.keys.to_h { |name| [name, pack[:"#{name}_video"]] },
+      world = background :world, tiles: AREAS.keys.to_h { |name| [name, pack[:"#{art_of.(name)}_video"]] },
                                  map: AREAS.keys.to_h { |name| [name, pack[:"#{name}_map"]] },
-                                 colors: AREAS.keys.to_h { |name| [name, pack[:"#{name}_colors"]] }, across: ACROSS, **told
+                                 colors: AREAS.keys.to_h { |name| [name, pack[:"#{art_of.(name)}_colors"]] }, across: ACROSS, **told
       instance_exec(world, groups.first, &loop_body)
     end
     b.finalize_program
@@ -132,6 +142,23 @@ module PackBackgroundAreaGames
     end
   end
 
+  # A sprite stepping a pixel right on every pass over the background, which walks to the castle on
+  # pass WALKS_ON and back to the town two passes later.
+  def self.emit_walk_beside_sprite(builder, world)
+    walks_on = WALKS_ON
+    builder.instance_eval do
+      image(:marker, "#" => :red) { (["#" * 8] * 8).join("\n") }
+      hero = sprite :hero, at: [0, 0], facing: { still: :marker }
+      tick = var :tick, 0
+      game_loop do
+        tick += 1
+        hero.x += 1
+        world.show_map :castle if tick == walks_on
+        world.show_map :town if tick == walks_on + 2
+      end
+    end
+  end
+
   # The town's tile 1 takes turns through two pictures of the pack (+blocks+): the second is chosen
   # on the second pass, the game walks to the castle on the fourth and back on the sixth.
   def self.emit_turning_walk(builder, world, blocks)
@@ -176,6 +203,23 @@ class TestPackBackgroundAreas < Minitest::Test
       { 2 => "the town", 5 => "the castle, walked into", 9 => "the town, walked back to" }.each do |frames, what|
         assert_equal screen_at(by_hand, frames), screen_at(walked, frames), what
       end
+    end
+  end
+
+  # Two maps over one set of tiles in video memory: walking between them changes the map alone, and
+  # the sprite moved on the pass of the walk shows where it was put on that frame, as on every other.
+  def test_areas_over_one_tile_slot_walk_with_the_sprites_on_time
+    by_hand = areas_drawn_by_hand(AREAS_OVER_ONE_SLOT) { |world| PackBackgroundAreaGames.emit_walk_beside_sprite(self, world) }
+    Dir.mktmpdir do |folder|
+      walked, = areas_game_and_file(areas_original(folder), one_tile_slot: true) do |world|
+        PackBackgroundAreaGames.emit_walk_beside_sprite(self, world)
+      end
+
+      ((WALKS_ON - 1)..(WALKS_ON + 4)).each do |frames|
+        assert_equal screen_at(by_hand, frames), screen_at(walked, frames), "frame #{frames}"
+      end
+      bottom_right = ->(frames) { game_player.run(walked, frames: frames).screen.then { |screen| (8...16).map { |x| screen.pixel(x, 12) } } }
+      refute_equal bottom_right.(WALKS_ON - 1), bottom_right.(WALKS_ON + 1), "the castle's map shows"
     end
   end
 
