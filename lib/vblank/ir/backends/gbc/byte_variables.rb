@@ -31,7 +31,10 @@ module VBlank
         #   variable in the same block with nothing between that can change it: the write to the
         #   list stops the game unless the variable is a slot of it, so after the sum it is within
         #   the list's capacity, moved by that number (a counter filling a list, as a pool's copy
-        #   in order is filled).
+        #   in order is filled);
+        # - the one more ending a counted while (Backends::LoopForm#counted_while), to a limit a
+        #   byte holds: the loop asks that the variable is below the limit before each turn and
+        #   nothing else in it writes either, so the sum is at most the limit.
         #
         # NOT proven, so kept whole: a variable any other statement names (a save, a timer, a
         # `case`, an `every`), one the game declared narrow (it is kept as it said), the frame's
@@ -55,6 +58,7 @@ module VBlank
             @declared_bytes = declared.select { |_name, width| width == :byte }.keys
             whole = Set.new(also_whole) | Reach::FRAME_VARIABLES | declared.keys
             program.walk { |node| record_naming(node, whole) }
+            @counted_limits = counted_limits(program)
             @names = prove(@writes.keys.reject { |name| whole.include?(name) })
           end
 
@@ -159,8 +163,29 @@ module VBlank
             when :copy then proven.include?(write.src) || @declared_bytes.include?(write.src)
             when :clamp then in_byte?(clamped_range(write, proven))
             when :repeat then in_byte?(turns_range(write, proven))
-            when :add, :sub then in_byte?(counter_range(write))
+            when :add, :sub then in_byte?(counter_range(write) || counted_step_range(write, proven))
             end
+          end
+
+          # The one more ending each counted while (LoopForm#counted_while), by itself, with the
+          # limit its variable counts below.
+          def counted_limits(program)
+            form = LoopForm.new(program)
+            limits = {}.compare_by_identity
+            program.walk do |node|
+              counted = form.counted_while(node) if node.kind == :repeat
+              limits[counted.step] = counted.limit if counted
+            end
+            limits
+          end
+
+          # A counted while's one more: the loop asks that its variable is below the limit before
+          # each turn, and nothing else in the turn writes either, so the sum is at most the limit,
+          # and above the variable it was.
+          def counted_step_range(write, proven)
+            limit = @counted_limits[write] or return nil
+            highest = range_of(limit, proven)&.last or return nil
+            [LOWEST + 1, highest]
           end
 
           def in_byte?(range) = !range.nil? && range.first >= LOWEST && range.last <= HIGHEST
