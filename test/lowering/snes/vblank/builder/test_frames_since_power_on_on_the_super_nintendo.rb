@@ -23,24 +23,27 @@ class TestFramesSincePowerOnOnTheSuperNintendo < Minitest::Test
     assert_frames_setting_up_counted(:snes, busy: BUSY)
   end
 
-  # The frame a game's first pass is seen on, from power-on: setting up clears the work RAM the build
-  # placed something in and the maps the picture reads (Runtime::Boot). Clearing all 128K of work RAM
-  # and all 64K of video RAM, it was frame 6 for a small game and 8 for one of 700 numbers and 40
-  # lists. The big game sets up its 700 numbers and 40 lists after the clearing.
+  # The latest frame a game's first pass may be seen on, from power-on: setting up clears the work
+  # RAM the build placed something in and the maps the picture reads (Runtime::Boot). Clearing all
+  # 128K of work RAM and all 64K of video RAM, it was frame 6 for a small game and 8 for one of 700
+  # numbers and 40 lists. The big game sets up its 700 numbers and 40 lists after the clearing, so
+  # whatever makes them smaller makes it earlier: its lists kept in half words brought it from 4 to 3.
+  # Each is a bound, so a start-up that gets quicker passes and one that gets slower does not; that
+  # the first pass reads the frames shown before it is exact.
   SMALL_GAME_FIRST_PASS_FRAME = 2
-  BIG_GAME_FIRST_PASS_FRAME = 4
+  BIG_GAME_FIRST_PASS_FRAME = 3
 
   def test_a_small_game_shows_its_first_pass_early
     seen = first_pass_seen(:snes, declaring_game(2, 2))
 
-    assert_equal SMALL_GAME_FIRST_PASS_FRAME, seen.frame
+    assert_operator seen.frame, :<=, SMALL_GAME_FIRST_PASS_FRAME
     assert_equal seen.due, seen.reading, "the first pass reads the frames shown before it"
   end
 
   def test_a_game_of_many_numbers_and_lists_shows_its_first_pass_early
     seen = first_pass_seen(:snes, declaring_game(700, 40))
 
-    assert_equal BIG_GAME_FIRST_PASS_FRAME, seen.frame
+    assert_operator seen.frame, :<=, BIG_GAME_FIRST_PASS_FRAME
     assert_equal seen.due, seen.reading, "the first pass reads the frames shown before it"
   end
 
