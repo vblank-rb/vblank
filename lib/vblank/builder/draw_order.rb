@@ -289,6 +289,15 @@ module VBlank
       # it is stable: it starts from last frame's order and moves a thing back only past a
       # number strictly beyond its own, so two level things keep their order, and a frame where
       # nobody passed anybody moves nothing.
+      #
+      # A THING NOT SHOWING IS PUT BEHIND EVERYTHING by the sort itself (IR ListSort's +shown+),
+      # handed whether each thing shows, the value it is drawn by (its `active`,
+      # Reference#objects_on_screen). Things not showing then stand at the back of the list, and one
+      # that shows again comes in from there, behind any thing level with it, as if newly added: the
+      # way a console's own games rebuild their sprite list each frame from what is showing. So a
+      # console may sort and draw only the things showing, and an order of many declared with a few
+      # showing costs about what the few do. A thing that never stops showing is handed as showing,
+      # and an order of such things is sorted as before.
       def order_sort_nodes(order)
         return order_turn_nodes(order) if order.turns
 
@@ -297,7 +306,38 @@ module VBlank
         numbers = run_objects(order).each_with_index.map do |name, i|
           Build.list_set(keys, Build.int(i), by_name.fetch(name))
         end
-        numbers + [Build.list_sort(order.order_list, by: keys, descending: order.front == :lowest)]
+        shown = order_shown(order)
+        shown = nil if shown.all? { |value| value.kind == :int && value.value == 1 }
+        numbers + [Build.list_sort(order.order_list, by: keys, descending: order.front == :lowest, shown: shown)]
+      end
+
+      # Whether each object of +order+ shows, in the order the run holds them: a copy of the value it
+      # is drawn by, since a node belongs to one statement, or 1 for one that always shows.
+      def order_shown(order)
+        by_name = order.things.flat_map { |thing| order_objects_of(thing) }.to_h { |node| [node.name, node.active] }
+        run_objects(order).map do |name|
+          active = by_name.fetch(name)
+          always_shown?(active) ? Build.int(1) : active.copy
+        end
+      end
+
+      # Whether +active+, an object's, is 1 on every pass: the number 1, or a variable every
+      # statement of the program that changes it sets to 1.
+      def always_shown?(active)
+        return active.value == 1 if active.kind == :int
+        return false unless active.kind == :var_ref
+
+        (@variable_writes ||= variable_writes).fetch(active.name, []).all? do |write|
+          write.kind == :set && write.value.kind == :int && write.value.value == 1
+        end
+      end
+
+      # Every statement of the program that changes a variable, by the variable's name.
+      def variable_writes
+        @program.walk.each_with_object(Hash.new { |all, name| all[name] = [] }) do |node, writes|
+          name = IR::LightScenes.written_var(node)
+          writes[name] << node if name
+        end
       end
 
       # THE SAME NUMBER ADDED TO EVERY THING'S NUMBER CHANGES NO ORDER, so it is left out. A box's

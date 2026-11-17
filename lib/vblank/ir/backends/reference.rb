@@ -4247,13 +4247,22 @@ module VBlank
         # with +descending+). Level items keep the order they were in: each is ordered by its
         # number and then by where it stood, so no two items are ever level. Every item is checked
         # to be a place in +by+ before anything moves, as reading +by+ there would be.
+        #
+        # With +shown+, every item whose value there is not 1 goes behind every item whose value is,
+        # in the order they stood, and its number is not read; the items showing are ordered as
+        # above behind them. One that shows again so comes in at the back of the items level with it.
         def exec_list_sort(node)
           list = list_for(node.name)
           keys = list_for(node.by)
           items = list.to_a
           items.each { |item| check_list_index!(keys, node.by, item) }
           direction = node.descending ? -1 : 1
-          placed = items.each_with_index.sort_by { |item, at| [direction * keys.get(item), at] }
+          shown = node.shown&.map { |value| eval_value(value) == 1 }
+          placed = items.each_with_index.sort_by do |item, at|
+            next [0, 0, at] if shown && !shown.fetch(item)
+
+            [1, direction * keys.get(item), at]
+          end
           list.replace(placed.map(&:first))
         end
 

@@ -210,6 +210,71 @@ class TestDrawInOrder < Minitest::Test
     assert_backends_agree(walked, frames: 12)
   end
 
+  # A THING THAT SHOWS AGAIN COMES IN AT THE BACK OF THE THINGS LEVEL WITH IT, as if newly added. The
+  # hero walks up from in front to level with the enemy and stays in front; hidden on the twentieth
+  # pass and shown again on the twenty-fourth, he comes back behind the enemy, level as they are.
+  # A pixel lower on the thirty-fourth, he is in front again. A pool's thing taken away and a new
+  # one put in its place comes in the same way, behind the hero standing level with it.
+  private def shown_again_program
+    block = BLOCK
+    enemy_at = ENEMY_AT
+    program do
+      screen :tiled
+      image(:enemy, "#" => :red) { block }
+      image(:hero, "#" => :green) { block }
+      hero = sprite :hero, at: [enemy_at[0] + 8, enemy_at[1] + 6]
+      enemy = sprite :enemy, at: enemy_at
+      draw_in_order hero, enemy
+      t = var :t, 0
+      game_loop do
+        t += 1
+        hero.y -= 1 if hero.y > enemy_at[1] && t < 20
+        hero.hide if t == 20
+        hero.show if t == 24
+        hero.y += 1 if t == 34
+      end
+    end
+  end
+
+  def test_a_thing_shown_again_comes_in_behind_the_things_level_with_it
+    prog = shown_again_program
+
+    assert_equal GREEN, shown(prog, frames: 16), "walked up to level from in front: in front"
+    assert_equal RED, shown(prog, frames: 22), "hidden: the enemy alone"
+    assert_equal RED, shown(prog, frames: 30), "shown again level: behind the enemy"
+    assert_equal GREEN, shown(prog, frames: 40), "a pixel lower: in front again"
+  end
+
+  # The pool's older thing stands level with the hero and is in front of him, as a pool's older thing
+  # is in front: taken away and spawned again on the same spot, it comes in behind him.
+  private def pool_shown_again_program
+    block = BLOCK
+    enemy_at = ENEMY_AT
+    program do
+      screen :tiled
+      image(:walker, "#" => :red) { block }
+      image(:hero, "#" => :green) { block }
+      hero = sprite :hero, at: [enemy_at[0] + 8, enemy_at[1]]
+      walkers = pool :walker, x: 0, y: 0, capacity: 3, image: :walker
+      draw_in_order hero, walkers
+      walkers.spawn(x: enemy_at[0], y: enemy_at[1])
+      t = var :t, 0
+      game_loop do
+        t += 1
+        walkers.each(&:remove) if t == 10
+        walkers.spawn(x: enemy_at[0], y: enemy_at[1]) if t == 14
+      end
+    end
+  end
+
+  def test_a_pools_thing_spawned_again_comes_in_behind_the_things_level_with_it
+    prog = pool_shown_again_program
+
+    assert_equal RED, shown(prog, frames: 6), "the walker, named after the hero, is in front"
+    assert_equal GREEN, shown(prog, frames: 12), "taken away: the hero alone"
+    assert_equal GREEN, shown(prog, frames: 20), "spawned again level: behind the hero"
+  end
+
   # THE NUMBER IS THE GAME'S TO WORK OUT. A puff of smoke starts a step nearer the front and
   # drops back; here a variable the game owns decides, and `front: :lowest` reverses it.
   private def keyed_program(boost, front:)

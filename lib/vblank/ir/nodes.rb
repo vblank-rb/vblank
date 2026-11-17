@@ -1286,11 +1286,18 @@ module VBlank
       # reading +by+ there would; a lowering need not look, since the framework only sorts lists
       # of places it made. One statement, so a backend sorts in a routine of its own machine's
       # code, where the same sort written as list reads and writes takes a call for each of them.
+      #
+      # +shown+, where it is given, is a value for each place of +by+, read before anything moves:
+      # an item whose value is not 1 is not showing, and goes behind every item that is, keeping
+      # the order the items not showing stood in; the items showing are put in order behind them as
+      # above. So an item that shows again comes in at the back, behind the items level with it, as
+      # if it were newly added, and a backend may leave the items not showing out of its sort and of
+      # whatever walks the list after it.
       class ListSort
         include Node
         kind :list_sort
         category :list
-        operands name: :name, by: :name, descending: :flag
+        operands name: :name, by: :name, descending: :flag, shown: :list
       end
 
       class Loop
