@@ -1697,7 +1697,16 @@ module VBlank
               asm.add_hl(:de)
               asm.load(:de, grid)
               asm.add_hl(:de)
-              asm.label("#{label}_place_found")
+              asm.load_high(:a, arg.call(3)) # BC = the cell
+              asm.load(:c, :a)
+              asm.load_high(:a, arg.call(3) + 1)
+              asm.load(:b, :a)
+              # Where the game comes in having worked the cell's place out itself, for a row and a
+              # cell written in the program and a column known to be on the map
+              # (Lowering::Picture#emit_cell_at_known_row, #emit_cell_at_known_place): HL the place,
+              # BC the cell, which stays in BC to the end, so a status bar's text, a cell a letter,
+              # is never written into quick memory and read back.
+              asm.label("#{label}_at_hl")
               asm.load(:a, 0xFF)
               asm.load([up], :a)
               if memory.reserved?(CELL_SHOWN_NOW)
@@ -1723,22 +1732,21 @@ module VBlank
               asm.load([:hli], :a)
               asm.load(:a, :d)
               asm.load([:hli], :a)
-              asm.load_high(:a, arg.call(3))
+              asm.load(:a, :c)
               asm.load([:hli], :a)
-              asm.load_high(:a, arg.call(3) + 1)
-              asm.load([:hl], :a)
+              asm.load([:hl], :b)
               asm.ret
               if memory.reserved?(CELL_SHOWN_NOW)
                 asm.label("#{label}_shown")
                 asm.di
-                [0, 1].each do |bank|
+                [[0, :c], [1, :b]].each do |bank, byte|
                   asm.load(:a, bank)
                   asm.load_high(h::VBK, :a)
                   asm.label("#{label}_wait_#{bank}")
                   asm.load_high(:a, h::STAT)
                   asm.and_a(0x02)
                   asm.jump_relative(:nz, "#{label}_wait_#{bank}")
-                  asm.load_high(:a, arg.call(3) + bank)
+                  asm.load(:a, byte)
                   asm.load([:hl], :a)
                 end
                 asm.xor_a(:a)
@@ -1746,16 +1754,6 @@ module VBlank
                 asm.ei
                 asm.ret
               end
-              # Where the game comes in having worked the cell's place out itself, for a row and a
-              # cell written in the program and a column known to be on the map
-              # (Lowering::Picture#emit_cell_at_known_row, #emit_cell_at_known_place): HL the place,
-              # BC the cell.
-              asm.label("#{label}_at_hl")
-              asm.load(:a, :c)
-              asm.load_high(arg.call(3), :a)
-              asm.load(:a, :b)
-              asm.load_high(arg.call(3) + 1, :a)
-              asm.jump_relative("#{label}_place_found")
             end
 
             # rt_picture_cells_late: the B cells from HL on that the blank did not reach, while the display
@@ -1875,16 +1873,19 @@ module VBlank
             # not reading, with the interrupt held off from the wait to the write and open between
             # cells. The blank can come while this runs, write the list itself and empty it: writing
             # what is left of the list again changes nothing, since nothing is added to it meanwhile.
-            # rt_cells_write_now(A, how many there are) keeps HL, and comes back with A nought, the
-            # list's new length. rt_cells_write_rest is its loop, for the blank's own writing of the
-            # list to hand over to when the blank runs out: HL the next cell, B how many are left.
+            # rt_cells_write_now(A, how many there are) keeps HL and BC (the cell being changed), and
+            # comes back with A nought, the list's new length. rt_cells_write_rest is its loop, for the
+            # blank's own writing of the list to hand over to when the blank runs out: HL the next
+            # cell, B how many are left.
             def emit_cells_write_now(asm, memory)
               h = Console::GBCHardware
               asm.label("rt_cells_write_now")
               asm.push(:hl)
+              asm.push(:bc)
               asm.load(:b, :a)
               asm.load(:hl, memory[CELLS] + 1)
               asm.call("rt_cells_write_rest")
+              asm.pop(:bc)
               asm.pop(:hl)
               asm.ret
               asm.label("rt_cells_write_rest")
