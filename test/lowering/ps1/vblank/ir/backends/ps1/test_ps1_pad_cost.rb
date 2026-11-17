@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "stringio"
+require "ps1_pass_work"
 
 # What reading the pad costs a PlayStation game, read from where Beetle PSX says the time went. The pad
 # is asked on every frame, a conversation of five bytes the port takes about a thousand cycles each to
@@ -11,15 +12,12 @@ require "stringio"
 class TestPS1PadCost < Minitest::Test
   PAD_ROUTINES = /\Art_(pad_|buttons_now)/
 
-  # Work for more than a frame and under two, so every pass has a frame in its middle.
-  TWO_FRAMES = VBlank.game("TWO FRAMES", consoles: %i[ps1]) do
-    total = 0
-    func(:too_much) { repeat(45_000) { total += 3 } }
-    game_loop { call :too_much }
-  end
+  # Work for more than a frame and under two, so every pass has a frame in its middle: each pass ends
+  # this many lines past the blank it ran into, its turns measured as the test runs (PS1PassWork).
+  TWO_FRAMES_LINES = 60..200
 
   def test_reading_the_pad_takes_under_a_five_hundredth_of_a_frame
-    rom = TWO_FRAMES.build_rom(console: :ps1, out: StringIO.new, err: StringIO.new, profile: false)
+    rom = PS1PassWork.game(PS1PassWork.turns_ending_within(TWO_FRAMES_LINES), routine: :too_much).build_rom(console: :ps1, out: StringIO.new, err: StringIO.new, profile: false)
     result = rom.profile(out: StringIO.new, frames: 10)
     share = result.runtime.select { |spent| spent.routine.to_s.match?(PAD_ROUTINES) }.sum(&:share)
 

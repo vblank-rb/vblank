@@ -3,6 +3,7 @@
 require "test_helper"
 require "json"
 require "stringio"
+require "ps1_pass_work"
 
 # A PlayStation program measured as it runs (Diagnostics::PS1Profiler, `rom.profile`): how many frames
 # each pass took, which routines took the processor's time, and how long the graphics chip drew.
@@ -14,36 +15,32 @@ class TestPS1Profile < Minitest::Test
     game_loop { call :hard_work }
   end
 
+  # How far past the blank the passes of each game below end, in the picture's lines: how many turns
+  # of its loop that takes is measured as the test runs (PS1PassWork), since the lowering makes a turn
+  # quicker now and then.
+  #
   # A routine too long for one frame: each pass takes two.
-  SLOW = VBlank.game("SLOW", consoles: %i[ps1]) do
-    total = 0
-    func(:too_much) { repeat(43_000) { total += 3 } }
-    game_loop { call :too_much }
-  end
-
+  SLOW_LINES = 60..200
   # Work that runs a few lines past the blank after it began: each pass then waits for the next blank,
-  # and takes two frames. The count was found by playing it, at fourteen cycles a turn of the loop.
-  JUST_LATE_STEPS = 40_500
-  JUST_LATE = VBlank.game("JUST LATE", consoles: %i[ps1]) do
-    total = 0
-    func(:a_little_too_much) { repeat(JUST_LATE_STEPS) { total += 3 } }
-    game_loop { call :a_little_too_much }
-  end
-
-  # The same work and a little more, so each pass ends further past the blank.
-  LATER = VBlank.game("LATER", consoles: %i[ps1]) do
-    total = 0
-    func(:a_little_too_much) { repeat(JUST_LATE_STEPS + 600) { total += 3 } }
-    game_loop { call :a_little_too_much }
-  end
-
+  # and takes two frames.
+  JUST_LATE_LINES = 4..14
   # Work for a little over two frames: each pass runs past its second blank into a third frame, well
-  # past the blank's own lines. Its count was found by playing it too.
-  PAST_TWO_FRAMES = VBlank.game("PAST TWO", consoles: %i[ps1]) do
-    total = 0
-    func(:too_much) { repeat(86_000) { total += 3 } }
-    game_loop { call :too_much }
+  # past the blank's own lines.
+  PAST_TWO_FRAMES_LINES = (PS1PassWork::FRAME_LINES + 40)..(PS1PassWork::FRAME_LINES + 100)
+  # The just-late work and this many turns more, so each pass ends further past the blank.
+  LATER_TURNS = 600
+
+  private def slow = PS1PassWork.game(PS1PassWork.turns_ending_within(SLOW_LINES), routine: :too_much)
+
+  private def just_late
+    PS1PassWork.game(PS1PassWork.turns_ending_within(JUST_LATE_LINES), routine: :a_little_too_much)
   end
+
+  private def later
+    PS1PassWork.game(PS1PassWork.turns_ending_within(JUST_LATE_LINES) + LATER_TURNS, routine: :a_little_too_much)
+  end
+
+  private def past_two_frames = PS1PassWork.game(PS1PassWork.turns_ending_within(PAST_TWO_FRAMES_LINES), routine: :too_much)
 
   # A routine of its own that does more while B is down.
   WALKER = VBlank.game("WALKER", consoles: %i[ps1]) do
@@ -101,7 +98,7 @@ class TestPS1Profile < Minitest::Test
   # The frames each pass took are the runtime's own count (Runtime::Frame::STEPS), and the time read
   # from the emulator says the same: a pass of two frames leaves next to nothing to spare.
   def test_a_pass_too_long_for_a_frame_is_counted_as_the_frames_it_took
-    result = rom(SLOW).profile(out: StringIO.new, frames: 10)
+    result = rom(slow).profile(out: StringIO.new, frames: 10)
 
     assert_equal({ 2 => 10 }, result.passes_by_frames)
     assert_in_delta 30.0, result.fps, 0.2
@@ -113,7 +110,7 @@ class TestPS1Profile < Minitest::Test
   # timer from the blank that began while it ran.
   def test_a_pass_that_ends_a_few_lines_past_the_blank_is_reported_late_by_those_lines
     out = StringIO.new
-    result = rom(JUST_LATE).profile(out: out, frames: 10)
+    result = rom(just_late).profile(out: out, frames: 10)
 
     assert_equal({ 2 => 10 }, result.passes_by_frames)
     assert_equal 10, result.late_passes.size
@@ -124,18 +121,18 @@ class TestPS1Profile < Minitest::Test
   end
 
   def test_more_work_past_the_blank_is_more_lines_late
-    late = rom(JUST_LATE).profile(out: StringIO.new, frames: 6)
-    later = rom(LATER).profile(out: StringIO.new, frames: 6)
+    late = rom(just_late).profile(out: StringIO.new, frames: 6)
+    late_more = rom(later).profile(out: StringIO.new, frames: 6)
 
-    assert_equal [{ 2 => 6 }] * 2, [late.passes_by_frames, later.passes_by_frames]
-    assert_operator later.late_passes.min, :>, late.late_passes.max
+    assert_equal [{ 2 => 6 }] * 2, [late.passes_by_frames, late_more.passes_by_frames]
+    assert_operator late_more.late_passes.min, :>, late.late_passes.max
   end
 
   # A pass that runs well into a third frame is not a few lines late, so the Advance's line leaves it
   # out; how far past its second blank it ran is said by the frames it took.
   def test_a_pass_of_three_frames_says_how_far_past_its_second_blank_it_ran
     out = StringIO.new
-    result = rom(PAST_TWO_FRAMES).profile(out: out, frames: 6)
+    result = rom(past_two_frames).profile(out: out, frames: 6)
 
     assert_equal({ 3 => 6 }, result.passes_by_frames)
     assert_empty result.late_passes
@@ -164,8 +161,8 @@ class TestPS1Profile < Minitest::Test
   # The reader counts passes the way the profile does, from the runtime's own count, so a slow pass is
   # one pass however many frames it took.
   def test_the_reader_counts_the_passes_the_program_finished
-    shorter = VBlank::Diagnostics::Verifier.new(rom(SLOW), frames: 8).passes
-    longer = VBlank::Diagnostics::Verifier.new(rom(SLOW), frames: 18).passes
+    shorter = VBlank::Diagnostics::Verifier.new(rom(slow), frames: 8).passes
+    longer = VBlank::Diagnostics::Verifier.new(rom(slow), frames: 18).passes
 
     assert_equal 5, longer - shorter
   end
