@@ -48,6 +48,13 @@ module VBlank
                 @asm.sub_a(number & 0xFF)
                 @asm.load(:a, :h)
                 @asm.sbc_a(((number >> 8) & 0xFF) ^ 0x80)
+              elsif proven_within?(operand, NumberRanges::UNSIGNED_HALF) && number <= 0xFFFF
+                # Two bytes with no sign: the borrow out of the high byte is the carry.
+                low_value(operand, 2)
+                @asm.load(:a, :e)
+                @asm.sub_a(number & 0xFF)
+                @asm.load(:a, :d)
+                @asm.sbc_a((number >> 8) & 0xFF)
               else
                 return false
               end
@@ -55,13 +62,14 @@ module VBlank
             end
 
             # TWO SIDES OF A COMPARISON PROVEN TO FIT THE SAME BYTE OR TWO: [the width, :byte for
-            # two from 0 to 255, :signed_byte for two from -128 to 127, or :half for two that fit 16
-            # bits], or nil.
+            # two from 0 to 255, :signed_byte for two from -128 to 127, :half for two that fit 16
+            # bits, or :unsigned_half for two from 0 to 65535], or nil.
             def small_sides_width(left, right)
               return :byte if [left, right].all? { |side| proven_within?(side, 0..0xFF) }
               return :signed_byte if [left, right].all? { |side| proven_within?(side, NumberRanges::BYTE) }
+              return :half if [left, right].all? { |side| proven_within?(side, NumberRanges::HALF) }
 
-              :half if [left, right].all? { |side| proven_within?(side, NumberRanges::HALF) }
+              :unsigned_half if [left, right].all? { |side| proven_within?(side, NumberRanges::UNSIGNED_HALF) }
             end
 
             # An ordering (<, <=, >, >=) of two sides proven small: [the one, the other, whether it
@@ -92,6 +100,7 @@ module VBlank
             # is worked out first and kept on the stack, as a sum of four bytes keeps its right side.
             def emit_carry_when_small_below(one, other, width)
               return emit_carry_when_half_below(one, other) if width == :half
+              return emit_carry_when_unsigned_half_below(one, other) if width == :unsigned_half
 
               emit_low_bytes_of_pair(one, other, 1)
               if width == :signed_byte
@@ -108,7 +117,7 @@ module VBlank
 
             # The zero flag set when +one+ and +other+, both proven small at +width+, are equal.
             def emit_zero_when_small_equal(one, other, width)
-              if width == :half
+              if %i[half unsigned_half].include?(width)
                 done = fresh("compared")
                 emit_low_bytes_of_pair(one, other, 2)
                 @asm.load(:a, :e)
@@ -131,6 +140,15 @@ module VBlank
               @asm.load(:a, :d)
               @asm.xor_a(0x80)
               @asm.load(:d, :a)
+              @asm.load(:a, :e)
+              @asm.sub_a(:l)
+              @asm.load(:a, :d)
+              @asm.sbc_a(:h)
+            end
+
+            # Two sides from 0 to 65535: the borrow out of the high bytes of +one+ less +other+.
+            def emit_carry_when_unsigned_half_below(one, other)
+              emit_low_bytes_of_pair(one, other, 2)
               @asm.load(:a, :e)
               @asm.sub_a(:l)
               @asm.load(:a, :d)

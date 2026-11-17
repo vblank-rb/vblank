@@ -750,7 +750,18 @@ module VBlank
             # those every number written to is proven to fit (NumberRanges#list_widths). The proof
             # reads every variable's range, kept narrow or not, so a variable handed over changes
             # nothing here.
-            def list_widths = @list_widths ||= @cache.plan.number_ranges.list_widths
+            #
+            # And the lists of whole words proven to hold 0..65535 (NumberRanges#unsigned_half_lists),
+            # kept in two bytes read back with no sign (Lowering#unsigned_list?).
+            def list_widths
+              @list_widths ||= begin
+                ranges = @cache.plan.number_ranges
+                ranges.list_widths.merge(ranges.unsigned_half_lists.to_h { |name| [name, :half] })
+              end
+            end
+
+            # The lists kept in two bytes read back with no sign.
+            def unsigned_lists = @unsigned_lists ||= @cache.plan.number_ranges.unsigned_half_lists.to_set
 
             # THE VARIABLES WHOSE PLACE THE LOWERING HANDS OVER (Lowering#place_of): to a runtime
             # routine that reads or writes them where they are kept, or to code reading all four
@@ -1378,7 +1389,15 @@ module VBlank
           def value_of_list_get(node)
             value_of_slot(node)
             emit_slot_unscaled(node) if scaled_list?(node.name)
+            # A list kept in two bytes read back with no sign: the two above them nought, not the sign.
+            @asm.load(:bc, 0) if unsigned_list?(node.name)
           end
+
+          # Whether list +name+ is kept in two bytes read back with no sign (BuildFacts#unsigned_lists).
+          def unsigned_list?(name) = @cache.facts.unsigned_lists.include?(name)
+
+          # The lists kept in two bytes read back with no sign, for reading them back (Places).
+          public def unsigned_lists = @cache.facts.unsigned_lists.to_a
 
           # A LINK KEPT AS THE SLOT TIMES THE STRIDE (PoolLayout.strided_place), two bytes with NONE
           # as $FFFF, read back into BCDE as the tree holds it: its sign is spread already, so NONE

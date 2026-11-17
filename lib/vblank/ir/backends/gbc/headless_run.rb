@@ -233,6 +233,8 @@ module VBlank
           # list a slot after another.
           def slot_place_of(name, width) = @places.slot_places.fetch(name) { super }
 
+          def unsigned_list?(name) = @places.unsigned_lists.include?(name)
+
           # The Color's memory, read and written over its bus.
           def byte(address) = @core.bus_read8(address)
 
