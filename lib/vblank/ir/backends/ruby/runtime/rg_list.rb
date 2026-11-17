@@ -308,6 +308,30 @@ def rg_list_sort(list, by, descending)
   end
 end
 
+# rg_list_sort with +shown+, 1 at each place of +by+ whose item shows, as rg_list.h's
+# rg_list_sort_shown: an item not showing goes behind every item showing, keeping the order the
+# items not showing stood in.
+def rg_list_sort_shown(list, by, descending, shown)
+  falling = descending != 0
+  at = 1
+  while at < list.length
+    item = list.item(rg_list_slot(list, at))
+    showing = shown[item] == 1
+    key = showing ? rg_list_get(by, item) : 0
+    to = at
+    while to > 0
+      before = list.item(rg_list_slot(list, to - 1))
+      break if shown[before] != 1
+      break if showing && (falling ? rg_list_get(by, before) >= key : rg_list_get(by, before) <= key)
+
+      list.set_item(rg_list_slot(list, to), before)
+      to -= 1
+    end
+    list.set_item(rg_list_slot(list, to), item)
+    at += 1
+  end
+end
+
 # The list made to hold exactly +count+ entries of a table, from entry +at+ on, held so the whole
 # run is inside the table. The program sets how the table is kept (a byte, a half or a word,
 # signed or not) because a C table is read at that width; every table here is an Array of the

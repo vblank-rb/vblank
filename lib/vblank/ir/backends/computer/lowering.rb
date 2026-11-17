@@ -847,8 +847,19 @@ module VBlank
 
           # Reference#exec_list_sort, as one call: the runtime sorts the list in place by the
           # numbers +by+ holds, stably.
+          #
+          # With +shown+, whether each place shows is written into an array of its own first, a place
+          # at a time, and the runtime puts every item not showing behind the rest.
           def lower_list_sort(node)
-            [list_call("rg_list_sort", node, Statements::AddressOf.new(list(node.by)), Statements::Int.new(node.descending ? 1 : 0))]
+            by = Statements::AddressOf.new(list(node.by))
+            descending = Statements::Int.new(node.descending ? 1 : 0)
+            return [list_call("rg_list_sort", node, by, descending)] unless node.shown
+
+            shown = drawing_array("shown", "int32_t", Array.new(node.shown.length, 0), writable: true)
+            marks = node.shown.each_with_index.map do |showing, place|
+              Statements::Assign.new(Statements::Index.new(shown, Statements::Int.new(place)), value(showing))
+            end
+            [*marks, list_call("rg_list_sort_shown", node, by, descending, shown)]
           end
 
           def list_call(function, node, *args)
