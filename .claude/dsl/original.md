@@ -952,3 +952,36 @@ bytes a frame, then each frame as four bytes and sixteen a piece; nothing for a 
 frame). A file that is not a pack, is cut short or is in another format is refused with
 `Original::WrongPack`. **The format is 2.** A pack kept by a build before the frame records is format 1,
 so a shell's check refuses it and the player's copy is read again, as the menu says.
+
+## A port's harvest: the original's labels
+
+Not a verb, and nothing a game loads: a port's harvest tool and its tests require these themselves.
+The harvest builds the decompilation and proves it is the copy (`Original::Decompilation`), then reads
+what the assembler wrote. Its output is committed, so nothing else needs the decompilation.
+
+- `require "vblank/original/symbol_file"` — **`Original::SymbolFile`**, a reader per assembler, each
+  taking the file's text and giving back `Original::Labels`:
+  - `SymbolFile.rgblink(text)` — RGBDS's `.sym` (`bank:address name`); banks of 16 KB.
+  - `SymbolFile.sfcasm(text, mapping: :hirom)` (or `:lorom`) — sfcasm's symbol table (`c4018e main`);
+    work RAM is banks $7E/$7F and the low 8 KB of the first banks.
+  - `SymbolFile.asm68k_listing(text)` — asm68k's listing (`/l`): labels, and the names `rs.b`/`rs.w`/`rs.l`
+    reserve in work RAM, with their width and size (count times width, or up to the next variable).
+  - `SymbolFile.gnu_ld_map(text)` — the GNU linker's map (`ld -Map`), for a decompilation built with it.
+  - Each takes `local_labels: true` to keep the cartridge's local labels (`Start.loop`); they are left out
+    otherwise. RAM's dotted names (`player_1.x_position`, a structure's field) are always kept. An address
+    that is neither the cartridge nor RAM (a register, a constant) is left out.
+- `require "vblank/original/labels"` — **`Original::Labels`**:
+  - `Labels.read(path)` — a saved file, or a folder of them read as one. `labels.write(path)` saves one;
+    `labels.stale?(path)` is true when the file is not what `write` would write (a harvest's `--check`).
+    The file is JSON, a label to a line, so a harvest run again shows as the lines that moved.
+  - `labels.offset(name)` — where its bytes are in the copy; refused (`ArgumentError`) for a RAM label.
+    `labels.address(name)` — where a running console sees it. Both take `name+n`, n bytes further
+    (`"wBallStates+1"`).
+  - `labels.fetch(name)` — the `Labels::Label` (`name`, `space` `:rom` or `:ram`, `address`, `offset`,
+    `width`, `size`). An unknown name raises `Original::UnknownLabel` (a `KeyError`) naming the labels
+    nearest it.
+  - `labels.names_at(offset: n)` or `names_at(address: n)` — every name there, in order; none is `[]`.
+  - `labels.span(name)` — how many bytes it runs: its size, else up to the next label of its space, never
+    past the end of its cartridge bank. The last label of a space with no bank has no span, and is refused.
+  - `Labels.new(list, rom_bank_bytes:)` makes labels by hand, from `Labels::Label` records.
+  - Worked examples: `test/all/vblank/original/test_labels.rb`, `test_symbol_file.rb`.

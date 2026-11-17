@@ -22,7 +22,7 @@ module VBlank
     #                                               command: [ORIGINAL.path(:assembler), "-o", "rocket.gbc", "main.asm"],
     #                                               output: "rocket.gbc")
     #   decomp.harvest(ORIGINAL.copy) do |built|
-    #     symbols = File.read(built.path("rocket.sym"))       # the assembler's own files
+    #     labels = SymbolFile.rgblink(File.read(built.path("rocket.sym")))  # the assembler's own files
     #     built.extent("gfx/ship.2bpp", at: 0x4000)             # where an asset lies, proven
     #   end
     #
@@ -40,9 +40,11 @@ module VBlank
     #    first is, and the block never runs.
     #
     # WHAT THE GAME SUPPLIES: the checkout, its pin, the command and the file it builds, and the
-    # block that reads the build: its label parsers and its output formats are the game's own, and so
-    # is any check that two assets do not claim the same bytes. The checkout and the assembler are
-    # found as the copy is, by Game#path, and the copy is the accepted Copy (or its path).
+    # block that reads the build. The labels in the assembler's symbol file are read by SymbolFile and
+    # saved as Labels (`require "vblank/original/symbol_file"`), since every port needs the same reader;
+    # what else the block reads, and any check that two assets do not claim the same bytes, are the
+    # game's own. The checkout and the assembler are found as the copy is, by Game#path, and the copy
+    # is the accepted Copy (or its path).
     #
     # It is in VBlank, beside the copy it proves itself against, rather than in a gem of its own: it
     # is a few dozen lines a port cannot be trusted without, and it needs nothing VBlank does not.
