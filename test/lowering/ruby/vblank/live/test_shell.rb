@@ -3,6 +3,7 @@
 require "test_helper"
 require "fileutils"
 require "open3"
+require "timeout"
 require "tmpdir"
 require "vblank/live"
 require "shell_tests"
@@ -390,14 +391,40 @@ class TestShell < Minitest::Test
 
   # The window closed part way: the shell keeps no pack, and gives up at once rather than waiting
   # for the unpacking to finish its work.
+  #
+  # HELD TO WHAT HAPPENS, NOT TO THE CLOCK. The unpacking never finishes: it waits for frame after
+  # frame and never gets to its end. So a shell that waited for it would never come back, and one
+  # that gives up does, however busy the machine; a bound in seconds on how soon it came back was
+  # broken by a busy machine alone. MOST_SECONDS_UNTIL_SHELL_GIVES_UP only catches that hang.
+  MOST_SECONDS_UNTIL_SHELL_GIVES_UP = 60
+
   def test_a_window_closed_while_the_unpacking_works_keeps_no_pack
     Dir.mktmpdir do |folder|
-      shell = Shell.from(VBlank::Original::Shell.build(busy_port(original_nowhere(folder), steps: BUSY_STEPS), err: nil))
-      began = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      pack = shell.pack_from_copy("made_up.gba", COPY, Headless.new(frames: 2))
+      shell = Shell.from(VBlank::Original::Shell.build(endless_port(original_nowhere(folder)), err: nil))
+      pack = Timeout.timeout(MOST_SECONDS_UNTIL_SHELL_GIVES_UP) { shell.pack_from_copy("made_up.gba", COPY, Headless.new(frames: 2)) }
 
       assert_nil pack
-      assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - began, :<, 0.5, "the window waited for the unpacking"
+    end
+  end
+
+  # The port whose unpacking waits for one frame after another and never ends.
+  private def endless_port(from)
+    VBlank.game("MADE UP", consoles: %i[gba]) do
+      screen :bitmap
+      clear_screen :black
+      pack = data_pack(from: from, version: "1") do |slots|
+        slots.numbers :heights, count: HEIGHTS.length, width: :byte, signed: false
+        slots.fill_from_copy do |copy, into|
+          turns = 0
+          while turns >= 0
+            turns = (turns + 1) & 0xFFFF
+            wait_vblank
+          end
+          copy.unpack_rle at: RLE_AT, into: into[:heights]
+        end
+      end
+      heights = table :heights, pack[:heights]
+      game_loop { draw_rect_at heights[0] * 4, 40, 4, 4, :white }
     end
   end
 
