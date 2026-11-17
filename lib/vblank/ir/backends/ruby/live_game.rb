@@ -128,6 +128,31 @@ module VBlank
           # Every variable of the game by name (`{ "x" => 3 }`), as they stand now, and none of its
           # lists: #state's +vars+, cheaply enough to ask each frame of a game whose lists are large.
           def vars = @game.rg_live_vars
+
+          # CALLS INTO THE RUNTIME, COUNTED FOR A TEST THAT ASKS. A test of how much work a pass does
+          # counts it, since a count is the same on a busy machine as on an idle one where a time is
+          # not: how often the runtime's routines +names+ (`:rg_set_pixel`) are called from now on,
+          # read back by #call_counts. Each named routine is wrapped, on this game alone, in one that
+          # adds to its count and calls it. A game nobody asked this of has no wrapper and pays
+          # nothing: the runtime itself keeps no count.
+          def count_calls(*names)
+            counts = @call_counts ||= Hash.new(0)
+            names.each { |name| counts[name] += 0 } # a routine never called is counted as nought, not left out
+            counting = Module.new do
+              names.each do |name|
+                define_method(name) do |*args, **options, &block|
+                  counts[name] += 1
+                  super(*args, **options, &block)
+                end
+              end
+            end
+            @game.singleton_class.prepend(counting)
+            self
+          end
+
+          # How often each routine #count_calls named has been called, by name; nil for a game whose
+          # calls are not counted.
+          def call_counts = @call_counts&.dup
         end
       end
     end
