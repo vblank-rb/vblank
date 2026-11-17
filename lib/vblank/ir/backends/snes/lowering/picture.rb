@@ -1682,8 +1682,13 @@ module VBlank
             def emit_set_tile_block(node) = emit_children(node)
 
             # Reference#exec_set_tile: a tile the background does not have changes nothing, and nor
-            # does a place outside its map.
+            # does a place outside its map. A tile picked by a number known now is that tile
+            # (IR::PickedTile.written).
             def emit_set_tile(node)
+              if node.picked? && (number = folded(node.picked_by))
+                written = PickedTile.written(node, number)
+                return written && emit_set_tile(written)
+              end
               for_background(node) { |bg| node.picked? ? emit_set_picked_tile_on(node, bg) : emit_set_tile_on(node, bg) }
             end
 
