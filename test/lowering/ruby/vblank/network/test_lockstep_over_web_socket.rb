@@ -17,12 +17,13 @@ class TestLockstepOverWebSocket < Minitest::Test
 
   PASSES = 30
   WALKS = %i[right left up down].freeze
-  # The relay is on this computer and answers at once, so a test waits for it only a moment: an answer
-  # that was lost fails the test straight away, rather than after a person's wait.
-  ANSWER_SECONDS = 2
+  # The relay is on this computer and answers at once. These waits only catch an answer that never
+  # comes and a match that is stuck, so they are long: a passing run never reaches them, and a busy
+  # computer, which slows every thread here, must not fail a test that would pass on an idle one.
+  ANSWER_SECONDS = 15
   # The longest a whole match here may take. A match that takes longer is stuck, and the test fails
   # showing where each machine was waiting.
-  MATCH_SECONDS = 20
+  MATCH_SECONDS = 90
 
   Thread.report_on_exception = false
 
