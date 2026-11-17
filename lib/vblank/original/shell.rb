@@ -398,17 +398,32 @@ module VBlank
                           "unpacks a copy of a known size. Give each release a size."
       end
 
-      # The words for a shell build stopped by a line that asked for the copy: that line, the first
-      # outside this library.
+      # The words for a shell build stopped by a line that asked for the copy: that line
+      # (#copy_reading_line).
       def self.needs_copy_message(game, error)
-        library = VBlank.root.join("lib").to_s
-        line = error.backtrace_locations&.find { |place| !place.path.to_s.start_with?(library) && !place.path.to_s.include?("/gems/") }
+        line = copy_reading_line(error)
         where = line ? "#{line.path}:#{line.lineno}" : "the game"
         "#{game.title} cannot be built as a shell: #{where} reads the copy of the original as the game is built. A " \
           "shell holds none of the original's data, so the game's code must not depend on it. Read the data " \
           "through data_pack, which a shell fills on the player's machine. #{error.message}"
       end
-      private_class_method :facts_of, :piece_plans, :workers_bar, :unpackings_of, :refuse_without_data_pack!, :refuse_unusable_releases!, :needs_copy_message
+
+      # Methods of Game that raise NotSet while copies are hidden, and the one that calls another.
+      COPY_READERS = %w[copy path copy_if_set].freeze
+
+      # The line that asked for the copy, from where NotSet was raised: the first line past the
+      # reader's own frames (COPY_READERS) that is outside this library and its gems. Past the
+      # reader's frames first, since a reader can be wrapped: a module prepended to Game (a test's
+      # record of the copies read, a game's own logging) puts its own line between the reader and
+      # the game, and that line is in every build's backtrace for the rest of the process.
+      def self.copy_reading_line(error)
+        places = error.backtrace_locations || []
+        past_readers = places.drop_while { |place| COPY_READERS.include?(place.base_label) }
+        library = VBlank.root.join("lib").to_s
+        past_readers.find { |place| !place.path.to_s.start_with?(library) && !place.path.to_s.include?("/gems/") }
+      end
+      private_class_method :facts_of, :piece_plans, :workers_bar, :unpackings_of, :refuse_without_data_pack!, :refuse_unusable_releases!,
+                           :needs_copy_message, :copy_reading_line
     end
   end
 end
