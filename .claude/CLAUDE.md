@@ -108,7 +108,8 @@ needs a C compiler and a system libmgba (`brew install mgba` / `apt install libm
 ## Running Tests
 
 **Day to day, run `rake test:golden`, and `rake test:all` at most once a day and only after asking
-the operator.** `rake test:all` takes the machine for the best part of an hour and stops work while
+the operator.** `rake test:all` takes the machine for about four and three-quarter hours (measured
+2026-11-17: twenty runs of 3 to 21 minutes, the computer builds playing once per console) and stops work while
 it does, so never start it, or a whole lowering's run, without the operator's say-so. The golden
 path plays the core of each feature and a little of each lowering (`test/golden.txt`, a tenth of the
 tests or less) and 5% of the other test files drawn at random, on every run (`Testing::GoldenSample`).
