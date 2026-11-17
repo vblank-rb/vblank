@@ -476,6 +476,8 @@ module VBlank
           # list a slot after another.
           def slot_place_of(name, width) = @places.slot_places.fetch(name) { super }
 
+          def unsigned_list?(name) = @places.unsigned_lists.include?(name)
+
           # Each variable as the interpreter holds it: one kept in two bytes (HalfVariables) read with
           # its sign spread upward, since the bytes after it are another variable's.
           def read_variables

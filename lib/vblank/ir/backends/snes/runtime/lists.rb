@@ -27,6 +27,10 @@ module VBlank
             LENGTH = 4
             WIDTH = 6
             HEADER = 8
+            # The width a list of two-byte slots read back with no sign keeps in its header, in place
+            # of 2: a number from 0 to 65535 (Lowering#unsigned_list?). It sorts between two and four,
+            # so every routine that asks only how many bytes a slot is finds two.
+            UNSIGNED_HALF = 3
             # How many bytes each number of the header is (CartridgeHeadlessRun#read_lists). A list is
             # kept in one 64K bank of work RAM (Memory#reserve), so it never has more than 65,535 slots.
             FIELD_BYTES = 2
@@ -251,6 +255,8 @@ module VBlank
               asm.ldx(asm.direct(R2))
               asm.ldy(asm.direct(s.slot))
               asm.cmp(2)
+              asm.beq("rt_list_fill_half")
+              asm.cmp(UNSIGNED_HALF)
               asm.beq("rt_list_fill_half")
               asm.bcs("rt_list_fill_word")
               emit_fill_bytes(asm, s)
@@ -485,6 +491,8 @@ module VBlank
               asm.sta(asm.direct(R0 + 2))
               asm.rts
               asm.label("rt_list_read_narrow")
+              asm.cpx(UNSIGNED_HALF)
+              asm.beq("rt_list_read_done") # no sign: the high half stays nought
               asm.cpx(2)
               asm.beq("rt_list_read_half")
               asm.and_a(0x00FF)

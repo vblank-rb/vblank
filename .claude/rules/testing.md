@@ -175,6 +175,7 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `loop_cost_games.rb` (a `repeat` and a counted `while`, setting a variable or reading a list at the count, 64 turns against 32, for each console's cost test of a loop's turn),
 `number_width_cost_games.rb` (tests of numbers the build proves small: how far apart two byte slots are, a variable against a number, a half slot shifted down, a table of bytes against a variable, four a pass against the same game with none, for each console's cost test of a narrow comparison),
 `narrow_variable_cost_games.rb` (a loop working three variables the build proves stay in 16 bits, 64 turns against 32, for each console's cost test of keeping them in two bytes),
+`unsigned_place_cost_games.rb` (a pool whose places, in 256ths of a pixel, stay from 0 to 65535 with `& 0xFFFF`, stepped once a pass, eight things against four, for each console's cost test of keeping them in two bytes read with no sign),
 `place_games.rb` (small games of places made of flat faces, played by each console that draws a place),
 `pack_place_games.rb` (a made-up computer original keeping a lit room as data, a game drawing it as a place, shading and viewer start from its data pack, and the same room written in Ruby, its answer key; for the registry and the interpreter's test),
 `called_routine_area_tests.rb` (a routine called inside an area, played by each console that keeps the area as it runs),

@@ -72,10 +72,10 @@ module VBlank
         # +slot_places+ is where each list a pool's layout moved keeps its slots, counted from the end
         # of its header (Backends::PoolLayout::SlotPlace, CartridgeHeadlessRun#slot_place_of).
         # +half_variables+ is the variables kept in two bytes (HalfVariables), read back with their
-        # sign spread upward.
+        # sign spread upward; +unsigned_lists+ the lists kept in two-byte slots read back with no sign.
         Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :routines, :sound_entries,
                              :sound_voicing, :recording_names, :sprite_picture_names, :sprite_pieces, :console_voice_bits,
-                             :sound_memory, :slot_places, :half_variables) do
+                             :sound_memory, :slot_places, :half_variables, :unsigned_lists) do
           # Where the runtime counts the times the game has waited for the screen (32 bits).
           def waits_counted_at = runtime.fetch(Runtime::Frame::PASSES)
 
@@ -267,7 +267,7 @@ module VBlank
                              sprite_picture_names: lowering.sprite_picture_names, sprite_pieces: sprite_pieces,
                              console_voice_bits: Music.voice_bits(DSPWrites::CONSOLE_VOICES.to_a - carries.recording_voices),
                              sound_memory: runtime.sound_memory, slot_places: lowering.slot_places,
-                             half_variables: lowering.half_variables_kept)
+                             half_variables: lowering.half_variables_kept, unsigned_lists: lowering.unsigned_lists)
           vectors = { reset: linked.address_of("rt_reset"), nmi: linked.address_of("rt_nmi"),
                       irq: linked.address_of("rt_irq"), brk: linked.address_of("rt_irq"),
                       cop: linked.address_of("rt_irq") }

@@ -597,7 +597,17 @@ module VBlank
 
       private def list_items(name)
         place = @rom.built.lists[name] if list_names.include?(name)
-        kept_list_items(place, moved_slot_place(name)) if place
+        return unless place
+
+        items = kept_list_items(place, moved_slot_place(name))
+        unsigned_list?(name) ? items.map { |item| item & 0xFFFF } : items
+      end
+
+      # Whether the build keeps list +name+ in two-byte slots read back with no sign, for a build
+      # that keeps which (its places' +unsigned_lists+).
+      private def unsigned_list?(name)
+        built = @rom.built
+        built.respond_to?(:unsigned_lists) && built.unsigned_lists.include?(name)
       end
 
       # Where a pool's layout moved the list +name+'s slots (IR::Backends::PoolLayout::SlotPlace), for a

@@ -311,6 +311,7 @@ module VBlank
             @cuts = RoutineCuts.for(self, cache)
             # A Super FX reads the lists it is handed in the slots they were declared with.
             @list_widths = chip ? {} : lists_kept_in_halves
+            @unsigned_lists = @list_widths.keys.to_set & @plan.number_ranges.unsigned_half_lists.to_set
             prepare_picture
             prepare_paint
             prepare_collision
@@ -414,9 +415,10 @@ module VBlank
             end
             asm.data_words(0)
             asm.label("game_lists")
-            @lists.each_value do |place, capacity, width, _|
+            @lists.each do |name, (place, capacity, width, _)|
               asm.data_bytes(place & 0xFF, (place >> 8) & 0xFF, place >> 16)
-              asm.data_words(capacity, width)
+              # Two bytes read with no sign are marked 3 in the header (Runtime::Lists::UNSIGNED_HALF).
+              asm.data_words(capacity, unsigned_list?(name) ? Runtime::Lists::UNSIGNED_HALF : width)
             end
             asm.data_bytes(0, 0, 0)
             @routine_tables.each do |targets, label|
@@ -748,7 +750,7 @@ module VBlank
             copied: [Memory, Art, PaintedArt, TextLayerArt],
             shared: [Integer, Symbol, String, NilClass, TrueClass, FalseClass, IR::Node, SceneHandover,
                      SpriteNames, Music, W65816, RoutineCuts::PartCall, LoweringPlan, ChipCode, Sound::ModeCall],
-            unchanged: %i[@cuts @cache @tile_memo @keyed_sorts @keys_by_place @half_variables @handed_over @shown_sorts @shown_sort_nodes]
+            unchanged: %i[@cuts @cache @tile_memo @keyed_sorts @keys_by_place @half_variables @handed_over @shown_sorts @shown_sort_nodes @unsigned_lists]
           )
 
           # --- statements ---
@@ -840,6 +842,14 @@ module VBlank
                 @asm.sta(to)
               end
               return
+            end
+            if unsigned_list?(node.name)
+              @asm.lda(slot_operand(slots, 0, slot.nil?))
+              @asm.sta(low)
+              return @asm.stz(high) unless high.mode == :long # nothing stores a nought straight to a whole address
+
+              @asm.lda(0)
+              return @asm.sta(high)
             end
 
             positive = fresh("slot_positive")
@@ -1527,13 +1537,20 @@ module VBlank
             return emit_scaled_slot_read(node) if list_slots(node).scaled?
 
             place, _capacity, width = list_placed(node)
+            unsigned = unsigned_list?(node.name)
             slot = fixed_slot_address(node)
-            return emit_read_slot_at_x(slot, width, x: false) if slot
+            return emit_read_slot_at_x(slot, width, x: false, unsigned: unsigned) if slot
 
             slots = list_slots(node)
             emit_slot_into_x(place, slots.stride, index_halves(node.index), checked: !index_inside_full_list?(node.name, node.index))
-            emit_read_slot_at_x(slots.base, width)
+            emit_read_slot_at_x(slots.base, width, unsigned: unsigned)
           end
+
+          # Whether list +name+ is kept in half words read back with no sign (#lists_kept_in_halves).
+          def unsigned_list?(name) = @unsigned_lists.include?(name)
+
+          # The lists kept in half words read back with no sign, for reading them back (Places).
+          public def unsigned_lists = @unsigned_lists.to_a
 
           # Where the slot is, when the index is a number written in the program that is always
           # inside the list (#index_inside_full_list?): the read or write then names the slot
@@ -1700,8 +1717,12 @@ module VBlank
           # side by side set X again for each, where fields of one width share it. Measured on the
           # pool bullets test (x and y whole, their steps proven small): 6.9% of a frame with every
           # field a word, 9.5% with the steps in bytes, 7.3% in half words; left whole, as it was.
+          #
+          # A list proven to hold 0..65535 (NumberRanges#unsigned_half_lists) is kept in half words too,
+          # read back with no sign (#unsigned_list?): a place in 256ths of a pixel kept with `& 0xFFFF`.
           def lists_kept_in_halves
-            proven = @plan.number_ranges.list_widths.keys.select { |name| @declared_lists[name]&.width == :word }
+            ranges = @plan.number_ranges
+            proven = (ranges.list_widths.keys + ranges.unsigned_half_lists).select { |name| @declared_lists[name]&.width == :word }
             pooled, plain = proven.partition { |name| DSL::Pool.owner_of_list(name) }
             whole_fields = @declared_lists.values.select { |node| node.width == :word && DSL::Pool.owner_of_list(node.name) }
                                           .map(&:name) - proven
@@ -2153,7 +2174,8 @@ module VBlank
 
           # R0 = the slot at +slots+ plus X. A slot narrower than a word reads back with its top bit
           # as the sign (Reference::ListValue#wrap_to_width).
-          def emit_read_slot_at_x(slots, width, x: true)
+          # With +unsigned+, a half-word slot is read back with no sign: its high half nought.
+          def emit_read_slot_at_x(slots, width, x: true, unsigned: false)
             if width == 4
               @asm.lda(slot_operand(slots, 2, x))
               @asm.sta(@asm.direct(R0 + 2))
@@ -2164,6 +2186,7 @@ module VBlank
             read = fresh("slot_read")
             @asm.stz(@asm.direct(R0 + 2))
             @asm.lda(slot_operand(slots, 0, x))
+            return @asm.sta(@asm.direct(R0)) if unsigned
             if width == 1
               @asm.and_a(0x00FF)
               @asm.cmp(0x0080)
@@ -3476,7 +3499,9 @@ module VBlank
             op = node.op
             left, right = %i[> <=].include?(op) ? [node.rhs, node.lhs] : [node.lhs, node.rhs]
             ranges = [left, right].map { |side| proven_range(side) }
-            return unless ranges.all? { |range| within_half?(range) }
+            # Two sides from 0 to 65535 are compared the same way, CMP's carry, with no sign to turn.
+            unsigned = ranges.all? { |range| NumberRanges.inside?(range, NumberRanges::UNSIGNED_HALF) }
+            return unless unsigned || ranges.all? { |range| within_half?(range) }
 
             operand = low_half_operand(right, 16)
             emit_low_half(left, 16)
@@ -3605,7 +3630,7 @@ module VBlank
           # Whether +node+ reads a slot of two bytes where it is, at an index needing nothing worked
           # out. Asked by #half_slot_sum? and #emit_sum_into.
           def half_slot_read?(node)
-            plain_slot_read?(node) && !folded(node) &&
+            plain_slot_read?(node) && !folded(node) && !unsigned_list?(node.name) &&
               list_placed(node)[2] == 2 && !index_in_place(node.index).nil?
           end
 
@@ -3671,7 +3696,8 @@ module VBlank
             return unless %i[== !=].include?(node.op)
 
             [[node.lhs, node.rhs], [node.rhs, node.lhs]].each do |slot, other|
-              next unless plain_slot_read?(slot)
+              # An unsigned slot's sixteen bits are not the number's: 65535 is not -1.
+              next unless plain_slot_read?(slot) && !unsigned_list?(slot.name)
 
               number = folded(other)
               next if number.nil? || folded(slot)

@@ -427,9 +427,13 @@ module VBlank
               slot = (front + i) % capacity
               read_slot(address + layout::HEADER + place.at(slot), place.width) / place.scale
             end
-            [name, items]
+            [name, unsigned_list?(name) ? items.map { |item| item & 0xFFFF } : items]
           end
         end
+
+        # Whether the build keeps list +name+ in two-byte slots read back with no sign
+        # (NumberRanges#unsigned_half_lists): none, unless the console's run says so.
+        def unsigned_list?(_name) = false
 
         # Where the slots of the list +name+, of +width+ bytes, are after its header: one after another,
         # unless the console's run says a pool's layout placed them otherwise (Backends::PoolLayout).
