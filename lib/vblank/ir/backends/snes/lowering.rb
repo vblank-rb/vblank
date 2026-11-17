@@ -3602,6 +3602,8 @@ module VBlank
               [node.lhs, node.rhs].all? { |side| half_slot_read?(side) }
           end
 
+          # Whether +node+ reads a slot of two bytes where it is, at an index needing nothing worked
+          # out. Asked by #half_slot_sum? and #emit_sum_into.
           def half_slot_read?(node)
             plain_slot_read?(node) && !folded(node) &&
               list_placed(node)[2] == 2 && !index_in_place(node.index).nil?
@@ -3760,11 +3762,6 @@ module VBlank
                 @asm.sta(to[i])
               end
             end
-          end
-
-          # Whether +node+ reads a slot of two bytes where it is, at an index needing nothing worked out.
-          def half_slot_read?(node)
-            plain_slot_read?(node) && !folded(node) && list_placed(node)[2] == 2 && !index_in_place(node.index).nil?
           end
 
           # A WHOLE NUMBER PLUS OR MINUS A SLOT OF TWO BYTES, `x += dx` with a step kept in half words:
