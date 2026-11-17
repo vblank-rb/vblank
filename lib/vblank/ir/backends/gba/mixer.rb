@@ -260,8 +260,26 @@ module VBlank
           #
           # +effect_marks+ turns the mark on a sound effect's voice back into [effect, part]. A game
           # with any has ranked marks (Mixer.ranked_owner) on its song's voices too.
-          VoiceTable = Data.define(:base, :count, :sample_addresses, :clock, :effect_marks) do
-            def initialize(effect_marks: {}, **rest) = super
+          #
+          # +mix_buffers+ is where the mix writes each frame, the two buffers it takes turns with, and
+          # +front_at+ where it keeps which of them is playing (MIX_FRONT), so the newest frame of
+          # mixed sound can be read off the console (#newest_mix). That is the cartridge's own sound,
+          # byte for byte: what an emulator then hands its speaker is that sound resampled to the
+          # emulator's own rate, at moments the emulator's timing settles, and a game's own transfers
+          # into video memory move those moments a little, so two builds that mix alike can be heard
+          # a little apart. Nil for a table made without them.
+          VoiceTable = Data.define(:base, :count, :sample_addresses, :clock, :effect_marks, :mix_buffers, :front_at) do
+            def initialize(effect_marks: {}, mix_buffers: nil, front_at: nil, **rest) = super
+
+            # The frame of sound the mix wrote last, a signed sample each, read off the console a
+            # byte at a time by the block given an address: the buffer that is not playing.
+            def newest_mix
+              buffer = yield(front_at).zero? ? mix_buffers[1] : mix_buffers[0]
+              Array.new(clock.samples_a_frame) do |i|
+                byte = yield(buffer + i) & 0xFF
+                byte >= 128 ? byte - 256 : byte
+              end
+            end
 
             # The sounding voices, in slot order. The block reads one 32-bit word off the
             # console at the address it is given — the reader is handed in rather than owned,
@@ -448,6 +466,7 @@ module VBlank
             return nil unless @voice_base
 
             VoiceTable.new(base: @voice_base, count: MAX_VOICES, clock: @sample_clock, effect_marks: @effect_marks,
+                           mix_buffers: [@mix_buf0, @mix_buf1], front_at: @primitives.var_addr(MIX_FRONT),
                            sample_addresses: @samples.keys.to_h do |name|
                              [name, ROM_START + VBlank::Cartridge::ROM::ENTRY_OFFSET + @emitter.data_positions.fetch(name)]
                            end)

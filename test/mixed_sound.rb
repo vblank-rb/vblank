@@ -25,12 +25,10 @@ module MixedSound
     rom = VBlank::Cartridge::ROM.assemble(gba.lower(program), title: "MIXBYTES", built: gba.build_record(program))
     keys = ->(frame) { VBlank::IR::Buttons.mask(presses.fetch(frame, [])) }
     console = VBlank::Diagnostics::Verifier.new(rom, frames: 1, keys: keys, vars: gba.var_addresses)
-    slice = console.sample_clock.samples_a_frame
     Array.new(frames) do
-      newest = console.var(VBlank::IR::Backends::GBA::Mixer::MIX_FRONT).zero? ? gba.mix_buf1 : gba.mix_buf0
-      bytes = (0...slice).map { |i| signed_byte(console.mem8(newest + i)) }
+      mixed = console.last_frame_mix
       console.step
-      bytes
+      mixed
     end
   end
 
@@ -66,7 +64,4 @@ module MixedSound
     assert_operator from_sound.length, :>=, at_least, "too few frames with sound in them to compare"
     assert_equal interpreted, native
   end
-
-  # The console's memory reads a byte back unsigned; the mix holds signed ones.
-  def signed_byte(byte) = byte >= 128 ? byte - 256 : byte
 end

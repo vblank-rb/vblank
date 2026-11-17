@@ -228,6 +228,19 @@ module VBlank
         table ? table.read { |address| mem32(address) } : []
       end
 
+      # THE FRAME OF SOUND THE MIX WROTE LAST, a signed sample each, read out of the console's
+      # memory: the cartridge's own sound, byte for byte, which the interpreter's
+      # Reference#mixed_sound gives a frame at a time too. Not what the emulator's speaker hands
+      # over (#last_frame_samples), which is this resampled at moments the emulator's timing
+      # settles, and which a game's own transfers into video memory move a little: two builds of
+      # one game that mix byte for byte alike are heard a little apart where one of them copies
+      # more. So two builds' sound is held alike with this, a frame at a time. Empty for a
+      # program that plays no samples.
+      def last_frame_mix
+        table = voice_table!
+        table ? table.newest_mix { |address| mem8(address) } : []
+      end
+
       # Just the names of the samples sounding, in the mixer's order — directly comparable with
       # the interpreter's Reference#active_samples, which is what lets a test check the two
       # backends agree about sound with one equality.

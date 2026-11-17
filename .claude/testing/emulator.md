@@ -17,6 +17,9 @@ v.pixel_is?(x, y, :red)                    # colour by name or 15-bit value
 v.pixel_gba(x, y)                          # the raw 15-bit BGR555 (good in failure messages)
 v.region_color?(x, y, w, h, :blue)
 v.audio_energy / v.silent? / v.sound?      # "did the speaker do anything?"
+v.last_frame_mix                           # Advance: the frame the mix wrote last, a signed sample each, byte for byte the
+                                           # interpreter's mixed_sound; hold two builds' sound alike with this, not the speaker,
+                                           # which the emulator resamples at moments a game's own video copies move
 
 v.only_color                               # the one colour every pixel is, or nil for a picture
 v.brightness                               # every pixel's red, green and blue added up, each 0..31
