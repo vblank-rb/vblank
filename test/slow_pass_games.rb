@@ -17,9 +17,10 @@ module SlowPassGames
   # frame and not two, measured on each console's cartridge in its emulator. The work is the game's
   # own, but how long it takes is the lowering's, so a count near either edge stops making a pass of
   # two frames when the lowering gets quicker or slower. The Super Nintendo's sits in the middle: a
-  # count from about 1000 to 2000 takes two frames there today, and 700 took two only until the
-  # lowering learned to count a short repeat in one half of its counter.
-  BUSY_STEPS = { gba: 35_000, gbc: 700, snes: 1_400, genesis: 3_500 }.freeze
+  # count from about 1460 to 2950 takes two frames there today. 700 took two only until the lowering
+  # learned to count a short repeat in one half of its counter, and 1400 only until it kept the
+  # busiest variables on the processor's direct page.
+  BUSY_STEPS = { gba: 35_000, gbc: 700, snes: 2_100, genesis: 3_500 }.freeze
 
   # How many frames each lead-in is: the same on both leaves the quick build passes ahead of the
   # slow one, and the short one leaves the quick build behind the slow one's long one.
