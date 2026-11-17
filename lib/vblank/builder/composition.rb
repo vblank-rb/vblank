@@ -91,6 +91,8 @@ module VBlank
         validate_pool!(name, capacity, fields)
         validate_on_full!(name, on_full)
         validate_pool_widths!(name, fields, widths)
+        fields.each { |field, default| check_width_holds_fractions!(name, field, default, widths.fetch(field, :word)) }
+        widths = kept_unsigned_halves(widths) { |field| DSL::Pool.field_list(name, field) }
         refuse_pool_layout_not_kept!(name, layout)
         refuse_field_spelled_as_pool_word!(name, facing: facing, frames: frames, rate: rate, fast: fast)
         art = pool_art!(name, image: image, facing: facing, frames: frames, rate: rate, fields: fields)
@@ -163,6 +165,87 @@ module VBlank
 
       # Every pool the game declared, in the order it declared them.
       def declared_pools = @declared_pools ||= []
+
+      # A SLOT OF TWO BYTES READ BACK WITH NO SIGN, 0 to 65535: `width: :unsigned_half`, for a
+      # place kept in 256ths of a pixel, which reaches past the 32767 a `:half` holds and never
+      # goes below nought. Nothing in a backend knows this width. The list is a list of whole words,
+      # and once the game is written every number put into it is ANDed with 65535 first
+      # (#finalize_unsigned_halves): the low sixteen bits, which is what the slot keeps, in the
+      # arithmetic every backend already does. So the interpreter and each lowering agree with no
+      # work of their own, and a console that can keep such a list in two bytes finds it proven to
+      # hold 0..65535 (Backends::NumberRanges#unsigned_half_lists) and does (the Super Nintendo,
+      # the Color).
+      UNSIGNED_HALF = :unsigned_half
+
+      # The lists declared to hold 0..65535, by name.
+      def unsigned_half_lists = @unsigned_half_lists ||= Set.new
+
+      # +widths+ ({key => width}) with each :unsigned_half a whole word, and the list the block names
+      # for its key noted as one (#finalize_unsigned_halves).
+      def kept_unsigned_halves(widths)
+        widths.to_h do |key, width|
+          next [key, width] unless width == UNSIGNED_HALF
+
+          unsigned_half_lists << yield(key)
+          [key, :word]
+        end
+      end
+
+      # Every number put into a list declared :unsigned_half ANDed with 65535: what it starts full
+      # of, each item written or pushed, what a fill writes, and each item a load from save memory
+      # put in, since a save holds whatever was written to its bytes. A copy of a table into one is
+      # refused, since a table keeps its entries as they are.
+      def finalize_unsigned_halves
+        return if unsigned_half_lists.empty?
+
+        @program.walk.to_a.each do |node|
+          next unless node.respond_to?(:name) && unsigned_half_lists.include?(node.name)
+
+          case node.kind
+          when :list_new then node.set_operand(:full_of, node.full_of & 0xFFFF) if node.full_of.is_a?(Integer)
+          when :list_set, :list_push, :list_fill then node.set_operand(:value, low_sixteen_bits(node.value))
+          when :list_copy then refuse_unsigned_half_copy!(node.name)
+          when :save_load_list then add_after(node, unsigned_half_mask_loop(node))
+          end
+        end
+      end
+
+      def low_sixteen_bits(value) = Build.binop(:&, value, Build.int(0xFFFF))
+
+      # Each item of the list +load+ (a save_load_list) filled ANDed with 65535, counted in the
+      # load's own counter and leaving it at nought, as the load does.
+      def unsigned_half_mask_loop(load)
+        item = Build.list_get(load.name, Build.var_ref(load.index))
+        [Build.repeat(Build.list_len(load.name), load.index, Build.list_set(load.name, Build.var_ref(load.index), low_sixteen_bits(item))),
+         Build.set(load.index, 0)]
+      end
+
+      # +statements+ put straight after +node+ in its parent.
+      def add_after(node, statements)
+        parent = node.parent
+        statements.each do |statement|
+          statement.parent = parent
+          statement.default_source!(node.source)
+        end
+        at = parent.children.index { |child| child.equal?(node) }
+        parent.children.insert(at + 1, *statements)
+      end
+
+      def refuse_unsigned_half_copy!(name)
+        raise ArgumentError, "The list #{name.inspect} holds numbers from 0 to 65535 (width: :unsigned_half). A copy " \
+                             "from a table cannot go into it. To fix this, give the list the width of the table."
+      end
+
+      # A fraction is kept as a whole number of its smallest steps, and below nought too, so 0..65535
+      # of those steps is a range no game means. A pool's field is refused where the pool is
+      # declared (#check_width_holds_fractions!).
+      def refuse_unsigned_half_fractions!(name, bits)
+        return unless bits && unsigned_half_lists.include?(name)
+
+        raise ArgumentError, "The list #{name.inspect} holds fractions, and width: :unsigned_half is only for whole numbers " \
+                             "from 0 to 65535. To fix this, keep whole numbers in it (a place in 256ths of a pixel, " \
+                             "for example), or give it the width :word."
+      end
 
       # A spriteful pool never told to draw with other colours takes back the writes its
       # spawns made in case it was (see Pool#drop_unused_color_resets).
@@ -313,12 +396,12 @@ module VBlank
                 "pool :#{name} gives a width for :#{unknown.first}, which is not one of its fields. " \
                 "Its fields are #{fields.keys.join(', ')}."
         end
-        bad = widths.find { |_, width| !Build::ELEMENT_BYTES.key?(width) }
+        bad = widths.find { |_, width| !Build::ELEMENT_BYTES.key?(width) && width != UNSIGNED_HALF }
         return if bad.nil?
 
         raise ArgumentError,
               "pool :#{name} gives field :#{bad.first} the width #{bad.last.inspect}. A width must be " \
-              ":byte (0..255), :half (0..65535) or :word."
+              ":byte (-128..127), :half (-32768..32767), :unsigned_half (0..65535) or :word."
       end
 
       # The ways a console can keep a pool in memory (Console::Description#pool_layouts): as a list

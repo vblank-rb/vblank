@@ -1144,7 +1144,7 @@ module VBlank
         end
         unless ELEMENT_BYTES.key?(width)
           raise ArgumentError,
-                "a list's width must be :byte, :half or :word, got #{width.inspect}"
+                "a list's width must be :byte, :half, :unsigned_half or :word, got #{width.inspect}"
         end
         # A LIST HOLDS WHAT IT WAS ASKED FOR, which is the only answer that can be explained.
         # It used to hold the next power of two up, because the storage was a ring whose index

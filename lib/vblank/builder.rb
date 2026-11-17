@@ -408,10 +408,12 @@ module VBlank
     # @return [List] a handle to the list
     def list(name, capacity:, estimate: nil, holds: nil, width: :word, fast: nil, full_of: nil)
       record_estimate_line(estimate)
+      width = kept_unsigned_halves({ name => width }) { name }.fetch(name)
       # A fraction given as what the list starts full of marks it as holding fractions, as `holds:` would.
       example = holds
       example = full_of if holds.nil? && full_of.is_a?(Numeric)
       bits = list_fraction_bits(name, example)
+      refuse_unsigned_half_fractions!(name, bits)
       record(Build.list_new(name, capacity, width: width, fast: fast,
                                             full_of: list_starting_item(name, full_of, bits)))
       @fraction_lists[name] = bits if bits
@@ -717,6 +719,7 @@ module VBlank
       resolve_save_data_peeks
       swap_save_stores_for_change_flags
       finalize_kept_widths
+      finalize_unsigned_halves
       finalize_fractions
       finalize_sprite_readings
       finalize_background_readings
