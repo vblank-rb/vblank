@@ -1835,6 +1835,21 @@ module VBlank
             @asm.tax
           end
 
+          # X at how far into its slots the item the read +node+ names is (#emit_slot_into_x). An
+          # index worked out and known inside the list (#index_inside_full_list?) has only its low
+          # half worked out (#emit_low_half), which is all X takes: `row[(t + 3) & 31]` is an add and
+          # an AND of one half, where the whole number is both halves stored and read back.
+          def emit_slot_of_index_into_x(place, stride, node)
+            inside = index_inside_full_list?(node.name, node.index)
+            unless inside && operand_halves(node.index).nil?
+              return emit_slot_into_x(place, stride, index_halves(node.index), checked: !inside)
+            end
+
+            emit_low_half(node.index, 16)
+            (stride - 1).bit_length.times { @asm.asl }
+            @asm.tax
+          end
+
           # WHAT X HOLDS WHEN A SLOT IS READ AT IT: the low half of the variable +index+ (a place in
           # memory) times +width+, as an assembler's note (W65816#x_holds). Two reads of one slot, or of
           # slots as wide in two lists, one after the other, need X set once: a pool's walk reads the
@@ -1916,6 +1931,7 @@ module VBlank
               return @asm.lda(operand)
             end
             return emit_low_half_of_slot(node, bits) if node.is_a?(Node) && node.kind == :list_get && !front_dropped_lists.include?(node.name)
+            return if depth < MOST_LOW_HALF_DEPTH && emit_low_half_of_narrow_step(node, bits, depth)
 
             unless sum_in_halves?(node) && depth < MOST_LOW_HALF_DEPTH
               value(node)
@@ -1965,7 +1981,7 @@ module VBlank
           # byte where all sixteen are wanted.
           def emit_low_half_of_slot(node, bits)
             place, _capacity, width = list_placed(node)
-            emit_slot_into_x(place, list_slots(node).stride, index_halves(node.index), checked: !index_inside_full_list?(node.name, node.index))
+            emit_slot_of_index_into_x(place, list_slots(node).stride, node)
             @asm.lda(@asm.long_x(list_slots(node).base))
             return unless width == 1 && bits == 16
 
@@ -1975,6 +1991,115 @@ module VBlank
             @asm.bcc(positive)
             @asm.ora(0xFF00)
             @asm.label(positive)
+          end
+
+          # A = the low +bits+ of a negative, a size or a shift by a number written in the program,
+          # worked from the low half of what it is made of: true when it was done so.
+          #
+          # The low half of a negative, and of a shift up, come from the low half alone, whatever the
+          # number. A size (`abs`) and a shift down need the bits above too, unless the number is
+          # proven to stay in 16 bits (NumberRanges), when those bits are only its sign: then the
+          # 16-bit accumulator does it, a shift down by 4 four LSRs of a number never below nought,
+          # where the two halves of a whole number take three instructions a place.
+          def emit_low_half_of_narrow_step(node, bits, depth)
+            return false unless node.is_a?(Node)
+
+            case node.kind
+            when :neg
+              emit_low_half(node.operand, bits, depth + 1)
+              emit_negate_a
+              true
+            when :absolute then emit_low_half_of_size(node.operand, depth)
+            when :table_get then emit_low_half_of_entry(node, bits, depth)
+            when :shift_right then emit_low_half_shifted_down(node.operand, node.bits, depth)
+            when :binop
+              count = folded(node.rhs)
+              return false unless count && %i[<< >>].include?(node.op)
+              return emit_low_half_shifted_down(node.lhs, count, depth) if node.op == :>>
+
+              emit_low_half_shifted_up(node.lhs, count, bits, depth)
+            else false
+            end
+          end
+
+          # A = the low +bits+ of a table's entry, for a table of bytes or halves in one part: the
+          # entry read at X with no whole number made of it, a byte's sign carried into the high
+          # byte where all sixteen are wanted (#value_of_table_get makes the whole number).
+          def emit_low_half_of_entry(node, bits, depth)
+            table = @tables[node.name] or return false
+            bytes, signed = table_keeping(table)
+            return false if bytes == 4 || split?(table)
+
+            emit_low_half(LoweringPlan.index_kept_in_range(node.index, table.values.length), 16, depth + 1)
+            @asm.asl if bytes == 2
+            @asm.tax
+            @asm.lda(@asm.long_x(table_label(table.name)))
+            return true unless bytes == 1 && bits == 16
+
+            @asm.and_a(0x00FF)
+            return true unless signed
+
+            positive = fresh("entry_positive")
+            @asm.cmp(0x0080)
+            @asm.bcc(positive)
+            @asm.ora(0xFF00)
+            @asm.label(positive)
+            true
+          end
+
+          # A = A turned round: every bit flipped and one added.
+          def emit_negate_a
+            @asm.eor(0xFFFF)
+            @asm.inc(:a)
+          end
+
+          # A = the size of +operand+'s number, where it stays in 16 bits. The most negative such,
+          # -32768, has the size 32768, whose low half is $8000, which is what turning $8000 round
+          # gives.
+          def emit_low_half_of_size(operand, depth)
+            return false unless within_half?(proven_range(operand))
+
+            positive = fresh("positive")
+            emit_low_half(operand, 16, depth + 1)
+            @asm.cmp(0x8000) # the carry is set when the number is below nought
+            @asm.bcc(positive)
+            emit_negate_a
+            @asm.label(positive)
+            true
+          end
+
+          def emit_low_half_shifted_up(operand, count, bits, depth)
+            if count.negative? || count >= 16
+              @asm.lda(0)
+              return true
+            end
+
+            emit_low_half(operand, bits, depth + 1)
+            count.times { @asm.asl }
+            true
+          end
+
+          # A shift down of a number that stays in 16 bits: LSR when it is never below nought, and
+          # otherwise the sign carried in from the top (CMP $8000 sets the carry for a number below
+          # nought) as each place is rotated in. Fifteen places or more leave only the sign.
+          def emit_low_half_shifted_down(operand, count, depth)
+            range = proven_range(operand)
+            return false unless within_half?(range) && Int32.shift_count_in_range?(count)
+            if range.begin >= 0 && count >= 16
+              @asm.lda(0)
+              return true
+            end
+
+            emit_low_half(operand, 16, depth + 1)
+            if range.begin >= 0
+              count.times { @asm.lsr }
+            else
+              [count, 15].min.times do
+                @asm.cmp(0x8000)
+                @asm.ror
+              end
+            end
+            true
           end
 
           # A LIST PUT IN ORDER, written in place (Reference#exec_list_sort): an insertion sort over
@@ -2941,9 +3066,12 @@ module VBlank
           # which case the sign came out the wrong way round and is flipped back.
           def compare(node)
             op = node.op
-            short = compare_short_counter(node) || compare_pool_slots(node) || compare_absolute_below(node)
+            short = compare_short_counter(node) || compare_pool_slots(node)
             return short if short
             return compare_narrow_slot(op, *narrow_slot_and_number(node)) if narrow_slot_and_number(node)
+
+            short = compare_within_halves(node) || compare_absolute_below(node)
+            return short if short
 
             left, right = %i[> <=].include?(op) ? [node.rhs, node.lhs] : [node.lhs, node.rhs]
             with_both_halves(left, right) do |lefts, halves|
@@ -2969,6 +3097,54 @@ module VBlank
             # The negative flag now shows left < right, where for > and <= the two were swapped.
             { :== => :bne, :!= => :beq, :< => :bpl, :> => :bpl, :>= => :bmi, :<= => :bmi }.fetch(op)
           end
+
+          # TWO NUMBERS PROVEN TO STAY IN 16 BITS (NumberRanges), COMPARED IN 16. Such a number's high
+          # half is only its sign spread upward, so its low half alone is the number, and the
+          # processor's 16-bit accumulator compares two of them in one instruction: CMP for equal,
+          # and for an order CMP's carry when neither is below nought, or a subtract whose sign is
+          # turned back where it overflowed. Each side's low half is worked out by #emit_low_half,
+          # with no high half made at all: a slot of bytes is read with its sign carried into the
+          # high byte, a shift of a number that fits 16 bits is a shift of its 16. The 65816 has no
+          # wider compare: CMP works on the accumulator's 8 or 16 bits as REP and SEP set it, which
+          # is the width the console's code works its numbers at (fullsnes, "CPU 65XX
+          # Microprocessor"). The branch taken when the comparison does not hold, as #compare gives,
+          # or nil when either side is not proven.
+          def compare_within_halves(node)
+            op = node.op
+            left, right = %i[> <=].include?(op) ? [node.rhs, node.lhs] : [node.lhs, node.rhs]
+            ranges = [left, right].map { |side| proven_range(side) }
+            return unless ranges.all? { |range| within_half?(range) }
+
+            operand = low_half_operand(right, 16)
+            emit_low_half(left, 16)
+            unless operand
+              # The left side kept on the stack while the right is worked out, as the interpreter
+              # works the left out first.
+              @asm.pha
+              emit_low_half(right, 16)
+              @asm.sta(@asm.direct(R0))
+              @asm.pla
+              operand = @asm.direct(R0)
+            end
+            if %i[== !=].include?(op)
+              @asm.cmp(operand)
+              return op == :== ? :bne : :beq
+            end
+            if ranges.all? { |range| range.begin >= 0 }
+              @asm.cmp(operand) # the carry is set when the left is not below the right
+              return %i[< >].include?(op) ? :bcs : :bcc
+            end
+
+            signed = fresh("signed")
+            @asm.sec
+            @asm.sbc(operand)
+            @asm.bvc(signed)
+            @asm.eor(0x8000)
+            @asm.label(signed, join: true)
+            { :< => :bpl, :> => :bpl, :>= => :bmi, :<= => :bmi }.fetch(op)
+          end
+
+          def within_half?(range) = NumberRanges.inside?(range, NumberRanges::HALF)
 
           # HOW FAR APART, TESTED AGAINST A SMALL NUMBER: `(other.x - e.x).abs < 16`, a thing checking
           # whether another is near it, which a game asks for every pair of things every frame. Worked
