@@ -1438,31 +1438,13 @@ module VBlank
               @asm.rts if returns
             end
 
-            # WHEN A SPRITE SHOWS, as tests: +tests+ are comparisons that must all hold, and +flag+ a
-            # value that must be 1, or nil.
-            #
-            # A sprite shows while its `active` is 1. The builder makes that a PRODUCT for a sprite
-            # that belongs to a scene, or is declared under an `if`: its own flag times "is this the
-            # scene that is up", times each condition it was written under (Builder#gated_by_scene).
-            # A comparison is 0 or 1, so the product is 1 exactly when every comparison holds and
-            # what is left is 1, which is a compare and a branch each. Worked out as written it is
-            # a multiply of two long words for every such sprite on every pass, which the 68000 has
-            # no instruction for: a call, and three of its word multiplies.
-            ShownWhen = Data.define(:tests, :flag)
-
-            # +active+ as tests (ShownWhen), or nil where it is not a product of comparisons and at most
-            # one value besides, each written in place and changing nothing by being worked out or
-            # left out (IR::Unchanging): the tests stop at the first that fails.
+            # +active+ as tests (Backends::ShownWhen), each written in place, or nil. A multiply of two
+            # long words, which the product would otherwise be, has no instruction on the 68000: a
+            # call, and three of its word multiplies.
             def shown_when(active)
-              factors = product_factors(active)
-              tests, flags = factors.partition { |factor| comparison?(factor) }
-              return unless flags.length <= 1
-              return unless factors.all? { |factor| value_keeps_counters?(factor) && Unchanging.value?(factor) { |part| folded(part) } }
-
-              ShownWhen.new(tests: tests, flag: flags.first)
+              shown = ShownWhen.of(active) { |part| folded(part) }
+              shown if shown && ShownWhen.factors_of(active).all? { |factor| value_keeps_counters?(factor) }
             end
-
-            def product_factors(node) = binop?(node, :*) ? product_factors(node.lhs) + product_factors(node.rhs) : [node]
 
             # On to +skip+, the end of the sprite's placing, unless it shows (ShownWhen). A sprite that
             # shows goes on past every branch. +near+ where +skip+ is only a few instructions on, so
