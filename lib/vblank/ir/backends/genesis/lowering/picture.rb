@@ -1137,8 +1137,15 @@ module VBlank
             public def writes_cell_blocks? = @program.walk.any? { |node| node.kind == :set_tile_block }
 
             # Reference#exec_set_tile: a tile the background does not have changes nothing, and nor
-            # does a place outside its map.
-            def emit_set_tile(node) = for_background(node) { |bg| emit_set_tile_of(bg, node) }
+            # does a place outside its map. A tile picked by a number known now is that tile
+            # (IR::PickedTile.written).
+            def emit_set_tile(node)
+              if node.picked? && (number = folded(node.picked_by))
+                written = PickedTile.written(node, number)
+                return written && emit_set_tile(written)
+              end
+              for_background(node) { |bg| emit_set_tile_of(bg, node) }
+            end
 
             def emit_set_tile_of(bg, node)
               return emit_set_picked_tile_of(bg, node) if node.picked?
