@@ -121,13 +121,24 @@ module VBlank
             def emit_place_marked(showing, place, kept)
               hidden = fresh_label("sort_place_hidden")
               marked = fresh_label("sort_place_marked")
-              jump_unless(Build.binop(:==, showing.copy, Build.int(1)), hidden)
+              emit_jump_unless_showing(showing, hidden)
               emit_sort_key_set(kept, place)
               emit_flag_turned(kept, place, marked, was: 0, step: -1)
               @asm.b(marked)
               @asm.label(hidden)
               emit_flag_turned(kept, place, marked, was: 1, step: 1)
               @asm.label(marked)
+            end
+
+            # On to +hidden+ unless +showing+ is 1, each test of it asked on its own where it is a product
+            # of tests (Backends::ShownWhen), so a pool's place is one compare of its count. A copy is
+            # asked, since a comparison made of it takes it in.
+            def emit_jump_unless_showing(showing, hidden)
+              shown = ShownWhen.of(showing.copy) { |part| folded(part) }
+              return jump_unless(Build.binop(:==, showing.copy, Build.int(1)), hidden) unless shown
+
+              jump_unless(Build.binop(:==, shown.flag, Build.int(1)), hidden) if shown.flag
+              shown.tests.each { |test| jump_unless(test, hidden) }
             end
 
             # On to +marked+ unless the flag of +place+ is +was+; otherwise the flag turned over, the count
