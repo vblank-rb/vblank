@@ -34,7 +34,8 @@ module M4AAnswers
   SPLIT_GROUP_AT = 0x0C0        # two voices a key split picks from
   SPLIT_TABLE_AT = 0x0E0        # 128 bytes
   KIT_AT = 0x160                # a drum kit's voices, 12 bytes a key, keys 0, 1, 36 and 38 written
-  DRIFT_SONG_AT = 0x590         # a late part at a tempo whose count never comes back in a few times round
+  TIES_SONG_AT = 0x580          # ties let go by EOT at a tempo that is not a tick a frame
+  DRIFT_SONG_AT = 0x590        # a late part at a tempo whose count never comes back in a few times round
   APART_SONG_AT = 0x5A0         # a song whose tracks' loops do not divide each other
   LATE_SONG_AT = 0x5B0          # a song with a track that first sounds after a short track's many rounds
   MIXED_SONG_AT = 0x5C0        # a song whose tracks switch between plain voices, the kit and the split
@@ -130,6 +131,15 @@ module M4AAnswers
   DRIFT_TRACKS = [[[:tempo, 41], [:voice, 1], [:vol, 127], [:label, :round], [:note, 6, 60, 100], [:wait, 6], [:goto, :round]],
                   [[:voice, 2], [:vol, 100], [:wait, 96], [:wait, 96], [:label, :round], [:note, 24, 72, 110], [:wait, 24],
                    [:note, 24, 76], [:wait, 24], [:goto, :round]]].freeze
+  # Ties let go by EOT at a tempo that is not a tick a frame. The first track opens at a tempo of 250
+  # for 96 ticks, several a frame, then sets 76 (152 added to the count a frame, a tick on a little
+  # under a frame) and goes round every 24 ticks. The second ties key 47 on tick 108 and lets it go
+  # with an EOT naming no key on tick 214; then ties key 50 and lets it go with an EOT naming it.
+  TIES_TRACKS = [[[:tempo, 250], [:voice, 1], [:vol, 100], [:wait, 96], [:tempo, 76], [:label, :round], [:note, 12, 60, 100],
+                  [:wait, 24], [:goto, :round]],
+                 [[:voice, 0], [:vol, 100], [:wait, 96], [:wait, 12], [:tie, 47, 127], [:wait, 84], [:wait, 22],
+                  [:eot], [:wait, 2], [:tie, 50, 100], [:wait, 48], [:eot, 50], [:note, 24, 52, 90], [:wait, 24],
+                  [:label, :round], [:note, 12, 55], [:wait, 12], [:goto, :round]]].freeze
   # Two loops apart, a tick a frame: the first track goes round every 6 ticks from its start, the
   # second every 9 from tick 12, so they come round together every 18.
   APART_TRACKS = [[[:voice, 1], [:vol, 127], [:label, :round], [:note, 3, 60, 100], [:wait, 6], [:goto, :round]],
@@ -234,7 +244,7 @@ module M4AAnswers
 
   COPY = copy_with({ SONG_AT => TRACKS, ENDING_SONG_AT => ENDING_TRACKS, MIXED_SONG_AT => MIXED_TRACKS,
                      ROUNDS_SONG_AT => ROUNDS_TRACKS, BENDING_SONG_AT => BENDING_TRACKS, LATE_SONG_AT => LATE_TRACKS,
-                     DRIFT_SONG_AT => DRIFT_TRACKS, APART_SONG_AT => APART_TRACKS }).freeze
+                     DRIFT_SONG_AT => DRIFT_TRACKS, APART_SONG_AT => APART_TRACKS, TIES_SONG_AT => TIES_TRACKS }).freeze
 
   # --- the player --------------------------------------------------------------------------------
 

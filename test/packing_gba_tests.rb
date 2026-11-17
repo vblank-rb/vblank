@@ -230,6 +230,26 @@ module PackingGBATests
     assert_song_comes_round(M4AAnswers::APART_SONG_AT, length: 30, loop_frame: 12, late_from: 12)
   end
 
+  # TIES LET GO BY EOT AT A TEMPO NOT A TICK A FRAME (M4AAnswers::TIES_TRACKS). Tick 0 plays on frame
+  # 0, then 500 is added a frame, so tick 96 plays on frame 29 and leaves 100; from there 152 a frame,
+  # so tick n plays on frame 29 + ceil((150(n - 96) - 100) / 152). The tie on tick 108 (frame 41) is
+  # let go by an EOT naming no key on tick 214 (frame 145): 104 frames. The tie on tick 216 (frame
+  # 147) is let go by an EOT naming its key on tick 264 (frame 195): 48 frames.
+  def test_a_tie_is_held_the_frames_to_the_eot_that_lets_it_go
+    song = M4AAnswers::TIES_SONG_AT
+    Dir.mktmpdir do |folder|
+      slots = m4a_slots(folder) do |copy, pack|
+        2.times { |track| copy.unpack_m4a_track at: song, into: pack[:"track_#{track}"], track: track }
+      end
+
+      ties = VBlank::Original::PackNote.list_in(slots.fetch(:track_1)).first(2).map { |note| [note.at, note.length] }
+      assert_equal [[41, 104], [147, 48]], ties
+      2.times do |track|
+        assert_equal M4AAnswers.track_bytes(song, track, count: M4A_NOTES), slots.fetch(:"track_#{track}"), "track #{track}"
+      end
+    end
+  end
+
   # The two-track song at +song+ read: its +length+ and +loop_frame+, its second track's notes from
   # frame +late_from+ written, and both tracks' notes the answer key's.
   private def assert_song_comes_round(song, length:, loop_frame:, late_from:)

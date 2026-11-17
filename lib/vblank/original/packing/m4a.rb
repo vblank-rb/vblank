@@ -279,7 +279,10 @@ module VBlank
 
           def track_list(name) = list(name, MOST_TRACKS)
 
-          def sounding_list(name) = list(name, MOST_SOUNDING)
+          # A list of the notes sounding, named apart from the tracks' lists: both have sixteen
+          # entries, so a sounding note's key under the name a track's key has would be the same list,
+          # and striking a note in entry 3 would change track 3's key.
+          def sounding_list(name) = list(:"sounding_#{name}", MOST_SOUNDING)
 
           # A cartridge address read from the copy at +at+, as a place in the copy.
           def address_at(at) = M4A.word_at(@block, at) & ADDRESS_BITS
