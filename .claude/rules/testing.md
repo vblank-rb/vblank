@@ -107,7 +107,7 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `ractor_workers.rb` (for a test that starts Ractor workers by hand: quiet about Ractors being experimental, and a worker's error raised as it was),
 `compared_without_advance_emulator.rb` (two cartridges of a console that does not play in the Advance's emulator, compared in a child process where that emulator cannot load, for the Genesis's and the Super Nintendo's tests),
 `ps1_pass_work.rb` (a PlayStation game whose pass is a loop of work, and the turns of it, measured in the emulator as the test runs, that end every pass a given range of lines past the blank, for the profile's, the pad's and the checked run's tests of passes longer than a frame),
-`slow_pass_games.rb` (a box that steps a pixel a pass, and a build of it whose every fourth pass counts itself and moves the box a frame later, built for any console, for each console's test of a comparison's `passes_compared_at: :end` and of where it starts after lead-ins that leave the two builds passes apart and what the one behind presses as it catches up),
+`slow_pass_games.rb` (a box that steps a pixel a pass, and a build of it whose every fourth pass counts itself and moves the box a frame later, its busy loop's turns measured in the console's emulator as the test runs, built for any console, for each console's test of a comparison's `passes_compared_at: :end` and of where it starts after lead-ins that leave the two builds passes apart and what the one behind presses as it catches up),
 `made_up_original.rb` (the made-up Game Boy Advance original and a game reading it through a data pack, for the data pack, copy reader, packing and shell tests),
 `pieced_original.rb` (that original's songs rendered by a part in pieces, a song a piece in rooms of uneven size, for the tests of pieces on the build and on the Ruby and web shells' workers),
 `folder_original.rb` (a made-up computer original that is a folder of files, `test/fixtures/folder_original/`, and a port reading it, for the copy, copy reader and shell tests),
@@ -283,6 +283,27 @@ its neighbour.
 ## Guardrail tests
 
 Assert the friendly error a misuse raises: its class and a key phrase, never the exact wording.
+
+## A speed check counts work, never seconds
+
+A test that can fail because the machine is busy is a bad test: the suite shares the cores with
+itself and with other work. So a check that something is quick enough counts work that load cannot
+change, with a budget set from a measured baseline and the reason written beside it:
+
+- on a console, the emulator's cycles, scanlines or frames (`costs.md`);
+- in a runtime on the computer, the objects a pass makes (`GC.stat(:total_allocated_objects)`), calls
+  into its routines (`LiveGame#count_calls`, which wraps them on that game alone, so a real game pays
+  nothing), pixels written, or the shape of what the build prints (`test_ruby_unpacking_pace.rb`);
+- in the desktop window's pacing, `--counted-clock`, a clock moved only by the waits it asks for.
+
+Work that must be slow is slow by construction: a pass that waits, or a busy loop whose turns are
+measured in the emulator as the test runs (`ps1_pass_work.rb`, `slow_pass_games.rb`), never a turn
+count written down, which the next speed-up of the lowering breaks.
+
+A clock may stay only where load cannot fail the test: a bound from below (a run cannot be quicker
+than the frames it waits out), or a generous hang guard that a passing run never reaches, with a
+comment saying it only catches a hang. Whether Ruby keeps up with the console in real time is a
+measurement for a person, outside the suite: `rake speed:ruby`.
 
 ## Gotchas
 
