@@ -94,30 +94,31 @@ module VBlank
             asm = W65816.new("runtime")
             count_at = lowering.variables[IR::Frames::COUNT]
             counted = lowering.counts_from_power_on?
-            Int32.emit(asm, Int32.scratch(memory, fractions: lowering.fractions?), divides: lowering.divides?)
-            pad = memory.scratch(4)
+            s = scratch(memory, c, fractions: lowering.fractions?)
+            Int32.emit(asm, s.int32, divides: lowering.divides?)
+            pad = s.pad
             Frame.emit(asm, memory, pad: pad, sound: c.sound, extra_buttons: c.extra_buttons,
                                     second_controller: c.second_controller, dims: c.dims, sleeps_every_pass: sleeps_every_pass,
                                     count_at: count_at)
-            Blank.emit(asm, memory, Blank.scratch(memory))
-            lists = Lists.scratch(memory)
+            Blank.emit(asm, memory, s.blank)
+            lists = s.lists
             Lists.emit(asm, memory, lists)
             run_count = c.tile_runs.length
-            Picture.emit(asm, memory, work: memory.scratch(8), painted: c.painted, bar: c.bar?, bent: lowered[:bent], banded: lowered[:banded],
+            Picture.emit(asm, memory, work: s.picture, painted: c.painted, bar: c.bar?, bent: lowered[:bent], banded: lowered[:banded],
                                       tile_runs: run_count, straight_tile_runs: c.straight_tile_runs, held_runs: c.held_runs,
-                                      run_scratch: (Picture.run_scratch(memory) if run_count.positive?),
+                                      run_scratch: s.tile_runs,
                                       see_through: lowered[:see_through], sprite_depths: lowered[:sprite_depths], big_tiles: lowered[:big_tiles],
                                       sprite_squares: lowered[:sprite_squares], changing_colors: c.changing_colors,
                                       math_turns: c.math_turns, scene_bars: lowered[:scene_bars], third_layer: c.third_layer,
                                       held_hides_sprites: c.held_hides_sprites)
             if c.doubled
-              PaintDoubled.emit(asm, memory, Paint.scratch(memory), band: c.shown_band, columns: lowering.paints_columns?)
+              PaintDoubled.emit(asm, memory, s.paint, band: c.shown_band, columns: lowering.paints_columns?)
             elsif c.painted
-              Paint.emit(asm, memory, Paint.scratch(memory), chip: c.chip?, columns: lowering.paints_columns?)
+              Paint.emit(asm, memory, s.paint, chip: c.chip?, columns: lowering.paints_columns?)
             end
-            Tint.emit(asm, memory, Tint.scratch(memory), colors_shown: lowered[:colors_shown], changing_colors: c.changing_colors, dims: c.dims,
+            Tint.emit(asm, memory, s.tint, colors_shown: lowered[:colors_shown], changing_colors: c.changing_colors, dims: c.dims,
                                scene_backdrops: c.scene_backdrops, backdrop_follows: c.backdrop_follows)
-            Collide.emit(asm, memory, Collide.scratch(memory))
+            Collide.emit(asm, memory, s.collide)
             Mosaic.emit(asm, memory, backgrounds: lowering.mosaic_backgrounds) if c.mosaic
             Chip.emit(asm, memory, pad: pad, extra_buttons: c.extra_buttons, second_controller: c.second_controller) if c.chip?
             if c.letterboxes?
@@ -126,7 +127,7 @@ module VBlank
               Letterbox.emit_named_band(asm, memory, c.shown_band, dims: c.dims)
             end
             if c.saves
-              saving = Saving.scratch(memory)
+              saving = s.saving
               Saving.emit(asm, memory, saving, bank: c.board.save_bank, size: c.saves)
               Saving.emit_list_moves(asm, saving, lists) if lowering.moves_lists_to_save?
             end
@@ -153,6 +154,37 @@ module VBlank
           # What #sections made: the sections, and how much of the sound chip's memory the game uses
           # (Cartridge::SNESROM::SoundMemory), nil for a game with no sound.
           Made = Data.define(:sections, :sound_memory)
+
+          # The runtime's scratch on the direct page, one part for each routine that works there,
+          # nil for a part the cartridge does not carry.
+          Scratch = Data.define(:int32, :pad, :blank, :lists, :picture, :tile_runs, :paint, :tint, :collide, :saving)
+
+          # The scratch #sections works in, taken from +memory+'s direct page, for a cartridge that
+          # carries +carries+, with the fractions' part where +fractions+.
+          def scratch(memory, carries, fractions:)
+            c = carries
+            Scratch.new(int32: Int32.scratch(memory, fractions: fractions), pad: memory.scratch(4),
+                        blank: Blank.scratch(memory), lists: Lists.scratch(memory), picture: memory.scratch(8),
+                        tile_runs: (Picture.run_scratch(memory) if c.tile_runs.length.positive?),
+                        paint: (Paint.scratch(memory) if c.doubled || c.painted),
+                        tint: Tint.scratch(memory), collide: Collide.scratch(memory),
+                        saving: (Saving.scratch(memory) if c.saves))
+          end
+
+          # HOW MANY BYTES OF THE DIRECT PAGE #sections TAKES for its scratch, for a cartridge that
+          # carries +carries+, the fractions' part counted where +fractions+. Known before the game is
+          # lowered, so the rest of the page can go to the game's busiest variables
+          # (Lowering#place_variables) and the scratch still finds its room after them. Scratch that
+          # does not fit the page at all holds the whole page, and #sections says so in its place,
+          # after any refusal the lowering makes first.
+          def scratch_bytes(carries, fractions:)
+            probe = Memory.new
+            before = probe.scratch_free
+            scratch(probe, carries, fractions: fractions)
+            before - probe.scratch_free
+          rescue Memory::Full
+            before
+          end
 
           # What +lowering+ reports the runtime needs, asked once and in this order, since a section
           # asked for is made then.

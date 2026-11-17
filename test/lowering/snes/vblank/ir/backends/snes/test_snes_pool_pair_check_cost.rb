@@ -66,11 +66,13 @@ class TestSNESPoolPairCheckCost < Minitest::Test
   # (SNES::Lowering#turns_countable_in_y?, Backends::PoolLayout::Tables,
   # SNES::Lowering#emit_stepped_walk), and no test of whether a thing is live where every thing on
   # the chain is (LoweringPlan#dead_on_chain?), and the walk ending on the last thing's NONE link
-  # where the chain cannot change during it (LoweringPlan#chain_changed_during_walks?).
-  def test_one_more_thing_to_check_costs_under_560_master_clocks
+  # where the chain cannot change during it (LoweringPlan#chain_changed_during_walks?), and the
+  # walk's own numbers and the routine's busiest variables on the direct page
+  # (SNES::Lowering#place_variables): 532 before that, 490 after.
+  def test_one_more_thing_to_check_costs_under_510_master_clocks
     per_pair = (routine_clocks(self.class.game(4)) - routine_clocks(self.class.game(2))) / 2
 
-    assert_operator per_pair, :<, 560
+    assert_operator per_pair, :<, 510
   end
 
   # With the places in half words, the difference and its test are worked out in 16 bits

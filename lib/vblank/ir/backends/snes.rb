@@ -219,6 +219,7 @@ module VBlank
                                                sprite_tiles: settings.sprite_tiles, background_tiles: settings.background_tiles)
           Runtime.reserve(memory, carries)
           Runtime::Frame.reserve_last_pass(memory) if cache.plan.keeps_last_pass_number?
+          memory.keep_scratch_room(Runtime.scratch_bytes(carries, fractions: Lowering.fractions_named?(program)))
           lowering = try.made = Lowering.new(program, memory: memory, sprite_squares: settings.sprite_squares,
                                                       screen_colors: settings.screen_colors,
                                                       sprite_colors: settings.sprite_colors, sprite_tiles: settings.sprite_tiles,

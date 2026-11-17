@@ -329,7 +329,7 @@ class TestSNESCheckedRun < Minitest::Test
       work = var :work, 0
       size = var :size, 0
       game_loop do
-        size = (size + 13) % 500
+        size = (size + 13) % 700
         repeat(size + 100) { work += 1 }
       end
     end

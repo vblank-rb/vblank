@@ -368,6 +368,10 @@ module VBlank
         # What range each number of the program stays in (NumberRanges), for a lowering that works a
         # small one at a narrower width. A game loop's own numbers (IR::Frames::ConsoleLoop) are
         # written by statements the program does not hold, so nothing is proven of them.
+        # How often a run names each variable, weighted by the loops around it (VariableUse), for a
+        # lowering that keeps the busiest where its processor reaches them quickest.
+        def variable_use = @variable_use ||= VariableUse.new(@program)
+
         def number_ranges
           @number_ranges ||= NumberRanges.new(@program, also_whole: game_loops.flat_map { |node| console_loop(node).variables })
         end

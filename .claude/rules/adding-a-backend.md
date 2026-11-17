@@ -128,6 +128,10 @@ writing an instruction is shared, because two copies of a decision drift apart:
   its 16-bit accumulator (`SNES::Lowering#compare_within_halves`), the Color a byte or two at a time
   (`GBC::Lowering::SmallNumbers`), and the Color keeps its byte variables in a byte
   (`GBC::ByteVariables`). `test/all/vblank/ir/backends/test_number_ranges.rb` holds the proof to the game.
+- `Backends::VariableUse` (`LoweringPlan#variable_use`) — how often a run names each variable, each
+  place weighted by the loops around it and a routine's by its calls, so a lowering whose console has
+  a little memory quicker than the rest keeps its busiest variables there: the SNES's direct page
+  (`SNES::Lowering#place_variables`).
 - `Backends::BuildTries` — a build as a series of tries, each a whole lowering with one set of
   settings (a Data), until one fits: each try timed and logged, what a try found kept for the
   tries after it, attempts the build can go back from, a better try kept only if it fits, and

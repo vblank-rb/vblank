@@ -501,12 +501,22 @@ module VBlank
           # A number of the routine's own, kept in work RAM, by a name of its own that a value can
           # read as a variable. +start+ is what it holds from power-on.
           #
-          # It goes in the first 8K while that has more room than the runtime still asks for after
-          # the lowering (NEAR_BYTES_LAST), and past it after that, as the variables named least do.
-          def keep_local(what, start: 0)
+          # It goes on the direct page where there is room: one read on +every_turn+ of a walk in the
+          # room held for those (#place_variables), any in what the variables left. Then in the first
+          # 8K while that has more room than the runtime still asks for after the lowering
+          # (NEAR_BYTES_LAST), and past it after that, as the variables named least do.
+          def keep_local(what, start: 0, every_turn: false)
             name = DerivedNames.local_number_name(@routine, what, @locals.length + 1)
             label = "the game's number #{name}"
-            @locals[name] = @memory.near_bytes_left >= NEAR_BYTES_LAST + 4 ? @memory.reserve(label, 4) : @memory.reserve_far(label, 4)
+            @locals[name] = if every_turn && @memory.direct_bytes_held >= 4
+                              @memory.reserve_direct(label, 4, held: true)
+                            elsif @memory.direct_bytes_left >= 4
+                              @memory.reserve_direct(label, 4)
+                            elsif @memory.near_bytes_left >= NEAR_BYTES_LAST + 4
+                              @memory.reserve(label, 4)
+                            else
+                              @memory.reserve_far(label, 4)
+                            end
             @starts << [@locals[name], start] unless start.zero?
             record_call_number(name, what)
             name
@@ -543,10 +553,17 @@ module VBlank
             @variables.fetch(name) { @locals.fetch(name) { raise LoweringError, "#{name.inspect} is not a variable the program keeps" } }
           end
 
-          # What the lowering reads and writes a number at: a variable in the first 8K, which every
-          # bank the code runs in can see, or one past it, named by its whole address. That costs a
-          # byte more and a cycle more each time.
-          def at_place(at) = at > 0xFFFF ? @asm.long(at) : @asm.abs(at)
+          # What the lowering reads and writes a number at: a variable on the direct page, named by
+          # its low byte; one in the rest of the first 8K, which every bank the code runs in can see;
+          # or one past it, named by its whole address. Each costs a byte more and a cycle more each
+          # time than the one before it. While D is on another page (#emit_sort_in_place) a direct
+          # page variable is named by its 16-bit address, which reaches the same byte.
+          def at_place(at)
+            return @asm.long(at) if at > 0xFFFF
+            return @asm.direct(at) if Memory.direct?(at) && !@direct_page_moved
+
+            @asm.abs(at)
+          end
 
           # Bytes of the first 8K left for what is kept after the variables: the routines' own
           # numbers, and what the runtime asks for as it is written.
@@ -562,11 +579,60 @@ module VBlank
           # ones the framework keeps for it (`__approach_2`) alike, since the lowering reads and
           # writes every one by the address it was given. A game that fits is laid out as it always
           # was. Only the variables the runtime reads by a 16-bit address stay near (NEAR_ONLY).
+          #
+          # AND THE BUSIEST ON THE DIRECT PAGE, as many as fit in the room the runtime's scratch
+          # leaves there (Memory#reserve_direct): chosen by how often the game names each, weighted
+          # by the loops around it (Backends::VariableUse), and given their places before the rest so
+          # that a game too big for the first 8K sends the least named far, not these. A direct page
+          # place is also an address in the first 8K, so the runtime's own code, which reads a few
+          # variables by their 16-bit address, finds them there all the same.
+          #
+          # A walk of a pool stepped the console's way (#emit_stepped_walk) reads numbers of its own
+          # on every turn in place of the walk's variables, made only as the walk is lowered. Each
+          # is ranked with the variable it stands in for, and room is held for it if it wins.
           def place_variables(names)
-            far = variables_kept_far(names)
-            names.each do |name|
-              label = "the variable #{name.inspect}"
+            chosen = direct_page_choices(names)
+            direct = chosen.filter_map(&:variable)
+            @memory.hold_direct_room(chosen.count { |choice| choice.variable.nil? } * 4)
+            far = variables_kept_far(names - direct)
+            direct.each { |name| @variables[name] = @memory.reserve_direct(variable_label(name), variable_bytes(name)) }
+            (names - direct).each do |name|
+              label = variable_label(name)
               @variables[name] = far.include?(name) ? @memory.reserve_far(label, 4) : @memory.reserve(label, 4)
+            end
+          end
+
+          def variable_label(name) = "the variable #{name.inspect}"
+
+          # The bytes the variable +name+ is kept in: all four of its number.
+          def variable_bytes(_name) = 4
+
+          # What may go on the direct page, and how much the game names it: a variable, or (with no
+          # variable) a number a stepped walk keeps of its own every turn, ranked as the walk's
+          # variable it stands in for.
+          DirectPageChoice = Data.define(:variable, :weight, :bytes)
+
+          # What goes on the direct page, of +names+ and the stepped walks' own numbers: the busiest
+          # that the game names at all, each taking its bytes of the room left there, until one does
+          # not fit. Of equal weight, the first in +names+ first, and the walks' numbers after them.
+          def direct_page_choices(names)
+            use = @plan.variable_use
+            choices = names.map { |name| DirectPageChoice.new(variable: name, weight: use.weight(name), bytes: variable_bytes(name)) }
+            choices.concat(walk_numbers_by_weight(use))
+            room = @memory.direct_bytes_left
+            ranked = choices.select { |choice| choice.weight.positive? }.each_with_index.sort_by { |choice, i| [-choice.weight, i] }
+            ranked.map(&:first).take_while { |choice| (room -= choice.bytes) >= 0 }
+          end
+
+          # The numbers each walk of a pool the run reaches keeps of its own every turn where it is
+          # stepped (#emit_stepped_walk): the thing it goes to next, the last, and the thing it is on
+          # scaled, each weighted as the walk's variable it stands in for. A walk the lowering does
+          # not step its own way makes none of them, and the room held for its numbers goes to
+          # whatever the lowering keeps of its own after.
+          def walk_numbers_by_weight(use)
+            @reachable.select { |node| node.kind == :repeat }.filter_map(&:pool_walk).flat_map do |walk|
+              kept = [walk.ahead, (walk.last if @plan.chain_changed_during_walks?(walk.pool)), walk.at].compact
+              kept.map { |name| DirectPageChoice.new(variable: nil, weight: use.weight(name), bytes: 4) }
             end
           end
 
@@ -773,7 +839,7 @@ module VBlank
             number &= 0xFFFF_FFFF
             [number & 0xFFFF, number >> 16].each_with_index do |half, i|
               if half.zero? && at <= 0xFFFF # nothing stores a nought straight to a whole address
-                @asm.stz(@asm.abs(at + (2 * i)))
+                @asm.stz(at_place(at + (2 * i)))
               else
                 @asm.lda(half)
                 @asm.sta(at_place(at + (2 * i)))
@@ -897,7 +963,7 @@ module VBlank
             end
 
             at = place_of(name)
-            return @asm.inc(@asm.abs(at)) if short_counter?(name) && at <= 0xFFFF
+            return @asm.inc(at_place(at)) if short_counter?(name) && at <= 0xFFFF
 
             emit_sum(name, :+, Build.int(1))
           end
@@ -948,6 +1014,9 @@ module VBlank
             return false unless loaded || node.index.nil? || node.index == counter
 
             body = loaded ? children_of(node).first[0...-1] : children_of(node).first
+            # A part cut off a body too big for a bank is called (RoutineCuts), and a call can change Y.
+            return false if body.any?(RoutineCuts::PartCall)
+
             # A counted while asks only at its end, the compare of the count (ControlFlow#emit_counted_while).
             asked = loaded ? [] : [Build.if_(node.stop_when)]
             nodes = Reach.statements_from(*body, *asked)
@@ -1035,11 +1104,19 @@ module VBlank
           # stores the slot it is on and then compares it and reads lists at it straight after. Only
           # where what follows sets the flags itself (a compare, a shift), as the load it saves would.
           def emit_low_half_load(operand)
-            address = operand.value + operand.plus if operand.is_a?(W65816::Operand) && operand.mode == :abs && operand.value.is_a?(Integer)
+            address = operand.value + operand.plus if variable_operand?(operand)
             return if address && @asm.accumulator_holds == address
 
             @asm.lda(operand)
             @asm.note_accumulator_holds(address) if address
+          end
+
+          # Whether +operand+ names a variable's place by its address: a 16-bit one, or a direct page
+          # one past the working numbers, which the lowering's own code writes only through R0.
+          def variable_operand?(operand)
+            return false unless operand.is_a?(W65816::Operand) && operand.value.is_a?(Integer)
+
+            operand.mode == :abs || (operand.mode == :dp && operand.value >= Memory::SCRATCH)
           end
 
           # The low half of a short counter compared, unsigned, with a number written in the program
@@ -1078,13 +1155,16 @@ module VBlank
           # $0000, after.
           def emit_sort_in_place(body)
             page = @keyed_sorts.fetch(body.last.name).page
-            if page
-              @asm.lda(page)
-              @asm.tcd
-            end
-            body.each { |each_node| statement(each_node) }
-            return unless page
+            return body.each { |each_node| statement(each_node) } unless page
 
+            @asm.lda(page)
+            @asm.tcd
+            begin
+              @direct_page_moved = true
+              body.each { |each_node| statement(each_node) }
+            ensure
+              @direct_page_moved = false
+            end
             @asm.lda(0)
             @asm.tcd
           end
@@ -1463,22 +1543,21 @@ module VBlank
             walk = node.pool_walk
             links = list_slots(walk.links)
             shifts = (links.stride - 1).bit_length
-            ahead = place_of(keep_local(:walk_ahead))
-            last = place_of(keep_local(:walk_last))
+            ahead = place_of(keep_local(:walk_ahead, every_turn: true))
+            # Where the chain cannot change while the walk runs, the last thing's link is NONE and
+            # the walk stops on it alone (LoweringPlan#chain_changed_during_walks?), keeping no last.
+            last = place_of(keep_local(:walk_last, every_turn: true)) if @plan.chain_changed_during_walks?(walk.pool)
             at = place_of(walk.at)
             index = place_of(node.index)
             # X, INC and DEC reach only the first 64K by their short address; a walk whose numbers
             # went further is walked the tree's way.
-            return emit_control_flow_statement(node) if [ahead, last, at, index].any? { |place| place > 0xFFFF }
+            return emit_control_flow_statement(node) if [ahead, last, at, index].compact.any? { |place| place > 0xFFFF }
 
             top = fresh("walk")
             done = fresh("walk_done")
             body = @plan.walk_body(node)
             current = scaled_current(walk, body, at, links.stride)
             store_number(index, 0)
-            # Where the chain cannot change while the walk runs, the last thing's link is NONE and
-            # the walk stops on it alone (LoweringPlan#chain_changed_during_walks?).
-            last = nil unless @plan.chain_changed_during_walks?(walk.pool)
             emit_slot_scaled(place_of(walk.ahead), ahead, shifts)
             emit_slot_scaled(place_of(walk.last), last, shifts) if last
             current&.partners&.each { |name, scaled| emit_slot_scaled(place_of(name), scaled, shifts) }
@@ -1565,8 +1644,8 @@ module VBlank
 
               partners << partner if partner
             end
-            ScaledCurrent.new(at: at, scaled: place_of(keep_local(:walk_at_scaled)), stride: stride,
-                              partners: partners.uniq.to_h { |name| [name, place_of(keep_local(:walk_partner_scaled))] })
+            ScaledCurrent.new(at: at, scaled: place_of(keep_local(:walk_at_scaled, every_turn: true)), stride: stride,
+                              partners: partners.uniq.to_h { |name| [name, place_of(keep_local(:walk_partner_scaled, every_turn: true))] })
           end
 
           # Whether +node+ reads +operands+, the walk's variable, only as the index of a slot of a list
@@ -3520,6 +3599,14 @@ module VBlank
           def value_of_mul_fix(node) = emit_fraction_call("rt_mul_fix", node)
           def value_of_div_fix(node) = emit_fraction_call("rt_div_fix", node)
 
+          # The kinds of value #emit_fraction_call makes.
+          FRACTION_KINDS = %i[mul_fix div_fix].freeze
+
+          # Whether +program+ names a multiply or divide of numbers with a fraction anywhere, so its
+          # runtime can carry the routines for them (#fractions?, known only once it is lowered):
+          # asked before, for the room their scratch takes (Runtime.scratch_bytes).
+          def self.fractions_named?(program) = program.walk.any? { |node| FRACTION_KINDS.include?(node.kind) }
+
           def emit_fraction_call(routine, node)
             @fractions = true
             runtime_call(routine, [node.lhs, node.rhs, fraction_bits(node)])
@@ -3625,7 +3712,7 @@ module VBlank
           # a loop that never reads it, cannot stop the game.
           def with_invariant_reads_kept(node)
             kept = invariant_reads(node).to_h do |read|
-              number = keep_local(:kept_read)
+              number = keep_local(:kept_read, every_turn: true)
               value(read)
               store(number)
               [[read.name, read.index.name], number]
