@@ -85,12 +85,14 @@ class TestGBCBarLettersCost < Minitest::Test
 
   # The bar's top row written a letter a line, each from PACK_TEXT through the pack, or with +named+
   # by the name of the same tile; +letters+ nought writes none.
-  private def pack_letters_game(folder, letters, named: false)
+  # With +column_kept+ each letter's column is worked out and kept in a variable first, as a
+  # scrolling text keeps where it has reached.
+  private def pack_letters_game(folder, letters, named: false, column_kept: false)
     from = pack_text_original(folder)
     names = KEY_NAMES.first(48)
     art = LETTER_ART
     numbers = PACK_TEXT
-    VBlank.game("PACK BAR #{letters}#{' NAMED' if named}", consoles: %i[gbc]) do
+    VBlank.game("PACK BAR #{letters}#{' NAMED' if named}#{' KEPT' if column_kept}", consoles: %i[gbc]) do
       screen :tiled
       pack = data_pack from: from, version: "1" do |slots|
         slots.numbers :text, count: numbers.length, width: :byte, signed: false
@@ -106,8 +108,14 @@ class TestGBCBarLettersCost < Minitest::Test
       background :field, tiles: :field_tiles, map: Array.new(32) { "#" * 32 }
       bar = status_bar :bar, tiles: :bar_tiles, map: [names.first * 32, names.first * 32], top: screen_height - 16
       text = table :text, pack[:text]
+      place = var :place, 0
+      column = var :column, 0
       game_loop do
         letters.times do |col|
+          if column_kept
+            column.store!((place + col) & 0xFF)
+            next bar.set_tile(column, 0, text[col])
+          end
           next bar.set_tile(col, 0, text[col]) unless named
 
           bar.set_tile(col, 0, names[numbers[col]]) if numbers[col] < names.length
@@ -124,6 +132,23 @@ class TestGBCBarLettersCost < Minitest::Test
 
       assert_in_delta by_name, by_number, 0.001,
                       "#{LETTERS_A_PASS} letters from the pack cost #{(by_number * 100).round(3)}% of a frame, named #{(by_name * 100).round(3)}%"
+    end
+  end
+
+  # A COLUMN KEPT IN A VARIABLE the build proves stays in a byte is read as that byte, as a column
+  # ANDed with 0xFF is: the cell's place is the row's start plus that byte, not the four numbers the
+  # general routine takes. Its letters cost little more than those at columns written in the program:
+  # the column's own working out and keeping. Through the general routine they cost more than twice as much.
+  MOST_TIMES_A_WRITTEN_COLUMN = 1.35
+
+  def test_a_letter_at_a_column_kept_in_a_variable_costs_little_more_than_one_written
+    Dir.mktmpdir do |folder|
+      none = awake_share(pack_letters_game(folder, 0))
+      written = awake_share(pack_letters_game(folder, LETTERS_A_PASS)) - none
+      kept = awake_share(pack_letters_game(folder, LETTERS_A_PASS, column_kept: true)) - none
+
+      assert_operator kept, :<, written * MOST_TIMES_A_WRITTEN_COLUMN,
+                      "#{LETTERS_A_PASS} letters at kept columns cost #{(kept * 100).round(3)}% of a frame, at written ones #{(written * 100).round(3)}%"
     end
   end
 end

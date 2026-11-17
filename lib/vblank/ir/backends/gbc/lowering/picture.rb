@@ -1602,7 +1602,7 @@ module VBlank
                 refuse_background!(bg, as_grid: true)
                 row = folded(node.row)
                 col = folded(node.col)
-                if row && (col || byte_valued?(node.col))
+                if row && (col || byte_column?(node.col))
                   return emit_cell_shown_when(node) do
                     cols, rows = map_size_of(bg)
                     routine = bg.bar? ? "rt_bar_cell" : "rt_background_cell"
@@ -1670,7 +1670,7 @@ module VBlank
               grid = bg.bar? ? Console::GBCHardware::TILE_MAP1 : Console::GBCHardware::TILE_MAP0
               col = folded(node.col)
               return emit_cell_at_known_place(routine, grid, col, row, [cols, rows], cell.value) if row && col
-              return emit_cell_at_known_row(routine, grid, node.col, row, [cols, rows], cell.value) if row && byte_valued?(node.col)
+              return emit_cell_at_known_row(routine, grid, node.col, row, [cols, rows], cell.value) if row && byte_column?(node.col)
 
               emit_cell_numbers(node.col, node.row, cols | (rows << 8), cell.value)
               @asm.call("#{routine}_taken")
@@ -1694,6 +1694,11 @@ module VBlank
               @asm.load(:b, :d)
               @asm.load(:c, :e)
             end
+
+            # Whether a cell's column can only be a byte from 0 to 255: a number ANDed with a byte, a
+            # byte of a table, or a number the build proves stays there (a scrolling text's column the
+            # game keeps in a variable), so only its low byte is read and compared with the map's width.
+            def byte_column?(col) = byte_valued?(col) || proven_within?(col, 0..0xFF)
 
             # A cell whose row and tile are written in the program and whose column can only be a
             # byte — a status bar's text, written a cell at a time — has its place worked out here:
