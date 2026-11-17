@@ -32,6 +32,7 @@ require_relative "ps1/lowering/picture"
 require_relative "ps1/lowering/collision"
 require_relative "ps1/lowering/faces"
 require_relative "ps1/lowering/sound"
+require_relative "ps1/lowering/shown_sort"
 require_relative "ps1/lowering"
 require_relative "ps1/headless_run"
 require_relative "ps1/polygon_fill" # the chip's fill of a triangle, the answer key the checked run draws faces with

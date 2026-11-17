@@ -932,22 +932,28 @@ module VBlank
             # one it holds now, and a place below nought counts back from the run's last sprite, as a Ruby array's
             # does. A place naming none of the run's sprites stops the game (Runtime::Tiles' rt_draw_order_fault),
             # where the interpreter stops.
+            #
+            # A SORTED RUN KEEPS ITS ENTRIES NOT SHOWING AT ITS FRONT (ShownSort), so the walk starts past
+            # them, and every entry it reaches was found showing by the sort on this pass: a place the sort
+            # asked is placed without being asked again.
             def emit_ordered_run(run)
               table = fresh_label("ordered_placings")
               past = fresh_label("past_ordered_placings")
               placings = run.objects.map { fresh_label("ordered_placing") }
+              shown = @shown_sorts&.fetch(run.order, nil)
+              found = found_showing_by_sort(run)
               @asm.b(past)
               @asm.label(table)
               @asm.data_words(placings)
               run.objects.each_with_index do |name, place|
                 @asm.label(placings[place])
                 emit_push(:ra)
-                emit_sprite_placing(object_named(name))
+                emit_sprite_placing(object_named(name), shown_known: found.include?(name))
                 emit_pop(:ra)
                 @asm.jr(:ra)
               end
               @asm.label(past)
-              emit_draw_order_walk(run) do |place|
+              emit_draw_order_walk(run, from: (Build.var_ref(shown.hidden) if shown)) do |place|
                 emit_value(Build.var_ref(place))
                 @asm.sll(:t0, :v0, 2)
                 @asm.la(:t1, table)
@@ -967,10 +973,11 @@ module VBlank
             def object_named(name) = @objects.fetch(name) { raise LoweringError, "present of undeclared object #{name.inspect}" }
 
             # One sprite placed if it is showing (Reference#objects_on_screen: its `active` is 1), from the table
-            # of its pictures in the colours it is drawn with now.
-            def emit_sprite_placing(obj)
+            # of its pictures in the colours it is drawn with now. +shown_known+ for one already found
+            # showing on this pass (#emit_ordered_run), which is not asked again.
+            def emit_sprite_placing(obj, shown_known: false)
               skip = fresh_label("sprite_off")
-              jump_unless(Build.binop(:==, obj.active, Build.int(1)), skip)
+              jump_unless(Build.binop(:==, obj.active, Build.int(1)), skip) unless shown_known
               table = obj.recolors.empty? ? LabelAddress.new(pose_table(obj.poses, followed_lists(obj))) : emit_recolored_pose_table(obj)
               level = [sprite_level(obj)] if @levels
               runtime_call("rt_sprite_place", [table, obj.pose, obj.x, obj.y, Build.int(@sprite_names.name_number(obj.declared)), *level])

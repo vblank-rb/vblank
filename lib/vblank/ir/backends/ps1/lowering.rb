@@ -204,6 +204,7 @@ module VBlank
           include Collision
           include Faces
           include Sound
+          include ShownSort
 
           def initialize(program, memory:, cache: BuildCache.for(PS1, program))
             @program = program
@@ -258,6 +259,7 @@ module VBlank
             keep_plane_corner_notes
             keep_loop_running
             keep_backdrop
+            keep_shown_sorts
             reserve_painted_numbers!
             routines = @called.to_h do |name|
               @lowering_scene = @scenes.key?(name) ? name : nil
@@ -839,6 +841,8 @@ module VBlank
 
           # Reference::ListValue.of: empty, or holding its capacity of the one number it is full of.
           def emit_list_new(node)
+            shown = @shown_sorts&.fetch(node.name, nil)
+            emit_shown_start(shown, node.capacity) if shown
             return list_call("rt_list_empty", node) unless node.full_of
 
             list_call("rt_list_at_capacity", node)
@@ -865,6 +869,7 @@ module VBlank
           def emit_list_drop(node) = list_call("rt_list_drop", node, Build.int(node.from == :front ? 1 : 0))
           def emit_list_fill(node) = list_call("rt_list_fill", node, node.from, node.count, node.value)
           def emit_list_set(node)
+            return if key_set_by_sort?(node)
             return emit_slot_write(node) unless @lists_dropped_from_front.include?(node.name)
 
             list_call("rt_list_set", node, node.index, node.value)
@@ -1138,7 +1143,10 @@ module VBlank
               return list_call("rt_list_sort", node, Build.int(keys.address), Build.int(node.descending ? 1 : 0))
             end
 
-            emit_fixed_front_sort(@lists.fetch(node.name), keys, node.descending)
+            list = @lists.fetch(node.name)
+            shown = @shown_sorts&.fetch(node.name, nil)
+            emit_shown_marked(node, shown, list) if shown
+            emit_fixed_front_sort(list, keys, node.descending, shown)
           end
 
           # AN INSERTION SORT IN THE ROUTINE'S OWN CODE, the way a console's own games sort their sprites by
@@ -1150,7 +1158,9 @@ module VBlank
           #
           # a0 is the list and a1 the numbers; t0 how many items, t1 the item being placed, t3 the place of
           # the slot it would go in, t4 the item and t5 its number, t7 and t8 the item before and its number.
-          def emit_fixed_front_sort(list, keys, descending)
+          # A sort handed +shown+ (ShownSort) starts at the first entry showing, whose slot, in a2, is the
+          # furthest back an item goes.
+          def emit_fixed_front_sort(list, keys, descending, shown = nil)
             lists = Runtime::Lists
             item_load = lists::LOADS.fetch(list.slot_bytes)
             item_store = lists::STORES.fetch(list.slot_bytes)
@@ -1162,10 +1172,17 @@ module VBlank
             place = fresh_label("sort_place")
             done = fresh_label("sort_done")
 
+            emit_value(Build.var_ref(shown.hidden)) if shown
             @asm.li(:a0, list.address)
             @asm.li(:a1, keys.address)
             @asm.lw(:t0, lists::LENGTH, :a0)
-            @asm.li(:t1, 1)
+            if shown
+              @asm.addiu(:t1, :v0, 1)
+              @asm.sll(:a2, :v0, item_shift)
+              @asm.addu(:a2, :a2, :a0)
+            else
+              @asm.li(:t1, 1)
+            end
             @asm.slt(:t2, :t1, :t0)
             @asm.beq(:t2, :zero, done)
             @asm.label(next_item)
@@ -1176,7 +1193,7 @@ module VBlank
             @asm.addu(:t5, :t5, :a1)
             @asm.load(key_load, :t5, lists::HEADER, :t5)
             @asm.label(step)
-            @asm.beq(:t3, :a0, place) # the first slot: nothing before it
+            @asm.beq(:t3, shown ? :a2 : :a0, place) # the first slot: nothing before it
             @asm.load(item_load, :t7, lists::HEADER - list.slot_bytes, :t3)
             @asm.sll(:t8, :t7, key_shift)
             @asm.addu(:t8, :t8, :a1)

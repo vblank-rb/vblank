@@ -46,7 +46,10 @@ module VBlank
         # Where two entries name no sprite, the one walked first is the one the game stops on: the
         # last of them on a console walking from the back, where the interpreter names the first. The
         # game stops on the same frame either way.
-        def emit_draw_order_walk(run, from_back: false)
+        #
+        # +from+, a value, is the first entry walked from the front, where it is not the first: the
+        # entries before it are ones its sort found not showing (IR ListSort's +shown+).
+        def emit_draw_order_walk(run, from_back: false, from: nil)
           count = run.objects.length
           index = keep_local(:draw_order_index)
           place = keep_local(:draw_order_place)
@@ -54,7 +57,11 @@ module VBlank
           counted = fresh_label("draw_order_place_counted")
           fault = fresh_label("draw_order_names_none")
           done = fresh_label("draw_order_walked")
-          from_back ? emit_draw_order_index_from_back(run, index, next_entry, done) : emit_draw_order_index_from_front(run, index, place, next_entry, done)
+          if from_back
+            emit_draw_order_index_from_back(run, index, next_entry, done)
+          else
+            emit_draw_order_index_from_front(run, index, place, next_entry, done, from || Build.int(0))
+          end
           emit_sprite_walk_read(place, Build.list_get(run.order, Build.var_ref(index)))
           entry = Build.var_ref(place)
           jump_unless(Build.binop(:<, entry, Build.int(count)), fault)
@@ -72,10 +79,10 @@ module VBlank
 
         private
 
-        # The index from nought, on to +done+ once it reaches the list's length, read again for every
+        # The index from +from+, on to +done+ once it reaches the list's length, read again for every
         # entry (into +place+ until the entry is read over it).
-        def emit_draw_order_index_from_front(run, index, place, next_entry, done)
-          statement(Build.set(index, Build.int(0)))
+        def emit_draw_order_index_from_front(run, index, place, next_entry, done, from)
+          statement(Build.set(index, from))
           place_label(next_entry)
           emit_sprite_walk_read(place, Build.list_len(run.order))
           jump_unless(Build.binop(:<, Build.var_ref(index), Build.var_ref(place)), done)
