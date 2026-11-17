@@ -34,15 +34,15 @@ class TestNumberRanges < Minitest::Test
 
     assert_equal NumberRanges::BYTE, ranges.variable(:copied)
     assert_includes ranges.variables_within(NumberRanges::HALF), :copied
-    assert_equal NumberRanges::HALF, ranges.variable(:masked)
+    assert_equal 0..1023, ranges.variable(:masked)
     refute_includes ranges.variables_within(NumberRanges::BYTE), :masked
   end
 
-  def test_a_count_that_climbs_without_a_bound_is_not_proven
+  def test_a_count_that_climbs_without_a_bound_is_not_proven_and_one_turned_round_is
     ranges = NumberRanges.new(built)
 
     assert_nil ranges.variable(:climbing)
-    assert_nil ranges.variable(:turned_round)
+    assert_equal(-1..1, ranges.variable(:turned_round))
   end
 
   def test_a_value_has_the_range_of_what_it_is_made_of
@@ -65,14 +65,78 @@ class TestNumberRanges < Minitest::Test
   def test_numbers_at_the_edges_of_16_bits_keep_the_interpreters_answers
     program = edges_game.program(console: VBlank::Testing.console)
     ranges = NumberRanges.new(program)
-    %i[up down copied_down].each { |name| assert_equal NumberRanges::HALF, ranges.variable(name), name }
-    assert_nil ranges.variable(:past)
+    assert_equal [0..32_767, -32_768..0, -32_768..0], %i[up down copied_down].map { |name| ranges.variable(name) }
+    assert_equal 0..32_768, ranges.variable(:past)
+    refute_includes ranges.variables_within(NumberRanges::HALF), :past
 
     player = game_player
     player.run(program, frames: 8)
 
     assert_equal [32_767, -32_768, -32_768, 32_768, -32_769, 7], %i[up down copied_down past below read].map { |name| player[name] }
     assert_operator player[:hits], :>, 0
+  end
+
+  # A difference of two numbers each kept in 0..2047 is about -2047..2047, its real range, not only
+  # "two bytes if both are". A range still growing is taken to the next bit, so -2048 at most.
+  def test_a_difference_has_the_real_range_of_its_sides
+    program = VBlank.game("DIFFERENCE", consoles: %i[gba gbc snes genesis ps1]) do
+      screen :bitmap
+      x = 0
+      y = 0
+      d = 0
+      game_loop do
+        x = (x + 3) & 2047
+        y = (y + x) & 2047
+        d = x - y
+      end
+    end.program(console: VBlank::Testing.console)
+
+    range = NumberRanges.new(program).variable(:d)
+
+    assert NumberRanges.inside?(-2047..2047, range), "the difference reaches both ends"
+    assert NumberRanges.inside?(range, -2048..2047), "#{range} is no wider than the next bit takes it"
+  end
+
+  # A POOL'S FIELDS AT THE EDGES OF 16 BITS: fields a console may keep in two bytes, spawned from a
+  # variable, driven to 32767 and -32768, written by one thing to another in a walk, and freed and
+  # spawned again; and whole numbers one past each made of them. Every run plays it.
+  def test_pool_fields_at_the_edges_of_16_bits_keep_the_interpreters_answers
+    program = pool_edges_game.program(console: VBlank::Testing.console)
+    widths = NumberRanges.new(program).list_widths
+    x_list, y_list = %i[x y].map { |field| VBlank::DSL::Pool.field_list(:thing, field) }
+    assert_equal({ x_list => :half, y_list => :half }, widths.slice(x_list, y_list))
+
+    player = game_player
+    player.run(program, frames: 10)
+
+    assert_equal [[32_767], [-32_768]], %i[x y].map { |field| player.pool(:thing, field).compact.uniq }
+    assert_equal [32_768, -32_769], %i[past below].map { |name| player[name] }
+  end
+
+  private def pool_edges_game
+    VBlank.game("FIELD EDGES", consoles: %i[gba gbc snes genesis ps1]) do
+      screen :bitmap
+      things = pool :thing, x: 0, y: 0, capacity: 4
+      start = 0
+      pass = 0
+      past = 0
+      below = 0
+      game_loop do
+        pass += 1
+        start = (start + 5) & 63
+        things.spawn(x: start, y: -3) if pass < 4 || pass == 7
+        things.each do |t|
+          t.x = (t.x + 9000).clamp(-32_768, 32_767)
+          t.y = (t.y - 9000).clamp(-32_768, 32_767)
+          t.remove if pass == 6 && t.index == 0
+        end
+        things.each { |t| things.each { |other| other.y = t.y if other.index != t.index } }
+        things.each do |t|
+          past = t.x + 1
+          below = t.y - 1
+        end
+      end
+    end
   end
 
   private def edges_game
@@ -98,6 +162,36 @@ class TestNumberRanges < Minitest::Test
         read = items[step]
       end
     end
+  end
+
+  # A slot keeps its low bits from the start too: a list of bytes filled with 200 holds -56, so
+  # 100 taken from an item is -156, which no byte holds.
+  def test_a_list_filled_past_its_slot_starts_with_what_the_slot_keeps
+    build = VBlank::IR::Build
+    program = build.program(build.list_new(:xs, 4, width: :byte, full_of: 200),
+                            build.set(:v, build.binop(:-, build.list_get(:xs, 0), 100)), build.wait_vblank, build.halt)
+
+    assert_equal(-56..-56, NumberRanges.new(program).list(:xs))
+    player = game_player
+    player.run(program, frames: 2)
+
+    assert_equal(-156, player[:v])
+  end
+
+  # A list declared twice, filled differently each time, holds what either filled it with.
+  def test_a_list_declared_twice_holds_what_each_declaration_fills_it_with
+    build = VBlank::IR::Build
+    program = build.program(build.list_new(:hp, 4, full_of: 1), build.set(:low, build.list_get(:hp, 0)),
+                            build.list_new(:hp, 4, full_of: 100_000), build.set(:high, build.list_get(:hp, 0)),
+                            build.wait_vblank, build.halt)
+    ranges = NumberRanges.new(program)
+
+    refute_includes ranges.list_widths.keys, :hp
+    assert NumberRanges.inside?(1..100_000, ranges.list(:hp)), "#{ranges.list(:hp)} holds both fills"
+    player = game_player
+    player.run(program, frames: 2)
+
+    assert_equal [1, 100_000], %i[low high].map { |name| player[name] }
   end
 
   private def built = counting_game.program(console: VBlank::Testing.console)

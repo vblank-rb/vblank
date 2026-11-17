@@ -19,31 +19,42 @@ module VBlank
       # table never changes), a comparison (1 or 0), a mask, a remainder, a shift, and sums,
       # differences and products of those, each only where Int32's answer cannot wrap.
       #
-      # A VARIABLE's range is proven, conservatively: it is a byte (or two) when every statement
-      # that names it is a read of it, or a write this can bound, and every write is proven to land
-      # in that range. The proof assumes the variables it names are in range too, and drops any
-      # whose write it cannot prove, over and over until none drops (the largest set that proves
-      # itself): a variable starts at nought, and each write keeps it in range as long as what it
-      # reads was, so by induction over the run every one stays in range. A write is proven when it is
+      # A VARIABLE'S AND A LIST'S RANGE are worked out together, as the lowest and highest numbers
+      # it can hold through the whole run. Each starts with what it holds as the game starts (a
+      # variable nought, a list what each of its declarations fills it with as its slot keeps it, or
+      # nought), and is widened by what each of its writes can put there, given the ranges so far
+      # of what the write reads, round after round until no range widens. What is left holds every
+      # number the run can put there: each write keeps its variable or list inside it as long as
+      # what it reads was, so by induction over the run nothing leaves it. A range still growing after WIDENING_ROUNDS rounds (a
+      # number added to and masked creeps up a round at a time) has each growing end taken out to
+      # the next number of one bit more (#next_bounds), which ends the rounds. So `x - y`
+      # with each in 0..2047 is about -2047..2047, not just "two bytes, if both are".
       #
-      # - `set` to a value whose range is proven;
-      # - `copy` from a variable in range;
-      # - `clamp` between bounds in range (Reference#exec_clamp holds it at the floor, then the
-      #   ceiling, which can only move it toward them);
-      # - a `repeat`'s turn number, for a count proven in range;
-      # - `add` or `sub` of a number written in the program, just after a `list_set` at the
-      #   variable in the same block with nothing between that can change it: the write to the
-      #   list stops the game unless the variable is a slot of it, so after the sum it is within
-      #   the list's capacity, moved by that number (a counter filling a list);
-      # - the one more ending a counted while (Backends::LoopForm#counted_while), to a limit in
-      #   range: the loop asks that the variable is below the limit before each turn and nothing
-      #   else in it writes either, so the sum is at most the limit.
+      # A variable's writes widen its range by
       #
-      # NOT proven: a variable any other statement names (a save, a timer, a `case`, an `every`),
-      # the frame's own counters, ones the caller names (+also_whole+: written by the lowering
-      # itself, as a game loop's own numbers are), the `negate` and `abs` statements (the lowest
-      # number of a range turned round is one past its highest), and a sum with no list holding it in. One the game declared narrow (IR::KeptWidths) is in its
-      # width wherever it is read, since the wrap follows each write to it.
+      # - `set` to a value: the value's range;
+      # - `copy` from a variable: that variable's range;
+      # - `clamp` (Reference#exec_clamp holds it at the floor, then the ceiling, which can only move
+      #   it toward them);
+      # - a `repeat`'s turn number: nought to the count;
+      # - `add` or `sub`: the variable's range moved by the operand's; and tighter where it is known,
+      #   just after a `list_set` at the variable in the same block with nothing between that can
+      #   change it (the write to the list stops the game unless the variable is a slot of it, so
+      #   after the sum it is within the list's capacity, moved by that number: a counter filling a
+      #   list), or as the one more ending a counted while (Backends::LoopForm#counted_while), whose
+      #   loop asks that the variable is below the limit before each turn, so the sum is at most
+      #   the limit.
+      #
+      # A list's writes widen its range by each item written (`list_set`, `list_push`); a slot keeps
+      # its low bits, so a number past its slot widens the range to the slot's.
+      #
+      # WHOLE, with nothing known: a variable any other statement names (a save, a timer, a `case`,
+      # an `every`), the frame's own counters, ones the caller names (+also_whole+: written by the
+      # lowering itself, as a game loop's own numbers are), and one written by `negate` or `abs`; a
+      # list any statement names but to read, write, drop or sort its items (a save, a copy from a
+      # table, a fill, a picture or a sound read from it), which reads as its slot's range. One the
+      # game declared narrow (IR::KeptWidths) is in its width wherever it is read, since the wrap
+      # follows each write to it.
       class NumberRanges
         BYTE = (-0x80..0x7F)
         HALF = (-0x8000..0x7FFF)
@@ -56,21 +67,35 @@ module VBlank
         # Operators whose answer is 1 or 0.
         TRUTHS = %i[< <= > >= == != and or].freeze
 
+        # Rounds of widening before a range still growing is taken to the next wider bounds.
+        WIDENING_ROUNDS = 16
+
+        # The kinds of statement that name a list only to read, write, drop or sort its items, so
+        # what it holds is what its writes put there.
+        ITEM_ONLY_KINDS = %i[list_new list_get list_len list_set list_push list_drop list_sort].freeze
+
+        # The slots a list can be kept in, narrowest first, with the numbers each holds.
+        NARROW_SLOTS = { byte: BYTE, half: HALF }.freeze
+
         # +also_whole+ is variables written outside any statement of +program+, which nothing here
         # can bound.
         def initialize(program, also_whole: [])
           @tables = program.walk.select { |node| node.kind == :table }.to_h { |node| [node.name, node] }
           @lists = lists_declared_once(program)
           @writes = Hash.new { |all, name| all[name] = [] }
+          @items_written = Hash.new { |all, name| all[name] = [] }
+          @lists_named_elsewhere = Set.new
           @holding_lists = {}.compare_by_identity
           @declared = (program.kept_widths || []).to_h.transform_values { |width| KeptWidths.lowest(width)..KeptWidths.highest(width) }
           whole = Set.new(also_whole) | Reach::FRAME_VARIABLES | @declared.keys
           program.walk { |node| record_naming(node, whole) }
           @counted_limits = counted_limits(program)
-          candidates = @writes.keys.reject { |name| whole.include?(name) }
-          @bytes = prove(candidates, BYTE, {})
-          @halves = prove(candidates - @bytes, HALF, @bytes.to_h { |name| [name, BYTE] })
-          @ranges = @declared.merge(@bytes.to_h { |name| [name, BYTE] }).merge(@halves.to_h { |name| [name, HALF] })
+          variables = @writes.keys.reject { |name| whole.include?(name) }
+          @list_ranges = {}
+          widen_to_fixed_point(variables, @lists.keys.reject { |name| @lists_named_elsewhere.include?(name) })
+          @bytes = variables.select { |name| NumberRanges.inside?(@ranges[name], BYTE) }
+          @halves = variables.select { |name| NumberRanges.inside?(@ranges[name], HALF) } - @bytes
+          @ranges = @declared.merge(@ranges.reject { |_name, range| range == WHOLE })
         end
 
         # The variables proven to stay in +range+ (BYTE or HALF), in the order the program first
@@ -86,6 +111,22 @@ module VBlank
         # Asked by the tests that hold the proof to the game (test_number_ranges.rb).
         def variable(name) = @ranges[name]
 
+        # The range the items of list +name+ stay in through the whole run: what its writes put
+        # there, or its slot's for a list written some other way.
+        def list(name) = @list_ranges[name] || slot_range(name)
+
+        # THE LISTS PROVEN TO HOLD ONLY NUMBERS NARROWER THAN THEIR SLOTS, each with the narrowest
+        # slot that holds every item exactly (:byte or :half), so a lowering can keep it in that slot:
+        # a pool's fields are lists of whole words, though a thing's place on the screen or its speed
+        # never needs more than two bytes. Each read is the number the wider slot would have given.
+        def list_widths
+          @list_widths ||= @list_ranges.filter_map do |name, range|
+            width = NARROW_SLOTS.find { |_width, bounds| NumberRanges.inside?(range, bounds) }&.first
+            declared = @lists.fetch(name).width
+            [name, width] if width && LoweringPlan::SLOT_BYTES.fetch(width) < LoweringPlan::SLOT_BYTES.fetch(declared)
+          end.to_h
+        end
+
         # The range the value +node+ stays in, or nil where nothing is known. +known+, given a
         # variable's name, may say more of it where the caller asks (a loop's variable is below its
         # count through the loop, ControlFlow#index_below), or nil.
@@ -100,15 +141,20 @@ module VBlank
 
         # Each list by its name. A name declared twice, as two scenes can, counts only where both
         # declarations hold the same: otherwise nothing is known of its slots or its length.
+        # Every declaration of each is kept too, in @list_declarations, for what each fills it with.
         def lists_declared_once(program)
-          program.walk.select { |node| node.kind == :list_new }.group_by(&:name).filter_map do |name, made|
+          @list_declarations = program.walk.select { |node| node.kind == :list_new }.group_by(&:name)
+          @list_declarations.filter_map do |name, made|
             [name, made.first] if made.map { |node| [node.capacity, node.width] }.uniq.one?
           end.to_h
         end
 
-        # +node+'s write into @writes, or every variable it names into +whole+.
+        # +node+'s write into @writes, or every variable it names into +whole+; and its write of a
+        # list's item into @items_written, or every list it names some other way into
+        # @lists_named_elsewhere.
         def record_naming(node, whole)
           record_counter_bounds(node)
+          record_list_naming(node)
           case node.kind
           when :var_ref then nil
           when :set, :add, :sub, :clamp then @writes[node.var] << node
@@ -116,6 +162,18 @@ module VBlank
           when :repeat then node.index && @writes[node.index] << node
           else whole.merge(names_in(node))
           end
+        end
+
+        def record_list_naming(node)
+          node.named_operands.each do |field, held|
+            Array(held).flatten.grep(Symbol).each do |name|
+              next unless @lists.key?(name)
+              next if ITEM_ONLY_KINDS.include?(node.kind) && (field == :name || (node.kind == :list_sort && field == :by))
+
+              @lists_named_elsewhere << name
+            end
+          end
+          @items_written[node.name] << node.value if %i[list_set list_push].include?(node.kind)
         end
 
         # Every name a statement holds, however deep in its operands, and the ones
@@ -169,29 +227,104 @@ module VBlank
 
         def var_named?(node, name) = node.is_a?(Node) && node.kind == :var_ref && node.name == name
 
-        # The largest set of +candidates+ whose every write lands in +bounds+, assuming each of them is
-        # in +bounds+ and each of +known+ ({name => range}) in its range.
-        def prove(candidates, bounds, known)
-          proven = Set.new(candidates)
+        # THE ROUNDS (see the class comment): each of +variables+ in @ranges and each of +lists+ in
+        # @list_ranges, widened by their writes until none widens.
+        def widen_to_fixed_point(variables, lists)
+          @ranges = variables.to_h { |name| [name, 0..0] }
+          @list_ranges = lists.to_h { |name| [name, starting_items(name)] }
+          vars = ->(name) { @ranges[name] || @declared[name] }
+          rounds = 0
           loop do
-            ranges = known.merge(@declared).merge(proven.to_h { |name| [name, bounds] })
-            vars = ->(name) { ranges[name] }
-            dropped = proven.reject { |name| @writes[name].all? { |write| NumberRanges.inside?(write_range(write, bounds, vars), bounds) } }
-            return candidates.select { |name| proven.include?(name) } if dropped.empty?
+            variables_before = @ranges.dup
+            lists_before = @list_ranges.dup
+            grown_variables = variables.select { |name| widen!(@ranges, name, variable_writes_range(name, vars), WHOLE) }
+            grown_lists = lists.select { |name| widen!(@list_ranges, name, items_written_range(name, vars), slot_range(name) || WHOLE) }
+            return if grown_variables.empty? && grown_lists.empty?
 
-            proven.subtract(dropped)
+            rounds += 1
+            next if rounds <= WIDENING_ROUNDS
+
+            grown_variables.each { |name| @ranges[name] = next_bounds(@ranges[name], variables_before.fetch(name), WHOLE) }
+            grown_lists.each do |name|
+              @list_ranges[name] = next_bounds(@list_ranges[name], lists_before.fetch(name), slot_range(name) || WHOLE)
+            end
           end
         end
 
-        # The range +write+ leaves its variable in, given each variable in +bounds+ as +vars+ says.
-        def write_range(write, bounds, vars)
+        # What list +name+ holds as it is made, by every declaration of it (two scenes can fill it
+        # differently): what each fills it with, as its slot keeps it (#kept_in_slot), or nought.
+        def starting_items(name)
+          starts = @list_declarations.fetch(name).map { |made| made.full_of.nil? ? 0 : kept_in_slot(name, made.full_of) }
+          starts.min..starts.max
+        end
+
+        # +number+ as a slot of list +name+ keeps it: its low bits, read back with their sign
+        # (Reference::ListValue#wrap_to_width).
+        def kept_in_slot(name, number)
+          number = Int32.wrap(number)
+          slot = slot_range(name) or return number
+          span = slot.end - slot.begin + 1
+          slot.begin + ((number - slot.begin) % span)
+        end
+
+        # Widens +ranges+[+name+] to take in +written+ (nil for anything), held to +bounds+; true
+        # when it grew.
+        def widen!(ranges, name, written, bounds)
+          held = ranges[name]
+          written = bounds unless written && NumberRanges.inside?(written, bounds)
+          widened = [held.begin, written.begin].min..[held.end, written.end].max
+          return false if widened == held
+
+          ranges[name] = widened
+          true
+        end
+
+        # +range+, still growing, each end that moved since +before+ taken out to the next number of
+        # one bit more: a top end to the next of -1, 0, 1, 3, 7 ... 2**31 - 1, a bottom end to the
+        # next of 0, -1, -2, -4 ... -2**31, held to +widest+, the most the variable or the list's
+        # slot can be. Each end can move only 32 times, so the rounds end; and a number masked to
+        # 2047 stops at 2047, where taking the whole range to two bytes' bounds would have lost it.
+        def next_bounds(range, before, widest)
+          low = range.begin
+          low = low >= 0 ? 0 : -(1 << (-low - 1).bit_length) if low < before.begin
+          high = range.end
+          high = high.negative? ? -1 : (1 << high.bit_length) - 1 if high > before.end
+          [low, widest.begin].max..[high, widest.end].min
+        end
+
+        # What every write of variable +name+ can leave in it, or nil for anything.
+        def variable_writes_range(name, vars)
+          ranges = @writes[name].map { |write| write_range(write, vars) }
+          ranges.include?(nil) ? nil : ranges.reduce { |all, range| [all.begin, range.begin].min..[all.end, range.end].max }
+        end
+
+        # What every item written to list +name+ can be, or nil for anything; for a list nothing
+        # writes, what it already holds, which widens nothing.
+        def items_written_range(name, vars)
+          ranges = @items_written[name].map { |value| range_of(value, vars) }
+          return @list_ranges[name] if ranges.empty?
+
+          ranges.include?(nil) ? nil : ranges.reduce { |all, range| [all.begin, range.begin].min..[all.end, range.end].max }
+        end
+
+        # The range +write+ leaves its variable in, given each variable's range as +vars+ says.
+        def write_range(write, vars)
           case write.kind
           when :set then range_of(write.value, vars)
           when :copy then vars.call(write.src)
           when :clamp then clamped_range(vars.call(write.var), write.min, write.max, vars)
           when :repeat then turns_range(write, vars)
-          when :add, :sub then counter_range(write) || counted_step_range(write, bounds, vars)
+          when :add, :sub then counter_range(write) || counted_step_range(write, vars) || stepped_range(write, vars)
           end
+        end
+
+        # `add` or `sub`: the variable's range moved by the operand's, where Int32's answer cannot wrap.
+        def stepped_range(write, vars)
+          held = vars.call(write.var)
+          step = range_of(write.operand, vars)
+          return nil unless held && step
+
+          write.kind == :add ? range_without_wrap(held.begin + step.begin, held.end + step.end) : range_without_wrap(held.begin - step.end, held.end - step.begin)
         end
 
         # The one more ending each counted while (LoopForm#counted_while), by itself, with the
@@ -209,10 +342,11 @@ module VBlank
         # A counted while's one more: the loop asks that its variable is below the limit before
         # each turn, and nothing else in the turn writes either, so the sum is at most the limit,
         # and above the variable it was.
-        def counted_step_range(write, bounds, vars)
+        def counted_step_range(write, vars)
           limit = @counted_limits[write] or return nil
           highest = range_of(limit, vars)&.end or return nil
-          (bounds.begin + 1)..highest
+          lowest = vars.call(write.var)&.begin or return nil
+          [lowest + 1, highest].min..highest
         end
 
         # A loop's turn number runs from nought to its count (a lowering counting in it reaches
@@ -241,7 +375,7 @@ module VBlank
 
           case node.kind
           when :var_ref then vars.call(node.name)
-          when :list_get then slot_range(node.name)
+          when :list_get then @list_ranges[node.name] || slot_range(node.name)
           when :list_len then (0..@lists[node.name].capacity if @lists.key?(node.name))
           when :table_get then table_range(node.name)
           when :binop then binop_range(node, vars)
