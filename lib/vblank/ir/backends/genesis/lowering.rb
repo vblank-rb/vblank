@@ -1103,10 +1103,10 @@ module VBlank
           end
 
           # Is +index+ known, while building, to be a place in a list of +count+ items: a loop's
-          # variable that stays below a count no bigger than that?
+          # variable, a mask or a remainder that stays below a count no bigger than that
+          # (ControlFlow#index_known_below)?
           def index_inside?(index, count)
-            name = variable_named(index)
-            below = name && index_below(name)
+            below = index_known_below(index)
             !below.nil? && below <= count
           end
 

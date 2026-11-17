@@ -221,6 +221,28 @@ module VBlank
         # The count +name+ is below, or nil where nothing is known of it.
         def index_below(name) = (@indexes_below ||= {})[name]
 
+        # WHAT AN INDEX IS KNOWN TO BE BELOW, from how it is written: a number written in the program
+        # (one more than it, when it is not below nought), a loop's variable (#index_below), a number
+        # kept to its low bits by a mask written in the program, `t & 31`, which is never below nought
+        # and never above the mask, or the remainder of a division by a number written in the program
+        # that is above nought, `t % 24`, which takes the divisor's sign and is below it
+        # (Int32.mod). A list read at such an index from a list that always holds at least that many
+        # needs no test that it is inside. Nil where nothing is known.
+        def index_known_below(index)
+          number = folded(index)
+          return (number + 1 if number.is_a?(Integer) && number >= 0) unless number.nil?
+          return unless index.is_a?(Node)
+          return index_below(index.name) if index.kind == :var_ref
+          return unless index.kind == :binop
+
+          if index.op == :&
+            mask = [folded(index.rhs), folded(index.lhs)].find { |side| side.is_a?(Integer) && side >= 0 }
+            return mask && mask + 1
+          end
+          divisor = folded(index.rhs) if index.op == :%
+          divisor if divisor.is_a?(Integer) && divisor.positive?
+        end
+
         def with_index_below(name, count)
           return yield unless name
 
