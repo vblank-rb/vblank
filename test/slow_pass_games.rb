@@ -9,29 +9,77 @@ require "stringio"
 # on the first of them its count shows the pass while the box has not moved: its work is half done.
 # That is what an original does on a heavy pass, and the quick build is the port that finishes every
 # pass in one frame.
+#
+# THE SLOW PASS'S TURNS ARE MEASURED, NOT WRITTEN DOWN. Its work is a busy loop, so it is still at
+# work when the frame ends, wherever the console's emulator reads the frame. How many turns take a
+# frame is the lowering's, and it gets quicker, so a count written in a test stopped making a pass of
+# two frames at a speed-up of the lowering (the Super Nintendo's was moved from 700 to 1400 to 2100).
+# The turns a frame takes are read off a calibrating game played in the console's emulator as the
+# test runs, and the slow pass is given half as many again: a pass that ends in the middle of its
+# second frame, however quick the lowering is. (Working until the frame count moves on is not
+# enough: every console but the Advance moves frames_since_power_on on only where the pass waits,
+# and a second wait in the pass lets the emulator read the frame after the box has moved.)
 module SlowPassGames
   # The map's width in cells on each console: the Genesis shows forty cells across.
   MAP_COLUMNS = { gba: 32, gbc: 32, snes: 32, genesis: 40 }.freeze
-
-  # How many times the slow pass goes round its busy loop on each console: enough to run over one
-  # frame and not two, measured on each console's cartridge in its emulator. The work is the game's
-  # own, but how long it takes is the lowering's, so a count near either edge stops making a pass of
-  # two frames when the lowering gets quicker or slower. The Super Nintendo's sits in the middle: a
-  # count from about 1460 to 2950 takes two frames there today. 700 took two only until the lowering
-  # learned to count a short repeat in one half of its counter, and 1400 only until it kept the
-  # busiest variables on the processor's direct page.
-  BUSY_STEPS = { gba: 35_000, gbc: 700, snes: 2_100, genesis: 3_500 }.freeze
 
   # How many frames each lead-in is: the same on both leaves the quick build passes ahead of the
   # slow one, and the short one leaves the quick build behind the slow one's long one.
   LEAD_IN_FRAMES = { long: 40, short: 30 }.freeze
 
-  # +slow+ makes every fourth pass take two frames; +jump_on+ moves the box four pixels further on
-  # that pass alone, a real difference for a comparison to find. +right_jumps+ moves it four pixels
-  # further on each pass RIGHT is down.
-  private def stepping_box(console:, slow: false, jump_on: nil, right_jumps: false)
+  # The calibrating game's passes are counted from the first of these frames to the second: after
+  # the Genesis's start-up, which shows nothing for its first frames, and long enough for many passes.
+  CALIBRATING_FRAMES = [60, 420].freeze
+
+  # The fewest frames a calibrating pass takes before the turns a frame are read from it: a pass
+  # takes a whole number of frames, so its turns a frame are known to within one part in this many.
+  LEAST_CALIBRATING_FRAMES = 10
+
+  # The turns the calibrating game's pass starts from, and the most tries it makes.
+  FIRST_CALIBRATING_TURNS = 1_024
+  MOST_CALIBRATING_TRIES = 8
+
+  # The turns of the slow pass's busy loop on +console+: half as many again as a frame takes, so the
+  # pass runs half way into its second frame. Worked out once a process for each console (each Ractor
+  # keeps its own), since every slow build asks.
+  def self.slow_pass_turns(console)
+    found = (Ractor.current[:slow_pass_turns] ||= {})
+    found[console] ||= (turns_a_frame(console) * 3 / 2).round
+  end
+
+  # The turns of the busy loop that take one of +console+'s frames, from a pass that takes at least
+  # LEAST_CALIBRATING_FRAMES: a pass of +turns+ that takes +frames+ whole frames has more than
+  # frames - 1 frames' worth of turns and no more than +frames+, so the middle of the two is taken.
+  def self.turns_a_frame(console)
+    turns = FIRST_CALIBRATING_TURNS
+    MOST_CALIBRATING_TRIES.times do
+      frames = frames_a_pass(console, turns)
+      return turns / (frames - 0.5) if frames >= LEAST_CALIBRATING_FRAMES
+
+      turns = frames <= 1 ? turns * 8 : turns * (LEAST_CALIBRATING_FRAMES + 2) / (frames - 1)
+    end
+    raise "no number of turns made a pass of #{LEAST_CALIBRATING_FRAMES} frames on #{console}, up to #{turns}"
+  end
+
+  # How many frames a pass of +turns+ turns of the busy loop takes on +console+'s cartridge, read
+  # from the passes counted over CALIBRATING_FRAMES.
+  def self.frames_a_pass(console, turns)
+    cartridge = box_game(console, busy: turns, busy_every: 1)
+    first, last = CALIBRATING_FRAMES.map do |frames|
+      lead_in = VBlank.playthrough("calibrate #{frames}") { wait frames: frames }
+      VBlank::Playthroughs::Playthrough.power_on_and_lead_in(cartridge, lead_in: lead_in).game.var(:passes)
+    end
+    return CALIBRATING_FRAMES.last if last == first
+
+    ((CALIBRATING_FRAMES.last - CALIBRATING_FRAMES.first).to_f / (last - first)).round
+  end
+  private_class_method :turns_a_frame, :frames_a_pass
+
+  # The box stepping a pixel a pass on +console+, every +busy_every+th pass going round the busy loop
+  # +busy+ times (none when nought) between counting itself and moving the box. +jump_on+ and
+  # +right_jumps+ are #stepping_box's.
+  def self.box_game(console, busy: 0, busy_every: 4, jump_on: nil, right_jumps: false)
     columns = MAP_COLUMNS.fetch(console)
-    busy = BUSY_STEPS.fetch(console)
     VBlank.build("STEPPING", console: console, out: StringIO.new, err: StringIO.new) do
       screen :tiled
       image(:box, "#" => :white) { "########\n" * 8 }
@@ -44,8 +92,8 @@ module SlowPassGames
       box = sprite :box, at: [20, 60]
       game_loop do
         passes += 1
-        if slow
-          repeat(busy) { work += 3 } if passes % 4 == 0 # counted already, and the box not moved yet
+        if busy.positive?
+          repeat(busy) { work += 3 } if passes % busy_every == 0 # counted already, and the box not moved yet
         end
         x += 1
         x += 4 if jump_on && passes == jump_on
@@ -56,6 +104,14 @@ module SlowPassGames
         box.x = x
       end
     end
+  end
+
+  # +slow+ makes every fourth pass take two frames; +jump_on+ moves the box four pixels further on
+  # that pass alone, a real difference for a comparison to find. +right_jumps+ moves it four pixels
+  # further on each pass RIGHT is down.
+  private def stepping_box(console:, slow: false, jump_on: nil, right_jumps: false)
+    busy = slow ? SlowPassGames.slow_pass_turns(console) : 0
+    SlowPassGames.box_game(console, busy: busy, jump_on: jump_on, right_jumps: right_jumps)
   end
 
   # Long enough for the Genesis's start-up, which shows nothing for its first frames.
