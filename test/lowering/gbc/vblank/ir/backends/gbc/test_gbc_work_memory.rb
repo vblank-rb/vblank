@@ -16,7 +16,7 @@ class TestGBCWorkMemory < Minitest::Test
         sprite :dot, at: [8, 8]
       end
       # Kept in bytes, as many as reach past the low half: a list of words nothing writes is kept in
-      # bytes on the Color (GBC::ListWidths), and a thousand of those fit the low half.
+      # bytes on the Color (NumberRanges#list_widths), and a thousand of those fit the low half.
       big = list :big, capacity: 4000, width: :byte
       game_loop { wait_vblank if big.length == 0 }
     end

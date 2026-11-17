@@ -739,15 +739,11 @@ module VBlank
               end
             end
 
-            # The lists kept in narrower slots than declared (GBC::ListWidths), each with its slot,
-            # :byte or :half. Their proof reads the variables kept narrow, so it is made again
-            # whenever those are.
-            def list_widths
-              @list_widths ||= begin
-                narrow = (@cache.program.kept_widths || []).to_h.merge(narrow_variables)
-                ListWidths.new(@cache.program, narrow_variables: narrow).widths
-              end
-            end
+            # The lists kept in narrower slots than declared, each with its slot, :byte or :half:
+            # those every number written to is proven to fit (NumberRanges#list_widths). The proof
+            # reads every variable's range, kept narrow or not, so a variable handed over changes
+            # nothing here.
+            def list_widths = @list_widths ||= @cache.plan.number_ranges.list_widths
 
             # THE VARIABLES WHOSE PLACE THE LOWERING HANDS OVER (Lowering#place_of): to a runtime
             # routine that reads or writes them where they are kept, or to code reading all four
@@ -759,7 +755,6 @@ module VBlank
             def keep_whole(name)
               handed_over << name
               @narrow_variables = nil
-              @list_widths = nil
             end
 
             # The tiles each background's `set_tile`s put in its cells, by the background's name.
@@ -1656,7 +1651,7 @@ module VBlank
           # #list_placed, and the headless run reads a pool's lists back through the same
           # (Places#slot_places). Kept as :lists, each slot list is an area of its own, which is the
           # list with its header, slot s at s times its width. Its width is the one the Color keeps the
-          # list in (#list_width, GBC::ListWidths), which can be narrower than the game declared, so
+          # list in (#list_width, NumberRanges#list_widths), which can be narrower than the game declared, so
           # the pool is placed with those widths.
           #
           # WHAT THE LISTS COST ON THIS PROCESSOR. The SM83 has no indexed addressing, and HL is the
@@ -1975,7 +1970,7 @@ module VBlank
           end
 
           # The slots list +node+ (its `list_new`) is kept in: as declared, or narrower where every
-          # number it can hold fits (GBC::ListWidths).
+          # number it can hold fits (NumberRanges#list_widths).
           def list_width(node) = @cache.facts.list_widths.fetch(node.name, node.width)
 
           # The `list_new` of every list kept in slots of +width+ (#list_width).

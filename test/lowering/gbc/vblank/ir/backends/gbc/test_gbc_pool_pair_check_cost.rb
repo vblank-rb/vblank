@@ -55,19 +55,20 @@ class TestGBCPoolPairCheckCost < Minitest::Test
   # 932 cycles here: each field read checked the index, scaled it and added the list's place, and
   # the walk stepped through variables. Kept as tables and walked by the thing's distance, each
   # field HL set from it (Backends::PoolLayout::Tables, GBC::Lowering#emit_stepped_walk), 604; the
-  # rest is the test's 32-bit difference, worked out a byte at a time.
-  def test_one_more_thing_to_check_costs_under_650_cycles
+  # rest is the test's 32-bit difference, worked out a byte at a time. With the places' real
+  # range known (NumberRanges), the difference is worked out in two bytes: 516.
+  def test_one_more_thing_to_check_costs_under_560_cycles
     per_pair = (routine_cycles(self.class.game(4)) - routine_cycles(self.class.game(2))) / 2
 
-    assert_operator per_pair, :<, 650
+    assert_operator per_pair, :<, 560
   end
 
-  # With the places in half words: the test still works the difference out in 32 bits.
-  def test_one_more_thing_to_check_in_half_words_costs_under_650_cycles
+  # With the places in half words: 516 too.
+  def test_one_more_thing_to_check_in_half_words_costs_under_560_cycles
     halves = ->(others) { self.class.game(others, widths: HALF_PLACES) }
     per_pair = (routine_cycles(halves.call(4)) - routine_cycles(halves.call(2))) / 2
 
-    assert_operator per_pair, :<, 650
+    assert_operator per_pair, :<, 560
   end
 
   # The checks find what the interpreter finds on every pass, the meeting included.

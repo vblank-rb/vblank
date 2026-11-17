@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# The lists the Color's lowering keeps in narrower slots than declared (GBC::ListWidths): every
+# The lists the Color's lowering keeps in narrower slots than declared (NumberRanges#list_widths): every
 # number written to one is proven to fit, so the cartridge keeps it in a byte or two and reads it
 # back with its sign, and the game's numbers are the interpreter's on every pass.
 class TestGBCListWidths < Minitest::Test
@@ -31,7 +31,7 @@ class TestGBCListWidths < Minitest::Test
   end
 
   def test_lists_proven_narrow_are_kept_in_the_slots_that_hold_their_numbers
-    widths = GBC::ListWidths.new(lists_program).widths
+    widths = VBlank::IR::Backends::NumberRanges.new(lists_program).list_widths
 
     assert_equal({ across: :half, down: :byte, copied: :half }, widths)
   end
