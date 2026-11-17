@@ -267,6 +267,40 @@ class TestDrawInOrder < Minitest::Test
     end
   end
 
+  # MANY COMING AND GOING AT ONCE: four sprites hidden and shown on passes of their own, some level
+  # with each other, some passing, and a pool whose things are spawned and taken away, all over one
+  # spot. Every run plays it against the interpreter on every pass; here the spot shows one of them.
+  private def comings_and_goings_program
+    block = BLOCK
+    colors = SEVEN_COLORS.first(5)
+    program do
+      screen :tiled
+      colors.each { |color| image(:"block_#{color}", "#" => color) { block } }
+      things = colors.first(4).each_with_index.map do |color, i|
+        sprite :"block_#{color}", at: [60 + (i * 2), 56 + ((i % 2) * 4)]
+      end
+      walkers = pool :walker, x: 0, y: 0, capacity: 4, image: :"block_#{colors.last}"
+      draw_in_order(*things, walkers)
+      t = var :t, 0
+      game_loop do
+        t += 1
+        things.each_with_index do |thing, i|
+          thing.hide if (t % (5 + i)) == 0
+          thing.show if (t % (5 + i)) == 2
+          thing.y = 56 + ((t / 3) % 7) if i == 2
+        end
+        walkers.spawn(x: 62, y: 56 + (t % 5)) if (t % 4) == 1
+        walkers.each { |walker| walker.remove if walker.y == 58 } if (t % 6) == 3
+      end
+    end
+  end
+
+  def test_things_coming_and_going_among_level_ones_are_drawn_in_order
+    shown_colors = SEVEN_COLORS.first(5).map { |color| color_named(color) }
+
+    assert_includes shown_colors, shown(comings_and_goings_program, frames: 61)
+  end
+
   def test_a_pools_thing_spawned_again_comes_in_behind_the_things_level_with_it
     prog = pool_shown_again_program
 

@@ -1421,16 +1421,19 @@ module VBlank
             # alone (Lowering#value_keeps_counters?). One that calls the runtime could change
             # anything, so the walk's registers go on the stack while it is worked out
             # (#emit_sprite_numbers_worked_out).
-            def emit_sprite_placing(obj, returns: false)
+            #
+            # +shown_known+ for a sprite already found showing on this pass (#emit_ordered_run): it is
+            # placed without being asked.
+            def emit_sprite_placing(obj, returns: false, shown_known: false)
               skip = fresh("sprite_off")
               numbers = [obj.pose, obj.x, obj.y]
               numbers << obj.recolor unless obj.recolors.empty?
-              shown = shown_when(obj.active)
+              shown = shown_known ? ShownWhen.new(tests: [], flag: nil) : shown_when(obj.active)
               if shown && numbers.all? { |number| value_keeps_counters?(number) }
                 emit_jump_unless_shown(shown, skip, near: shown.tests.empty? && numbers.all? { |number| operand_of(number) })
                 emit_sprite_numbers_in_place(numbers)
               else
-                emit_sprite_numbers_worked_out(obj.active, numbers, skip)
+                emit_sprite_numbers_worked_out(shown_known ? Build.int(1) : obj.active, numbers, skip)
               end
               emit_pose_wanted(obj)
               @asm.lea(@asm.abs_l(pose_table(obj)), @asm.a(0))
@@ -1533,22 +1536,31 @@ module VBlank
             # its slots, so each entry is read straight from its slot with nothing tested. Any other
             # list — one written by hand, or one something takes items from the front of, whose slots
             # move round — is walked as the interpreter reads it (DrawOrderWalk), through the same table.
+            #
+            # A SORTED RUN KEEPS ITS ENTRIES NOT SHOWING AT ITS FRONT (ShownSort), so the walk starts past
+            # them, and every entry it reaches was found showing by the sort on this pass: a place the
+            # sort asked is placed without being asked again.
             def emit_ordered_run(run)
               table = fresh("ordered_placings")
               past = fresh("past_ordered_placings")
               placings = run.objects.map { fresh("ordered_placing") }
+              slots = order_read_by_slots?(run, @lists_dropped_from_front)
+              shown = (@shown_sorts&.fetch(run.order, nil) if slots)
               @asm.bra(past)
               @asm.label(table)
               @asm.data_longs(placings)
               run.objects.each_with_index do |name, place|
                 @asm.label(placings[place])
-                emit_sprite_placing(object_named(name), returns: true)
+                emit_sprite_placing(object_named(name), returns: true, shown_known: shown&.asked&.fetch(place))
               end
               @asm.label(past)
-              return emit_ordered_run_walked(run, table) unless order_read_by_slots?(run, @lists_dropped_from_front)
+              return emit_ordered_run_walked(run, table) unless slots
 
               keyed = @keyed_sorts&.fetch(run.order, nil)
+              steps = run.objects.each_index.map { fresh("ordered_step") } + [fresh("ordered_steps_done")]
+              emit_steps_past_hidden(shown, steps) if shown
               run.objects.each_index do |k|
+                @asm.label(steps[k])
                 if keyed
                   @asm.move(:w, at(keyed.entries, k * 2), @asm.d(0))
                 else
@@ -1557,6 +1569,7 @@ module VBlank
                 end
                 emit_ordered_placing_called(table, keyed ? :w : :l)
               end
+              @asm.label(steps.last)
             end
 
             # D0 = entry +k+ of the order list +order+, whose first item is in its first slot, read from

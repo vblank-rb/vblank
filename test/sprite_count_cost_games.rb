@@ -11,13 +11,15 @@ module SpriteCountCostGames
   BLOCK = VBlank::Testing::InRactors.shareable(Array.new(16) { "#" * 16 }.join("\n"))
   SHOWING = 4
 
-  # +declared+ sprites for +console+, all but the first four hidden as the game starts.
-  def self.sprites_game(console, declared)
+  # +declared+ sprites for +console+, all but the first four hidden as the game starts; with
+  # +ordered+, every one of them in one draw_in_order.
+  def self.sprites_game(console, declared, ordered: false)
     block = BLOCK
     VBlank.game("SPRITE COUNT", consoles: [console]) do
       screen :tiled
       image(:block, "#" => :red) { block }
       things = Array.new(declared) { |i| sprite :"thing_#{i}", at: [(i * 29) % 200, (i * 17) % 120], facing: { down: :block } }
+      draw_in_order(*things) if ordered
       things.drop(SHOWING).each(&:hide)
       t = var :t, 0
       game_loop do
@@ -27,13 +29,15 @@ module SpriteCountCostGames
     end
   end
 
-  # A pool of +capacity+ places for +console+ holding four things, each moving down a pixel a pass.
-  def self.pool_game(console, capacity)
+  # A pool of +capacity+ places for +console+ holding four things, each moving down a pixel a pass;
+  # with +ordered+, its things in a draw_in_order.
+  def self.pool_game(console, capacity, ordered: false)
     block = BLOCK
     VBlank.game("POOL COUNT", consoles: [console]) do
       screen :tiled
       image(:block, "#" => :red) { block }
       crowd = pool :crowd, x: 0, y: 0, capacity: capacity, image: :block
+      draw_in_order(crowd) if ordered
       SHOWING.times { |i| crowd.spawn(x: (i * 13) % 200, y: (i * 37) % 120) }
       game_loop { crowd.each { |thing| thing.y = (thing.y + 1) & 127 } }
     end

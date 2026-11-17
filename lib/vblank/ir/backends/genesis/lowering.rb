@@ -49,6 +49,7 @@ module VBlank
           include MeasuredOnCopies
           include TileRuns
           include PoseRooms
+          include ShownSort
 
           # EVERY KIND THIS LOWERING WRITES: its own, each by a method called by name in
           # #emit_statement and #value_of_kind, and each part's (Paint, Picture, Sound, Collision, and
@@ -535,7 +536,7 @@ module VBlank
             copied: [Memory, PaintedArt, Art],
             shared: [Integer, Symbol, String, NilClass, TrueClass, FalseClass, IR::Node, SceneHandover, SpriteNames,
                      M68000, Music, RoutineCuts::PartCall, LoweringPlan],
-            unchanged: %i[@cuts @cache @keyed_sorts]
+            unchanged: %i[@cuts @cache @keyed_sorts @shown_sorts @keys_set_by_sort]
           )
 
           # --- statements ---
@@ -907,6 +908,11 @@ module VBlank
           def emit_list_new(node)
             keyed = @keyed_sorts&.fetch(node.name, nil)
             emit_order_tables_start(keyed) if keyed
+            shown = @shown_sorts&.fetch(node.name, nil)
+            if shown
+              entries = keyed ? at(keyed.entries) : @asm.abs_l(@lists.fetch(node.name).first, Runtime::Lists::HEADER)
+              emit_shown_start(shown, node.capacity, entries)
+            end
             return list_call("rt_list_empty", node) unless node.full_of
 
             list_call("rt_list_at_capacity", node)
@@ -939,6 +945,8 @@ module VBlank
           # routine takes the list's place handed over, a call, the index checked and scaled, and the
           # return. A draw order sets the number of each of its things this way every pass.
           def emit_list_set(node)
+            return if key_set_by_sort?(node)
+
             slot = fixed_slot(node)
             if slot
               value(node.value)
@@ -1466,9 +1474,14 @@ module VBlank
           # A list the game takes items from the front of goes round its slots like a ring, so its
           # first item can be in any slot; it is sorted by index instead, each slot found as the
           # runtime finds one (#emit_ring_slot).
+          #
+          # A sort handed +shown+ asks each place first, and starts past the entries not showing
+          # (ShownSort).
           def emit_list_sort(node)
             keyed = @keyed_sorts&.fetch(node.name, nil)
-            return emit_keyed_sort(keyed) if keyed
+            shown = @shown_sorts&.fetch(node.name, nil)
+            emit_shown_sorted_first(node, shown, keyed) if shown
+            return emit_keyed_sort(keyed, shown) if keyed
 
             order = @lists.fetch(node.name) { raise LoweringError, "the list #{node.name.inspect} is sorted and never declared" }
             keys = @lists.fetch(node.by) { raise LoweringError, "the list #{node.by.inspect} is sorted by and never declared" }
@@ -1476,19 +1489,38 @@ module VBlank
             done = fresh("sorted")
             @asm.moveq(0, @asm.d(7))
             @asm.move(:w, @asm.abs_l(order.first, Runtime::Lists::LENGTH), @asm.d(7))
+            @asm.sub(:w, at(shown.hidden), @asm.d(7)) if shown
             @asm.lea(@asm.abs_l(keys.first, Runtime::Lists::HEADER), @asm.a(1))
             if @lists_dropped_from_front.include?(node.name)
               emit_ring_sort(order, keys, stays, done)
             else
-              emit_pointer_sort(order, keys, stays, done)
+              emit_pointer_sort(order, keys, stays, done, shown)
             end
             @asm.label(done)
           end
 
+          # Each place of a sort handed +shown+ asked whether it shows, and the order moved round on a
+          # pass where one came or went (ShownSort).
+          def emit_shown_sorted_first(node, shown, keyed)
+            unchanged = fresh("sort_none_came_or_went")
+            emit_shown_marked(node, shown)
+            @asm.tst(:b, at(shown.changed))
+            @asm.branch(:eq, unchanged)
+            if keyed
+              emit_shown_partition(shown, at(keyed.entries), keyed.count, :w, 2)
+            else
+              order = @lists.fetch(node.name)
+              emit_shown_partition(shown, @asm.abs_l(order.first, Runtime::Lists::HEADER), order[1],
+                                   Runtime::Lists::SLOT_SIZES.fetch(order[2]), 0)
+            end
+            @asm.label(unchanged)
+          end
+
           # The sort over a list whose first item is in its first slot. D7 counts the items left to
           # place, from the second; D3 is the one being placed and D4 its number; D5 the one before
-          # the gap and D6 its number.
-          def emit_pointer_sort(order, keys, stays, done)
+          # the gap and D6 its number. A sort handed +shown+ starts at the first entry showing, which
+          # nothing goes back past.
+          def emit_pointer_sort(order, keys, stays, done, shown = nil)
             size = Runtime::Lists::SLOT_SIZES.fetch(bytes = order[2])
             item = fresh("sort_item")
             back = fresh("sort_back")
@@ -1496,7 +1528,11 @@ module VBlank
             place = fresh("sort_place")
             @asm.subq(:l, 1, @asm.d(7))
             @asm.branch(:le, done)
-            @asm.lea(@asm.abs_l(order.first, Runtime::Lists::HEADER), @asm.a(0))
+            if shown
+              emit_first_shown_entry(shown, @asm.abs_l(order.first, Runtime::Lists::HEADER), bytes)
+            else
+              @asm.lea(@asm.abs_l(order.first, Runtime::Lists::HEADER), @asm.a(0))
+            end
             @asm.movea(:l, @asm.a(0), @asm.a(2))
             @asm.label(item)
             @asm.lea(@asm.disp(2, bytes), @asm.a(2))
@@ -1588,6 +1624,7 @@ module VBlank
               @keyed_sorts[name] = KeyedSort.new(order: node.name, keys: node.by, count: count,
                                                  descending: node.descending, entries: entries)
             end
+            keep_shown_sorts(@keyed_sorts)
           end
 
           # The table as the order starts: item +n+ in place +n+.
@@ -1597,16 +1634,25 @@ module VBlank
 
           # Each place after the first compared with the one before it. D1 is this place's number and
           # D2 the one before's; D0 this place's item. A1 is the first of the numbers' slots.
-          def emit_keyed_sort(keyed)
+          #
+          # A sort handed +shown+ (ShownSort) starts at the first entry showing, through a table of
+          # where each place's compare starts, with the number of that entry in D2.
+          def emit_keyed_sort(keyed, shown = nil)
             mover = fresh("sort_move")
             done = fresh("sorted")
             stays = keyed.descending ? :le : :ge # this number is not beyond the one before: it stays
+            starts = (1...keyed.count).map { fresh("sort_place") }
             @asm.lea(@asm.abs_l(@lists.fetch(keyed.keys).first, Runtime::Lists::HEADER), @asm.a(1))
-            @asm.move(:w, at(keyed.entries), @asm.d(0))
-            @asm.move(:l, @asm.idx(1, 0, 0, :w), @asm.d(2))
+            if shown
+              emit_keyed_start_past_hidden(keyed, shown, starts, done)
+            else
+              @asm.move(:w, at(keyed.entries), @asm.d(0))
+              @asm.move(:l, @asm.idx(1, 0, 0, :w), @asm.d(2))
+            end
             (1...keyed.count).each do |place|
               stay = fresh("sort_stays")
               past = fresh("sort_past")
+              @asm.label(starts[place - 1])
               @asm.move(:w, at(keyed.entries, place * 2), @asm.d(0))
               @asm.move(:l, @asm.idx(1, 0, 0, :w), @asm.d(1))
               @asm.cmp(:l, @asm.d(2), @asm.d(1))
@@ -1619,16 +1665,35 @@ module VBlank
               @asm.label(past)
             end
             @asm.bra(done)
-            emit_keyed_move(keyed, mover)
+            emit_keyed_move(keyed, mover, shown)
             @asm.label(done)
+          end
+
+          # The first entry showing's number into D2, and on to the compare of the place after it; on
+          # to +done+ when one or none shows. Where every entry shows, which is one test, that is the
+          # first entry and the compare after it is the next.
+          def emit_keyed_start_past_hidden(keyed, shown, starts, done)
+            from_first = fresh("sort_from_first")
+            @asm.tst(:w, at(shown.hidden))
+            @asm.branch(:eq, from_first)
+            @asm.cmp(:w, @asm.imm(keyed.count - 1), at(shown.hidden))
+            @asm.branch(:ge, done)
+            @asm.movea(:l, at(shown.bound), @asm.a(0))
+            @asm.move(:w, @asm.ind(0), @asm.d(0))
+            @asm.move(:l, @asm.idx(1, 0, 0, :w), @asm.d(2))
+            emit_step_picked_by_hidden(shown, starts)
+            @asm.label(from_first)
+            @asm.move(:w, at(keyed.entries), @asm.d(0))
+            @asm.move(:l, @asm.idx(1, 0, 0, :w), @asm.d(2))
           end
 
           # The item in D0, with its number in D1, at the place D3 names (twice it), moved back past
           # every item before it whose number is strictly beyond its own, each of those a place on. A3
           # walks back from the place; D4 is the item before it, D5 that one's number. The number before
           # the place the item started in, in D2, is still the number before the next place, since
-          # that place now holds the item that was before it.
-          def emit_keyed_move(keyed, mover)
+          # that place now holds the item that was before it. For a sort handed +shown+ the walk back
+          # stops at the first entry showing, whose address is kept (ShownSort::Kept#bound).
+          def emit_keyed_move(keyed, mover, shown = nil)
             back = fresh("sort_back")
             place = fresh("sort_place")
             stop = keyed.descending ? :ge : :le # the number before is not beyond the item's: it stops
@@ -1642,7 +1707,7 @@ module VBlank
             @asm.branch(stop, place)
             @asm.move(:w, @asm.d(4), @asm.ind(3))
             @asm.subq(:l, 2, @asm.a(3))
-            @asm.cmp(:l, @asm.imm(keyed.entries), @asm.a(3))
+            @asm.cmp(:l, shown ? at(shown.bound) : @asm.imm(keyed.entries), @asm.a(3))
             @asm.branch(:ne, back)
             @asm.label(place)
             @asm.move(:w, @asm.d(0), @asm.ind(3))
