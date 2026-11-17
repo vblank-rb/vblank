@@ -840,7 +840,7 @@ module VBlank
               @asm.load(Runtime::Lists::LOADS.fetch(slot.width), :v0, *held_field_operand(node))
             else
               emit_value(node.index)
-              distance, base = emit_slot_place(list)
+              distance, base = emit_slot_place(list, node.index)
               @asm.load(Runtime::Lists::LOADS.fetch(slot.width), :v0, distance, base)
             end
             emit_slot_unscaled(slot)
@@ -890,15 +890,32 @@ module VBlank
               emit_restore_temporary(:v0)
             end
             emit_slot_scaled(slot)
-            distance, base = emit_slot_place(list)
+            distance, base = emit_slot_place(list, node.index)
             @asm.store(Runtime::Lists::STORES.fetch(slot.width), :v1, distance, base)
           end
 
           # The index in v0 checked against +list+'s length, and the slot it names put in t9: [distance,
-          # register] that name the slot in a load or a store. Changes t6 to t9 and at.
-          def emit_slot_place(list)
+          # register] that name the slot in a load or a store. Changes t6 to t9 and at. An +index+ known
+          # while building to stay below the capacity of a list of fixed length, a loop's variable, a
+          # mask or a remainder (ControlFlow#index_known_below), is not checked: the SLTIU and the branch
+          # could never stop the game there.
+          def emit_slot_place(list, index)
+            fixed = @lists_of_fixed_length.include?(list.name.to_sym)
+            below = fixed && index_known_below(index)
+            emit_index_checked(list, fixed) unless below && below <= list.capacity
+            slot = slot_place(list)
+            shift = slot.stride.bit_length - 1
+            shift.zero? ? @asm.move(:t9, :v0) : @asm.sll(:t9, :v0, shift)
+            distance, base = base_and_distance(first_slot_at(list))
+            @asm.addu(:t9, :t9, base)
+            [distance, :t9]
+          end
+
+          # The index in v0 compared with +list+'s length, a number written in the instruction for a list
+          # of +fixed+ length, and a branch to the fault when it is not below.
+          def emit_index_checked(list, fixed)
             lists = Runtime::Lists
-            if @lists_of_fixed_length.include?(list.name.to_sym) && list.capacity <= 0x7FFF # SLTIU's number, sign and all
+            if fixed && list.capacity <= 0x7FFF # SLTIU's number, sign and all
               @asm.sltiu(:t7, :v0, list.capacity)
             else
               @asm.lw(:t6, *base_and_distance(list.address + lists::LENGTH))
@@ -906,12 +923,6 @@ module VBlank
             end
             fault = @index_faults[list.address] ||= fresh_label("index_past_end")
             @asm.beq(:t7, :zero, fault) { @asm.move(:t8, :v0) }
-            slot = slot_place(list)
-            shift = slot.stride.bit_length - 1
-            shift.zero? ? @asm.move(:t9, :v0) : @asm.sll(:t9, :v0, shift)
-            distance, base = base_and_distance(first_slot_at(list))
-            @asm.addu(:t9, :t9, base)
-            [distance, :t9]
           end
 
           # --- pools (Backends::PoolLayout) ---
