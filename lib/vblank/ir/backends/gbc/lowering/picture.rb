@@ -1515,22 +1515,117 @@ module VBlank
             # tests IR::PickedTile writes cost a test for each halving and a change of its own for each
             # tile, in the code. A number that stands for no tile reads NO_GRID_CELL, and the cell is
             # left alone, as is a tile only another scene's background of the name has.
+            #
+            # A status bar's text is many such cells a pass, so the cell is worked out in the
+            # registers: the place checked against the table's length a byte or two at a time where
+            # the number is proven that small, the cell read into DE, and, where the column and row
+            # are written in the program or the row is and the column is a byte, the cell's place in
+            # the grid known now, as a cell given a tile by name is (#emit_cell_change).
             def emit_set_picked_tile_on(bg, node)
               cells = node.picks.map { |tile| tile && !tile.negative? && tile < bg.tiles.length ? grid_cell_of(bg, tile) : NO_GRID_CELL }
               return if cells.all?(NO_GRID_CELL)
 
               table = picked_cells_table(cells)
               outside = fresh("picked_cell_outside")
-              place = Build.var_ref(keep_step_local(:picked_place))
-              value(Build.binop(:-, node.picked_by.copy, Build.int(node.picks_from)))
-              store(place.name)
-              jump_unless(Build.binop(:and, Build.binop(:>=, place, Build.int(0)), Build.binop(:<, place, Build.int(cells.length))), outside)
-              cell = Build.var_ref(keep_step_local(:picked_cell))
-              value(Entry.new(label: table, bytes: 2, signed: false, index: place, banked: true))
-              store(cell.name)
-              jump_if(Build.binop(:==, cell, Build.int(NO_GRID_CELL)), outside) if cells.include?(NO_GRID_CELL)
-              emit_worked_out_cell_change(bg, node, cell)
+              emit_picked_place_in_de(node, cells.length, outside)
+              emit_banked_word_at_de(table)
+              if cells.include?(NO_GRID_CELL)
+                @asm.load(:a, :e)
+                @asm.and_a(:d)
+                @asm.inc(:a) # 0xFF in both bytes, NO_GRID_CELL, comes round to nought
+                @asm.jump(:z, outside)
+              end
+              emit_picked_cell_change(bg, node)
               @asm.label(outside)
+            end
+
+            # DE = +node+'s number less the one its list starts at, and a jump to +outside+ when that
+            # is not a place in a list of +count+. A number proven to be a byte or two is read and
+            # checked that wide; any other is checked whole, a place below nought being a number
+            # above the list's length once its sign is not counted.
+            def emit_picked_place_in_de(node, count, outside)
+              from = node.picks_from
+              if proven_within?(node.picked_by, 0..0xFF) && from.between?(0, 0xFF)
+                emit_low_byte_in_a(node.picked_by)
+                unless from.zero?
+                  @asm.sub_a(from)
+                  @asm.jump(:c, outside)
+                end
+                # A byte's place is in a list of more than 255 whatever it is.
+                if count <= 0xFF && !proven_within?(node.picked_by, from..(from + count - 1))
+                  @asm.cp_a(count)
+                  @asm.jump(:nc, outside)
+                end
+                @asm.load(:e, :a)
+                return @asm.load(:d, 0)
+              end
+
+              value(node.picked_by)
+              unless from.zero?
+                [[:e, 0], [:d, 1], [:c, 2], [:b, 3]].each do |register, i|
+                  @asm.load(:a, register)
+                  i.zero? ? @asm.sub_a((from >> (8 * i)) & 0xFF) : @asm.sbc_a((from >> (8 * i)) & 0xFF)
+                  @asm.load(register, :a)
+                end
+              end
+              @asm.load(:a, :b)
+              @asm.or_a(:c)
+              @asm.jump(:nz, outside)
+              @asm.load(:a, :e)
+              @asm.sub_a(count & 0xFF)
+              @asm.load(:a, :d)
+              @asm.sbc_a((count >> 8) & 0xFF)
+              @asm.jump(:nc, outside)
+            end
+
+            # DE = the two-byte entry DE places into +table+, kept in a bank of its own (rt_far_word).
+            def emit_banked_word_at_de(table)
+              @asm.sla(:e)
+              @asm.rl(:d)
+              @asm.load(:hl, table)
+              @asm.add_hl(:de)
+              @asm.load_bank_of(:a, table)
+              @asm.call("rt_far_word")
+              @reads_far_words = true
+            end
+
+            # A cell of +bg+ given the grid cell in DE, where +node+ says. A place written in the program
+            # is found as #emit_cell_change finds it; any other is worked out by the routine, the cell
+            # kept while it is (#emit_worked_out_cell_change).
+            def emit_picked_cell_change(bg, node)
+              unless big?(bg)
+                refuse_background!(bg, as_grid: true)
+                row = folded(node.row)
+                col = folded(node.col)
+                if row && (col || byte_valued?(node.col))
+                  return emit_cell_shown_when(node) do
+                    cols, rows = map_size_of(bg)
+                    routine = bg.bar? ? "rt_bar_cell" : "rt_background_cell"
+                    grid = bg.bar? ? Console::GBCHardware::TILE_MAP1 : Console::GBCHardware::TILE_MAP0
+                    next emit_cell_at_known_place(routine, grid, col, row, [cols, rows], :de) if col
+
+                    emit_cell_at_known_row(routine, grid, node.col, row, [cols, rows], :de)
+                  end
+                end
+              end
+
+              cell = Build.var_ref(keep_step_local(:picked_cell))
+              store(cell.name)
+              emit_worked_out_cell_change(bg, node, cell)
+            end
+
+            # The cell change the block writes, shown on the frame being drawn where +node+ asks for it.
+            def emit_cell_shown_when(node)
+              shown = (@memory[Runtime::Picture::CELL_SHOWN_NOW] if node.now)
+              if shown
+                @asm.load(:hl, shown)
+                @asm.inc([:hl])
+              end
+              yield
+              return unless shown
+
+              @asm.load(:hl, shown)
+              @asm.dec([:hl])
             end
 
             # The label of a banked table of +cells+, one kept for every line that picks from the same
@@ -1579,31 +1674,42 @@ module VBlank
             # A cell whose column, row and tile are all written in the program: its place in the
             # grid is known now, so nothing of it is worked out or checked as the game runs. A game's
             # lights and arrows are many such cells in one frame. Off the map, it writes nothing.
+            # +cell+ is the two bytes, or :de for a cell worked out and held in DE.
             def emit_cell_at_known_place(routine, grid, col, row, (cols, rows), cell)
               return unless col.between?(0, cols - 1) && row.between?(0, rows - 1)
 
               @asm.load(:hl, grid + (row * 32) + col)
-              @asm.load(:bc, cell)
+              emit_cell_in_bc(cell)
               @asm.call("#{routine}_at_hl")
+            end
+
+            def emit_cell_in_bc(cell)
+              return @asm.load(:bc, cell) unless cell == :de
+
+              @asm.load(:b, :d)
+              @asm.load(:c, :e)
             end
 
             # A cell whose row and tile are written in the program and whose column can only be a
             # byte — a status bar's text, written a cell at a time — has its place worked out here:
             # the row's start in the grid, 32 cells a row, is known now, so only the column is
             # added as the game runs, and the routine is handed the place and the cell. A row off
-            # the map writes nothing, and so does a column off it.
+            # the map writes nothing, and so does a column off it. A cell held in DE (+cell+ :de) is
+            # kept on the stack while the column is worked out.
             def emit_cell_at_known_row(routine, grid, col, row, (cols, rows), cell)
               return unless row.between?(0, rows - 1)
 
               off = fresh("cell_off_the_map")
+              @asm.push(:de) if cell == :de
               emit_low_byte_in_a(col)
+              @asm.pop(:bc) if cell == :de # a pop moves no flag and leaves A
               @asm.cp_a(cols)
               @asm.jump_relative(:nc, off)
               @asm.load(:e, :a)
               @asm.load(:d, 0)
               @asm.load(:hl, grid + (row * 32))
               @asm.add_hl(:de)
-              @asm.load(:bc, cell)
+              @asm.load(:bc, cell) unless cell == :de
               @asm.call("#{routine}_at_hl")
               @asm.label(off)
             end

@@ -413,6 +413,7 @@ module VBlank
                                              indexes_in_banks: view.indexes_in_banks,
                                              byte_divides: lowering.divides_by_written_bytes?,
                                              clamps_outside: lowering.clamps_outside?,
+                                             far_words: lowering.reads_far_words?,
                                              walks_colors: lowering.walks_colors?)
           data = [*lowering.art.sections, *(lowering.music.any? ? lowering.music.sections : []), *clips&.sections]
           Lowered.new(lowering: lowering, memory: memory, sections: runtime + game + data)

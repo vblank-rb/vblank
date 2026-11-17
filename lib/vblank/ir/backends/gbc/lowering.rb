@@ -369,6 +369,11 @@ module VBlank
           # its runtime carries rt_clamp16_outside. Asked once the game's routines are made.
           def clamps_outside? = @clamps_outside || false
 
+          # Whether the game reads a cell picked by a number from a banked table
+          # (Picture#emit_banked_word_at_de), so its runtime carries rt_far_word. Asked once the
+          # game's routines are made.
+          def reads_far_words? = @reads_far_words || false
+
           # Does the game declare a list of bytes full, or fill one? Then its runtime carries the
           # quick way to do it, and a game that does neither builds without it.
           def fills_byte_lists?

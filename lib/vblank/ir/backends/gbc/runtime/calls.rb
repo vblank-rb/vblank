@@ -26,8 +26,10 @@ module VBlank
             def arg(memory, i, n) = memory.args + (4 * (n - 1 - i))
 
             # +clamps_outside+ for a game that holds a number between two ends of up to two bytes
-            # (Lowering#clamps_outside?), which then carries rt_clamp16_outside.
-            def emit(asm, memory, clamps_outside: false)
+            # (Lowering#clamps_outside?), which then carries rt_clamp16_outside. +far_words+ for a game
+            # that reads a picked cell from a banked table (Lowering#reads_far_words?), which then
+            # carries rt_far_word.
+            def emit(asm, memory, clamps_outside: false, far_words: false)
               # Copy B bytes from (HL) into the arguments' place in quick memory: a number, four
               # bytes, to a turn of the loop.
               asm.label("rt_take_args")
@@ -99,12 +101,33 @@ module VBlank
               asm.label("rt_jump_de") # the return address is already pushed: DE is gone to
               asm.push(:de)
               asm.ret
+              emit_far_word(asm) if far_words
 
               emit_parted_read(asm)
 
               emit_table_readers(asm)
               emit_clamp(asm)
               emit_clamp_outside(asm) if clamps_outside
+            end
+
+            # DE = the two bytes at HL in bank A, low byte first: rt_far_read for one word, with no
+            # reader to jump to and nothing widened, since a status bar's text reads a cell from a
+            # banked table for every letter. The caller's bank is kept in B while the word is read.
+            def emit_far_word(asm)
+              asm.label("rt_far_word")
+              asm.load(:c, :a)
+              asm.load_high(:a, Memory::CURRENT_BANK)
+              asm.load(:b, :a)
+              asm.load(:a, :c)
+              asm.load_high(Memory::CURRENT_BANK, :a)
+              asm.select_rom_bank
+              asm.load(:a, [:hli])
+              asm.load(:e, :a)
+              asm.load(:d, [:hl])
+              asm.load(:a, :b)
+              asm.load_high(Memory::CURRENT_BANK, :a)
+              asm.select_rom_bank
+              asm.ret
             end
 
             # How many bytes of a big table each of its parts holds. A bank holds sixteen kilobytes, so
