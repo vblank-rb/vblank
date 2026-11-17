@@ -237,14 +237,15 @@ from that copy. The game's code says each piece's shape and size; it never depen
     wave), a tick a frame as the driver's tempo lands them; `copy.unpack_m4a_length at: SONG, into:` writes
     the song's length in frames and the frame it comes round to (65535 for a song that ends, which
     `loop_from:` takes as no loop, so the song plays once), two numbers of two bytes. **A song comes
-    round where the whole driver is as it was before**: each track jumps
-    back on its own, so a short figure goes round many times to a melody's once, and a round that differs
-    from the one before (a MEMACC counting rounds, a round starting a frame later in the tempo's count)
-    is played as it falls. The reader writes the notes until every track comes round together, so a song
-    whose tracks come round apart takes more notes than one pass of its longest track: size its slots
-    and the Score's `longest:` for that. One that does not come round in 8 rounds of its slowest track
-    is written for those 8 and comes round to the first, except while a track that has not yet jumped
-    back still plays: a part that comes in late is played to its own first round and compared too. The rounds are written out because every song
+    round where every track is playing its loop again**: each track jumps back on its own, so a short
+    figure goes round many times to a melody's once, and a part can come in late. Each track repeats
+    from where its loop starts, or from its first jump where its second time round does not sound as
+    its first; the song repeats from the latest of these, every time round the least span all the loops
+    fit. A time round that starts a frame later in the tempo's count, or with a MEMACC's count in the
+    driver's memory, is played as it falls, written out until both come back, five times round at
+    most; failing that, the song comes round to its second time round and ends where the third starts.
+    So a song whose tracks come round apart takes more notes than one pass of its longest track: size
+    its slots and the Score's `longest:` for that. The rounds are written out because every song
     player comes round at one moment for all its parts (`Packing::M4A`, "WHY THE READER WRITES THE
     ROUNDS OUT"). `copy.unpack_m4a_recording at: VOICE, into:` a recording voice's samples; and
     `copy.unpack_m4a_voice at: VOICE, into:` its rate, the sample it loops back to (every bit set for a voice

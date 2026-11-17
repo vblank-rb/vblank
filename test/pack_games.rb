@@ -1693,8 +1693,8 @@ module PackGames
   # between the group's voices, a drum kit and a key split, each note on its own recording; and a
   # song whose tracks come round apart, written until they come round together.
   class MusicPlayer2000Songs < Kit
-    # The song of every command is written for as many rounds as the reader keeps (Packing::M4A,
-    # A SONG COMES ROUND).
+    # Room for the notes of the song of every command, which is written to its third time round
+    # (Packing::M4A, A SONG COMES ROUND).
     NOTES = 176
 
     private def m4a_original(folder)
