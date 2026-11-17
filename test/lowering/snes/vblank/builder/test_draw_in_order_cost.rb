@@ -7,9 +7,11 @@ require "draw_order_cost_games"
 # every sprite on the screen by height each frame, about ten instructions a sprite, so an order of
 # seven must cost its tightest frame, where two things pass each other and the sort moves one, a
 # few of the frame's 262 lines, not the thirty it cost written as list reads and writes, and an
-# order of thirty must leave most of the frame to the game.
+# order of thirty must leave most of the frame to the game. The order also asks whether each of the
+# pool's three places shows, so things not showing are left out of the sort and its walk
+# (Lowering::ShownSort), which is a third of a line of the seven's.
 class TestSNESDrawInOrderCost < Minitest::Test
-  BOUND_SEVEN = 3
+  BOUND_SEVEN = 3.5
   BOUND_THIRTY = 28
 
   def test_an_order_of_seven_costs_its_tightest_frame_a_few_lines

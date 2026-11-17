@@ -2345,9 +2345,11 @@ module VBlank
 
             # One sprite placed, if it is showing, as deep as the name +at+ — its own, or one of the other
             # layers it can be put in (Stacking.choice_name) — has it among the backgrounds.
-            def emit_sprite_placing(obj, at = obj.name)
+            # +shown_known+ for one its draw order's sort already found showing on this pass
+            # (ShownSort#found_showing_by_sort), which is not asked again.
+            def emit_sprite_placing(obj, at = obj.name, shown_known: false)
               skip = fresh("sprite_off")
-              jump_unless(Build.binop(:==, obj.active, Build.int(1)), skip)
+              jump_unless(Build.binop(:==, obj.active, Build.int(1)), skip) unless shown_known
               behind = sprite_depths.empty? ? [] : [Build.int((3 - sprite_depths.fetch(at, 3)) << SPRITE_PRIORITY_SHIFT)]
               emit_sprite_place(obj, obj.name, behind)
               @asm.label(skip)
@@ -2380,19 +2382,33 @@ module VBlank
               table = fresh("ordered_stubs")
               stubs = run.objects.map { fresh("ordered_stub") }
               placing = fresh("ordered_placing")
+              found = order_read_by_slots?(run, front_dropped_lists) ? found_showing_by_sort(run) : []
               @asm.brl(placing)
               @asm.label(table)
               @asm.data_words(stubs)
               run.objects.each_with_index do |name, at|
                 @asm.label(stubs[at])
-                emit_ordered_sprite_placing(name, depths) unless depths && !depths.key?(name)
+                emit_ordered_sprite_placing(name, depths, shown_known: found.include?(name)) unless depths && !depths.key?(name)
                 @asm.rts
               end
               @asm.label(placing)
               return emit_ordered_run_walked(run, table) unless order_read_by_slots?(run, front_dropped_lists)
 
               keyed = @keyed_sorts&.fetch(run.order, nil)
+              # A sorted run keeps its things not showing in its first places (ShownSort), so it starts
+              # past them, through a table of where each entry's placing starts.
+              shown = @shown_sorts&.fetch(run.order, nil)
+              steps = run.objects.each_index.map { fresh("ordered_step") } + [fresh("ordered_steps_done")]
+              if shown
+                steps_table = fresh("ordered_steps")
+                @asm.ldx(@asm.abs(shown.hidden))
+                @asm.branch_long(:beq, steps.first)
+                @asm.jmp(@asm.ind_abs_x(steps_table))
+                @asm.label(steps_table)
+                @asm.data_words(steps)
+              end
               run.objects.each_index do |k|
+                @asm.label(steps[k])
                 if keyed
                   # A sorted order keeps its items doubled in the first 8K as well (Lowering#emit_keyed_sort).
                   @asm.ldx(@asm.abs(keyed.entries + (k * 2)))
@@ -2404,6 +2420,7 @@ module VBlank
                 end
                 @asm.jsr(@asm.ind_abs_x(table))
               end
+              @asm.label(steps.last)
             end
 
             # A run whose list is walked as the interpreter reads it (DrawOrderWalk), each entry's
@@ -2436,9 +2453,9 @@ module VBlank
             end
 
             # Sprite +name+ of an ordered run placed, or placed when it is at the depth +depths+ names
-            # for it.
-            def emit_ordered_sprite_placing(name, depths)
-              return emit_sprite_placing(object_named(name)) unless depths
+            # for it. +shown_known+ for one the sort found showing on this pass.
+            def emit_ordered_sprite_placing(name, depths, shown_known: false)
+              return emit_sprite_placing(object_named(name), shown_known: shown_known) unless depths
 
               emit_sprite_placed_at(object_named(name), depths.fetch(name), @cache.stacking.depths)
             end

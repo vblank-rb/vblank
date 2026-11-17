@@ -303,6 +303,38 @@ class TestDrawInOrder < Minitest::Test
     assert_backends_agree(comings_and_goings_program, frames: [13, 26, 37, 49, 61])
   end
 
+  # THE WHOLE ORDER TURNED ROUND WHILE THINGS COME AND GO: a pool of eight over one spot, every one
+  # turned upside down each pass so every thing passes every other, which is the most a sort that
+  # turns runs round (and moves things back past many) is given, with one taken away and another
+  # spawned every few passes.
+  private def turned_round_while_coming_and_going_program
+    block = BLOCK
+    program do
+      screen :tiled
+      image(:speck, "#" => :red) { block }
+      image(:mark, "#" => :green) { block }
+      crowd = pool :crowd, x: 0, y: 0, capacity: 8, image: :speck
+      hero = sprite :mark, at: [62, 57]
+      draw_in_order(crowd, hero)
+      8.times { |i| crowd.spawn(x: 54 + i, y: 50 + ((i * 5) % 16)) }
+      t = var :t, 0
+      game_loop do
+        t += 1
+        crowd.each { |thing| thing.y = 115 - thing.y }
+        hero.y = 115 - hero.y
+        crowd.each { |thing| thing.remove if thing.y == 50 + ((t * 3) % 16) } if (t % 3) == 0
+        crowd.spawn(x: 56 + (t % 8), y: 50 + (t % 16)) if (t % 3) == 1
+      end
+    end
+  end
+
+  def test_an_order_turned_round_while_things_come_and_go_is_drawn_in_order
+    prog = turned_round_while_coming_and_going_program
+
+    assert_kind_of Integer, shown(prog, frames: 40)
+    assert_backends_agree(prog, frames: [10, 25, 40])
+  end
+
   def test_a_pools_thing_spawned_again_comes_in_behind_the_things_level_with_it
     prog = pool_shown_again_program
 

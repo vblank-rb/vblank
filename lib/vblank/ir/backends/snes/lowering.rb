@@ -113,6 +113,7 @@ module VBlank
           include Saving
           include Sound
           include Chip
+          include ShownSort
 
           VALUE_KINDS = (%i[
             int var_ref binop neg bit_not absolute clamped mul_fix div_fix shift_right held pressed list_get
@@ -747,7 +748,7 @@ module VBlank
             copied: [Memory, Art, PaintedArt, TextLayerArt],
             shared: [Integer, Symbol, String, NilClass, TrueClass, FalseClass, IR::Node, SceneHandover,
                      SpriteNames, Music, W65816, RoutineCuts::PartCall, LoweringPlan, ChipCode, Sound::ModeCall],
-            unchanged: %i[@cuts @cache @tile_memo @keyed_sorts @keys_by_place @half_variables @handed_over]
+            unchanged: %i[@cuts @cache @tile_memo @keyed_sorts @keys_by_place @half_variables @handed_over @shown_sorts @shown_sort_nodes]
           )
 
           # --- statements ---
@@ -1308,9 +1309,13 @@ module VBlank
 
           # A draw order's routine written where it is called (#sort_written_in_place?), with D on
           # its tables' page while it runs when it has one (KeyedSort), and back on the game's page,
-          # $0000, after.
+          # $0000, after. A sort handed +shown+ asks its things first, on the game's page (ShownSort).
           def emit_sort_in_place(body)
-            page = @keyed_sorts.fetch(body.last.name).page
+            sort = body.last
+            keyed = @keyed_sorts.fetch(sort.name)
+            shown = @shown_sorts&.fetch(sort.name, nil)
+            emit_shown_asked_once(sort, shown, keyed) if shown
+            page = keyed.page
             return body.each { |each_node| statement(each_node) } unless page
 
             @asm.lda(page)
@@ -1446,6 +1451,8 @@ module VBlank
           def emit_list_new(node)
             keyed = @keyed_sorts&.fetch(node.name, nil)
             emit_order_tables_start(keyed) if keyed
+            shown = @shown_sorts&.fetch(node.name, nil)
+            emit_shown_start(shown) if shown
             return list_call("rt_list_empty", node) unless node.full_of
 
             list_call("rt_list_at_capacity", node)
@@ -2411,7 +2418,7 @@ module VBlank
           #   R3  its number    R4  pointer to the slot before Y's    R5  pointer to Y's slot
           def emit_list_sort(node)
             keyed = @keyed_sorts&.fetch(node.name, nil)
-            return emit_keyed_sort(keyed) if keyed
+            return emit_keyed_sort_asked(node, keyed) if keyed
 
             refuse_ring_sort!(node)
             place, _capacity, width = list_placed(node)
@@ -2672,7 +2679,8 @@ module VBlank
               @keyed_sorts[node.name] = keyed
               @keys_by_place[node.by] = keyed
             end
-            @sorts_written_in_place = @called.select { |name| sort_written_in_place?(name) }.freeze
+            keep_shown_sorts
+            @sorts_written_in_place =@called.select { |name| sort_written_in_place?(name) }.freeze
             @sorts_written_in_place.each { |name| keep_sort_on_its_page(@funcs.fetch(name).children) }
           end
 
@@ -2735,8 +2743,22 @@ module VBlank
           end
 
           # A thing's number, written into the slot of the order its thing is in: X from the table of
-          # places, then the number into the slot there, a half at a time.
+          # places, then the number into the slot there, a half at a time. For a sort handed +shown+,
+          # only where the thing shows, which its things are asked first to know (ShownSort).
           def emit_key_by_place(node, keyed)
+            shown = @shown_sorts&.fetch(keyed.order, nil)
+            return emit_number_by_place(node, keyed) unless shown
+
+            sort = @shown_sort_nodes.fetch(keyed.order)
+            unless @shown_asked == keyed.order
+              raise LoweringError, "the things of #{keyed.order.inspect} are asked on the moved direct page" if @direct_page_moved
+
+              emit_shown_asked_once(sort, shown, keyed)
+            end
+            emit_unless_hidden(shown, folded(node.index)) { emit_number_by_place(node, keyed) }
+          end
+
+          def emit_number_by_place(node, keyed)
             place = keyed.at(@asm, keyed.places + (folded(node.index) * 2))
             to = keyed.number(@asm, 0, x: true)
             value = without_added_nought(node.value)
@@ -2789,11 +2811,16 @@ module VBlank
           # and keep the order they had, as the interpreter keeps them (Reference#exec_list_sort).
           # Two things passing, the move nearly every frame makes, never reach the routine except
           # at the first place, which has no place before it to tell the two apart.
-          def emit_keyed_sort(keyed)
+          #
+          # A SORT HANDED +shown+ (ShownSort) starts at the place after the first thing showing, through
+          # a table. The places before it hold the number nothing is strictly beyond, so the compares,
+          # the turning of a run and the moving routine stop there with nothing added.
+          def emit_keyed_sort(keyed, shown = nil)
             mover = fresh("sort_move")
             reversal = fresh("sort_reverse") if keyed.count > 2
             done = fresh("sort_done")
             starts = (1...keyed.count).to_h { |place| [place, fresh("sort_place")] }
+            emit_keyed_start_past_hidden(shown, keyed, starts, done) if shown
             (1...keyed.count).each do |place|
               stays = fresh("sort_stays")
               @asm.label(starts.fetch(place))
@@ -2818,6 +2845,16 @@ module VBlank
             emit_keyed_run_reversal(keyed, reversal) if reversal
             @asm.label(done)
           end
+
+          # The keyed sort of +node+, its things asked first where they were not (ShownSort).
+          def emit_keyed_sort_asked(node, keyed)
+            shown = @shown_sorts&.fetch(node.name, nil)
+            emit_shown_asked_once(node, shown, keyed) if shown
+            emit_keyed_sort(keyed, shown)
+          ensure
+            @shown_asked = nil
+          end
+
 
           # The routine that turns a run round (#emit_keyed_sort), called with X twice a place whose
           # item and the one before have just been swapped. Carry clear when the item after it is not
