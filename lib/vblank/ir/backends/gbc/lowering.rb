@@ -149,6 +149,7 @@ module VBlank
           include SpriteTiles
           include Clock
           include WrittenNumbers
+          include SmallNumbers
           include Division
           include KeptVariables
           include KeyedSort
@@ -2304,6 +2305,9 @@ module VBlank
             elsif (equal = equality_of_byte_item(condition))
               compare_byte_item_with_number(*equal)
               @asm.jump(condition.op == :== ? :nz : :z, label)
+            elsif (equal = small_equality(condition))
+              emit_zero_when_small_equal(*equal)
+              @asm.jump(condition.op == :== ? :nz : :z, label)
             elsif (name = sign_tested_variable(condition))
               # A variable at or above nought, or below it, is its top bit, where it is kept.
               @asm.load(:a, [kept_place_of(name) + (kept_bytes(name) || 4) - 1])
@@ -2319,6 +2323,10 @@ module VBlank
               elsif !below
                 @asm.jump(label)
               end
+            elsif (ordered = small_ordering(condition))
+              one, other, below, width = ordered
+              emit_carry_when_small_below(one, other, width)
+              @asm.jump(below ? :nc : :c, label)
             elsif (ordered = ordering_with_variable(condition))
               other, name, below = ordered
               emit_carry_when_below_variable(other, name)
@@ -2587,6 +2595,11 @@ module VBlank
               if (ordered = ordering_with_number(node))
                 other, number, below = ordered
                 return number ? emit_bool_of_below(other, number, below) : load_constant(below ? 1 : 0)
+              end
+              if (ordered = small_ordering(node))
+                one, other, below, width = ordered
+                emit_carry_when_small_below(one, other, width)
+                return emit_bool_of_carry(below)
               end
               if (ordered = ordering_with_variable(node))
                 other, name, below = ordered

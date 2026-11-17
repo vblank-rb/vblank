@@ -186,6 +186,9 @@ module VBlank
               return emit_low_bytes_at(kept_place_of(name), bytes) if name
               return emit_item_low_bytes(operand, bytes) if list_item_in_place?(operand)
               return emit_low_negative(operand, bytes) if operand.is_a?(Node) && operand.kind == :neg
+              if operand.is_a?(Node) && operand.kind == :absolute && proven_within?(operand.operand, NumberRanges::HALF)
+                return emit_low_bytes_of_half_size(operand.operand)
+              end
               return value(operand) unless operand.is_a?(Node) && operand.kind == :binop
 
               case operand.op
@@ -268,7 +271,11 @@ module VBlank
             def emit_low_bytes_shifted_down(node, bytes)
               count = folded(node.rhs)
               name = variable_named(node.lhs)
-              return value(node) unless name && count && (count % 8).zero? && count.between?(0, 31) && (count / 8) + bytes <= 4
+              unless name && count && (count % 8).zero? && count.between?(0, 31) && (count / 8) + bytes <= 4
+                return emit_low_bytes_of_half_shifted(node.lhs, count) if count&.between?(1, 31) && proven_within?(node.lhs, NumberRanges::HALF)
+
+                return value(node)
+              end
 
               emit_low_bytes_at(place_of(name) + (count / 8), bytes)
             end
@@ -354,6 +361,7 @@ module VBlank
                 emit_low_byte_in_a(operand)
                 return @asm.cp_a(number)
               end
+              return if emit_carry_when_proven_below(operand, number)
 
               number &= 0xFFFF_FFFF
               bytes = Array.new(4) { |i| (number >> (8 * i)) & 0xFF }

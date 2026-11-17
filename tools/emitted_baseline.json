@@ -75,7 +75,7 @@
     },
     "flowers@gbc": {
       "code": 6762,
-      "data": 4832
+      "data": 4736
     },
     "font_styles": {
       "code": 2832,
@@ -171,7 +171,7 @@
     },
     "pong_gbc@gbc": {
       "code": 14236,
-      "data": 27856
+      "data": 27440
     },
     "raycaster": {
       "code": 6112,
@@ -239,7 +239,7 @@
     },
     "tower@gbc": {
       "code": 8624,
-      "data": 16288
+      "data": 16176
     },
     "tower@genesis": {
       "code": 6394,

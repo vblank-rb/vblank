@@ -122,6 +122,12 @@ writing an instruction is shared, because two copies of a decision drift apart:
   nothing else in the loop writing `i`: `LoopForm#counted_while`), which `ControlFlow#emit_counted_while`
   lowers as a counted loop held as a repeat's count is, and `ControlFlow#index_below` what a loop's variable is known to stay under while its
   body is written, so a read of a table or a list there needs no check of the index.
+- `Backends::NumberRanges` (`LoweringPlan#number_ranges`) — what range a value stays in, and which
+  variables are proven to stay in a byte or two, so a lowering whose processor works 8 or 16 bits at a
+  time compares and works such a number at that width and still gives `IR::Int32`'s answer: the SNES in
+  its 16-bit accumulator (`SNES::Lowering#compare_within_halves`), the Color a byte or two at a time
+  (`GBC::Lowering::SmallNumbers`), and the Color keeps its byte variables in a byte
+  (`GBC::ByteVariables`). `test/all/vblank/ir/backends/test_number_ranges.rb` holds the proof to the game.
 - `Backends::BuildTries` — a build as a series of tries, each a whole lowering with one set of
   settings (a Data), until one fits: each try timed and logged, what a try found kept for the
   tries after it, attempts the build can go back from, a better try kept only if it fits, and
