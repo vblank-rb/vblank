@@ -8,8 +8,9 @@ require "test_helper"
 #
 # Each class's shared setup adds a line naming its class to the file PROCESSES_FIXTURE_SETUPS
 # names, each time it runs. Each test adds a line to the file PROCESSES_FIXTURE_PLAYED names:
-# its process, its class, the seed it was given, and when it started and ended. With
-# PROCESSES_FIXTURE_FAIL set, every test of the shared classes fails.
+# its process, its class, the seed it was given, and when it started and ended (the computer's
+# clock, compared only for which came first). With PROCESSES_FIXTURE_FAIL set, every test of the
+# shared classes fails.
 #
 # Which process asks for work first depends on how quickly each loads, so a test of how work is
 # spread waits for every process to be loaded before it plays: each process that loads this file
@@ -37,9 +38,23 @@ module ProcessesSharedFixture
   def wait_for_every_process
     loaded = ENV.fetch("PROCESSES_FIXTURE_LOADED", nil) or return
     count = Integer(ENV.fetch("PROCESSES_FIXTURE_LOADED_COUNT"))
-    # Seconds to wait at most: a process that never loads fails the test asking, not the run.
+    wait_until { File.readlines(loaded).size >= count }
+  end
+
+  # With PROCESSES_FIXTURE_SLOW_WAITS_FOR set, a slow test waits until that many tests of other
+  # classes have been played: slow by construction, so it is the last to end however busy the
+  # machine is, where a slow test that only slept could end first on a machine that slowed the rest.
+  def wait_for_other_classes
+    count = ENV.fetch("PROCESSES_FIXTURE_SLOW_WAITS_FOR", nil) or return
+    played = ENV.fetch("PROCESSES_FIXTURE_PLAYED")
+    wait_until { File.file?(played) && File.readlines(played).count { |line| !line.include?("\tProcessesFixtureSlow\t") } >= Integer(count) }
+  end
+
+  # Waits until the block is true. The clock only catches a wait that never ends: a test whose
+  # wait is never met fails the test asking, not the run, after this many seconds.
+  def wait_until
     deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 30
-    sleep 0.02 until File.readlines(loaded).size >= count || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+    sleep 0.02 until yield || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
   end
 
   # The class's shared recording, made the slow way: noted, and a pause.
@@ -96,7 +111,12 @@ class ProcessesFixtureSlow < Minitest::Test
   include ProcessesSharedFixture
 
   3.times do |i|
-    define_method(:"test_slow_#{i}") { note_played { sleep 0.5 } }
+    define_method(:"test_slow_#{i}") do
+      note_played do
+        wait_for_other_classes
+        sleep 0.5
+      end
+    end
   end
 end
 

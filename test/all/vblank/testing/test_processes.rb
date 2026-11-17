@@ -138,7 +138,7 @@ class TestProcesses < Minitest::Test
   # in each process that played one of them. Two processes: the slow class is the last to finish
   # whoever takes it, so a process with nothing left to do takes tests from it and from no other.
   def test_what_a_class_sets_up_once_is_set_up_once_per_run
-    run = play_shared_fixture(2)
+    run = play_shared_fixture(2, { "PROCESSES_FIXTURE_SLOW_WAITS_FOR" => OTHER_THAN_SLOW_TESTS.to_s })
 
     assert_match(/17 runs, \d+ assertions, 0 failures, 0 errors, 0 skips/, run.out)
     assert_equal %w[ProcessesFixtureSharedFirst ProcessesFixtureSharedSecond], run.setups.sort
@@ -147,10 +147,17 @@ class TestProcesses < Minitest::Test
     end
   end
 
+  # The tests of the shared-setup fixture's classes other than its slow one.
+  OTHER_THAN_SLOW_TESTS = 14
+
   # A slow class holds up no other: nothing starts after it ends, since every other class was
-  # played by the other process meanwhile.
+  # played by the other process meanwhile. Slow by construction: each slow test waits until every
+  # other test has been played (PROCESSES_FIXTURE_SLOW_WAITS_FOR), so a run that spreads its work
+  # passes however busy the machine is, and one that queued the rest behind the slow class waits
+  # out the fixture's limit and starts them after it.
   def test_a_slow_class_holds_up_no_other_class
-    slow, others = play_shared_fixture(2).played.partition { |test| test.klass == "ProcessesFixtureSlow" }
+    run = play_shared_fixture(2, { "PROCESSES_FIXTURE_SLOW_WAITS_FOR" => OTHER_THAN_SLOW_TESTS.to_s })
+    slow, others = run.played.partition { |test| test.klass == "ProcessesFixtureSlow" }
 
     assert_equal 3, slow.size
     assert_empty others.select { |test| test.started > slow.map(&:ended).max }, "a test waited for the slow class to finish"
