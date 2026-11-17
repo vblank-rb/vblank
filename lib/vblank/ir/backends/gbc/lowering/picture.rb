@@ -2439,7 +2439,7 @@ module VBlank
             # the game runs, the one this placing is for (#emit_layer_changing_sprites).
             def sprite_placement(obj, level = sprite_level(obj))
               hidden = fresh("sprite_hidden")
-              jump_unless(Build.binop(:==, value_node(obj.active), Build.int(1)), hidden)
+              emit_jump_unless_shown(value_node(obj.active), hidden)
               # A pose the program never changes is used as it is, so the build can see it is in range.
               said = folded(obj.pose)
               pose = said ? Build.int(said) : Build.var_ref(keep_step_local(:pose))
@@ -2461,6 +2461,18 @@ module VBlank
                 @asm.label(out_of_range) if out_of_range
               end
               @asm.label(hidden)
+            end
+
+            # On to +hidden+ unless +active+ is 1: each test of it asked on its own where it is a
+            # product of tests (Backends::ShownWhen). A pool's place past the things it holds is then
+            # the count asked against the place's number, a byte at a time where it is kept; worked out
+            # whole and compared with 1, it was three times that, for every place of the pool.
+            def emit_jump_unless_shown(active, hidden)
+              shown = ShownWhen.of(active) { |part| folded(part) }
+              return jump_unless(Build.binop(:==, active, Build.int(1)), hidden) unless shown
+
+              jump_unless(Build.binop(:==, shown.flag, Build.int(1)), hidden) if shown.flag
+              shown.tests.each { |test| jump_unless(test, hidden) }
             end
 
             # rt_sprite handed +args+. When each is a number written in the program, a variable or a

@@ -28,6 +28,7 @@ module VBlank
             PALETTES_CHANGED = "rt picture palettes changed"
             SCROLL = "rt picture scroll" # X, then y
             NEXT_SPRITE = "rt picture next sprite" # The next free entry of the sprite table's copy (low byte)
+            SPRITES_ENDED = "rt picture sprites ended" # NEXT_SPRITE as the last sprite pass ended
             MAP_JOB = "rt picture map job" # The grid being put up: rows left, where from, where to, its bank
             # 1 while a grid's rows are finished with the display off, until the blank's copies are done
             MAP_DISPLAY_OFF = "rt picture map display off"
@@ -185,6 +186,7 @@ module VBlank
               memory.reserve(PALETTES_CHANGED, 1)
               memory.reserve(SCROLL, 2)
               memory.reserve(NEXT_SPRITE, 1)
+              memory.reserve(SPRITES_ENDED, 1)
               memory.reserve(MAP_JOB, 6)
               memory.reserve(MAP_DISPLAY_OFF, 1)
               memory.reserve(CELLS, 1 + ((painting ? PAINTED_CELLS_ROOM : CELLS_KEPT) * CELL_BYTES))
@@ -1406,9 +1408,10 @@ module VBlank
 
             # SPRITES. A pass's sprites are written into the copy of the table front-most first,
             # which is the order the console draws them in (an earlier entry in front), from
-            # rt_sprites_begin to rt_sprites_end, which switches off every entry after
-            # the last one written, and turns the sprite layer on when the screen up is drawn from
-            # tiles (a painted one keeps it off: rt_screen). A sprite is its picture's pieces, each an entry; a piece
+            # rt_sprites_begin to rt_sprites_end, which switches off every entry after the last one
+            # written that the pass before left on, and turns the sprite layer on when the screen up
+            # is drawn from tiles (a painted one keeps it off: rt_screen). A sprite is its picture's
+            # pieces, each an entry; a piece
             # wholly off the screen is left out, since the table's place is a byte and a place far
             # off the screen would come round onto it.
             #
@@ -1455,12 +1458,19 @@ module VBlank
                 asm.cp_a(Paint::PAINTED)
                 asm.call(:nz, "rt_sprites_on")
               end
+              # Switched off: the entries the pass before wrote past where this one ended, each given
+              # a Y of 0, which puts it above the screen (Pan Docs, "OAM"). Every entry past where the
+              # pass before ended is off already, so the work is the entries this pass dropped, not
+              # the whole rest of the table: a pass of four sprites is not thirty-six entries cleared.
+              asm.load(:a, [memory[SPRITES_ENDED]])
+              asm.load(:c, :a)
               asm.load(:a, [memory[NEXT_SPRITE]])
+              asm.load([memory[SPRITES_ENDED]], :a)
               asm.load(:l, :a)
               asm.load(:h, Memory::SHADOW_OAM >> 8)
               asm.label("rt_sprites_end_next")
               asm.load(:a, :l)
-              asm.cp_a(Console::GBCHardware::OAM_SIZE)
+              asm.cp_a(:c)
               asm.ret(:nc)
               asm.load([:hl], 0) # Y of 0: above the screen, not drawn
               4.times { asm.inc(:l) }

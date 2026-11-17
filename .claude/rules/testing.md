@@ -169,6 +169,7 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `sound_effect_recording_tests.rb` (sound effects whose parts play a recording, sharing the voices by rank, played by each console that mixes them),
 `screen_backdrop_games.rb` (small tiled games for `screen ... backdrop:`),
 `draw_order_cost_games.rb` (a game of seven things in a `draw_in_order` and the same without, for each console's cost test),
+`sprite_count_cost_games.rb` (many sprites declared and four showing, and a pool of many places holding four, each against the same game of four, for each console's cost test of a sprite not showing),
 `list_read_cost_games.rb` (four full lists read at a variable, a mask or a loop's count, and the same game reading none, for each console's cost test of a list read),
 `loop_cost_games.rb` (a `repeat` and a counted `while`, setting a variable or reading a list at the count, 64 turns against 32, for each console's cost test of a loop's turn),
 `number_width_cost_games.rb` (tests of numbers the build proves small: how far apart two byte slots are, a variable against a number, a half slot shifted down, a table of bytes against a variable, four a pass against the same game with none, for each console's cost test of a narrow comparison),
