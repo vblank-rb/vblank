@@ -446,6 +446,9 @@ module VBlank
           # after, with no label between, so no other way into the code can arrive with the register
           # holding something else.
           def emit_load_variable(name, register = :v0)
+            held = @counters_held&.fetch(name, nil)
+            return (@asm.move(register, held) unless register == held) if held
+
             name_stored, from, at = @stored
             if name_stored == name && at == @asm.here && !@asm.labelled_here?
               @asm.move(register, from) unless register == from
@@ -456,6 +459,9 @@ module VBlank
           end
 
           def emit_store(name, register = :v0)
+            held = @counters_held&.fetch(name, nil)
+            return (@asm.move(held, register) unless register == held) if held
+
             emit_store_word(register, place_of(name))
             @stored = [name, register, @asm.here]
           end
@@ -483,7 +489,7 @@ module VBlank
 
           def emit_keep_temporary(register)
             @temporaries ||= []
-            place = (@held_walk ? TEMPORARIES - WALK_REGISTERS : TEMPORARIES)[@temporaries.length]
+            place = (TEMPORARIES - (@held_walk ? WALK_REGISTERS : []) - (@counters_held || {}).values)[@temporaries.length]
             place ? @asm.move(place, register) : emit_push(register)
             @temporaries.push(place)
           end
@@ -564,7 +570,52 @@ module VBlank
           def place_label(label) = @asm.label(label)
           def jump(label) = @asm.b(label)
           def emit_store_zero(name) = emit_store_number(name, 0)
-          def emit_increment(name) = emit_sum(name, :+, Build.int(1))
+          def emit_increment(name)
+            held = @counters_held&.fetch(name, nil)
+            return @asm.addiu(held, held, 1) if held
+
+            emit_sum(name, :+, Build.int(1))
+          end
+
+          # A LOOP'S COUNT KEPT IN A SAVED REGISTER (ControlFlow::OWN_WAYS). A count in main RAM is a
+          # load, which waits on the RAM, an add and a store every turn, and a load again to compare it;
+          # in a register it is one ADDIU, and a body reading it reads the register (psx-spx, "CPU
+          # Load/Store Opcodes": main RAM has no data cache). The R3000's own loops count in a register.
+          #
+          # s4, s3 and s2, a loop inside one taking the next: the runtime's routines keep the saved
+          # registers as they found them, and while one holds a count, a value worked out in the body
+          # takes its temporaries from the others (#emit_keep_temporary). Only where the body cannot reach
+          # the game's own routines, which use the saved registers unsaved, nor a frame boundary (whose
+          # timers run the game's routines), nor stop the game; and where everything in it that names the
+          # count reads it as a value or is the loop's own one more. The count goes back to its variable
+          # as the loop ends.
+          COUNTER_REGISTERS = %i[s4 s3 s2].freeze
+
+          def with_counter_held(node, counter, loaded: false)
+            @counters_held ||= {}
+            register = COUNTER_REGISTERS[@counters_held.size]
+            step = loop_form.counted_while(node)&.step if loaded
+            return yield unless register && @held_walk.nil? && counter_holdable?(node, counter, step)
+
+            emit_load_word(register, place_of(counter)) if loaded
+            @counters_held[counter] = register
+            begin
+              yield
+            ensure
+              @counters_held.delete(counter)
+            end
+            emit_store_word(register, place_of(counter))
+          end
+
+          # Whether the loop +node+ can keep +counter+ in a register (#with_counter_held); +step+ is a
+          # counted while's one more, which ControlFlow writes as #emit_increment.
+          def counter_holdable?(node, counter, step)
+            nodes = Reach.statements_from(*node.children) + Reach.statements_under(node.stop_when)
+            return false if @plan.statements_wait?(nodes) || Reach.routines_named(nodes).any?
+            return false if nodes.any? { |each| %i[raw halt].include?(each.kind) || each.callees.any? }
+
+            nodes.all? { |each| each.equal?(step) || each.kind == :var_ref || !each.attrs.values.flatten.include?(counter) }
+          end
           # Only an `if` has another side.
           def children_of(node) = [node.children, (node.else&.children if node.kind == :if) || []]
           def loop_statements(node) = console_loop(node).each_time

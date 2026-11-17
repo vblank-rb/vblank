@@ -64,7 +64,13 @@ module VBlank
               "SNES" => "The 65816 adds and compares 16 bits at a time, so a 32-bit count's turn end is thirteen " \
                         "instructions. A count to a number written in the program below $8000 never leaves its low " \
                         "half, so SNES::Lowering#with_counter_held has its turn end INC the low half and compare it " \
-                        "unsigned, three instructions; a pool's walk takes a turn for every thing it visits."
+                        "unsigned, three instructions; a pool's walk takes a turn for every thing it visits. " \
+                        "Where only the loop reads the count and nothing in it changes Y, the turn is INY and " \
+                        "CPY instead, two and three cycles against eight for an INC of work RAM.",
+              "PS1" => "A count in main RAM is a load that waits on the RAM, an add and a store each turn, and a " \
+                       "load again to compare it; PS1::Lowering#with_counter_held keeps it in s4, s3 or s2 " \
+                       "through a body that cannot reach the game's routines or a frame boundary, one ADDIU a " \
+                       "turn, and puts it back as the loop ends."
             }
           }
         )
