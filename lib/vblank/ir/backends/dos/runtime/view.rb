@@ -84,8 +84,26 @@ module VBlank
               asm.jle("rt_pixelate_not_big")
               asm.mov(:eax, Blocks::LARGEST)
               asm.label("rt_pixelate_not_big")
+              emit_scenery_blocks(asm, memory) if Scenery.blocks?(memory)
               asm.mov(X86.mem(nil, memory[BLOCK], size: 32), :eax)
               asm.ret
+            end
+
+            # In a game with a screen of tiles, the size is the scenery's too (Reference#exec_pixelate): a screen of
+            # tiles is built a thing at a time, each in blocks or not (Runtime::Scenery#emit_blocked_window), and only
+            # a painted screen goes into them whole. So a new size is kept for the scenery, and while a painted screen is
+            # up it is the picture's as well; otherwise the view is built again with it, and the picture is left alone.
+            def emit_scenery_blocks(asm, memory)
+              size = X86.mem(nil, memory[Scenery::BLOCK], size: 32)
+              asm.cmp(:eax, size)
+              asm.je("rt_pixelate_done")
+              asm.mov(size, :eax)
+              asm.cmp(X86.mem(nil, memory[Scenery::SCREEN_KIND], size: 32), Scenery::PAINTED)
+              asm.je("rt_pixelate_painted")
+              asm.jmp("rt_scenery_rebuild")
+              asm.label("rt_pixelate_done")
+              asm.ret
+              asm.label("rt_pixelate_painted")
             end
 
             # rt_view_rows: every row marked as changed if the view moved or the blocks changed size, and

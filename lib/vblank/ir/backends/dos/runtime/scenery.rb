@@ -63,9 +63,16 @@ module VBlank
             # rows are kept in the data segment (Lowering::Scenery.bend_rows_place), or nought for one not bent. +scene+ is
             # nought for a background every screen shows, and one more than its scene's number for a scene's own, which
             # shows only while that scene is up (SceneHandover#showing).
+            #
+            # +blocks+ is whether it is shown in blocks while the game pixelates (Reference#in_blocks?, settled at build):
+            # nought for one left as drawn, IN_BLOCKS, or TURNS_IN_BLOCKS for one that can turn, which is a single pixel
+            # wide at a size of two (Reference#block_width_across). +grid_h+ is how tall a status bar's grid is in pixels,
+            # where a block that starts above the bar reads its map from (Reference#paint_status_bar_rows); nought for the rest.
             RECORD = %i[cells cols rows tile_w tile_h wrap_w wrap_h wraps across down step_x step_y map_h state mixed
-                        mask_delta lengths maps map_count colors_offset corner_y above_row bends scene].freeze
-            RECORD_BYTES = 48
+                        mask_delta lengths maps map_count colors_offset corner_y above_row bends scene blocks grid_h].freeze
+            RECORD_BYTES = 52
+            IN_BLOCKS = 1
+            TURNS_IN_BLOCKS = 2
             NO_TILE = 0xFFFF
 
             # THE CELL CHANGES HELD FOR THE FRAME'S END (`set_tile ..., held: true`, Reference#exec_set_tile), in the
@@ -194,6 +201,23 @@ module VBlank
             TURN_DOWN = "rt scenery turn down"
             TURN_ORIGIN_X = "rt scenery turn origin x"
             TURN_ORIGIN_Y = "rt scenery turn origin y"
+            # THE BLOCKS A SCREEN OF TILES IS SHOWN IN (`pixelate`, Reference#paint_scenery_in_blocks): how many pixels a
+            # block is each way as the game last said, 1 for none; and how many rows a block is for the window being
+            # drawn, which reads each row of it at the block's first row (1 for a window drawn as it is).
+            BLOCK = "rt scenery block"
+            TALL = "rt scenery tall"
+            # What the laying of one background in blocks keeps while it works (#emit_blocked_window): its record, the
+            # clip it is laid in, the row being laid, how wide a block of it is, and whether a block of the row of blocks
+            # being laid is see-through.
+            LAY_RECORD = "rt scenery lay record"
+            LAY_LEFT = "rt scenery lay left"
+            LAY_RIGHT = "rt scenery lay right"
+            LAY_TOP = "rt scenery lay top"
+            LAY_BOTTOM = "rt scenery lay bottom"
+            LAY_PY = "rt scenery lay py"
+            LAY_WIDE = "rt scenery lay wide"
+            LAY_OPEN = "rt scenery lay open"
+            BLOCK_WORDS = [BLOCK, TALL, LAY_RECORD, LAY_LEFT, LAY_RIGHT, LAY_TOP, LAY_BOTTOM, LAY_PY, LAY_WIDE, LAY_OPEN].freeze
 
             WORDS = [OWED, EXPIRED, ANY_FROM_CORNER, UP, PLACING, BACKDROP, BUILT, BUILT_BACKDROP, ROW_BEGIN, ROW_END, ROW_OFFSET,
                      TILE_W, MIXED, MASK_DELTA, COLORS_OFFSET, WRAPS, OFF_X,
@@ -205,8 +229,9 @@ module VBlank
 
             def field(name) = RECORD.index(name) * 2
 
-            def reserve(memory, backgrounds, held: false, runs: false)
+            def reserve(memory, backgrounds, held: false, runs: false, blocks: false)
               WORDS.each { |name| memory.reserve(name, 4) }
+              BLOCK_WORDS.each { |name| memory.reserve(name, 4) } if blocks
               RUN_WORDS.each { |name| memory.reserve(name, 4) } if runs
               memory.reserve(STATES, backgrounds * STATE_BYTES)
               return unless held
@@ -214,6 +239,12 @@ module VBlank
               [HELD_COUNT, HELD_AT, HELD_KEPT].each { |name| memory.reserve(name, 4) }
               memory.reserve(HELD, HELD_MOST * HELD_BYTES)
             end
+
+            # What the start sets: blocks of one pixel, the picture as drawn.
+            def starts(memory) = memory.reserved?(BLOCK) ? [[memory[BLOCK], 1], [memory[TALL], 1]] : []
+
+            # Whether the game's screen of tiles can be shown in blocks.
+            def blocks?(memory) = memory.reserved?(BLOCK)
 
             # The place of background number +number+'s STATE.
             def state_at(memory, number) = memory[STATES] + (number * STATE_BYTES)
@@ -237,6 +268,7 @@ module VBlank
               emit_backdrop(asm, memory)
               emit_view(asm, memory, levels, backgrounds, bars, alone, live_bends, scene_at)
               emit_clipped_window(asm, memory, scene_at)
+              emit_blocked_window(asm, memory) if blocks?(memory)
               emit_wipe(asm, memory)
               turned.each { |background| emit_turned_window(asm, memory, background) }
               emit_fill_rows(asm, memory)
@@ -738,7 +770,7 @@ module VBlank
                 asm.mov(at(memory, SCENERY_ROWS), :eax)
                 asm.mov(at(memory, BAR_RECORD, 16), :si)
                 emit_clip_rows(asm, memory, :eax, memory.screen.height)
-                asm.call("rt_scenery_window")
+                asm.call(window_routine(memory))
                 asm.label(down)
               end
             end
@@ -782,7 +814,7 @@ module VBlank
                 asm.mov(:eax, at(memory, SCENERY_ROWS))
                 emit_clip_rows(asm, memory, :eax, memory.screen.height)
                 asm.call("rt_scenery_fill_rows")
-                asm.call("rt_scenery_window")
+                asm.call(window_routine(memory))
                 asm.label("rt_scenery_view_uncovered")
               end
               alone.each_with_index do |(record, row, without_sprites), nth|
@@ -878,9 +910,304 @@ module VBlank
               asm.jle("rt_scenery_clipped_nothing")
               asm.mov(:eax, clip.call(CLIP_BOTTOM))
               asm.cmp(:eax, clip.call(CLIP_TOP))
-              asm.jg("rt_scenery_window")
+              asm.jg(window_routine(memory))
               asm.label("rt_scenery_clipped_nothing")
               asm.ret
+            end
+
+            # The routine that paints a background's window in the clip: in blocks where the game can show it in them.
+            def window_routine(memory) = blocks?(memory) ? "rt_scenery_any_window" : "rt_scenery_window"
+
+            # ONE BACKGROUND IN BLOCKS (Reference#paint_scenery_in_blocks), with SI at its record and GS at the art.
+            #
+            # rt_scenery_any_window: its window as drawn, or in blocks where its record says it is shown in them and the
+            # blocks are more than a pixel. rt_scenery_blocked_window: the interpreter paints such a background onto a
+            # sheet of its own, every row read at its block's first row and placed by its own bend, and lays the sheet
+            # onto the picture through the blocks, a block showing the sheet's pixel at its first column, or leaving
+            # what is there where that is see-through. This does the same a row of blocks at a time.
+            #
+            # THE SHEET IS THE PICTURE SHOWN, which is made again from the game's picture before the player sees it
+            # (every row is marked as the view is built). For the first row of the clip and the first row of each
+            # block under it, the window is drawn into that row of the sheet, as wide as the screen, over the
+            # see-through entry; then each block's first pixel is spread over the block into two rows at the sheet's
+            # top (rt_scenery_spread_blocks): its colours, nought where it is see-through, and a mask, FFh there and
+            # nought elsewhere. Every row of the clip down to the next block is then that pair laid onto the game's
+            # picture (rt_scenery_lay_row). Rows of a block are alike, so a block's row is drawn and spread once,
+            # and laid four pixels at a time: a background with nothing see-through in the clip is copied, and one
+            # with see-through pixels laid with its mask. A bent background's rows are each moved by their own bend,
+            # so each of its rows is drawn and spread.
+            def emit_blocked_window(asm, memory)
+              word = ->(name) { at(memory, name) }
+              asm.label("rt_scenery_any_window")
+              asm.cmp(X86.mem(:si, field(:blocks), seg: :gs, size: 16), 0)
+              asm.je("rt_scenery_window")
+              asm.cmp(word.call(BLOCK), 1)
+              asm.je("rt_scenery_window")
+              asm.label("rt_scenery_blocked_window")
+              asm.mov(at(memory, LAY_RECORD, 16), :si)
+              { CLIP_LEFT => LAY_LEFT, CLIP_RIGHT => LAY_RIGHT, CLIP_TOP => LAY_TOP, CLIP_BOTTOM => LAY_BOTTOM }.each do |clip, kept|
+                asm.mov(:eax, word.call(clip))
+                asm.mov(word.call(kept), :eax)
+              end
+              # How wide a block is: the size, but a single pixel at a size of two for one that can turn.
+              asm.mov(:eax, word.call(BLOCK))
+              asm.cmp(X86.mem(:si, field(:blocks), seg: :gs, size: 16), TURNS_IN_BLOCKS)
+              asm.jne("rt_scenery_blocked_wide")
+              asm.cmp(:eax, 2)
+              asm.jne("rt_scenery_blocked_wide")
+              asm.mov(:eax, 1)
+              asm.label("rt_scenery_blocked_wide")
+              asm.mov(word.call(LAY_WIDE), :eax)
+              Rows.emit_push_picture_segment(asm, memory.screen)
+              Rows.emit_picture_segment(asm, memory.screen, :shown)
+              asm.mov(:eax, word.call(LAY_TOP))
+              asm.mov(word.call(LAY_PY), :eax)
+              asm.label("rt_scenery_blocked_row")
+              asm.mov(:eax, word.call(LAY_PY))
+              asm.cmp(:eax, word.call(LAY_BOTTOM))
+              asm.jge("rt_scenery_blocked_done")
+              # A row of blocks begins: the clip's first row, a block's first row, or any row of a bent background.
+              asm.cmp(:eax, word.call(LAY_TOP))
+              asm.je("rt_scenery_blocked_draw")
+              asm.mov(:si, at(memory, LAY_RECORD, 16))
+              asm.cmp(X86.mem(:si, field(:bends), seg: :gs, size: 16), 0)
+              asm.jne("rt_scenery_blocked_draw")
+              asm.xor(:edx, :edx)
+              asm.div(word.call(BLOCK))
+              asm.test(:edx, :edx)
+              asm.jne("rt_scenery_blocked_lay")
+              asm.label("rt_scenery_blocked_draw")
+              emit_blocked_row_drawn(asm, memory)
+              asm.label("rt_scenery_blocked_lay")
+              asm.call("rt_scenery_lay_row")
+              asm.inc(word.call(LAY_PY))
+              asm.jmp("rt_scenery_blocked_row")
+              asm.label("rt_scenery_blocked_done")
+              Rows.emit_pop_picture_segment(asm, memory.screen)
+              { LAY_LEFT => CLIP_LEFT, LAY_RIGHT => CLIP_RIGHT, LAY_TOP => CLIP_TOP, LAY_BOTTOM => CLIP_BOTTOM }.each do |kept, clip|
+                asm.mov(:eax, word.call(kept))
+                asm.mov(word.call(clip), :eax)
+              end
+              asm.mov(:si, at(memory, LAY_RECORD, 16))
+              asm.ret
+              emit_spread_blocks(asm, memory)
+              emit_lay_row(asm, memory)
+            end
+
+            # Row LAY_PY of the sheet the see-through entry across, the window drawn into it alone as wide as the screen,
+            # read at its block's first row (TALL), and its blocks spread (rt_scenery_spread_blocks).
+            def emit_blocked_row_drawn(asm, memory)
+              word = ->(name) { at(memory, name) }
+              asm.push(:ebp)
+              asm.mov(:ebp, word.call(LAY_PY))
+              Rows.emit_row_start(asm, memory.screen, :ebp)
+              asm.mov(:eax, TRANSPARENT * 0x0101_0101)
+              asm.mov(:cx, memory.screen.width / 4)
+              asm.stos(32, rep: true)
+              asm.pop(:ebp)
+              asm.mov(:eax, word.call(LAY_PY))
+              asm.mov(word.call(CLIP_TOP), :eax)
+              asm.inc(:eax)
+              asm.mov(word.call(CLIP_BOTTOM), :eax)
+              asm.mov(word.call(CLIP_LEFT), 0)
+              asm.mov(word.call(CLIP_RIGHT), memory.screen.width)
+              asm.mov(:eax, word.call(BLOCK))
+              asm.mov(word.call(TALL), :eax)
+              asm.mov(:si, at(memory, LAY_RECORD, 16))
+              asm.call("rt_scenery_window")
+              asm.mov(word.call(TALL), 1)
+              asm.call("rt_scenery_spread_blocks")
+            end
+
+            # rt_scenery_spread_blocks: row LAY_PY of the sheet put into blocks of LAY_WIDE from the screen's left, from
+            # the first block at or left of LAY_LEFT to LAY_RIGHT, as two rows at the top of the picture shown: the
+            # colours, each block its first pixel's or nought where that is see-through, and after them the mask,
+            # FFh for a see-through block and nought for the rest. LAY_OPEN is whether any block is see-through.
+            #
+            # At blocks of two this runs for every other row of the screen and every other pixel of it, so the loop is
+            # kept short: the mask cleared once, the numbers in registers, and a block's colour put down in one go.
+            # While it runs DS is the sheet's row, and the one number written is written through SS.
+            def emit_spread_blocks(asm, memory)
+              screen = memory.screen
+              asm.label("rt_scenery_spread_blocks")
+              asm.mov(at(memory, LAY_OPEN), 0)
+              asm.mov(:ax, at(memory, LAY_LEFT, 16))
+              asm.xor(:dx, :dx)
+              asm.div(at(memory, LAY_WIDE, 16))
+              asm.mov(:bx, at(memory, LAY_LEFT, 16))
+              asm.sub(:bx, :dx) # the first block's first column
+              asm.push(:ds)
+              asm.push(:es)
+              asm.push(:bp)
+              asm.mov_segment(:ax, :shown)
+              asm.mov(:es, :ax)
+              asm.mov(:di, screen.width)
+              asm.xor(:eax, :eax)
+              asm.mov(:cx, screen.width / 4)
+              asm.stos(32, rep: true) # the mask, nought
+              asm.mov(:bp, at(memory, LAY_RIGHT, 16))
+              emit_shown_row(asm, screen, at(memory, LAY_PY))
+              asm.mov(:dx, at(memory, LAY_WIDE, 16))
+              asm.mov(:ds, :ax) # DS:SI the sheet's row
+              # Blocks two pixels wide, to an even right edge (the screen's, and most boxes'): a block is one word.
+              asm.cmp(:dx, 2)
+              asm.jne("rt_scenery_spread_block")
+              asm.test(:bp, 1)
+              asm.jne("rt_scenery_spread_block")
+              asm.label("rt_scenery_spread_pair")
+              asm.cmp(:bx, :bp)
+              asm.jae("rt_scenery_spread_done")
+              asm.mov(:al, X86.mem(:bx, 0, index: :si, size: 8))
+              asm.cmp(:al, TRANSPARENT)
+              asm.je("rt_scenery_spread_pair_open")
+              asm.mov(:ah, :al)
+              asm.mov(X86.mem(:bx, 0, seg: :es, size: 16), :ax)
+              asm.add(:bx, 2)
+              asm.jmp("rt_scenery_spread_pair")
+              asm.label("rt_scenery_spread_pair_open")
+              asm.mov(X86.mem(:bx, 0, seg: :es, size: 16), 0)
+              asm.mov(X86.mem(:bx, screen.width, seg: :es, size: 16), 0xFFFF)
+              asm.mov(X86.mem(nil, memory[LAY_OPEN], seg: :ss, size: 8), 1)
+              asm.add(:bx, 2)
+              asm.jmp("rt_scenery_spread_pair")
+              asm.label("rt_scenery_spread_block")
+              asm.cmp(:bx, :bp)
+              asm.jae("rt_scenery_spread_done")
+              asm.mov(:cx, :bp)
+              asm.sub(:cx, :bx)
+              asm.cmp(:cx, :dx)
+              asm.jbe("rt_scenery_spread_count") # the block the right edge cuts off
+              asm.mov(:cx, :dx)
+              asm.label("rt_scenery_spread_count")
+              asm.mov(:di, :bx)
+              asm.mov(:al, X86.mem(:bx, 0, index: :si, size: 8))
+              asm.cmp(:al, TRANSPARENT)
+              asm.je("rt_scenery_spread_open")
+              asm.stos(8, rep: true)
+              asm.add(:bx, :dx)
+              asm.jmp("rt_scenery_spread_block")
+              asm.label("rt_scenery_spread_open")
+              asm.xor(:al, :al)
+              asm.push(:cx)
+              asm.stos(8, rep: true)
+              asm.pop(:cx)
+              asm.mov(:di, :bx)
+              asm.add(:di, screen.width)
+              asm.mov(:al, 0xFF)
+              asm.stos(8, rep: true)
+              asm.mov(X86.mem(nil, memory[LAY_OPEN], seg: :ss, size: 8), 1)
+              asm.add(:bx, :dx)
+              asm.jmp("rt_scenery_spread_block")
+              asm.label("rt_scenery_spread_done")
+              asm.pop(:bp)
+              asm.pop(:es)
+              asm.pop(:ds)
+              asm.ret
+            end
+
+            # AX the segment and SI the offset of row +row+ (a place in the data segment) of the picture shown.
+            # Changes EDX.
+            def emit_shown_row(asm, screen, row)
+              asm.mov(:eax, row)
+              if Rows.apart?(screen)
+                asm.mov(:dx, Rows.row_paragraphs(screen))
+                asm.mul(:dx)
+                asm.mov_segment(:dx, :shown)
+                asm.add(:ax, :dx)
+                asm.xor(:si, :si)
+              else
+                asm.mov(:dx, screen.width)
+                asm.mul(:dx)
+                asm.mov(:si, :ax)
+                asm.mov_segment(:ax, :shown)
+              end
+            end
+
+            # rt_scenery_lay_row: the spread row of blocks laid onto row LAY_PY of the game's picture, from LAY_LEFT to
+            # LAY_RIGHT: copied where no block of it is see-through, and otherwise four pixels at a time with the mask,
+            # the picture's pixel kept where the mask is set and the block's colour put in where it is not.
+            def emit_lay_row(asm, memory)
+              screen = memory.screen
+              asm.label("rt_scenery_lay_row")
+              asm.push(:ds)
+              asm.push(:es)
+              asm.mov(:ax, at(memory, LAY_LEFT, 16))
+              asm.mov(:cx, at(memory, LAY_RIGHT, 16))
+              asm.sub(:cx, :ax) # how many pixels
+              asm.mov(:dl, at(memory, LAY_OPEN, 8))
+              asm.push(:ax)
+              asm.mov(:eax, at(memory, LAY_PY))
+              if Rows.apart?(screen)
+                asm.push(:dx)
+                asm.mov(:dx, Rows.row_paragraphs(screen))
+                asm.mul(:dx)
+                asm.mov_segment(:dx, :back)
+                asm.add(:ax, :dx)
+                asm.mov(:es, :ax)
+                asm.xor(:di, :di)
+                asm.pop(:dx)
+              else
+                asm.push(:dx)
+                asm.mov(:dx, screen.width)
+                asm.mul(:dx)
+                asm.mov(:di, :ax)
+                asm.mov_segment(:ax, :back)
+                asm.mov(:es, :ax)
+                asm.pop(:dx)
+              end
+              asm.pop(:ax)
+              asm.add(:di, :ax)
+              asm.mov(:si, :ax)
+              asm.mov(:bx, :ax)
+              asm.add(:bx, screen.width) # DS:BX the mask
+              asm.mov_segment(:ax, :shown)
+              asm.mov(:ds, :ax)
+              asm.test(:dl, :dl)
+              asm.jne("rt_scenery_lay_masked")
+              asm.mov(:ax, :cx)
+              asm.shr(:cx, 2)
+              asm.movs(32, rep: true)
+              asm.mov(:cx, :ax)
+              asm.and(:cx, 3)
+              asm.movs(8, rep: true)
+              asm.jmp("rt_scenery_lay_row_done")
+              asm.label("rt_scenery_lay_masked")
+              asm.cmp(:cx, 4)
+              asm.jb("rt_scenery_lay_masked_one")
+              asm.mov(:eax, X86.mem(:di, 0, seg: :es, size: 32))
+              asm.and(:eax, X86.mem(:bx, 0, size: 32))
+              asm.or(:eax, X86.mem(:si, 0, size: 32))
+              asm.stos(32)
+              asm.add(:si, 4)
+              asm.add(:bx, 4)
+              asm.sub(:cx, 4)
+              asm.jmp("rt_scenery_lay_masked")
+              asm.label("rt_scenery_lay_masked_one")
+              asm.test(:cx, :cx)
+              asm.je("rt_scenery_lay_row_done")
+              asm.mov(:al, X86.mem(:di, 0, seg: :es, size: 8))
+              asm.and(:al, X86.mem(:bx, 0, size: 8))
+              asm.or(:al, X86.mem(:si, 0, size: 8))
+              asm.stos(8)
+              asm.inc(:si)
+              asm.inc(:bx)
+              asm.dec(:cx)
+              asm.jmp("rt_scenery_lay_masked_one")
+              asm.label("rt_scenery_lay_row_done")
+              asm.pop(:es)
+              asm.pop(:ds)
+              asm.ret
+            end
+
+            # EAX the row of the screen PY's block starts at: PY itself while TALL is 1. Changes EDX.
+            def emit_block_top(asm, memory)
+              asm.mov(:eax, at(memory, PY))
+              return unless blocks?(memory)
+
+              asm.xor(:edx, :edx)
+              asm.div(at(memory, TALL))
+              asm.mov(:eax, at(memory, PY))
+              asm.sub(:eax, :edx)
             end
 
             # rt_scenery_window, with SI at a background's record and GS at the art: its window painted where it is
@@ -917,10 +1244,11 @@ module VBlank
 
               # A map that does not come round: a row above or below it shows what is behind.
               asm.label("rt_scenery_window_row")
-              asm.mov(:eax, word.call(SCROLL_SHOWN_Y))
-              asm.add(:eax, word.call(PY))
+              emit_block_top(asm, memory)
+              asm.add(:eax, word.call(SCROLL_SHOWN_Y))
               asm.jo("rt_scenery_window_row_done")
               asm.test(:eax, :eax)
+              emit_bar_grid_row(asm, record) if blocks?(memory)
               asm.js("rt_scenery_window_row_done")
               asm.movzx(:ebx, record.call(:map_h))
               asm.cmp(:eax, :ebx)
@@ -955,8 +1283,8 @@ module VBlank
                 asm.mov(word.call(name), :edx)
               end
               asm.label("rt_scenery_window_wrapped_row")
-              asm.mov(:eax, word.call(SCROLL_SHOWN_Y))
-              asm.add(:eax, word.call(PY))
+              emit_block_top(asm, memory)
+              asm.add(:eax, word.call(SCROLL_SHOWN_Y))
               asm.movzx(:ebx, record.call(:wrap_h))
               asm.label("rt_scenery_window_bring_round")
               asm.cmp(:eax, :ebx)
@@ -971,6 +1299,24 @@ module VBlank
               emit_next_py(asm, memory, "rt_scenery_window_wrapped_row")
               asm.label("rt_scenery_window_no_rows")
               asm.ret
+            end
+
+            # A block of a status bar that starts above the bar reads the rows of the bar's grid that far above its map's
+            # top, the grid coming round there as a scrolled background's does (Reference#paint_status_bar_rows): EAX, the
+            # map's row, brought round where it is less than nought and the record has a grid. The flags as `test eax,
+            # eax` leaves them. Changes EBX.
+            def emit_bar_grid_row(asm, record)
+              asm.jns("rt_scenery_window_grid_done")
+              asm.movzx(:ebx, record.call(:grid_h))
+              asm.test(:ebx, :ebx)
+              asm.je("rt_scenery_window_grid_none")
+              asm.label("rt_scenery_window_grid_round")
+              asm.add(:eax, :ebx)
+              asm.js("rt_scenery_window_grid_round")
+              asm.jmp("rt_scenery_window_grid_done")
+              asm.label("rt_scenery_window_grid_none")
+              asm.test(:eax, :eax)
+              asm.label("rt_scenery_window_grid_done")
             end
 
             # A background that can turn, as the drawing of it is written: its record's place, and its tiles' width and
@@ -1025,8 +1371,9 @@ module VBlank
               # The row's first pixel's place on the map, in 256ths from the pivot's (Affine.matrix's four numbers are
               # the first, less than nought the third, the third and the first): across, the first times how far it is
               # across from the pivot and the second times how far down; down, the third and the fourth the same.
-              asm.mov(:ebp, at(memory, PY))
-              asm.sub(:ebp, state.call(PIVOT_Y)) # down from the pivot
+              emit_block_top(asm, memory)
+              asm.mov(:ebp, :eax)
+              asm.sub(:ebp, state.call(PIVOT_Y)) # down from the pivot, from the row its block starts at
               asm.mov(:ecx, at(memory, CLIP_LEFT))
               asm.sub(:ecx, state.call(PIVOT_X)) # across from it
               asm.mov(:eax, at(memory, TURN_ACROSS))

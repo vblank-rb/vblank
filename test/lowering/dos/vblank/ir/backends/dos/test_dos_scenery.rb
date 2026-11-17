@@ -8,8 +8,9 @@ require "test_helper"
 # DOS's own: a grid narrower than the 320 pixels across, so the map comes round on the screen; tiles with
 # some, all and none of their pixels see-through, laid four at a time; a map too big for a grid, scrolled
 # past every edge; a scrolled view built in less than a frame; cells changed at and past every edge of the
-# map, and more held at once than wait together; maps of different sizes; and tiles painted from a list
-# that holds fewer bytes than they take.
+# map, and more held at once than wait together; maps of different sizes; tiles painted from a list
+# that holds fewer bytes than they take; and backgrounds in blocks, one that turns and one see-through, and
+# one built in less than a frame at the smallest blocks.
 class TestDOSScenery < Minitest::Test
   DOS = VBlank::IR::Backends::DOS
 
@@ -206,6 +207,51 @@ class TestDOSScenery < Minitest::Test
 
     assert_equal run[:passes], run[:frames], "every pass took one frame"
   end
+  # A SCREEN OF TILES IN BLOCKS (Runtime::Scenery#emit_blocked_window): a background that turns is a single
+  # pixel wide at blocks of two and in blocks both ways from three, and one with see-through tiles over another is
+  # laid with its mask, each in blocks by itself; the sizes change pass by pass from one to the biggest and past it.
+  def test_a_turning_background_and_one_see_through_in_blocks_of_every_size
+    test = self
+    checked(frames: 22) do
+      screen :rotozoom, backdrop: :black
+      test.tilesets(self)
+      background :under, tiles: :colors, map: test.stripes(20, 20)
+      top = background :top, tiles: :over, map: Array.new(16) { |r| (r.even? ? "CN" : "NC") * 8 }
+      size = var :size, 0
+      angle = var :angle, 0
+      game_loop do
+        size += 1
+        angle += 7
+        top.rotate angle
+        pixelate size
+      end
+    end
+  end
+
+  # Blocks of two are the most work there is: a row of blocks drawn for every other row of the screen and each of
+  # its blocks spread. A background in them scrolled every pass is still built in less than a frame, so the game's
+  # passes keep to the screen's frames, as a fade timed in frames needs them to. The budget is the one background
+  # drawn as it is (#test_a_scrolled_view_is_built_within_a_frame): measured on 2026-11-17, two backgrounds scrolled
+  # every pass take two frames a pass with or without blocks, which is the speed work still to do.
+  def test_a_scrolled_view_in_blocks_of_two_is_built_within_a_frame
+    test = self
+    run = checked(frames: 8) do
+      screen :tiled
+      test.tilesets(self)
+      field = background :field, tiles: :colors, map: test.stripes(32, 32)
+      passes = var :passes, 0
+      frames = var :frames, 0
+      game_loop do
+        pixelate 2
+        field.scroll_by 3, 1
+        passes += 1
+        frames = frames_since_power_on
+      end
+    end
+
+    assert_equal run[:passes], run[:frames], "every pass took one frame"
+  end
+
   # Cells changed past the map's right edge and below its last row, inside the grid it is kept in, at numbers
   # below nought and too big for a word, to a tile they already have, and from a list of keys by a number that
   # names a key, an empty cell or none.

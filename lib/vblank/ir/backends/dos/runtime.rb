@@ -194,6 +194,7 @@ module VBlank
             starts += [[memory[Frame::CHANGED_TOP], memory.screen.height]]
             starts += Sprites.starts(memory) if sprites
             starts += View.starts(memory) if view
+            starts += Scenery.starts(memory) if scenery
             emit_start(asm, memory, palette, starts, saves, clock, second)
             Saving.emit(asm, memory) if saves
             Clock.emit(asm, memory) if clock

@@ -184,7 +184,8 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `palette_walk_tests.rb` (a fade or tint walked and repeated, played by each console that walks its colours itself),
 `see_through_scenery_tests.rb` (a background layer half see-through under a fade or a tint and in a scene of its own, played by each console that mixes it with what is behind: the Advance and the PlayStation),
 `layer_over_sprites_tests.rb` (a see-through background over sprites behind it and in front of it, played by the same two),
-`pixelate_backgrounds_tests.rb` (the backgrounds in blocks and the sprites as drawn, `pixelate ..., sprites: false`, played by each console whose display shows it: the Advance and the Super Nintendo),
+`pixelate_backgrounds_tests.rb` (the backgrounds in blocks and the sprites as drawn, `pixelate ..., sprites: false`, played by each console whose display shows it: the Advance, the Super Nintendo and DOS),
+`pixelate_above_row_tests.rb` (those, with backgrounds in blocks under one held above a row, played by each console that holds one and shows blocks: the Super Nintendo and DOS),
 `first_pass_presses.rb` (presses counted from a game's first pass, for a game that sets up save
 records first),
 `power_on_frame_games.rb` (a screen held to a reading of `frames_since_power_on`, built with and without

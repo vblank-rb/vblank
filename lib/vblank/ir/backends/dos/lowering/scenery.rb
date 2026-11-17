@@ -48,7 +48,8 @@ module VBlank
               return unless used_in?(program)
 
               backgrounds = backgrounds_in(program)
-              Runtime::Scenery.reserve(memory, backgrounds.size, held: holds_cells?(program), runs: paints_tiles?(program))
+              Runtime::Scenery.reserve(memory, backgrounds.size, held: holds_cells?(program), runs: paints_tiles?(program),
+                                                                 blocks: blocks_in?(program))
               bends_in(program).each_key { |name| memory.reserve(bend_rows_place(name), memory.screen.height * 4) }
             end
 
@@ -64,6 +65,9 @@ module VBlank
             # Where a bent background's rows are kept in the data segment: how far along each row of the screen sits,
             # a double word a row, as the last wait worked them out.
             def self.bend_rows_place(name) = [:bend_rows, name]
+
+            # Whether +program+ shows a screen of tiles that can be in blocks (Runtime::Scenery#emit_blocked_window).
+            def self.blocks_in?(program) = tiled?(program) && program.walk.any? { |node| node.kind == :pixelate }
 
             # Whether +program+ paints tiles of a background from a list.
             def self.paints_tiles?(program) = program.walk.any? { |node| node.kind == :tile_run && node.picture.nil? }
@@ -140,9 +144,43 @@ module VBlank
               scenery_backgrounds.each do |bg|
                 what = unmade_in_background(bg) and return what
               end
-              return "blocks (`pixelate`)" if @program.walk.any? { |node| node.kind == :pixelate }
+              return "sprites in blocks (`pixelate`)" if sprites_in_blocks?
 
               nil
+            end
+
+            # THE THINGS LEFT AS DRAWN WHILE THE GAME PIXELATES (Reference#place_blocks): everything in the layer its
+            # `pixelate` statements are placed under and in front of it, by name; nothing for one that pixelates the
+            # whole picture. One place for the whole game, settled before it runs.
+            def kept_from_blocks
+              @kept_from_blocks ||= begin
+                places = Blocks.places(@program)
+                raise LoweringError, Blocks.several_places_message(places) if places.size > 1
+
+                places.first ? Stacking.at_or_above(stacked_picture, places.first).to_set(&:name) : Set.new
+              end
+            end
+
+            # What a background's record says of blocks (Runtime::Scenery::RECORD's +blocks+): whether the interpreter
+            # shows it in them (Reference#in_blocks?, #paint_status_bar), and whether it can turn.
+            def blocks_of(bg)
+              return 0 unless Scenery.blocks_in?(@program)
+              return 0 if kept_from_blocks.include?(bg.name)
+              return 0 if bg.bar? && !Blocks.bar_in_blocks!(@program, LoweringError)
+
+              bg.affine ? Runtime::Scenery::TURNS_IN_BLOCKS : Runtime::Scenery::IN_BLOCKS
+            end
+
+            # How tall a status bar's grid is in pixels, which a block starting above it reads from
+            # (Reference#paint_status_bar_rows); nought for the rest.
+            def bar_grid_height(bg) = bg.bar? ? TileMap.grid(bg.map)[1].to_i * bg.tile_h : 0
+
+            # Whether a sprite of the game is shown in blocks on a screen of tiles (Reference#sprite_in_blocks?).
+            def sprites_in_blocks?
+              return false unless Scenery.blocks_in?(@program)
+              return false if Blocks.keeps_sprites?(@program, LoweringError)
+
+              stacked_picture.objects.any? { |object| !kept_from_blocks.include?(object.name) }
             end
 
             # The view's levels from the back (Runtime::Scenery#emit_view): at each, the places of the records of the
@@ -293,7 +331,7 @@ module VBlank
                maps.map(&:length).max * bg.tile_h, Runtime::Scenery.state_at(@memory, number), mixed, mask_delta,
                copies.first.last, table, copies.size, 0, bg.bar? ? -bg.bar_top.clamp(0, @memory.screen.height) & 0xFFFF : 0,
                bg.above_row || 0, Scenery.bends_in(@program).key?(bg.name) ? @memory[Scenery.bend_rows_place(bg.name)] : 0,
-               bg.scene ? @plan.scenes.fetch(bg.scene) + 1 : 0]
+               bg.scene ? @plan.scenes.fetch(bg.scene) + 1 : 0, blocks_of(bg), bar_grid_height(bg)]
             end
 
             # A status bar starts placed at the top it was declared with: the top the interpreter shows it at until the
@@ -977,6 +1015,19 @@ module VBlank
               @asm.mov(up, kind)
               emit_backdrop_shown(backdrop)
               @asm.label(done)
+              emit_screen_blocks(kind)
+            end
+
+            # The size of a block outlasts the screen it was set on (Reference#exec_screen): a painted screen up goes into
+            # blocks of it whole, and a screen of tiles is built in them a thing at a time, so the picture is not.
+            def emit_screen_blocks(kind)
+              return unless Scenery.blocks_in?(@program)
+
+              shown = runtime_at(Runtime::View::BLOCK)
+              return @asm.mov(shown, 1) unless kind == Runtime::Scenery::PAINTED
+
+              @asm.mov(:eax, runtime_at(Runtime::Scenery::BLOCK))
+              @asm.mov(shown, :eax)
             end
 
             # Reference#show_backdrop: +color+ the backdrop, nil leaving it as it is.
@@ -1012,8 +1063,9 @@ module VBlank
 
             # The drawing steps that leave the game's picture as it is: sprites are drawn over a copy of it as a frame
             # is sent, a fade and a tint change the card's colours, a camera where later drawing goes, a list of
-            # colours what sprites are drawn in, and a screen of tiles shows its backdrop by building the view.
-            LEAVES_PICTURE = %i[present_objects save_region fade tint camera color_list_holds screen].freeze
+            # colours what sprites are drawn in, a screen of tiles shows its backdrop by building the view, and blocks
+            # are made as the view is built.
+            LEAVES_PICTURE = %i[present_objects save_region fade tint camera pixelate color_list_holds screen].freeze
 
             # Anything else drawn into the picture: it is no longer the view as last built, so the next build that is
             # owed is made, as the interpreter makes it, over what was drawn (Runtime::Scenery::BUILT).
