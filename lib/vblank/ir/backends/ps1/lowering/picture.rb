@@ -663,8 +663,15 @@ module VBlank
             def emit_set_tile_block(node) = emit_children(node)
 
             # Reference#exec_set_tile: a tile the background does not have changes nothing, and nor does a
-            # cell outside its map, which the runtime tests against the map's size.
-            def emit_set_tile(node) = for_background(node) { |bg| emit_set_tile_of(bg, node) }
+            # cell outside its map, which the runtime tests against the map's size. A tile picked by a
+            # number known now is that tile (IR::PickedTile.written).
+            def emit_set_tile(node)
+              if node.picked? && (number = folded(node.picked_by))
+                written = PickedTile.written(node, number)
+                return written && emit_set_tile(written)
+              end
+              for_background(node) { |bg| emit_set_tile_of(bg, node) }
+            end
 
             def emit_set_tile_of(bg, node)
               columns, rows = TileMap.size_of(bg.every_map.first)
