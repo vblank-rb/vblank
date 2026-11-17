@@ -217,7 +217,11 @@ module VBlank
             LAY_PY = "rt scenery lay py"
             LAY_WIDE = "rt scenery lay wide"
             LAY_OPEN = "rt scenery lay open"
-            BLOCK_WORDS = [BLOCK, TALL, LAY_RECORD, LAY_LEFT, LAY_RIGHT, LAY_TOP, LAY_BOTTOM, LAY_PY, LAY_WIDE, LAY_OPEN].freeze
+            # Where in the picture shown the row of blocks is spread to, in paragraphs from its start: rows 0 and 1, or
+            # 2 and 3 while the row being spread is one of those (#emit_spread_blocks).
+            LAY_SCRATCH = "rt scenery lay scratch"
+            BLOCK_WORDS = [BLOCK, TALL, LAY_RECORD, LAY_LEFT, LAY_RIGHT, LAY_TOP, LAY_BOTTOM, LAY_PY, LAY_WIDE, LAY_OPEN,
+                           LAY_SCRATCH].freeze
 
             WORDS = [OWED, EXPIRED, ANY_FROM_CORNER, UP, PLACING, BACKDROP, BUILT, BUILT_BACKDROP, ROW_BEGIN, ROW_END, ROW_OFFSET,
                      TILE_W, MIXED, MASK_DELTA, COLORS_OFFSET, WRAPS, OFF_X,
@@ -1024,6 +1028,10 @@ module VBlank
             # colours, each block its first pixel's or nought where that is see-through, and after them the mask,
             # FFh for a see-through block and nought for the rest. LAY_OPEN is whether any block is see-through.
             #
+            # The two rows are rows 0 and 1 of the picture shown, or rows 2 and 3 when the sheet's row is 0 or 1 (a bent
+            # background spreads every row, the first two too), so the mask cleared first is never the row being read.
+            # LAY_SCRATCH is how far the segment they are read and written through is moved for that.
+            #
             # At blocks of two this runs for every other row of the screen and every other pixel of it, so the loop is
             # kept short: the mask cleared once, the numbers in registers, and a block's colour put down in one go.
             # While it runs DS is the sheet's row, and the one number written is written through SS.
@@ -1039,7 +1047,13 @@ module VBlank
               asm.push(:ds)
               asm.push(:es)
               asm.push(:bp)
+              asm.mov(at(memory, LAY_SCRATCH), 0)
+              asm.cmp(at(memory, LAY_PY), 2)
+              asm.jae("rt_scenery_spread_scratch_kept")
+              asm.mov(at(memory, LAY_SCRATCH), screen.width * 2 / 16)
+              asm.label("rt_scenery_spread_scratch_kept")
               asm.mov_segment(:ax, :shown)
+              asm.add(:ax, at(memory, LAY_SCRATCH, 16))
               asm.mov(:es, :ax)
               asm.mov(:di, screen.width)
               asm.xor(:eax, :eax)
@@ -1161,6 +1175,7 @@ module VBlank
               asm.mov(:bx, :ax)
               asm.add(:bx, screen.width) # DS:BX the mask
               asm.mov_segment(:ax, :shown)
+              asm.add(:ax, at(memory, LAY_SCRATCH, 16))
               asm.mov(:ds, :ax)
               asm.test(:dl, :dl)
               asm.jne("rt_scenery_lay_masked")
@@ -1199,15 +1214,20 @@ module VBlank
               asm.ret
             end
 
-            # EAX the row of the screen PY's block starts at: PY itself while TALL is 1. Changes EDX.
-            def emit_block_top(asm, memory)
+            # EAX the row of the screen PY's block starts at: PY itself while TALL is 1. Changes EDX. +tag+ names the
+            # caller, for the label.
+            def emit_block_top(asm, memory, tag)
               asm.mov(:eax, at(memory, PY))
               return unless blocks?(memory)
 
+              done = "#{tag}_block_top"
+              asm.cmp(at(memory, TALL), 1)
+              asm.je(done) # drawn as it is: no divide on every row
               asm.xor(:edx, :edx)
               asm.div(at(memory, TALL))
               asm.mov(:eax, at(memory, PY))
               asm.sub(:eax, :edx)
+              asm.label(done)
             end
 
             # rt_scenery_window, with SI at a background's record and GS at the art: its window painted where it is
@@ -1244,7 +1264,7 @@ module VBlank
 
               # A map that does not come round: a row above or below it shows what is behind.
               asm.label("rt_scenery_window_row")
-              emit_block_top(asm, memory)
+              emit_block_top(asm, memory, "rt_scenery_window_row")
               asm.add(:eax, word.call(SCROLL_SHOWN_Y))
               asm.jo("rt_scenery_window_row_done")
               asm.test(:eax, :eax)
@@ -1283,7 +1303,7 @@ module VBlank
                 asm.mov(word.call(name), :edx)
               end
               asm.label("rt_scenery_window_wrapped_row")
-              emit_block_top(asm, memory)
+              emit_block_top(asm, memory, "rt_scenery_window_wrapped_row")
               asm.add(:eax, word.call(SCROLL_SHOWN_Y))
               asm.movzx(:ebx, record.call(:wrap_h))
               asm.label("rt_scenery_window_bring_round")
@@ -1371,7 +1391,7 @@ module VBlank
               # The row's first pixel's place on the map, in 256ths from the pivot's (Affine.matrix's four numbers are
               # the first, less than nought the third, the third and the first): across, the first times how far it is
               # across from the pivot and the second times how far down; down, the third and the fourth the same.
-              emit_block_top(asm, memory)
+              emit_block_top(asm, memory, "#{tag}_row")
               asm.mov(:ebp, :eax)
               asm.sub(:ebp, state.call(PIVOT_Y)) # down from the pivot, from the row its block starts at
               asm.mov(:ecx, at(memory, CLIP_LEFT))

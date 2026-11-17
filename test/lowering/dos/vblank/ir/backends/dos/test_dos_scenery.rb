@@ -228,6 +228,26 @@ class TestDOSScenery < Minitest::Test
     end
   end
 
+  # A background bent row by row is drawn and spread a row at a time in blocks, the first two rows of the screen
+  # too, which are where each row of blocks is spread to: see-through tiles over another background, each row moved
+  # its own way, in blocks of three, two and five.
+  def test_a_bent_see_through_background_in_blocks
+    test = self
+    checked(frames: 6) do
+      screen :tiled, backdrop: :black
+      test.tilesets(self)
+      background :under, tiles: :colors, map: test.stripes(32, 32)
+      top = background :top, tiles: :over, map: Array.new(32) { "CN" * 16 }
+      top.scroll_each_row { |row| row * 3 }
+      size = var :size, 3
+      game_loop do
+        pixelate size
+        size = 2 if size == 3
+        size = 5 if size == 2
+      end
+    end
+  end
+
   # The smaller the blocks the more work: a row of blocks drawn and spread for each row of them. A background in them
   # scrolled every pass is still built in less than a frame, so the game's passes keep to the screen's frames, as a
   # fade timed in frames needs them to. The budget is the one background drawn as it is
