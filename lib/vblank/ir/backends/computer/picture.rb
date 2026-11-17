@@ -114,7 +114,21 @@ module VBlank
           def refuse_unsupported_picture!
             refuse_picture!("more than #{MAX_SEE_THROUGH} see-through layers") if @see_through.size > MAX_SEE_THROUGH
             refuse_picture!("more than #{MAX_BACKGROUNDS} backgrounds") if @stacking.scenery.length > MAX_BACKGROUNDS
-            refuse_picture!("more than #{MAX_SPRITES} sprites") if @sprites.size > MAX_SPRITES
+            refuse_unmade_sprite_count!
+          end
+
+          # THE RUNTIMES NUMBER EVERY SPRITE THE GAME DECLARES, each scene's apart, in a table of
+          # MAX_SPRITES (RG_MAX_SPRITES in each runtime). A console counts only the sprites a screen
+          # shows together (Console::Description#sprite_places), so a game whose scenes take turns
+          # can declare more than the table holds and still be one its console plays. Numbering a
+          # scene's sprites over another's, or sizing the table by the game, is still to be written:
+          # until then such a game is not made yet, which a test run skips on.
+          def refuse_unmade_sprite_count!
+            return if @sprites.size <= MAX_SPRITES
+
+            raise NotMadeYet.new("This program declares #{@sprites.size} sprites. #{build_name.sub(/\A\w/, &:upcase)} has " \
+                                 "room for #{MAX_SPRITES} and cannot draw more yet. The cartridge build can.",
+                                 part: "more than #{MAX_SPRITES} sprites")
           end
 
           # Reference#place_blocks: where this program's blocks stop. A program that pixelates

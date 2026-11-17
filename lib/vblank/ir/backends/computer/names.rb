@@ -61,6 +61,12 @@ module VBlank
         # Raised when a program cannot be written as C: a kind of node this backend does not
         # lower yet, or a name that cannot be given a C name of its own.
         class LoweringError < VBlank::BuildError; end
+
+        # A part of the computer builds still to be written, naming the +part+ (Backends::NotMadeYet),
+        # as opposed to a program they can never be made from: a test run skips on it.
+        class NotMadeYet < LoweringError
+          include Backends::NotMadeYet
+        end
       end
     end
   end
