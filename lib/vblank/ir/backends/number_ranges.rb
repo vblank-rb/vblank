@@ -85,6 +85,7 @@ module VBlank
           @writes = Hash.new { |all, name| all[name] = [] }
           @items_written = Hash.new { |all, name| all[name] = [] }
           @lists_named_elsewhere = Set.new
+          @sorted_lists = Set.new
           @holding_lists = {}.compare_by_identity
           @declared = (program.kept_widths || []).to_h.transform_values { |width| KeptWidths.lowest(width)..KeptWidths.highest(width) }
           whole = Set.new(also_whole) | Reach::FRAME_VARIABLES | @declared.keys
@@ -125,6 +126,21 @@ module VBlank
             declared = @lists.fetch(name).width
             [name, width] if width && LoweringPlan::SLOT_BYTES.fetch(width) < LoweringPlan::SLOT_BYTES.fetch(declared)
           end.to_h
+        end
+
+        # The numbers two bytes hold read without a sign: a place in 256ths of a pixel across a
+        # screen, kept with `& 0xFFFF`, reaches past 32767 but never below nought.
+        UNSIGNED_HALF = (0..0xFFFF)
+
+        # THE LISTS OF WHOLE WORDS PROVEN TO HOLD ONLY 0..65535 that no signed slot holds (a number
+        # past 32767), so a lowering can keep each in two bytes read back with no sign. Not one a
+        # sort orders or orders by, since a sort compares its numbers with their signs.
+        def unsigned_half_lists
+          @unsigned_half_lists ||= @list_ranges.filter_map do |name, range|
+            next if list_widths.key?(name) || @sorted_lists.include?(name)
+
+            name if @lists.fetch(name).width == :word && NumberRanges.inside?(range, UNSIGNED_HALF)
+          end
         end
 
         # The range the value +node+ stays in, or nil where nothing is known. +known+, given a
@@ -174,6 +190,7 @@ module VBlank
             end
           end
           @items_written[node.name] << node.value if %i[list_set list_push].include?(node.kind)
+          @sorted_lists.merge([node.name, node.by].compact) if node.kind == :list_sort
         end
 
         # Every name a statement holds, however deep in its operands, and the ones

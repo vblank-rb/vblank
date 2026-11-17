@@ -194,6 +194,44 @@ class TestNumberRanges < Minitest::Test
     assert_equal [1, 100_000], %i[low high].map { |name| player[name] }
   end
 
+  # A PLACE IN 256THS OF A PIXEL, kept with `& 0xFFFF`: a list holding 0..65535, which two bytes
+  # hold with no sign though no signed slot does. Every run plays it across 32767, 32768 and 65535,
+  # read back as the interpreter reads it.
+  def test_a_list_kept_in_0_to_65535_reads_back_unsigned
+    program = unsigned_places_game.program(console: VBlank::Testing.console)
+    ranges = NumberRanges.new(program)
+    place = VBlank::DSL::Pool.field_list(:walker, :place)
+
+    assert_includes ranges.unsigned_half_lists, place
+    refute_includes ranges.list_widths.keys, place
+    player = game_player
+    seen = []
+    player.each_vblank { seen << player.pool(:walker, :place).compact }
+    player.run(program, frames: 40)
+
+    all = seen.flatten
+    assert_includes all, 32_768
+    assert_includes all, 65_535
+    assert all.all? { |number| number.between?(0, 65_535) }, "every place reads back from 0 to 65535"
+    assert_equal 65_536, player[:past]
+  end
+
+  private def unsigned_places_game
+    VBlank.game("UNSIGNED PLACES", consoles: %i[gba gbc snes genesis ps1]) do
+      screen :bitmap
+      walkers = pool :walker, place: 0, capacity: 4
+      walkers.spawn(place: 32_765)
+      walkers.spawn(place: 65_530)
+      past = 0
+      game_loop do
+        walkers.each do |w|
+          w.place = (w.place + 1) & 0xFFFF
+          past = w.place + 1 if w.place == 65_535
+        end
+      end
+    end
+  end
+
   private def built = counting_game.program(console: VBlank::Testing.console)
 
   private def counting_game
