@@ -1647,14 +1647,19 @@ module VBlank
           # of the pool, is a list of the pool's own at a variable the pool keeps a slot in
           # (DSL::Pool::SLOT_PARTS), each made full when the game starts. So the test that the
           # index is inside the list, five instructions on every read, can never fail there and is
-          # left out. Every other list read or write keeps it: one ever made longer or shorter, an
-          # index worked out, or another pool's slot.
+          # left out. So is it where the index is known to stay below the capacity from how it is
+          # written: a loop's variable, a mask or a remainder (ControlFlow#index_known_below). Every
+          # other list read or write keeps it: one ever made longer or shorter, any other index
+          # worked out, or another pool's slot.
           def index_inside_full_list?(list, index)
             capacity = full_length_lists[list]
             return false unless capacity
 
             number = folded(index)
             return number.between?(0, capacity - 1) if number
+
+            below = index_known_below(index)
+            return true if below && below <= capacity
 
             pool = DSL::Pool.owner_of_list(list)
             var = variable_named(index)
@@ -1672,6 +1677,19 @@ module VBlank
               made = @reachable.select { |node| node.kind == :list_new && node.full_of && !resized.include?(node.name) }
               made.group_by(&:name).transform_values { |nodes| nodes.map(&:capacity).min }
             end
+          end
+
+          # THE LENGTH OF A LIST THAT ALWAYS HOLDS ITS CAPACITY (#full_length_lists), by the place of
+          # its header, for an index compared with it as a number written in the instruction. That is
+          # three bytes read from the cartridge where the length kept in the header is a long address
+          # and two bytes read from work RAM, which the console reads at its slower speed (fullsnes,
+          # "SNES Memory Map": WRAM is always 2.68MHz). Nil for any other list.
+          def full_length_at(place)
+            @full_lengths_by_place ||= full_length_lists.each_with_object({}) do |(name, capacity), by_place|
+              header, = @lists[name]
+              by_place[header] = capacity if header && capacity <= 0xFFFF
+            end
+            @full_lengths_by_place[place]
           end
 
           # X at how far into its slots the item the number in +index+ (its two halves) names is. An
@@ -1701,7 +1719,8 @@ module VBlank
             @asm.lda(index[1])
             @asm.bne(out)
             @asm.lda(index[0])
-            @asm.cmp(@asm.long(place, Runtime::Lists::LENGTH))
+            full = full_length_at(place)
+            @asm.cmp(full || @asm.long(place, Runtime::Lists::LENGTH))
             @asm.bcc(inside)
             @asm.label(out)
             outside = index.first == @asm.direct(R0) ? "rt_list_outside_from_r0" : "rt_list_outside"
