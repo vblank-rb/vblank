@@ -68,20 +68,22 @@ class TestSNESPoolPairCheckCost < Minitest::Test
   # the chain is (LoweringPlan#dead_on_chain?), and the walk ending on the last thing's NONE link
   # where the chain cannot change during it (LoweringPlan#chain_changed_during_walks?), and the
   # walk's own numbers and the routine's busiest variables on the direct page
-  # (SNES::Lowering#place_variables): 532 before that, 490 after.
-  def test_one_more_thing_to_check_costs_under_510_master_clocks
+  # (SNES::Lowering#place_variables): 532 before that, 490 after; and the places, proven to stay
+  # in 16 bits (NumberRanges#list_widths), kept in half words
+  # (SNES::Lowering#list_width): 384, as when the game declares `widths: :half`.
+  def test_one_more_thing_to_check_costs_under_400_master_clocks
     per_pair = (routine_clocks(self.class.game(4)) - routine_clocks(self.class.game(2))) / 2
 
-    assert_operator per_pair, :<, 510
+    assert_operator per_pair, :<, 400
   end
 
   # With the places in half words, the difference and its test are worked out in 16 bits
-  # (SNES::Lowering#compare_half_distance_below): nearer to the retail game's 8.
-  def test_one_more_thing_to_check_in_half_words_costs_under_420_master_clocks
+  # (SNES::Lowering#compare_half_distance_below): nearer to the retail game's 8. Measured 384.
+  def test_one_more_thing_to_check_in_half_words_costs_under_400_master_clocks
     halves = ->(others) { self.class.game(others, widths: HALF_PLACES) }
     per_pair = (routine_clocks(halves.call(4)) - routine_clocks(halves.call(2))) / 2
 
-    assert_operator per_pair, :<, 420
+    assert_operator per_pair, :<, 400
   end
 
   # The checks find what the interpreter finds on every pass, the meeting included.

@@ -308,6 +308,8 @@ module VBlank
             @cell_tables = {} # the words a picked tile's cells hold (Picture#emit_set_picked_tile_on) -> their table's label
             @section_routines = {}
             @cuts = RoutineCuts.for(self, cache)
+            # A Super FX reads the lists it is handed in the slots they were declared with.
+            @list_widths = chip ? {} : lists_kept_in_halves
             prepare_picture
             prepare_paint
             prepare_collision
@@ -338,7 +340,7 @@ module VBlank
             place_chip_lists
             strided = strided_pool_placements
             @declared_lists.each_value do |node|
-              width = LoweringPlan::SLOT_BYTES.fetch(node.width)
+              width = LoweringPlan::SLOT_BYTES.fetch(list_width(node))
               # A list a pool's layout keeps elsewhere has only its header here.
               slots = strided.key?(node.name) ? 0 : node.capacity * width
               place = chip_list_place(node.name) ||
@@ -1651,7 +1653,8 @@ module VBlank
           # the layout chosen for each pool (Backends::PoolLayout.chosen), unless one of its lists
           # is in a Super FX's RAM, where the chip reads it as a list.
           def strided_pool_placements
-            @strided_pool_placements ||= (@program.pools || []).each_with_object({}) do |shape, places|
+            @strided_pool_placements ||= (@program.pools || []).each_with_object({}) do |declared, places|
+              shape = declared.with(slot_lists: declared.slot_lists.to_h { |list, width| [list, @list_widths.fetch(list, width)] })
               placement = PoolLayout.chosen(shape, CONSOLE, PoolLayout.steps_on(@program, shape)).place(shape)
               next if placement.layout == :lists || shape.slot_lists.keys.any? { |list| chip_list_place(list) }
 
@@ -1672,6 +1675,31 @@ module VBlank
               @list_slots[list] = ListSlots.new(header: @lists.fetch(list).first, base: areas.fetch(place.area) + place.offset,
                                                 stride: place.stride, width: place.width, scale: place.scale)
             end
+          end
+
+          # THE SLOT A LIST IS KEPT IN: the one it was declared with, or a narrower one where every
+          # number written to it is proven to fit (NumberRanges#list_widths), which keeps each exactly
+          # and reads it back as the wider slot would: a pool's field of places on the screen kept in
+          # two bytes, worked by the paths a field declared `widths: :half` takes.
+          def list_width(node) = @list_widths.fetch(node.name, node.width)
+
+          # The lists of whole words proven to hold only numbers of 16 bits or fewer
+          # (NumberRanges#list_widths), each kept in half words. Not in bytes, though one may hold
+          # only those: the 65816 reads a half word whole with its accumulator wide, where a byte
+          # read into a number is the byte masked out, compared and its sign ORed in, so a game
+          # adding a byte field into a whole one (`x += dx`) spends more than with the word.
+          # And a pool's fields only where every field of whole words in it can be: a pool kept as
+          # lists reads each field at X, the slot times the field's width, so fields of two widths
+          # side by side set X again for each, where fields of one width share it. Measured on the
+          # pool bullets test (x and y whole, their steps proven small): 6.9% of a frame with every
+          # field a word, 9.5% with the steps in bytes, 7.3% in half words; left whole, as it was.
+          def lists_kept_in_halves
+            proven = @plan.number_ranges.list_widths.keys.select { |name| @declared_lists[name]&.width == :word }
+            pooled, plain = proven.partition { |name| DSL::Pool.owner_of_list(name) }
+            whole_fields = @declared_lists.values.select { |node| node.width == :word && DSL::Pool.owner_of_list(node.name) }
+                                          .map(&:name) - proven
+            kept = pooled.reject { |name| whole_fields.any? { |other| DSL::Pool.owner_of_list(other) == DSL::Pool.owner_of_list(name) } }
+            (plain + kept).to_h { |name| [name, :half] }
           end
 
           # Whether +name+'s slots are kept other than straight after its header, a slot as wide as the
@@ -3642,6 +3670,7 @@ module VBlank
           # carry between them is in the processor's flags, so +to+ may be one of the sides: `x = x + 1`.
           def emit_sum_into(node, to)
             return emit_bitwise_halves(node, to) if BITWISE.include?(node.op)
+            return emit_sum_of_half_slot_into(node, to) if half_slot_read?(node.rhs) && operand_halves(node.rhs).nil?
 
             with_both_halves(without_added_nought(node.lhs), node.rhs) do |lefts, halves|
               emit_carry_for(node.op)
@@ -3651,6 +3680,48 @@ module VBlank
                 @asm.sta(to[i])
               end
             end
+          end
+
+          # Whether +node+ reads a slot of two bytes where it is, at an index needing nothing worked out.
+          def half_slot_read?(node)
+            plain_slot_read?(node) && !folded(node) && list_placed(node)[2] == 2 && !index_in_place(node.index).nil?
+          end
+
+          # A WHOLE NUMBER PLUS OR MINUS A SLOT OF TWO BYTES, `x += dx` with a step kept in half words:
+          # the slot's low half added where it is, at X, and its high half, nought or all ones by its
+          # sign, added as a number written in the program, picked by a branch on the sign. The carry
+          # from the low halves is kept across the load and the branch, which leave it alone. The
+          # left side is worked out first, as the interpreter takes them.
+          def emit_sum_of_half_slot_into(node, to)
+            left = without_added_nought(node.lhs)
+            lefts = operand_halves(left)
+            unless lefts
+              value(left)
+              lefts = r0_halves
+            end
+            place, = list_placed(node.rhs)
+            slot = fixed_slot_address(node.rhs)
+            unless slot
+              emit_slot_into_x(place, list_slots(node.rhs).stride, index_in_place(node.rhs.index),
+                               checked: !index_inside_full_list?(node.rhs.name, node.rhs.index))
+            end
+            right = slot ? @asm.long(slot) : @asm.long_x(list_slots(node.rhs).base)
+            positive = fresh("step_positive")
+            added = fresh("step_added")
+            emit_carry_for(node.op)
+            @asm.lda(lefts[0])
+            emit_half_sum(node.op, right)
+            @asm.sta(to[0])
+            @asm.lda(right)
+            @asm.bpl(positive)
+            @asm.lda(lefts[1])
+            emit_half_sum(node.op, @asm.imm(0xFFFF))
+            @asm.bra(added)
+            @asm.label(positive, join: true)
+            @asm.lda(lefts[1])
+            emit_half_sum(node.op, @asm.imm(0))
+            @asm.label(added, join: true)
+            @asm.sta(to[1])
           end
 
           # +node+ with any nought added to it or taken from it left out, since that changes nothing:
