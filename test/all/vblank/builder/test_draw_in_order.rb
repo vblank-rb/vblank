@@ -470,6 +470,30 @@ class TestDrawInOrder < Minitest::Test
     assert_backends_agree(lifted_program(20), frames: 3)
   end
 
+  # A POOL'S NUMBER BELOW NOUGHT. The pool's places stay small, so a console may keep them and the
+  # numbers worked out from them narrower than a whole number; a number below nought must still
+  # come before every number above it. The puff stands higher than the hero, its number moved
+  # +shift+ from where it stands.
+  private def shifted_pool_program(shift)
+    block = BLOCK
+    program do
+      screen :tiled
+      image(:hero, "#" => :blue) { block }
+      image(:puff, "#" => :red) { block }
+      hero = sprite :hero, at: [62, 58]
+      puffs = pool :puffs, x: 0, y: 0, capacity: 2, image: :puff
+      draw_in_order(hero, puffs) { |thing| thing.equal?(hero) ? thing.y : thing.y + shift }
+      puffs.spawn(x: 60, y: 54)
+      game_loop {}
+    end
+  end
+
+  def test_a_pools_number_below_nought_is_behind
+    assert_equal BLUE, shown(shifted_pool_program(-80), frames: 3), "the puff's number is below nought, behind the hero's"
+    assert_equal RED, shown(shifted_pool_program(80), frames: 3), "the puff's number is past the hero's"
+    assert_backends_agree(shifted_pool_program(-80), frames: 3)
+  end
+
   # --- seven in one order ---
 
   private def color_named(name) = VBlank::Graphics::Color.resolve(name)

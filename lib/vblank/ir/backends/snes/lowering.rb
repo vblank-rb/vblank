@@ -2705,6 +2705,8 @@ module VBlank
           def key_read_in_place?(value)
             kept = @asm
             @asm = measuring_assembler
+            return true if key_low_half_in_place?(value)
+
             read = ->(node) { operand_halves(node) || fixed_word_slot_halves(node) }
             return !!read.call(value) unless sum_in_halves?(value) && %i[+ -].include?(value.op)
 
@@ -2762,6 +2764,8 @@ module VBlank
             place = keyed.at(@asm, keyed.places + (folded(node.index) * 2))
             to = keyed.number(@asm, 0, x: true)
             value = without_added_nought(node.value)
+            return emit_key_low_half_by_place(value, place, to) if key_low_half_in_place?(value)
+
             if sum_in_halves?(value) && %i[+ -].include?(value.op)
               return with_key_halves(without_added_nought(value.lhs), value.rhs) do |lefts, rights|
                 @asm.ldx(place)
@@ -2784,6 +2788,45 @@ module VBlank
               @asm.lda(halves[i])
               @asm.sta(to[i])
             end
+          end
+
+          # A KEY PROVEN TO STAY IN 16 BITS (NumberRanges) is worked out in its low half alone: the
+          # whole number is that half with its sign spread upward, so the high half is nought for a
+          # key never below nought, and otherwise nought or all ones by the sign. A key read from a
+          # variable kept in two bytes (HalfVariables) or a list kept in half words
+          # (#lists_kept_in_halves) has no high half to read. Worked out whole, it would go through
+          # R0, on the game's direct page, and keep the sort from moving D to its tables
+          # (#keep_sort_on_its_page). Taken where its low half is read where it is (a variable, a
+          # number, a slot at a fixed place, or a sum or difference of two of those) and either
+          # nothing whole is, or the high half is nought: one store of nought rather than a load and
+          # a store.
+          def key_low_half_in_place?(value)
+            range = proven_range(value)
+            return false unless within_half?(range)
+
+            low = ->(node) { low_half_operand(node, 16) }
+            whole = ->(node) { operand_halves(node) || fixed_word_slot_halves(node) }
+            if sum_in_halves?(value) && %i[+ -].include?(value.op)
+              left = without_added_nought(value.lhs)
+              return false unless low.call(left) && low.call(value.rhs)
+
+              range.begin >= 0 || !(whole.call(left) && whole.call(value.rhs))
+            else
+              return false unless low.call(value)
+
+              range.begin >= 0 || !whole.call(value)
+            end
+          end
+
+          # The key +value+ (#key_low_half_in_place?) into the numbers at +to+, X from +place+.
+          def emit_key_low_half_by_place(value, place, to)
+            @asm.ldx(place)
+            emit_low_half(value, 16)
+            @asm.sta(to[0])
+            return @asm.stz(to[1]) if proven_range(value).begin >= 0
+
+            emit_sign_of_a
+            @asm.sta(to[1])
           end
 
           # with_both_halves, also reading a word list's slot at a place written in the program where
