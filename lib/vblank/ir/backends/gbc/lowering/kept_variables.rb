@@ -247,17 +247,30 @@ module VBlank
 
               slots = list_slots(list) if list
               length = (capacity if fixed)
+              checked = !index_inside_fixed_list?(index, length)
               name = kept_variable_named(index)
               if name && kept_bytes(name) == 1 && capacity <= BYTE_INDEXED_CAPACITY
-                return emit_list_slot_of_byte(name, place, capacity, width, out_of_range, length: length, slots: slots)
+                return emit_list_slot_of_byte(name, place, capacity, width, out_of_range, length: length, slots: slots, checked: checked)
               end
-              if kept_list_index?(index, capacity)
+              if kept_list_index?(index, capacity) || !checked
                 low_value(index, 2)
-                return emit_list_slot_of_de(place, width, out_of_range, length: length, slots: slots)
+                return emit_list_slot_of_de(place, width, out_of_range, length: length, slots: slots, checked: checked)
               end
 
               value(index)
               emit_list_slot_address(place, width, out_of_range, length: length, slots: slots)
+            end
+
+            # AN INDEX THAT CANNOT FALL OUTSIDE ITS LIST: a list always as long as it can be
+            # (+length+, Lowering#fixed_length_lists) read at an index known while building to stay
+            # below that, a loop's variable, a mask or a remainder (ControlFlow#index_known_below). The
+            # compare with the length, and the jump past it, can never be taken there and are left
+            # out, and only the index's low two bytes are worked out, the slot being inside 64K.
+            def index_inside_fixed_list?(index, length)
+              return false unless length
+
+              below = index_known_below(index)
+              !below.nil? && below <= length
             end
 
             # Whether +operand+ is an item of a list kept with its first item in its first slot, so
@@ -331,16 +344,18 @@ module VBlank
             # longer than BYTE_INDEXED_CAPACITY either way, so one compare with the length (whose
             # high byte is nought) checks both ends. Where the jump lands the index is worked out
             # again, as for any kept index (#kept_list_index?).
-            def emit_list_slot_of_byte(name, place, capacity, width, out_of_range, length: nil, slots: nil)
+            def emit_list_slot_of_byte(name, place, capacity, width, out_of_range, length: nil, slots: nil, checked: true)
               base, stride = slots || [place + Runtime::Lists::HEADER, width]
               @asm.load(:a, [kept_place_of(name)])
-              if length
-                @asm.cp_a(length)
-              else
-                @asm.load(:hl, place + Runtime::Lists::LENGTH)
-                @asm.cp_a([:hl])
+              if checked
+                if length
+                  @asm.cp_a(length)
+                else
+                  @asm.load(:hl, place + Runtime::Lists::LENGTH)
+                  @asm.cp_a([:hl])
+                end
+                @asm.jump(:nc, out_of_range)
               end
-              @asm.jump(:nc, out_of_range)
               @asm.load(:l, :a)
               @asm.load(:h, 0)
               (stride.bit_length - 1).times { @asm.add_hl(:hl) } # × the slots' stride, a power of two

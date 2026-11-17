@@ -1429,7 +1429,7 @@ module VBlank
             done = fresh("list_item_read")
             emit_list_slot_of_index(node.index, place, capacity, width, out_of_range, fixed: fixed_length_lists.include?(node.name),
                                                                           list: node.name)
-            @asm.call(TABLE_KEPT.fetch([width, true]).last) # a slot reads back with its top bit as the sign
+            emit_slot_widened_at_hl(width)
             @asm.jump(done)
             @asm.label(out_of_range)
             value(node.index) if kept_list_index?(node.index, capacity)
@@ -1487,6 +1487,32 @@ module VBlank
             @asm.load(:b, :a)
           end
 
+          # BCDE = the slot of +width+ bytes at HL, its top bit as the sign (Reference::ListValue#wrap_to_width),
+          # read where the read is written. The runtime's readers (rt_read_int8 and its siblings) do the
+          # same behind a CALL and a RET, which take ten of the SM83's machine cycles together (Pan
+          # Docs, "CPU Instruction Set"), where the read itself is eight to eleven; a list read at a
+          # worked-out index on every pass pays that each time. HL is left anywhere.
+          def emit_slot_widened_at_hl(width)
+            @asm.load(:a, [:hli])
+            @asm.load(:e, :a)
+            if width == 4
+              @asm.load(:a, [:hli])
+              @asm.load(:d, :a)
+              @asm.load(:a, [:hli])
+              @asm.load(:c, :a)
+              return @asm.load(:b, [:hl])
+            end
+            if width == 2
+              @asm.load(:a, [:hl])
+              @asm.load(:d, :a)
+            end
+            @asm.rla # the carry is the sign bit
+            @asm.sbc_a(:a) # 0x00 or 0xFF
+            @asm.load(:d, :a) if width == 1
+            @asm.load(:c, :a)
+            @asm.load(:b, :a)
+          end
+
           # The low +width+ bytes of BCDE into the slot at HL.
           def emit_slot_written(width)
             %i[e d c b].first(width).each_with_index do |reg, i|
@@ -1508,23 +1534,26 @@ module VBlank
           # The same for an index in DE alone. +length+ is the list's, for one that never changes
           # it (#fixed_length_lists), or nil to read it from the list's header. +slots+ is where its
           # slot nought is and how far apart its slots are (#list_slots), where that is not straight
-          # after the header at +width+.
-          def emit_list_slot_of_de(place, width, out_of_range, length: nil, slots: nil)
+          # after the header at +width+. Without +checked+, the index is known to be inside
+          # (KeptVariables#index_inside_fixed_list?) and is not compared.
+          def emit_list_slot_of_de(place, width, out_of_range, length: nil, slots: nil, checked: true)
             base, stride = slots || [place + Runtime::Lists::HEADER, width]
-            if length
-              @asm.load(:a, :e)
-              @asm.sub_a(length & 0xFF)
-              @asm.load(:a, :d)
-              @asm.sbc_a(length >> 8)
-            else
-              @asm.load(:hl, place + Runtime::Lists::LENGTH)
-              @asm.load(:a, :e)
-              @asm.sub_a([:hl])
-              @asm.inc(:hl)
-              @asm.load(:a, :d)
-              @asm.sbc_a([:hl])
+            if checked
+              if length
+                @asm.load(:a, :e)
+                @asm.sub_a(length & 0xFF)
+                @asm.load(:a, :d)
+                @asm.sbc_a(length >> 8)
+              else
+                @asm.load(:hl, place + Runtime::Lists::LENGTH)
+                @asm.load(:a, :e)
+                @asm.sub_a([:hl])
+                @asm.inc(:hl)
+                @asm.load(:a, :d)
+                @asm.sbc_a([:hl])
+              end
+              @asm.jump(:nc, out_of_range)
             end
-            @asm.jump(:nc, out_of_range)
             @asm.load(:h, :d)
             @asm.load(:l, :e)
             (stride.bit_length - 1).times { @asm.add_hl(:hl) } # × the slots' stride, a power of two
