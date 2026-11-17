@@ -20,6 +20,7 @@ require_relative "gba/memory"
 require_relative "gba/loop_form" # which shape a repeat gets; the cost model asks it too
 require_relative "gba/bend_form" # ...and which way a row-by-row bend is lowered, likewise
 require_relative "gba/statements"
+require_relative "gba/shown_sort"
 require_relative "gba/lists"
 require_relative "gba/functions"
 require_relative "gba/emitter_calls" # the bare-name calls every file that writes drawing code makes
@@ -435,6 +436,7 @@ module VBlank
           @lists = Lists.new(memory: @memory, primitives: @primitives, emitter: @emit, lowering: @lowering,
                              placement: self, bookkeeping: @bookkeeping)
           @primitives.lists = @lists # a collection's counters go where it went
+          @lists.expressions = @expressions # a draw order's sort branches on whether each thing shows
           # `placement: self` — Placement is not its own object yet (see its class
           # comment); its methods live directly on this instance, so handing self in is
           # what makes the dependency an explicit constructor argument instead of a bare
@@ -955,10 +957,13 @@ module VBlank
             @functions.define_generated_func(plan.routine) { @picture_group_copying.emit_routine(plan) }
           end
           # The runs of the sprite table drawn in an order the program works out, each given a
-          # copy in work memory (see SpriteDrawing::DrawRun).
+          # copy in work memory (see SpriteDrawing::DrawRun). A run sorted with what shows keeps its
+          # entries not showing at its front, and its copy stops at them (see ShownSort).
+          shown_sorts = ShownSort.plan(program, memory: @memory) { |node| Primitives.const_int(node) }
+          @lists.shown_sorts = shown_sorts
           @draw_runs = if @has_objects
                          SpriteDrawing.plan_draw_runs(program, objects: @screen.objects, memory: @memory,
-                                                               blobs: @emit.data_blobs, lists: @lists)
+                                                               blobs: @emit.data_blobs, lists: @lists, shown_sorts: shown_sorts)
                        else
                          []
                        end

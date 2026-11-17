@@ -58,6 +58,7 @@ module VBlank
           end
 
           include Console::Hardware
+          include ShownSort
 
           # +bookkeeping+ is a checked build's (PassBookkeeping), which stops on a list read or
           # written past its end; nil for a cartridge for a player, which reads slot nought.
@@ -201,6 +202,8 @@ module VBlank
             end
 
             e = @emitter
+            shown = shown_sort(node.name)
+            emit_shown_marked(node, shown, info) if shown
             step = info[:bytes]
             outer = e.gensym
             inner = e.gensym
@@ -214,6 +217,12 @@ module VBlank
             shift = Math.log2(step).to_i
             e.emit(ASM.lsl_imm(SORT_END, SORT_END, shift)) if shift.positive?
             e.emit(ASM.add_reg(SORT_END, SORT_END, SORT_FIRST))     # past the last item
+            if shown # the first entry showing is the first sorted, and nothing goes back past it
+              e.emit_number(ACC, shown.block)
+              e.emit(ASM.ldr_offset(ACC, ACC, ShownSort::HIDDEN))
+              e.emit(ASM.lsl_imm(ACC, ACC, shift)) if shift.positive?
+              e.emit(ASM.add_reg(SORT_FIRST, SORT_FIRST, ACC))
+            end
             e.emit(ASM.add_imm(SORT_AT, SORT_FIRST, step))          # the second item is placed first
             e.place_label(outer)
             e.emit(ASM.cmp_reg(SORT_AT, SORT_END))
@@ -719,6 +728,8 @@ module VBlank
           # list full of nought is filled all the same.
           def emit_list_new(node)
             info = list_info(node.name)
+            shown = shown_sort(node.name)
+            emit_shown_start(shown) if shown
             @emitter.emit_number(ACC, 0)
             @primitives.store_var(ACC, head_var(node.name)) if info[:ring]
             if node.full_of
@@ -846,6 +857,8 @@ module VBlank
           # write to the list's own slots, so an out-of-range index scribbles a stale
           # slot at worst, never a neighbouring variable.
           def emit_list_set(node)
+            return if key_set_by_sort?(node)
+
             info = list_info(node.name)
             slot = slot_place(node.name, info)
             if held_field?(node)

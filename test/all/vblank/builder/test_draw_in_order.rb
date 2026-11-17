@@ -243,6 +243,7 @@ class TestDrawInOrder < Minitest::Test
     assert_equal RED, shown(prog, frames: 22), "hidden: the enemy alone"
     assert_equal RED, shown(prog, frames: 30), "shown again level: behind the enemy"
     assert_equal GREEN, shown(prog, frames: 40), "a pixel lower: in front again"
+    assert_backends_agree(prog, frames: [22, 30, 40])
   end
 
   # The pool's older thing stands level with the hero and is in front of him, as a pool's older thing
@@ -299,6 +300,7 @@ class TestDrawInOrder < Minitest::Test
     shown_colors = SEVEN_COLORS.first(5).map { |color| color_named(color) }
 
     assert_includes shown_colors, shown(comings_and_goings_program, frames: 61)
+    assert_backends_agree(comings_and_goings_program, frames: [13, 26, 37, 49, 61])
   end
 
   def test_a_pools_thing_spawned_again_comes_in_behind_the_things_level_with_it
@@ -307,6 +309,7 @@ class TestDrawInOrder < Minitest::Test
     assert_equal RED, shown(prog, frames: 6), "the walker, named after the hero, is in front"
     assert_equal GREEN, shown(prog, frames: 12), "taken away: the hero alone"
     assert_equal GREEN, shown(prog, frames: 20), "spawned again level: behind the hero"
+    assert_backends_agree(prog, frames: [12, 20])
   end
 
   # THE NUMBER IS THE GAME'S TO WORK OUT. A puff of smoke starts a step nearer the front and
