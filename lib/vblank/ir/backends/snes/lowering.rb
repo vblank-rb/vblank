@@ -1499,7 +1499,7 @@ module VBlank
           end
 
           def emit_slots_zeroed(node)
-            place, capacity, width, = list_placed(node)
+            _place, capacity, width, = list_placed(node)
             Runtime::Picture.emit_fill_work_ram(@asm, list_slots(node).base, capacity * width, "rt_zero")
           end
 
@@ -2262,7 +2262,7 @@ module VBlank
             end
             return unless plain_slot_read?(node)
 
-            place, _capacity, width = list_placed(node)
+            _place, _capacity, width = list_placed(node)
             slot = (width > 1 || bits == 8) && fixed_slot_address(node)
             @asm.long(slot) if slot
           end
@@ -3616,7 +3616,7 @@ module VBlank
             kept = kept_read(node)
             return at_place(place_of(kept)) if kept
 
-            place, _capacity, width = list_placed(node)
+            place, = list_placed(node)
             slot = fixed_slot_address(node)
             return @asm.long(slot) if slot
 
@@ -4158,7 +4158,7 @@ module VBlank
 
           # Where the two halves of +node+ (#slot_read_at_x?) are, with X set to reach them.
           def slot_halves_at_x(node)
-            place, _capacity, width = list_placed(node)
+            place, = list_placed(node)
             slot = fixed_slot_address(node)
             return [@asm.long(slot), @asm.long(slot, 2)] if slot
 

@@ -2376,7 +2376,7 @@ module VBlank
             # The placing is in the stub rather than a routine the stub calls: the JSL there and the
             # RTL back were two of the seven instructions an ordered sprite cost beyond its placing.
             def emit_ordered_run(run, depths = nil)
-              place, _capacity, width = @lists.fetch(run.order) do
+              _place, _capacity, width = @lists.fetch(run.order) do
                 raise LoweringError, "the list #{run.order.inspect} orders sprites and is never declared"
               end
               table = fresh("ordered_stubs")
