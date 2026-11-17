@@ -243,7 +243,8 @@ from that copy. The game's code says each piece's shape and size; it never depen
     is played as it falls. The reader writes the notes until every track comes round together, so a song
     whose tracks come round apart takes more notes than one pass of its longest track: size its slots
     and the Score's `longest:` for that. One that does not come round in 8 rounds of its slowest track
-    is written for those 8 and comes round to the first. The rounds are written out because every song
+    is written for those 8 and comes round to the first, except while a track that has not yet jumped
+    back still plays: a part that comes in late is played to its own first round and compared too. The rounds are written out because every song
     player comes round at one moment for all its parts (`Packing::M4A`, "WHY THE READER WRITES THE
     ROUNDS OUT"). `copy.unpack_m4a_recording at: VOICE, into:` a recording voice's samples; and
     `copy.unpack_m4a_voice at: VOICE, into:` its rate, the sample it loops back to (every bit set for a voice

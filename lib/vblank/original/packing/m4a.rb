@@ -52,7 +52,10 @@ module VBlank
       #
       # A song that does not come round in MOST_ROUNDS_KEPT rounds of its slowest track ends after
       # the frame the next round starts on, and comes round to the first kept; so does one still
-      # playing at MOST_FRAMES. A song no track jumps back in ends when its last track ends (FINE),
+      # playing at MOST_FRAMES. But not while a track still plays that has not jumped back yet: a
+      # part that comes in late, after a short figure's many rounds, has the driver nowhere it was
+      # before until that part's own first jump, so the rounds kept start again from the one just
+      # ended, and the song is played on until the late part's rounds are compared too. A song no track jumps back in ends when its last track ends (FINE),
       # and has no loop frame (NO_LOOP). A note sounding as the song comes round is let go there, as
       # Score plays one (sound.md).
       #
@@ -425,12 +428,18 @@ module VBlank
           end
 
           # The slowest track's round ended on this frame: the driver at the frame's start kept. With
-          # MOST_ROUNDS_KEPT kept already, the song ends after this frame and comes round to the first.
+          # MOST_ROUNDS_KEPT kept already, the song ends after this frame and comes round to the first,
+          # unless a track still plays that has not jumped back yet (A SONG COMES ROUND): then the
+          # rounds kept start again from this one.
           def emit_keep_round
             rounds = list(:rounds, (MOST_ROUNDS_KEPT + 1) * STATE_SIZE)
             frames = list(:round_frames, MOST_ROUNDS_KEPT)
             kept = var(:rounds_kept)
             base = var(:round_base)
+            if kept >= MOST_ROUNDS_KEPT
+              emit_count_unlooped_playing
+              kept.store!(0) if var(:unlooped_playing) > 0
+            end
             if kept < MOST_ROUNDS_KEPT
               base.store!((kept + 1) * STATE_SIZE)
               @block.repeat(STATE_SIZE) { |i| rounds[base + i] = rounds[i] }
@@ -441,6 +450,15 @@ module VBlank
               var(:loop_frame).store!(frames[0])
               emit_song_end
             end
+          end
+
+          # The tracks still playing that have not jumped back yet, into var(:unlooped_playing).
+          def emit_count_unlooped_playing
+            unlooped = var(:unlooped_playing)
+            active = track_list(:active)
+            looped = track_list(:looped)
+            unlooped.store!(0)
+            @block.repeat(var(:track_count)) { |t| unlooped.increase!(1) if active[t] == 1 && looped[t] == 0 }
           end
 
           # One tick of every track, in order (MPlayMain), and the song's end once none plays on. A

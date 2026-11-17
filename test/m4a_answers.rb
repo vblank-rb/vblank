@@ -34,7 +34,8 @@ module M4AAnswers
   SPLIT_GROUP_AT = 0x0C0        # two voices a key split picks from
   SPLIT_TABLE_AT = 0x0E0        # 128 bytes
   KIT_AT = 0x160                # a drum kit's voices, 12 bytes a key, keys 0, 1, 36 and 38 written
-  MIXED_SONG_AT = 0x5C0         # a song whose tracks switch between plain voices, the kit and the split
+  LATE_SONG_AT = 0x5B0          # a song with a track that first sounds after a short track's many rounds
+  MIXED_SONG_AT = 0x5C0        # a song whose tracks switch between plain voices, the kit and the split
   ROUNDS_SONG_AT = 0x5D0        # a song whose tracks come round at different points
   WAVE_AT = 0x600               # a recording that loops
   ONE_SHOT_AT = 0x660           # one that does not
@@ -113,6 +114,13 @@ module M4AAnswers
                     [:label, :second], [:memacc, 0, 0, 0], [:note, 3, 67, 100], [:wait, 6], [:goto, :round]],
                    [[:voice, 2], [:vol, 100], [:note, 4, 50, 90], [:wait, 6], [:label, :round], [:note, 8, 72, 110],
                     [:wait, 9], [:note, 4, 76], [:wait, 9], [:goto, :round]]].freeze
+  # A song with a part that comes in late, a tick a frame. The first square's track goes round every
+  # 6 ticks from its start; the second square's waits 96 ticks, then goes round every 12. So the
+  # first has gone round far more than MOST_ROUNDS times before the second sounds at all, and the
+  # two come round together on frame 120, back to frame 108, where the second first jumps back.
+  LATE_TRACKS = [[[:voice, 1], [:vol, 127], [:label, :round], [:note, 6, 60, 100], [:wait, 6], [:goto, :round]],
+                 [[:voice, 2], [:vol, 100], [:wait, 96], [:label, :round], [:note, 12, 72, 110], [:wait, 12],
+                  [:goto, :round]]].freeze
   # A song whose recorded notes sit off the middle and are changed while they sound, a tick a frame.
   # The first track, left of the middle: a long note whose BEND moves it whole keys (BENDR 12 is
   # three keys a step of 16), then two BENDs on one tick, a TUNE between keys, a KEYSH; then a note
@@ -211,7 +219,7 @@ module M4AAnswers
   end
 
   COPY = copy_with({ SONG_AT => TRACKS, ENDING_SONG_AT => ENDING_TRACKS, MIXED_SONG_AT => MIXED_TRACKS,
-                     ROUNDS_SONG_AT => ROUNDS_TRACKS, BENDING_SONG_AT => BENDING_TRACKS }).freeze
+                     ROUNDS_SONG_AT => ROUNDS_TRACKS, BENDING_SONG_AT => BENDING_TRACKS, LATE_SONG_AT => LATE_TRACKS }).freeze
 
   # --- the player --------------------------------------------------------------------------------
 
@@ -240,7 +248,9 @@ module M4AAnswers
   # back on, and at the start of every frame the driver is compared with each round kept: the same,
   # and the song is #end_frame long and comes round to that round's frame, #loop_frame. A round
   # ending with MOST_ROUNDS kept and none the same ends the song after its frame, coming round to
-  # the first; so does a song still playing at the most frames.
+  # the first, unless a track still plays that has not jumped back yet: the driver cannot be as it
+  # was while that track is still on its way to its first jump, so the rounds kept start again from
+  # this one. A song still playing at the most frames comes round to its first round kept.
   # +frames+ instead plays that many frames with nothing compared, as the driver plays on for ever.
   class Player
     attr_reader :records, :voices, :end_frame, :loop_frame
@@ -309,13 +319,17 @@ module M4AAnswers
     end
 
     # The round that ended on this frame kept, from the frame's start; with MOST_ROUNDS kept already,
-    # the song comes round to the first after this frame.
+    # the song comes round to the first after this frame, or, with a track still playing that has
+    # not jumped back, the rounds kept start again from this one.
     def keep_round
+      @rounds.clear if @rounds.length >= MOST_ROUNDS && unlooped_track_playing?
       return @rounds << Round.new(frame: @frame, state: @frame_start) if @rounds.length < MOST_ROUNDS
 
       @frame += 1
       come_round(@rounds.first.frame)
     end
+
+    def unlooped_track_playing? = @tracks.each_index.any? { |n| @tracks[n].active && !@looped.include?(n) }
 
     def come_round(frame)
       @loop_frame = frame

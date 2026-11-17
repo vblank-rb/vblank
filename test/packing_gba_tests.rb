@@ -202,6 +202,27 @@ module PackingGBATests
     end
   end
 
+  # A SONG WITH A PART THAT COMES IN LATE (M4AAnswers::LATE_TRACKS): its short track goes round
+  # many more times than the rounds kept before the late track first sounds, on frame 96. The song
+  # is played to where both come round together, frame 120 back to 108, and the late track's notes
+  # are written.
+  def test_a_song_whose_track_starts_late_is_played_until_that_track_comes_round
+    song = M4AAnswers::LATE_SONG_AT
+    Dir.mktmpdir do |folder|
+      slots = m4a_slots(folder) do |copy, pack|
+        2.times { |track| copy.unpack_m4a_track at: song, into: pack[:"track_#{track}"], track: track }
+        copy.unpack_m4a_length at: song, into: pack[:length]
+      end
+
+      assert_equal [120, 108], slots.fetch(:length).unpack("v2")
+      late = VBlank::Original::PackNote.list_in(slots.fetch(:track_1))
+      assert_equal [96, 108], late.map(&:at), "the late track's notes"
+      2.times do |track|
+        assert_equal M4AAnswers.track_bytes(song, track, count: M4A_NOTES), slots.fetch(:"track_#{track}"), "track #{track}"
+      end
+    end
+  end
+
   # The same song played from the pack for four times its length, as the driver plays it on past
   # every loop: the notes the answer key's player strikes in those frames, copied into the pack as
   # they are and played once, sound the same.
