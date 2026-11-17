@@ -75,7 +75,9 @@ class TestPackCellsInFront < Minitest::Test
     assert_includes error.message, ":back"
   end
 
-  def test_a_sprite_in_front_in_a_draw_order_is_refused
+  # Sprites in front are put in order among themselves (played by each console that draws them,
+  # test/pack_cells_in_front_tests.rb); one order of sprites in front and sprites not is refused.
+  def test_a_draw_order_of_sprites_in_front_and_sprites_not_is_refused
     error = assert_raises(ArgumentError) do
       sprites_game do
         pointer = sprite :pointer, at: [0, 0], in_front: true
@@ -85,6 +87,20 @@ class TestPackCellsInFront < Minitest::Test
     end
 
     assert_includes error.message, "in_front: true"
+    assert_includes error.message, ":pointer"
+    assert_includes error.message, ":walker"
+  end
+
+  def test_a_draw_order_of_a_sprite_in_front_and_a_pool_is_refused
+    error = assert_raises(ArgumentError) do
+      sprites_game do
+        pointer = sprite :pointer, at: [0, 0], in_front: true
+        crowd = pool :crowd, x: 0, y: 0, capacity: 2, image: :walker
+        draw_in_order pointer, crowd, take_turns: true
+      end
+    end
+
+    assert_includes error.message, "pool :crowd"
   end
 
   private def sprites_game(&more)

@@ -85,6 +85,7 @@ module VBlank
         front ||= :highest
         refuse_unknown_front!(front)
         things.each { |thing| refuse_unorderable_thing!(thing) }
+        refuse_mixed_in_front!(things)
         refuse_order_of_one!(things)
         refuse_thing_named_twice!(things)
         things.each { |thing| refuse_thing_in_two_orders!(thing) }
@@ -385,18 +386,31 @@ module VBlank
                 "pool :#{thing.name} draws nothing itself, so draw_in_order has nothing of it to put in " \
                 "order. Give the pool `image:`, `facing:` or `frames:`."
         end
-        if thing.is_a?(DSL::HardwareSprite)
-          return unless thing.object_node.in_front
-
-          raise ArgumentError,
-                "draw_in_order was given a sprite drawn in front (`in_front: true`). Such a sprite is in front of every " \
-                "sprite not in front, so draw_in_order cannot put it among them. To fix this, leave it out of the " \
-                "order, or remove `in_front: true`."
-        end
+        return if thing.is_a?(DSL::HardwareSprite)
 
         raise ArgumentError,
               "draw_in_order puts things in order, and each one must be a sprite or a pool. " \
               "#{thing.inspect} is not one. Give it the handle that `sprite` or `pool` gave back."
+      end
+
+      # SPRITES IN FRONT ARE ORDERED AMONG THEMSELVES ONLY. A sprite in front (`in_front: true`) is
+      # drawn after every sprite not in front (Builder#move_front_sprites_last), because a console
+      # that keeps a priority bit in each sprite — the Genesis: the sprite attribute's priority bit,
+      # which puts it over the plane cells whose own bit is set (Sega's Genesis Software Manual, the
+      # VDP's sprite attribute table; plutiedev, "Sprites") — shows the pixel of the sprite earlier in its link list first
+      # and asks its priority only then. So an order of sprites all in front is a run among them,
+      # each one over the cells in front whichever is in front of the other; an order that mixed the
+      # two would have a sprite not in front passing one in front, which would then be behind the
+      # cells in front where they overlap.
+      def refuse_mixed_in_front!(things)
+        front, behind = things.partition { |thing| thing.is_a?(DSL::HardwareSprite) && thing.object_node.in_front }
+        return if front.empty? || behind.empty?
+
+        raise ArgumentError,
+              "draw_in_order was given #{order_thing_name(front.first)}, drawn in front (`in_front: true`), and " \
+              "#{order_thing_name(behind.first)}, not drawn in front. A sprite in front is always in front of every " \
+              "sprite not in front, so one order cannot hold both kinds. To fix this, give each kind a draw_in_order " \
+              "of its own, or give all of them the same `in_front:`."
       end
 
       def refuse_order_of_one!(things)

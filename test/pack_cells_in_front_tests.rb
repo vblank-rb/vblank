@@ -45,7 +45,44 @@ module PackCellsInFrontGames
   POINTER_COLOR = MadeUpOriginalLayouts::PALETTE[12]
   POINTER_PLACES = Array.new(SPRITE_SIDE * SPRITE_SIDE) { |at| ((at % 8) + (at / 8)).even? }.freeze
 
+  # A SECOND SPRITE IN FRONT, of one colour all over, over the same cells: the pointer and it take
+  # turns in front of each other a frame each (`draw_in_order ..., take_turns: true`), and whichever
+  # is in front is over the cells in front as well.
+  HAND_COLOR = MadeUpOriginalLayouts::PALETTE[14]
+
   VBlank::Testing::InRactors.share_constants(self)
+
+  # THE GAME OF TWO SPRITES IN FRONT TAKING TURNS: the pointer and the hand, each of one colour all
+  # over and both in front, at SPRITE_AT over the original's map with its cells in front, put in
+  # order with `take_turns:` given +take_turns+.
+  private def turns_game(folder, take_turns: true)
+    from = front_original(folder)
+    b = VBlank::Builder.new
+    b.instance_eval do
+      screen :tiled
+      pack = data_pack from: from, version: "1" do |slots|
+        slots.tiles :video, at: TILES_AT, count: PLACES.length, colors: 16
+        slots.colors :palette, at: COLORS_AT, count: 32
+        slots.numbers :map, at: MAP_AT, count: CELLS.length, width: :half, signed: false
+      end
+      background :machine, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: ACROSS,
+                           cells_in_front: true
+      image :pointer, width: SPRITE_SIDE, height: SPRITE_SIDE, data: Array.new(SPRITE_SIDE * SPRITE_SIDE, POINTER_COLOR)
+      image :hand, width: SPRITE_SIDE, height: SPRITE_SIDE, data: Array.new(SPRITE_SIDE * SPRITE_SIDE, HAND_COLOR)
+      pointer = sprite :pointer, at: SPRITE_AT, in_front: true
+      hand = sprite :hand, at: SPRITE_AT, in_front: true
+      draw_in_order pointer, hand, take_turns: take_turns
+      game_loop { wait_vblank }
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # Every pixel under the sprites at SPRITE_AT, as [x, y].
+  private def spots_under_sprites
+    left, top = SPRITE_AT
+    (top...(top + SPRITE_SIDE)).flat_map { |y| (left...(left + SPRITE_SIDE)).map { |x| [x, y] } }
+  end
 
   # The made-up Genesis original: CELLS as its map at MAP_AT, its two banks at COLORS_AT, PLACES as
   # its tiles at TILES_AT, and each cell's tile and mark as bytes, for a port that writes map cells.
@@ -191,6 +228,22 @@ module PackCellsInFrontTests
 
         assert_equal wanted, shown_pixels(screen, wanted), "a map of #{map}"
       end
+    end
+  end
+
+  # Two sprites in front take turns in front of each other a frame each, and each frame the one in
+  # front covers every pixel under it, the cells in front's drawn pixels too.
+  def test_two_sprites_in_front_take_turns_over_the_cells_in_front
+    Dir.mktmpdir do |folder|
+      program = turns_game(folder)
+      shown = (4..7).map do |frames|
+        screen = game_player.run(program, frames: frames).screen
+        spots_under_sprites.map { |x, y| screen.pixel(x, y) }.uniq
+      end
+
+      shown.each { |colors| assert_equal 1, colors.length, "one sprite covers every pixel under it: #{colors.inspect}" }
+      assert_includes [[POINTER_COLOR, HAND_COLOR], [HAND_COLOR, POINTER_COLOR]], shown.first(2).flatten
+      assert_equal shown.first(2) * 2, shown, "the two take turns in front a frame each"
     end
   end
 
