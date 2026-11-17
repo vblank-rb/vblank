@@ -40,4 +40,27 @@ class TestGBADrawInOrderCost < Minitest::Test
 
     assert_operator share * LINES, :<, BOUND_FORTY_FOUR, "forty-four empty places cost #{(share * LINES).round(2)} lines"
   end
+
+  # AND A PLACE THAT CAN HIDE IS WRITTEN SHORT. The sort is a routine that runs every frame, so the
+  # build puts it in the console's quick memory if it fits (GBA::Placement), beside every other
+  # routine that wants a place there: bytes it takes are bytes another routine cannot have, and a
+  # sort grown by a few kilobytes pushes out something else that runs every frame. A place costs its
+  # test, its number, and a call to the code all places share that keeps its flag (ShownSort):
+  # about fifteen instructions. The same code written out at every place was more than thirty, and
+  # a game with a few dozen places in an order lost routines from the quick memory to it.
+  BYTES_A_PLACE = 64
+
+  def test_each_place_of_a_pool_in_an_order_adds_under_sixty_four_bytes_to_its_sort
+    bytes = SpriteCountCostGames.order_sort_bytes(:gba, SpriteCountCostGames.pool_game(:gba, 48, ordered: true)) -
+            SpriteCountCostGames.order_sort_bytes(:gba, SpriteCountCostGames.pool_game(:gba, 4, ordered: true))
+
+    assert_operator bytes / 44.0, :<, BYTES_A_PLACE, "each place of the pool added #{(bytes / 44.0).round(1)} bytes to the sort"
+  end
+
+  def test_each_sprite_in_an_order_adds_under_sixty_four_bytes_to_its_sort
+    bytes = SpriteCountCostGames.order_sort_bytes(:gba, SpriteCountCostGames.sprites_game(:gba, 48, ordered: true)) -
+            SpriteCountCostGames.order_sort_bytes(:gba, SpriteCountCostGames.sprites_game(:gba, 4, ordered: true))
+
+    assert_operator bytes / 44.0, :<, BYTES_A_PLACE, "each sprite added #{(bytes / 44.0).round(1)} bytes to the sort"
+  end
 end

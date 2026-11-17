@@ -53,4 +53,10 @@ module SpriteCountCostGames
   def self.share_beyond(console, big, small)
     profile(console, small).idle_share - profile(console, big).idle_share
   end
+
+  # How many bytes of code the routine that sorts +game+'s draw order came to, built for +console+.
+  def self.order_sort_bytes(console, game)
+    rom = game.build_rom(console: console, out: StringIO.new, err: StringIO.new, profile: false)
+    rom.built.routines.fetch(VBlank::Messages::MadeNames.make(:draw_order, number: 1, part: :sort)).size
+  end
 end

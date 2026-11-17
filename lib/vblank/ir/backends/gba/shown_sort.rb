@@ -40,6 +40,8 @@ module VBlank
           ROWS_END = 8
           FLAGS = 12
 
+          LINK = 14 # The link register, which a call sets to the address it comes back to
+
           # A Kept for every sort of +program+ handed +shown+, by the name of the list it sorts, in
           # +memory+. +known+ answers a value the build already knows, or nil.
           def self.plan(program, memory:, &known)
@@ -94,48 +96,78 @@ module VBlank
           # Each place asked whether it shows, its flag kept up to date, the count of places not showing
           # with it, and CHANGED set where one came or went; then the list moved round if one did. A place
           # known to show always is not asked: its flag stays as it started.
+          #
+          # WRITTEN ONCE, CALLED FROM EACH PLACE. What a place does with its answer (read its flag, and
+          # where the flag turned over, write it, move the count and set CHANGED) is the same for every
+          # place but the flag's offset, so it is one stretch of code at the end (#emit_flag_marking),
+          # which each place calls with its answer: four instructions a place, where the whole of it
+          # written out at every place was more than twenty. The sort runs every frame, so the build
+          # wants it in the console's quick memory (GBA::Placement), and every byte it takes there is
+          # one another routine that runs every frame cannot have: written out at every place, a
+          # draw order of a few dozen places grew by kilobytes and pushed such routines out.
           def emit_shown_marked(node, kept, info)
+            e = @emitter
+            marking = e.gensym
+            marked_all = e.gensym
+            e.emit(ASM.push(LINK)) # each place's call below sets the link register
             node.shown.each_with_index do |showing, place|
               next emit_sort_key_set(kept, place) unless kept.asked.fetch(place)
 
-              emit_place_marked(showing, place, kept)
+              emit_place_marked(showing, place, kept, marking)
             end
-            unchanged = @emitter.gensym
-            @emitter.emit_number(TMP, kept.block)
-            @emitter.emit(ASM.ldr_offset(ACC, TMP, CHANGED))
-            @emitter.emit(ASM.cmp_imm(ACC, 0))
-            @emitter.emit_branch(:bcond, unchanged, cond: :eq)
+            e.emit(ASM.pop(LINK))
+            e.emit_branch(:b, marked_all)
+            emit_flag_marking(kept, marking)
+            e.place_label(marked_all)
+            unchanged = e.gensym
+            e.emit_number(TMP, kept.block)
+            e.emit(ASM.ldr_offset(ACC, TMP, CHANGED))
+            e.emit(ASM.cmp_imm(ACC, 0))
+            e.emit_branch(:bcond, unchanged, cond: :eq)
             emit_shown_partition(kept, info)
-            @emitter.place_label(unchanged)
+            e.place_label(unchanged)
           end
 
-          def emit_place_marked(showing, place, kept)
+          # +place+ asked whether it shows, its number written where it does, and #emit_flag_marking
+          # called with its answer: its flag's offset twice over, plus 1 where it shows.
+          def emit_place_marked(showing, place, kept, marking)
             e = @emitter
             hidden = e.gensym
-            marked = e.gensym
+            answered = e.gensym
             emit_branch_unless_showing(showing, hidden)
             emit_sort_key_set(kept, place)
-            emit_flag_turned(kept, place, marked, was: 0, step: -1)
-            e.emit_branch(:b, marked)
+            e.emit_number(TMP, ((FLAGS + place) * 2) + 1)
+            e.emit_branch(:b, answered)
             e.place_label(hidden)
-            emit_flag_turned(kept, place, marked, was: 1, step: 1)
-            e.place_label(marked)
+            e.emit_number(TMP, (FLAGS + place) * 2)
+            e.place_label(answered)
+            e.emit_branch(:bl, marking)
           end
 
-          # On to +marked+ unless the flag of +place+ is +was+; otherwise the flag turned over, the count
-          # of places not showing moved by +step+, and CHANGED set.
-          def emit_flag_turned(kept, place, marked, was:, step:)
+          # THE CODE EACH PLACE CALLS, at +label+, with TMP its answer: the offset of its flag in the
+          # block twice over, plus 1 where the place shows. One number, so a place sets one register
+          # for the call. Back at once where the flag already says so; otherwise the flag turned over,
+          # the count of places not showing moved by one, and CHANGED set. Touches ACC, SPARE and HIGH
+          # besides.
+          def emit_flag_marking(kept, label)
             e = @emitter
-            e.emit_number(TMP, kept.block)
-            e.emit(ASM.ldrb_offset(ACC, TMP, FLAGS + place))
-            e.emit(ASM.cmp_imm(ACC, was))
-            e.emit_branch(:bcond, marked, cond: :ne)
-            e.emit_number(ACC, 1 - was)
-            e.emit(ASM.strb_offset(ACC, TMP, FLAGS + place))
-            e.emit(ASM.str_offset(TMP, TMP, CHANGED)) # any number but nought
-            e.emit(ASM.ldr_offset(ACC, TMP, HIDDEN))
-            e.emit(step.positive? ? ASM.add_imm(ACC, ACC, 1) : ASM.sub_imm(ACC, ACC, 1))
-            e.emit(ASM.str_offset(ACC, TMP, HIDDEN))
+            same = e.gensym
+            e.place_label(label)
+            e.emit(ASM.and_imm(ACC, TMP, 1))                # 1 where it shows
+            e.emit_number(SPARE, kept.block)
+            e.emit(ASM.add_reg_lsr(TMP, SPARE, TMP, 1))     # where its flag is
+            e.emit(ASM.ldrb_offset(HIGH, TMP, 0))
+            e.emit(ASM.cmp_reg(HIGH, ACC))
+            e.emit_branch(:bcond, same, cond: :eq)
+            e.emit(ASM.strb_offset(ACC, TMP, 0))
+            e.emit(ASM.str_offset(SPARE, SPARE, CHANGED)) # any number but nought
+            e.emit(ASM.ldr_offset(HIGH, SPARE, HIDDEN))
+            e.emit(ASM.cmp_imm(ACC, 0))
+            e.emit(ASM.add_imm_cond(:eq, HIGH, HIGH, 1))
+            e.emit(ASM.sub_imm_cond(:ne, HIGH, HIGH, 1))
+            e.emit(ASM.str_offset(HIGH, SPARE, HIDDEN))
+            e.place_label(same)
+            e.emit(ASM.return)
           end
 
           # On to +hidden+ unless +showing+ is 1, each test of it branched on where it is a product of
