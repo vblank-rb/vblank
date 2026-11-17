@@ -100,6 +100,19 @@ class TestStatusBarHandle < Minitest::Test
     assert_backends_agree(prog, frames: 5, name: "BARCELL")
   end
 
+  # Letters by numbers the game works out (StatusBarGames#letters_by_number_game), and a cell at
+  # a worked-out column too.
+  def test_set_tile_by_a_worked_out_number_counts_through_the_tileset
+    prog = letters_by_number_game
+    seen = picture(prog, 6)
+    row = screen_height - 12
+
+    LETTER_COLORS.each_with_index { |color, at| assert_equal color, seen.pixel((at * 8) + 4, row), "letter #{at}" }
+    assert_equal RED, seen.pixel(12, row + 8), "the cell at a worked-out column"
+    assert_equal WHITE, seen.pixel(20, row + 8), "the cell beside it"
+    assert_backends_agree(prog, frames: 6, name: "BARNUMS")
+  end
+
   # A BAR WHOSE LINE RUNS EVERY PASS keeps the cell the game changed: put up again, it shows as it
   # now is (Reference#put_up_background), as a score's digit stays when the routine that draws the
   # screen runs each frame.

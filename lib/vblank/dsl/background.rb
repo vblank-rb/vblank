@@ -177,11 +177,19 @@ module VBlank
 
       # A TILE PICKED BY A NUMBER THE GAME WORKS OUT, counting from nought through the tileset's
       # keys in the order they were written, which a number that names no key leaves the cell alone
-      # for. A cell's word differs from tile to tile and console to console, so this is written as
-      # the tests a game would write by hand, halving the keys each time: six tests for 43 tiles, and
-      # one `set_tile` for each of them in the cartridge.
+      # for. It is one step of the game, picking from the list of every key (#set_tile_picked), as
+      # PackCells writes a worked-out `set_cell`: a console that keeps the keys' cells as a table
+      # reads the cell from it by the number, the way its own games write a letter, so a letter costs
+      # the same however many tiles there are. The number is kept while the line writes the cell, in
+      # the variable every such line of the routine shares (Value#step_copy).
+      #
+      # A background whose walls follow its tiles keeps the tests a game would write by hand, halving
+      # the keys each time, since the wall goes with the tile: six tests for 43 tiles, and one
+      # `set_tile` for each of them in the cartridge.
       def set_tile_picked_by(col, row, number, now)
         keys = @tile_index.reject { |_, index| index.nil? }.keys
+        return set_tile_picked(col, row, number.step_copy(:cell_number), keys, now: now) unless walls_follow_tiles?
+
         in_range = PlainRuby::Steps::GameTest.new(number >= 0)
         in_range.open_yes_side
         below_end = PlainRuby::Steps::GameTest.new(number < keys.length)
