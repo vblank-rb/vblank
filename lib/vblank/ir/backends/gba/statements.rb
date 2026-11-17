@@ -212,11 +212,86 @@ module VBlank
           # business. #loop_shapes hands it over the way #var_addresses hands over where a
           # variable landed.
           def emit_repeat(node)
+            counted = walk_plan.loop_form.counted_while(node)
+            if counted&.step.equal?(node.children.last)
+              shape = counted_while_in_registers?(node, counted) ? :registers : :memory
+              return record_loop_shape(node, shape) { emit_counted_while(node, counted, shape) }
+            end
             return record_loop_shape(node, :registers) { emit_stepped_walk(node) } if stepped_walk?(node)
             return record_loop_shape(node, :registers) { emit_repeat_in_registers(node) } if LoopForm.counter_in_registers?(node)
             return record_loop_shape(node, :spilled) { emit_repeat_spilled(node) } if LoopForm.spills?(node)
 
             record_loop_shape(node, :memory) { emit_repeat_in_memory(node) }
+          end
+
+          # A COUNTED WHILE (Backends::LoopForm#counted_while): a game's `while i < n` ending `i += 1`,
+          # where nothing else in the loop writes `i` or `n`. Written as it reads, a turn counts the
+          # loop's hidden index in memory, loads `i` and compares it to ask whether to stop, and loads,
+          # adds to and stores `i` again at the end. Here `i` is the loop's count: held in the fast
+          # shape's counter register (LoopForm::COUNTER) and the limit in the other, where nothing in
+          # the body needs them (as #emit_repeat_in_registers), so a turn ends in an add, a compare and
+          # a branch back, and `i` is written back once as the loop ends. Where something in the body
+          # needs them, `i` stays in memory and only the hidden count and the test at the top go.
+          #
+          # The test is asked before the first turn and then at the end of each, as the shared walk
+          # asks it (ControlFlow#emit_counted_while), and none before the first where the start and the
+          # limit are written in the program and a turn is sure. The hidden index is written once as
+          # the loop ends: the turns made, which is `i` less where it started.
+          def emit_counted_while(node, counted, shape)
+            variable = counted.variable
+            limit = counted.limit.kind == :int ? counted.limit.value : nil
+            start = counted.starts_at
+            sure = start && limit && start < limit
+            return @lowering.statement(Build.set(node.index, Build.int(0))) if start && limit && !sure
+
+            top = @emitter.gensym
+            done = @emitter.gensym
+            @lowering.statement(Build.set(node.index, Build.neg(Build.var_ref(variable)))) unless start
+            if shape == :registers
+              emit_counted_while_in_registers(node, counted, sure, top, done)
+            else
+              emit_counted_while_in_memory(node, counted, sure, top, done)
+            end
+            @emitter.place_label(done)
+            turns = start ? Build.binop(:-, Build.var_ref(variable), Build.int(start)) : Build.binop(:+, Build.var_ref(node.index), Build.var_ref(variable))
+            @lowering.statement(Build.set(node.index, turns))
+          end
+
+          # Whether nothing in a counted while's body but its one more needs the fast shape's two
+          # registers (LoopForm.needs_loop_registers?).
+          def counted_while_in_registers?(node, counted)
+            node.children[0...-1].none? { |child| LoopForm.first_blocker_in_statement(child, counted.variable) }
+          end
+
+          def emit_counted_while_in_registers(node, counted, sure, top, done)
+            variable = counted.variable
+            @primitives.load_var(LoopForm::COUNTER, variable)
+            if counted.limit.kind == :int
+              @emitter.emit_number(LoopForm::LIMIT, counted.limit.value)
+            else
+              @primitives.load_var(LoopForm::LIMIT, counted.limit.name)
+            end
+            unless sure
+              @emitter.emit(ASM.cmp_reg(LoopForm::COUNTER, LoopForm::LIMIT))
+              @emitter.emit_branch(:bcond, done, cond: :ge)
+            end
+            @emitter.place_label(top)
+            @primitives.with_var_in_register(variable, LoopForm::COUNTER) do
+              node.children[0...-1].each { |stmt| @lowering.statement(stmt) }
+            end
+            @emitter.emit(ASM.add_imm(LoopForm::COUNTER, LoopForm::COUNTER, 1))
+            @emitter.emit(ASM.cmp_reg(LoopForm::COUNTER, LoopForm::LIMIT))
+            @emitter.emit_branch(:bcond, top, cond: :lt)
+            # A loop that made no turn goes past this: its variable is still the one in memory.
+            @primitives.store_var(LoopForm::COUNTER, variable)
+          end
+
+          def emit_counted_while_in_memory(node, counted, sure, top, done)
+            below = Build.binop(:<, Build.var_ref(counted.variable), counted.limit)
+            @expressions.emit_branch_when(below, holds: false, to: done) unless sure
+            @emitter.place_label(top)
+            node.children.each { |stmt| @lowering.statement(stmt) }
+            @expressions.emit_branch_when(below, holds: true, to: top)
           end
 
           # A WALK OF A POOL STEPPED AS AN ARM GAME STEPS ONE. The tree's walk keeps the thing it goes
