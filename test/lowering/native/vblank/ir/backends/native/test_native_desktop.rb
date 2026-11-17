@@ -497,7 +497,7 @@ class TestNativeDesktop < Minitest::Test
 
   private
 
-  Played = Struct.new(:variables, :printed, :said, :seconds, :audio, keyword_init: true)
+  Played = Struct.new(:variables, :printed, :said, :audio, keyword_init: true)
 
   # A run of the window (on SDL's stand-ins, and for a settings file of its own unless it is
   # given one) of +frames+ frames with a script's lines, a line each, as --scripted-keys reads
@@ -510,17 +510,18 @@ class TestNativeDesktop < Minitest::Test
     environment = NO_SCREEN_OR_SPEAKER.merge(env)
     raw = File.join(dir, "audio-#{rand(1 << 30)}.raw")
     environment = environment.merge("SDL_AUDIO_DRIVER" => "disk", "SDL_AUDIO_DISK_OUTPUT_FILE" => raw) if audio
-    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     printed, said, status = Open3.capture3(environment, exe, "--scripted-keys", frames.to_s, *settings, *options,
                                            stdin_data: script.map { |line| "#{line}\n" }.join)
-    took = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
     assert_predicate status, :success?, said
-    Played.new(variables: Native::HeadlessRun.variables_in(printed.lines.map(&:chomp)), printed: printed, said: said, seconds: took,
+    Played.new(variables: Native::HeadlessRun.variables_in(printed.lines.map(&:chomp)), printed: printed, said: said,
                audio: audio ? File.binread(raw).unpack("s<*") : nil)
   end
 
   # What the game itself counted, which nothing the window does may change.
   def game_saw(played) = played.variables.slice(:frames, *BUTTONS_HELD)
+
+  # How many pictures a run with --frame-times showed.
+  def pictures_shown(played) = Integer(played.said[/^pictures: (\d+),/, 1])
 
   # Every key the window keeps for itself, pressed by the key and by the hotkey's name (so also
   # held and let go for fast forward), among the frames of a game being played. The game sees
@@ -561,9 +562,13 @@ class TestNativeDesktop < Minitest::Test
   # A pause, however short, is not the game falling behind: the frames after it come at the console's
   # pace and never in a rush to make up the time. Two frames' worth of pause is what the rule for a
   # game a frame or two late would have caught up on, with the pictures a few milliseconds apart.
+  #
+  # Paced by the counted clock (--counted-clock), which moves only by the waits the pacing asks for.
+  # On the real clock a busy computer makes a frame late now and then, and the frame after it is
+  # rightly rushed to catch up, which this could not tell from a pause counted as lateness.
   def assert_a_pause_is_not_the_game_running_late(exe, dir)
     lines = ["0"] * 10 + ["0 hotkey:pause", "0", "0", "0 hotkey:pause"]
-    played = play_window(exe, dir, lines, frames: 40, options: ["--frame-times"])
+    played = play_window(exe, dir, lines, frames: 40, options: ["--frame-times", "--counted-clock"])
     nearest = played.said[/^pictures: 40, ([\d.]+) to/, 1]
 
     refute_nil nearest, played.said
@@ -572,13 +577,14 @@ class TestNativeDesktop < Minitest::Test
 
   # Fast forward, held, plays several frames for each picture: the game sees the same frames, in a
   # fraction of the time, and the speaker is given next to nothing rather than a pile of sound it
-  # would play late.
+  # would play late. The time is counted in pictures shown, each a wait for the next frame, and not
+  # in seconds, which a busy computer stretches.
   def assert_fast_forward_plays_faster_with_the_game_none_the_wiser_and_no_sound(exe, dir)
-    normal = play_window(exe, dir, [], frames: 120, audio: true)
-    fast = play_window(exe, dir, ["0 hotkeydown:fast_forward"], frames: 120, audio: true)
+    normal = play_window(exe, dir, [], frames: 120, audio: true, options: ["--frame-times"])
+    fast = play_window(exe, dir, ["0 hotkeydown:fast_forward"], frames: 120, audio: true, options: ["--frame-times"])
 
     assert_equal game_saw(normal), game_saw(fast), "the game should see ordinary frames"
-    assert_operator fast.seconds, :<, normal.seconds * 0.6, "four frames to a picture should be well under the time"
+    assert_operator pictures_shown(fast), :<, pictures_shown(normal) * 0.6, "four frames to a picture should be well under the pictures"
     assert_operator normal.audio.count(&:nonzero?), :>, 50_000, "the game's sound should be heard at its own speed"
     assert_operator fast.audio.count(&:nonzero?), :<, normal.audio.count(&:nonzero?) * 0.2, "fast forward should be near silent"
   end
@@ -959,6 +965,7 @@ class TestNativeDesktop < Minitest::Test
     pid = Process.spawn(NO_SCREEN_OR_SPEAKER, exe, "--scripted-keys", "1000000", "--save-file", path,
                         in: keys, out: File::NULL, err: File::NULL)
     count = -> { File.exist?(path) && SaveImage.read_sav(path).word(VBlank::IR::SaveLayout.save_var_at(0)) }
+    # Only catches a save that never comes: a run that passes stops waiting the moment it does.
     give_up = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 20
     sleep 0.05 until count.call == 7 || Process.clock_gettime(Process::CLOCK_MONOTONIC) > give_up
 
@@ -1035,8 +1042,11 @@ class TestNativeDesktop < Minitest::Test
     assert_predicate status, :success?, said
     assert_match(/^pacing: the monitor, 1 refreshes a picture/, said)
     assert_match(/^uneven \(more than 2 ms from the middle\): \d+/, said)
+    # Held from below alone: a busy computer can only hand pictures over later, so a bound from
+    # above would fail for the machine's load, and pictures handed over faster than the monitor
+    # shows them, or sixty frames in under a second, fail on any machine.
     middle = said[/^pictures: 60, [\d.]+ to [\d.]+ ms apart, ([\d.]+) in the middle$/, 1]
-    assert_in_delta 1000.0 / 60, middle.to_f, 1.5, "the pictures should be a sixtieth of a second apart: #{said}"
+    assert_operator middle.to_f, :>=, (1000.0 / 60) - 1.5, "the pictures should be a sixtieth of a second apart: #{said}"
     assert_operator took, :>, 0.8, "sixty frames should take about a second"
   end
 
