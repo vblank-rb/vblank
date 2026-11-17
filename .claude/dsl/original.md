@@ -953,7 +953,7 @@ frame). A file that is not a pack, is cut short or is in another format is refus
 `Original::WrongPack`. **The format is 2.** A pack kept by a build before the frame records is format 1,
 so a shell's check refuses it and the player's copy is read again, as the menu says.
 
-## A port's harvest: the original's labels
+## A port's harvest: the original's labels and where each asset lies
 
 Not a verb, and nothing a game loads: a port's harvest tool and its tests require these themselves.
 The harvest builds the decompilation and proves it is the copy (`Original::Decompilation`), then reads
@@ -985,3 +985,17 @@ what the assembler wrote. Its output is committed, so nothing else needs the dec
     past the end of its cartridge bank. The last label of a space with no bank has no span, and is refused.
   - `Labels.new(list, rom_bank_bytes:)` makes labels by hand, from `Labels::Label` records.
   - Worked examples: `test/all/vblank/original/test_labels.rb`, `test_symbol_file.rb`.
+- `require "vblank/original/manifest"` — **`Original::Manifest`**, each asset's offset, length and SHA-256 in
+  the copy (never its bytes):
+  - `Manifest.from_extents(extents, copy)` — from the `Decompilation::Extent`s the harvest proved
+    (`built.extent`), hashed from `copy` (an accepted `Copy`, or its path). Each asset is named by its source
+    file, or by what a block gives back for its extent (`{ |extent| label_for(extent) }`).
+  - Two assets on the same bytes are refused (`Original::ManifestRefused`) as the manifest is made or read,
+    naming each pair; so is one name on two assets.
+  - `manifest.refuse_different_copy!(copy)` — a port's test: `ManifestRefused`, naming each asset the copy does
+    not hold where the manifest says.
+  - `manifest.fetch(name)` — the `Manifest::Asset` (`name`, `offset`, `length`, `sha256`, `range`); an unknown
+    name raises `Original::UnknownAsset` (a `KeyError`) naming the assets nearest it.
+  - `Manifest.read(path)`, `manifest.write(path)` and `manifest.stale?(path)`, as for labels: JSON, an asset to
+    a line, in order of offset.
+  - Worked example: `test/all/vblank/original/test_manifest.rb`.

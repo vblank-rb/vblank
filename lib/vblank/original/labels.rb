@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require_relative "near_names"
 
 module VBlank
   module Original
@@ -51,8 +52,6 @@ module VBlank
       FORMAT_VERSION = 1
       # A name and a number of bytes into it: `wBallStates+1`.
       NAME_AND_BYTES = /\A(.+?)\+(\d+|0x\h+)\z/
-      # How many near names an unknown name's message offers.
-      NEAR_NAMES = 4
 
       # The labels saved at +path+: one file, or a folder of them read as one.
       def self.read(path)
@@ -180,38 +179,10 @@ module VBlank
         raise ArgumentError, "#{label.name} is the last label, so nothing tells where it ends. Give its length yourself."
       end
 
-      # Near names: those that share the longest start with +name+, and those a letter or two from it.
       def unknown_label_message(name)
-        near = (prefix_matches(name) + spelling_matches(name)).uniq.first(NEAR_NAMES)
+        near = NearNames.among(@by_name.keys, name)
         hint = near.empty? ? "" : " Near names are: #{near.join(', ')}."
         "There is no label #{name}.#{hint} Write the name as the decompilation writes it."
-      end
-
-      def prefix_matches(name)
-        name.length.downto(3) do |length|
-          found = @by_name.keys.select { it.start_with?(name[0, length]) }
-          return found.sort.first(NEAR_NAMES) unless found.empty?
-        end
-        []
-      end
-
-      def spelling_matches(name)
-        return [] if name.length < 3
-
-        @by_name.keys.select { (it.length - name.length).abs <= 2 && edit_distance(it, name) <= 2 }.sort
-      end
-
-      # Levenshtein distance: the fewest letters added, removed or changed to turn one name into another.
-      def edit_distance(first, second)
-        row = (0..second.length).to_a
-        first.each_char.with_index(1) do |letter, at|
-          previous = row.dup
-          row[0] = at
-          second.each_char.with_index(1) do |other, column|
-            row[column] = [previous[column] + 1, row[column - 1] + 1, previous[column - 1] + (letter == other ? 0 : 1)].min
-          end
-        end
-        row.last
       end
 
       def saved_row(label)

@@ -41,10 +41,11 @@ module VBlank
     #
     # WHAT THE GAME SUPPLIES: the checkout, its pin, the command and the file it builds, and the
     # block that reads the build. The labels in the assembler's symbol file are read by SymbolFile and
-    # saved as Labels (`require "vblank/original/symbol_file"`), since every port needs the same reader;
-    # what else the block reads, and any check that two assets do not claim the same bytes, are the
-    # game's own. The checkout and the assembler are found as the copy is, by Game#path, and the copy
-    # is the accepted Copy (or its path).
+    # saved as Labels (`require "vblank/original/symbol_file"`), and the extents it proves are saved as
+    # a Manifest (`require "vblank/original/manifest"`), which refuses two assets on the same bytes:
+    # every port needs the same of both. What else the block reads is the game's own. The checkout and
+    # the assembler are found as the copy is, by Game#path, and the copy is the accepted Copy (or its
+    # path).
     #
     # It is in VBlank, beside the copy it proves itself against, rather than in a gem of its own: it
     # is a few dozen lines a port cannot be trusted without, and it needs nothing VBlank does not.
