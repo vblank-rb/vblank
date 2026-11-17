@@ -804,7 +804,12 @@ module VBlank
           end
 
           def emit_add(node) = emit_sum(node.var, :+, node.operand)
-          def emit_sub(node) = emit_sum(node.var, :-, node.operand)
+          # A count kept in Y taken back by one as its loop runs out (ControlFlow#emit_repeat) is a DEY.
+          def emit_sub(node)
+            return @asm.dey if node.var == @y_counter && folded(node.operand) == 1
+
+            emit_sum(node.var, :-, node.operand)
+          end
 
           # `x = x + n` and `x = x - n`, added where x is when n is a number written in the program or
           # a variable: six instructions and no call.
@@ -875,9 +880,22 @@ module VBlank
           def jump(label) = @asm.jump(label)
           def emit_value(operand) = value(operand)
           def emit_store(name) = store(name)
-          def emit_store_zero(name) = store_number(place_of(name), 0)
+          def emit_store_zero(name)
+            store_number(place_of(name), 0)
+            return unless name == @y_counter
+
+            @asm.ldy(0)
+            note_y_counter(name)
+          end
+
           def emit_copy_variable(from, to) = copy_variable(from, to)
           def emit_increment(name)
+            if name == @y_counter
+              refuse_y_changed!(name)
+              @asm.iny
+              return note_y_counter(name)
+            end
+
             at = place_of(name)
             return @asm.inc(@asm.abs(at)) if short_counter?(name) && at <= 0xFFFF
 
@@ -892,16 +910,78 @@ module VBlank
           # three. A pool's walk is such a loop, with a turn for every thing it visits. The count is
           # still a whole number in its variable, for the body and for after the loop, since the high
           # half is never written but by the nought the loop starts with.
+          #
+          # AND IN Y, where nothing reads the count but the loop (a `repeat` whose index the body never
+          # names, as most loops written `repeat(n) { ... }` are) and nothing in the loop changes Y. An
+          # INC of a count in work RAM is eight cycles at sixteen bits and the compare loads it again;
+          # INY and CPY with the number are two and three (cycle counts in fullsnes and the SNESdev
+          # wiki's 65816 reference), the way the console's own loops count. Whether the loop leaves Y
+          # alone is known only once it is written (W65816#y_changes), so it is written first on copies
+          # of the lowering's state and thrown away (#y_kept_through?). The count is still nought in
+          # its variable from the start, and Y is written to it once, as the loop ends.
           def with_counter_held(node, counter, loaded: false)
             known = short_count_of(node, loaded)
             return yield unless known && known < 0x8000
 
+            in_y = @y_counter.nil? && place_of(counter) <= 0xFFFF && turns_countable_in_y_register?(node, counter, loaded)
             (@short_counters ||= {})[counter] = known
+            @y_counter = counter if in_y
+            if in_y && loaded
+              @asm.ldy(at_place(place_of(counter)))
+              note_y_counter(counter)
+            end
             begin
               yield
             ensure
               @short_counters.delete(counter)
+              @y_counter = nil if in_y
             end
+            @asm.sty(at_place(place_of(counter))) if in_y
+          end
+
+          # Whether a short count of the loop +node+, +counter+, can be counted in Y: only the loop
+          # names it (it is the repeat's own index, or the loop has none of the game's; or, +loaded+, a
+          # counted while's variable, which only its one more names), nothing in the loop can reach a
+          # frame boundary or stop the game, and nothing written for the body or the test to stop
+          # changes Y.
+          def turns_countable_in_y_register?(node, counter, loaded)
+            return false unless loaded || node.index.nil? || node.index == counter
+
+            body = loaded ? children_of(node).first[0...-1] : children_of(node).first
+            # A counted while asks only at its end, the compare of the count (ControlFlow#emit_counted_while).
+            asked = loaded ? [] : [Build.if_(node.stop_when)]
+            nodes = Reach.statements_from(*body, *asked)
+            return false if nodes.any? { |each| %i[raw halt].include?(each.kind) || each.attrs.values.flatten.include?(counter) }
+            return false if @plan.statements_wait?(nodes)
+
+            y_kept_through?(body + asked)
+          end
+
+          # Whether +statements+, written into an assembler of their own on copies of the lowering's
+          # state (as MeasuredOnCopies#bytes_of measures them), leave Y as it was.
+          def y_kept_through?(statements)
+            LOWERING_STATE.on_copies(self) do
+              measuring = @asm = measuring_assembler
+              @routine = "measuring"
+              @labels = 0
+              statements.each { |each| statement(each) }
+              @asm.equal?(measuring) && measuring.y_changes.zero?
+            end
+          end
+
+          # Y, holding the short count +name+ (#with_counter_held), checked to hold it still: what the
+          # loop wrote since it was set must not have changed it, as #y_kept_through? found.
+          def refuse_y_changed!(name)
+            return if @asm.equal?(@y_section) && @asm.y_changes == @y_changes_at
+
+            raise LoweringError, "the count #{name.inspect} was kept in Y and something in its loop changed Y"
+          end
+
+          # Y set or stepped for the count +name+, and what Y was changed by up to here noted.
+          def note_y_counter(name)
+            @y_section = @asm
+            @y_changes_at = @asm.y_changes
+            name
           end
 
           # The number a loop's count stays below, where it is written in the program: a repeat's
@@ -971,6 +1051,11 @@ module VBlank
             number = folded(node.rhs)
             return unless number&.between?(0, 0x7FFF)
 
+            if node.lhs.name == @y_counter
+              refuse_y_changed!(@y_counter)
+              @asm.cpy(number)
+              return :bcs
+            end
             @asm.lda(at_place(place_of(node.lhs.name)))
             @asm.cmp(number)
             :bcs
