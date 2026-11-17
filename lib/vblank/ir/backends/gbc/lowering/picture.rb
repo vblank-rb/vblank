@@ -2128,6 +2128,7 @@ module VBlank
               items = IR::Stacking.items_in_draw_order(node).map { |item| item.is_a?(Build::DrawOrder) ? item : object.call(item) }
               front_first = items.each_with_index.sort_by { |item, at| [item_level(item, object), at] }.map(&:first).reverse
               placings = {}
+              found_showing = []
               emit_groups_wanted
               emit_refuse_groups_not_together
               @asm.call("rt_sprites_begin")
@@ -2136,6 +2137,7 @@ module VBlank
                   next emit_placing_unless_unchanged(item) unless item.is_a?(Build::DrawOrder)
 
                   item.objects.each { |name| placings[name] ||= fresh("place_sprite") }
+                  found_showing.concat(found_showing_by_sort(item))
                   emit_ordered_run(item, placings)
                 end
               end
@@ -2146,7 +2148,7 @@ module VBlank
               @asm.jump(past)
               placings.each do |name, label|
                 @asm.label(label)
-                emit_placing_unless_unchanged(object.call(name))
+                emit_placing_unless_unchanged(object.call(name), shown_known: found_showing.include?(name))
                 @asm.ret
               end
               @asm.label(past)
@@ -2296,10 +2298,18 @@ module VBlank
             # where it is, with nothing tested. Any other list — one written by hand, or one something
             # takes items from the front of, whose slots move round — is walked as the interpreter
             # reads it (DrawOrderWalk), last entry first.
+            #
+            # A SORTED RUN KEEPS ITS ENTRIES NOT SHOWING AT ITS FRONT (ShownSort), and the last of them
+            # holds a mark while the run is walked: the number past the run's last sprite, which the
+            # table sends to a stop. So the walk ends at the first entry not showing, and a run of many
+            # declared and a few showing places the few.
             def emit_ordered_run(run, placings)
-              dispatch = emit_ordered_dispatch(run, placings)
               place, _capacity, width = @lists.fetch(run.order)
-              unless order_read_by_slots?(run, front_dropped_lists) && width == 1
+              slots = order_read_by_slots?(run, front_dropped_lists) && width == 1
+              walked = fresh("ordered_run_walked")
+              stop = (walked if slots && @shown_sorts&.fetch(run.order, nil)&.marked)
+              dispatch = emit_ordered_dispatch(run, placings, stop: stop)
+              unless slots
                 return emit_draw_order_walk(run, from_back: true) do |entry|
                   value(Build.var_ref(entry))
                   @asm.load(:a, :e)
@@ -2311,6 +2321,7 @@ module VBlank
                 @asm.load(:a, [place + Runtime::Lists::HEADER + k])
                 @asm.call(dispatch)
               end
+              @asm.label(walked)
             end
 
             # DrawOrderWalk's: the place the variable +name+ holds and the run's +count+, the fault's two
@@ -2339,10 +2350,14 @@ module VBlank
             # their addresses. Written in place, with a jump over it, so the table and the placings are
             # in one section; a placing the table names in another bank is refused as the cartridge is
             # built (SM83#data_jump_targets). Returns its label.
-            def emit_ordered_dispatch(run, placings)
+            #
+            # With +stop+, the label past the walk, the number past the run's last sprite (a stop mark,
+            # ShownSort) goes there instead, the call's return taken off the stack.
+            def emit_ordered_dispatch(run, placings, stop: nil)
               dispatch = fresh("ordered_dispatch")
               table = fresh("ordered_placings")
               none = fresh("placed_by_none")
+              stopped = fresh("ordered_walk_stopped")
               past = fresh("past_ordered_dispatch")
               @asm.jump(past)
               @asm.label(dispatch)
@@ -2357,8 +2372,13 @@ module VBlank
               @asm.jump(:hl)
               @asm.label(none)
               @asm.ret
+              if stop
+                @asm.label(stopped)
+                @asm.pop(:hl)
+                @asm.jump(stop)
+              end
               @asm.label(table)
-              @asm.data_jump_targets(run.objects.map { |name| placings.fetch(name, none) })
+              @asm.data_jump_targets(run.objects.map { |name| placings.fetch(name, none) } + (stop ? [stopped] : []))
               @asm.label(past)
               dispatch
             end
@@ -2380,8 +2400,11 @@ module VBlank
             # (Runtime::KeptSprites::NOT_DRAWN). Any other kept sprite asks rt_sprite_kept, which answers Z for one no
             # write has changed since it was placed and whose place in the table is where it was, and
             # is otherwise placed by its own code and noted by rt_sprite_placed.
-            def emit_placing_unless_unchanged(obj)
-              return sprite_placement(obj) unless keeps_unchanged_sprites? && kept_sprites.include?(obj.name)
+            #
+            # +shown_known+ for a sprite its draw order's sort found showing on this pass
+            # (ShownSort#found_showing_by_sort): its own code places it without asking again.
+            def emit_placing_unless_unchanged(obj, shown_known: false)
+              return sprite_placement(obj, shown_known: shown_known) unless keeps_unchanged_sprites? && kept_sprites.include?(obj.name)
 
               block = posed_sprite_block(obj)
               if block
@@ -2400,7 +2423,7 @@ module VBlank
               done = fresh("sprite_left")
               @asm.call("rt_sprite_kept")
               @asm.jump(:z, done)
-              sprite_placement(obj)
+              sprite_placement(obj, shown_known: shown_known)
               @asm.load(:hl, sprite_kept_at(obj))
               @asm.call("rt_sprite_placed")
               @asm.label(done)
@@ -2552,10 +2575,11 @@ module VBlank
             # in front of its own; the background's see-through pixels still show it.
             #
             # +level+ is the depth it is placed at: its own, or for a sprite that changes layer as
-            # the game runs, the one this placing is for (#emit_layer_changing_sprites).
-            def sprite_placement(obj, level = sprite_level(obj))
+            # the game runs, the one this placing is for (#emit_layer_changing_sprites). +shown_known+
+            # for one already found showing on this pass, which is not asked again.
+            def sprite_placement(obj, level = sprite_level(obj), shown_known: false)
               hidden = fresh("sprite_hidden")
-              emit_jump_unless_shown(value_node(obj.active), hidden)
+              emit_jump_unless_shown(value_node(obj.active), hidden) unless shown_known
               # A pose the program never changes is used as it is, so the build can see it is in range.
               said = folded(obj.pose)
               pose = said ? Build.int(said) : Build.var_ref(keep_step_local(:pose))

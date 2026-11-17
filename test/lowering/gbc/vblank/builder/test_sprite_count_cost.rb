@@ -29,6 +29,26 @@ class TestGBCSpriteCountCost < Minitest::Test
 
   # Measured: a line and a half every pass, switching off the thirty-six entries past the four
   # sprites' own, before only the entries the pass before wrote were switched off.
+  # IN A DRAW ORDER a thing not showing is left out of the sort, and the walk that places the sprites
+  # stops before it (Lowering::ShownSort): it costs the test of whether it shows and one of whether it
+  # showed last pass, a read and a jump each, so thirty-two cost about twice what they cost outside an
+  # order, under four lines.
+  BOUND_THIRTY_TWO_ORDERED = 4
+
+  def test_thirty_two_sprites_not_showing_in_an_order_cost_two_tests_each
+    share = SpriteCountCostGames.share_beyond(:gbc, SpriteCountCostGames.sprites_game(:gbc, 36, ordered: true),
+                                              SpriteCountCostGames.sprites_game(:gbc, 4, ordered: true))
+
+    assert_operator share * LINES, :<, BOUND_THIRTY_TWO_ORDERED, "thirty-two sprites not showing cost #{(share * LINES).round(2)} lines"
+  end
+
+  def test_thirty_two_empty_places_of_a_pool_in_an_order_cost_two_tests_each
+    share = SpriteCountCostGames.share_beyond(:gbc, SpriteCountCostGames.pool_game(:gbc, 36, ordered: true),
+                                              SpriteCountCostGames.pool_game(:gbc, 4, ordered: true))
+
+    assert_operator share * LINES, :<, BOUND_THIRTY_TWO_ORDERED, "thirty-two empty places cost #{(share * LINES).round(2)} lines"
+  end
+
   def test_a_pass_that_drops_no_sprite_switches_none_off
     result = SpriteCountCostGames.profile(:gbc, SpriteCountCostGames.sprites_game(:gbc, 4))
     share = result.runtime.select { |row| row.routine.to_s == "rt_sprites_end_next" }.sum(&:share)

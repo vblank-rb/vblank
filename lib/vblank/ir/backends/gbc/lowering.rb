@@ -153,6 +153,7 @@ module VBlank
           include Division
           include KeptVariables
           include KeyedSort
+          include ShownSort
 
           # EVERY KIND THIS LOWERING CANNOT MAKE YET, by what it is part of. A kind leaves the list the
           # day the Color does it; test_gbc_kind_coverage.rb holds the list and the kind lists above to
@@ -322,6 +323,7 @@ module VBlank
             keep_held_colors
             keep_group_numbers
             keep_sprites_hidden_flag
+            keep_shown_sorts
             keep_corner_notes([Picture::BACKGROUND_LAYER], bar: :own_note)
             keep_loop_running
             keep_patches
@@ -697,7 +699,7 @@ module VBlank
             copied: [Memory],
             shared: [Integer, Symbol, String, NilClass, TrueClass, FalseClass, IR::Node, SceneHandover, LoweringPlan,
                      SM83, Art, Music, Clips, SquareColors, SpriteNames, Stacking::Picture, Set, RoutineCuts::PartCall],
-            unchanged: %i[@cuts @cache]
+            unchanged: %i[@cuts @cache @shown_sorts @keys_set_by_sort]
           )
 
           # The console this lowers for (BuildCache).
@@ -1110,6 +1112,9 @@ module VBlank
           # Reference::ListValue.of: empty, or holding its capacity of the one number it is full of.
           def emit_list_new(node)
             return if held_run_on_list(node.name)
+
+            shown = @shown_sorts&.fetch(node.name, nil)
+            emit_shown_start(shown, node.capacity) if shown
             return list_call("rt_list_empty", node) unless node.full_of
 
             list_call("rt_list_at_capacity", node)
@@ -1191,6 +1196,8 @@ module VBlank
           # round as signed ones, so the borrow is turned over when their top bits differ.
           def emit_list_sort(node)
             refuse_sorting_front_dropped!(node)
+            shown = @shown_sorts&.fetch(node.name, nil)
+            return emit_shown_keyed_sort(node, shown) if shown
             return emit_keyed_sort(node) if keyed_sort?(node)
 
             place, _capacity, width = list_placed(node)
@@ -1445,6 +1452,7 @@ module VBlank
           # as wide as the slot is. An index out of range goes through rt_list_set_taken, which stops the
           # game before anything is written.
           def emit_list_set(node)
+            return if key_set_by_sort?(node)
             return list_call("rt_list_set", node, node.index, node.value) if front_dropped_lists.include?(node.name)
 
             place, capacity, width = list_placed(node)
