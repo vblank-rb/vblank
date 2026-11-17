@@ -200,6 +200,9 @@ extern const int32_t rg_game_sprite_see_through[];
 /* For each sprite, by its number: the furthest forward a placed fade's layer can be and still
  * leave it as drawn, as RG_BG_FADE_PLACE gives for a background. */
 extern const int32_t rg_game_sprite_fade_places[];
+/* For each sprite, by its number: 1 for one drawn in front of a background's cells in front
+ * (Nodes::Object#in_front), painted again once everything else is (rg_sprites.c). */
+extern const int32_t rg_game_sprites_in_front[];
 /* What a run says a sprite it drew by. For each sprite, by its number: the number of the name the
  * game declared it under, or RG_NO_NAME for one it named nothing for, such as a letter of text.
  * And for each image, by its number: the number of the name the author gave the picture, the

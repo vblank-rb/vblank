@@ -35,7 +35,8 @@ module VBlank
           tiles: [TWO_PLANE_TILES,
                   TileFormat.new(plane_bits: [0, 8, 128, 136], row_bits: 16, column_bits: (0...8).map { |x| 7 - x })],
           colors: FIFTEEN_BIT_COLORS, numbers: LOW_BYTE_FIRST_NUMBERS,
-          map_words: MapWordFormat.new(tile_bits: 10, mirror_bit: 14, flip_bit: 15, bank_at: 10, bank_bits: 3, row_tiles: 16)
+          map_words: MapWordFormat.new(tile_bits: 10, mirror_bit: 14, flip_bit: 15, bank_at: 10, bank_bits: 3, row_tiles: 16,
+                                       front_bit: 13)
         )
       )
 

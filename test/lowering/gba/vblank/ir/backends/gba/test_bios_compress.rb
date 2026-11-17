@@ -351,18 +351,39 @@ class TestBiosCompress < Minitest::Test
     assert_nil out_of_reach, out_of_reach
   end
 
-  # Not a benchmark — a guard against the chains being replaced by the exhaustive
-  # search again. Packing this blob takes a few tens of milliseconds; a full scan of
-  # the window for every byte takes several SECONDS, so the bound below is roughly a
-  # hundred times the real cost and still catches that decisively.
-  def test_packing_a_large_asset_does_not_scan_the_whole_window_per_byte
-    blob = seeded(16_000, 99) { |r| r.rand(256) }
-    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    Pack.pack_smallest(blob)
-    elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+  # Bytes that count how often they are read, so a search's work is counted, not timed.
+  class CountedBytes
+    attr_reader :reads
 
-    assert_operator elapsed, :<, 1.0,
-                    "packing #{blob.bytesize} bytes took #{elapsed.round(2)}s — that is the cost of " \
-                    "searching the whole window for every byte, so the match chains are not being used"
+    def initialize(bytes)
+      @bytes = bytes
+      @reads = 0
+    end
+
+    def [](at)
+      @reads += 1
+      @bytes[at]
+    end
+
+    def length = @bytes.length
+  end
+
+  # The most bytes the search for a match reads, on average, for each place it is asked about.
+  # Walking the match chains read under a tenth of this where this was written; a scan of the
+  # whole window reads at least one for every place in it, thousands.
+  MOST_READS_A_PLACE = 50
+
+  # A guard against the chains being replaced by the exhaustive search again, held to the bytes
+  # the search reads rather than to how long it takes, which other work on the machine changes.
+  def test_finding_matches_in_a_large_asset_does_not_scan_the_whole_window_per_byte
+    blob = seeded(16_000, 99) { |r| r.rand(16) } # few enough values that most places have matches
+    data = blob.bytes
+    n = data.length
+    chains = Pack.match_chains(data, n)
+    counted = CountedBytes.new(data)
+    n.times { |pos| Pack.longest_match(counted, pos, n, chains) }
+
+    assert_operator counted.reads.fdiv(n), :<=, MOST_READS_A_PLACE,
+                    "bytes read for each place searched: searching the whole window for every byte, so the match chains are not being used"
   end
 end

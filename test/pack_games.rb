@@ -9,6 +9,7 @@ require "pack_at_start_tests"
 require "pack_sound_tests"
 require "pack_scores_at_start_tests"
 require "pack_background_tests"
+require "pack_cells_in_front_tests"
 require "pack_slot_view_games"
 require "pack_table_tile_background_games"
 require "all/vblank/builder/test_pack_backdrops"
@@ -19,6 +20,7 @@ require "pack_pose_of_shapes_games"
 require "pack_pose_read_by_the_game_games"
 require "all/vblank/builder/test_pack_pose_bank_colors"
 require "all/vblank/dsl/test_pack_background_set_cell"
+require "all/vblank/builder/test_pack_background_areas"
 require "all/vblank/builder/test_pack_tile_pictures"
 require "all/vblank/builder/test_pack_tile_poses"
 require "pack_place_games"
@@ -811,6 +813,56 @@ module PackGames
     ].freeze
   end
 
+  # A BACKGROUND FROM THE PACK THAT WALKS BETWEEN AREAS (PackBackgroundAreaGames): each area its own
+  # slots of tiles, map and colours, walked into and back.
+  class BackgroundAreas < Kit
+    include PackBackgroundAreaGames
+
+    GAMES = [
+      game(:background_walking_between_areas_of_slots, passes: 9) do |folder, options|
+        built(*areas_game_and_file(areas_original(folder), options: options) { |world| PackBackgroundAreaGames.emit_walk(self, world) })
+      end,
+      # Two maps over one slot of tiles and one of colours, a sprite stepping across the walk.
+      game(:background_walking_between_areas_over_one_tile_slot, passes: WALKS_ON + 4) do |folder, options|
+        made = areas_game_and_file(areas_original(folder), options: options, one_tile_slot: true) do |world|
+          PackBackgroundAreaGames.emit_walk_beside_sprite(self, world)
+        end
+        built(*made)
+      end,
+      game(:cells_written_in_each_area_of_a_walking_background, passes: 11) do |folder, options|
+        told = [PackBackgroundAreaGames.advance_word(*WRITTEN)]
+        made = areas_game_and_file(areas_original(folder), options: options, set_cells: told) do |world|
+          PackBackgroundAreaGames.emit_written_cells(self, world)
+        end
+        built(*made)
+      end,
+      game(:tile_taking_turns_in_one_area_of_a_walking_background, passes: 9) do |folder, options|
+        made = areas_game_and_file(areas_original(folder), options: options, turning: true) do |world, blocks|
+          PackBackgroundAreaGames.emit_turning_walk(self, world, blocks)
+        end
+        built(*made)
+      end
+    ].freeze
+  end
+
+  # CELLS OF A BACKGROUND FROM THE PACK IN FRONT OF THE SPRITES (PackCellsInFrontGames): marked by the
+  # Genesis's own priority bit, or by map cells the unpacking writes, and a cell written in front.
+  class CellsInFront < Kit
+    include PackCellsInFrontGames
+
+    GAMES = [
+      game(:background_cells_in_front_of_a_sprite, passes: 3) do |folder, options|
+        built(*front_game_and_file(folder, options: options))
+      end,
+      game(:background_map_cells_in_front_of_a_sprite, passes: 3) do |folder, options|
+        built(*front_game_and_file(folder, map: :map_cells, options: options))
+      end,
+      game(:background_cell_written_in_front_of_a_sprite, passes: WRITTEN_PASS + 3) do |folder, options|
+        built(*front_game_and_file(folder, written: true, options: options))
+      end
+    ].freeze
+  end
+
   # A CELL OF A BACKGROUND FROM THE PACK WRITTEN WITH `set_cell` (PackBackgroundSetCellGames): the
   # font cells an original stores in the map its picture is in.
   class WrittenCells < Kit
@@ -859,6 +911,14 @@ module PackGames
       # whose tiles, banks and turns are known only once the file is read.
       game(:cells_told_by_a_slot_written_by_place, passes: 8) do |folder, options|
         built(*slot_told_text_game(folder, :gbc, blank_at: 6, options: options))
+      end,
+      # The same cells written `now: true`, by number and by place: a console that writes a cell
+      # while it draws shows each on the frame being drawn, the pack left out or not.
+      game(:font_cells_written_now_on_map_cells, passes: 8) do |folder, options|
+        built(*map_cells_text_game(folder, :gbc, blank_at: 6, now: true, options: options))
+      end,
+      game(:cells_told_by_a_slot_written_now_by_place, passes: 8) do |folder, options|
+        built(*slot_told_text_game(folder, :gbc, blank_at: 6, now: true, options: options))
       end,
       game(:cells_told_by_a_slot_drawn_with_other_lists, passes: 7) do |folder, options|
         lists = [3, 5].map(&FOUR_COLOR_LIST)
@@ -1633,8 +1693,8 @@ module PackGames
   # between the group's voices, a drum kit and a key split, each note on its own recording; and a
   # song whose tracks come round apart, written until they come round together.
   class MusicPlayer2000Songs < Kit
-    # The song of every command is written for as many rounds as the reader keeps (Packing::M4A,
-    # A SONG COMES ROUND).
+    # Room for the notes of the song of every command, which is written to its third time round
+    # (Packing::M4A, A SONG COMES ROUND).
     NOTES = 176
 
     private def m4a_original(folder)
@@ -2125,7 +2185,7 @@ module PackGames
     ].freeze
   end
 
-  KITS = [Pictures, ScreenPictures, StripFonts, Layouts, VBlankLayouts, Backgrounds, WrittenCells, Backdrops, ColorLists, Poses, PosesOfWords, PosesOfShapes, PosesReadByTheGame, PosesInBankColors,
+  KITS = [Pictures, ScreenPictures, StripFonts, Layouts, VBlankLayouts, Backgrounds, BackgroundAreas, CellsInFront, WrittenCells, Backdrops, ColorLists, Poses, PosesOfWords, PosesOfShapes, PosesReadByTheGame, PosesInBankColors,
           Sounds, Scores, MusicPlayer2000Songs, SlotViews, TableTileBackgrounds, ColorsComparedAtStart, PosesSharingTheirFramesBank, Places, TilePictures,
           TilePosesOfFrames, FlaggedBytesUnpacked].freeze
 

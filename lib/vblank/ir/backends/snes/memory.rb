@@ -12,7 +12,8 @@ module VBlank
         # (long) address, a cycle slower. So:
         #
         #   $0000-$00FF  the direct page of the game's code: the runtime's working numbers, R0 to R7
-        #                (four bytes each, R0 at $00), and its scratch after them. An instruction
+        #                (four bytes each, R0 at $00), and its scratch after them; then, from $FF
+        #                down, the game's busiest variables (#reserve_direct). An instruction
         #                naming a direct page byte is a byte shorter and a cycle quicker than any
         #                other, which is why the arithmetic works here.
         #   $0100-$01FF  the direct page of the vertical blank's interrupt, which has its own so that
@@ -63,6 +64,9 @@ module VBlank
             @next_far = FAR_FIRST
             @next_last = LAST_BANK
             @next_scratch = SCRATCH
+            @direct_low = SCRATCH_END
+            @scratch_kept = 0
+            @direct_held = 0
             @far_end = FAR_END
             @places = {}
           end
@@ -157,10 +161,59 @@ module VBlank
 
           # +bytes+ of the runtime's scratch on the direct page, and its address there.
           def scratch(bytes)
-            raise Full, "the runtime's direct page is full" if @next_scratch + bytes > SCRATCH_END
+            raise Full, "the runtime's direct page is full" if @next_scratch + bytes > @direct_low
 
             @next_scratch.tap { @next_scratch += bytes }
           end
+
+          # How many bytes of the direct page are between the runtime's scratch and the variables kept
+          # there.
+          def scratch_free = @direct_low - @next_scratch
+
+          # THE GAME'S VARIABLES ON THE DIRECT PAGE. An instruction naming a direct page byte is a
+          # byte shorter and a cycle quicker than one naming a 16-bit address (the WDC 65816 data
+          # sheet's cycle table; fullsnes, "CPU Timings"), so what room the page has past the
+          # runtime's scratch goes to the variables the game names most. They are placed from the
+          # top of the page down, and the scratch from the bottom up. The runtime takes most of its
+          # scratch only once the game is lowered (Runtime#sections), so it says first how much
+          # that will be (#keep_scratch_room), and no variable takes those bytes.
+          def keep_scratch_room(bytes)
+            @scratch_kept = bytes
+          end
+
+          # How many bytes of the direct page a variable can still have: what neither the scratch nor
+          # the numbers to come (#hold_direct_room) are owed.
+          def direct_bytes_left = [scratch_free - @scratch_kept - @direct_held, 0].max
+
+          # Holds +bytes+ more of the direct page for numbers the lowering keeps of its own as it goes
+          # (#reserve_direct with +held+), which are not known when the variables are placed.
+          def hold_direct_room(bytes)
+            @direct_held += bytes
+          end
+
+          # How many bytes #hold_direct_room still holds.
+          def direct_bytes_held = @direct_held
+
+          # +bytes+ of the direct page for +name+, and its address there: an address below $100,
+          # which is the same byte whether it is named on the direct page or by a 16-bit address.
+          # With +held+, from the room held for it (#hold_direct_room).
+          def reserve_direct(name, bytes, held: false)
+            @places.fetch(name) do
+              if held
+                raise Full, "the direct page holds no room for #{name}" if bytes > @direct_held
+
+                @direct_held -= bytes
+              elsif bytes > direct_bytes_left
+                raise Full, "the direct page has no room for #{name}"
+              end
+              @direct_low -= bytes
+              @places[name] = @direct_low
+            end
+          end
+
+          # Whether +address+ is on the game's direct page, where an instruction can name it by its
+          # low byte.
+          def self.direct?(address) = address < SCRATCH_END
 
           # #scratch kept for +name+, so it is asked for and read back by name like any other place:
           # a pointer an instruction reads through, which must be on the direct page.
@@ -178,6 +231,15 @@ module VBlank
 
           # How many bytes of the first 8K are in use.
           def used = @next - FIRST
+
+          # THE WORK RAM ANYTHING WAS PLACED IN, as ranges of long addresses: the first 8K whole (the
+          # direct pages, the runtime, the variables and the stack), the far places after it, and the
+          # last bank's, where any were asked for. Asked once everything has its place.
+          def placed_ranges
+            ranges = [(FAR_FIRST - 0x2000)...[@next_far, FAR_FIRST].max]
+            ranges << (LAST_BANK...@next_last) if @next_last > LAST_BANK
+            ranges
+          end
 
           private
 

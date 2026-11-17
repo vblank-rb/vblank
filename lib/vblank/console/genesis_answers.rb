@@ -171,7 +171,10 @@ module VBlank
                       "square of picture one time. Every sprite and background that shows the square uses it, " \
                       "mirrored or upside down too. So a screen drawn from one slot of tiles uses each tile of " \
                       "the slot one time. If the pictures of a screen " \
-                      "need more squares than the video memory holds, the build stops. It says how many they " \
+                      "need more squares than the video memory holds, a sprite whose pose changes keeps room for " \
+                      "one pose, as on the Advance. When the sprite changes pose, the console copies that pose in " \
+                      "from the cartridge between two frames. Poses from the frames of a data pack work the same " \
+                      "way. If the pictures do not fit even so, the build stops. It says how many squares they " \
                       "need and which pictures use the most. " \
                       "The Genesis shows 80 pieces at once, and 20 pieces and 320 pixels of sprites on any one " \
                       "row of the screen. A piece spends its whole width of those 320 pixels, its clear pixels and " \
@@ -202,7 +205,7 @@ module VBlank
                           "between frames, 256 at most for one pass. If a pass changes more, each 256 are " \
                           "written while the pass runs, in the order the game changed them, and a frame can " \
                           "show part of the change. `held: true` changes nothing: up to 256 cells that a pass " \
-                          "changes already show together."),
+                          "changes already show together. With `cells_in_front: true`, each cell that the map marks is in front of every sprite, as the console draws a cell with its priority bit set."),
         status_bar: works("the bar is the window, a layer the console keeps beside its two backgrounds. " \
                           "`set_tile` with `now: true` is refused: a Genesis writes its video memory only " \
                           "between frames, so a change shows on the frame after the pass."),

@@ -99,11 +99,13 @@ module VBlank
       end
 
       # A list here is its slots, with its length and, for one the game shifts, where its oldest
-      # item is, kept apart from them (IR::Backends::GBA::Lists#list_places).
-      private def kept_list_items(place)
+      # item is, kept apart from them (IR::Backends::GBA::Lists#list_places): a pool's list kept in
+      # its layout's area at the pool's stride, and a link kept multiplied, read back as the tree
+      # holds it.
+      private def kept_list_items(place, _slot = nil)
         front = place.head_at ? var_at(place.head_at) : 0
         Array.new(var_at(place.length_at)) do |i|
-          little_slot(place.base + (((front + i) % place.slots) * place.bytes), place.bytes)
+          little_slot(place.base + (((front + i) % place.slots) * place.stride), place.bytes) / place.scale
         end
       end
 

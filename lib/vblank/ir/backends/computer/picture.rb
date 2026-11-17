@@ -114,7 +114,21 @@ module VBlank
           def refuse_unsupported_picture!
             refuse_picture!("more than #{MAX_SEE_THROUGH} see-through layers") if @see_through.size > MAX_SEE_THROUGH
             refuse_picture!("more than #{MAX_BACKGROUNDS} backgrounds") if @stacking.scenery.length > MAX_BACKGROUNDS
-            refuse_picture!("more than #{MAX_SPRITES} sprites") if @sprites.size > MAX_SPRITES
+            refuse_unmade_sprite_count!
+          end
+
+          # THE RUNTIMES NUMBER EVERY SPRITE THE GAME DECLARES, each scene's apart, in a table of
+          # MAX_SPRITES (RG_MAX_SPRITES in each runtime). A console counts only the sprites a screen
+          # shows together (Console::Description#sprite_places), so a game whose scenes take turns
+          # can declare more than the table holds and still be one its console plays. Numbering a
+          # scene's sprites over another's, or sizing the table by the game, is still to be written:
+          # until then such a game is not made yet, which a test run skips on.
+          def refuse_unmade_sprite_count!
+            return if @sprites.size <= MAX_SPRITES
+
+            raise NotMadeYet.new("This program declares #{@sprites.size} sprites. #{build_name.sub(/\A\w/, &:upcase)} has " \
+                                 "room for #{MAX_SPRITES} and cannot draw more yet. The cartridge build can.",
+                                 part: "more than #{MAX_SPRITES} sprites")
           end
 
           # Reference#place_blocks: where this program's blocks stop. A program that pixelates
@@ -155,7 +169,7 @@ module VBlank
           def rebuilt_every_frame?
             @program.walk.any? do |node|
               REBUILT_FOR.include?(node.kind) || (node.kind == :fade && node.under) ||
-                (node.kind == :background && node.hides_sprites)
+                (node.kind == :background && (node.hides_sprites || node.cells_in_front?))
             end ||
               see_through_picture_changes? ||
               Stacking.scenery_over_objects?(@stacking.depths, scenery: @stacking.scenery, objects: @stacking.objects)
@@ -174,7 +188,8 @@ module VBlank
           # --- the art, for rg_screen.c ---
 
           def picture_data
-            [*image_arrays, *background_arrays, *see_through_arrays, sprite_fade_places_array, *sprite_block_arrays,
+            [*image_arrays, *background_arrays, *see_through_arrays, sprite_fade_places_array, sprites_in_front_array,
+             *sprite_block_arrays,
              *run_arrays, image_pieces_array,
              runtime_array("picture_sizes", "int32_t",
                     [@stacking.scenery.length, @stacking.depths.count, @handover.always_up.scenery.length,
@@ -549,19 +564,20 @@ module VBlank
             maps = []
             painted_tiles = []
             run_colors = []
+            tiles_in_front = []
             tiles_starts = lay_out_background_tiles(tile_pixels)
             fields = @stacking.scenery.flat_map do |bg|
               tiles_start = tiles_starts.fetch(bg)
               steps = color_swaps(bg)
-              tile_count = bg.tiles.length + (bg.from_file ? bg.from_file.tiles_drawn : 0)
+              tile_count = bg.tiles.length + (bg.from_file ? bg.tiles_drawn_from_file : 0)
               painted_start, colors_start = painted_tiles_of(bg, steps, painted_tiles, run_colors)
               first_map = maps.length / MAP_FIELDS
-              bg.every_map.each do |map|
+              bg.every_map.each_with_index do |map, number|
                 # A background that never comes round again has no grid to come round at.
                 maps.push(cells.length, *TileMap.size_of(map), *(bg.streams? ? [0, 0] : TileMap.grid(map)))
                 # Read from the start file, each cell names its own tile, in order, after the tiles
-                # the game holds.
-                cells.concat(bg.from_file ? (bg.tiles.length...tile_count).to_a : map_cells(map))
+                # the game holds and the cells' tiles of the sets before the map's own.
+                cells.concat(bg.from_file ? cell_tiles_from_file(bg, number) : map_cells(map))
               end
               [bg.tile_w, bg.tile_h, first_map, Array(bg.maps).length, @backgrounds.fetch(bg.name),
                bg.streams? ? 1 : 0, tiles_start,
@@ -569,14 +585,45 @@ module VBlank
                @handover.on_arrival?(bg) ? 1 : 0, stack_place(bg.layer),
                see_through_number(bg), @bends.key?(bg.name) ? 1 : 0, fade_place(bg),
                tile_count, steps.length, background_in_blocks?(bg) ? 1 : 0, bg.affine ? 1 : 0,
-               painted_start, colors_start, bg.bar_top || NOT_A_BAR, bg.above_row || NOT_A_BAR, bg.shown_above_row]
+               painted_start, colors_start, bg.bar_top || NOT_A_BAR, bg.above_row || NOT_A_BAR, bg.shown_above_row,
+               tiles_in_front_of(bg, tile_count, tiles_in_front)]
             end
             [runtime_array("tile_pixels", "uint16_t", tile_pixels, grows: @tile_pixel_count > tile_pixels.length),
              runtime_array("backgrounds", "int32_t", fields),
              runtime_array("maps", "int32_t", maps), runtime_array("map_cells", "int16_t", cells),
              runtime_array("painted_tiles", "int32_t", painted_tiles, writable: paints_moving_cells?),
-             runtime_array("run_colors", "uint16_t", run_colors, writable: marked_numbers_in?(:run_colors))]
+             runtime_array("run_colors", "uint16_t", run_colors, writable: marked_numbers_in?(:run_colors)),
+             # Writable for a background read from the start file, whose cells' marks are read as it
+             # starts (rg_start_file_fill_front_tiles); one entry at least, so the array is there.
+             runtime_array("tiles_in_front", "uint8_t", tiles_in_front.empty? ? [0] : tiles_in_front, writable: true)]
           end
+
+          # WHICH OF A BACKGROUND'S TILES ARE IN FRONT OF THE SPRITES (Nodes::Background#in_front): a
+          # byte for each of its +tile_count+ tiles, 1 for one in front, added to +tiles_in_front+;
+          # hands back where they start there, the background's RG_BG_FRONT, or NOT_IN_FRONT for a
+          # background that did not ask for cells in front. The runtime paints the cells showing
+          # those tiles again once every level is painted (Reference#paint_cells_in_front). Read
+          # from the start file, the cells' own tiles are marked as it is read.
+          def tiles_in_front_of(bg, tile_count, tiles_in_front)
+            return NOT_IN_FRONT unless bg.cells_in_front?
+
+            start = tiles_in_front.length
+            tiles_in_front.concat(Array.new(tile_count) { |tile| bg.in_front.include?(tile) ? 1 : 0 })
+            record_start_file_tiles_in_front(bg, start) if bg.from_file
+            start
+          end
+
+          # The tiles of the cells of map +number+ of +bg+, a background read from the start file:
+          # a tile of its own for each cell, in order, among those of the map's set
+          # (Nodes::Background#first_tiles_from_file).
+          def cell_tiles_from_file(bg, number)
+            set = bg.map_sets ? bg.map_sets.fetch(number) : 0
+            first = bg.first_tiles_from_file.fetch(set)
+            (first...(first + bg.from_file.fetch(set).tiles_drawn)).to_a
+          end
+
+          # RG_BG_FRONT of a background with no cells in front of the sprites.
+          NOT_IN_FRONT = -1
 
           # EVERY BACKGROUND'S TILES, written into +tile_pixels+, and where each background's start
           # there, by background.
@@ -625,7 +672,7 @@ module VBlank
             # A background whose map is read from the start file has, after the tiles the game
             # holds for it, a tile for every cell of the map, see-through until the file is read
             # (StartFileFills#record_start_file_background_fill).
-            cell_tiles = bg.from_file ? bg.from_file.tiles_drawn : 0
+            cell_tiles = bg.from_file ? bg.tiles_drawn_from_file : 0
             record_start_file_background_fill(start, bg, steps) if bg.from_file
             [nil, *steps].flat_map do |swaps|
               held = bg.tiles.map do |tile|
@@ -662,9 +709,9 @@ module VBlank
             # A background read from the start file whose tiles take turns through pictures has
             # a tile for every cell after the ones the game holds, none painted until the routine
             # reading the file points the cells naming such a tile at a run's (StartFileFills).
-            if bg.from_file && !bg.from_file.moving.empty?
+            if bg.from_file&.any? { |where| !where.moving.empty? }
               record_start_file_moving_cells(bg, starts.first)
-              painted_tiles.concat(Array.new(bg.from_file.tiles_drawn * 2) { |at| at.even? ? NOT_PAINTED : 0 })
+              painted_tiles.concat(Array.new(bg.tiles_drawn_from_file * 2) { |at| at.even? ? NOT_PAINTED : 0 })
             end
             [nil, *steps].each do |swaps|
               @tile_runs.each_value do |run|
@@ -691,6 +738,11 @@ module VBlank
           # For every sprite, whether a fade placed in the stack reaches it (see #fade_place).
           def sprite_fade_places_array
             runtime_array("sprite_fade_places", "int32_t", @objects.each_value.map { |obj| fade_place(obj) })
+          end
+
+          # Each sprite by its number: 1 for one drawn in front of the cells in front (Nodes::Object#in_front).
+          def sprites_in_front_array
+            runtime_array("sprites_in_front", "int32_t", @objects.each_value.map { |obj| obj.in_front ? 1 : 0 })
           end
 
           # How far forward a layer is among the layers the game declared, or NO_LAYER for a name
@@ -865,7 +917,7 @@ module VBlank
           def tile_pixel_total
             @stacking.scenery.sum do |bg|
               tiles = bg.tiles.sum { |tile| tile_image(tile).then { |image| image.width * image.height } }
-              tiles += bg.from_file.tiles_drawn * RUN_TILE_PIXELS if bg.from_file
+              tiles += bg.tiles_drawn_from_file * RUN_TILE_PIXELS if bg.from_file
               tiles * (color_swaps(bg).length + 1)
             end
           end
@@ -1068,6 +1120,16 @@ module VBlank
             [eval_call("rg_background_scroll", background_number(node), value(node.x), value(node.y))]
           end
 
+          # Reference#exec_set_tile_block: its cells one by one, as its children write them. A block put
+          # back on a background read from the data pack as the game starts has no children, since the
+          # build does not hold its map: the runtime puts it back from the map it read.
+          def lower_set_tile_block(node)
+            return body_of(node) unless node.restore && node.children.empty?
+
+            [eval_call("rg_background_restore_cells", background_number(node), value(node.col), value(node.row),
+                       value(node.across), value(node.down))]
+          end
+
           # A tile picked as the program runs is written as the tests it stands for (IR::PickedTile):
           # the runtimes take a tile's number, and keep no table of a background's cells to index.
           def lower_set_tile(node)
@@ -1075,13 +1137,14 @@ module VBlank
               tests = PickedTile.tests(node)
               return tests ? lower(tests) : []
             end
+            # A tile of nil is the empty cell, as the map keeps one (#map_cells).
+            tile = Statements::Int.new(node.tile || CELL_EMPTY)
             if node.held
               return [eval_call("rg_background_hold_tile", background_number(node), value(node.col), value(node.row),
-                                Statements::Int.new(node.tile), Statements::Int.new(Nodes::ShowHeldTiles::MOST_CELLS))]
+                                tile, Statements::Int.new(Nodes::ShowHeldTiles::MOST_CELLS))]
             end
 
-            [eval_call("rg_background_set_tile", background_number(node), value(node.col), value(node.row),
-                       Statements::Int.new(node.tile))]
+            [eval_call("rg_background_set_tile", background_number(node), value(node.col), value(node.row), tile)]
           end
 
           # Reference#exec_show_held_tiles

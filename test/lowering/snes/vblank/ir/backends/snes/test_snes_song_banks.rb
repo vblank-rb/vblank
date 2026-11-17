@@ -92,7 +92,7 @@ class TestSNESSongBanks < Minitest::Test
 
   # +game+'s cartridge keeps its song notes in pieces of their own, so the test plays that way.
   private def assert_notes_apart(game)
-    assert game.build_rom(console: :snes).built.code.key?(SNES::SongBanks.piece_label(1)), "the notes are apart"
+    assert game.build_rom(console: :snes, out: nil, err: nil).built.code.key?(SNES::SongBanks.piece_label(1)), "the notes are apart"
   end
 
   # A game with one instrument, +samples+ long.
@@ -109,8 +109,8 @@ class TestSNESSongBanks < Minitest::Test
   # its 64K, which grow by the size of a recording in the chip's own format, nine bytes for sixteen
   # samples.
   def test_the_cartridge_reports_how_much_of_the_sound_chips_memory_the_game_uses
-    small = with_piano(1600).build_rom(console: :snes).sound_memory
-    big = with_piano(3200).build_rom(console: :snes).sound_memory
+    small = with_piano(1600).build_rom(console: :snes, out: nil, err: nil).sound_memory
+    big = with_piano(3200).build_rom(console: :snes, out: nil, err: nil).sound_memory
 
     assert_equal 900, big.used - small.used
     assert_equal 0x10000, small.room

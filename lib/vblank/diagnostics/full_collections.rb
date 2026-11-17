@@ -59,11 +59,32 @@ module VBlank
         after, before, retired = links
         head, tail = ends
         none = DSL::Pool::NONE
-        live = words_of(active, Array.new(slots, 1))
-        chain = words_of(after, (1...slots).to_a + [none]) + words_of(before, [none] + (0...(slots - 1)).to_a)
+        columns = [[active, Array.new(slots, 1)], [after, (1...slots).to_a + [none]], [before, [none] + (0...(slots - 1)).to_a]]
+        marks = if columns.any? { |list, _| list.stride != list.bytes }
+                  record_words_of(columns)
+                else
+                  columns.flat_map { |list, values| words_of(list, values) }
+                end
         Collection.new(label: "pool #{pool.inspect}", capacity: slots,
-                       writes: live + chain + [[count, slots], [free.length_at, 0], [retired.length_at, 0],
-                                               [head, 0], [tail, slots - 1]])
+                       writes: marks + [[count, slots], [free.length_at, 0], [retired.length_at, 0],
+                                        [head, 0], [tail, slots - 1]])
+      end
+
+      # Whole-word writes that put each of +columns+' values ([a list, its values]) in its slots,
+      # for a pool kept at a stride (Backends::PoolLayout), where a thing's values sit side by side
+      # and share words: each value's bytes at its slot, kept multiplied as the list keeps it, the
+      # words they fall in gathered, and a byte of such a word no column writes left nought.
+      def self.record_words_of(columns)
+        bytes = {}
+        columns.each do |list, values|
+          values.each_with_index do |value, at|
+            kept = value.negative? ? value : value * list.scale
+            list.bytes.times { |i| bytes[list.base + (at * list.stride) + i] = (kept >> (8 * i)) & 0xFF }
+          end
+        end
+        bytes.keys.map { |address| address & ~3 }.uniq.map do |word|
+          [word, (0...4).sum { |i| bytes.fetch(word + i, 0) << (8 * i) }]
+        end
       end
 
       # Whole-word writes that put +values+ in +list+'s slots from the first, packed as many to

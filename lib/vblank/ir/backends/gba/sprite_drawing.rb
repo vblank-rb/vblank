@@ -401,8 +401,9 @@ module VBlank
           # IR::SpriteRows): a sprite of another scene in one of them would be written into the
           # copy, and the copy is the run's.
           # +entry_bytes+ is how wide one entry of that list is: a byte, or a half for a run of more
-          # than 128 sprites (Builder::DrawOrder#declare_order_lists).
-          DrawRun = Data.define(:first_slot, :slots, :staging, :order, :entry_bytes, :members, :table) do
+          # than 128 sprites (Builder::DrawOrder#declare_order_lists). +shown+ is where its sort keeps
+          # how many entries at the list's front are not showing (ShownSort::Kept), or nil.
+          DrawRun = Data.define(:first_slot, :slots, :staging, :order, :entry_bytes, :members, :table, :shown) do
             def holds?(slot) = slot >= first_slot && slot < first_slot + slots
             def staged(slot) = staging + ((slot - first_slot) * 8)
           end
@@ -415,7 +416,7 @@ module VBlank
           # of the run there. A list written by hand, or one something takes items from the front of
           # (whose first item moves along its slots), is refused: the interpreter reads such a list as
           # it holds (Reference#names_in_draw_order), and this copy does not.
-          def self.plan_draw_runs(program, objects:, memory:, blobs:, lists:)
+          def self.plan_draw_runs(program, objects:, memory:, blobs:, lists:, shown_sorts: {})
             present = program.walk.find { |node| node.kind == :present_objects } or return []
             dropped = program.walk.filter_map { |node| node.name if node.kind == :list_drop && node.from == :front }
             (present.orders || []).each_with_index.map do |run, k|
@@ -436,7 +437,8 @@ module VBlank
               blobs[table] = sprites.flat_map { |sprite| [sprite.slot - first, sprite.pieces] }.pack("C*")
               order = lists.list_info(run.order)
               DrawRun.new(first_slot: first, slots: slots, staging: memory.alloc(slots * 8),
-                          order: order[:base], entry_bytes: order[:bytes], members: sprites.length, table: table)
+                          order: order[:base], entry_bytes: order[:bytes], members: sprites.length, table: table,
+                          shown: shown_sorts[run.order])
             end
           end
 
@@ -457,14 +459,30 @@ module VBlank
           #   r2  the table row being written
           #   r3  the copy being read
           #   r4  rows left of this sprite
+          #
+          # A RUN SORTED WITH WHAT SHOWS (ShownSort) keeps its entries not showing at the list's front,
+          # so the copy stops at them, and a run of many declared and a few showing copies the few. The
+          # rows past the last one written then hold whatever the pass before wrote there, so the ones
+          # it wrote past where this pass stopped are hidden (#emit_rows_past_run_hidden).
           def emit_copy_draw_run(run)
             list = run.order
             next_sprite = gensym
             next_row = gensym
+            copied = gensym
             entry = run.entry_bytes
             emit_number(TMP, list + ((run.members - 1) * entry))
             emit_number(ADDR, list - entry)
+            if run.shown
+              emit_number(ACC, run.shown.block)
+              emit(ASM.ldr_offset(ACC, ACC, ShownSort::HIDDEN))
+              emit(ASM.lsl_imm(ACC, ACC, 1)) if entry == 2
+              emit(ASM.add_reg(ADDR, ADDR, ACC))
+            end
             emit_number(SPARE, oam_slot(run.first_slot, 0))
+            if run.shown
+              emit(ASM.cmp_reg(TMP, ADDR))
+              emit_branch(:bcond, copied, cond: :eq)
+            end
             place_label(next_sprite)
             if entry == 2                                 # which sprite goes next
               emit(ASM.load_halfword(ACC, TMP))
@@ -491,6 +509,26 @@ module VBlank
             emit_branch(:bcond, next_row, cond: :ne)
             emit(ASM.cmp_reg(TMP, ADDR))
             emit_branch(:bcond, next_sprite, cond: :ne)
+            place_label(copied)
+            emit_rows_past_run_hidden(run) if run.shown
+          end
+
+          # The rows the pass before wrote past where this pass's copy stopped (in SPARE), each given
+          # the "unused slot" marker, and where this pass stopped kept for the next.
+          def emit_rows_past_run_hidden(run)
+            blank = gensym
+            done = gensym
+            emit_number(TMP, run.shown.block)
+            emit(ASM.ldr_offset(HIGH, TMP, ShownSort::ROWS_END))
+            emit(ASM.str_offset(SPARE, TMP, ShownSort::ROWS_END))
+            emit_number(ACC, OBJ_HIDDEN_WORD & 0xFFFF)
+            place_label(blank)
+            emit(ASM.cmp_reg(SPARE, HIGH))
+            emit_branch(:bcond, done, cond: :hs)
+            emit(ASM.store_halfword_offset(ACC, SPARE, 0))
+            emit(ASM.add_imm(SPARE, SPARE, 8))
+            emit_branch(:b, blank)
+            place_label(done)
           end
 
           # Fill the copy of every ordered run with the "unused slot" marker, for the same

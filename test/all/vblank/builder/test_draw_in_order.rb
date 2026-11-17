@@ -210,6 +210,140 @@ class TestDrawInOrder < Minitest::Test
     assert_backends_agree(walked, frames: 12)
   end
 
+  # A THING THAT SHOWS AGAIN COMES IN AT THE BACK OF THE THINGS LEVEL WITH IT, as if newly added. The
+  # hero walks up from in front to level with the enemy and stays in front; hidden on the twentieth
+  # pass and shown again on the twenty-fourth, he comes back behind the enemy, level as they are.
+  # A pixel lower on the thirty-fourth, he is in front again. A pool's thing taken away and a new
+  # one put in its place comes in the same way, behind the hero standing level with it.
+  private def shown_again_program
+    block = BLOCK
+    enemy_at = ENEMY_AT
+    program do
+      screen :tiled
+      image(:enemy, "#" => :red) { block }
+      image(:hero, "#" => :green) { block }
+      hero = sprite :hero, at: [enemy_at[0] + 8, enemy_at[1] + 6]
+      enemy = sprite :enemy, at: enemy_at
+      draw_in_order hero, enemy
+      t = var :t, 0
+      game_loop do
+        t += 1
+        hero.y -= 1 if hero.y > enemy_at[1] && t < 20
+        hero.hide if t == 20
+        hero.show if t == 24
+        hero.y += 1 if t == 34
+      end
+    end
+  end
+
+  def test_a_thing_shown_again_comes_in_behind_the_things_level_with_it
+    prog = shown_again_program
+
+    assert_equal GREEN, shown(prog, frames: 16), "walked up to level from in front: in front"
+    assert_equal RED, shown(prog, frames: 22), "hidden: the enemy alone"
+    assert_equal RED, shown(prog, frames: 30), "shown again level: behind the enemy"
+    assert_equal GREEN, shown(prog, frames: 40), "a pixel lower: in front again"
+    assert_backends_agree(prog, frames: [22, 30, 40])
+  end
+
+  # The pool's older thing stands level with the hero and is in front of him, as a pool's older thing
+  # is in front: taken away and spawned again on the same spot, it comes in behind him.
+  private def pool_shown_again_program
+    block = BLOCK
+    enemy_at = ENEMY_AT
+    program do
+      screen :tiled
+      image(:walker, "#" => :red) { block }
+      image(:hero, "#" => :green) { block }
+      hero = sprite :hero, at: [enemy_at[0] + 8, enemy_at[1]]
+      walkers = pool :walker, x: 0, y: 0, capacity: 3, image: :walker
+      draw_in_order hero, walkers
+      walkers.spawn(x: enemy_at[0], y: enemy_at[1])
+      t = var :t, 0
+      game_loop do
+        t += 1
+        walkers.each(&:remove) if t == 10
+        walkers.spawn(x: enemy_at[0], y: enemy_at[1]) if t == 14
+      end
+    end
+  end
+
+  # MANY COMING AND GOING AT ONCE: four sprites hidden and shown on passes of their own, some level
+  # with each other, some passing, and a pool whose things are spawned and taken away, all over one
+  # spot. Every run plays it against the interpreter on every pass; here the spot shows one of them.
+  private def comings_and_goings_program
+    block = BLOCK
+    colors = SEVEN_COLORS.first(5)
+    program do
+      screen :tiled
+      colors.each { |color| image(:"block_#{color}", "#" => color) { block } }
+      things = colors.first(4).each_with_index.map do |color, i|
+        sprite :"block_#{color}", at: [60 + (i * 2), 56 + ((i % 2) * 4)]
+      end
+      walkers = pool :walker, x: 0, y: 0, capacity: 4, image: :"block_#{colors.last}"
+      draw_in_order(*things, walkers)
+      t = var :t, 0
+      game_loop do
+        t += 1
+        things.each_with_index do |thing, i|
+          thing.hide if (t % (5 + i)) == 0
+          thing.show if (t % (5 + i)) == 2
+          thing.y = 56 + ((t / 3) % 7) if i == 2
+        end
+        walkers.spawn(x: 62, y: 56 + (t % 5)) if (t % 4) == 1
+        walkers.each { |walker| walker.remove if walker.y == 58 } if (t % 6) == 3
+      end
+    end
+  end
+
+  def test_things_coming_and_going_among_level_ones_are_drawn_in_order
+    shown_colors = SEVEN_COLORS.first(5).map { |color| color_named(color) }
+
+    assert_includes shown_colors, shown(comings_and_goings_program, frames: 61)
+    assert_backends_agree(comings_and_goings_program, frames: [13, 26, 37, 49, 61])
+  end
+
+  # THE WHOLE ORDER TURNED ROUND WHILE THINGS COME AND GO: a pool of eight over one spot, every one
+  # turned upside down each pass so every thing passes every other, which is the most a sort that
+  # turns runs round (and moves things back past many) is given, with one taken away and another
+  # spawned every few passes.
+  private def turned_round_while_coming_and_going_program
+    block = BLOCK
+    program do
+      screen :tiled
+      image(:speck, "#" => :red) { block }
+      image(:mark, "#" => :green) { block }
+      crowd = pool :crowd, x: 0, y: 0, capacity: 8, image: :speck
+      hero = sprite :mark, at: [62, 57]
+      draw_in_order(crowd, hero)
+      8.times { |i| crowd.spawn(x: 54 + i, y: 50 + ((i * 5) % 16)) }
+      t = var :t, 0
+      game_loop do
+        t += 1
+        crowd.each { |thing| thing.y = 115 - thing.y }
+        hero.y = 115 - hero.y
+        crowd.each { |thing| thing.remove if thing.y == 50 + ((t * 3) % 16) } if (t % 3) == 0
+        crowd.spawn(x: 56 + (t % 8), y: 50 + (t % 16)) if (t % 3) == 1
+      end
+    end
+  end
+
+  def test_an_order_turned_round_while_things_come_and_go_is_drawn_in_order
+    prog = turned_round_while_coming_and_going_program
+
+    assert_kind_of Integer, shown(prog, frames: 40)
+    assert_backends_agree(prog, frames: [10, 25, 40])
+  end
+
+  def test_a_pools_thing_spawned_again_comes_in_behind_the_things_level_with_it
+    prog = pool_shown_again_program
+
+    assert_equal RED, shown(prog, frames: 6), "the walker, named after the hero, is in front"
+    assert_equal GREEN, shown(prog, frames: 12), "taken away: the hero alone"
+    assert_equal GREEN, shown(prog, frames: 20), "spawned again level: behind the hero"
+    assert_backends_agree(prog, frames: [12, 20])
+  end
+
   # THE NUMBER IS THE GAME'S TO WORK OUT. A puff of smoke starts a step nearer the front and
   # drops back; here a variable the game owns decides, and `front: :lowest` reverses it.
   private def keyed_program(boost, front:)
@@ -334,6 +468,30 @@ class TestDrawInOrder < Minitest::Test
     assert_equal RED, shown(lifted_program(0), frames: 3), "the lower puff is in front"
     assert_equal GREEN, shown(lifted_program(20), frames: 3), "the lifted puff is in front"
     assert_backends_agree(lifted_program(20), frames: 3)
+  end
+
+  # A POOL'S NUMBER BELOW NOUGHT. The pool's places stay small, so a console may keep them and the
+  # numbers worked out from them narrower than a whole number; a number below nought must still
+  # come before every number above it. The puff stands higher than the hero, its number moved
+  # +shift+ from where it stands.
+  private def shifted_pool_program(shift)
+    block = BLOCK
+    program do
+      screen :tiled
+      image(:hero, "#" => :blue) { block }
+      image(:puff, "#" => :red) { block }
+      hero = sprite :hero, at: [62, 58]
+      puffs = pool :puffs, x: 0, y: 0, capacity: 2, image: :puff
+      draw_in_order(hero, puffs) { |thing| thing.equal?(hero) ? thing.y : thing.y + shift }
+      puffs.spawn(x: 60, y: 54)
+      game_loop {}
+    end
+  end
+
+  def test_a_pools_number_below_nought_is_behind
+    assert_equal BLUE, shown(shifted_pool_program(-80), frames: 3), "the puff's number is below nought, behind the hero's"
+    assert_equal RED, shown(shifted_pool_program(80), frames: 3), "the puff's number is past the hero's"
+    assert_backends_agree(shifted_pool_program(-80), frames: 3)
   end
 
   # --- seven in one order ---

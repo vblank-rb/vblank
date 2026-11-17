@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "stringio"
 
 # A PASS THAT CHANGES MANY CELLS OF A BACKGROUND has them all written in the blank after it, so the
 # game never waits for the display, and the blank has to hold them beside everything else it does:
@@ -53,6 +54,22 @@ class TestGBCCellsInTheBlank < Minitest::Test
     GBC::CheckedRun.new.run(bar_cells_game(120, top: 96), frames: 12)
     pass
   end
+
+  # ...and with no frame held for it: the cells the blank does not reach are on lines the display has
+  # not drawn yet, so they go in while it draws, and putting the pass up never runs past the blank
+  # (a frame held by :gap, Diagnostics::TapeProfile).
+  def test_a_pass_of_many_cells_on_a_low_bar_holds_no_frame_for_its_cells
+    rom = VBlank::Console.for(:gbc).builder.cartridge_for(bar_cells_game(120, top: 96), title: "CELLS")
+    result = rom.profile(out: StringIO.new, tape: NOTHING_PRESSED, frames: 4..30)
+
+    assert_empty result.held.select { |reading| reading.picture_held_by == :gap }.map(&:frame)
+  end
+
+  NOTHING_PRESSED = VBlank::Playthroughs::Tape.parse(<<~TAPE)
+    vblank tape 1
+    recorded on: CELLS 0x00000000
+    starts from: power-on
+  TAPE
 
   private def bar_cells_game(cells, top: 0)
     b = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))

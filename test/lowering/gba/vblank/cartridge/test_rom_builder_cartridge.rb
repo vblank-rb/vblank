@@ -121,6 +121,8 @@ class TestRomBuilderCartridge < Minitest::Test
 
     Dir.mktmpdir("rom-race") do |dir|
       copies.each do |copy|
+        # A starting gun, not a measurement: every writer waits for the same moment so they write
+        # at once. A busy machine only makes them start less together, and nothing is timed.
         go = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 0.01
         writers = Array.new(8) do |n|
           Ractor.new(copy, File.join(dir, "#{n}.gba"), go) do |cart, path, at|

@@ -80,6 +80,7 @@ module VBlank
     # A runtime's player plays a program that names no console as one for the run's console
     # (Testing.console): the Advance, or whichever CONSOLE names. The runtime is built for that
     # console's screen and clock, and the interpreter it is checked against reads the same one.
+    # What the computer builds do not make yet (Computer::NotMadeYet) is a skip naming the part.
     module PlaysRunConsole
       def self.included(player) = player.extend(ClassMethods)
 
@@ -96,6 +97,8 @@ module VBlank
         BuildChecks.refuse_unbuildable!(played)
         refuse_recordings_without_clock!(played)
         super(played, max_steps: max_steps, frames: frames)
+      rescue IR::Backends::NotMadeYet => e
+        raise MissingFeature, "The computer builds do not make yet: #{e.part}"
       end
 
       private

@@ -8,9 +8,8 @@ module VBlank
     #
     # A Genesis cartridge plays in Genesis Plus GX (ruby-genesis-emulator), through GenesisProbe: its
     # picture, its work RAM by address, the console's tables, the passes the game finished, from the
-    # runtime's own count (CountedPasses), and its sound. It cannot yet name which of the game's
-    # sprites each one is; the lowering's own run (IR::Backends::Genesis::HeadlessRun) reads that,
-    # and the question here says so.
+    # runtime's own count (CountedPasses), its sound, and where each sprite is, from the rows the
+    # runtime keeps.
     module GenesisReading
       include CountedPasses
 
@@ -40,7 +39,20 @@ module VBlank
           registers: @probe.video_registers.bytes.each_with_index.to_h { |byte, at| [at, byte] } }
       end
 
-      def sprites(_name = nil) = refuse_genesis_reader!(:sprites)
+      # THE SPRITES THE GAME PLACED IN ITS LAST PASS, as the interpreter gives them (Reference#sprites),
+      # from the rows the runtime keeps of what it placed (IR::Backends::Genesis::Places#drawn_sprite_rows),
+      # read off work RAM. See ColorReading#sprites.
+      #
+      # @param name [Symbol, nil] keep only this declared sprite's rows; nil for every row
+      # @return [Array<DrawnSprite>]
+      def sprites(name = nil)
+        refuse_missing_build_record!("which of its sprites is which")
+        ensure_rendered!
+        @drawn ||= IR::Backends::SpriteNames.new(@rom.source_program)
+        rows = @rom.built.drawn_sprite_rows(@drawn) { |address| mem16(address) }
+        name ? @drawn.rows_named(rows, name) : rows
+      end
+
       def music_playing = refuse_genesis_reader!(:music_playing)
 
       # THE SPRITE TABLE AS BOXES (SpriteBox), one for each entry that reaches the screen, in the

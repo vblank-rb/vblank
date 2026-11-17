@@ -529,6 +529,25 @@ module VBlank
             [0xE1D000F0 | (rn << 16) | (rd << 12)].pack("V")
           end
 
+          # LDRSH rd, [rn, #offset] — the signed halfword load a fixed distance further on: a field of
+          # a record read from the register on the record. The offset is split across two nibbles,
+          # as {load_halfword_offset}'s is.
+          # @param offset [Integer] byte offset, 0..255
+          def ldrsh_offset(rd, rn, offset)
+            raise ArgumentError, "halfword load offset #{offset} is outside 0..255" unless (0..255).cover?(offset)
+
+            [0xE1D000F0 | (rn << 16) | (rd << 12) | ((offset & 0xF0) << 4) | (offset & 0x0F)].pack("V")
+          end
+
+          # LDRSB rd, [rn, #offset] — the signed byte load a fixed distance further on, split the
+          # same way.
+          # @param offset [Integer] byte offset, 0..255
+          def ldrsb_offset(rd, rn, offset)
+            raise ArgumentError, "byte load offset #{offset} is outside 0..255" unless (0..255).cover?(offset)
+
+            [0xE1D000D0 | (rn << 16) | (rd << 12) | ((offset & 0xF0) << 4) | (offset & 0x0F)].pack("V")
+          end
+
           # Store a 16-bit value from a register to a memory address held in
           # another register: STRH src, [addr_reg]
           # @param src [Integer] source register

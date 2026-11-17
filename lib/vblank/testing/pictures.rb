@@ -58,19 +58,17 @@ module VBlank
       # first pass on each kind of screen (BOOT_FRAMES is the Advance's), and whether the picture
       # showing is always the pass before the last one it finished.
       #
-      # A Game Boy Color cartridge sets up for longer, and its picture is a pass later besides: the
-      # Color's runtime copies a pass's picture to the screen in the blank after the pass, whatever
-      # the screen, so what is showing is the pass before the last one finished. Its numbers were
-      # measured as the Advance's were, by sweeping the pairing on an animated program of each
-      # screen, and test_pictures_on_each_console.rb pins them: it fails if a Color program is
-      # compared at any other frame than the one asked for. The Color has no turning screen.
+      # A Game Boy Color cartridge's picture is a pass later: the Color's runtime copies a pass's
+      # picture to the screen in the blank after the pass, whatever the screen, so what is showing is
+      # the pass before the last one finished. A Super Nintendo cartridge does the same. Neither has a
+      # turning screen here.
       #
-      # A Super Nintendo cartridge is the same story with its own numbers, measured the same way and
-      # pinned by test_pictures_on_the_super_nintendo_interpreter.rb. It too copies a pass's picture
-      # in the blank after the pass, and a game here has no turning screen either. Its painted screen
-      # sets up two frames longer than its tiled one, the second of them since at power-on the
-      # painting runtime writes a key for every tile of the screen twice over
-      # (SNES::Runtime::PaintLog.emit_start), so it knows later which tiles a pass changed.
+      # So a moving picture on either is lined up by its count of passes alone
+      # (#console_picture_past_pass): the console plays until it has counted the pass after the one
+      # asked for, however long it took to set up, and test_pictures_on_each_console_interpreter.rb
+      # and test_pictures_on_the_super_nintendo_interpreter.rb fail if one is compared at any other
+      # frame. Their +boot_frames+ are only room enough to set up a program with no loop to count,
+      # and the start of a run given +console_frames:+; more than enough is harmless there.
       LineUp = Data.define(:boot_frames, :shows_pass_before_last)
       LINE_UPS = Ractor.make_shareable({
                                          gba: LineUp.new(boot_frames: BOOT_FRAMES, shows_pass_before_last: false),
@@ -167,7 +165,9 @@ module VBlank
 
         played = console_frames || console_frames_for(program, frames)
         beyond = passes_beyond_counted_frame_before(program)
-        if beyond
+        if console_frames.nil? && line_up(program).shows_pass_before_last
+          console, passes, played = console_picture_past_pass(program, frames, name, keys)
+        elsif beyond
           console, passes, counted = console_picture_with_earlier_count(program, played, name, keys)
         else
           console, passes = console_picture(program, played, name, keys)
@@ -315,6 +315,39 @@ module VBlank
         reader = Diagnostics::Verifier.new(rom, frames: console_frames, keys: IR::Buttons.mask(keys), count_passes: true)
         [game_screen_of(program, reader.frame_gba), reader.passes]
       end
+
+      # A console whose picture is the pass before its last (LineUp#shows_pass_before_last), played
+      # a frame at a time until it has counted the pass after +frames+, so its picture is pass
+      # +frames+ however long its cartridge took to set up. Its picture, the passes it counted and
+      # the frames it played. A program with no loop to count plays the console's set-up frames
+      # past +frames+ (LineUp#boot_frames), as #console_picture does.
+      #
+      # A CONSOLE'S SET-UP IS NOT A NUMBER TO WRITE DOWN HERE: it moves whenever its runtime's start
+      # gets quicker or slower (a game with more to clear or copy takes longer too), and a fixed
+      # count of frames then compares a later pass than the one asked for. The count of passes says
+      # where the game is, so the console plays until the count says it is there.
+      def console_picture_past_pass(program, frames, name, keys)
+        Diagnostics::Emulator.load!
+        rom = console_kit(program).builder.cartridge_for(program, title: name)
+        played = [frames, 1].max
+        reader = Diagnostics::Verifier.new(rom, frames: played, keys: IR::Buttons.mask(keys), count_passes: true)
+        if reader.passes.nil?
+          set_up = console_frames_for(program, frames) - played
+          reader.step(set_up)
+          return [game_screen_of(program, reader.frame_gba), nil, played + set_up]
+        end
+        while reader.passes <= frames && played < frames + MOST_FRAMES_PAST_ASKED
+          reader.step(1)
+          played += 1
+        end
+        [game_screen_of(program, reader.frame_gba), reader.passes, played]
+      end
+
+      # How many frames past the number asked for #console_picture_past_pass plays before it stops
+      # waiting for the pass: five seconds of a console's set-up and slow passes. A game still short
+      # of the pass then is compared at the pass it reached, and the frame count it reports is the
+      # failure.
+      MOST_FRAMES_PAST_ASKED = 300
 
       # The part of the console's +picture+ that is the game's own screen. A game shown in a border
       # (Console::Description#bordered?, a Game Boy Color's screen on the Advance) is played by the

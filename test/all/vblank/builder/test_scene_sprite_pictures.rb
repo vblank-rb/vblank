@@ -14,9 +14,12 @@ class TestSceneSpritePictures < Minitest::Test
     b.program
   end
 
-  # Frames since power-on at the last pass of +frames+, for the game with +poses+ pictures a scene.
+  # Frames from the first pass to the last of +frames+, for the game with +poses+ pictures a scene.
+  # Counted from the first pass, not from power-on: a game of more pictures can take longer to set
+  # up before its first pass (a console that counts its setting up does), which is not a handover.
   private def frames_seen(poses, frames, backgrounds: nil)
-    game_player.run(program(poses: poses, clock: true, backgrounds: backgrounds), frames: frames)[:seen]
+    game = program(poses: poses, clock: true, backgrounds: backgrounds)
+    game_player.run(game, frames: frames)[:seen] - game_player.run(game, frames: 1)[:seen]
   end
 
   def test_bringing_pictures_in_beside_backgrounds_costs_no_frame
@@ -26,7 +29,7 @@ class TestSceneSpritePictures < Minitest::Test
   end
 
   # Bringing a scene's pictures in is part of its taking over, and costs the game no frame: the
-  # clock reads the same after three handovers as for a game whose pictures all fit at once.
+  # clock moves on as far over three handovers as for a game whose pictures all fit at once.
   def test_bringing_pictures_in_costs_no_frame
     frames = SceneSpritePictures::PASSES_A_SCENE * (SceneSpritePictures::SCENES.length + 1)
 

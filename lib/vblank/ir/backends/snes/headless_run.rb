@@ -472,6 +472,19 @@ module VBlank
           # which picture, where — and SpriteNames turns the numbers back into names.
           def read_sprites = @places.drawn_sprite_rows(@drawn_sprites) { |address| half(address) }
 
+          # A pool's list read back where its layout placed its slots (Lowering#slot_places), any other
+          # list a slot after another.
+          def slot_place_of(name, width) = @places.slot_places.fetch(name) { super }
+
+          # Each variable as the interpreter holds it: one kept in two bytes (HalfVariables) read with
+          # its sign spread upward, since the bytes after it are another variable's.
+          def read_variables
+            @places.variables.to_h do |name, address|
+              bytes = @places.variable_bytes(name)
+              [name, bytes < 4 ? read_slot(address, bytes) : word(address)]
+            end
+          end
+
           # The game's memory, work RAM or the Super FX chip's, by the address its code uses
           # (Diagnostics::SNESMemory, which the finished-cartridge reader reads through too).
           def byte(address) = Diagnostics::SNESMemory.read8(@core, address)

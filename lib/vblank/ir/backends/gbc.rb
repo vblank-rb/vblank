@@ -31,11 +31,12 @@ require_relative "gbc/lowering/tile_runs"
 require_relative "gbc/lowering/sprite_tiles"
 require_relative "gbc/lowering/clock"
 require_relative "gbc/lowering/written_numbers"
+require_relative "gbc/lowering/small_numbers"
 require_relative "gbc/lowering/division"
-require_relative "gbc/byte_variables"
-require_relative "gbc/list_widths"
+require_relative "gbc/narrow_variables"
 require_relative "gbc/lowering/kept_variables"
 require_relative "gbc/lowering/keyed_sort"
+require_relative "gbc/lowering/shown_sort"
 require_relative "gbc/lowering"
 require_relative "gbc/sound_log"
 require_relative "gbc/headless_run"
@@ -80,10 +81,13 @@ module VBlank
         # run one stops says what stopped it in the interpreter's words.
         #
         # +kept_bytes+ is each variable the cartridge keeps narrower than four bytes, by its name: one
-        # the game declared narrow, or one only ever holding a byte (GBC::ByteVariables).
+        # the game declared narrow, or one only ever holding a byte or two (GBC::NarrowVariables).
+        #
+        # +slot_places+ is where each of a pool's lists keeps its slots, as its layout placed it
+        # (Backends::PoolLayout::SlotPlace, Lowering#place_pools), by list.
         Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :routines, :sound_tables, :notes,
                              :music_follows_level, :sound_effects, :recordings, :picture_checks, :together_checks,
-                             :kept_bytes) do
+                             :kept_bytes, :slot_places) do
           # How many bytes variable +name+ is kept in: four for a whole number. A narrow one reads
           # back with its sign copied up from its top byte.
           def variable_bytes(name) = kept_bytes.fetch(name, 4)
@@ -131,8 +135,10 @@ module VBlank
 
         # How one try at a build keeps the art (#build): whether its sprites' lists of colours borrow
         # the console's eight as it runs (false, true, or :by_scene with each scene numbering its own),
-        # and whether each screen brings its own background tiles in, and its own colours too.
-        ArtSettings = Data.define(:lends, :tile_rooms, :room_colors)
+        # and whether each screen brings its own background tiles in, and its own colours too, and
+        # whether a tile that draws nothing leaves the first palette each screen's own
+        # (Art::TooManyRoomLists).
+        ArtSettings = Data.define(:lends, :tile_rooms, :room_colors, :blank_first_held)
 
         # What one try at a build keeps in the cartridge's banks rather than the part always in view
         # (#roomier_view): its songs' notes, its sprites' tables of poses, its backgrounds' tables of
@@ -151,7 +157,7 @@ module VBlank
         # The settings of one try (#build, BuildTries): how it keeps the art, whether each scene
         # brings its own sprite pictures in, and what it keeps out of the part always in view.
         Tried = Data.define(:art, :scene_pictures, :view) do
-          def self.first = new(art: ArtSettings.new(lends: false, tile_rooms: false, room_colors: false),
+          def self.first = new(art: ArtSettings.new(lends: false, tile_rooms: false, room_colors: false, blank_first_held: false),
                                scene_pictures: false, view: ViewSettings.first)
 
           # These settings with the art kept as +art+ and each scene's pictures as +scene_pictures+,
@@ -170,7 +176,9 @@ module VBlank
         #   its own (Art::TooManyLentLists);
         # - backgrounds that need more tiles than the console holds at once: each screen brings its
         #   own tiles in (Art::TooManyBackgroundTiles), and with more lists of colours than it holds,
-        #   its own colours as well (Art::TooManyBackgroundLists);
+        #   its own colours as well (Art::TooManyBackgroundLists); a screen whose own then run out
+        #   has the first palette left its own where a tile that draws nothing took it for every
+        #   screen (Art::TooManyRoomLists);
         # - sprite pictures that between them need more tiles than the console holds: each scene
         #   brings its own pictures in (Art::TooManySpriteTiles);
         # - a part of the cartridge always in view too full: more of the game kept in the banks
@@ -221,6 +229,7 @@ module VBlank
           when Art::TooManyBackgroundTiles then settings.with_art(art: art.with(tile_rooms: true)) unless art.tile_rooms
           when Art::TooManyBackgroundLists
             settings.with_art(art: art.with(tile_rooms: true, room_colors: true)) unless art.room_colors
+          when Art::TooManyRoomLists then settings.with_art(art: art.with(blank_first_held: true)) unless art.blank_first_held
           when Art::TooManySpriteLists then settings.with_art(art: art.with(lends: true)) unless art.lends
           when Art::TooManyLentLists then settings.with_art(art: art.with(lends: :by_scene)) unless art.lends == :by_scene
           when Linker::FrameworkFillsView
@@ -367,6 +376,7 @@ module VBlank
           lends = view.indexes_in_banks && art.lends == true ? :by_scene : art.lends
           lowering = Lowering.new(program, memory: memory, lends_sprite_colors: lends, tile_rooms: art.tile_rooms,
                                            scene_pictures: scene_pictures, room_colors: art.room_colors,
+                                           blank_first_held: art.blank_first_held,
                                            banked_songs: view.banked_songs, bank_pose_tables: view.bank_pose_tables,
                                            bank_background_colors: view.bank_background_colors,
                                            banked_table_bytes: view.banked_table_bytes,
@@ -404,6 +414,7 @@ module VBlank
                                              indexes_in_banks: view.indexes_in_banks,
                                              byte_divides: lowering.divides_by_written_bytes?,
                                              clamps_outside: lowering.clamps_outside?,
+                                             far_words: lowering.reads_far_words?,
                                              walks_colors: lowering.walks_colors?)
           data = [*lowering.art.sections, *(lowering.music.any? ? lowering.music.sections : []), *clips&.sections]
           Lowered.new(lowering: lowering, memory: memory, sections: runtime + game + data)
@@ -422,7 +433,8 @@ module VBlank
                              music_follows_level: !lowering.music_level.nil?,
                              sound_effects: lowering.music.effects.map(&:name), recordings: lowering.clips.recordings,
                              picture_checks: lowering.picture_checks,
-                             together_checks: lowering.together_checks, kept_bytes: lowering.kept_variable_bytes)
+                             together_checks: lowering.together_checks, kept_bytes: lowering.kept_variable_bytes,
+                             slot_places: lowering.slot_places)
           save_bytes = SaveLayout.named_by?(program) ? Runtime::Saving::SIZE : 0
           Cartridge::GBCROM.new(linked.banks, title: title, save_bytes: save_bytes, clock: lowering.clock?,
                                               rumble: lowering.rumbles?, built: built)

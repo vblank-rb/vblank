@@ -229,6 +229,10 @@ module VBlank
           # The sprites the game placed in its last pass, back to front (GBC::Places#drawn_sprite_rows).
           def read_sprites = @places.drawn_sprite_rows(@drawn_sprites) { |address| @core.bus_read8(address) }
 
+          # A pool's list read back where its layout placed its slots (Lowering#place_pools), any other
+          # list a slot after another.
+          def slot_place_of(name, width) = @places.slot_places.fetch(name) { super }
+
           # The Color's memory, read and written over its bus.
           def byte(address) = @core.bus_read8(address)
 

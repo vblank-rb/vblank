@@ -112,6 +112,12 @@ module VBlank
           # that runs out, and the build is made again with rooms that carry colours (GBC#build).
           class TooManyBackgroundLists < LoweringError; end
 
+          # MORE LISTS OF COLOURS THAN ONE SCREEN HOLDS, with the ones every screen keeps. Where a
+          # tile that draws nothing took the first palette for every screen (#blank_tile), the
+          # build is made again with that palette left each screen's own (GBC#build); otherwise the
+          # words are the author's.
+          class TooManyRoomLists < LoweringError; end
+
           # THE TILES ONE SCREEN BRINGS IN, past the ones every screen keeps from power-on: a scene's
           # own backgrounds' tiles, or one area's of a background that walks between areas. +number+
           # is the one the runtime brings it in by (one up, so that nought is none), or nil for a
@@ -202,9 +208,15 @@ module VBlank
           # +sprite_slots+ is the slot each sprite picture's colours take in its palettes, laid out for
           # the whole game so pictures of the same colours share them (GBC::SpriteSlots), nil for every
           # picture's own order.
+          #
+          # +blank_first_held+ marks that a tile that draws nothing, asked for before any palette is
+          # made, holds the first palette for others rather than taking it (#blank_tile,
+          # TooManyRoomLists).
           def initialize(square_colors: nil, lends: false, grouped: {}, room_colors: false, first_cleared_to: nil,
                          backdrop: BACKDROP, piece_height: SpritePieces::SIZE, scene_pictures: nil,
-                         indexes_in_banks: false, tile_facts: {}, sprite_slots: nil)
+                         indexes_in_banks: false, tile_facts: {}, sprite_slots: nil, blank_first_held: false)
+            @blank_first_held = blank_first_held
+            @lists_kept_by_place = Set.new # lists whose tiles are kept by place (#keep_split_lists_by_place)
             @sprite_slots = sprite_slots
             @indexes_in_banks = indexes_in_banks
             @tile_facts = tile_facts # what each tile's picture alone gives (#tile_fact)
@@ -236,6 +248,7 @@ module VBlank
             @background_tile_numbers = {}
             @background_palettes = []
             @black_held = false # the first palette is black alone, until one that can be first comes
+            @blank_on_first = false # a tile that draws nothing is drawn from the first palette (#blank_tile)
             # Its recolour steps -> [room, picture name] -> [tile number, palette number]. The steps are
             # kept by which object they are, not by what they hold, since hashing them walks every
             # colour of every step: the lowering hands over one object for steps that are equal
@@ -745,7 +758,8 @@ module VBlank
               drawing = TileDrawing.new(room: room, recolor_steps: recolor_steps, any_first: !empty_cells_shown && !recolor_steps.nil?)
               order = list_order(image)
               placed = recolor_steps && !order && drawn_places(image)
-              if pack_places_kept?(image) then kept_tile(image, drawing)
+              if draws_nothing?(image) then blank_tile(drawing, empty_cells_shown)
+              elsif places_kept?(image) then kept_tile(image, drawing)
               elsif order then listed_tile(image, order, drawing)
               elsif placed then placed_tile(image, placed, drawing)
               else drawn_tile(name, image, drawing)
@@ -826,17 +840,50 @@ module VBlank
           # the list's colours after its first, in the list's order. So a tile read from a data pack
           # in the Color's own layout (Console::GBCHardware::ORIGINAL_FORMATS) goes into the
           # cartridge as the original's bytes. Place 0 is see-through and shows the backdrop, the
-          # palette's first colour. False for a tile not from a data pack slot, from a longer list, or
-          # with a place past its list; #list_order and #drawn_tile take those.
-          def pack_places_kept?(image)
-            return false unless image.places_from_pack? && image.colors && image.colors.length <= PLACES
+          # palette's first colour. A tile of the game's own list is kept so too where its list's
+          # tiles would otherwise take more than one palette (#keep_split_lists_by_place). False for
+          # any other tile, one from a longer list, or one with a place past its list; #list_order
+          # and #drawn_tile take those.
+          def places_kept?(image)
+            return false unless image.colors && image.colors.length <= PLACES
+            return false unless image.places_from_pack? || @lists_kept_by_place.include?(image.list_drawn_from)
 
-            tile_fact(:pack_places_kept, image) do
+            places_within_list?(image)
+          end
+
+          def places_within_list?(image)
+            return false unless image.places
+
+            tile_fact(:places_within_list, image) do
               (0...IR::FormatReading::TILE_PIXELS).all? { |i| image.tile_see_through_at?(i) || image.place_at(i) < image.colors.length }
             end
           end
 
-          # The four colours of a tile whose places are kept (#pack_places_kept?) when each place shows
+          # LISTS OF FOUR WHOSE TILES WOULD SPLIT. A tile drawn by place from a list of four colours
+          # or fewer, place 0 see-through, is drawn by its colours: one that never shows place 0
+          # takes the list's colours alone (#list_order), and one that does takes the backdrop and
+          # the colours it draws (#drawn_tile). So one list's tiles can take two palettes or more,
+          # though its colours, the backdrop for place 0, fit one, as a cartridge made for the
+          # Color draws a screen from a list. Of +images+, every background tile's picture, the
+          # lists whose tiles would take more than one palette so are kept by place instead
+          # (#places_kept?): one palette, the backdrop and then the list's colours. A list whose
+          # tiles take one palette either way is drawn as it always was, so its bytes stay the same.
+          def keep_split_lists_by_place(images)
+            by_list = images.select { |image| image.width == 8 && image.height == 8 && image.colors && image.colors.length <= PLACES }
+                            .select { |image| places_within_list?(image) && !image.places_from_pack? }
+                            .group_by(&:list_drawn_from)
+            @lists_kept_by_place = by_list.filter_map { |list, drawn| list if drawn.map { |image| colors_drawn_by_color(image) }.uniq.length > 1 }.to_set
+          end
+
+          # The four colours a tile drawn by its colours takes, not by its places (#list_order, #drawn_tile).
+          def colors_drawn_by_color(image)
+            order = list_order(image)
+            return padded(order.map { |place| image.colors[place] & 0x7FFF }) if order
+
+            padded([@backdrop, *tile_colors(image)])
+          end
+
+          # The four colours of a tile whose places are kept (#places_kept?) when each place shows
           # the colour the block gives it.
           def kept_colors(image) = padded([@backdrop, *(1...image.colors.length).map { |place| yield(place) & 0x7FFF }])
 
@@ -893,7 +940,9 @@ module VBlank
           # +any_first+ marks that no empty cell shows while it is in, so whatever its first colour, it can
           # be the first.
           def background_palette_number(colors, keeps_backdrop: true, room: nil, swaps: nil, any_first: false)
-            can_be_first = any_first || (keeps_backdrop && colors.first == @backdrop)
+            # A tile that draws nothing drawn from the first palette (#blank_tile) shows its first
+            # colour on every screen, so the first keeps the backdrop there wherever it is filled.
+            can_be_first = (any_first && !@blank_on_first) || (keeps_backdrop && colors.first == @backdrop)
             palette = BackgroundPalette.new(colors: colors, swaps: swaps)
             return room_palette_number(room, palette, can_be_first) if room && room_colors?
             return settled_palette_number(palette, can_be_first) if @shared_palettes
@@ -950,7 +999,7 @@ module VBlank
             return if room.palette_reach < most
 
             beside = painting? ? " beside a painted screen" : ""
-            raise LoweringError, "the backgrounds of #{room.what} need more than #{most} lists of colours, with the " \
+            raise TooManyRoomLists, "the backgrounds of #{room.what} need more than #{most} lists of colours, with the " \
                                  "lists that every scene shares. A Game Boy Color holds #{most}#{beside} at one " \
                                  "time. To fix this, draw more of them from the same colours."
           end
@@ -969,6 +1018,66 @@ module VBlank
           # The palette of the backdrop alone (black unless the game names another), where an empty
           # cell is drawn from while nothing else is first.
           def backdrop_alone = BackgroundPalette.new(colors: padded([@backdrop]), swaps: nil)
+
+          # Is every pixel of the tile see-through? Such a tile shows only the backdrop, as an empty
+          # cell does: a data pack's told cell whose tile draws nothing is one (the font's space a
+          # port writes to take its words away again).
+          def draws_nothing?(image) = tile_fact(:draws_nothing, image) { (0...64).all? { |i| image.tile_see_through_at?(i) } }
+
+          # A TILE THAT DRAWS NOTHING (#draws_nothing?): every pixel shows its palette's first colour,
+          # so any palette whose first colour is the backdrop with every list it is drawn with shows
+          # it rightly, and it takes no palette of its own.
+          #
+          # Asked for before any palette is made, it takes the backdrop's own palette as the first,
+          # which every screen then keeps. In a game whose screens bring their colours in, that
+          # leaves each screen one palette fewer, so a build where a screen's run out tries again
+          # with +blank_first_held+ (TooManyRoomLists): where an empty cell can show, the tile is
+          # drawn from the first palette and leaves it free, black alone held there as for a tile
+          # that cannot be first (#background_palette_number). The first palette that can be first
+          # takes its place, starting with the backdrop as an empty cell shows it, and the first
+          # stays each screen's own to fill (#keep_art_asked_so_far). Only then, since holding it
+          # costs each screen the code that puts its own first in, and a game that fits keeps its bytes.
+          #
+          # Otherwise, where the palette of the backdrop alone is there already, it is drawn from
+          # that one, as it always was. Where that palette would be one more, it is drawn from one
+          # already made instead: where an empty cell can show, the first, whose first colour is
+          # the backdrop (#list_order, Lowering::Picture#empty_cells_shown_with?), and elsewhere the
+          # first that keeps the backdrop first (#backdrop_first_palette_number). Only where there
+          # is none of those is the backdrop's own palette made.
+          def blank_tile(drawing, empty_cells_shown)
+            number = tile_number_in(drawing.room, TileBytes.of(Array.new(64, 0)))
+            alone = padded([@backdrop])
+            if @blank_first_held && @background_palettes.empty? && empty_cells_shown && !@shared_palettes
+              @background_palettes << backdrop_alone
+              @black_held = true
+              @blank_on_first = true
+              return [number, 0]
+            end
+            return [number, drawn_palette_number(alone, drawing)] if @background_palettes.empty? || backdrop_alone_made?(drawing.room)
+
+            palette = empty_cells_shown ? 0 : backdrop_first_palette_number(drawing.room)
+            [number, palette || drawn_palette_number(alone, drawing)]
+          end
+
+          # Is the palette of the backdrop alone one +room+ shows already, made by a tile's asking?
+          # The first palette held as black alone counts (#background_palette_number), but not every
+          # screen's first left for each room's own.
+          def backdrop_alone_made?(room)
+            kept = @background_palettes.each_with_index.any? { |palette, number| palette == backdrop_alone && (number.positive? || !@first_free) }
+            kept || (room && room_colors? && (room.first_palette_in_chain == backdrop_alone || room.chain_palettes.any? { |_, palette| palette == backdrop_alone }))
+          end
+
+          # The number of a palette +room+ shows already whose first colour is the backdrop with
+          # every list it is drawn with, or nil for none.
+          def backdrop_first_palette_number(room)
+            shown = @background_palettes.each_with_index.map { |palette, number| [number, palette] }
+            shown = shown.reject { |number, _| number.zero? && @first_free } + room.chain_palettes if room && room_colors?
+            shown.find { |_, palette| backdrop_first_always?(palette) }&.first
+          end
+
+          def backdrop_first_always?(palette)
+            palette.colors.first == @backdrop && (palette.swaps.nil? || palette.swaps.last.all? { |colors| colors.first == @backdrop })
+          end
 
           # A tile drawn any other way — from colours, or from a list with a see-through place or
           # more than four colours: three colours of its own after the backdrop, in the order it

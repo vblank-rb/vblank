@@ -76,11 +76,108 @@ module VBlank
                                "To fix this, call `keep` while the program is declared."
         end
         things.each do |thing|
+          next @save_data_keeping.fetch(name) << thing if thing.is_a?(KeptPart)
           next @save_data_keeping.fetch(name) << keep_pool_part(name, thing) if pool_part?(thing)
 
           @save_data_keeping.fetch(name) << claim_kept_item!(name, thing)
         end
       end
+
+      # A PART KEPT WHOLE (`keep part: :play`): every variable, list and pool the part declares, or a
+      # scene's, as `start_over` puts back (Builder::Parts). Its members are only all known once every
+      # routine is built, so it is held as it is until then, and #expand_kept_parts! puts its members
+      # where it stands in the record, in the order the part declared them. A member added to the part
+      # later is kept with no change to the record; it changes the record's shape, so a save made
+      # before reads as empty, as a moved keep does.
+      KeptPart = Data.define(:name)
+
+      # Each part a record keeps, as its members, once every routine is built.
+      #   - A member this record keeps already, by a `keep` of its own or an earlier part, is kept
+      #     once, where it was kept first; a pool kept whole takes the place of any field of it the
+      #     record keeps on its own. One ANOTHER record keeps is refused, as a keep of it would be.
+      #   - A `game_variables` name marked `saved: false` is left out, as the mark says, and so is a
+      #     member the part marks unsaved (Parts::Member#saved): an `each_pass` job's flag for the
+      #     step under way, which a load must not put back half way through a step, and a sprite's
+      #     shown flag on a painted screen, since a load puts back numbers and lists, not the picture.
+      #   - The framework's own members (a timer's count, a job's running flag, a sprite's place) are
+      #     named by the order the build made them, so their names are left out of the record's shape
+      #     (#save_shape_name): a timer added elsewhere in the game renumbers them, and must not make
+      #     every save read as empty. What they are, in what order, still is the shape.
+      def expand_kept_parts!
+        @save_data_keeping.each do |record, keeping|
+          next unless keeping.any?(KeptPart)
+
+          whole = keeping.grep(DSL::Pool) + keeping.grep(KeptPart).flat_map { |part| part_pools(record, part) }
+          settled = []
+          keeping.each do |one|
+            case one
+            when KeptPart then add_part_kept(record, one, settled)
+            when DSL::Pool::Column then settled << one unless whole.include?(one.pool)
+            else settled << one unless settled.include?(one)
+            end
+          end
+          keeping.replace(settled)
+        end
+      end
+
+      private def part_members!(record, part)
+        @port.handle.members_of_part(part.name) or
+          raise ArgumentError, "save_data :#{record} keeps part: :#{part.name}, and the game has no part or scene " \
+                               ":#{part.name}. #{@port.handle.known_parts_sentence} To fix this, use one of those names, " \
+                               "or write `part :#{part.name}` above what it declares."
+      end
+
+      private def part_pools(record, part) = part_members!(record, part).select { |member| member.kind == :pool }.map(&:thing)
+
+      # Add the members of +part+ that +settled+ does not hold yet to it, claimed for +record+.
+      private def add_part_kept(record, part, settled)
+        part_members!(record, part).each do |member|
+          case member.kind
+          when :pool
+            next if settled.include?(member.thing)
+
+            claim_part_pool!(record, member.thing)
+            settled << member.thing
+          when :var, :list
+            name = member.thing
+            next if !member.saved || @port.handle.unsaved_variable?(name) || @save_data_kept[name] == record
+
+            settled << claim_kept!(record, part_member_item(member))
+            @save_data_unnamed << name if member.framework
+          end
+        end
+      end
+
+      private def part_member_item(member)
+        return kept_list(member.thing) if member.kind == :list
+
+        Kept.new(kind: :var, name: member.thing, at: 0, width: :word, count: 1)
+      end
+
+      # +item+ (a Kept) as kept by +record+, refused where another record keeps it.
+      private def claim_kept!(record, item)
+        if (owner = @save_data_kept[item.name])
+          raise ArgumentError, "save_data :#{record} keeps #{kept_words(item.name)}, and save_data :#{owner} " \
+                               "keeps it too. To fix this, keep it in one of them."
+        end
+        @save_data_kept[item.name] = record
+        item
+      end
+
+      # A pool a part keeps whole: each field claimed for +record+, refused only where another
+      # record keeps one, since a field this record keeps on its own is replaced by the whole pool.
+      private def claim_part_pool!(record, pool)
+        pool.field_names.map { |field| pool.field_list(field) }.each do |name|
+          owner = @save_data_kept[name]
+          next @save_data_kept[name] = record if owner.nil? || owner == record
+
+          raise ArgumentError, "save_data :#{record} keeps #{pool.inspect}, and save_data :#{owner} keeps it " \
+                               "too. To fix this, keep it in one of them."
+        end
+      end
+
+      # The name a kept thing has in its record's shape: its own, or nothing for one the framework named.
+      private def save_shape_name(name) = @save_data_unnamed.include?(name) ? nil : name
 
       # A POOL, OR ONE FIELD OF ONE, is kept as the lists and variables it is made of, which
       # are only all known once the program is built (see DSL::Pool#saved_lists_and_vars) — so it is
@@ -278,7 +375,7 @@ module VBlank
       def lay_out_save_data(name, copies, kept, place:, number: 0, when_busy: :wait, pools: [], fast: nil)
         at = 0
         placed = kept.map { |item| item.with(at: at).tap { |one| at += one.bytes } }
-        shape = IR::SaveLayout.shape(placed.map { |item| [item.kind, item.name, item.width, item.count] })
+        shape = IR::SaveLayout.shape(placed.map { |item| [item.kind, save_shape_name(item.name), item.width, item.count] })
         Layout.new(name: name, copies: copies, kept: placed, body: at, half: IR::SaveLayout.half_bytes(at),
                    place: place, shape: shape, key: IR::SaveLayout.record_key(name), number: number,
                    when_busy: when_busy, pools: pools, fast: fast)
@@ -586,11 +683,6 @@ module VBlank
                                "`saved: false`. A save never keeps a variable with that mark. To fix this, " \
                                "remove it from the record, or move it to a `game_variables` line without `saved: false`."
         end
-        if (width = @port.handle.kept_width_of(item.name))
-          raise ArgumentError, "save_data :#{record} keeps :#{item.name}, which says `width: :#{width}`. " \
-                               "A save record keeps whole numbers. To fix this, remove `width:`, or leave it out of the record."
-        end
-
         @save_data_kept[item.name] = record
         item
       end
@@ -779,7 +871,10 @@ module VBlank
         @record = record
       end
 
-      def keep(*things) = @saves.save_data_keep(@record, things)
+      def keep(*things, part: nil)
+        things += [SaveRecords::KeptPart.new(name: part)] if part
+        @saves.save_data_keep(@record, things)
+      end
 
       # The one verb a block may need besides the game's own handles: the stream of random
       # numbers, which a game holds no handle to until it asks.

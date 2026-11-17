@@ -66,6 +66,32 @@ module HardwareSpritesMultiGames
     builder.finalize_program
     builder.program
   end
+
+  # Six red sprites in a row over the white floor, at x = 20, 44, ... 140, inside the Color's screen too. All six show on pass 0;
+  # on pass 1 the last four hide; on pass 3 the fifth shows again; on pass 5 all hide. A console
+  # that keeps a table of what it drew must switch off what each pass dropped, and only that.
+  private def dropping_program(frames:)
+    builder = Builder.new
+    builder.instance_eval do
+      screen :tiled
+      image(:floor, "#" => :white) { SOLID_TILE }
+      image(:guy,   "#" => :red)   { SOLID_TILE }
+      tiles :ground, "#" => :floor
+      background :field, tiles: :ground, map: FLOOR_MAP
+      guys = Array.new(6) { |i| sprite :guy, at: [20 + (i * 24), 40] }
+      f = var :f, 0
+      game_loop do
+        wait_vblank
+        guys.drop(2).each(&:hide) if f == 1
+        guys[4].show if f == 3
+        guys.each(&:hide) if f == 5
+        f += 1
+        halt if f >= frames
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
 end
 
 class TestHardwareSpritesMulti < Minitest::Test
@@ -88,6 +114,19 @@ class TestHardwareSpritesMulti < Minitest::Test
                  "before the flip the sprite is visible"
     assert_equal Color.resolve(:white), spot_color(visibility_program(shown: true, frames: 4)),
                  "after hide, its spot shows the floor again"
+  end
+
+  # Which of the six sprites of #dropping_program are red after +frames+.
+  private def red_guys(frames)
+    screen = game_player.run(dropping_program(frames: frames)).screen
+    (0...6).select { |i| screen.pixel(24 + (i * 24), 44) == Color.resolve(:red) }
+  end
+
+  def test_sprites_dropped_from_a_pass_vanish_and_come_back
+    assert_equal [0, 1, 2, 3, 4, 5], red_guys(1), "all six show at first"
+    assert_equal [0, 1], red_guys(3), "four hidden: their spots show the floor"
+    assert_equal [0, 1, 4], red_guys(5), "the fifth shows again"
+    assert_empty red_guys(8), "every one hidden"
   end
 
   def test_a_hidden_sprite_can_be_shown

@@ -31,11 +31,10 @@ class TestWatchedRun < Minitest::Test
       puts "-- Ruby level backtrace --"
       sleep
     RUBY
-    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-
+    # Told apart from the silence limit by why it stopped, not by how soon: a run stopped for its
+    # silence says so, and not that Ruby crashed.
     run_script(crash, crash_grace: 0.2, silence_limit: 60) do |result, out, kept|
-      assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, :<, 10
-      assert result.stopped?
+      assert_equal :crash, result.stopped
       refute result.ok?
       assert_match(/test_thing\.rb:12/, result.message)
       assert_match(/Ruby crashed/, result.message)

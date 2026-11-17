@@ -45,16 +45,22 @@ module VBlank
               @plan.sorts_kept_apart.key?(node.name) && width == 1
             end
 
-            def emit_keyed_sort(node)
+            #
+            # A SORT HANDED +shown+ (ShownSort) starts past the entries not showing, the first +hidden+:
+            # it goes on, through a table, to the place after the first entry showing, and an item is
+            # moved back no further than that entry.
+            def emit_keyed_sort(node, shown = nil)
               place, count, = list_placed(node)
               keys_place, _key_capacity, key_width = @lists.fetch(node.by)
               sort = KeyedOrder.new(slots: place + Runtime::Lists::HEADER, count: count,
                                     keys: keys_place + Runtime::Lists::HEADER, key_width: key_width,
-                                    descending: node.descending, numbers_at: @memory.reserve_quick(KEYED_SORT_NUMBERS, 2))
+                                    descending: node.descending, numbers_at: @memory.reserve_quick(KEYED_SORT_NUMBERS, 2),
+                                    hidden: shown&.hidden)
               mover = fresh("sort_move")
               reversal = fresh("sort_reverse") if count > 2
               done = fresh("sort_done")
               starts = (1...count).to_h { |at| [at, fresh("sort_place")] }
+              emit_keyed_start_past_hidden(sort, starts, done) if sort.hidden
               (1...count).each do |at|
                 stays = fresh("sort_stays")
                 @asm.label(starts.fetch(at))
@@ -63,7 +69,7 @@ module VBlank
                 if reversal && at < count - 1
                   @asm.load(:a, at)
                   @asm.call(reversal)
-                  @asm.jump(:c, starts.fetch([at - 1, 1].max))
+                  emit_keyed_taken_up_after_reversal(sort, starts, at)
                 end
                 @asm.load(:a, at)
                 @asm.call(mover)
@@ -78,7 +84,50 @@ module VBlank
             # Where a draw order's items and numbers are, and +numbers_at+, where in quick memory its
             # routines keep their two bytes. The list of numbers is as long as the order
             # (LoweringPlan#sort_kept_apart? holds to that), so +count+ is both lists' capacity.
-            KeyedOrder = Data.define(:slots, :count, :keys, :key_width, :descending, :numbers_at)
+            # +hidden+ is where a sort handed +shown+ counts its entries not showing (ShownSort), or nil.
+            KeyedOrder = Data.define(:slots, :count, :keys, :key_width, :descending, :numbers_at, :hidden)
+
+            # On to the compare of the place after the first entry showing: straight on where every
+            # entry shows, which is one test, and otherwise through a table of the places; on to +done+
+            # when one entry shows or none.
+            def emit_keyed_start_past_hidden(sort, starts, done)
+              table = fresh("sort_starts")
+              @asm.load(:a, [sort.hidden])
+              @asm.and_a(:a)
+              @asm.jump(:z, starts.fetch(1))
+              @asm.cp_a(sort.count - 1)
+              @asm.jump(:nc, done)
+              @asm.load(:l, :a)
+              @asm.load(:h, 0)
+              @asm.add_hl(:hl)
+              @asm.load(:de, table)
+              @asm.add_hl(:de)
+              @asm.load(:a, [:hli])
+              @asm.load(:h, [:hl])
+              @asm.load(:l, :a)
+              @asm.jump(:hl)
+              @asm.label(table)
+              # Entry h is the place after entry h; the first, for h nought, is never read.
+              @asm.data_jump_targets((0...(sort.count - 1)).map { |hidden| starts.fetch(hidden + 1) })
+            end
+
+            # On, after a run was turned round (carry set), to the compare at the place before it, where
+            # its first item may still have to go back; for a sort handed +shown+, not before the place
+            # after the first entry showing, since nothing goes back past that entry.
+            def emit_keyed_taken_up_after_reversal(sort, starts, at)
+              return @asm.jump(:c, starts.fetch([at - 1, 1].max)) unless sort.hidden && at - 1 >= 1
+
+              turned = fresh("sort_turned")
+              not_turned = fresh("sort_not_turned")
+              @asm.jump(:nc, not_turned)
+              @asm.load(:a, [sort.hidden])
+              @asm.cp_a(at - 1)
+              @asm.jump(:nz, turned)
+              @asm.jump(starts.fetch(at))
+              @asm.label(turned)
+              @asm.jump(starts.fetch(at - 1))
+              @asm.label(not_turned)
+            end
 
             # Carry set when the item at place +at+ is to go back past the item at place +before+:
             # the number before is strictly beyond its own.
@@ -165,8 +214,15 @@ module VBlank
               @asm.load(:a, [:hl])
               @asm.load_high(item_at, :a)
               @asm.label(back)
-              @asm.load_high(:a, hole_at)
-              @asm.and_a(:a)
+              if sort.hidden # no further back than the first entry showing (ShownSort)
+                @asm.load(:a, [sort.hidden])
+                @asm.load(:c, :a)
+                @asm.load_high(:a, hole_at)
+                @asm.cp_a(:c)
+              else
+                @asm.load_high(:a, hole_at)
+                @asm.and_a(:a)
+              end
               @asm.jump(:z, put)
               emit_keyed_slot(sort.slots - 1)
               @asm.load(:a, [:hl])

@@ -285,6 +285,10 @@ module VBlank
           # screen, which has no sprites of its own.
           def read_sprites = @places.drawn_sprite_rows(@drawn_sprites) { |address| read32(address) }
 
+          # A pool's list read back where its layout placed its slots (Lowering#place_pools), any other
+          # list a slot after another.
+          def slot_place_of(name, width) = @places.slot_places.fetch(name) { super }
+
           # The moment of +frame+ — a pass's number, or :end for the moment the run ended on. +sounds+ is how
           # many entries the sound log held as the game was found waiting (#read_sounds). A PASS'S SOUNDS
           # ARE COUNTED AS ITS WAIT ENDS, where the program keeps the count (Runtime::Sound::LOGGED_BY_PASS),

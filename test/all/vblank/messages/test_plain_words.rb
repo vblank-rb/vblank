@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "stringio"
+require "ractor_workers"
 
 # ONE THING, ONE NAME.
 #
@@ -27,11 +28,31 @@ class TestPlainWords < Minitest::Test
   # rather than keeping copies. That is a change to the whole process while it is in force,
   # so it runs before the pool starts rather than beside it. See test_helper.
   runs_on_the_main_ractor!
+  include RactorWorkers
 
   private def made(kind, **parts) = VBlank::Messages::MadeNames.make(kind, **parts)
 
   PlainWords = VBlank::Messages::PlainWords
   Placement = VBlank::IR::Backends::GBA::Placement
+
+  # The stand-in #while_it_says gives PlainWords, made in a module so the block's self is one
+  # every Ractor may share.
+  module SwappedWords
+    module_function
+
+    # A shareable method body for PlainWords' +method+ that says +said+ on the main Ractor and the
+    # real answer, kept under its second name while the stand-in is in place, on any other.
+    def stand_in(method, said)
+      Ractor.make_shareable(lambda do |asked|
+        next said if Ractor.main?
+
+        case method
+        when :routine then PlainWords.__real_routine(asked)
+        when :verb then PlainWords.__real_verb(asked)
+        end
+      end)
+    end
+  end
 
   # --- a word that came back ---
 
@@ -61,6 +82,18 @@ class TestPlainWords < Minitest::Test
 
     assert_includes progress.string, said, "the progress line names a routine from PlainWords"
     assert_includes explained.string, said, "...and so does the build report"
+  end
+
+  # A build in another Ractor names its routines while the word is swapped here, as a worker of
+  # the run beside this class does, and gets the real words rather than a fault.
+  def test_a_build_in_another_ractor_names_routines_while_the_word_is_swapped
+    name = Ractor.make_shareable(made(:save_record, record: :file, piece: :save))
+
+    heard = while_it_says(:routine, "a routine with one name") do
+      without_the_experimental_warning { value_raising_its_cause(Ractor.new(name) { |asked| PlainWords.routine(asked) }) }
+    end
+
+    assert_equal "saving save_data :file", heard
   end
 
   # ...and the machine names it answers to are the build's own, not a second copy of the two
@@ -207,11 +240,17 @@ class TestPlainWords < Minitest::Test
   # way left the real one permanently unusable, for the whole run, in every other file that
   # builds anything. Keeping the original under a second name and aliasing it back leaves a
   # real method behind.
+  #
+  # THE STAND-IN ANSWERS ONLY ON THE MAIN RACTOR. This class runs there, but the workers playing the
+  # other files run beside it, and a build in one of them asks PlainWords too. A method defined from
+  # a block nobody made shareable stops such a call with "defined with an un-shareable Proc in a
+  # different Ractor", so the stand-in is made shareable (SwappedWords), and a worker asking while it
+  # is in place is handed the real answer.
   def while_it_says(method, said)
     kept = :"__real_#{method}"
     PlainWords.singleton_class.alias_method(kept, method)
     PlainWords.singleton_class.remove_method(method)
-    PlainWords.define_singleton_method(method, ->(_) { said })
+    PlainWords.define_singleton_method(method, SwappedWords.stand_in(method, said))
     yield
   ensure
     PlainWords.singleton_class.remove_method(method)

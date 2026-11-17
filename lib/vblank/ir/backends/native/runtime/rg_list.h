@@ -164,6 +164,30 @@ static inline void rg_list_sort(rg_list *list, const rg_list *by, int32_t descen
   }
 }
 
+/* rg_list_sort with +shown+, 1 at each place of +by+ whose item shows: an item not showing goes
+ * behind every item showing, and the items not showing keep the order they stood in
+ * (Reference#exec_list_sort). An item moves back past one showing whose number is strictly beyond
+ * its own, or past any item showing when it does not show itself; never past one not showing. */
+static inline void rg_list_sort_shown(rg_list *list, const rg_list *by, int32_t descending, const int32_t *shown) {
+  for (int32_t at = 1; at < list->length; at++) {
+    int32_t item = rg_list_load(list, rg_list_slot(list, at));
+    int32_t showing = shown[item] == 1;
+    int32_t key = showing ? rg_list_get(by, item) : 0;
+    int32_t to = at;
+    while (to > 0) {
+      int32_t before = rg_list_load(list, rg_list_slot(list, to - 1));
+      if (shown[before] != 1) break;
+      if (showing) {
+        int32_t other = rg_list_get(by, before);
+        if (descending ? other >= key : other <= key) break;
+      }
+      rg_list_store(list, rg_list_slot(list, to), before);
+      to--;
+    }
+    rg_list_store(list, rg_list_slot(list, to), item);
+  }
+}
+
 /* How a table's entries are kept: a table is kept at the width the game declared it, signed or
  * not (Native::Lowering#table_type). */
 enum { RG_TABLE_INT8, RG_TABLE_UINT8, RG_TABLE_INT16, RG_TABLE_UINT16, RG_TABLE_INT32 };

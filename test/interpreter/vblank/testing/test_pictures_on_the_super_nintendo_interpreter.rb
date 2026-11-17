@@ -19,7 +19,8 @@ class TestPicturesOnTheSuperNintendoInterpreter < Minitest::Test
     assert_empty mismatched_pixels(oracle, console)
   end
 
-  # So the Super Nintendo's start-up frames are what Pictures::LINE_UPS says.
+  # So a Super Nintendo picture is compared at the frame asked for, however long its cartridge
+  # sets up.
   def test_a_moving_picture_lines_up_at_the_frame_asked_for
     assert_lines_up_at_the_frame_asked_for(:snes)
   end

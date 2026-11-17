@@ -50,7 +50,7 @@ module PackingGBATests
   # whose tracks use every command the reader reads, and one that ends, each track's notes, the
   # songs' lengths and loops, and a recording and its voice's settings. The song of every command
   # never comes round whole (its first track counts its rounds in the driver's memory), so it is
-  # written for as many rounds as the reader keeps.
+  # written to its third time round (Packing::M4A, A SONG COMES ROUND).
   M4A_NOTES = 176
 
   private def m4a_unpacking(folder, &fill)
@@ -199,6 +199,51 @@ module PackingGBATests
         assert_equal M4AAnswers.track_bytes(song, track, count: M4A_NOTES), slots.fetch(:"track_#{track}"), "track #{track}"
       end
       assert_equal M4AAnswers.length(song).pack("v2"), slots.fetch(:length)
+    end
+  end
+
+  # SONGS WHOSE TRACKS LOOP APART, each one's length and loop frame worked out by hand as A SONG
+  # COMES ROUND says (Packing::M4A): it repeats from the latest tick a track repeats from, every
+  # time round the least span all the loops fit, and ends where a time round starts with the tempo's
+  # count as an earlier one did, or else at the third, coming round to the second.
+  #
+  # A PART THAT COMES IN LATE (M4AAnswers::LATE_TRACKS), a tick a frame: the second track first
+  # sounds on tick 96 and goes round every 12, the first every 6 from 0. It repeats from 96, every
+  # 12 ticks, and the count is the same at each: 108 frames long, back to 96.
+  def test_a_song_whose_part_comes_in_late_repeats_from_where_that_part_does
+    assert_song_comes_round(M4AAnswers::LATE_SONG_AT, length: 108, loop_frame: 96, late_from: 96)
+  end
+
+  # THE SAME AT A TEMPO WHOSE COUNT DRIFTS (M4AAnswers::DRIFT_TRACKS): 82 added a frame, so tick n
+  # (from 1) plays on frame ceil(150n / 82) and leaves 82 times that less 150n. The second track
+  # first sounds on tick 192, frame 352, and goes round every 48 ticks; the first every 6. So the
+  # song repeats from tick 192, every 48: ticks 192, 240, 288, 336, 384, 432 leave 64, 80, 14, 30, 46
+  # and 62, none the same, so it comes round to the second (tick 240, frame 440) and ends at the
+  # third (tick 288, frame 527).
+  def test_a_song_whose_count_drifts_comes_round_to_its_second_time_round
+    assert_song_comes_round(M4AAnswers::DRIFT_SONG_AT, length: 527, loop_frame: 440, late_from: 352)
+  end
+
+  # LOOPS THAT DO NOT DIVIDE EACH OTHER (M4AAnswers::APART_TRACKS), a tick a frame: every 6 ticks
+  # from 0 and every 9 from 12. It repeats from 12, every 18: 30 frames long, back to 12.
+  def test_a_song_whose_loops_do_not_divide_comes_round_where_both_do
+    assert_song_comes_round(M4AAnswers::APART_SONG_AT, length: 30, loop_frame: 12, late_from: 12)
+  end
+
+  # The two-track song at +song+ read: its +length+ and +loop_frame+, its second track's notes from
+  # frame +late_from+ written, and both tracks' notes the answer key's.
+  private def assert_song_comes_round(song, length:, loop_frame:, late_from:)
+    Dir.mktmpdir do |folder|
+      slots = m4a_slots(folder) do |copy, pack|
+        2.times { |track| copy.unpack_m4a_track at: song, into: pack[:"track_#{track}"], track: track }
+        copy.unpack_m4a_length at: song, into: pack[:length]
+      end
+
+      assert_equal [length, loop_frame], slots.fetch(:length).unpack("v2"), "length and loop frame"
+      assert_equal late_from, VBlank::Original::PackNote.list_in(slots.fetch(:track_1)).first&.at, "the second track's first note"
+      2.times do |track|
+        assert_equal M4AAnswers.track_bytes(song, track, count: M4A_NOTES), slots.fetch(:"track_#{track}"), "track #{track}"
+      end
     end
   end
 

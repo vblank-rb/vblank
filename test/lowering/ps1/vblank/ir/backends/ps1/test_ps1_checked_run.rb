@@ -3,6 +3,7 @@
 require "test_helper"
 require "delegate"
 require "no_frames_games"
+require "ps1_pass_work"
 
 # What only the PlayStation's own program can show, played in Beetle PSX and held to the interpreter
 # pass for pass (PS1::CheckedRun). What a game does with its numbers, lists, scenes and routines is in
@@ -69,20 +70,27 @@ class TestPS1CheckedRun < Minitest::Test
   end
 
   # A pass too heavy for one frame spans several, and what keeps real time — `once_a_frame` — moves on
-  # by every frame the pass took, on the interpreter too (it is told how many each pass took).
+  # by every frame the pass took, on the interpreter too (it is told how many each pass took). The work
+  # is PS1PassWork's loop, as many turns as end a pass well into its second frame, measured as the test
+  # runs, since the lowering makes a turn quicker now and then.
+  HEAVY_PASS_LINES = 60..200
+
   def test_a_pass_that_takes_several_frames_keeps_real_time_as_the_interpreter_does
+    turns = PS1PassWork.turns_ending_within(HEAVY_PASS_LINES)
     run = checked(frames: 12) do
-      x = 1
+      total = 0
       frames = 0
       passes = 0
       once_a_frame { frames += 1 }
       game_loop do
         passes += 1
-        repeat(40_000) { x = (x * 1103) + 12_345 }
+        repeat(turns) { total += 3 }
       end
     end
 
-    assert_operator run[:frames], :>=, 2 * run[:passes], "every pass spanned two frames or more"
+    # The pass the run ends in has counted itself as it began and spanned none of its frames yet, so
+    # the passes that spanned their frames are one fewer than counted.
+    assert_operator run[:frames], :>=, 2 * (run[:passes] - 1), "every pass spanned two frames or more"
   end
 
   # A byte read out of a block of data the program declares, built as IR since no verb says it alone.

@@ -19,6 +19,8 @@ module VBlank
     # memory — you set where the window sits, in pixels, and the framework moves it
     # (the console's own background hardware does it for free).
     class Background
+      include BackgroundCellBlocks
+
       Build = IR::Build
 
       # Built by the `background` verb, which allocates the hidden offset variables the
@@ -52,6 +54,7 @@ module VBlank
         @name = name
         @tile_pictures = tile_pictures
         @declaration_tail = node
+        @declaration = node # the background statement itself, whatever is written on its line after it
         @scroll_x = scroll_x
         @scroll_y = scroll_y
         @walls = walls
@@ -107,6 +110,19 @@ module VBlank
         self
       end
 
+      # THE CELLS `set_cell` MAY WRITE IN EACH AREA of a background from the data pack that walks
+      # between areas: a PackCells for each area, in the order of its maps (one map an area), or nil
+      # for an area told none. Each area's pictures are its own, so a picture names one tile of
+      # +tiles+ (the background's tiles, every area's after the last) and `set_cell` writes the tile
+      # of the area the game has asked to show.
+      #
+      # Called by Builder::PackBackgrounds#declare_pack_background_areas.
+      def allow_set_cells_by_area(cells_by_area, tiles)
+        @area_pack_cells = cells_by_area
+        @tile_index = tiles.each_with_index.to_h
+        self
+      end
+
       # The name the background was declared with.
       attr_reader :name
 
@@ -140,7 +156,7 @@ module VBlank
       # makes, and they all show together on the next frame (Builder#finalize_held_tiles).
       def set_tile(col, row, tile, now: nil)
         refuse_on_bitmap_screen!("set_tile", instead: "Draw over the spot with `blit`")
-        if @walks_areas
+        if @walks_areas && !@area_pack_cells
           raise ArgumentError,
                 "background :#{@name} walks between areas, so a tile name can be in more than one area. " \
                 "set_tile cannot change a cell of it. To fix this, give each look of the room a map " \
@@ -161,11 +177,23 @@ module VBlank
 
       # A TILE PICKED BY A NUMBER THE GAME WORKS OUT, counting from nought through the tileset's
       # keys in the order they were written, which a number that names no key leaves the cell alone
-      # for. A cell's word differs from tile to tile and console to console, so this is written as
-      # the tests a game would write by hand, halving the keys each time: six tests for 43 tiles, and
-      # one `set_tile` for each of them in the cartridge.
+      # for. It is one step of the game, picking from the list of every key (#set_tile_picked), as
+      # PackCells writes a worked-out `set_cell`: a console that keeps the keys' cells as a table
+      # reads the cell from it by the number, the way its own games write a letter, so a letter costs
+      # the same however many tiles there are. A number worked out is kept while the line writes the
+      # cell, in the variable every such line of the routine shares (Value#step_copy); one read the
+      # same each time is not (#read_again_alike?).
+      #
+      # A background whose walls follow its tiles keeps the tests a game would write by hand, halving
+      # the keys each time, since the wall goes with the tile: six tests for 43 tiles, and one
+      # `set_tile` for each of them in the cartridge.
       def set_tile_picked_by(col, row, number, now)
         keys = @tile_index.reject { |_, index| index.nil? }.keys
+        unless walls_follow_tiles?
+          kept = read_again_alike?(number.node) ? number : number.step_copy(:cell_number)
+          return set_tile_picked(col, row, kept, keys, now: now)
+        end
+
         in_range = PlainRuby::Steps::GameTest.new(number >= 0)
         in_range.open_yes_side
         below_end = PlainRuby::Steps::GameTest.new(number < keys.length)
@@ -174,6 +202,20 @@ module VBlank
         below_end.close_side(nil)
         in_range.close_side(nil)
         self
+      end
+
+      # Whether +node+ reads the same number every time it is read in one step, for about the cost
+      # of the read: a number, a variable, an item of a table at a place written in the program, or
+      # a sum or difference of those. Such a number needs no variable to keep it in, and a build
+      # that knows it as the cartridge is built (a table the data pack fills, read with the game)
+      # still sees it, so the cell is that one tile (IR::PickedTile.written).
+      def read_again_alike?(node)
+        case node.kind
+        when :int, :var_ref then true
+        when :table_get then node.index.kind == :int
+        when :binop then %i[+ -].include?(node.op) && read_again_alike?(node.lhs) && read_again_alike?(node.rhs)
+        else false
+        end
       end
 
       def set_tile_between(col, row, number, keys, now, first: 0)
@@ -198,13 +240,13 @@ module VBlank
       # The walls do not follow such a cell, so a background whose walls follow its tiles
       # (#walls_follow_tiles?) is not written this way.
       #
-      # Called by PackCells, for a cell written as the original's own cell number.
-      def set_tile_picked(col, row, number, keys, from: 0)
+      # Called by PackCells, for a cell written as the original's own cell number. +now+ is #set_tile's.
+      def set_tile_picked(col, row, number, keys, from: 0, now: nil)
         refuse_on_bitmap_screen!("set_cell", instead: "Draw over the spot with `blit`")
         refuse_set_tile_on_streamed_map!
         tiles = keys.map { |key| key && @tile_index.fetch(key) }
         node = record(Build.set_tile_picked(@name, Value.node_for(col), Value.node_for(row), Value.node_for(number), tiles,
-                                            from: from, held: (true if @held)))
+                                            from: from, now: now, held: (true if @held)))
         @builder.note_held_tile_change(node) if @held
         self
       end
@@ -228,13 +270,41 @@ module VBlank
       # place outside the map is left alone. A number written in the game that the background was
       # not told is refused here. One worked out as the game plays that it was not told leaves the
       # cell alone, since no picture was made for it (PackCells#write).
-      def set_cell(col, row, word)
+      #
+      # +now+ is #set_tile's: on a console that waits for the gap between frames to write a cell,
+      # the cell shows on the frame being drawn instead, as the original writes it straight into
+      # video memory while the frame is drawn. Where set_tile's `now:` changes nothing, this does not
+      # either, and where a console refuses it, it refuses this too.
+      def set_cell(col, row, word, now: false)
+        return set_cell_by_area(col, row, word, now) if @area_pack_cells
+
         if @pack_cells.nil?
           raise ArgumentError,
                 "background :#{@name} was not told any cells that set_cell can write. To fix this, draw it from the " \
                 "data pack and name the cells in `set_cells:`, or use set_tile with a key of its tileset."
         end
-        @pack_cells.write(self, col, row, word)
+        raise ArgumentError, "set_cell was given `now: #{now.inspect}`. It must be true or false." unless [true, false].include?(now)
+
+        @pack_cells.write(self, col, row, word, now: now || nil)
+        self
+      end
+
+      # #set_cell on a background from the data pack walking between areas: the cell written as the
+      # area the game has asked to show tells it, one test of the map showing for each area told the
+      # cell. A number written in the game that no area was told is refused, as on one area.
+      def set_cell_by_area(col, row, word, now)
+        raise ArgumentError, "set_cell was given `now: #{now.inspect}`. It must be true or false." unless [true, false].include?(now)
+
+        told = @area_pack_cells.each_with_index.select do |cells, _|
+          cells && (!word.is_a?(Integer) || cells.tiles_of(word))
+        end
+        told = [@area_pack_cells.each_with_index.find { |cells, _| cells }] if told.empty? # its refusal names the cell
+        told.each do |cells, area|
+          test = PlainRuby::Steps::GameTest.new(showing == area)
+          test.open_yes_side
+          cells.write(self, col, row, word, now: now || nil)
+          test.close_side(nil)
+        end
         self
       end
 

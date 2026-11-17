@@ -42,19 +42,41 @@ module VBlank
     # (+tile_bits+ wide from bit 0), whether it is mirrored left to right and upside down (the bits
     # +mirror_bit+ and +flip_bit+, nil for a cell that cannot turn its tile), and which bank of
     # colours it is drawn from (+bank_bits+ wide from bit +bank_at+; no bits for a cell whose tiles
-    # all draw from one bank, the first). A bit the console keeps for itself, like the Super
-    # Nintendo's priority, is not read: a background's layer says where it is drawn.
+    # all draw from one bank, the first).
+    #
+    # IN FRONT OF THE SPRITES. +front_bit+ is the bit where the layout keeps a cell's mark for being
+    # drawn in front of the sprites (the Genesis's and the Super Nintendo's priority, the map
+    # cell's IN_FRONT), nil for a layout that keeps none (the Advance's: its priority is a whole
+    # layer's). It is read only where +reads_front+ is set, which a background sets by asking for
+    # it (`cells_in_front: true`, #with_front_read): a port that copies the original's map whole
+    # copies priority bits the game never asked to see, and a background that did not ask draws
+    # every cell as it always did, behind the sprites.
     #
     # A cell bigger than a tile is the tiles a block of video memory holds, +row_tiles+ tiles to a
     # row of it: a 16x16 cell at tile t is tiles t, t + 1, t + row_tiles and t + row_tiles + 1. Nil
     # for a console whose cells are one tile each.
-    MapWordFormat = Data.define(:tile_bits, :mirror_bit, :flip_bit, :bank_at, :bank_bits, :row_tiles, :cell_bytes) do
-      def initialize(tile_bits:, mirror_bit:, flip_bit:, bank_at:, bank_bits:, row_tiles:, cell_bytes: 2) = super
+    MapWordFormat = Data.define(:tile_bits, :mirror_bit, :flip_bit, :bank_at, :bank_bits, :row_tiles, :cell_bytes,
+                                :front_bit, :reads_front) do
+      def initialize(tile_bits:, mirror_bit:, flip_bit:, bank_at:, bank_bits:, row_tiles:, cell_bytes: 2, front_bit: nil,
+                     reads_front: false) = super
 
       def tile_of(word) = word & ((1 << tile_bits) - 1)
       def mirrored?(word) = !mirror_bit.nil? && word[mirror_bit] == 1
       def flipped?(word) = !flip_bit.nil? && word[flip_bit] == 1
       def bank_of(word) = (word >> bank_at) & ((1 << bank_bits) - 1)
+      def in_front?(word) = reads_front && word[front_bit] == 1
+
+      # The same layout, reading each cell's mark for being in front of the sprites. Only a layout
+      # that keeps one can.
+      def with_front_read = with(reads_front: true)
+
+      # The same layout as read when no cell is in front: a background that did not ask, or one
+      # whose layout is compared with another's.
+      def without_front_read = with(reads_front: false)
+
+      # The bit a reader of the cell's mark reads: +front_bit+ where it is read, and otherwise a
+      # bit that is never set (#unset_bit), for a reader handed a bit and no way to be told none.
+      def front_bit_read = reads_front ? front_bit : unset_bit
 
       # How wide a number that holds such a cell is: :byte, :half, or :word for a record of four
       # bytes (Original::MapCell).
@@ -71,7 +93,7 @@ module VBlank
       # The bits of a cell that are read: its tile, its turn and its bank of colours. Two cells
       # that differ only in a bit outside these are drawn alike.
       def read_bits
-        turns = [mirror_bit, flip_bit].compact.sum { |bit| 1 << bit }
+        turns = [mirror_bit, flip_bit, (front_bit if reads_front)].compact.sum { |bit| 1 << bit }
         ((1 << tile_bits) - 1) | turns | (((1 << bank_bits) - 1) << bank_at)
       end
 
@@ -86,13 +108,15 @@ module VBlank
         from_along = mirrored ? side - 1 - along : along
         from_down = upside_down ? side - 1 - down : down
         CellTile.new(tile: tile_of(word) + (from_down * (row_tiles || 0)) + from_along, bank: bank_of(word),
-                     mirrored: mirrored, upside_down: upside_down)
+                     mirrored: mirrored, upside_down: upside_down, in_front: in_front?(word))
       end
     end
 
     # ONE TILE OF A CELL, as it is drawn: which tile of video memory, turned how, from which bank
-    # of colours (MapWordFormat#cell_tile).
-    CellTile = Data.define(:tile, :bank, :mirrored, :upside_down) do
+    # of colours, and whether it is in front of the sprites (MapWordFormat#cell_tile).
+    CellTile = Data.define(:tile, :bank, :mirrored, :upside_down, :in_front) do
+      def initialize(tile:, bank:, mirrored:, upside_down:, in_front: false) = super
+
       # The ways it is turned, as a picture names a turn (IR::Assets::Image#turned).
       def turns = [(:mirrored if mirrored), (:upside_down if upside_down)].compact
     end

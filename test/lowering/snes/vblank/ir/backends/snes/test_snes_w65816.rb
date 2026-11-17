@@ -146,4 +146,127 @@ class TestSNESW65816 < Minitest::Test
     end.banks.first
     assert_equal [0xD0, 0x03, 0x82, 0x2C, 0x01], bank.bytes.first(5)
   end
+
+  # Where the target turns out to be near, the long branch is the short one, and every label and
+  # address after it moves back three bytes: the second branch only comes in reach once the first
+  # is short, and the third, to another section, stays long.
+  def test_a_conditional_branch_to_a_near_label_is_short
+    asm = W65816.new("test", home: :first)
+    asm.instance_eval do
+      label "top"
+      branch_long :beq, "near"
+      nop
+      label "near"
+      branch_long :bne, "top"
+      120.times { nop }
+      branch_long :bcc, "top"
+      branch_long :bcs, "elsewhere"
+      lda imm("near")
+      rtl
+    end
+    other = W65816.new("other")
+    other.label("elsewhere")
+    other.rtl
+    linked_bank = Linker.new([asm.section, other.section]).link
+    bytes = linked_bank.banks.first.bytes
+    assert_equal [0xF0, 0x01, 0xEA, 0xD0, 0xFB], bytes.first(5)
+    assert_equal [0x90, 0x100 - 127], bytes[125, 2]
+    assert_equal [0x90, 0x03, 0x82], bytes[127, 3]
+    assert_equal [0xA9, 0x03, 0x80], bytes[132, 3]
+    assert_equal 0x808003, linked_bank.address_of("near")
+  end
+
+  # A jump back to a label in reach is a BRA, two bytes where the BRL is three; one beside a short
+  # branch moves back by what each saved, and one out of reach stays a BRL.
+  def test_a_jump_in_reach_is_a_bra
+    asm = W65816.new("test", home: :first)
+    asm.instance_eval do
+      label "top"
+      branch_long :beq, "after"
+      nop
+      label "after"
+      jump "top"
+      200.times { nop }
+      jump "top"
+      lda imm("after")
+      rtl
+    end
+    bytes = Linker.new([asm.section]).link.banks.first.bytes
+    assert_equal [0xF0, 0x01, 0xEA, 0x80, 0x100 - 5], bytes.first(5)
+    assert_equal [0x82, 0x30, 0xFF], bytes[205, 3]
+    assert_equal [0xA9, 0x03, 0x80], bytes[208, 3]
+  end
+
+  # What X holds, as noted, lasts until something could make it untrue: a store to the variable it
+  # came from, an instruction that writes X, a call, or a label anything could jump to. At a join,
+  # it is what every way in agrees on.
+  def test_what_x_holds_is_kept_until_it_could_change
+    asm = W65816.new("test")
+    noted = [0x0700, 1]
+    asm.note_x_holds(noted)
+    asm.sta(asm.abs(0x0704))
+    asm.lda(asm.long_x(0x7E2000))
+    assert_equal noted, asm.x_holds, "a store elsewhere, and a read at X, leave it"
+
+    asm.beq("past")
+    asm.lda(1)
+    asm.label("past", join: true)
+    assert_equal noted, asm.x_holds, "both ways in agree"
+
+    asm.bne("other")
+    asm.inx
+    asm.label("other", join: true)
+    assert_nil asm.x_holds, "one way in changed X"
+
+    # Moving the direct page moves what a direct page address means, the noted variable's among them.
+    [-> { asm.tcd }, -> { asm.pld }, -> { asm.sta(asm.abs(0x0701)) }, -> { asm.tax }, -> { asm.jsl(asm.long("routine")) },
+     -> { asm.sta(asm.long_x(0x7E2000)) }, -> { asm.sta(asm.abs(0x2118)) }, -> { asm.label("anywhere") }].each do |change|
+      asm.note_x_holds(noted)
+      change.call
+      assert_nil asm.x_holds
+    end
+  end
+
+  # What A holds is kept through what reads it and does not change it, and forgotten on anything
+  # that writes A or the variable, or makes A another width.
+  def test_what_a_holds_is_kept_until_it_could_change
+    asm = W65816.new("test")
+    asm.note_accumulator_holds(0x0700)
+    asm.cmp(asm.abs(0x0704))
+    asm.sta(asm.abs(0x0708))
+    asm.tax
+    assert_equal 0x0700, asm.accumulator_holds, "a compare, a store elsewhere and a TAX leave it"
+
+    [-> { asm.adc(1) }, -> { asm.lda(asm.abs(0x0700)) }, -> { asm.asl }, -> { asm.txa }, -> { asm.pla },
+     -> { asm.stz(asm.abs(0x0700)) }, -> { asm.sep(0x20) }, -> { asm.jsl(asm.long("routine")) }].each do |change|
+      asm.note_accumulator_holds(0x0700)
+      change.call
+      assert_nil asm.accumulator_holds
+    end
+  end
+
+  # A number kept in Y over a run of code is still there when nothing in the run can change Y: a
+  # load, transfer, count, pull, call or return can, and so can a block copy or a change of the index
+  # width.
+  def test_what_can_change_y_is_counted
+    asm = W65816.new("test")
+    [-> { asm.lda(asm.abs(0x0700)) }, -> { asm.tax }, -> { asm.sta(asm.long_x(0x7E2000)) }, -> { asm.sep(0x20) },
+     -> { asm.cpy(3) }, -> { asm.sty(asm.abs(0x0700)) }].each do |keeps|
+      before = asm.y_changes
+      keeps.call
+      assert_equal before, asm.y_changes
+    end
+    [-> { asm.ldy(0) }, -> { asm.iny }, -> { asm.tay }, -> { asm.ply }, -> { asm.jsl(asm.long("routine")) }, -> { asm.rtl },
+     -> { asm.mvn(0x7E, 0x7E) }, -> { asm.sep(0x10) }].each do |changes|
+      before = asm.y_changes
+      changes.call
+      assert_operator asm.y_changes, :>, before
+    end
+  end
+
+  def test_a_branch_back_to_a_join_is_refused
+    asm = W65816.new("test")
+    asm.label("top", join: true)
+    assert_raises(W65816::Error) { asm.bra("top") }
+  end
 end

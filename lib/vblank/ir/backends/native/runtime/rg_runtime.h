@@ -196,16 +196,18 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * row of video memory holds, by which a cell of several tiles finds its lower ones (0 for a cell of
  * one); then where the tiles are in the file and how many, where the colours are, how many banks
  * and how many colours a bank; and how many sets of colours the tiles are written in, the first
- * their own and one more for each step of other colours the background can be told; and how many
- * tiles the game holds for the background before the map's in each set (a stand-in for each bank,
- * and the tiles of the cells it may be written later, which rg_start_file_fill_picture fills), so a
- * cell's tile is that many on from the set's first; and how many bytes a cell is, two, or one for
+ * their own and one more for each step of other colours the background can be told; and which of
+ * the background's tiles is the map's first in each set: after the tiles the game holds for it (a
+ * stand-in for each bank, and the tiles of the cells it may be written later, which
+ * rg_start_file_fill_picture fills), and, for a background that walks between sets of tiles, after
+ * the maps of the sets before this one, each of which has rules of its own; and how many bytes a cell is, two, or one for
  * a map of bytes, each a tile's number, as a layer that turns keeps its map, or four for a cell of
  * VBlank's own record (Original::MapCell, lib/vblank/original/map_cell.rb); and the cells it was
  * told by a slot of the file that it may be written later (`set_cells: pack[:slot]`): where the
  * slot is, how many cells it holds (0 for none), and which of the tiles the game holds is the
  * first of theirs, each cell of the slot painting the tile the game holds after the one before
- * as a cell of the map paints its own. Then the two
+ * as a cell of the map paints its own; and how many tiles one set of colours is, every set of
+ * tiles' maps together, by which one set's tiles follow the one before. Then the two
  * layouts, as rg_start_file_fill_picture has them, and for each set each bank's colours: the bank
  * of the file they are, or -1, and then a colour for each place, which the game holds, where it
  * is -1. The tiles of one set follow those of the one before. Place 0 is RG_SEE_THROUGH. A cell
@@ -220,6 +222,12 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * bank has its bit set in +banks+ (bank 0 the lowest bit), and counts them in. +rules+ are the
  * background's own, as rg_start_file_fill_background has them. A cell naming a bank past the
  * colours follows no list.
+ *
+ * rg_start_file_fill_front_tiles: which tiles of such a background are in front of the sprites:
+ * the byte of each cell's own tile in +front+, from +start+ on, set to the cell's bit +front_bit+
+ * (Nodes::Background#in_front), the map's cells and then the cells a slot told it. +rules+ are the
+ * background's own, as rg_start_file_fill_background has them. The tiles the game holds keep
+ * the bytes the build gave them.
  *
  * rg_start_file_fill_moving_cells: the cells of such a background that name a tile taking turns
  * through pictures (IR::StartFile::MovingTile), each shown as a tile of a run of tiles the game
@@ -356,6 +364,7 @@ void rg_start_file_fill_picture(const int32_t *rules);
 void rg_start_file_fill_background(const int32_t *rules);
 void rg_start_file_fill_followed_tiles(int32_t *followed, const int32_t *rules, int32_t banks);
 void rg_start_file_fill_moving_cells(int32_t *painted, const int32_t *rules, const int32_t *moving, int32_t *pointed);
+void rg_start_file_fill_front_tiles(uint8_t *front, const int32_t *rules, int32_t start, int32_t front_bit);
 void rg_start_file_fill_painted_tiles(uint8_t *table, int32_t tiles, const int32_t *rules);
 void rg_start_file_fill_pose(const int32_t *rules);
 void rg_start_file_fill_tile_pose(int32_t *pieces, const int32_t *rules);

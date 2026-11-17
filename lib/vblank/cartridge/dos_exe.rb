@@ -24,8 +24,10 @@ module VBlank
     # sets it with `MOV AX, segment`, and every one of those words is listed here.
     #
     # The header is 512 bytes (32 paragraphs) so a title fits in it, in the padding after the table
-    # (TITLE_AT). DOS never reads it. A program with more relocations than the table has room for is
-    # refused: the lowering keeps a game's segments few.
+    # (TITLE_AT). DOS never reads it. A program with more relocations than fit before the title, a game
+    # whose many lines each name the art's segment, has its table after the title instead, and the
+    # header as many paragraphs longer as the table takes: the header's word at 18h says where the table
+    # is and DOS reads it from there. The count is a word, so more than MOST_RELOCATIONS is refused.
     class DOSEXE
       MAGIC = "MZ"
       PAGE = 512
@@ -33,7 +35,8 @@ module VBlank
       TABLE_AT = 0x1C
       TITLE_AT = 0x1C0
       TITLE_LENGTH = 64
-      MOST_RELOCATIONS = (TITLE_AT - TABLE_AT) / 4
+      ROOM_BEFORE_TITLE = (TITLE_AT - TABLE_AT) / 4
+      MOST_RELOCATIONS = 0xFFFF
 
       attr_reader :bytes
 
@@ -81,14 +84,16 @@ module VBlank
       private
 
       def header(title, entry, stack, relocations, extra_paragraphs, image_size)
-        file_size = HEADER_SIZE + image_size
-        bytes = "\0".b * HEADER_SIZE
+        table_at = relocations.size > ROOM_BEFORE_TITLE ? HEADER_SIZE : TABLE_AT
+        header_size = table_at == TABLE_AT ? HEADER_SIZE : HEADER_SIZE + (((relocations.size * 4) + 15) & ~15)
+        file_size = header_size + image_size
+        bytes = "\0".b * header_size
         bytes[0, 2] = MAGIC
-        words = [file_size % PAGE, (file_size + PAGE - 1) / PAGE, relocations.size, HEADER_SIZE / 16,
-                 extra_paragraphs, 0xFFFF, stack[0], stack[1], 0, entry[1], entry[0], TABLE_AT, 0]
+        words = [file_size % PAGE, (file_size + PAGE - 1) / PAGE, relocations.size, header_size / 16,
+                 extra_paragraphs, 0xFFFF, stack[0], stack[1], 0, entry[1], entry[0], table_at, 0]
         bytes[2, words.size * 2] = words.pack("v*")
         relocations.each_with_index do |(segment, offset), at|
-          bytes[TABLE_AT + (at * 4), 4] = [offset, segment].pack("v2")
+          bytes[table_at + (at * 4), 4] = [offset, segment].pack("v2")
         end
         text = title.to_s.gsub(/[^ -~]/, " ").byteslice(0, TITLE_LENGTH).b
         bytes[TITLE_AT, text.bytesize] = text

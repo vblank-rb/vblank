@@ -109,7 +109,18 @@ module VBlank
         operands name: :name, tiles: :list, map: :list, maps: :list, choice: :list, tile_w: :int,
                  tile_h: :int, layer: :name, scene: :name, affine: :flag, recolors: :list, palettes: :list,
                  palette_names: :list, sets: :list, set_starts: :list, map_sets: :list, bar_top: :int,
-                 above_row: :int, alone: :flag, hides_sprites: :flag, boxed: :name, follows: :name, follows_each: :list, from_file: :file_background
+                 above_row: :int, alone: :flag, hides_sprites: :flag, boxed: :name, follows: :name, follows_each: :list, from_file: :file_backgrounds,
+                 in_front: :list
+
+        # +in_front+, on a background some of whose cells are drawn IN FRONT OF THE SPRITES (a
+        # background from the data pack told `cells_in_front: true`), lists the numbers of its
+        # +tiles+ drawn so: a cell showing one of them hides every sprite under its drawn pixels,
+        # and the other cells of every background too, as a console that keeps a priority bit in
+        # each cell of its map draws it (the Genesis, the Super Nintendo). Being in front is the
+        # tile's, not the cell's, so writing a cell (`set_tile`, `set_cell`) brings its tile's place
+        # with it. Read from the start file (+from_file+), the cells' own tiles are known only as
+        # it is read, and the reader adds those in front. Absent on every other background, which
+        # draws all its cells behind the sprites; present and empty on one that asked and has none.
 
         # How alone it is shown above its row, as the number a runtime keeps it by: with the other
         # backgrounds, alone with the sprites (+alone+), or alone without them (+hides_sprites+).
@@ -122,6 +133,9 @@ module VBlank
 
           alone ? SHOWN_ALONE : SHOWN_WITH_OTHERS
         end
+
+        # Whether it asked for cells in front of the sprites (see +in_front+), whether it has any yet or not.
+        def cells_in_front? = !in_front.nil?
 
         # Whether it follows several lists the game changes (see +follows_each+).
         def follows_several? = !follows_each.nil? && !follows_each.empty?
@@ -139,10 +153,28 @@ module VBlank
         end
 
         # +from_file+ is where in the file the program is handed as it starts (StartFile) this
-        # background's map, tiles and colours are (a StartFile::Background), or absent for one the
-        # program holds. Its +tiles+ are then a tile for each bank of colours, its +map+ names the
-        # first in every cell, and each of its +palettes+ holds a marker for each colour of a bank
-        # (StartFile, "MARKERS"): the size and the lists' names are true, and nothing else of them is.
+        # background's map, tiles and colours are, or absent for one the program holds: a
+        # StartFile::Background for each of its +sets+, in their order, or one for a background of
+        # one set. Its +tiles+ are then a tile for each bank of colours of each set, its maps name
+        # the set's first in every cell, and each of its +palettes+ holds a marker for each colour
+        # of a bank (StartFile, "MARKERS"): the size and the lists' names are true, and nothing
+        # else of them is.
+
+        # How many tiles the maps read from the file have, a tile for every cell of each
+        # (StartFile::Background#tiles_drawn), all the sets together.
+        def tiles_drawn_from_file = from_file.sum(&:tiles_drawn)
+
+        # Where each record of +from_file+ has its first tile among the background's tiles, once a
+        # build for a computer gives every cell a tile of its own: after the tiles the program
+        # holds, and after every earlier record's.
+        def first_tiles_from_file
+          firsts = []
+          from_file.reduce(tiles.length) do |first, where|
+            firsts << first
+            first + where.tiles_drawn
+          end
+          firsts
+        end
 
         # Each of +palettes+ as a tile drawn from it gives which list it was drawn from
         # (Bitmap#list_drawn_from): its name and its colours.
@@ -464,7 +496,8 @@ module VBlank
       # written, so a backend can keep the list as a table and index it.
       #
       # Must be a number a backend can read more than once: a backend with no table of its own
-      # tests +picked_by+ against each entry (PickedTile.tests), so the builder hands it a variable.
+      # tests +picked_by+ against each entry (PickedTile.tests), so the builder hands it a variable,
+      # or a number that reads the same each time (Background#read_again_alike?).
       class SetTile
         include Node
         kind :set_tile
@@ -477,6 +510,33 @@ module VBlank
 
         # Every tile this step can put in its cell. A tile of nil is the empty cell.
         def tiles_named = picked? ? picks.compact.uniq : [tile]
+      end
+
+      # A BLOCK OF CELLS OF A DECLARED BACKGROUND CHANGED AT ONCE: +across+ by +down+ cells from
+      # +col+ and +row+ each take the one tile SetTile's +tile+ or +picked_by+ names, or with
+      # +restore+ go back to the tile the background's map was declared with there. A speech box
+      # opening is a few of these, and closing it one. Each operand is a variable, read once.
+      #
+      # ITS CHILDREN ARE THE SAME CHANGE WRITTEN A CELL AT A TIME: two counted loops of SetTile,
+      # the place's cells in rows, any cell off the map left alone as SetTile leaves it, and the
+      # loops' own variables set back to nought at the end. That is what the block means, and what
+      # a backend with no way of its own plays. A console whose games write a block of cells into
+      # video memory with one command in the blank does that instead, so a block costs the pass a
+      # few words noted, not a test and a note for every cell (Genesis::Lowering::Picture#emit_set_tile_block).
+      #
+      # A block put back on a background read from the start file has no children, since the build
+      # does not hold that map: only the builds that read such a file meet one, and each puts the
+      # cells back from the map it read (Reference#exec_set_tile_block, which puts back every block
+      # that way, and Computer::Picture#lower_set_tile_block).
+      class SetTileBlock
+        include Node
+        kind :set_tile_block
+        category :draw
+        operands name: :name, col: :value, row: :value, across: :value, down: :value, tile: :int,
+                 picked_by: :maybe_value, picks_from: :int, picks: :list, restore: :flag
+
+        # Whether the tile is picked as the program runs, as SetTile#picked? says.
+        def picked? = !picked_by.nil?
       end
 
       class BackingBuffer
@@ -1226,11 +1286,18 @@ module VBlank
       # reading +by+ there would; a lowering need not look, since the framework only sorts lists
       # of places it made. One statement, so a backend sorts in a routine of its own machine's
       # code, where the same sort written as list reads and writes takes a call for each of them.
+      #
+      # +shown+, where it is given, is a value for each place of +by+, read before anything moves:
+      # an item whose value is not 1 is not showing, and goes behind every item that is, keeping
+      # the order the items not showing stood in; the items showing are put in order behind them as
+      # above. So an item that shows again comes in at the back, behind the items level with it, as
+      # if it were newly added, and a backend may leave the items not showing out of its sort and of
+      # whatever walks the list after it.
       class ListSort
         include Node
         kind :list_sort
         category :list
-        operands name: :name, by: :name, descending: :flag
+        operands name: :name, by: :name, descending: :flag, shown: :list
       end
 
       class Loop
@@ -1323,13 +1390,20 @@ module VBlank
         # does, so it changes nothing that is shown. A target whose palettes keep a list's colours in
         # the list's order cuts the pose in that order, so it shares the list's palette with anything
         # else drawn from the list. Absent otherwise.
+        #
+        # +in_front+ means it is drawn in front of a background's cells marked in front of the
+        # sprites (Background#in_front) as well as everything else, as a console that keeps a
+        # priority bit in each sprite draws one with it set. The frame's draw list puts such a
+        # thing after every thing not marked, so it is also in front of every other sprite, which
+        # is how that console tells which sprite's pixel to show before it asks the priority.
+        # Absent otherwise.
         operands name: :name, declared: :name,
                  poses: :list, pose: :value, x: :value,
                  y: :value, active: :value, angle: :value,
                  scale: :value, layer: :name, scene: :name,
                  recolor: :value, recolors: :list,
                  layers: :list, layer_pick: :name, over_picture: :flag, follows: :name, follows_each: :list,
-                 follows_unchanging: :list
+                 follows_unchanging: :list, in_front: :flag
 
         # The ColorList a pose drawn from the list named +colors_name+ follows (see +follows_each+),
         # or nil for a pose that is shown as it was drawn.
@@ -1481,7 +1555,11 @@ module VBlank
                  fraction_vars: :list, fraction_lists: :list, sprite_readings: :list, background_readings: :list,
                  players: :list, verbs_written: :list,
                  for_computer: :flag, for_unpacking: :flag, border: :text, border_size: :list, pixel_size: :int,
-                 shown_rows: :list, start_file: :start_file, mix_rate: :int, main_volume: :int, computer_controls: :list
+                 shown_rows: :list, start_file: :start_file, mix_rate: :int, main_volume: :int, computer_controls: :list,
+                 pools: :pool_shapes
+
+        # +pools+ is each pool the game declared, as a lowering that keeps a pool its own way reads
+        # it (IR::PoolShape), or absent for a program with none.
 
         # +computer_controls+ is the keys and gamepad buttons the game adds to VBlank's layout on a
         # computer, as [button, :key or :pad, name] triples (IR::ComputerControls), or absent for a
@@ -1667,7 +1745,10 @@ module VBlank
         include Node
         kind :repeat
         category :control
-        operands count: :value, index: :name, stop_when: :value
+        operands count: :value, index: :name, stop_when: :value, pool_walk: :walk_shape
+
+        # +pool_walk+ is what the loop is when it is a walk of a pool (IR::WalkShape), or absent. A
+        # lowering that keeps the pool as lists, and the interpreter, never read it.
       end
 
       class RestoreRegion

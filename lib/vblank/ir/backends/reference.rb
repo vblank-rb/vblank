@@ -735,8 +735,9 @@ module VBlank
               # One that follows several lists the game changes looks different whenever one of
               # them is told what to hold, so it is rebuilt from the map as a recoloured one is.
               # So is one that keeps the sprites out above its row, which is painted over them as
-              # the view is built (#paint_held_over_sprites).
-              @repaints = true if n.follows_several? || n.hides_sprites
+              # the view is built (#paint_held_over_sprites), and one with cells in front of the
+              # sprites, painted over them the same way (#paint_cells_in_front).
+              @repaints = true if n.follows_several? || n.hides_sprites || n.cells_in_front?
             when :scroll_background, :place_bar, :box_background
               # A program that scrolls even once can put its background at a non-zero
               # offset, so the whole scene has to be repainted every frame — the static
@@ -823,7 +824,7 @@ module VBlank
           hide_sprites rumble screen clear_screen pixel fill_rect dma_fill_rect draw_rect_at draw_column_at
           draw_place fill_face draw_text draw_digit background scroll_background place_bar box_background
           affine_background background_colors color_list_holds show_picture_group scroll_rows shade_outside
-          show_light_now camera fade tint pixelate see_through present_objects set_tile show_held_tiles
+          show_light_now camera fade tint pixelate see_through present_objects set_tile set_tile_block show_held_tiles
           show_map copy_tiles copy_owed_tiles load_sprite_tiles enable_sound beep noise wave stop_wave
           play_song play_from_list play_sound_effect stop_music hold_music play_sample stop_sample
           timer_start timer_stop on_timer set_clock
@@ -900,6 +901,7 @@ module VBlank
           when :see_through then exec_see_through(node)
           when :present_objects then exec_present_objects(node)
           when :set_tile then exec_set_tile(node)
+          when :set_tile_block then exec_set_tile_block(node)
           when :show_held_tiles then exec_show_held_tiles(node)
           when :show_map then exec_show_map(node)
           when :copy_tiles then exec_copy_tiles(node)
@@ -1856,6 +1858,27 @@ module VBlank
         # scene, changes nothing here.
         def tile_of_declaration_up?(node, tile) = tile.nil? || tile < background_up(node.name).tiles.length
 
+        # A BLOCK OF CELLS is what its children do, a cell at a time (Nodes::SetTileBlock). A block
+        # put back takes each cell from the map of the declaration up, as declared, or as read from
+        # the file the program was handed (StartFile.filled); a cell off the map is left alone.
+        def exec_set_tile_block(node)
+          return node.children.each { |child| exec(child) } unless node.restore
+
+          declared = background_up(node.name).map
+          col, row, across, down = [node.col, node.row, node.across, node.down].map { |value| eval_value(value) }
+          map = mutable_map(node.name)
+          changed = false
+          ([row, 0].max...[row + down, map.length].min).each do |r|
+            ([col, 0].max...[col + across, map[r].length].min).each do |c|
+              next if map[r][c] == declared[r][c]
+
+              map[r][c] = declared[r][c]
+              changed = true
+            end
+          end
+          request_repaint if changed
+        end
+
         # EVERY HELD CHANGE, in the order the game made them.
         def exec_show_held_tiles(_node) = show_held_tiles
 
@@ -2301,7 +2324,7 @@ module VBlank
               index = row[mx / tile_w]
               # A tile's see-through pixels are nil in its decoded art, so they're left
               # alone and whatever is behind this layer keeps showing there.
-              if index
+              if tile_painted_now?(index)
                 @screen.paint_row(px, py, tile_colors(tiles[index], swapped), from: (ty * tile_w) + tx,
                                                                               count: span)
               end
@@ -2340,7 +2363,7 @@ module VBlank
               tx = mx % tile_w # Ruby % keeps this 0...tile_w for a negative place too
               span = [tile_w - tx, width - px].min
               index = mx.negative? || mx >= map_w ? nil : row[mx / tile_w]
-              if index
+              if tile_painted_now?(index)
                 @screen.paint_row(px, py, tile_colors(tiles[index], swapped), from: (ty * tile_w) + tx,
                                                                               count: span)
               end
@@ -2574,7 +2597,7 @@ module VBlank
         # ...and the ones that change what the picture is built from and then always repaint, so
         # an owed repaint is replaced rather than painted — plus `background`, which settles one
         # itself when it has anything to put up (see #exec_background).
-        REPAINTING = %i[scroll_background place_bar box_background show_map set_tile show_held_tiles copy_tiles copy_owed_tiles
+        REPAINTING = %i[scroll_background place_bar box_background show_map set_tile set_tile_block show_held_tiles copy_tiles copy_owed_tiles
                         background_colors see_through present_objects background affine_background].freeze
         # ...and the ones that are mostly laid over the picture as the screen is read, and that
         # owe the picture again themselves on the occasions they change what is painted (see
@@ -2619,12 +2642,54 @@ module VBlank
               paint_snapshot_object(obj)
             end
           end
+          paint_cells_in_front(levels, kept)
           paint_bar_over_sprites(bar, kept) if bar && @bar_covers[bar.name]
           held = showing_scenery.find(&:hides_sprites)
           paint_held_over_sprites(held, kept) if held
+          paint_sprites_in_front(kept)
           @screen.set_paint_fade(nil, nil)
           @screen.set_paint_see_through(nil)
         end
+
+        # CELLS IN FRONT OF THE SPRITES (Nodes::Background#in_front): once every level is painted,
+        # each background's cells whose tiles are in front are painted again, back to front, so
+        # their drawn pixels are over every sprite and over the other cells of every background,
+        # and their see-through pixels leave what is there. It is what a console that keeps a
+        # priority bit in each cell draws (the Genesis: the planes' marked cells over every sprite
+        # and every cell not marked, plane A's over plane B's), with every sprite in front of every
+        # background, which is the only stack such a console's build draws.
+        def paint_cells_in_front(levels, kept)
+          (0...levels.count).each do |level|
+            showing_scenery.each do |bg|
+              next if bg.bar? || levels.of_scenery(bg) != level || bg.in_front.nil? || bg.in_front.empty?
+
+              set_blend_for(bg.name, kept)
+              @tiles_painted_only = bg.in_front.to_set
+              begin
+                paint_scenery(bg)
+              ensure
+                @tiles_painted_only = nil
+              end
+            end
+          end
+        end
+
+        # SPRITES IN FRONT (Nodes::Object#in_front): once everything else is painted, each sprite
+        # marked in front is painted again, in draw order, so its drawn pixels are over the cells in
+        # front as well (#paint_cells_in_front). The frame's draw list puts them after every other
+        # sprite already (Builder#move_front_sprites_last), so nothing else they are drawn over moves.
+        def paint_sprites_in_front(kept)
+          @obj_layer.each do |obj|
+            next unless obj[:in_front]
+
+            set_blend_for(obj[:name], kept)
+            paint_snapshot_object(obj)
+          end
+        end
+
+        # Is the tile +index+ of the background being painted to be painted now: every tile, or
+        # only those in front while the cells in front are painted again (#paint_cells_in_front)?
+        def tile_painted_now?(index) = !index.nil? && (@tiles_painted_only.nil? || @tiles_painted_only.include?(index))
 
         # A STATUS BAR THAT COVERS SPRITES (StatusBar#covers_sprites=): its rows painted again over
         # everything, from the backdrop up, so a sprite under it is gone and its see-through pixels
@@ -3425,6 +3490,7 @@ module VBlank
             snap = { name: obj.name, image: image, x: on[:x], y: on[:y],
                      level: object_level(obj), color_list: object_color_list(obj, image), left_out: on[:left_out] }
             snap[:transform] = object_transform(obj) if object_transformed?(obj)
+            snap[:in_front] = true if obj.in_front
             snap
           end
         end
@@ -4181,13 +4247,22 @@ module VBlank
         # with +descending+). Level items keep the order they were in: each is ordered by its
         # number and then by where it stood, so no two items are ever level. Every item is checked
         # to be a place in +by+ before anything moves, as reading +by+ there would be.
+        #
+        # With +shown+, every item whose value there is not 1 goes behind every item whose value is,
+        # in the order they stood, and its number is not read; the items showing are ordered as
+        # above behind them. One that shows again so comes in at the back of the items level with it.
         def exec_list_sort(node)
           list = list_for(node.name)
           keys = list_for(node.by)
           items = list.to_a
           items.each { |item| check_list_index!(keys, node.by, item) }
           direction = node.descending ? -1 : 1
-          placed = items.each_with_index.sort_by { |item, at| [direction * keys.get(item), at] }
+          shown = node.shown&.map { |value| eval_value(value) == 1 }
+          placed = items.each_with_index.sort_by do |item, at|
+            next [0, 0, at] if shown && !shown.fetch(item)
+
+            [1, direction * keys.get(item), at]
+          end
           list.replace(placed.map(&:first))
         end
 

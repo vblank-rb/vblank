@@ -106,7 +106,8 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `sprite_box_fields.rb` (a sea with a moving hollow box sprite and a cell of rock, built for any console, for each console's test of a comparison's `ignoring_sprites:`),
 `ractor_workers.rb` (for a test that starts Ractor workers by hand: quiet about Ractors being experimental, and a worker's error raised as it was),
 `compared_without_advance_emulator.rb` (two cartridges of a console that does not play in the Advance's emulator, compared in a child process where that emulator cannot load, for the Genesis's and the Super Nintendo's tests),
-`slow_pass_games.rb` (a box that steps a pixel a pass, and a build of it whose every fourth pass counts itself and moves the box a frame later, built for any console, for each console's test of a comparison's `passes_compared_at: :end` and of where it starts after lead-ins that leave the two builds passes apart and what the one behind presses as it catches up),
+`ps1_pass_work.rb` (a PlayStation game whose pass is a loop of work, and the turns of it, measured in the emulator as the test runs, that end every pass a given range of lines past the blank, for the profile's, the pad's and the checked run's tests of passes longer than a frame),
+`slow_pass_games.rb` (a box that steps a pixel a pass, and a build of it whose every fourth pass counts itself and moves the box a frame later, its busy loop's turns measured in the console's emulator as the test runs, built for any console, for each console's test of a comparison's `passes_compared_at: :end` and of where it starts after lead-ins that leave the two builds passes apart and what the one behind presses as it catches up),
 `made_up_original.rb` (the made-up Game Boy Advance original and a game reading it through a data pack, for the data pack, copy reader, packing and shell tests),
 `pieced_original.rb` (that original's songs rendered by a part in pieces, a song a piece in rooms of uneven size, for the tests of pieces on the build and on the Ruby and web shells' workers),
 `folder_original.rb` (a made-up computer original that is a folder of files, `test/fixtures/folder_original/`, and a port reading it, for the copy, copy reader and shell tests),
@@ -117,6 +118,7 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `pack_parity_tests.rb` (the one test of every registered game: built with its pack left out it plays as its all-in-one build on every pass, or is refused in plain words, and written out it holds none of the pack's numbers; a game that names frames is handed the file its pack's unpacking writes from the copy, held byte for byte to the all-in-one one; played by the interpreter and the game as C, JavaScript and Ruby),
 `pack_site_coverage.rb` (the lines of the builder that take a pack handle, read from its source, and which registered game reaches each, for the test that fails when a verb has no game),
 `pack_background_tests.rb` (made-up originals whose screen is a background of their own tiles, map and colours, in the Advance's, the Super Nintendo's and the Genesis's layouts, for the verb's tests and the registry; and what the same games hold written out with the pack left out, played by the interpreter and the game as C, JavaScript and Ruby),
+`pack_cells_in_front_tests.rb` (a made-up Genesis original whose map marks some cells in front of the sprites, by its own priority bit or as map cells, a sprite under them, and a cell written in front, played by each console whose build draws it, the Genesis, with the refusal each other console's build gives; the games are in the registry too),
 `pack_turning_background_games.rb` (a made-up original whose screen is a layer that turns, a map of one byte a cell over tiles of a byte a pixel in a table of 256 colours, a game showing it through a data pack, and the same background drawn by the game, which is its answer key),
 `pack_table_tile_background_games.rb` (a made-up Advance original whose screen is a layer of 256 colours that scrolls, more than 256 tiles under map cells or the Advance's own two-byte cells, some turned, a game showing it through a data pack, and the same background drawn by the game, which is its answer key),
 `pack_slot_view_games.rb` (a made-up original that keeps one stretch of video memory, sixteen-colour tiles then a turning layer's byte map and its tiles of 256 colours, a game reading it as one slot through views, and the same game with a slot for each part, which is its answer key; for the views' tests and the registry),
@@ -124,6 +126,7 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `pack_pose_of_shapes_games.rb` (a made-up Advance original whose frame has a piece of every shape and size the console's sprites come in, and a game showing it as a pose; for the Advance's test against the same pieces painted by hand, and the registry),
 `pack_pose_read_by_the_game_games.rb` (a made-up original whose piece names a block of sprite memory counted from the object's own, read by a reader the game writes and given each pose's block, and a game showing one frame for two blocks; for the test against the same pieces painted by hand, the unpacking's records, and the registry),
 `pack_background_set_cell_at_start_tests.rb` (a cell of a background from the data pack written with `set_cell` with the pack left out, played by the interpreter and the game as C, JavaScript and Ruby, the games being `test/all/vblank/dsl/test_pack_background_set_cell.rb`'s),
+`pack_cell_written_now_tests.rb` (a cell of a background from the data pack written with `set_cell ..., now: true`, held to the same cell written without it, played by each console that writes a cell while it draws: the Advance and the Color),
 `pack_backdrop_at_start_tests.rb` (a screen's backdrop taken from a data pack slot with the pack left out, played by the interpreter and the game as C, JavaScript and Ruby, the games being `test/all/vblank/builder/test_pack_backdrops.rb`'s),
 `pack_color_list_at_start_tests.rb` (a list of colours declared from a data pack slot with the pack left out, recoloured with, walked and drawn in, played by the interpreter and the game as C, JavaScript and Ruby, the games being `test/all/vblank/builder/test_pack_color_lists.rb`'s),
 `pack_pose_at_start_tests.rb` (a pose that is one of the original's frames with the pack left out, played by the interpreter and the game as C, JavaScript and Ruby, the games being `test/all/vblank/builder/test_pack_poses.rb`'s and `test_pack_poses_of_words.rb`'s),
@@ -169,6 +172,11 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `sound_effect_recording_tests.rb` (sound effects whose parts play a recording, sharing the voices by rank, played by each console that mixes them),
 `screen_backdrop_games.rb` (small tiled games for `screen ... backdrop:`),
 `draw_order_cost_games.rb` (a game of seven things in a `draw_in_order` and the same without, for each console's cost test),
+`sprite_count_cost_games.rb` (many sprites declared and four showing, and a pool of many places holding four, each against the same game of four, for each console's cost test of a sprite not showing),
+`list_read_cost_games.rb` (four full lists read at a variable, a mask or a loop's count, and the same game reading none, for each console's cost test of a list read),
+`loop_cost_games.rb` (a `repeat` and a counted `while`, setting a variable or reading a list at the count, 64 turns against 32, for each console's cost test of a loop's turn),
+`number_width_cost_games.rb` (tests of numbers the build proves small: how far apart two byte slots are, a variable against a number, a half slot shifted down, a table of bytes against a variable, four a pass against the same game with none, for each console's cost test of a narrow comparison),
+`narrow_variable_cost_games.rb` (a loop working three variables the build proves stay in 16 bits, 64 turns against 32, for each console's cost test of keeping them in two bytes),
 `place_games.rb` (small games of places made of flat faces, played by each console that draws a place),
 `pack_place_games.rb` (a made-up computer original keeping a lit room as data, a game drawing it as a place, shading and viewer start from its data pack, and the same room written in Ruby, its answer key; for the registry and the interpreter's test),
 `called_routine_area_tests.rb` (a routine called inside an area, played by each console that keeps the area as it runs),
@@ -277,6 +285,27 @@ its neighbour.
 ## Guardrail tests
 
 Assert the friendly error a misuse raises: its class and a key phrase, never the exact wording.
+
+## A speed check counts work, never seconds
+
+A test that can fail because the machine is busy is a bad test: the suite shares the cores with
+itself and with other work. So a check that something is quick enough counts work that load cannot
+change, with a budget set from a measured baseline and the reason written beside it:
+
+- on a console, the emulator's cycles, scanlines or frames (`costs.md`);
+- in a runtime on the computer, the objects a pass makes (`GC.stat(:total_allocated_objects)`), calls
+  into its routines (`LiveGame#count_calls`, which wraps them on that game alone, so a real game pays
+  nothing), pixels written, or the shape of what the build prints (`test_ruby_unpacking_pace.rb`);
+- in the desktop window's pacing, `--counted-clock`, a clock moved only by the waits it asks for.
+
+Work that must be slow is slow by construction: a pass that waits, or a busy loop whose turns are
+measured in the emulator as the test runs (`ps1_pass_work.rb`, `slow_pass_games.rb`), never a turn
+count written down, which the next speed-up of the lowering breaks.
+
+A clock may stay only where load cannot fail the test: a bound from below (a run cannot be quicker
+than the frames it waits out), or a generous hang guard that a passing run never reaches, with a
+comment saying it only catches a hang. Whether Ruby keeps up with the console in real time is a
+measurement for a person, outside the suite: `rake speed:ruby`.
 
 ## Gotchas
 

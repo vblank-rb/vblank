@@ -8,8 +8,14 @@ require "draw_order_cost_games"
 # seven must cost its tightest frame, where two things pass each other and the sort moves one, a
 # few of the frame's 262 lines, not the thirty it cost written as list reads and writes, and an
 # order of thirty must leave most of the frame to the game.
+#
+# The seven's bound is under three lines for the sort, and a third of a line more for asking
+# whether each of the pool's three places shows, so things not showing are left out of the sort
+# and its walk (Lowering::ShownSort): three and a quarter together. The sort keeps its tables as its direct page only while every
+# number is read where it is, a pool's place kept in half words among them
+# (Lowering#key_low_half_in_place?); worked out whole, it took the seven past three lines.
 class TestSNESDrawInOrderCost < Minitest::Test
-  BOUND_SEVEN = 3
+  BOUND_SEVEN = 3.25
   BOUND_THIRTY = 28
 
   def test_an_order_of_seven_costs_its_tightest_frame_a_few_lines

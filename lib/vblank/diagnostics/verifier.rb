@@ -597,7 +597,14 @@ module VBlank
 
       private def list_items(name)
         place = @rom.built.lists[name] if list_names.include?(name)
-        kept_list_items(place) if place
+        kept_list_items(place, moved_slot_place(name)) if place
+      end
+
+      # Where a pool's layout moved the list +name+'s slots (IR::Backends::PoolLayout::SlotPlace), for a
+      # build that keeps where (its places' +slot_places+); nil for a list where it always is.
+      private def moved_slot_place(name)
+        built = @rom.built
+        built.slot_places[name] if built.respond_to?(:slot_places)
       end
 
       private def variables_now = list_of_variables.to_h { |name| [name, raw_var(name)] }

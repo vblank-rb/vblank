@@ -161,7 +161,8 @@ module VBlank
 
         # --- backgrounds and layers ---
         tiles: works,
-        background: works("a background is a picture kept in video RAM, drawn by the graphics chip at its scroll. " \
+        background: works("`cells_in_front: true` is refused: this build does not make it yet. " \
+                          "a background is a picture kept in video RAM, drawn by the graphics chip at its scroll. " \
                           "Each pixel is a number into a list of the background's colours, 4 bits a pixel for 15 " \
                           "colours or fewer and 8 for 255 or fewer, so `draw_with` and a fade change one list. " \
                           "A background of more colours takes 16 bits a pixel, and its colours cannot change. " \

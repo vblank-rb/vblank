@@ -130,6 +130,33 @@ class TestIRGuardrailTooManySprites < Minitest::Test
     assert_match(/This game has 41 sprites\. A game can keep places for 40 sprites\./, refusal(b.program))
   end
 
+  # A Genesis hands out the rows of its table of 80 on every pass, to the sprites that show. So a
+  # title whose sprites are drawn in an order the game works out, and a room never up with it, each
+  # fit by themselves however many the two declare together; the room over 80 by itself is refused.
+  private def ordered_title_game(title:, room:)
+    b = Builder.new(options: VBlank::Cartridge::Options.new(console: :genesis))
+    b.instance_eval do
+      screen :tiled
+      image(:dot, "#" => :white) { "########\n" * 8 }
+      var :where, 0
+      scene(:title) { draw_in_order(*Array.new(title) { |i| sprite :"actor_#{i}", at: [i % 30 * 8, i / 30 * 8], facing: { down: :dot } }) }
+      scene(:room) { room.times { |i| sprite :dot, at: [i % 30 * 8, i / 30 * 8] } }
+      game_loop do
+        case_var(:where) do
+          when_val 0, :title
+          when_val 1, :room
+        end
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  def test_on_a_console_that_places_sprites_every_pass_an_ordered_title_shares_places_with_another_scene
+    assert_nil refusal(ordered_title_game(title: 50, room: 34))
+    assert_match(/:room scene has 81 sprites\. .*places for 80/, refusal(ordered_title_game(title: 50, room: 81)))
+  end
+
   # The share nobody declared is left out rather than said as nought.
   def test_a_game_with_no_text_says_nothing_about_text
     refute_match(/text/, refusal(game(sprites: 500, letters: 0)))

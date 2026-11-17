@@ -18,7 +18,7 @@ module VBlank
             STATEMENT_KINDS = %i[
               screen clear_screen fill_rect dma_fill_rect draw_rect_at pixel draw_text draw_digit inside blit
               blit_pose draw_column_at save_region restore_region background scroll_background place_bar
-              show_map set_tile background_colors scroll_rows camera present_objects hide_sprites
+              show_map set_tile set_tile_block background_colors scroll_rows camera present_objects hide_sprites
               show_picture_group color_list_holds fade tint
             ].freeze
 
@@ -43,6 +43,7 @@ module VBlank
               when :place_bar then emit_place_bar(node)
               when :show_map then emit_show_map(node)
               when :set_tile then emit_set_tile(node)
+              when :set_tile_block then emit_set_tile_block(node)
               when :background_colors then emit_background_colors(node)
               when :scroll_rows then emit_scroll_rows(node)
               when :camera then emit_camera(node)
@@ -208,7 +209,7 @@ module VBlank
                              backdrop: color_backdrop, piece_height: piece_height,
                              scene_pictures: (scene_pictures if @plans_scene_pictures),
                              indexes_in_banks: @indexes_in_banks, tile_facts: @cache.facts.tile_facts,
-                             sprite_slots: sprite_slots)
+                             sprite_slots: sprite_slots, blank_first_held: @blank_first_held)
               @grids = {} # a background declaration -> its grid's number
               @backgrounds = by_name(@program.walk, :background)
               @drawn_sprites = SpriteNames.new(@program) # the numbers a run names its sprites by
@@ -217,7 +218,13 @@ module VBlank
               @drawing_tables = [] # DrawingTable each, for the data
               @picture_checks = [] # what each check asks, by its number (#picture_checks)
               @together_checks = [] # [set, the numbers naming a group, the slots] each (#together_checks)
+              @art.keep_split_lists_by_place(drawn_background_tile_images)
               plan_tile_rooms if @plans_tile_rooms
+            end
+
+            # The picture of every tile a background is declared with, painted ones left out.
+            def drawn_background_tile_images
+              tiled_scenery.flat_map { |bg| bg.tiles.compact }.uniq.reject { |name| run_painting(name) }.map { |name| tile_image(name) }
             end
 
             # --- the tiles each screen brings in ---
@@ -474,7 +481,7 @@ module VBlank
                 return
               end
 
-              chosen = keep_local(:map)
+              chosen = keep_step_local(:map)
               value(which)
               store(chosen)
               bg.every_map.each_index do |at|
@@ -646,7 +653,7 @@ module VBlank
               fine = fresh("held_group_up")
               in_table = Build.binop(:and, Build.binop(:>=, pose, Build.int(0)), Build.binop(:<, pose, Build.int(held_in.length)))
               jump_unless(in_table, fine)
-              group = Build.var_ref(keep_local(:held_in))
+              group = Build.var_ref(keep_step_local(:held_in))
               value(Entry.new(drawing_table("held_in", 1, held_in), 1, false, pose))
               store(group.name)
               jump_if(Build.binop(:==, group, Build.int(IN_NO_ONE_GROUP)), fine)
@@ -908,7 +915,7 @@ module VBlank
             # outside 0..9 draws nothing.
             def emit_draw_digit(node)
               font = node.fonts.get(node.font)
-              digit = keep_local(:digit)
+              digit = keep_step_local(:digit)
               value(node.value)
               store(digit)
               (0..9).each do |d|
@@ -966,7 +973,7 @@ module VBlank
             # Reference#exec_blit_pose: the one of the pictures the number names, and none for a
             # number outside them.
             def emit_blit_pose(node)
-              which = keep_local(:pose)
+              which = keep_step_local(:pose)
               value(node.index)
               store(which)
               node.poses.each_with_index do |name, at|
@@ -1355,7 +1362,7 @@ module VBlank
             # ...a big background the game changes: the map named copied in as declared and handed
             # over, by number, and a number naming none leaves it as it is.
             def emit_show_changed_big_map(bg, node)
-              which = keep_local(:map)
+              which = keep_step_local(:map)
               value(node.which)
               store(which)
               bg.every_map.each_index do |at|
@@ -1450,6 +1457,9 @@ module VBlank
               @asm.call("rt_bends_on")
             end
 
+            # Reference#exec_set_tile_block: its cells one by one, as its children write them.
+            def emit_set_tile_block(node) = node.children.each { |child| statement(child) }
+
             # Reference#exec_set_tile: one cell of the background given another of its tiles — or
             # none, the backdrop — written into the console's grid (Runtime::Picture's
             # rt_background_cell), and a cell off the map changing nothing. Its maps must be one size,
@@ -1459,8 +1469,13 @@ module VBlank
             # rt_big_set).
             #
             # A tile picked as the program runs is a cell read from a table by the number
-            # (#emit_set_picked_tile_on).
+            # (#emit_set_picked_tile_on), and one picked by a number known now is that tile
+            # (IR::PickedTile.written).
             def emit_set_tile(node)
+              if node.picked? && (number = folded(node.picked_by))
+                written = PickedTile.written(node, number)
+                return written && emit_set_tile(written)
+              end
               return each_declaration(node) { |bg| emit_set_picked_tile_on(bg, node) } if node.picked?
 
               each_declaration(node) do |bg|
@@ -1505,22 +1520,117 @@ module VBlank
             # tests IR::PickedTile writes cost a test for each halving and a change of its own for each
             # tile, in the code. A number that stands for no tile reads NO_GRID_CELL, and the cell is
             # left alone, as is a tile only another scene's background of the name has.
+            #
+            # A status bar's text is many such cells a pass, so the cell is worked out in the
+            # registers: the place checked against the table's length a byte or two at a time where
+            # the number is proven that small, the cell read into DE, and, where the column and row
+            # are written in the program or the row is and the column is a byte, the cell's place in
+            # the grid known now, as a cell given a tile by name is (#emit_cell_change).
             def emit_set_picked_tile_on(bg, node)
               cells = node.picks.map { |tile| tile && !tile.negative? && tile < bg.tiles.length ? grid_cell_of(bg, tile) : NO_GRID_CELL }
               return if cells.all?(NO_GRID_CELL)
 
               table = picked_cells_table(cells)
               outside = fresh("picked_cell_outside")
-              place = Build.var_ref(keep_local(:picked_place))
-              value(Build.binop(:-, node.picked_by.copy, Build.int(node.picks_from)))
-              store(place.name)
-              jump_unless(Build.binop(:and, Build.binop(:>=, place, Build.int(0)), Build.binop(:<, place, Build.int(cells.length))), outside)
-              cell = Build.var_ref(keep_local(:picked_cell))
-              value(Entry.new(label: table, bytes: 2, signed: false, index: place, banked: true))
-              store(cell.name)
-              jump_if(Build.binop(:==, cell, Build.int(NO_GRID_CELL)), outside) if cells.include?(NO_GRID_CELL)
-              emit_worked_out_cell_change(bg, node, cell)
+              emit_picked_place_in_de(node, cells.length, outside)
+              emit_banked_word_at_de(table)
+              if cells.include?(NO_GRID_CELL)
+                @asm.load(:a, :e)
+                @asm.and_a(:d)
+                @asm.inc(:a) # 0xFF in both bytes, NO_GRID_CELL, comes round to nought
+                @asm.jump(:z, outside)
+              end
+              emit_picked_cell_change(bg, node)
               @asm.label(outside)
+            end
+
+            # DE = +node+'s number less the one its list starts at, and a jump to +outside+ when that
+            # is not a place in a list of +count+. A number proven to be a byte or two is read and
+            # checked that wide; any other is checked whole, a place below nought being a number
+            # above the list's length once its sign is not counted.
+            def emit_picked_place_in_de(node, count, outside)
+              from = node.picks_from
+              if proven_within?(node.picked_by, 0..0xFF) && from.between?(0, 0xFF)
+                emit_low_byte_in_a(node.picked_by)
+                unless from.zero?
+                  @asm.sub_a(from)
+                  @asm.jump(:c, outside)
+                end
+                # A byte's place is in a list of more than 255 whatever it is.
+                if count <= 0xFF && !proven_within?(node.picked_by, from..(from + count - 1))
+                  @asm.cp_a(count)
+                  @asm.jump(:nc, outside)
+                end
+                @asm.load(:e, :a)
+                return @asm.load(:d, 0)
+              end
+
+              value(node.picked_by)
+              unless from.zero?
+                [[:e, 0], [:d, 1], [:c, 2], [:b, 3]].each do |register, i|
+                  @asm.load(:a, register)
+                  i.zero? ? @asm.sub_a((from >> (8 * i)) & 0xFF) : @asm.sbc_a((from >> (8 * i)) & 0xFF)
+                  @asm.load(register, :a)
+                end
+              end
+              @asm.load(:a, :b)
+              @asm.or_a(:c)
+              @asm.jump(:nz, outside)
+              @asm.load(:a, :e)
+              @asm.sub_a(count & 0xFF)
+              @asm.load(:a, :d)
+              @asm.sbc_a((count >> 8) & 0xFF)
+              @asm.jump(:nc, outside)
+            end
+
+            # DE = the two-byte entry DE places into +table+, kept in a bank of its own (rt_far_word).
+            def emit_banked_word_at_de(table)
+              @asm.sla(:e)
+              @asm.rl(:d)
+              @asm.load(:hl, table)
+              @asm.add_hl(:de)
+              @asm.load_bank_of(:a, table)
+              @asm.call("rt_far_word")
+              @reads_far_words = true
+            end
+
+            # A cell of +bg+ given the grid cell in DE, where +node+ says. A place written in the program
+            # is found as #emit_cell_change finds it; any other is worked out by the routine, the cell
+            # kept while it is (#emit_worked_out_cell_change).
+            def emit_picked_cell_change(bg, node)
+              unless big?(bg)
+                refuse_background!(bg, as_grid: true)
+                row = folded(node.row)
+                col = folded(node.col)
+                if row && (col || byte_column?(node.col))
+                  return emit_cell_shown_when(node) do
+                    cols, rows = map_size_of(bg)
+                    routine = bg.bar? ? "rt_bar_cell" : "rt_background_cell"
+                    grid = bg.bar? ? Console::GBCHardware::TILE_MAP1 : Console::GBCHardware::TILE_MAP0
+                    next emit_cell_at_known_place(routine, grid, col, row, [cols, rows], :de) if col
+
+                    emit_cell_at_known_row(routine, grid, node.col, row, [cols, rows], :de)
+                  end
+                end
+              end
+
+              cell = Build.var_ref(keep_step_local(:picked_cell))
+              store(cell.name)
+              emit_worked_out_cell_change(bg, node, cell)
+            end
+
+            # The cell change the block writes, shown on the frame being drawn where +node+ asks for it.
+            def emit_cell_shown_when(node)
+              shown = (@memory[Runtime::Picture::CELL_SHOWN_NOW] if node.now)
+              if shown
+                @asm.load(:hl, shown)
+                @asm.inc([:hl])
+              end
+              yield
+              return unless shown
+
+              @asm.load(:hl, shown)
+              @asm.dec([:hl])
             end
 
             # The label of a banked table of +cells+, one kept for every line that picks from the same
@@ -1560,7 +1670,7 @@ module VBlank
               grid = bg.bar? ? Console::GBCHardware::TILE_MAP1 : Console::GBCHardware::TILE_MAP0
               col = folded(node.col)
               return emit_cell_at_known_place(routine, grid, col, row, [cols, rows], cell.value) if row && col
-              return emit_cell_at_known_row(routine, grid, node.col, row, [cols, rows], cell.value) if row && byte_valued?(node.col)
+              return emit_cell_at_known_row(routine, grid, node.col, row, [cols, rows], cell.value) if row && byte_column?(node.col)
 
               emit_cell_numbers(node.col, node.row, cols | (rows << 8), cell.value)
               @asm.call("#{routine}_taken")
@@ -1569,31 +1679,47 @@ module VBlank
             # A cell whose column, row and tile are all written in the program: its place in the
             # grid is known now, so nothing of it is worked out or checked as the game runs. A game's
             # lights and arrows are many such cells in one frame. Off the map, it writes nothing.
+            # +cell+ is the two bytes, or :de for a cell worked out and held in DE.
             def emit_cell_at_known_place(routine, grid, col, row, (cols, rows), cell)
               return unless col.between?(0, cols - 1) && row.between?(0, rows - 1)
 
               @asm.load(:hl, grid + (row * 32) + col)
-              @asm.load(:bc, cell)
+              emit_cell_in_bc(cell)
               @asm.call("#{routine}_at_hl")
             end
+
+            def emit_cell_in_bc(cell)
+              return @asm.load(:bc, cell) unless cell == :de
+
+              @asm.load(:b, :d)
+              @asm.load(:c, :e)
+            end
+
+            # Whether a cell's column can only be a byte from 0 to 255: a number ANDed with a byte, a
+            # byte of a table, or a number the build proves stays there (a scrolling text's column the
+            # game keeps in a variable), so only its low byte is read and compared with the map's width.
+            def byte_column?(col) = byte_valued?(col) || proven_within?(col, 0..0xFF)
 
             # A cell whose row and tile are written in the program and whose column can only be a
             # byte — a status bar's text, written a cell at a time — has its place worked out here:
             # the row's start in the grid, 32 cells a row, is known now, so only the column is
             # added as the game runs, and the routine is handed the place and the cell. A row off
-            # the map writes nothing, and so does a column off it.
+            # the map writes nothing, and so does a column off it. A cell held in DE (+cell+ :de) is
+            # kept on the stack while the column is worked out.
             def emit_cell_at_known_row(routine, grid, col, row, (cols, rows), cell)
               return unless row.between?(0, rows - 1)
 
               off = fresh("cell_off_the_map")
+              @asm.push(:de) if cell == :de
               emit_low_byte_in_a(col)
+              @asm.pop(:bc) if cell == :de # a pop moves no flag and leaves A
               @asm.cp_a(cols)
               @asm.jump_relative(:nc, off)
               @asm.load(:e, :a)
               @asm.load(:d, 0)
               @asm.load(:hl, grid + (row * 32))
               @asm.add_hl(:de)
-              @asm.load(:bc, cell)
+              @asm.load(:bc, cell) unless cell == :de
               @asm.call("#{routine}_at_hl")
               @asm.label(off)
             end
@@ -1809,6 +1935,9 @@ module VBlank
               swaps = step && swaps_for(bg, step)
               palettes = {}
               (@plans_background_rooms ? tiles_shown(bg) : bg.tiles.compact.uniq).each do |name|
+                # A tile that draws nothing is drawn from a palette other tiles fill (GBC::Art#blank_tile).
+                next if !run_painting(name) && @art.draws_nothing?(tile_image(name))
+
                 _, palette = background_tile_named(name, bg, tile_room(bg))
                 colors = tile_colors_with(name, swaps)
                 if palettes.key?(palette) && palettes[palette] != colors
@@ -1851,7 +1980,7 @@ module VBlank
 
               image = tile_image(name)
               swapped = swaps && swaps[image.list_drawn_from]
-              return @art.kept_colors(image) { |place| (swapped && swapped[place]) || image.colors[place] } if @art.pack_places_kept?(image)
+              return @art.kept_colors(image) { |place| (swapped && swapped[place]) || image.colors[place] } if @art.places_kept?(image)
 
               order = @art.list_order(image)
               if order
@@ -1999,6 +2128,7 @@ module VBlank
               items = IR::Stacking.items_in_draw_order(node).map { |item| item.is_a?(Build::DrawOrder) ? item : object.call(item) }
               front_first = items.each_with_index.sort_by { |item, at| [item_level(item, object), at] }.map(&:first).reverse
               placings = {}
+              found_showing = []
               emit_groups_wanted
               emit_refuse_groups_not_together
               @asm.call("rt_sprites_begin")
@@ -2007,6 +2137,7 @@ module VBlank
                   next emit_placing_unless_unchanged(item) unless item.is_a?(Build::DrawOrder)
 
                   item.objects.each { |name| placings[name] ||= fresh("place_sprite") }
+                  found_showing.concat(found_showing_by_sort(item))
                   emit_ordered_run(item, placings)
                 end
               end
@@ -2017,7 +2148,7 @@ module VBlank
               @asm.jump(past)
               placings.each do |name, label|
                 @asm.label(label)
-                emit_placing_unless_unchanged(object.call(name))
+                emit_placing_unless_unchanged(object.call(name), shown_known: found_showing.include?(name))
                 @asm.ret
               end
               @asm.label(past)
@@ -2167,10 +2298,18 @@ module VBlank
             # where it is, with nothing tested. Any other list — one written by hand, or one something
             # takes items from the front of, whose slots move round — is walked as the interpreter
             # reads it (DrawOrderWalk), last entry first.
+            #
+            # A SORTED RUN KEEPS ITS ENTRIES NOT SHOWING AT ITS FRONT (ShownSort), and the last of them
+            # holds a mark while the run is walked: the number past the run's last sprite, which the
+            # table sends to a stop. So the walk ends at the first entry not showing, and a run of many
+            # declared and a few showing places the few.
             def emit_ordered_run(run, placings)
-              dispatch = emit_ordered_dispatch(run, placings)
               place, _capacity, width = @lists.fetch(run.order)
-              unless order_read_by_slots?(run, front_dropped_lists) && width == 1
+              slots = order_read_by_slots?(run, front_dropped_lists) && width == 1
+              walked = fresh("ordered_run_walked")
+              stop = (walked if slots && @shown_sorts&.fetch(run.order, nil)&.marked)
+              dispatch = emit_ordered_dispatch(run, placings, stop: stop)
+              unless slots
                 return emit_draw_order_walk(run, from_back: true) do |entry|
                   value(Build.var_ref(entry))
                   @asm.load(:a, :e)
@@ -2182,6 +2321,7 @@ module VBlank
                 @asm.load(:a, [place + Runtime::Lists::HEADER + k])
                 @asm.call(dispatch)
               end
+              @asm.label(walked)
             end
 
             # DrawOrderWalk's: the place the variable +name+ holds and the run's +count+, the fault's two
@@ -2210,10 +2350,14 @@ module VBlank
             # their addresses. Written in place, with a jump over it, so the table and the placings are
             # in one section; a placing the table names in another bank is refused as the cartridge is
             # built (SM83#data_jump_targets). Returns its label.
-            def emit_ordered_dispatch(run, placings)
+            #
+            # With +stop+, the label past the walk, the number past the run's last sprite (a stop mark,
+            # ShownSort) goes there instead, the call's return taken off the stack.
+            def emit_ordered_dispatch(run, placings, stop: nil)
               dispatch = fresh("ordered_dispatch")
               table = fresh("ordered_placings")
               none = fresh("placed_by_none")
+              stopped = fresh("ordered_walk_stopped")
               past = fresh("past_ordered_dispatch")
               @asm.jump(past)
               @asm.label(dispatch)
@@ -2228,8 +2372,13 @@ module VBlank
               @asm.jump(:hl)
               @asm.label(none)
               @asm.ret
+              if stop
+                @asm.label(stopped)
+                @asm.pop(:hl)
+                @asm.jump(stop)
+              end
               @asm.label(table)
-              @asm.data_jump_targets(run.objects.map { |name| placings.fetch(name, none) })
+              @asm.data_jump_targets(run.objects.map { |name| placings.fetch(name, none) } + (stop ? [stopped] : []))
               @asm.label(past)
               dispatch
             end
@@ -2251,8 +2400,11 @@ module VBlank
             # (Runtime::KeptSprites::NOT_DRAWN). Any other kept sprite asks rt_sprite_kept, which answers Z for one no
             # write has changed since it was placed and whose place in the table is where it was, and
             # is otherwise placed by its own code and noted by rt_sprite_placed.
-            def emit_placing_unless_unchanged(obj)
-              return sprite_placement(obj) unless keeps_unchanged_sprites? && kept_sprites.include?(obj.name)
+            #
+            # +shown_known+ for a sprite its draw order's sort found showing on this pass
+            # (ShownSort#found_showing_by_sort): its own code places it without asking again.
+            def emit_placing_unless_unchanged(obj, shown_known: false)
+              return sprite_placement(obj, shown_known: shown_known) unless keeps_unchanged_sprites? && kept_sprites.include?(obj.name)
 
               block = posed_sprite_block(obj)
               if block
@@ -2271,7 +2423,7 @@ module VBlank
               done = fresh("sprite_left")
               @asm.call("rt_sprite_kept")
               @asm.jump(:z, done)
-              sprite_placement(obj)
+              sprite_placement(obj, shown_known: shown_known)
               @asm.load(:hl, sprite_kept_at(obj))
               @asm.call("rt_sprite_placed")
               @asm.label(done)
@@ -2423,13 +2575,14 @@ module VBlank
             # in front of its own; the background's see-through pixels still show it.
             #
             # +level+ is the depth it is placed at: its own, or for a sprite that changes layer as
-            # the game runs, the one this placing is for (#emit_layer_changing_sprites).
-            def sprite_placement(obj, level = sprite_level(obj))
+            # the game runs, the one this placing is for (#emit_layer_changing_sprites). +shown_known+
+            # for one already found showing on this pass, which is not asked again.
+            def sprite_placement(obj, level = sprite_level(obj), shown_known: false)
               hidden = fresh("sprite_hidden")
-              jump_unless(Build.binop(:==, value_node(obj.active), Build.int(1)), hidden)
+              emit_jump_unless_shown(value_node(obj.active), hidden) unless shown_known
               # A pose the program never changes is used as it is, so the build can see it is in range.
               said = folded(obj.pose)
-              pose = said ? Build.int(said) : Build.var_ref(keep_local(:pose))
+              pose = said ? Build.int(said) : Build.var_ref(keep_step_local(:pose))
               unless said
                 value(obj.pose)
                 store(pose.name)
@@ -2448,6 +2601,18 @@ module VBlank
                 @asm.label(out_of_range) if out_of_range
               end
               @asm.label(hidden)
+            end
+
+            # On to +hidden+ unless +active+ is 1: each test of it asked on its own where it is a
+            # product of tests (Backends::ShownWhen). A pool's place past the things it holds is then
+            # the count asked against the place's number, a byte at a time where it is kept; worked out
+            # whole and compared with 1, it was three times that, for every place of the pool.
+            def emit_jump_unless_shown(active, hidden)
+              shown = ShownWhen.of(active) { |part| folded(part) }
+              return jump_unless(Build.binop(:==, active, Build.int(1)), hidden) unless shown
+
+              jump_unless(Build.binop(:==, shown.flag, Build.int(1)), hidden) if shown.flag
+              shown.tests.each { |test| jump_unless(test, hidden) }
             end
 
             # rt_sprite handed +args+. When each is a number written in the program, a variable or a
@@ -2589,7 +2754,7 @@ module VBlank
             # pose. Worked out once and kept, since every table of the sprite is read at the same
             # place, and working out the row asks which list it is drawn with now and multiplies.
             def emit_row_and_pose_kept(obj, lists, sets, pose)
-              kept = keep_local(:row_and_pose)
+              kept = keep_step_local(:row_and_pose)
               value(Sum.new(:+, Sum.new(:*, row_drawn_with(obj, lists, sets), Build.int(obj.poses.length)), pose))
               store(kept)
               Build.var_ref(kept)

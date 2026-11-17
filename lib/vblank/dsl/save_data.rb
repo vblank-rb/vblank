@@ -28,8 +28,10 @@ module VBlank
       # Written by the code that owns them, anywhere in the program — so a file screen can be
       # declared first and use the record, and the gameplay declared after it names what goes in.
       # The order things are kept in is the record's shape, and a save made with another shape
-      # reads as empty.
-      def keep(*things)
+      # reads as empty. +part:+ keeps a whole part (or a scene's declared state) by its name, as
+      # `start_over` puts it back: `keep part: :play` keeps all of play in one word.
+      def keep(*things, part: nil)
+        things += [Builder::SaveRecords::KeptPart.new(name: part)] if part
         @saves.save_data_keep(@layout.name, things)
         self
       end

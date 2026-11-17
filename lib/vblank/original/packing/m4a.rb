@@ -37,24 +37,34 @@ module VBlank
       # length the frames to the tick that lets it go; the song's Score plays a tick a frame
       # (`tempo: 3600, ticks_per_beat: 1`).
       #
-      # A SONG COMES ROUND where the whole driver is as it was before: every track's place, wait and
-      # settings, the patterns it is in, the tempo and what is left of its count, the driver's
-      # memory. Each track jumps back on its own (GOTO, or REPT with no count) and the walk follows
-      # it, so a short figure goes round many times to a long melody's once, a MEMACC counting
-      # rounds plays each, and a round that starts a frame later in the tempo's count than the one
-      # before is played as it falls. The rounds watched are those of the track that jumps back for
-      # the first time last, the slowest: the driver at the start of the frame it jumps back on is
-      # kept, MOST_ROUNDS_KEPT of them, and at the start of every frame the driver is compared with
-      # each kept. The same as one, and that frame is the song's length and the kept one's frame is
-      # where it comes round to; the notes from there play over and over as the driver plays them.
-      # So a song whose tracks come round together is written once, as the original holds it, and
-      # one whose tracks come round apart is written until they come round together.
+      # A SONG COMES ROUND where every track is playing its loop again. Each track jumps back on its
+      # own (GOTO, or REPT with no count), so a short figure goes round many times to a long melody's
+      # once, and a part may come in late, first sounding on its second time round. The walk counts
+      # in ticks, as the driver's song data does, and plays the song from its start three times:
       #
-      # A song that does not come round in MOST_ROUNDS_KEPT rounds of its slowest track ends after
-      # the frame the next round starts on, and comes round to the first kept; so does one still
-      # playing at MOST_FRAMES. A song no track jumps back in ends when its last track ends (FINE),
-      # and has no loop frame (NO_LOOP). A note sounding as the song comes round is let go there, as
-      # Score plays one (sound.md).
+      # 1. Until every track still playing has jumped back once: where each jumps back to (its
+      #    loop's start) and on which tick (its loop's end). A track that ends (FINE) falls silent
+      #    when it does, or when its last note ends if that is later.
+      # 2. Until every track has played its loop twice: the notes each strikes the first time round,
+      #    from the tick it first reaches its loop's start, and the second time, from its first jump,
+      #    each folded into one number (Walk#emit_fold_note), with the notes still sounding from
+      #    before, and on the first track the tempo. Where the two are the same, the track repeats
+      #    from its loop's start; otherwise its first time round is heard once, and it repeats from
+      #    its first jump. The song repeats from the latest of these (and of where a track falls
+      #    silent), and one time round of it is the least span every loop fits whole.
+      # 3. To where the song repeats and MOST_LAPS times round past it: the frame each time round
+      #    starts on, and what is left of the tempo's count then. The count can leave one time round
+      #    starting a frame later than the one before, and a MEMACC can count times round in the
+      #    driver's memory, so the notes are written out until both come back: the first time round
+      #    that starts with the count and the memory as an earlier one did is the song's length, that
+      #    earlier one where it comes round to. Failing that, the song comes round to its second time
+      #    round and ends where the third starts, a frame off at most.
+      #
+      # A track's notes are then walked once more, to the song's length. The notes from the loop
+      # frame play over and over as the driver plays them; a MEMACC counting rounds plays each as it
+      # falls. A song no track jumps back in ends when its last track ends (FINE), and has no loop
+      # frame (NO_LOOP). A note sounding as the song comes round is let go there, as Score plays one
+      # (sound.md).
       #
       # WHY THE READER WRITES THE ROUNDS OUT, not a Score part that loops on its own: every song
       # player there is (the interpreter, the Advance's and every console's, the C, JavaScript and
@@ -144,8 +154,15 @@ module VBlank
         MOST_PATTERN_LEVELS = 3
         MEMACC_BYTES = 256
         VOICE_BYTES = 12
-        # The most rounds of the slowest track kept to compare the driver with (A SONG COMES ROUND).
-        MOST_ROUNDS_KEPT = 8
+        # How many times round the song's loop past the first the tempo's count is followed for, to
+        # find it come back (A SONG COMES ROUND).
+        MOST_LAPS = 5
+        # The longest loop of a song in ticks that is followed: past it, the least span every
+        # track's loop fits whole is taken as this, which no song reaches in MOST_FRAMES.
+        MOST_LAP_TICKS = 0x3FFFF
+        # How many of a track's notes are kept to tell which still sound as it reaches its loop's
+        # start and its first jump, and how many of its ties.
+        NOTES_KEPT = 16
 
         KIND_RECORDING = 0
         KIND_FIRST_SQUARE = 1
@@ -236,18 +253,19 @@ module VBlank
         # into an unpacking routine. +block+ is the format's BlockKit. +lists+ keeps the lists the walk
         # reads, one set for each routine, made the first time a walk asks.
         #
-        # +track+ (a setting) is the track whose notes are written, with +kind+ the kind of voice kept
-        # and +kit_from+ and +split_from+ the instrument numbers a kit's and a split's first voice
-        # are given; all four are nil for a walk that writes no notes. Every walk stops where the
-        # song comes round (A SONG COMES ROUND), keeping that frame in +end_frame+ and the frame it
-        # comes round to in +loop_frame+.
+        # +pass+ is which walk of A SONG COMES ROUND this is, each from the song's start and each
+        # leaving what the next reads in the routine's lists and variables: :first_jumps, :repeats
+        # and :laps (M4A.emit_song_timing runs the three); or :notes, a walk to the song's length
+        # writing +track+'s notes (a setting), with +kind+ the kind of voice kept and +kit_from+ and
+        # +split_from+ the instrument numbers a kit's and a split's first voice are given.
         #
         # +voiced+ writes each record as a voiced Original::PackNote, with its console voice's own
         # settings from the voice's twelve bytes (VoicedTrack says which).
         class Walk
-          def initialize(block, lists, track: nil, kind: nil, kit_from: nil, split_from: nil, voiced: false)
+          def initialize(block, lists, pass:, track: nil, kind: nil, kit_from: nil, split_from: nil, voiced: false)
             @block = block
             @lists = lists
+            @pass = pass
             @track = track
             @kind = kind
             @kit_from = kit_from
@@ -272,7 +290,9 @@ module VBlank
             into.store!(into - 256) if into >= 128
           end
 
-          # The walk: every track from its start, a frame at a time, until the song ends or comes round.
+          # The walk: every track from its start, a frame at a time, until the song ends, the pass has
+          # what it walks for, or the notes walked reach the song's length (var(:stop_frame), -1 for
+          # a song that ends of itself).
           def emit
             emit_start
             ended = var(:ended)
@@ -280,28 +300,26 @@ module VBlank
             tempo = var(:tempo)
             frame = var(:frame)
             ticking = var(:ticking)
-            round_ended = var(:round_ended)
             @block.repeat(MOST_FRAMES, stop_when: ended == 1) do
-              emit_compare_rounds
+              emit_song_end if @pass == :notes && frame == var(:stop_frame)
               if ended == 0
-                emit_copy_frame_start
                 tempo_count.store!(tempo_count + tempo)
                 ticking.store!(0)
                 ticking.store!(1) if tempo_count >= TEMPO_COUNT_PER_TICK
                 @block.repeat(MOST_TICKS_A_FRAME, stop_when: ticking == 0) do
                   emit_tick
                   tempo_count.store!(tempo_count - TEMPO_COUNT_PER_TICK)
+                  emit_lap_mark if @pass == :laps
+                  var(:tick).increase!(1)
                   ticking.store!(0) if tempo_count < TEMPO_COUNT_PER_TICK
                   ticking.store!(0) if ended == 1
                 end
-                emit_keep_round if round_ended == 1 && ended == 0
-                round_ended.store!(0)
                 frame.increase!(1) if ended == 0
+                emit_first_jumps_done if @pass == :first_jumps
+                emit_repeats_done if @pass == :repeats
               end
             end
-            # A song still playing at the most frames comes round to its first round kept.
-            var(:loop_frame).store!(list(:round_frames, MOST_ROUNDS_KEPT)[0]) if ended == 0 && var(:rounds_kept) > 0
-            var(:end_frame).store!(frame)
+            emit_open_ties_folded if @pass == :repeats
             emit_release_all if @track
           end
 
@@ -312,19 +330,15 @@ module VBlank
             from = @block.from
             var(:ended).store!(0)
             var(:frame).store!(0)
+            var(:tick).store!(0)
             var(:tempo).store!(STARTING_TEMPO)
             var(:tempo_count).store!(0)
             var(:sequence).store!(0)
             var(:group).store!(address_at(from + 4))
-            var(:loop_frame).store!(NO_LOOP)
-            var(:rounds_kept).store!(0)
-            var(:round_ended).store!(0)
-            var(:slowest).store!(-1)
-            var(:memacc_count).store!(0)
             count = var(:track_count)
             count.store!(@block.byte(from))
             count.store!(MOST_TRACKS) if count > MOST_TRACKS
-            var(:stack_count).store!(count * MOST_PATTERN_LEVELS)
+            emit_pass_start
             clocks = list(:clocks, CLOCKS.length)
             CLOCKS.each_with_index { |ticks, at| clocks[at] = ticks }
             noise = list(:noise, NOISE_TABLE.length)
@@ -340,7 +354,6 @@ module VBlank
               %i[wait status level repeats key velocity shift voice_number volume pan bend tune].each { |name| track_list(name)[t] = 0 }
               track_list(:place)[t] = 0
               track_list(:active)[t] = 0
-              track_list(:looped)[t] = 0
               track_list(:voice)[t] = -1
               track_list(:bend_range)[t] = STARTING_BEND_RANGE
             end
@@ -354,20 +367,368 @@ module VBlank
           # Every list the walk reads, made before any of it runs: a list is made where it is first
           # asked for, and one first asked for in a branch would be made only when that branch runs.
           def emit_lists
-            TRACK_LISTS.each { |name| track_list(name) }
-            track_list(:looped)
+            (TRACK_LISTS + LOOP_LISTS).each { |name| track_list(name) }
             SOUNDING_LISTS.each { |name| sounding_list(name) }
             VOICED_SOUNDING_LISTS.each { |name| sounding_list(name) } if @voiced
             list(:key_hz, KEY_HZ.length) if @voiced
             list(:stack, MOST_TRACKS * MOST_PATTERN_LEVELS)
-            list(:rounds, (MOST_ROUNDS_KEPT + 1) * STATE_SIZE)
-            list(:round_frames, MOST_ROUNDS_KEPT)
+            KEPT_LISTS.each { |name| kept_list(name) }
+            LAP_LISTS.each { |name| list(name, MOST_LAPS + 1) }
           end
 
-          # Each track's state, which the driver plays on from. (A track's +looped+, whether it has
-          # jumped back yet, is the walk's own and not the driver's.)
+          # Each track's state, which the driver plays on from.
           TRACK_LISTS = %i[place wait status active level repeats key velocity shift voice voice_number volume pan bend
                            bend_range tune].freeze
+          # Each track's loop, the walk's own: the tick it first jumps back on (-1 before) and where to,
+          # the tick its last note ends, the tick it first reaches its loop's start (-1 before), and
+          # its notes the first time round and the second, each folded into one number; and where
+          # its next note is kept (KEPT_LISTS).
+          LOOP_LISTS = %i[jump_tick target held_until arrival first_sound second_sound note_next].freeze
+          # NOTES_KEPT of each track's notes, newest over oldest: the tick each is struck, the tick it
+          # ends and what it sounds (#emit_note_sound), and where the next goes; and as many of its
+          # ties, the key that lets go of each and 1 where it still sounds.
+          KEPT_LISTS = %i[note_tick note_end note_sound tie_tick tie_key tie_sound tie_held].freeze
+          # The frame each time round of the song starts on, what is left of the tempo's count, and
+          # the driver's memory folded into one number.
+          LAP_LISTS = %i[lap_frames lap_counts lap_memories].freeze
+
+          def kept_list(name) = list(name, MOST_TRACKS * NOTES_KEPT)
+
+          # What each pass starts from: no track yet jumped back, reached its loop's start or heard,
+          # no time round marked.
+          def emit_pass_start
+            @block.repeat(MOST_TRACKS) do |t|
+              if @pass == :first_jumps
+                track_list(:jump_tick)[t] = -1
+                track_list(:held_until)[t] = 0
+              end
+              track_list(:arrival)[t] = -1
+              track_list(:first_sound)[t] = 0
+              track_list(:second_sound)[t] = 0
+              track_list(:note_next)[t] = 0
+            end
+            @block.repeat(MOST_TRACKS * NOTES_KEPT) do |i|
+              kept_list(:note_end)[i] = -1
+              kept_list(:tie_held)[i] = 0
+            end
+            if @pass == :first_jumps
+              var(:looped_count).store!(0)
+              var(:silent_from).store!(-1)
+            end
+            var(:arrived_count).store!(0)
+            var(:repeats_until).store!(0)
+            var(:lead_tempo).store!(-1)
+            var(:marks_made).store!(0)
+          end
+
+          # FIRST JUMPS: the walk is done once a track has jumped back and every track still playing
+          # has.
+          def emit_first_jumps_done
+            unlooped = var(:unlooped_playing)
+            unlooped.store!(0)
+            @block.repeat(var(:track_count)) do |t|
+              unlooped.increase!(1) if track_list(:active)[t] == 1 && track_list(:jump_tick)[t] < 0
+            end
+            emit_song_end if var(:looped_count) > 0 && unlooped == 0
+          end
+
+          # REPEATS: the walk is done once every looping track has reached its loop's start and played
+          # its loop through twice.
+          def emit_repeats_done
+            emit_song_end if var(:arrived_count) == var(:looped_count) && var(:tick) >= var(:repeats_until)
+          end
+
+          # Track +t+ reaching its loop's start for the first time, this tick: its notes struck before
+          # and still sounding are the first of its first time round.
+          def emit_arrival(t)
+            tick = var(:tick)
+            jump = track_list(:jump_tick)[t]
+            track_list(:arrival)[t] = tick
+            emit_held_notes_folded(t, tick, track_list(:first_sound))
+            until_tick = var(:until_tick)
+            until_tick.store!((jump * 2) - tick)
+            var(:repeats_until).store!(until_tick) if until_tick > var(:repeats_until)
+            var(:arrived_count).increase!(1)
+          end
+
+          # Track +t+'s notes struck before tick +at+ and still sounding then, folded into its +into+.
+          def emit_held_notes_folded(t, at, into)
+            @block.repeat(NOTES_KEPT) do |k|
+              i = (t * NOTES_KEPT) + k
+              if kept_list(:note_end)[i] > at && kept_list(:note_tick)[i] < at
+                into[t] = into[t] + emit_note_hash(kept_list(:note_tick)[i] - at, kept_list(:note_sound)[i])
+              end
+            end
+          end
+
+          # WHAT A NOTE SOUNDS, one number for its voice, its key moved by KEYSH, its velocity, the
+          # track's VOL, then its length in ticks (0 for a tie never let go): +length+ times
+          # NOTE_SOUND_BASE added to the rest, which a tie keeps until it is let go. A number apart
+          # for each note a track can play, near enough that two times round with the same notes, and
+          # only those, fold into the same number.
+          def emit_note_sound(t)
+            sound = var(:note_sound)
+            sound.store!((((((track_list(:voice_number)[t] * NOTE_SOUND_BASE) + track_list(:key)[t] + track_list(:shift)[t]) *
+                           NOTE_SOUND_BASE) + track_list(:velocity)[t]) * NOTE_SOUND_BASE) + track_list(:volume)[t])
+            sound
+          end
+
+          NOTE_SOUND_BASE = 131
+
+          # A note's +sound+ with its +length+.
+          def note_with_length(sound, length) = (sound * NOTE_SOUND_BASE) + length
+
+          # A number for a note struck +offset+ ticks from where a time round starts, sounding
+          # +sound+: the two mixed so that the sum of a time round's notes tells one set of them from
+          # another whatever order they are added in (the mixing step of MurmurHash2).
+          def emit_note_hash(offset, sound)
+            mixed = var(:mixed)
+            mixed.store!((sound * 31) + offset)
+            mixed.store!(mixed ^ (mixed >> 13))
+            mixed.store!(mixed * MIX_MULTIPLIER)
+            mixed.store!(mixed ^ (mixed >> 15))
+            mixed
+          end
+
+          MIX_MULTIPLIER = 0x5BD1_E995
+
+          # REPEATS: a note of track +t+ struck this tick, of +gate+ ticks (0 a tie), kept, and folded
+          # into the time round it falls in.
+          def emit_note_kept(t, gate)
+            tick = var(:tick)
+            sound = emit_note_sound(t)
+            at = var(:kept_at)
+            if gate == 0
+              at.store!(-1)
+              @block.repeat(NOTES_KEPT, stop_when: at >= 0) do |k|
+                at.store!((t * NOTES_KEPT) + k) if kept_list(:tie_held)[(t * NOTES_KEPT) + k] == 0
+              end
+              if at >= 0
+                kept_list(:tie_held)[at] = 1
+                kept_list(:tie_tick)[at] = tick
+                kept_list(:tie_key)[at] = track_list(:key)[t]
+                kept_list(:tie_sound)[at] = sound
+              end
+            else
+              sound.store!(note_with_length(sound, gate))
+              at.store!((t * NOTES_KEPT) + track_list(:note_next)[t])
+              track_list(:note_next)[t] = (track_list(:note_next)[t] + 1) % NOTES_KEPT
+              kept_list(:note_tick)[at] = tick
+              kept_list(:note_end)[at] = tick + gate
+              kept_list(:note_sound)[at] = sound
+              emit_struck_note_folded(t, tick, sound)
+            end
+          end
+
+          # A note of track +t+ struck on tick +struck+ and sounding +sound+ folded into the time round
+          # it is struck in, if either.
+          def emit_struck_note_folded(t, struck, sound)
+            arrival = track_list(:arrival)[t]
+            jump = track_list(:jump_tick)[t]
+            if arrival >= 0
+              if struck >= arrival && struck < jump
+                track_list(:first_sound)[t] = track_list(:first_sound)[t] + emit_note_hash(struck - arrival, sound)
+              end
+              if struck >= jump && struck < (jump * 2) - arrival
+                track_list(:second_sound)[t] = track_list(:second_sound)[t] + emit_note_hash(struck - jump, sound)
+              end
+            end
+          end
+
+          # REPEATS: track +t+'s newest tie on its key let go this tick. It lasted until now, one tick at
+          # least, and is folded into the time round it was struck in, and into the one it was still
+          # sounding as it started.
+          def emit_tie_let_go(t)
+            newest = var(:newest_tie)
+            newest.store!(-1)
+            @block.repeat(NOTES_KEPT) do |k|
+              i = (t * NOTES_KEPT) + k
+              if kept_list(:tie_held)[i] == 1 && kept_list(:tie_key)[i] == track_list(:key)[t]
+                newest.store!(i) if newest < 0
+                newest.store!(i) if newest >= 0 && kept_list(:tie_tick)[i] >= kept_list(:tie_tick)[newest]
+              end
+            end
+            if newest >= 0
+              kept_list(:tie_held)[newest] = 0
+              struck = var(:tie_struck)
+              length = var(:tie_length)
+              sound = var(:tie_sounding)
+              struck.store!(kept_list(:tie_tick)[newest])
+              length.store!(var(:tick) - struck)
+              length.store!(1) if length < 1
+              sound.store!(note_with_length(kept_list(:tie_sound)[newest], length))
+              emit_struck_note_folded(t, struck, sound)
+              emit_tie_held_folded(t, struck, length, sound)
+            end
+          end
+
+          # A let-go tie of track +t+, struck on +struck+ and +length+ ticks long, folded into each time
+          # round it was still sounding as it started.
+          def emit_tie_held_folded(t, struck, length, sound)
+            arrival = track_list(:arrival)[t]
+            jump = track_list(:jump_tick)[t]
+            if arrival >= 0 && struck < arrival && struck + length > arrival
+              track_list(:first_sound)[t] = track_list(:first_sound)[t] + emit_note_hash(struck - arrival, sound)
+            end
+            if struck < jump && struck + length > jump
+              track_list(:second_sound)[t] = track_list(:second_sound)[t] + emit_note_hash(struck - jump, sound)
+            end
+          end
+
+          # REPEATS, at its end: each tie still sounding is one never let go, with no length, folded
+          # into the time round it was struck in.
+          def emit_open_ties_folded
+            @block.repeat(var(:track_count)) do |t|
+              @block.repeat(NOTES_KEPT) do |k|
+                i = (t * NOTES_KEPT) + k
+                if kept_list(:tie_held)[i] == 1
+                  emit_struck_note_folded(t, kept_list(:tie_tick)[i], note_with_length(kept_list(:tie_sound)[i], 0))
+                end
+              end
+            end
+          end
+
+          # REPEATS: the first track's tempo in force as a time round of it starts (-1 where it has set
+          # none), folded in, after the track's reads on that tick.
+          def emit_lead_tempo_folded
+            tick = var(:tick)
+            if track_list(:arrival)[0] == tick
+              track_list(:first_sound)[0] = track_list(:first_sound)[0] + emit_note_hash(TEMPO_IN_FORCE, -1 - var(:lead_tempo))
+            end
+            if track_list(:jump_tick)[0] == tick
+              track_list(:second_sound)[0] = track_list(:second_sound)[0] + emit_note_hash(TEMPO_IN_FORCE, -1 - var(:lead_tempo))
+            end
+          end
+
+          # Where the tempo in force as a time round starts is folded in: no note's offset.
+          TEMPO_IN_FORCE = -0x4_0000
+
+          # REPEATS: a TEMPO of the first track this tick, folded into the time round it falls in after
+          # that round's start, as a note apart from every note (a sound under 0).
+          def emit_lead_tempo_change
+            tick = var(:tick)
+            arrival = track_list(:arrival)[0]
+            jump = track_list(:jump_tick)[0]
+            var(:lead_tempo).store!(var(:tempo))
+            if arrival >= 0
+              if tick > arrival && tick < jump
+                track_list(:first_sound)[0] = track_list(:first_sound)[0] + emit_note_hash(tick - arrival, -1 - var(:tempo))
+              end
+              if tick > jump && tick < (jump * 2) - arrival
+                track_list(:second_sound)[0] = track_list(:second_sound)[0] + emit_note_hash(tick - jump, -1 - var(:tempo))
+              end
+            end
+          end
+
+          # LAPS: after a tick, the frame it plays on, what is left of the tempo's count and the
+          # driver's memory folded into one number, where it starts a time round of the song
+          # (var(:repeat_from) and every var(:lap) ticks after), up to MOST_LAPS past the first.
+          def emit_lap_mark
+            made = var(:marks_made)
+            if var(:tick) == var(:repeat_from) + (made * var(:lap))
+              list(:lap_frames, MOST_LAPS + 1)[made] = var(:frame)
+              list(:lap_counts, MOST_LAPS + 1)[made] = var(:tempo_count)
+              memory = var(:memory_folded)
+              memory.store!(0)
+              area = list(:memacc, MEMACC_BYTES)
+              @block.repeat(MEMACC_BYTES) { |at| memory.store!(memory + emit_note_hash(at, area[at])) }
+              list(:lap_memories, MOST_LAPS + 1)[made] = memory
+              made.increase!(1)
+              emit_song_end if made > MOST_LAPS
+            end
+          end
+
+          # After REPEATS: the tick the song repeats from, var(:repeat_from), each track from its loop's
+          # start where its two times round sound alike and else from its first jump, and from where a
+          # track that ends falls silent; and one time round of it, var(:lap), the least span every
+          # track's loop fits whole, MOST_LAP_TICKS at most.
+          def emit_repeat_from
+            from = var(:repeat_from)
+            lap = var(:lap)
+            start = var(:track_start)
+            span = var(:loop_span)
+            from.store!(var(:silent_from))
+            lap.store!(1)
+            @block.repeat(var(:track_count)) do |t|
+              if track_list(:jump_tick)[t] >= 0
+                start.store!(track_list(:arrival)[t])
+                start.store!(track_list(:jump_tick)[t]) if start < 0 || track_list(:first_sound)[t] != track_list(:second_sound)[t]
+                from.store!(start) if start > from
+                span.store!(track_list(:jump_tick)[t] - track_list(:arrival)[t])
+                emit_lap_fitting(lap, span) if track_list(:arrival)[t] >= 0 && span > 0
+              end
+            end
+          end
+
+          # +lap+ made the least span both it and +span+ fit whole (the larger over their greatest
+          # common divisor, times the smaller), MOST_LAP_TICKS where that is more.
+          def emit_lap_fitting(lap, span)
+            larger = var(:gcd_larger)
+            smaller = var(:gcd_smaller)
+            left = var(:gcd_left)
+            larger.store!(lap)
+            smaller.store!(span)
+            @block.repeat(LONGEST_DIVISOR_STEPS, stop_when: smaller == 0) do
+              left.store!(larger % smaller)
+              larger.store!(smaller)
+              smaller.store!(left)
+            end
+            larger.store!(lap / larger)
+            if larger > MOST_LAP_TICKS / span
+              lap.store!(MOST_LAP_TICKS)
+            else
+              lap.store!(larger * span)
+            end
+          end
+
+          # Euclid's steps for two numbers under 2^18 are fewer than this.
+          LONGEST_DIVISOR_STEPS = 32
+
+          # After LAPS: the song's length and its loop frame. The first time round that starts with the
+          # tempo's count and the driver's memory as an earlier one did ends the song, coming round to
+          # that one (a MEMACC can count times round in the memory, so that one round plays apart
+          # from the next, and the song repeats only as the count does); failing that,
+          # the third ends it, coming round to the second; with fewer marked, the second to the first;
+          # with fewer still, MOST_FRAMES to the first, or to none.
+          def emit_laps_timing
+            made = var(:marks_made)
+            frames = list(:lap_frames, MOST_LAPS + 1)
+            counts = list(:lap_counts, MOST_LAPS + 1)
+            memories = list(:lap_memories, MOST_LAPS + 1)
+            first = var(:lap_first)
+            again = var(:lap_again)
+            first.store!(-1)
+            again.store!(-1)
+            @block.repeat(MOST_LAPS, stop_when: again >= 0) do |before|
+              later = var(:lap_later)
+              later.store!(before + 1)
+              if later < made
+                @block.repeat(later, stop_when: again >= 0) do |earlier|
+                  if counts[earlier] == counts[later] && memories[earlier] == memories[later]
+                    first.store!(earlier)
+                    again.store!(later)
+                  end
+                end
+              end
+            end
+            if again < 0
+              if made > 2
+                first.store!(1)
+                again.store!(2)
+              elsif made == 2
+                first.store!(0)
+                again.store!(1)
+              end
+            end
+            if again >= 0
+              var(:end_frame).store!(frames[again])
+              var(:loop_frame).store!(frames[first])
+            else
+              var(:end_frame).store!(MOST_FRAMES)
+              var(:loop_frame).store!(NO_LOOP)
+              var(:loop_frame).store!(frames[0]) if made > 0
+            end
+          end
           SOUNDING_LISTS = %i[used gate key record start sequence].freeze
           # ...and in a voiced walk, what changes a sounding recorded note (#emit_change_sounding): the
           # key its voice was struck at before the track moved it, 1 where it is a recording and 1
@@ -375,77 +736,11 @@ module VBlank
           # where its newest glide record is (-1 for none) and the frame that record starts.
           VOICED_SOUNDING_LISTS = %i[pitch_key recorded fixed velocity rhythm_pan glide_record glide_start].freeze
 
-          # THE DRIVER AS KEPT, at the start of a frame: the tempo's count and the tempo, then each of
-          # TRACK_LISTS for every track, the patterns' places, the driver's memory. The +rounds+ list
-          # holds one at the start of this frame, then a round kept in each of MOST_ROUNDS_KEPT more.
-          STATE_TRACKS_AT = 2
-          STATE_STACK_AT = STATE_TRACKS_AT + (TRACK_LISTS.length * MOST_TRACKS)
-          STATE_MEMACC_AT = STATE_STACK_AT + (MOST_TRACKS * MOST_PATTERN_LEVELS)
-          STATE_SIZE = STATE_MEMACC_AT + MEMACC_BYTES
-
-          # Each part of the driver's state after the tempo: where it is in a state kept, how many of it
-          # there are, and the list it is in. Only the tracks the song has are kept, and the memory
-          # once a MEMACC writes it: the rest are 0 in every state.
-          def each_state_part
-            TRACK_LISTS.each_with_index { |name, n| yield STATE_TRACKS_AT + (n * MOST_TRACKS), var(:track_count), track_list(name) }
-            yield STATE_STACK_AT, var(:stack_count), list(:stack, MOST_TRACKS * MOST_PATTERN_LEVELS)
-            yield STATE_MEMACC_AT, var(:memacc_count), list(:memacc, MEMACC_BYTES)
-          end
-
-          # The driver at the start of this frame, kept in case the slowest track's round ends on it.
-          def emit_copy_frame_start
-            rounds = list(:rounds, (MOST_ROUNDS_KEPT + 1) * STATE_SIZE)
-            rounds[0] = var(:tempo_count)
-            rounds[1] = var(:tempo)
-            each_state_part { |at, count, from| @block.repeat(count) { |i| rounds[at + i] = from[i] } }
-          end
-
-          # The driver now compared with each round kept: the same as one, and the song comes round
-          # to that round's frame, this frame its length.
-          def emit_compare_rounds
-            rounds = list(:rounds, (MOST_ROUNDS_KEPT + 1) * STATE_SIZE)
-            same = var(:same_round)
-            differs = var(:differs)
-            base = var(:round_base)
-            same.store!(-1)
-            @block.repeat(var(:rounds_kept), stop_when: same >= 0) do |r|
-              base.store!((r + 1) * STATE_SIZE)
-              differs.store!(0)
-              differs.store!(1) if rounds[base] != var(:tempo_count)
-              differs.store!(1) if rounds[base + 1] != var(:tempo)
-              each_state_part do |at, count, from|
-                @block.repeat(count, stop_when: differs == 1) { |i| differs.store!(1) if rounds[base + at + i] != from[i] }
-              end
-              same.store!(r) if differs == 0
-            end
-            if same >= 0
-              var(:loop_frame).store!(list(:round_frames, MOST_ROUNDS_KEPT)[same])
-              emit_song_end
-            end
-          end
-
-          # The slowest track's round ended on this frame: the driver at the frame's start kept. With
-          # MOST_ROUNDS_KEPT kept already, the song ends after this frame and comes round to the first.
-          def emit_keep_round
-            rounds = list(:rounds, (MOST_ROUNDS_KEPT + 1) * STATE_SIZE)
-            frames = list(:round_frames, MOST_ROUNDS_KEPT)
-            kept = var(:rounds_kept)
-            base = var(:round_base)
-            if kept < MOST_ROUNDS_KEPT
-              base.store!((kept + 1) * STATE_SIZE)
-              @block.repeat(STATE_SIZE) { |i| rounds[base + i] = rounds[i] }
-              frames[kept] = var(:frame)
-              kept.increase!(1)
-            else
-              var(:frame).increase!(1)
-              var(:loop_frame).store!(frames[0])
-              emit_song_end
-            end
-          end
-
           # One tick of every track, in order (MPlayMain), and the song's end once none plays on. A
           # track counts as playing on a tick it starts playing, so the song stops on the tick after
-          # its last track's FINE, as the driver stops it.
+          # its last track's FINE, as the driver stops it. Walking REPEATS, a track's notes still
+          # sounding as it first jumps back are the first of its second time round, and the first
+          # track's tempo as each time round starts is folded in after its reads.
           def emit_tick
             playing = var(:playing)
             playing.store!(0)
@@ -454,7 +749,11 @@ module VBlank
               if active[t] == 1
                 playing.store!(1)
                 emit_gates if @track && t == @track
+                if @pass == :repeats && var(:tick) == track_list(:jump_tick)[t]
+                  emit_held_notes_folded(t, var(:tick), track_list(:second_sound))
+                end
                 emit_commands(t)
+                emit_lead_tempo_folded if @pass == :repeats && t == 0
                 track_list(:wait)[t] = track_list(:wait)[t] - 1 if active[t] == 1
               end
             end
@@ -491,6 +790,9 @@ module VBlank
             reading.store!(1) if wait[t] == 0
             @block.repeat(MOST_COMMANDS_A_TICK, stop_when: reading == 0) do
               place.store!(track_list(:place)[t])
+              if @pass == :repeats && track_list(:arrival)[t] < 0 && track_list(:jump_tick)[t] >= 0 && place == track_list(:target)[t]
+                emit_arrival(t)
+              end
               byte.store!(@block.byte(place))
               if byte < WAIT
                 command.store!(track_list(:status)[t])
@@ -528,7 +830,6 @@ module VBlank
                 level[t] = level[t] - 1
                 stack = list(:stack, MOST_TRACKS * MOST_PATTERN_LEVELS)
                 place.store!(stack[(t * MOST_PATTERN_LEVELS) + level[t]])
-                # Cleared, so a state kept holds only the places a track will go back to.
                 stack[(t * MOST_PATTERN_LEVELS) + level[t]] = 0
               end
             elsif command == REPT
@@ -537,6 +838,7 @@ module VBlank
               emit_memacc
             elsif command == TEMPO
               var(:tempo).store!(arg * 2)
+              emit_lead_tempo_change if @pass == :repeats && t == 0
               place.increase!(1)
             elsif command == KEYSH
               emit_signed_byte(var(:signed), arg)
@@ -587,26 +889,28 @@ module VBlank
           # sides: KEYSH, BEND, BENDR, TUNE, VOL, PAN), on the walked track.
           def sounding_change_test(command, t) = command_in_test(command, SOUNDING_CHANGE_COMMANDS) & (t == @track)
 
-          # FINE (ply_fine): the track stops, and lets go of its notes.
+          # FINE (ply_fine): the track stops, and lets go of its notes. Walking FIRST JUMPS, where it
+          # falls silent is kept: now, or where its last note ends.
           def emit_fine(t)
+            if @pass == :first_jumps && track_list(:active)[t] == 1
+              silent = var(:silent_at)
+              silent.store!(var(:tick))
+              silent.store!(track_list(:held_until)[t]) if track_list(:held_until)[t] > silent
+              var(:silent_from).store!(silent) if silent > var(:silent_from)
+            end
             track_list(:active)[t] = 0
             emit_release_all if @track && t == @track
           end
 
-          # GOTO (ply_goto) to the address at +place+. One back ends a round of the track: a track
-          # jumping back for the first time is the slowest yet, and its rounds are counted from none
-          # (A SONG COMES ROUND).
+          # GOTO (ply_goto) to the address at +place+. Walking FIRST JUMPS, a track's first jump back
+          # is kept: on which tick, and where to (A SONG COMES ROUND).
           def emit_jump_back(t, place)
             target = var(:target)
             target.store!(address_at(place))
-            if target < place
-              looped = track_list(:looped)
-              if looped[t] == 0
-                looped[t] = 1
-                var(:slowest).store!(t)
-                var(:rounds_kept).store!(0)
-              end
-              var(:round_ended).store!(1) if t == var(:slowest)
+            if @pass == :first_jumps && target < place && track_list(:jump_tick)[t] < 0
+              track_list(:jump_tick)[t] = var(:tick)
+              track_list(:target)[t] = target
+              var(:looped_count).increase!(1)
             end
             place.store!(target)
           end
@@ -660,7 +964,6 @@ module VBlank
             data.store!(@block.byte(place + 2))
             place.increase!(3)
             other.store!(area[data])
-            var(:memacc_count).store!(MEMACC_BYTES) if operation <= 5
             if operation == 0
               area[spot] = data
             elsif operation == 1
@@ -724,6 +1027,7 @@ module VBlank
               place.increase!(1)
             end
             emit_release_key(key[t]) if @track && t == @track
+            emit_tie_let_go(t) if @pass == :repeats
           end
 
           def emit_release_key(key)
@@ -765,6 +1069,10 @@ module VBlank
                 end
               end
             end
+            if @pass == :first_jumps && var(:tick) + gate > track_list(:held_until)[t]
+              track_list(:held_until)[t] = var(:tick) + gate
+            end
+            emit_note_kept(t, gate) if @pass == :repeats
             emit_strike(t) if @track && t == @track
           end
 
@@ -1251,11 +1559,33 @@ module VBlank
           def self.routine(block) = M4A.emit_track(block, voiced: true)
         end
 
-        # The walk of a track writing its records, +voiced+ or not, then the record that ends the part.
+        # The song's length and loop frame (A SONG COMES ROUND) into the routine's variables
+        # m4a_end_frame and m4a_loop_frame, walked with +lists+.
+        def self.emit_song_timing(block, lists)
+          Walk.new(block, lists, pass: :first_jumps).emit
+          if block.variable(:m4a_looped_count) == 0
+            block.variable(:m4a_end_frame).store!(block.variable(:m4a_frame))
+            block.variable(:m4a_loop_frame).store!(NO_LOOP)
+          else
+            Walk.new(block, lists, pass: :repeats).emit
+            laps = Walk.new(block, lists, pass: :laps)
+            laps.emit_repeat_from
+            laps.emit
+            laps.emit_laps_timing
+          end
+        end
+
+        # The walk of a track writing its records, +voiced+ or not, to the song's length, then the
+        # record that ends the part.
         def self.emit_track(block, voiced:)
           record_bytes = voiced ? PackNote::VOICED_BYTES : PackNote::BYTES
-          Walk.new(block, {}, track: block.setting(:track), kind: block.setting(:kind), kit_from: block.setting(:kit_from),
-                              split_from: block.setting(:split_from), voiced: voiced).emit
+          lists = {}
+          emit_song_timing(block, lists)
+          stop_frame = block.variable(:m4a_stop_frame)
+          stop_frame.store!(-1)
+          stop_frame.store!(block.variable(:m4a_end_frame)) if block.variable(:m4a_loop_frame) != NO_LOOP
+          Walk.new(block, lists, pass: :notes, track: block.setting(:track), kind: block.setting(:kind),
+                                 kit_from: block.setting(:kit_from), split_from: block.setting(:split_from), voiced: voiced).emit
           if block.room >= record_bytes
             block.write(PackNote::END_OF_PART)
             block.write(PackNote::END_OF_PART >> 8)
@@ -1271,7 +1601,7 @@ module VBlank
           called "MusicPlayer2000 song length"
 
           def self.routine(block)
-            Walk.new(block, {}).emit
+            M4A.emit_song_timing(block, {})
             length = block.variable(:m4a_end_frame)
             loop_frame = block.variable(:m4a_loop_frame)
             block.write(length)

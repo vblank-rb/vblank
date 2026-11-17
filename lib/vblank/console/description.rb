@@ -152,6 +152,10 @@ module VBlank
     # to part of the screen use the same windows (the Advance); :own_window where a window does it
     # that nothing else in the game uses (the Super Nintendo); nil where nothing can.
     #
+    # +cells_in_front+ marks that the console's build draws a background's cells marked in front of
+    # the sprites in front of them (`cells_in_front: true`), as a console whose map keeps a priority
+    # bit in each cell does. Where it is false the build refuses such a background (Console::Questions).
+    #
     # +area_clips_called_routines+ marks that a routine called from inside `inside` has its drawing held to
     # that area, as the interpreter holds it: the console's build keeps the area as numbers in memory
     # while the game runs, and every drawing routine reads them, wherever it was built. Where it is
@@ -164,7 +168,7 @@ module VBlank
     # smallest its records fit in (IR::SaveLayout.chosen), never the EEPROM unasked. The Advance's
     # are every size a game can name (ADVANCE_SAVE_MEMORIES), which is the default.
     Description = Data.define(:name, :title, :screen_width, :screen_height, :buttons, :controllers,
-                              :holds_background_above_row, :background_box, :area_clips_called_routines,
+                              :holds_background_above_row, :background_box, :cells_in_front, :area_clips_called_routines,
                               :glides_recordings, :sets_main_volume, :sprites, :sprite_places,
                               :sprites_a_row, :sprite_pieces_drawn_a_line, :sprite_slivers_drawn_a_line,
                               :sprite_pixels_drawn_a_line, :sprite_piece_shape, :sprite_pieces_drawn_a_screen,
@@ -180,7 +184,7 @@ module VBlank
                               :whole_screen_size, :extension, :code_cache_bytes, :face_fill_skips_outside_window,
                               :face_fill_by_row_middles, :pixel_size, :shows_bigger_pixels,
                               :pose_lists, :sprites_in_blocks, :voices_read_sound_memory, :big_background_tiles,
-                              :shown_rows, :gives_up_rows, :save_memories) do
+                              :shown_rows, :gives_up_rows, :save_memories, :sprite_rows_settled, :pool_layouts) do
       # +code_cache_bytes+ is how much of the game's code the processor keeps in a cache of its own and
       # runs without going out to memory for each instruction, or nil for a processor with none (it
       # reads every instruction from memory as it runs it, or memory as quick as a cache). Where it is
@@ -237,12 +241,24 @@ module VBlank
       # video memory takes writes only while it is not drawing, and that can switch the screen off
       # for those rows, so the copy has them as well as the blank (the Super Nintendo's forced
       # blank, written line by line: Backends::SNES::Runtime::Letterbox).
+      #
+      # +sprite_rows_settled+ marks a console whose build gives each sprite its rows of the sprite
+      # table as the game is built (the Advance's, IR::SpriteRows.plan), so a sprite drawn in an order
+      # the game works out keeps its rows on every screen. Where it is false the runtime hands the
+      # rows out on every pass to the sprites that show, so only the sprites that can be up together
+      # count against +sprite_places+ (Checks::TooManySprites).
+      #
+      # +pool_layouts+ is the ways the console's build can keep a pool in memory (Backends::PoolLayout):
+      # :lists, a list for each field, which every console has; :tables, the fields side by side, each
+      # read with one index; :records, a record for each thing. A game may name one
+      # (`pool :enemy, ..., layout: :tables`); one the console lacks is refused.
       def initialize(code_cache_bytes: nil, face_fill_skips_outside_window: false, face_fill_by_row_middles: true,
                      pixel_size: 1, shows_bigger_pixels: false, pose_lists: :one, sprites_in_blocks: true,
                      voices_read_sound_memory: false, big_background_tiles: false, shown_rows: nil,
                      gives_up_rows: false, sprite_pieces_drawn_a_screen: nil, sprite_slivers_drawn_a_line: nil,
                      sprite_pixels_drawn_a_line: nil, sprite_piece_shape: :small, sprite_table_filled_from: :front,
-                     save_memories: ADVANCE_SAVE_MEMORIES, layer_for_held_rows: false, **rest) = super
+                     save_memories: ADVANCE_SAVE_MEMORIES, layer_for_held_rows: false, cells_in_front: false,
+                     sprite_rows_settled: false, pool_layouts: %i[lists].freeze, **rest) = super
 
       # Whether one sprite can show poses drawn from different lists of colours (see +pose_lists+).
       def poses_keep_own_lists? = pose_lists != :one
@@ -331,6 +347,7 @@ module VBlank
 
     # The Game Boy Advance.
     ADVANCE = Description.new(name: :gba, title: "Game Boy Advance", screen_width: 240, screen_height: 160,
+                              sprite_rows_settled: true,
                               buttons: %i[a b select start right left up down r l].freeze, controllers: 1,
                               holds_background_above_row: false, background_box: :shared_windows, glides_recordings: true, sets_main_volume: true, sprites: 128,
                               # Each shape is clipped against the area's edges as the ARM is
@@ -378,7 +395,10 @@ module VBlank
                               face_fill_skips_outside_window: true,
                               # The painted screen is drawn through a background that resizes, so
                               # told to read half a pixel a step it shows each pixel as four.
-                              shows_bigger_pixels: true)
+                              shows_bigger_pixels: true,
+                              # A record for each thing where it fits, else as lists; tables side by
+                              # side where a game asks (Backends::PoolLayout::OWN_LAYOUTS says why).
+                              pool_layouts: %i[records lists tables].freeze)
 
     # The Game Boy Color: a smaller screen, eight buttons, forty sprites and ten on a row, one
     # background, nothing that turns, lists of four colours, and a clock that counts days. What
@@ -425,6 +445,10 @@ module VBlank
                             # Each piece's attributes name its list (Backends::GBC::Lowering::Picture
                             # #pose_rows). A sprite that follows its poses' lists is not made yet.
                             pose_lists: :own,
+                            # A pool as tables side by side where it fits, else as lists; a record
+                            # for each thing where a game asks (Backends::PoolLayout::OWN_LAYOUTS
+                            # says why).
+                            pool_layouts: %i[tables lists records].freeze,
                             sprites_placed_before_wait: true,
                             # A cartridge with a motor, for a game that rumbles (Runtime::Rumble).
                             rumbles: true,
@@ -504,6 +528,10 @@ module VBlank
                                      # Each picture's pieces name its palette (Backends::SNES::Art). A
                                      # sprite that follows its poses' lists is not made yet.
                                      pose_lists: :own,
+                                     # A pool as tables side by side where it fits, else as lists;
+                                     # a record for each thing where a game asks
+                                     # (Backends::PoolLayout::OWN_LAYOUTS says why).
+                                     pool_layouts: %i[tables lists records].freeze,
                                      sprites_placed_before_wait: true,
                                      # No cartridge with a motor is made for it.
                                      rumbles: false, plays_bios_start_up: false, whole_screen_size: nil,
@@ -530,7 +558,8 @@ module VBlank
     # channel. What each verb does on it is Console::GenesisAnswers's to say.
     GENESIS = Description.new(name: :genesis, title: "Sega Genesis", screen_width: 320, screen_height: 224,
                               buttons: %i[a b c start right left up down].freeze, controllers: 1,
-                              holds_background_above_row: false, background_box: nil, glides_recordings: true, sets_main_volume: false, sprites: 80, sprite_places: 80,
+                              holds_background_above_row: false, background_box: nil, cells_in_front: true, glides_recordings: true,
+                              sets_main_volume: false, sprites: 80, sprite_places: 80,
                               # The area is kept in memory (Genesis::Lowering::Paint#emit_inside).
                               area_clips_called_routines: true,
                               # A row of the screen shows at most 20 entries of the sprite table (16
@@ -582,6 +611,10 @@ module VBlank
                               # Each picture's pieces name its palette, cut against the list it
                               # follows (Backends::Genesis::Lowering::Picture#followed_list_of).
                               pose_lists: :followed,
+                              # A pool as tables side by side where it fits, else as lists; a record
+                              # for each thing where a game asks (Backends::PoolLayout::OWN_LAYOUTS
+                              # says why).
+                              pool_layouts: %i[tables lists records].freeze,
                               sprites_placed_before_wait: true,
                               # No cartridge with a motor is made for it.
                               rumbles: false, plays_bios_start_up: false, whole_screen_size: nil,
@@ -660,6 +693,9 @@ module VBlank
                                   # holds it to that on the PlayStation's run). Each pose is a picture
                                   # of its own, drawn from its own list.
                                   pose_lists: :followed,
+                                  # A pool as tables unless a game names another
+                                  # (Backends::PoolLayout::OWN_LAYOUTS says why).
+                                  pool_layouts: %i[tables lists records].freeze,
                                   sprites_placed_before_wait: true,
                                   rumbles: false, plays_bios_start_up: false, whole_screen_size: nil,
                                   extension: ".exe",

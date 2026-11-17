@@ -101,6 +101,10 @@ module VBlank
             TIMER_COUNTS_A_FRAME = Console.described(:gbc).then { |gbc| gbc.cycles_a_frame / gbc.sample_timer_step }
             DARK_COUNTS = (1..256).select { |counts| (TIMER_COUNTS_A_FRAME % counts).zero? }.max
             DARK_TICKS_A_FRAME = TIMER_COUNTS_A_FRAME / DARK_COUNTS
+            # Timer counts by which the dark count's frames end before an emulator's
+            # (#emit_dark_start): the five from the screen going off to the timer starting, and
+            # sixteen more.
+            DARK_LEAD_COUNTS = 21
 
             module_function
 
@@ -298,9 +302,7 @@ module VBlank
                 # The screen is still off: this is the first frame. Everything set up so far is
                 # copied while nothing is being drawn, and the screen comes on showing it.
                 asm.call("rt_upload_whole")
-                emit_dark_end(asm, memory) if dark?(memory)
-                asm.call("rt_shown_is_passes") # after the count is done, which a reader reads once it is shown
-                asm.call("rt_display_on")
+                emit_display_on_first(asm, memory)
                 asm.call("rt_sleep_until_vblank")
                 emit_add_dark_frames(asm, memory, count_at) if dark?(memory)
                 asm.di
@@ -400,9 +402,7 @@ module VBlank
               # The screen is still off: this is the first frame. Everything set up so far is
               # copied while nothing is being drawn, and the screen comes on showing it.
               asm.call("rt_upload_whole")
-              emit_dark_end(asm, memory) if dark?(memory)
-              asm.call("rt_shown_is_passes") # after the count is done, which a reader reads once it is shown
-              asm.call("rt_display_on")
+              emit_display_on_first(asm, memory)
               asm.call("rt_sleep_until_vblank")
               emit_add_dark_frames(asm, memory, count_at) if dark?(memory)
               asm.call("rt_music_owed")
@@ -457,6 +457,12 @@ module VBlank
             # nothing the boot runs touches: E the timer's interrupts since the last whole frame, D
             # the frames. The timer is told to interrupt every DARK_COUNTS of its counts, and its
             # interrupt alone is let in.
+            #
+            # IT STARTS AS THE SCREEN GOES OFF, which is where a screen that is off starts counting
+            # frames' time, in an emulator as on the console. Its first interrupt comes DARK_LEAD_COUNTS
+            # early, so each of its frames ends a little before an emulator's: the instructions from
+            # the screen going off to the timer starting, and some way more, which #emit_dark_end
+            # relies on.
             def emit_dark_start(asm, memory)
               h = Console::GBCHardware
               asm.xor_a(:a)
@@ -464,6 +470,7 @@ module VBlank
               asm.load(:de, 0)
               asm.load(:a, 256 - DARK_COUNTS)
               asm.load_high(h::TMA, :a)
+              asm.load(:a, 256 - DARK_COUNTS + DARK_LEAD_COUNTS)
               asm.load_high(h::TIMA, :a)
               asm.load(:a, Clips::TIMER_ON)
               asm.load_high(h::TAC, :a)
@@ -525,20 +532,54 @@ module VBlank
               asm.reti
             end
 
-            # As the screen comes on for the first frame: the timer stopped, so the frame that follows
-            # is the screen's interrupt's to count. In a game that plays a recording the timer is the
-            # recording's from here, its interrupt left on, and a clip the game played while it set up
-            # starts now (Runtime::Clips, rt_clip_start), as the interpreter's mix starts it.
+            # THE SCREEN ON FOR THE FIRST FRAME, after the first frame's copy of everything set up
+            # (rt_upload_whole): that copy runs with the screen off, and a frame that ends while it
+            # runs is one of the frames spent setting up. PASSES is shown as the screen comes on; a
+            # reader reads it with the count of frames set up, at a frame's end, and none comes
+            # between the two.
+            def emit_display_on_first(asm, memory)
+              return emit_dark_end(asm, memory) if dark?(memory)
+
+              asm.call("rt_shown_is_passes")
+              asm.call("rt_display_on")
+            end
+
+            # ...and in a game that counts the frames its screen was off for, the timer stopped as the
+            # screen comes on, so the frame that follows is the screen's interrupt's to count. In a game
+            # that plays a recording the timer is the recording's from here, its interrupt left on, and
+            # a clip the game played while it set up starts now (Runtime::Clips, rt_clip_start), as the
+            # interpreter's mix starts it.
             #
-            # IT ENDS JUST BEFORE THE SCREEN COMES ON, after the first frame's copy of everything set
-            # up (rt_upload_whole): that copy runs with the screen off, and a frame that ends while it
-            # runs is one of the frames spent setting up.
+            # NEVER IN THE FIRST TICK OF THE COUNT'S FRAME. A screen that is off draws no frames, so the
+            # count is the timer's, started as the screen went off (#emit_dark_start), and a frame
+            # from power-on is then a frame's time. Where the timer's frames end and where an
+            # emulator's do lie a little apart. The timer's end a few of its counts sooner, by design;
+            # and an emulator that ends a frame where it next looks ends it later when it looks late,
+            # behind a copy that holds the processor (rt_boot_clear_video_*), by up to that copy's
+            # length, a little over half a tick. Each frame after carries the move. A screen switched
+            # on between the two comes on in a frame they count differently, and the first pass reads
+            # one more or one less than the frames gone. Both ends fall in the first tick (about a
+            # fortieth of a frame) of the count's frame, so the screen does not come on in it: setting
+            # up that ends there waits for the next tick. And it comes on at once after the timer
+            # stops, with interrupts held off from the look to the switch, so no tick comes between;
+            # a tick due in that time is never taken, and the few instructions it covers end before
+            # an emulator's frame does.
             def emit_dark_end(asm, memory)
               h = Console::GBCHardware
               clips = Clips.any?(memory)
+              asm.label("rt_dark_end_wait")
               asm.di
+              asm.load(:a, [memory[DARK_TICKS]])
+              asm.and_a(:a)
+              asm.jump_relative(:nz, "rt_dark_end_clear")
+              asm.ei
+              asm.halt
+              asm.jump_relative("rt_dark_end_wait")
+              asm.label("rt_dark_end_clear")
               asm.xor_a(:a)
               asm.load_high(h::TAC, :a)
+              asm.call("rt_display_on")
+              asm.call("rt_shown_is_passes")
               asm.load(:a, clips ? h::INT_VBLANK | h::INT_TIMER : h::INT_VBLANK)
               asm.load_high(h::IE, :a)
               asm.load_high(:a, h::IF)

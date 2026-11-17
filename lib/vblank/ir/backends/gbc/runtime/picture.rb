@@ -28,6 +28,7 @@ module VBlank
             PALETTES_CHANGED = "rt picture palettes changed"
             SCROLL = "rt picture scroll" # X, then y
             NEXT_SPRITE = "rt picture next sprite" # The next free entry of the sprite table's copy (low byte)
+            SPRITES_ENDED = "rt picture sprites ended" # NEXT_SPRITE as the last sprite pass ended
             MAP_JOB = "rt picture map job" # The grid being put up: rows left, where from, where to, its bank
             # 1 while a grid's rows are finished with the display off, until the blank's copies are done
             MAP_DISPLAY_OFF = "rt picture map display off"
@@ -185,6 +186,7 @@ module VBlank
               memory.reserve(PALETTES_CHANGED, 1)
               memory.reserve(SCROLL, 2)
               memory.reserve(NEXT_SPRITE, 1)
+              memory.reserve(SPRITES_ENDED, 1)
               memory.reserve(MAP_JOB, 6)
               memory.reserve(MAP_DISPLAY_OFF, 1)
               memory.reserve(CELLS, 1 + ((painting ? PAINTED_CELLS_ROOM : CELLS_KEPT) * CELL_BYTES))
@@ -1197,6 +1199,9 @@ module VBlank
               asm.call("rt_bends_copy")
               asm.call("rt_picture_display_back_on")
               asm.jump_relative(:c, "rt_upload_more")
+              asm.load(:a, [memory[CELLS]]) # cells the blank did not reach (rt_picture_cells_kept)
+              asm.and_a(:a)
+              asm.jump_relative(:nz, "rt_upload_more")
               if groups
                 asm.load(:a, [pending])
                 asm.add_a(:a) # carry from 0xFF
@@ -1341,12 +1346,23 @@ module VBlank
               asm.load(:b, :a)
               asm.xor_a(:a)
               asm.load([:hli], :a)
-              # As long as the blank lasts each goes straight in. What it does not reach waits for
-              # the display, and shows from the rows the display has not drawn yet.
+              # As long as the blank lasts each goes straight in. With the display off every cell goes
+              # in now. What the blank does not reach goes in while the display draws, between its
+              # lines, cell by cell for as long as each is on lines the display has not reached yet
+              # (rt_picture_cells_late), so the frame shows it whole. From the first cell it has
+              # reached, which would show the top of the screen without the pass's changes and the
+              # rest with them, that cell and every one after it, in order, are kept in CELLS for the
+              # next blank (rt_picture_cells_kept), and rt_upload says there is more to copy: the
+              # wait copies them in the blanks after, and the pass is shown once all of it is in, as
+              # a pass that runs late is.
               asm.label("rt_picture_cells_next")
               asm.load_high(:a, h::LY)
               asm.cp_a(h::SCREEN_HEIGHT)
-              asm.jump(:c, "rt_cells_write_rest")
+              asm.jump_relative(:nc, "rt_picture_cells_in_blank")
+              asm.load_high(:a, h::LCDC)
+              asm.bit(7, :a)
+              asm.jump(:nz, "rt_picture_cells_late")
+              asm.label("rt_picture_cells_in_blank")
               asm.load(:a, [:hli])
               asm.load(:e, :a)
               asm.load(:a, [:hli])
@@ -1363,6 +1379,25 @@ module VBlank
               asm.load_high(h::VBK, :a)
               asm.ret
 
+              # The B cells from HL on, moved to the front of CELLS for the next blank, in order.
+              asm.label("rt_picture_cells_kept")
+              asm.xor_a(:a)
+              asm.load_high(h::VBK, :a)
+              asm.load(:a, :b)
+              asm.load([memory[CELLS]], :a)
+              asm.load(:de, memory[CELLS] + 1)
+              asm.label("rt_picture_cells_move")
+              4.times do # four bytes a cell
+                asm.load(:a, [:hli])
+                asm.load([:de], :a)
+                asm.inc(:de)
+              end
+              asm.dec(:b)
+              asm.jump_relative(:nz, "rt_picture_cells_move")
+              asm.ret
+
+              emit_cells_late(asm)
+
               # rt_upload in as many blanks as it takes.
               asm.label("rt_upload_whole")
               asm.call("rt_upload")
@@ -1373,9 +1408,10 @@ module VBlank
 
             # SPRITES. A pass's sprites are written into the copy of the table front-most first,
             # which is the order the console draws them in (an earlier entry in front), from
-            # rt_sprites_begin to rt_sprites_end, which switches off every entry after
-            # the last one written, and turns the sprite layer on when the screen up is drawn from
-            # tiles (a painted one keeps it off: rt_screen). A sprite is its picture's pieces, each an entry; a piece
+            # rt_sprites_begin to rt_sprites_end, which switches off every entry after the last one
+            # written that the pass before left on, and turns the sprite layer on when the screen up
+            # is drawn from tiles (a painted one keeps it off: rt_screen). A sprite is its picture's
+            # pieces, each an entry; a piece
             # wholly off the screen is left out, since the table's place is a byte and a place far
             # off the screen would come round onto it.
             #
@@ -1422,12 +1458,19 @@ module VBlank
                 asm.cp_a(Paint::PAINTED)
                 asm.call(:nz, "rt_sprites_on")
               end
+              # Switched off: the entries the pass before wrote past where this one ended, each given
+              # a Y of 0, which puts it above the screen (Pan Docs, "OAM"). Every entry past where the
+              # pass before ended is off already, so the work is the entries this pass dropped, not
+              # the whole rest of the table: a pass of four sprites is not thirty-six entries cleared.
+              asm.load(:a, [memory[SPRITES_ENDED]])
+              asm.load(:c, :a)
               asm.load(:a, [memory[NEXT_SPRITE]])
+              asm.load([memory[SPRITES_ENDED]], :a)
               asm.load(:l, :a)
               asm.load(:h, Memory::SHADOW_OAM >> 8)
               asm.label("rt_sprites_end_next")
               asm.load(:a, :l)
-              asm.cp_a(Console::GBCHardware::OAM_SIZE)
+              asm.cp_a(:c)
               asm.ret(:nc)
               asm.load([:hl], 0) # Y of 0: above the screen, not drawn
               4.times { asm.inc(:l) }
@@ -1654,7 +1697,16 @@ module VBlank
               asm.add_hl(:de)
               asm.load(:de, grid)
               asm.add_hl(:de)
-              asm.label("#{label}_place_found")
+              asm.load_high(:a, arg.call(3)) # BC = the cell
+              asm.load(:c, :a)
+              asm.load_high(:a, arg.call(3) + 1)
+              asm.load(:b, :a)
+              # Where the game comes in having worked the cell's place out itself, for a row and a
+              # cell written in the program and a column known to be on the map
+              # (Lowering::Picture#emit_cell_at_known_row, #emit_cell_at_known_place): HL the place,
+              # BC the cell, which stays in BC to the end, so a status bar's text, a cell a letter,
+              # is never written into quick memory and read back.
+              asm.label("#{label}_at_hl")
               asm.load(:a, 0xFF)
               asm.load([up], :a)
               if memory.reserved?(CELL_SHOWN_NOW)
@@ -1680,22 +1732,21 @@ module VBlank
               asm.load([:hli], :a)
               asm.load(:a, :d)
               asm.load([:hli], :a)
-              asm.load_high(:a, arg.call(3))
+              asm.load(:a, :c)
               asm.load([:hli], :a)
-              asm.load_high(:a, arg.call(3) + 1)
-              asm.load([:hl], :a)
+              asm.load([:hl], :b)
               asm.ret
               if memory.reserved?(CELL_SHOWN_NOW)
                 asm.label("#{label}_shown")
                 asm.di
-                [0, 1].each do |bank|
+                [[0, :c], [1, :b]].each do |bank, byte|
                   asm.load(:a, bank)
                   asm.load_high(h::VBK, :a)
                   asm.label("#{label}_wait_#{bank}")
                   asm.load_high(:a, h::STAT)
                   asm.and_a(0x02)
                   asm.jump_relative(:nz, "#{label}_wait_#{bank}")
-                  asm.load_high(:a, arg.call(3) + bank)
+                  asm.load(:a, byte)
                   asm.load([:hl], :a)
                 end
                 asm.xor_a(:a)
@@ -1703,16 +1754,117 @@ module VBlank
                 asm.ei
                 asm.ret
               end
-              # Where the game comes in having worked the cell's place out itself, for a row and a
-              # cell written in the program and a column known to be on the map
-              # (Lowering::Picture#emit_cell_at_known_row, #emit_cell_at_known_place): HL the place,
-              # BC the cell.
-              asm.label("#{label}_at_hl")
+            end
+
+            # rt_picture_cells_late: the B cells from HL on that the blank did not reach, while the display
+            # draws. Each whose lines the display has not reached yet (rt_cell_ahead) goes in between
+            # two of its lines, as rt_cells_write_rest writes one; at the first it has reached, that
+            # cell and the rest are kept for the next blank (rt_picture_cells_kept), in order, so a cell
+            # changed twice in the pass ends with its last value.
+            def emit_cells_late(asm)
+              h = Console::GBCHardware
+              asm.label("rt_picture_cells_late")
+              asm.load(:a, [:hli])
+              asm.load(:e, :a)
+              asm.load(:a, [:hld])
+              asm.load(:d, :a)
+              asm.call("rt_cell_ahead")
+              asm.jump(:nc, "rt_picture_cells_kept")
+              asm.inc(:hl)
+              asm.inc(:hl)
+              asm.di
+              [0, 1].each do |bank|
+                asm.load(:a, bank)
+                asm.load_high(h::VBK, :a)
+                asm.load(:a, [:hli])
+                asm.load(:c, :a)
+                asm.label("rt_picture_cells_late_wait_#{bank}")
+                asm.load_high(:a, h::STAT)
+                asm.and_a(0x02)
+                asm.jump_relative(:nz, "rt_picture_cells_late_wait_#{bank}")
+                asm.load(:a, :c)
+                asm.load([:de], :a)
+              end
+              asm.xor_a(:a)
+              asm.load_high(h::VBK, :a)
+              asm.ei
+              asm.dec(:b)
+              asm.jump_relative(:nz, "rt_picture_cells_late")
+              asm.ret
+              emit_cell_ahead(asm)
+            end
+
+            # rt_cell_ahead(DE, a cell's place in a map): carry set when the display, drawing now, has not
+            # reached any line the cell shows on, so it can be written and show this frame; clear when
+            # it has. A cell is on screen where the background shows its map, from the background's
+            # scroll down (SCY), the top rows' cells cut off above the first line counting as reached;
+            # and where the window shows its map, from the window's top (WY). A cell of a map neither
+            # shows is never reached. Two lines ahead of the display, for the wait before its write.
+            # Keeps B, DE and HL.
+            def emit_cell_ahead(asm)
+              h = Console::GBCHardware
+              asm.label("rt_cell_ahead")
+              asm.push(:hl)
+              # C = the cell's row times eight: E's top three bits and D's low two.
+              asm.load(:a, :e)
+              asm.and_a(0xE0)
+              asm.srl(:a)
+              asm.srl(:a)
+              asm.load(:c, :a)
+              asm.load(:a, :d)
+              asm.and_a(0x03)
+              asm.rrca
+              asm.rrca
+              asm.or_a(:c)
+              asm.load(:c, :a)
+              # L = 4 for a cell of the second map, at 0x9C00, nought for the first.
+              asm.load(:a, :d)
+              asm.and_a(0x04)
+              asm.load(:l, :a)
+              asm.load_high(:a, h::LCDC)
+              asm.load(:h, :a)
+              asm.and_a(h::LCDC_BG_MAP1)
+              asm.rrca # the background's map as L has it
+              asm.cp_a(:l)
+              asm.jump_relative(:nz, "rt_cell_ahead_window")
+              asm.load_high(:a, h::SCY)
+              asm.load(:l, :a)
               asm.load(:a, :c)
-              asm.load_high(arg.call(3), :a)
-              asm.load(:a, :b)
-              asm.load_high(arg.call(3) + 1, :a)
-              asm.jump_relative("#{label}_place_found")
+              asm.sub_a(:l)
+              asm.cp_a(256 - 7) # the top rows, cut off above the first line
+              asm.jump_relative(:nc, "rt_cell_ahead_reached")
+              asm.jump_relative("rt_cell_ahead_line")
+              asm.label("rt_cell_ahead_window")
+              asm.bit(5, :h) # the window on
+              asm.jump_relative(:z, "rt_cell_ahead_yes")
+              asm.load(:a, :h)
+              asm.and_a(h::LCDC_WINDOW_MAP1)
+              asm.rrca
+              asm.rrca
+              asm.rrca
+              asm.rrca # the window's map as L has it
+              asm.cp_a(:l)
+              asm.jump_relative(:nz, "rt_cell_ahead_yes")
+              asm.load_high(:a, h::WY)
+              asm.add_a(:c)
+              asm.jump_relative(:c, "rt_cell_ahead_yes") # past the last line
+              asm.label("rt_cell_ahead_line") # A = the cell's first line
+              asm.cp_a(h::SCREEN_HEIGHT)
+              asm.jump_relative(:nc, "rt_cell_ahead_yes") # below the screen
+              asm.load(:l, :a)
+              asm.load_high(:a, h::LY)
+              asm.add_a(2)
+              asm.cp_a(:l) # carry when the display is more than two lines above the cell
+              asm.pop(:hl)
+              asm.ret
+              asm.label("rt_cell_ahead_reached")
+              asm.and_a(:a) # carry clear
+              asm.pop(:hl)
+              asm.ret
+              asm.label("rt_cell_ahead_yes")
+              asm.scf
+              asm.pop(:hl)
+              asm.ret
             end
 
             # CELLS WRITTEN WHILE THE DISPLAY IS DRAWING, to make room in a full CELLS. Video memory
@@ -1721,16 +1873,19 @@ module VBlank
             # not reading, with the interrupt held off from the wait to the write and open between
             # cells. The blank can come while this runs, write the list itself and empty it: writing
             # what is left of the list again changes nothing, since nothing is added to it meanwhile.
-            # rt_cells_write_now(A, how many there are) keeps HL, and comes back with A nought, the
-            # list's new length. rt_cells_write_rest is its loop, for the blank's own writing of the
-            # list to hand over to when the blank runs out: HL the next cell, B how many are left.
+            # rt_cells_write_now(A, how many there are) keeps HL and BC (the cell being changed), and
+            # comes back with A nought, the list's new length. rt_cells_write_rest is its loop, for the
+            # blank's own writing of the list to hand over to when the blank runs out: HL the next
+            # cell, B how many are left.
             def emit_cells_write_now(asm, memory)
               h = Console::GBCHardware
               asm.label("rt_cells_write_now")
               asm.push(:hl)
+              asm.push(:bc)
               asm.load(:b, :a)
               asm.load(:hl, memory[CELLS] + 1)
               asm.call("rt_cells_write_rest")
+              asm.pop(:bc)
               asm.pop(:hl)
               asm.ret
               asm.label("rt_cells_write_rest")

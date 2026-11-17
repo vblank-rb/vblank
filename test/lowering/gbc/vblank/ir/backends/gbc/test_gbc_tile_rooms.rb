@@ -70,6 +70,29 @@ class TestGBCTileRooms < Minitest::Test
     assert_match(/lists of colours/, error.message)
   end
 
+  # TILES DRAWN FROM ONE LIST OF FOUR take one list of colours between them, whether or not each
+  # draws its see-through place: a field drawn from seven lists and a bar drawn from one list of
+  # four, place 0 see-through, whose tiles draw some see-through and some solid, fit the eight.
+  # The backdrop is white, so the list's black is a colour of its own. The run checks the
+  # cartridge against the interpreter after every pass.
+  def test_tiles_of_one_list_drawn_see_through_and_solid_share_its_list
+    bar_list = [:transparent, VBlank::Graphics::Color.rgb(12, 4, 31), VBlank::Graphics::Color.rgb(31, 5, 4), :black]
+    field_lists = lists_from(0, 7)
+    program = color_program do
+      screen :tiled, backdrop: :white
+      row = ManyTiles.declare_listed(self, :field, field_lists)
+      colors :bar_list, bar_list
+      image :bar_solid, width: 8, height: 8, colors: :bar_list, places: Array.new(64) { |at| at < 32 ? 3 : 1 + (at % 2) }
+      image :bar_cursor, width: 8, height: 8, colors: :bar_list, places: Array.new(64) { |at| (at % 8) < 4 ? 3 : 0 }
+      tiles :bar_tiles, { "s" => :bar_solid, "c" => :bar_cursor }
+      background :field, tiles: :field, map: [row]
+      status_bar :bar, tiles: :bar_tiles, map: ["sc" * 10, "cs" * 10], top: screen_height - 16
+      game_loop { wait_vblank }
+    end
+
+    game_player.run(program, frames: 3)
+  end
+
   # ONE BACKGROUND WALKING BETWEEN TWO AREAS OF SIX LISTS OF COLOURS EACH: twelve between them, and
   # each area's lists come in with its tiles as a map of that area is shown. The run checks the
   # cartridge against the interpreter after every pass.

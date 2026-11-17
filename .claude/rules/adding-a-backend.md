@@ -118,8 +118,24 @@ writing an instruction is shared, because two copies of a decision drift apart:
   down what it was asked for. A step of the walk a lowering writes its own way is listed in
   `ControlFlow::OWN_WAYS` with its reason, and that test holds the lowerings to the list.
   `Backends::LoopForm` says which shape a `repeat` can take (its count kept in the game's own
-  variable), and `ControlFlow#index_below` what a loop's variable is known to stay under while its
+  variable) and which game `while` loops are counted ones (`while i < n` ending `i += 1`, with
+  nothing else in the loop writing `i`: `LoopForm#counted_while`), which `ControlFlow#emit_counted_while`
+  lowers as a counted loop held as a repeat's count is, and `ControlFlow#index_below` what a loop's variable is known to stay under while its
   body is written, so a read of a table or a list there needs no check of the index.
+- `Backends::NumberRanges` (`LoweringPlan#number_ranges`) — what range a value stays in, each
+  variable's and list's real range worked out together, which variables are proven to stay in a byte
+  or two, and which lists (a pool's fields among them) hold only numbers narrower than their slots
+  (`list_widths`), so a lowering whose processor works 8 or 16 bits at a
+  time compares and works such a number at that width and still gives `IR::Int32`'s answer: the SNES in
+  its 16-bit accumulator (`SNES::Lowering#compare_within_halves`), the Color a byte or two at a time
+  (`GBC::Lowering::SmallNumbers`); and each keeps such variables narrow, the Color in a byte or two
+  (`GBC::NarrowVariables`), the SNES in two bytes (`SNES::HalfVariables`).
+  `test/all/vblank/ir/backends/test_number_ranges.rb` holds the proof to the game, at the edges of 16
+  bits too.
+- `Backends::VariableUse` (`LoweringPlan#variable_use`) — how often a run names each variable, each
+  place weighted by the loops around it and a routine's by its calls, so a lowering whose console has
+  a little memory quicker than the rest keeps its busiest variables there: the SNES's direct page
+  (`SNES::Lowering#place_variables`).
 - `Backends::BuildTries` — a build as a series of tries, each a whole lowering with one set of
   settings (a Data), until one fits: each try timed and logged, what a try found kept for the
   tries after it, attempts the build can go back from, a better try kept only if it fits, and
@@ -247,6 +263,17 @@ interpreter (and the picture to the console's own model), so a wrong override fa
 shared piece is improved, the list shows which consoles do not get the improvement and must be
 measured again. The same job written more than once with no entry in the list is drift, and is
 filed as a bug.
+
+**A shared piece is a starting point, not an answer.** The rule above guards against drift; it
+never makes the shared way right by default. The first time a lowering runs a shared piece on a hot
+path (every frame, or once per object, pair or pixel), it is measured on that console against the
+console's own games doing the same job. A measured gap means the lowering gets its own way, listed
+with its reason as above. Pools showed why: one layout for every console (a list per field, 32-bit
+numbers, a slot multiplied into an index on each read, a stored loop counter) cost the Super
+Nintendo several times what the retail game spent on the same check, and nothing asked until a port
+nearly ran out of frame. **A new shared piece leaves room for a console's own way**: a choice a
+console can offer several of and pick between per use (as the pool layout lets a console offer
+layouts and pick one per pool, and a game name one), not one shape for all.
 
 A new backend is named for the platform it targets (`JS`, not `Canvas` or `V8`), lives in
 `lib/vblank/ir/backends/<name>.rb` beside a folder of the same name, and is required from
@@ -377,3 +404,9 @@ trails. On the way there, a test it cannot play yet skips itself with a reason
 (`skip_on_native` is native's version), and the run counts its skips by reason at the end so
 they cannot pile up. A hardware feature is not done until it works on every backend; when one is
 on the radar, record each backend's slice as its own piece of work.
+
+**Working is half of done.** On a console, a feature's hot path is done when its cost there is
+measured too, against the console's own games doing that job (or a budget written down with its
+reason where none did), and pinned by a test that names where the measurement came from: the game
+and routine, or the budget's reason. A cost above that is a bug filed then, not when a game hits
+it (`.claude/rules/shared/all-projects.md`, "Speed").

@@ -83,6 +83,10 @@ module VBlank
             # to date. +s+ is Paint's scratch.
             def emit_console(asm, memory, s)
               r = Paint::R
+              Paint.emit_fill_small(asm, checked: RepeatLog.kept?(memory)) do
+                small = RepeatLog::KIND_FILL | RepeatLog::HIGH_HALVES_NOUGHT
+                RepeatLog.emit_check(asm, memory, small, 20, now: "rt_paint_fill_small_now")
+              end
               asm.label("rt_paint_fill")
               # Passed over in a pass the same as the last, else written down (RepeatLog).
               RepeatLog.emit_check(asm, memory, RepeatLog::KIND_FILL, 20) if RepeatLog.kept?(memory)

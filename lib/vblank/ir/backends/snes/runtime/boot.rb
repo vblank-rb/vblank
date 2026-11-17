@@ -17,7 +17,8 @@ module VBlank
           # cleared at power-on: the stack at the top of the first 8K of work RAM, the direct page
           # at its bottom, the data bank at $80 (so a 16-bit address reaches that 8K, the hardware's
           # registers and the cartridge's first bank alike), every register of the picture chip,
-          # all of work RAM, video RAM, the colour memory and the sprite table. The screen stays off
+          # the work RAM the game uses, the video RAM its picture reads before writing it (Cleared),
+          # the colour memory and the sprite table. The screen stays off
           # ("forced blank") until the end of the first pass of the game, when what the game set up
           # is on it (Runtime::Frame).
           #
@@ -57,7 +58,7 @@ module VBlank
             # memories are cleared in the order #emit_memories_cleared gives, with the interrupt
             # switched on as soon as the part of work RAM the interrupt keeps its numbers in is
             # cleared.
-            def emit(asm, main:, fast: true, counted: false)
+            def emit(asm, main:, cleared:, fast: true, counted: false)
               h = Console::SNESHardware
               asm.label("rt_boot")
               asm.rep(0x30)
@@ -78,7 +79,7 @@ module VBlank
               asm.stz(asm.abs(h::NMITIMEN))
               asm.rep(0x20)
               emit_registers_cleared(asm)
-              counted ? emit_memories_cleared_counted(asm) : emit_memories_cleared(asm)
+              counted ? emit_memories_cleared_counted(asm, cleared) : emit_memories_cleared(asm, cleared)
               asm.jsl(asm.long("rt_start"))
               asm.jsl(asm.long(main))
               asm.label("rt_main_returned")
@@ -108,80 +109,111 @@ module VBlank
               asm.rep(0x20)
             end
 
+            # WHAT SETTING UP CLEARS, and nothing else: the copying engine takes eight of the console's
+            # clock cycles a byte with the processor stopped, so all 128K of work RAM and all 64K of video
+            # RAM were most of the first six frames. +work_ram+ is the ranges of long addresses the build
+            # placed something in (Memory#placed_ranges); +video_ram+ the ranges of word addresses the
+            # picture reads before the game has written them whole, a length in words each
+            # (#video_ram_read). The colour memory and the sprite table are always cleared whole.
+            Cleared = Data.define(:work_ram, :video_ram)
+
+            # A RANGE OF VIDEO RAM: its first word and how many words.
+            VideoRange = Data.define(:word, :words)
+
+            # THE VIDEO RAM THE PICTURE READS AND DOES NOT WRITE WHOLE BEFORE IT IS SHOWN. On a tiled
+            # screen the backgrounds' and sprites' tiles in use are copied in by the picture's start
+            # (Runtime::Picture: tile 0 among them, the empty cell), and every other tile is named by no
+            # cell and no sprite until something copies it in first; but a layer's map is shown whether
+            # the game put a background up on it or not, and a map put up covers only its own cells, so
+            # the maps are cleared, an empty cell being tile 0: the two layers' and, where it is on, the
+            # third's. A painted screen's start leaves cells showing its clear tile, which is black only
+            # because video RAM starts at nought, so a painted screen's is cleared whole.
+            def video_ram_read(painted:, third_layer:)
+              return Ractor.make_shareable([VideoRange.new(word: 0, words: 0x8000)]) if painted
+
+              maps = Picture::LAYER_MAPS.map { |word| VideoRange.new(word: word, words: 0x1000) }
+              maps.unshift(VideoRange.new(word: Picture::THIRD_LAYER_MAP, words: 0x400)) if third_layer
+              Ractor.make_shareable(maps)
+            end
+
             # Work RAM, video RAM, the colour memory and the sprite table, all noughts, by the copying
-            # engine's channel 0 from a byte of nought in the cartridge (rt_zero).
-            def emit_memories_cleared(asm)
-              h = Console::SNESHardware
-              # Video RAM: 64K, the two ports by turns.
-              asm.stz(asm.abs(h::VMADDL))
-              emit_fill(asm, h::DMA_TO_TWO_PORTS | h::DMA_FIXED_SOURCE, h::VMDATAL & 0xFF, 0)
-              # The colour memory: 512 bytes.
-              asm.sep(0x20)
-              asm.stz(asm.abs(h::CGADD))
-              asm.rep(0x20)
-              emit_fill(asm, h::DMA_FIXED_SOURCE, h::CGDATA & 0xFF, 512)
-              # The sprite table: 544 bytes. A sprite at nought would show at the top left, so every
-              # sprite is put below the screen afterwards by the picture's own start (Runtime::Picture).
-              asm.stz(asm.abs(h::OAMADDL))
-              emit_fill(asm, h::DMA_FIXED_SOURCE, h::OAMDATA & 0xFF, 544)
-              # Work RAM, all 128K but the stack in use: through its own port, from $7E:0000, two
-              # copies of 64K.
-              asm.stz(asm.abs(h::WMADDL))
-              asm.sep(0x20)
-              asm.stz(asm.abs(h::WMADDL + 2))
-              asm.rep(0x20)
-              2.times { emit_fill(asm, h::DMA_FIXED_SOURCE, h::WMDATA & 0xFF, 0) }
+            # engine's channel 0 from a byte of nought in the cartridge (rt_zero): each a range of
+            # +cleared+ (a Cleared), copies of 64K at most.
+            def emit_memories_cleared(asm, cleared)
+              emit_video_ram_cleared(asm, cleared.video_ram, 0x10000)
+              emit_colors_and_sprites_cleared(asm)
+              cleared.work_ram.each { |range| emit_work_ram_cleared(asm, range, 0x10000) }
             end
 
             # The same memories cleared with the screen's interrupt counting the frames it takes.
             #
             # The processor stops while the copying engine works, so the interrupt of a blank that
             # begins during a copy waits for the copy to end. It is not lost, but only one can wait:
-            # a copy that outlasts a frame loses a blank. So every copy here is COUNTED_FILL_BYTES,
-            # well under a frame. (Reading whether a blank has begun between copies would not do:
+            # a copy that outlasts a frame loses a blank. So every copy here is COUNTED_FILL_BYTES at
+            # most, well under a frame. (Reading whether a blank has begun between copies would not do:
             # the mark a blank sets is cleared again as the blank ends.)
             #
             # The interrupt keeps its numbers in the first 8K of work RAM, which the first copy
             # clears: the power comes on at the top of the picture, and the first blank begins
             # most of a frame later. The interrupt is switched on then, and the rest is cleared: the
-            # video RAM, the colours, the sprites and the rest of work RAM, whose port goes on from
-            # where the first copy ended.
-            def emit_memories_cleared_counted(asm)
-              h = Console::SNESHardware
-              asm.stz(asm.abs(h::WMADDL))
-              asm.sep(0x20)
-              asm.stz(asm.abs(h::WMADDL + 2))
-              asm.rep(0x20)
-              emit_fill(asm, h::DMA_FIXED_SOURCE, h::WMDATA & 0xFF, COUNTED_FILL_BYTES)
+            # video RAM, the colours, the sprites and the rest of work RAM.
+            def emit_memories_cleared_counted(asm, cleared)
+              first, *rest = cleared.work_ram
+              head = first.begin...[first.begin + COUNTED_FILL_BYTES, first.end].min
+              emit_work_ram_cleared(asm, head, COUNTED_FILL_BYTES)
               Runtime.emit_interrupt_on(asm)
-              asm.stz(asm.abs(h::VMADDL))
-              emit_fill(asm, h::DMA_TO_TWO_PORTS | h::DMA_FIXED_SOURCE, h::VMDATAL & 0xFF, COUNTED_FILL_BYTES)
-              emit_fill_repeated(asm, "rt_boot_video_ram_cleared", (0x10000 / COUNTED_FILL_BYTES) - 1)
+              emit_video_ram_cleared(asm, cleared.video_ram, COUNTED_FILL_BYTES)
+              emit_colors_and_sprites_cleared(asm)
+              emit_work_ram_cleared(asm, head.end...first.end, COUNTED_FILL_BYTES) if head.end < first.end
+              rest.each { |range| emit_work_ram_cleared(asm, range, COUNTED_FILL_BYTES) }
+            end
+
+            # The colour memory, 512 bytes, and the sprite table, 544. A sprite at nought would show at
+            # the top left, so every sprite is put below the screen afterwards by the picture's own start
+            # (Runtime::Picture).
+            def emit_colors_and_sprites_cleared(asm)
+              h = Console::SNESHardware
               asm.sep(0x20)
               asm.stz(asm.abs(h::CGADD))
               asm.rep(0x20)
               emit_fill(asm, h::DMA_FIXED_SOURCE, h::CGDATA & 0xFF, 512)
               asm.stz(asm.abs(h::OAMADDL))
               emit_fill(asm, h::DMA_FIXED_SOURCE, h::OAMDATA & 0xFF, 544)
-              emit_fill(asm, h::DMA_FIXED_SOURCE, h::WMDATA & 0xFF, COUNTED_FILL_BYTES)
-              emit_fill_repeated(asm, "rt_boot_work_ram_cleared", (0x20000 / COUNTED_FILL_BYTES) - 2)
             end
 
-            # The last fill made again +times+ times more, COUNTED_FILL_BYTES each, counted in Y: a fill
-            # from a byte that does not move leaves every setting of the channel but its count as it was.
-            # +label+ names the loop.
-            def emit_fill_repeated(asm, label, times)
+            # Each range of video RAM (VideoRange), the two ports by turns, in copies of +most+ bytes.
+            def emit_video_ram_cleared(asm, ranges, most)
               h = Console::SNESHardware
-              asm.ldy(times)
-              asm.label(label)
-              asm.lda(COUNTED_FILL_BYTES)
-              asm.sta(asm.abs(h::DMA_BASE + h::DASL))
+              ranges.each do |range|
+                asm.lda(range.word)
+                asm.sta(asm.abs(h::VMADDL))
+                emit_fills(asm, h::DMA_TO_TWO_PORTS | h::DMA_FIXED_SOURCE, h::VMDATAL & 0xFF, range.words * 2, most)
+              end
+            end
+
+            # The long addresses of +range+, through work RAM's own port from its first, in copies of
+            # +most+ bytes: the port's address is the distance from $7E:0000, seventeen bits of it.
+            def emit_work_ram_cleared(asm, range, most)
+              h = Console::SNESHardware
+              distance = range.begin - WORK_RAM_START
+              asm.lda(distance & 0xFFFF)
+              asm.sta(asm.abs(h::WMADDL))
               asm.sep(0x20)
-              asm.lda(1)
-              asm.sta(asm.abs(h::MDMAEN))
+              asm.lda(distance >> 16)
+              asm.sta(asm.abs(h::WMADDL + 2))
               asm.rep(0x20)
-              asm.dey
-              asm.bne(label)
+              emit_fills(asm, h::DMA_FIXED_SOURCE, h::WMDATA & 0xFF, range.size, most)
+            end
+
+            # Where work RAM starts as a long address.
+            WORK_RAM_START = 0x7E0000
+
+            # +bytes+ to the port $21+port, in copies of +most+ bytes at most; a copy of 64K is a count
+            # of nought.
+            def emit_fills(asm, mode, port, bytes, most)
+              bytes.fdiv(most).ceil.times do |i|
+                emit_fill(asm, mode, port, [most, bytes - (i * most)].min & 0xFFFF)
+              end
             end
 
             # Channel 0 copying the byte at rt_zero to the port $21+port, +count+ times (0 is 65536).

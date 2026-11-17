@@ -320,7 +320,9 @@ module VBlank
       #
       # @param name [Symbol] the background's name
       # @param tiles [Symbol, Hash] a tileset defined with {#tiles}, or a Hash of area =>
-      #   tileset for a background that walks between areas (see #background_from_sets)
+      #   tileset for a background that walks between areas (see #background_from_sets). From the
+      #   data pack, tiles:, map: and colors: can each be a Hash of slots by area
+      #   (Builder::PackBackgrounds#declare_pack_background_areas)
       # @param map [String, Array<String>, Array<Array>, Hash, nil] the grid of tileset
       #   keys — rows of characters, or rows of keys — or a Hash of name => grid for a
       #   background with several maps; for one that walks between areas, a Hash of
@@ -338,15 +340,21 @@ module VBlank
       #   original's cell numbers `set_cell` may write later (Builder::PackBackgrounds)
       # @return [Background] a handle: scroll_by / scroll_to / show_map
       def background(name, tiles:, map: nil, from: nil, walls: nil, above_row: nil, alone: false, held: false, colors: nil,
-                     across: nil, cell: nil, set_cells: nil)
+                     across: nil, cell: nil, set_cells: nil, cells_in_front: nil)
+        if pack_areas?(tiles, map, colors)
+          # Each area's own slots from the data pack (Builder::PackBackgrounds), walked between.
+          return declare_pack_background_areas(name, tiles: tiles, map: map, colors: colors, across: across, cell: cell || 8,
+                                                     set_cells: set_cells, cells_in_front: cells_in_front, walls: walls,
+                                                     above_row: above_row, alone: alone, held: held)
+        end
         if tiles.is_a?(DSL::PackSlot)
           # The original's own tiles, map and colours, from the data pack (Builder::PackBackgrounds).
           return declare_pack_background(name, tiles: tiles, map: map, colors: colors, across: across, cell: cell || 8,
-                                               set_cells: set_cells, walls: walls, above_row: above_row, alone: alone,
-                                               held: held)
+                                               set_cells: set_cells, cells_in_front: cells_in_front, walls: walls,
+                                               above_row: above_row, alone: alone, held: held)
         end
 
-        refuse_pack_background_settings!(name, colors, across, cell, set_cells)
+        refuse_pack_background_settings!(name, colors, across, cell, set_cells, cells_in_front)
         refuse_bad_above_row!(name, above_row)
         refuse_bad_alone!(name, alone, above_row)
         refuse_bad_held!(name, held)
@@ -391,9 +399,10 @@ module VBlank
 
       private
 
-      # colors:, across:, cell: and set_cells: describe a background whose tiles come from the data pack.
-      def refuse_pack_background_settings!(name, colors, across, cell, set_cells)
-        given = { colors: colors, across: across, cell: cell, set_cells: set_cells }.compact.keys
+      # colors:, across:, cell:, set_cells: and cells_in_front: describe a background whose tiles come
+      # from the data pack.
+      def refuse_pack_background_settings!(name, colors, across, cell, set_cells, cells_in_front)
+        given = { colors: colors, across: across, cell: cell, set_cells: set_cells, cells_in_front: cells_in_front }.compact.keys
         return if given.empty?
 
         raise ArgumentError, "background :#{name} was given #{given.map { |key| "#{key}:" }.join(', ')}, which only a " \
@@ -612,11 +621,12 @@ module VBlank
                              solid_cells: wall_grids(name, map_names, drawn, set, walls),
                              # ...and which tiles are walls, so a cell set_tile changes takes
                              # its tile's: walls written apart with `walls:` set nothing about tiles.
-                             solid_tiles: walls.nil? && !sets ? solid_tile_numbers(tile_names, set) : nil,
+                             solid_tiles: walls.nil? && !tiles.is_a?(Hash) ? solid_tile_numbers(tile_names, set) : nil,
                              tile_size: [set[:tile_w], set[:tile_h]],
-                             walks_areas: !sets.nil?,
+                             # Areas, though all of one set of tiles (#background_from_sets).
+                             walks_areas: tiles.is_a?(Hash),
                              held: held,
-                             tile_pictures: sets ? tile_names.uniq : (set[:by_key].values + set[:by_number].values).uniq)
+                             tile_pictures: tiles.is_a?(Hash) ? tile_names.uniq : (set[:by_key].values + set[:by_number].values).uniq)
         @background_handles.last
       end
 
@@ -876,6 +886,16 @@ module VBlank
       # the walls, read off pictures, and the tile size), the map names, each map's grid of
       # pictures, every set's tiles one after another, each map as numbers into those, and
       # the three operands that hold which tiles and maps belong to which set.
+      #
+      # AREAS OF THE SAME TILES ARE ONE SET. Two areas whose tilesets hold the same pictures
+      # (one tileset named for both, or a data pack's areas over one slot of tiles) are one
+      # set, named for the first of them, and each area's maps number into it. A walk between
+      # them then hands the layer another map and nothing else: no tiles come in, so no frame
+      # is spent with the layers off. A console's own games keep several maps over one stretch
+      # of tiles in video memory and point the layer at another (GBATEK, "LCD I/O BG Control":
+      # a layer's tiles and its map are chosen apart). Where every area is of one set the
+      # background walks between no sets at all, and its maps take turns in one grid as any
+      # background's several maps do; the third operand is then nil.
       def background_from_sets(name, tiles, map, from)
         refuse_tile_sets_shape!(name, tiles, map, from)
         sets = tiles.transform_values { |tileset| tileset!(name, tileset) }
@@ -885,17 +905,23 @@ module VBlank
         drawn = []
         grids = []
         tile_names = []
+        set_names = []
         set_starts = []
         map_sets = []
-        tiles.each_key.with_index do |area, number|
+        set_of_tiles = {}
+        tiles.each_key do |area|
           names, area_drawn = background_maps(name, tiles[area], sets[area], map: map[area], from: nil)
           area_drawn = [area_drawn.first] if names == [name] # one map given as a grid, not a Hash
           names = [area] if names == [name]
-          start = tile_names.length
           area_tiles = area_drawn.first.last
+          number = set_of_tiles.fetch(area_tiles) do
+            set_names << area
+            set_starts << tile_names.length
+            tile_names.concat(area_tiles)
+            set_of_tiles[area_tiles] = set_names.length - 1
+          end
+          start = set_starts[number]
           index_of = area_tiles.each_with_index.to_h { |image, i| [image, start + i] }
-          set_starts << start
-          tile_names.concat(area_tiles)
           area_drawn.each do |rows, _|
             grids << rows.map { |row| row.map { |img| img && index_of[img] } }
             map_sets << number
@@ -908,8 +934,8 @@ module VBlank
         every = sets.values
         merged = { by_key: {}, by_number: {}, tile_w: every.first[:tile_w], tile_h: every.first[:tile_h],
                    solid_images: every.flat_map { |set| set[:solid_images] || [] }.uniq }
-        [merged, map_names, drawn, tile_names, grids,
-         { sets: tiles.keys, set_starts: set_starts, map_sets: map_sets }]
+        walked = { sets: set_names, set_starts: set_starts, map_sets: map_sets } unless set_names.one?
+        [merged, map_names, drawn, tile_names, grids, walked]
       end
 
       def refuse_tile_sets_shape!(name, tiles, map, from)

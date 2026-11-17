@@ -563,6 +563,17 @@ def rg_sprites_paint_level(level)
   end
 end
 
+# Reference#paint_sprites_in_front: rg_sprites.c's.
+def rg_sprites_repaint_ending
+  @rg_sprite_layer.each do |placed|
+    next if @rg_game_sprites_in_front[placed.sprite].zero?
+
+    rg_mix_as_sprite(placed.sprite)
+    rg_fade_unless_left_as_drawn(@rg_game_sprite_fade_places[placed.sprite])
+    rg_paint_kept_sprite(placed)
+  end
+end
+
 # Reference#exec_screen: what was under each sprite went with the old screen, so nothing is put back
 # over the new one. A console that places its sprites at the end of a pass takes them off after this.
 def rg_sprites_screen_crossed(_new_kind)

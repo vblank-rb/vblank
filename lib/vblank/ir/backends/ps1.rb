@@ -32,6 +32,7 @@ require_relative "ps1/lowering/picture"
 require_relative "ps1/lowering/collision"
 require_relative "ps1/lowering/faces"
 require_relative "ps1/lowering/sound"
+require_relative "ps1/lowering/shown_sort"
 require_relative "ps1/lowering"
 require_relative "ps1/headless_run"
 require_relative "ps1/polygon_fill" # the chip's fill of a triangle, the answer key the checked run draws faces with
@@ -72,8 +73,10 @@ module VBlank
         # that makes no sound), and +sound_voicing+ what the writes for those entries are worked out with
         # (SPUWrites::Voicing: the loops in the sound chip's memory, and the songs' parts), or nil.
         # +recording_names+ is the game's recordings by the number a place playing one keeps.
+        # +slot_places+ is where each of a pool's lists keeps its slots, as its layout placed it
+        # (Backends::PoolLayout::SlotPlace, Lowering#place_pools), by list.
         Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :bytes, :routines, :sound_entries,
-                             :sound_voicing, :recording_names) do
+                             :sound_voicing, :recording_names, :slot_places) do
           # Where the runtime counts the times the game has waited for the screen.
           def waits_counted_at = runtime.fetch(Runtime::Frame::PASSES)
 
@@ -143,7 +146,8 @@ module VBlank
                              runtime: memory.places.select { |name, _| name.start_with?("rt ") },
                              source_program: program, code: linked.places, bytes: byte_counts(linked),
                              routines: game_routines(lowering, linked), sound_entries: lowering.sound_entries,
-                             sound_voicing: (lowering.sound_voicing if lowering.sound?), recording_names: lowering.recording_names)
+                             sound_voicing: (lowering.sound_voicing if lowering.sound?), recording_names: lowering.recording_names,
+                             slot_places: lowering.slot_places)
           Cartridge::PS1EXE.new(linked.image, title: title, entry: linked.address_of("rt_boot"), load_at: memory.program_at,
                                               built: built)
         end

@@ -74,7 +74,20 @@ class TestDOSEXE < Minitest::Test
     assert_equal "TEST", executable.title
   end
 
-  def test_a_program_with_more_segment_words_than_the_header_has_room_for_is_refused
+  # More segment words than fit before the title: the table after it, the header grown to hold it, and the
+  # image after that.
+  def test_a_program_with_many_segment_words_has_a_longer_header
+    many = Array.new(DOSEXE::ROOM_BEFORE_TITLE + 1) { |at| [0, at * 2] }
+    bytes = DOSEXE.new("IMAGE".b, title: "X", entry: [0, 0], stack: [0, 0], relocations: many).bytes
+    paragraphs = bytes.unpack1("@8v")
+
+    assert_equal [many.size, 512], bytes.unpack("@6v@24v")
+    assert_equal [2, 0], bytes.unpack("@516v2"), "the second segment word, after the title"
+    assert_equal "X", DOSEXE.title_field_of(bytes).delete("\0")
+    assert_equal "IMAGE", bytes.byteslice(paragraphs * 16, 5)
+  end
+
+  def test_a_program_with_more_segment_words_than_a_word_counts_is_refused
     too_many = Array.new(DOSEXE::MOST_RELOCATIONS + 1) { [0, 0] }
 
     assert_raises(ArgumentError) { DOSEXE.new("".b, title: "X", entry: [0, 0], stack: [0, 0], relocations: too_many) }

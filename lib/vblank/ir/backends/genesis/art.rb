@@ -37,8 +37,15 @@ module VBlank
 
           TILE_BYTES = 32
 
-          # A cell of a map: the tile in the low eleven bits, the palette in the two bits at 13.
+          # A cell of a map: the tile in the low eleven bits, the palette in the two bits at 13, and its
+          # priority in the top bit: a cell with it set is drawn in front of every sprite whose own
+          # priority is clear, which is every sprite this build draws.
           PALETTE_SHIFT = 13
+          PRIORITY = 0x8000
+
+          # The word of a plane's map for +cell+ ([tile number, palette], with a third part true for a
+          # cell in front of the sprites), or 0 for none.
+          def self.cell_word(cell) = cell ? cell[0] | (cell[1] << PALETTE_SHIFT) | (cell[2] ? PRIORITY : 0) : 0
 
           # A sprite's picture, cut into pieces: each piece where it sits in the picture, its first tile, its
           # palette, and how many tiles across (+columns+) and down (+rows+) it is, one to four each. +tile+
@@ -233,13 +240,12 @@ module VBlank
           # Every number the painted tile +name+ has in video memory: one for each store that shows it.
           def run_tile_numbers(name) = @run_tiles.filter_map { |(_, tile), number| number if tile == name }
 
-          # The map +cells+ ([tile, palette] or nil, by row and column) made into a grid of +columns+ ×
+          # The map +cells+ ([tile, palette] or nil, by row and column, Art.cell_word) made into a grid of +columns+ ×
           # +rows+ cells, and its number.
           def grid(cells, columns, rows)
             words = Array.new(rows) do |row|
               Array.new(columns) do |column|
-                cell = cells.dig(row, column)
-                cell ? cell[0] | (cell[1] << PALETTE_SHIFT) : 0
+                Art.cell_word(cells.dig(row, column))
               end
             end.flatten
             @grids << Grid.new(number: @grids.length, columns: columns, rows: rows, words: words)
@@ -298,6 +304,41 @@ module VBlank
               pieces = cut.blocks.map do |block|
                 Piece.new(dx: block.dx, dy: block.dy, palette: block.palette, columns: block.columns, rows: block.rows,
                           tile: @tiles.word_of_run(block.tiles, block.columns, block.rows, sprite_taker(name)))
+              end
+              SpritePicture.new(name: name, number: @sprite_pictures.length, width: cut.width, height: cut.height, pieces: pieces)
+            end
+          end
+
+          # The sprite picture +name+ as cut (#cut_sprite_picture), or nil for one not cut yet.
+          def cut_of(name) = @cuts[name]
+
+          # The tiles of the picture +name+, cut already, in the order its pieces name them: each piece's
+          # down its columns, the pieces in the sprite table's order. What a ROOM FOR ONE POSE holds while
+          # the picture is shown (#room_picture).
+          def cut_tiles(name) = @cuts.fetch(name).blocks.flat_map(&:tiles)
+
+          # A ROOM FOR ONE POSE (Lowering::PoseRooms): +count+ tiles in a row among the tiles every screen
+          # shows, blank at power-on and never shared with a picture however alike, since the game copies
+          # the pose a sprite shows into them as it runs. Its first tile's number. Must be made before a
+          # scene takes its copy of the tiles (#with_tiles_of), so it is in video memory whatever is up.
+          def pose_room(count, taker)
+            raise LoweringError, "a room for one pose was made after a scene took its copy of the tiles" unless @scene_stores.empty?
+
+            Array.new(count) { @shared_tiles.own_tile(taker) }.first
+          end
+
+          # THE PICTURE +name+, CUT ALREADY, DRAWN FROM A ROOM FOR ONE POSE whose first tile is +first+, kept
+          # under +key+: each piece names its tiles in the room, in the order #cut_tiles lays them there, and
+          # none is turned, since the room holds them as the picture shows them.
+          def room_picture(key, name, first)
+            @sprite_pictures[key] ||= begin
+              cut = @cuts.fetch(name)
+              at = first
+              pieces = cut.blocks.map do |block|
+                piece = Piece.new(dx: block.dx, dy: block.dy, palette: block.palette, columns: block.columns,
+                                  rows: block.rows, tile: at)
+                at += block.tiles.length
+                piece
               end
               SpritePicture.new(name: name, number: @sprite_pictures.length, width: cut.width, height: cut.height, pieces: pieces)
             end
@@ -494,7 +535,7 @@ module VBlank
           # at the end and not as each tile is stored, so the refusal can say how many tiles are wanted
           # and which pictures took the most.
           def refuse_too_many_tiles!
-            scene, store = [[nil, @shared_tiles], *@scene_stores.to_a].find { |_, tiles| tiles.length - 1 > @most_tiles }
+            scene, store = store_past_room
             return unless store
 
             wanted = store.length - 1
@@ -515,6 +556,12 @@ module VBlank
             raise TooManyTiles, "The pictures need #{wanted} different 8×8 squares of picture. #{counted} To fix this, " \
                                 "use fewer different pictures."
           end
+
+          # Whether the tiles do not fit (#refuse_too_many_tiles!).
+          def too_many_tiles? = !store_past_room.nil?
+
+          # The first list of tiles past the room, with its scene (nil for the tiles every screen shows), or nil.
+          def store_past_room = [[nil, @shared_tiles], *@scene_stores.to_a].find { |_, tiles| tiles.length - 1 > @most_tiles }
 
           # How many of the pictures that took the most tiles a refusal names.
           BIGGEST_TAKERS_NAMED = 5

@@ -265,15 +265,32 @@ class TestGenesisSound < Minitest::Test
       end
     end
 
-    assert_in_delta RECORDED_HZ, heard, 2
+    assert_in_delta pitch_alone, heard, HELD_HZ
   end
 
+  # The video chip's copy stops the sound processor every frame. Each stop's samples are passed over
+  # once the second timer comes round, so the recording is where its clock says, however the stops
+  # fall: a sample lost at each stop would read a few hertz flat.
   def test_a_recording_keeps_its_pitch_while_a_painted_screen_sends_tiles_every_pass
     heard = pitch_while(:bitmap) do
       game_loop { 16.times { |k| fill_rect 8 + (k * 16), 100, 8, 8, :red } }
     end
 
-    assert_in_delta RECORDED_HZ, heard, 2
+    assert_in_delta pitch_alone, heard, HELD_HZ
+  end
+
+  # A painted screen's game started a few frames later or earlier keeps it as well: where the copies
+  # fall against the sound processor's ticks moves with the start.
+  def test_a_recording_keeps_its_pitch_on_a_painted_screen_however_long_setting_up_takes
+    heard = [100, 3_000, 9_000].map do |spins|
+      pitch_while(:bitmap) do
+        spun = 0
+        repeat(spins) { spun += 1 }
+        game_loop { 16.times { |k| fill_rect 8 + (k * 16), 100, 8, 8, :red } }
+      end
+    end
+
+    heard.each { |pitch| assert_in_delta pitch_alone, pitch, HELD_HZ, "heard #{heard}" }
   end
 
   private
@@ -283,10 +300,29 @@ class TestGenesisSound < Minitest::Test
   # One wave of it, in the emulator's samples.
   WAVE_SAMPLES = SAMPLE_RATE / RECORDED_HZ
 
-  # The pitch +clip+ is heard at, looping, in a game that also does +game+ on a +kind+ of screen:
-  # the waves between the first upward crossing of the middle and the last, over the last third
-  # of a second.
-  def pitch_while(kind = :tiled, clip: CLIP, &game) = pitch_of_waves(waves_while(kind, clip: clip, &game))
+  # The pitch +clip+ is heard at, looping, in a game that also does +game+ on a +kind+ of screen,
+  # over the last three seconds of four, its waves counted by the gaps between crossings
+  # (#pitch_of_gaps).
+  def pitch_while(kind = :tiled, clip: CLIP, &game)
+    pitch_of_gaps(waves_while(kind, clip: clip, frames: 240, seconds: 3, &game))
+  end
+
+  # THE WAVES BETWEEN THE FIRST CROSSING AND THE LAST, each gap between two crossings counted as the
+  # whole waves of the clip it spans. Samples passed over after a stop can take the clip past its
+  # upward edge without sounding it, and a count of crossings then reads that wave as lost, flat by
+  # a hertz or more over three seconds, though the recording is where its clock says; counted by
+  # the gaps, the wave is there, and a recording truly slow still makes every gap longer.
+  def pitch_of_gaps(crossings)
+    waves = crossings.each_cons(2).sum { |before, after| ((after - before) / WAVE_SAMPLES).round }
+    waves * SAMPLE_RATE / (crossings.last - crossings.first)
+  end
+
+  # The clip's pitch in a game that does nothing else: the console's own for it, a little off
+  # RECORDED_HZ, since a step is kept in 256ths of a sample.
+  def pitch_alone = pitch_while { game_loop { nil } }
+
+  # How close a busy game's pitch keeps to that: a wave lost in three seconds is a third of a hertz.
+  HELD_HZ = 0.5
 
   # Where +clip+, looping in that game, crosses its middle going up, in the emulator's samples, over
   # the last +seconds+ of +frames+.

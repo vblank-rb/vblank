@@ -354,7 +354,9 @@ module VBlank
         running = var(:"#{routine}_running", 0)
         stepping = var(:"#{routine}_stepping", 0)
         # A new game stops a job the last game left running.
-        [running, stepping].each { |flag| add_part_member(:var, flag.name, framework: true) }
+        add_part_member(:var, running.name, framework: true)
+        # Not saved: a load made half way through a step would start the job with its first step skipped.
+        add_part_member(:var, stepping.name, framework: true, saved: false)
         job = DSL::PassJob.new(self, routine: routine, running: running, stepping: stepping)
         declare_func(routine, wrote: name ? "each_pass :#{name}" : "each_pass") do
           stepping = 1

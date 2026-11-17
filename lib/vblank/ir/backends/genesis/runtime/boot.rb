@@ -23,10 +23,10 @@ module VBlank
           #
           # THE VIDEO CHIP is told its settings (a table of its registers the lowering writes, since the
           # size of a picture's planes is the game's), and its three memories — video RAM, colour
-          # memory and scroll memory — are cleared by writing noughts through its data port, the
-          # screen off all the while: it stays off until the end of the first pass of the game, when
-          # what the game set up is on it (Runtime::Frame). Work RAM is cleared last, and by code that
-          # makes no calls, since the stack lives in it.
+          # memory and scroll memory — are cleared, video RAM by the chip's own fill while the processor
+          # clears work RAM (#emit_memories_cleared), the screen off all the while: it stays off until
+          # the end of the first pass of the game, when what the game set up is on it (Runtime::Frame).
+          # Work RAM is cleared by code that makes no calls, since the stack lives in it.
           module Boot
             module_function
 
@@ -53,7 +53,7 @@ module VBlank
               emit_sound_quiet(asm, h)
               emit_video_chip(asm, h, registers)
               emit_counting_on(asm, counting) if counting
-              emit_memories_cleared(asm, h, kept_bytes: counting ? counting.bytes : 0)
+              emit_memories_cleared(asm, h, kept_bytes: counting ? counting.bytes : 0, counting: !counting.nil?)
               asm.movea(:l, asm.imm(Memory::BASE), asm.a(5))
               asm.move(:w, asm.d(7), asm.disp(5, held_at))
               asm.jsr(asm.abs_l("rt_start"))
@@ -111,24 +111,82 @@ module VBlank
               Runtime.emit_interrupt_on(asm)
             end
 
-            # Video RAM, 64K; colour memory, 64 words; vertical scroll memory, 40 words; each with the
-            # chip pointed at its start and the address moving on by a word, and then work RAM, 64K,
-            # which the code clears through A0 with no call: all of it but its first +kept_bytes+, which
-            # the interrupt counts in (#emit_counting_on).
-            def emit_memories_cleared(asm, h, kept_bytes: 0)
+            # VIDEO RAM, 64K, IS FILLED BY THE VIDEO CHIP ITSELF WHILE THE PROCESSOR CLEARS WORK RAM. Written
+            # through the data port it was the processor's work, a long word an instruction, the chip taking
+            # each at its own pace. A DMA fill instead takes one word through the data port and writes its
+            # byte into as many places as the DMA length registers name (nought is 64K), the address moving on
+            # by the increment register each time, all on the chip's own access slots: the processor is not
+            # stopped, unlike a copy from work RAM, and goes on to clear work RAM while it runs. Asked for by
+            # a write command with the DMA bit (COMMAND_DMA) when the mode register lets the chip do DMA and
+            # the top two bits of register 23 are 2. Nothing may write the chip's registers until the fill
+            # is done, since that ends it early, so the processor waits on the status's DMA-busy bit (bit 1)
+            # after work RAM before it clears the colours and the scroll memory a word at a time as before.
+            # (Genesis Plus GX, core/vdp_ctrl.c: vdp_68k_ctrl_w's DMA Fill case, vdp_68k_data_w,
+            # vdp_dma_fill, and the transfer counts atop vdp_dma_update.)
+            #
+            # Work RAM, all of it but its first +kept_bytes+, which the interrupt counts in
+            # (#emit_counting_on), is cleared by code that makes no call, from the top down: MOVEM writes
+            # eight registers of noughts below A0 in one instruction, eight of those a turn, so the loop's
+            # own instructions are paid once every 256 bytes; the bytes left below the last whole turn are
+            # cleared a long word at a time. D7 holds the buttons from power-on and is not one of them.
+            def emit_memories_cleared(asm, h, kept_bytes: 0, counting: false)
               asm.moveq(0, asm.d(0))
-              asm.move(:l, asm.imm(Console::GenesisHardware.command(h::WRITE_VRAM, 0)), asm.abs_l(h::VDP_CONTROL))
-              asm.move(:w, asm.imm(h::VRAM_SIZE / 4 - 1), asm.d(1))
-              asm.label("rt_boot_clear_video_ram")
-              asm.move(:l, asm.d(0), asm.abs_l(h::VDP_DATA))
-              asm.dbra(asm.d(1), "rt_boot_clear_video_ram")
+              emit_video_ram_fill_started(asm, h, counting: counting)
+              emit_work_ram_cleared(asm, h, kept_bytes)
+              asm.label("rt_boot_video_ram_filling")
+              asm.move(:w, asm.abs_l(h::VDP_CONTROL), asm.d(1))
+              asm.btst(VDP_STATUS_DMA_BUSY, asm.d(1))
+              asm.branch_near(:ne, "rt_boot_video_ram_filling")
+              asm.move(:w, asm.imm(register_word(h, h::REG_INCREMENT, h::INCREMENT_WORD)), asm.abs_l(h::VDP_CONTROL))
               emit_clear_words(asm, h, h::WRITE_CRAM, h::CRAM_COLORS, "rt_boot_clear_colors")
               emit_clear_words(asm, h, h::WRITE_VSRAM, h::VSRAM_WORDS, "rt_boot_clear_scroll")
-              asm.lea(asm.abs_l(h::WRAM + kept_bytes), asm.a(0))
-              asm.move(:w, asm.imm(((h::WRAM_SIZE - kept_bytes) / 4) - 1), asm.d(1))
+            end
+
+            # The status's bit that is set while the chip is doing a DMA.
+            VDP_STATUS_DMA_BUSY = 1
+
+            # Register 23's top two bits for a fill.
+            DMA_FILL = 0x80
+
+            # The registers a MOVEM writes noughts from, a long word each, and how many it writes a turn.
+            ZERO_REGISTERS = %i[d0 d1 d2 d3 d4 d5 a1 a2].freeze
+            MOVEMS_A_TURN = 8
+
+            def register_word(h, register, value) = h::VDP_REGISTER | (register << 8) | value
+
+            # The fill of all 64K of video RAM with nought, started: the address moving on a byte at a time,
+            # the length nought (64K), register 23 set for a fill, DMA let on in the mode register (with the
+            # interrupt where it is on, #emit_counting_on), and the command with the DMA bit, then the word
+            # whose byte fills it.
+            def emit_video_ram_fill_started(asm, h, counting:)
+              mode2 = h::MODE2_SCREEN_OFF | h::MODE2_DMA | (counting ? h::MODE2_VBLANK_INTERRUPT : 0)
+              length = h::VRAM_SIZE & 0xFFFF # 64K is nought in the length registers
+              [[h::REG_MODE2, mode2], [h::REG_INCREMENT, 1],
+               [h::REG_DMA_LENGTH_LOW, length & 0xFF], [h::REG_DMA_LENGTH_HIGH, length >> 8],
+               [h::REG_DMA_SOURCE_HIGH, DMA_FILL]].each do |register, value|
+                asm.move(:w, asm.imm(register_word(h, register, value)), asm.abs_l(h::VDP_CONTROL))
+              end
+              asm.move(:l, asm.imm(Console::GenesisHardware.command(h::WRITE_VRAM, 0) | h::COMMAND_DMA), asm.abs_l(h::VDP_CONTROL))
+              asm.move(:w, asm.d(0), asm.abs_l(h::VDP_DATA))
+            end
+
+            def emit_work_ram_cleared(asm, h, kept_bytes)
+              turn_bytes = ZERO_REGISTERS.length * 4 * MOVEMS_A_TURN
+              turns, left = (h::WRAM_SIZE - kept_bytes).divmod(turn_bytes)
+              ZERO_REGISTERS.each do |register|
+                register.start_with?("a") ? asm.movea(:l, asm.d(0), asm.a(register[1].to_i)) : asm.moveq(0, asm.d(register[1].to_i))
+              end
+              asm.lea(asm.abs_l(h::WRAM + h::WRAM_SIZE), asm.a(0))
+              asm.move(:w, asm.imm(turns - 1), asm.d(6))
               asm.label("rt_boot_clear_work_ram")
-              asm.move(:l, asm.d(0), asm.post(0))
-              asm.dbra(asm.d(1), "rt_boot_clear_work_ram")
+              MOVEMS_A_TURN.times { asm.movem_push(:l, *ZERO_REGISTERS, via: 0) }
+              asm.dbra(asm.d(6), "rt_boot_clear_work_ram")
+              return if left.zero?
+
+              asm.move(:w, asm.imm((left / 4) - 1), asm.d(6))
+              asm.label("rt_boot_clear_work_ram_left")
+              asm.move(:l, asm.d(0), asm.pre(0))
+              asm.dbra(asm.d(6), "rt_boot_clear_work_ram_left")
             end
 
             def emit_clear_words(asm, h, kind, count, label)

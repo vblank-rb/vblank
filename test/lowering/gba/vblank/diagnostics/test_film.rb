@@ -122,9 +122,11 @@ class TestFilm < Minitest::Test
       self
     end
 
+    # Two colours on every picture: a film rescales earlier pictures of one colour alone (a
+    # console's blank first frame at its power-on size), so a real change of size has a picture.
     def screenshot(path)
       width = @frames < 3 ? 256 : 320
-      VBlank::Graphics::PNG.write(path, width: width, height: 240, pixels: Array.new(width * 240, 0))
+      VBlank::Graphics::PNG.write(path, width: width, height: 240, pixels: Array.new(width * 240) { |i| i.even? ? 0 : 0x7FFF })
     end
   end
 

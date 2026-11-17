@@ -56,7 +56,8 @@ module VBlank
           numbers: NumberFormat.new(high_byte_first: true),
           # A cell of a plane's map: a tile number of eleven bits, mirrored, upside down, the bank
           # of colours in the next two, then the priority.
-          map_words: MapWordFormat.new(tile_bits: 11, mirror_bit: 11, flip_bit: 12, bank_at: 13, bank_bits: 2, row_tiles: nil)
+          map_words: MapWordFormat.new(tile_bits: 11, mirror_bit: 11, flip_bit: 12, bank_at: 13, bank_bits: 2, row_tiles: nil,
+                                       front_bit: 15)
         )
       )
 
@@ -117,6 +118,9 @@ module VBlank
       # words the DMA registers name, with the processor stopped until it is done. In the blank it
       # moves 205 bytes a line, and the blank is 38 lines: about 240 tiles.
       COMMAND_DMA = 0x80
+
+      # What such a copy moves in one blank: 205 bytes a line, 38 lines.
+      BLANK_DMA_BYTES = 205 * 38
 
       MODE4_40_CELLS = 0x81 # 320 pixels across
       INCREMENT_WORD = 2

@@ -61,6 +61,8 @@ module DslVerbs
   # record_walls_brought_up are the hooks behind `set_tile` changing a cell's wall, which a
   # Background asks of the build; the reference documents `set_tile` and `solid:` on `tiles`.
   # store!, increase!, decrease! and copy_variable! are what a variable's own handle calls.
+  # members_of_part and known_parts_sentence are what a save_data record keeping a part asks of the
+  # build; the reference documents `keep part:` on `save_data`.
   # declared_data_pack is what a shell build asks of the game (Original::Shell), and made_data_pack_file
   # what Cartridge::Game#data_pack_file does, both documented on `data_pack`. declared_shell_screen
   # is the same question for the shell's first screen, documented on `shell_screen`.
@@ -71,7 +73,7 @@ module DslVerbs
             store! increase! decrease! copy_variable!
             keep_walls_changeable kept_walls_of every_kept_walls record_wall_change record_walls_brought_up
             remember_sprite_recolors remember_background_draws_with
-            remember_boolean_variable boolean_variable? kept_width_of
+            remember_boolean_variable boolean_variable? members_of_part known_parts_sentence
             record_row_bend make_background_affine screen_pages keep_showing_pictures
             tile_collision_routine play_from_list play_sound_effect
             declare_instance_routine record_walk_instance_writes pool_walk_scratch_var

@@ -85,6 +85,7 @@ module VBlank
         front ||= :highest
         refuse_unknown_front!(front)
         things.each { |thing| refuse_unorderable_thing!(thing) }
+        refuse_mixed_in_front!(things)
         refuse_order_of_one!(things)
         refuse_thing_named_twice!(things)
         things.each { |thing| refuse_thing_in_two_orders!(thing) }
@@ -288,6 +289,15 @@ module VBlank
       # it is stable: it starts from last frame's order and moves a thing back only past a
       # number strictly beyond its own, so two level things keep their order, and a frame where
       # nobody passed anybody moves nothing.
+      #
+      # A THING NOT SHOWING IS PUT BEHIND EVERYTHING by the sort itself (IR ListSort's +shown+),
+      # handed whether each thing shows, the value it is drawn by (its `active`,
+      # Reference#objects_on_screen). Things not showing then stand at the back of the list, and one
+      # that shows again comes in from there, behind any thing level with it, as if newly added: the
+      # way a console's own games rebuild their sprite list each frame from what is showing. So a
+      # console may sort and draw only the things showing, and an order of many declared with a few
+      # showing costs about what the few do. A thing that never stops showing is handed as showing,
+      # and an order of such things is sorted as before.
       def order_sort_nodes(order)
         return order_turn_nodes(order) if order.turns
 
@@ -296,7 +306,38 @@ module VBlank
         numbers = run_objects(order).each_with_index.map do |name, i|
           Build.list_set(keys, Build.int(i), by_name.fetch(name))
         end
-        numbers + [Build.list_sort(order.order_list, by: keys, descending: order.front == :lowest)]
+        shown = order_shown(order)
+        shown = nil if shown.all? { |value| value.kind == :int && value.value == 1 }
+        numbers + [Build.list_sort(order.order_list, by: keys, descending: order.front == :lowest, shown: shown)]
+      end
+
+      # Whether each object of +order+ shows, in the order the run holds them: a copy of the value it
+      # is drawn by, since a node belongs to one statement, or 1 for one that always shows.
+      def order_shown(order)
+        by_name = order.things.flat_map { |thing| order_objects_of(thing) }.to_h { |node| [node.name, node.active] }
+        run_objects(order).map do |name|
+          active = by_name.fetch(name)
+          always_shown?(active) ? Build.int(1) : active.copy
+        end
+      end
+
+      # Whether +active+, an object's, is 1 on every pass: the number 1, or a variable every
+      # statement of the program that changes it sets to 1.
+      def always_shown?(active)
+        return active.value == 1 if active.kind == :int
+        return false unless active.kind == :var_ref
+
+        (@variable_writes ||= variable_writes).fetch(active.name, []).all? do |write|
+          write.kind == :set && write.value.kind == :int && write.value.value == 1
+        end
+      end
+
+      # Every statement of the program that changes a variable, by the variable's name.
+      def variable_writes
+        @program.walk.each_with_object(Hash.new { |all, name| all[name] = [] }) do |node, writes|
+          name = IR::LightScenes.written_var(node)
+          writes[name] << node if name
+        end
       end
 
       # THE SAME NUMBER ADDED TO EVERY THING'S NUMBER CHANGES NO ORDER, so it is left out. A box's
@@ -390,6 +431,26 @@ module VBlank
         raise ArgumentError,
               "draw_in_order puts things in order, and each one must be a sprite or a pool. " \
               "#{thing.inspect} is not one. Give it the handle that `sprite` or `pool` gave back."
+      end
+
+      # SPRITES IN FRONT ARE ORDERED AMONG THEMSELVES ONLY. A sprite in front (`in_front: true`) is
+      # drawn after every sprite not in front (Builder#move_front_sprites_last), because a console
+      # that keeps a priority bit in each sprite — the Genesis: the sprite attribute's priority bit,
+      # which puts it over the plane cells whose own bit is set (Sega's Genesis Software Manual, the
+      # VDP's sprite attribute table; plutiedev, "Sprites") — shows the pixel of the sprite earlier in its link list first
+      # and asks its priority only then. So an order of sprites all in front is a run among them,
+      # each one over the cells in front whichever is in front of the other; an order that mixed the
+      # two would have a sprite not in front passing one in front, which would then be behind the
+      # cells in front where they overlap.
+      def refuse_mixed_in_front!(things)
+        front, behind = things.partition { |thing| thing.is_a?(DSL::HardwareSprite) && thing.object_node.in_front }
+        return if front.empty? || behind.empty?
+
+        raise ArgumentError,
+              "draw_in_order was given #{order_thing_name(front.first)}, drawn in front (`in_front: true`), and " \
+              "#{order_thing_name(behind.first)}, not drawn in front. A sprite in front is always in front of every " \
+              "sprite not in front, so one order cannot hold both kinds. To fix this, give each kind a draw_in_order " \
+              "of its own, or give all of them the same `in_front:`."
       end
 
       def refuse_order_of_one!(things)

@@ -223,6 +223,8 @@ class TestDirectConnection < Minitest::Test
     assert_equal "a line", channel.receive_text
   end
 
+  # The clock is held from below alone: a busy computer can only make the wait longer, never cut it
+  # short, so load cannot fail this.
   def test_a_wait_with_a_time_limit_waits_that_long_when_nothing_comes
     _ours, theirs = UNIXSocket.pair
     channel = Network::LineChannel.new(theirs)
@@ -233,13 +235,14 @@ class TestDirectConnection < Minitest::Test
     assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, :>=, 0.19
   end
 
+  # The limit only catches a wait that never ends: the line comes long before it.
   def test_a_wait_with_a_time_limit_ends_when_a_line_comes
     ours, theirs = UNIXSocket.pair
     channel = Network::LineChannel.new(theirs)
     ours.write("half a li")
     Thread.new { sleep 0.05; ours.write("ne\n") }
 
-    channel.wait_for_text(5)
+    channel.wait_for_text(30)
 
     assert_equal "half a line", channel.receive_text
   end

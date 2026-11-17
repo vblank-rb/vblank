@@ -137,12 +137,12 @@ module PackBackgroundSetCellGames
   # three cells told as a range of record numbers, or with +records+ as a list of
   # Original::MapCell::Cell, the cells written in the game given as Cells too, a worked-out
   # letter's Cell holding the tile the game works out.
-  private def map_cells_text_game(folder, platform, records: false, blank_at: 99, options: nil)
+  private def map_cells_text_game(folder, platform, records: false, blank_at: 99, now: false, options: nil)
     cell = ->(at) { VBlank::Original::MapCell::Cell.new(tile: at + MAP_CELLS_BANK_TILES, bank: 1) }
     told = records ? Array.new(3, &cell) : MAP_CELLS_FONT..(MAP_CELLS_FONT + 2)
     written = records ? { letter: cell.(0), space: cell.(2), worked: cell } : {}
     map_cells_game_and_file(folder, platform, set_cells: told, options: options) do |world|
-      PackBackgroundSetCellGames.emit_text_loop(self, world, MAP_CELLS_FONT, blank_at, **written)
+      PackBackgroundSetCellGames.emit_text_loop(self, world, MAP_CELLS_FONT, blank_at, now: now, **written)
     end
   end
 
@@ -150,9 +150,9 @@ module PackBackgroundSetCellGames
   # port whose unpacking works out every cell its screen changes to: `set_cell` names a told cell
   # by its place in the slot, 0 first, so the font's letter is 0, its second letter 1 and its
   # space 2, and a place worked out past the slot's +changes+ (9) leaves the cell alone.
-  private def slot_told_text_game(folder, platform, changes: 3, blank_at: 99, options: nil)
+  private def slot_told_text_game(folder, platform, changes: 3, blank_at: 99, now: false, options: nil)
     map_cells_game_and_file(folder, platform, set_cells: ->(pack) { pack[:changes] }, changes: changes, options: options) do |world|
-      PackBackgroundSetCellGames.emit_text_loop(self, world, 0, blank_at)
+      PackBackgroundSetCellGames.emit_text_loop(self, world, 0, blank_at, now: now)
     end
   end
 
@@ -214,8 +214,9 @@ module PackBackgroundSetCellGames
   # The loop of the game of the tests, on +builder+: +letter+ and +space+ are the cells written in
   # the game, the font's first letter and its space, and +base+ the font's first cell as a number,
   # to which the letters worked out from the table are added.
-  # +worked+ makes the cell of a letter the game works out, given the letter's number.
-  def self.emit_text_loop(builder, world, base, blank_at, letter: base, space: base + 2, worked: ->(at) { base + at })
+  # +worked+ makes the cell of a letter the game works out, given the letter's number. +now+ is
+  # each `set_cell`'s.
+  def self.emit_text_loop(builder, world, base, blank_at, letter: base, space: base + 2, worked: ->(at) { base + at }, now: false)
     builder.instance_eval do
       letters = table :letters, [0, 1, 2, 9]
       pass = var :pass, 0
@@ -223,13 +224,13 @@ module PackBackgroundSetCellGames
         wait_vblank
         pass += 1
         if pass == 2
-          world.set_cell 1, 1, letter
-          world.set_cell 2, 1, worked.(letters[1])
-          world.set_cell 0, 0, worked.(letters[3])
+          world.set_cell 1, 1, letter, now: now
+          world.set_cell 2, 1, worked.(letters[1]), now: now
+          world.set_cell 0, 0, worked.(letters[3]), now: now
         end
         if pass == blank_at
-          world.set_cell 1, 1, space
-          world.set_cell 2, 1, worked.(letters[2])
+          world.set_cell 1, 1, space, now: now
+          world.set_cell 2, 1, worked.(letters[2]), now: now
         end
       end
     end
@@ -580,6 +581,85 @@ class TestPackBackgroundSetCell < Minitest::Test
     end
   end
 
+  # MANY LINES WRITING A CELL BY A PLACE THE GAME WORKS OUT, as a port whose one wrapper of
+  # `set_cell` is written out at every caller: each line keeps its place while it picks the tile,
+  # and no longer, so the lines of one routine share where they keep it. Three hundred lines in the
+  # game loop and three hundred in a routine it calls draw what their last write to each cell draws,
+  # and keep no more hidden numbers than the last eight lines of each alone.
+  def test_many_lines_writing_worked_out_places_keep_one_number_a_routine
+    Dir.mktmpdir do |folder|
+      many, many_notes = many_place_lines_game(folder, lines: 300)
+      last, last_notes = many_place_lines_game(folder, lines: 300, only_last: true)
+
+      assert_equal game_player.run(last, frames: 24).screen.to_a, game_player.run(many, frames: 24).screen.to_a
+      assert_equal last_notes.length, many_notes.length
+    end
+  end
+
+  # A PASS THAT WRITES MANY CELLS shows them on the frame the interpreter does: 120 writes in one
+  # pass, 60 in the game loop and 60 in a routine it calls, every frame held to the interpreter's.
+  def test_a_pass_writing_many_cells_shows_them_on_the_interpreters_frame
+    Dir.mktmpdir do |folder|
+      program, = many_place_lines_game(folder, lines: 60, lines_a_pass: 60)
+      game_player.run(program, frames: 6)
+    end
+  end
+
+  # A line in a timer's handler can run between the steps of any line it interrupts, so it keeps
+  # its place apart from the routine it is written in.
+  def test_a_line_in_a_timers_handler_keeps_its_place_apart
+    Dir.mktmpdir do |folder|
+      notes = nil
+      map_cells_game_and_file(folder, :gbc, set_cells: ->(pack) { pack[:changes] }, changes: 3) do |world|
+        notes = hidden_variable_notes
+        pass = var :pass, 0
+        beat = timer :beat, per_second: 4
+        game_loop do
+          wait_vblank
+          pass += 1
+          world.set_cell 0, 0, pass & 1
+          world.set_cell 1, 0, (pass + 1) & 1
+          beat.on_tick { world.set_cell 2, 0, pass & 1 }
+        end
+      end
+
+      assert_equal 2, notes.length
+    end
+  end
+
+  # The game of the many-lines test: +lines+ `set_cell`s in the game loop and as many in a routine it
+  # calls, each a place worked out from the pass, the cells taken in turn, +lines_a_pass+ of each on
+  # each pass from the second, so no pass changes more cells than a console queues for the blank.
+  # With +only_last+ only the last line writing each cell is kept. Handed back with its hidden
+  # numbers.
+  LINES_A_PASS = 16
+
+  private def many_place_lines_game(folder, lines:, only_last: false, lines_a_pass: LINES_A_PASS)
+    notes = nil
+    program, = map_cells_game_and_file(folder, :gbc, set_cells: ->(pack) { pack[:changes] }, changes: 3) do |world|
+      notes = hidden_variable_notes
+      pass = var :pass, 0
+      cells = 8
+      written = (0...lines).to_a
+      written = written.last(cells) if only_last
+      write = lambda do |shift|
+        written.group_by { |at| at / lines_a_pass }.each do |chunk, ats|
+          if pass == 2 + chunk
+            ats.each { |at| world.set_cell at % 4, (at / 4) % 2, (pass + at + shift) % 3 }
+          end
+        end
+      end
+      func(:more_lines) { write.(1) }
+      game_loop do
+        wait_vblank
+        pass += 1
+        write.(0)
+        call :more_lines
+      end
+    end
+    [program, notes]
+  end
+
   def test_a_place_past_a_told_slot_written_in_the_game_is_refused
     Dir.mktmpdir do |folder|
       error = assert_raises(ArgumentError) do
@@ -638,7 +718,7 @@ class TestPackBackgroundSetCell < Minitest::Test
 
   def test_a_number_past_a_map_cell_record_is_refused
     Dir.mktmpdir do |folder|
-      error = assert_raises(ArgumentError) { map_cells_game_and_file(folder, :gbc, set_cells: [0x0400_0000]) }
+      error = assert_raises(ArgumentError) { map_cells_game_and_file(folder, :gbc, set_cells: [0x0800_0000]) }
 
       assert_includes error.message, "set_cells:"
     end
@@ -671,7 +751,7 @@ class TestPackBackgroundSetCell < Minitest::Test
   def test_a_number_past_the_record_written_in_the_game_is_refused
     Dir.mktmpdir do |folder|
       error = assert_raises(ArgumentError) do
-        map_cells_game_and_file(folder, :gbc, set_cells: [MAP_CELLS_FONT]) { |world| world.set_cell 0, 0, MAP_CELLS_FONT | 0x0400_0000 }
+        map_cells_game_and_file(folder, :gbc, set_cells: [MAP_CELLS_FONT]) { |world| world.set_cell 0, 0, MAP_CELLS_FONT | 0x0800_0000 }
       end
 
       assert_includes error.message, "set_cells:"
@@ -736,6 +816,35 @@ class TestPackBackgroundSetCell < Minitest::Test
       end
 
       assert_includes error.message, "set_cells:"
+    end
+  end
+
+  # `set_cell ..., now: true` asks what `set_tile ..., now: true` asks: a console that writes its
+  # video memory only between frames refuses it, by number and by place, and one that can write a
+  # cell while it draws does not.
+  def test_a_cell_written_now_is_refused_where_a_set_tile_now_is
+    check = VBlank::IR::Guardrails::Checks::ConsoleAnswers.new
+    Dir.mktmpdir do |folder|
+      [map_cells_text_game(folder, :gbc, now: true).first, slot_told_text_game(folder, :gbc, now: true).first].each do |program|
+        program.console = :snes
+        found = check.detect(program)
+
+        assert_equal [:error], found.map(&:severity).uniq
+        assert_match(/between frames/, found.first.message)
+        program.console = :gba
+        assert_empty check.detect(program)
+        program.console = :gbc
+        assert_empty check.detect(program)
+      end
+    end
+  end
+
+  def test_a_cell_written_now_with_anything_but_true_or_false_is_refused
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) { advance_game(folder, set_cells: [ADVANCE_CELL.(1)]) { |world| world.set_cell 0, 0, ADVANCE_CELL.(1), now: :soon } }
+
+      assert_includes error.message, "now:"
+      assert_includes error.message, "true or false"
     end
   end
 end

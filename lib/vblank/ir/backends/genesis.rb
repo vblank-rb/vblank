@@ -30,6 +30,8 @@ require_relative "genesis/lowering/sound"
 require_relative "genesis/lowering/division"
 require_relative "genesis/lowering/products"
 require_relative "genesis/lowering/tile_runs"
+require_relative "genesis/lowering/pose_rooms"
+require_relative "genesis/lowering/shown_sort"
 require_relative "genesis/lowering"
 require_relative "genesis/headless_run"
 require_relative "genesis/checked_run"
@@ -60,10 +62,27 @@ module VBlank
         # (what it only reads), for the cost recorded in tools/emitted_baseline.json.
         # +video_tiles+ is how many tiles the game's pictures put in video memory (VideoTiles), or nil
         # for a game that draws from none.
+        # +slot_places+ is where each of a pool's lists keeps its slots, as its layout placed it
+        # (Backends::PoolLayout::SlotPlace, Lowering#place_pools), by list.
         Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :sprite_picture_names, :bytes,
-                             :sound_entries, :sound_voicing, :recording_names, :video_tiles) do
+                             :sound_entries, :sound_voicing, :recording_names, :video_tiles, :slot_places) do
           # Where the runtime counts the times the game has waited for the screen (32 bits).
           def waits_counted_at = runtime.fetch(Runtime::Frame::PASSES)
+
+          # The sprites the last pass placed (Runtime::Tiles::DRAWN), as the interpreter's rows through
+          # +drawn+ (SpriteNames), each word read by the block from its work RAM address; none for a game
+          # with no sprites. A count word, then a row of four words for each: whose, which picture (by the
+          # number sprite_picture_names maps to SpriteNames'), across and down, each signed.
+          def drawn_sprite_rows(drawn)
+            at = runtime[Runtime::Tiles::DRAWN] or return []
+            signed = ->(address) { yield(address).then { |value| value >= 0x8000 ? value - 0x10000 : value } }
+            Array.new(yield(at)) do |i|
+              row = at + 2 + (i * Runtime::Tiles::DRAWN_BYTES)
+              picture = yield(row + 2)
+              drawn.row(signed.call(row), sprite_picture_names.fetch(picture, picture), signed.call(row + 4),
+                        signed.call(row + 6))
+            end
+          end
         end
 
         # HOW MANY 8×8 TILES THE GAME'S PICTURES PUT IN VIDEO MEMORY, which the build knows and a
@@ -106,6 +125,12 @@ module VBlank
         # Those palettes are written through the game's own colours in work RAM (Runtime::Tint), so such
         # a game carries that part of the runtime even if it never fades.
         #
+        # A game whose tiles still do not fit once its scenes take turns, or that has no scenes to take
+        # turns, is built again with the sprite whose poses give back the most kept to ONE POSE in video
+        # memory at a time, the pose it shows copied in from the cartridge as it changes to it (+streamed+,
+        # Lowering::PoseRooms), and again with another such sprite, until the tiles fit or no sprite
+        # would give any back. A game that fits without it builds as it did.
+        #
         # Each of those is a try of the build (BuildTries), and a later try keeps what every earlier
         # one found it needs (#settings_after). A try sure to run out of tiles stops before its code
         # is made (Lowering::Picture#refuse_tiles_past_room_early!).
@@ -122,10 +147,10 @@ module VBlank
         # How many times the last #build lowered the game: one for a game that fits as it first tries.
         def tries = @build_tries&.count || 0
 
-        # The settings of one try (#build, BuildTries): +scene_tiles+ and +scene_colors+, each the
-        # Lowering's setting of the same name.
-        Tried = Data.define(:scene_tiles, :scene_colors) do
-          def self.first = new(scene_tiles: false, scene_colors: false)
+        # The settings of one try (#build, BuildTries): +scene_tiles+, +scene_colors+ and +streamed+, each
+        # the Lowering's setting of the same name.
+        Tried = Data.define(:scene_tiles, :scene_colors, :streamed) do
+          def self.first = new(scene_tiles: false, scene_colors: false, streamed: [].freeze)
         end
 
         private
@@ -137,7 +162,10 @@ module VBlank
           case error
           when Art::TooManyTiles
             later = try.made.scene_tiles_after(settings.scene_tiles)
-            settings.with(scene_tiles: later) if later
+            return settings.with(scene_tiles: later) if later
+
+            streamed = try.made.streamed_after(settings.streamed)
+            settings.with(streamed: streamed) if streamed
           when Art::TooManyColors
             later = try.made.scene_colors_after(settings.scene_colors)
             settings.with(scene_colors: later) if later
@@ -168,7 +196,7 @@ module VBlank
                                   glides: samples && Music.glides?(program), recorded_sides: samples && IR::Tunes.recorded_pans?(program))
           Runtime::Frame.reserve_last_pass(memory) if cache.plan.keeps_last_pass_number?
           lowering = try.made = Lowering.new(program, memory: memory, scene_tiles: scene_tiles, scene_colors: scene_colors,
-                                                      cache: cache)
+                                                      streamed: try.settings.streamed, cache: cache)
           game = lowering.sections
           runtime = Runtime.sections(memory, main: Lowering::MAIN, registers: lowering.register_count,
                                              frame_begins: lowering.frame_begins, picture: picture,
@@ -182,6 +210,8 @@ module VBlank
                                              backdrop: lowering.backdrop_copied?, sprites_over_picture: over,
                                              scene_tiles: scene_tiles, scene_colors: scene_colors,
                                              runs: picture == :tiled && lowering.paints_tiles?,
+                                             poses: lowering.streams_poses?,
+                                             blocks: picture == :tiled && lowering.writes_cell_blocks?,
                                              count_at: (lowering.variables.fetch(IR::Frames::COUNT) if counted))
           linked = Linker.new(runtime + game).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists,
@@ -189,7 +219,7 @@ module VBlank
                              source_program: program, code: linked.places, sprite_picture_names: picture == :tiled || over ? lowering.sprite_picture_names : {},
                              bytes: byte_counts(linked), sound_entries: lowering.sound_entries,
                              sound_voicing: lowering.sound_voicing, recording_names: lowering.recording_names,
-                             video_tiles: lowering.video_tiles)
+                             video_tiles: lowering.video_tiles, slot_places: lowering.slot_places)
           Cartridge::GenesisROM.new(linked.image, title: title, vectors: vectors(linked), built: built)
         end
 

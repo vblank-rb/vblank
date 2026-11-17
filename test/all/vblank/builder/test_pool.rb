@@ -140,6 +140,86 @@ class TestPool < Minitest::Test
     assert_equal BLACK, i.screen.pixel(30, 100), "not the instance tagged 3"
   end
 
+  # Fields kept in half words, each pair tested for how far apart it is: just inside and just
+  # outside on each side, and the two ends of a half word, 65535 apart either way, whose 16-bit
+  # difference alone would look near. Each pair's test sets its own bit.
+  def test_half_word_fields_tested_for_how_far_apart
+    b = Builder.new
+    b.instance_eval do
+      near = 0
+      pairs = pool :pair, a: 0, b: 0, bit: 0, capacity: 8, widths: { a: :half, b: :half }
+      [[20, 5, 1], [21, 5, 2], [5, 20, 4], [5, 21, 8], [32_767, -32_768, 16], [-32_768, 32_767, 32],
+       [-32_768, -32_768, 64], [32_767, 32_752, 128]].each { |a, b_, bit| pairs.spawn(a: a, b: b_, bit: bit) }
+      game_loop do
+        near = 0
+        pairs.each do |pair|
+          near += pair.bit if (pair.a - pair.b).abs < 16
+          near += pair.bit * 256 if (pair.a + pair.b).abs <= 1
+        end
+      end
+    end
+    b.finalize_program
+    i = game_player.run(b.program, frames: 2)
+
+    assert_equal 1 + 4 + 64 + 128 + (32 * 256) + (16 * 256), i[:near]
+  end
+
+  # --- what a pool is, for a console that keeps one its own way ---
+
+  private def pool_program(console: :gba, &game)
+    b = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: console))
+    b.instance_eval(&game)
+    b.finalize_program
+    b.program
+  end
+
+  # The program says what each pool is: its fields at the widths the game declared, its own lists,
+  # its variables, and the layout it asked for.
+  def test_the_program_carries_each_pool_as_declared
+    program = pool_program do
+      screen :bitmap
+      pool :guard, x: 0, hp: 0, capacity: 6, widths: { hp: :byte }, layout: :lists
+      halt
+    end
+    shape = program.pools.find { |each| each.name == :guard }
+
+    assert_equal [6, :lists], [shape.capacity, shape.layout]
+    assert_equal({ x: :word, hp: :byte }, shape.fields.to_h { |field| [field.name, field.width] })
+    assert_equal :byte, shape.width_of(VBlank::DSL::Pool.active_list(:guard))
+    assert_equal VBlank::DSL::Pool.head_var(:guard), shape.vars.fetch(:head)
+  end
+
+  # Each walk's loop says it is one: the thing it is on, the next, the last, and the links it
+  # follows, the other way round for a walk newest first.
+  def test_each_walk_is_marked_on_its_loop
+    program = pool_program do
+      screen :bitmap
+      things = pool :thing, x: 0, capacity: 4
+      things.each { |t| t.x += 1 }
+      things.each(newest_first: true) { |t| t.x -= 1 }
+      halt
+    end
+    walks = program.walk.filter_map { |node| node.pool_walk if node.kind == :repeat }
+
+    assert_equal [VBlank::DSL::Pool.next_list(:thing), VBlank::DSL::Pool.prev_list(:thing)], walks.map(&:links)
+    assert(walks.all? { |walk| walk.pool == :thing && walk.step_statements == 2 })
+  end
+
+  # A layout a console has no way to keep a pool in is refused before anything is built, naming
+  # the console and the layouts it has; a word that is no layout at all is refused on any.
+  def test_a_layout_the_console_lacks_is_refused_in_plain_words
+    others = %i[tables records]
+    VBlank::Console::DESCRIPTIONS.each do |name, description|
+      (others - description.pool_layouts).each do |layout|
+        error = assert_raises(ArgumentError) { pool_program(console: name) { pool :guard, x: 0, capacity: 4, layout: layout } }
+        assert_includes error.message, "keeps a pool only as"
+        assert_includes error.message, description.title
+      end
+    end
+    error = assert_raises(ArgumentError) { pool_program { pool :guard, x: 0, capacity: 4, layout: :rows } }
+    assert_includes error.message, "A pool layout is"
+  end
+
   # --- baked guardrails (build-time, friendly errors) ---
 
   # A POOL TOO BIG TO SHARE THE QUICK MEMORY. The console has 32K of quick memory, which the

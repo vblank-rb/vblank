@@ -201,6 +201,7 @@ module VBlank
       @hidden_variables = 0    # counts the variables a picked value keeps its answer in
       @unique_names = Set.new  # variable names this build made unique (#unique_names)
       @hidden_variable_notes = []
+      @step_variables = {}.compare_by_identity # routine body → why → its shared hidden variable (#step_variable)
       @held_expressions = {}   # variable name → the value node it was set to (#register_held_expression)
       @value_statements = {}.compare_by_identity # value node → the statements it needs (#register_statements_for_value)
       @open_repeat_container_counts = [] # containers each #open_repeat opened, for #close_repeat
@@ -668,6 +669,7 @@ module VBlank
       # Every routine the game wrote is built, so nothing more can be kept in a save_data
       # record: the records are laid out now, and the routines that read them built after —
       # with the ones held back until every line of the game was read (#build_last).
+      @saves&.expand_kept_parts! # every part's members are known now
       check_saves_keep_everything!
       lay_out_save_records
       emit_bodies(emitted, default_screen_mode)
@@ -984,6 +986,10 @@ module VBlank
       attach(node)
     end
 
+    # The statement recorded last in the open container, for a handle that marks what it just
+    # recorded through a verb (Pool#each marks its repeat as a walk). An internal hook, not a verb.
+    def last_recorded_statement = @container_stack.last.children.last
+
     # Record a container node and run +block+ to fill its children — the hook a handle
     # reaches for to attach a body from outside the builder (e.g. Timer#on_tick). Lives
     # in the core, not a concern, so it isn't scanned as a DSL verb. Returns the node.
@@ -1178,6 +1184,32 @@ module VBlank
       @hidden_variable_notes << HiddenVariableNote.new(name:, source: Messages::AuthorSource.author_source, why:)
       value_handle_for(name)
     end
+
+    # A HIDDEN VARIABLE FOR A NUMBER ONE STEP STORES AND READS BACK BEFORE IT ENDS, one for each
+    # +why+ in the routine being recorded (outside every routine, the outermost body being recorded,
+    # #recorded_routine_body), however many of its steps keep one (DSL::Value#step_copy). A step that
+    # stores it reaches no other such step before its last read, so the steps of one routine can
+    # share it, and a routine with hundreds of them keeps one word, not hundreds.
+    #
+    # Shared wider than the routine it would not be safe. A timer's handler runs whenever the timer
+    # ticks: on the Advance from the timer's interrupt, which stops the game between any two
+    # instructions (GBA::FrameBoundaryCalls). A step written in a handler could then store over a
+    # number that a step of the routine it stopped had not read yet. A bend's steps are worked out
+    # where the game wrote no call too, as the game wakes from a wait on the Advance, and a console
+    # may work them out as the screen draws each row. So a step inside a handler or a bend keeps its
+    # number apart from the routine it is written in, one for each handler and each bend. A routine
+    # that a handler calls is no worse off than with a variable for each step: stopped part way
+    # through one of its steps and run again by the handler, it would write over that step's own
+    # variable too.
+    def step_variable(why)
+      owner = @container_stack.reverse_each.find { |node| UNCALLED_BODY_KINDS.include?(node.kind) } ||
+              @container_stack[1] || @container_stack.first
+      name = ((@step_variables[owner] ||= {})[why] ||= hidden_variable(why).name)
+      value_handle_for(name)
+    end
+
+    # The bodies that run where the game wrote no call: a timer's handler and a bend's steps.
+    UNCALLED_BODY_KINDS = %i[on_timer scroll_rows].freeze
 
     # Variable +name+ holds the value node +node+, set where it is written, so the text of a
     # program does not repeat the expression wherever its answer is used
@@ -1562,7 +1594,7 @@ module VBlank
     # so a pool takes its place among the sprites by the same rule two sprites follow: the
     # one declared later is in front. The HUD comes last, over all of them.
     def finalize_present_lists
-      names = arrange_draw_orders(in_stack_order(@sprite_objects + @hud_objects))
+      names = move_front_sprites_last(arrange_draw_orders(in_stack_order(@sprite_objects + @hud_objects)))
       @present_nodes.each do |node|
         if names.empty?
           node.parent&.children&.delete(node)
@@ -1571,6 +1603,18 @@ module VBlank
           node.orders = draw_order_runs(names)
         end
       end
+    end
+
+    # +names+ with every sprite marked in front (IR::Nodes::Object#in_front) moved after the rest,
+    # each keeping its order: a console that keeps a priority bit in each sprite shows the front
+    # sprite's pixel and only then asks its priority, so a sprite in front must be in front of
+    # every sprite not in front, or one of those over it would put it behind a cell in front.
+    def move_front_sprites_last(names)
+      front = @program.walk.select { |node| node.kind == :object && node.in_front }.map(&:name)
+      return names if front.empty?
+
+      ahead, behind = names.partition { |name| front.include?(name) }
+      behind + ahead
     end
 
     # The objects to draw, arranged the way the declared layers ask for. This is the

@@ -160,7 +160,8 @@ module VBlank
 
         # --- backgrounds and layers ---
         tiles: works("tiles of sixteen colours each."),
-        background: works("two backgrounds at a time, and a status bar or a background held above a row beside " \
+        background: works("`cells_in_front: true` is refused: this build does not make it yet. A Super Nintendo keeps a priority bit for each cell of its map. " \
+                          "two backgrounds at a time, and a status bar or a background held above a row beside " \
                           "them. A screen with three backgrounds and neither among them is refused before the " \
                           "build. The backgrounds are scrolled and changed as on the Advance. `above_row:` " \
                           "keeps a background to the rows above that row, and takes no processor time as the " \

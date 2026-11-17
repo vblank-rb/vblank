@@ -31,6 +31,12 @@ module HeardAlikeTests
   # not what the test is about: the same, on a console whose notes are as loud on every frame.
   private def moved_tune_settings = alike_settings
 
+  # How many frames a tune's end may be heard apart from its last note's, as the speaker falls quiet.
+  private def ending_heard_within = 4
+
+  # How many frames apart the endings of a tune and the same tune a frame later may be: the frame.
+  private def frame_late_endings_apart = 1
+
   # A lead-in for a console whose emulator puts out a click on the first frames after power-on,
   # the speaker settling: the game is silent then, and both cartridges click alike.
   private def past_the_power_on_click = VBlank.playthrough("past the power-on click") { wait frames: 10 }
@@ -124,7 +130,8 @@ module HeardAlikeTests
 
   def test_a_frame_late_passes_where_the_game_allows_a_frame
     as_a_file(tune_game(starts: START + 1)) do |path|
-      assert_heard_alike tune_game, path, listen, **moved_tune_settings, first_heard_frames_apart: 1, ending_frames_apart: 1
+      assert_heard_alike tune_game, path, listen, **moved_tune_settings, first_heard_frames_apart: 1,
+                                                  ending_frames_apart: frame_late_endings_apart
     end
   end
 
@@ -141,7 +148,8 @@ module HeardAlikeTests
       ours, theirs = compared.difference.measured
 
       assert_equal :last_heard, compared.difference.what
-      assert_in_delta 30, theirs - ours, 4, "a half note is thirty frames longer than a quarter, and each falls away over a few"
+      assert_in_delta 30, theirs - ours, ending_heard_within,
+                      "a half note is thirty frames longer than a quarter, and each falls away over a few"
       assert_equal ours + 1, compared.difference.frame
       assert_match "last heard on different frames", failure_against(tune_game(last: :half), **moved_tune_settings)
     end

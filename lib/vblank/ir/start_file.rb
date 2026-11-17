@@ -46,7 +46,7 @@ module VBlank
     #   that a port's unpacking writes. The program holds no event for it.
     # - the wave a part of a song plays on the wave voice (Audio::Music::Part#wave_from_file, a
     #   Wave): sixteen bytes, two steps a byte. The program holds .wave_stand_in until the file is read.
-    # - a background (Nodes::Background#from_file, a Background): its map, a record of VBlank's own
+    # - a background (Nodes::Background#from_file, a Background for each set of its tiles): its map, a record of VBlank's own
     #   a cell (Original::MapCell, four bytes), one number of two bytes a cell in the layout the
     #   original's console keeps a map in, or one byte a cell that is a tile's number
     #   (Console::BYTE_MAP_CELLS), each read by Console::MapWordFormat, and
@@ -1154,33 +1154,74 @@ module VBlank
       # tile, its bank and its turn) a picture of +program+, drawn from its bank's list, and the
       # map those pictures, a cell whose tile draws nothing left empty. Its lists of colours held
       # markers for a bank's colours, and hold the colours by now (.hold_marked_colors).
+      #
+      # A BACKGROUND THAT WALKS BETWEEN SETS OF TILES has a record for each set, read in turn: each
+      # set's pictures follow the sets' before it, and each map is numbered into its own set's.
       def self.fill_background(program, node, bytes)
-        from = node.from_file
-        banks = bank_lists(from, bytes)
-        cells = from.map_words
-        words = FormatReading.numbers(bytes.byteslice(from.map_at, from.cells * cells.cell_bytes), from.number_format,
-                                      width: cells.cell_width, signed: false)
-        pictures = {}
-        side = from.cell_tiles
-        moving = from.moving.to_h { |each| [each.tile, each] }
-        drawn = words.each_slice(from.across).flat_map do |row|
-          Array.new(side) do |down|
-            row.flat_map do |word|
-              Array.new(side) do |along|
-                tile = from.map_words.cell_tile(word, along, down, side)
-                # A tile taking turns shows the tile the program holds for its bank and turn, by number.
-                next moving[tile.tile].tile_of(tile.bank, tile.mirrored, tile.upside_down) if moving.key?(tile.tile) && tile.bank < from.bank_count
-
-                pictures.fetch(tile) { pictures[tile] = declare_background_tile(program, node, tile, banks, bytes, pictures.length) }
-              end
-            end
-          end
-        end
         # The tiles the program held come first and keep their numbers, since a `set_tile` of the
         # program names one by its number: a stand-in for each bank, which nothing draws, and
         # the tiles of the cells the background was told it may be written, each a picture read
         # from the file itself (.fill_picture).
         held = node.tiles.dup
+        added = []
+        grids = node.from_file.each_with_index.map do |from, set|
+          made = read_background_set(program, node, from, set, bytes, held)
+          drawn_pictures = made.pictures.values.compact
+          first = held.length + added.length
+          numbers = drawn_pictures.each_with_index.to_h { |picture, at| [picture, first + at] }
+          made.fronts.values.each_with_index { |front, at| numbers[front] = first + drawn_pictures.length + at }
+          added.concat(drawn_pictures, made.fronts.keys.map { |number| held.fetch(number) })
+          mark_tiles_in_front(node, from, made.pictures, numbers, made.fronts, made.told) if from.map_words.reads_front
+          made.drawn.map { |row| row.map { |picture| picture.is_a?(Integer) ? picture : picture && numbers.fetch(picture) } }
+        end
+        node.tiles = [*held, *added]
+        if node.maps.nil? || node.maps.empty?
+          node.map = grids.first
+        else
+          node.maps = node.map_sets.map { |set| grids.fetch(set) }
+          node.map = node.maps.first
+        end
+        node.from_file = nil
+      end
+
+      # What reading one set's record of a background gives: its map's rows of pictures (a tile
+      # the program holds by its number, and FrontOfHeld for one in front), every picture made by
+      # its tile as drawn (nil for one that draws nothing), the tiles the program holds shown in
+      # front, and the words of the cells a slot told it.
+      BackgroundSetRead = Data.define(:drawn, :pictures, :fronts, :told)
+
+      # The set +set+ of the background +node+, read from +from+ (a Background): its map's
+      # pictures declared in +program+, and the tiles of the cells a slot told it put in +held+.
+      def self.read_background_set(program, node, from, set, bytes, held)
+        banks = bank_lists(from, bytes)
+        cells = from.map_words
+        words = FormatReading.numbers(bytes.byteslice(from.map_at, from.cells * cells.cell_bytes), from.number_format,
+                                      width: cells.cell_width, signed: false)
+        pictures = {}
+        fronts = {}
+        side = from.cell_tiles
+        moving = from.moving.to_h { |each| [each.tile, each] }
+        # A background of one set keeps the names its pictures always had.
+        named = ->(number) { node.sets ? "of set :#{node.sets.fetch(set)} #{number}" : number }
+        drawn = words.each_slice(from.across).flat_map do |row|
+          Array.new(side) do |down|
+            row.flat_map do |word|
+              Array.new(side) do |along|
+                tile = from.map_words.cell_tile(word, along, down, side)
+                # A tile taking turns shows the tile the program holds for its bank and turn, by
+                # number; in front of the sprites, a number of its own for the same tile.
+                if moving.key?(tile.tile) && tile.bank < from.bank_count
+                  held_number = moving[tile.tile].tile_of(tile.bank, tile.mirrored, tile.upside_down)
+                  next tile.in_front ? (fronts[held_number] ||= FrontOfHeld.new(held_number)) : held_number
+                end
+
+                pictures.fetch(tile) do
+                  pictures[tile] = declare_background_tile(program, node, from, tile, banks, bytes, named.(pictures.length))
+                end
+              end
+            end
+          end
+        end
         # The cells a slot told it, each the tile the program holds for it, filled from its cell.
         told = FormatReading.numbers(bytes.byteslice(from.told_at, from.told_count * cells.cell_bytes), from.number_format,
                                      width: cells.cell_width, signed: false)
@@ -1190,13 +1231,25 @@ module VBlank
           held[from.told_first + at] = if moving.key?(tile.tile) && tile.bank < from.bank_count
                                          node.tiles.fetch(moving[tile.tile].tile_of(tile.bank, tile.mirrored, tile.upside_down))
                                        else
-                                         declare_background_tile(program, node, tile, banks, bytes, "told #{at}", keep_blank: true)
+                                         declare_background_tile(program, node, from, tile, banks, bytes, named.("told #{at}"), keep_blank: true)
                                        end
         end
-        node.tiles = [*held, *pictures.values.compact]
-        numbers = pictures.values.compact.each_with_index.to_h { |picture, at| [picture, held.length + at] }
-        node.map = drawn.map { |row| row.map { |picture| picture.is_a?(Integer) ? picture : picture && numbers.fetch(picture) } }
-        node.from_file = nil
+        BackgroundSetRead.new(drawn: drawn, pictures: pictures, fronts: fronts, told: told)
+      end
+
+      # A TILE THE PROGRAM HOLDS SHOWN IN FRONT OF THE SPRITES by a cell of the file: a number of its
+      # own in the background's tiles naming the same picture, since being in front is the
+      # number's (Nodes::Background#in_front) and the same tile behind keeps +held+.
+      FrontOfHeld = Data.define(:held)
+
+      # The background +node+'s tiles in front of the sprites, once its file is read: those it was
+      # built knowing (its told cells'), each picture of a tile as drawn in front (+pictures+, by
+      # its tile, numbered by +numbers+), each tile it holds shown in front by a cell (+fronts+), and
+      # each cell a slot told it (+told+, its words) marked in front.
+      def self.mark_tiles_in_front(node, from, pictures, numbers, fronts, told)
+        drawn = pictures.filter_map { |tile, picture| numbers.fetch(picture) if picture && tile.in_front }
+        places = told.each_index.select { |at| from.map_words.cell_tile(told[at], 0, 0, 1).in_front }.map { |at| from.told_first + at }
+        node.in_front = [*node.in_front, *places, *drawn, *fronts.values.map { |front| numbers.fetch(front) }].uniq.sort
       end
 
       # Each bank's colours as a list of colours keeps them, see-through first.
@@ -1207,12 +1260,12 @@ module VBlank
         end
       end
 
-      # The picture of +tile+ (a Console::CellTile) of the background +node+, declared in +program+,
-      # by its name; nil for a tile that draws nothing, left empty in the map, unless +keep_blank+,
-      # for a tile the program names by its number, which is then see-through all over. A tile
-      # past the file's tiles draws nothing, and a bank past its colours is every place colour 0.
-      def self.declare_background_tile(program, node, tile, banks, bytes, number, keep_blank: false)
-        from = node.from_file
+      # The picture of +tile+ (a Console::CellTile) of the background +node+, read from +from+ (a
+      # Background), declared in +program+, by its name; nil for a tile that draws nothing, left
+      # empty in the map, unless +keep_blank+, for a tile the program names by its number, which
+      # is then see-through all over. A tile past the file's tiles draws nothing, and a bank past
+      # its colours is every place colour 0.
+      def self.declare_background_tile(program, node, from, tile, banks, bytes, number, keep_blank: false)
         tile_bytes = from.tile_format.tile_bytes
         side = FormatReading::TILE_SIDE
         places = if tile.tile < from.tile_count
@@ -1233,7 +1286,7 @@ module VBlank
                                              colors: colors, places: picture.places, colors_name: picture.colors_name))
         name
       end
-      private_class_method :fill_node, :fill_recording, :hold_in, :fill_song, :fill_table, :fill_shading, :fill_picture, :picture_places, :fill_background, :fill_backdrop,
+      private_class_method :mark_tiles_in_front, :fill_node, :fill_recording, :hold_in, :fill_song, :fill_table, :fill_shading, :fill_picture, :picture_places, :fill_background, :read_background_set, :fill_backdrop,
                            :bank_lists, :colors_held, :hold_marked_colors, :declare_background_tile, :hold_read_picture, :fill_pose, :pose_places,
                            :paint_pose_piece, :fill_tile_pose, :pose_frame_pieces, :pose_piece_blocks, :pose_piece_place
     end

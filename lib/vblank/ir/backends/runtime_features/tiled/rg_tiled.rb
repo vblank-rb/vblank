@@ -49,7 +49,10 @@ RG_BG_RUN_COLORS = 19
 RG_BG_BAR_TOP = 20
 RG_BG_ABOVE_ROW = 21
 RG_BG_ALONE = 22
-RG_BG_FIELDS = 23
+RG_BG_FRONT = 23
+RG_BG_FIELDS = 24
+# RG_BG_FRONT of a background with no cells in front of the sprites (rg_tiled.h).
+RG_NOT_IN_FRONT = -1
 
 # What RG_BG_ALONE holds: shown with the other backgrounds above its row, alone there, or alone
 # without the sprites too.
@@ -480,6 +483,28 @@ end
 
 # Reference#exec_set_tile: the copy is made even when the cell turns out not to be there. A cell is
 # kept as a signed sixteen-bit number, as the map's cells are.
+# Reference#exec_set_tile_block, a block put back: rg_tiled.c's, function for function.
+def rg_background_restore_cells(background, col, row, across, down)
+  cells = @rg_cells_now[rg_keeper_of(background)][1]
+  return unless cells
+
+  map = rg_map_entry(rg_declaration_up(background), 0)
+  cols = rg_map_cols(background)
+  rows = rg_map_rows(background)
+  declared = @rg_game_map_cells.entries(@rg_game_maps[map + RG_MAP_CELLS], cols * rows)
+  changed = false
+  ([row, 0].max...[row + down, rows].min).each do |r|
+    ([col, 0].max...[col + across, cols].min).each do |c|
+      at = (r * cols) + c
+      next if cells[at] == declared[at]
+
+      cells[at] = declared[at]
+      changed = true
+    end
+  end
+  rg_request_repaint if changed
+end
+
 def rg_background_set_tile(background, col, row, tile)
   # A tile only another scene's declaration of the name has changes nothing here.
   return if tile >= rg_background_field(rg_declaration_up(background), RG_BG_TILES)
@@ -666,6 +691,10 @@ def rg_paint_map_row(background, my, off_x, wrap_w, py)
   painted = rg_background_field(background, RG_BG_PAINTED)
   painted_tiles = @rg_game_painted_tiles
   pixels = @rg_game_tile_pixels
+  # Where the background's tiles start in @rg_game_tiles_in_front while only those in front are
+  # painted (rg_paint_cells_in_front), or nil while every tile is.
+  front = @rg_tiles_painted_only
+  in_front = @rg_game_tiles_in_front
   cached_cell = RG_CELL_EMPTY # the cell whose tile starts at tile_at in cache
   tile_at = 0
   cache = nil
@@ -696,7 +725,7 @@ def rg_paint_map_row(background, my, off_x, wrap_w, py)
     run = tile_w - tx
     run = past - px if run > past - px
     cell = col < cols ? cells[first + col] : RG_CELL_EMPTY
-    if cell >= 0
+    if cell >= 0 && (front.nil? || in_front[front + cell] == 1)
       slow = painted != RG_NOT_PAINTED && painted_tiles[painted + (2 * cell)] != RG_NOT_PAINTED
       # The tile's pixels read from the Array they are cached in (RgHalves#cached_at): reading each
       # from the table's bytes was most of what painting a background cost. The same tile as the
@@ -1049,10 +1078,26 @@ def rg_paint_bar_over_sprites(bar)
   rg_paint_status_bar(bar)
 end
 
+# Reference#paint_cells_in_front (rg_tiled.c)
+def rg_paint_cells_in_front
+  @rg_game_picture_sizes[RG_SIZE_DEPTHS].times do |level|
+    @rg_game_picture_sizes[RG_SIZE_BACKGROUNDS].times do |bg|
+      front = rg_background_field(bg, RG_BG_FRONT)
+      next if front == RG_NOT_IN_FRONT || !rg_showing?(bg) || rg_background_field(bg, RG_BG_LEVEL) != level
+
+      rg_blend_as_background(bg)
+      @rg_tiles_painted_only = front
+      rg_paint_scenery(bg)
+      @rg_tiles_painted_only = nil
+    end
+  end
+end
+
 # The end of Reference#repaint_view
 def rg_tiled_repaint_ending
   bar = @rg_bar_in_rebuild
   @rg_bar_in_rebuild = nil
+  rg_paint_cells_in_front
   rg_paint_bar_over_sprites(bar) if bar && @rg_bar_covers[rg_keeper_of(bar)]
   held = @rg_game_picture_sizes[RG_SIZE_BACKGROUNDS].times.find do |bg|
     rg_showing?(bg) && rg_background_field(bg, RG_BG_ALONE) == RG_SHOWN_WITHOUT_SPRITES

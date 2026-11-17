@@ -531,45 +531,27 @@ class TestDataPacks < Minitest::Test
   end
 
   # AN ALL-IN-ONE BUILD UNPACKS AT A SPEED A BIG PORT CAN WAIT FOR: as C
-  # (Original::Unpacking#run_fastest), many times faster than the same routine played as Ruby. A
-  # routine copies 16 MB a byte at a time in a loop of its own, as a port's decoder works.
+  # (Original::Unpacking#write_pack_fastest), many times faster than the same routine played as Ruby,
+  # and far faster than on the interpreter. A routine copies 16 MB a byte at a time in a loop of its
+  # own, as a port's decoder works, and its pack is written as C.
   #
-  # HELD TO THE WORK, NOT THE CLOCK. A bound in seconds failed whenever other runs shared the
-  # cores, so the yardstick is measured in the same process at the same moment, and slows with
-  # it: the same routine played as Ruby (#run_as_ruby) for the frames that copy one sixteenth of
-  # the copy (the routine waits for a frame each BlockKitInternals::PROGRESS_BYTES written). The whole
-  # build must take under RUBY_SIXTEENTHS_ALLOWED of those. As C it takes under one (and a smaller
-  # share on a busy machine, where the Ruby slows more); a build that fell back to Ruby takes about
-  # sixteen, and to the interpreter far more, so either fails, as does C doing about five times the
-  # work. The yardstick includes writing the routine as Ruby, a small part of it.
-  #
-  # The build is timed the second time it unpacks. The first compiles the routine, which takes
-  # longer than the unpacking itself; the compiled program is kept by its C, so the second plays
-  # it as a player's machine does on every later build.
+  # HELD TO WHICH WAY PLAYED IT, NOT THE CLOCK. A bound in seconds failed whenever other runs shared
+  # the cores, and so did a bound against the same routine timed as Ruby beside it. What made a build
+  # slow was its unpacking falling back to Ruby or the interpreter, where the C build refused the
+  # routine or failed on it, and that is asked of the run: which runner played it.
   LOOPED_COPY_BYTES = 16 << 20
-  RUBY_SIXTEENTHS_ALLOWED = 3
 
-  def test_an_all_in_one_unpacking_plays_many_times_faster_than_as_ruby
+  def test_an_all_in_one_unpacking_plays_as_c
     skip_on_this_machine "zig is not installed, so the build plays its unpacking as Ruby" unless VBlank::IR::Backends::Native::Zig.installed?
 
     Dir.mktmpdir do |folder|
       bytes = Random.new(3).bytes(LOOPED_COPY_BYTES)
-      copy = copy_of(folder, bytes)
-      looped_copy_pack(copy)
-      builder = Builder.new
-      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      pack = looped_copy_pack(copy, builder)
-      build_took = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
-      sixteenth = LOOPED_COPY_BYTES / 16
-      unpacking = pack.unpacking
-      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      as_ruby = unpacking.run_as_ruby(frames: sixteenth / VBlank::Original::Packing::BlockKitInternals::PROGRESS_BYTES)
-      ruby_took = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+      unpacking = looped_copy_pack(copy_of(folder, bytes)).unpacking
+      path = File.join(folder, "pack.bin")
+      ran = unpacking.write_pack_fastest(path, sha1: Digest::SHA1.hexdigest(bytes), build_version: "1")
 
-      assert_equal bytes, VBlank::Original::Pack.from_bytes(builder.made_data_pack_file).bytes_of(:art)
-      assert_equal sixteenth, unpacking.bytes_done_in(as_ruby), "the yardstick copied a sixteenth of the copy"
-      assert_operator build_took, :<, ruby_took * RUBY_SIXTEENTHS_ALLOWED,
-                      "the build's unpacking took #{build_took.round(2)} s; a sixteenth of it as Ruby took #{ruby_took.round(2)} s"
+      assert_equal :c_pack_file, ran.runner, "the unpacking fell back from C"
+      assert_equal bytes, VBlank::Original::Pack.from_bytes(File.binread(path)).bytes_of(:art)
     end
   end
 

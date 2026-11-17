@@ -71,10 +71,13 @@ module VBlank
         chip_shape: ->(v) { v.is_a?(Audio::SNESEnvelope) },           # ...as a console's sound chip keeps it
         chip_recording: ->(v) { v.is_a?(Audio::SNESRecording) },      # ...and a recording as one keeps it
         start_file: ->(v) { v.is_a?(StartFile)&& v.checks.all?(StartFile::Check) }, # a file the program is handed as it starts
+        pool_shapes: ->(v) { v.is_a?(Array) && v.all?(PoolShape) },  # the pools a game declared
+        walk_shape: ->(v) { v.is_a?(WalkShape) },                     # what a walk of a pool is
         number_format: ->(v) { v.is_a?(Console::NumberFormat) },      # ...how a table's numbers are kept in it
         file_picture: ->(v) { v.is_a?(StartFile::Picture) || v.is_a?(StartFile::Pose) }, # ...where a picture is in it, or a pose's frame
         file_tile_pose: ->(v) { v.is_a?(StartFile::TilePose) },       # ...where the frame is a pose of sprite tiles draws
-        file_background: ->(v) { v.is_a?(StartFile::Background) },    # ...where a background's map, tiles and colours are
+        # ...where a background's map, tiles and colours are, one record for each set of its tiles
+        file_backgrounds: ->(v) { v.is_a?(Array) && !v.empty? && v.all?(StartFile::Background) },
         file_color: ->(v) { v.is_a?(StartFile::Color) },              # ...and where one colour is
         file_shading: ->(v) { v.is_a?(StartFile::Shading) },          # ...and where a shading's colours and levels are
         file_recording_settings: ->(v) { v.is_a?(StartFile::RecordingSettings) }, # ...and where a recording's settings are

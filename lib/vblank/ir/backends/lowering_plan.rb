@@ -194,7 +194,7 @@ module VBlank
         # Which shape each `repeat` of the program can take (LoopForm).
         def loop_form
           @loop_form ||= LoopForm.new(@program, apart_in: routines_reentered_at_frame_boundary.map { |name| @funcs.fetch(name) } +
-                                                          tick_handlers_waiting.values)
+                                                          tick_handlers_waiting.values) { |statements| statements_wait?(statements) }
         end
 
         # THE TICK HANDLERS THAT CAN WAIT, by their timer's name. A handler runs at the frame boundary, so one
@@ -258,6 +258,122 @@ module VBlank
         def statements_wait?(statements)
           statements.any? { |node| FRAME_ENDING_KINDS.include?(node.kind) } ||
             Reach.routines_named(statements).uniq.any? { |called| @funcs.key?(called) && waits?(called) }
+        end
+
+        # WHETHER A THING OF +pool+ CAN BE ON ITS CHAIN WHILE IT IS NOT LIVE, so a walk of it must
+        # test each thing it passes (DSL::Pool#each). A thing removed outside a walk is taken out of
+        # the chain at once; one removed during a walk stays in it, dead, on the pool's retired list
+        # until the walks end (DSL::Pool#removal_routine). So the only way to a dead thing on the
+        # chain is a push onto the retired list, and that is reached only by a removal made while a
+        # walk of the pool runs: in a walk's body, in a routine it calls, or in what a timer's tick
+        # or a bend runs, which can come in the middle of one. Where none of those removes a thing of
+        # the pool, every thing on its chain is live.
+        def dead_on_chain?(pool) = written_during_walks?(pool, DSL::Pool.retired_list(pool))
+
+        # THE BODY OF A POOL'S WALK, +repeat+ (IR::WalkShape), for a lowering stepping the walk its
+        # own way: the statements after the walk's steps, without the test of whether the thing is
+        # live where every thing on the pool's chain is (#dead_on_chain?), so only the statements
+        # the test held. The test reads a byte and compares it each turn; the console's own games
+        # walk a chain that holds only live things and test nothing.
+        def walk_body(repeat)
+          walk = repeat.pool_walk
+          body = repeat.children.drop(walk.step_statements)
+          return body unless body.length == 1 && live_test?(body.first, walk) && !dead_on_chain?(walk.pool)
+
+          body.first.children
+        end
+
+        # Whether +node+ is a walk's `if` on the thing at +walk+'s slot being live, with no else.
+        def live_test?(node, walk)
+          cond = node.cond if node.kind == :if
+          return false unless cond.is_a?(Node) && node.else.nil? && cond.kind == :binop && cond.op == :== && folded(cond.rhs) == 1
+
+          read = cond.lhs
+          read.is_a?(Node) && read.kind == :list_get && read.name == DSL::Pool.active_list(walk.pool) &&
+            read.index.is_a?(Node) && read.index.kind == :var_ref && read.index.name == walk.at
+        end
+
+        # WHETHER +pool+'S CHAIN CAN CHANGE WHILE A WALK OF IT RUNS. A walk stops after the thing
+        # that was last when it began (DSL::Pool#each), because a thing spawned during it is added
+        # after that one. The chain is changed only by the pool's routines that write its links:
+        # adding a spawn at the end, and taking a thing out, which outside a walk is at once and
+        # during one waits until the walks end. Where no walk can reach a write of the links, the
+        # last thing's link is NONE all through the walk, as the chain's end always is, so a walk
+        # can stop on that link alone.
+        def chain_changed_during_walks?(pool)
+          written_during_walks?(pool, DSL::Pool.next_list(pool)) || written_during_walks?(pool, DSL::Pool.prev_list(pool))
+        end
+
+        # Whether a statement that can run while a walk of +pool+ runs writes the list +list+.
+        def written_during_walks?(pool, list)
+          statements_during_walks(pool).any? { |node| !LIST_READS.include?(node.kind) && node.attrs.values.flatten.include?(list) }
+        end
+
+        # The steps that name a list and only read it.
+        LIST_READS = %i[list_get list_len].freeze
+
+        # THE STATEMENTS THAT CAN RUN WHILE A WALK OF +pool+ RUNS: a walk's body, the routines it
+        # calls, and what a timer's tick or a bend runs, which can come in the middle of one. The
+        # pool's own routines test whether a walk of it is in progress before they change its chain
+        # (DSL::Pool#not_walking): what they do only when none is, is left out, since a walk is.
+        def statements_during_walks(pool)
+          (@statements_during_walks ||= {}).fetch(pool) do
+            walking = DSL::Pool.part_name(pool, :walking)
+            walks = @reachable.select { |node| node.kind == :repeat && node.pool_walk&.pool.to_s == pool.to_s }
+            found = []
+            routines = []
+            waiting = walks + @tick_handlers.values + @bend_roots
+            until waiting.empty?
+              before = found.length
+              statements_while_walking(waiting.shift, walking, found)
+              Reach.routines_named(found.drop(before)).each do |name|
+                next if routines.include?(name) || !@funcs.key?(name)
+
+                routines << name
+                waiting << @funcs.fetch(name)
+              end
+            end
+            @statements_during_walks[pool] = found
+          end
+        end
+
+        # The statements under +root+ added to +found+, as Reach.statements_under finds them, but for
+        # what an `if` does only while no walk is in progress (+walking+ nought).
+        def statements_while_walking(root, walking, found)
+          found << root
+          nodes = root.children + root.operand_nodes
+          nodes = [root.cond, root.else].compact if root.kind == :if && only_when_not_walking?(root.cond, walking)
+          nodes.each do |node|
+            case node.kind
+            when :func then next
+            when :scroll_rows, :on_timer then found << node
+            else statements_while_walking(node, walking, found)
+            end
+          end
+        end
+
+        # Whether +cond+ holds only while the count of walks +walking+ is nought: that test, or one
+        # side of an `and`.
+        def only_when_not_walking?(cond, walking)
+          return false unless cond.is_a?(Node) && cond.kind == :binop
+
+          if cond.op == :and
+            only_when_not_walking?(cond.lhs, walking) || only_when_not_walking?(cond.rhs, walking)
+          else
+            cond.op == :== && cond.lhs.is_a?(Node) && cond.lhs.kind == :var_ref && cond.lhs.name == walking &&
+              folded(cond.rhs) == 0
+          end
+        end
+
+        # What range each number of the program stays in (NumberRanges), for a lowering that works a
+        # small one at a narrower width. A game loop's own numbers (IR::Frames::ConsoleLoop) are
+        # written by statements the program does not hold, so nothing is proven of them.
+        # How often a run names each variable, weighted by the loops around it (VariableUse), for a
+        # lowering that keeps the busiest where its processor reaches them quickest.
+        def variable_use = @variable_use ||= VariableUse.new(@program)
+
+        def number_ranges
+          @number_ranges ||= NumberRanges.new(@program, also_whole: game_loops.flat_map { |node| console_loop(node).variables })
         end
 
         # Every game loop of the program.

@@ -16,6 +16,8 @@ module PackBackgroundSetCellAtStartTests
   include PackBackgroundSetCellGames
 
   LEFT_OUT = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
+  # Frames after which a game blanking its text on pass 4 shows the text, and then the blank.
+  WRITTEN_AND_BLANKED_FRAMES = [3, 8].freeze
 
   def test_a_told_cell_drawing_a_tile_past_the_slot_is_refused_with_the_pack_left_out
     Dir.mktmpdir do |folder|
@@ -74,6 +76,64 @@ module PackBackgroundSetCellAtStartTests
 
       assert_equal expected, game_player.run(program, frames: 5).screen.to_a
       assert_equal expected, game_player.hand_file(file).run(left_out, frames: 5).screen.to_a
+    end
+  end
+
+  # A BLOCK OF CELLS PUT BACK WITH THE PACK LEFT OUT (`restore_cells`): the map is the file's, read
+  # as the game starts, so the cells go back to what the all-in-one build puts back, the map's
+  # empty cell (2, 1) emptied again. A block of told cells covers part of the map on pass 2, part
+  # of it, and some of the map past its edge, is put back on pass 4, and the rest on pass 6.
+  def test_cells_put_back_with_the_pack_left_out_show_as_the_all_in_one_builds
+    Dir.mktmpdir do |folder|
+      game = lambda do |**settings|
+        map_cells_game_and_file(folder, :gbc, set_cells: ->(pack) { pack[:changes] }, changes: 3, **settings) do |world|
+          t = var :t, 0
+          game_loop do
+            t += 1
+            world.fill_cells 0, 0, 4, 2, 1 if t == 2
+            world.restore_cells 1, -1, 2, 5 if t == 4
+            world.restore_cells 0, 0, 9, 9 if t == 6
+          end
+        end
+      end
+      program, file = game.()
+      left_out, = game.(options: LEFT_OUT)
+      all_in_one = pictures_of_frames(program, [3, 5, 7])
+
+      refute_equal all_in_one[0], all_in_one[2], "the block showed, and was put back"
+      assert_equal all_in_one, pictures_of_frames(left_out, [3, 5, 7], file: file)
+    end
+  end
+
+  # The picture after each of +frames+, played by this run's player, handed +file+ where given.
+  private def pictures_of_frames(program, frames, file: nil)
+    frames.map do |count|
+      player = file ? game_player.hand_file(file) : game_player
+      player.run(program, frames: count).screen.to_a
+    end
+  end
+
+  # Written `now: true` with the pack left out, by number and by place, the cells show what the
+  # all-in-one build shows written without it. Played as a console that writes its video memory
+  # only between frames, the game is refused as its all-in-one build is (TestPackBackgroundSetCell).
+  def test_cells_written_now_with_the_pack_left_out_show_as_written_for_the_gap
+    shows_now = VBlank::Console.described(VBlank::Testing.console).changes_cells_while_drawing
+    Dir.mktmpdir do |folder|
+      { "by number" => ->(**settings) { map_cells_text_game(folder, :gbc, blank_at: 4, **settings) },
+        "by place" => ->(**settings) { slot_told_text_game(folder, :gbc, blank_at: 4, **settings) } }.each do |how, game|
+        program, file = game.()
+        left_out, = game.(now: true, options: LEFT_OUT)
+        unless shows_now
+          error = assert_raises(VBlank::IR::Guardrails::ValidationError) { game_player.hand_file(file).run(left_out, frames: 3) }
+          assert_match(/between frames/, error.message, how)
+          next
+        end
+
+        WRITTEN_AND_BLANKED_FRAMES.each do |frames|
+          assert_equal game_player.run(program, frames: frames).screen.to_a,
+                       game_player.hand_file(file).run(left_out, frames: frames).screen.to_a, "#{how}, after #{frames} frames"
+        end
+      end
     end
   end
 end

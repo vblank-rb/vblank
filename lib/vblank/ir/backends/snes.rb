@@ -35,6 +35,8 @@ require_relative "snes/lowering/collision"
 require_relative "snes/lowering/saving"
 require_relative "snes/lowering/sound"
 require_relative "snes/lowering/chip"
+require_relative "snes/lowering/shown_sort"
+require_relative "snes/half_variables"
 require_relative "snes/lowering"
 require_relative "snes/headless_run"
 require_relative "snes/checked_run"
@@ -67,11 +69,18 @@ module VBlank
         # picture's number as SpriteNames numbers the picture it shows (Lowering::Picture#sprite_picture_names),
         # and the pieces it made of each picture (Lowering::Picture#sprite_pieces_built); and how much
         # of the sound chip's memory the game uses (Cartridge::SNESROM::SoundMemory, nil for no sound).
+        # +slot_places+ is where each list a pool's layout moved keeps its slots, counted from the end
+        # of its header (Backends::PoolLayout::SlotPlace, CartridgeHeadlessRun#slot_place_of).
+        # +half_variables+ is the variables kept in two bytes (HalfVariables), read back with their
+        # sign spread upward.
         Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :routines, :sound_entries,
                              :sound_voicing, :recording_names, :sprite_picture_names, :sprite_pieces, :console_voice_bits,
-                             :sound_memory) do
+                             :sound_memory, :slot_places, :half_variables) do
           # Where the runtime counts the times the game has waited for the screen (32 bits).
           def waits_counted_at = runtime.fetch(Runtime::Frame::PASSES)
+
+          # How many bytes the variable +name+ is kept in.
+          def variable_bytes(name) = half_variables.include?(name) ? 2 : 4
 
           # THE SPRITES THE GAME PLACED IN ITS LAST PASS, as the interpreter gives them
           # (Reference#sprites): what the runtime keeps of what it placed (Runtime::Picture::DRAWN).
@@ -217,6 +226,7 @@ module VBlank
                                                sprite_tiles: settings.sprite_tiles, background_tiles: settings.background_tiles)
           Runtime.reserve(memory, carries)
           Runtime::Frame.reserve_last_pass(memory) if cache.plan.keeps_last_pass_number?
+          memory.keep_scratch_room(Runtime.scratch_bytes(carries, fractions: Lowering.fractions_named?(program)))
           lowering = try.made = Lowering.new(program, memory: memory, sprite_squares: settings.sprite_squares,
                                                       screen_colors: settings.screen_colors,
                                                       sprite_colors: settings.sprite_colors, sprite_tiles: settings.sprite_tiles,
@@ -229,12 +239,16 @@ module VBlank
           begin
             game = lowering.sections + lowering.art_sections
           rescue LoweringError => e
+            # A try that asked for the whole place of a variable kept in two bytes wrote code that
+            # cannot run, so what stopped it may be that code: the next try keeps those whole.
+            lowering.refuse_handed_over!
             # A screen whose sprites did not fit stops the try once every screen has been made,
             # whatever the build refused after it (Art#refuse_crowded_scenes!), but backgrounds over
             # their sets of colours, which no change to the sprites can help.
             lowering.refuse_crowded_scenes! unless e.is_a?(Art::BackgroundColorsFull)
             raise
           end
+          lowering.refuse_handed_over!
           lowering.refuse_crowded_scenes!
           runtime = Runtime.sections(memory, carries, lowering, sleeps_every_pass: @sleeps_every_pass)
           try_findings = [*lowering.sprite_table_findings, *lowering.crowded_scene_findings, *lowering.scene_recording_findings]
@@ -252,7 +266,8 @@ module VBlank
                              recording_names: lowering.recording_names,
                              sprite_picture_names: lowering.sprite_picture_names, sprite_pieces: sprite_pieces,
                              console_voice_bits: Music.voice_bits(DSPWrites::CONSOLE_VOICES.to_a - carries.recording_voices),
-                             sound_memory: runtime.sound_memory)
+                             sound_memory: runtime.sound_memory, slot_places: lowering.slot_places,
+                             half_variables: lowering.half_variables_kept)
           vectors = { reset: linked.address_of("rt_reset"), nmi: linked.address_of("rt_nmi"),
                       irq: linked.address_of("rt_irq"), brk: linked.address_of("rt_irq"),
                       cop: linked.address_of("rt_irq") }
@@ -268,6 +283,9 @@ module VBlank
           settings = try.settings
           lowering = try.made
           case error
+          # The variables it needed whole are whole from the next try on, and a program has only
+          # so many variables, so the tries end (Lowering#place_of).
+          when Lowering::VariableHandedOver then settings
           when Memory::NearFull then settings.with(far_tables: true) unless settings.far_tables
           when Runtime::Sound::TooBig
             settings.with(scene_recordings: true) unless settings.scene_recordings || !lowering.recordings_of_one_scene?

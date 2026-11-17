@@ -233,6 +233,8 @@ class TestJSPreview < Minitest::Test
     false
   end
 
+  # The clock here, and each Timeout above, only catches a preview that never gets there: a run
+  # that passes stops waiting the moment it does, however busy the machine is.
   private def wait_until
     deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 20
     sleep 0.01 until yield || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline

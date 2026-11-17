@@ -59,7 +59,18 @@ module VBlank
               "Genesis" => "A 68000 instruction that counts or compares in a data register is a third of the time of " \
                            "the same on a place in work RAM, and a body that reads its index reads it for a quarter. " \
                            "Genesis::Lowering#with_counter_held keeps the count in D7, D6 or D5 through a loop whose " \
-                           "body is written with D0 to D2 and A0 alone, and puts it back as the loop ends."
+                           "body is written with D0 to D2 and A0 alone (a counted while's variable loaded as the " \
+                           "loop starts), and puts it back as the loop ends.",
+              "SNES" => "The 65816 adds and compares 16 bits at a time, so a 32-bit count's turn end is thirteen " \
+                        "instructions. A count to a number written in the program below $8000 never leaves its low " \
+                        "half, so SNES::Lowering#with_counter_held has its turn end INC the low half and compare it " \
+                        "unsigned, three instructions; a pool's walk takes a turn for every thing it visits. " \
+                        "Where only the loop reads the count and nothing in it changes Y, the turn is INY and " \
+                        "CPY instead, two and three cycles against eight for an INC of work RAM.",
+              "PS1" => "A count in main RAM is a load that waits on the RAM, an add and a store each turn, and a " \
+                       "load again to compare it; PS1::Lowering#with_counter_held keeps it in s4, s3 or s2 " \
+                       "through a body that cannot reach the game's routines or a frame boundary, one ADDIU a " \
+                       "turn, and puts it back as the loop ends."
             }
           }
         )
@@ -169,6 +180,9 @@ module VBlank
         # one past its last turn, and the variable is taken back by one, to the last turn's number,
         # which is what the interpreter's holds.
         def emit_repeat(node)
+          counted = loop_form.counted_while(node)
+          return emit_counted_while(node, counted) if counted && children_of(node).first.last.equal?(counted.step)
+
           known = folded(node.count)
           return if known && known <= 0
 
@@ -199,12 +213,52 @@ module VBlank
           place_label(none) if none
         end
 
+        # A `while v < limit` ending `v += 1` that the build can prove is counted
+        # (LoopForm#counted_while), lowered as a counted loop: the game's own variable is the count.
+        #
+        # The test whether to stop is asked once before the first turn, and then at the end of each,
+        # after the one more, as #emit_repeat asks it; none is asked before the first turn where the
+        # start and the limit are both written in the program and a turn is sure. Nothing else
+        # counts: the loop's hidden index (the interpreter's count of turns made, which no statement
+        # reads) is written once, as the loop ends, as the variable less where it started. Where the
+        # start is written in the program at nought or above and the limit is too, the variable is
+        # known to be below the limit through the body (#index_below), as a repeat's is.
+        #
+        # The variable is held as a repeat's count is (#with_counter_held, +loaded+: it comes in
+        # holding the game's number), and put back in its variable as the loop ends.
+        def emit_counted_while(node, counted)
+          variable = counted.variable
+          limit = folded(counted.limit)
+          start = counted.starts_at
+          sure = start && limit && start < limit
+          return statement(Build.set(node.index, Build.int(0))) if start && limit && !sure
+
+          top = fresh_label("while")
+          done = fresh_label("end_while")
+          statement(Build.set(node.index, Build.neg(Build.var_ref(variable)))) unless start
+          jump_if(node.stop_when, done) unless sure
+          with_counter_held(node, variable, loaded: true) do
+            place_label(top)
+            with_index_below(sure && start >= 0 ? variable : nil, limit) do
+              children_of(node).first[0...-1].each { |child| statement(child) }
+            end
+            emit_increment(variable)
+            jump_if(Build.binop(:<, Build.var_ref(variable), counted.limit), top)
+          end
+          place_label(done)
+          turns = start ? Build.binop(:-, Build.var_ref(variable), Build.int(start)) : Build.binop(:+, Build.var_ref(node.index), Build.var_ref(variable))
+          statement(Build.set(node.index, turns))
+        end
+
         # The loop +node+ written by the block, from its count +counter+ set to nought to the label
         # every way out of it comes to. A lowering whose processor counts faster in a register than
         # in memory writes this its own way (OWN_WAYS): it may keep +counter+ in a register while
         # the block runs, where nothing the block writes can overwrite it, and put it back in its
-        # variable after. A loop that makes no turns does not come this way.
-        def with_counter_held(_node, _counter) = yield
+        # variable after. A loop that makes no turns does not come this way. +loaded+: the counter
+        # comes in holding a number of the game's (a counted while's variable,
+        # #emit_counted_while), which a register keeping it starts from, rather than set to nought
+        # inside the block.
+        def with_counter_held(_node, _counter, loaded: false) = yield
 
         # WHAT A LOOP'S VARIABLE IS KNOWN TO BE BELOW while the loop's own statements are written: a
         # loop that counts in its variable to a count written in the program holds 0 to one less
@@ -216,6 +270,38 @@ module VBlank
         #
         # The count +name+ is below, or nil where nothing is known of it.
         def index_below(name) = (@indexes_below ||= {})[name]
+
+        # WHAT AN INDEX IS KNOWN TO BE BELOW, from how it is written: a number written in the program
+        # (one more than it, when it is not below nought), a loop's variable (#index_below), a number
+        # kept to its low bits by a mask written in the program, `t & 31`, which is never below nought
+        # and never above the mask, or the remainder of a division by a number written in the program
+        # that is above nought, `t % 24`, which takes the divisor's sign and is below it
+        # (Int32.mod). A list read at such an index from a list that always holds at least that many
+        # needs no test that it is inside. Nil where nothing is known.
+        def index_known_below(index)
+          number = folded(index)
+          return (number + 1 if number.is_a?(Integer) && number >= 0) unless number.nil?
+          return unless index.is_a?(Node)
+          return index_below(index.name) if index.kind == :var_ref
+          return unless index.kind == :binop
+
+          if index.op == :&
+            mask = [folded(index.rhs), folded(index.lhs)].find { |side| side.is_a?(Integer) && side >= 0 }
+            return mask && mask + 1
+          end
+          divisor = folded(index.rhs) if index.op == :%
+          divisor if divisor.is_a?(Integer) && divisor.positive?
+        end
+
+        # WHAT RANGE A NUMBER STAYS IN while the statement being written runs, for a lowering that
+        # works a small one at a narrower width: what the plan proves of it (LoweringPlan#number_ranges),
+        # and a loop's variable below its count through the loop's body (#index_below). Nil where
+        # nothing is known.
+        def proven_range(node)
+          @plan.number_ranges.range_of_value(node) { |name| (below = index_below(name)) && (0..(below - 1)) }
+        end
+
+        def proven_within?(node, bounds) = NumberRanges.inside?(proven_range(node), bounds)
 
         def with_index_below(name, count)
           return yield unless name

@@ -325,6 +325,51 @@ class TestList < Minitest::Test
     assert_match(/out of range/i, err.message)
   end
 
+  # Read at a variable before the list is made: the same, though the index is below the capacity the
+  # list is made with.
+  def test_reading_a_full_list_at_a_variable_before_it_is_made_raises
+    err = assert_raises(Reference::ProgramError) do
+      game_player.run(Build.program(Build.set(:at, 1), Build.set(:got, Build.list_get(:early, Build.var_ref(:at))),
+                                    Build.list_new(:early, 4, full_of: 0), Build.halt))
+    end
+    assert_match(/out of range/i, err.message)
+  end
+
+  # A full list read at an index known to stay inside it, a mask, a remainder or a loop's count, reads
+  # the slot it names; one whose mask or remainder reaches past the list still stops the game, as does
+  # a remainder by a number below nought, which is nought or below.
+  def test_reading_a_full_list_at_a_mask_a_remainder_or_a_count
+    result = interpret do
+      row = list :row, capacity: 8, width: :byte, full_of: 0
+      8.times { |n| row[n] = (n * 3) - 4 }
+      at = var :at, 13
+      masked = var :masked, 0
+      left = var :left, 0
+      total = var :total, 0
+      masked = row[at & 7]
+      left = row[at % 6]
+      repeat(8) { |n| total += row[n] }
+      halt
+    end
+
+    assert_equal 11, result[:masked], "13 & 7 is 5"
+    assert_equal(-1, result[:left], "13 % 6 is 1")
+    assert_equal 52, result[:total]
+    { "at & 15" => ->(row, at) { row[at & 15] }, "at % 9" => ->(row, at) { row[at % 9] },
+      "at % -3" => ->(row, at) { row[at % -3] } }.each do |how, read|
+      err = assert_raises(Reference::ProgramError, how) do
+        interpret do
+          row = list :row, capacity: 8, full_of: 0
+          at = var :at, 8
+          oops = var :oops, 0
+          oops = read.call(row, at)
+          halt
+        end
+      end
+      assert_match(/out of range/i, err.message, how)
+    end
+  end
+
   def test_using_a_list_before_it_is_created_raises
     # Built straight from the IR: the DSL can't express this (a handle only comes
     # from `list`), but a stray push must still fail loudly rather than silently.

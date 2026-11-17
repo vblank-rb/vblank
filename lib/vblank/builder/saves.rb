@@ -37,6 +37,7 @@ module VBlank
         @save_data = {}          # record name → its SaveRecords::Layout, in declaration order
         @save_data_keeping = {}  # record name → what it keeps so far, in the order kept
         @save_data_kept = {}     # a kept variable or list → the record that keeps it
+        @save_data_unnamed = Set.new # kept variables the framework named, left out of a record's shape
         @save_data_peeks = {}    # a peek's stand-in → the SaveRecords::PeekSite it stands for
         @save_data_settled = false # true once the records are laid out, and nothing more can be kept
         @save_memory_layout = nil # the IR::SaveLayout::Memory they are laid out in, picked then too

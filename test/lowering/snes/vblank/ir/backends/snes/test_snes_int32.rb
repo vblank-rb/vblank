@@ -122,7 +122,10 @@ class TestSNESInt32 < Minitest::Test
     vectors = SNES::W65816.new("vectors", home: :first)
     SNES::Runtime::Boot.emit_vectors(vectors)
     asm = SNES::W65816.new("runtime")
-    SNES::Runtime::Boot.emit(asm, main: "test_main")
+    boot = SNES::Runtime::Boot
+    SNES::Runtime::Boot.emit(asm, main: "test_main",
+                                  cleared: boot::Cleared.new(work_ram: SNES::Memory.new.placed_ranges,
+                                                             video_ram: boot.video_ram_read(painted: false, third_layer: false)))
     SNES::Runtime::Boot.emit_zero(asm)
     SNES::Runtime::Int32.emit(asm, SNES::Runtime::Int32.scratch(SNES::Memory.new))
     asm.instance_eval do

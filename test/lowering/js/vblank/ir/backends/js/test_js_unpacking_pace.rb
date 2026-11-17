@@ -11,7 +11,13 @@ require "tmpdir"
 # V8 never optimised it, and Wolfenstein's shareware took minutes to unpack in a web shell where its
 # C took seconds. This is such a routine, smaller: a loop of samples, each the sum of many voices
 # written out one after another, played as a web shell's worker plays it (unpacking_harness.js), and
-# held to a pace the routine printed whole did not keep, and to the pack the all-in-one build made.
+# held to the pack the all-in-one build made.
+#
+# COUNTED, NOT TIMED. A time fails whenever other work shares the cores, so what made the routine
+# slow is counted in the JavaScript it is printed as, which no load can change: the lines of its
+# longest function (V8 gives up optimising a function past a size, and the sample loop printed whole
+# is thousands of lines), and the game's sums written as calls into the runtime (rg_add and its
+# siblings) where JavaScript's own operators do (JS::Printer::OPERATORS).
 class TestJSUnpackingPace < Minitest::Test
   include MadeUpOriginal
 
@@ -20,12 +26,15 @@ class TestJSUnpackingPace < Minitest::Test
   VOICES = 600
   SAMPLES = 60_000
 
-  # Measured where this was written, the routine printed whole took over ten times as long as in
-  # parts with its sums written as operators, and this bound lies between the two, nearer the
-  # whole: a run on a busy machine keeps it, and a routine printed whole again does not.
-  MOST_SECONDS = 1.2
+  # The most lines one function of the routine may have. Printed in parts (JS::Printer
+  # MOST_WEIGHT_A_FUNCTION), its longest was a few hundred where this was written; printed whole,
+  # the sample loop's one function is four lines a voice.
+  MOST_LINES_A_FUNCTION = 1_000
 
-  def test_a_long_unpacking_plays_at_pace_on_the_web
+  # The runtime's functions for a sum of two numbers, which the printer writes as operators.
+  SUM_CALLS = /\brg_(?:add|sub|mul|and|or|xor)\(/
+
+  def test_a_long_unpacking_is_printed_in_parts_with_its_sums_as_operators
     voices = VOICES
     samples = SAMPLES
     Dir.mktmpdir do |folder|
@@ -56,14 +65,21 @@ class TestJSUnpackingPace < Minitest::Test
       text, = VBlank::IR::Backends::JS.new.factory_and_data_file(unpacking.program, name: "createUnpacking", menu: false, states: false)
       File.write(factory, "\"use strict\";\n#{text}\nmodule.exports = createUnpacking;\n")
       File.binwrite(File.join(folder, "copy.bin"), copy)
-      out, said, status = Open3.capture3("node", HARNESS, factory, File.join(folder, "copy.bin"),
-                                         VBlank::Original::Unpacking::BYTES.to_s, File.join(folder, "made.bin"))
+      _out, said, status = Open3.capture3("node", HARNESS, factory, File.join(folder, "copy.bin"),
+                                          VBlank::Original::Unpacking::BYTES.to_s, File.join(folder, "made.bin"))
       assert status.success?, said
-      seconds = Integer(out[/^played (\d+)$/, 1]) / 1000.0
 
       assert_equal VBlank::Original::Pack.from_bytes(b.made_data_pack_file).bytes_of(:samples), File.binread(File.join(folder, "made.bin")),
                    "the pack the web shell makes is the all-in-one build's"
-      assert_operator seconds, :<, MOST_SECONDS, "the unpacking took #{seconds} s on the web"
+      routine = routine_functions(text)
+      assert_operator routine.map { |function| function.lines.length }.max, :<=, MOST_LINES_A_FUNCTION, "lines of the longest function"
+      assert_equal 0, routine.sum { |function| function.scan(SUM_CALLS).length }, "sums written as calls into the runtime"
     end
+  end
+
+  # The functions the routine is printed as (rg_game_main, and its steps and parts), each its text:
+  # every function of the file starts a line with `function`, and the game's are named for it.
+  private def routine_functions(text)
+    text.split(/^(?=function )/).grep(/\Afunction rg_(?:game_main|steps_\d+_rg_game_main|part_\d+_rg_game_main)\(/)
   end
 end

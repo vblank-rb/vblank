@@ -113,6 +113,7 @@ module VBlank
         wanted = shown.to_set
         running = opener.call
         first_size = nil
+        taken = []
         (1..shown.max).each do |frame|
           running.step(1, keys: IR::Buttons.mask(@keys.call(frame)))
           next unless wanted.include?(frame)
@@ -120,7 +121,9 @@ module VBlank
           running.screenshot(picture_path(into, frame))
           size = picture_size(picture_path(into, frame))
           first_size ||= [frame, size]
+          first_size = [frame, size] if size != first_size.last && rescale_blank_pictures?(into, taken, size)
           refuse_size_change!(into, first_size, frame, size)
+          taken << frame
         end
       ensure
         running.close if running.respond_to?(:close)
@@ -129,8 +132,30 @@ module VBlank
       # A PNG's width and height, from its header.
       def picture_size(path) = File.binread(path, 8, 16).unpack("N2")
 
+      # A CONSOLE THAT HAS SHOWN NOTHING YET MAY BE ANOTHER SIZE. Genesis Plus GX gives a Genesis
+      # cartridge's first frame from power-on at the Master System's 256 x 192, the size its video chip
+      # starts in, until the game sets it to its own; the picture is one colour, as nothing is shown yet.
+      # When every picture taken of a side so far is one colour, they are the console before the game's
+      # first picture: each is scaled to +size+ (still the one colour) and the film goes on. Asks
+      # ImageMagick how many colours each holds only when the size changes.
+      def rescale_blank_pictures?(into, taken, size)
+        paths = taken.map { |frame| picture_path(into, frame) }
+        return false unless paths.all? { |path| one_color?(path) }
+
+        paths.each do |path|
+          system(@commands.fetch(IMAGEMAGICK), path, "-scale", "#{size.join('x')}!", path, exception: true)
+        end
+        true
+      end
+
+      def one_color?(path)
+        colors = IO.popen([@commands.fetch(IMAGEMAGICK), path, "-format", "%k", "info:"], &:read)
+        colors.strip == "1"
+      end
+
       # A film's pictures of one side are one size. A program that sets its screen to another size as
-      # it plays (a PlayStation program can) cannot be filmed across the change.
+      # it plays (a PlayStation program can) cannot be filmed across the change, once it has shown
+      # something (#rescale_blank_pictures?).
       def refuse_size_change!(into, first_size, frame, size)
         first_frame, first = first_size
         return if size == first

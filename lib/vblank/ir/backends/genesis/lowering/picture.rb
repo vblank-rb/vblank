@@ -16,7 +16,7 @@ module VBlank
           # pieces, placed in the sprite table every pass the game places its sprites.
           module Picture
             STATEMENT_KINDS = %i[
-              background scroll_background set_tile show_map present_objects color_list_holds
+              background scroll_background set_tile set_tile_block show_map present_objects color_list_holds
               background_colors fade tint hide_sprites
             ].freeze
 
@@ -25,6 +25,7 @@ module VBlank
               when :background then emit_background(node)
               when :scroll_background then emit_scroll_background(node)
               when :set_tile then emit_set_tile(node)
+              when :set_tile_block then emit_set_tile_block(node)
               when :show_map then emit_show_map(node)
               when :present_objects then emit_present_objects(node)
               when :color_list_holds then emit_color_list_holds(node)
@@ -54,6 +55,8 @@ module VBlank
               @grids = {}
               @cells_made = {}
               @pose_tables = {}
+              @front_pose_tables = {} # the same for the sprites drawn in front (#pose_table)
+              @pose_rooms = {}
               @layers = {}.compare_by_identity
             end
 
@@ -168,13 +171,17 @@ module VBlank
 
             # Every picture a sprite can show, made into sprite pieces in the order SpriteNames numbers
             # them, so the number a picture is made with is the one a reader of the drawn sprites turns
-            # back into its name.
+            # back into its name. A picture only sprites kept to one pose show is drawn from their rooms
+            # alone (PoseRooms#make_pose_rooms), and is not kept in video memory whole.
             def make_sprite_art
               return unless places_sprites?
 
               poses = @objects.values.flat_map(&:poses).uniq.sort_by { |name| @sprite_names.picture_number(name) }
+              kept_whole = @objects.values.reject { |obj| streamed?(obj) }.flat_map(&:poses).uniq
               refuse_hand_over_inside_test!(:colors) if sprite_colors_take_turns?
               allot_shared_colors(poses) if @scene_colors
+              make_pose_rooms
+              poses &= kept_whole
               return make_art_by_scene(poses) if @scene_tiles
 
               make_sprite_pictures(poses)
@@ -596,7 +603,9 @@ module VBlank
             # room now is past it at the end. Only where a later try can help: a game nothing can help
             # is refused at the end (Art#refuse_too_many_tiles!), where its count is whole.
             def refuse_tiles_past_room_early!
-              @art.refuse_too_many_tiles! if places_sprites? && scene_tiles_after(@scene_tiles)
+              return unless places_sprites? && @art.too_many_tiles?
+
+              @art.refuse_too_many_tiles! if scene_tiles_after(@scene_tiles) || streamed_after(@streamed)
             end
 
             def one_dispatch? = tiled? && @program.walk.count { |node| node.kind == :case } == 1
@@ -843,7 +852,7 @@ module VBlank
             end
 
             # The picture each picture of the art is, by number, as SpriteNames numbers it.
-            def sprite_picture_names = @art.sprite_pictures.map { |name, _| @sprite_names.picture_number(name) }
+            def sprite_picture_names = @art.sprite_pictures.map { |_, picture| @sprite_names.picture_number(picture.name) }
 
             # The art, and each sprite's table of pictures, as sections for the Linker.
             def art_sections
@@ -877,6 +886,7 @@ module VBlank
                 data.data_longs(poses.length)
                 data.data_longs(poses.map { |pose| pieces_label(@art.sprite_pictures.fetch(pose).number) })
               end
+              write_front_poses(data)
               (@recolor_tables || []).each do |lines|
                 data.label(recolor_table_label(lines))
                 data.data_words(lines.length, *lines.map { |line| line << Art::PALETTE_SHIFT })
@@ -896,6 +906,22 @@ module VBlank
             ART = M68000::Holding.new(what: "the game's pictures", fix: "use fewer different pictures and maps")
 
             def pieces_label(number) = "art pieces #{number}"
+            def front_pieces_label(number) = "art pieces in front #{number}"
+
+            # The pose tables of the sprites drawn in front (#pose_table), and their pictures' pieces
+            # with the priority bit set, once for each picture whichever sprites show it.
+            private def write_front_poses(data)
+              @front_pose_tables.each do |poses, label|
+                data.label(label)
+                data.data_longs(poses.length)
+                data.data_longs(poses.map { |pose| front_pieces_label(@art.sprite_pictures.fetch(pose).number) })
+              end
+              @front_pose_tables.keys.flatten(1).uniq.each do |pose|
+                picture = @art.sprite_pictures.fetch(pose)
+                data.label(front_pieces_label(picture.number))
+                data.data_words(Runtime::Tiles.picture_words(picture.number, picture.pieces, sprite_tiles_from, in_front: true))
+              end
+            end
             def grid_label(number) = "art grid #{number}"
 
             private
@@ -913,9 +939,17 @@ module VBlank
               @grids[[bg.object_id, which]] ||= begin
                 map = bg.every_map.fetch(which)
                 columns, rows = TileMap.size_of(map)
-                cells = map.map { |row| Array(row).map { |tile| cell_of(bg, tile) } }
+                cells = map.map { |row| Array(row).map { |tile| placed_cell_of(bg, tile) } }
                 @art.grid(cells, columns, rows)
               end
+            end
+
+            # The cell of +bg+'s map showing tile +tile+ (#cell_of), with its priority set where the tile is
+            # one of the background's in front of the sprites (Nodes::Background#in_front), as Art.cell_word
+            # reads it.
+            def placed_cell_of(bg, tile)
+              cell = cell_of(bg, tile)
+              cell && bg.in_front&.include?(tile) ? [*cell.take(2), true] : cell
             end
 
             # A cell showing tile +tile+ of +bg+'s, as [tile number, palette], or nil for none. Made once
@@ -1031,9 +1065,87 @@ module VBlank
               end
             end
 
+            # A BLOCK OF CELLS IS NOTED AS ONE COMMAND FOR THE BLANK (Runtime::Tiles#emit_block_noted),
+            # as a console's own game queues a box for its interrupt to lay: the block's place and size
+            # and the one cell's word, or where the map's own cells are in the cartridge. The blank
+            # writes its cells a row at a time, the chip moving on by itself from cell to cell, so a
+            # block of two hundred cells costs the pass what one cell does. Its children, the same
+            # cells written one by one, are what the interpreter plays (Reference#exec_set_tile_block);
+            # the checked run holds this to them.
+            #
+            # THIS IS THE ONE LOWERING THAT DOES NOT PLAY THE CHILDREN, and the measurement is why: a
+            # speech box of 189 cells written one by one took the pass nearly a whole frame, each
+            # cell a test of its place and a call to note it, and written as five blocks it takes a
+            # small part of one, the blank writing a word a cell
+            # (test/lowering/genesis/vblank/ir/backends/genesis/test_genesis_cell_blocks.rb).
+            def emit_set_tile_block(node) = for_background(node) { |bg| emit_set_tile_block_of(bg, node) }
+
+            def emit_set_tile_block_of(bg, node)
+              columns, rows = TileMap.size_of(bg.every_map.first)
+              base = (Runtime::Tiles.cell_command >> 16) + (layer_of(bg).odd? ? Runtime::Tiles::PLANE_B_AT - Runtime::Tiles::PLANE_A_AT : 0)
+              word, skipped = emit_block_cell_word(bg, node)
+              return unless word
+
+              description =
+                if node.restore
+                  grid = grid_of(bg, 0)
+                  [columns, rows, base, grid.columns * 2, grid_label(grid.number)]
+                else
+                  [columns, rows, base, 0, 0]
+                end
+              label = @cell_blocks[description] ||= "cell block #{@cell_blocks.length + 1}"
+              runtime_call("rt_note_block", [node.col, node.row, node.across, node.down, word]) do
+                @asm.lea(@asm.abs_l(label), @asm.a(0))
+              end
+              @asm.label(skipped) if skipped
+            end
+
+            # What D4 is handed for +node+'s block on +bg+: the one cell's word, a number or a number of
+            # the lowering's own it was read into, and the label to jump to where the picked number
+            # stands for no tile; nil where no cell is written at all. A block put back takes nought.
+            def emit_block_cell_word(bg, node)
+              return [Build.int(0), nil] if node.restore
+              unless node.picked?
+                return nil if node.tile && node.tile >= bg.tiles.length
+
+                return [Build.int(cell_word_of(bg, node.tile)), nil]
+              end
+
+              words = node.picks.map { |tile| tile && tile < bg.tiles.length ? cell_word_of(bg, tile) : NO_CELL }
+              return nil if words.all?(NO_CELL)
+
+              table = @cell_tables[words] ||= "cells #{@cell_tables.length + 1}"
+              skipped = fresh("block_skipped")
+              word = keep_local(:block_cell)
+              value(node.picked_by)
+              @asm.sub(:l, @asm.imm(node.picks_from), @asm.d(0)) unless node.picks_from.zero?
+              @asm.cmp(:l, @asm.imm(words.length), @asm.d(0))
+              @asm.branch(:cc, skipped)
+              @asm.add(:l, @asm.d(0), @asm.d(0)) # two bytes a word
+              @asm.lea(@asm.abs_l(table), @asm.a(0))
+              @asm.moveq(0, @asm.d(1))
+              @asm.move(:w, @asm.idx(0, 0, 0), @asm.d(1))
+              if words.include?(NO_CELL)
+                @asm.cmp(:w, @asm.imm(NO_CELL), @asm.d(1))
+                @asm.branch(:eq, skipped)
+              end
+              @asm.move(:l, @asm.d(1), var(word))
+              [Build.var_ref(word), skipped]
+            end
+
+            # Whether the game changes a block of cells in one step, whose runtime the build then carries.
+            public def writes_cell_blocks? = @program.walk.any? { |node| node.kind == :set_tile_block }
+
             # Reference#exec_set_tile: a tile the background does not have changes nothing, and nor
-            # does a place outside its map.
-            def emit_set_tile(node) = for_background(node) { |bg| emit_set_tile_of(bg, node) }
+            # does a place outside its map. A tile picked by a number known now is that tile
+            # (IR::PickedTile.written).
+            def emit_set_tile(node)
+              if node.picked? && (number = folded(node.picked_by))
+                written = PickedTile.written(node, number)
+                return written && emit_set_tile(written)
+              end
+              for_background(node) { |bg| emit_set_tile_of(bg, node) }
+            end
 
             def emit_set_tile_of(bg, node)
               return emit_set_picked_tile_of(bg, node) if node.picked?
@@ -1114,11 +1226,8 @@ module VBlank
             def low_word_of(name) = at(place_of(name), 2)
 
             # The word a cell of +bg+ showing its tile +tile+ holds in the plane's map: the tile's number
-            # in video memory and its palette, and nought for no tile.
-            def cell_word_of(bg, tile)
-              cell = cell_of(bg, tile)
-              cell ? cell[0] | (cell[1] << Art::PALETTE_SHIFT) : 0
-            end
+            # in video memory, its palette and its priority, and nought for no tile.
+            def cell_word_of(bg, tile) = Art.cell_word(placed_cell_of(bg, tile))
 
             # A word no cell holds, since no tile has the top number with every other bit set: what
             # an entry of a table of cells holds for a number that stands for no tile.
@@ -1312,17 +1421,21 @@ module VBlank
             # alone (Lowering#value_keeps_counters?). One that calls the runtime could change
             # anything, so the walk's registers go on the stack while it is worked out
             # (#emit_sprite_numbers_worked_out).
-            def emit_sprite_placing(obj, returns: false)
+            #
+            # +shown_known+ for a sprite already found showing on this pass (#emit_ordered_run): it is
+            # placed without being asked.
+            def emit_sprite_placing(obj, returns: false, shown_known: false)
               skip = fresh("sprite_off")
               numbers = [obj.pose, obj.x, obj.y]
               numbers << obj.recolor unless obj.recolors.empty?
-              shown = shown_when(obj.active)
+              shown = shown_known ? ShownWhen.new(tests: [], flag: nil) : shown_when(obj.active)
               if shown && numbers.all? { |number| value_keeps_counters?(number) }
                 emit_jump_unless_shown(shown, skip, near: shown.tests.empty? && numbers.all? { |number| operand_of(number) })
                 emit_sprite_numbers_in_place(numbers)
               else
-                emit_sprite_numbers_worked_out(obj.active, numbers, skip)
+                emit_sprite_numbers_worked_out(shown_known ? Build.int(1) : obj.active, numbers, skip)
               end
+              emit_pose_wanted(obj)
               @asm.lea(@asm.abs_l(pose_table(obj)), @asm.a(0))
               emit_operand_load(@asm.imm(@sprite_names.name_number(obj.declared)), 0)
               routine = "rt_sprite_place"
@@ -1335,31 +1448,13 @@ module VBlank
               @asm.rts if returns
             end
 
-            # WHEN A SPRITE SHOWS, as tests: +tests+ are comparisons that must all hold, and +flag+ a
-            # value that must be 1, or nil.
-            #
-            # A sprite shows while its `active` is 1. The builder makes that a PRODUCT for a sprite
-            # that belongs to a scene, or is declared under an `if`: its own flag times "is this the
-            # scene that is up", times each condition it was written under (Builder#gated_by_scene).
-            # A comparison is 0 or 1, so the product is 1 exactly when every comparison holds and
-            # what is left is 1, which is a compare and a branch each. Worked out as written it is
-            # a multiply of two long words for every such sprite on every pass, which the 68000 has
-            # no instruction for: a call, and three of its word multiplies.
-            ShownWhen = Data.define(:tests, :flag)
-
-            # +active+ as tests (ShownWhen), or nil where it is not a product of comparisons and at most
-            # one value besides, each written in place and changing nothing by being worked out or
-            # left out (IR::Unchanging): the tests stop at the first that fails.
+            # +active+ as tests (Backends::ShownWhen), each written in place, or nil. A multiply of two
+            # long words, which the product would otherwise be, has no instruction on the 68000: a
+            # call, and three of its word multiplies.
             def shown_when(active)
-              factors = product_factors(active)
-              tests, flags = factors.partition { |factor| comparison?(factor) }
-              return unless flags.length <= 1
-              return unless factors.all? { |factor| value_keeps_counters?(factor) && Unchanging.value?(factor) { |part| folded(part) } }
-
-              ShownWhen.new(tests: tests, flag: flags.first)
+              shown = ShownWhen.of(active) { |part| folded(part) }
+              shown if shown && ShownWhen.factors_of(active).all? { |factor| value_keeps_counters?(factor) }
             end
-
-            def product_factors(node) = binop?(node, :*) ? product_factors(node.lhs) + product_factors(node.rhs) : [node]
 
             # On to +skip+, the end of the sprite's placing, unless it shows (ShownWhen). A sprite that
             # shows goes on past every branch. +near+ where +skip+ is only a few instructions on, so
@@ -1441,22 +1536,31 @@ module VBlank
             # its slots, so each entry is read straight from its slot with nothing tested. Any other
             # list — one written by hand, or one something takes items from the front of, whose slots
             # move round — is walked as the interpreter reads it (DrawOrderWalk), through the same table.
+            #
+            # A SORTED RUN KEEPS ITS ENTRIES NOT SHOWING AT ITS FRONT (ShownSort), so the walk starts past
+            # them, and every entry it reaches was found showing by the sort on this pass: a place the
+            # sort asked is placed without being asked again.
             def emit_ordered_run(run)
               table = fresh("ordered_placings")
               past = fresh("past_ordered_placings")
               placings = run.objects.map { fresh("ordered_placing") }
+              slots = order_read_by_slots?(run, @lists_dropped_from_front)
+              shown = (@shown_sorts&.fetch(run.order, nil) if slots)
               @asm.bra(past)
               @asm.label(table)
               @asm.data_longs(placings)
               run.objects.each_with_index do |name, place|
                 @asm.label(placings[place])
-                emit_sprite_placing(object_named(name), returns: true)
+                emit_sprite_placing(object_named(name), returns: true, shown_known: shown&.asked&.fetch(place))
               end
               @asm.label(past)
-              return emit_ordered_run_walked(run, table) unless order_read_by_slots?(run, @lists_dropped_from_front)
+              return emit_ordered_run_walked(run, table) unless slots
 
               keyed = @keyed_sorts&.fetch(run.order, nil)
+              steps = run.objects.each_index.map { fresh("ordered_step") } + [fresh("ordered_steps_done")]
+              emit_steps_past_hidden(shown, steps) if shown
               run.objects.each_index do |k|
+                @asm.label(steps[k])
                 if keyed
                   @asm.move(:w, at(keyed.entries, k * 2), @asm.d(0))
                 else
@@ -1465,15 +1569,18 @@ module VBlank
                 end
                 emit_ordered_placing_called(table, keyed ? :w : :l)
               end
+              @asm.label(steps.last)
             end
 
             # D0 = entry +k+ of the order list +order+, whose first item is in its first slot, read from
             # its slot's address, where reading it through the runtime would take a call, and the
             # list's place found and the index scaled there.
             def emit_order_entry_read(order, k)
-              place, _capacity, bytes = @lists.fetch(order)
+              slot = slot_place(order)
+              bytes = slot.width
               @asm.moveq(0, @asm.d(0)) unless bytes == 4
-              @asm.move(Runtime::Lists::SLOT_SIZES.fetch(bytes), @asm.abs_l(place, Runtime::Lists::HEADER + (k * bytes)), @asm.d(0))
+              @asm.move(Runtime::Lists::SLOT_SIZES.fetch(bytes), @asm.abs_l(area_place(slot), Runtime::Lists::HEADER + slot.at(k)),
+                        @asm.d(0))
             end
 
             # The placing D0 picks from +table+, by a +size+ (:w or :l) index four times the place, called.
@@ -1513,7 +1620,18 @@ module VBlank
             # The table of a sprite's pictures: how many, then where each one's pieces are. It is kept by
             # the pictures it lists, so sprites that face the same poses, in the same order, read one
             # table: a pool's things, or thirty actors that can each show any frame of one sheet.
-            def pose_table(obj) = @pose_tables[obj.poses] ||= "poses #{@pose_tables.length}"
+            #
+            # A sprite kept to one pose reads a table of its own, of its pictures drawn from its room
+            # (PoseRooms), each kept under the sprite's name and the pose's.
+            # A sprite drawn in front (Nodes::Object#in_front) reads its pictures' pieces from copies
+            # whose words have the priority bit set (#front_pose_sections), so a sprite that shows one
+            # of them beside it, not in front, keeps its own.
+            def pose_table(obj)
+              pictures = streamed?(obj) ? obj.poses.map { |name| room_key(obj, name) } : obj.poses
+              return @pose_tables[pictures] ||= "poses #{@pose_tables.length}" unless obj.in_front
+
+              @front_pose_tables[pictures] ||= "poses in front #{@front_pose_tables.length}"
+            end
 
             # Reference#exec_hide_sprites: the next placing of the sprites places none.
             def emit_hide_sprites(_node) = store_number(sprites_hidden_flag, 1)

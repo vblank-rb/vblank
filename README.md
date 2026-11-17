@@ -14,16 +14,12 @@ The toolchain is shaped around fast, readable feedback while building a game, fo
 
 ## Where a game runs
 
-| Target | Status |
-|---|---|
-| Game Boy Advance | Fairly robust. Every feature works here, and it is what the examples are written for. |
-| Super Nintendo | Most of the language works: sprites, backgrounds, music, recordings, saves and two players. A few colour features are still to come, and what it cannot do (turn a sprite, say) is refused by name. |
-| Sega Genesis | Most of the language works: painted and tiled screens, sprites, music and recordings on its own sound chips, and saves. Played in Genesis Plus GX to check it. |
-| Game Boy Color | Underway. Much of the language works within its four colours a tile, and several of the examples build for it. Recorded sound is refused. |
-| PlayStation | Underway. Painted and tiled screens, sprites and rooms in 3D drawn by its graphics chip; one pad for now. Played in Beetle PSX to check it. |
-| A program for a computer | Works, built from the game as C. The Mac build is played and tested; Windows and Linux builds are made but not yet run on those systems. |
-| A web page | Works, built from the game as JavaScript. One file that opens from a disk or any web server. |
-| A window, in Ruby | Works, with some features still to come. `vblank run` plays the game on Ruby and SDL3, with no compiler. |
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/where-a-game-runs-dark.svg">
+  <img alt="How much of each target's hardware VBlank drives: Game Boy Advance 46 of 53 features, Super Nintendo 17 of 43, Sega Genesis 23 of 51, Game Boy Color 30 of 46, PlayStation 24 of 61, desktop program 15 of 37, web page 15 of 24" src="assets/where-a-game-runs-light.svg" width="640">
+</picture>
+
+Each bar counts the target's hardware features, checked against its documentation, and how many VBlank supports. The desktop program is played and tested on the Mac; Windows and Linux builds are made but not yet run there. `vblank run` also plays any game on Ruby and SDL3, with no compiler, as a tool for trying and stepping through a game while you write it.
 
 Every game says which consoles it is for, and a build makes a cartridge for each one. What a console cannot do is refused at build time, in plain words, so a game either plays the same there or does not build.
 

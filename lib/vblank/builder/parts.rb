@@ -63,8 +63,12 @@ module VBlank
     # plays them as it plays any other line of the game.
     module Parts
       # One thing a part puts back: +kind+ is :var (a variable's name), :list (a list's name),
-      # :pool (the pool) or :shown (a SpriteShown).
-      Member = Data.define(:kind, :thing)
+      # :pool (the pool) or :shown (a SpriteShown). +framework+ is true for state the framework made
+      # and named for itself (a timer's count, a sprite's place), and +saved+ false for state a
+      # save_data record keeping the part leaves out (SaveRecords#expand_kept_parts!).
+      Member = Data.define(:kind, :thing, :framework, :saved) do
+        def initialize(kind:, thing:, framework: false, saved: true) = super
+      end
 
       # A sprite painted into the picture, and whether it was declared shown: put back with its
       # own `show` or `hide`, which paint it or take it off the picture as well as set the flag.
@@ -107,16 +111,32 @@ module VBlank
         nil
       end
 
+      # The Members of the part or scene +name+, in the order declared, or nil when no part or scene
+      # has that name. Asked by Saves when a save_data record keeps a whole part (`keep part: :play`),
+      # once every routine is built and so every member known.
+      def members_of_part(name)
+        return nil unless part_names.include?(name) || scene_names.include?(name)
+
+        part_members.fetch(name, [])
+      end
+
+      # The parts and scenes the game has, as a sentence for a refusal naming one it does not.
+      # Asked by start_over's refusal and by Saves for `keep part:`.
+      def known_parts_sentence
+        known = part_names.map { |part| "part :#{part}" } + scene_names.map { |scene| "scene :#{scene}" }
+        known.empty? ? "The game has no parts or scenes." : "The game has #{known.join(', ')}."
+      end
+
       private
 
       # A variable, list or pool the game just declared, as a member of every part and scene in
       # force here. Called by `var`, `list` and `pool`, where a name that starts with `_` is the
       # author's scratch and left out; the framework's own state that a new game puts back (a
       # timer's count, a job's running flag, a sprite's place) sets +framework+.
-      def add_part_member(kind, thing, framework: false)
+      def add_part_member(kind, thing, framework: false, saved: true)
         return if !framework && thing.is_a?(Symbol) && thing.start_with?("_")
 
-        member = Member.new(kind: kind, thing: thing)
+        member = Member.new(kind: kind, thing: thing, framework: framework, saved: saved)
         part_owners_here.each do |owner|
           members = (part_members[owner] ||= [])
           members << member unless members.include?(member)
@@ -218,9 +238,7 @@ module VBlank
 
         raise ArgumentError, "#{start_over_member_name_message(name)}#{at}" if persisted?(name) || member_kind(name)
 
-        known = part_names.map { |part| "part :#{part}" } + scene_names.map { |scene| "scene :#{scene}" }
-        has = known.empty? ? "The game has no parts or scenes." : "The game has #{known.join(', ')}."
-        raise ArgumentError, "start_over names :#{name}, and the game has no part or scene :#{name}#{at}. #{has} " \
+        raise ArgumentError, "start_over names :#{name}, and the game has no part or scene :#{name}#{at}. #{known_parts_sentence} " \
                              "To fix this, use one of those names, or write `part :#{name}` above what it declares."
       end
 

@@ -40,7 +40,11 @@ ran dry. A stutter is a clump of uneven gaps every few seconds; scattered single
 computer being busy. `--refresh-rate 144` makes it choose its pacing as for that monitor; only
 the choice is pretended, so `--refresh-rate 120` on a 60Hz monitor shows each picture for two
 refreshes and plays at half speed. The pacing rule and the limit behind a hidden window are plain
-arithmetic in `runtime/rg_pacing.h`, tested as that (`test_native_pacing.rb`).
+arithmetic in `runtime/rg_pacing.h`, tested as that (`test_native_pacing.rb`). `--counted-clock`
+paces by a clock that moves only by the waits the pacing asks for and never sleeps, so the gaps
+`--frame-times` reports are whole frames waited out, the same on a busy machine as on an idle one:
+a test of the pacing's own rules (a pause is not lateness) uses it, since on the real clock a busy
+machine makes frames late and the rush to catch up is right.
 
 **A shell has one window, from its first screen to its game.** The game's program opens it and
 keeps it. The menu and each unpacking are programs of their own with no window: started with

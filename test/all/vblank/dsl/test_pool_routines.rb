@@ -140,6 +140,35 @@ class TestPoolRoutines < Minitest::Test
                  "the first thing met the second on pass 12, at 64 and 78"
   end
 
+  # A routine that moves its own thing on every turn of its walk reads where it has moved to on the
+  # next turn, not where it was when the walk began.
+  def test_a_routine_moving_its_own_instance_inside_its_walk_reads_each_new_place
+    program = program_with do
+      screen :bitmap
+      near = var :near, 0
+      pass = var :pass, 0
+      things = pool :thing, x: 0, capacity: 4
+      things.func(:step) do |e|
+        things.each do |other|
+          e.x += 10
+          near += 1 if other.index != e.index && (other.x - e.x).abs < 5
+        end
+      end
+      things.spawn(x: 0)
+      things.spawn(x: 21)
+      things.spawn(x: 100)
+      b = self
+      game_loop do
+        pass += 1
+        things.each { |thing| b.call :step if thing.x < 10 } if pass == 1
+      end
+    end
+    played = game_player.run(program, frames: 3)
+
+    assert_equal [1, [21, 30, 100]], [played[:near], played.pool(:thing, :x).compact.sort],
+                 "the second turn's 20 is near the second thing's 21, and the thing ends at 30"
+  end
+
   # ...and names given the routine's own slot and place before the walk keep them inside it,
   # as a name keeps the number of its line in plain Ruby.
   def test_names_set_from_a_routine_s_instance_before_its_walk_keep_that_instance
@@ -171,6 +200,61 @@ class TestPoolRoutines < Minitest::Test
     played = game_player.run(program, frames: 20)
 
     assert_equal [12, 64], [played[:met_on], played[:stepper_x]]
+  end
+
+  # ...and a name set from it is the same one read before the walk and inside it. Each thing
+  # adds its own x to a sum before the walk, and once for each thing the walk visits: 3 things
+  # at 1, 10 and 100 give 111 four times over.
+  def test_a_name_read_both_before_and_inside_the_walk_reads_the_routine_s_instance_in_both
+    program = program_with do
+      screen :bitmap
+      sum = var :sum, 0
+      things = pool :thing, x: 0, capacity: 4
+      things.func(:add_up) do |e|
+        here = e.x
+        sum += here
+        things.each { |_other| sum += here }
+      end
+      [1, 10, 100].each { |x| things.spawn(x: x) }
+      b = self
+      game_loop do
+        sum = 0
+        things.each { |_thing| b.call :add_up }
+      end
+    end
+    played = game_player.run(program, frames: 2)
+
+    assert_equal 444, played[:sum]
+  end
+
+  # A WALK INSIDE THE ROUTINE'S WALK keeps the thing the outer walk is on. So a routine of the
+  # pool called inside the outer walk, after the inner one, runs for the outer walk's thing. The
+  # first of 3 things counts the pairs, and `mark` adds the x of the thing it ran for to a sum
+  # once for each thing the outer walk visits: 1 + 10 + 100, not the first thing's 1 three times.
+  def test_a_routine_called_after_a_walk_inside_the_routine_s_walk_runs_for_the_outer_thing
+    program = program_with do
+      screen :bitmap
+      pairs = var :pairs, 0
+      sum = var :sum, 0
+      things = pool :thing, x: 0, capacity: 4
+      things.func(:mark) { |m| sum += m.x }
+      things.func(:count) do |_e|
+        things.each do |_outer|
+          things.each { |_inner| pairs += 1 }
+          call :mark
+        end
+      end
+      [1, 10, 100].each { |x| things.spawn(x: x) }
+      b = self
+      game_loop do
+        pairs = 0
+        sum = 0
+        things.each { |thing| b.call :count if thing.x == 1 }
+      end
+    end
+    played = game_player.run(program, frames: 2)
+
+    assert_equal [9, 111], [played[:pairs], played[:sum]]
   end
 
   # --- and the console agrees ---

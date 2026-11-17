@@ -369,40 +369,65 @@ module VBlank
           # from the file too (another bank, a walk of one), which the tiles are then filled with
           # and put in their colours with every other marker (#record_marked_pixels).
           # +entry+ is the number the runtime knows the background by (Picture#entry_of).
-          StartFileBackgroundFill = Data.define(:entry, :start, :held, :from, :lists)
+          #
+          # A BACKGROUND THAT WALKS BETWEEN SETS OF TILES has a fill for each set, each painting its
+          # own map's cells into its own run of tiles in every step: +held+ is then where the set's
+          # first cell tile is among the background's tiles (Nodes::Background#first_tiles_from_file),
+          # and +stride+ how many tiles one step of the whole background is, every set's together.
+          StartFileBackgroundFill = Data.define(:entry, :start, :held, :stride, :from, :lists)
           BankFromFile = Data.define(:bank)
 
           def record_start_file_background_fill(start, bg, steps)
-            from = bg.from_file
-            lists = [nil, *steps].map do |swaps|
-              Array.new(from.bank_count) do |bank|
-                # The list of a bank is found by its name: its colours here are markers.
-                _, drawn_with = swaps&.find { |(name, _), _| name == from.bank_names[bank] }
-                drawn_with || BankFromFile.new(bank: bank)
+            stride = bg.tiles.length + bg.tiles_drawn_from_file
+            fills = bg.from_file.zip(bg.first_tiles_from_file).map do |from, first|
+              lists = [nil, *steps].map do |swaps|
+                Array.new(from.bank_count) do |bank|
+                  # The list of a bank is found by its name: its colours here are markers.
+                  _, drawn_with = swaps&.find { |(name, _), _| name == from.bank_names[bank] }
+                  drawn_with || BankFromFile.new(bank: bank)
+                end
               end
+              StartFileBackgroundFill.new(entry: entry_of(bg), start: start, held: first, stride: stride, from: from, lists: lists)
             end
-            held = bg.tiles.length
-            @start_file_background_fills << StartFileBackgroundFill.new(entry: entry_of(bg), start: start, held: held, from: from, lists: lists)
-            return unless lists.flatten.any? { |color| IR::StartFile.marker?(color) }
+            @start_file_background_fills.concat(fills)
+            return unless fills.any? { |fill| fill.lists.flatten.any? { |color| IR::StartFile.marker?(color) } }
 
-            @start_file_marked_pixels << MarkedPixels.new(kind: :tile, start: start,
-                                                          count: (held + from.tiles_drawn) * Picture::RUN_TILE_PIXELS * lists.length)
+            @start_file_marked_pixels << MarkedPixels.new(kind: :tile, start: start, count: stride * Picture::RUN_TILE_PIXELS * (steps.length + 1))
           end
 
-          # Each background's fill, and then, for each list a background read from the file
+          # Each background's fills, and then, for each list a background read from the file
           # follows beside others, the tiles of its map that are drawn from that list.
           def build_start_file_background_fills
-            rules = @start_file_background_fills.to_h do |fill|
-              [fill.entry, drawing_array("start_file_background", "int32_t", start_file_background_rules(fill))]
+            rules = @start_file_background_fills.group_by(&:entry).transform_values do |fills|
+              fills.map { |fill| drawing_array("start_file_background", "int32_t", start_file_background_rules(fill)) }
             end
             followed = @start_file_followed_tiles.map do |tiles|
-              eval_call("rg_start_file_fill_followed_tiles", tiles.rules, rules.fetch(tiles.entry), Statements::Int.new(tiles.banks))
+              eval_call("rg_start_file_fill_followed_tiles", tiles.rules, rules.fetch(tiles.entry).fetch(tiles.set), Statements::Int.new(tiles.banks))
             end
             moving = @start_file_moving_cells.map do |cells|
-              eval_call("rg_start_file_fill_moving_cells", @names.own("painted_tiles"), rules.fetch(cells.entry), cells.rules,
+              eval_call("rg_start_file_fill_moving_cells", @names.own("painted_tiles"), rules.fetch(cells.entry).fetch(cells.set), cells.rules,
                         runs_pointed_array)
             end
-            rules.values.map { |background| eval_call("rg_start_file_fill_background", background) } + followed + moving
+            in_front = (@start_file_tiles_in_front || []).map do |front|
+              eval_call("rg_start_file_fill_front_tiles", @names.own("tiles_in_front"), rules.fetch(front.entry).fetch(front.set),
+                        Statements::Int.new(front.start), Statements::Int.new(front.front_bit))
+            end
+            rules.values.flatten.map { |background| eval_call("rg_start_file_fill_background", background) } + followed + moving + in_front
+          end
+
+          # THE TILES OF A BACKGROUND READ FROM THE FILE THAT ARE IN FRONT OF THE SPRITES
+          # (Picture#tiles_in_front_of). Which cells the file marks is known only as it is read, and
+          # each cell has a tile of its own, so the routine reading the file sets each such cell's
+          # tile's byte, from +start+ in the table, reading the mark at bit +front_bit+ of each cell
+          # of set +set+'s map (rg_start_file_fill_front_tiles). The tiles the game holds keep what
+          # the build set.
+          StartFileTilesInFront = Data.define(:entry, :set, :start, :front_bit)
+
+          def record_start_file_tiles_in_front(bg, start)
+            bg.from_file.each_with_index do |from, set|
+              (@start_file_tiles_in_front ||= []) <<
+                StartFileTilesInFront.new(entry: entry_of(bg), set: set, start: start, front_bit: from.map_words.front_bit_read)
+            end
           end
 
           # THE CELLS OF A BACKGROUND READ FROM THE FILE THAT NAME A TILE TAKING TURNS THROUGH
@@ -414,24 +439,29 @@ module VBlank
           #
           # Its rules: where the background's painted tiles start, how many moving tiles, and for
           # each its tile as a cell names it and then, for each bank and each turn
-          # (MovingTile::TURNS), the run and which of the run's tiles.
-          StartFileMovingCells = Data.define(:entry, :rules)
+          # (MovingTile::TURNS), the run and which of the run's tiles. A background that walks
+          # between sets of tiles has rules for each set whose tiles take turns, read with that
+          # set's fill (+set+).
+          StartFileMovingCells = Data.define(:entry, :set, :rules)
 
           def record_start_file_moving_cells(bg, painted_start)
-            from = bg.from_file
             turns = IR::StartFile::MovingTile::TURNS
-            numbers = from.moving.flat_map do |moving|
-              shown = (0...from.bank_count).flat_map do |bank|
-                turns.flat_map do |ways|
-                  tile = bg.tiles.fetch(moving.tile_of(bank, ways.include?(:mirrored), ways.include?(:upside_down)))
-                  run = run_painting(tile)
-                  [@run_numbers.fetch(run.name), run.tiles.index(tile)]
+            bg.from_file.each_with_index do |from, set|
+              next if from.moving.empty?
+
+              numbers = from.moving.flat_map do |moving|
+                shown = (0...from.bank_count).flat_map do |bank|
+                  turns.flat_map do |ways|
+                    tile = bg.tiles.fetch(moving.tile_of(bank, ways.include?(:mirrored), ways.include?(:upside_down)))
+                    run = run_painting(tile)
+                    [@run_numbers.fetch(run.name), run.tiles.index(tile)]
+                  end
                 end
+                [moving.tile, *shown]
               end
-              [moving.tile, *shown]
+              rules = drawing_array("moving_tiles", "int32_t", [painted_start, from.moving.length, *numbers])
+              @start_file_moving_cells << StartFileMovingCells.new(entry: entry_of(bg), set: set, rules: rules)
             end
-            rules = drawing_array("moving_tiles", "int32_t", [painted_start, from.moving.length, *numbers])
-            @start_file_moving_cells << StartFileMovingCells.new(entry: entry_of(bg), rules: rules)
           end
 
           # THE RUNS A CELL OF THE FILE CAN BE POINTED AT, and nothing else shows: the run of each
@@ -452,8 +482,7 @@ module VBlank
             @runs_pointed_by_file ||= begin
               turns = IR::StartFile::MovingTile::TURNS
               @program.walk.select { |node| node.kind == :background && node.from_file }.flat_map do |bg|
-                from = bg.from_file
-                runs = from.moving.flat_map do |moving|
+                runs = bg.from_file.flat_map { |from| from.moving.map { |moving| [from, moving] } }.flat_map do |from, moving|
                   (0...from.bank_count).flat_map do |bank|
                     turns.map { |ways| run_painting(bg.tiles.fetch(moving.tile_of(bank, ways.include?(:mirrored), ways.include?(:upside_down)))).name }
                   end
@@ -500,17 +529,29 @@ module VBlank
           # each bank, and counts them in (rg_start_file_fill_followed_tiles). It reads the map
           # by the rules the background's own fill is handed. Hands back the rules, or :none
           # where no tile can be drawn from the list.
-          StartFileFollowedTiles = Data.define(:entry, :rules, :banks)
+          #
+          # A background that walks between sets of tiles holds each set's stand-ins from the set's
+          # first tile (Nodes::Background#set_starts), so each set's banks are found among its own,
+          # and each set's fill adds its own map's tiles to the one list of rules (+set+).
+          StartFileFollowedTiles = Data.define(:entry, :set, :rules, :banks)
 
           def record_start_file_followed_tiles(bg, tiles, known)
-            from = bg.from_file
-            banks = from.bank_names.each_index.select { |bank| tiles.include?(bank) }
+            banks_by_set = bg.from_file.each_with_index.map do |from, set|
+              first = bg.set_starts ? bg.set_starts.fetch(set) : 0
+              from.bank_names.each_index.select { |bank| tiles.include?(first + bank) }
+            end
             return :none if tiles.empty?
-            return drawing_array("followed_tiles", "int32_t", known) if banks.empty?
+            return drawing_array("followed_tiles", "int32_t", known) if banks_by_set.all?(&:empty?)
 
-            refuse_bank_past_followed_banks!(bg, banks.max)
-            rules = drawing_array("followed_tiles", "int32_t", [*known, *Array.new(from.tiles_drawn + from.told_count, 0)], writable: true)
-            @start_file_followed_tiles << StartFileFollowedTiles.new(entry: entry_of(bg), rules: rules, banks: banks.sum { |bank| 1 << bank })
+            refuse_bank_past_followed_banks!(bg, banks_by_set.flatten.max)
+            room = bg.tiles_drawn_from_file + bg.from_file.sum(&:told_count)
+            rules = drawing_array("followed_tiles", "int32_t", [*known, *Array.new(room, 0)], writable: true)
+            banks_by_set.each_with_index do |banks, set|
+              next if banks.empty?
+
+              @start_file_followed_tiles << StartFileFollowedTiles.new(entry: entry_of(bg), set: set, rules: rules,
+                                                                       banks: banks.sum { |bank| 1 << bank })
+            end
             rules
           end
 
@@ -536,7 +577,7 @@ module VBlank
                       from.number_format.high_byte_first ? 1 : 0, words.tile_bits, words.mirror_bit || words.unset_bit,
                       words.flip_bit || words.unset_bit, words.bank_at, words.bank_bits, words.row_tiles || 0,
                       from.tiles_at, from.tile_count, from.colors_at, from.bank_count, from.bank_size, fill.lists.length,
-                      fill.held, words.cell_bytes, from.told_at, from.told_count, from.told_first]
+                      fill.held, words.cell_bytes, from.told_at, from.told_count, from.told_first, fill.stride]
             unless header.length == StartFileNumbers::BACKGROUND_HEADER_NUMBERS
               raise ArgumentError, "A background fill's rules header has #{header.length} numbers, and StartFileNumbers::" \
                                    "BACKGROUND_HEADER_NUMBERS says #{StartFileNumbers::BACKGROUND_HEADER_NUMBERS}. Change both together."

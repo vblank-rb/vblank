@@ -102,13 +102,16 @@ module VBlank
             # +colors+ for a game that changes its colours as it runs (Tint).
             # +scene_tiles+ for a game whose scenes each bring their own tiles in (#emit_scene_tiles).
             # +samples+ for a game that plays recordings (Picture#emit_dma_started).
-            def emit(asm, memory, columns:, colors: false, scene_tiles: false, samples: false, runs: false)
+            # +poses+ for a game with a sprite kept to one pose in video memory (Lowering::PoseRooms).
+            # +blocks+ for a game that changes a block of cells in one step (#emit_block_noted).
+            def emit(asm, memory, columns:, colors: false, scene_tiles: false, samples: false, runs: false, poses: false, blocks: false)
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
               emit_start(asm, colors: colors)
-              emit_maps(asm, memory, at)
+              emit_maps(asm, memory, at, columns, blocks: blocks)
               emit_sprites(asm, memory, at)
               emit_scene_tiles(asm, at) if scene_tiles
-              emit_upload(asm, memory, at, columns, colors: colors, scene_tiles: scene_tiles, samples: samples, runs: runs)
+              emit_upload(asm, memory, at, columns, colors: colors, scene_tiles: scene_tiles, samples: samples, runs: runs,
+                                                    poses: poses, blocks: blocks)
             end
 
             # A SCENE'S OWN TILES, brought in as it takes over. rt_scene_tiles(table) notes the table of
@@ -211,7 +214,7 @@ module VBlank
             # the command's first word in D1 and the cell's word in D3, and uses D4 and A0: where the
             # cell is was worked out by the game's line, which knows its plane and often its row
             # (Lowering::Picture#emit_cell_noted), so this is ten instructions.
-            def emit_maps(asm, memory, at)
+            def emit_maps(asm, memory, at, columns, blocks: false)
               asm.label("rt_background_put_up")
               asm.lea(asm.abs_l("art grids"), asm.a(0))
               asm.lsl(:l, 3, asm.d(1))
@@ -220,7 +223,7 @@ module VBlank
               asm.move(:l, asm.d(0), asm.d(3))
               asm.lsl(:l, 2, asm.d(3))
               asm.move(:l, asm.a(0), asm.idx(1, 0, 3))
-              emit_cells_of_plane_let_go(asm, memory, at)
+              emit_cells_of_plane_let_go(asm, memory, at, blocks: blocks)
               asm.tst(:l, asm.d(2))
               asm.branch(:eq, "rt_background_put_up_done")
               asm.lea(asm.abs_l(memory[SCROLL]), asm.a(1))
@@ -247,6 +250,99 @@ module VBlank
               asm.lea(at.call(CELLS), asm.a(0))
               asm.move(:w, asm.d(1), asm.idx(0, 0, 4, :w))
               asm.move(:w, asm.d(3), asm.idx(0, 2, 4, :w))
+              asm.rts
+
+              emit_block_noted(asm, at, columns) if blocks
+            end
+
+            # A BLOCK OF CELLS IS THREE NOTES OF THE QUEUE (Nodes::SetTileBlock), written in the blank as
+            # a console's own game writes a box: the chip pointed at the start of each row once, then
+            # each cell of the row one word after another, the chip moving on by itself. The notes are:
+            #
+            #   the command's first word for the block's top left cell, with its top bit set (BLOCK_MARK),
+            #     which no cell's has, since a cell's first word is a write to video memory
+            #   how many cells across, then how many rows down
+            #   how many bytes a row of the map is in the cartridge, or nought for a block of one cell
+            #   the long word of where the block's top left cell is in the cartridge, or nought and the
+            #     one cell's word
+            #
+            # rt_note_block: D0 and D1 the block's column and row, D2 and D3 how many across and down,
+            # each as the game worked it out; D4 the cell's word for a block of one cell; A0 the
+            # block's description in the cartridge (Lowering::Picture#emit_set_tile_block_of), BLOCK_BYTES:
+            # the map's columns and rows, the command's first word for its plane's corner, and for a
+            # block put back to the map, its bytes a row and where its cells are. The block is held
+            # to the map first, as SetTile holds each cell, and one with no cells left notes nothing.
+            # D0 to D4 and A0 are used.
+            BLOCK_NOTES = 3
+            BLOCK_MARK = 0x8000
+            # Where a block's description keeps each of its words, in bytes from its start.
+            BLOCK_COLUMNS_AT = 0
+            BLOCK_ROWS_AT = 2
+            BLOCK_COMMAND_AT = 4
+            BLOCK_STRIDE_AT = 6
+            BLOCK_SOURCE_AT = 8
+            BLOCK_BYTES = 12
+
+            def emit_block_noted(asm, at, columns)
+              asm.label("rt_note_block")
+              asm.movem_push(:l, :d4, :a1) # the cell's word is at 2(SP)
+              [[0, 2, "rt_note_block_left"], [1, 3, "rt_note_block_top"]].each do |place, count, held|
+                asm.tst(:l, asm.d(place)) # from before the map's edge: the cells before it left alone
+                asm.branch(:pl, held)
+                asm.add(:l, asm.d(place), asm.d(count))
+                asm.moveq(0, asm.d(place))
+                asm.label(held)
+              end
+              [[0, 2, BLOCK_COLUMNS_AT, "rt_note_block_right"], [1, 3, BLOCK_ROWS_AT, "rt_note_block_bottom"]].each do |place, count, limit, held|
+                asm.moveq(0, asm.d(4)) # past the map's far edge: the cells past it left alone
+                asm.move(:w, asm.disp(0, limit), asm.d(4))
+                asm.sub(:l, asm.d(place), asm.d(4))
+                asm.cmp(:l, asm.d(4), asm.d(count))
+                asm.branch(:le, held)
+                asm.move(:l, asm.d(4), asm.d(count))
+                asm.label(held)
+              end
+              asm.tst(:l, asm.d(2))
+              asm.branch(:le, "rt_note_block_done")
+              asm.tst(:l, asm.d(3))
+              asm.branch(:le, "rt_note_block_done")
+
+              asm.moveq(0, asm.d(4))
+              asm.move(:w, at.call(CELL_COUNT), asm.d(4))
+              asm.cmp(:w, asm.imm(MOST_CELLS - BLOCK_NOTES + 1), asm.d(4))
+              asm.branch(:cs, "rt_note_block_room")
+              asm.move(:l, asm.a(0), asm.pre(M68000::SP))
+              emit_queue_written_early(asm)
+              asm.movea(:l, asm.post(M68000::SP), asm.a(0))
+              asm.label("rt_note_block_room")
+              asm.addq(:w, BLOCK_NOTES, at.call(CELL_COUNT))
+              asm.lsl(:l, 2, asm.d(4)) # four bytes a note
+              asm.lea(at.call(CELLS), asm.a(1))
+              asm.add(:l, asm.d(4), asm.a(1))
+
+              asm.move(:l, asm.d(1), asm.d(4))
+              asm.lsl(:l, columns == 64 ? 6 : 5, asm.d(4))
+              asm.add(:l, asm.d(0), asm.d(4))
+              asm.add(:l, asm.d(4), asm.d(4)) # two bytes a cell
+              asm.add(:w, asm.disp(0, BLOCK_COMMAND_AT), asm.d(4))
+              asm.or(:w, asm.imm(BLOCK_MARK), asm.d(4))
+              asm.move(:w, asm.d(4), asm.post(1))
+              asm.move(:w, asm.d(2), asm.post(1))
+              asm.move(:w, asm.d(3), asm.post(1))
+              asm.move(:w, asm.disp(0, BLOCK_STRIDE_AT), asm.d(4))
+              asm.move(:w, asm.d(4), asm.post(1))
+              asm.branch(:eq, "rt_note_block_one_cell")
+              asm.mulu(asm.d(1), asm.d(4)) # the block's first row in the cartridge
+              asm.add(:l, asm.disp(0, BLOCK_SOURCE_AT), asm.d(4))
+              asm.add(:l, asm.d(0), asm.d(4))
+              asm.add(:l, asm.d(0), asm.d(4))
+              asm.move(:l, asm.d(4), asm.post(1))
+              asm.bra("rt_note_block_done")
+              asm.label("rt_note_block_one_cell")
+              asm.clr(:w, asm.post(1))
+              asm.move(:w, asm.disp(M68000::SP, 2), asm.post(1))
+              asm.label("rt_note_block_done")
+              asm.movem_pop(:l, :d4, :a1)
               asm.rts
             end
 
@@ -278,8 +374,9 @@ module VBlank
 
             # The cells noted for plane D0 taken out of the queue, the rest kept in their order. A note
             # names its plane in its command word: plane B's map is 8K past plane A's, which is bit 13
-            # of a cell's place, turned round here into bit 0. D1 is used.
-            def emit_cells_of_plane_let_go(asm, memory, at)
+            # of a cell's place, turned round here into bit 0. A block's notes go or stay together.
+            # D1 is used.
+            def emit_cells_of_plane_let_go(asm, memory, at, blocks: false)
               asm.move(:w, at.call(CELL_COUNT), asm.d(4))
               asm.branch(:eq, "rt_cells_let_go_done")
               asm.lea(asm.abs_l(memory[CELLS]), asm.a(1))
@@ -293,10 +390,23 @@ module VBlank
               asm.rol(:w, 3, asm.d(1))
               asm.and(:w, asm.imm(1), asm.d(1))
               asm.cmp(:w, asm.d(0), asm.d(1))
-              asm.branch(:eq, "rt_cells_let_go_next")
+              asm.branch(:eq, blocks ? "rt_cells_let_go_dropped" : "rt_cells_let_go_next")
               asm.move(:w, asm.d(6), asm.post(2))
               asm.move(:w, asm.d(7), asm.post(2))
               asm.addq(:w, 1, asm.d(5))
+              if blocks
+                asm.tst(:w, asm.d(6))
+                asm.branch(:pl, "rt_cells_let_go_next")
+                2.times { asm.move(:l, asm.post(1), asm.post(2)) } # a block's last two notes, kept with it
+                asm.addq(:w, BLOCK_NOTES - 1, asm.d(5))
+                asm.subq(:w, BLOCK_NOTES - 1, asm.d(4))
+                asm.bra("rt_cells_let_go_next")
+                asm.label("rt_cells_let_go_dropped")
+                asm.tst(:w, asm.d(6))
+                asm.branch(:pl, "rt_cells_let_go_next")
+                asm.addq(:l, (BLOCK_NOTES - 1) * CELL_BYTES, asm.a(1)) # a block's last two notes, let go with it
+                asm.subq(:w, BLOCK_NOTES - 1, asm.d(4))
+              end
               asm.label("rt_cells_let_go_next")
               asm.dbra(asm.d(4), "rt_cells_let_go_cell")
               asm.move(:w, asm.d(5), at.call(CELL_COUNT))
@@ -330,8 +440,9 @@ module VBlank
             # draws it from the palette its own picture names.
             #
             # A READER'S ROW is four words: whose, which picture, where. A game has a row of it for
-            # every sprite it can declare (Console::Description#sprite_places is the table's 80), so the
-            # walk never counts them.
+            # every sprite that can be up together, which the build holds to the table's 80
+            # (Console::Description#sprite_places, Checks::TooManySprites): only a sprite that shows is
+            # placed, and two scenes never up together count apart. So the walk never counts them.
             def emit_sprites(asm, memory, at)
               asm.label("rt_sprites_begin")
               asm.clr(:w, at.call(SPRITE_COUNT))
@@ -371,8 +482,13 @@ module VBlank
             # A piece is its tile and palette, its left as the chip counts it from the sprite's place
             # (SPRITE_ORIGIN more), its top, and its size in the high byte with the link's byte empty.
             # +tiles_from+ is the tile in video memory the pictures' tile 0 is (Lowering::Picture#sprite_tiles_from).
-            def picture_words(number, pieces, tiles_from)
+            #
+            # +in_front+ for a sprite drawn in front of the cells marked in front (Nodes::Object#in_front):
+            # each piece's word has the priority bit set, as a retail game's cursor has.
+            def picture_words(number, pieces, tiles_from, in_front: false)
               return [number, -1, 0, 0, 0, 0] if pieces.empty?
+
+              priority = in_front ? Art::PRIORITY : 0
 
               left = pieces.map(&:dx).min
               top = pieces.map(&:dy).min
@@ -380,7 +496,7 @@ module VBlank
               down = pieces.map { |piece| piece.dy + (piece.rows * 8) }.max - top
               [number, pieces.length - 1, left, [Paint::WIDTH - across + 1, 0].max, top, [Paint::HEIGHT - down + 1, 0].max] +
                 pieces.flat_map do |piece|
-                  [(piece.tile + tiles_from) | (piece.palette << Art::PALETTE_SHIFT), piece.dx + SPRITE_ORIGIN,
+                  [(piece.tile + tiles_from) | (piece.palette << Art::PALETTE_SHIFT) | priority, piece.dx + SPRITE_ORIGIN,
                    piece.dy + SPRITE_ORIGIN, piece.size_bits << 8]
                 end
             end
@@ -567,12 +683,19 @@ module VBlank
             # In a game whose scenes each bring their own tiles in, an arriving scene's go first, with the
             # screen switched off (#emit_scene_tiles), and the screen comes back on in the blank after
             # everything else is in.
-            def emit_upload(asm, memory, at, columns, colors: false, scene_tiles: false, samples: false, runs: false)
+            #
+            # A sprite kept to one pose in video memory has the pose it changed to copied in before the
+            # sprite table that shows it (Lowering::PoseRooms#pose_rooms_section), so the frame that first
+            # shows the pose draws it from its own tiles. The copy is the video chip's, from the cartridge,
+            # and the rooms together are held to what it moves in the blank (Lowering::PoseRooms::MOST_TILES).
+            def emit_upload(asm, memory, at, columns, colors: false, scene_tiles: false, samples: false, runs: false, poses: false,
+                            blocks: false)
               asm.label("rt_upload")
               asm.label("rt_upload_whole")
               asm.jsr(asm.abs_l("rt_scene_tiles_copied")) if scene_tiles
               asm.jsr(asm.abs_l("art runs uploaded")) if runs # Lowering::TileRuns#tile_runs_section, after a scene's own tiles
               asm.jsr(asm.abs_l("rt_colors_written")) if colors
+              asm.jsr(asm.abs_l("art poses sent")) if poses
               emit_sprite_table_written(asm, memory, at)
               emit_scroll_written(asm, memory)
               asm.jsr(asm.abs_l("rt_maps_and_cells_written"))
@@ -586,7 +709,7 @@ module VBlank
                 asm.moveq(plane, asm.d(0))
                 asm.jsr(asm.abs_l("rt_plane_map_copied"))
               end
-              emit_cells_written(asm, memory, at)
+              emit_cells_written(asm, memory, at, columns, blocks: blocks)
               asm.rts
               emit_plane_map_copied(asm, memory, columns)
               emit_vram_run_copied(asm, samples: samples)
@@ -744,8 +867,10 @@ module VBlank
               asm.rts
             end
 
-            # The cells noted written one at a time, each with its place in the plane it is on.
-            def emit_cells_written(asm, memory, at)
+            # The cells noted written one at a time, each with its place in the plane it is on, and
+            # each block a row at a time (#emit_block_noted). +columns+ is how many cells across the
+            # planes are, so how far the chip's address moves from one row to the next.
+            def emit_cells_written(asm, memory, at, columns, blocks: false)
               h = Console::GenesisHardware
               asm.move(:w, at.call(CELL_COUNT), asm.d(7))
               asm.branch(:eq, "rt_upload_cells_done")
@@ -756,11 +881,70 @@ module VBlank
               asm.move(:w, asm.imm(cell_command & 0xFFFF), asm.d(0))
               asm.subq(:w, 1, asm.d(7))
               asm.label("rt_upload_cell")
-              asm.move(:w, asm.post(1), asm.ind(3))
+              if blocks
+                asm.move(:w, asm.post(1), asm.d(1))
+                asm.branch(:mi, "rt_upload_block")
+                asm.move(:w, asm.d(1), asm.ind(3))
+              else
+                asm.move(:w, asm.post(1), asm.ind(3))
+              end
               asm.move(:w, asm.d(0), asm.ind(3))
               asm.move(:w, asm.post(1), asm.ind(2))
+              asm.label("rt_upload_cell_next") if blocks
               asm.dbra(asm.d(7), "rt_upload_cell")
+              if blocks
+                asm.bra("rt_upload_cells_done")
+                emit_block_written(asm, columns)
+              end
               asm.label("rt_upload_cells_done")
+            end
+
+            # One block's notes (#emit_block_noted) written, D1 its first word. D1 to D6 and A0 are used.
+            def emit_block_written(asm, columns)
+              row_bytes = columns * 2
+              asm.label("rt_upload_block")
+              asm.and(:w, asm.imm(~BLOCK_MARK & 0xFFFF), asm.d(1))
+              asm.move(:w, asm.post(1), asm.d(2))
+              asm.subq(:w, 1, asm.d(2)) # across, counted down to nought
+              asm.move(:w, asm.post(1), asm.d(3))
+              asm.subq(:w, 1, asm.d(3)) # down, the same
+              asm.moveq(0, asm.d(4))
+              asm.move(:w, asm.post(1), asm.d(4)) # bytes a row of the map in the cartridge
+              asm.move(:l, asm.post(1), asm.d(5)) # where its cells are, or the one cell's word
+              asm.subq(:w, BLOCK_NOTES - 1, asm.d(7))
+              asm.tst(:w, asm.d(4))
+              asm.branch(:ne, "rt_upload_block_copied")
+
+              asm.label("rt_upload_block_row")
+              asm.move(:w, asm.d(1), asm.ind(3))
+              asm.move(:w, asm.d(0), asm.ind(3))
+              asm.move(:w, asm.d(2), asm.d(6))
+              asm.label("rt_upload_block_cell")
+              asm.move(:w, asm.d(5), asm.ind(2))
+              asm.dbra(asm.d(6), "rt_upload_block_cell")
+              asm.add(:w, asm.imm(row_bytes), asm.d(1))
+              asm.dbra(asm.d(3), "rt_upload_block_row")
+              asm.bra("rt_upload_cell_next")
+
+              # Put back from the map in the cartridge: each row's cells, then on to the next row's.
+              asm.label("rt_upload_block_copied")
+              asm.movea(:l, asm.d(5), asm.a(0))
+              asm.moveq(0, asm.d(6))
+              asm.move(:w, asm.d(2), asm.d(6))
+              asm.addq(:w, 1, asm.d(6))
+              asm.add(:w, asm.d(6), asm.d(6))
+              asm.sub(:l, asm.d(6), asm.d(4)) # what is left of a row of the map past the block's
+              asm.label("rt_upload_block_copied_row")
+              asm.move(:w, asm.d(1), asm.ind(3))
+              asm.move(:w, asm.d(0), asm.ind(3))
+              asm.move(:w, asm.d(2), asm.d(6))
+              asm.label("rt_upload_block_copied_cell")
+              asm.move(:w, asm.post(0), asm.ind(2))
+              asm.dbra(asm.d(6), "rt_upload_block_copied_cell")
+              asm.add(:l, asm.d(4), asm.a(0))
+              asm.add(:w, asm.imm(row_bytes), asm.d(1))
+              asm.dbra(asm.d(3), "rt_upload_block_copied_row")
+              asm.bra("rt_upload_cell_next")
             end
 
             # The sprite table, the last sprite placed drawn first (see the note on the table above);

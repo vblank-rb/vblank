@@ -39,15 +39,21 @@ module VBlank
           NAME = :too_many_sprites
           PLAIN_NAME = "more sprites than a game can keep places for"
 
+          #
+          # WHETHER A SPRITE KEEPS ITS ROWS ON EVERY SCREEN is the console's: one whose build settles each
+          # sprite's rows as the game is built keeps a sprite drawn in an order the game works out in rows
+          # of its own (SpriteRows.plan), and one whose runtime hands rows out on every pass gives them to
+          # the sprites that show, so two scenes never up together share the places whatever their order
+          # (SpriteRows.plan_shown_together; Console::Description#sprite_rows_settled).
           def detect(program)
-            most = program.described_console.sprite_places
-            plan = SpriteRows.plan(program) { 1 }
+            console = program.described_console
+            most = console.sprite_places
+            plan = console.sprite_rows_settled ? SpriteRows.plan(program) { 1 } : SpriteRows.plan_shown_together(program) { 1 }
             return [] if plan.count <= most
 
             sprites = Stacking.objects_in_draw_order(program)
             message = plan.busiest.count > most ? busiest_message(plan, sprites, most) : between_message(plan, sprites, most)
-            [Finding.new(check: NAME, severity: :error, node: sprites.max_by { |node| plan.rows.fetch(node.name) },
-                         message: message)]
+            [Finding.new(check: NAME, severity: :error, node: last_counted(plan, sprites), message: message)]
           end
 
           # Why the sprites are refused, or nil when they fit.
@@ -56,6 +62,14 @@ module VBlank
           end
 
           private
+
+          # The sprite the finding points at: the one given the last row, or where no row is any
+          # sprite's own, the last sprite of the busiest screen.
+          def last_counted(plan, sprites)
+            return sprites.max_by { |node| plan.rows.fetch(node.name) } unless plan.rows.empty?
+
+            sprites.reverse.find { |node| plan.busiest.names.include?(node.name) }
+          end
 
           # The busiest screen is over by itself: say how its places were spent.
           def busiest_message(plan, sprites, most)

@@ -156,13 +156,13 @@ class TestProgress < Minitest::Test
     assert_operator written, :>, 100, "...but it should still be showing progress"
   end
 
-  def test_ticking_costs_nothing_worth_measuring_when_nobody_is_listening
+  # Held to what a tick does, not to how long a million take: a time fails whenever other work
+  # shares the cores. The silent one is frozen, so a tick that kept any count at all would raise.
+  def test_ticking_costs_nothing_when_nobody_is_listening
     quiet = Progress.silent
-    from = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    1_000_000.times { quiet.tick }
-    spent = Process.clock_gettime(Process::CLOCK_MONOTONIC) - from
 
-    assert_operator spent, :<, 1.0, "a million ticks into the silent one should be free"
+    assert_predicate quiet, :frozen?
+    assert_nil quiet.tick
   end
 
   # ...and a tick carrying a label is free too, which is the whole reason the label comes in a

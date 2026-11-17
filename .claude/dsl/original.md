@@ -134,11 +134,12 @@ from that copy. The game's code says each piece's shape and size; it never depen
     `tiles:` (0 to 65535; a second bank of video memory is more tiles of the same slot); the bank of
     colours in one (0 to 255; `write_cell` refuses a number past either written in the routine, and one
     worked out as it runs keeps its low bits, as a write of a byte does); and
-    the turns in one, 1 mirrored and 2 upside down, the other bits 0. Read as one number, low byte first,
-    the record is `tile | bank << 16 | turns << 24` (`Original::MapCell.number(tile:, bank:, mirrored:,
-    upside_down:)`, or `MapCell::Cell.new(...).number`), which fits a game's number: it is how
-    `set_cells:` and `set_cell` take a cell of such a map (`backgrounds.md`). No
-    bit a console keeps for itself (a priority) is in it: a background's layer says where it is drawn. A
+    the turns in one, 1 mirrored, 2 upside down and 4 in front of the sprites, the other bits 0. Read as
+    one number, low byte first, the record is `tile | bank << 16 | turns << 24` (`Original::MapCell.number(tile:,
+    bank:, mirrored:, upside_down:, in_front:)`, or `MapCell::Cell.new(...).number`), which fits a game's
+    number: it is how `set_cells:` and `set_cell` take a cell of such a map (`backgrounds.md`). The in-front
+    mark is the original's priority, read only by a background told `cells_in_front: true` (`backgrounds.md`);
+    every other background draws the cell behind the sprites. A
     cell is one tile of 8x8. The record is the same whatever console the original ran on, so the unpacking
     routine writes the original's maps into it (`write_cell`, below), and `background ..., map:
     pack[:title_map]` reads it on every console and build that draws a tiled background
@@ -236,13 +237,15 @@ from that copy. The game's code says each piece's shape and size; it never depen
     wave), a tick a frame as the driver's tempo lands them; `copy.unpack_m4a_length at: SONG, into:` writes
     the song's length in frames and the frame it comes round to (65535 for a song that ends, which
     `loop_from:` takes as no loop, so the song plays once), two numbers of two bytes. **A song comes
-    round where the whole driver is as it was before**: each track jumps
-    back on its own, so a short figure goes round many times to a melody's once, and a round that differs
-    from the one before (a MEMACC counting rounds, a round starting a frame later in the tempo's count)
-    is played as it falls. The reader writes the notes until every track comes round together, so a song
-    whose tracks come round apart takes more notes than one pass of its longest track: size its slots
-    and the Score's `longest:` for that. One that does not come round in 8 rounds of its slowest track
-    is written for those 8 and comes round to the first. The rounds are written out because every song
+    round where every track is playing its loop again**: each track jumps back on its own, so a short
+    figure goes round many times to a melody's once, and a part can come in late. Each track repeats
+    from where its loop starts, or from its first jump where its second time round does not sound as
+    its first; the song repeats from the latest of these, every time round the least span all the loops
+    fit. A time round that starts a frame later in the tempo's count, or with a MEMACC's count in the
+    driver's memory, is played as it falls, written out until both come back, five times round at
+    most; failing that, the song comes round to its second time round and ends where the third starts.
+    So a song whose tracks come round apart takes more notes than one pass of its longest track: size
+    its slots and the Score's `longest:` for that. The rounds are written out because every song
     player comes round at one moment for all its parts (`Packing::M4A`, "WHY THE READER WRITES THE
     ROUNDS OUT"). `copy.unpack_m4a_recording at: VOICE, into:` a recording voice's samples; and
     `copy.unpack_m4a_voice at: VOICE, into:` its rate, the sample it loops back to (every bit set for a voice
@@ -295,9 +298,9 @@ from that copy. The game's code says each piece's shape and size; it never depen
     pack names its `cost:`, the count must name the slot it went to,
     `copy.count_written 256, into: pack[:music]`; a count with no `into:` is then refused. Worked example:
     `test/all/vblank/builder/test_data_packs.rb` (`numbers_written`).
-  - `pack[:title_map].write_cell(at, tile:, bank: 0, mirrored: false, upside_down: false)` writes cell `at`
-    of a slot of map cells as its record. Each part may be a number or worked out as the routine runs, as
-    `at` may; `mirrored:` and `upside_down:` are true or false, or a number whose lowest bit is read, so a
+  - `pack[:title_map].write_cell(at, tile:, bank: 0, mirrored: false, upside_down: false, in_front: false)` writes
+    cell `at` of a slot of map cells as its record. Each part may be a number or worked out as the routine runs, as
+    `at` may; `mirrored:`, `upside_down:` and `in_front:` are true or false, or a number whose lowest bit is read, so a
     Game Boy Color port writes `tile: number + (((attributes >> 3) & 1) * 384), bank: attributes & 7,
     mirrored: attributes >> 5, upside_down: attributes >> 6`, with `attributes = copy.byte(attribute_map +
     at)` and `number` the cell's tile counted from $8000: `copy.byte(map + at)` on a screen that counts
@@ -951,3 +954,50 @@ bytes a frame, then each frame as four bytes and sixteen a piece; nothing for a 
 frame). A file that is not a pack, is cut short or is in another format is refused with
 `Original::WrongPack`. **The format is 2.** A pack kept by a build before the frame records is format 1,
 so a shell's check refuses it and the player's copy is read again, as the menu says.
+
+## A port's harvest: the original's labels and where each asset lies
+
+Not a verb, and nothing a game loads: a port's harvest tool and its tests require these themselves.
+The harvest builds the decompilation and proves it is the copy (`Original::Decompilation`), then reads
+what the assembler wrote. Its output is committed, so nothing else needs the decompilation.
+
+- `require "vblank/original/symbol_file"` — **`Original::SymbolFile`**, a reader per assembler, each
+  taking the file's text and giving back `Original::Labels`:
+  - `SymbolFile.rgblink(text)` — RGBDS's `.sym` (`bank:address name`); banks of 16 KB.
+  - `SymbolFile.sfcasm(text, mapping: :hirom)` (or `:lorom`) — sfcasm's symbol table (`c4018e main`);
+    work RAM is banks $7E/$7F and the low 8 KB of the first banks.
+  - `SymbolFile.asm68k_listing(text)` — asm68k's listing (`/l`): labels, and the names `rs.b`/`rs.w`/`rs.l`
+    reserve in work RAM, with their width and size (count times width, or up to the next variable).
+  - `SymbolFile.gnu_ld_map(text)` — the GNU linker's map (`ld -Map`), for a decompilation built with it.
+  - Each takes `local_labels: true` to keep the cartridge's local labels (`Start.loop`); they are left out
+    otherwise. RAM's dotted names (`player_1.x_position`, a structure's field) are always kept. An address
+    that is neither the cartridge nor RAM (a register, a constant) is left out.
+- `require "vblank/original/labels"` — **`Original::Labels`**:
+  - `Labels.read(path)` — a saved file, or a folder of them read as one. `labels.write(path)` saves one;
+    `labels.stale?(path)` is true when the file is not what `write` would write (a harvest's `--check`).
+    The file is JSON, a label to a line, so a harvest run again shows as the lines that moved.
+  - `labels.offset(name)` — where its bytes are in the copy; refused (`ArgumentError`) for a RAM label.
+    `labels.address(name)` — where a running console sees it. Both take `name+n`, n bytes further
+    (`"wBallStates+1"`).
+  - `labels.fetch(name)` — the `Labels::Label` (`name`, `space` `:rom` or `:ram`, `address`, `offset`,
+    `width`, `size`). An unknown name raises `Original::UnknownLabel` (a `KeyError`) naming the labels
+    nearest it.
+  - `labels.names_at(offset: n)` or `names_at(address: n)` — every name there, in order; none is `[]`.
+  - `labels.span(name)` — how many bytes it runs: its size, else up to the next label of its space, never
+    past the end of its cartridge bank. The last label of a space with no bank has no span, and is refused.
+  - `Labels.new(list, rom_bank_bytes:)` makes labels by hand, from `Labels::Label` records.
+  - Worked examples: `test/all/vblank/original/test_labels.rb`, `test_symbol_file.rb`.
+- `require "vblank/original/manifest"` — **`Original::Manifest`**, each asset's offset, length and SHA-256 in
+  the copy (never its bytes):
+  - `Manifest.from_extents(extents, copy)` — from the `Decompilation::Extent`s the harvest proved
+    (`built.extent`), hashed from `copy` (an accepted `Copy`, or its path). Each asset is named by its source
+    file, or by what a block gives back for its extent (`{ |extent| label_for(extent) }`).
+  - Two assets on the same bytes are refused (`Original::ManifestRefused`) as the manifest is made or read,
+    naming each pair; so is one name on two assets.
+  - `manifest.refuse_different_copy!(copy)` — a port's test: `ManifestRefused`, naming each asset the copy does
+    not hold where the manifest says.
+  - `manifest.fetch(name)` — the `Manifest::Asset` (`name`, `offset`, `length`, `sha256`, `range`); an unknown
+    name raises `Original::UnknownAsset` (a `KeyError`) naming the assets nearest it.
+  - `Manifest.read(path)`, `manifest.write(path)` and `manifest.stale?(path)`, as for labels: JSON, an asset to
+    a line, in order of offset.
+  - Worked example: `test/all/vblank/original/test_manifest.rb`.

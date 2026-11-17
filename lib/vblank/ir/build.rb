@@ -1022,6 +1022,16 @@ module VBlank
                                picked_by: to_value_node(picked_by), picks_from: from, picks: tiles)
       end
 
+      # A block of +across+ by +down+ cells from +col+ and +row+ changed at once (see
+      # Nodes::SetTileBlock): to +tile+, to the tile +picked_by+ picks from +tiles+ counted from
+      # +from+, or with +restore+ back to the map's own. +body+ is the same change a cell at a time.
+      def set_tile_block(name, col, row, across, down, *body, tile: nil, picked_by: nil, tiles: nil, from: 0, restore: nil)
+        Nodes.build(:set_tile_block, children: body, name: name, col: to_value_node(col), row: to_value_node(row),
+                                     across: to_value_node(across), down: to_value_node(down), tile: tile,
+                                     picked_by: picked_by && to_value_node(picked_by), picks_from: from, picks: tiles,
+                                     restore: restore)
+      end
+
       # Show every held cell change at once (see Nodes::ShowHeldTiles).
       def show_held_tiles(cells: Nodes::ShowHeldTiles::MOST_CELLS)
         Nodes.build(:show_held_tiles, cells: cells)
@@ -1032,14 +1042,15 @@ module VBlank
       # +over_picture+ marks one shown over a screen the program paints (see
       # Nodes::Object): drawn over that picture, never into it.
       def object(name, poses:, pose:, x:, y:, active:, angle: 0, scale: SCALE_ONE, layer: nil, scene: nil,
-                 recolor: NO_RECOLOR, recolors: [], declared: nil, layers: [], layer_pick: nil, over_picture: false)
+                 recolor: NO_RECOLOR, recolors: [], declared: nil, layers: [], layer_pick: nil, over_picture: false,
+                 in_front: false)
         Nodes.build(:object, name: name, poses: poses, pose: to_value_node(pose),
                           x: to_value_node(x), y: to_value_node(y), active: to_value_node(active),
                           angle: to_value_node(angle), scale: to_value_node(scale),
                           recolor: to_value_node(recolor), recolors: recolors,
                           **layer_choice_fields(layers, layer_pick),
                           **declared_field(declared), **layer_field(layer), **scene_field(scene),
-                          **(over_picture ? { over_picture: true } : {}))
+                          **(over_picture ? { over_picture: true } : {}), **(in_front ? { in_front: true } : {}))
       end
 
       # The +recolor+ an object that is drawn in its own colours holds: a number that names
@@ -1179,8 +1190,10 @@ module VBlank
 
       # Put every item of the list in order by the number list +by+ holds at it, the smallest
       # first, or the biggest with +descending+; level items keep their order (see ListSort).
-      def list_sort(name, by:, descending: false)
-        Nodes.build(:list_sort, name: name, by: by, descending: descending ? true : false)
+      # +shown+, a value for each place of +by+, puts the items whose value is not 1 behind the rest.
+      def list_sort(name, by:, descending: false, shown: nil)
+        given = shown ? { shown: shown.map { |value| to_value_node(value) } } : {}
+        Nodes.build(:list_sort, name: name, by: by, descending: descending ? true : false, **given)
       end
 
       # Overwrite the item at `index` with a new value (the slot must already hold

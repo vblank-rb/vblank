@@ -457,20 +457,21 @@ module VBlank
       end
 
       # CELL +index+ OF A SLOT OF MAP CELLS written as a MapCell record: its +tile+, counted from the
-      # first tile of the background's `tiles:`, its +bank+ of colours, and whether it is +mirrored+
-      # and +upside_down+ (true or false, or a number whose lowest bit says). Each may be a number or
-      # a value the routine works out, as +index+ may:
+      # first tile of the background's `tiles:`, its +bank+ of colours, whether it is +mirrored+ and
+      # +upside_down+, and whether it is +in_front+ of the sprites (each true or false, or a number
+      # whose lowest bit says; the last read only by a background that asks, `cells_in_front: true`).
+      # Each may be a number or a value the routine works out, as +index+ may:
       #
       #   pack[:title_map].write_cell(at, tile: number, bank: attributes & 7, mirrored: attributes >> 5,
-      #                                   upside_down: attributes >> 6)
+      #                                   upside_down: attributes >> 6, in_front: attributes >> 7)
       #
       # A tile past 65535 or a bank past 255 written as a number is refused, since the record would
       # keep only its low bits. One the routine works out keeps them.
-      def write_cell(index, tile:, bank: 0, mirrored: false, upside_down: false)
+      def write_cell(index, tile:, bank: 0, mirrored: false, upside_down: false, in_front: false)
         refuse_cell_of_another_shape!
         cell = index.is_a?(Integer) ? "cell #{index}" : "a cell"
         MapCell.refuse_oversized_part!("The unpacking writes #{cell} of slot :#{@slot.name} with", tile: tile, bank: bank)
-        bytes = MapCell.bytes(tile: tile, bank: bank, mirrored: mirrored, upside_down: upside_down)
+        bytes = MapCell.bytes(tile: tile, bank: bank, mirrored: mirrored, upside_down: upside_down, in_front: in_front)
         if index.is_a?(Integer)
           refuse_item_outside_slot!(index, [@slot.count, "cell"])
           return bytes.each_with_index { |byte, at| store_byte((index * MapCell::BYTES) + at, byte) }

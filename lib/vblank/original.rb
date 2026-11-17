@@ -45,3 +45,6 @@ require_relative "original/shell_facts"    # What every runtime is told about a 
 require_relative "original/shell"          # A port built with no data, which makes its pack on the player's machine
 require_relative "original/data_guard"     # The pre-commit check keeping the original's data out of the port's history
 # Its rake tasks, data_guard_tasks.rb, are a Rakefile's and are not required here.
+# Nor are labels.rb, symbol_file.rb and manifest.rb (the original's labels, the readers of each
+# assembler's symbol file, and where each asset lies), which only a port's harvest and its tests ask
+# for, by `require "vblank/original/labels"` and the like.

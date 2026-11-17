@@ -177,6 +177,39 @@ module StatusBarGames
     end
   end
 
+  # LETTERS BY NUMBERS THE GAME WORKS OUT, as text it reads from a table: each number counts
+  # through the bar's tileset keys in the order they were written (green, blue, red, white), and
+  # a number that names no key (below nought, or past the last) leaves its cell as it was. On the
+  # third pass the bar's first row is written from LETTER_NUMBERS, and a cell of its second row at
+  # a column the game works out (1) from the second number (red).
+  LETTER_NUMBERS = [1, 2, 0, -1, 4, 99, 2, 1].freeze
+  LETTER_COLORS = [BLUE, RED, GREEN, WHITE, WHITE, WHITE, RED, BLUE].freeze
+
+  def letters_by_number_game(now: false)
+    numbers = LETTER_NUMBERS
+    program do
+      screen :tiled
+      image(:red_art, "#" => :red) { Minitest::Test::SOLID_TILE }
+      image(:blue_art, "#" => :blue) { Minitest::Test::SOLID_TILE }
+      image(:green_art, "#" => :green) { Minitest::Test::SOLID_TILE }
+      image(:white_art, "#" => :white) { Minitest::Test::SOLID_TILE }
+      tiles :field_tiles, "#" => :red_art
+      tiles :bar_tiles, "#" => :green_art, "o" => :blue_art, "r" => :red_art, "w" => :white_art
+      background :field, tiles: :field_tiles, map: Array.new(32) { "#" * 32 }
+      bar = status_bar :score, tiles: :bar_tiles, map: ["w" * 32, "w" * 32], top: screen_height - BAR_HEIGHT
+      text = table :text, numbers
+      step = var :step, 0
+      column = var :column, 0
+      game_loop do
+        if step == 2
+          numbers.length.times { |at| bar.set_tile at, 0, text[at], now: now }
+          bar.set_tile column + 1, 1, text[1], now: now
+        end
+        step += 1
+      end
+    end
+  end
+
   def screen_height = described_game_console.screen_height
 
   def screen_width = described_game_console.screen_width
@@ -222,5 +255,14 @@ module BarCellShownNowTests
 
     assert_equal BLUE, screen.pixel(12, row)
     assert_equal GREEN, screen.pixel(28, row)
+  end
+
+  # Letters by numbers the game works out, changed now, show as they do changed after the pass.
+  def test_bar_letters_by_number_changed_now_show_the_tiles_they_name
+    screen = picture(letters_by_number_game(now: true), 6)
+    row = screen_height - 12
+
+    LETTER_COLORS.each_with_index { |color, at| assert_equal color, screen.pixel((at * 8) + 4, row), "letter #{at}" }
+    assert_equal RED, screen.pixel(12, row + 8), "the cell at a worked-out column"
   end
 end

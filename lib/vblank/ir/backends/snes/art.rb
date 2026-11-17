@@ -456,12 +456,23 @@ module VBlank
           # The sets of colours +scene+'s own backgrounds are drawn from: in a game of +screen_colors+
           # a copy of what every screen shows, taken the first time it is asked for, by when those
           # are all made (Lowering::Picture#make_shared_background_colors). Otherwise the game's.
+          # An AreaKey's copy is taken from its scene's, or from what every screen shows.
           def background_palettes(scene)
             return @background_palettes unless scene
 
-            @scene_held[scene] ||= @held[:backgrounds].dup
-            @scene_palettes[scene] ||= @background_palettes.map { |list| list&.dup }
+            base = scene.is_a?(AreaKey) ? background_palettes(scene.colors_base) : @background_palettes
+            @scene_held[scene] ||= (scene.is_a?(AreaKey) ? held_in(base) : @held[:backgrounds]).dup
+            @scene_palettes[scene] ||= base.map { |list| list&.dup }
           end
+
+          # ONE AREA OF A BACKGROUND THAT WALKS BETWEEN AREAS (`background ..., tiles: { shrine: ..., clearing: ... }`):
+          # video memory holds one area's tiles at a time, so each area keeps a copy of the tiles and the
+          # sets of colours of its screen, its own added (#with_background_tiles_of, #background_palettes),
+          # and walking into it brings in what differs from what every screen keeps (Lowering::Picture's
+          # area copies). +scene+ is the scene the walking background belongs to (nil for one every
+          # screen shows) and +area+ the area's name; +tiles_base+ and +colors_base+ are the scene whose
+          # copy the area's is taken from, in a game keeping those by scene, and nil otherwise.
+          AreaKey = Data.define(:scene, :area, :tiles_base, :colors_base)
 
           # What +scene+ brings in as it takes over, as [where in the colour memory, its colours] for
           # each set: those that are not as every screen left them. Never none, since the routine
@@ -502,6 +513,14 @@ module VBlank
 
           # The same for its background tiles.
           def scene_background_tiles(scene) = tiles_past_shared(@scene_background_stores.dig(scene, 0), @background_tiles)
+
+          # [the first tile of area +key+'s that is not as every screen keeps it, every tile's bytes from
+          # there]: what walking into the area brings in, its scene's own tiles with its own. Never nil: an
+          # area that adds nothing brings in one tile, so the copy is always the same routine.
+          def area_background_tiles(key)
+            own = @scene_background_stores.dig(key, 0) || @background_tiles
+            tiles_past_shared(own, @background_tiles) || [0, own.first]
+          end
 
           # The palette kept under +key+, or nil for a list nothing is drawn with.
           def held_palette_of(key) = @held_palettes[key]
@@ -696,11 +715,12 @@ module VBlank
           # --- the colour memory ---
 
           # All 256 colours, as the console's colour memory holds them: two bytes each, the
-          # backgrounds' eight palettes and then the sprites'. Colour 0 is the backdrop.
-          def cgram
+          # backgrounds' eight palettes and then the sprites'. Colour 0 is the backdrop. With +area+
+          # (an AreaKey), the backgrounds' are that area's: the one a walking background shows at power-on.
+          def cgram(area = nil)
             colors = Array.new(256, 0)
             colors[0] = @backdrop
-            @background_palettes.each_with_index { |list, p| list&.each_with_index { |c, i| colors[(p * PLACES) + i + 1] = c } }
+            (area ? background_palettes(area) : @background_palettes).each_with_index { |list, p| list&.each_with_index { |c, i| colors[(p * PLACES) + i + 1] = c } }
             @sprite_palettes.each_with_index { |list, p| list&.each_with_index { |c, i| colors[128 + (p * PLACES) + i + 1] = c } }
             bar_lists = (@bar_palettes.length + BAR_PALETTES_A_LIST - 1) / BAR_PALETTES_A_LIST
             (1...(bar_lists * PLACES)).each { |at| colors[at] = 0 }
@@ -798,7 +818,11 @@ module VBlank
           end
 
           # What the words of a refusal call +scene+'s backgrounds.
-          def backgrounds_in_message(scene) = scene ? "backgrounds of the scene :#{Modes.strip_scene_prefix(scene)}" : "backgrounds"
+          def backgrounds_in_message(scene)
+            return "backgrounds of the area :#{scene.area}" if scene.is_a?(AreaKey)
+
+            scene ? "backgrounds of the scene :#{Modes.strip_scene_prefix(scene)}" : "backgrounds"
+          end
 
           # The refusal for +palettes+ being full: the one that builds the game again with each scene
           # bringing its own colours in, where that has not been tried and is what would help.
@@ -836,15 +860,22 @@ module VBlank
           # The block, with the background tiles it makes kept in +scene+'s copy of the list. As
           # #with_sprite_tiles_of.
           def with_background_tiles_of(scene)
-            return yield unless @scene_background_tiles && scene
+            return yield unless scene && (@scene_background_tiles || scene.is_a?(AreaKey))
 
             shared = [@background_tiles, @background_tile_numbers]
-            @background_tiles, @background_tile_numbers = (@scene_background_stores[scene] ||= shared.map(&:dup))
+            base = scene.is_a?(AreaKey) && scene.tiles_base ? background_tile_store(scene.tiles_base) : shared
+            @background_tiles, @background_tile_numbers = (@scene_background_stores[scene] ||= base.map(&:dup))
             begin
               yield
             ensure
               @background_tiles, @background_tile_numbers = shared
             end
+          end
+
+          # +scene+'s copy of the background tiles and their numbers, taken from every screen's the
+          # first time it is asked for.
+          def background_tile_store(scene)
+            @scene_background_stores[scene] ||= [@background_tiles, @background_tile_numbers].map(&:dup)
           end
 
           # The block, with the sprite tiles it makes kept in +scene+'s copy of the list, taken the

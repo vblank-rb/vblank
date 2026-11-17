@@ -1617,7 +1617,8 @@ module VBlank
               small: small,
               char_base: stored.char_base,
               map_count: grids.size, map_bytes: entries.size * 2,
-              grid: (MapGrid.new(cols: cols, rows: rows, cells: cell_for) unless streams),
+              # A tile of nil is the empty cell (Nodes::SetTile), the layer's blank tile, as the map's own are.
+              grid: (MapGrid.new(cols: cols, rows: rows, cells: cell_for.merge(nil => stored.blank)) unless streams),
               colors: background_color_lists(node, banks, small),
               stream: stream
             ))

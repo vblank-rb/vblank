@@ -42,6 +42,48 @@ class TestSceneBackgroundTilesOnTheSuperNintendo < Minitest::Test
     pass
   end
 
+  # The second scene's ground walks between two areas, and a tile taking turns through pictures is
+  # in both, kept with the scene's own tiles: walking into the other area brings that area's tiles
+  # in, and the picture the game chose stays.
+  def test_a_picture_chosen_stays_on_a_walking_background_of_a_scenes_own_tiles
+    switch = SWITCH_AT
+    b = Builder.new
+    b.instance_eval do
+      screen :tiled
+      first = ManyTiles.declare(self, :one_set, 600, :red)
+      ManyTiles.declare(self, :two_set, 600, :green, from: 600)
+      colors :pond, %i[transparent red blue green]
+      { red_tile: 1, blue_tile: 2, green_tile: 3 }.each do |name, place|
+        image(name, width: 8, height: 8, colors: :pond, places: Array.new(64, place))
+      end
+      image(:filler, width: 8, height: 8, colors: :pond, places: Array.new(64) { |i| 1 + (i % 3) })
+      water = tile_pictures :water, colors: :pond, tiles: { top: %i[red_tile blue_tile] }
+      tiles :near, "w" => water[:top], "#" => :green_tile, "o" => :two_set_1
+      tiles :far, "#" => :filler, "g" => :green_tile, "w" => water[:top], "o" => :two_set_2
+      state = var :state, 0
+      tick = var :tick, 0
+      scene(:one) { background :one, tiles: :one_set, map: first }
+      scene(:two) do
+        ground = background(:ground, tiles: { near: :near, far: :far },
+                                     map: { near: { pond: ["w#o"] }, far: { lake: ["#gw"] } })
+        ground.show_map :lake if tick == switch + 4
+      end
+      game_loop do
+        tick += 1
+        state = 1 if tick == switch
+        water.show 1 if tick == switch + 2
+        case_var(:state) do
+          when_val 0, :one
+          when_val 1, :two
+        end
+      end
+    end
+    b.finalize_program
+
+    screen = game_player.run(b.program, frames: SWITCH_AT + 9).screen
+    assert_equal 0x7C00, screen.pixel(20, 4), "the picture chosen, blue, in the area walked into"
+  end
+
   def test_what_every_screen_shows_stays_in_video_memory
     program = two_scenes do
       layers :ground, :front

@@ -174,7 +174,8 @@ module VBlank
 
         # --- backgrounds and layers ---
         tiles: works("tiles of four colours each."),
-        background: works("one background at a time, scrolled and changed as on the Advance, and bent " \
+        background: works("`cells_in_front: true` is refused: this build does not make it yet. A Game Boy Color keeps a priority bit for each cell of its map. " \
+                          "one background at a time, scrolled and changed as on the Advance, and bent " \
                           "row by row with `scroll_each_row`. `above_row:` is refused: this build does not " \
                           "make it yet. `show_only_inside` is refused: a Game Boy Color cannot hide its " \
                           "background outside a box. Its one window is a layer that covers the background " \

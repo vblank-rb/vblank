@@ -8,6 +8,7 @@
  *   ./pong --frame-times                 play it, and say at the end how evenly its pictures were shown
  *   ./pong --refresh-rate 144            choose its pacing as for a monitor of that rate (this one still
  *                                        refreshes at its own, so a rate above it plays the game slow)
+ *   ./pong --counted-clock               pace by a clock that counts its waits and never sleeps (tests)
  *   ./pong --save-file my.sav            keep the game's save in that file, in place of the usual one
  *   ./pong --settings-file my.txt        read and write the window's settings (see THE SETTINGS) in that
  *                                        file alone, in place of the usual ones
@@ -261,6 +262,30 @@ static Uint64 earliest_next_ns;        /* where the monitor paces: the moment be
 
 /* --refresh-rate: the rate to pace for, whatever the monitor reports its own is. */
 static double pretended_refreshes_a_second;
+
+/* --counted-clock: THE PACING'S CLOCK MOVES ONLY BY THE WAITS IT ASKS FOR, and never sleeps. The
+ * moments the pacing reads, waits until and keeps for --frame-times are then a count of the frames
+ * it waited out, the same on a busy computer as on an idle one, where the real clock also counts
+ * however long the computer was busy elsewhere. What a test asks of the pacing's own rules (a pause
+ * is not the game running late) it asks this way, since only a clock nothing else moves gives one
+ * answer every time. A player's run never names it, and reads the real clock as ever. */
+static int counted_clock;
+static Uint64 counted_clock_ns;
+
+/* The pacing's clock now: the real one, or with --counted-clock the waits counted so far. */
+static Uint64 pacing_now_ns(void) { return counted_clock ? counted_clock_ns : SDL_GetTicksNS(); }
+
+/* Waits +ns+ on the pacing's clock: sleeps, or with --counted-clock counts it and goes on at once.
+ * +precise+ spins the last part of a real sleep, for a wait that must end on time. */
+static void pacing_wait_ns(Uint64 ns, bool precise) {
+  if (counted_clock) {
+    counted_clock_ns += ns;
+  } else if (precise) {
+    SDL_DelayPrecise(ns);
+  } else {
+    SDL_DelayNS(ns);
+  }
+}
 
 /* --frame-times: when each picture was handed to the display, to say at the end how evenly they
  * were shown. A picture a monitor shows twice, or never, is one handed over late or early, and
@@ -904,7 +929,7 @@ static void remember_picture_shown(void) {
     shown_at_ns = grown;
     shown_room = room;
   }
-  shown_at_ns[shown_count++] = SDL_GetTicksNS();
+  shown_at_ns[shown_count++] = pacing_now_ns();
 }
 
 /* --- the menu, drawn (rg_window_menu.h says what goes where) --- */
@@ -1106,10 +1131,10 @@ static bool something_is_drawn_over_the_picture(void) {
 static void wait_out_undrawn_picture(void) {
   if (!pacing.refreshes) return;
   Uint64 picture_ns = rg_picture_ns(pacing);
-  Uint64 now = SDL_GetTicksNS();
+  Uint64 now = pacing_now_ns();
   if (picture_due_ns == 0 || now > picture_due_ns + 2 * picture_ns) picture_due_ns = now; /* a start, or fell behind */
   picture_due_ns += picture_ns;
-  if (picture_due_ns > now) SDL_DelayNS(picture_due_ns - now);
+  if (picture_due_ns > now) pacing_wait_ns(picture_due_ns - now, false);
 }
 
 /* Shows the picture as it stands: once, or where the monitor paces the frames, once for each
@@ -1142,7 +1167,7 @@ static void present_picture(const uint16_t *picture, bool game_is_ours) {
     SDL_RenderPresent(renderer);
   }
   window_owed_a_drawing = drawn_over; /* what is over the picture now needs drawing away once it goes */
-  picture_due_ns = SDL_GetTicksNS();
+  picture_due_ns = pacing_now_ns();
   if (timing_frames) remember_picture_shown();
 }
 
@@ -1490,22 +1515,22 @@ static bool read_and_apply_events(void) {
  * sleep that runs a little over is made up on the next frame, and the sleep need not be a precise
  * one, which spins the computer for the last part of it. */
 static void wait_on_console_clock(void) {
-  Uint64 now = SDL_GetTicksNS();
+  Uint64 now = pacing_now_ns();
   if (next_frame_ns == 0 || now > next_frame_ns + 4 * FRAME_NS) next_frame_ns = now; /* fell behind: start afresh */
   next_frame_ns += FRAME_NS;
-  now = SDL_GetTicksNS();
-  if (next_frame_ns > now) SDL_DelayNS(next_frame_ns - now);
+  now = pacing_now_ns();
+  if (next_frame_ns > now) pacing_wait_ns(next_frame_ns - now, false);
 }
 
 /* Holds a game the monitor paces to the fastest it may go (rg_pacing.h), by a clock of the
  * window's own. On a monitor that is holding the game it does nothing. With the window hidden or
  * minimised, when showing a picture waits for nothing, it is all that paces the game. */
 static void keep_under_fastest(void) {
-  Uint64 now = SDL_GetTicksNS();
+  Uint64 now = pacing_now_ns();
   earliest_next_ns = rg_earliest_next_frame(earliest_next_ns, now, rg_fastest_frame_ns(pacing));
   if (earliest_next_ns <= now) return;
   frames_held_by_clock++;
-  SDL_DelayPrecise(earliest_next_ns - now);
+  pacing_wait_ns(earliest_next_ns - now, true);
 }
 
 /* The end of a frame. Where the monitor paces the frames, showing the picture has already waited
@@ -1778,7 +1803,7 @@ static void hold_while_paused(void) {
   if (!game_held()) return;
   silence_speaker(true);
   int drawings_owed = 1;
-  Uint64 next_line_due_ns = SDL_GetTicksNS();
+  Uint64 next_line_due_ns = pacing_now_ns();
   while (game_held() && !consume_step_outside_menu()) {
     Uint64 began = SDL_GetTicksNS();
     if (scripted && !press_scripted_keys()) finish_script(); /* nothing left in the script could end the pause */
@@ -1793,10 +1818,10 @@ static void hold_while_paused(void) {
     if (scripted) {
       /* A frame between one line of the script and the next, on a clock of its own so that a sleep
        * that runs over is made up on the next. */
-      Uint64 now = SDL_GetTicksNS();
+      Uint64 now = pacing_now_ns();
       next_line_due_ns += FRAME_NS;
       if (now > next_line_due_ns + 4 * FRAME_NS) next_line_due_ns = now;
-      if (next_line_due_ns > now) SDL_DelayNS(next_line_due_ns - now);
+      if (next_line_due_ns > now) pacing_wait_ns(next_line_due_ns - now, false);
       continue;
     }
     Uint64 frame_left = spent < FRAME_NS ? FRAME_NS - spent : 0;
@@ -2451,10 +2476,10 @@ static void print_second_player_keys(void) {
 
 /* What --help prints: the keys as the window starts with them, read from the window's own table so
  * this cannot say a key the window does not use, and the options a player has a use for. The rest
- * (--headless, --scripted-keys, --trace, --window-picture, --usual-settings, and --frame-times and
- * --refresh-rate, which measure the pacing and are told in .claude/testing/desktop.md) are how the
- * tests and the framework's own people drive the program, and are left out. Nothing is opened: no
- * window, no settings file, no folder. */
+ * (--headless, --scripted-keys, --trace, --window-picture, --usual-settings, and --frame-times,
+ * --refresh-rate and --counted-clock, which measure the pacing and are told in
+ * .claude/testing/desktop.md) are how the tests and the framework's own people drive the program,
+ * and are left out. Nothing is opened: no window, no settings file, no folder. */
 static void print_usage(const char *program) {
   const char *name = program;
   for (const char *c = program; *c; c++) {
@@ -2548,6 +2573,7 @@ int main(int argc, char **argv) {
     if (strcmp(argv[i], "--start-up") == 0) start_up_asked = 1;
 #endif
     if (strcmp(argv[i], "--frame-times") == 0) timing_frames = 1;
+    if (strcmp(argv[i], "--counted-clock") == 0) counted_clock = 1;
     if (strcmp(argv[i], "--refresh-rate") == 0 && i + 1 < argc) pretended_refreshes_a_second = strtod(argv[i + 1], NULL);
     if (strcmp(argv[i], "--scripted-keys") == 0 && i + 1 < argc) {
       scripted = 1;

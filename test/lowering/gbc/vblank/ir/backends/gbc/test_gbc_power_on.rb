@@ -120,9 +120,10 @@ class TestGBCPowerOn < Minitest::Test
 
   # A TITLE WITH MUCH ART, which takes two frames to copy in after the game's first, shows nothing
   # drawn until then: black, the backdrop of a game that says none — and the game's own, said white,
-  # the way a cartridge that fades its screens in from white starts.
+  # the way a cartridge that fades its screens in from white starts. The memories are cleared within
+  # the first frame (Runtime::Boot), so the screen is on from it: the two frames are the first two.
   def test_a_white_title_with_much_art_shows_the_backdrop_while_it_loads
-    assert_equal [5, 6], black_frames(white_title_among_lists(title_tiles: 200)), "black while it loads"
+    assert_equal [1, 2], black_frames(white_title_among_lists(title_tiles: 200)), "black while it loads"
     assert_empty black_frames(white_title_among_lists(title_tiles: 200, backdrop: :white)), "frames that showed black"
   end
 
@@ -267,9 +268,9 @@ class TestGBCPowerOn < Minitest::Test
   end
 
   # A GAME THAT KEEPS A SMALL SAVE RECORD, as a high-score table is: a list of 61 bytes, so a body
-  # of 65, loaded at power-on. Pokémon Pinball's retail cartridge checks four such blocks at
-  # power-on (home/save.asm, LoadSavedData) and reaches its main loop's first pass on frame 11,
-  # measured in the emulator; setting the record up must cost no more than that.
+  # of 65, loaded at power-on. A retail Color cartridge that checks four such blocks at power-on
+  # reaches its main loop's first pass on frame 11, measured in the emulator; setting the record up
+  # must cost no more than that.
   private def saving_game(record: true)
     b = Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
     b.instance_eval do
@@ -300,28 +301,37 @@ class TestGBCPowerOn < Minitest::Test
   end
 
   # The record's lists (its own, and the table of places every game with a record keeps) move
-  # between save memory and the game as blocks (Runtime::Lists#emit_save_moves), which is what
-  # brought both starts to two frames after the same game with no record.
-  def test_a_small_save_record_on_an_empty_chip_starts_two_frames_after_a_game_with_none
+  # between save memory and the game as blocks (Runtime::Lists#emit_save_moves). On an empty chip
+  # the record is then made and written: a little under two and a half frames of work, which ends
+  # two or three frame boundaries later, by where in its frame the boot ended.
+  def test_a_small_save_record_on_an_empty_chip_starts_three_frames_after_a_game_with_none
     without = first_pass_frame(saving_game(record: false))
+    with_record = first_pass_frame(saving_game)
 
-    assert_operator first_pass_frame(saving_game), :<=, without + 2, "the first pass, on an empty chip"
+    assert_operator with_record, :<=, without + 3, "the first pass, on an empty chip"
+    assert_operator with_record, :<=, 11, "retail's own first pass is on frame 11"
   end
 
   def test_a_small_save_record_with_a_good_save_starts_two_frames_after_a_game_with_none
     program = saving_game
     good = Reference.save_into(SaveImage.new, program, :high, 0, scores: (1..61).to_a)
     without = first_pass_frame(saving_game(record: false))
+    with_record = first_pass_frame(program, save: good)
 
-    assert_operator first_pass_frame(program, save: good), :<=, without + 2, "the first pass, with a good save"
-    assert_operator without + 2, :<=, 11, "retail's own first pass is on frame 11"
+    assert_operator with_record, :<=, without + 2, "the first pass, with a good save"
+    assert_operator with_record, :<=, 11, "retail's own first pass is on frame 11"
   end
 
+  # Read as the note most of ten frames hold: at some places setting up can end, the wave voice
+  # stands taller for a frame and a half every seven frames (the 256Hz wave's place against the
+  # frame comes round every seven), and no note is read there.
   def test_a_recording_started_while_the_game_sets_up_is_heard_once_it_runs
     program = counting_game(3_000, plays: true)
     first = game_player.run(program, frames: 3)[:first]
     heard = console_voice(program, :wave, frames: first + 20)
+    pitches = (first + 5..first + 14).filter_map { |frame| heard.held_note(frame)&.pitch }
 
-    assert_in_delta 256, heard.held_note(first + 10).pitch, 4
+    assert_operator pitches.length, :>=, 5, "frames that hold one note"
+    assert_in_delta 256, pitches.sort[pitches.length / 2], 4
   end
 end

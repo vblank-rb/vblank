@@ -7,12 +7,13 @@ require "power_on_frame_games"
 # every console's cartridge is held to are in test/power_on_frame_games.rb.
 #
 # A PROGRAM IS COPIED IN BEFORE IT STARTS. A PlayStation program is loaded into RAM before its first
-# instruction runs (by the BIOS from a disc, by Beetle's own loader here), and a longer program takes
-# longer to copy: a game with a song, or with a big table and nothing else added, starts a frame later
-# in the emulator than the same game without. Those frames are before the program and no program can
-# count them. So the builds of the screen-waiting game all carry the song, the ones that do not play
-# it too, and are held to changing on the same frame as each other. The first test, of a small
-# program, holds the count to the emulator's frames themselves.
+# instruction runs: by the BIOS from a disc on a console, which takes seconds, and by Beetle's own
+# loader here, which reads it from the expansion port, a longer program taking longer. Those frames
+# are before the program and no program can count them, so frames from power-on are no PlayStation
+# measure: the count is held to the screen's blanks since the program's first instruction, as the
+# emulator says when that ran (power_on_frame_games' first_pass_seen). The builds of the screen-waiting game
+# all carry the song, the ones that do not play it too, and are held to changing on the same frame as
+# each other.
 class TestFramesSincePowerOnOnThePlayStation < Minitest::Test
   include PowerOnFrameGames
 
@@ -24,6 +25,36 @@ class TestFramesSincePowerOnOnThePlayStation < Minitest::Test
 
   def test_the_console_counts_the_frames_spent_setting_up
     assert_frames_setting_up_counted(:ps1, busy: BUSY)
+  end
+
+  # A program long enough that the loader is still copying it after the first frame: an unread table
+  # of 8000 words makes it 44K. Its first pass reads the blanks since it began, not since power-on.
+  def test_a_long_program_counts_from_its_first_instruction
+    seen = first_pass_seen(:ps1, long_program(8000))
+
+    assert_operator seen.blanks_before_program, :>, 1, "the loader should still be copying after the first frame"
+    assert_equal seen.due, seen.reading
+  end
+
+  private
+
+  # A counting game (`passes`, and `first` read on the first pass) that keeps a table of +words+ words.
+  def long_program(words)
+    b = Builder.new
+    b.instance_eval do
+      screen :tiled, backdrop: :black
+      kept = table :kept, Array.new(words) { |n| ((n * 7) % 100) + 1 }, width: :word
+      passes = 0
+      first = -1
+      read = 0
+      game_loop do
+        first = frames_since_power_on if passes.zero?
+        passes += 1
+        read = kept[passes % 4]
+      end
+    end
+    b.finalize_program
+    b.program
   end
 
   # Sending the song's sounds to the sound chip, and spinning, take frames before the game's first

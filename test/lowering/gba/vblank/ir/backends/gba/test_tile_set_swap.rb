@@ -64,7 +64,8 @@ class TestTileSetSwap < Minitest::Test
   # frame, and the frame after moves them by the two steps. +ARRIVES+ is the pass the game walks.
   ARRIVES = 8
 
-  private def sprite_over_walk
+  # With +one_tileset+ both areas are drawn from the shrine's tiles, and only the map differs.
+  private def sprite_over_walk(one_tileset: false)
     arrives = ARRIVES
     VBlank.build("WALKSPR", console: :gba, out: StringIO.new, err: StringIO.new) do
       screen :tiled
@@ -72,7 +73,7 @@ class TestTileSetSwap < Minitest::Test
       image(:clearing_grass, "#" => :green) { (["#" * 8] * 8).join("\n") }
       tiles :shrine, "#" => :shrine_floor
       tiles :clearing, "#" => :clearing_grass
-      ground = background :ground, tiles: { shrine: :shrine, clearing: :clearing },
+      ground = background :ground, tiles: { shrine: :shrine, clearing: one_tileset ? :shrine : :clearing },
                                    map: { shrine: { hall: ["#" * 32] }, clearing: { glade: ["#" * 32] } }
       hero = sprite :hero, at: [0, 40], facing: { floor: :shrine_floor }
       passes = var :passes, 0
@@ -96,6 +97,20 @@ class TestTileSetSwap < Minitest::Test
     assert_equal 1, steps.count(0), "the sprite held still once: #{across}"
     assert_equal 1, steps.count(2), "and caught up the frame after: #{across}"
     assert_equal steps.index(0) + 1, steps.index(2), across.to_s
+  end
+
+  # Two areas of one tileset are one set of tiles, so the walk is a copy of the map alone, and
+  # the sprite steps on every frame.
+  def test_the_sprites_keep_stepping_through_a_walk_between_areas_of_one_tileset
+    rom = sprite_over_walk(one_tileset: true)
+    reader = VBlank::Diagnostics::Verifier.new(rom, frames: 1, vars: rom.var_addresses)
+    across = (1..(ARRIVES + 6)).map do
+      reader.step
+      reader.mem16(0x0700_0002) & 0x01FF
+    end
+
+    assert_equal [1], across.each_cons(2).map { |before, after| after - before }.uniq, across.to_s
+    refute_includes rom.built.routines.keys.map { |name| words(name) }, "bringing background :ground another set of tiles"
   end
 
   private def game_loop_bytes(rom) = rom.built.routines.fetch(FRAME_ROUTINE).size

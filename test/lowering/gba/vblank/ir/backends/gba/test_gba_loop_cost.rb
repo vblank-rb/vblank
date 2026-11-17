@@ -1,0 +1,32 @@
+# frozen_string_literal: true
+
+require "test_helper"
+require "loop_cost_games"
+
+# A TURN OF A LOOP ON THE ADVANCE, measured in the emulator: a `repeat`, and a game's `while i < n`
+# with `i += 1` last, which the build lowers as a counted loop (Backends::LoopForm#counted_while,
+# Statements#emit_counted_while). The ARM's own way is a count in a register, ADD and CMP and a B
+# back, or a SUBS that is its own test (GBATEK, "ARM CPU Instruction Cycle Times"). A loop here keeps
+# its count and limit in r10 and r11 where nothing in the body needs them (GBA::LoopForm), and a
+# counted while keeps the game's variable there. The bodies set a variable, `c = 1`, or read a list
+# at the count.
+class TestGBALoopCost < Minitest::Test
+  # A frame's cycles: 228 lines of 1232.
+  FRAME_CYCLES = 280_896
+
+  # Measured: a repeat 6 a turn setting (it counts down, its index unread), 26 reading. A counted
+  # while was 16 and 38 while it was written as it reads (its hidden count kept in memory, `i` loaded
+  # to be compared and added to in memory each turn); counted, 8 and 26.
+  # Written out one by one: this run plays each test in a Ractor, which cannot run a method defined
+  # from a block.
+  def test_a_turn_of_repeat_set_costs_under_8_cycles = assert_turn_under(:repeat_set, 8)
+  def test_a_turn_of_repeat_read_costs_under_30_cycles = assert_turn_under(:repeat_read, 30)
+  def test_a_turn_of_while_set_costs_under_10_cycles = assert_turn_under(:while_set, 10)
+  def test_a_turn_of_while_read_costs_under_30_cycles = assert_turn_under(:while_read, 30)
+
+  private def assert_turn_under(loop, bound)
+    cost = LoopCostGames.cycles_a_turn(:gba, loop, FRAME_CYCLES)
+
+    assert_operator cost, :<, bound, "a turn of #{loop} costs #{cost.round(1)} cycles"
+  end
+end
