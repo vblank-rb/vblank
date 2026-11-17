@@ -30,6 +30,17 @@ module VBlank
         which
       end
 
+      # THE STEP WITH ITS TILE WRITTEN IN, for a number known as the cartridge is built: a game
+      # whose data pack is read with it knows every number the pack holds, so a letter read from
+      # the pack at a place written in the program is one tile, written as a tile named in the
+      # program is. A SetTile of that tile, or nil where +number+ stands for no tile and the cell is
+      # left alone.
+      def written(node, number)
+        at = number - node.picks_from
+        tile = node.picks[at] if at.between?(0, node.picks.length - 1)
+        tile && Build.set_tile(node.name, node.col.copy, node.row.copy, tile, now: node.now, held: node.held)
+      end
+
       def test_of_one(node, number, tile)
         Build.if_(Build.binop(:==, node.picked_by.copy, Build.int(number)),
                   Build.set_tile(node.name, node.col.copy, node.row.copy, tile, now: node.now, held: node.held))

@@ -180,15 +180,19 @@ module VBlank
       # for. It is one step of the game, picking from the list of every key (#set_tile_picked), as
       # PackCells writes a worked-out `set_cell`: a console that keeps the keys' cells as a table
       # reads the cell from it by the number, the way its own games write a letter, so a letter costs
-      # the same however many tiles there are. The number is kept while the line writes the cell, in
-      # the variable every such line of the routine shares (Value#step_copy).
+      # the same however many tiles there are. A number worked out is kept while the line writes the
+      # cell, in the variable every such line of the routine shares (Value#step_copy); one read the
+      # same each time is not (#read_again_alike?).
       #
       # A background whose walls follow its tiles keeps the tests a game would write by hand, halving
       # the keys each time, since the wall goes with the tile: six tests for 43 tiles, and one
       # `set_tile` for each of them in the cartridge.
       def set_tile_picked_by(col, row, number, now)
         keys = @tile_index.reject { |_, index| index.nil? }.keys
-        return set_tile_picked(col, row, number.step_copy(:cell_number), keys, now: now) unless walls_follow_tiles?
+        unless walls_follow_tiles?
+          kept = read_again_alike?(number.node) ? number : number.step_copy(:cell_number)
+          return set_tile_picked(col, row, kept, keys, now: now)
+        end
 
         in_range = PlainRuby::Steps::GameTest.new(number >= 0)
         in_range.open_yes_side
@@ -198,6 +202,20 @@ module VBlank
         below_end.close_side(nil)
         in_range.close_side(nil)
         self
+      end
+
+      # Whether +node+ reads the same number every time it is read in one step, for about the cost
+      # of the read: a number, a variable, an item of a table at a place written in the program, or
+      # a sum or difference of those. Such a number needs no variable to keep it in, and a build
+      # that knows it as the cartridge is built (a table the data pack fills, read with the game)
+      # still sees it, so the cell is that one tile (IR::PickedTile.written).
+      def read_again_alike?(node)
+        case node.kind
+        when :int, :var_ref then true
+        when :table_get then node.index.kind == :int
+        when :binop then %i[+ -].include?(node.op) && read_again_alike?(node.lhs) && read_again_alike?(node.rhs)
+        else false
+        end
       end
 
       def set_tile_between(col, row, number, keys, now, first: 0)

@@ -496,7 +496,8 @@ module VBlank
       # written, so a backend can keep the list as a table and index it.
       #
       # Must be a number a backend can read more than once: a backend with no table of its own
-      # tests +picked_by+ against each entry (PickedTile.tests), so the builder hands it a variable.
+      # tests +picked_by+ against each entry (PickedTile.tests), so the builder hands it a variable,
+      # or a number that reads the same each time (Background#read_again_alike?).
       class SetTile
         include Node
         kind :set_tile

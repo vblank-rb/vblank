@@ -1469,8 +1469,13 @@ module VBlank
             # rt_big_set).
             #
             # A tile picked as the program runs is a cell read from a table by the number
-            # (#emit_set_picked_tile_on).
+            # (#emit_set_picked_tile_on), and one picked by a number known now is that tile
+            # (IR::PickedTile.written).
             def emit_set_tile(node)
+              if node.picked? && (number = folded(node.picked_by))
+                written = PickedTile.written(node, number)
+                return written && emit_set_tile(written)
+              end
               return each_declaration(node) { |bg| emit_set_picked_tile_on(bg, node) } if node.picked?
 
               each_declaration(node) do |bg|

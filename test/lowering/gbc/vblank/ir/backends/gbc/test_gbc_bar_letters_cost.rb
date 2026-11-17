@@ -2,6 +2,8 @@
 
 require "test_helper"
 require "stringio"
+require "tmpdir"
+require "digest"
 
 # A STATUS BAR'S LETTERS WRITTEN BY NUMBERS THE GAME WORKS OUT, on the Color. A game whose text
 # is not known when it is built (read from a table, or from a data pack) writes each letter with
@@ -64,5 +66,64 @@ class TestGBCBarLettersCost < Minitest::Test
 
     assert_operator by_number, :<, by_name * MOST_TIMES_A_NAMED_LETTER,
                     "a letter by number costs #{(by_number * 100).round(3)}% of a frame, by name #{(by_name * 100).round(3)}%"
+  end
+
+  # A PORT'S TEXT, READ FROM ITS DATA PACK AT PLACES WRITTEN IN THE PROGRAM. A cartridge is built with
+  # the player's copy read, so every number of the pack is known as it is built: `text[3]` is one
+  # tile, and the letter costs what a letter named in the program costs, with no table read. A
+  # number standing for no tile (0xFF here) writes nothing either way.
+  PACK_TEXT = Array.new(LETTERS_A_PASS) { |n| n % 5 == 4 ? 0xFF : (n * 7) % 48 }.freeze
+
+  private def pack_text_original(folder)
+    copy = PACK_TEXT.pack("C*")
+    path = File.join(folder, "made_up_text.bin")
+    File.binwrite(path, copy)
+    VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :gbc,
+                               settings_file: File.join(folder, "made_up.yml"),
+                               releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
+  end
+
+  # The bar's top row written a letter a line, each from PACK_TEXT through the pack, or with +named+
+  # by the name of the same tile; +letters+ nought writes none.
+  private def pack_letters_game(folder, letters, named: false)
+    from = pack_text_original(folder)
+    names = KEY_NAMES.first(48)
+    art = LETTER_ART
+    numbers = PACK_TEXT
+    VBlank.game("PACK BAR #{letters}#{' NAMED' if named}", consoles: %i[gbc]) do
+      screen :tiled
+      pack = data_pack from: from, version: "1" do |slots|
+        slots.numbers :text, count: numbers.length, width: :byte, signed: false
+        slots.fill_from_copy { |copy, filled| repeat(numbers.length) { |at| filled[:text][at] = copy.byte(at) } }
+      end
+      image(:field_art, "#" => :red, "." => :blue) { art }
+      tiles :field_tiles, "#" => :field_art
+      looks = names.each_with_index.map do |name, n|
+        image(:"letter_#{name}", "#" => :white, "." => :black) { n.even? ? art : art.tr("#.", ".#") }
+        :"letter_#{name}"
+      end
+      tiles :bar_tiles, names.zip(looks).to_h
+      background :field, tiles: :field_tiles, map: Array.new(32) { "#" * 32 }
+      bar = status_bar :bar, tiles: :bar_tiles, map: [names.first * 32, names.first * 32], top: screen_height - 16
+      text = table :text, pack[:text]
+      game_loop do
+        letters.times do |col|
+          next bar.set_tile(col, 0, text[col]) unless named
+
+          bar.set_tile(col, 0, names[numbers[col]]) if numbers[col] < names.length
+        end
+      end
+    end
+  end
+
+  def test_a_letter_read_from_the_pack_at_a_written_place_costs_a_letter_named
+    Dir.mktmpdir do |folder|
+      none = awake_share(pack_letters_game(folder, 0))
+      by_number = awake_share(pack_letters_game(folder, LETTERS_A_PASS)) - none
+      by_name = awake_share(pack_letters_game(folder, LETTERS_A_PASS, named: true)) - none
+
+      assert_in_delta by_name, by_number, 0.001,
+                      "#{LETTERS_A_PASS} letters from the pack cost #{(by_number * 100).round(3)}% of a frame, named #{(by_name * 100).round(3)}%"
+    end
   end
 end
