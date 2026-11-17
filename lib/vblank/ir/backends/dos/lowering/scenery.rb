@@ -30,7 +30,7 @@ module VBlank
             REBUILT_EACH_PASS = %i[scroll_background place_bar box_background scroll_rows affine_background set_tile show_map tile_run background_colors].freeze
 
             # The part of the build a game with such a screen waits for, for a test run to count skips by.
-            PART = "a screen of tiles with blocks or other colours; sprites painted from a list"
+            PART = "a screen of tiles with other colours, or a sprite turning in blocks; sprites painted from a list"
 
             # Whether +program+ shows a screen made of tiles.
             def self.tiled?(program) = program.walk.any? { |node| node.kind == :screen && tiles_mode?(node.mode) }
@@ -50,6 +50,7 @@ module VBlank
               backgrounds = backgrounds_in(program)
               Runtime::Scenery.reserve(memory, backgrounds.size, held: holds_cells?(program), runs: paints_tiles?(program),
                                                                  blocks: blocks_in?(program))
+              Runtime::SpriteBlocks.reserve(memory) if sprites_in_blocks?(program)
               bends_in(program).each_key { |name| memory.reserve(bend_rows_place(name), memory.screen.height * 4) }
             end
 
@@ -68,6 +69,14 @@ module VBlank
 
             # Whether +program+ shows a screen of tiles that can be in blocks (Runtime::Scenery#emit_blocked_window).
             def self.blocks_in?(program) = tiled?(program) && program.walk.any? { |node| node.kind == :pixelate }
+
+            # Whether a sprite of +program+ can be shown in blocks on a screen of tiles (Reference#sprite_in_blocks?):
+            # one that can be in blocks, whose `pixelate` leaves the sprites in them. Which ones are, the build says
+            # sprite by sprite (Lowering::Sprites#make_sprite_block_table).
+            def self.sprites_in_blocks?(program)
+              blocks_in?(program) && program.walk.any? { |node| node.kind == :object } &&
+                !Blocks.keeps_sprites?(program, LoweringError)
+            end
 
             # Whether +program+ paints tiles of a background from a list.
             def self.paints_tiles?(program) = program.walk.any? { |node| node.kind == :tile_run && node.picture.nil? }
@@ -144,7 +153,7 @@ module VBlank
               scenery_backgrounds.each do |bg|
                 what = unmade_in_background(bg) and return what
               end
-              return "sprites in blocks (`pixelate`)" if sprites_in_blocks?
+              return "a sprite that turns or changes size, in blocks (`pixelate`)" if turned_sprites_in_blocks?
 
               nil
             end
@@ -175,12 +184,12 @@ module VBlank
             # (Reference#paint_status_bar_rows); nought for the rest.
             def bar_grid_height(bg) = bg.bar? ? TileMap.grid(bg.map)[1].to_i * bg.tile_h : 0
 
-            # Whether a sprite of the game is shown in blocks on a screen of tiles (Reference#sprite_in_blocks?).
-            def sprites_in_blocks?
-              return false unless Scenery.blocks_in?(@program)
-              return false if Blocks.keeps_sprites?(@program, LoweringError)
+            # Whether a sprite that turns or changes size can be shown in blocks (Reference::SpriteBlocks#paint_turned),
+            # which the build does not make yet.
+            def turned_sprites_in_blocks?
+              return false unless Scenery.sprites_in_blocks?(@program)
 
-              stacked_picture.objects.any? { |object| !kept_from_blocks.include?(object.name) }
+              sprite_objects.each_value.any? { |sprite| Sprites.turns?(sprite) && !kept_from_blocks.include?(sprite.name) }
             end
 
             # The view's levels from the back (Runtime::Scenery#emit_view): at each, the places of the records of the

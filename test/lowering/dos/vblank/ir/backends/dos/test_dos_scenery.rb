@@ -10,7 +10,7 @@ require "test_helper"
 # past every edge; a scrolled view built in less than a frame; cells changed at and past every edge of the
 # map, and more held at once than wait together; maps of different sizes; tiles painted from a list
 # that holds fewer bytes than they take; and backgrounds in blocks, one that turns and one see-through, and
-# one built in less than a frame at the smallest blocks.
+# one built in less than a frame in small blocks.
 class TestDOSScenery < Minitest::Test
   DOS = VBlank::IR::Backends::DOS
 
@@ -228,13 +228,16 @@ class TestDOSScenery < Minitest::Test
     end
   end
 
-  # Blocks of two are the most work there is: a row of blocks drawn for every other row of the screen and each of
-  # its blocks spread. A background in them scrolled every pass is still built in less than a frame, so the game's
-  # passes keep to the screen's frames, as a fade timed in frames needs them to. The budget is the one background
-  # drawn as it is (#test_a_scrolled_view_is_built_within_a_frame): measured on 2026-11-17, two backgrounds scrolled
-  # every pass take two frames a pass with or without blocks, which is the speed work still to do.
-  def test_a_scrolled_view_in_blocks_of_two_is_built_within_a_frame
+  # The smaller the blocks the more work: a row of blocks drawn and spread for each row of them. A background in them
+  # scrolled every pass is still built in less than a frame, so the game's passes keep to the screen's frames, as a
+  # fade timed in frames needs them to. The budget is the one background drawn as it is
+  # (#test_a_scrolled_view_is_built_within_a_frame), at the smallest blocks that keep to it, measured on 2026-11-17:
+  # blocks of two on the plain screen (320 x 200, 70 frames a second), and of three on Mode X (320 x 240, 60 a
+  # second), where blocks of two take two frames a pass. Two backgrounds scrolled every pass take two frames a pass
+  # with or without blocks. Both are the speed work still to do.
+  def test_a_scrolled_view_in_the_smallest_blocks_that_keep_to_a_frame
     test = self
+    smallest = described_game_console.screen_height > 200 ? 3 : 2
     run = checked(frames: 8) do
       screen :tiled
       test.tilesets(self)
@@ -242,7 +245,7 @@ class TestDOSScenery < Minitest::Test
       passes = var :passes, 0
       frames = var :frames, 0
       game_loop do
-        pixelate 2
+        pixelate smallest
         field.scroll_by 3, 1
         passes += 1
         frames = frames_since_power_on

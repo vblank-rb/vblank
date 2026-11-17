@@ -106,6 +106,7 @@ module VBlank
               emit_over_picture(asm, memory)
               emit_at_level(asm, memory) if stacked?(memory)
               Turning.emit(asm, memory) if turned?(memory)
+              SpriteBlocks.emit(asm, memory) if SpriteBlocks.used?(memory)
               Runtime.emit_blit_routine(asm, memory, screen, name: "rt_sprite_blit", marks: false)
             end
 
@@ -280,10 +281,16 @@ module VBlank
                 asm.jmp("#{tag}_next")
                 asm.label("#{tag}_upright")
               end
+              SpriteBlocks.emit_unless_in_blocks(asm, memory, "#{tag}_in_blocks") if SpriteBlocks.used?(memory)
               asm.mov(:si, entry.call(ART, 16))
               asm.mov(:eax, entry.call(X, 32))
               asm.mov(:ecx, entry.call(Y, 32))
               asm.call("rt_sprite_blit")
+              if SpriteBlocks.used?(memory)
+                asm.jmp("#{tag}_next")
+                asm.label("#{tag}_in_blocks")
+                asm.call("rt_sprite_blocks_blit")
+              end
               asm.label("#{tag}_next")
             end
 

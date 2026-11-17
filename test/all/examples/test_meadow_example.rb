@@ -1,15 +1,12 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require "differential"
-
-require "stringio"
 require VBlank.root.join("examples/meadow").to_s
 
 # The Meadow example (examples/meadow.rb): a hero walks out of a one-screen cabin into a
 # meadow of 120x100 cells, far bigger than the console's grid. The streaming itself is
-# pinned in test/all/vblank/builder/test_big_maps.rb; this confirms the example builds, walks
-# out the door, and draws the same picture on both backends on the way.
+# pinned in test/all/vblank/builder/test_big_maps.rb; this confirms the example walks out the
+# door, on every console the game is written for, each run's own build held to the interpreter.
 #
 # Going through the door is the example's showcase of `pixelate_out` and `pixelate_in`: the
 # picture breaks up into blocks, the room is swapped while nobody can read it, and it comes
@@ -18,20 +15,29 @@ require VBlank.root.join("examples/meadow").to_s
 # WHICH ROOM A PICTURE SHOWS IS READ OFF THE PICTURE, by the name in its corner, and never
 # off the game's `room` variable: the room a frame draws is the one the variable held a
 # frame before (see "Which frame's numbers the picture was drawn from" in the testing rules).
-class TestMeadowExample < Minitest::Test
-  include Differential
-
-  WIDTH = 240
-  HEIGHT = 160
-  WHITE = Color.resolve(:white)
+# The Advance's cartridge is checked against the interpreter in
+# test/console/gba/examples/test_meadow_example_on_the_advance.rb.
+#
+# The walk out of the cabin and the pictures it makes, for this file's tests and the Advance's cartridge test
+# (test/console/gba/examples/test_meadow_example_on_the_advance.rb).
+module MeadowWalk
+  WHITE = VBlank::Testing.shown(:white)
   BIGGEST = Meadow::BIGGEST_BLOCK
+
+  private def program
+    skip_unless_written_for Meadow::GAME
+    Meadow::GAME.program(console: game_console)
+  end
+
+  private def width = described_game_console.screen_width
+  private def height = described_game_console.screen_height
 
   # The picture after each of the first frames of the walk with DOWN held: far enough to
   # reach the cabin door, go through it, and walk a little way down the path.
   private def pictures_of_walk_out(frames = 70)
     (1..frames).map do |n|
-      screen = game_player.hold(:down).run(Meadow.program, frames: n).screen
-      Array.new(HEIGHT) { |y| Array.new(WIDTH) { |x| screen.pixel(x, y) } }
+      screen = game_player.hold(:down).run(program, frames: n).screen
+      Array.new(height) { |y| Array.new(width) { |x| screen.pixel(x, y) } }
     end
   end
 
@@ -39,7 +45,7 @@ class TestMeadowExample < Minitest::Test
   # room, and of the room's name — in blocks of +size+: every pixel the colour at the corner
   # of its block?
   private def bottom_in_blocks?(picture, size)
-    (96...HEIGHT).all? do |y|
+    (96...height).all? do |y|
       (0...96).all? { |x| picture[y][x] == picture[y - (y % size)][x - (x % size)] }
     end
   end
@@ -50,7 +56,7 @@ class TestMeadowExample < Minitest::Test
 
   # Where the room's name is: every white pixel, which nothing else in either room is.
   private def lettering(picture)
-    (0...HEIGHT).to_a.product((0...WIDTH).to_a).select { |y, x| picture[y][x] == WHITE }
+    (0...height).to_a.product((0...width).to_a).select { |y, x| picture[y][x] == WHITE }
   end
 
   # The walk as its pictures, and the two frames that bound the change: the first one in
@@ -62,13 +68,13 @@ class TestMeadowExample < Minitest::Test
     swapped = pictures.find_index { |picture| lettering(picture) != cabin_name }
     [pictures, broke_up, swapped]
   end
+end
 
-  def test_it_builds_a_rom
-    assert_operator Meadow.build_rom(err: StringIO.new).size, :>, 0
-  end
+class TestMeadowExample < Minitest::Test
+  include MeadowWalk
 
   def test_holding_down_walks_out_of_the_cabin_into_the_meadow
-    run = game_player.hold(:down).run(Meadow.program, frames: 70)
+    run = game_player.hold(:down).run(program, frames: 70)
     assert_equal 1, run[:room], "out of the door and into the meadow"
     assert_operator run[:view_y], :>, 0, "the view follows the hero down the path"
   end
@@ -76,7 +82,7 @@ class TestMeadowExample < Minitest::Test
   # The door is not a cut any more: the hero stops in it, and the cabin stays the room
   # for the frames the picture takes to break up.
   def test_the_hero_stops_in_the_doorway_while_the_picture_breaks_up
-    stopped = (1..50).map { |n| game_player.hold(:down).run(Meadow.program, frames: n)[:hero_y] }
+    stopped = (1..50).map { |n| game_player.hold(:down).run(program, frames: n)[:hero_y] }
                      .each_cons(2).find_index { |before, after| before == after }
     pictures, broke_up, swapped = walk_through_door
 
@@ -94,7 +100,7 @@ class TestMeadowExample < Minitest::Test
 
     assert bottom_in_blocks?(last_of_cabin, BIGGEST), "the cabin's last picture"
     assert bottom_in_blocks?(first_of_meadow, BIGGEST), "and the meadow's first"
-    refute_equal last_of_cabin[HEIGHT - 1][0], first_of_meadow[HEIGHT - 1][0], "which is a different room: floor boards, then grass"
+    refute_equal last_of_cabin[height - 1][0], first_of_meadow[height - 1][0], "which is a different room: floor boards, then grass"
   end
 
   def test_the_picture_comes_back_together_in_the_meadow_a_size_at_a_time
@@ -117,17 +123,5 @@ class TestMeadowExample < Minitest::Test
     refute_equal cabin, meadow, "the two rooms have different names"
     assert(pictures[broke_up...swapped].all? { |picture| lettering(picture) == cabin }, "CABIN is as drawn while the picture breaks up")
     assert(pictures[swapped..].all? { |picture| lettering(picture) == meadow }, "and MEADOW from the swap on")
-  end
-
-  def test_both_backends_draw_the_cabin
-    assert_backends_agree(Meadow.program, frames: 3, name: "MEADA")
-  end
-
-  # Out of the door: into the blocks, each frame about the swap, the way back, and down the path.
-  def test_both_backends_draw_the_walk_into_the_meadow
-    _pictures, broke_up, swapped = walk_through_door
-    frames = [broke_up + 3, *((swapped - 1)..(swapped + 3)), swapped + 8, 70]
-
-    frames.each { |count| assert_backends_agree(Meadow.program, frames: count, name: "MEADB", keys: [:down]) }
   end
 end

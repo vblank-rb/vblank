@@ -27,6 +27,10 @@ module VBlank
         def name_number(name) = @names.index(name) || NO_NAME
         def picture_number(picture) = @pictures.index(picture) || NO_NAME
 
+        # How many sprite names and pictures are numbered.
+        def name_count = @names.size
+        def picture_count = @pictures.size
+
         # The interpreter's row for a sprite kept as the numbers +name+ and +picture+, standing at
         # (+x+, +y+). A sprite may have no name; one that is drawn shows a picture.
         def row(name, picture, x, y)

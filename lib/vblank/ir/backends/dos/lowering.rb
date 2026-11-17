@@ -322,6 +322,7 @@ module VBlank
             end
             make_pose_tables
             make_sprite_tables
+            make_sprite_block_table
             make_tables
             make_sprite_tile_art
             make_scenery_art

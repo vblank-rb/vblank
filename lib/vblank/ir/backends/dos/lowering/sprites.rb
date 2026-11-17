@@ -155,6 +155,39 @@ module VBlank
               end
             end
 
+            # THE BOXES EACH SPRITE IS PUT INTO BLOCKS BY (Runtime::SpriteBlocks), for a game whose sprites can be in
+            # them: a word for each sprite and picture, the place of that picture's boxes or nought for a sprite left as
+            # drawn, and at each place how many boxes and each box's left, top, width and height, the front one first.
+            # The boxes are the cut every backend asks SpriteCut for (Reference#object_boxes), a picture's being those
+            # of the first of the sprite's poses that shows it.
+            def make_sprite_block_table
+              return unless Runtime::SpriteBlocks.used?(@memory)
+
+              pictures = sprite_names.picture_count
+              places = Array.new(sprite_names.name_count * pictures, 0)
+              sprite_objects.each_value do |sprite|
+                next if sprite.declared.nil? || kept_from_blocks.include?(sprite.name)
+
+                boxes = sprite_boxes(sprite)
+                sprite.poses.uniq.each do |pose|
+                  places[(sprite_names.name_number(sprite.declared) * pictures) + sprite_names.picture_number(pose)] = @art.bytesize
+                  cut = boxes.fetch(sprite.poses.index(pose))
+                  @art << [cut.size, *cut.flatten].pack("v*")
+                end
+              end
+              @starts << [@memory[Runtime::SpriteBlocks::TABLE], @art.bytesize] << [@memory[Runtime::SpriteBlocks::PICTURES], pictures]
+              @art << places.pack("v*")
+            end
+
+            # Reference#object_boxes: the boxes each of +sprite+'s poses is drawn as, one picture for one painted from
+            # sprite tiles.
+            def sprite_boxes(sprite)
+              images = sprite.poses.uniq.to_h { |pose| [pose, picture_image(pose)] }
+              width, height = SpriteCut.canvas_of(images, sprite.poses)
+              whole = sprite.poses.any? { |pose| tile_poses.key?(pose) }
+              SpriteCut.new(images).cut(sprite.poses, width: width, height: height, whole: whole)[:boxes]
+            end
+
             # The bytes of one set's rows in a sprite's table.
             def color_set_bytes(sprite) = sprite.poses.size * 4
 
