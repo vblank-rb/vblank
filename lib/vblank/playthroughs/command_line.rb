@@ -118,10 +118,10 @@ module VBlank
         return yield(nil) unless wanted
 
         require "vblank/live"
-        console = Console.described(game.console)
+        console = window_console(game)
         title = Tape.title_and_checksum_of(game).first
         window = Live::SDL.new(title: title, caption: "#{title} (automated playthrough)", width: console.screen_width,
-                               height: console.screen_height, scale: options[:scale],
+                               height: console.screen_height, pixel_size: console.pixel_size, scale: options[:scale],
                                settings_file: options[:settings_file] || :usual, config_dir: options[:config_dir],
                                buttons: console.buttons)
         say window.settings_problems_message if window.settings_problems_message
@@ -131,6 +131,15 @@ module VBlank
         say "The window was closed, so the playing stopped."
       ensure
         window&.close
+      end
+
+      # The screen the window shows +game+ on (a Console::Description). A game played itself (an
+      # UnbuiltGame: as Ruby, C, JavaScript or on the interpreter) hands over the picture its checked
+      # program was laid out on: a screen of its own size where the game asked one, the small picture
+      # of big pixels shown at the console's size. A cartridge's emulator hands over the console's
+      # whole screen.
+      def window_console(game)
+        game.is_a?(UnbuiltGame) ? game.source_program.described_console : Console.described(game.console)
       end
 
       # Each line goes out as it is said. What a command says and what stops it go to two

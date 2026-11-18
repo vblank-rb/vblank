@@ -133,6 +133,32 @@ class TestCommandLineRun < Minitest::Test
     end
   end
 
+  # The window is the size of the picture the game plays: a screen of the game's own
+  # (`screen :bitmap, size:`), or the small picture of big pixels shown twice the size.
+  def test_window_is_the_size_of_the_screen_the_game_plays
+    {
+      "sized.rb" => "screen :bitmap, size: [320, 200]",
+      "big_pixels.rb" => "screen :bitmap, pixel_size: 2"
+    }.each do |file, line|
+      with_game_and_scripts do |dir|
+        File.write(File.join(dir, file), <<~RUBY)
+          require "vblank"
+          VBlank.game "SCREENED", consoles: %i[gba] do
+            #{line}
+            game_loop { clear_screen :blue }
+          end
+        RUBY
+        drivers = { "SDL_VIDEODRIVER" => "dummy", "SDL_AUDIODRIVER" => "dummy" }
+        out, status = Open3.capture2e(drivers, RUBY, BIN, "run", file, "--script", "walk.rb", "--window",
+                                      "--settings-file", File.join(dir, "settings.txt"), chdir: dir)
+        flunk out.lines.first.chomp if out.include?("cannot find SDL3")
+
+        assert status.success?, "#{file}: #{out}"
+        assert_match(/Played 60 frames of "walk" on SCREENED\./, out)
+      end
+    end
+  end
+
   # --window shows the playing in the window a person plays in, here on SDL's dummy drivers, and
   # then nothing says there is no window.
   def test_window_shows_a_script_playing
