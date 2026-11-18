@@ -50,6 +50,13 @@ module VBlank
       # --- the picture chip (PPU) ---
       INIDISP = 0x2100 # Bit 7 forced blank (the screen off); bits 0-3 brightness
       OBSEL = 0x2101 # Sprite sizes and where their tiles are in video RAM
+      # The two sizes a sprite comes in, small then large, each [width, height], for each setting of
+      # OBSEL's top three bits (fullsnes, "SNES PPU Sprites (OBJs)"). An entry's bit in the upper
+      # table of the sprite table picks one of the two.
+      OBSEL_SPRITE_SIZES = Ractor.make_shareable([[[8, 8], [16, 16]], [[8, 8], [32, 32]], [[8, 8], [64, 64]],
+                                                  [[16, 16], [32, 32]], [[16, 16], [64, 64]], [[32, 32], [64, 64]],
+                                                  [[16, 32], [32, 64]], [[16, 32], [32, 32]]])
+      OBSEL_SIZE_SHIFT = 5
       OAMADDL = 0x2102
       OAMADDH = 0x2103
       OAMDATA = 0x2104

@@ -72,7 +72,7 @@ diff --git a/bsnes/sfc/ppu/ppu.cpp b/bsnes/sfc/ppu/ppu.cpp
 index dc8d135fc..50cd40d2b 100644
 --- a/bsnes/sfc/ppu/ppu.cpp
 +++ b/bsnes/sfc/ppu/ppu.cpp
-@@ -13,6 +13,63 @@ PPU ppu;
+@@ -13,6 +13,68 @@ PPU ppu;
  #include "serialization.cpp"
  #include "counter/serialization.cpp"
  
@@ -82,7 +82,9 @@ index dc8d135fc..50cd40d2b 100644
 +//memory as 256 little-endian words; the sprite table as its 544 bytes, encoded back from the
 +//decoded objects bsnes keeps. The 65816's registers are a sixteen-byte record: PC (3 bytes),
 +//A, X, Y, S, D (2 bytes each), DB, P, and the emulation flag. Only the accurate PPU is read.
-+//+id+ is 1 video RAM, 2 colour memory, 3 sprite table, 4 registers. Gives the bytes written.
++//+id+ is 1 video RAM, 2 colour memory, 3 sprite table, 4 registers, 8 OBSEL ($2101) as last written
++//(the two sprite sizes, then where the sprites' tiles are), which the console cannot read back.
++//Gives the bytes written.
 +auto PPU::probe(uint id, uint8* out) -> uint {
 +  switch(id) {
 +  case 1:
@@ -114,6 +116,9 @@ index dc8d135fc..50cd40d2b 100644
 +    out[15] = cpu.r.e;
 +    return 16;
 +  }
++  case 8:
++    out[0] = (uint)obj.io.baseSize << 5 | (uint)obj.io.nameselect << 3 | obj.io.tiledataAddress >> 13;
++    return 1;
 +  }
 +  return 0;
 +}
@@ -212,7 +217,7 @@ index fc7f32118..afb26a717 100644
  }
  
  RETRO_API size_t retro_serialize_size()
-@@ -769,14 +780,60 @@ RETRO_API unsigned retro_get_region()
+@@ -769,14 +780,62 @@ RETRO_API unsigned retro_get_region()
  	return program->superFamicom.region == "NTSC" ? RETRO_REGION_NTSC : RETRO_REGION_PAL;
  }
  
@@ -232,6 +237,7 @@ index fc7f32118..afb26a717 100644
 +#define RETRO_MEMORY_VBLANK_DSP       0x8005
 +#define RETRO_MEMORY_VBLANK_MANIFEST  0x8006
 +#define RETRO_MEMORY_VBLANK_PROFILE   0x8007
++#define RETRO_MEMORY_VBLANK_OBSEL     0x8008
 +
 +namespace SuperFamicom {
 +auto vblankProbe(uint id, uint8* out, uint& size) -> uint8*;
@@ -253,6 +259,7 @@ index fc7f32118..afb26a717 100644
 +		case RETRO_MEMORY_SAVE_RAM:         return SuperFamicom::vblankProbe(5, vblank_copy, size);
 +		case RETRO_MEMORY_VBLANK_APU_RAM:   return SuperFamicom::vblankProbe(6, vblank_copy, size);
 +		case RETRO_MEMORY_VBLANK_DSP:       return SuperFamicom::vblankProbe(7, vblank_copy, size);
++		case RETRO_MEMORY_VBLANK_OBSEL:     return SuperFamicom::vblankProbe(8, vblank_copy, size);
 +		case RETRO_MEMORY_VBLANK_MANIFEST:
 +			size = program->superFamicom.manifest.size();
 +			return (uint8 *)program->superFamicom.manifest.data<uint8_t>();

@@ -66,9 +66,46 @@ class TestConsoleTablesOnTheSuperNintendo < Minitest::Test
     end
   end
 
-  def test_sprite_boxes_are_refused_without_the_sizes
+  # The two sizes are read off the cartridge (OBSEL), so a bare file needs none given: VBlank's
+  # build sets OBSEL's sizes 0, and its box is 8 by 8.
+  def test_sprite_boxes_read_the_sizes_the_game_set
     with_recorded_and_bare do |_recorded, bare|
-      assert_match "sizes:", assert_raises(ArgumentError) { bare.sprite_boxes }.message
+      assert_equal [[40, 60, 8, 8]], bare.sprite_boxes.map { |box| [box.x, box.y, box.width, box.height] }
     end
   end
+
+  # A game that sets OBSEL's sizes 3, 16 by 16 and 32 by 32 (fullsnes, "SNES PPU Sprites (OBJs)"),
+  # with one small sprite at (40, 60) and one large at (100, 60), its size bit set in the upper
+  # table. Made by hand, a bare file as a port's original is, since VBlank's own build sets sizes 0.
+  def test_sprite_boxes_are_read_at_both_sizes_the_game_set
+    Dir.mktmpdir("cartridges") do |folder|
+      path = File.join(folder, "sizes.sfc")
+      VBlank::Cartridge::SNESROM.new([TWO_SPRITE_SIZES.pack("C*")], title: "SIZES", vectors: { reset: 0x8000 }).write(path)
+      VBlank::Playthroughs::Probe.open(path) do |probe|
+        probe.step(3)
+        boxes = probe.reader.sprite_boxes.first(2).map { |box| [box.x, box.y, box.width, box.height] }
+
+        assert_equal [[40, 60, 16, 16], [100, 60, 32, 32]], boxes
+        assert_equal [[40, 60, 8, 8], [100, 60, 16, 16]],
+                     probe.reader.sprite_boxes(sizes: SPRITE_SIZES).first(2).map { |box| [box.x, box.y, box.width, box.height] },
+                     "sizes: given are used over the ones the game set"
+      end
+    end
+  end
+
+  # The 65816's instructions for that game, each instruction's bytes from its opcode table: the
+  # screen off, OBSEL set, two entries of the sprite table and the upper table's first byte
+  # written, the screen on, and round for ever.
+  TWO_SPRITE_SIZES = [
+    0x78, 0x18, 0xFB, #  SEI; CLC; XCE    native mode
+    0xA9, 0x80, 0x8D, 0x00, 0x21, #  LDA #$80; STA $2100   INIDISP: screen off
+    0xA9, 0x60, 0x8D, 0x01, 0x21, #  LDA #$60; STA $2101   OBSEL: sizes 3
+    0x9C, 0x02, 0x21, 0x9C, 0x03, 0x21, #  STZ $2102; STZ $2103   OAMADD: entry 0
+    *[40, 60, 0, 0, 100, 60, 0, 0].flat_map { |byte| [0xA9, byte, 0x8D, 0x04, 0x21] }, # LDA #byte; STA $2104
+    0x9C, 0x02, 0x21, 0xA9, 0x01, 0x8D, 0x03, 0x21, #  STZ $2102; LDA #$01; STA $2103   OAMADD: the upper table
+    0xA9, 0x08, 0x8D, 0x04, 0x21, #  LDA #$08; STA $2104   entry 1 large
+    0xA9, 0x00, 0x8D, 0x04, 0x21, #  LDA #$00; STA $2104
+    0xA9, 0x0F, 0x8D, 0x00, 0x21, #  LDA #$0F; STA $2100   INIDISP: screen on, full brightness
+    0x80, 0xFE #                       BRA -2
+  ].freeze
 end

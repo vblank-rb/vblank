@@ -88,6 +88,13 @@ module VBlank
       # the 32 that hold each sprite's top bit of across and its size.
       def sprite_table = @core.oam
 
+      # The two sizes the cartridge's sprites come in, small then large, each [width, height], from
+      # OBSEL as the game last wrote it (Console::SNESHardware::OBSEL_SPRITE_SIZES).
+      def sprite_sizes
+        hardware = Console::SNESHardware
+        hardware::OBSEL_SPRITE_SIZES.fetch(@core.obsel >> hardware::OBSEL_SIZE_SHIFT)
+      end
+
       # The console's own memories as bsnes holds them (Verifier#video_ram): the 64K of video
       # memory, the 512 bytes of colour memory, and the sound unit's DSP registers, 128 bytes, as the
       # sound unit's program last wrote them, and the sound chip's own 64K of memory, where its program,

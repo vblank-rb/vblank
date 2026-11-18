@@ -40,18 +40,20 @@ module VBlank
       # in the table's order. Nothing here needs a build record, so it is how a cartridge with none
       # shows where its sprites are.
       #
-      # +sizes+ is [small, large], each [width, height]: the two sizes the game set the register
-      # OBSEL to, and an entry's bit in the upper table marks which of the two it is. bsnes here does
-      # not hand OBSEL over, so the game gives it ([[8, 8], [16, 16]] is OBSEL's sizes 0, and what
-      # VBlank's own build sets). An entry's across is nine bits, its top bit in the upper table, and
-      # wraps at 512; its down wraps at 256. The console draws a sprite a line below its down, and
-      # its picture starts a line down too, so the down kept is the row of the picture it is on. The
-      # tile number is nine bits, its top bit the low bit of the entry's fourth byte.
+      # A sprite comes in two sizes, small and large, which the game sets in the register OBSEL, and
+      # an entry's bit in the upper table marks which of the two it is. The console cannot read OBSEL
+      # back, so the emulator hands over what the game last wrote there (SNESProbe#sprite_sizes).
+      # +sizes+, [small, large] each [width, height], is used over those where given. An entry's
+      # across is nine bits, its top bit in the upper table, and wraps at 512; its down wraps at 256.
+      # The console draws a sprite a line below its down, and its picture starts a line down too, so
+      # the down kept is the row of the picture it is on. The tile number is nine bits, its top bit
+      # the low bit of the entry's fourth byte.
       #
       # @return [Array<SpriteBox>]
       def sprite_boxes(sizes: nil)
-        refuse_sprite_sizes_missing!(sizes)
+        refuse_unusable_sprite_sizes!(sizes) if sizes
         table = sprite_table
+        sizes ||= @probe.sprite_sizes
         upper = table.byteslice(SPRITE_ENTRIES * 4, SPRITE_ENTRIES / 4).bytes
         boxes = Array.new(SPRITE_ENTRIES) do |slot|
           across, down, tile, attributes = table.byteslice(slot * 4, 4).bytes
@@ -66,12 +68,12 @@ module VBlank
 
       SPRITE_ENTRIES = 128
 
-      private def refuse_sprite_sizes_missing!(sizes)
+      private def refuse_unusable_sprite_sizes!(sizes)
         return if sizes.is_a?(Array) && sizes.size == 2 && sizes.all? { |size| size.is_a?(Array) && size.size == 2 }
 
-        raise ArgumentError, "A Super Nintendo cartridge draws its sprites in two sizes that the game sets, and this " \
-                             "reader cannot read them. To fix this, give the two sizes, small then large, like " \
-                             "`sprite_boxes(sizes: [[8, 8], [16, 16]])`."
+        raise ArgumentError, "`sizes:` was #{sizes.inspect}. Give the two sizes of the sprites, small then large, " \
+                             "like `sprite_boxes(sizes: [[8, 8], [16, 16]])`. Or leave out `sizes:`, and the sizes " \
+                             "the game set are used."
       end
 
       # bsnes keeps a cartridge's battery-backed RAM in a .srm file of its own, nothing after it,

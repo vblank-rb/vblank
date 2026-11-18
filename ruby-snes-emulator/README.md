@@ -6,6 +6,8 @@ time in [bsnes](https://github.com/bsnes-emu/bsnes) and reads back what a test n
 - the picture of the last frame, at the console's 256×224;
 - work RAM (128K), video RAM (64K), the colour memory (256 colours) and the sprite table (544 bytes);
 - the 65816's registers;
+- OBSEL ($2101) as the cartridge last wrote it (`core.obsel`), which the console cannot read back: the
+  two sizes its sprites come in;
 - the cartridge's battery-backed RAM;
 - the manifest bsnes wrote for the cartridge from its header, and the board it names
   (`core.board`, such as `"LOROM-RAM#A"`).

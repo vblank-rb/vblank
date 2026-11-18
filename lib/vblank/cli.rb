@@ -672,8 +672,8 @@ module VBlank
                                  cartridge shows, on each frame and the frame
                                  before.
         --sprite-sizes SIZES     With --ignoring-sprites, for a Super Nintendo
-                                 cartridge: its two sprite sizes, small then
-                                 large, like 8x8,16x16.
+                                 cartridge: two sprite sizes, small then large,
+                                 like 8x8,16x16, over the ones its game set.
         --forgiving-torn-frames-of WHICH
                                  first or second: forgive that cartridge a frame
                                  unlike the frames either side of it, where the

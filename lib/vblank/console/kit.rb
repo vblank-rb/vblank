@@ -49,8 +49,8 @@ module VBlank
     #                           (Playthroughs::Comparison, at the console's screen size): one the
     #                           reader plays whose screen is the size its description gives
     #   sprite_sizes_set_by_game?
-    #                           whether its game sets the sizes its sprites come in, in a register
-    #                           the reader cannot read, so its sprite_boxes are given them
+    #                           whether its game sets the sizes its sprites come in, in a register,
+    #                           so its sprite_boxes take two sizes to use over the ones it set
     #   open_core(path, save_dir:)
     #                           the emulator its cartridges play in, opened on a cartridge file
     #   save_file_extension     how that emulator names the file it keeps battery-backed RAM in
@@ -322,7 +322,7 @@ module VBlank
       def save_file_extension = ".srm"
       def save_file_of(cartridge) = reading.save_file_of(cartridge.buffer)
       def compared_side_by_side? = true
-      # The game sets them in OBSEL, which bsnes here does not hand over (SNESReading#sprite_boxes).
+      # The game sets them in OBSEL, which bsnes hands over (SNESReading#sprite_boxes).
       def sprite_sizes_set_by_game? = true
       def words_at_any_address? = true
       def variants = SNES_VARIANTS

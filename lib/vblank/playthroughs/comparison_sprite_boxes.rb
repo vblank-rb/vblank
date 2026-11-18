@@ -20,8 +20,8 @@ module VBlank
       #
       # THE TABLE IS READ RAW (Verifier#sprite_boxes), as the console holds it, so a cartridge with no
       # build record, the original, is read the same as ours. A Super Nintendo cartridge's sprites
-      # come in two sizes the game sets in a register the emulator does not hand over, so for one the
-      # setting is the two sizes, small then large: `ignoring_sprites: [[8, 8], [16, 16]]`.
+      # come in two sizes the game sets in OBSEL, which the emulator hands over; the setting can
+      # instead be two sizes, small then large, used over those: `ignoring_sprites: [[8, 8], [16, 16]]`.
       class SpriteBoxes
         # The setting as given: nil for none, or the boxes to leave out.
         def self.from(given)
@@ -40,30 +40,21 @@ module VBlank
         end
         private_class_method :two_sizes?
 
-        # +sizes+ is the two sizes of a Super Nintendo cartridge's sprites, or nil where none were given.
+        # +sizes+ is the two sizes of a Super Nintendo cartridge's sprites, or nil for the ones its game set.
         def initialize(sizes)
           @sizes = sizes
         end
 
-        # A cartridge whose sprite sizes the game sets is refused where no sizes were given, before a
-        # frame is played.
-        def refuse_unreadable_on!(cartridges)
-          return if @sizes
-
-          %w[first second].zip(cartridges).each do |which, cartridge|
-            kit = Console.for(cartridge.console)
-            next unless kit.sprite_sizes_set_by_game?
-
-            raise ArgumentError, "`ignoring_sprites:` was true, and the #{which} cartridge is for a #{kit.title}. Its game " \
-                                 "sets the two sizes of its sprites, and the comparison cannot read them. Give the two " \
-                                 "sizes, small then large, like `ignoring_sprites: [[8, 8], [16, 16]]`."
-          end
-        end
+        # Every console's sprite sizes are read off the cartridge, so none is refused.
+        def refuse_unreadable_on!(_cartridges) = nil
 
         # The boxes of +consoles+, the two running cartridges, read from now on (Watch). +cartridges+
-        # are theirs, and +screen_size+ the screen the boxes are cut to.
+        # are theirs, and +screen_size+ the screen the boxes are cut to. Sizes given go only to a
+        # cartridge whose game sets its own.
         def start_watch(consoles, cartridges, screen_size)
-          options = cartridges.map { |cartridge| Console.for(cartridge.console).sprite_sizes_set_by_game? ? { sizes: @sizes } : {} }
+          options = cartridges.map do |cartridge|
+            @sizes && Console.for(cartridge.console).sprite_sizes_set_by_game? ? { sizes: @sizes } : {}
+          end
           Watch.new(consoles, options, screen_size)
         end
 

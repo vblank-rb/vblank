@@ -39,6 +39,7 @@ module RubySNESEmulator
     DSP_REGISTERS = 0x8005
     MANIFEST = 0x8006
     PROCESSOR_TIME = 0x8007
+    OBSEL = 0x8008
 
     # libretro's joypad: the number it asks about each button by.
     BUTTONS = { b: 0, y: 1, select: 2, start: 3, up: 4, down: 5, left: 6, right: 7,
@@ -181,6 +182,10 @@ module RubySNESEmulator
     def cgram = memory(CGRAM)
     def oam = memory(OAM)
     def save_ram = memory(SAVE_RAM)
+
+    # OBSEL ($2101) as the cartridge last wrote it, which the console cannot read back: the two
+    # sizes its sprites come in (the top three bits), then where their tiles are in video RAM.
+    def obsel = memory(OBSEL).getbyte(0)
 
     # THE SOUND UNIT, which the console's own processor cannot see: the 64K the SPC700 runs its
     # program from and keeps its recorded sounds in, and the S-DSP's 128 registers, which say what

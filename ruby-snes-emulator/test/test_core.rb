@@ -100,6 +100,18 @@ class TestCore < Minitest::Test
     assert_equal 0x42, @core.oam.getbyte(0)
   end
 
+  # OBSEL ($2101) cannot be read back on the console, so the core hands over what the cartridge
+  # wrote: the two sprite sizes in its top three bits, where the sprites' tiles are in the rest.
+  def test_obsel_reads_what_the_cartridge_wrote
+    code = RED_BACKDROP.take(11) + [0xA9, 0x6B, 0x8D, 0x01, 0x21, 0x80, 0xFE] # LDA #$6B; STA $2101; BRA -2
+    core = RubySNESEmulator::Core.new(HandMadeCartridge.write(@dir, code))
+    2.times { core.run_frame }
+
+    assert_equal 0x6B, core.obsel
+  ensure
+    core&.destroy
+  end
+
   def test_the_registers_say_where_the_processor_is
     registers = @core.registers
     assert_includes 0x803B..0x803D, registers.fetch(:pc) & 0xFFFF
