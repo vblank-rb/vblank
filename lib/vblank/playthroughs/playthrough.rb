@@ -412,7 +412,7 @@ module VBlank
                                                                 count_passes: counting, match: match)
           game = started.game
           stepper = in_passes ? PassStepper.new(game, in_passes, stepper: started.stepper) : started.stepper
-          playing = new(title, cartridge, game, at_each_moment, stepper: stepper,
+          playing = new(title, cartridge, game, at_each_moment, stepper: stepper, frame_stepper: started.stepper,
                         save: save, folder: folder, led_in: !lead_in.nil?, in_passes: in_passes, match: match,
                         progress: progress)
           progress.step(lead_in ? "playing from after the lead-in" : "playing from power-on")
@@ -431,14 +431,18 @@ module VBlank
         # +in_passes+ names what the counts are counted in, for the tape to record (see Tape), and
         # +progress+ is told the frame reached as each hold ends and a phase at each moment. +stepper+
         # plays the frames each hold asks for: the game itself, or a WindowStepper or PassStepper over it.
+        # +frame_stepper+ plays a frame at a time whatever the counts are in, for a step that waits on the
+        # game (Until): the game itself, or a WindowStepper.
         # +match+ is the match a tape replays (a Tape::Match), for the tape this playing makes, or nil.
-        def initialize(title, cartridge, game, at_each_moment, save:, folder:, stepper: game, led_in: false, in_passes: nil,
-                       match: nil, progress: Messages::Progress.silent)
+        def initialize(title, cartridge, game, at_each_moment, save:, folder:, stepper: game, frame_stepper: stepper,
+                       led_in: false, in_passes: nil, match: nil, progress: Messages::Progress.silent)
           @title = title
           @progress = progress
           @cartridge = cartridge
           @game = game
           @stepper = stepper
+          @frame_stepper = frame_stepper
+          @frames_waited_on_game = 0
           @save = save
           @led_in = led_in
           @in_passes = in_passes
@@ -470,6 +474,23 @@ module VBlank
           raise GaveUp.new(title: @title, words: words, waited: within, frame: @taping.frames,
                            picture: write_picture_of_frame)
         end
+
+        # Play +step+'s pattern a frame at a time until the game reads its value (see Until). A playing
+        # counted in passes puts the step on its tape as itself, since its frames are another number on
+        # another build; one counted in frames puts the frames, as a watching step does.
+        def repeat_until(step)
+          held = step.play_pattern(@game, @frame_stepper) do |buttons|
+            @in_passes ? @frames_waited_on_game += 1 : @taping.hold(buttons, 1)
+            @progress.show_detail("frame #{frames_played}")
+          end
+          raise step.gave_up(title: @title, frame: frames_played, game: @game) unless held
+
+          @taping.add_until(step) if @in_passes
+        end
+
+        # How many frames have been played: the tape's count, or for a playing counted in passes the
+        # frames its passes took and those its steps that wait on the game took.
+        private def frames_played = @in_passes ? @stepper.frames_played + @frames_waited_on_game : @taping.frames
 
         # Ask the block what to press, a frame at a time, until it answers that it is done. The block is
         # asked before each frame, so what it sees is the frame just played, and what it answers
@@ -622,6 +643,85 @@ module VBlank
         DONE = :done
       end
 
+      # A PATTERN OF PRESSES REPEATED UNTIL A VARIABLE OF THE GAME READS A NUMBER: +var+ is its name,
+      # +value+ the number, +pattern+ the Holds to repeat, in frames (none, for nothing pressed), and
+      # +within+ how many frames it can take.
+      #
+      # IT IS FOR THE STRETCHES A TAPE OF PASSES CANNOT COUNT: a title waiting for a press, a fade, a
+      # tally, a death, a win screen. A tape counted in a variable of the game (`in_passes: :steps`)
+      # moves on as that variable rises, and on such a stretch it stands still; counted in passes of
+      # the game loop, the stretch is a different number of passes on a build whose fade is longer.
+      # This step waits on the game instead, so it is the same step on every build and every way of
+      # running one, and it goes on a tape of passes as itself, a line of its own.
+      #
+      # THE PATTERN IS IN FRAMES, NOT PASSES, since the count stands still here. Where it lands does
+      # not matter, because the console notes a press on every frame and hands it to the game the
+      # next time the game looks (the interpreter's `@pressed`, gathered frame by frame in
+      # Reference#advance_frame): a `pressed` read once a pass, or inside `once_a_frame`, sees a tap
+      # whichever frame of the pass it fell on. So a tap repeated until the game moves needs no
+      # frame of its own. What a slow pass can do is fold two taps into one, which a repeat
+      # answers with the next tap.
+      #
+      # The variable is read by name, as a count of passes reads it (PassStepper), before each frame:
+      # a step that already holds plays nothing. After +within+ frames it gives up (#gave_up).
+      Until = Data.define(:var, :value, :pattern, :within) do
+        def play(playing) = playing.repeat_until(self)
+        def frames = 0
+        def names = []
+        def extended_by(_held, _more) = nil
+
+        def tape_line
+          line = "#{Tape::UNTIL_WORD} #{var} is #{value}"
+          line += " within #{within}" unless within == Until::LONGEST
+          pattern.empty? ? line : "#{line}: #{pattern.map(&:tape_line).join(', ')}"
+        end
+
+        # Play frames on +stepper+ with the pattern's buttons down, until +game+ reads the value, each
+        # frame's buttons handed to the block once it is played. Whether the value was read in time.
+        def play_pattern(game, stepper)
+          within.times do |played|
+            return true if held?(game)
+
+            buttons = buttons_on(played)
+            stepper.step(1, keys: Playthrough.key_mask(buttons))
+            yield buttons
+          end
+          held?(game)
+        end
+
+        # What a step that never held raises: the step as a tape writes it, and what the variable read
+        # when it gave up, with the picture of the screen then. +title+ and +frame+ are as for GaveUp.
+        def gave_up(title:, frame:, game:)
+          folder = PictureFolder.new(Dir.mktmpdir("playthrough"), [])
+          picture = folder.write("frame-#{frame}", game.frame_gba, width: game.screen_width, height: game.screen_height)
+          GaveUp.new(title: title, words: tape_line, waited: within, frame: frame, picture: picture,
+                     tried: "repeated `#{tape_line}`, and #{var} still read #{game.var(var)}",
+                     longer: "give the step a bigger `within:`, or a tape line `within 7200`")
+        end
+
+        private
+
+        def held?(game) = game.var(var) == value
+
+        # The pattern's buttons on the frame +played+ frames into the step, the pattern repeated.
+        def buttons_on(played)
+          return [] if pattern.empty?
+
+          into = played % pattern.sum(&:frames)
+          pattern.each do |hold|
+            return hold.buttons if into < hold.frames
+
+            into -= hold.frames
+          end
+        end
+      end
+
+      class Until
+        # How many frames a step goes on, unless it sets its own: a minute, as long as a count of
+        # passes waits for its count to move (PassStepper::MOST_FRAMES_STILL).
+        LONGEST = 3600
+      end
+
       # A name for the frame that has just been played. As a line of a tape it plays no frames,
       # names one moment, and is never made longer.
       Moment = Data.define(:name) do
@@ -737,6 +837,24 @@ module VBlank
           self
         end
 
+        # REPEAT THE PRESSES IN THE BLOCK UNTIL A VARIABLE OF THE GAME READS +is+, or let frames go by
+        # with nothing pressed when there is no block. The block is a script of its own, of `press`,
+        # `hold` and `wait`, counted in frames and played over and over:
+        #
+        #   repeat_until(:screen, is: PLAYING) { press :start }
+        #   repeat_until :_tally_showing, is: 0
+        #
+        # The variable is read before each frame, so the step ends on the first frame it reads the
+        # number, part way through the presses or before any. In a playing counted in passes the step
+        # goes on the tape as itself (see Until), which is how a tape gets past a stretch the count
+        # does not move on. +within+ is how many frames it can take, a minute unless it sets its own.
+        def repeat_until(var, is:, within: Until::LONGEST, &presses)
+          refuse_unusable_until!(var, is)
+          refuse_invalid_frame_count!(:repeat_until, within, keyword: "within:")
+          @steps << Until.new(var: var, value: is, pattern: pattern_from(var, presses), within: within)
+          self
+        end
+
         # Name the frame that has just been played, so it can be asked for afterwards.
         def moment(name)
           refuse_unusable_moment!(name)
@@ -746,6 +864,35 @@ module VBlank
         end
 
         private
+
+        def refuse_unusable_until!(var, value)
+          unless var.is_a?(Symbol) && Tape::VARIABLE_NAME.match?(var)
+            raise ArgumentError,
+                  "`repeat_until` in playthrough #{@title.inspect} was given #{var.inspect}. It must start with the " \
+                  "name of a variable of the game, as a symbol, like `repeat_until :screen, is: 3`."
+          end
+          return if value.is_a?(Integer)
+
+          raise ArgumentError,
+                "`repeat_until #{var.inspect}` in playthrough #{@title.inspect} was given is: #{value.inspect}. " \
+                "is: must be a whole number, the number the variable reads when the step is over."
+        end
+
+        # The presses of +block+, read as a script of their own, or none for no block. A step there
+        # that does not press, hold or wait for a count of frames is refused: the pattern is played
+        # over and over, so it has to be the same frames each time.
+        def pattern_from(var, block)
+          return [] unless block
+
+          steps = Script.new(@title).tap { |script| script.instance_eval(&block) }.steps
+          if steps.empty? || !steps.all?(Hold)
+            raise ArgumentError,
+                  "The block of `repeat_until #{var.inspect}` in playthrough #{@title.inspect} must hold only " \
+                  "`press`, `hold` and `wait` steps. These are repeated until the step is over. To let frames go " \
+                  "by with nothing pressed, leave out the block."
+          end
+          steps.map { |hold| hold.with(buttons: Playthrough.in_console_order(hold.buttons)) }
+        end
 
         # +step_name+ is the step as the script wrote it, for the errors to quote.
         def add_watch_step(step_name, watch)
@@ -830,13 +977,14 @@ module VBlank
       attr_reader :words, :frame, :picture
 
       # The picture's path gets a line of its own, so it can be copied whole.
-      def initialize(title:, words:, waited:, frame:, picture:, tried: "waited until #{words}")
+      def initialize(title:, words:, waited:, frame:, picture:, tried: "waited until #{words}",
+                     longer: "give the step a bigger `within:`")
         @words = words
         @frame = frame
         @picture = picture
         super("Playthrough #{title.inspect} #{tried}. That did not happen in #{waited} frames. " \
               "It stopped on frame #{frame}. Look at the screen on that frame first:\n#{picture}\n" \
-              "If the game is where you expect and needs longer, give the step a bigger `within:`.")
+              "If the game is where you expect and needs longer, #{longer}.")
       end
     end
   end

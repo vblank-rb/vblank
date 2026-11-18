@@ -34,6 +34,11 @@ module VBlank
       # The tape as a list with one entry for each pass: the buttons down on it.
       def passes_of(tape)
         raise ArgumentError, "A bot plays a tape of passes, and this tape counts frames. To fix this, record it in passes." unless tape.in_passes
+        if tape.waits_on_game?
+          raise ArgumentError, "This tape has `until` lines, which wait on the game. A bot gives its buttons before " \
+                               "it sees the pass, so it cannot play them. To fix this, record the tape without " \
+                               "`repeat_until` steps."
+        end
 
         tape.steps.flat_map { |step| step.respond_to?(:buttons) ? [step.buttons] * step.frames : [] }
       end

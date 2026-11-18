@@ -44,14 +44,20 @@ module VBlank
     # tape recorded from a save is played from one, and one recorded after a lead-in
     # after one.
     #
-    # +steps+ are the lines in order — each a Hold or a Moment, the same steps a script is
-    # made of, so a tape is played by the same playing a script is.
+    # +steps+ are the lines in order — each a Hold, a Moment or, on a tape of passes, an Until: the
+    # same steps a script is made of, so a tape is played by the same playing a script is.
     #
     # A TAPE CAN COUNT PASSES OF THE GAME LOOP IN PLACE OF FRAMES (+in_passes+, and see
     # PassStepper), and then a line's count is passes and a moment names a pass. One extra
     # line of heading marks it, `counts: passes`, or `counts: variable steps` for a variable of the
     # game. Such a tape plays the same game at any speed on any way of running it, where a tape of
     # frames holds its presses to one cartridge's timing. A tape of frames does not have the line.
+    #
+    # A TAPE OF PASSES CAN WAIT ON THE GAME, for a stretch its count does not move on (a title, a fade,
+    # a tally): a line `until screen is 3: 1 start, 1 -` repeats the presses after the colon, counted
+    # in frames, until the variable reads the number (Playthrough::Until). It is the same line on any
+    # build, however long that build's stretch, so it is kept as it is. A tape of frames has no such
+    # line: what it holds is the frames the step took.
     #
     # A TAPE OF A MATCH played by several machines (Network::Lockstep#tape) holds the match as well
     # (+match+, a Match), on a line of heading after the counts: `match: 2 players, seed 1234567`.
@@ -73,6 +79,15 @@ module VBlank
       COUNTS = "counts: "
       COUNTS_PASSES = "passes"
       COUNTS_VARIABLE = "variable "
+
+      # The word a line of a tape of passes starts with when it waits on the game (Playthrough::Until),
+      # and the line as a whole: `until screen is 3 within 600: 1 start, 1 -`, where the within and the
+      # presses after the colon can each be left out.
+      UNTIL_WORD = "until"
+      UNTIL_LINE = /\Auntil (\S+) is (-?\d+)(?: within ([1-9]\d*))?(?::(.*))?\z/
+
+      # What a variable of the game can be called, as a tape names it.
+      VARIABLE_NAME = /\A[A-Za-z_][A-Za-z0-9_]*\z/
 
       # The match a tape replays: how many players it had, and the seed the host picked.
       Match = Data.define(:players, :seed) do
@@ -250,9 +265,25 @@ module VBlank
         running = Playthrough.power_on(cartridge, count_passes: in_passes == true)
         stepper = PassStepper.new(running, in_passes)
         taping = Taping.new
-        steps.each { |step| step.frames.zero? ? taping.moment(step.name) : hold_on(stepper, step, taping) }
+        steps.each do |step|
+          case step
+          when Playthrough::Moment then taping.moment(step.name)
+          when Playthrough::Until then repeat_until_on(running, step, taping)
+          else hold_on(stepper, step, taping)
+          end
+        end
         Tape.recorded_on(cartridge, taping.steps, save: nil)
       end
+
+      # A step that waits on the game, played a frame at a time, its frames on the tape of frames.
+      private def repeat_until_on(running, step, taping)
+        held = step.play_pattern(running, running) { |buttons| taping.hold(buttons, 1) }
+        raise step.gave_up(title: title, frame: taping.frames, game: running) unless held
+      end
+
+      # Whether a line of the tape waits on the game (Playthrough::Until), which only a playing that reads
+      # the game can play.
+      def waits_on_game? = steps.any?(Playthrough::Until)
 
       private def hold_on(stepper, step, taping)
         before = stepper.frames_played
@@ -445,6 +476,12 @@ module VBlank
 
         def moment(name) = @steps << Playthrough::Moment.new(name: name)
 
+        # A step that waits on the game, for a tape of passes, where it is a line of its own.
+        def add_until(step) = @steps << step
+
+        # Whether a line that plays has been written: a moment needs one before it.
+        def any_played? = @frames.positive? || @steps.any?(Playthrough::Until)
+
         # Every moment named so far.
         def names = @steps.flat_map(&:names)
 
@@ -469,7 +506,7 @@ module VBlank
           title, checksum = read_recorded_on
           starts_from = read_starts_from
           @heading_lines = HEADING_LINES
-          in_passes = read_counts
+          in_passes = @in_passes = read_counts
           match = read_match
           @lines.each_with_index.drop(@heading_lines).each { |line, at| read_step(line, at + 1) }
           Tape.new(title: title, checksum: checksum, starts_from: starts_from, steps: @taping.steps, in_passes: in_passes,
@@ -537,11 +574,49 @@ module VBlank
 
           first, *rest = line.split
           return read_moment(rest.join(" "), number) if first == "moment"
+          return read_until(line, number) if first == UNTIL_WORD
 
           unless first.match?(/\A[1-9]\d*\z/)
             raise_unreadable_line!(number, "A line must start with how many frames it lasts, as a whole number, 1 or more.")
           end
           @taping.hold(buttons_named(rest, number), first.to_i)
+        end
+
+        UNTIL_EXAMPLE = "`until screen is 3: 1 start, 1 -`"
+        private_constant :UNTIL_EXAMPLE
+
+        # A line that waits on the game. Its presses are counted in frames, as the step plays them, so
+        # it is read only on a tape of passes: a tape of frames holds the frames such a step took.
+        def read_until(line, number)
+          unless @in_passes
+            raise_unreadable_line!(number, "An `#{UNTIL_WORD}` line plays only on a tape that counts passes. Add the " \
+                                           "line `#{COUNTS}#{COUNTS_PASSES}` or `#{COUNTS}#{COUNTS_VARIABLE}steps` " \
+                                           "after line 3, or write the frames as counts.")
+          end
+          said = line.match(UNTIL_LINE)
+          unless said && VARIABLE_NAME.match?(said[1])
+            raise_unreadable_line!(number, "An `#{UNTIL_WORD}` line names a variable and a whole number, then " \
+                                           "the presses to repeat after a colon, like #{UNTIL_EXAMPLE}. " \
+                                           "Without a colon, nothing is pressed.")
+          end
+          @taping.add_until(Playthrough::Until.new(var: said[1].to_sym, value: said[2].to_i,
+                                                   pattern: pattern_said(said[4], number),
+                                                   within: said[3] ? said[3].to_i : Playthrough::Until::LONGEST))
+        end
+
+        # The presses after an `until` line's colon: holds parted by commas, each written as a line of
+        # frames is.
+        def pattern_said(text, number)
+          return [] if text.nil?
+
+          text.split(",").map do |hold|
+            count, *words = hold.split
+            unless count&.match?(/\A[1-9]\d*\z/)
+              raise_unreadable_line!(number, "After the colon, each press starts with how many frames it lasts, " \
+                                             "as a whole number, 1 or more, like #{UNTIL_EXAMPLE}.")
+            end
+            Playthrough::Hold.new(buttons: Playthrough.in_console_order(buttons_named(words, number)), frames: count.to_i)
+          end
         end
 
         def buttons_named(words, number)
@@ -560,7 +635,7 @@ module VBlank
 
         # The rules are Moment's own, shared with a script; the words are a tape's.
         def read_moment(name, number)
-          problem = Playthrough::Moment.problem_with(name.to_sym, named: @taping.names, any_frames: @taping.frames.positive?)
+          problem = Playthrough::Moment.problem_with(name.to_sym, named: @taping.names, any_frames: @taping.any_played?)
           return @taping.moment(name.to_sym) unless problem
 
           raise_unreadable_line!(number, format(MOMENT_PROBLEMS.fetch(problem), name: name))
