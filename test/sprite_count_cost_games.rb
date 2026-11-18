@@ -59,4 +59,26 @@ module SpriteCountCostGames
     rom = game.build_rom(console: console, out: StringIO.new, err: StringIO.new, profile: false)
     rom.built.routines.fetch(VBlank::Messages::MadeNames.make(:draw_order, number: 1, part: :sort)).size
   end
+
+  # How many bytes of code each place of an order adds, on +console+: what putting +declared+ places
+  # in an order adds to the game's code, less what putting four in one adds, a place each. +kind+ is
+  # :pool or :sprites. Each console keeps its sort its own way (a routine of its own, or written
+  # where the game loop sorts), so the whole game's code is compared with and without the order.
+  def self.order_bytes_a_place(console, kind, declared)
+    added = [SHOWING, declared].map do |count|
+      game = ->(ordered) { kind == :pool ? pool_game(console, count, ordered: ordered) : sprites_game(console, count, ordered: ordered) }
+      code_bytes(console, game.call(true)) - code_bytes(console, game.call(false))
+    end
+    (added.last - added.first).fdiv(declared - SHOWING)
+  end
+
+  # How many bytes of code +game+ built for +console+ holds: the code part of a build that counts it,
+  # or every routine of one that keeps a map of them.
+  def self.code_bytes(console, game)
+    built = game.build_rom(console: console, out: StringIO.new, err: StringIO.new, profile: false).built
+    return built.bytes.fetch(:code) if built.respond_to?(:bytes)
+    return built.routines.sum { |_, span| span.size } if built.routines.is_a?(Hash)
+
+    built.routines.sum { |routine| routine.addresses.size }
+  end
 end

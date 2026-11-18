@@ -112,35 +112,74 @@ module VBlank
             # showing with it, and +changed+ set where one came or went. A place known to show always is
             # not asked: its flag stays as it started. Where the sort makes the numbers, each is worked
             # out where its place shows.
+            #
+            # WHAT A PLACE DOES WHEN ITS FLAG TURNS OVER IS WRITTEN ONCE (#emit_flag_turned), and a place
+            # calls it with its answer in D0. A place still tests its own flag where it stands, so a pass
+            # where it neither came nor went costs what it did with all of it written out; but a place
+            # is half the bytes of that it was, and an order of a few dozen places a kilobyte smaller.
             def emit_shown_marked(node, kept)
+              turned = fresh("sort_flag_turned")
+              marked_all = fresh("sort_places_marked")
               node.shown.each_with_index do |showing, place|
                 if folded(showing) == 1
                   emit_sort_key_set(kept, place)
                   next
                 end
 
-                emit_place_marked(showing, place, kept)
+                emit_place_marked(showing, place, kept, turned)
               end
+              @asm.bra(marked_all)
+              emit_flag_turned(kept, turned)
+              @asm.label(marked_all)
             end
 
-            def emit_place_marked(showing, place, kept)
+            # +place+ asked whether it shows, its number written where it does, and #emit_flag_turned
+            # called where its flag says otherwise, with D0 its place twice over, plus 1 where it shows.
+            def emit_place_marked(showing, place, kept, turned)
               hidden = fresh("sort_place_hidden")
+              call = fresh("sort_place_turned")
               marked = fresh("sort_place_marked")
               emit_jump_unless_showing(showing, hidden)
               emit_sort_key_set(kept, place)
               @asm.tst(:b, at(kept.flags, place))
-              @asm.branch(:ne, marked)
-              @asm.move(:b, @asm.imm(1), at(kept.flags, place))
-              @asm.subq(:w, 1, at(kept.hidden))
-              @asm.scc(:t, at(kept.changed))
-              @asm.bra(marked)
+              @asm.branch_near(:ne, marked)
+              emit_flag_answer((place * 2) + 1)
+              @asm.branch_near(:t, call)
               @asm.label(hidden)
               @asm.tst(:b, at(kept.flags, place))
-              @asm.branch(:eq, marked)
-              @asm.clr(:b, at(kept.flags, place))
-              @asm.addq(:w, 1, at(kept.hidden))
-              @asm.scc(:t, at(kept.changed))
+              @asm.branch_near(:eq, marked)
+              emit_flag_answer(place * 2)
+              @asm.label(call)
+              @asm.bsr(turned)
               @asm.label(marked)
+            end
+
+            # D0 = +answer+, in a word where it fits a MOVEQ and in a MOVE.W where it does not.
+            def emit_flag_answer(answer)
+              return @asm.moveq(answer, @asm.d(0)) if answer <= 127
+
+              @asm.move(:w, @asm.imm(answer), @asm.d(0))
+            end
+
+            # THE CODE A PLACE CALLS WHEN ITS FLAG TURNS OVER, at +label+, with D0 the place twice over,
+            # plus 1 where it shows: the flag written, the count of places not showing moved by one, and
+            # +changed+ set. D1 and A0 are worked with.
+            def emit_flag_turned(kept, label)
+              gone = fresh("sort_flag_gone")
+              @asm.label(label)
+              @asm.lsr(:w, 1, @asm.d(0))                  # D0 the place, and carry set where it shows
+              @asm.scc(:cs, @asm.d(1))
+              @asm.neg(:b, @asm.d(1))                     # 1 where it shows, 0 where it does not
+              @asm.lea(at(kept.flags), @asm.a(0))
+              @asm.move(:b, @asm.d(1), @asm.idx(0, 0, 0, :w))
+              @asm.scc(:t, at(kept.changed))
+              @asm.tst(:b, @asm.d(1))
+              @asm.branch_near(:eq, gone)
+              @asm.subq(:w, 1, at(kept.hidden))
+              @asm.rts
+              @asm.label(gone)
+              @asm.addq(:w, 1, at(kept.hidden))
+              @asm.rts
             end
 
             # On to +hidden+ unless +showing+ is 1: each test of it in place where it is a product of
