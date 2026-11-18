@@ -195,12 +195,15 @@ class TestSaveDataFast < Minitest::Test
 
   # --- what the build says when it cannot ---
 
-  # A list that takes nearly all of the quick memory, so no save routine fits beside it.
+  # A list that takes nearly all of the quick memory, so no save routine fits beside it. It leaves
+  # about two thirds of what the record's routines need, so the record stays too big for the room
+  # as its routines grow or shrink by a few hundred bytes: at 6850 slots the room was eight bytes
+  # short, and a lowering that wrote one instruction fewer made it fit.
   private def game_with_no_room(&saving)
     VBlank.game("SAVEFULL", consoles: %i[gba]) do
       screen :bitmap
       hearts = var :hearts, 3
-      hoard = list :hoard, capacity: 6850, fast: true
+      hoard = list :hoard, capacity: 7000, fast: true
       files = save_data(:file, fast: true) { keep hearts }
       game_loop do
         hoard.push 1
