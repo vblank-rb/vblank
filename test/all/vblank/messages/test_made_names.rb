@@ -25,6 +25,7 @@ class TestMadeNames < Minitest::Test
     scene_rows_hidden_for: { state: :where },
     scene_rows_hide: { state: :where },
     scene_loop_work: { scene: :playing, number: 2 },
+    routine_piece: { place: "3_else_0_then", routine: :_scene_playing },
     still_sprites: {},
     held_sprite_table: {},
     scene_sprite_colors: {},

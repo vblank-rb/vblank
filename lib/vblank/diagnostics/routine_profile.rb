@@ -138,6 +138,18 @@ module VBlank
                                          "shares" => busiest.shares.transform_keys(&:to_s) })
       end
 
+      # THE SAME MEASUREMENT WITH EACH PIECE COUNTED IN THE ROUTINE IT WAS CUT FROM, for the plan
+      # that weighs the program whole (GBA::Placement#choose_fast_funcs). A build that cut a routine
+      # measured its pieces as routines of their own and left the routine only what was not cut,
+      # so weighed by that alone, the next build could find the whole routine not worth the room,
+      # leave it uncut, and cut it again the build after.
+      def with_pieces_counted_in_routines
+        RoutineProfile.new(work: pieces_counted_in_routines(work), game: game, measured_at: measured_at,
+                           busiest: busiest && busiest.with(shares: pieces_counted_in_routines(busiest.shares)),
+                           scenes: scenes.transform_values { |counts| pieces_counted_in_routines(counts) },
+                           touches: touches, scene_touches: scene_touches)
+      end
+
       # Instructions a frame, or nil when the profile has never seen this routine — added since
       # the measuring, which is different from one measured at nothing.
       def work_of(name) = work[name]
@@ -225,6 +237,14 @@ module VBlank
       end
 
       private
+
+      # +counts+ by routine name with each piece's count added to its routine's.
+      def pieces_counted_in_routines(counts)
+        counts.each_with_object({}) do |(name, count), sums|
+          routine = Messages::MadeNames.routine_cut_into(name) || name
+          sums[routine] = sums.fetch(routine, 0) + count
+        end
+      end
 
       # Counts by routine, dearest first, as a saved profile keeps them.
       def counts_as_json(counts) = counts.sort_by { |_, n| -n }.to_h { |name, n| [name.to_s, n] }

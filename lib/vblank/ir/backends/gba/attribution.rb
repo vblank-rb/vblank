@@ -104,6 +104,7 @@ module VBlank
             # claimed so far. The innermost is last.
             @nested = []
             @statement_spans = []
+            @statement_bytes = {}.compare_by_identity
           end
 
           # Nothing counted so far belongs to this pass. Called at the top of one, so a
@@ -112,6 +113,7 @@ module VBlank
             @emitted.clear
             @nested.clear
             @statement_spans.clear
+            @statement_bytes.clear
           end
 
           # Lower statement +node+ as #measure_node does, and remember where its code is.
@@ -119,8 +121,20 @@ module VBlank
             from = @emit.pos
             result = measure_node(node, &)
             @statement_spans << StatementSpan.new(source: node.source, from: from, to: @emit.pos) if node.source && @emit.pos > from
+            @statement_bytes[node] = (@statement_bytes[node] || ZERO_BYTES).merge_site(@emit.pos - from)
             result
           end
+
+          # How many bytes ONE use of statement +node+ came to, nested statements included, or nil
+          # for one this pass never lowered. What RoutinePieces cuts a routine by.
+          def statement_bytes(node) = @statement_bytes[node]&.per_use
+
+          # A statement's bytes over every place it was lowered from, and how many places.
+          Bytes = Data.define(:total, :times) do
+            def merge_site(bytes) = with(total: total + bytes, times: times + 1)
+            def per_use = times.zero? ? 0 : total / times
+          end
+          ZERO_BYTES = Bytes.new(total: 0, times: 0)
 
           # Lower +node+ (whatever the block does) and remember what it alone emitted.
           def measure_node(node)

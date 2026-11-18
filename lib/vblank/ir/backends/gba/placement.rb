@@ -203,7 +203,39 @@ module VBlank
             insisted = @insisted = funcs_marked(program, true)
             return insisted if insisted.empty? && !@fast_code
 
+            # The program whole is weighed with each piece a measured build cut counted in its
+            # routine (RoutineProfile#with_pieces_counted_in_routines); the pieces, by their own.
+            measured = @routine_profile
+            uncut_profile = @routine_profile = measured&.with_pieces_counted_in_routines
             probe, chosen = measure_and_choose(program, insisted)
+            if @fast_code && (pieces = cut_into_pieces(program, probe))
+              # A ROUTINE THE ROOM COULD NOT HOLD IS CUT, and the rest of the build lowers the
+              # program with its pieces (see RoutinePieces), measured and chosen again: the pieces
+              # are routines of their own. Should that plan not hold what the author insisted on,
+              # the one before did, so the program is lowered whole.
+              #
+              # THE SCREEN IS PLANNED AGAIN for the program cut, which is a copy: the plan knows a
+              # scene's own `screen` and the rest by the very nodes it was planned from
+              # (IR::SceneHandover), and the copy's are other nodes.
+              #
+              # The collections that attempt moves to the roomy memory are its own, so the program
+              # lowered whole keeps the ones the plan before kept, and builds as it would uncut.
+              uncut_screen = @planned_screen
+              uncut_roomy = @lists_to_roomy
+              @planned_screen = nil
+              @routine_profile = measured
+              @measuring_after = :pieces
+              begin
+                probe, chosen = measure_and_choose(pieces, insisted)
+                @program_with_pieces = program = pieces
+              rescue QuickMemoryFull
+                @planned_screen = uncut_screen
+                @lists_to_roomy = uncut_roomy
+                @routine_profile = uncut_profile
+                @measuring_after = :uncut
+                probe, chosen = measure_and_choose(program, insisted)
+              end
+            end
             # MEASURED AGAIN WITH THE GAME LOOP'S WORK FOR EACH SCENE AS THAT SCENE'S ROUTINE, once
             # the plan has split the room by scene (see SceneQuickMemory#prepare_scene_loop_work).
             # Only then: in one set for the whole game the routines would buy nothing and cost a
@@ -212,10 +244,12 @@ module VBlank
             if swaps_quick_memory?
               @scene_blocks = true
               @measuring_after = :scene_blocks
+              without_blocks_roomy = @lists_to_roomy
               begin
                 probe, chosen = measure_and_choose(program, insisted)
               rescue QuickMemoryFull
                 @scene_blocks = false
+                @lists_to_roomy = without_blocks_roomy
                 probe, chosen = measure_and_choose(program, insisted)
               end
             end
@@ -249,6 +283,21 @@ module VBlank
             end
             allocate_variables_where_measured(probe)
             chosen
+          end
+
+          # The program this build lowers: the one it was handed, or that program with its routines
+          # too big for the quick memory cut into pieces (see RoutinePieces). Valid after
+          # #choose_fast_funcs.
+          def lowered_program(program) = @program_with_pieces || program
+
+          # +program+ with the routines the plan just passed over cut into pieces, measured by
+          # +probe+, or nil when none of them is cut.
+          def cut_into_pieces(program, probe)
+            missed = @passed_over.map(&:name).to_set
+            return nil if missed.empty?
+
+            room = probe.iwram_free + probe.movable_quick_lists.values.sum
+            RoutinePieces.cut(program, routines: missed, room: room) { |node| probe.attribution.statement_bytes(node) }
           end
 
           # Measure the program and choose from what was measured, and answer both.
@@ -335,6 +384,8 @@ module VBlank
           # a phase twice by mistake.
           MEASURING_AFTER = { lists: "Measuring again, collections moved out",
                               scene_blocks: "Measuring again, scene loops split out",
+                              pieces: "Measuring again, big routines cut into pieces",
+                              uncut: "Measuring again, big routines whole",
                               variables: "Measuring again, variables moved nearer" }.freeze
 
           def measuring_phase_name = MEASURING_AFTER.fetch(@measuring_after, "Measuring routines")

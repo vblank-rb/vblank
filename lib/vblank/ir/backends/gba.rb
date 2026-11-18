@@ -38,6 +38,7 @@ require_relative "gba/drawing"
 require_relative "gba/quick_memory_plan" # what goes in the quick memory, worked out from plain numbers
 require_relative "gba/top_of_quick_memory" # what the build holds back at its top: the stack, the divide routines
 require_relative "gba/scene_quick_memory" # each scene its own share of the quick memory, swapped as it takes over
+require_relative "gba/routine_pieces" # a routine too big for the quick memory, cut into pieces that fit
 require_relative "gba/placement"
 require_relative "gba/buffered"
 require_relative "gba/faces" # a face of a place filled with its picture, on the tear-free screen
@@ -863,20 +864,17 @@ module VBlank
           Backends.refuse_start_file_on_cartridge!(program, Console::ADVANCE, LoweringError)
 
           @planned_screen = screen
-          # What is held back at the top of the quick memory, settled before anything has a place
-          # there: the stack, and the divide routines this program needs.
-          @top = TopOfQuickMemory.for(program, stack_room: @stack_room, divides: needs_divide_routine?(program),
-                                               divides_fractions: needs_divide_fix_routine?(program),
-                                               fills_faces: Faces.fills_faces?(program),
-                                               lights_faces: Faces.lights_faces?(program),
-                                               stretch_runs: Faces.stretch_runs(program),
-                                               see_through_runs: Faces.see_through_runs(program))
-          @memory.ceiling = @top.ceiling
+          plan_top_of_quick_memory(program)
           Faces.words.each { |name| var_addr(name) } if @top.fill_face_at
           variables_first.each { |name| var_addr(name) }
           @lists_to_roomy = lists_to_roomy
           @scene_blocks = scene_blocks
           @fast_funcs = fast_funcs || choose_fast_funcs(program)
+          cut = lowered_program(program) # with its biggest routines cut, where the choosing cut them
+          # A piece is one call deeper than the statement it was, so the stack is sized again for
+          # the program lowered, as each measuring pass sized it.
+          plan_top_of_quick_memory(cut) unless cut.equal?(program)
+          program = cut
           allocate_where_words # where each scene's own routines are, side by side, before any other variable
           # The throwaway measuring pass keeps the phase its caller named, since from the
           # outside it IS that phase — it is not lowering the program, it is finding out how
@@ -1135,6 +1133,18 @@ module VBlank
           # them to Placement#resolve_fixup rather than reaching for them by name.
           @emit.resolve_fixups(self)
           @emit.code
+        end
+
+        # What is held back at the top of the quick memory for +program+, settled before anything
+        # has a place there: the stack, and the divide routines this program needs.
+        def plan_top_of_quick_memory(program)
+          @top = TopOfQuickMemory.for(program, stack_room: @stack_room, divides: needs_divide_routine?(program),
+                                               divides_fractions: needs_divide_fix_routine?(program),
+                                               fills_faces: Faces.fills_faces?(program),
+                                               lights_faces: Faces.lights_faces?(program),
+                                               stretch_runs: Faces.stretch_runs(program),
+                                               see_through_runs: Faces.see_through_runs(program))
+          @memory.ceiling = @top.ceiling
         end
 
         # Each variable's allocated IWRAM address (name => address), known once the

@@ -103,6 +103,11 @@ module VBlank
                                   words: ->(_) { "hiding the sprites of a scene that went" }),
         scene_loop_work: Kind.new(spelling: "__loop_for_scene_%{scene}__%{number}", parts: { scene: ANY, number: "\\d+" },
                                   words: ->(parts) { "the game loop's own work for scene :#{parts[:scene]}" }),
+        # A statement of a routine too big for the quick memory, made a routine of its own
+        # (GBA::RoutinePieces), named by where it is in its routine.
+        routine_piece: Kind.new(spelling: "__piece_%{place}__of_%{routine}",
+                                parts: { place: "\\d+(?:_(?:then|else)_\\d+)*(?:_then)?", routine: ANY },
+                                words: ->(parts) { "a part of func :#{parts[:routine]} (#{parts[:place].tr('_', ' ')})" }),
         picture_groups: Kind.new(spelling: "__picture_groups_%{set}", parts: { set: ANY },
                                  words: ->(parts) { "bringing in the pictures of picture_groups :#{parts[:set]}" }),
         still_sprites: Kind.new(spelling: "__still_objects", parts: {},
@@ -270,6 +275,12 @@ module VBlank
         when IR::SaveLayout::SAVE_VAR_RECORD then SAVE_VAR_WORDS
         else "save_data :#{record}"
         end
+      end
+
+      # The routine a piece +name+ was cut from (GBA::RoutinePieces), or nil for any other name.
+      def self.routine_cut_into(name)
+        kind, parts = read(name)
+        parts[:routine].to_sym if kind == :routine_piece
       end
 
       # What a report calls the routine +name+, or nil when it is not one the build made up (or
