@@ -94,10 +94,23 @@ module VBlank
 
             # Each thing asked whether it shows, its flag kept up to date, the count of things not showing
             # with it, and +changed+ set where one came or went; then the places moved round if one did.
+            #
+            # WHAT A THING DOES WHEN ITS FLAG TURNS OVER IS WRITTEN ONCE, past the things (#emit_count_moved):
+            # a thing writes its flag where it stands and calls that code to set +changed+ and move the
+            # count. A pass where nothing came or went runs what it did with all of it written out, and a
+            # thing is under thirty bytes of this rather than more than fifty: the sort is written out a
+            # thing at a time in the bank its code runs from, and every byte is a byte of that bank.
             def emit_shown_marked(node, kept, keyed)
+              shown_again = fresh("sort_thing_shown_again")
+              gone = fresh("sort_thing_gone")
+              marked_all = fresh("sort_things_marked")
               node.shown.each_with_index do |showing, item|
-                emit_thing_marked(showing, item, kept) if kept.asked.fetch(item)
+                emit_thing_marked(showing, item, kept, shown_again, gone) if kept.asked.fetch(item)
               end
+              @asm.brl(marked_all)
+              emit_count_moved(kept, shown_again, step: -2)
+              emit_count_moved(kept, gone, step: 2)
+              @asm.label(marked_all)
               unchanged = fresh("sort_none_came_or_went")
               @asm.lda(@asm.abs(kept.changed))
               @asm.branch_long(:beq, unchanged)
@@ -105,29 +118,37 @@ module VBlank
               @asm.label(unchanged)
             end
 
-            def emit_thing_marked(showing, item, kept)
+            # +item+ asked whether it shows, its flag tested, and where the flag says otherwise the flag
+            # written and #emit_count_moved called.
+            def emit_thing_marked(showing, item, kept, shown_again, gone)
               hidden = fresh("sort_thing_hidden")
               marked = fresh("sort_thing_marked")
               flag = @asm.abs(kept.flags + (item * 2))
               emit_jump_unless_showing(showing, hidden)
               @asm.lda(flag)
-              @asm.branch_long(:bne, marked)
+              @asm.bne(marked)
               @asm.lda(1)
               @asm.sta(flag)
-              @asm.sta(@asm.abs(kept.changed))
-              @asm.lda(@asm.abs(kept.hidden))
-              2.times { @asm.dec(:a) }
-              @asm.sta(@asm.abs(kept.hidden))
-              @asm.brl(marked)
+              @asm.jsr(@asm.abs(shown_again))
+              @asm.bra(marked)
               @asm.label(hidden)
               @asm.lda(flag)
-              @asm.branch_long(:beq, marked)
+              @asm.beq(marked)
               @asm.stz(flag)
+              @asm.jsr(@asm.abs(gone))
+              @asm.label(marked)
+            end
+
+            # THE CODE A THING CALLS WHEN ITS FLAG TURNED OVER, at +label+, with A not nought: +changed+
+            # set, and the count of things not showing (twice over, as the tables index them) moved by
+            # +step+.
+            def emit_count_moved(kept, label, step:)
+              @asm.label(label)
               @asm.sta(@asm.abs(kept.changed))
               @asm.lda(@asm.abs(kept.hidden))
-              2.times { @asm.inc(:a) }
+              step.abs.times { step.negative? ? @asm.dec(:a) : @asm.inc(:a) }
               @asm.sta(@asm.abs(kept.hidden))
-              @asm.label(marked)
+              @asm.rts
             end
 
             # On to +hidden+ unless +showing+ is 1, each test of it asked on its own where it is a product
