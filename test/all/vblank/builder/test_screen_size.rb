@@ -90,6 +90,72 @@ class TestScreenSize < Minitest::Test
     assert_match(/screen_width/, error.message)
   end
 
+  # A verb that lays itself out by the screen's size reads it as surely as `screen_width` does, so
+  # it too must come after the line that can change it.
+  def test_a_size_is_refused_after_a_verb_lays_itself_out_by_the_screen
+    {
+      draw_text: -> { draw_text "HI", :center, 0, :white },
+      fade: -> { fade :black, 50, inside: [0, 0, 300, 10] },
+      pixel: -> { pixel 0, 0, :white }
+    }.each do |verb, line|
+      error = refusal do
+        instance_exec(&line)
+        screen :bitmap, size: [320, 200]
+      end
+
+      assert_match(/`#{verb}`/, error.message)
+    end
+  end
+
+  # Rows given up are counted on the screen the game asks for, the same on every build, and each
+  # build keeps those of its own screen: a console's shorter screen shows every row the range holds.
+  def test_shown_rows_are_counted_on_the_size_asked_and_kept_to_the_screen_given
+    made = game { screen :bitmap, size: [320, 200], shown_rows: 20...180 }
+
+    assert_equal [20, 180], made.program(for_computer: true).described_console.shown_row_bounds
+    assert_equal [20, 160], made.program.described_console.shown_row_bounds
+  end
+
+  def test_shown_rows_of_every_asked_row_are_every_row_on_each_build
+    made = game { screen :bitmap, size: [320, 200], shown_rows: 0...200 }
+
+    assert_nil made.program(for_computer: true).shown_rows
+    assert_nil made.program.shown_rows
+  end
+
+  def test_shown_rows_past_the_size_asked_are_refused_on_every_build
+    made = game { screen :bitmap, size: [320, 200], shown_rows: 0...201 }
+
+    assert_raises(ArgumentError) { made.program(for_computer: true) }
+    assert_raises(ArgumentError) { made.program }
+  end
+
+  # Rows below a console's screen are none of its rows, which that console's build says plainly.
+  def test_shown_rows_below_a_console_screen_are_refused_on_that_console
+    made = game { screen :bitmap, size: [320, 200], shown_rows: 170...200 }
+
+    assert_equal [170, 200], made.program(for_computer: true).described_console.shown_row_bounds
+    error = assert_raises(ArgumentError) { made.program }
+    assert_match(/160/, error.message)
+  end
+
+  # Big pixels show each of the game's pixels as a square, so a size they cannot fill whole is
+  # refused, on every build.
+  def test_a_size_that_big_pixels_cannot_fill_is_refused
+    [[321, 200], [1, 1]].each do |size|
+      error = refusal { screen :bitmap, size: size, pixel_size: 2 }
+
+      assert_match(/pixel_size: 2/, error.message)
+      assert_raises(ArgumentError) { game { screen :bitmap, size: size, pixel_size: 2 }.program }
+    end
+  end
+
+  def test_big_pixels_draw_half_the_size_asked
+    made = game { screen :bitmap, size: [320, 200], pixel_size: 2 }
+
+    assert_equal [160, 100], made.program(for_computer: true).described_console.screen_size
+  end
+
   def test_a_tiled_screen_is_refused_in_a_game_that_asks_a_size
     error = refusal do
       screen :bitmap, size: [320, 200]

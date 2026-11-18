@@ -420,7 +420,7 @@ module VBlank
         return columns_of(within, verb) if within
         return [@inside_area[0], @inside_area[2]] if @inside_area
 
-        [0, console.screen_width]
+        [0, read_screen_size(verb)[0]]
       end
 
       def columns_of(within, verb)

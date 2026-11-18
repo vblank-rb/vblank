@@ -27,15 +27,18 @@ module VBlank
       # size, which is what the game draws in. Where the game asks a screen of its own
       # (`screen :bitmap, size: [320, 200]`) they are what this build gave: that size on a
       # computer's build, and the console's own screen on a cartridge.
-      def screen_width
-        @screen_size_read = :screen_width
-        console.screen_width
-      end
+      def screen_width = read_screen_size(:screen_width)[0]
 
       # See #screen_width.
-      def screen_height
-        @screen_size_read = :screen_height
-        console.screen_height
+      def screen_height = read_screen_size(:screen_height)[1]
+
+      # THE SCREEN'S SIZE, [width, height], as a verb named +verb+ lays itself out by it: noted, so
+      # a later line that changes the size (`screen :bitmap, size:` or `pixel_size:`) is refused
+      # rather than leave this verb laid out for another screen. `screen_width` reads it this way,
+      # and so does every verb that centres, clips or checks against the screen as it is built.
+      private def read_screen_size(verb)
+        @screen_size_read ||= verb
+        console.screen_size
       end
 
       # Choose what kind of screen you're drawing on.
@@ -240,7 +243,7 @@ module VBlank
                                "size of the screen for the whole game. To fix this, move size: to that line."
         end
         if @screen_size_read
-          raise ArgumentError, "The game reads `#{@screen_size_read}` before `screen :bitmap, size: #{size.inspect}`. " \
+          raise ArgumentError, "The game reads the screen's size (`#{@screen_size_read}`) before `screen :bitmap, size: #{size.inspect}`. " \
                                "size: can change the screen, so the size that the game read can be wrong. To fix " \
                                "this, put the `screen` line first."
         end
@@ -284,9 +287,16 @@ module VBlank
                                "pixel_size: to that line."
         end
         if @screen_size_read
-          raise ArgumentError, "The game reads `#{@screen_size_read}` before `screen :bitmap, pixel_size: #{size}`. " \
+          raise ArgumentError, "The game reads the screen's size (`#{@screen_size_read}`) before `screen :bitmap, pixel_size: #{size}`. " \
                                "pixel_size: makes the screen smaller, so the size that the game read is wrong. To " \
                                "fix this, put the `screen` line first."
+        end
+
+        if @screen_size_asked&.any? { |side| (side % size).nonzero? }
+          raise ArgumentError, "`size: #{@screen_size_asked.inspect}` cannot be shown with `pixel_size: #{size}`. " \
+                               "Each pixel of the game is a square of #{size}×#{size}, so the width and the " \
+                               "height must be multiples of #{size}. To fix this, give a size such as " \
+                               "`size: #{@screen_size_asked.map { |side| [side - (side % size), size].max }.inspect}`."
         end
 
         @program.pixel_size = size
@@ -297,11 +307,18 @@ module VBlank
       # SETS THE ROWS THE GAME'S PICTURE SHOWS on the program, and returns them as the screen node
       # keeps them: [first, past], or nil for every row. Like the pixel size it is the whole game's,
       # set once on the game's first screen line (Program#shown_rows).
+      #
+      # IN A GAME THAT ASKS A SIZE OF SCREEN the rows are counted on the screen asked for, so the
+      # range is checked the same way on every build, and each build keeps the rows of its own
+      # screen: a console whose screen is shorter shows those of the range it has, every row where
+      # the range reaches past its last. The game cannot read the height before this line, since
+      # `size:` must come first, so this is what lets one file name rows for every build.
       private def apply_shown_rows!(rows, mode)
         refuse_unpainted_screen_with_shown_rows!(mode) if @program.shown_rows
         return nil if rows.nil?
 
-        height = console.screen_height
+        given = console.screen_height
+        height = @screen_size_asked ? @screen_size_asked[1] / (@program.pixel_size || 1) : given
         unless rows.is_a?(Range) && rows.begin.is_a?(Integer) && rows.end.is_a?(Integer)
           raise ArgumentError, "`shown_rows: #{rows.inspect}` is not a range of rows. To fix this, give the first " \
                                "row and the row after the last, like `shown_rows: 32...192`."
@@ -325,7 +342,13 @@ module VBlank
                                "sets the rows of the screen for the whole game. To fix this, move shown_rows: " \
                                "to that line."
         end
-        return nil if first.zero? && past == height
+        if first >= given
+          raise ArgumentError, "`shown_rows: #{rows.inspect}` shows no row of the #{console.title}'s screen. That " \
+                               "screen has #{given} rows, and this build cannot give the #{height} rows that the " \
+                               "game asks for. To fix this, start the range above row #{given}."
+        end
+        past = [past, given].min
+        return nil if first.zero? && past == given
 
         @program.shown_rows = [first, past]
       end
@@ -713,8 +736,9 @@ module VBlank
         reaches, rect = inside ? [:inside, inside] : [:outside, outside]
         refuse_fade_area_shape!(reaches, rect)
         x, y, w, h = rect
-        left, right = [x, x + w].map { |edge| edge.clamp(0, console.screen_width) }
-        top, bottom = [y, y + h].map { |edge| edge.clamp(0, console.screen_height) }
+        width, height = read_screen_size(:fade)
+        left, right = [x, x + w].map { |edge| edge.clamp(0, width) }
+        top, bottom = [y, y + h].map { |edge| edge.clamp(0, height) }
         empty = left >= right || top >= bottom
         [reaches, empty ? [0, 0, 0, 0] : [left, top, right, bottom]]
       end
@@ -873,7 +897,7 @@ module VBlank
 
         refuse_second_spotlight!
         refuse_spotlight_off_tiles!
-        at ||= console.middle
+        at ||= read_screen_size(:spotlight).map { |side| side / 2 }
         refuse_spotlight_with_no_radius! if said && radius.nil?
         radius ||= Spotlights::LARGEST
         dark ||= said ? Spotlights::DARK_UNSAID : 0
@@ -1172,7 +1196,7 @@ module VBlank
       # A ROW'S TWO EDGES, held to the screen, from what a shape gave back: a half width either
       # side of the light's middle (never less than nothing), or [left, right] as they are.
       def light_edges(light, edges)
-        screen = console.screen_width
+        screen = read_screen_size(:spotlight)[0]
         number = ->(edge) { edge.is_a?(Integer) || edge.is_a?(DSL::Value) }
         if edges.is_a?(Array) && edges.length == 2 && edges.all?(&number)
           left, right = edges
@@ -1399,7 +1423,7 @@ module VBlank
       end
 
       def validate_coords!(x, y)
-        width, height = console.screen_size
+        width, height = read_screen_size(:pixel)
         raise ArgumentError, "x=#{x} is outside the screen. Use an x from 0 to #{width - 1}." unless (0...width).cover?(x)
         raise ArgumentError, "y=#{y} is outside the screen. Use a y from 0 to #{height - 1}." unless (0...height).cover?(y)
       end
