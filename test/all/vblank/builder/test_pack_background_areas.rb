@@ -210,21 +210,54 @@ module PackBackgroundAreaGames
   # The cell +at+ of room number +room+: [tile, bank, mirrored, upside down].
   def self.world_cell(room, at) = [(at + (3 * room)) % 4, (at / 4) % 2, (at / 8).odd?, (at / 16).odd?]
 
-  # The rooms named +rooms+, each +across+ by +down+ cells, as Areas over the town's tiles and colours.
-  def self.world_areas(rooms, across, down)
+  # THE SAME WORLD OVER A SLOT OF AN ORIGINAL'S SIZE: a thousand and twenty-four tiles in sixteen
+  # banks of colours, its cells naming tiles all over the slot, in every bank, turned every way. A
+  # room's map repeats its first BIG_WORLD_PATTERN cells, so the rooms draw a few thousand different
+  # tiles as drawn between them, as a real world's rooms do.
+  BIG_SLOT_TILES = 1024
+  BIG_SLOT_BANKS = Ractor.make_shareable(Array.new(16) { |bank| MadeUpOriginalLayouts::PALETTE.rotate(bank) })
+  BIG_SLOT_PLACES = Ractor.make_shareable(Array.new(BIG_SLOT_TILES) { |tile| Array.new(64) { |at| ((at * 5) + (tile * 3) + (at / 8)) % 16 } })
+  BIG_WORLD_PATTERN = 600
+
+  def self.big_world_cell(room, at)
+    i = at % BIG_WORLD_PATTERN
+    [((i * 37) + (room * 101)) % BIG_SLOT_TILES, i % 16, (i / 16).odd?, (i / 32).odd?]
+  end
+
+  # A cell of the slot of an original's size different from every cell before it in its room: each
+  # tile in each bank, then each again mirrored.
+  def self.different_big_world_cell(_room, at)
+    [at % BIG_SLOT_TILES, (at / BIG_SLOT_TILES) % 16, (at / (BIG_SLOT_TILES * 16)).odd?, false]
+  end
+
+  # The rooms named +rooms+, each +across+ by +down+ cells, as Areas over one slot of tiles and one
+  # of colours: the town's, or with +big+ the slot of an original's size, and with +different+ too,
+  # every cell of a room a different tile as drawn.
+  def self.world_areas(rooms, across, down, big: false, different: false)
+    places = big || different ? BIG_SLOT_PLACES : PLACES
+    banks = big || different ? BIG_SLOT_BANKS : BANKS
+    tiles_at = TOWN_COLORS_AT + (banks.length * 32)
+    maps_at = [WORLD_MAPS_AT, tiles_at + (places.length * 32)].max
     rooms.each_with_index.to_h do |name, room|
-      cells = Array.new(across * down) { |at| world_cell(room, at) }
-      [name, Area.new(places: PLACES, banks: BANKS, cells: cells, map_at: WORLD_MAPS_AT + (room * across * down * 2),
-                      colors_at: TOWN_COLORS_AT, tiles_at: TOWN_TILES_AT)]
+      cells = Array.new(across * down) do |at|
+        if different
+          different_big_world_cell(room, at)
+        else
+          big ? big_world_cell(room, at) : world_cell(room, at)
+        end
+      end
+      [name, Area.new(places: places, banks: banks, cells: cells, map_at: maps_at + (room * across * down * 2),
+                      colors_at: TOWN_COLORS_AT, tiles_at: tiles_at)]
     end
   end
 
   # The made-up original holding the rooms of +areas+ (#world_areas).
   private def world_original(folder, areas)
     last = areas.values.last
+    first = areas.values.first
     copy = "\0".b * (last.map_at + (last.cells.length * 2))
-    copy[TOWN_COLORS_AT, 64] = BANKS.flatten.pack("v*")
-    copy[TOWN_TILES_AT, 128] = PLACES.map(&LOW_HALF_FIRST).join
+    copy[first.colors_at, first.banks.length * 32] = first.banks.flatten.pack("v*")
+    copy[first.tiles_at, first.places.length * 32] = first.places.map(&LOW_HALF_FIRST).join
     areas.each_value do |area|
       copy[area.map_at, area.cells.length * 2] = area.cells.map { |cell| PackBackgroundAreaGames.advance_word(*cell) }.pack("v*")
     end
@@ -237,22 +270,44 @@ module PackBackgroundAreaGames
 
   # The game walking the rooms of +areas+ (#world_areas), each map carrying its width, built as
   # +options+ say; the loop is #emit_world_walk. Hands back the program and the pack file made.
-  private def world_game_and_file(folder, areas, across, options: VBlank::Cartridge::Options.new)
+  # With +scrolling+ the loop is #emit_world_scroll instead. Without +scenery+ the game declares the
+  # slots alone, no background: its pack is the same file, for a game whose all-in-one build the
+  # build would refuse.
+  private def world_game_and_file(folder, areas, across, options: VBlank::Cartridge::Options.new, scrolling: false, scenery: true)
     from = world_original(folder, areas)
+    first = areas.values.first
     b = VBlank::Builder.new(options: options)
     b.instance_eval do
       screen :tiled
       pack = data_pack from: from, version: "1" do |slots|
-        slots.tiles :town_video, at: TOWN_TILES_AT, count: PLACES.length
-        slots.colors :town_colors, at: TOWN_COLORS_AT, count: 32
+        slots.tiles :town_video, at: first.tiles_at, count: first.places.length
+        slots.colors :town_colors, at: first.colors_at, count: first.banks.length * 16
         areas.each { |name, area| slots.numbers :"#{name}_map", at: area.map_at, count: area.cells.length, width: :half, signed: false }
       end
+      next game_loop { wait_vblank } unless scenery
+
       world = background :world, tiles: pack[:town_video], colors: pack[:town_colors],
                                  map: areas.keys.to_h { |name| [name, pack[:"#{name}_map"].as_map(across: across)] }
-      PackBackgroundAreaGames.emit_world_walk(self, world, areas.keys)
+      if scrolling
+        PackBackgroundAreaGames.emit_world_scroll(self, world)
+      else
+        PackBackgroundAreaGames.emit_world_walk(self, world, areas.keys)
+      end
     end
     b.finalize_program
     [b.program, b.made_data_pack_file]
+  end
+
+  # The first room scrolled a pixel right and down every pass, so the whole view is drawn again
+  # every pass.
+  def self.emit_world_scroll(builder, world)
+    builder.instance_eval do
+      across = var :across, 0
+      game_loop do
+        across += 1
+        world.scroll_to across, across
+      end
+    end
   end
 
   # The first room on the first passes, and each next room two passes after the one before.
@@ -438,6 +493,44 @@ class TestPackBackgroundAreas < Minitest::Test
       program, = world_game_and_file(folder, areas, 126, options: left_out)
 
       assert(program.walk.any? { |node| node.kind == :background && node.from_file })
+    end
+  end
+
+  # The same over a slot of an original's size, 1024 tiles in 16 banks, every turn: the build
+  # holds the slot's tiles once, and each cell names its bank and turn.
+  def test_a_world_over_a_slot_of_an_originals_size_builds_with_the_pack_left_out
+    areas = PackBackgroundAreaGames.world_areas(%i[field forest lake marsh], 126, 86, big: true)
+    left_out = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
+    Dir.mktmpdir do |folder|
+      program, = world_game_and_file(folder, areas, 126, options: left_out)
+
+      assert(program.walk.any? { |node| node.kind == :background && node.from_file })
+    end
+  end
+
+  # More tiles than a background read as the game starts can hold, the told cells of a slot
+  # among them: the build stops and says how many it can hold.
+  def test_more_tiles_than_a_background_read_at_start_holds_is_a_friendly_error
+    left_out = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
+    Dir.mktmpdir do |folder|
+      from = areas_original(folder)
+      error = assert_raises(ArgumentError) do
+        b = VBlank::Builder.new(options: left_out)
+        b.instance_eval do
+          screen :tiled
+          pack = data_pack from: from, version: "1" do |slots|
+            slots.tiles :town_video, at: TOWN_TILES_AT, count: 4
+            slots.map_cells :town_map, at: 0, count: 4
+            slots.colors :town_colors, at: TOWN_COLORS_AT, count: 32
+            slots.map_cells :changes, at: 0, count: 0x8000
+          end
+          background :town, tiles: pack[:town_video], map: pack[:town_map].as_map(across: 2), colors: pack[:town_colors],
+                            set_cells: pack[:changes]
+        end
+      end
+
+      assert_match(/background :town/, error.message)
+      assert_match(/at most/, error.message)
     end
   end
 

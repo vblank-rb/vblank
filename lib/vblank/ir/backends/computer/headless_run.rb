@@ -120,6 +120,11 @@ module VBlank
           # standing still is not rebuilt every frame.
           attr_reader :repaints_painted
 
+          # How many times the run set up a tile as drawn of a background read from the start file
+          # for drawing (a tile's row in C, a tile in JavaScript): what a test reads to see that such
+          # a tile is not worked out again for every pixel. Nil for a runtime that does not count it.
+          attr_reader :drawn_tiles_set_up
+
           # The picture the run ended on as the window shows it (a Framed): for a game shown in a
           # border, the whole screen with the border round the game's. The interpreter has no
           # window, and plays the game's screen alone.
@@ -651,6 +656,8 @@ module VBlank
             @framed = framed_now
             @buffered = rows.include?("pages 2")
             @repaints_painted = Integer(rows.find { |row| row.start_with?("repaints ") }.split(" ").last)
+            set_up = rows.find { |row| row.start_with?("drawn-tiles-set-up ") }
+            @drawn_tiles_set_up = set_up && Integer(set_up.split(" ").last)
             @moments << Moment.new(frame: :end, variables: @vars, picture: self.class.picture_check(@screen.shown),
                                    sounds: @audio_played.size, sprites: @sprites, collections: game_state.except(:vars),
                                    sounding: active_samples, motor: motor_on?)

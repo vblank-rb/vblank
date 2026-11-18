@@ -670,11 +670,11 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   `test/pack_scores_at_start_tests.rb`.
 - `background :city, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: 32` — a background of the
   original's own tiles, map and colours (`backgrounds.md`); `map: pack[:map].as_map(across: 32)` carries the width
-  in place of `across:`, the same there. The program holds room for the most different tiles as drawn the
-  map can name (each tile of the slot in each bank and turn, or a tile for each cell where that is fewer),
-  see-through until the runtime reads the map at power-on, keeps each different tile once, fills it from the
-  cell's tile, turn and bank, and writes each cell of the map to name it (`IR::StartFile::Background`,
-  `rg_start_file_fill_background`). Areas over one slot of tiles and one of colours share that room. Each bank of the slot is a list named
+  in place of `across:`, the same there. The program holds room for the slot's tiles once each, as their
+  places, and a table of colours for each bank; the runtime fills both at power-on, gives each different
+  tile as drawn the map names (a tile, its bank, its turn) a number, and writes each cell of the map to name
+  it, applying the bank and turn as the cell is drawn, as the console does (`IR::StartFile::Background`,
+  `rg_start_file_fill_background`). Areas over one slot of tiles and one of colours share the slot. Each bank of the slot is a list named
   `:<slot>_<bank>`, as built all-in-one, which `draw_with` takes to give that bank a list of the game's own.
   The build does not know a bank's colours, so a bank's list holds a marker for each, as a list declared from
   the pack does (below): `color_walk` of a bank, `recolor` with one, a picture drawn in one and a bank drawn

@@ -140,6 +140,7 @@ static int32_t frames_begun;    /* a frame boundary has been reached (Reference 
 static int32_t kind = -1;       /* the kind of screen up; none before the first `screen` */
 static int32_t owed;            /* a rebuild of the whole view is owed (Reference#request_repaint) */
 static int32_t repaints_painted;   /* how many times the whole view was built again (rg_screen_repaints_painted) */
+static int64_t drawn_tiles_set_up; /* rows of tiles as drawn set up (rg_screen_drawn_tiles_set_up) */
 /* The interpreter asks for a rebuild every time the scroll or the sprites are set. Here a setting
  * that moved nothing asks for nothing and only notes that it would have (rebuild_skipped), since
  * the picture is the one a rebuild would paint. That stops being so once the picture is touched:
@@ -957,6 +958,7 @@ void rg_scene_redraw_sprites(int32_t brings_scenery) {
 int32_t rg_screen_two_pages(void) { return pixels != viewed; }
 
 int32_t rg_screen_repaints_painted(void) { return repaints_painted; }
+int64_t rg_screen_drawn_tiles_set_up(void) { return drawn_tiles_set_up; }
 
 /* Framebuffer#to_a: the page a viewer is looking at as it is STORED, with no window moved over
  * it and no fade or tint mixed in. */

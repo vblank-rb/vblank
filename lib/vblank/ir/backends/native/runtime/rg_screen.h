@@ -160,6 +160,9 @@ int32_t rg_screen_two_pages(void);
 /* How many times the whole view has been built again from its scenery and sprites since the game
  * began. A test reads it to see that a screen standing still is not rebuilt every frame. */
 int32_t rg_screen_repaints_painted(void);
+/* How many times a row of a tile as drawn of a background read from the start file was set up for
+ * drawing (rg_tiled.c's paint_map_row), counted for the tests of what drawing one costs. */
+int64_t rg_screen_drawn_tiles_set_up(void);
 
 /* The sprites the game last put on screen (Reference#sprites), back to front: how many, and
  * each by its place among them. A row holds whose the sprite is and which picture it shows, both

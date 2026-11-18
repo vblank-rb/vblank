@@ -239,6 +239,7 @@ def rg_headless_finish
   rg_headless_print_moment("end", !@rg_picture_out)
   rg_headless_print_pixels("stored", rg_screen_stored) unless @rg_picture_out
   $stdout.write("repaints #{rg_screen_repaints_painted}\n")
+  $stdout.write("drawn-tiles-set-up #{rg_screen_drawn_tiles_set_up}\n")
   $stdout.write("pages #{rg_screen_two_pages != 0 ? 2 : 1}\n")
   $stdout.flush
   @rg_picture_out&.close

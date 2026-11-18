@@ -160,31 +160,41 @@ module VBlank
         # of a bank (StartFile, "MARKERS"): the size and the lists' names are true, and nothing
         # else of them is.
 
-        # The tiles a build for a computer keeps for the maps read from the file, each different
-        # tile as drawn once (StartFile.cell_tile_pools), in the order of their first sets.
+        # What a build for a computer keeps for the maps read from the file: the slot's tiles as
+        # places and a table of colours for each bank, for the records drawn from the same art
+        # together (StartFile.cell_tile_pools), in the order of their first sets.
         def cell_tile_pools = StartFile.cell_tile_pools(from_file)
 
-        # How many tiles a build for a computer keeps for the maps read from the file, all the
-        # sets together.
-        def tiles_drawn_from_file = cell_tile_pools.sum(&:room)
+        # How many of the background's tiles hold the tables of colours of the maps read from the
+        # file, all the sets together. They follow the tiles the program holds, and are written
+        # again for each set of colours, as every tile of the background is.
+        def tiles_drawn_from_file = cell_tile_pools.sum(&:tables)
 
-        # Where each pool of #cell_tile_pools has its first tile among the background's tiles: after
-        # the tiles the program holds, and after every earlier pool's.
-        def first_tiles_of_pools
-          firsts = []
-          cell_tile_pools.reduce(tiles.length) do |first, pool|
-            firsts << first
-            first + pool.room
-          end
-          firsts
-        end
+        # How many tiles of places the maps read from the file keep, all the sets together: each
+        # tile of each pool's slot once, whatever colours it is drawn in.
+        def places_from_file = cell_tile_pools.sum(&:places)
 
-        # Where the tiles each record of +from_file+ names start among the background's tiles: its
-        # pool's first (#first_tiles_of_pools).
+        # Where each pool of #cell_tile_pools has its first table among the background's tiles:
+        # after the tiles the program holds, and after every earlier pool's.
+        def first_tiles_of_pools = running_starts(tiles.length, cell_tile_pools.map(&:tables))
+
+        # Where each pool's first tile of places is among the tiles of places (#places_from_file).
+        def first_places_of_pools = running_starts(0, cell_tile_pools.map(&:places))
+
+        # Where the tables each record of +from_file+ draws from start among the background's tiles:
+        # its pool's first (#first_tiles_of_pools).
         def first_tiles_from_file
           firsts = first_tiles_of_pools
           pools = cell_tile_pools
           from_file.each_index.map { |set| firsts.fetch(pools.index { |pool| pool.sets.include?(set) }) }
+        end
+
+        # The start of each of +sizes+ laid one after another from +first+.
+        private def running_starts(first, sizes)
+          sizes.each_with_object([]) do |size, starts|
+            starts << first
+            first += size
+          end
         end
 
         # Each of +palettes+ as a tile drawn from it gives which list it was drawn from

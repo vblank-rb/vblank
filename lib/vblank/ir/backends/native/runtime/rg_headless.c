@@ -294,6 +294,7 @@ static _Noreturn void finish(void) {
   print_moment("end", !picture_out);
   if (!picture_out) print_pixels("stored", rg_screen_stored());
   printf("repaints %d\npages %d\n", (int)rg_screen_repaints_painted(), rg_screen_two_pages() ? 2 : 1);
+  printf("drawn-tiles-set-up %lld\n", (long long)rg_screen_drawn_tiles_set_up());
   fflush(stdout);
   if (sound_out) fclose(sound_out);
   if (picture_out) fclose(picture_out);

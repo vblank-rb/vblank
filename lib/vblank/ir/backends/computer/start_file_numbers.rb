@@ -42,10 +42,13 @@ module VBlank
           # a cell of its map is, where the cells it is told by a slot are in the file, how many,
           # and which of the tiles the game holds is the first of theirs, how many tiles each
           # set of colours is, the maps of every set of tiles together, where the map starts in the
-          # map cells, which number of the slots-before array is its, and whether it is the first and
-          # the last map of its pool (StartFileFills#record_start_file_background_fill), and the bit
-          # of a cell read for being in front of the sprites (one never set where none is read).
-          BACKGROUND_HEADER_NUMBERS = 30
+          # map cells, where its pool's tiles of places start in the tile pixels, and whether it is
+          # the first and the last map of its pool (StartFileFills#record_start_file_background_fill),
+          # the bit of a cell read for being in front of the sprites (one never set where none is
+          # read), the number the runtime knows the background by, how many tiles a bank's table
+          # of colours takes, the pool's first tile of places among the background's, and the
+          # background's first table among its tiles.
+          BACKGROUND_HEADER_NUMBERS = 34
 
           # The numbers before the tile layout in a pose's rules (StartFileFills#start_file_pose_rules):
           # what is filled, the totals, how many copies of it there are, the turn, the colours, where

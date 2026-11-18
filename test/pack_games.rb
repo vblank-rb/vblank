@@ -849,6 +849,11 @@ module PackGames
         areas = PackBackgroundAreaGames.world_areas(WORLD_ROOMS, WORLD_ACROSS, WORLD_DOWN)
         built(*world_game_and_file(folder, areas, WORLD_ACROSS, options: options))
       end,
+      # Four rooms of 126x86 cells over a slot of an original's size: 1024 tiles in 16 banks, every turn.
+      game(:background_walking_a_world_of_big_rooms_over_a_big_tile_slot, passes: 9) do |folder, options|
+        areas = PackBackgroundAreaGames.world_areas(%i[field forest lake marsh], 126, 86, big: true)
+        built(*world_game_and_file(folder, areas, 126, options: options))
+      end,
       # The same over one slot of tiles and one of colours: one set of tiles, the map alone walked.
       game(:background_walking_between_areas_of_two_widths_over_one_tile_slot, passes: WALKS_ON + 4) do |folder, options|
         made = areas_game_and_file(areas_original(folder), options: options, one_tile_slot: true, across: ACROSS_BY_AREA) do |world|
@@ -866,6 +871,31 @@ module PackGames
       game(:tile_taking_turns_in_one_area_of_a_walking_background, passes: 9) do |folder, options|
         made = areas_game_and_file(areas_original(folder), options: options, turning: true) do |world, blocks|
           PackBackgroundAreaGames.emit_turning_walk(self, world, blocks)
+        end
+        built(*made)
+      end,
+      # A tile taking turns in both areas over one slot of tiles, which share what the slot draws.
+      game(:tile_taking_turns_in_areas_over_one_tile_slot, passes: 9) do |folder, options|
+        made = areas_game_and_file(areas_original(folder), options: options, turning: true, one_tile_slot: true) do |world, blocks|
+          PackBackgroundAreaGames.emit_turning_walk(self, world, blocks)
+        end
+        built(*made)
+      end,
+      # A bank the game recolours, followed by both areas over one slot of tiles and colours, which
+      # share the bank's table of colours; a sprite drawn with the bank too, as `recolor` wants.
+      game(:bank_recolored_in_areas_over_one_tile_slot, passes: 9) do |folder, options|
+        made = areas_game_and_file(areas_original(folder), options: options, one_tile_slot: true) do |world|
+          colors :other, MadeUpOriginalLayouts::PALETTE.rotate(3).each_with_index.map { |color, at| at.zero? ? :transparent : color }
+          world.draw_with({ town_colors_0: :town_colors_0, town_colors_1: :town_colors_1 })
+          image :dot, width: 8, height: 8, places: Array.new(64, 2), colors: :town_colors_1
+          sprite(:dot, at: [40, 40]).draw_with :town_colors_1
+          pass = var :pass, 0
+          game_loop do
+            pass += 1
+            recolor :town_colors_1, %i[other town_colors_0], showing: pass - 2 if pass >= 2
+            world.show_map :castle if pass == 4
+            world.show_map :town if pass == 7
+          end
         end
         built(*made)
       end

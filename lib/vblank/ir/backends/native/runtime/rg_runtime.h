@@ -188,15 +188,28 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  *
  * rg_start_file_fill_background: the tiles of a background whose map, tiles and colours are all in
  * the file (IR::StartFile::Background), its map in VBlank's own record or as the original's console
- * keeps it, and its tiles and colours as that console keeps them. Which tiles the map
- * names is in the file, so the game holds room for the most different tiles as drawn the map can
- * name (a tile of the file, its bank, its turn and its mark for being in front), shared by the maps
- * of one pool (StartFileFills#record_start_file_background_fill), and this keeps each different tile
- * once, in the order the pool's maps first name it, fills it (the cell's tile, turned as the cell
- * says, in the colours of the cell's bank) and writes each place of the map in +map_cells+ to name
- * it, as a console's map names a tile of video memory. It keeps which tile it gave each tile as
- * drawn from the pool's first map to its last, and writes in +slots_before+ how many the pool had
- * before this map, by which the routines below tell each tile's first place in the map.
+ * keeps it, and its tiles and colours as that console keeps them, kept as the console keeps them.
+ * Which tiles the map names, in which bank and turned how, is in the file. So the game holds room
+ * for the slot's tiles once each as places, and a table of colours for each bank among the
+ * background's tiles, in each set of colours, both shared by the maps of one pool
+ * (StartFileFills#record_start_file_background_fill). On a pool's first map this fills both
+ * (the places from where the pool's places start, a table's first place RG_SEE_THROUGH). Then it
+ * gives each different tile as drawn the pool's maps name (a tile, its bank, its turn and its mark
+ * for being in front) a tile as drawn of the background's (rg_drawn_tiles, below), in the order
+ * the maps first name it, and writes each place of the map in +map_cells+ to name it: the
+ * background's tiles' count and then that one's number, as a console's map names a tile of video
+ * memory, a palette and a turn. A cell naming a tile that takes turns through pictures (+moving+,
+ * as rg_start_file_fill_moving_cells reads it, with no tiles where none does) is a tile as drawn
+ * showing its run's tile for its bank and turn, and that run is marked in +pointed+. It keeps
+ * which cell it gave each tile as drawn from the pool's first map to its last.
+ *
+ * rg_drawn_tiles: the tiles as drawn of the background the runtime knows by +background+, a
+ * record each: the tile of places it shows, counted from the background's first
+ * (RG_DRAWN_PLACES_MASK), its table counted from the background's first
+ * (RG_DRAWN_TABLE_SHIFT, RG_DRAWN_TABLE_MASK), RG_DRAWN_MIRRORED, RG_DRAWN_UPSIDE_DOWN,
+ * RG_DRAWN_IN_FRONT; or with RG_DRAWN_RUN the run of tiles the game paints it shows, and which tile
+ * of it in the table's bits. NULL for a background with none. A map naming more than the cells
+ * can number (RG_MOST_DRAWN_CELL) stops the game in plain words.
  * +rules+ are RG_FILL_BACKGROUND_HEADER_NUMBERS numbers: how many tile pixels there are in all,
  * where this background's start, where its map is in the file, how many cells the map has, how many
  * to a row, how many tiles a side a cell is, 1 where a cell's two bytes are high byte first; then
@@ -219,9 +232,12 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * first of theirs, each cell of the slot painting the tile the game holds after the one before
  * as a cell of the map paints its own; and how many tiles one set of colours is, every set of
  * tiles' maps together, by which one set's tiles follow the one before; and where the map starts in
- * +map_cells+, which number of +slots_before+ is this map's, and 1 where this map is the first of
- * its pool and where it is the last (0 otherwise), and the bit of a cell read for being in front of
- * the sprites (one past the cell's last where none is read). Then the two
+ * +map_cells+, where the pool's places start in the tile pixels, and 1 where this map is the first
+ * of its pool and where it is the last (0 otherwise), the bit of a cell read for being in front of
+ * the sprites (one past the cell's last where none is read), the number the runtime knows the
+ * background by, how many tiles a bank's table takes, the pool's first tile of places counted from
+ * the background's first, and the background's first table among its tiles. Which of the
+ * background's tiles is the map's first (above) is its pool's first table. Then the two
  * layouts, as rg_start_file_fill_picture has them, and for each set each bank's colours: the bank
  * of the file they are, or -1, and then a colour for each place, which the game holds, where it
  * is -1. The tiles of one set follow those of the one before. Place 0 is RG_SEE_THROUGH. A cell
@@ -231,23 +247,22 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * rg_start_file_fill_followed_tiles: which of such a background's tiles are drawn from one list of
  * colours the game changes, for a background that follows several (rg_background_follow, whose
  * rules +followed+ is: how many tile pixels, the background, how many tiles, and the tiles). The
- * game writes the tiles it holds and leaves room for every tile the map's pool keeps and every cell
- * a slot told it; which bank a cell is of is in the file, so this adds each tile the map names
- * first (by +map_cells+ and +slots_before+, as rg_start_file_fill_background wrote them) whose bank
- * has its bit set in +banks+ (bank 0 the lowest bit), and counts them in. The front and moving
- * routines below read the tiles so too, each tile once. +rules+ are the
- * background's own, as rg_start_file_fill_background has them. A cell naming a bank past the
- * colours follows no list.
+ * game writes the tiles it holds and the tables of the banks it follows, which the maps' cells
+ * are drawn through, and leaves room for every cell a slot told it; which bank a told cell is of
+ * is in the file, so this adds each told cell's tile whose bank has its bit set in +banks+ (bank 0
+ * the lowest bit), and counts them in. +rules+ are the background's own, as
+ * rg_start_file_fill_background has them. A cell naming a bank past the colours follows no list.
  *
- * rg_start_file_fill_front_tiles: which tiles of such a background are in front of the sprites:
- * the byte of each cell's own tile in +front+, from +start+ on, set to the cell's bit +front_bit+
- * (Nodes::Background#in_front), the map's cells and then the cells a slot told it. +rules+ are the
- * background's own, as rg_start_file_fill_background has them. The tiles the game holds keep
- * the bytes the build gave them.
+ * rg_start_file_fill_front_tiles: which of the tiles the cells a slot told such a background are in
+ * front of the sprites: the byte of each in +front+, from +start+ on, set to the cell's bit
+ * +front_bit+ (Nodes::Background#in_front). A map's cell keeps its mark in its tile as drawn.
+ * +rules+ are the background's own, as rg_start_file_fill_background has them. The tiles the game
+ * holds keep the bytes the build gave them.
  *
- * rg_start_file_fill_moving_cells: the cells of such a background that name a tile taking turns
- * through pictures (IR::StartFile::MovingTile), each shown as a tile of a run of tiles the game
- * paints, chosen by the cell's bank and turn. +painted+ is rg_game_painted_tiles, written where it
+ * rg_start_file_fill_moving_cells: the cells a slot told such a background that name a tile taking
+ * turns through pictures (IR::StartFile::MovingTile), each shown as a tile of a run of tiles the
+ * game paints, chosen by the cell's bank and turn (a map's cell is a tile as drawn showing the run,
+ * rg_start_file_fill_background). +painted+ is rg_game_painted_tiles, written where it
  * can be. +rules+ are the background's own, as rg_start_file_fill_background has them. +moving+ is:
  * where the background's painted tiles start in +painted+, how many moving tiles, and for each its
  * tile as a cell names it and then, for each bank and each of the four turns (none, mirrored,
@@ -380,13 +395,23 @@ void rg_start_file_open(const int32_t *rules, const char *missing, const char *w
 void rg_start_file_fill_table(void *table, int32_t kept, int32_t count, int32_t at, int32_t high_byte_first);
 void rg_start_file_fill_bytes(int8_t *samples, int32_t at, int32_t count, int32_t file_at);
 void rg_start_file_fill_picture(const int32_t *rules);
-void rg_start_file_fill_background(const int32_t *rules, int16_t *map_cells, int32_t *slots_before);
-void rg_start_file_fill_followed_tiles(int32_t *followed, const int32_t *rules, int32_t banks, const int16_t *map_cells,
-                                       const int32_t *slots_before);
-void rg_start_file_fill_moving_cells(int32_t *painted, const int32_t *rules, const int32_t *moving, int32_t *pointed,
-                                     const int16_t *map_cells, const int32_t *slots_before);
-void rg_start_file_fill_front_tiles(uint8_t *front, const int32_t *rules, int32_t start, int32_t front_bit, const int16_t *map_cells,
-                                    const int32_t *slots_before);
+void rg_start_file_fill_background(const int32_t *rules, int16_t *map_cells, const int32_t *moving, int32_t *pointed);
+void rg_start_file_fill_followed_tiles(int32_t *followed, const int32_t *rules, int32_t banks);
+void rg_start_file_fill_moving_cells(int32_t *painted, const int32_t *rules, const int32_t *moving, int32_t *pointed);
+void rg_start_file_fill_front_tiles(uint8_t *front, const int32_t *rules, int32_t start, int32_t front_bit);
+const uint32_t *rg_drawn_tiles(int32_t background);
+
+/* A tile as drawn of a background read from the file (rg_drawn_tiles). */
+#define RG_DRAWN_PLACES_MASK 0xFFFFu
+#define RG_DRAWN_TABLE_SHIFT 16
+#define RG_DRAWN_TABLE_MASK 0xFFFu
+#define RG_DRAWN_MIRRORED (1u << 28)
+#define RG_DRAWN_UPSIDE_DOWN (1u << 29)
+#define RG_DRAWN_IN_FRONT (1u << 30)
+#define RG_DRAWN_RUN (1u << 31)
+/* The highest number a cell of a map can hold, and the one a cell holding no tile does. */
+#define RG_MOST_DRAWN_CELL 32767
+#define RG_FILL_CELL_EMPTY (-1)
 void rg_start_file_fill_painted_tiles(uint8_t *table, int32_t tiles, const int32_t *rules);
 void rg_start_file_fill_pose(const int32_t *rules);
 void rg_start_file_fill_tile_pose(int32_t *pieces, const int32_t *rules);

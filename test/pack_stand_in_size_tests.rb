@@ -56,6 +56,81 @@ module PackStandInSizeTests
       names = Array.new(rooms) { |at| :"room_#{at}" }
       world_game_and_file(folder, PackBackgroundAreaGames.world_areas(names, across, down), across, options: LEFT_OUT).first
     end
+
+    # The same over a slot of an original's size (PackBackgroundAreaGames::BIG_SLOT_TILES).
+    def big_world_left_out(folder, rooms, across, down)
+      names = Array.new(rooms) { |at| :"room_#{at}" }
+      world_game_and_file(folder, PackBackgroundAreaGames.world_areas(names, across, down, big: true), across, options: LEFT_OUT).first
+    end
+
+    # One room of that slot, +across+ by +down+ cells, scrolling every pass, built with its pack left
+    # out, and the pack its all-in-one build makes.
+    def scrolling_room_and_file(folder, across, down)
+      areas = PackBackgroundAreaGames.world_areas(%i[field], across, down, big: true)
+      _, file = world_game_and_file(folder, areas, across, options: VBlank::Cartridge::Options.new(for_computer: true), scrolling: true)
+      [world_game_and_file(folder, areas, across, options: LEFT_OUT, scrolling: true).first, file]
+    end
+
+    # One room of that slot whose every cell is a different tile as drawn, +across+ by +down+ cells,
+    # built with its pack left out, and its pack: made by a game declaring the slots alone, since a
+    # build holding the room all-in-one would hold a picture for each cell.
+    def different_room_and_file(folder, across, down)
+      areas = PackBackgroundAreaGames.world_areas(%i[field], across, down, different: true)
+      _, file = world_game_and_file(folder, areas, across, options: VBlank::Cartridge::Options.new(for_computer: true), scenery: false)
+      [world_game_and_file(folder, areas, across, options: LEFT_OUT).first, file]
+    end
+  end
+
+  # A TILE AS DRAWN IS SET UP ONCE FOR EACH TILE'S ROW IT DRAWS, never for each pixel: what the tile
+  # needs that is the same for all of its pixels (its record, its tile of places, its table in the
+  # set of colours drawn now) is worked out once, and a pixel is then a read of its place and a read
+  # of its colour. A room scrolling every pass is drawn again every pass; every row of the screen
+  # crosses at most TILES_A_SCREEN_ROW tiles. Counted by the runtime (drawn-tiles-set-up), exact
+  # where a time is not.
+  def test_a_tile_as_drawn_is_set_up_once_for_each_row_of_it_drawn
+    run = Dir.mktmpdir do |folder|
+      program, file = Rooms.new.scrolling_room_and_file(folder, 40, 30)
+      headless_run.hand_file(file).run(program_played(program), frames: 12)
+    end
+
+    assert_operator run.drawn_tiles_set_up, :>, 0, "tiles as drawn set up"
+    assert_operator run.drawn_tiles_set_up, :<=, run.repaints_painted * SCREEN_ROWS * TILES_A_SCREEN_ROW,
+                    "tiles as drawn set up over #{run.repaints_painted} repaints"
+  end
+
+  # The rows of the screen, and the most tiles one crosses: thirty whole ones and one cut at each edge.
+  SCREEN_ROWS = 160
+  TILES_A_SCREEN_ROW = (240 / 8) + 2
+
+  # A MAP NAMING MORE DIFFERENT TILES AS DRAWN THAN A CELL CAN NUMBER stops the game as it starts, in
+  # plain words saying to build all-in-one. Which tiles a map names is in the player's file, which the
+  # build never sees, so it cannot refuse the game while it builds (Builder::PackBackgrounds
+  # #refuse_oversized_map_at_start!). A room of 200x170 cells over 1024 tiles in 16 banks, every cell
+  # different, names 34000.
+  def test_a_map_naming_more_tiles_as_drawn_than_fit_stops_the_game_in_plain_words
+    error = Dir.mktmpdir do |folder|
+      program, file = Rooms.new.different_room_and_file(folder, 200, 170)
+      assert_raises(VBlank::IR::ProgramError) { headless_run.hand_file(file).run(program_played(program), frames: 2) }
+    end
+
+    assert_match(/more different tiles/, error.message)
+    assert_match(/all-in-one/, error.message)
+  end
+
+  # ...AND A SLOT OF AN ORIGINAL'S SIZE IS HELD ONCE, ITS TILES AS PLACES: each cell names its tile,
+  # its bank and its turn, as the console's map does, so the room grows with the slot's tiles and
+  # not with its banks times its turns. Four rooms of 126x86 cells over 1024 tiles in 16 banks hold
+  # the 1024 tiles, a table of colours for each bank (and one for a bank past them), and a
+  # stand-in for each bank in each room.
+  def test_a_world_over_a_slot_of_an_originals_size_holds_the_slots_tiles_once
+    room = Dir.mktmpdir do |folder|
+      lowering_class.new(program_played(Rooms.new.big_world_left_out(folder, 4, 126, 86))).start_file_tile_room_bytes
+    end
+    tiles = PackBackgroundAreaGames::BIG_SLOT_TILES
+    banks = PackBackgroundAreaGames::BIG_SLOT_BANKS.length
+    most = (tiles + (banks + 1) + (4 * banks)) * TILE_PIXEL_BYTES
+
+    assert_operator room, :<=, most, "a world over a slot of #{tiles} tiles in #{banks} banks holds #{room} bytes of tiles"
   end
 
   # How many different tiles as drawn the world's slot can make: four tiles, in two banks or a bank

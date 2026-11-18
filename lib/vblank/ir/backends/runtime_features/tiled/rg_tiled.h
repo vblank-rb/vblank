@@ -128,7 +128,15 @@ void rg_game_work_out_bends(void);
  * RG_BG_FRONT is RG_NOT_IN_FRONT for a background that did not ask for cells in front of the
  * sprites, and for one that did, where its tiles start in rg_game_tiles_in_front: a byte a tile, 1
  * for a tile in front (Nodes::Background#in_front), which the view's rebuild paints again over every
- * sprite once every level is painted (Reference#paint_cells_in_front). */
+ * sprite once every level is painted (Reference#paint_cells_in_front).
+ *
+ * A BACKGROUND READ FROM THE START FILE IS KEPT AS THE CONSOLE KEEPS IT (rg_start_file_fill_background):
+ * RG_BG_PLACES is where the tiles of its slots start in rg_game_tile_pixels, each once as its places
+ * and not in colours, and RG_BG_TABLES which of its tiles is the first of its tables of colours, a
+ * bank's colours a table, written again in each set of colours as its other tiles are. A cell of its
+ * map numbered RG_BG_TILES or more names a tile as drawn (rg_drawn_tiles): a tile of places, a table
+ * and a turn, applied as the cell is drawn. Both are RG_NOT_READ_AT_START for any other background. */
+#define RG_NOT_READ_AT_START (-1)
 #define RG_SHOWN_WITH_OTHERS 0
 #define RG_SHOWN_ALONE 1
 #define RG_SHOWN_WITHOUT_SPRITES 2
@@ -144,7 +152,7 @@ enum {
   RG_BG_TILES_START, RG_BG_SCENE, RG_BG_LEVEL, RG_BG_ON_ARRIVAL, RG_BG_STACK_PLACE,
   RG_BG_SEE_THROUGH, RG_BG_BENT, RG_BG_FADE_PLACE, RG_BG_TILES, RG_BG_COLOR_STEPS, RG_BG_IN_BLOCKS,
   RG_BG_CAN_TURN, RG_BG_PAINTED, RG_BG_RUN_COLORS, RG_BG_BAR_TOP, RG_BG_ABOVE_ROW, RG_BG_ALONE, RG_BG_FRONT,
-  RG_BG_FIELDS
+  RG_BG_PLACES, RG_BG_TABLES, RG_BG_FIELDS
 };
 extern const int32_t rg_game_backgrounds[];
 /* Written as a game whose background is read from the start file starts (rg_start_file_fill_front_tiles). */

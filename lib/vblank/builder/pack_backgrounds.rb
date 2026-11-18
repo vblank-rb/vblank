@@ -920,21 +920,41 @@ module VBlank
       end
 
       # The tiles a background read as the game starts keeps for its maps (+records+, its
-      # IR::StartFile::Background records): each different tile as drawn once, the room for which
-      # is the most its slot can draw, or a tile for each place of its maps where that is fewer
-      # (IR::StartFile.cell_tile_pools). +held+ is how many tiles the build holds for it besides:
-      # a stand-in for each bank, the runs of tiles that take turns, and the told cells'.
+      # IR::StartFile::Background records): its slots' tiles once each, as places, and a table of
+      # colours for each bank (IR::StartFile.cell_tile_pools). +held+ is how many tiles the build
+      # holds for it besides: a stand-in for each bank, the runs of tiles that take turns, and the
+      # told cells'. Those and the tables are numbered among the background's tiles, and each
+      # different tile as drawn the maps name is numbered after them as the file is read, so the
+      # build leaves room for those and the runtime stops the game in plain words if a map names
+      # more than that room. The build cannot count them itself: which tiles, banks and turns a map
+      # names is in the player's copy, and a build that leaves its pack out never reads it (the
+      # most the slots could name, every tile in every bank and turn, is more than a cell can
+      # number for any slot of an original's size, so refusing by it would refuse every such game).
       def refuse_oversized_map_at_start!(name, records, held)
-        most = MOST_TILES_READ_AT_START - held
-        kept = IR::StartFile.cell_tile_pools(records).sum(&:room)
-        return if kept <= most
+        pools = IR::StartFile.cell_tile_pools(records)
+        tables = pools.sum(&:tables)
+        kept = held + tables
+        if kept > MOST_TILES_READ_AT_START - TILES_LEFT_FOR_MAPS || tables > MOST_TABLE_TILES
+          raise ArgumentError, "background :#{name} reads its maps from the data pack as the game starts, and holds " \
+                               "#{kept} tiles before its maps name any. Such a background can hold " \
+                               "#{MOST_TILES_READ_AT_START - TILES_LEFT_FOR_MAPS} at most, and tables of colors for " \
+                               "#{MOST_TABLE_TILES} tiles. To fix this, tell it fewer cells in set_cells:, give it fewer " \
+                               "slots of colors, or build the game all-in-one."
+        end
+        return if pools.sum(&:places) <= MOST_PLACE_TILES
 
-        raise ArgumentError, "background :#{name} reads its maps from the data pack as the game starts, and keeps " \
-                             "room for #{kept} different tiles for them. Such a background can keep #{most} at most. " \
-                             "A map keeps room for each tile of its slot, in each bank of colors and each turn, or for " \
-                             "each cell when that is fewer. To fix this, make the maps smaller, give areas fewer slots " \
-                             "of tiles and colors, or build the game all-in-one."
+        raise ArgumentError, "background :#{name} reads its maps from the data pack as the game starts, and its slots " \
+                             "of tiles hold #{pools.sum(&:places)} tiles. Such a background can read #{MOST_PLACE_TILES} " \
+                             "at most. To fix this, give its areas fewer slots of tiles, or build the game all-in-one."
       end
+
+      # Room among a background's tiles for the tiles as drawn its maps name, read as the game starts:
+      # a few thousand, as a console's video memory holds.
+      TILES_LEFT_FOR_MAPS = 4096
+      # How many tiles of tables of colours, and of places, a cell read as the game starts can name
+      # (each runtime's record of a tile as drawn keeps them in 12 and 16 bits).
+      MOST_TABLE_TILES = 4096
+      MOST_PLACE_TILES = 65_536
 
       # The picture of +tile+ (a Console::CellTile), drawn from the list of its bank. Nil for a tile
       # that draws nothing, left empty in the map.

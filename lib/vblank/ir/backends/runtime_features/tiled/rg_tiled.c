@@ -179,20 +179,55 @@ static void forget_own_cells(int32_t background) {
  * background is drawn with now (Reference#tile_colors): its tiles as drawn with each step come
  * one whole set after another. A tile the game paints is read from what it last copied in, and
  * shown in its run's colors as the background is drawn with them now. */
-static uint16_t tile_pixel(int32_t background, int32_t cell, int64_t tx, int64_t ty) {
-  int32_t painted = background_field(background, RG_BG_PAINTED);
-  if (painted != RG_NOT_PAINTED && rg_game_painted_tiles[painted + 2 * cell] != RG_NOT_PAINTED) {
-    int32_t run = rg_game_painted_tiles[painted + 2 * cell], which = rg_game_painted_tiles[painted + 2 * cell + 1];
-    /* A big tile is kept as four squares, left to right and then down. */
-    if (background_field(background, RG_BG_TILE_W) == 2 * RUN_TILE_SIDE) {
-      which = which * 4 + (int32_t)(ty / RUN_TILE_SIDE) * 2 + (int32_t)(tx / RUN_TILE_SIDE);
-      tx %= RUN_TILE_SIDE;
-      ty %= RUN_TILE_SIDE;
-    }
-    int32_t place = places_of(run)[which * RUN_TILE_PIXELS + ty * RUN_TILE_SIDE + tx];
-    int64_t set = (int64_t)tile_set_now(background) * rg_game_picture_sizes[RG_SIZE_RUNS] + run;
-    return rg_game_run_colors[background_field(background, RG_BG_RUN_COLORS) + set * PLACES_IN_RUN_COLORS + place];
+/* One pixel of tile +which+ of the run +run+ the game paints, in its run's colors as the background
+ * is drawn with them now. */
+static uint16_t run_pixel(int32_t background, int32_t run, int32_t which, int64_t tx, int64_t ty) {
+  /* A big tile is kept as four squares, left to right and then down. */
+  if (background_field(background, RG_BG_TILE_W) == 2 * RUN_TILE_SIDE) {
+    which = which * 4 + (int32_t)(ty / RUN_TILE_SIDE) * 2 + (int32_t)(tx / RUN_TILE_SIDE);
+    tx %= RUN_TILE_SIDE;
+    ty %= RUN_TILE_SIDE;
   }
+  int32_t place = places_of(run)[which * RUN_TILE_PIXELS + ty * RUN_TILE_SIDE + tx];
+  int64_t set = (int64_t)tile_set_now(background) * rg_game_picture_sizes[RG_SIZE_RUNS] + run;
+  return rg_game_run_colors[background_field(background, RG_BG_RUN_COLORS) + set * PLACES_IN_RUN_COLORS + place];
+}
+
+/* The tile as drawn a cell numbered +cell+ names, a cell of a background read from the start file
+ * numbered past its tiles (rg_drawn_tiles). Such a cell is only ever written by
+ * rg_start_file_fill_background, which keeps its record first, and rg_background_set_tile writes no
+ * tile past RG_BG_TILES, so the records are there whenever such a cell is. */
+static uint32_t drawn_tile(int32_t background, int32_t cell) {
+  return rg_drawn_tiles(background)[cell - background_field(background, RG_BG_TILES)];
+}
+
+/* Where the tables of colours of a background read from the start file start in the tile pixels,
+ * in the set of colors it is drawn with now. */
+static int64_t tables_now(int32_t background) {
+  int32_t tiles = background_field(background, RG_BG_TILES);
+  return background_field(background, RG_BG_TILES_START) +
+         ((int64_t)tile_set_now(background) * tiles + background_field(background, RG_BG_TABLES)) * RUN_TILE_PIXELS;
+}
+
+/* One pixel of the tile as drawn +drawn+: its place, turned as it says, looked up in its table, as
+ * a console draws a cell from its tile, its palette and its turn; or a pixel of the run it shows. */
+static uint16_t drawn_pixel(int32_t background, uint32_t drawn, int64_t tx, int64_t ty) {
+  if (drawn & RG_DRAWN_RUN)
+    return run_pixel(background, (int32_t)(drawn & RG_DRAWN_PLACES_MASK), (int32_t)((drawn >> RG_DRAWN_TABLE_SHIFT) & RG_DRAWN_TABLE_MASK),
+                     tx, ty);
+  int64_t x = (drawn & RG_DRAWN_MIRRORED) ? RUN_TILE_SIDE - 1 - tx : tx;
+  int64_t y = (drawn & RG_DRAWN_UPSIDE_DOWN) ? RUN_TILE_SIDE - 1 - ty : ty;
+  int64_t places = background_field(background, RG_BG_PLACES) + (int64_t)(drawn & RG_DRAWN_PLACES_MASK) * RUN_TILE_PIXELS;
+  uint16_t place = tile_pixels_drawn[places + y * RUN_TILE_SIDE + x];
+  return tile_pixels_drawn[tables_now(background) + (int64_t)((drawn >> RG_DRAWN_TABLE_SHIFT) & RG_DRAWN_TABLE_MASK) * RUN_TILE_PIXELS +
+                           place];
+}
+
+static uint16_t tile_pixel(int32_t background, int32_t cell, int64_t tx, int64_t ty) {
+  if (cell >= background_field(background, RG_BG_TILES)) return drawn_pixel(background, drawn_tile(background, cell), tx, ty);
+  int32_t painted = background_field(background, RG_BG_PAINTED);
+  if (painted != RG_NOT_PAINTED && rg_game_painted_tiles[painted + 2 * cell] != RG_NOT_PAINTED)
+    return run_pixel(background, rg_game_painted_tiles[painted + 2 * cell], rg_game_painted_tiles[painted + 2 * cell + 1], tx, ty);
   int32_t tile_w = background_field(background, RG_BG_TILE_W), tile_h = background_field(background, RG_BG_TILE_H);
   int64_t tile = (int64_t)tile_set_now(background) * background_field(background, RG_BG_TILES) + cell;
   int64_t at = background_field(background, RG_BG_TILES_START) + tile * tile_w * tile_h + ty * tile_w + tx;
@@ -599,6 +634,10 @@ static void paint_map_row(int32_t background, int64_t my, int64_t off_x, int64_t
                       ty * tile_w;
   int32_t plain = !paint_fade && !mixing;
   int32_t keeps_picture_without_sprites = sprites_seen_through();
+  /* A background read from the start file: its cells numbered past its tiles are tiles as drawn. */
+  int32_t tiles = background_field(background, RG_BG_TILES);
+  const uint32_t *drawn_tiles = background_field(background, RG_BG_PLACES) == RG_NOT_READ_AT_START ? NULL : rg_drawn_tiles(background);
+  int64_t places = background_field(background, RG_BG_PLACES), tables = drawn_tiles ? tables_now(background) : 0;
   for (int64_t px = 0; px < RG_SCREEN_WIDTH;) {
     int64_t mx = off_x + px;
     if (wrap_w) mx %= wrap_w;
@@ -609,11 +648,24 @@ static void paint_map_row(int32_t background, int64_t my, int64_t off_x, int64_t
     int64_t col = mx / tile_w, tx = mx - col * tile_w, run = tile_w - tx;
     if (run > RG_SCREEN_WIDTH - px) run = RG_SCREEN_WIDTH - px;
     int32_t cell = col < cols ? row_cells[col] : RG_CELL_EMPTY;
-    if (cell >= 0 && (!tiles_painted_only || tiles_painted_only[cell])) {
-      int32_t slow = painted != RG_NOT_PAINTED && rg_game_painted_tiles[painted + 2 * cell] != RG_NOT_PAINTED;
+    /* A tile as drawn reads its place from its tile of places, turned, and its colour from its table. */
+    uint32_t drawn = cell >= tiles && drawn_tiles ? drawn_tiles[cell - tiles] : 0;
+    int32_t in_front = cell >= tiles ? (drawn & RG_DRAWN_IN_FRONT) != 0 : cell >= 0 && tiles_painted_only && tiles_painted_only[cell];
+    if (cell >= 0 && (!tiles_painted_only || in_front)) {
+      int32_t slow = cell >= tiles ? (drawn & RG_DRAWN_RUN) != 0
+                                   : painted != RG_NOT_PAINTED && rg_game_painted_tiles[painted + 2 * cell] != RG_NOT_PAINTED;
+      int32_t by_place = cell >= tiles && !slow;
+      if (by_place) drawn_tiles_set_up++;
       int64_t from = set_start + (int64_t)cell * tile_w * tile_h + tx;
+      int64_t mirrored = (drawn & RG_DRAWN_MIRRORED) != 0;
+      int64_t places_row = places + (int64_t)(drawn & RG_DRAWN_PLACES_MASK) * RUN_TILE_PIXELS +
+                           ((drawn & RG_DRAWN_UPSIDE_DOWN) ? RUN_TILE_SIDE - 1 - ty : ty) * RUN_TILE_SIDE;
+      int64_t table = tables + (int64_t)((drawn >> RG_DRAWN_TABLE_SHIFT) & RG_DRAWN_TABLE_MASK) * RUN_TILE_PIXELS;
       for (int64_t i = 0; i < run; i++) {
-        uint16_t color = slow ? tile_pixel(background, cell, tx + i, ty) : tile_pixels_drawn[from + i];
+        uint16_t color =
+            slow       ? tile_pixel(background, cell, tx + i, ty)
+            : by_place ? tile_pixels_drawn[table + tile_pixels_drawn[places_row + (mirrored ? RUN_TILE_SIDE - 1 - (tx + i) : tx + i)]]
+                       : tile_pixels_drawn[from + i];
         if (color == RG_SEE_THROUGH) continue;
         int64_t at = py * RG_SCREEN_WIDTH + px + i;
         if (onto_sheet) {

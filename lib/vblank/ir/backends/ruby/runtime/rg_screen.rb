@@ -162,6 +162,7 @@ def rg_screen_setup
   @rg_kind = -1 # the kind of screen up; none before the first `screen`
   @rg_rebuild_pending = false # a rebuild of the whole view is owed (Reference#request_repaint)
   @rg_repaints_painted = 0 # how many times the whole view was built again (rg_screen_repaints_painted)
+  @rg_drawn_tiles_set_up = 0 # rows of tiles as drawn set up for drawing (rg_screen_drawn_tiles_set_up)
   # The interpreter asks for a rebuild every time the scroll or the sprites are set. Here a setting
   # that moved nothing asks for nothing and only notes that it would have (@rg_rebuild_skipped),
   # since the picture is the one a rebuild would paint. That stops being so once the picture is
@@ -969,6 +970,7 @@ end
 def rg_screen_two_pages = @rg_pixels.equal?(@rg_viewed) ? 0 : 1
 
 def rg_screen_repaints_painted = @rg_repaints_painted
+def rg_screen_drawn_tiles_set_up = @rg_drawn_tiles_set_up
 
 # Framebuffer#to_a: the page a viewer is looking at as it is STORED, with no window moved over it
 # and no fade or tint mixed in.
