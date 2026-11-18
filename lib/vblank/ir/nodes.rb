@@ -596,7 +596,12 @@ module VBlank
         category :data
         operands name: :name, width: :int, height: :int, pixels: :text, transparent: :int,
                  colors: :list, places: :text, colors_name: :name, pieces: :list, piece_groups: :list,
-                 shading: :name, shading_places: :text, from_file: :file_picture, places_from_pack: :flag
+                 shading: :name, shading_places: :text, from_file: :file_picture, places_from_pack: :flag,
+                 bank_places: :int
+
+        # +bank_places+ is, for a pose of the pieces of several banks of colours (Builder::PackPoses,
+        # `banks:`), how many places one bank's list is: +colors+ is each bank's list after the
+        # other, and each piece's places count into its own bank's part. Absent on every other picture.
 
         # +piece_groups+ is, for a picture of pieces made from bigger pieces, how many of +pieces+
         # each bigger piece was cut into, in their order (Assets::Image#piece_groups). Absent on

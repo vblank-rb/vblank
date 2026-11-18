@@ -33,8 +33,12 @@ module VBlank
         # game's (known), and a turned picture is read turned.
         module StartFileFills
           # How many places a pose read from the file (IR::StartFile::Pose) can draw: one for each
-          # number its tiles' planes can hold, so the colours of its places are that many long.
-          def self.pose_places(where) = 1 << where.tile_format.plane_bits.length
+          # number its tiles' planes can hold, so the colours of its places are that many long; that
+          # many for each bank of a pose of several (IR::StartFile::Pose#banks).
+          def self.pose_places(where) = bank_places(where) * (where.banks&.length || 1)
+
+          # How many places one bank of a pose's colours is: as many as a tile can draw.
+          def self.bank_places(where) = 1 << where.tile_format.plane_bits.length
 
           private
 
@@ -720,7 +724,7 @@ module VBlank
             header = [FILL_KINDS.fetch(fill.kind), total, copies.length, fill.width, fill.height, turn,
                       where.colors_at || -1, where.colors_count, where.entry_at, where.records_at,
                       where.origin_x, where.origin_y, where.tiles_at, where.tile_count, where.bank || -1,
-                      *pose_piece_rules, StartFileFills.pose_places(where)]
+                      *pose_piece_rules, StartFileFills.pose_places(where), where.banks_mask, StartFileFills.bank_places(where)]
             unless header.length == StartFileNumbers::POSE_HEADER_NUMBERS
               raise ArgumentError, "A pose fill's rules header has #{header.length} numbers, and StartFileNumbers::" \
                                    "POSE_HEADER_NUMBERS says #{StartFileNumbers::POSE_HEADER_NUMBERS}. Change both together."

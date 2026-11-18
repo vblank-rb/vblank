@@ -436,11 +436,12 @@ module VBlank
         #
         # +not_lowered_yet+ is the lowering's table of kinds by part, and +not_made_yet+ its error for
         # one (an error that includes Backends::NotMadeYet).
-        def refuse_unbuildable!(not_lowered_yet:, not_made_yet:, makes_followed_lists: true)
+        def refuse_unbuildable!(not_lowered_yet:, not_made_yet:, makes_followed_lists: true, makes_poses_of_banks: false)
           Backends.refuse_start_file_on_cartridge!(@program, @console, @error)
           refuse_hardware_only_kinds!
           refuse_kinds_not_made_yet!(not_lowered_yet, not_made_yet)
           refuse_unmade_followed_lists!(not_made_yet) unless makes_followed_lists
+          refuse_unmade_poses_of_banks!(not_made_yet) unless makes_poses_of_banks
           refuse_what_console_lacks!
           refuse_routines_that_call_themselves!
         end
@@ -484,6 +485,24 @@ module VBlank
             "The background #{background.name.inspect} draws with #{background.lists_followed.length} lists of colors that " \
             "the game changes with `recolor`. The #{@console.title} build does not make that yet. To fix this, tell the " \
             "background to draw with one of those lists only.", part: "a background that follows several lists of colours"
+          )
+        end
+
+        # A POSE OF THE PIECES OF SEVERAL BANKS OF COLOURS (Nodes::Bitmap#bank_places, `image ...,
+        # banks:`) is drawn with each piece in its own bank's list. Each of these consoles' sprite
+        # entries names its own palette too (Pan Docs, "OAM": attribute bits 0-2 on the Color;
+        # fullsnes, "SNES PPU Sprites (OBJs)": attribute bits 1-3; plutiedev, "Sprites": the pattern
+        # word's palette bits on the Genesis; psx-spx, "GPU Render Polygon/Rectangle Commands": a
+        # sprite's CLUT), so the way is the same; a lowering that does not make it yet refuses it here,
+        # with +not_made_yet+, and passes +makes_poses_of_banks+ once it does.
+        def refuse_unmade_poses_of_banks!(not_made_yet)
+          pose = @program.walk.find { |node| node.kind == :bitmap && node.bank_places && node.colors.length > node.bank_places }
+          return unless pose
+
+          raise not_made_yet.new(
+            "The picture #{pose.name.inspect} is a frame whose pieces are drawn from several banks of colors " \
+            "(banks:). The #{@console.title} build does not make that yet. To fix this, make a pose for each bank " \
+            "with bank:, and show each pose with a sprite of its own.", part: "a pose of several banks of colours"
           )
         end
 

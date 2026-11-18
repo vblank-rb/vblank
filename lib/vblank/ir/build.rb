@@ -634,12 +634,13 @@ module VBlank
       # (see Assets::Image#colors_name).
       # +pieces+ is a picture made of 8x8 pieces, front-most first (Assets::Image#pieces), or nil.
       # +piece_groups+ is how many of them each bigger piece was cut into (Assets::Image#piece_groups), or nil.
+      # +bank_places+ is, for a pose of several banks' lists, how many places one bank is (Nodes::Bitmap), or nil.
       def bitmap(name, width:, height:, pixels:, transparent: nil, colors: nil, places: nil, colors_name: nil, pieces: nil,
-                 shading: nil, shading_places: nil, places_from_pack: false, piece_groups: nil)
+                 shading: nil, shading_places: nil, places_from_pack: false, piece_groups: nil, bank_places: nil)
         Nodes.build(:bitmap, name: name, width: width, height: height,
                           pixels: pixels, transparent: transparent, colors: colors, places: places, colors_name: colors_name,
                           pieces: pieces, piece_groups: piece_groups, shading: shading, shading_places: shading_places,
-                          places_from_pack: places_from_pack)
+                          places_from_pack: places_from_pack, bank_places: bank_places)
       end
 
       # Draw a defined bitmap with its top-left at (x, y). x/y may be constants or

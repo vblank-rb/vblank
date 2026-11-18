@@ -38,6 +38,9 @@ module VBlank
     #   image :part_12, tiles: pack[:video], frame: pack[:frames].frame(at, layout: FRAME),
     #                   origin: [32, 48], colors: pack[:title_colors]
     #
+    # A frame whose pieces name several banks is one pose told them, `banks: [4, 2]`, each piece
+    # drawn from its own bank's list (#refuse_bad_pose_banks!).
+    #
     # THE PICTURE'S SIZE is as far as its pieces reach, or `size: [width, height]` where the game
     # gives one: see-through past the pieces, so every pose of a sprite can be one size.
     #
@@ -61,30 +64,53 @@ module VBlank
         origin = refuse_bad_origin!(name, opts[:origin])
         size = refuse_bad_pieced_size!(name, opts[:size])
         from_banks = pose_colors_from_banks?(frame, opts[:colors])
-        refuse_bank_without_bank_colors!(name) if opts.key?(:bank) && !from_banks
-        return define_pack_pose_read_at_start(name, opts, origin, size, from_banks: from_banks) if pack_left_out?
+        refuse_bank_without_bank_colors!(name, opts.key?(:banks) ? "banks:" : "bank:") if (opts.key?(:bank) || opts.key?(:banks)) && !from_banks
+        banks = (refuse_bad_pose_banks!(name, opts) if opts.key?(:banks))
+        # ONE BANK NAMED is a pose of that bank's list, as `bank:` makes one, so it is drawn and
+        # followed as any pose of one list, on every console; only a piece of another bank in the
+        # pack the build holds is refused, where `bank:` leaves it out.
+        told_one_bank = banks&.one?
+        if told_one_bank
+          opts = opts.except(:banks).merge(bank: banks.first)
+          banks = nil
+        end
+        return define_pack_pose_read_at_start(name, opts, origin, size, from_banks: from_banks, banks: banks) if pack_left_out?
 
         tile_places = pack_tile_places(opts[:tiles], "image :#{name}")
         read = frame_pieces(name, frame)
+        refuse_piece_outside_banks!(name, opts[:frame], read, [opts[:bank]]) if told_one_bank
         colors = opts[:colors]
-        if from_banks
+        table = nil
+        if banks
+          bank_lists = declare_pack_color_banks(opts[:colors], opts[:tiles].layout.format.colors, "image :#{name}'s colors:")
+          table = banks_table(name, banks, bank_lists)
+          refuse_piece_outside_banks!(name, opts[:frame], read, banks)
+        elsif from_banks
           read = pieces_of_bank(name, read, opts[:bank]) if opts.key?(:bank)
           colors = pose_bank_list!(name, opts, read)
         end
+        bank_places = opts[:tiles].layout.format.colors
         blocks = read.map do |piece|
+          shift = banks ? banks.index(piece.bank) * bank_places : 0
           pack_piece_blocks(name, piece, tile_places).map do |left, top, places|
-            [origin[0] + piece.x + left, origin[1] + piece.y + top, places]
+            [origin[0] + piece.x + left, origin[1] + piece.y + top, places.map { |place| place.zero? ? 0 : place + shift }]
           end
         end
         pieces = blocks.flatten(1)
         refuse_piece_left_of_origin!(name, pieces)
-        define_pose_of_frame_pieces(name, pieces, blocks.map(&:length), colors, size)
+        define_pose_of_frame_pieces(name, pieces, blocks.map(&:length), colors, size, table: table, bank_places: bank_places)
       end
 
       # The pose as a picture of +pieces+, as `image name, pieces:, colors:` makes one, which also
       # keeps how many of them each piece of the frame was cut into (+groups+). A console whose
-      # sprite table draws a piece as big as the frame's then draws the frame's own pieces.
-      def define_pose_of_frame_pieces(name, pieces, groups, colors, size)
+      # sprite table draws a piece as big as the frame's then draws the frame's own pieces. A pose
+      # of several banks is given its +table+ (#banks_table), +bank_places+ to a bank, and names no list.
+      def define_pose_of_frame_pieces(name, pieces, groups, colors, size, table: nil, bank_places: nil)
+        if table
+          return define_pieced_image(name, pieces: pieces, colors: table, size: size, piece_groups: groups,
+                                           table: table.map { |value| value || 0 }, bank_places: bank_places)
+        end
+
         colors_name = colors if colors.is_a?(Symbol)
         list = colors_name ? declared_colors_for_image!(name, colors_name) : opts_with_pack_slots_read(name, colors: colors)[:colors]
         define_pieced_image(name, pieces: pieces, colors: list, colors_name: colors_name, size: size, piece_groups: groups)
@@ -102,9 +128,9 @@ module VBlank
       # tiles' own colours are counted. So the pose is a picture of one named list, as one a game
       # wrote with `colors: :title_colors_2` would be, and every console draws it as any picture.
       #
-      # A sprite's picture is drawn from one list, as a console's sprite piece is from one bank,
-      # so a frame with pieces in two banks is not one picture: the game is told, and makes a pose
-      # of each bank's pieces with `bank:`.
+      # A picture named for one list is drawn from that list, so a frame with pieces in two banks
+      # is not such a picture: the game is told, and names the banks with `banks:`
+      # (#refuse_bad_pose_banks!), or makes a pose of each bank's pieces with `bank:`.
       def pose_bank_list!(name, opts, pieces)
         subject = "image :#{name}'s colors:"
         bank_lists = declare_pack_color_banks(opts[:colors], opts[:tiles].layout.format.colors, subject)
@@ -131,15 +157,74 @@ module VBlank
       def refuse_frame_of_several_banks!(name, frame, banks)
         named = "banks #{banks[0..-2].join(', ')} and #{banks.last}"
         raise ArgumentError, "image :#{name} reads the frame at byte #{frame.at} of slot :#{frame.slot.layout.name}, and " \
-                             "its pieces are drawn from #{named} of colors. A picture is drawn from one list of colors. " \
-                             "To fix this, make a pose for each bank with bank:, like `image :#{name}_#{banks.first}, " \
-                             "..., bank: #{banks.first}`. Then show each pose with a sprite of its own at the same place."
+                             "its pieces are drawn from #{named} of colors. To fix this, give the pose the banks its " \
+                             "frame uses: `banks: [#{banks.join(', ')}]`. Each piece is then drawn in the colors of its own bank."
       end
 
-      def refuse_bank_without_bank_colors!(name)
-        raise ArgumentError, "image :#{name} was given bank:, and its pieces do not take their colors from their bank. " \
-                             "bank: is for a pose whose frame layout names a bank (bank_bit:) and whose colors: is a " \
-                             "whole slot of colors, like `colors: pack[:palette]`. To fix this, leave out bank:."
+      def refuse_bank_without_bank_colors!(name, option)
+        raise ArgumentError, "image :#{name} was given #{option}, and its pieces do not take their colors from their bank. " \
+                             "#{option} is for a pose whose frame layout names a bank (bank_bit:) and whose colors: is a " \
+                             "whole slot of colors, like `colors: pack[:palette]`. To fix this, leave out #{option}."
+      end
+
+      MOST_POSE_BANK = 30 # The runtimes hold a pose's banks as the bits of one number
+
+      # A POSE OF SEVERAL BANKS (`banks: [4, 2]`). A console's sprite entry names the bank of
+      # colours its piece is drawn from (GBATEK, "LCD OBJ - OAM Attributes": attribute 2, bits
+      # 12-15), so a frame can be pieces of several banks that move as one thing. The game names the
+      # banks its frame uses, since a build that reads its pack as the game starts cannot see them.
+      # The pose's list is then each bank's list of the slot, `:<slot>_<bank>`, one after the other
+      # in the order of their numbers, and a piece's places count into its own bank's part of it.
+      # Hands back the banks, lowest first.
+      def refuse_bad_pose_banks!(name, opts)
+        banks = opts[:banks]
+        if opts.key?(:bank)
+          raise ArgumentError, "image :#{name} was given banks: and bank:. To fix this, give one of them: banks: for a pose " \
+                               "of the pieces of several banks, or bank: for the pieces of one."
+        end
+        unless banks.is_a?(Array) && !banks.empty? && banks.all? { |bank| bank.is_a?(Integer) && bank.between?(0, MOST_POSE_BANK) }
+          raise ArgumentError, "image :#{name} was given banks: #{banks.inspect}. banks: is a list of the banks of colors the " \
+                               "pose's frame uses, each a whole number from 0 to #{MOST_POSE_BANK}, like `banks: [4, 2]`."
+        end
+
+        named = banks.uniq.sort
+        refuse_too_many_pose_banks!(name, named, opts[:tiles].layout.format.colors)
+        named
+      end
+
+      # A pose keeps a byte for each pixel's place in its list, so its banks' lists together hold
+      # 256 colours at most: 16 banks of sixteen-colour tiles.
+      MOST_POSE_PLACES = 256
+
+      def refuse_too_many_pose_banks!(name, banks, bank_colors)
+        most = MOST_POSE_PLACES / bank_colors
+        return if banks.length <= most
+
+        raise ArgumentError, "image :#{name} was given #{banks.length} banks. Its tiles have #{bank_colors} colors, so a " \
+                             "pose can name #{most} banks at most: the colors of all its banks must be #{MOST_POSE_PLACES} or " \
+                             "fewer. To fix this, give banks: only the banks the frame uses."
+      end
+
+      # The colours of a pose of the banks +banks+: the list of each bank (+bank_lists+, the slot's
+      # lists by bank), one after the other, see-through first in each, as #define_placed_image
+      # takes a table.
+      def banks_table(name, banks, bank_lists)
+        past = banks.reject { |bank| bank < bank_lists.length }
+        unless past.empty?
+          raise ArgumentError, "image :#{name} was given banks: #{banks.inspect}, and its colors: slot holds banks 0 to " \
+                               "#{bank_lists.length - 1}. To fix this, give banks from 0 to #{bank_lists.length - 1}."
+        end
+
+        banks.flat_map { |bank| color_table(name, declared_colors_for_image!(name, bank_lists.fetch(bank))) }
+      end
+
+      def refuse_piece_outside_banks!(name, frame, pieces, banks)
+        others = pieces.map(&:bank).uniq.sort - banks
+        return if others.empty?
+
+        raise ArgumentError, "image :#{name} reads the frame at byte #{frame.at} of slot :#{frame.slot.layout.name}, and " \
+                             "a piece is drawn from bank #{others.first} of colors. Its banks: #{banks.inspect} do not hold " \
+                             "bank #{others.first}. To fix this, add every bank the frame uses to banks:."
       end
 
       # WITH THE PACK LEFT OUT A POSE OF ONE BANK'S PIECES (`bank:`) is drawn from that bank's list,
@@ -208,7 +293,12 @@ module VBlank
       # the frame, named for the slot as a picture's are (DataPacks#pack_colors_name), or, where
       # the pose takes them from the bank its frame names (+from_banks+), a marker for each colour
       # of that bank (#frame_bank_colors_read_at_start).
-      def define_pack_pose_read_at_start(name, opts, origin, size, from_banks: false)
+      #
+      # A POSE OF SEVERAL BANKS (+banks+) holds a marker for each colour of each bank's list, as
+      # built all-in-one, and the routine that paints it paints the pieces of those banks, each
+      # place counted into its own bank's part of the list (IR::StartFile::Pose#banks). A piece of
+      # another bank, which the build that holds the pack refuses, is not painted.
+      def define_pack_pose_read_at_start(name, opts, origin, size, from_banks: false, banks: nil)
         refuse_pose_without_size!(name) unless size
         tiles = opts[:tiles]
         colors = opts[:colors]
@@ -222,11 +312,14 @@ module VBlank
         end
         bank_lists = (declare_bank_lists_read_at_start(colors, tiles.layout.format.colors, "image :#{name}'s colors:") if from_banks)
         one_bank = (bank_list_read_at_start(name, opts[:bank], bank_lists) if opts.key?(:bank))
-        colors_name = if one_bank then one_bank
+        colors_name = if banks then nil
+                      elsif one_bank then one_bank
                       elsif from_banks then pose_list_stand_in(name, colors, record, bank_lists)
                       else colors_from_file ? pack_colors_name(colors) : (colors if colors.is_a?(Symbol))
                       end
-        table = if one_bank
+        table = if banks
+                  banks_table(name, banks, bank_lists).map { |value| value || 0 }
+                elsif one_bank
                   color_table(name, declared_colors_for_image!(name, one_bank)).map { |value| value || 0 }
                 elsif from_banks
                   frame_bank_colors_read_at_start(name, opts, IR::StartFile::FrameBank.new(entry_at: entry_at, records_at: @pack_frames_at))
@@ -238,7 +331,8 @@ module VBlank
         width, height = size
         first_tile = tiles.tile_index || 0
         node = Build.bitmap(name, width: width, height: height, pixels: Array.new(width * height, 0).pack("v*"), transparent: nil,
-                                  colors: table, places: Array.new(width * height, 1).pack("C*"), colors_name: colors_name)
+                                  colors: table, places: Array.new(width * height, 1).pack("C*"), colors_name: colors_name,
+                                  bank_places: (tiles.layout.format.colors if banks))
         node.from_file = IR::StartFile::Pose.new(
           entry_at: entry_at, records_at: @pack_frames_at,
           origin_x: origin[0], origin_y: origin[1],
@@ -246,7 +340,7 @@ module VBlank
           tile_count: tiles.layout.count - first_tile, tile_format: tiles.layout.format,
           colors_at: (colors_in_pack(colors) if colors_from_file), colors_count: table.length,
           color_format: (colors.layout.format if colors_from_file),
-          bank: (opts[:bank] if one_bank), bank_lists: (bank_lists if from_banks && !one_bank)
+          bank: (opts[:bank] if one_bank), bank_lists: (bank_lists if from_banks && !one_bank && !banks), banks: banks
         )
         record_picture(node)
         (@pictures_from_start_file ||= {})[name] = node.from_file
@@ -409,7 +503,7 @@ module VBlank
         end
       end
 
-      POSE_FROM_PACK_OPTIONS = %i[tiles frame origin colors size bank].freeze
+      POSE_FROM_PACK_OPTIONS = %i[tiles frame origin colors size bank banks].freeze
 
       def refuse_pack_pose_options!(name, opts)
         others = opts.keys - POSE_FROM_PACK_OPTIONS

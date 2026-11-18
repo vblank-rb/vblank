@@ -42,12 +42,18 @@ module VBlank
             pictures = program.walk.select { |node| node.kind == :bitmap }
             lists = pictures.to_h { |node| [node.name, colors_compared(node.colors, program.start_file)] }
             list_names = pictures.to_h { |node| [node.name, node.colors_name] }
+            of_banks = pictures.select(&:bank_places).to_set(&:name)
             sprites = Stacking.objects_in_draw_order(program).uniq { |node| [node.declared || node.name, node.poses] }
             sprites.filter_map do |node|
               by_list = picture_for_each_list(node, lists)
               next if by_list.size < 2
 
-              Finding.new(check: NAME, severity: :error, node: node, message: message(node, by_list, list_names, console))
+              words = if by_list.values.any? { |picture| of_banks.include?(picture) }
+                        banks_message(node, by_list, console)
+                      else
+                        message(node, by_list, list_names, console)
+                      end
+              Finding.new(check: NAME, severity: :error, node: node, message: words)
             end
           end
 
@@ -147,6 +153,17 @@ module VBlank
               "framework makes the list. Or use one #{SpriteWords.member_word(node)} for the pictures of each list. " \
               "To change the colors of one #{SpriteWords.member_word(node)}, tell " \
               "it to `draw_with` a list that `colors` declares."
+          end
+
+          # A POSE OF SEVERAL BANKS (Nodes::Bitmap#bank_places, `banks:`) beside a pose of other banks:
+          # their `colors:` may be the same slot, so "different lists" would send the author to a list
+          # that is the same. The banks the poses name are what differ.
+          def banks_message(node, by_list, console)
+            named = by_list.values.first(3).map { |picture| ":#{picture}" }.join(" and ")
+            "#{SpriteWords.owner_capitalized(node)} shows poses that name different banks of colors (#{named}). The " \
+              "#{console.title} build draws all the pictures of one sprite from the same colors.#{pool_note(node)} To fix " \
+              "this, give every pose of the #{SpriteWords.member_word(node)} the same banks:, the banks that all their " \
+              "frames use. Or use one #{SpriteWords.member_word(node)} for the poses of each set of banks."
           end
 
           # A picture with a list beside one with none is given as that, since "different lists"

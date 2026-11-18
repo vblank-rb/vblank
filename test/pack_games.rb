@@ -1442,6 +1442,23 @@ module PackGames
           sprite :near, at: [40, 40]
           sprite :far, at: [40, 40]
         end)
+      end,
+      # A pose of the pieces of two banks, each in its own bank's colours, one sprite moving it,
+      # beside a pose of one bank told banks: too, and one told a single bank, the file saying which
+      # pieces those are.
+      game(:pose_of_two_banks_pieces_moved_whole, passes: 4) do |folder, options|
+        built_by(game_builder_of(folder, options: options) do |pack|
+          image :mixed, tiles: pack[:video], frame: pack[:frames].frame(IN_TWO_BANKS, layout: FRAME), origin: ORIGIN,
+                        colors: pack[:palette], banks: [3, 1], size: SIZE
+          image :plain, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_2, layout: FRAME), origin: ORIGIN,
+                        colors: pack[:palette], banks: [1, 2], size: SIZE
+          image :single, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_1, layout: FRAME), origin: ORIGIN,
+                         colors: pack[:palette], banks: [1], size: SIZE
+          mixed = sprite :mixed, at: [40, 40]
+          mixed.move_to(96, 64)
+          sprite :plain, at: [40, 80]
+          sprite :single, at: [80, 80]
+        end)
       end
     ].freeze
   end

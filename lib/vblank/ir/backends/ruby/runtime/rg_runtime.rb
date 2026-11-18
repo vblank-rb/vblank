@@ -633,9 +633,9 @@ def rg_start_file_half(at) = @rg_start_file.getbyte(at) | (@rg_start_file.getbyt
 # then RG_FRAME_PIECE_BYTES a piece.
 #
 # One piece of a pose's frame, its record from +at+ in the file, painted into +places+, behind what
-# is there already (rg_runtime.c's start_file_paint_piece). +tile_format+ is where that layout
-# starts in +rules+.
-def rg_start_file_paint_piece(places, width, height, at, rules, tile_format, origin_x, origin_y, tiles_at, tile_count)
+# is there already, each place it draws moved on by +shift+ (rg_runtime.c's start_file_paint_piece).
+# +tile_format+ is where that layout starts in +rules+.
+def rg_start_file_paint_piece(places, width, height, at, rules, tile_format, origin_x, origin_y, tiles_at, tile_count, shift)
   left = origin_x + ((rg_start_file_half(at + RG_PIECE_X_AT) ^ 0x8000) - 0x8000)
   top = origin_y + ((rg_start_file_half(at + RG_PIECE_Y_AT) ^ 0x8000) - 0x8000)
   first_tile = rg_start_file_half(at + RG_PIECE_TILE_AT)
@@ -664,9 +664,27 @@ def rg_start_file_paint_piece(places, width, height, at, rules, tile_format, ori
       tile = first_tile + (column * column_step) + (row * row_step)
       next if tile >= tile_count
 
-      places[(down * width) + along] = rg_start_file_place(tiles_at + (tile * tile_bytes), rules, tile_format, 1, from_y % 8, from_x % 8)
+      place = rg_start_file_place(tiles_at + (tile * tile_bytes), rules, tile_format, 1, from_y % 8, from_x % 8)
+      places[(down * width) + along] = place.zero? ? 0 : place + shift
     end
   end
+end
+
+# Whether the piece whose record is at +at+ is painted (rg_runtime.c's start_file_piece_painted).
+def rg_start_file_piece_painted?(at, only_bank, banks_mask)
+  bank = rg_start_file_half(at + RG_PIECE_BANK_AT)
+  return false if !only_bank.negative? && bank != only_bank
+
+  banks_mask.zero? || (bank < 31 && banks_mask.anybits?(1 << bank))
+end
+
+# How far into a pose of several banks' colours a piece counts its places (rg_runtime.c's
+# start_file_piece_shift).
+def rg_start_file_piece_shift(at, banks_mask, bank_places)
+  return 0 if banks_mask.zero?
+
+  bank = rg_start_file_half(at + RG_PIECE_BANK_AT)
+  (0...[bank, 31].min).count { |named| banks_mask.anybits?(1 << named) } * bank_places
 end
 
 # How many pieces the frame whose entry is at +entry_at+ holds, and where the first of them is in
@@ -832,14 +850,14 @@ def rg_pose_listed_pieces(blocks, columns, rows, shape, tall)
 end
 
 # rg_runtime.c's start_file_pose_pieces
-def rg_start_file_pose_pieces(first, count, only_bank, rules, tile_format, origin_x, origin_y, tiles_at, tile_count,
+def rg_start_file_pose_pieces(first, count, only_bank, banks_mask, rules, tile_format, origin_x, origin_y, tiles_at, tile_count,
                               width, height, turn, shape, tall)
   blocks = []
   columns = Array.new(count, 0)
   rows = Array.new(count, 0)
   count.times do |piece|
     at = first + (piece * RG_FRAME_PIECE_BYTES)
-    next if !only_bank.negative? && rg_start_file_half(at + RG_PIECE_BANK_AT) != only_bank
+    next unless rg_start_file_piece_painted?(at, only_bank, banks_mask)
 
     x = origin_x + ((rg_start_file_half(at + RG_PIECE_X_AT) ^ 0x8000) - 0x8000)
     y = origin_y + ((rg_start_file_half(at + RG_PIECE_Y_AT) ^ 0x8000) - 0x8000)
@@ -886,7 +904,7 @@ end
 # game's pixels are frozen, so an unfrozen copy takes their place, as a picture's fill does.
 def rg_start_file_fill_pose(rules)
   kind, _total, copies, width, height, turn, colors_at, colors_count, entry_at, records_at, origin_x, origin_y,
-    tiles_at, tile_count, only_bank, piece_shape, piece_tall, place_count = rules
+    tiles_at, tile_count, only_bank, piece_shape, piece_tall, place_count, banks_mask, bank_places = rules
   tile_format = RG_FILL_POSE_HEADER_NUMBERS
   color_format = tile_format + RG_TILE_FORMAT_NUMBERS
   held_colors = color_format + RG_COLOR_FORMAT_NUMBERS
@@ -895,12 +913,13 @@ def rg_start_file_fill_pose(rules)
   places = Array.new(width * height, 0)
   count.times do |piece|
     at = first + (piece * RG_FRAME_PIECE_BYTES)
-    next if !only_bank.negative? && rg_start_file_half(at + RG_PIECE_BANK_AT) != only_bank
+    next unless rg_start_file_piece_painted?(at, only_bank, banks_mask)
 
-    rg_start_file_paint_piece(places, width, height, at, rules, tile_format, origin_x, origin_y, tiles_at, tile_count)
+    rg_start_file_paint_piece(places, width, height, at, rules, tile_format, origin_x, origin_y, tiles_at, tile_count,
+                              rg_start_file_piece_shift(at, banks_mask, bank_places))
   end
   unless kind == RG_FILL_TILE || piece_shape.zero?
-    pieces = rg_start_file_pose_pieces(first, count, only_bank, rules, tile_format, origin_x, origin_y, tiles_at, tile_count,
+    pieces = rg_start_file_pose_pieces(first, count, only_bank, banks_mask, rules, tile_format, origin_x, origin_y, tiles_at, tile_count,
                                        width, height, turn, piece_shape, piece_tall)
   end
   if kind == RG_FILL_TILE

@@ -2689,7 +2689,15 @@ module VBlank
                 end
                 scan_object_colors(bmp, colors)
               end
-              PaletteBanks::Picture.new(key: node.name, colors: colors, authored: authored_palette(node))
+              authored = authored_palette(node)
+              # A POSE OF SEVERAL BANKS (Builder::PackPoses, `banks:`) holds a list of sixteen for each,
+              # one after another, and its places count into the whole of it. One entry of the sprite
+              # table names one bank (GBATEK, "LCD OBJ - OAM Attributes": attribute 2, bits 12-15),
+              # and the cut of a picture into entries does not follow the frame's pieces, so such a
+              # sprite is stored a whole byte a pixel, drawn from the whole table.
+              next PaletteBanks::Picture.new(key: node.name, colors: colors, wide: true) if authored && authored.length > PaletteBanks::BANK_SIZE
+
+              PaletteBanks::Picture.new(key: node.name, colors: colors, authored: authored)
             end
             pictures += recolor_pictures(nodes) + changing_list_pictures(lists)
             # Nothing is ever drawn from the first entry of the sprites' table, so its first

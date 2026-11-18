@@ -314,6 +314,7 @@ module VBlank
       # Called by a sprite or a pool told `draw_with`; +subject+ is what the error calls it.
       def colors_to_draw_with(names, poses:, subject:)
         own = shared_pose_colors!(poses, subject)
+        refuse_draw_with_banked_pose!(subject) if own.length > PICTURE_COLORS
         names.map do |name|
           list = @color_lists.fetch(name) do
             raise ArgumentError,
@@ -329,6 +330,16 @@ module VBlank
           refuse_ambiguous_color_places!(own: own, swapped: list, name: name, poses: poses, subject: subject)
           list
         end
+      end
+
+      # A list of more colours than one list holds is a pose of several banks (PackPoses, `banks:`),
+      # a list for each bank, which no list of the game's can stand in for.
+      def refuse_draw_with_banked_pose!(subject)
+        raise ArgumentError,
+              "#{subject} was told to draw_with a list of colors, and it shows a pose of several banks of colors " \
+              "(banks:). Such a pose has a list for each bank, so one list cannot take their place. To fix this, " \
+              "make a pose for each bank with bank:, show each pose with a sprite of its own, and tell that sprite " \
+              "to draw_with a list."
       end
 
       # The same, for a sprite or pool whose poses are drawn from several lists and which was told
@@ -765,10 +776,14 @@ module VBlank
       # The picture still keeps colors for everything that draws it; the places ride along
       # beside them, and only the two things that read a pixel as a NUMBER — the console's
       # sprite and tile storage, and swapping in another list of colors — look at them.
+      #
+      # +table+ is the picture's colours already worked out, nil where they are worked out from
+      # +colors+: a pose of several banks (PackPoses#banks_table) holds a list of sixteen for each
+      # bank, which one list of a game's own cannot.
       def define_placed_image(name, places:, width:, height:, colors:, colors_name: nil, pieces: nil, places_from_pack: false,
-                              piece_groups: nil)
+                              piece_groups: nil, table: nil, bank_places: nil)
         positive_dims!(name, width, height)
-        table = color_table(name, colors || [])
+        table ||= color_table(name, colors || [])
         refuse_bad_places!(name, places: places, width: width, height: height, table: table)
 
         pixels, marker = IR::Assets.placed_pixels(places, table)
@@ -776,7 +791,7 @@ module VBlank
         record_picture(Build.bitmap(name, width: width, height: height, pixels: pixels,
                                             transparent: marker, colors: table.map { |value| value || 0x0000 },
                                             places: places.pack("C*"), colors_name: colors_name, pieces: pieces,
-                                            places_from_pack: places_from_pack, piece_groups: piece_groups))
+                                            places_from_pack: places_from_pack, piece_groups: piece_groups, bank_places: bank_places))
         record_visible_bounds(name: name, width: width, height: height, cells: drawn, transparent: marker)
       end
 
@@ -834,8 +849,9 @@ module VBlank
       # which can put more pieces on one line than it shows.
       #
       # +piece_groups+ is for pieces cut from bigger ones (PackPoses): how many of them each bigger
-      # piece became, in their order (IR::Assets::Image#piece_groups).
-      def define_pieced_image(name, pieces:, colors:, colors_name: nil, size: nil, piece_groups: nil)
+      # piece became, in their order (IR::Assets::Image#piece_groups). +table+ is as
+      # #define_placed_image takes it.
+      def define_pieced_image(name, pieces:, colors:, colors_name: nil, size: nil, piece_groups: nil, table: nil, bank_places: nil)
         refuse_bad_pieces!(name, pieces, colors)
         refuse_bad_pieced_size!(name, size)
         # Out to a multiple of a piece each way, see-through past the pieces: a console that cuts a
@@ -855,7 +871,8 @@ module VBlank
         end
         kept = pieces.map { |dx, dy, own| [dx, dy, own.pack("C*")] }
         define_placed_image(name, places: places, width: width, height: height, colors: colors,
-                                  colors_name: colors_name, pieces: kept, piece_groups: piece_groups)
+                                  colors_name: colors_name, pieces: kept, piece_groups: piece_groups, table: table,
+                                  bank_places: bank_places)
       end
 
       PIECE_SIZE = IR::Assets::PIECE_SIZE

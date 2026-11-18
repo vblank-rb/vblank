@@ -43,6 +43,30 @@ module PackPoseBankColorsAtStartTests
     end
   end
 
+  # A POSE TOLD ITS BANKS (`banks:`) keeps each piece in its own bank's colours with the pack left
+  # out, and a piece of a bank it was not told, which the build that holds the pack refuses, is not
+  # painted: here the frame's piece of bank 3, beside the piece of bank 1.
+  def test_a_pose_told_its_banks_paints_the_pieces_of_those_banks_alone_with_the_pack_left_out
+    Dir.mktmpdir do |folder|
+      _, file = game_and_file_of(folder) do |pack|
+        image :mixed, tiles: pack[:video], frame: pack[:frames].frame(IN_TWO_BANKS, layout: FRAME), origin: ORIGIN,
+                      colors: pack[:palette], banks: [1, 3]
+      end
+      program, = game_and_file_of(folder, options: LEFT_OUT) do |pack|
+        image :mixed, tiles: pack[:video], frame: pack[:frames].frame(IN_TWO_BANKS, layout: FRAME), origin: ORIGIN,
+                      colors: pack[:palette], banks: [1, 2], size: [16, 8]
+        sprite :mixed, at: [40, 40]
+      end
+      screen = game_player.hand_file(file).run(program, frames: 4).screen
+
+      TILES.fetch(0).each_with_index do |place, at|
+        assert_equal BANKS[1].fetch(place), screen.pixel(40 + (at % 8), 40 + (at / 8)), "the piece of bank 1, pixel #{at}"
+      end
+      backdrop = screen.pixel(0, 0)
+      64.times { |at| assert_equal backdrop, screen.pixel(48 + (at % 8), 40 + (at / 8)), "the piece of bank 3, pixel #{at}" }
+    end
+  end
+
   # One sprite that can face the frame of bank 1 or of bank 2, following the list of each, as the
   # Genesis's own games change a sprite's line of colours with its frame. The list of bank 2 is
   # told to hold other colours, and the sprite, facing that frame, shows them.

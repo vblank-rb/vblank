@@ -268,7 +268,10 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * the object's place is in the picture, across and down; where the tiles are in the file and
  * how many; the bank a piece must name to be painted (-1 for every piece); and how the console's
  * sprite table holds a piece, 0 where it draws every piece (else 1 for small pieces, 2 for squares,
- * 3 for rectangles), and how tall a small piece is; and how many places a tile can draw. Then the two
+ * 3 for rectangles), and how tall a small piece is; how many places the pose's colours are (as many
+ * as a tile can draw, times its banks for a pose of several); for a pose of several banks those
+ * banks, a bit each, only their pieces painted and each piece's places counted on into its own
+ * bank's part of the colours (0 for any other pose); and how many places one bank is. Then the two
  * layouts and the game's own colours where the file has none, as rg_start_file_fill_picture has
  * them. Then for each copy: where its pixels start, where the colours of its places start (-1 for
  * a copy whose pixels are its colours), the number of its image (-1 for tile pixels), how many

@@ -299,7 +299,181 @@ class TestPackPoseBankColors < Minitest::Test
 
       assert_includes error.message, "image :mixed"
       assert_includes error.message, "banks 1 and 3"
+      assert_includes error.message, "banks: [1, 3]"
+    end
+  end
+
+  # A POSE TOLD THE BANKS ITS FRAME USES (`banks:`) keeps each piece in its own bank's colours, as a
+  # console's sprite entry names its piece's bank, and one sprite shows and moves the whole frame.
+  def test_a_pose_told_its_banks_draws_each_piece_in_its_own_banks_colors
+    Dir.mktmpdir do |folder|
+      program = game_of(folder) do |pack|
+        image :mixed, tiles: pack[:video], frame: pack[:frames].frame(IN_TWO_BANKS, layout: FRAME), origin: ORIGIN,
+                      colors: pack[:palette], banks: [3, 1]
+        sprite :mixed, at: [40, 40]
+      end
+      screen = game_player.run(program, frames: 4).screen
+
+      assert_tile_drawn_in(BANKS[1], screen, 0, 40, 40, "the piece of bank 1")
+      assert_tile_drawn_in(BANKS[3], screen, 1, 48, 40, "the piece of bank 3")
+    end
+  end
+
+  def test_one_sprite_moves_a_pose_of_two_banks_whole
+    Dir.mktmpdir do |folder|
+      program = game_of(folder) do |pack|
+        image :mixed, tiles: pack[:video], frame: pack[:frames].frame(IN_TWO_BANKS, layout: FRAME), origin: ORIGIN,
+                      colors: pack[:palette], banks: [1, 3]
+        mixed = sprite :mixed, at: [40, 40]
+        mixed.move_to(96, 64)
+      end
+      screen = game_player.run(program, frames: 4).screen
+
+      assert_tile_drawn_in(BANKS[1], screen, 0, 96, 64, "the piece of bank 1, moved")
+      assert_tile_drawn_in(BANKS[3], screen, 1, 104, 64, "the piece of bank 3, moved")
+    end
+  end
+
+  # The banks of a frame of one bank: the pose is drawn in that bank's colours.
+  def test_a_pose_told_banks_whose_frame_uses_one_of_them_is_drawn_in_that_bank
+    Dir.mktmpdir do |folder|
+      program = game_of(folder) do |pack|
+        image :plain, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_2, layout: FRAME), origin: ORIGIN,
+                      colors: pack[:palette], banks: [1, 2]
+        sprite :plain, at: [40, 40]
+      end
+      screen = game_player.run(program, frames: 4).screen
+
+      assert_tile_drawn_in(BANKS[2], screen, 0, 40, 40, "the left piece of bank 2")
+      assert_tile_drawn_in(BANKS[2], screen, 1, 48, 40, "the right piece of bank 2")
+    end
+  end
+
+  def test_a_frame_with_a_piece_of_a_bank_not_in_banks_is_refused
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) do
+        game_of(folder) do |pack|
+          image :mixed, tiles: pack[:video], frame: pack[:frames].frame(IN_TWO_BANKS, layout: FRAME), origin: ORIGIN,
+                        colors: pack[:palette], banks: [1, 2]
+        end
+      end
+
+      assert_includes error.message, "image :mixed"
+      assert_includes error.message, "bank 3"
+    end
+  end
+
+  def test_banks_given_with_bank_is_refused
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) do
+        game_of(folder) do |pack|
+          image :mixed, tiles: pack[:video], frame: pack[:frames].frame(IN_TWO_BANKS, layout: FRAME), origin: ORIGIN,
+                        colors: pack[:palette], banks: [1, 3], bank: 1
+        end
+      end
+
+      assert_includes error.message, "banks:"
       assert_includes error.message, "bank:"
+    end
+  end
+
+  # ONE BANK NAMED is a pose of that bank's list, as `bank:` makes one, so every console draws it as
+  # any pose of one list, and `colors_name_of` names the list.
+  def test_a_pose_told_one_bank_is_drawn_in_that_banks_list_on_every_console
+    Dir.mktmpdir do |folder|
+      list = nil
+      program = game_of(folder) do |pack|
+        image :plain, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_2, layout: FRAME), origin: ORIGIN,
+                      colors: pack[:palette], banks: [2]
+        sprite :plain, at: [40, 40]
+        list = colors_name_of(:plain)
+      end
+      screen = game_player.run(program, frames: 4).screen
+
+      assert_equal :palette_2, list
+      assert_tile_drawn_in(BANKS[2], screen, 0, 40, 40, "the left piece of bank 2")
+      assert_tile_drawn_in(BANKS[2], screen, 1, 48, 40, "the right piece of bank 2")
+    end
+  end
+
+  def test_a_pose_told_one_bank_of_a_frame_of_two_is_refused
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) do
+        game_of(folder) do |pack|
+          image :mixed, tiles: pack[:video], frame: pack[:frames].frame(IN_TWO_BANKS, layout: FRAME), origin: ORIGIN,
+                        colors: pack[:palette], banks: [1]
+        end
+      end
+
+      assert_includes error.message, "bank 3"
+    end
+  end
+
+  # A pose keeps a byte for each pixel's place, so its banks' colours are 256 at most: sixteen banks
+  # of sixteen-colour tiles.
+  def test_more_banks_than_a_pose_can_hold_are_refused
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) do
+        game_of(folder) do |pack|
+          image :mixed, tiles: pack[:video], frame: pack[:frames].frame(IN_TWO_BANKS, layout: FRAME), origin: ORIGIN,
+                        colors: pack[:palette], banks: (0..16).to_a
+        end
+      end
+
+      assert_includes error.message, "17 banks"
+      assert_includes error.message, "16 banks at most"
+    end
+  end
+
+  def test_draw_with_on_a_sprite_of_a_pose_of_several_banks_is_refused
+    other = see_through_first(OTHER)
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) do
+        game_of(folder) do |pack|
+          colors :other, other
+          image :mixed, tiles: pack[:video], frame: pack[:frames].frame(IN_TWO_BANKS, layout: FRAME), origin: ORIGIN,
+                        colors: pack[:palette], banks: [1, 3]
+          sprite(:mixed, at: [40, 40]).draw_with :other
+        end
+      end
+
+      assert_includes error.message, "several banks"
+      assert_includes error.message, "bank:"
+      refute_includes error.message, "colors or more"
+    end
+  end
+
+  # One sprite draws all its poses from one list on the Advance, so a pose of banks 1 and 3 beside a
+  # pose of bank 1 alone is refused there, naming the banks as what differs, not the `colors:` slot
+  # both share. No run's player plays a refused game, so it is the interpreter by name.
+  def test_a_sprite_of_poses_naming_different_banks_is_refused_naming_banks
+    Dir.mktmpdir do |folder|
+      program = game_of(folder) do |pack|
+        image :mixed, tiles: pack[:video], frame: pack[:frames].frame(IN_TWO_BANKS, layout: FRAME), origin: ORIGIN,
+                      colors: pack[:palette], banks: [1, 3]
+        image :plain, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_1, layout: FRAME), origin: ORIGIN,
+                      colors: pack[:palette], banks: [1]
+        sprite :both, at: [40, 40], frames: %i[mixed plain], rate: 8
+      end
+      program = program.copy.tap { |copy| copy.console = :gba }
+      error = assert_raises(Reference::ProgramError) { Reference.new.run(program, frames: 2) }
+
+      assert_includes error.message, "different banks"
+      assert_includes error.message, "the same banks:"
+    end
+  end
+
+  def test_banks_past_the_slot_of_colors_are_refused
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) do
+        game_of(folder) do |pack|
+          image :mixed, tiles: pack[:video], frame: pack[:frames].frame(IN_TWO_BANKS, layout: FRAME), origin: ORIGIN,
+                        colors: pack[:two_banks], banks: [1, 3]
+        end
+      end
+
+      assert_includes error.message, "banks:"
+      assert_includes error.message, "0 to 1"
     end
   end
 

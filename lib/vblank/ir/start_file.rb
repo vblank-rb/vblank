@@ -133,13 +133,25 @@ module VBlank
       # end inside the file, however many the record says it holds. A piece, or the part of one,
       # outside the picture is not painted, and a tile past +tile_count+ paints nothing. Where
       # two pieces overlap the earlier one is in front, as a console draws its sprites.
+      #
+      # +banks+, for a pose of the pieces of several banks (`image ..., banks:`), are those banks,
+      # lowest first, and the pose's colours are each one's list after the other, a list of as many
+      # colours as +tile_format+'s tiles hold for each: a piece of one of them is painted with each
+      # of its places counted into its own bank's part (#bank_places_before), and a piece of another
+      # bank is not painted. nil for any other pose.
       Pose = Data.define(:entry_at, :records_at, :origin_x, :origin_y, :tiles_at, :tile_count, :tile_format,
-                         :colors_at, :colors_count, :color_format, :turns, :bank, :bank_lists) do
+                         :colors_at, :colors_count, :color_format, :turns, :bank, :bank_lists, :banks) do
         def initialize(entry_at:, records_at:, origin_x:, origin_y:, tiles_at:, tile_count:, tile_format:, colors_count:,
-                       colors_at: nil, color_format: nil, turns: [].freeze, bank: nil, bank_lists: nil) = super
+                       colors_at: nil, color_format: nil, turns: [].freeze, bank: nil, bank_lists: nil, banks: nil) = super
 
         # The bank its frame names, which picks its list: the bank of the frame's front piece.
         def frame_bank = FrameBank.new(entry_at: entry_at, records_at: records_at)
+
+        # How far into the pose's list the colours of +bank+ start: 0 but for a pose of several banks.
+        def bank_places_before(bank) = banks ? banks.count { |named| named < bank } * tile_format.colors : 0
+
+        # The banks as the runtimes take them: one bit for each, 0 for a pose of no such list.
+        def banks_mask = (banks || []).sum { |bank| 1 << bank }
 
         # The same pose turned +way+ once it is painted.
         def turned(way) = with(turns: [*turns, way].freeze)
@@ -1078,7 +1090,10 @@ module VBlank
       # names one.
       def self.pose_frame_pieces(where, bytes)
         frame = Original::FrameRecord.read_entry(bytes, entry_at: where.entry_at, section_at: where.records_at)
-        where.bank ? frame.pieces.select { |piece| piece.bank == where.bank } : frame.pieces
+        return frame.pieces.select { |piece| piece.bank == where.bank } if where.bank
+        return frame.pieces.select { |piece| where.banks.include?(piece.bank) } if where.banks
+
+        frame.pieces
       end
 
       # The places of a picture +width+ by +height+ with +pieces+ painted into it, row by row. What
@@ -1132,7 +1147,8 @@ module VBlank
 
         tile_bytes = where.tile_format.tile_bytes
         tiles[tile] ||= FormatReading.tiles(bytes.byteslice(where.tiles_at + (tile * tile_bytes), tile_bytes), where.tile_format).first
-        tiles[tile][((from_y % side) * side) + (from_x % side)]
+        place = tiles[tile][((from_y % side) * side) + (from_x % side)]
+        place.zero? ? 0 : place + where.bank_places_before(piece.bank)
       end
 
       # A picture's places row by row: one byte a pixel, or the tiles they are kept in, read from the

@@ -764,9 +764,10 @@ enum { RG_FILL_TILE_SIDE = 8, RG_FILL_TILE_PIXELS = 64 };
  * the record from the original's frame, so nothing here knows how an original keeps one.
  *
  * One piece of a pose's frame, its record from +at+ in the file, painted into +places+ (a picture
- * +width+ by +height+) behind what is there already. The rest are rg_start_file_fill_pose's. */
+ * +width+ by +height+) behind what is there already, each place it draws moved on by +shift+ (its
+ * bank's part of a pose of several banks' colours). The rest are rg_start_file_fill_pose's. */
 static void start_file_paint_piece(int32_t *places, int32_t width, int32_t height, int32_t at, const int32_t *tile_format,
-                                   int32_t origin_x, int32_t origin_y, int32_t tiles_at, int32_t tile_count) {
+                                   int32_t origin_x, int32_t origin_y, int32_t tiles_at, int32_t tile_count, int32_t shift) {
   int32_t left = origin_x + (int16_t)start_file_number(at + RG_PIECE_X_AT, 2, 0);
   int32_t top = origin_y + (int16_t)start_file_number(at + RG_PIECE_Y_AT, 2, 0);
   int32_t first_tile = (int32_t)start_file_number(at + RG_PIECE_TILE_AT, 2, 0);
@@ -786,10 +787,29 @@ static void start_file_paint_piece(int32_t *places, int32_t width, int32_t heigh
       int32_t column = from_x / RG_FILL_TILE_SIDE, row = from_y / RG_FILL_TILE_SIDE;
       int32_t tile = first_tile + (column * column_step) + (row * row_step);
       if (tile >= tile_count) continue;
-      places[(down * width) + along] = start_file_place(tiles_at + (tile * tile_format[RG_TILE_BYTES_AT]), tile_format, 1,
-                                                        from_y % RG_FILL_TILE_SIDE, from_x % RG_FILL_TILE_SIDE);
+      int32_t place = start_file_place(tiles_at + (tile * tile_format[RG_TILE_BYTES_AT]), tile_format, 1,
+                                       from_y % RG_FILL_TILE_SIDE, from_x % RG_FILL_TILE_SIDE);
+      places[(down * width) + along] = place != 0 ? place + shift : 0;
     }
   }
+}
+
+/* Whether the piece whose record is at +at+ is painted: every piece, or those of +only_bank+ where
+ * it is not -1, or those of the banks whose bits +banks_mask+ holds where it is not 0 (a pose of
+ * several banks, IR::StartFile::Pose#banks). */
+static int start_file_piece_painted(int32_t at, int32_t only_bank, int32_t banks_mask) {
+  int32_t bank = (int32_t)start_file_number(at + RG_PIECE_BANK_AT, 2, 0);
+  if (only_bank >= 0 && bank != only_bank) return 0;
+  return banks_mask == 0 || (bank < 31 && (banks_mask & (1 << bank)) != 0);
+}
+
+/* How far into a pose of several banks' colours the piece at +at+ counts its places: +bank_places+
+ * for each of +banks_mask+'s banks below its own (IR::StartFile::Pose#bank_places_before). */
+static int32_t start_file_piece_shift(int32_t at, int32_t banks_mask, int32_t bank_places) {
+  if (banks_mask == 0) return 0;
+  int32_t bank = (int32_t)start_file_number(at + RG_PIECE_BANK_AT, 2, 0), below = 0;
+  for (int32_t named = 0; named < bank && named < 31; named++) below += (banks_mask >> named) & 1;
+  return below * bank_places;
 }
 
 /* How many pieces the frame whose entry is at +entry_at+ holds, and, in +first+, where the first of
@@ -927,10 +947,11 @@ static int32_t *pose_listed_pieces(const pose_block *blocks, int32_t block_count
   return list;
 }
 
-/* The pieces of a pose's frame, from +first+ in the file, +count+ of them (those of +only_bank+
- * where it is not -1), as rg_screen_read_image_pieces takes them: see pose_listed_pieces. The pose
- * is +width+ by +height+ and turned +turn+ once painted, as its pixels are. */
-static int32_t *start_file_pose_pieces(int32_t first, int32_t count, int32_t only_bank, const int32_t *tile_format,
+/* The pieces of a pose's frame, from +first+ in the file, +count+ of them (those
+ * start_file_piece_painted keeps), as rg_screen_read_image_pieces takes them: see
+ * pose_listed_pieces. The pose is +width+ by +height+ and turned +turn+ once painted, as its
+ * pixels are. */
+static int32_t *start_file_pose_pieces(int32_t first, int32_t count, int32_t only_bank, int32_t banks_mask, const int32_t *tile_format,
                                        int32_t origin_x, int32_t origin_y, int32_t tiles_at, int32_t tile_count,
                                        int32_t width, int32_t height, int32_t turn, int32_t shape, int32_t tall) {
   int32_t most = 0;
@@ -946,7 +967,7 @@ static int32_t *start_file_pose_pieces(int32_t first, int32_t count, int32_t onl
   for (int32_t piece = 0; piece < count; piece++) {
     int32_t at = first + (piece * RG_FRAME_PIECE_BYTES);
     columns[piece] = rows[piece] = 0;
-    if (only_bank >= 0 && (int32_t)start_file_number(at + RG_PIECE_BANK_AT, 2, 0) != only_bank) continue;
+    if (!start_file_piece_painted(at, only_bank, banks_mask)) continue;
     int32_t x = origin_x + (int16_t)start_file_number(at + RG_PIECE_X_AT, 2, 0);
     int32_t y = origin_y + (int16_t)start_file_number(at + RG_PIECE_Y_AT, 2, 0);
     int32_t first_tile = (int32_t)start_file_number(at + RG_PIECE_TILE_AT, 2, 0);
@@ -1015,7 +1036,8 @@ void rg_start_file_fill_pose(const int32_t *rules) {
   int32_t kind = rules[0], total = rules[1], copies = rules[2], width = rules[3], height = rules[4], turn = rules[5];
   int32_t colors_at = rules[6], colors_count = rules[7], entry_at = rules[8], records_at = rules[9];
   int32_t origin_x = rules[10], origin_y = rules[11], tiles_at = rules[12], tile_count = rules[13], only_bank = rules[14];
-  int32_t piece_shape = rules[15], piece_tall = rules[16], place_count = rules[17];
+  int32_t piece_shape = rules[15], piece_tall = rules[16], place_count = rules[17], banks_mask = rules[18];
+  int32_t bank_places = rules[19];
   const int32_t *tile_format = rules + RG_FILL_POSE_HEADER_NUMBERS;
   const int32_t *color_format = tile_format + RG_TILE_FORMAT_NUMBERS;
   const int32_t *held_colors = color_format + RG_COLOR_FORMAT_NUMBERS;
@@ -1025,13 +1047,14 @@ void rg_start_file_fill_pose(const int32_t *rules) {
   if (!places) rg_fault("there is no room to paint a pose of %d by %d pixels", (int)width, (int)height);
   for (int32_t piece = 0; piece < count; piece++) {
     int32_t at = first + (piece * RG_FRAME_PIECE_BYTES);
-    if (only_bank >= 0 && (int32_t)start_file_number(at + RG_PIECE_BANK_AT, 2, 0) != only_bank) continue;
-    start_file_paint_piece(places, width, height, at, tile_format, origin_x, origin_y, tiles_at, tile_count);
+    if (!start_file_piece_painted(at, only_bank, banks_mask)) continue;
+    start_file_paint_piece(places, width, height, at, tile_format, origin_x, origin_y, tiles_at, tile_count,
+                           start_file_piece_shift(at, banks_mask, bank_places));
   }
   /* Listed once and kept for the game's life, shared by every copy. */
   const int32_t *pieces = kind == RG_FILL_TILE || piece_shape == 0
                               ? NULL
-                              : start_file_pose_pieces(first, count, only_bank, tile_format, origin_x, origin_y, tiles_at,
+                              : start_file_pose_pieces(first, count, only_bank, banks_mask, tile_format, origin_x, origin_y, tiles_at,
                                                        tile_count, width, height, turn, piece_shape, piece_tall);
   uint16_t *tile_pixels = kind == RG_FILL_TILE ? rg_screen_tile_pixels_to_fill(total) : NULL;
   int16_t *image_pixels = kind == RG_FILL_TILE ? NULL : rg_screen_image_pixels_to_fill(total);

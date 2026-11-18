@@ -744,8 +744,22 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   `draw_with` that name makes the pool follow the list for all its instances from power-on, since the build cannot write the
   list into one instance's choice: an instance never told then shows what the list holds as well, and a pool told that
   name and another list is a friendly error. `bank:` paints only the
-  pieces whose record names that bank, drawn from that bank's list. A frame of two banks in the player's file, which the
-  all-in-one build refuses, is drawn whole in its front piece's bank and follows that bank's list. On a
+  pieces whose record names that bank, drawn from that bank's list. **`banks: [4, 2]` makes one pose of a frame whose
+  pieces name several banks**, each piece drawn from its own bank's list, as a console's sprite entry names its piece's
+  bank (GBATEK, "LCD OBJ - OAM Attributes"), and one sprite shows and moves the whole frame. The game names the banks,
+  since a build with the pack left out cannot see them; the pose's list is each bank's list `:<slot>_<bank>` after the
+  other, lowest bank first, a piece's places counted into its own bank's part (`IR::StartFile::Pose#banks`,
+  `Nodes::Bitmap#bank_places`). Such a pose names no list, so `colors_name_of` refuses it and it follows no recolour of
+  its banks' lists. All-in-one, a piece of a bank `banks:` does not hold is refused at the line, as are `banks:` with
+  `bank:` and a bank past the slot; with the pack left out such a piece is not painted. A frame of one of the banks is
+  drawn in that bank. One bank named (`banks: [3]`) is the pose `bank: 3` makes, a picture of that bank's list on
+  every console, but a piece of another bank is refused all-in-one rather than left out. A pose's banks hold 256
+  colours at most (16 banks of sixteen-colour tiles), and a sprite showing such a pose is refused `draw_with`. On the Advance the sprite is stored a byte a pixel and drawn from the whole table of colours (one
+  entry of the sprite table names one bank, and the cut of a picture into entries does not follow the frame's pieces);
+  the Color, the Super Nintendo, the Genesis and the PlayStation builds do not make it yet and refuse it, naming
+  `bank:` and a sprite for each bank as the way round. Without `banks:`, a frame of two banks in the player's file, which
+  the all-in-one build refuses, is drawn whole in its front piece's bank and follows that bank's list. Worked example:
+  `test/all/vblank/builder/test_pack_pose_bank_colors.rb`. On a
   console whose build keeps one list for a whole sprite (the Advance), one sprite may show two such poses of one slot, as
   all-in-one where their frames name one bank; where the player's file names two, which the all-in-one build refuses, each
   pose is drawn in its own frame's bank. On a console whose build keeps a list for each pose and does not follow them (the
