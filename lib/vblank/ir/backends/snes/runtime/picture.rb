@@ -160,6 +160,21 @@ module VBlank
             HDMA_CHANNELS = "rt hdma channels"
             # A bent layer's rows (a word each, the screen's height of them), its two line tables, and
             # for each layer which of its two the channel reads (0 or 1).
+            # The video memory address rt_set_cell works out for the cell at +column+ and +row+ of
+            # +layer+'s map, for a row in its first 32 (below them the address hangs on how wide the
+            # map put up is): the layer's map start, the second screen of 32×32 across for a column
+            # from 32, then the row and column in that screen, a word a cell (fullsnes, "SNES PPU
+            # Background", BGnSC).
+            def self.cell_address(layer, column, row, third_layer:)
+              raise ArgumentError, "row #{row} is past the first 32" unless (0...32).cover?(row)
+
+              start = if layer.zero? then LAYER_MAPS[0]
+                      elsif layer == 1 || !third_layer then LAYER_MAPS[1]
+                      else THIRD_LAYER_MAP
+                      end
+              start + (row * 32) + (column & 31) + (column.anybits?(32) ? 1024 : 0)
+            end
+
             def self.bend_offsets(layer) = "rt bend offsets #{layer}"
             def self.bend_tables(layer) = "rt bend tables #{layer}"
             BEND_SHOWN = "rt bend shown"
@@ -954,6 +969,7 @@ module VBlank
               asm.lda(asm.abs(memory[CELLS]))
               asm.cmp(MOST_CELLS)
               asm.bcc("rt_set_cell_room")
+              asm.label("rt_cells_full") # also the lowering's, for a cell queued where it is written
               asm.lda(Frame::CELLS_FULL)
               asm.jml(asm.long("rt_fault"))
               asm.label("rt_set_cell_room")

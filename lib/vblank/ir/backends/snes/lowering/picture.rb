@@ -1701,7 +1701,11 @@ module VBlank
             # THE CELL AT +node+'s COLUMN AND ROW OF +bg+ CHANGED (rt_set_cell) to the word the block
             # gives back, or, where it gives back nil, the one it leaves in A; the block is handed the
             # label to jump to when the cell is to be left alone.
-            def emit_cell_noted(node, bg)
+            def emit_cell_noted(node, bg, &word_of)
+              address = written_cell_address(node, bg)
+              return if address == :outside
+              return emit_cell_queued_at(address, &word_of) if address
+
               columns, rows = TileMap.size_of(bg.every_map.first)
               # One pair for every cell the game changes, each used only until its cell is noted: a
               # pair each ran a game of many changed cells out of memory.
@@ -1716,6 +1720,53 @@ module VBlank
               emit_jump_unless_below(row, rows, outside)
               word = yield outside
               emit_set_cell_call(layer_of(bg), column, row, word)
+              @asm.label(outside)
+            end
+
+            # A CELL AT A COLUMN AND ROW WRITTEN IN THE PROGRAM, as a status bar's letters are, has
+            # its address in video memory known now: Runtime::Picture.cell_address, the sum
+            # rt_set_cell makes as the game runs. +node+'s cell of +bg+ is that address, :outside
+            # for a place off the map (the cell is left alone, as Reference#exec_set_tile leaves
+            # it), or nil where the column or row is worked out as the game runs, or the row is
+            # past the first 32, whose address hangs on the map put up.
+            def written_cell_address(node, bg)
+              column = folded(node.col)
+              row = folded(node.row)
+              return nil unless column && row
+
+              columns, rows = TileMap.size_of(bg.every_map.first)
+              return :outside unless (0...columns).cover?(column) && (0...rows).cover?(row)
+              return nil if row >= 32
+
+              Runtime::Picture.cell_address(layer_of(bg), column, row, third_layer: @third_layer)
+            end
+
+            # THE CELL AT +address+ QUEUED for the blank, as rt_set_cell queues one, written here
+            # rather than called: a cell is two words of the queue and the count, so a status bar
+            # letter costs those stores, not a call that works the address out again (on the console a
+            # map word goes in the blank, fullsnes "SNES PPU Video Memory", VMADD and VMDATA). The block
+            # gives the word, or nil for the one it leaves in A, and is handed the label to jump to
+            # when the cell is to be left alone.
+            def emit_cell_queued_at(address)
+              outside = fresh("cell_outside")
+              room = fresh("cell_room")
+              word = yield outside
+              kept = Memory.register(3)
+              @asm.sta(@asm.direct(kept)) unless word
+              count = @asm.abs(@memory[Runtime::Picture::CELLS])
+              @asm.lda(count)
+              @asm.cmp(Runtime::Picture::MOST_CELLS)
+              @asm.bcc(room)
+              @asm.jml(@asm.long("rt_cells_full"))
+              @asm.label(room)
+              @asm.asl # four bytes an entry: the address, then the word
+              @asm.asl
+              @asm.tax
+              @asm.lda(address)
+              @asm.sta(@memory.indexed(@asm, Runtime::Picture::CELL_ENTRIES))
+              @asm.lda(word || @asm.direct(kept))
+              @asm.sta(@memory.indexed(@asm, Runtime::Picture::CELL_ENTRIES, 2))
+              @asm.inc(count)
               @asm.label(outside)
             end
 
