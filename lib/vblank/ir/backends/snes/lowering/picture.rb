@@ -563,7 +563,17 @@ module VBlank
               return if @screen_colors && Array(bg.recolors).empty?
               return emit_walking_background_colors(which, bg) if bg.several_sets?
 
-              runtime_call("rt_colors_hold", [LongAddress.new(background_colors_label(bg)), which])
+              label = on_third_layer?(bg) ? third_layer_colors_label(bg) : background_colors_label(bg)
+              runtime_call("rt_colors_hold", [LongAddress.new(label), which])
+            end
+
+            # The table of the third layer's sets of colours for +bg+, which is on it: its own, and one
+            # for each list it borrows. The layer's eight lists of three are in the backgrounds' first
+            # lists (Art#reserve_bar_palettes), so each set writes those whole (Art#bar_held_set).
+            def third_layer_colors_label(bg)
+              held_colors_label([:third_layer, bg.object_id]) do
+                [nil, *bg.recolors.each_index].map { |step| @art.bar_held_set(step && bg.list_swaps(step)) }
+              end
             end
 
             # The table of +bg+'s sets of colours, its own and one for each list it borrows, in +area+
@@ -1502,6 +1512,10 @@ module VBlank
             # it is made now, so none comes later, after a scene has taken its copy of the tiles.
             def make_third_layer_art
               refuse_unmade!("two backgrounds held to rows on one screen beside two other backgrounds") if Stacking.screenfuls(@program).any? { |screenful| screenful.scenery.count(&:held_to_rows?) > 1 }
+              # The layer's eight lists are one set of colours, written whole by each walk
+              # (Art#bar_held_set), so two declarations walking theirs would write over each other's.
+              walking = backgrounds_declared.select { |bg| bg.held_to_rows? && !Array(bg.recolors).empty? }
+              refuse_unmade!("two backgrounds on the third layer drawn with other colours (`draw_with`)") if walking.length > 1
               backgrounds_declared.select(&:held_to_rows?).each do |held|
                 @layers[held] = THIRD_LAYER
                 refuse_unmade_third_layer!(held)
@@ -1515,7 +1529,6 @@ module VBlank
             # What a background on the third layer cannot be yet.
             def refuse_unmade_third_layer!(held)
               words = third_layer_refusal_words(held)
-              refuse_unmade!("#{words} drawn with other colours (`draw_with`)") unless Array(held.recolors).empty?
               refuse_unmade!("#{words} drawn from 16×16 tiles") unless held.tile_w == 8
               refuse_unmade!("#{words} bent row by row") if bends.any? { |bend| bend.name == held.name }
               refuse_unmade!("#{words} showing tiles painted from a list") if @tile_runs.any? { |run| held.tiles.intersect?(Array(run.tiles)) }
@@ -1654,7 +1667,10 @@ module VBlank
               return nil if tile.nil? || tile.negative?
 
               name = bg.tiles.fetch(tile)
-              return @art.bar_cell(@cache.image(picture_named(name)), owner: Art::ThirdLayerOwner.new(name: bg.name, held_above: !bg.above_row.nil?), tile: name) if on_third_layer?(bg)
+              if on_third_layer?(bg)
+                owner = Art::ThirdLayerOwner.new(name: bg.name, held_above: !bg.above_row.nil?)
+                return @art.bar_cell(@cache.image(picture_named(name)), owner: owner, tile: name, walks: !Array(bg.recolors).empty?)
+              end
 
               @run_cells.fetch(name) do
                 image = @cache.image(picture_named(name))

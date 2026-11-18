@@ -170,7 +170,10 @@ module VBlank
                           "pixels show the backdrop. With `alone: :without_sprites`, the console shows only that " \
                           "background above the row, and no sprite. Beside two other " \
                           "backgrounds, the held background shows alone above its row, in tiles of 3 colours and " \
-                          "see-through. Without `alone:`, it must be in front of the other backgrounds. Its " \
+                          "see-through. It can change its colours with `draw_with`. Then each place of a list " \
+                          "that its tiles use takes one colour of the layer's 8 lists of 3. Only one " \
+                          "background on that layer can use `draw_with`. " \
+                          "Without `alone:`, it must be in front of the other backgrounds. Its " \
                           "tiles must have no see-through pixel. Each cell of its map that can show must have " \
                           "a tile. If not, or if a layer is see-through, the build refuses the game. `show_only_inside` is " \
                           "refused: this build does not make it yet. `rotate` and " \
@@ -189,7 +192,7 @@ module VBlank
                           "That layer has tiles of four colours. Then each " \
                           "tile of the bar must show 3 colours or fewer, and all its tiles together use 8 lists " \
                           "of 3 colours or fewer. The game then has room for 960 background tiles, not 1024. " \
-                          "On the third layer, a bar drawn with other colours (`draw_with`), a bar of 16×16 tiles " \
+                          "On the third layer, a bar of 16×16 tiles " \
                           "and a bar of tiles painted from a list are refused: this build does not make them yet. " \
                           "`set_tile` with `now: true` is refused: " \
                           "a Super Nintendo writes its video memory only between frames, so a change " \

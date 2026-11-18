@@ -368,13 +368,19 @@ module VBlank
             end
           end
 
+          # A COLOUR OF THE THIRD LAYER THAT A WALK CHANGES (`draw_with`): kept by the list and place
+          # it was drawn at, not by its colour, since two places of one colour can walk apart. Its
+          # +color+ is the one it was drawn in.
+          BarPlace = Data.define(:list, :place, :color)
+
           # THE CELL +image+ (8×8) MAKES ON THE THIRD LAYER, for +owner+ (a ThirdLayerOwner): its
           # four-colour tile's number and its list, of the layer's eight. A tile of more than three
           # colours, or more colours than the eight lists hold, is refused naming the background and
-          # the tile (+tile+).
-          def bar_cell(image, owner:, tile:)
+          # the tile (+tile+). On a background drawn with other colours (+walks+) each colour is a
+          # BarPlace, so the lists hold one colour for each place of a list a tile is drawn at.
+          def bar_cell(image, owner:, tile:, walks: false)
             drawn = (0...64).reject { |at| image.tile_see_through_at?(at) }
-            colors = drawn.map { |at| image.color_at(at) }.uniq
+            colors = drawn.map { |at| bar_color_key(image, at, walks) }.uniq
             if colors.length > BAR_OWN_COLORS
               raise ThirdLayerArtTooColorful, "The #{owner.kind} :#{owner.name} shows the tile :#{tile} in #{colors.length} colours. " \
                                               "On a Super Nintendo, #{owner.layer_words} uses tiles of four colours. " \
@@ -384,16 +390,33 @@ module VBlank
 
             palette = bar_palette_for(colors, owner)
             places = Array.new(64) do |at|
-              image.tile_see_through_at?(at) ? 0 : @bar_palettes[palette].index(image.color_at(at)) + 1
+              image.tile_see_through_at?(at) ? 0 : @bar_palettes[palette].index(bar_color_key(image, at, walks)) + 1
             end
             [bar_tile_number(TileBytes.of(places).byteslice(0, BAR_TILE_BYTES)), palette]
+          end
+
+          # THE THIRD LAYER'S COLOURS AS A WALK WRITES THEM (Runtime::Tint's rt_colors_hold): for each of
+          # the backgrounds' lists the layer's are in, where it starts in the colour memory and its
+          # fifteen colours. +swaps+ (Nodes::Background#list_swaps) gives each list a tile is drawn
+          # from the list it is drawn with, and nil leaves every colour as drawn. A BarPlace takes the
+          # colour at its place in the list its own list is drawn with, as the interpreter's swap by
+          # place does (Assets::Recolor); a colour kept by its colour stays.
+          def bar_held_set(swaps)
+            Array.new(bar_background_palettes) do |palette|
+              colors = (1...PLACES).map do |at|
+                list = @bar_palettes[(palette * BAR_PALETTES_A_LIST) + (at / (BAR_OWN_COLORS + 1))]
+                index = at % (BAR_OWN_COLORS + 1)
+                index.zero? || list.nil? || list[index - 1].nil? ? 0 : bar_color_shown(list[index - 1], swaps)
+              end
+              [background_palette_at(palette), colors]
+            end
           end
 
           # THE BACKGROUNDS' LISTS THE BAR'S COLOURS ARE IN, kept from the other backgrounds: one for
           # each four lists of the bar's. Called once the bar's cells are made and before any other
           # background's, so those are the first lists and nothing else is in them yet.
           def reserve_bar_palettes
-            ((@bar_palettes.length + BAR_PALETTES_A_LIST - 1) / BAR_PALETTES_A_LIST).times do |palette|
+            bar_background_palettes.times do |palette|
               @background_palettes[palette] = Array.new(OWN_COLORS, BAR_LIST_HOLDER)
               @held[:backgrounds] << palette
             end
@@ -722,10 +745,9 @@ module VBlank
             colors[0] = @backdrop
             (area ? background_palettes(area) : @background_palettes).each_with_index { |list, p| list&.each_with_index { |c, i| colors[(p * PLACES) + i + 1] = c } }
             @sprite_palettes.each_with_index { |list, p| list&.each_with_index { |c, i| colors[128 + (p * PLACES) + i + 1] = c } }
-            bar_lists = (@bar_palettes.length + BAR_PALETTES_A_LIST - 1) / BAR_PALETTES_A_LIST
-            (1...(bar_lists * PLACES)).each { |at| colors[at] = 0 }
+            (1...(bar_background_palettes * PLACES)).each { |at| colors[at] = 0 }
             @bar_palettes.each_with_index do |list, p|
-              list.each_with_index { |c, i| colors[(p * (BAR_OWN_COLORS + 1)) + i + 1] = c }
+              list.each_with_index { |c, i| colors[(p * (BAR_OWN_COLORS + 1)) + i + 1] = bar_color_shown(c, nil) }
             end
             colors.pack("v*")
           end
@@ -749,6 +771,25 @@ module VBlank
 
           def blank_tile = ("\0".b * TILE_BYTES)
           def blank_bar_tile = ("\0".b * BAR_TILE_BYTES)
+
+          # How many of the backgrounds' lists the third layer's colours take: one for each four of its lists.
+          def bar_background_palettes = (@bar_palettes.length + BAR_PALETTES_A_LIST - 1) / BAR_PALETTES_A_LIST
+
+          # What the third layer's lists hold for pixel +at+ of +image+: its colour, or, where the
+          # background walks its colours, the BarPlace it was drawn at.
+          def bar_color_key(image, at, walks)
+            return image.color_at(at) unless walks
+
+            BarPlace.new(list: image.list_drawn_from, place: place_in_list(image, at), color: image.color_at(at))
+          end
+
+          # The colour +held+, an entry of the third layer's lists, shows with +swaps+ (#bar_held_set).
+          def bar_color_shown(held, swaps)
+            return held unless held.is_a?(BarPlace)
+
+            swapped = swaps && swaps[held.list]
+            (swapped && swapped[held.place]) || held.color
+          end
 
           # The third layer's list holding every one of +colors+, adding them to one with room, or
           # starting another of the eight; refused naming +owner+ (a ThirdLayerOwner) where none is left.
