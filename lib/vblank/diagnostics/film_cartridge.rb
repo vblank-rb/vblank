@@ -49,11 +49,18 @@ module VBlank
       # the two sides of one game show the same pass on the same frame of the film.
       #
       # Measured, not derived: an animated game filmed both ways, and the frame of the lowering each
-      # frame of the cartridge matched. test_film_cartridge.rb (the Advance) and test_ps1_film.rb pin
-      # their numbers. Testing::Pictures keeps the same kind of table for the checked runs, counted
-      # from another moment, so its numbers are not these.
+      # frame of the cartridge matched. test_film_cartridge.rb (the Advance), test_ps1_film.rb and
+      # film_start_tests.rb (the Color and the Super Nintendo) hold the two sides to the same picture
+      # from the first pass, so a start-up that gets quicker or slower fails there.
+      #
+      # A NUMBER FOR A SCREEN IS A NUMBER FOR A SIZE OF GAME. Setting up copies the game's tiles and maps
+      # before the first pass, so a game with more to copy reaches its first pass a frame or more later
+      # (on the Super Nintendo, a background of eighty distinct tiles; on the Color, a map wider than its
+      # 32 cells): these are the small games of film_start_tests.rb, and a bigger game's sides can be a
+      # frame apart. Testing::Pictures keeps the same kind of table for the checked runs, counted from
+      # another moment, so its numbers are not these.
       CARTRIDGE_START_FRAMES = Ractor.make_shareable({ gba: { bitmap: 1, tiled: 1, rotozoom: 1 },
-                                                       gbc: { bitmap: 9, tiled: 6 }, snes: { bitmap: 8, tiled: 6 },
+                                                       gbc: { bitmap: 5, tiled: 2 }, snes: { bitmap: 8, tiled: 2 },
                                                        ps1: { bitmap: 1 } })
 
       # A console and screen nobody has measured (the Genesis's: its cartridge shows a sprite a pass after
