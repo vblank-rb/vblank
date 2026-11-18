@@ -19,7 +19,9 @@ v.region_color?(x, y, w, h, :blue)
 v.audio_energy / v.silent? / v.sound?      # "did the speaker do anything?"
 v.last_frame_mix                           # Advance: the frame the mix wrote last, a signed sample each, byte for byte the
                                            # interpreter's mixed_sound; hold two builds' sound alike with this, not the speaker,
-                                           # which the emulator resamples at moments a game's own video copies move
+                                           # which the emulator resamples at moments a game's own video copies move.
+                                           # Needs the build's record: hand the Verifier the built ROM, not a path to
+                                           # a cartridge written to a file (that one refuses it)
 
 v.only_color                               # the one colour every pixel is, or nil for a picture
 v.brightness                               # every pixel's red, green and blue added up, each 0..31
