@@ -114,7 +114,7 @@ module VBlank
                            :reached, :tearing, :flicker, :tick_rates, :sound_drops, :video_copies,
                            :late_passes, :split_hints, :list_touches, :late_hand_overs,
                            :pages_shown_at_once, :pages_shown_part_way, :power_on_pass, :colors_short,
-                           :sprites_left_out, :gap_overruns) do
+                           :sprites_left_out, :gap_overruns, :routine_lines) do
         # +split_hints+ are the parts of routines that missed the quick memory worth making a
         # `func` of (see SplitHints), busiest first. +list_touches+ is how many times the run read
         # or wrote each list, by its name. +late_hand_overs+ are the scenes that run late on the
@@ -129,10 +129,11 @@ module VBlank
         # +sprites_left_out+ is how many rows were left out of the console's full table (see
         # .sprites_left_out_line), each one row on one frame; nil for a game whose rows fit it.
         # +gap_overruns+ are the passes whose gap after the wait ran past the next break (see
-        # GapOverrun), in the order they ran.
+        # GapOverrun), in the order they ran. +routine_lines+ are the routines `lines:` asked for,
+        # each with its time by line (see RoutineLines); empty where nobody asked.
         def initialize(split_hints: [], list_touches: {}, late_hand_overs: [], pages_shown_at_once: 0,
                        pages_shown_part_way: 0, power_on_pass: nil, colors_short: nil, sprites_left_out: nil,
-                       gap_overruns: [], **rest) = super
+                       gap_overruns: [], routine_lines: [], **rest) = super
 
         def dropping_frames? = fps < 59.5
 
@@ -151,6 +152,9 @@ module VBlank
             sprites_left_out: sprites_left_out,
             late_hand_overs: late_hand_overs.map { |late| { scene: late.scene.to_s, loads_first: late.loads_first } },
             split_hints: split_hints.map { |hint| hint.to_h.merge(routine: hint.routine.to_s) },
+            routine_lines: routine_lines.map do |routine|
+              routine.to_h.merge(routine: routine.routine.to_s, lines: routine.lines.map(&:to_h))
+            end,
             tearing: tearing && { looked: tearing.looked, torn: tearing.torn, worst: tearing.worst },
             flicker: flicker&.measured? ? { pixels: flicker.pixels, first: flicker.first } : nil,
             timers: tick_rates.select(&:measured?).map do |tick|
@@ -193,8 +197,14 @@ module VBlank
       # +presses+ is a {ScenePresses}, what a scene's `measure_holding:` presses: played round
       # from the frame the game is put in its scene, on top of +keys+. Only a run held in a scene
       # (+holding+ or +scene:+) plays it.
+      #
+      # +lines+ asks which lines of a routine its time went to (see RoutineLines): a routine's
+      # name or a list of them (a `func`'s, a scene's, or :game_loop), or true for the busiest
+      # routines of the frames measured. nil asks for none.
       def self.run(rom, frames: FRAMES, settle: SETTLE, keys: [], scene: nil, from: nil,
-                   picture: true, holding: nil, starting: [], clock: nil, split_hints: true, press: [], presses: nil)
+                   picture: true, holding: nil, starting: [], clock: nil, split_hints: true, press: [], presses: nil,
+                   lines: nil)
+        RoutineLines.refuse_unknown_routines!(rom, lines)
         routines = rom.built.routines
         loaded_sets = 0 # which scenes' own routines were in the quick memory; read as the run ends
         held = Array(keys)
@@ -251,6 +261,7 @@ module VBlank
                      tick_rates_in(profile, rom.built.timer_handlers), lost,
                      video_copies_in(profile, rom.built.video_copies, loaded_sets))
           .with(split_hints: split_hints ? SplitHints.of(profile, rom) : [],
+                routine_lines: lines ? RoutineLines.of(profile, rom, lines, routines: routines) : [],
                 list_touches: touches_by_list(profile.touches, rom.built.lists),
                 late_hand_overs: picture ? HandOvers.late(rom, keys: held) : [],
                 pages_shown_at_once: shown_at_once,
@@ -965,6 +976,31 @@ module VBlank
           printer.cost_line(label_for(line), "#{line.share}% of the instructions, #{line.time_share}% of the time")
         end
         split_hint_lines(result.split_hints, printer)
+        routine_line_lines(result.routine_lines, printer)
+      end
+
+      # How many lines of one routine the report names; the rest are counted together.
+      LINES_NAMED = 10
+
+      # EACH ROUTINE `lines:` ASKED FOR, BY LINE (see RoutineLines): its part of the frame, then
+      # each line with its part of the routine's time and of the frame's, busiest first.
+      def self.routine_line_lines(routines, printer)
+        routines.each do |routine|
+          printer.puts("")
+          printer.puts("  #{RoutineLines.words_for(routine.routine)}, by line: #{routine.frame_share}% of the frame's time")
+          width = routine.lines.first(LINES_NAMED).map { |line| line.source.length }.max.to_i
+          routine.lines.first(LINES_NAMED).each do |line|
+            printer.puts("    #{line.source.ljust(width)}  #{line.share}% of its time, #{line.frame_share}% of the frame's, " \
+                         "#{counted(line.instructions, 'instruction')} a frame")
+          end
+          rest = routine.lines.drop(LINES_NAMED)
+          unless rest.empty?
+            printer.puts("    #{counted(rest.size, 'more line')}: #{rest.sum(&:share).round(1)}% of its time")
+          end
+          next if routine.outside_lines_share.zero?
+
+          printer.puts("    entering and leaving it, outside every line: #{routine.outside_lines_share}% of its time")
+        end
       end
 
       # WHICH PART OF A ROUTINE THAT MISSED THE QUICK MEMORY TO MAKE A `func` OF (see

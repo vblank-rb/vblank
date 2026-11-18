@@ -88,9 +88,10 @@ module VBlank
       # read by itself (Diagnostics::TapeProfile), keeping its +routines+ busiest routines, the
       # game's and the runtime's each (three where none is given).
       def profile(format: :human, out: $stdout, frames: Diagnostics::GenesisProfiler::FRAMES,
-                  settle: nil, keys: [], scene: nil, from: nil, press: [], tape: nil, routines: nil)
+                  settle: nil, keys: [], scene: nil, from: nil, press: [], tape: nil, routines: nil, lines: nil)
         Diagnostics::TapeProfile.refuse_scene!(scene, from, "Genesis")
         Diagnostics::TimeByRoutine.refuse_press!(press, "Genesis")
+        Diagnostics::TimeByRoutine.refuse_lines!(lines, "Genesis")
         if tape
           return Diagnostics::TapeProfile.profile(self, Diagnostics::GenesisProfiler, tape: tape, frames: frames, keys: keys,
                                                                                       settle: settle, format: format, out: out,

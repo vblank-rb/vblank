@@ -621,6 +621,7 @@ module VBlank
                                      ),
                                    scene_sets: scene_sets_record,
                                    missed_routine_parts: missed_routine_parts,
+                                   routine_statements: routine_statements,
                                    build_options: { fast_cartridge: @fast_cartridge, fast_code: @fast_code,
                                                     stack_room: @stack_room })
         end
@@ -755,10 +756,30 @@ module VBlank
           missed = (@passed_over || []).map(&:name).select { |name| region_of(name) == :cartridge }
           missed.to_h do |name|
             span = @functions.func_ranges[name]
-            parts = span ? @attribution.statement_spans.select { |part| span.cover?(part.from) && part.to <= span.end } : []
             base = span && (runtime_base(name, span) - span.begin)
-            [name, parts.map { |part| { source: part.source, at: (base + part.from)...(base + part.to) } }]
+            [name, statements_within(span).map { |part| { source: part.source, at: (base + part.from)...(base + part.to) } }]
           end.reject { |_, parts| parts.empty? }
+        end
+
+        # WHERE EACH STATEMENT OF EVERY ROUTINE IS, by the routine: the line of the game that wrote
+        # it and the bytes its code takes, counted from the routine's first instruction. A measured
+        # run adds up the time inside each, to say which lines of a routine its time went to (see
+        # Diagnostics::RoutineLines). Counted from the routine's start rather than given as
+        # addresses, because a routine runs from one of several places — the cartridge, the quick
+        # memory, or the room a scene's own routines take turns at — and which one is known only
+        # once the run is over. Nothing of this is in the cartridge: the build knows it already.
+        def routine_statements
+          @functions.func_ranges.each_with_object({}) do |(name, span), all|
+            parts = statements_within(span)
+            all[name] = parts.map { |part| { source: part.source, within: (part.from - span.begin)...(part.to - span.begin) } } unless parts.empty?
+          end
+        end
+
+        # The statements lowered inside +span+ of the emitted code; none for no span.
+        def statements_within(span)
+          return [] unless span
+
+          @attribution.statement_spans.select { |part| span.cover?(part.from) && part.to <= span.end }
         end
 
         def routine_addresses

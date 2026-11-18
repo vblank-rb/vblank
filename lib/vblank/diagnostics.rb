@@ -45,6 +45,7 @@ require_relative "diagnostics/build_report"      # The exact half of a profile: 
 require_relative "diagnostics/full_collections"  # Every list and pool, and how to hold each one full
 require_relative "diagnostics/save_starts"       # A save started on each scene that saves, so saving is measured
 require_relative "diagnostics/split_hints"       # Which part of a routine too big for quick memory to make a func of
+require_relative "diagnostics/routine_lines"     # Which lines of any routine its time went to
 require_relative "diagnostics/hidden_variables"  # Variables normal Ruby needed that nobody declared
 require_relative "diagnostics/profiler"          # The measured half: where the frames went
 require_relative "diagnostics/time_by_routine"   # A frame's time by routine, from an emulator that counts by address

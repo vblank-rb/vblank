@@ -28,6 +28,15 @@ module VBlank
                              "out --press. To press a button on a given frame, give a tape of presses (--tape)."
       end
 
+      # Only the Advance's build keeps where each line of a routine is (Diagnostics::RoutineLines).
+      # The others name each routine's time, and with a tape each frame's.
+      def self.refuse_lines!(lines, console)
+        return if lines.nil?
+
+        raise ArgumentError, "A #{console} profile cannot show the lines of a routine yet. A Game Boy Advance profile " \
+                             "can. To fix this, remove lines: (--lines). The profile still names the time of each routine."
+      end
+
       # +code+ is a build's labels and their addresses, and +line+ how much of the emulator's count a
       # line of the picture takes. +game_labels+ matches the labels of the game's own code, for a
       # build that keeps no record of it to give +routine_at+.

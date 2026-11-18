@@ -459,6 +459,29 @@ class TestCLI < Minitest::Test
     end
   end
 
+  # A game whose one func spends its time in one line, the third of the file.
+  SPUN = <<~RUBY
+    VBlank.game "SPUN", consoles: %i[gba] do
+      total = 0
+      func(:spin) { repeat(200) { total += 3 } }
+      game_loop { call :spin }
+    end
+  RUBY
+
+  def test_profile_lines_shows_a_routine_line_by_line
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "spun.rb"), SPUN)
+      out, status = cli("profile", "spun.rb", "--lines", "busiest", dir: dir)
+      assert status.success?, out
+      assert_match(/func :spin, by line: .*% of the frame's time/, out)
+      assert_match(/spun\.rb:3 +\d+(\.\d)?% of its time/, out)
+
+      bad, bad_status = cli("profile", "spun.rb", "--lines", "spun", dir: dir)
+      refute bad_status.success?, bad
+      assert_match(/no routine called :spun/, bad)
+    end
+  end
+
   # A game for the Color whose count jumps on the pass after A goes down.
   TAPED = <<~RUBY
     VBlank.game("TAPED", consoles: %i[gbc]) do

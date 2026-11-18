@@ -112,9 +112,10 @@ module VBlank
       # Each frame keeps its +routines+ busiest routines, the game's and the runtime's each (three
       # where none is given).
       def profile(format: :human, out: $stdout, frames: Diagnostics::GBCProfiler::FRAMES,
-                  settle: nil, keys: [], scene: nil, from: nil, press: [], tape: nil, routines: nil)
+                  settle: nil, keys: [], scene: nil, from: nil, press: [], tape: nil, routines: nil, lines: nil)
         Diagnostics::TapeProfile.refuse_scene!(scene, from, "Game Boy Color")
         Diagnostics::TimeByRoutine.refuse_press!(press, "Game Boy Color")
+        Diagnostics::TimeByRoutine.refuse_lines!(lines, "Game Boy Color")
         if tape
           return Diagnostics::TapeProfile.profile(self, Diagnostics::GBCProfiler, tape: tape, frames: frames, keys: keys,
                                                                                   settle: settle, format: format, out: out,

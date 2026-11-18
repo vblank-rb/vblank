@@ -516,6 +516,9 @@ module VBlank
         vblank profile game.rb --keys right a     with right and A held
         vblank profile game.rb --scene level      in the scene named :level
         vblank profile game.rb --from boss.ss1    from an emulator save state
+        vblank profile game.rb --lines busiest    the busiest routines, line by line
+        vblank profile game.rb --scene level --lines level
+                                                  the scene :level, line by line
         vblank profile game.rb --console gbc      its Game Boy Color cartridge
         vblank profile game.rb --tape t.tape --frames 590..610
                                                   each frame of a tape by itself
@@ -539,6 +542,10 @@ module VBlank
                                  awake, and its busiest routines. On the Game
                                  Boy Color, the Super Nintendo, the Genesis and
                                  the PlayStation.
+        --lines NAME ...         Also show where the time went in these routines,
+                                 line by line: a func's name, a scene's name, or
+                                 game_loop. busiest shows the busiest routines.
+                                 On the Game Boy Advance.
         --frames N               Measure this many frames. Default: #{VBlank::Diagnostics::Profiler::FRAMES}.
                                  With --tape, a range of the tape's frames,
                                  counted from 1: --frames 590..610.
@@ -559,6 +566,7 @@ module VBlank
     option :press, type: :array, banner: "BUTTON", default: []
     option :scene, banner: "NAME"
     option :from, banner: "PATH"
+    option :lines, type: :array, banner: "NAME"
     option :set, type: :array, banner: "NAME=VALUE", default: []
     def profile(game_file)
       format = { "human" => :human, "json" => :json }[options[:format]] or
@@ -568,6 +576,8 @@ module VBlank
       # Each console's profile has its own settling when none is given, and a tape holds its own start.
       measuring[:settle] = options[:settle] if options[:settle]
       measuring[:tape] = VBlank::Playthroughs::Tape.read(options[:tape]) if options[:tape]
+      # `--lines busiest` asks for the busiest routines, as `lines: true` does.
+      measuring[:lines] = options[:lines] == ["busiest"] ? true : options[:lines].map(&:to_sym) if options[:lines]
       game = load_game(game_file)
       # Built the same way `build` builds it — measured placement included — so this reports on
       # the cartridge somebody would actually ship, not a differently-placed one.

@@ -175,17 +175,22 @@ module VBlank
       # +settle+ runs that many frames first, and +frames+ is how many to measure over. +press+ are
       # buttons that go down as those frames begin, for one a game reads the moment it goes down.
       #
+      # +lines+ asks which lines of a routine its time went to: a routine's name or a list of them
+      # (a `func`'s, a scene's, or :game_loop), or true for the busiest routines measured (see
+      # Diagnostics::RoutineLines).
+      #
       # +format+ is :human to print it or :json for the same numbers as data.
       #
       # Needs the emulator and a cartridge that knows how it was built — the
       # addresses each routine runs at cannot be recovered from the bytes, because a routine kept
       # in the console's quick memory was copied there at boot.
       def profile(format: :human, out: $stdout, frames: Diagnostics::Profiler::FRAMES,
-                  settle: Diagnostics::Profiler::SETTLE, keys: [], scene: nil, from: nil, press: [], tape: nil)
+                  settle: Diagnostics::Profiler::SETTLE, keys: [], scene: nil, from: nil, press: [], tape: nil,
+                  lines: nil)
         Diagnostics::TapeProfile.refuse_tape!(tape, "Game Boy Advance")
         require_build_record! # a cartridge with no record cannot name its own routines
         result = Diagnostics::Profiler.run(self, frames: frames, settle: settle, keys: keys, scene: scene,
-                              from: from, press: press)
+                              from: from, press: press, lines: lines)
         case format
         when :human then Diagnostics::Profiler.render(result, out: out, rom: self)
         when :json
