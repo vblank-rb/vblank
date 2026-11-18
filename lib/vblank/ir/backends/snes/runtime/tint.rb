@@ -43,8 +43,10 @@ module VBlank
             CHANNEL_MAX = 31
 
             # The colours moved (512 bytes), and the fade in force: toward what, the colour, the
-            # steps, whether the copy changed since the blank last sent it, and the table of what
-            # each channel's 32 numbers become.
+            # steps, whether the copy changed since the blank last sent it, the table of what each
+            # channel's 32 numbers become, and two words of a bit for each of the sixteen palettes:
+            # the palettes of the copy still to be sent (LINES_SENT), and the palettes a list changed
+            # under the fade in force, whose colours are still to be moved (LINES_WALKED).
             SHADOW = "rt tint shadow"
             STATE = "rt tint"
             TOWARD = 0
@@ -52,16 +54,25 @@ module VBlank
             STEPS_AT = 4
             CHANGED = 6
             TABLE = 8
-            STATE_BYTES = TABLE + (3 * 32)
+            LINES_SENT = TABLE + (3 * 32)
+            LINES_WALKED = LINES_SENT + 2
+            STATE_BYTES = LINES_WALKED + 2
+            ALL_LINES = 0xFFFF
+            PALETTES = 16
+            PALETTE_BYTES = 32 # A palette's sixteen colours, two bytes each
 
             # What CHANGED holds besides nought: a fade set this pass, whose colours are still to be
-            # moved (rt_tint_prepare), or colours moved and still to be sent (rt_tint_upload).
+            # moved (rt_tint_prepare); colours moved and still to be sent (rt_tint_upload), the
+            # palettes LINES_SENT marks; or a list changed under the fade in force, whose palettes
+            # LINES_WALKED marks, still to be moved through the table as it is.
             TO_SEND = 1
             TO_WORK_OUT = 2
+            TO_WALK = 3
 
             R = Ractor.make_shareable(->(n) { Memory.register(n) })
 
-            # The direct page the routine works on.
+            # The direct page the routine works on. Moving the colours (rt_tint_apply_run) uses +product+ for
+            # the end of the run it moves.
             Scratch = Data.define(:channel, :target, :factor, :product)
 
             module_function
@@ -113,9 +124,10 @@ module VBlank
             # +scene_backdrops+ and +backdrop_follows+ carry rt_backdrop_hold, the second rt_backdrop_from too.
             def emit(asm, memory, s, colors_shown: [[0, 256]], changing_colors: false, dims: false, scene_backdrops: false,
                      backdrop_follows: false)
-              emit_tint(asm, memory, s, dims)
+              emit_tint(asm, memory, s, dims, changing_colors)
               emit_table(asm, memory, s)
-              emit_apply(asm, memory, colors_shown, changing_colors ? memory[COLORS_NOW] : "art colors")
+              emit_apply(asm, memory, s, colors_shown, changing_colors ? memory[COLORS_NOW] : "art colors")
+              emit_lines_walked(asm, memory, s, colors_shown) if changing_colors
               emit_upload(asm, memory)
               emit_colors_held(asm, memory) if changing_colors
               emit_backdrop_held(asm, memory, follows: backdrop_follows) if scene_backdrops || backdrop_follows
@@ -137,6 +149,8 @@ module VBlank
               asm.ldx(0)
               asm.sta(asm.long_x(memory[COLORS_NOW]))
               asm.sta(asm.long_x(memory[SHADOW]))
+              asm.lda(1) # the backdrop is palette 0's
+              asm.sta(asm.direct(R.call(1)))
               asm.jmp(asm.abs("rt_colors_hold_noted"))
             end
 
@@ -180,6 +194,7 @@ module VBlank
               set = R.call(2)
               palettes = R.call(3)
               colors = R.call(3) + 2
+              lines = R.call(1) # the palettes written, once +which+ has been read: a bit each
               asm.label("rt_colors_start")
               asm.ldx(0)
               asm.label("rt_colors_start_color")
@@ -213,12 +228,21 @@ module VBlank
               asm.iny
               asm.lda(asm.ind_long_y(R.call(0)))
               asm.sta(asm.direct(set + 2))
+              asm.stz(asm.direct(lines))
               asm.lda(asm.ind_long(set))
               asm.sta(asm.direct(palettes))
               asm.ldy(2)
               asm.label("rt_colors_hold_palette")
               asm.lda(asm.ind_long_y(set))
               asm.tax
+              5.times { asm.lsr } # the palette's place, a palette of 32 bytes
+              asm.asl
+              asm.phx
+              asm.tax
+              asm.lda(asm.long_x("rt_tint_line_bits"))
+              asm.ora(asm.direct(lines))
+              asm.sta(asm.direct(lines))
+              asm.plx
               asm.iny
               asm.iny
               asm.lda(PALETTE_COLORS)
@@ -235,24 +259,39 @@ module VBlank
               asm.bne("rt_colors_hold_color")
               asm.dec(asm.direct(palettes))
               asm.bne("rt_colors_hold_palette")
+              # The palettes written, in +lines+: with no fade in force they are ready in the copy and
+              # owed to the blank; with one they are owed to rt_tint_prepare, which moves them alone
+              # through the table as it is. A fade set this pass has every colour to move and keeps it.
               asm.label("rt_colors_hold_noted")
               asm.lda(asm.abs(state + STEPS_AT))
               asm.bne("rt_colors_hold_faded")
+              asm.lda(asm.direct(lines))
+              asm.ora(asm.abs(state + LINES_SENT))
+              asm.sta(asm.abs(state + LINES_SENT))
               asm.lda(asm.abs(state + CHANGED))
               asm.bne("rt_colors_hold_done")
               asm.lda(TO_SEND)
               asm.bra("rt_colors_hold_note")
               asm.label("rt_colors_hold_faded")
-              asm.lda(TO_WORK_OUT)
+              asm.lda(asm.direct(lines))
+              asm.ora(asm.abs(state + LINES_WALKED))
+              asm.sta(asm.abs(state + LINES_WALKED))
+              asm.lda(asm.abs(state + CHANGED))
+              asm.cmp(TO_WORK_OUT)
+              asm.beq("rt_colors_hold_done")
+              asm.lda(TO_WALK)
               asm.label("rt_colors_hold_note")
               asm.sta(asm.abs(state + CHANGED))
               asm.label("rt_colors_hold_done")
               asm.rtl
+
+              asm.label("rt_tint_line_bits")
+              asm.data_words(*Array.new(PALETTES) { |palette| 1 << palette })
             end
 
             # The steps held to 0..256 (PaletteWalk's range, held here once rather than at every call:
             # see PaletteWalk) and, when the fade is not the one in force, the colours moved.
-            def emit_tint(asm, memory, s, dims)
+            def emit_tint(asm, memory, s, dims, changing_colors)
               state = memory[STATE]
               asm.label("rt_tint")
               asm.lda(asm.direct(R.call(2) + 2))
@@ -299,9 +338,27 @@ module VBlank
               asm.label("rt_tint_prepare")
               asm.lda(asm.abs(state + CHANGED))
               asm.cmp(TO_WORK_OUT)
-              asm.bne("rt_tint_prepare_done")
+              asm.bne("rt_tint_prepare_lines")
               asm.jsr(asm.abs("rt_tint_table"))
               asm.jsr(asm.abs("rt_tint_apply"))
+              asm.lda(ALL_LINES)
+              asm.sta(asm.abs(state + LINES_SENT))
+              asm.stz(asm.abs(state + LINES_WALKED))
+              asm.bra("rt_tint_prepare_sent")
+              # A list changed under the fade in force: its palettes alone, through the table as it is.
+              asm.label("rt_tint_prepare_lines")
+              if changing_colors
+                asm.cmp(TO_WALK)
+                asm.bne("rt_tint_prepare_done")
+                asm.jsr(asm.abs("rt_tint_apply_lines"))
+                asm.lda(asm.abs(state + LINES_WALKED))
+                asm.ora(asm.abs(state + LINES_SENT))
+                asm.sta(asm.abs(state + LINES_SENT))
+                asm.stz(asm.abs(state + LINES_WALKED))
+              else
+                asm.bra("rt_tint_prepare_done")
+              end
+              asm.label("rt_tint_prepare_sent")
               asm.lda(TO_SEND)
               asm.sta(asm.abs(state + CHANGED))
               asm.label("rt_tint_prepare_done")
@@ -446,34 +503,67 @@ module VBlank
             # +colors_shown+ are moved: a game whose pictures use one palette moves its sixteen
             # colours, the backdrop among them, not 256. The others are never drawn from, and stay as nought in the copy.
             # +from+ is where the colours are moved from.
-            def emit_apply(asm, memory, colors_shown, from)
+            def emit_apply(asm, memory, s, colors_shown, from)
               state = memory[STATE]
               shadow = memory[SHADOW]
               asm.label("rt_tint_apply")
-              colors_shown.each_with_index do |(first, count), run|
-                next if count.zero?
+              colors_shown.each { |first, count| emit_run_applied(asm, s, first, count) }
+              asm.rts
 
-                asm.ldx(first * 2)
-                asm.label("rt_tint_apply_color_#{run}")
-                asm.lda(0)
+              # rt_tint_apply_run (JSR): the colours from X up to the byte at +product+ moved.
+              asm.label("rt_tint_apply_run")
+              asm.lda(0)
+              asm.sta(asm.long_x(shadow))
+              3.times do |channel|
+                asm.lda(asm.long_x(from))
+                (channel * 5).times { asm.lsr }
+                asm.and_a(CHANNEL_MAX)
+                asm.phx
+                asm.tax
+                asm.lda(asm.abs_x(state + TABLE + (channel * 32)))
+                asm.plx
+                asm.and_a(CHANNEL_MAX)
+                (channel * 5).times { asm.asl }
+                asm.ora(asm.long_x(shadow))
                 asm.sta(asm.long_x(shadow))
-                3.times do |channel|
-                  asm.lda(asm.long_x(from))
-                  (channel * 5).times { asm.lsr }
-                  asm.and_a(CHANNEL_MAX)
-                  asm.phx
-                  asm.tax
-                  asm.lda(asm.abs_x(state + TABLE + (channel * 32)))
-                  asm.plx
-                  asm.and_a(CHANNEL_MAX)
-                  (channel * 5).times { asm.asl }
-                  asm.ora(asm.long_x(shadow))
-                  asm.sta(asm.long_x(shadow))
+              end
+              asm.inx
+              asm.inx
+              asm.cpx(asm.direct(s.product))
+              asm.bne("rt_tint_apply_run")
+              asm.rts
+            end
+
+            # A call of rt_tint_apply_run for the +count+ colours from +first+.
+            def emit_run_applied(asm, s, first, count)
+              return if count.zero?
+
+              asm.ldx(first * 2)
+              asm.lda((first + count) * 2)
+              asm.sta(asm.direct(s.product))
+              asm.jsr(asm.abs("rt_tint_apply_run"))
+            end
+
+            # rt_tint_apply_lines (JSR): the colours of each palette LINES_WALKED marks moved, those of it a
+            # picture can show (+colors_shown+), through the table as it is. A list changed under a fade in
+            # force moves its own palettes and no other colour, and the table is not worked out again.
+            def emit_lines_walked(asm, memory, s, colors_shown)
+              walked = memory[STATE] + LINES_WALKED
+              asm.label("rt_tint_apply_lines")
+              PALETTES.times do |palette|
+                runs = colors_shown.filter_map do |first, count|
+                  from = [first, palette * 16].max
+                  to = [first + count, (palette + 1) * 16].min
+                  [from, to - from] if to > from
                 end
-                asm.inx
-                asm.inx
-                asm.cpx((first + count) * 2)
-                asm.bne("rt_tint_apply_color_#{run}")
+                next if runs.empty?
+
+                skip = "rt_tint_apply_lines_#{palette}"
+                asm.lda(asm.abs(walked))
+                asm.and_a(1 << palette)
+                asm.beq(skip)
+                runs.each { |first, count| emit_run_applied(asm, s, first, count) }
+                asm.label(skip)
               end
               asm.rts
             end
@@ -481,21 +571,76 @@ module VBlank
             # rt_tint_upload (JSR, in the blank): the moved colours, if they changed since the last
             # blank. Each screen sends them in one blank with the rest of what shows the pass, and
             # counts them against that blank's room (Picture's rt_upload_copy, Paint's
-            # rt_paint_upload), so a moved colour never shows on the last pass's picture.
+            # rt_paint_upload), so a moved colour never shows on the last pass's picture. A fade
+            # sends the whole colour memory in one copy; a list told other colours sends its own
+            # palettes alone, each a copy of 32 bytes to the palette's place in the colour memory
+            # (CGADD, then CGDATA a byte at a time: fullsnes, "CGRAM"), so changing one list costs
+            # what its sixteen colours cost to send and not the 512 bytes of the screen's.
             def emit_upload(asm, memory)
               h = Console::SNESHardware
               state = memory[STATE]
               shadow = memory[SHADOW]
+              sent = state + LINES_SENT
               asm.label("rt_tint_upload")
               asm.lda(asm.abs(state + CHANGED))
               asm.cmp(TO_SEND)
               asm.bne("rt_tint_upload_none")
               asm.stz(asm.abs(state + CHANGED))
+              asm.lda(asm.abs(sent))
+              asm.cmp(ALL_LINES)
+              asm.bne("rt_tint_upload_lines")
+              asm.stz(asm.abs(sent))
               asm.sep(0x20)
               asm.stz(asm.abs(h::CGADD))
               asm.rep(0x20)
               Picture.emit_dma(asm, h::DMA_TO_ONE_PORT, h::CGDATA, asm.imm(shadow & 0xFFFF), shadow >> 16, 512)
               asm.label("rt_tint_upload_none")
+              asm.rts
+
+              # A palette at a time, X its first byte in the copy: LINES_SENT is shifted down as it is
+              # read, so it is nought when the last palette marked is sent.
+              # The sprites' eight palettes are the top eight, so a list of sprite colours starts the walk
+              # there rather than testing eight palettes it did not change.
+              asm.label("rt_tint_upload_lines")
+              asm.ldx(0)
+              asm.and_a(0x00FF)
+              asm.bne("rt_tint_upload_line")
+              asm.lda(asm.abs(sent))
+              asm.xba
+              asm.and_a(0x00FF)
+              asm.sta(asm.abs(sent))
+              asm.ldx(8 * PALETTE_BYTES)
+              asm.label("rt_tint_upload_line")
+              asm.lsr(asm.abs(sent))
+              asm.bcc("rt_tint_upload_line_next")
+              asm.txa
+              asm.lsr # the palette's first colour, a word of the colour memory each
+              asm.sep(0x20)
+              asm.sta(asm.abs(h::CGADD))
+              asm.rep(0x20)
+              asm.txa
+              asm.clc
+              asm.adc(shadow & 0xFFFF)
+              asm.sta(asm.abs(h::DMA_BASE + h::A1TL))
+              asm.lda(PALETTE_BYTES)
+              asm.sta(asm.abs(h::DMA_BASE + h::DASL))
+              asm.sep(0x20)
+              asm.lda(shadow >> 16)
+              asm.sta(asm.abs(h::DMA_BASE + h::A1B))
+              asm.lda(h::DMA_TO_ONE_PORT)
+              asm.sta(asm.abs(h::DMA_BASE + h::DMAP))
+              asm.lda(h::CGDATA & 0xFF)
+              asm.sta(asm.abs(h::DMA_BASE + h::BBAD))
+              asm.lda(1)
+              asm.sta(asm.abs(h::MDMAEN))
+              asm.rep(0x20)
+              asm.label("rt_tint_upload_line_next")
+              asm.txa
+              asm.clc
+              asm.adc(PALETTE_BYTES)
+              asm.tax
+              asm.lda(asm.abs(sent))
+              asm.bne("rt_tint_upload_line")
               asm.rts
             end
           end

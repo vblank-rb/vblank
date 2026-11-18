@@ -1430,6 +1430,8 @@ module VBlank
               asm.ldy(asm.abs(state + Tint::STEPS_AT))
               asm.bne("rt_paint_blit_inked_faded")
               asm.sta(asm.long_x(memory[Tint::SHADOW]))
+              asm.lda(Tint::ALL_LINES) # an ink's colour sends the whole colour memory, as a fade does
+              asm.sta(asm.abs(state + Tint::LINES_SENT))
               asm.lda(asm.abs(state + Tint::CHANGED))
               asm.bne("rt_paint_blit_inked_ink")
               asm.lda(Tint::TO_SEND)
