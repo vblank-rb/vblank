@@ -256,13 +256,15 @@ module VBlank
 
         # --- input ---
         held: works("the buttons a Genesis pad has: `:a`, `:b`, `:c`, `:start` and the D-pad. A Genesis pad has " \
-                    "no `:select`, `:l`, `:r`, `:x` or `:y`: use `:c` and `:start` for them. `player: 2` or more " \
-                    "is refused, and `players:` more than 1 is refused too: this build reads the first pad only."),
+                    "no `:select`, `:l`, `:r`, `:x` or `:y`: use `:c` and `:start` for them. `player: 2` reads " \
+                    "the second pad, and `player: :any` reads either. `player: 3` or more is refused, and " \
+                    "`players:` more than 2 is refused too: this build reads two pads, and does not read a " \
+                    "four-player adapter yet."),
         pressed: works("see `held`."),
         most_players: works,
         drawing_for_local_player: works("the player is always 1: a cartridge is played by one person."),
         mark: works("the mark is one more of the console's sprites, shown over the sprite it marks."),
-        players_connected: works("always 1: this build reads the first pad only."),
+        players_connected: works("1, or 2 from the first frame a button on the second pad is down."),
         rumble: works("nothing is felt. A Genesis cartridge has no rumble motor, so the game plays the same " \
                       "without it."),
         computer_keys: works(Answers::COMPUTER_ONLY), computer_gamepad: works(Answers::COMPUTER_ONLY),

@@ -2013,8 +2013,13 @@ module VBlank
 
           def value_of_int(node) = load_constant(node.value)
 
-          # This build reads the first pad only, so one player is connected, always.
-          def value_of_players_connected(_node) = load_constant(1)
+          # The first player, and the second once a button on the second pad has been down
+          # (Runtime::Frame::SECOND_CONNECTED, 1 from then on).
+          def value_of_players_connected(_node)
+            @asm.moveq(0, @asm.d(0))
+            @asm.move(:w, runtime_at(Runtime::Frame::SECOND_CONNECTED), @asm.d(0))
+            @asm.addq(:l, 1, @asm.d(0))
+          end
 
           # A cartridge is played by one person, the first player.
           def value_of_local_player(_node) = load_constant(1)
@@ -2199,17 +2204,20 @@ module VBlank
           def value_of_chance(node) = value(Build.binop(:<, node.draw, Build.int(node.percent)))
 
           # The buttons held, or pressed, through the pass: a bit each, in IR::Buttons's order, and
-          # any of them for Buttons::ANY.
-          def value_of_held(node) = emit_button_truth(Runtime::Frame::HELD, node.button)
-          def value_of_pressed(node) = emit_button_truth(Runtime::Frame::PRESSED, node.button)
+          # any of them for Buttons::ANY; the second pad's for `player: 2`, and either pad's for
+          # `player: :any`.
+          def value_of_held(node) = emit_button_truth(Runtime::Frame::HELD, Runtime::Frame::SECOND_HELD, node)
+          def value_of_pressed(node) = emit_button_truth(Runtime::Frame::PRESSED, Runtime::Frame::SECOND_PRESSED, node)
 
-          def emit_button_truth(which, button)
+          def emit_button_truth(first, second, node)
+            button = node.button
             mask = if button == Buttons::ANY
                      Buttons.mask(Console::GENESIS.buttons)
                    else
                      1 << (Buttons::NAMES.index(button) or raise LoweringError, "unknown button #{button.inspect}")
                    end
-            @asm.move(:w, runtime_at(which), @asm.d(0))
+            @asm.move(:w, runtime_at(node.player == 2 ? second : first), @asm.d(0))
+            @asm.or(:w, runtime_at(second), @asm.d(0)) if node.player == Buttons::ANY
             @asm.and(:w, @asm.imm(mask), @asm.d(0))
             @asm.scc(:ne, @asm.d(0))
             @asm.and(:l, @asm.imm(1), @asm.d(0))

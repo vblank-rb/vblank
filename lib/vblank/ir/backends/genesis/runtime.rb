@@ -35,10 +35,12 @@ module VBlank
           # effects (Effects).
           # +sprites_over_picture+ for a painted screen that shows sprites over its picture (Paint).
           # +counted+ for a game that reads how many frames it has shown since power-on (Frame::SETTING_UP).
+          # +second_pad+ for a game that reads the second pad (Frame.reads_second_pad?).
           def reserve(memory, picture: :none, colors: false, sound: false, songs: false, music_follows_level: false, effects: 0,
                       holds_music: false, wobbles: false, steps_shapes: false, swells: false, slides: false, sides: false, samples: false,
-                      sprites_over_picture: false, scene_tiles: false, counted: false, glides: false, recorded_sides: false)
-            Frame.reserve(memory, counted: counted)
+                      sprites_over_picture: false, scene_tiles: false, counted: false, glides: false, recorded_sides: false,
+                      second_pad: false)
+            Frame.reserve(memory, counted: counted, second_pad: second_pad)
             Picture.reserve(memory, picture: picture, colors: colors, sprites: sprites_over_picture, scene_tiles: scene_tiles)
             Sound.reserve(memory) if sound
             Recordings.reserve(memory, glides: glides, sides: recorded_sides) if samples
@@ -83,7 +85,7 @@ module VBlank
             Boot.emit_vectors(entry)
             asm = M68000.new("runtime")
             Boot.emit(asm, main: main, registers: registers, held_at: memory.displacement(Frame::HELD),
-                           counting: (Frame.counting_block(memory) if count_at))
+                           counting: (Frame.counting_block(memory) if count_at), second: second_pad_places(memory))
             Int32.emit(asm, fractions: fractions)
             Frame.emit(asm, memory, sound: sound, samples: !plays.nil?, count_at: count_at)
             Lists.emit(asm, memory)
@@ -97,6 +99,14 @@ module VBlank
             emit_start(asm, samples: !plays.nil?, counting_at: (memory.displacement(Frame::COUNTING) if count_at))
             emit_frame_begins(asm, frame_begins)
             [entry.section, asm.section, music, *plays].compact
+          end
+
+          # Where Boot puts the second pad's buttons from power-on, in a game that reads it; nil for any other.
+          def second_pad_places(memory)
+            return unless Frame.second_pad?(memory)
+
+            Boot::SecondPad.new(held_at: memory.displacement(Frame::SECOND_HELD),
+                                connected_at: memory.displacement(Frame::SECOND_CONNECTED))
           end
 
           # What a game needs before its first line: its variables that do not start at nought (the

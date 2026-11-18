@@ -193,7 +193,8 @@ module VBlank
                                   wobbles: Music.wobbles?(program), steps_shapes: Music.steps_shapes?(program),
                                   swells: Music.swells_under_level?(program), slides: Music.slides?(program),
                                   sides: Music.sides_under_level?(program), samples: samples, scene_tiles: scene_tiles,
-                                  glides: samples && Music.glides?(program), recorded_sides: samples && IR::Tunes.recorded_pans?(program))
+                                  glides: samples && Music.glides?(program), recorded_sides: samples && IR::Tunes.recorded_pans?(program),
+                                  second_pad: Runtime::Frame.reads_second_pad?(program))
           Runtime::Frame.reserve_last_pass(memory) if cache.plan.keeps_last_pass_number?
           lowering = try.made = Lowering.new(program, memory: memory, scene_tiles: scene_tiles, scene_colors: scene_colors,
                                                       streamed: try.settings.streamed, cache: cache)

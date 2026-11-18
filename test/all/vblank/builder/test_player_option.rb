@@ -3,15 +3,14 @@
 require "test_helper"
 
 # `player:` on the button verbs, as far as every console agrees: which number means what, and what
-# a console with one controller says. What two controllers do is
-# test/console/snes/vblank/builder/test_two_players.rb.
+# a console with one controller says. What two controllers do is test/two_players_tests.rb.
 class TestPlayerOption < Minitest::Test
   private def built_for(console, err: StringIO.new, &game)
     VBlank.build("PLAYERS", console: console, out: StringIO.new, err: err, &game)
   end
 
   def test_a_console_with_one_controller_refuses_the_second_player_in_plain_words
-    %i[gba gbc genesis].each do |console|
+    %i[gba gbc].each do |console|
       said = StringIO.new
       assert_raises(VBlank::BuildError, console.to_s) do
         built_for(console, err: said) { game_loop { halt if held(:left, player: 2) } }
@@ -47,7 +46,7 @@ class TestPlayerOption < Minitest::Test
   end
 
   def test_a_game_for_more_players_than_a_console_seats_is_refused_there
-    { gba: 2, gbc: 2, snes: 3, genesis: 2 }.each do |console, players|
+    { gba: 2, gbc: 2, snes: 3, genesis: 3 }.each do |console, players|
       said = StringIO.new
       assert_raises(VBlank::BuildError, console.to_s) do
         VBlank.build("PLAYERS", console: console, players: players, out: StringIO.new, err: said) { game_loop { halt } }

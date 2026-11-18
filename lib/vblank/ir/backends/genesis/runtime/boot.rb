@@ -44,11 +44,13 @@ module VBlank
             # those are shown frames like any other. So for such a game the screen's interrupt is switched on
             # as soon as the video chip is set up, counting only (Frame::COUNTING), with the part of work RAM
             # it counts in cleared first and left alone by the clearing after (#emit_counting_on).
-            def emit(asm, main:, registers:, held_at:, counting: nil)
+            #
+            # +second+ (a SecondPad) for a game that reads the second pad (Frame#reads_second_pad?).
+            def emit(asm, main:, registers:, held_at:, counting: nil, second: nil)
               h = Console::GenesisHardware
               asm.label("rt_boot")
               asm.move_to_sr(asm.imm(0x2700)) # every interrupt held off
-              emit_buttons_from_power_on(asm, h)
+              emit_buttons_from_power_on(asm, h, second: !second.nil?)
               emit_security_check(asm, h)
               emit_sound_quiet(asm, h)
               emit_video_chip(asm, h, registers)
@@ -56,6 +58,7 @@ module VBlank
               emit_memories_cleared(asm, h, kept_bytes: counting ? counting.bytes : 0, counting: !counting.nil?)
               asm.movea(:l, asm.imm(Memory::BASE), asm.a(5))
               asm.move(:w, asm.d(7), asm.disp(5, held_at))
+              emit_second_held_from_power_on(asm, second) if second
               asm.jsr(asm.abs_l("rt_start"))
               asm.jsr(asm.abs_l(main))
               asm.label("rt_main_returned")
@@ -66,10 +69,35 @@ module VBlank
             # a player's hand is on the pad before the console is on. They are kept in D7 until work RAM
             # is cleared, and are the first pass's (Frame::HELD), down before the first frame boundary and
             # not yet seen there, so the first boundary still finds them going down.
-            def emit_buttons_from_power_on(asm, h)
+            #
+            # In a game that reads the second pad (+second+), its port is set the same way and its
+            # buttons kept in D7's high half.
+            def emit_buttons_from_power_on(asm, h, second: false)
               asm.move(:b, asm.imm(h::PAD_TH), asm.abs_l(h::PAD1_CONTROL))
               asm.jsr(asm.abs_l("rt_buttons_now"))
               asm.move(:l, asm.d(0), asm.d(7))
+              return unless second
+
+              asm.move(:b, asm.imm(h::PAD_TH), asm.abs_l(h::PAD2_CONTROL))
+              asm.jsr(asm.abs_l("rt_second_buttons_now"))
+              asm.swap(asm.d(0))
+              asm.or(:l, asm.d(0), asm.d(7))
+            end
+
+            # Where the second pad's buttons held from power-on go (Frame::SECOND_HELD), and whether a
+            # button on it makes the second player connected (Frame::SECOND_CONNECTED): each a distance
+            # from A5.
+            SecondPad = Data.define(:held_at, :connected_at)
+
+            # The second pad's buttons from power-on, in D7's high half, made the first pass's; a
+            # button down there connects the second player from the first pass, as the interpreter's
+            # `hold` does (Reference#count_connected_players).
+            def emit_second_held_from_power_on(asm, second)
+              asm.swap(asm.d(7))
+              asm.move(:w, asm.d(7), asm.disp(5, second.held_at))
+              asm.branch(:eq, "rt_boot_second_quiet")
+              asm.move(:w, asm.imm(1), asm.disp(5, second.connected_at))
+              asm.label("rt_boot_second_quiet")
             end
 
             def emit_security_check(asm, h)

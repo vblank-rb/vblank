@@ -2,9 +2,8 @@
 
 # HOW MANY PLAYERS ARE CONNECTED, on a console with one controller: always the one. Played by
 # each console whose build reads one controller (test/console/gba/vblank/builder/test_players_connected.rb,
-# test/console/gbc/vblank/builder/test_players_connected_on_the_color.rb,
-# test/console/genesis/vblank/builder/test_players_connected_on_the_genesis.rb). How the count grows with
-# more players is test/many_players_tests.rb.
+# test/console/gbc/vblank/builder/test_players_connected_on_the_color.rb). How the count grows with
+# more players is test/many_players_tests.rb, and with a second pad test/two_players_tests.rb.
 module PlayersConnectedTests
   private def counting_players
     b = VBlank::Builder.new

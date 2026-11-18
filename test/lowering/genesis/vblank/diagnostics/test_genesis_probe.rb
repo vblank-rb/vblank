@@ -145,6 +145,25 @@ class TestGenesisProbe < Minitest::Test
     reader&.close
   end
 
+  # The reader's button mask holds the second player's buttons on the second pad, and Start on the
+  # first pad is not the second player's.
+  def test_a_step_holds_the_second_pads_buttons
+    built = VBlank.build("JOINS", console: :genesis, out: StringIO.new, err: StringIO.new) do
+      joins = var :joins, 0
+      game_loop { joins += 1 if pressed(:start, player: 2) }
+    end
+    reader = VBlank::Diagnostics::Verifier.new(built, frames: 8, vars: built.var_addresses)
+    reader.step(4, keys: VBlank::IR::Buttons.mask(:start))
+
+    assert_equal 0, reader.var(:joins)
+
+    reader.step(4, keys: VBlank::IR::Buttons.mask(:p2_start))
+
+    assert_equal 1, reader.var(:joins)
+  ensure
+    reader&.close
+  end
+
   def test_an_address_outside_work_ram_is_refused
     with_recorded_and_bare do |_recorded, probe, _ticks|
       assert_match "work RAM", assert_raises(ArgumentError) { probe.read(0x0100) }.message

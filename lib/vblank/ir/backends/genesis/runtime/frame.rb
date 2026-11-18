@@ -73,6 +73,14 @@ module VBlank
             # one that went down on any of them since the last wait ended.
             PAD_HELD = "rt pad held"
             PAD_PRESSED = "rt pad pressed"
+            # The second pad's of each of those, in a game that reads it (#reads_second_pad?), and 1 once
+            # a button on it has been down (SECOND_CONNECTED), for `players_connected`.
+            SECOND_HELD = "rt second held"
+            SECOND_SEEN = "rt second seen"
+            SECOND_PRESSED = "rt second pressed"
+            SECOND_PAD_HELD = "rt second pad held"
+            SECOND_PAD_PRESSED = "rt second pad pressed"
+            SECOND_CONNECTED = "rt second connected"
             # 1 once the interrupt has come since the game began to wait.
             VBLANK = "rt vblank"
             # 1 once the screen is on: before the end of the first pass it is off.
@@ -104,10 +112,20 @@ module VBlank
 
             module_function
 
+            # Whether +program+ reads the second pad: a button on it, on its own or as either player's, or
+            # how many players are connected, which counts the second once a button on it is down. A game
+            # that asks none of these reads the first pad alone, and builds as it did before there was a
+            # second.
+            def reads_second_pad?(program)
+              program.walk.any? do |node|
+                (%i[held pressed].include?(node.kind) && node.player != 1) || node.kind == :players_connected
+              end
+            end
+
             # +counted+ for a game that reads how many frames it has shown since power-on (COUNTING,
             # SETTING_UP). Must be the first places reserved, so the interrupt's are at the start of
-            # work RAM (#counting_block).
-            def reserve(memory, counted: false)
+            # work RAM (#counting_block). +second_pad+ for a game that reads it (#reads_second_pad?).
+            def reserve(memory, counted: false, second_pad: false)
               if counted
                 memory.reserve(COUNTING, 2)
                 memory.reserve(SETTING_UP, 2)
@@ -131,7 +149,15 @@ module VBlank
               memory.reserve(PAD_PRESSED, 2)
               memory.reserve(VBLANK, 2)
               memory.reserve(DISPLAY_ON, 2)
+              return unless second_pad
+
+              [SECOND_HELD, SECOND_SEEN, SECOND_PRESSED, SECOND_PAD_HELD, SECOND_PAD_PRESSED, SECOND_CONNECTED].each do |name|
+                memory.reserve(name, 2)
+              end
             end
+
+            # Whether the game whose places are in +memory+ reads the second pad (#reserve).
+            def second_pad?(memory) = memory.reserved?(SECOND_HELD)
 
             # The CountingBlock of a game that counts the frames setting up takes: COUNTING to FRAMES.
             def counting_block(memory)
@@ -300,16 +326,42 @@ module VBlank
             # B, right, left, down and up, and with it low start and A, a pressed button reading 0.
             # The pad needs a moment after the line changes, which is two instructions that do
             # nothing. The bits are turned into IR::Buttons's order.
+            #
+            # THE SECOND PAD is read the same way through the next port along ($A10005), in a game that
+            # reads it (#reads_second_pad?). A port with nothing plugged in reads every line high, so no
+            # button of it is down.
             def emit_buttons(asm, memory, at)
               h = Console::GenesisHardware
-              # rt_buttons_now: D0 = the buttons held now, a bit each in IR::Buttons's order.
-              asm.label("rt_buttons_now")
-              asm.move(:b, asm.imm(h::PAD_TH), asm.abs_l(h::PAD1_DATA))
+              second = second_pad?(memory)
+              # rt_buttons_now: D0 = the first pad's buttons held now, a bit each in IR::Buttons's order;
+              # rt_second_buttons_now the second's.
+              emit_pad_now(asm, "rt_buttons_now", h::PAD1_DATA)
+              emit_pad_now(asm, "rt_second_buttons_now", h::PAD2_DATA) if second
+
+              # In the interrupt, every frame: the buttons held now, and every one that went down
+              # since the frame before added to those pressed during the pass.
+              asm.label("rt_pad_read")
+              asm.jsr(asm.abs_l("rt_buttons_now"))
+              emit_pad_noted(asm, at, SEEN, PAD_PRESSED, PAD_HELD)
+              if second
+                asm.jsr(asm.abs_l("rt_second_buttons_now"))
+                emit_pad_noted(asm, at, SECOND_SEEN, SECOND_PAD_PRESSED, SECOND_PAD_HELD)
+              end
+              asm.rts
+
+              emit_read_buttons(asm, memory, at)
+            end
+
+            # +label+: D0 = the buttons held now on the pad whose data port is +data+. D1 and D2 are used.
+            def emit_pad_now(asm, label, data)
+              h = Console::GenesisHardware
+              asm.label(label)
+              asm.move(:b, asm.imm(h::PAD_TH), asm.abs_l(data))
               2.times { asm.nop }
-              asm.move(:b, asm.abs_l(h::PAD1_DATA), asm.d(1))
-              asm.move(:b, asm.imm(0), asm.abs_l(h::PAD1_DATA))
+              asm.move(:b, asm.abs_l(data), asm.d(1))
+              asm.move(:b, asm.imm(0), asm.abs_l(data))
               2.times { asm.nop }
-              asm.move(:b, asm.abs_l(h::PAD1_DATA), asm.d(2))
+              asm.move(:b, asm.abs_l(data), asm.d(2))
               asm.not(:b, asm.d(1))
               asm.not(:b, asm.d(2))
               asm.moveq(0, asm.d(0))
@@ -319,21 +371,18 @@ module VBlank
                 asm.or(:w, asm.imm(BUTTON_BITS.fetch(name)), asm.d(0))
               end
               asm.rts
+            end
 
-              # In the interrupt, every frame: the buttons held now, and every one that went down
-              # since the frame before added to those pressed during the pass.
-              asm.label("rt_pad_read")
-              asm.jsr(asm.abs_l("rt_buttons_now"))
-              asm.move(:w, at.call(SEEN), asm.d(2))
+            # D0, the buttons held now on a pad, kept in +held+ and +seen+, and those that were not
+            # down the frame before added to +pressed+.
+            def emit_pad_noted(asm, at, seen, pressed, held)
+              asm.move(:w, at.call(seen), asm.d(2))
               asm.not(:w, asm.d(2))
               asm.and(:w, asm.d(0), asm.d(2))
-              asm.or(:w, at.call(PAD_PRESSED), asm.d(2))
-              asm.move(:w, asm.d(2), at.call(PAD_PRESSED))
-              asm.move(:w, asm.d(0), at.call(PAD_HELD))
-              asm.move(:w, asm.d(0), at.call(SEEN))
-              asm.rts
-
-              emit_read_buttons(asm, memory, at)
+              asm.or(:w, at.call(pressed), asm.d(2))
+              asm.move(:w, asm.d(2), at.call(pressed))
+              asm.move(:w, asm.d(0), at.call(held))
+              asm.move(:w, asm.d(0), at.call(seen))
             end
 
             # Where a pass's wait ends: the buttons for the pass about to start, from every frame the
@@ -346,6 +395,7 @@ module VBlank
               asm.move(:w, at.call(PAD_PRESSED), at.call(PRESSED))
               asm.clr(:w, at.call(PAD_PRESSED))
               asm.move(:w, at.call(PAD_HELD), at.call(HELD))
+              emit_second_pad_taken(asm, at) if second_pad?(memory)
               asm.move(:l, at.call(FRAMES), asm.d(0))
               asm.move_to_sr(asm.imm(INTERRUPTS_ON))
               asm.move(:l, asm.d(0), asm.d(1))
@@ -366,6 +416,19 @@ module VBlank
               asm.label("rt_read_buttons_step")
               asm.move(:w, asm.d(1), at.call(STEP_TAKEN))
               asm.rts
+            end
+
+            # The second pad's buttons for the pass about to start, as the first's are taken; and the
+            # second player connected from the first pass a button of theirs went down in the frames
+            # the last one took (Reference#count_connected_players). A button down from power-on is
+            # Boot's to count.
+            def emit_second_pad_taken(asm, at)
+              asm.move(:w, at.call(SECOND_PAD_PRESSED), at.call(SECOND_PRESSED))
+              asm.branch(:eq, "rt_read_buttons_second_quiet")
+              asm.move(:w, asm.imm(1), at.call(SECOND_CONNECTED))
+              asm.label("rt_read_buttons_second_quiet")
+              asm.clr(:w, at.call(SECOND_PAD_PRESSED))
+              asm.move(:w, at.call(SECOND_PAD_HELD), at.call(SECOND_HELD))
             end
 
             # STOPPING. rt_halt stops the game where it is: what it drew since its last frame is

@@ -285,12 +285,13 @@ module RubyGenesisEmulator
       @picture = bytes
     end
 
-    # Hands the core the cartridge's path and bytes, and plugs a pad into the first port.
+    # Hands the core the cartridge's path and bytes, and plugs a pad into each of the two ports.
     def load_cartridge(rom_path)
       loaded = @frontend.load_game(File.expand_path(rom_path), File.binread(rom_path))
       raise ArgumentError, "Genesis Plus GX would not load #{rom_path}" unless loaded
 
       @frontend.set_controller_port_device(0, JOYPAD)
+      @frontend.set_controller_port_device(1, JOYPAD)
     end
   end
 end

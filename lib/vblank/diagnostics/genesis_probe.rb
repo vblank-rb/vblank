@@ -37,11 +37,11 @@ module VBlank
       def width = @core.width
       def height = @core.height
 
-      # +keys+ is a button mask (IR::Buttons.mask). A Genesis has one controller here, and the
-      # reader refuses a second player's buttons before they reach this.
+      # +keys+ is a button mask (IR::Buttons.mask), the second player's on the second pad.
       def step(frames, keys: 0)
-        held = IR::Buttons::HOLDABLE.select { |name| keys.anybits?(IR::Buttons.mask(name)) }
-        @core.set_buttons(IR::Buttons.by_controller(held).first & PAD_BUTTONS)
+        first, second = IR::Buttons.by_controller(IR::Buttons::HOLDABLE.select { |name| keys.anybits?(IR::Buttons.mask(name)) })
+        @core.set_buttons(first & PAD_BUTTONS)
+        @core.set_buttons(second & PAD_BUTTONS, port: 1)
         @last_audio = Array.new(frames) do
           @core.run_frame
           @core.take_audio.pack("s<*")

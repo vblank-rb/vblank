@@ -98,9 +98,13 @@ module VBlank
 
           def power_on = set_buttons(@held)
 
-          # The buttons a game names, on the pad's: the same names. A button a Genesis pad lacks is
-          # one no cartridge for it can read, so it is not pressed.
-          def set_buttons(buttons) = @core.set_buttons(buttons.map(&:to_sym) & PAD_BUTTONS)
+          # The buttons a game names, on the pads': the same names, the second player's on the second
+          # pad. A button a Genesis pad lacks is one no cartridge for it can read, so it is not pressed.
+          def set_buttons(buttons)
+            first, second = Buttons.by_controller(buttons.map(&:to_sym))
+            @core.set_buttons(first & PAD_BUTTONS)
+            @core.set_buttons(second & PAD_BUTTONS, port: 1)
+          end
 
           # A RUN OF NO FRAMES ends as the first pass does, before anything is shown
           # (CartridgeHeadlessRun#end_before_first_picture): the runtime turns the screen on as the
