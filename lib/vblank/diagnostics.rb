@@ -25,6 +25,7 @@ require_relative "diagnostics/film_sound"        # The sound a film asks for, ea
 # Its rake task, film_tasks.rb, is a Rakefile's and is not required here: a Rakefile requires it alone,
 # and it loads the library when it runs.
 require_relative "diagnostics/sound_recording"   # What a game sounds like on the cartridge, the desktop build or as Ruby
+require_relative "diagnostics/recording_comparison" # Two recordings held to each other as a person hears them
 require_relative "diagnostics/counted_passes"    # The passes of a console whose runtime counts them
 require_relative "diagnostics/snes_memory"       # Super Nintendo memory, work RAM and the Super FX chip's, by address
 require_relative "diagnostics/snes_probe"        # A running Super Nintendo cartridge, as the reader asks of one

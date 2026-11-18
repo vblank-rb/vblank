@@ -27,8 +27,13 @@ module VBlank
     # desktop build is held to (test/sound_comparison.rb) are read only where a note is held still,
     # so they never see one.
     class SoundRecording
-      # What each console's emulator hands its sound over at, in samples a second for each speaker.
-      CARTRIDGE_RATES = Ractor.make_shareable({ gba: 44_100, gbc: 44_100, snes: 48_000 })
+      # What each console's emulator hands its sound over at, in samples a second for each speaker:
+      # libmgba's, bsnes's and Genesis Plus GX's output rates, each matching the samples it hands over
+      # in a run of known length.
+      CARTRIDGE_RATES = Ractor.make_shareable({ gba: 44_100, gbc: 44_100, snes: 48_000, genesis: 44_100 })
+
+      # The quiet between the two recordings of a pair written one after the other (#write_pair).
+      PAIR_GAP_SECONDS = 0.5
 
       # The console's count of its voices, by the emulator's names for them.
       VOICES = { square1: 1, square2: 2, wave: 3, noise: 4 }.freeze
@@ -82,13 +87,61 @@ module VBlank
       # Ractor can read a table of names, where it cannot call a block a constant holds).
       RUNTIMES = Ractor.make_shareable({ native: :Native, js: :JS, ruby: :Ruby })
 
-      # A .wav file of one speaker's sixteen-bit samples.
+      # A .wav file of plain samples (PCM): sixteen bits or eight, one speaker or two. Two speakers are
+      # heard as one, each moment the two added and halved, as a recording here is one speaker's; eight
+      # bits are widened to sixteen. +frame_seconds+ is how long a frame of the console the recording is
+      # held against is, which a .wav file does not say.
       def self.read_wav(path, frame_seconds:)
-        bytes = File.binread(path)
-        rate = bytes[24, 4].unpack1("V")
-        at = bytes.index("data") or raise ArgumentError, "#{path} has no sound in it"
-        size = bytes[at + 4, 4].unpack1("V")
-        new(samples: bytes[at + 8, size].unpack("s<*"), rate: rate, frame_seconds: frame_seconds)
+        chunks = wav_chunks(File.binread(path), path)
+        channels, rate, bits = chunks.fetch("fmt ").unpack("x2vVx6v")
+        refuse_unreadable_wav!(path, channels, bits)
+        data = chunks.fetch("data")
+        samples = bits == 8 ? data.unpack("C*").map { |sample| (sample - 128) << 8 } : data.unpack("s<*")
+        samples = samples.each_slice(2).map { |left, right| (left + (right || left)) / 2 } if channels == 2
+        new(samples: samples, rate: rate, frame_seconds: frame_seconds)
+      end
+
+      # The heard sound of a running cartridge, +reader+ (a Verifier), over its last +frames+ frames: the
+      # two speakers heard as one, at the rate its console's emulator hands its sound over.
+      def self.heard_in(reader, frames:)
+        rate = CARTRIDGE_RATES.fetch(reader.console)
+        frame_seconds = Console.described(reader.console).frame_seconds
+        mixed = reader.audio_samples.each_slice(2).map { |left, right| (left + (right || left)) / 2 }
+        new(samples: mixed.last((frames * frame_seconds * rate).round), rate: rate, frame_seconds: frame_seconds)
+      end
+
+      # Two recordings written to +path+ as one .wav file of two speakers, for a person to hear them
+      # together. +layout+ :in_turn plays +first+, a moment's quiet (PAIR_GAP_SECONDS), then +second+,
+      # each on both speakers; :side_by_side plays +first+ on the left speaker and +second+ on the
+      # right at once, the shorter made up with quiet. A recording at a lower rate is read at the
+      # higher one, each new sample between the two old ones it falls between. Answers +path+.
+      def self.write_pair(path, first, second, layout:)
+        rate = [first.rate, second.rate].max
+        one, other = [first, second].map { |recording| recording.samples_at(rate) }
+        left, right = case layout
+                      when :in_turn
+                        played = one + Array.new((PAIR_GAP_SECONDS * rate).round, 0) + other
+                        [played, played]
+                      when :side_by_side
+                        length = [one.size, other.size].max
+                        [one + Array.new(length - one.size, 0), other + Array.new(length - other.size, 0)]
+                      else refuse_unknown_layout!(layout)
+                      end
+        write_two_speakers(path, left, right, rate)
+      end
+
+      # The samples as they would be at +rate+ samples a second, each read between the two it falls between.
+      def samples_at(new_rate)
+        return samples.map(&:round) if new_rate == rate || samples.empty?
+
+        last = samples.size - 1
+        step = rate.fdiv(new_rate)
+        Array.new((samples.size / step).floor) do |at|
+          place = at * step
+          below = place.floor.clamp(0, last)
+          above = [below + 1, last].min
+          (samples[below] + ((samples[above] - samples[below]) * (place - below))).round
+        end
       end
 
       # The recording as a .wav file a person can open and listen to.
@@ -157,6 +210,45 @@ module VBlank
 
       class << self
         private
+
+        # A RIFF file's chunks by their four-letter names: "fmt " says how the samples are kept and
+        # "data" holds them. Other chunks (a list of words about the file) are passed over.
+        def wav_chunks(bytes, path)
+          unless bytes.byteslice(0, 4) == "RIFF" && bytes.byteslice(8, 4) == "WAVE"
+            raise ArgumentError, "#{path} is not a .wav file. Give a .wav file of plain samples."
+          end
+
+          chunks = {}
+          at = 12
+          while at + 8 <= bytes.bytesize
+            name = bytes.byteslice(at, 4)
+            size = bytes.byteslice(at + 4, 4).unpack1("V")
+            chunks[name] ||= bytes.byteslice(at + 8, size)
+            at += 8 + size + (size % 2)
+          end
+          return chunks if chunks.key?("fmt ") && chunks.key?("data")
+
+          raise ArgumentError, "#{path} has no sound in it."
+        end
+
+        def refuse_unreadable_wav!(path, channels, bits)
+          return if [1, 2].include?(channels) && [8, 16].include?(bits)
+
+          raise ArgumentError, "#{path} has #{channels} speakers of #{bits}-bit samples. A recording here is read from a " \
+                               ".wav file of one or two speakers, of 8 or 16 bits. To fix this, save the file that way."
+        end
+
+        def refuse_unknown_layout!(layout)
+          raise ArgumentError, "`layout:` was #{layout.inspect}. Give `layout: :in_turn` to hear the first and then the " \
+                               "second, or `layout: :side_by_side` to hear the first on the left and the second on the right."
+        end
+
+        def write_two_speakers(path, left, right, rate)
+          data = left.zip(right).flatten.map { |sample| sample.clamp(-32_768, 32_767) }.pack("s<*")
+          header = ["RIFF", 36 + data.bytesize, "WAVE", "fmt ", 16, 1, 2, rate, rate * 4, 4, 16, "data", data.bytesize]
+          File.binwrite(path, header.pack("a4Va4a4VvvVVvva4V") + data)
+          path
+        end
 
         # The emulator hands both speakers over a moment at a time, the left's first.
         def cartridge_samples(program, frames, buttons, only, side)

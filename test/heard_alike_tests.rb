@@ -41,14 +41,14 @@ module HeardAlikeTests
   # the speaker settling: the game is silent then, and both cartridges click alike.
   private def past_the_power_on_click = VBlank.playthrough("past the power-on click") { wait frames: 10 }
 
-  private def tune_game(starts: START, loudness: 15, last: :quarter)
+  private def tune_game(starts: START, loudness: 15, last: :quarter, second_note: :C5)
     VBlank.build("HEARD", console: console, out: nil, err: nil) do
       enable_sound
       song(:tune) do
         voice(:lead) do
           volume loudness
           note :A4, :quarter
-          note :C5, last
+          note second_note, last
           8.times { rest :whole }
         end
       end
@@ -152,6 +152,53 @@ module HeardAlikeTests
                       "a half note is thirty frames longer than a quarter, and each falls away over a few"
       assert_equal ours + 1, compared.difference.frame
       assert_match "last heard on different frames", failure_against(tune_game(last: :half), **moved_tune_settings)
+    end
+  end
+
+  # What a cartridge held to a .wav made from the same cartridge is allowed: the two are one sound, so
+  # nothing but a hair of rounding.
+  RECORDING_STRICT = { quiet_below_db: 40, loudness_db_apart: 0.5, mel_db_apart: 0.5, noise_floor_db_apart: 0.5,
+                       rolloff_hz_apart: 50 }.freeze
+
+  # The tune's sound as an original's recording would come: a .wav file on disk, written from the
+  # cartridge's own sound at its emulator's rate, after a lead of silence of its own.
+  private def tune_wav(folder, cartridge)
+    played = listen.play(cartridge)
+    heard = VBlank::Diagnostics::SoundRecording.heard_in(played.game, frames: played.frames)
+    lead = Array.new(heard.rate / 4, 0)
+    path = File.join(folder, "reference.wav")
+    VBlank::Diagnostics::SoundRecording.new(samples: lead + heard.samples, rate: heard.rate,
+                                            frame_seconds: heard.frame_seconds).write_wav(path)
+  end
+
+  def test_a_cartridge_sounds_like_a_wav_made_from_it
+    Dir.mktmpdir("reference") do |folder|
+      assert_sounds_like tune_game, tune_wav(folder, tune_game), listen, **RECORDING_STRICT
+    end
+  end
+
+  def test_a_wrong_note_against_a_wav_fails_naming_the_tone_and_where
+    Dir.mktmpdir("reference") do |folder|
+      reference = tune_wav(folder, tune_game)
+      failure = assert_raises(Minitest::Assertion) do
+        assert_sounds_like tune_game(second_note: :E5), reference, listen, **RECORDING_STRICT
+      end
+
+      assert_match "The tone differs", failure.message
+      assert_match(/first out \d+\.\d+ s from the first sound, on frame \d+/, failure.message)
+    end
+  end
+
+  # Both cartridges' sound, one after the other, written for a person to hear beside the result.
+  def test_both_sounds_are_written_to_one_wav_one_after_the_other
+    Dir.mktmpdir("heard") do |folder|
+      path = File.join(folder, "both.wav")
+      as_a_file(tune_game) { |original| assert_heard_alike tune_game, original, listen, **alike_settings, wav: path }
+      written = VBlank::Diagnostics::SoundRecording.read_wav(path, frame_seconds: VBlank::Console.described(console).frame_seconds)
+      seconds = written.samples.size.fdiv(written.rate)
+      one = TAPE_FRAMES * VBlank::Console.described(console).frame_seconds
+
+      assert_in_delta (2 * one) + VBlank::Diagnostics::SoundRecording::PAIR_GAP_SECONDS, seconds, 0.05
     end
   end
 

@@ -891,6 +891,10 @@ module VBlank
       # keeps nothing: it hands back every sample of the run at once, read from the file
       # each time, which for a long run is all of it in memory after all.
 
+      # The console the cartridge is for, as its Symbol (:gba, :snes, ...): which rate its sound comes at
+      # (SoundRecording::CARTRIDGE_RATES).
+      def console = @rom.console
+
       # Total absolute amplitude across every PCM sample captured — 0 is perfect
       # silence. A deliberately crude "did any sound come out?" measure that doesn't
       # care about pitch or waveform, only whether the hardware made noise.

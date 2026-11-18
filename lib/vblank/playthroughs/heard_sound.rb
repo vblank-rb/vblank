@@ -35,9 +35,11 @@ module VBlank
       def level
         return unless heard?
 
-        span = loudest_by_frame[(first_heard - 1)..(last_heard - 1)]
-        span.sum.fdiv(span.size)
+        level_over(first_heard..last_heard)
       end
+
+      # The loudest sample a frame averaged over +frames+ (a range counted from 1), silent ones counted.
+      def level_over(frames) = frames.sum { |frame| loudest_on(frame) }.fdiv(frames.size)
 
       # The last frame at least half as loud as its loudest frame: where its last sound starts to
       # fall away.

@@ -70,6 +70,50 @@ class TestHeardComparison < Minitest::Test
     assert_nil difference(loud, quieter, level_share_apart: 0.1)
   end
 
+  # Every measure out is found at once, in the order they are checked: a run shows the whole picture.
+  def test_every_measure_out_is_found_at_once
+    early_loud = heard(0, 2000, 2000, 0, 0)
+    late_quiet = heard(0, 0, 1000, 1000, 0)
+
+    found = HeardComparison.between(early_loud, late_quiet, NONE_APART).differences
+
+    assert_equal %i[first_heard level last_heard], found.map(&:what)
+    assert_equal [2, 3], found.first.measured
+  end
+
+  # The level is held a stretch of frames at a time, where the game gives one: two songs whose average
+  # is the same, one loud then quiet and the other quiet then loud, differ in their stretches.
+  def test_the_level_is_held_a_stretch_of_frames_at_a_time
+    loud_first = heard(1000, 1000, 500, 500)
+    quiet_first = heard(500, 500, 1000, 1000)
+
+    assert_nil difference(loud_first, quiet_first, level_share_apart: 0.1), "the averages are the same"
+    found = difference(loud_first, quiet_first, level_share_apart: 0.1, level_stretch_frames: 2)
+
+    assert_equal :level, found.what
+    assert_equal 1..2, found.frames
+    assert_equal [1000, 500], found.measured
+    assert_equal 2, found.stretches_over
+  end
+
+  def test_a_stretch_of_no_frames_is_refused
+    error = assert_raises(ArgumentError) { NONE_APART.with(level_stretch_frames: 0) }
+
+    assert_match "level_stretch_frames", error.message
+  end
+
+  # The words of a failure name every measure out, and each level with how many times the other it is.
+  def test_the_failure_words_name_every_measure_and_both_levels
+    compared = HeardComparison.between(heard(0, 4000, 4000, 0, 0), heard(0, 0, 1000, 1000, 0), NONE_APART)
+
+    words = VBlank::Testing::HeardAlike.difference_message(compared)
+
+    assert_match "first heard on different frames", words
+    assert_match "4000 on the first and 1000 on the second", words
+    assert_match "the first is 4.0 times as loud as the second", words
+    assert_match "last heard on different frames", words
+  end
+
   def test_neither_heard_is_a_difference_with_no_frame
     found = difference(heard(0, 0), heard(0, 0))
 
