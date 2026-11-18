@@ -1705,6 +1705,7 @@ module VBlank
               address = written_cell_address(node, bg)
               return if address == :outside
               return emit_cell_queued_at(address, &word_of) if address
+              return emit_cell_at_written_row(node, bg, &word_of) if cell_at_written_row?(node, bg)
 
               columns, rows = TileMap.size_of(bg.every_map.first)
               # One pair for every cell the game changes, each used only until its cell is noted: a
@@ -1741,14 +1742,51 @@ module VBlank
               Runtime::Picture.cell_address(layer_of(bg), column, row, third_layer: @third_layer)
             end
 
+            # Whether +node+'s cell of +bg+ is at a row written in the program, on the map and in its
+            # first 32, and a column the build proves stays from nought to 32767 (a scrolling text's
+            # column the game keeps in a variable), on a map at most two screens across.
+            def cell_at_written_row?(node, bg)
+              row = folded(node.row)
+              columns, rows = TileMap.size_of(bg.every_map.first)
+              row && (0...[rows, 32].min).cover?(row) && columns <= 64 && proven_within?(node.col, 0..0x7FFF)
+            end
+
+            # A CELL AT A WRITTEN ROW AND A COLUMN WORKED OUT AS THE GAME RUNS (#cell_at_written_row?)
+            # has the row's start known now (Runtime::Picture.cell_address), so only the column's low
+            # half is read, held to the map's width and added, with 1024 more for a column from 32,
+            # which is in the second screen across. Off the map, the cell is left alone.
+            def emit_cell_at_written_row(node, bg, &word_of)
+              outside = fresh("cell_outside")
+              columns, = TileMap.size_of(bg.every_map.first)
+              start = Runtime::Picture.cell_address(layer_of(bg), 0, folded(node.row), third_layer: @third_layer)
+              emit_low_half(node.col, 16)
+              unless proven_within?(node.col, 0..(columns - 1))
+                @asm.cmp(columns)
+                @asm.branch_long(:bcs, outside)
+              end
+              if columns > 32
+                first_screen = fresh("cell_first_screen")
+                @asm.bit(32)
+                @asm.beq(first_screen)
+                @asm.clc
+                @asm.adc(1024 - 32)
+                @asm.label(first_screen)
+              end
+              @asm.clc
+              @asm.adc(start)
+              address = place_of(@cell_column ||= keep_local(:column))
+              @asm.sta(at_place(address))
+              emit_cell_queued_at(at_place(address), outside: outside, &word_of)
+            end
+
             # THE CELL AT +address+ QUEUED for the blank, as rt_set_cell queues one, written here
             # rather than called: a cell is two words of the queue and the count, so a status bar
             # letter costs those stores, not a call that works the address out again (on the console a
-            # map word goes in the blank, fullsnes "SNES PPU Video Memory", VMADD and VMDATA). The block
-            # gives the word, or nil for the one it leaves in A, and is handed the label to jump to
-            # when the cell is to be left alone.
-            def emit_cell_queued_at(address)
-              outside = fresh("cell_outside")
+            # map word goes in the blank, fullsnes "SNES PPU Video Memory", VMADD and VMDATA).
+            # +address+ is a number, or where the address is kept. The block gives the word, or nil for
+            # the one it leaves in A, and is handed the label to jump to when the cell is to be left
+            # alone, +outside+ where one is given.
+            def emit_cell_queued_at(address, outside: fresh("cell_outside"))
               room = fresh("cell_room")
               word = yield outside
               kept = Memory.register(3)
