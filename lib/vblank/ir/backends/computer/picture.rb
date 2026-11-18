@@ -18,7 +18,7 @@ module VBlank
 
           # rg_screen.h's own numbers: whose a background is (RG_EVERY_SCENE, RG_NEVER_ARRIVES),
           # a background that named no layer, a pixel of a sprite's picture that is not drawn,
-          # a cell of a map with no tile, and how many backgrounds and sprites there is room for.
+          # a cell of a map with no tile, and how many backgrounds there is room for.
           EVERY_SCENE = -1
           NEVER_ARRIVES = -2
           NO_LAYER = -1
@@ -33,7 +33,22 @@ module VBlank
           # rows, and the columns and rows of the grid it comes round at.
           MAP_FIELDS = 5
           MAX_BACKGROUNDS = 64
-          MAX_SPRITES = 512
+          # THE RUNTIMES' SPRITE TABLES (RG_MAX_SPRITES, handed to each runtime with the build's own
+          # numbers, StateFile#values) hold a row for every sprite the game declares, each scene's
+          # apart: where each was last drawn, and the sprites on screen this frame. A console counts
+          # only the sprites a screen shows together
+          # (Console::Description#sprite_places, held by the build checks), so a game whose scenes
+          # take turns can declare more than any console's table and still be one it plays. The
+          # tables are sized by the game, never smaller than LEAST_SPRITE_ROWS, so a game of fewer
+          # sprites keeps the tables it always had.
+          LEAST_SPRITE_ROWS = 512
+
+          # How many rows the runtimes' sprite tables have for +program+: one for every sprite name it
+          # declares, as #prepare_picture numbers them, and LEAST_SPRITE_ROWS at the fewest.
+          def self.sprite_rows(program)
+            declared = program.walk.select { |node| node.kind == :object }.map(&:name).uniq.size
+            [declared, LEAST_SPRITE_ROWS].max
+          end
           # A thing in no see-through layer (RG_SOLID), and how many of those layers there is
           # room for (RG_MAX_SEE_THROUGH).
           SOLID = -1
@@ -114,21 +129,6 @@ module VBlank
           def refuse_unsupported_picture!
             refuse_picture!("more than #{MAX_SEE_THROUGH} see-through layers") if @see_through.size > MAX_SEE_THROUGH
             refuse_picture!("more than #{MAX_BACKGROUNDS} backgrounds") if @stacking.scenery.length > MAX_BACKGROUNDS
-            refuse_unmade_sprite_count!
-          end
-
-          # THE RUNTIMES NUMBER EVERY SPRITE THE GAME DECLARES, each scene's apart, in a table of
-          # MAX_SPRITES (RG_MAX_SPRITES in each runtime). A console counts only the sprites a screen
-          # shows together (Console::Description#sprite_places), so a game whose scenes take turns
-          # can declare more than the table holds and still be one its console plays. Numbering a
-          # scene's sprites over another's, or sizing the table by the game, is still to be written:
-          # until then such a game is not made yet, which a test run skips on.
-          def refuse_unmade_sprite_count!
-            return if @sprites.size <= MAX_SPRITES
-
-            raise NotMadeYet.new("This program declares #{@sprites.size} sprites. #{build_name.sub(/\A\w/, &:upcase)} has " \
-                                 "room for #{MAX_SPRITES} and cannot draw more yet. The cartridge build can.",
-                                 part: "more than #{MAX_SPRITES} sprites")
           end
 
           # Reference#place_blocks: where this program's blocks stop. A program that pixelates

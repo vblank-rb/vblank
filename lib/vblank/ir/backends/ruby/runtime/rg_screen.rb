@@ -36,7 +36,8 @@ RG_SOLID = -1          # A thing in no see-through layer
 RG_NO_NAME = -1
 RG_NOT_IN_BLOCKS = -1
 RG_NO_LAYER = -1
-RG_MAX_SPRITES = 512
+# RG_MAX_SPRITES, the rows of the sprite tables, is the game's (Computer::Picture.sprite_rows),
+# written ahead of the runtime (Lowering#console_text).
 RG_MAX_SEE_THROUGH = 16
 RG_AREAS_DEEP = 64
 RG_IMAGE_FIELDS = 4

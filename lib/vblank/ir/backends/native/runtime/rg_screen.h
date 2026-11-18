@@ -191,8 +191,8 @@ extern const int32_t rg_game_images[];
 /* The border round the game's screen, as a picture of the whole screen, a colour a pixel; nothing
  * where the game's screen is the whole screen (Computer::Picture#border_pixels). */
 extern const int16_t rg_game_border_pixels[];
-/* The most sprites a game may have; the build refuses more. */
-#define RG_MAX_SPRITES 512
+/* RG_MAX_SPRITES, the rows of the sprite tables, is the game's: a row for each sprite it declares
+ * (Computer::Picture.sprite_rows), written in rg_console_numbers.h. */
 /* For each sprite, by its number: which see-through layer it was declared in, counting through
  * rg_game_see_through, or RG_SOLID. */
 #define RG_SOLID (-1)

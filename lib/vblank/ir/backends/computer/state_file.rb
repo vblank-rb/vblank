@@ -18,7 +18,10 @@ module VBlank
         #
         # Each build is handed the version and its own build by the same names, as the console's
         # numbers are (ConsoleNumbers): a header beside the C, constants ahead of the JavaScript and
-        # the Ruby.
+        # the Ruby. With them goes how many rows the runtime's sprite tables have
+        # (Picture.sprite_rows), which the game decides: the image's "sprites.drawn_places" holds a
+        # place for each row, so it is laid out by the same build that names it, and a file from
+        # another build is refused before it is read.
         module StateFile
           VERSION = 1
 
@@ -27,7 +30,8 @@ module VBlank
           # What a build of +program+ is told, by the name each runtime reads it as.
           def values(program)
             fingerprint = Network::Fingerprint.of(program, title: "")
-            { "RG_STATE_VERSION" => VERSION, "RG_GAME_CONSOLE" => fingerprint.console, "RG_GAME_BUILD" => fingerprint.digest }
+            { "RG_STATE_VERSION" => VERSION, "RG_GAME_CONSOLE" => fingerprint.console, "RG_GAME_BUILD" => fingerprint.digest,
+              "RG_MAX_SPRITES" => Picture.sprite_rows(program) }
           end
 
           # The same as C defines, JavaScript constants and Ruby constants: a String quoted, a number
