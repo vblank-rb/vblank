@@ -14,6 +14,7 @@ require "pack_slot_view_games"
 require "pack_table_tile_background_games"
 require "all/vblank/builder/test_pack_backdrops"
 require "all/vblank/builder/test_pack_color_lists"
+require "all/vblank/builder/test_pack_pixel_color_lists"
 require "all/vblank/builder/test_pack_poses"
 require "all/vblank/builder/test_pack_poses_of_words"
 require "pack_pose_of_shapes_games"
@@ -1224,6 +1225,18 @@ module PackGames
     ].freeze
   end
 
+  # PICTURES FROM A SLOT OF PIXELS GIVEN A LIST OF COLOURS BY NAME (PackPixelColorListGames), on one
+  # sprite drawn with another list.
+  class PixelColorLists < Kit
+    include PackPixelColorListGames
+
+    GAMES = [
+      game(:pixel_pictures_in_a_named_list_drawn_with_another, passes: 4) do |folder, options|
+        built(*pixel_pictures_drawn_with_game_and_file(layout_original(folder, GENESIS), options: options))
+      end
+    ].freeze
+  end
+
   # A POSE THAT IS ONE OF THE ORIGINAL'S FRAMES (PackPoseGames): a count and five bytes a piece.
   class Poses < Kit
     include PackPoseGames
@@ -2185,7 +2198,7 @@ module PackGames
     ].freeze
   end
 
-  KITS = [Pictures, ScreenPictures, StripFonts, Layouts, VBlankLayouts, Backgrounds, BackgroundAreas, CellsInFront, WrittenCells, Backdrops, ColorLists, Poses, PosesOfWords, PosesOfShapes, PosesReadByTheGame, PosesInBankColors,
+  KITS = [Pictures, ScreenPictures, StripFonts, Layouts, VBlankLayouts, Backgrounds, BackgroundAreas, CellsInFront, WrittenCells, Backdrops, ColorLists, PixelColorLists, Poses, PosesOfWords, PosesOfShapes, PosesReadByTheGame, PosesInBankColors,
           Sounds, Scores, MusicPlayer2000Songs, SlotViews, TableTileBackgrounds, ColorsComparedAtStart, PosesSharingTheirFramesBank, Places, TilePictures,
           TilePosesOfFrames, FlaggedBytesUnpacked].freeze
 

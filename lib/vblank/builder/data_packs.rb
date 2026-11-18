@@ -347,6 +347,10 @@ module VBlank
       # any, is not drawn. Built all-in-one it is a picture of colours, as one given `data:` is, so
       # every verb draws it so; with the pack left out its pixels are filled from the file as the
       # game starts (#define_pixels_picture_from_start_file).
+      #
+      # `colors: :writes` names a list declared with `colors` instead. Such a list is see-through at
+      # place 0, so the picture must say `see_through: 0`, and it is built as a picture given its
+      # places, which another list swaps by place (`draw_with`).
       PIXELS_PICTURE_OPTIONS = %i[width height colors places see_through].freeze
       MOST_PIXEL_PLACES = 256
 
@@ -360,10 +364,21 @@ module VBlank
         refuse_slot_from_elsewhere!(places, "image :#{name}'s places:")
         refuse_pixels_not_its_size!(name, width, height, places)
         refuse_bad_see_through!(name, see_through)
-        colors = pixels_picture_colors(name, opts[:colors])
-        return define_pixels_picture_from_start_file(name, width, height, places, colors, see_through) if pack_left_out?
+        colors_name = opts[:colors] if opts[:colors].is_a?(Symbol)
+        refuse_named_colors_drawing_place_zero!(name, colors_name, see_through) if colors_name
+        colors = colors_name ? declared_colors_for_image!(name, colors_name) : pixels_picture_colors(name, opts[:colors])
+        if pack_left_out?
+          return define_pixels_picture_from_start_file(name, width, height, places, colors, see_through, colors_name: colors_name)
+        end
 
         bytes = @data_pack_contents.bytes_of(places.layout.name).byteslice(places.first_pixel, places.count).bytes
+        # A list given by name is matched to another by place (`draw_with`), so the picture keeps its
+        # places, as one given `places: [...]` does, and place 0 is its see-through place.
+        if colors_name
+          return define_placed_image(name, places: bytes, width: width, height: height, colors: colors,
+                                           colors_name: colors_name)
+        end
+
         data = bytes.map do |place|
           next :transparent if place == see_through
 
@@ -376,12 +391,14 @@ module VBlank
       # or a marker for each colour of a slot, IR::StartFile "MARKERS"), its pixels zeros until
       # they are filled from the file as the game starts (IR::StartFile::Picture, its places one
       # byte each). Its places are held as all 1, so the build treats it as a solid box, as a
-      # picture of tiles from the file.
-      def define_pixels_picture_from_start_file(name, width, height, places, colors, see_through)
-        table = colors.map { |color| list_color(color) }
+      # picture of tiles from the file. A list given by name (+colors_name+) keeps its name, so a
+      # sprite showing the picture can draw it with another list, as the all-in-one build can.
+      def define_pixels_picture_from_start_file(name, width, height, places, colors, see_through, colors_name: nil)
+        table = colors_name ? color_table(name, colors).map { |value| value || 0x0000 } : colors.map { |color| list_color(color) }
         count = width * height
         node = Build.bitmap(name, width: width, height: height, pixels: Array.new(count, 0).pack("v*"),
-                                  transparent: nil, colors: table, places: Array.new(count, 1).pack("C*"))
+                                  transparent: nil, colors: table, places: Array.new(count, 1).pack("C*"),
+                                  colors_name: colors_name)
         node.from_file = IR::StartFile::Picture.new(
           colors_at: nil, colors_count: table.length, places_by_byte: true, see_through: see_through,
           places_at: @pack_slot_starts.fetch(places.layout.name) + places.first_pixel
@@ -402,7 +419,17 @@ module VBlank
 
         raise ArgumentError, "image :#{name} takes its pixels from a slot of pixels. It needs colors: with 1 to " \
                              "#{MOST_PIXEL_PLACES} colors, place 0 first. To fix this, give the game's own list, like " \
-                             "`colors: [:black, :white, ...]`."
+                             "`colors: [:black, :white, ...]`. Or give the name of a list declared with `colors`."
+      end
+
+      # A list given by name has a see-through first place, as every picture given one has, so the
+      # picture must not draw place 0.
+      def refuse_named_colors_drawing_place_zero!(name, colors_name, see_through)
+        return if see_through&.zero?
+
+        raise ArgumentError, "image :#{name} is given colors: :#{colors_name}, a list given by name. The first color of " \
+                             "such a list is see-through, so place 0 is not drawn. To fix this, add `see_through: 0`. " \
+                             "To draw place 0, give the colors themselves, like `colors: [:black, :white, ...]`."
       end
 
       def pixels_picture_pack_colors(name, slot)

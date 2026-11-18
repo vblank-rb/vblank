@@ -176,7 +176,12 @@ from that copy. The game's code says each piece's shape and size; it never depen
   holds a marker for each (`colors` from the pack, below), so a port whose original keeps every colour in
   its data ships none. On a console it
   is a picture of that many colours, so what the console does with one given `data:` it does with this.
-  Worked examples: `test/all/vblank/builder/test_data_packs.rb` and `test/pack_at_start_tests.rb`.
+  **`colors:` can be a list declared with `colors`, by its name** (`colors :writes, pack[:palette].bank(1)`,
+  then `colors: :writes`), up to sixteen colours. Its first place is see-through, as for any picture given
+  a list by name, so the line must say `see_through: 0`, or it is refused. The picture then keeps its
+  places, as one given `places: [...]` does, so a sprite showing it can `draw_with` another list, with the
+  pack held or left out. Worked examples: `test/all/vblank/builder/test_data_packs.rb`,
+  `test/all/vblank/builder/test_pack_pixel_color_lists.rb` and `test/pack_at_start_tests.rb`.
 
 - `colors :logo_cycle_3, pack[:logo_colors].bank(3, size: 11)` — **a list of colours from a slot of
   colours**, for a sprite the original repaints by writing other colours over its palette. The second
