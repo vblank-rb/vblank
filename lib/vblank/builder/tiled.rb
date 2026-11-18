@@ -326,7 +326,8 @@ module VBlank
       # @param map [String, Array<String>, Array<Array>, Hash, nil] the grid of tileset
       #   keys — rows of characters, or rows of keys — or a Hash of name => grid for a
       #   background with several maps; for one that walks between areas, a Hash of
-      #   area => those, under the names `tiles:` gives
+      #   area => those, under the names `tiles:` gives. From the data pack, a slot or a map that
+      #   carries its width (DSL::PackSlot#as_map), which then needs no across:
       # @param from [String, Hash, nil] path to a CSV tilemap (a grid of tile numbers), or
       #   a Hash of name => path for a background with several maps
       # @param walls [String, Array<String>, Array<Array>, Hash, nil] which cells stop a

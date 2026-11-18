@@ -22,7 +22,9 @@ from that copy. The game's code says each piece's shape and size; it never depen
     background's `map:` kept among other things in a bigger slot, as a console keeps a map in a block of
     its video memory; any other verb takes the whole slot. Where the bigger slot has another shape
     (tiles), take the map as a view of it: `pack[:video].as_numbers(at:, count:, width: :byte, signed:
-    false)` ("A view", below).
+    false)` ("A view", below). `pack[:hall_map].as_map(across: 30)` (on a slot of numbers or of map cells,
+    or a run of one) is a map that carries its own width, for a background's `map:`, which then needs no
+    `across:` (`backgrounds.md`).
   - `slots.pixels :walls, count: 64 * 64 * 106` — **pixels, one byte each**: pictures of up to 256
     colours, row by row, as a computer game keeps its art. A byte is a byte in every layout, so the line
     names none. How the original lays its art out (column by column, in posts, in pages) is the game's
@@ -667,7 +669,8 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   its voice is refused at the line, since any key may be in the pack. Worked example:
   `test/pack_scores_at_start_tests.rb`.
 - `background :city, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: 32` — a background of the
-  original's own tiles, map and colours (`backgrounds.md`). The program holds a tile for each cell of the map,
+  original's own tiles, map and colours (`backgrounds.md`); `map: pack[:map].as_map(across: 32)` carries the width
+  in place of `across:`, the same there. The program holds a tile for each cell of the map,
   see-through until the runtime reads the map at power-on and fills each from the cell's tile, turn and bank
   (`IR::StartFile::Background`, `rg_start_file_fill_background`). Each bank of the slot is a list named
   `:<slot>_<bank>`, as built all-in-one, which `draw_with` takes to give that bank a list of the game's own.

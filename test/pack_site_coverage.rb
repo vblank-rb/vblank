@@ -26,7 +26,7 @@ module PackSiteCoverage
 
   # A line is a site when its code names one of these.
   ASKS_WHETHER_LEFT_OUT = /(?<!def )\bpack_left_out\?/
-  HANDLE = /\bDSL::Pack(?:Slot|Notes|Number|Envelope|SNESEnvelope|Frame)\b/
+  HANDLE = /\bDSL::Pack(?:Slot|Map|Notes|Number|Envelope|SNESEnvelope|Frame)\b/
 
   # One such line: its file, its number, the method it is in and its text.
   Site = Data.define(:file, :line, :method_name, :text) do

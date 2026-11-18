@@ -837,6 +837,13 @@ module PackGames
         end
         built(*made)
       end,
+      # Each area's map carrying its own width (`as_map(across:)`), the background given no across:.
+      game(:background_walking_between_areas_of_maps_carrying_their_widths, passes: 9) do |folder, options|
+        made = areas_game_and_file(areas_original(folder), options: options, across: ACROSS_BY_AREA, sized_maps: true) do |world|
+          PackBackgroundAreaGames.emit_walk(self, world)
+        end
+        built(*made)
+      end,
       # The same over one slot of tiles and one of colours: one set of tiles, the map alone walked.
       game(:background_walking_between_areas_of_two_widths_over_one_tile_slot, passes: WALKS_ON + 4) do |folder, options|
         made = areas_game_and_file(areas_original(folder), options: options, one_tile_slot: true, across: ACROSS_BY_AREA) do |world|

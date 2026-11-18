@@ -277,6 +277,15 @@ module VBlank
     PackEnvelope = Data.define(:slot, :index)
     PackSNESEnvelope = Data.define(:slot, :index)
 
+    # A MAP OF THE PACK THAT CARRIES ITS OWN SIZE (PackSlot#as_map): the map's +slot+ (a whole slot,
+    # or a run of one) and how many cells a row of it holds. A background given it needs no
+    # across:, and a background walking between areas of different sizes is handed one per area
+    # (Builder::PackBackgrounds#pack_map_slot_and_across!).
+    PackMap = Data.define(:slot, :across) do
+      # How many rows the map's cells make.
+      def down = slot.count / across
+    end
+
     # ONE WAVE OF THE WAVE VOICE IN A SLOT OF BYTES (PackSlot#wave), for a Score part's `plays:`:
     # sixteen bytes from wave +index+ on, two steps of the wave a byte, the earlier in the high four
     # bits, as the Game Boy's wave memory keeps them (Audio::Sound.wave_steps_of_bytes).
@@ -513,6 +522,28 @@ module VBlank
         end
 
         DSL::PackFrame.new(slot: self, at: at, count: count, piece_layout: layout, pose: layout.pose_values_for(with))
+      end
+
+      # The handle as a map +across+ cells wide, for a background's `map:`: a map that carries its
+      # own size, so the background needs no across: (DSL::PackMap). +down+, where given, is
+      # checked against the rows the cells make.
+      def as_map(across:, down: nil)
+        unless %i[map_cells numbers].include?(shape)
+          raise ArgumentError, "Slot :#{layout.name} holds #{shape}. `as_map` reads a slot of map cells or of numbers " \
+                               "as a map. To fix this, call it on the map's slot."
+        end
+        unless across.is_a?(Integer) && across.positive? && (count % across).zero?
+          raise ArgumentError, "`as_map` on slot :#{layout.name} was given across: " \
+                               "#{Messages::PlainWords.words_for_given(across)}. across: is how many cells a row of " \
+                               "the map holds. It must be a whole number that the map's #{count} cells divide by."
+        end
+        unless down.nil? || down == count / across
+          raise ArgumentError, "`as_map` on slot :#{layout.name} was given down: #{down.inspect}. Its #{count} cells, " \
+                               "#{across} across, make #{count / across} rows. To fix this, give down: " \
+                               "#{count / across}, or leave it out."
+        end
+
+        DSL::PackMap.new(slot: self, across: across)
       end
 
       # A handle on tile +index+ (0 first) of a slot of tiles, for an image's `places:`.

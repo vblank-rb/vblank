@@ -77,10 +77,13 @@ module PackBackgroundAreaGames
   #
   # With +one_tile_slot+ every area names the town's tiles and colours, and only its map is its own:
   # an original keeping two maps over one set of tiles in video memory. +across+ is one width for
-  # every area's map, or a Hash of them by area.
+  # every area's map, or a Hash of them by area. With +sized_maps+ each map carries its own width
+  # (`as_map(across:)`, from +across+ by area) and the background is given no across: at all.
   private def areas_game_and_file(from, options: VBlank::Cartridge::Options.new, turning: false, set_cells: nil, one_tile_slot: false,
-                                  across: ACROSS, &loop_body)
+                                  across: ACROSS, sized_maps: false, &loop_body)
     told = set_cells ? { set_cells: set_cells } : {}
+    told[:across] = across unless sized_maps
+    width_of = ->(name) { across.is_a?(Hash) ? across.fetch(name) : across }
     art_of = ->(name) { one_tile_slot ? :town : name }
     b = VBlank::Builder.new(options: options)
     b.instance_eval do
@@ -96,8 +99,10 @@ module PackBackgroundAreaGames
       groups = []
       groups << tile_pictures(:blocks, tiles: { pack[:town_video].tile(1) => pack[:turns].tiles(0, across: TURNS.length) }) if turning
       world = background :world, tiles: AREAS.keys.to_h { |name| [name, pack[:"#{art_of.(name)}_video"]] },
-                                 map: AREAS.keys.to_h { |name| [name, pack[:"#{name}_map"]] },
-                                 colors: AREAS.keys.to_h { |name| [name, pack[:"#{art_of.(name)}_colors"]] }, across: across, **told
+                                 map: AREAS.keys.to_h { |name|
+                                   [name, sized_maps ? pack[:"#{name}_map"].as_map(across: width_of.(name)) : pack[:"#{name}_map"]]
+                                 },
+                                 colors: AREAS.keys.to_h { |name| [name, pack[:"#{art_of.(name)}_colors"]] }, **told
       instance_exec(world, groups.first, &loop_body)
     end
     b.finalize_program
@@ -256,6 +261,90 @@ class TestPackBackgroundAreas < Minitest::Test
         assert_equal screen_at(by_hand, frames), screen_at(walked, frames), "frame #{frames}"
       end
     end
+  end
+
+  # Each map carries its own width (`as_map(across:)`), and the background is given no across:.
+  def test_each_area_map_that_carries_its_width_shows_at_that_width
+    by_hand = areas_drawn_by_hand(across: ACROSS_BY_AREA) { |world| PackBackgroundAreaGames.emit_walk(self, world) }
+    Dir.mktmpdir do |folder|
+      walked, = areas_game_and_file(areas_original(folder), across: ACROSS_BY_AREA, sized_maps: true) do |world|
+        PackBackgroundAreaGames.emit_walk(self, world)
+      end
+
+      { 2 => "the town, 2 cells across", 5 => "the castle, 4 cells across", 9 => "the town again" }.each do |frames, what|
+        assert_equal screen_at(by_hand, frames), screen_at(walked, frames), what
+      end
+    end
+  end
+
+  # One background of the pack, its map carrying its width: the same picture as across: gives.
+  def test_one_map_that_carries_its_width_needs_no_across
+    Dir.mktmpdir do |folder|
+      from = areas_original(folder)
+      given = one_town_background(from, across: 2)
+      sized = one_town_background(from, as_map: 2)
+
+      assert_equal screen_at(given, 2), screen_at(sized, 2)
+      refute_equal screen_at(one_town_background(from, across: 4), 2), screen_at(sized, 2), "the width is the map's"
+    end
+  end
+
+  def test_a_map_that_carries_its_width_and_across_that_agree_build_alike
+    Dir.mktmpdir do |folder|
+      from = areas_original(folder)
+
+      assert_equal screen_at(one_town_background(from, as_map: 2), 2), screen_at(one_town_background(from, as_map: 2, across: 2), 2)
+    end
+  end
+
+  def test_a_map_width_given_two_ways_that_disagree_is_a_friendly_error
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) { one_town_background(areas_original(folder), as_map: 2, across: 4) }
+
+      assert_match(/across:/, error.message)
+      assert_match(/2 cells across/, error.message)
+    end
+  end
+
+  def test_area_map_widths_given_two_ways_that_disagree_are_a_friendly_error
+    Dir.mktmpdir do |folder|
+      from = areas_original(folder)
+      error = assert_raises(ArgumentError) do
+        b = VBlank::Builder.new
+        b.instance_eval do
+          screen :tiled
+          pack = data_pack from: from, version: "1" do |slots|
+            slots.tiles :town_video, at: TOWN_TILES_AT, count: 4
+            slots.numbers :town_map, at: TOWN_MAP_AT, count: 4, width: :half, signed: false
+            slots.colors :town_colors, at: TOWN_COLORS_AT, count: 32
+          end
+          background :world, tiles: pack[:town_video], colors: pack[:town_colors], across: { town: 2, castle: 2 },
+                             map: { town: pack[:town_map].as_map(across: 2), castle: pack[:town_map].as_map(across: 4) }
+        end
+      end
+
+      assert_match(/:castle/, error.message)
+      assert_match(/across:/, error.message)
+    end
+  end
+
+  # The town alone, as one background of the pack: its map given +across+:, or carrying the width
+  # +as_map+ (`as_map(across:)`), or both.
+  private def one_town_background(from, across: nil, as_map: nil)
+    b = VBlank::Builder.new
+    b.instance_eval do
+      screen :tiled
+      pack = data_pack from: from, version: "1" do |slots|
+        slots.tiles :town_video, at: TOWN_TILES_AT, count: 4
+        slots.numbers :town_map, at: TOWN_MAP_AT, count: 4, width: :half, signed: false
+        slots.colors :town_colors, at: TOWN_COLORS_AT, count: 32
+      end
+      map = as_map ? pack[:town_map].as_map(across: as_map) : pack[:town_map]
+      background :town, tiles: pack[:town_video], map: map, colors: pack[:town_colors], **{ across: across }.compact
+      game_loop { wait_vblank }
+    end
+    b.finalize_program
+    b.program
   end
 
   def test_across_by_area_naming_other_areas_is_a_friendly_error

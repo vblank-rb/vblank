@@ -80,6 +80,7 @@ module VBlank
       # cells to a row of the map, each cell +cell+ pixels square. +others+ are the background's
       # own settings, handed on.
       def declare_pack_background(name, tiles:, map:, colors:, across:, cell:, set_cells: nil, cells_in_front: nil, **others)
+        map, across = pack_map_slot_and_across!(name, map, across)
         subject = "background :#{name}"
         refuse_tiles_not_from_slot!(tiles, subject)
         refuse_map_not_of_cells!(name, map)
@@ -160,14 +161,29 @@ module VBlank
       #
       # The maps are then of different sizes, which a background keeps whole and brings into view a
       # strip at a time (IR::TileMap.streams?), as it does a game's own maps of different sizes.
-      def pack_areas?(tiles, map, colors) = [tiles, map, colors].any? { |given| given.is_a?(Hash) && given.each_value.any?(DSL::PackSlot) }
+      #
+      # A MAP CAN CARRY ITS OWN WIDTH instead (DSL::PackSlot#as_map), so the width goes with the map
+      # and the background needs no across: at all:
+      #
+      #   background :rooms, tiles: pack[:house_video], colors: pack[:house_colors],
+      #                      map: { hall: pack[:hall_map].as_map(across: 30), field: pack[:field_map].as_map(across: 126) }
+      #
+      # across: by area stays, as a shorthand that builds the same bytes: games written with it need
+      # not change. A width given both ways must agree (#pack_map_slot_and_across!).
+      def pack_areas?(tiles, map, colors)
+        [tiles, map, colors].any? { |given| given.is_a?(Hash) && given.each_value.any? { |value| pack_map_handle?(value) } }
+      end
+
+      # Is +given+ a handle on a slot of the pack, or a map of one that carries its width?
+      def pack_map_handle?(given) = given.is_a?(DSL::PackSlot) || given.is_a?(DSL::PackMap)
 
       def declare_pack_background_areas(name, tiles:, map:, colors:, across:, cell:, set_cells: nil, cells_in_front: nil, **others)
         areas = pack_area_names!(name, tiles: tiles, map: map, colors: colors, across: across)
         refuse_written_cells_on_areas!(name, set_cells, cells_in_front)
         slots = areas.to_h do |area|
-          [area, { tiles: setting_of_area(tiles, area), map: setting_of_area(map, area), colors: setting_of_area(colors, area),
-                   across: setting_of_area(across, area) }]
+          map_slot, map_across = pack_map_slot_and_across!(:"#{name}'s area :#{area}", setting_of_area(map, area),
+                                                           setting_of_area(across, area))
+          [area, { tiles: setting_of_area(tiles, area), map: map_slot, colors: setting_of_area(colors, area), across: map_across }]
         end
         refuse_areas_of_two_shapes!(name, slots)
         return declare_pack_areas_read_at_start(name, slots, cell: cell, set_cells: set_cells, **others) if pack_left_out?
@@ -199,6 +215,17 @@ module VBlank
       # What the setting +given+ (a slot, or across:'s width) names for +area+: its own in a Hash by
       # area, or the one every area shares.
       def setting_of_area(given, area) = given.is_a?(Hash) ? given.fetch(area) : given
+
+      # The map's slot and its width, from +map+ (a slot, or a DSL::PackMap carrying its width) and
+      # +across+. A map that carries its width needs no across:; given both, they must agree.
+      def pack_map_slot_and_across!(name, map, across)
+        return [map, across] unless map.is_a?(DSL::PackMap)
+        return [map.slot, map.across] if across.nil? || across == map.across
+
+        raise ArgumentError, "background :#{name} was given a map #{map.across} cells across, and across: " \
+                             "#{Messages::PlainWords.words_for_given(across)}. To fix this, leave across: out, since " \
+                             "the map carries its width."
+      end
 
       # The areas of a background of the pack, from whichever of +given+ (tiles:, map:, colors:,
       # across:) are a Hash by area: each must name the same areas in the same order, since the
@@ -1060,7 +1087,8 @@ module VBlank
         sides = words.row_tiles ? [8, 16] : [8]
         unless across.is_a?(Integer) && across.positive? && (cells % across).zero?
           raise ArgumentError, "background :#{name} needs across:, how many cells a row of its map holds, a whole number " \
-                               "its map's #{cells} cells divide by. Got #{Messages::PlainWords.words_for_given(across)}."
+                               "its map's #{cells} cells divide by. Got #{Messages::PlainWords.words_for_given(across)}. " \
+                               "Or give map: a map that carries its width, like `pack[:map].as_map(across: 32)`."
         end
         return if sides.include?(cell)
 
