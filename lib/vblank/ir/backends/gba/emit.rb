@@ -58,14 +58,15 @@ module VBlank
           # instruction is the number of copies (see Profiler.video_copies_in).
           VideoCopy = Data.define(:at, :source, :bytes)
 
-          # A word of a routine's number table that holds an address — of a blob (:data_word)
-          # or of a place in the code (:label_word) — to be written once that thing is placed.
+          # A word of a routine's number table that holds an address — of a blob (:data_word),
+          # of a place in the code (:label_word), or of a place in the code once it is copied to
+          # the quick memory (:fast_word, Placement's) — to be written once that thing is placed.
           # It is to a table what an AddressLoad is to code: the same answer, wanted as one
           # word of data instead of as four instructions that build it.
           TableWord = Data.define(:pos, :kind, :target)
 
           # The kind of table word that stands in for each kind of address load.
-          TABLE_WORD_FOR = { label_addr: :label_word, data_addr: :data_word }.freeze
+          TABLE_WORD_FOR = { label_addr: :label_word, data_addr: :data_word, fast_addr: :fast_word }.freeze
 
           # A LOAD A NUMBER TABLE COULD TAKE: where it sits, how many instructions it is when
           # built, and the word a table would hold for it — two loads of the same word share
@@ -366,6 +367,14 @@ module VBlank
             emit_load_address(reg, :label_addr, label.to_sym)
           end
 
+          # Load where code label +label+ runs once boot has copied it to the quick memory: a
+          # read of a table word where the routine has a table that reaches, the fixed four
+          # instructions otherwise. Either is filled in by Placement, which alone knows where
+          # the copy lands.
+          def emit_load_fast_label_address(reg, label)
+            emit_load_address(reg, :fast_addr, label.to_sym)
+          end
+
           # Blobs are copied into palette / video / sound memory by DMA, whose source
           # address must be aligned to its transfer unit — a halfword (2 bytes) for a
           # palette or tilemap, a word (4 bytes) for the sound FIFO. So every blob has
@@ -409,6 +418,11 @@ module VBlank
           # resolver (Placement's :fast_addr/:hot_size included) writes back with.
           def patch16(pos, bytes)
             @code[pos, 16] = bytes
+          end
+
+          # Write the word of code at +pos+: a number table's word a custom resolver fills in.
+          def patch_code_word(pos, value)
+            @code[pos, 4] = [value].pack("V")
           end
 
           # Write one word of an embedded blob, +offset+ bytes into it — for a blob that is a

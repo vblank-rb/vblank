@@ -43,6 +43,53 @@ class TestQuickMemoryByScene < Minitest::Test
     builder.program
   end
 
+  # The same game, whose two screens each call a small routine of their own that calls one small
+  # routine both run, and which names +variables+ more variables than it needs, so that the words
+  # saying where each scene's routines are can be past the variables' base register's reach.
+  private def two_screens_calling_shared(adds:, variables:)
+    builder = Builder.new
+    builder.instance_eval do
+      a = 0
+      b = 0
+      t = 0
+      where = 0
+      count = 0
+      piles = Array.new(variables) { |n| var :"pile_#{n}", n }
+      func(:tally) { count += 1 }
+      func(:title_work) { adds.times { a += 1 } }
+      func(:play_work) { adds.times { b += 1 } }
+      func(:title_note) do
+        8.times { a += 2 }
+        call :tally
+      end
+      func(:play_note) do
+        8.times { b += 2 }
+        call :tally
+      end
+      func(:heap) { piles.each { |pile| pile += 1 } }
+      scene(:title) do
+        call :title_work
+        call :title_note
+      end
+      scene(:play) do
+        call :play_work
+        call :play_note
+      end
+      game_loop do
+        t += 1
+        call :heap if t == 1
+        where = 1 if t == 6
+        where = 0 if t == 12
+        case_var(:where) do
+          when_val 0, :title
+          when_val 1, :play
+        end
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
   # The same game, whose screen is a variable holding the scene's name, run with `call where`.
   private def two_screens_by_name(adds:)
     builder = Builder.new
@@ -548,6 +595,33 @@ class TestQuickMemoryByScene < Minitest::Test
     short = backend.charged_and_emitted_sizes.select { |_name, (charged, emitted)| charged < emitted }
 
     assert_empty short, "came out bigger than charged: #{short}"
+  end
+
+  # ...and so does each routine of a game whose scenes' routines call one kept for the whole game,
+  # and whose words saying where those routines are sit past the base register's reach: a call
+  # out of a scene's set reads its routine's address from the number table, and a call into one
+  # is charged the far word's read.
+  def test_calls_across_sets_with_far_words_come_out_no_bigger_than_charged
+    program = two_screens_calling_shared(adds: BIG, variables: 1100)
+    backend = GBA.new
+    backend.lower(program)
+    short = backend.charged_and_emitted_sizes.select { |_name, (charged, emitted)| charged < emitted }
+
+    report = backend.iwram_report
+
+    assert_includes report.scenes.fetch(:play, []), :play_note, "play's small routine is in play's set"
+    assert_includes report.funcs, :tally, "the routine both run is kept for the whole game"
+    assert_empty short, "came out bigger than charged: #{short}"
+  end
+
+  # ...and the console runs it: each pass calls the scene's small routine, which calls the one kept
+  # for the whole game through the address its table holds, once a pass across the swaps.
+  def test_calls_across_sets_with_far_words_run_on_the_console
+    rom = assemble_rom(two_screens_calling_shared(adds: BIG, variables: 1100), name: "FARWORDS")
+    v = assert_emulator_loads_rom(rom, frames: 30, vars: rom.var_addresses)
+
+    assert_operator v.var(:t), :>, 12, "the game went to play and back"
+    assert_equal v.var(:t), v.var(:count), "every pass called the routine both screens run, once"
   end
 
   # Each pass runs one scene's routine whole, so the two counts add up to the passes times the

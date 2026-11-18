@@ -98,7 +98,7 @@
       "data": 44
     },
     "hero": {
-      "code": 80312,
+      "code": 80168,
       "data": 0
     },
     "jukebox": {
@@ -206,11 +206,11 @@
       "data": 0
     },
     "snake": {
-      "code": 38764,
+      "code": 38724,
       "data": 0
     },
     "snake_buffered": {
-      "code": 40376,
+      "code": 40352,
       "data": 0
     },
     "sparks": {

@@ -368,11 +368,12 @@ module VBlank
             # Kept, because the emitter needs the line each routine's reads were drawn at.
             @table_effects = effects
             @call_charges = effects.transform_values(&:call_charge)
-            ranked = @fast_code ? ranked_by_frame_cost(program, sizes) : []
-            wanted = wanted_by_frame_cost(program, ranked, sizes)
             dispatch = quick_memory_dispatch(program)
             scenes = dispatch ? dispatch.clauses.map(&:last).uniq : []
             owners = dispatch ? scene_owners(program, scenes, dispatch) : {}
+            sizes = with_far_where_words(sizes, probe, owners) if dispatch
+            ranked = @fast_code ? ranked_by_frame_cost(program, sizes) : []
+            wanted = wanted_by_frame_cost(program, ranked, sizes)
             lists = probe.movable_quick_lists
             collections = lists.keys.group_by { |name| collection_of(name) }
             widths = probe.list_widths
@@ -398,6 +399,35 @@ module VBlank
             end
             @routine_sizes = sizes.merge(plan.charged.reject { |name, _| list_claim?(name) })
             plan.resident.reject { |name| list_claim?(name) }.to_set
+          end
+
+          # A CALL INTO A SCENE'S SET READS A WORD SAYING WHERE ITS ROUTINE IS NOW (SceneQuickMemory#where_word),
+          # and those words are variables. Within reach of the variables' base register the read is
+          # the one load the call is charged for; past it (a game of more than a thousand
+          # variables' worth), the word's address is read from the number table first, and the
+          # call comes to four bytes more than CROSS_CALL_GROWTH_WITH_TABLE. Which words are past it
+          # is not known until the plan has picked the sets, so where they could be, every call to
+          # a routine that could go in a set is charged the four bytes more. Charged only the table
+          # read, three such calls in a set game's enemy routines took the quick memory past its
+          # end. A routine charged without a table (CROSS_CALL_GROWTH) already covers the far word.
+          FAR_WHERE_WORD_GROWTH = 4
+
+          # +sizes+ with each routine charged FAR_WHERE_WORD_GROWTH more for every call it holds to a
+          # routine that could go in a scene's set (one a scene of +owners+ runs, or one the build
+          # made for a scene: a routine two scenes run goes in one's set where the author insisted
+          # on it, see #asking_scene), where the words saying where such routines are could be past
+          # the base register's reach: the variables +probe+ placed, and a word for each such routine.
+          def with_far_where_words(sizes, probe, owners)
+            in_a_set = ->(name) { scene_routines.key?(name) || owners.key?(name) }
+            could_go_in_sets = sizes.keys.count(&in_a_set)
+            furthest = probe.var_addresses.values.select { |address| quick_memory?(address) }.max || IWRAM_START
+            return sizes if furthest - IWRAM_START + (4 * (could_go_in_sets + 2)) <= Primitives::FURTHEST_FROM_BASE
+
+            sizes.to_h do |name, size|
+              next [name, size] unless @call_charges.fetch(name, 0) == CROSS_CALL_GROWTH_WITH_TABLE
+
+              [name, size + (FAR_WHERE_WORD_GROWTH * (@crossing_targets[name] || []).count(&in_a_set))]
+            end
           end
 
           # The memory address a func runs from once the program is lowered — its place in
@@ -557,6 +587,7 @@ module VBlank
           def resolve_fixup(fix)
             case fix.kind
             when :fast_addr then resolve_fast_address(fix)
+            when :fast_word then resolve_fast_word(fix)
             when :hot_size then resolve_hot_size(fix)
             when :routine_word then resolve_routine_word(fix)
             when :quick_word then resolve_quick_word(fix)
@@ -627,19 +658,27 @@ module VBlank
 
           # Load the quick-memory address of a label inside the moved block. Where the
           # block lands is not known until every variable has one, so this is a
-          # fixed-size placeholder patched in the second pass — the same trick a
-          # reference to embedded data uses.
-          def emit_load_fast_address(reg, label)
-            @emit.fixups << Emit::AddressLoad.new(pos: pos, kind: :fast_addr, reg: reg, target: label.to_sym)
-            emit(ASM.load_immediate_fixed(reg, 0))
-          end
+          # placeholder patched in the second pass — the same trick a reference to
+          # embedded data uses: a read of the routine's number table where it has one that
+          # reaches, the fixed four instructions otherwise.
+          #
+          # A CALL FROM A SCENE'S SET TO A ROUTINE KEPT FOR THE WHOLE GAME IS ONE OF THESE, and is
+          # charged as a read (CROSS_CALL_GROWTH_WITH_TABLE). Built every time, as it once was, it
+          # came out eight bytes over its charge, and a save's routines in a scene's set holding a
+          # few such calls took the quick memory past its end.
+          def emit_load_fast_address(reg, label) = @emit.emit_load_fast_label_address(reg, label)
 
           # Also a custom fixup kind, handed to Emit's resolver map the same way
           # #resolve_hot_size is.
           def resolve_fast_address(fix)
-            offset = @emit.label_offset(fix.target) - @emit.label_offset(HOT_START)
-            @emit.patch16(fix.pos, ASM.load_immediate_fixed(fix.reg, @hot_base + offset))
+            @emit.patch16(fix.pos, ASM.load_immediate_fixed(fix.reg, fast_label_address(fix.target)))
           end
+
+          # The word of a number table that holds a fast address (see #emit_load_fast_address).
+          def resolve_fast_word(fix) = @emit.patch_code_word(fix.pos, fast_label_address(fix.target))
+
+          # Where code label +label+, inside the moved block, runs once boot has copied the block.
+          def fast_label_address(label) = @hot_base + (@emit.label_offset(label) - @emit.label_offset(HOT_START))
 
           # A TABLE OF WHERE ROUTINES START, one word each in the order given, for a call that
           # picks one by number (see Functions#emit_call_one_of). It is kept in the cartridge
