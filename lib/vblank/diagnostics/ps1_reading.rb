@@ -61,6 +61,7 @@ module VBlank
       def last_frame_sound = refuse_ps1_samples!
       def last_frame_samples = refuse_ps1_samples!
       def loudest_by_frame = refuse_ps1_samples!
+      def loudest_on_speaker_by_frame(_speaker) = refuse_ps1_samples!
 
       private
 

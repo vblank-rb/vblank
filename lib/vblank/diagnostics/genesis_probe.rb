@@ -30,8 +30,46 @@ module VBlank
       NARROW_SCREEN_SPRITE_ENTRIES = 64
 
       def initialize(path, save_dir: nil)
+        @path = path
+        @save_dir = save_dir
         @core = Emulator.open_genesis(path, save_dir: save_dir)
         @last_audio = []
+      end
+
+      # THE VOICES #hearing CAN NAME: the FM chip's six and the square chip's three and its noise.
+      # Genesis Plus GX sets each one's loudness from a setting of its own, read as it loads the
+      # cartridge, so a voice is left out by opening the core again with that voice's loudness at 0.
+      VOICE_SETTINGS = Ractor.make_shareable({
+        fm1: "genesis_plus_gx_md_channel_0_volume", fm2: "genesis_plus_gx_md_channel_1_volume",
+        fm3: "genesis_plus_gx_md_channel_2_volume", fm4: "genesis_plus_gx_md_channel_3_volume",
+        fm5: "genesis_plus_gx_md_channel_4_volume", fm6: "genesis_plus_gx_md_channel_5_volume",
+        square1: "genesis_plus_gx_psg_channel_0_volume", square2: "genesis_plus_gx_psg_channel_1_volume",
+        square3: "genesis_plus_gx_psg_channel_2_volume", noise: "genesis_plus_gx_psg_channel_3_volume"
+      })
+
+      def channels = VOICE_SETTINGS.keys
+
+      # Hear only the voices +only+ names, or every voice but those +without+ names, from the first
+      # frame: the core is opened again with the others silent, so it must be asked before any frame
+      # is played.
+      def hearing(only: nil, without: nil)
+        if only.nil? == without.nil?
+          raise ArgumentError, "hearing must say only: or without:. only: keeps the voices you name and leaves out the " \
+                               "rest. without: leaves out the ones you name."
+        end
+        named = Array(only || without)
+        unknown = named - channels
+        raise ArgumentError, "A Genesis has no voice #{unknown.join(', ')}. Its voices are #{channels.join(', ')}." unless unknown.empty?
+        if @core.frames.positive?
+          raise ArgumentError, "This reader can choose the voices it hears on a Genesis cartridge only before the first " \
+                               "frame. To fix this, ask for the voices before the cartridge plays."
+        end
+
+        silent = only ? channels - named : named
+        @core.destroy
+        @core = Emulator.open_genesis(@path, save_dir: @save_dir,
+                                             settings: silent.to_h { |voice| [VOICE_SETTINGS.fetch(voice), "0"] })
+        self
       end
 
       def width = @core.width
@@ -101,12 +139,7 @@ module VBlank
       def scroll_ram = @core.vsram.unpack("v*").pack("n*")
       def video_registers = @core.vdp_registers.pack("C*")
 
-      # Genesis Plus GX here mixes every voice together and draws every layer together.
-      def hearing(**)
-        raise ArgumentError, "This reader cannot play one voice alone on a Genesis cartridge. It records every " \
-                             "voice together. To fix this, remove `only:` and `without:`."
-      end
-
+      # Genesis Plus GX here draws every layer together.
       def showing(**)
         raise ArgumentError, "This reader cannot draw the picture without a layer on a Genesis cartridge. " \
                              "Genesis Plus GX here draws every layer together. To fix this, remove `only:` and " \

@@ -155,9 +155,9 @@ module VBlank
 
       # A Genesis core on a cartridge file (see RubyGenesisEmulator::Core). +save_dir+ is where the
       # core is told to keep its files.
-      def open_genesis(rom_path, save_dir: nil)
+      def open_genesis(rom_path, save_dir: nil, settings: {})
         load_genesis!
-        RubyGenesisEmulator::Core.new(rom_path, save_dir: save_dir)
+        RubyGenesisEmulator::Core.new(rom_path, save_dir: save_dir, settings: settings)
       end
 
       # THE PLAYSTATION'S EMULATOR is a gem of its own too, ruby-ps1-emulator: Beetle PSX, built as a

@@ -70,6 +70,9 @@ module VBlank
       def audio_by_frame = @last_audio.dup
 
       # This probe takes the mix bsnes hands over, with no way to leave one of the eight voices out.
+      # No voice can be heard alone here (#hearing), so none is named.
+      def channels = []
+
       def hearing(**)
         raise ArgumentError, "This reader cannot play one voice alone on a Super Nintendo cartridge. It records all " \
                              "eight voices together. To fix this, remove `only:` and `without:`."

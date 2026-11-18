@@ -84,15 +84,17 @@ module RubyGenesisEmulator
     attr_reader :frames, :width, :height
 
     # +rom_path+ is the cartridge. +save_dir+ is where the core is told to keep files; a core made
-    # without one keeps them in a folder of its own that is gone with it.
-    def initialize(rom_path, save_dir: nil)
+    # without one keeps them in a folder of its own that is gone with it. +settings+ are core settings
+    # by libretro's names, over SETTINGS: "genesis_plus_gx_psg_channel_0_volume" => "0" silences the
+    # first square voice. The core reads them as it loads the cartridge, so they hold for its life.
+    def initialize(rom_path, save_dir: nil, settings: {})
       @dir = Dir.mktmpdir("ruby-genesis-emulator")
       @frames = 0
       @picture = nil
       @audio = "".b
       @width = WIDTH
       @height = HEIGHT
-      start_frontend(save_dir || @dir)
+      start_frontend(save_dir || @dir, SETTINGS.merge(settings))
       load_cartridge(rom_path)
     end
 
@@ -251,10 +253,10 @@ module RubyGenesisEmulator
 
     # Opens a copy of the core of this Core's own and starts it, keeping the picture to the format
     # PIXEL_COLORS reads.
-    def start_frontend(save_dir)
+    def start_frontend(save_dir, settings)
       copy = KeptCopy.take
       begin
-        @frontend = Frontend.new(copy.path, @dir, save_dir, SETTINGS, RGB565)
+        @frontend = Frontend.new(copy.path, @dir, save_dir, settings, RGB565)
       rescue StandardError, LoadError
         copy.give_back
         FileUtils.rm_rf(@dir)

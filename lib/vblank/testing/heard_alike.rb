@@ -30,12 +30,18 @@ module VBlank
     #                              sounds may take to fall silent
     #   lead_ins:                  a playthrough for each to play first, not counted (optional)
     #   level_stretch_frames:      hold the level this many frames at a time, not as one average (optional)
+    #   each_speaker: false        compare the speakers mixed alone, for two that place their sound
+    #                              differently on purpose (each speaker is compared too unless set)
+    #   each_voice: false          after a difference, do not play each voice alone to name the one
+    #                              that differs (it plays the tape again twice for each voice)
     #   wav:                       a path to write both sounds to, for a person to hear (optional), with
     #   wav_layout:                :in_turn (the first, then the second) or :side_by_side (the first on
     #                              the left speaker, the second on the right); :in_turn if left out
     #
     # A failure names every measure that was out at once, what each cartridge measured, the first
-    # frame the two differ on and the loudest sample each put out on it.
+    # frame the two differ on and the loudest sample each put out on it; a measure out on one speaker
+    # alone, naming the speaker; and, on a console whose emulator plays a voice alone, which voices
+    # differ played alone and how (Playthroughs::HeardComparison).
     #
     # It plays both in the emulator, so the game's test group needs the emulator gems.
     #
@@ -134,17 +140,35 @@ module VBlank
       def self.decibel_words(level) = format("%.1f dB", level)
 
       # The words of a failure: a line for each measure out, saying what each side measured and the
-      # first frame they differ on.
+      # first frame they differ on, a speaker's own named; then, where each voice was played alone,
+      # which voices differ and how.
       def self.difference_message(compared)
-        compared.differences.map do |difference|
-          [measure_words(difference, compared), frame_words(difference)].compact.join(" ")
-        end.join("\n")
+        lines = compared.differences.map do |difference|
+          speaker = "On the #{difference.speaker} speaker alone: " if difference.speaker
+          "#{speaker}#{[measure_words(difference, compared), frame_words(difference)].compact.join(' ')}"
+        end
+        (lines + voice_lines(compared.voices)).join("\n")
+      end
+
+      # Each voice that differs played alone, by name, and the voices alike.
+      def self.voice_lines(voices)
+        return [] if voices.nil?
+        return ["No voice can be played alone on this console's emulator, so the voice that differs is not named."] if voices.empty?
+
+        # A voice neither cartridge sounds is alike, though a comparison of nothing finds nothing heard.
+        differing, alike = voices.partition { |_, compared| !compared.alike? && (compared.first.heard? || compared.second.heard?) }
+        if differing.empty?
+          return ["Played a voice at a time, every voice is alike: the difference is in how they sound together."]
+        end
+
+        differing.map { |voice, compared| "Played alone, the #{voice} voice differs:\n  #{difference_message(compared).gsub("\n", "\n  ")}" } +
+          (alike.empty? ? [] : ["Played alone, these voices are alike: #{alike.map(&:first).join(', ')}."])
       end
 
       def self.measure_words(difference, compared)
         one, other = difference.measured
         case difference.what
-        when :never_heard then never_heard_words(compared)
+        when :never_heard then never_heard_words(difference.speaker ? compared.speakers.fetch(difference.speaker) : [compared.first, compared.second])
         when :first_heard
           "The two cartridges are first heard on different frames: frame #{one} on the first and frame #{other} on the second."
         when :level then level_words(difference)
@@ -176,10 +200,11 @@ module VBlank
         "So the #{louder} is #{format('%.1f', [one, other].max.fdiv([one, other].min))} times as loud as the #{quieter}."
       end
 
-      def self.never_heard_words(compared)
-        sides = { "first" => compared.first, "second" => compared.second }
+      # +pair+ is the two HeardSounds, the first cartridge's and the second's.
+      def self.never_heard_words(pair)
+        sides = { "first" => pair[0], "second" => pair[1] }
         silent, heard = sides.partition { |_, side| !side.heard? }
-        limit = "above #{compared.first.heard_above} in #{compared.first.frames} frames"
+        limit = "above #{pair[0].heard_above} in #{pair[0].frames} frames"
         return "Neither cartridge is heard #{limit}, so there is nothing to compare." if heard.empty?
 
         "The #{silent.first.first} cartridge is never heard #{limit}. The #{heard.first.first} is first heard on " \
@@ -192,7 +217,7 @@ module VBlank
         "They first differ on frame #{difference.frame}: the loudest sample is #{difference.loudest[0]} on the first " \
           "and #{difference.loudest[1]} on the second."
       end
-      private_class_method :measure_words, :level_words, :times_as_loud_words, :never_heard_words, :frame_words,
+      private_class_method :voice_lines, :measure_words, :level_words, :times_as_loud_words, :never_heard_words, :frame_words,
                            :recording_measure_words, :over_words, :recording_measures_words, :decibel_words
     end
   end

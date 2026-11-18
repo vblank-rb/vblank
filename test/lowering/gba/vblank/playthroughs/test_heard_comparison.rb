@@ -114,6 +114,21 @@ class TestHeardComparison < Minitest::Test
     assert_match "last heard on different frames", words
   end
 
+  # The speakers mixed are alike and each speaker alone is not: one speaker each, the other way round.
+  # A measure out on a speaker that is out in the mix too is not said twice.
+  def test_a_sound_on_the_other_speaker_is_a_difference_naming_the_speaker
+    on_left = { left: heard(0, 1000, 0), right: heard(0, 0, 0) }
+    on_right = { left: heard(0, 0, 0), right: heard(0, 1000, 0) }
+    speakers = %i[left right].to_h { |speaker| [speaker, [on_left[speaker], on_right[speaker]]] }
+
+    compared = HeardComparison.between(heard(0, 1000, 0), heard(0, 1000, 0), NONE_APART, speakers: speakers)
+
+    assert_equal [%i[never_heard left], %i[never_heard right]], compared.differences.map { |found| [found.what, found.speaker] }
+    louder = HeardComparison.between(heard(0, 2000, 0), heard(0, 1000, 0), NONE_APART,
+                                     speakers: { left: [heard(0, 2000, 0), heard(0, 1000, 0)] })
+    assert_equal [[:level, nil]], louder.differences.map { |found| [found.what, found.speaker] }
+  end
+
   def test_neither_heard_is_a_difference_with_no_frame
     found = difference(heard(0, 0), heard(0, 0))
 

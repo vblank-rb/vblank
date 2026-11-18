@@ -42,9 +42,11 @@ module VBlank
     # measure itself on each: the frame each was first or last heard on, each one's level, or the
     # frames each one's last sound took to fall silent. For a level held a stretch at a time
     # (HeardTolerances), +frames+ is the first stretch out, +measured+ each one's level over it, and
-    # +stretches_over+ how many stretches are out; both are nil otherwise.
-    HeardDifference = Data.define(:what, :frame, :loudest, :measured, :frames, :stretches_over) do
-      def initialize(what:, frame:, loudest:, measured:, frames: nil, stretches_over: nil) = super
+    # +stretches_over+ how many stretches are out; both are nil otherwise. +speaker+ is :left or
+    # :right for a difference found on that speaker alone, where the two speakers mixed are alike for
+    # that measure (a sound on the wrong speaker); nil for one found in the mixed sound.
+    HeardDifference = Data.define(:what, :frame, :loudest, :measured, :frames, :stretches_over, :speaker) do
+      def initialize(what:, frame:, loudest:, measured:, frames: nil, stretches_over: nil, speaker: nil) = super
     end
 
     # TWO CARTRIDGES' HEARD SOUND ON THE SAME PRESSES, IN THE SAME EMULATOR: a port's cartridge beside
@@ -69,16 +71,36 @@ module VBlank
     # +recordings+ is what each cartridge put out, as Diagnostics::SoundRecordings, for #write_wav; nil
     # for a comparison of HeardSounds made elsewhere (#between).
     #
+    # EACH SPEAKER. The measures are taken of the two speakers mixed, and again of each speaker
+    # alone (+speakers+, :left and :right to the two HeardSounds on it): a measure out on one speaker
+    # and not in the mix is a difference of its own, naming the speaker, so a sound on the wrong
+    # speaker fails.
+    #
+    # EACH VOICE. Where the two are not alike and the console's emulator can play one voice alone
+    # (the Advance's and the Color's four, the Genesis's six FM voices and four square and noise
+    # voices; not the Super Nintendo's eight), the tape is played again on both once for each voice,
+    # that voice alone, and compared the same way: +voices+ is each voice's name to its own
+    # HeardComparison, so a failure names the voice that differs. It only explains: whether the two
+    # are alike is the mixed sound's answer. Empty where no voice can be played alone; nil where the
+    # two are alike or it was not asked for.
+    #
     # In a test this is Testing::HeardAlike#assert_heard_alike.
-    HeardComparison = Data.define(:first, :second, :differences, :recordings)
+    HeardComparison = Data.define(:first, :second, :differences, :recordings, :speakers, :voices) do
+      def initialize(first:, second:, differences:, recordings: nil, speakers: nil, voices: nil) = super
+    end
 
     class HeardComparison
+      SPEAKERS = %i[left right].freeze
+
       # Play +presses+ (a Tape, or a Playthrough, whose script is played on +first+ and the presses
       # it made on +second+) on both cartridges from power-on, and compare what each put out.
       # +heard_above+ is the loudest sample a silent frame may have (HeardSound), and the rest are
       # HeardTolerances'. +lead_ins+ is a playthrough for each cartridge to play first, not counted
       # (Playthrough#play), for two cartridges that reach the first screen by different roads.
-      def self.play(presses, first, second, heard_above:, lead_ins: [nil, nil], **tolerances)
+      # +each_speaker+ false compares the speakers mixed alone, for two that are meant to place
+      # their sound differently; +each_voice+ false plays no voice alone after a difference.
+      def self.play(presses, first, second, heard_above:, lead_ins: [nil, nil], each_speaker: true, each_voice: true,
+                    **tolerances)
         tolerances = HeardTolerances.new(**tolerances)
         refuse_frames_not_count!(:heard_above, heard_above)
         refuse_lead_ins_not_pair!(lead_ins)
@@ -86,14 +108,27 @@ module VBlank
         played = presses_led_in(presses, lead_ins[0]).play(first, lead_in: lead_ins[0])
         tape = presses.is_a?(Tape) ? presses : played.tape
         heard = [played, presses_led_in(tape, lead_ins[1]).play(second, lead_in: lead_ins[1])]
-        between(*heard.map { |side| HeardSound.of(side, heard_above: heard_above) }, tolerances,
-                recordings: heard.map { |side| Diagnostics::SoundRecording.heard_in(side.game, frames: side.frames) })
+        speakers = SPEAKERS.to_h { |speaker| [speaker, heard.map { |side| HeardSound.of(side, heard_above:, speaker:) }] }
+        compared = between(*heard.map { |side| HeardSound.of(side, heard_above: heard_above) }, tolerances,
+                           recordings: heard.map { |side| Diagnostics::SoundRecording.heard_in(side.game, frames: side.frames) },
+                           speakers: each_speaker ? speakers : nil)
+        return compared if compared.alike? || !each_voice
+
+        replays = [first, second].zip(lead_ins).map { |cartridge, lead_in| VoiceReplay.new(cartridge, tape, lead_in, heard_above) }
+        compared.with(voices: replays.first.voices.to_h do |voice|
+          [voice, between(*replays.map { |replay| replay.heard(voice) }, tolerances)]
+        end)
       end
 
-      # The comparison of two HeardSounds, +first+ and +second+, by +tolerances+ (a HeardTolerances).
-      def self.between(first, second, tolerances, recordings: nil)
-        new(first: first, second: second, differences: Differences.new(first, second, tolerances).all,
-            recordings: recordings)
+      # The comparison of two HeardSounds, +first+ and +second+, by +tolerances+ (a HeardTolerances), and
+      # of each speaker's where +speakers+ gives them (:left and :right to a pair of HeardSounds).
+      def self.between(first, second, tolerances, recordings: nil, speakers: nil)
+        mixed = Differences.new(first, second, tolerances).all
+        on_one = (speakers || {}).flat_map do |speaker, pair|
+          Differences.new(*pair, tolerances).all.reject { |found| mixed.any? { |out| out.what == found.what } }
+                     .map { |found| found.with(speaker: speaker) }
+        end
+        new(first: first, second: second, differences: mixed + on_one, recordings: recordings, speakers: speakers)
       end
 
       def alike? = differences.empty?
@@ -151,6 +186,41 @@ module VBlank
                              "each cartridge: `lead_ins: [first_lead_in, second_lead_in]`."
       end
       private_class_method :presses_led_in, :refuse_lead_ins_not_pair!, :refuse_unusable_presses!
+
+      # ONE CARTRIDGE'S TAPE PLAYED AGAIN WITH ONE VOICE ALONE: switched on, told which voice to hear
+      # (Verifier#hearing) before its first frame, led in, and pressed through +tape+ a stretch of
+      # frames at a time, as a playthrough presses it.
+      class VoiceReplay
+        def initialize(cartridge, tape, lead_in, heard_above)
+          @cartridge = cartridge
+          @tape = tape
+          @lead_in = lead_in
+          @heard_above = heard_above
+        end
+
+        # The voices this cartridge's emulator can play alone: none on a console whose emulator mixes
+        # them all.
+        def voices
+          reader = Playthrough.power_on(@cartridge)
+          reader.channels
+        ensure
+          reader&.close
+        end
+
+        # The HeardSound of +voice+ alone over the tape's frames.
+        def heard(voice)
+          reader = Playthrough.power_on(@cartridge)
+          reader.hearing(only: [voice])
+          @lead_in&.play_as_lead_in(reader)
+          @tape.presses_within(1..@tape.frames).each do |stretch|
+            reader.step(stretch.frames.size, keys: IR::Buttons.mask(stretch.buttons))
+          end
+          HeardSound.new(loudest_by_frame: reader.loudest_by_frame.last(@tape.frames).freeze, heard_above: @heard_above)
+        ensure
+          reader&.close
+        end
+      end
+      private_constant :VoiceReplay
 
       # The checks, each answering a HeardDifference or nil, in the order they are made.
       class Differences

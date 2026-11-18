@@ -84,7 +84,9 @@ They change the console, not the reading, so the block must `v.step` before read
 voices go back when the block ends. Taking a voice out under a held note is a cut, not a rest —
 the mix steps and drifts back over about half a second — so step well past that before asking
 whether it went quiet. Sound readers cover the whole run, so inside a block use
-`audio_energy_by_frame.last(n)`.
+`audio_energy_by_frame.last(n)`. On a Genesis cartridge `hearing` takes no block and must come before
+the first frame (Genesis Plus GX reads its voices as it loads the cartridge); `v.channels` names the
+voices on each console, and a Super Nintendo reader names none and refuses.
 
 ## Long runs of sound
 

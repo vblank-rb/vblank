@@ -41,11 +41,17 @@ module HeardAlikeTests
   # the speaker settling: the game is silent then, and both cartridges click alike.
   private def past_the_power_on_click = VBlank.playthrough("past the power-on click") { wait frames: 10 }
 
-  private def tune_game(starts: START, loudness: 15, last: :quarter, second_note: :C5)
+  # Whether this console's emulator can play one voice alone, so a failure names the voice.
+  private def voices_heard_alone? = true
+
+  # +plays+ :wave puts the tune on the wave voice, which every console here can place on one speaker
+  # (a Genesis's square voices sound from both).
+  private def tune_game(starts: START, loudness: 15, last: :quarter, second_note: :C5, speaker: nil, plays: nil)
     VBlank.build("HEARD", console: console, out: nil, err: nil) do
       enable_sound
       song(:tune) do
-        voice(:lead) do
+        voice(:lead, **{ plays: plays }.compact) do
+          pan speaker if speaker
           volume loudness
           note :A4, :quarter
           note second_note, last
@@ -200,6 +206,40 @@ module HeardAlikeTests
 
       assert_in_delta (2 * one) + VBlank::Diagnostics::SoundRecording::PAIR_GAP_SECONDS, seconds, 0.05
     end
+  end
+
+  # The same tune on the other speaker: the two mixed are alike, each speaker alone is not.
+  def test_a_tune_on_the_other_speaker_fails_naming_the_speaker
+    as_a_file(tune_game(speaker: :right, plays: :wave)) do |path|
+      ours = tune_game(speaker: :left, plays: :wave)
+      compared = VBlank::Playthroughs::HeardComparison.play(listen, ours, path, **moved_tune_settings, each_voice: false)
+
+      assert_equal %i[left right], compared.differences.map(&:speaker).uniq.sort
+      message = VBlank::Testing::HeardAlike.difference_message(compared)
+      assert_match "On the left speaker alone: ", message
+      assert_match "On the right speaker alone: ", message
+      assert_heard_alike ours, path, listen, **moved_tune_settings, each_speaker: false
+    end
+  end
+
+  # A quieter tune fails, and played a voice at a time the failure names the voice the tune is on
+  # and says the others are alike; where no voice plays alone, it says so.
+  def test_a_failure_names_the_voice_that_differs
+    message = failure_against(tune_game(loudness: 7))
+
+    if voices_heard_alone?
+      assert_match(/Played alone, the \w+ voice differs:\n  The two cartridges are heard at different levels/, message)
+      assert_match "Played alone, these voices are alike", message
+    else
+      assert_match "No voice can be played alone", message
+    end
+  end
+
+  def test_two_alike_play_no_voice_alone
+    compared = as_a_file(tune_game) { |path| VBlank::Playthroughs::HeardComparison.play(listen, tune_game, path, **alike_settings) }
+
+    assert_predicate compared, :alike?
+    assert_nil compared.voices
   end
 
   def test_a_silent_cartridge_fails_saying_which_is_never_heard

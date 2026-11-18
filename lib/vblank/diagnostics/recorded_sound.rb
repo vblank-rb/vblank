@@ -94,6 +94,17 @@ module VBlank
         @loudest.dup
       end
 
+      # The same on one speaker, +speaker+ :left or :right: the furthest that speaker's samples are
+      # from nought each frame, so a sound on the wrong speaker shows.
+      def loudest_on_speaker_by_frame(speaker)
+        kept = (@loudest_on_speaker ||= { left: [], right: [] }).fetch(speaker)
+        first = speaker == :left ? 0 : 1
+        each_frame_from(kept.size) do |frame|
+          kept << frame.unpack("s<*").each_slice(2).map { |pair| pair[first].to_i.abs }.max.to_i
+        end
+        kept.dup
+      end
+
       # The sound of the whole run as one String of samples, which for a long run is all of
       # it in memory at once.
       def bytes = (@file ? File.binread(@file.path) : "".b) << @recent.join

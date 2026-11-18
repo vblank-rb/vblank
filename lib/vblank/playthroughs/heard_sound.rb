@@ -14,8 +14,10 @@ module VBlank
     HeardSound = Data.define(:loudest_by_frame, :heard_above) do
       # The sound of +played+ (what Playthrough#play or Tape#play handed back, the cartridge in the
       # emulator): its counted frames, without a lead-in's.
-      def self.of(played, heard_above:)
-        new(loudest_by_frame: played.game.loudest_by_frame.last(played.frames).freeze, heard_above: heard_above)
+      # +speaker+ :left or :right hears that speaker alone (Verifier#loudest_on_speaker_by_frame).
+      def self.of(played, heard_above:, speaker: nil)
+        loudest = speaker ? played.game.loudest_on_speaker_by_frame(speaker) : played.game.loudest_by_frame
+        new(loudest_by_frame: loudest.last(played.frames).freeze, heard_above: heard_above)
       end
 
       def frames = loudest_by_frame.size

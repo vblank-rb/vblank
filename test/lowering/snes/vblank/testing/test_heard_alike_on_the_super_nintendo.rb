@@ -9,4 +9,7 @@ class TestHeardAlikeOnTheSuperNintendo < Minitest::Test
   include HeardAlikeTests
 
   private def console = :snes
+
+  # bsnes here mixes the sound chip's eight voices together and takes no setting to leave one out.
+  private def voices_heard_alone? = false
 end

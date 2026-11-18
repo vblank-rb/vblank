@@ -935,6 +935,13 @@ module VBlank
         @sound.loudest_by_frame
       end
 
+      # The loudest sample on one speaker, +speaker+ :left or :right, each frame played so far
+      # (RecordedSound#loudest_on_speaker_by_frame).
+      def loudest_on_speaker_by_frame(speaker)
+        ensure_rendered!
+        @sound.loudest_on_speaker_by_frame(speaker)
+      end
+
       # True when the run produced no sound at all (energy exactly 0).
       def silent?
         audio_energy.zero?
