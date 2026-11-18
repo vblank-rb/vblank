@@ -18,10 +18,11 @@ module VBlank
           #   toward a colour t: (c × (256 - steps) + t × steps) / 256
           #
           # A channel is one of only 32 numbers, so the routine works out what each of them
-          # becomes first — 32 for each channel, a table of 96 — with the console's own 8×8
-          # multiplier (WRMPYA and WRMPYB, the product at RDMPYL eight cycles later), and then
-          # moves each colour by looking its three channels up. Colour 0 is moved too: it is what
-          # shows where nothing is drawn, so it fades with the picture.
+          # becomes first — 32 for each channel, a table of 96 words, each already the channel's
+          # place in the colour memory's word (rt_tint_table) — and then moves each colour by
+          # looking its three channels up and putting the words together, with no shift of a
+          # channel into place. Colour 0 is moved too: it is what shows where nothing is drawn, so
+          # it fades with the picture.
           #
           # A FADE TO BLACK IS THE DISPLAY'S OWN. The console has a master brightness, sixteen levels
           # in the low bits of INIDISP, which dims the finished picture as it goes out: nothing in
@@ -54,7 +55,8 @@ module VBlank
             STEPS_AT = 4
             CHANGED = 6
             TABLE = 8
-            LINES_SENT = TABLE + (3 * 32)
+            TABLE_BYTES = 3 * 32 * 2 # Three channels' 32 values, a word each (rt_tint_table)
+            LINES_SENT = TABLE + TABLE_BYTES
             LINES_WALKED = LINES_SENT + 2
             STATE_BYTES = LINES_WALKED + 2
             ALL_LINES = 0xFFFF
@@ -420,81 +422,118 @@ module VBlank
               asm.and_a(0xFF)
             end
 
-            # rt_tint_table (JSR): what each channel's 32 numbers become, for red, green and blue in
-            # turn (the colour moved toward has a channel of each), by the fade in force.
+            # rt_tint_table (JSR): what each channel's 32 numbers become by the fade in force, each as
+            # the word of the colour memory that channel is (BGR555, red in the low five bits: fullsnes,
+            # "CGRAM"), so moving a colour is three words read and put together.
+            #
+            # All three walks are one sum, (c × keep + add) ÷ 256, with keep = 256 - steps and an add
+            # for each channel that does not hang on c: 255 toward black (c less a share rounded down
+            # is the share kept rounded up), 31 × steps toward white, and the colour's channel × steps
+            # toward a colour. The sum is under 2^13 and its high byte is the channel, so a table is
+            # the sum walked from one value to the next by adding keep, with no multiply: the
+            # multiplier is asked only for the colour's three adds. Toward black or white the adds
+            # are the same, so one sum makes all three tables. A channel's word is the sum's high byte
+            # (XBA) for red, the sum shifted right three for green and left two for blue, each masked.
+            #
+            # The tables (TABLE): red's 32 words, then green's and blue's side by side, four bytes a
+            # value, so a colour's green and blue are each found by one mask of the colour (see
+            # rt_tint_apply_run).
+            RED_TABLE = 0
+            GREEN_BLUE_TABLE = 32 * 2
+            CHANNEL_WORD_MASKS = [0x001F, 0x03E0, 0x7C00].freeze
+
             def emit_table(asm, memory, s)
               state = memory[STATE]
+              steps = asm.abs(state + STEPS_AT)
               asm.label("rt_tint_table")
-              asm.ldx(0)
+              asm.lda(asm.abs(state + TOWARD))
+              asm.cmp(TOWARD_WHITE)
+              asm.beq("rt_tint_table_white")
+              asm.bcs("rt_tint_table_color")
+              asm.lda(255)
+              asm.bra("rt_tint_table_one_sum")
+              asm.label("rt_tint_table_white")
+              asm.lda(steps)
+              5.times { asm.asl }
+              asm.sec
+              asm.sbc(steps) # 31 × steps
+              asm.label("rt_tint_table_one_sum")
+              asm.sta(asm.direct(s.channel))
+              emit_keep(asm, s, steps)
+              asm.label("rt_tint_table_one_sum_value")
+              emit_table_words(asm, state, s, one_sum: true)
+              asm.lda(asm.direct(s.channel))
+              asm.clc
+              asm.adc(asm.direct(s.factor))
+              asm.sta(asm.direct(s.channel))
+              emit_table_value_done(asm, "rt_tint_table_one_sum_value")
+              # Toward a colour: each channel's add from the multiplier, kept on the stack while the
+              # multiplier's own words are in use.
+              asm.label("rt_tint_table_color")
               3.times do |channel|
                 asm.lda(asm.abs(state + COLOR))
                 (channel * 5).times { asm.lsr }
                 asm.and_a(CHANNEL_MAX)
-                asm.sta(asm.direct(s.target))
-                asm.stz(asm.direct(s.channel))
-                asm.label("rt_tint_table_#{channel}")
-                asm.lda(asm.abs(state + TOWARD))
-                asm.cmp(TOWARD_WHITE)
-                asm.beq("rt_tint_table_#{channel}_white")
-                asm.bcs("rt_tint_table_#{channel}_color")
-                # Toward black: the channel less its share.
-                asm.lda(asm.abs(state + STEPS_AT))
+                asm.sta(asm.direct(s.channel))
+                asm.lda(steps)
                 asm.sta(asm.direct(s.factor))
                 asm.jsr(asm.abs("rt_tint_times"))
-                emit_over_256(asm)
-                asm.sta(asm.direct(s.product))
-                asm.lda(asm.direct(s.channel))
-                asm.sec
-                asm.sbc(asm.direct(s.product))
-                asm.bra("rt_tint_table_#{channel}_kept")
-                # Toward white: the channel and its share of the room above it.
-                asm.label("rt_tint_table_#{channel}_white")
-                asm.lda(asm.direct(s.channel))
                 asm.pha
-                asm.eor(CHANNEL_MAX) # 31 less it, for a number of five bits
-                asm.sta(asm.direct(s.channel))
-                asm.lda(asm.abs(state + STEPS_AT))
-                asm.sta(asm.direct(s.factor))
-                asm.jsr(asm.abs("rt_tint_times"))
-                emit_over_256(asm)
-                asm.sta(asm.direct(s.product))
-                asm.pla
-                asm.sta(asm.direct(s.channel))
-                asm.clc
-                asm.adc(asm.direct(s.product))
-                asm.bra("rt_tint_table_#{channel}_kept")
-                # Toward a colour: the channel's share and the colour's, added, then divided.
-                asm.label("rt_tint_table_#{channel}_color")
-                asm.lda(STEPS)
-                asm.sec
-                asm.sbc(asm.abs(state + STEPS_AT))
-                asm.sta(asm.direct(s.factor))
-                asm.jsr(asm.abs("rt_tint_times"))
-                asm.sta(asm.direct(s.product))
-                asm.lda(asm.direct(s.channel))
-                asm.pha
-                asm.lda(asm.direct(s.target))
-                asm.sta(asm.direct(s.channel))
-                asm.lda(asm.abs(state + STEPS_AT))
-                asm.sta(asm.direct(s.factor))
-                asm.jsr(asm.abs("rt_tint_times"))
-                asm.clc
-                asm.adc(asm.direct(s.product))
-                emit_over_256(asm)
-                asm.sta(asm.direct(s.product))
-                asm.pla
-                asm.sta(asm.direct(s.channel))
-                asm.lda(asm.direct(s.product))
-                asm.label("rt_tint_table_#{channel}_kept")
-                asm.sep(0x20)
-                asm.sta(asm.abs_x(state + TABLE))
-                asm.rep(0x20)
-                asm.inx
-                asm.inc(asm.direct(s.channel))
-                asm.lda(asm.direct(s.channel))
-                asm.cmp(32)
-                asm.branch_long(:bcc, "rt_tint_table_#{channel}")
               end
+              [s.product, s.target, s.channel].each do |sum|
+                asm.pla
+                asm.sta(asm.direct(sum))
+              end
+              # The three sums are red's in +channel+, green's in +target+ and blue's in +product+;
+              # keep in +factor+.
+              emit_keep(asm, s, steps)
+              asm.label("rt_tint_table_value")
+              emit_table_words(asm, state, s, one_sum: false)
+              [s.channel, s.target, s.product].each do |sum|
+                asm.lda(asm.direct(sum))
+                asm.clc
+                asm.adc(asm.direct(s.factor))
+                asm.sta(asm.direct(sum))
+              end
+              emit_table_value_done(asm, "rt_tint_table_value")
+            end
+
+            # Keep, 256 less the steps, into +factor+, and X and Y at the tables' first values.
+            def emit_keep(asm, s, steps)
+              asm.lda(STEPS)
+              asm.sec
+              asm.sbc(steps)
+              asm.sta(asm.direct(s.factor))
+              asm.ldx(0)
+              asm.ldy(0)
+            end
+
+            # The three words of one value: red's at X, green's and blue's at Y, from red's sum in
+            # +channel+, green's in +target+ and blue's in +product+, or all three from +channel+ with
+            # +one_sum+.
+            def emit_table_words(asm, state, s, one_sum:)
+              green, blue = one_sum ? [s.channel, s.channel] : [s.target, s.product]
+              asm.lda(asm.direct(s.channel))
+              asm.xba
+              asm.and_a(CHANNEL_WORD_MASKS[0])
+              asm.sta(asm.abs_x(state + TABLE + RED_TABLE))
+              asm.lda(asm.direct(green))
+              3.times { asm.lsr }
+              asm.and_a(CHANNEL_WORD_MASKS[1])
+              asm.sta(asm.abs_y(state + TABLE + GREEN_BLUE_TABLE))
+              asm.lda(asm.direct(blue))
+              2.times { asm.asl }
+              asm.and_a(CHANNEL_WORD_MASKS[2])
+              asm.sta(asm.abs_y(state + TABLE + GREEN_BLUE_TABLE + 2))
+            end
+
+            # The next value, or the end of the tables.
+            def emit_table_value_done(asm, again)
+              4.times { asm.iny }
+              asm.inx
+              asm.inx
+              asm.cpx(32 * 2)
+              asm.bne(again)
               asm.rts
             end
 
@@ -510,23 +549,33 @@ module VBlank
               colors_shown.each { |first, count| emit_run_applied(asm, s, first, count) }
               asm.rts
 
-              # rt_tint_apply_run (JSR): the colours from X up to the byte at +product+ moved.
+              # rt_tint_apply_run (JSR): the colours from X up to the byte at +product+ moved, each
+              # channel's word read from its table at an index the colour gives with one mask:
+              # red's, two bytes a value, is the colour shifted left once; green's and blue's, four
+              # bytes a value, are the colour shifted right three, and its two bytes swapped (XBA),
+              # which brings blue down to the bits green's index takes. +channel+ holds the word as it
+              # is put together.
               asm.label("rt_tint_apply_run")
-              asm.lda(0)
+              asm.lda(asm.long_x(from))
+              asm.asl
+              asm.and_a(0x003E)
+              asm.tay
+              asm.lda(asm.abs_y(state + TABLE + RED_TABLE))
+              asm.sta(asm.direct(s.channel))
+              asm.lda(asm.long_x(from))
+              3.times { asm.lsr }
+              asm.and_a(0x007C)
+              asm.tay
+              asm.lda(asm.abs_y(state + TABLE + GREEN_BLUE_TABLE))
+              asm.ora(asm.direct(s.channel))
+              asm.sta(asm.direct(s.channel))
+              asm.lda(asm.long_x(from))
+              asm.xba
+              asm.and_a(0x007C)
+              asm.tay
+              asm.lda(asm.abs_y(state + TABLE + GREEN_BLUE_TABLE + 2))
+              asm.ora(asm.direct(s.channel))
               asm.sta(asm.long_x(shadow))
-              3.times do |channel|
-                asm.lda(asm.long_x(from))
-                (channel * 5).times { asm.lsr }
-                asm.and_a(CHANNEL_MAX)
-                asm.phx
-                asm.tax
-                asm.lda(asm.abs_x(state + TABLE + (channel * 32)))
-                asm.plx
-                asm.and_a(CHANNEL_MAX)
-                (channel * 5).times { asm.asl }
-                asm.ora(asm.long_x(shadow))
-                asm.sta(asm.long_x(shadow))
-              end
               asm.inx
               asm.inx
               asm.cpx(asm.direct(s.product))
