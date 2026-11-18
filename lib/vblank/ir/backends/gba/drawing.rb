@@ -125,6 +125,10 @@ module VBlank
             # small picture's alone in a game of big pixels. A whole-screen fill fills these and
             # leaves the rows under them, which are never shown.
             def shown_rows = SCREEN_HEIGHT / pixel_size
+
+            # Does the game switch layers off to send them something, and wait for frames, so that
+            # a sending can hold them for a picture (BackgroundDrawing::LAYERS_HELD)?
+            def holds_layers? = waits_for_frames && screen.layers_off_while_sending?
             # The backgrounds that turn AND sit on the tiled screen — the ones that decide
             # which way the console arranges that screen's layers. A background that turns
             # on `screen :rotozoom` is on a screen of its own, up at a different moment, so
@@ -751,38 +755,55 @@ module VBlank
           # the layers stay off for the rest of it, so that whole picture is the backdrop (see
           # BackgroundDrawing::LAYERS_HELD).
           #
-          # Only the background layers are touched: the sprites, the arrangement and the rest
-          # of the display's settings stay as they were. A scene not drawn from tiles has no
-          # layers to switch, and is left alone.
+          # Only the layers are touched: the background layers, and in a game that waits for
+          # frames the sprites too, unless the game is in a border, which is sprites (see
+          # BackgroundDrawing#held_layer_bits). The arrangement and the rest of the display's
+          # settings stay as they were. A scene not drawn from tiles has no layers to switch, and
+          # is left alone.
           BG_ENABLE_MASK = BG0_ENABLE | BG1_ENABLE | BG2_ENABLE | BG3_ENABLE
 
           def emit_with_bg_layers_disabled(name)
             screen = @layout.screen.scene_send(name).screen
             return yield unless screen
 
-            # A hold left by an earlier sending is this one's now: the layers come back on below.
-            @background_drawing.emit_take_over_held_layers(ACC) if @background_drawing.holds_layers?
+            on = screen.on.reduce(0) { |bits, layer| bits | BG_ENABLES[layer] }
+            return emit_with_layers_held_for_sending(on) { yield } if @background_drawing.holds_layers?
+
             change_display_control { emit(ASM.bic_imm(ACC, ACC, BG_ENABLE_MASK)) }
             yield
-            on = screen.on.reduce(0) { |bits, layer| bits | BG_ENABLES[layer] }
-            return if on.zero?
+            change_display_control { emit(ASM.orr_imm(ACC, ACC, on)) } unless on.zero?
+          end
 
-            emit_number(TMP, REG_DISPCNT)
-            emit(ASM.load_halfword(ACC, TMP))
-            emit(ASM.orr_imm(ACC, ACC, on))
+          # The same, in a game that waits for frames: the background layers and the sprites go
+          # off for the sending, and come back on, the scene's layers in place of the last
+          # scene's, at once in the gap or at the start of the next gap where the sending ran
+          # into a picture (see BackgroundDrawing::LAYERS_HELD).
+          def emit_with_layers_held_for_sending(on)
+            @background_drawing.emit_layers_off_for_sending(SCENE_SEND_DISPLAY)
+            yield
+            load_var(ACC, SCENE_SEND_DISPLAY)
+            emit(ASM.bic_imm(ACC, ACC, BG_ENABLE_MASK))
+            emit(ASM.orr_imm(ACC, ACC, on)) unless on.zero?
             @background_drawing.emit_layers_back_on_or_held(ACC)
           end
 
-          # Switch on the background layers held off for the picture just drawn, in the gap
+          # Where the display's settings are kept while a scene's scenery is sent.
+          SCENE_SEND_DISPLAY = :_scene_send_display
+
+          # Switch on the layers held off for the picture just drawn, in the gap
           # between frames (see BackgroundDrawing::LAYERS_HELD).
           def emit_held_layers_on = @background_drawing.emit_held_layers_on
 
           # Read the display's settings into ACC, let the block change them, write them back.
-          def change_display_control
-            emit_number(TMP, REG_DISPCNT)
-            emit(ASM.load_halfword(ACC, TMP))
-            yield
-            emit(ASM.store_halfword(ACC, TMP))
+          # Where the screen's interrupt can switch held layers on, with the interrupt switch off
+          # between the read and the write (SpriteDrawing#changing_display_control).
+          def change_display_control(&change)
+            @sprite_drawing.changing_display_control do
+              emit_number(TMP, REG_DISPCNT)
+              emit(ASM.load_halfword(ACC, TMP))
+              change.call
+              emit(ASM.store_halfword(ACC, TMP))
+            end
           end
 
           # What a scene does to the screen as it takes over, worked out once for both backends.
@@ -853,7 +874,7 @@ module VBlank
 
             value = tiled_dispcnt(wanted.on, turning: wanted.turning, bar: wanted.bar)
             value |= OBJ_ENABLE | OBJ_1D_MAP if @layout.has_objects
-            # Leaves the sprites off on a frame hide_sprites asked for, and the background layers
+            # Leaves the sprites off on a frame hide_sprites asked for, and the layers
             # off for the rest of a picture the scene's setup ran into.
             if @background_drawing.holds_layers?
               @sprite_drawing.emit_screen_layers(value) { |reg| @background_drawing.emit_display_control_keeping_held_off(reg) }

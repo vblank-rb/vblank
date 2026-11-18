@@ -155,6 +155,23 @@ module VBlank
             @emitter.emit(ASM.store_halfword(ACC, TMP))
           end
 
+          # THE BLOCK'S INSTRUCTIONS WITH THE INTERRUPT SWITCH OFF, for a read and a write (or two
+          # writes) an interrupt handler must not land between (GBATEK, Interrupt Control: IME,
+          # 0x4000208, bit 0 off holds every interrupt; one asked for meanwhile waits in IF and is
+          # taken as IME comes back on). Kept to the few instructions that need it. The block may
+          # use TMP and ADDR; the switch as it was waits on the stack.
+          def with_interrupts_held_off
+            @emitter.emit_number(TMP, REG_IME)
+            @emitter.emit(ASM.load_halfword(ADDR, TMP))
+            @emitter.emit(ASM.push(ADDR))
+            @emitter.emit_number(ADDR, 0)
+            @emitter.emit(ASM.store_halfword(ADDR, TMP))
+            yield
+            @emitter.emit(ASM.pop(ADDR))
+            @emitter.emit_number(TMP, REG_IME)
+            @emitter.emit(ASM.store_halfword(ADDR, TMP)) # the interrupt switch as it was
+          end
+
           # Write a full 32-bit word to an address.
           def store_word_immediate(value, address)
             @emitter.emit_number(ACC, value)

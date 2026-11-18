@@ -50,7 +50,7 @@
       "data": 0
     },
     "dive": {
-      "code": 56084,
+      "code": 56116,
       "data": 0
     },
     "everywhere": {
@@ -98,7 +98,7 @@
       "data": 44
     },
     "hero": {
-      "code": 80432,
+      "code": 80460,
       "data": 0
     },
     "jukebox": {
@@ -170,7 +170,7 @@
       "data": 0
     },
     "pong_gbc": {
-      "code": 42840,
+      "code": 42856,
       "data": 0
     },
     "pong_gbc@gbc": {
@@ -238,7 +238,7 @@
       "data": 2776
     },
     "tower": {
-      "code": 15504,
+      "code": 15608,
       "data": 0
     },
     "tower@gbc": {

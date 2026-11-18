@@ -342,10 +342,12 @@ module VBlank
             emit_branch(:bcond, turn_on, cond: :ne)
             store_word_immediate(SPRITES_OFF, var_addr(SPRITES_HIDDEN))
             if layer_switched
-              emit_number(TMP, REG_DISPCNT)
-              emit(ASM.load_halfword(ACC, TMP))
-              emit(ASM.bic_imm(ACC, ACC, OBJ_ENABLE))
-              emit(ASM.store_halfword(ACC, TMP))
+              changing_display_control do
+                emit_number(TMP, REG_DISPCNT)
+                emit(ASM.load_halfword(ACC, TMP))
+                emit(ASM.bic_imm(ACC, ACC, OBJ_ENABLE))
+                emit(ASM.store_halfword(ACC, TMP))
+              end
             end
             emit_branch(:b, done)
             place_label(turn_on)
@@ -354,14 +356,28 @@ module VBlank
             store_word_immediate(SPRITES_SHOWN, var_addr(SPRITES_HIDDEN))
             return place_label(done) unless layer_switched
 
-            emit_number(TMP, REG_DISPCNT)
-            emit(ASM.load_halfword(ACC, TMP))
-            emit(ASM.and_imm(2, ACC, 7))
-            emit(ASM.cmp_imm(2, 3))
-            emit_branch(:bcond, done, cond: :hs) # a bitmap screen
-            emit(ASM.orr_imm(ACC, ACC, OBJ_ENABLE))
-            emit(ASM.store_halfword(ACC, TMP))
+            changing_display_control do
+              bitmap = gensym
+              emit_number(TMP, REG_DISPCNT)
+              emit(ASM.load_halfword(ACC, TMP))
+              emit(ASM.and_imm(2, ACC, 7))
+              emit(ASM.cmp_imm(2, 3))
+              emit_branch(:bcond, bitmap, cond: :hs) # a bitmap screen
+              emit(ASM.orr_imm(ACC, ACC, OBJ_ENABLE))
+              emit(ASM.store_halfword(ACC, TMP))
+              place_label(bitmap)
+            end
             place_label(done)
+          end
+
+          # A read and write of the display's settings, in a game where the screen's interrupt
+          # can switch held layers on (BackgroundDrawing::LAYERS_HELD): with the interrupt switch
+          # off between them, or the write would put back the settings read before the interrupt
+          # and switch the held layers off for good. Elsewhere as it is.
+          def changing_display_control(&)
+            return yield unless @layout.holds_layers?
+
+            @primitives.with_interrupts_held_off(&)
           end
 
           # A SCREEN'S WHOLE SET OF LAYERS, written to the display. Where a game's screens use
@@ -373,7 +389,7 @@ module VBlank
           # border, whose sprite layer stays on (#emit_switch_sprite_layer).
           #
           # A block, where given, is handed the register holding the value and writes it to the
-          # display itself: with the background layers held off for the rest of a picture
+          # display itself: with the layers held off for the rest of a picture
           # (BackgroundDrawing#emit_display_control_keeping_held_off).
           def emit_screen_layers(value, &writes_it)
             hiding = hides_sprites? && value.anybits?(OBJ_ENABLE) && @layout.border.nil?

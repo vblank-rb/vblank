@@ -9,9 +9,10 @@ require "test_helper"
 # where the line falls depends on how many cycles the pass spent getting there. So two builds of
 # one game that differ anywhere before it disagree on that picture, and the player sees a torn one.
 #
-# The layers stay off for the rest of a picture the setup ran into, and come on in the next gap
-# (GBATEK, DISPCNT: a write takes effect from the line being drawn). The first picture is then the
-# backdrop from top to bottom, whatever the timing, and the one after it is the scene, whole.
+# The layers and the sprites stay off for the picture after the setup, wherever it ended, and come
+# on in the next gap (GBATEK, DISPCNT: a write takes effect from the line being drawn). The first
+# picture is then the backdrop from top to bottom, whatever the timing, and the one after it is the
+# scene, whole.
 class TestSceneArrivalOverrun < Minitest::Test
   HANDED_OVER_AT = 4
   TITLE = (0...64).map { |at| at.even? ? :green : :blue }
@@ -36,21 +37,28 @@ class TestSceneArrivalOverrun < Minitest::Test
 
   # A title, then a scene of +layers+ backgrounds, each a map of +tile_count+ different tiles, wide
   # enough that the view of it is filled as the scene comes up. With +late+ the pass that hands over
-  # spends the gap until LATE_LINE first, read off the console's line counter. With +halts+ the scene
-  # stops the game on its first pass, as an end screen does, so no wait for a frame follows it.
-  private def handed_over(layers:, tile_count:, late: false, halts: false)
+  # spends the gap until LATE_LINE first (or until line +late+, a number), read off the console's
+  # line counter. With +halts+ the scene stops the game on its first pass, as an end screen does, so
+  # no wait for a frame follows it. With +bordered+ the game is laid out for the Game Boy Color's
+  # screen, shown in the middle of the Advance's with a border of blue and yellow round it.
+  private def handed_over(layers:, tile_count:, late: false, halts: false, bordered: false)
     title_tile = TITLE
     side = WIDE
     handed_over_at = HANDED_OVER_AT
-    late_line = LATE_LINE
-    b = Builder.new
+    late_line = late == true ? LATE_LINE : late
+    b = bordered ? Builder.new(options: VBlank::Cartridge::Options.new(console: :gba, variant: :color_screen)) : Builder.new
     b.extend(VBlank::Builder::Debug)
     b.instance_eval do
       screen :tiled
+      border("#" => :blue, "." => :yellow) { "#.\n.#\n" } if bordered
       tile_count.times { |n| image(:"stripe_#{n}", width: 8, height: 8, data: TestSceneArrivalOverrun.numbered_tile(n)) }
       tiles :stripes, (0...tile_count).to_h { |n| [n, :"stripe_#{n}"] }
       image(:title_tile, width: 8, height: 8, data: title_tile)
       tiles :title_tiles, { 0 => :title_tile }
+      # A sprite over every scene: the first picture of a scene holds it off too, so a write to
+      # the display that lands part way down that picture (a blend, a scroll) shows nowhere.
+      image(:marker, "#" => :yellow) { (["#" * 8] * 8).join("\n") }
+      sprite :marker, at: [100, 50], facing: { still: :marker }
       map = Array.new(side) { |row| Array.new(side) { |col| ((row * side) + col) % tile_count } }
       state = var :state, 0
       pass = var :pass, 0
@@ -100,6 +108,32 @@ class TestSceneArrivalOverrun < Minitest::Test
     assert_empty pictures.last, "the scene is up whole after: #{pictures.map(&:length)}"
   end
 
+  # A GAME IN A BORDER KEEPS ITS BORDER through a held picture: the border is sprites, so a held
+  # picture there keeps the sprites on. The top rows of the screen, all border, show its two colours
+  # on every picture from the handover, the held first one too; the game's window in the middle is
+  # the backdrop on that first picture.
+  BORDER_ROWS = (0...8).freeze  # the Color's 144 rows sit 8 rows down the Advance's 160
+  WINDOW = (40...200).freeze    # ...and its 160 columns 40 across
+
+  def test_a_scene_in_a_border_that_overruns_the_gap_keeps_the_border_up
+    rom = assemble_rom(handed_over(layers: 3, tile_count: 900, late: true, bordered: true), name: "OVERRUNB")
+    reader = VBlank::Diagnostics::Verifier.new(rom, frames: 0, vars: rom.var_addresses)
+    pictures = (1..(HANDED_OVER_AT + 4)).filter_map do
+      reader.step
+      reader.frame_gba if reader.var(:state) == 1
+    end
+    bare = pictures.map { |picture| BORDER_ROWS.count { |row| picture[row * 240, 240].uniq.one? } }
+
+    assert_equal [0], bare.uniq, "border rows showing one colour, on each picture from the handover: #{bare}"
+    scenery_rows = (8...152).reject { |row| MARKER_ROWS.cover?(row) || picture_row_in_window(pictures.first, row).uniq.one? }
+    assert_empty scenery_rows, "the game's window is the backdrop on the held first picture, but for its sprite"
+  end
+
+  # The rows the sprite stands on, in a border: its own 50 to 57, 8 rows down.
+  MARKER_ROWS = (58..65).freeze
+
+  private def picture_row_in_window(picture, row) = picture[(row * 240) + WINDOW.first, WINDOW.size]
+
   # The layers held off come on in the next gap whatever the game does then, a stop included.
   def test_a_scene_that_overruns_the_gap_and_stops_the_game_is_up_on_the_next_picture
     pictures = backdrop_rows_from_handover(handed_over(layers: 3, tile_count: 900, late: true, halts: true))
@@ -109,9 +143,27 @@ class TestSceneArrivalOverrun < Minitest::Test
     assert_empty pictures.last, "and the scene stays up: #{pictures.map(&:length)}"
   end
 
-  def test_a_scene_whose_setup_fits_the_gap_is_up_on_its_first_picture
-    pictures = backdrop_rows_from_handover(handed_over(layers: 1, tile_count: 4))
+  # TWO BUILDS A LITTLE APART IN TIMING SHOW THE SAME PICTURES. The same scene, its setup started a
+  # line or two apart, as two builds of one game differ: where the setup runs into the picture each
+  # time, every first picture is the backdrop whole, sprite and all; where it fits the gap each time,
+  # every first picture is the scene. (Started so that it ends in the gap's last line one way and
+  # the picture's first the other, the two differ: that edge is the console's.)
+  OVERRUN_LINES = [215, 218, 221, 224, 227].freeze
+  FITTING_LINES = [false, 190, 200, 210].freeze
 
-    assert_empty pictures.first, "the first picture of a scene that fits the gap is the scene: #{pictures.map(&:length)}"
+  def test_setups_a_little_apart_that_run_into_the_picture_show_the_same_pictures
+    seen = OVERRUN_LINES.to_h { |line| [line, backdrop_rows_from_handover(handed_over(layers: 3, tile_count: 900, late: line))] }
+
+    assert_equal [seen.values.first], seen.values.uniq,
+                 "the scene's pictures by the line its setup started on: #{seen.transform_values { |pictures| pictures.map(&:length) }}"
+    assert_equal 160, seen.values.first.first.length, "the first picture is the backdrop: #{seen.values.first.map(&:length)}"
+  end
+
+  def test_setups_a_little_apart_that_fit_the_gap_show_the_same_pictures
+    seen = FITTING_LINES.to_h { |line| [line, backdrop_rows_from_handover(handed_over(layers: 1, tile_count: 16, late: line))] }
+
+    assert_equal [seen.values.first], seen.values.uniq,
+                 "the scene's pictures by the line its setup started on: #{seen.transform_values { |pictures| pictures.map(&:length) }}"
+    assert_empty seen.values.first.first, "the first picture is the scene: #{seen.values.first.map(&:length)}"
   end
 end

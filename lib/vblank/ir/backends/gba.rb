@@ -1482,8 +1482,9 @@ module VBlank
           emit_irq_source(IRQ_VBLANK, bios_ack: true) do
             emit_mixer_handover if @mixer.plays_samples?
             emit_frame_count
-            # The background layers a sending that ran into the last picture held off, on now
-            # that it is drawn, whatever the game is doing (see BackgroundDrawing::LAYERS_HELD).
+            # The layers (backgrounds and sprites) a sending that ran into the last picture held
+            # off, on now that it is drawn, whatever the game is doing (see
+            # BackgroundDrawing::LAYERS_HELD).
             @drawing.emit_held_layers_on
             # The pad, for the same reason: a press is the player's, made in real time, and a
             # game that takes two frames a pass must not miss one made between them.
