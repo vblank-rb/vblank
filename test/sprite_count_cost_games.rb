@@ -43,6 +43,22 @@ module SpriteCountCostGames
     end
   end
 
+  # +pools+ pools of +capacity+ places each for +console+, four things in the first and none in the
+  # rest, each thing moving down a pixel a pass; with +ordered+, every pool in one draw_in_order. A
+  # game keeps a pool for each kind of thing a room can hold, sized for the busiest room, so most of
+  # an order's places are empty in most rooms.
+  def self.pools_game(console, pools, capacity, ordered: false)
+    block = BLOCK
+    VBlank.game("POOLS COUNT", consoles: [console]) do
+      screen :tiled
+      image(:block, "#" => :red) { block }
+      crowds = Array.new(pools) { |n| pool :"crowd_#{n}", x: 0, y: 0, capacity: capacity, image: :block }
+      draw_in_order(*crowds) if ordered
+      SHOWING.times { |i| crowds.first.spawn(x: (i * 13) % 200, y: (i * 37) % 120) }
+      game_loop { crowds.first.each { |thing| thing.y = (thing.y + 1) & 127 } }
+    end
+  end
+
   # The profile of +game+ on +console+ over twenty passes.
   def self.profile(console, game)
     game.build_rom(console: console, out: StringIO.new, err: StringIO.new, profile: false)

@@ -33,7 +33,27 @@ module VBlank
           # +spare+ is where the list is copied as it is moved round. +keys+ is the program's write of
           # each place's number, by place, or nil where the sort does not make them. +asked+ is whether
           # each place is asked: a place known to show always is not.
-          Kept = Data.define(:block, :spare, :count, :keys, :asked)
+          # +runs+ are the places asked a pool's way (RankRun), each by its first place.
+          Kept = Data.define(:block, :spare, :count, :keys, :asked, :runs)
+
+          # A POOL'S PLACES, ASKED AS ONE. A place of a pool shows while the pool holds more things
+          # than its rank (DSL::Pool#rank_taken), so the places of a pool showing are those of its
+          # lowest ranks, and how many is the pool's count: the places +first+ to +first+ + +length+
+          # - 1 of the order, whose ranks go from +rank+ a step of +step+ (1 or -1) a place, and whose
+          # showing is +count_var+ > rank, each also held to the same +tests+ and +flag+
+          # (Backends::ShownWhen) where the pool is a scene's or under an `if`. Asked as one, the run
+          # is its tests and one read of the count, the flags are written only on a pass where the
+          # count changed (the count last pass is a word of the block, at +slot+), and the numbers
+          # are written for the places showing and no others.
+          RankRun = Data.define(:first, :length, :rank, :step, :count_var, :tests, :flag, :slot) do
+            def lowest_rank = step.positive? ? rank : rank - length + 1
+
+            # The run's places, by place in the order, lowest rank first.
+            def places_by_rank
+              places = (first...(first + length)).to_a
+              step.positive? ? places : places.reverse
+            end
+          end
 
           HIDDEN = 0
           CHANGED = 4
@@ -48,9 +68,53 @@ module VBlank
             program.walk.select { |node| node.kind == :list_sort && node.shown }.to_h do |node|
               count = node.shown.length
               keys = keys_set_by(node, &known)
-              [node.name, Kept.new(block: memory.alloc(FLAGS + count), spare: memory.alloc(count * 2), count: count,
-                                   keys: keys, asked: node.shown.map { |showing| known.call(showing) != 1 })]
+              asked = node.shown.map { |showing| known.call(showing) != 1 }
+              runs = rank_runs(node.shown, asked, Memory.whole_words(FLAGS + count), &known)
+              [node.name, Kept.new(block: memory.alloc(Memory.whole_words(FLAGS + count) + (runs.length * 4)),
+                                   spare: memory.alloc(count * 2), count: count, keys: keys, asked: asked,
+                                   runs: runs.to_h { |run| [run.first, run] })]
             end
+          end
+
+          # The runs of +shown+'s places asked a pool's way (RankRun), of two places or more and ranks
+          # that ride inside a compare (under 256), their counts kept from +slots+ in the block on.
+          def self.rank_runs(shown, asked, slots, &known)
+            runs = []
+            shown.each_with_index do |showing, place|
+              rank_test = asked.fetch(place) && ranked(showing, &known)
+              last = runs.last
+              if rank_test && last && run_goes_on?(last, place, rank_test)
+                runs[-1] = last.with(length: last.length + 1, step: last.step || (rank_test.rank - last.rank))
+              elsif rank_test
+                runs << rank_test.with(first: place)
+              end
+            end
+            runs.select { |run| run.length > 1 && run.lowest_rank >= 0 && run.lowest_rank + run.length <= 255 }
+                .each_with_index.map { |run, n| run.with(slot: slots + (n * 4)) }
+          end
+
+          # +showing+ as a run of one place, or nil where it is not a pool's way: tests of which one
+          # is a variable greater than a number, any others and a flag beside it.
+          def self.ranked(showing, &known)
+            shown = ShownWhen.of(showing.copy, &known) or return nil
+            ranks = shown.tests.select do |test|
+              test.op == :> && test.lhs.kind == :var_ref && test.rhs.kind == :int
+            end
+            return nil unless ranks.length == 1
+
+            rank = ranks.first
+            RankRun.new(first: nil, length: 1, rank: rank.rhs.value, step: nil, count_var: rank.lhs.name,
+                        tests: shown.tests.reject { |test| test.equal?(rank) }, flag: shown.flag, slot: nil)
+          end
+
+          # Whether +run+ goes on to +place+, asked as +one+: the next place, the rank a step on, the
+          # same count, and the same other tests and flag. A run of one place goes either way.
+          def self.run_goes_on?(run, place, one)
+            step = run.step || (one.rank - run.rank)
+            place == run.first + run.length && step.abs == 1 && one.rank == run.rank + (step * run.length) &&
+              one.count_var == run.count_var && one.tests.length == run.tests.length &&
+              one.tests.zip(run.tests).all? { |a, b| a.same_shape?(b) } &&
+              (one.flag.nil? ? run.flag.nil? : one.flag.same_shape?(run.flag))
           end
 
           # The program's writes of the numbers +node+ sorts by, a place each, by place: the statements
@@ -91,6 +155,10 @@ module VBlank
             e.emit(ASM.str_offset(ACC, TMP, ROWS_END))
             e.emit_number(ACC, 1)
             kept.count.times { |place| e.emit(ASM.strb_offset(ACC, TMP, FLAGS + place)) }
+            kept.runs.each_value do |run|
+              e.emit_number(ACC, run.length)
+              e.emit(ASM.str_offset(ACC, TMP, run.slot))
+            end
           end
 
           # Each place asked whether it shows, its flag kept up to date, the count of places not showing
@@ -109,16 +177,25 @@ module VBlank
             e = @emitter
             marking = e.gensym
             marked_all = e.gensym
-            e.emit(ASM.push(LINK)) # each place's call below sets the link register
+            singles = places_marked_alone(kept)
+            e.emit(ASM.push(LINK)) if singles # each place's call below sets the link register
+            in_run = 0
             node.shown.each_with_index do |showing, place|
+              next in_run -= 1 if in_run.positive?
               next emit_sort_key_set(kept, place) unless kept.asked.fetch(place)
 
-              emit_place_marked(showing, place, kept, marking)
+              run = kept.runs[place]
+              next emit_place_marked(showing, place, kept, marking) unless run
+
+              emit_run_marked(run, kept)
+              in_run = run.length - 1
             end
-            e.emit(ASM.pop(LINK))
-            e.emit_branch(:b, marked_all)
-            emit_flag_marking(kept, marking)
-            e.place_label(marked_all)
+            if singles
+              e.emit(ASM.pop(LINK))
+              e.emit_branch(:b, marked_all)
+              emit_flag_marking(kept, marking)
+              e.place_label(marked_all)
+            end
             unchanged = e.gensym
             e.emit_number(TMP, kept.block)
             e.emit(ASM.ldr_offset(ACC, TMP, CHANGED))
@@ -126,6 +203,12 @@ module VBlank
             e.emit_branch(:bcond, unchanged, cond: :eq)
             emit_shown_partition(kept, info)
             e.place_label(unchanged)
+          end
+
+          # Whether any place of +kept+ is asked on its own, outside a pool's run (RankRun).
+          def places_marked_alone(kept)
+            in_runs = kept.runs.values.flat_map { |run| (run.first...(run.first + run.length)).to_a }
+            kept.asked.each_index.any? { |place| kept.asked.fetch(place) && !in_runs.include?(place) }
           end
 
           # +place+ asked whether it shows, its number written where it does, and #emit_flag_marking
@@ -142,6 +225,86 @@ module VBlank
             e.emit_number(TMP, (FLAGS + place) * 2)
             e.place_label(answered)
             e.emit_branch(:bl, marking)
+          end
+
+          # A POOL'S PLACES ASKED AS ONE (RankRun): its other tests once, then the number of each place
+          # showing written, place by place until the first past the count; then how many show, which
+          # is the count held to the run, and only where that is not what it was last pass, the run's
+          # flags written, the count of places not showing moved by the difference and CHANGED set.
+          # A place past the count costs nothing on a pass, as a thing not in a console's own games'
+          # list of what is showing costs nothing.
+          def emit_run_marked(run, kept)
+            e = @emitter
+            none = e.gensym
+            counted = e.gensym
+            emit_branch_unless_held(run, none)
+            emit_run_keys_set(run, kept)
+            @primitives.load_var(ACC, run.count_var)
+            e.emit(ASM.sub_imm(ACC, ACC, run.lowest_rank)) if run.lowest_rank.positive?
+            e.emit(ASM.cmp_imm(ACC, 0))
+            e.emit(ASM.mov_imm_cond(:lt, ACC, 0))
+            e.emit(ASM.cmp_imm(ACC, run.length))
+            e.emit(ASM.mov_imm_cond(:gt, ACC, run.length))
+            e.emit_branch(:b, counted)
+            e.place_label(none)
+            e.emit_number(ACC, 0)
+            e.place_label(counted)
+            emit_run_flags_written(run, kept)
+          end
+
+          # On to +none+ unless the tests every place of +run+ shares hold.
+          def emit_branch_unless_held(run, none)
+            @expressions.emit_branch_when(Build.binop(:==, run.flag.copy, Build.int(1)), holds: false, to: none) if run.flag
+            run.tests.each { |test| @expressions.emit_branch_when(test.copy, holds: false, to: none) }
+          end
+
+          # The number of each place of +run+ that shows, written lowest rank first until the first place
+          # past the count, where the sort makes the numbers.
+          def emit_run_keys_set(run, kept)
+            return if kept.keys.nil?
+
+            e = @emitter
+            written = e.gensym
+            run.places_by_rank.each_with_index do |place, n|
+              @primitives.load_var(ACC, run.count_var)
+              e.emit(ASM.cmp_imm(ACC, run.lowest_rank + n))
+              e.emit_branch(:bcond, written, cond: :le)
+              emit_sort_key_set(kept, place)
+            end
+            e.place_label(written)
+          end
+
+          # With ACC how many of +run+'s places show: where that is not the count kept from last pass,
+          # the count kept, the run's flags written (1 for the ACC places of lowest rank, 0 for the
+          # rest), the count of places not showing moved by the difference, and CHANGED set.
+          def emit_run_flags_written(run, kept)
+            e = @emitter
+            same = e.gensym
+            flag = e.gensym
+            e.emit_number(SPARE, kept.block)
+            e.emit(ASM.ldr_offset(TMP, SPARE, run.slot))
+            e.emit(ASM.cmp_reg(TMP, ACC))
+            e.emit_branch(:bcond, same, cond: :eq)
+            e.emit(ASM.str_offset(ACC, SPARE, run.slot))
+            e.emit(ASM.sub_reg(TMP, TMP, ACC))                       # how many fewer show
+            e.emit(ASM.ldr_offset(HIGH, SPARE, HIDDEN))
+            e.emit(ASM.add_reg(HIGH, HIGH, TMP))
+            e.emit(ASM.str_offset(HIGH, SPARE, HIDDEN))
+            e.emit(ASM.str_offset(SPARE, SPARE, CHANGED))             # any number but nought
+            e.emit_number(TMP, FLAGS + run.first)
+            e.emit(ASM.add_reg(SPARE, SPARE, TMP))                    # the run's first flag
+            shown, hidden = run.step.positive? ? %i[lt ge] : %i[ge lt]
+            e.emit(ASM.rsb_imm(ACC, ACC, run.length)) unless run.step.positive? # the places hidden come first
+            e.emit_number(TMP, 0)
+            e.place_label(flag)
+            e.emit(ASM.cmp_reg(TMP, ACC))
+            e.emit(ASM.mov_imm_cond(shown, HIGH, 1))
+            e.emit(ASM.mov_imm_cond(hidden, HIGH, 0))
+            e.emit(ASM.strb_post(HIGH, SPARE, 1))
+            e.emit(ASM.add_imm(TMP, TMP, 1))
+            e.emit(ASM.cmp_imm(TMP, run.length))
+            e.emit_branch(:bcond, flag, cond: :lt)
+            e.place_label(same)
           end
 
           # THE CODE EACH PLACE CALLS, at +label+, with TMP its answer: the offset of its flag in the

@@ -41,6 +41,21 @@ class TestGBADrawInOrderCost < Minitest::Test
     assert_operator share * LINES, :<, BOUND_FORTY_FOUR, "forty-four empty places cost #{(share * LINES).round(2)} lines"
   end
 
+  # A POOL'S EMPTY PLACES COST NOTHING A PASS. A game keeps a pool for each kind of thing a room can
+  # hold, sized for its busiest room, and puts them all in one order, so most of its places are empty
+  # most of the time. A console's own games walk a list of what is in play and never see an empty
+  # slot; here a pool's places are asked as one (ShownSort::RankRun), its tests and one read of its
+  # count, and the flags are written only on a pass the count changed. Twelve pools of eight with
+  # four things cost under a line and a quarter; asked a place at a time they cost 2.7.
+  BOUND_TWELVE_POOLS = 1.25
+
+  def test_twelve_pools_of_eight_mostly_empty_in_an_order_cost_under_a_line_and_a_quarter
+    share = SpriteCountCostGames.share_beyond(:gba, SpriteCountCostGames.pools_game(:gba, 12, 8, ordered: true),
+                                              SpriteCountCostGames.pools_game(:gba, 12, 8))
+
+    assert_operator share * LINES, :<, BOUND_TWELVE_POOLS, "the order of twelve pools costs #{(share * LINES).round(2)} lines"
+  end
+
   # AND A PLACE THAT CAN HIDE IS WRITTEN SHORT. The sort is a routine that runs every frame, so the
   # build puts it in the console's quick memory if it fits (GBA::Placement), beside every other
   # routine that wants a place there: bytes it takes are bytes another routine cannot have, and a

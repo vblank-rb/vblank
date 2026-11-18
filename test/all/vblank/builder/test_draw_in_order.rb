@@ -335,6 +335,48 @@ class TestDrawInOrder < Minitest::Test
     assert_backends_agree(prog, frames: [10, 25, 40])
   end
 
+  # TWO POOLS OF A SCENE IN ONE ORDER, things spawned and taken away in each, and the scene put down
+  # and up again every so often: the places of a pool showing are its first, as many as it holds,
+  # and none while its scene is down.
+  private def scene_pools_coming_and_going_program
+    block = BLOCK
+    program do
+      screen :tiled
+      image(:speck, "#" => :red) { block }
+      image(:dot, "#" => :blue) { block }
+      image(:mark, "#" => :green) { block }
+      state = var :state, 0
+      t = var :t, 0
+      scene(:playing) do
+        specks = pool :specks, x: 0, y: 0, capacity: 5, image: :speck
+        dots = pool :dots, x: 0, y: 0, capacity: 4, image: :dot
+        hero = sprite :mark, at: [62, 57]
+        draw_in_order(specks, hero, dots)
+        specks.spawn(x: 56 + (t % 9), y: 50 + (t % 13)) if (t % 3) == 1
+        dots.spawn(x: 58 + (t % 7), y: 52 + (t % 11)) if (t % 5) == 2
+        specks.each { |thing| thing.remove if thing.y == 50 + ((t * 7) % 13) } if (t % 4) == 0
+        dots.each { |thing| thing.remove if thing.x == 58 + ((t * 3) % 7) } if (t % 6) == 0
+        hero.y = 50 + ((t / 2) % 13)
+      end
+      scene(:resting) {}
+      game_loop do
+        t += 1
+        state = ((t / 11) % 4) == 3 ? 1 : 0
+        case_var(:state) do
+          when_val 0, :playing
+          when_val 1, :resting
+        end
+      end
+    end
+  end
+
+  def test_pools_of_a_scene_coming_and_going_in_one_order_are_drawn_in_order
+    prog = scene_pools_coming_and_going_program
+
+    assert_kind_of Integer, shown(prog, frames: 50)
+    assert_backends_agree(prog, frames: [9, 21, 33, 46, 58, 70])
+  end
+
   def test_a_pools_thing_spawned_again_comes_in_behind_the_things_level_with_it
     prog = pool_shown_again_program
 
