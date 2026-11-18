@@ -187,6 +187,7 @@ module VBlank
         size_said = apply_pixel_size!(pixel_size, mode)
         rows_kept = apply_shown_rows!(shown_rows, mode)
         @screen_line_written = true
+        @scene_screen_line_written = true if @scene_laid_out
         @screen_mode = mode if mode.is_a?(Symbol)
         @tear_free = tear_free
         late_rows = resolve_late_pages(late, tear_free)
@@ -203,6 +204,7 @@ module VBlank
                                          backdrop: followed ? followed.color : resolve_backdrop(backdrop, mode),
                                          pixel_size: size_said, backdrop_from_file: backdrop_from_file,
                                          shown_rows: rows_kept))
+        record_shown_screen(node)
         @backdrop_list = followed.with(screen: node) if followed
         node
       end
@@ -238,7 +240,9 @@ module VBlank
           raise ArgumentError, "`size:` works only with `screen :bitmap`. To fix this, write " \
                                "`screen :bitmap, size: #{size.inspect}`."
         end
-        if @screen_line_written || @building_scene
+        return apply_scene_screen_size!(size) if @scene_laid_out
+
+        if @screen_line_written || @building_scene || @building_routine
           raise ArgumentError, "`size:` must be on the game's first `screen` line, outside any scene. It sets the " \
                                "size of the screen for the whole game. To fix this, move size: to that line."
         end
@@ -253,6 +257,82 @@ module VBlank
 
         @program.screen_size = size
         @console = @program.described_console
+      end
+
+      # A SCENE'S OWN SIZE (`screen :bitmap, size: [240, 160]` on the scene's screen line), in a game
+      # whose first screen line asked the size of the whole picture. A computer's build lays the
+      # scene out on it and shows that much of the top left of the picture, in the middle of the
+      # window (#record_shown_screen); a console keeps its own screen. Every scene's size fits inside
+      # the game's, which is the picture's and the window's.
+      #
+      # WHY THE PICTURE STAYS THE GAME'S SIZE: the runtimes, the window, the interpreter's screen and a
+      # saved state each hold one picture made as the game starts. A scene of a smaller size draws
+      # into the top left of it and is shown on its own, so nothing is made again as a scene arrives,
+      # and every build draws the same pixels.
+      #
+      # WHY ON THE SCENE'S FIRST SCREEN LINE: `screen_width` is a number while the game is built, and
+      # inside a scene's block it answers the scene's size from this line on (Builder#emit_bodies puts
+      # the game's back after each routine). A routine built outside every scene answers the game's.
+      private def apply_scene_screen_size!(size)
+        whole = @screen_size_asked
+        unless whole
+          raise ArgumentError, "A scene asks `size: #{size.inspect}`, and the game asks no size. A scene's size " \
+                               "must fit inside the game's. To fix this, give the game's size on its first `screen` " \
+                               "line, like `screen :bitmap, size: [320, 200]`."
+        end
+        unless size[0] <= whole[0] && size[1] <= whole[1]
+          raise ArgumentError, "A scene asks `size: #{size.inspect}`, and the game's screen is #{whole.join('×')}. " \
+                               "A scene's size must fit inside the game's. To fix this, make the scene's size " \
+                               "smaller, or the game's bigger."
+        end
+        if @scene_screen_line_written
+          raise ArgumentError, "`size:` must be on the scene's first `screen` line. To fix this, move size: to that line."
+        end
+        if @screen_size_read
+          raise ArgumentError, "The scene reads the screen's size (`#{@screen_size_read}`) before `screen :bitmap, " \
+                               "size: #{size.inspect}`. size: can change the screen, so the size that the scene read " \
+                               "can be wrong. To fix this, put the `screen` line first in the scene."
+        end
+        refuse_size_big_pixels_cannot_fill!(size, @program.pixel_size || 1)
+
+        @scene_sizes_asked = true
+        @console = @program.described_console_at(size) if @screen_as_asked
+      end
+
+      # IN A GAME WHOSE SCENES HAVE SIZES OF THEIR OWN, a scene with no screen line is refused, on
+      # every build. Such a scene shows the screen whichever scene ran before it left, so no size it
+      # could be laid out on is the one it shows. Checked once every routine is built.
+      private def refuse_scene_without_screen_line!
+        return unless @scene_sizes_asked && @scenes_without_screen_line&.any?
+
+        names = @scenes_without_screen_line.map { |name| ":#{name}" }.join(", ")
+        which = @scenes_without_screen_line.one? ? "the scene #{names} has" : "the scenes #{names} have"
+        raise ArgumentError, "This game gives scenes screens of different sizes, and #{which} no " \
+                             "`screen` line. Such a scene shows the screen of the scene before it, so its size is " \
+                             "not known. To fix this, start each scene with `screen :bitmap`, and add size: where " \
+                             "the scene has a size of its own."
+      end
+
+      # ON A COMPUTER'S BUILD OF A GAME THAT ASKS A SIZE, what +node+ (a screen line) shows: the size
+      # the builder now lays out on (the scene's own, or the game's), on the node for the runtime to
+      # show, and in a variable the framework keeps (Program::SHOWN_SCREEN_VARIABLE) for every reader
+      # of the running game to read and the checked runs to hold to the interpreter.
+      private def record_shown_screen(node)
+        return unless @screen_as_asked && @program.screen_size
+
+        node.shown_size = console.screen_size
+        @shown_screen ||= var(IR::Nodes::Program::SHOWN_SCREEN_VARIABLE, 0)
+        @shown_screen.store!(IR::Nodes::Program.shown_screen_number(*console.screen_size))
+      end
+
+      # A screen of +size+ is refused where pixels +pixel_size+ across cannot fill it whole.
+      private def refuse_size_big_pixels_cannot_fill!(size, pixel_size)
+        return unless size.any? { |side| (side % pixel_size).nonzero? }
+
+        raise ArgumentError, "`size: #{size.inspect}` cannot be shown with `pixel_size: #{pixel_size}`. " \
+                             "Each pixel of the game is a square of #{pixel_size}×#{pixel_size}, so the width and the " \
+                             "height must be multiples of #{pixel_size}. To fix this, give a size such as " \
+                             "`size: #{size.map { |side| [side - (side % pixel_size), pixel_size].max }.inspect}`."
       end
 
       # A game that asks a size of screen shows every one of its screens through the painted screen.
@@ -292,12 +372,7 @@ module VBlank
                                "fix this, put the `screen` line first."
         end
 
-        if @screen_size_asked&.any? { |side| (side % size).nonzero? }
-          raise ArgumentError, "`size: #{@screen_size_asked.inspect}` cannot be shown with `pixel_size: #{size}`. " \
-                               "Each pixel of the game is a square of #{size}×#{size}, so the width and the " \
-                               "height must be multiples of #{size}. To fix this, give a size such as " \
-                               "`size: #{@screen_size_asked.map { |side| [side - (side % size), size].max }.inspect}`."
-        end
+        refuse_size_big_pixels_cannot_fill!(@screen_size_asked, size) if @screen_size_asked
 
         @program.pixel_size = size
         @console = @program.described_console

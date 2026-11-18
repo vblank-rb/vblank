@@ -24,13 +24,20 @@ module VBlank
         # another build is refused before it is read.
         module StateFile
           VERSION = 1
+          # A game given a screen of its own size keeps the size of screen it shows as well
+          # ("screen.shown_size"), so its states are of a version of their own and every other game's
+          # read as before.
+          SCREEN_OF_ITS_OWN_VERSION = 2
 
           module_function
+
+          # The version of +program+'s states.
+          def version_of(program) = program.described_console.screen_of_its_own ? SCREEN_OF_ITS_OWN_VERSION : VERSION
 
           # What a build of +program+ is told, by the name each runtime reads it as.
           def values(program)
             fingerprint = Network::Fingerprint.of(program, title: "")
-            { "RG_STATE_VERSION" => VERSION, "RG_GAME_CONSOLE" => fingerprint.console, "RG_GAME_BUILD" => fingerprint.digest,
+            { "RG_STATE_VERSION" => version_of(program), "RG_GAME_CONSOLE" => fingerprint.console, "RG_GAME_BUILD" => fingerprint.digest,
               "RG_MAX_SPRITES" => Picture.sprite_rows(program) }
           end
 

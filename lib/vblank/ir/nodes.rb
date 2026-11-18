@@ -1671,8 +1671,33 @@ module VBlank
         # What the console this program was built for can do: its screen, buttons, sprites — the
         # screen as the game sees it: the size of its own where a computer's build gave one
         # (#screen_size), and with the game's pixel size (#pixel_size) that many times smaller.
-        def described_console
-          console_description.with_screen_size(screen_size).with_pixel_size(pixel_size).with_shown_rows(shown_rows)
+        def described_console = described_console_at(screen_size)
+
+        # The same, with a screen of +size+ ([width, height], or nil for the console's): what a scene
+        # of a size of its own is laid out on (`screen :bitmap, size:` on its screen line).
+        def described_console_at(size)
+          console_description.with_screen_size(size).with_pixel_size(pixel_size).with_shown_rows(shown_rows)
+        end
+
+        # THE SCREEN SHOWN NOW, in a game whose scenes have sizes of their own: a variable the framework
+        # keeps, set by every screen line of a computer's build of a game that asks a size, to the
+        # size that line shows (Builder::Drawing#record_shown_screen), as the width times 65536 plus
+        # the height, in the game's pixels. A variable, so every build keeps it in a saved state and
+        # the checked runs hold it to the interpreter's on every frame like any other.
+        SHOWN_SCREEN_VARIABLE = :__screen_shown
+
+        # The number SHOWN_SCREEN_VARIABLE keeps for a screen of +width+ by +height+.
+        def self.shown_screen_number(width, height) = (width << 16) | height
+
+        # The size of the screen shown now, [width, height] in the game's pixels, read from +reader+'s
+        # stored numbers (IR::ReadingByName#shown_screen_size): the scene's own where the game gave it
+        # one, and the game's screen everywhere else, a console's included.
+        def shown_screen_size_from(reader)
+          whole = described_console.screen_size
+          return whole unless Reach.variables(self).include?(SHOWN_SCREEN_VARIABLE)
+
+          number = reader.raw_var(SHOWN_SCREEN_VARIABLE)
+          number.zero? ? whole : [number >> 16, number & 0xFFFF]
         end
 
         # The console this program was built for, with its variant, as it is whatever the game's
@@ -1931,8 +1956,12 @@ module VBlank
         # +shown_rows+: on the game's first screen, [first, past] of the rows the picture shows, the
         # rest given up and black; nil is every row. The program carries it for the whole game
         # (Program#shown_rows); here it is the line that asked, for a console that cannot.
+        # +shown_size+: [width, height] of the screen this line shows, in the game's pixels, on a
+        # computer's build of a game that asks a size (`screen :bitmap, size:`): the scene's own where
+        # its line names one, else the game's. A computer's runtime shows that much of the top left of
+        # its picture, in the middle of the window (rg_screen_show_size). Absent on a console's build.
         operands mode: :mode, buffered: :flag, colors: :list, late: :int, late_pace: :int, backdrop: :int,
-                 pixel_size: :int, backdrop_from_file: :file_color, shown_rows: :list
+                 pixel_size: :int, backdrop_from_file: :file_color, shown_rows: :list, shown_size: :list
 
         # The backdrop this screen names in either form: its colour, where in the start file its
         # colour is (a StartFile::Color), or nil for a screen that names none.

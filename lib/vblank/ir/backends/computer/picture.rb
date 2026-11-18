@@ -963,7 +963,15 @@ module VBlank
           # that is drawn: a color is still named, and the build has already refused one the
           # list does not hold.
           # The colour shown wherever nothing is drawn goes with it (IR::SceneHandover#backdrop_of).
-          def lower_screen(node) = screen_change("rg_screen_set", node.mode, node.buffered, @handover.backdrop_of(node))
+          #
+          # On a game with a screen of its own size, the line's size shown goes to the window
+          # (IR::Nodes::Screen#shown_size, rg_screen_show_size).
+          def lower_screen(node)
+            change = screen_change("rg_screen_set", node.mode, node.buffered, @handover.backdrop_of(node))
+            return change unless node.shown_size
+
+            [*change, eval_call("rg_screen_show_size", *node.shown_size.map { |side| Statements::Int.new(side) })]
+          end
 
           # A change of screen, by `screen` or by a scene arriving on its own. The C decides when
           # that put the scenery every screen shows up again as declared, and what sets which

@@ -40,6 +40,44 @@ module BorderFrameTests
     end
   end)
 
+  # A game given a 320x200 screen whose second scene asks 240x160 of its own: that scene is drawn in
+  # the top left of the picture and shown at its own size in the middle of the window, black round it.
+  SCENE_SIZED = Ractor.make_shareable(VBlank.game("SCENESIZED", consoles: %i[gba]) do
+    screen :bitmap, size: [320, 200]
+    mode = :still
+    passes = 0
+    scene(:still) do
+      screen :bitmap
+      clear_screen :blue
+    end
+    scene(:play) do
+      screen :bitmap, size: [240, 160]
+      clear_screen :white
+      fill_rect 0, 0, 40, 8, :red
+      fill_rect 200, 152, 40, 8, :green
+    end
+    game_loop do
+      passes += 1
+      mode = :play if passes == 2
+      call mode
+    end
+  end)
+
+  def test_a_scene_of_its_own_smaller_size_is_shown_in_the_middle
+    run = self.class::HeadlessRun.new.run(SCENE_SIZED.program(console: :gba, for_computer: true), frames: 4)
+    left = (320 - 240) / 2
+    top = (200 - 160) / 2
+
+    assert_equal [320, 200], [run.framed.width, run.framed.height]
+    assert_equal [240, 160], run.shown_screen_size
+    [[0, 0], [left - 1, top], [left + 240, top + 159], [left, top - 1], [319, 199]].each do |x, y|
+      assert_equal 0, run.framed.pixel(x, y), "black round the scene's screen at (#{x}, #{y})"
+    end
+    shown = (0...160).flat_map { |y| (0...240).map { |x| run.screen.pixel(x, y) } }
+    framed = (0...160).flat_map { |y| (0...240).map { |x| run.framed.pixel(left + x, top + y) } }
+    assert_equal shown, framed, "the scene's screen, at (#{left}, #{top})"
+  end
+
   def test_a_color_game_is_shown_in_the_middle_with_the_default_border
     run = played(PLAIN)
     border = VBlank::Graphics::Border.default(whole: [240, 160], inner: [160, 144])

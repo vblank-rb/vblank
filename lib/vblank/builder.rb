@@ -684,6 +684,7 @@ module VBlank
       check_saves_keep_everything!
       lay_out_save_records
       emit_bodies(emitted, default_screen_mode)
+      refuse_scene_without_screen_line! # every scene's body is built by now
       # Every line of game code is recorded, so each plain flag's tests and changes are known.
       @instance_variable_uses.refuse_game_flags!
 
@@ -763,13 +764,24 @@ module VBlank
           @deferred_layer = @routine_layer[name]
           @screen_mode = default_screen_mode
           @building_routine = name
+          # Each routine is laid out on the game's screen until a scene's own screen line gives it
+          # another (Drawing#apply_scene_screen_size!), and what one read of the size does not reach
+          # the next: the game's lines have all run by now.
+          laid_out = @console
+          @console = @routine_screens[name] if @routine_screens&.key?(name)
+          @screen_size_read = nil
+          @scene_screen_line_written = false
+          @scene_laid_out = @scene_routines&.[](name) # the scene this body is, by its name, or nil
           push_container(Build.func(name, fast: @func_fast[name], loads_first: @scene_loads_first[name],
                                           on_chip: @func_on_chip[name],
                                           measure_holding: @scene_measure_holding[name])) do
             with_part_owners_of_routine(name) { run_block(&block) }
           end
           @scene_screens[name] = @screen_mode if @building_scene
+          (@scenes_without_screen_line ||= []) << @scene_laid_out if @scene_laid_out && !@scene_screen_line_written
         ensure
+          @console = laid_out if laid_out
+          @scene_laid_out = nil
           @building_scene = nil
           @current_scene_gate = nil
           @deferred_layer = nil

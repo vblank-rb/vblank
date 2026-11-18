@@ -48,6 +48,10 @@ module VBlank
       # The music's loudness, 0 to 100, as the game's own `music_volume` reads it.
       def music_volume = named_program("its music").music_volume_from(self)
 
+      # The size of the screen shown now, [width, height]: the scene's own where a computer's build
+      # gave the scene one (`screen :bitmap, size:` on its screen line), else the game's screen.
+      def shown_screen_size = named_program("its screen").shown_screen_size_from(self)
+
       private
 
       # Every variable the program names, worked out once for each program this reader plays: a script

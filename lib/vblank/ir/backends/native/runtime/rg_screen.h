@@ -57,6 +57,10 @@ void rg_screen_inside_ended(void);
 /* Move the window onto the picture: screen (0, 0) shows what was drawn at (x, y). Where the
  * window is now, which a test reads back as the interpreter's camera_x and camera_y. */
 void rg_screen_camera(int32_t x, int32_t y);
+
+/* Show only +width+ by +height+ of the top left of the picture, in the middle of the window, black
+ * round it (rg_screen_framed): a scene with a screen of its own size, smaller than the game's. */
+void rg_screen_show_size(int32_t width, int32_t height);
 int32_t rg_screen_camera_x(void);
 int32_t rg_screen_camera_y(void);
 

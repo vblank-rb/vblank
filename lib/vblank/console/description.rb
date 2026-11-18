@@ -183,7 +183,12 @@ module VBlank
                               :whole_screen_size, :extension, :code_cache_bytes, :face_fill_skips_outside_window,
                               :face_fill_by_row_middles, :pixel_size, :shows_bigger_pixels,
                               :pose_lists, :sprites_in_blocks, :voices_read_sound_memory, :big_background_tiles,
-                              :shown_rows, :gives_up_rows, :save_memories, :sprite_rows_settled, :pool_layouts) do
+                              :shown_rows, :gives_up_rows, :save_memories, :sprite_rows_settled, :pool_layouts,
+                              :screen_of_its_own) do
+      # +screen_of_its_own+ marks a computer's build of a game that asks a size of screen
+      # (#with_screen_size): the window shows the picture whole, or a scene's smaller screen in the
+      # middle of it (Program::SHOWN_SCREEN_VARIABLE, rg_screen_show_size). False for every console.
+      #
       # +code_cache_bytes+ is how much of the game's code the processor keeps in a cache of its own and
       # runs without going out to memory for each instruction, or nil for a processor with none (it
       # reads every instruction from memory as it runs it, or memory as quick as a cache). Where it is
@@ -257,7 +262,7 @@ module VBlank
                      gives_up_rows: false, sprite_pieces_drawn_a_screen: nil, sprite_slivers_drawn_a_line: nil,
                      sprite_pixels_drawn_a_line: nil, sprite_piece_shape: :small, sprite_table_filled_from: :front,
                      save_memories: ADVANCE_SAVE_MEMORIES, layer_for_held_rows: false, cells_in_front: false,
-                     sprite_rows_settled: false, pool_layouts: %i[lists].freeze, **rest) = super
+                     sprite_rows_settled: false, pool_layouts: %i[lists].freeze, screen_of_its_own: false, **rest) = super
 
       # Whether one sprite can show poses drawn from different lists of colours (see +pose_lists+).
       def poses_keep_own_lists? = pose_lists != :one
@@ -287,7 +292,8 @@ module VBlank
       def with_screen_size(size)
         return self if size.nil?
 
-        with(screen_width: size[0], screen_height: size[1], whole_screen_size: nil, plays_bios_start_up: false)
+        with(screen_width: size[0], screen_height: size[1], whole_screen_size: nil, plays_bios_start_up: false,
+             screen_of_its_own: true)
       end
 
       # This console showing only the rows [first, past] of +rows+ (see +shown_rows+); the console

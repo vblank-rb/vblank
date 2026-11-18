@@ -38,6 +38,12 @@
 #endif
 #define RG_SCREEN_BORDERED (RG_WHOLE_WIDTH != RG_SCREEN_WIDTH || RG_WHOLE_HEIGHT != RG_SCREEN_HEIGHT)
 
+/* Whether the game was given a screen of its own size (`screen :bitmap, size:`), whose scenes may
+ * show a smaller one in the middle of the window (rg_screen_show_size). */
+#ifndef RG_SCREEN_OF_ITS_OWN
+#define RG_SCREEN_OF_ITS_OWN 0
+#endif
+
 /* How many of the window's pixels, across and down, each pixel of the picture is shown as at a scale
  * of 1: 2 for a game of big pixels (`screen :bitmap, pixel_size: 2`, Console::Description#pixel_size),
  * which plays a screen half the console's width and height. The window is sized from the picture as

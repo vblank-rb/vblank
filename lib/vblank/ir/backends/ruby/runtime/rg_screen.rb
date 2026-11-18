@@ -139,6 +139,9 @@ def rg_screen_setup
   # drawn at (camera_x, camera_y). Nothing drawn moves.
   @rg_camera_x = 0
   @rg_camera_y = 0
+  # How much of the top left of the picture the window shows (rg_screen.c's shown_width and shown_height).
+  @rg_shown_width = RG_SCREEN_WIDTH
+  @rg_shown_height = RG_SCREEN_HEIGHT
   # The patches of picture saved under bitmap sprites, by buffer number (Reference @backing).
   @rg_saved_patches = []
   # THE SCENERY WITH NOTHING ON IT (Reference @scene_fb): the backdrop and every background up,
@@ -440,6 +443,12 @@ end
 def rg_screen_camera(x, y)
   @rg_camera_x = x
   @rg_camera_y = y
+end
+
+# rg_screen.c's rg_screen_show_size
+def rg_screen_show_size(width, height)
+  @rg_shown_width = width
+  @rg_shown_height = height
 end
 
 def rg_screen_camera_x = @rg_camera_x
@@ -987,7 +996,7 @@ end
 # rg_screen.c's rg_screen_framed: the picture as the window shows it, the whole screen. Where the
 # game's screen is shown in a border, the border with the picture as shown over its middle.
 def rg_screen_framed
-  return rg_screen_shown unless rg_screen_bordered?
+  return rg_framed_scene_screen(rg_screen_shown) unless rg_screen_bordered?
 
   framed = (@rg_framed ||= @rg_game_border_pixels.dup)
   game = rg_screen_shown
@@ -997,7 +1006,22 @@ def rg_screen_framed
   framed
 end
 
-def rg_screen_bordered? = RG_WHOLE_WIDTH != RG_SCREEN_WIDTH || RG_WHOLE_HEIGHT != RG_SCREEN_HEIGHT
+# rg_screen.c's rg_screen_framed for a scene's smaller screen: the top left of +picture+, at its own
+# size in the middle of the window and black round it. The picture as it is where it is all shown.
+def rg_framed_scene_screen(picture)
+  return picture if @rg_shown_width >= RG_SCREEN_WIDTH && @rg_shown_height >= RG_SCREEN_HEIGHT
+
+  framed = (@rg_scene_framed ||= Array.new(RG_SCREEN_WIDTH * RG_SCREEN_HEIGHT, 0))
+  framed.fill(0)
+  left = (RG_SCREEN_WIDTH - @rg_shown_width) / 2
+  top = (RG_SCREEN_HEIGHT - @rg_shown_height) / 2
+  @rg_shown_height.times do |y|
+    framed[((y + top) * RG_SCREEN_WIDTH) + left, @rg_shown_width] = picture[y * RG_SCREEN_WIDTH, @rg_shown_width]
+  end
+  framed
+end
+
+def rg_screen_bordered? =RG_WHOLE_WIDTH != RG_SCREEN_WIDTH || RG_WHOLE_HEIGHT != RG_SCREEN_HEIGHT
 
 # rg_screen.c's black_rows_given_up: the rows the game gave up (`shown_rows:`) black, unless the
 # display is switched off.
@@ -1305,6 +1329,11 @@ def rg_screen_visit_state
   @rg_scenery_kept, @rg_painting_sprite, @rg_placing_at_pass_end, @rg_scenery_taken_down = numbers[11, 4].map { |n| n != 0 }
   @rg_camera_x, @rg_camera_y = numbers[15, 2]
   @rg_mixed_cells_by = numbers[17, 2]
+  if RG_SCREEN_OF_ITS_OWN # kept only by a game given a screen of its own
+    shown_size = [@rg_shown_width, @rg_shown_height]
+    rg_state_numbers("screen.shown_size", shown_size)
+    @rg_shown_width, @rg_shown_height = shown_size
+  end
   rg_state_numbers("screen.page.first", @rg_first_page)
   rg_state_numbers("screen.page.second", @rg_second_page)
   rg_state_numbers("screen.scenery", @rg_scenery)

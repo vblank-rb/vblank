@@ -130,6 +130,7 @@ module VBlank
         end
         @scene_loads_first[:"_scene_#{name}"] = true if loads_first
         @scene_measure_holding[:"_scene_#{name}"] = measured_frames(name, measure_holding) unless measure_holding.nil?
+        (@scene_routines ||= {})[:"_scene_#{name}"] = name # each scene's own size of screen is told by its routine (Drawing)
         declare_func(:"_scene_#{name}", fast: fast, &block)
       end
 
@@ -291,6 +292,10 @@ module VBlank
         raise ArgumentError, "The function :#{name} is already defined. Use a different name for each function." if @functions.key?(name)
 
         @functions[name] = block
+        # A routine written while another's body is built (a `once_a_frame`, an `each_pass` or a
+        # `func` inside a scene's block) is built later, on its own, and is laid out on the screen
+        # the body it was written in was laid out on: a scene's own size (Drawing#apply_scene_screen_size!).
+        (@routine_screens ||= {})[name] = @console if @building_routine
         @func_fast[name] = fast unless fast.nil?
         @func_on_chip[name] = true if on_chip
         @routine_layer[name] = [@current_layer, wrote] if @current_layer && wrote

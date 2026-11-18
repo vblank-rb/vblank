@@ -613,6 +613,38 @@ module StateImageTests
     assert_equal VBlank::IR::Backends::Computer::StateFields.kept(save_memory: false).map(&:name), runtime
   end
 
+  # A game given a screen of its own, whose second scene shows a smaller one: the state is taken in
+  # that scene.
+  private def scene_sized_game
+    VBlank.game("STATESIZE", consoles: [game_console]) do
+      screen :bitmap, size: [320, 200]
+      mode = :still
+      passes = 0
+      scene(:still) { screen :bitmap }
+      scene(:play) do
+        screen :bitmap, size: [240, 160]
+        draw_rect_at passes % 200, 10, 4, 4, :white
+      end
+      game_loop do
+        passes += 1
+        mode = :play if passes == 2
+        call mode
+      end
+    end.program(console: game_console, for_computer: true)
+  end
+
+  # ...keeps the size of screen it shows, in a version of the format of its own, so every other game's
+  # states read as they did; and a state of it plays on, showing the scene's size, in every build.
+  def test_a_game_given_a_screen_of_its_own_keeps_the_size_shown
+    program = scene_sized_game
+    unbroken, state = unbroken_with_state(program)
+
+    assert_equal "vblank-state #{VBlank::IR::Backends::Computer::StateFile::SCREEN_OF_ITS_OWN_VERSION}", state.lines[0].chomp
+    assert_runtime_fields(state, VBlank::IR::Backends::Computer::StateFields.kept(save_memory: false, screen_of_its_own: true))
+    assert_includes state, "screen.shown_size\t2 240 160"
+    other_runs.each { |other| assert_plays_on_from(state, program, unbroken, reader: other) }
+  end
+
   # The names of the fields the runtime visits by hand, leaving out the ones the build writes and
   # the file's own first lines, which are not fields.
   private def runtime_field_names(state)

@@ -559,11 +559,14 @@ module VBlank
           end
 
           # The whole screen in the program's file now, after the two pictures #picture_now reads,
-          # for a game shown in a border; the picture as shown for any other.
+          # for a game shown in a border or given a screen of its own (whose scene may show a smaller
+          # one in the middle); the picture as shown for any other.
           def framed_now
-            return Framed.new(pixels: @screen.shown, width: @screen.width, height: @screen.height) unless @console.bordered?
+            unless @console.bordered? || @console.screen_of_its_own
+              return Framed.new(pixels: @screen.shown, width: @screen.width, height: @screen.height)
+            end
 
-            width, height = @console.whole_screen_size
+            width, height = @console.framed_screen_size
             each = width * height
             pixels = @pictures.pread(each * 2, @console.screen_width * @console.screen_height * 4).to_s.unpack("v*")
             unless pixels.length == each

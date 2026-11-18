@@ -259,7 +259,7 @@ static void write_picture(const uint16_t *shown) {
   rewind(picture_out);
   fwrite(shown, sizeof shown[0], pixels, picture_out);
   fwrite(rg_screen_stored(), sizeof shown[0], pixels, picture_out);
-#if RG_SCREEN_BORDERED
+#if RG_SCREEN_BORDERED || RG_SCREEN_OF_ITS_OWN
   fwrite(rg_screen_framed(), sizeof shown[0], (size_t)RG_WHOLE_WIDTH * RG_WHOLE_HEIGHT, picture_out);
 #endif
   fflush(picture_out);

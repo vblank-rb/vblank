@@ -50,6 +50,10 @@ static int32_t areas_deep;
  * drawn at (camera_x, camera_y). Nothing drawn moves. */
 static int32_t camera_x, camera_y;
 
+/* How much of the top left of the picture the window shows (rg_screen_show_size): the whole of it
+ * but where a scene of a game with a screen of its own asks a smaller one. */
+static int32_t shown_width = RG_SCREEN_WIDTH, shown_height = RG_SCREEN_HEIGHT;
+
 /* The patches of picture saved under bitmap sprites, by buffer number (Reference @backing): each
  * cell a color, or NO_CELL where the patch hung off what could be read. Nothing until the first
  * save. */
@@ -408,6 +412,13 @@ void rg_screen_inside_ended(void) { area = outer_areas[--areas_deep]; }
 void rg_screen_camera(int32_t x, int32_t y) {
   camera_x = x;
   camera_y = y;
+}
+
+/* A screen line's size shown (IR::Nodes::Screen#shown_size). The game keeps the same number in a
+ * variable of the framework's, which is what a check reads; this is what the window shows. */
+void rg_screen_show_size(int32_t width, int32_t height) {
+  shown_width = width;
+  shown_height = height;
 }
 
 int32_t rg_screen_camera_x(void) { return camera_x; }
@@ -1085,7 +1096,17 @@ const uint16_t *rg_screen_framed(void) {
            RG_SCREEN_WIDTH * sizeof framed[0]);
   return framed;
 #else
-  return rg_screen_shown();
+  const uint16_t *picture = rg_screen_shown();
+  if (shown_width >= RG_SCREEN_WIDTH && shown_height >= RG_SCREEN_HEIGHT) return picture;
+  /* A scene's smaller screen, the top left of the picture, at its own size in the middle of the
+   * window and black round it: shown as it is drawn, every pixel one of the window's, as a console
+   * shows a smaller game's screen inside its own. */
+  static uint16_t framed[RG_SCREEN_WIDTH * RG_SCREEN_HEIGHT];
+  memset(framed, 0, sizeof framed);
+  int32_t left = (RG_SCREEN_WIDTH - shown_width) / 2, top = (RG_SCREEN_HEIGHT - shown_height) / 2;
+  for (int32_t y = 0; y < shown_height; y++)
+    memcpy(&framed[(y + top) * RG_SCREEN_WIDTH + left], &picture[y * RG_SCREEN_WIDTH], (size_t)shown_width * sizeof framed[0]);
+  return framed;
 #endif
 }
 
@@ -1227,6 +1248,12 @@ void rg_screen_visit_state(void) {
   placing_at_pass_end = (int32_t)numbers[13], scenery_taken_down = (int32_t)numbers[14];
   camera_x = (int32_t)numbers[15], camera_y = (int32_t)numbers[16];
   mixed_cells_by = (shares){(int32_t)numbers[17], (int32_t)numbers[18]};
+#if RG_SCREEN_OF_ITS_OWN
+  /* Kept only by a game given a screen of its own, so every other game's states read as before. */
+  int64_t shown_size[] = {shown_width, shown_height};
+  rg_state_numbers("screen.shown_size", shown_size, 2);
+  shown_width = (int32_t)shown_size[0], shown_height = (int32_t)shown_size[1];
+#endif
   visit_cells16("screen.page.first", first_page, CELLS);
   visit_cells16("screen.page.second", second_page, CELLS);
   visit_cells16("screen.scenery", scenery, CELLS);

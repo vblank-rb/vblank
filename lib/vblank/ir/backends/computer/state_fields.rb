@@ -31,8 +31,10 @@ module VBlank
         # again after every wait, before the next picture is read; columns paints and keeps nothing;
         # faces keeps only tables it works out from the game's colours.
         module StateFields
-          Field = Data.define(:name, :count, :with_save_memory, :feature) do
-            def initialize(name:, count:, with_save_memory: false, feature: nil)
+          # +with_screen_of_its_own+ marks a field only a game given a screen of its own size keeps
+          # (Console::Description#screen_of_its_own), so every other game's states read as before.
+          Field = Data.define(:name, :count, :with_save_memory, :feature, :with_screen_of_its_own) do
+            def initialize(name:, count:, with_save_memory: false, feature: nil, with_screen_of_its_own: false)
               super
             end
           end
@@ -93,6 +95,8 @@ module VBlank
             # pass's end placing writes, scenery taken down, the window's corner, and a mixed cell's
             # two shares.
             Field.new(name: "screen", count: 19),
+            # How much of the top left of the picture the window shows, across and down (rg_screen_show_size).
+            Field.new(name: "screen.shown_size", count: 2, with_screen_of_its_own: true),
             Field.new(name: "screen.page.first", count: :screen_cells),
             Field.new(name: "screen.page.second", count: :screen_cells),
             Field.new(name: "screen.scenery", count: :screen_cells),
@@ -180,10 +184,11 @@ module VBlank
 
           # The fields a game's state holds besides its own, in order: those of a game that reaches
           # save memory with +save_memory+, else the rest, and of the runtime features named in
-          # +features+.
-          def self.kept(save_memory:, features: [])
+          # +features+, and of a game given a screen of its own with +screen_of_its_own+.
+          def self.kept(save_memory:, features: [], screen_of_its_own: false)
             FIELDS.select do |field|
-              (save_memory || !field.with_save_memory) && (field.feature.nil? || features.include?(field.feature))
+              (save_memory || !field.with_save_memory) && (field.feature.nil? || features.include?(field.feature)) &&
+                (screen_of_its_own || !field.with_screen_of_its_own)
             end
           end
         end
