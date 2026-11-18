@@ -1501,6 +1501,15 @@ module PackGames
           sprite :plain, at: [40, 80]
           sprite :single, at: [80, 80]
         end)
+      end,
+      # A frame read by a reader of the game's whose pieces add their bank to the thing's, given
+      # by `with:`, each piece drawn in the bank that comes out.
+      game(:pose_whose_pieces_add_their_bank_to_the_things, passes: 3) do |folder, options|
+        test = self
+        built_by(game_builder_of(folder, options: options) do |pack|
+          test.declare_relative_bank_pose_for(self, pack, size: [24, 8])
+          sprite :sword, at: [40, 40]
+        end)
       end
     ].freeze
   end

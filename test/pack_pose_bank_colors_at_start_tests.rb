@@ -67,6 +67,22 @@ module PackPoseBankColorsAtStartTests
     end
   end
 
+  # A PIECE'S BANK COUNTED FROM THE THING'S, read by the game's reader as the pack is unpacked: the
+  # record the unpacking writes holds the bank that comes out, and the pose paints each piece in it.
+  def test_a_pose_whose_pieces_add_their_bank_to_the_things_paints_each_in_that_bank_with_the_pack_left_out
+    test = self
+    Dir.mktmpdir do |folder|
+      _, file = game_and_file_of(folder) { |pack| test.declare_relative_bank_pose_for(self, pack) }
+      program, = game_and_file_of(folder, options: LEFT_OUT) do |pack|
+        test.declare_relative_bank_pose_for(self, pack, size: [24, 8])
+        sprite :sword, at: [40, 40]
+      end
+      screen = game_player.hand_file(file).run(program, frames: 4).screen
+
+      assert_relative_bank_pieces_drawn(screen)
+    end
+  end
+
   # One sprite that can face the frame of bank 1 or of bank 2, following the list of each, as the
   # Genesis's own games change a sprite's line of colours with its frame. The list of bank 2 is
   # told to hold other colours, and the sprite, facing that frame, shows them.

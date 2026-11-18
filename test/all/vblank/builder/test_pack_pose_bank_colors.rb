@@ -26,9 +26,9 @@ module PackPoseBankColorGames
     (0...64).map { |at| 1 + (((at % 8) + (2 * (at / 8))) % 3) },
     (0...64).map { |at| (at / 8).even? ? 1 + ((at % 8) / 3) : 3 }
   ])
-  # Four banks of sixteen colours, each place a colour of its own in each bank, every one a colour
-  # the Genesis shows exactly.
-  TURNS = [0, 7, 3, 5].freeze
+  # Five banks of sixteen colours, each place a colour of its own in each bank, every one a colour
+  # the Genesis shows exactly. The slot :palette reads the first four, :five_banks all of them.
+  TURNS = [0, 7, 3, 5, 9].freeze
   BANKS = Ractor.make_shareable(TURNS.map { |turn| MadeUpOriginalLayouts::PALETTE.rotate(turn) })
   OTHER = Ractor.make_shareable(MadeUpOriginalLayouts::PALETTE.rotate(11))
 
@@ -57,8 +57,37 @@ module PackPoseBankColorGames
   OVERLAPPING = FRAME_BYTES * 3
   FRAMES = (frame_of(1, 1) + frame_of(2, 2) + frame_of(1, 3) + frame_of(1, 3, right_x: -4)).freeze
 
+  # A PIECE WHOSE BANK IS COUNTED FROM THE THING'S. Some originals keep a piece's bank as a number
+  # added to the bank of the object the frame belongs to, wrapping at the console's sixteen banks
+  # (GBATEK, "LCD OBJ - OAM Attributes": attribute 2, bits 12-15), unless a bit of the piece says it
+  # keeps the bank it names. That rule is the original's own, so the port writes it as a reader, and
+  # the pose gives the object's bank by name (`with: { thing_bank: 4 }`). A reader is arithmetic
+  # (Original::FrameReader), so "0 where the bit is set" is a product: the bank times the bit's
+  # opposite. This made-up original keeps a piece in five bytes: x and y signed, a flags byte whose
+  # bit 0 says the piece keeps its own bank, and a word low byte first whose low ten bits are the
+  # tile and whose top four bits are the bank, added to the thing's.
+  RELATIVE_BANK_PIECE = Ractor.make_shareable(lambda do |bytes, pose|
+    keeps_own = bytes[2] & 1
+    VBlank::Original::FrameLayout::Piece.new(
+      x: bytes.signed(0), y: bytes.signed(1), tile: bytes[3] | ((bytes[4] & 3) << 8),
+      bank: ((pose[:thing_bank] * (keeps_own ^ 1)) + (bytes[4] >> 4)) & 15
+    )
+  end)
+  RELATIVE_BANK_FRAME = Ractor.make_shareable(
+    VBlank::Original::FrameLayout.new(piece_bytes: 5, counted: true, piece: RELATIVE_BANK_PIECE)
+  )
+  # Three pieces in a row, from 8 pixels left of and above the object's place, given the thing's
+  # bank 4: tile 0 adding 0 (bank
+  # 4), tile 1 adding 14 (4 + 14 wraps to bank 2), and tile 0 keeping its own bank, 2.
+  RELATIVE_BANK_PIECES = [[-8, 0, 0, 0], [0, 1, 0, 14], [8, 0, 1, 2]].freeze
+  RELATIVE_BANK_FRAME_BYTES = ([RELATIVE_BANK_PIECES.length] + RELATIVE_BANK_PIECES.flat_map do |x, tile, keeps_own, bank|
+    [x & 0xFF, -8 & 0xFF, keeps_own, tile, bank << 4]
+  end).pack("C*").freeze
+  THING_BANK = 4
+
   COLORS_AT = 0x40
   FRAMES_AT = 0x100
+  RELATIVE_BANK_FRAME_AT = 0x180
   TILES_AT = 0x200
   ORIGIN = [8, 8].freeze
 
@@ -70,6 +99,7 @@ module PackPoseBankColorGames
     copy = "\0".b * (TILES_AT + tiles.bytesize)
     copy[COLORS_AT, colors.bytesize] = colors
     copy[FRAMES_AT, FRAMES.bytesize] = FRAMES
+    copy[RELATIVE_BANK_FRAME_AT, RELATIVE_BANK_FRAME_BYTES.bytesize] = RELATIVE_BANK_FRAME_BYTES
     copy[TILES_AT, tiles.bytesize] = tiles
     path = File.join(folder, "made_up.bin")
     File.binwrite(path, copy)
@@ -100,6 +130,9 @@ module PackPoseBankColorGames
         slots.tiles :video, at: TILES_AT, count: TILES.length, colors: tile_colors
         slots.numbers :frames, at: FRAMES_AT, count: FRAMES.bytesize, width: :byte, signed: false
         slots.colors :palette, at: COLORS_AT, count: 64
+        slots.colors :five_banks, at: COLORS_AT, count: 80
+        slots.numbers :relative_bank_frames, at: RELATIVE_BANK_FRAME_AT, count: RELATIVE_BANK_FRAME_BYTES.bytesize, width: :byte,
+                                             signed: false
         slots.colors :two_banks, at: COLORS_AT, count: 32
         # Two colours on, so banks of four colours are not the same colours every other bank.
         slots.colors :shifted, at: COLORS_AT + 4, count: 60
@@ -116,6 +149,24 @@ module PackPoseBankColorGames
   def declare_poses_for(game, pack, colors: pack[:palette], **told)
     game.image :first, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_1, layout: FRAME), origin: ORIGIN, colors: colors, **told
     game.image :second, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_2, layout: FRAME), origin: ORIGIN, colors: colors, **told
+  end
+
+  # The pose :sword, the frame of RELATIVE_BANK_PIECES given the thing's bank, in banks 2 and 4 of
+  # the slot of five banks, declared in +game+. Public, since a game's block calls back through it.
+  def declare_relative_bank_pose_for(game, pack, **told)
+    frame = pack[:relative_bank_frames].frame(0, layout: RELATIVE_BANK_FRAME, with: { thing_bank: THING_BANK })
+    game.image :sword, tiles: pack[:video], frame: frame, origin: ORIGIN, colors: pack[:five_banks], **{ banks: [4, 2] }.merge(told)
+  end
+
+  # The banks RELATIVE_BANK_PIECES come out in, given the thing's bank 4, as [tile, left, bank], a
+  # sprite of the pose at (40, 40): the picture's top left, where the first piece is.
+  RELATIVE_BANK_PIECES_DRAWN = [[0, 40, 4], [1, 48, 2], [0, 56, 2]].freeze
+
+  # Each piece of :sword, its sprite at (40, 40), drawn in the colours of the bank it comes out in.
+  private def assert_relative_bank_pieces_drawn(screen)
+    RELATIVE_BANK_PIECES_DRAWN.each do |tile, left, bank|
+      assert_tile_drawn_in(BANKS[bank], screen, tile, left, 40, "the piece at x #{left}, in bank #{bank}")
+    end
   end
 
   # The pose each actor of #recolored_actors_builder faces: two share :first.
@@ -324,6 +375,37 @@ class TestPackPoseBankColors < Minitest::Test
 
       assert_tile_drawn_in(BANKS[1], screen, 0, 40, 40, "the piece of bank 1")
       assert_tile_drawn_in(BANKS[3], screen, 1, 48, 40, "the piece of bank 3")
+    end
+  end
+
+  # A PIECE'S BANK COUNTED FROM THE THING'S (RELATIVE_BANK_PIECE): the original's rule is the port's
+  # reader, the thing's bank comes in by `with:`, and `banks:` draws each piece in the bank that
+  # comes out: 4 + 0, 4 + 14 wrapped to 2, and a piece that keeps its own bank 2.
+  def test_a_pose_whose_pieces_add_their_bank_to_the_things_draws_each_in_the_bank_that_comes_out
+    test = self
+    Dir.mktmpdir do |folder|
+      program = game_of(folder) do |pack|
+        test.declare_relative_bank_pose_for(self, pack)
+        sprite :sword, at: [40, 40]
+      end
+      screen = game_player.run(program, frames: 4).screen
+
+      assert_relative_bank_pieces_drawn(screen)
+    end
+  end
+
+  # The pose's banks: must hold every bank its pieces come out in, here bank 2 left out.
+  def test_a_pose_missing_a_bank_its_pieces_come_out_in_is_refused
+    test = self
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) do
+        game_of(folder) do |pack|
+          test.declare_relative_bank_pose_for(self, pack, banks: [4])
+        end
+      end
+
+      assert_includes error.message, "image :sword"
+      assert_includes error.message, "bank 2"
     end
   end
 

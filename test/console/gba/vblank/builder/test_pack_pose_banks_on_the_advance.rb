@@ -25,6 +25,19 @@ class TestPackPoseBanksOnTheAdvance < Minitest::Test
     end
   end
 
+  # A frame whose pieces add their bank to the thing's, read by the game's reader: banks 4 and 2.
+  def test_a_pose_whose_pieces_add_their_bank_to_the_things_is_drawn_as_the_interpreter_draws_it
+    test = self
+    Dir.mktmpdir do |folder|
+      program = game_of(folder) do |pack|
+        test.declare_relative_bank_pose_for(self, pack)
+        sprite :sword, at: [40, 40]
+      end
+
+      assert_backends_agree(program, frames: 4)
+    end
+  end
+
   # Each entry names its own bank, so where the piece of bank 3 sits half behind the piece of bank 1
   # the entry in front covers it, as the interpreter paints the earlier piece in front.
   def test_overlapping_pieces_of_two_banks_are_drawn_as_the_interpreter_draws_them
