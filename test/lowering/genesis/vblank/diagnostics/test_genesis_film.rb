@@ -59,6 +59,17 @@ class TestGenesisFilm < Minitest::Test
     assert_equal built, picture_after(FilmCartridge.open(path), 12, "file")
   end
 
+  # A side opened from a cartridge file VBlank only reads takes Film's button mask as the pad's: right
+  # held walks the box, as it does on the built cartridge, and the picture is not the one with nothing down.
+  def test_a_side_from_the_file_reads_the_film_buttons_as_the_pads
+    path = File.join(scratch, "walk.md")
+    game.write(path)
+    walked = picture_after(FilmCartridge.open(path), 12, "walked", keys: RIGHT)
+
+    assert_equal picture_after(FilmCartridge.open(game), 12, "built", keys: RIGHT), walked
+    refute_equal picture_after(FilmCartridge.open(path), 12, "still"), walked
+  end
+
   # `rake film` with two Genesis sides, the built cartridge and a cartridge file VBlank only reads: an
   # MP4 twice the Genesis's screen on each side.
   def test_rake_film_films_a_built_genesis_cartridge_beside_a_cartridge_file
@@ -124,9 +135,9 @@ class TestGenesisFilm < Minitest::Test
     end
   end
 
-  # The PNG's bytes after +frames+ frames with nothing down.
-  private def picture_after(side, frames, name)
-    side.step(frames)
+  # The PNG's bytes after +frames+ frames with +keys+ (a button mask) down.
+  private def picture_after(side, frames, name, keys: 0)
+    side.step(frames, keys: keys)
     File.binread(side.screenshot(File.join(scratch, "#{name}.png")))
   ensure
     side.close
