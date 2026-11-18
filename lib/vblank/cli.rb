@@ -457,7 +457,10 @@ module VBlank
         gba in consoles:.
 
       A program, a web page and a Ruby file are made from the game as one
-      console plays it, with that console's screen.
+      console plays it: with its buttons, its sound and its clock. The screen
+      is that console's, unless the game asks for a size of its own with
+      `screen :bitmap, size: [320, 200]`. Then the program, the page and the
+      Ruby file get that size, and each cartridge keeps its console's screen.
     TEXT
     option :output, aliases: "-o", banner: "PATH"
     option :format, banner: "NAME", default: "game"

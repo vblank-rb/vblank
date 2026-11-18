@@ -651,6 +651,26 @@ class TestCLI < Minitest::Test
     end
   end
 
+  # A game that asks a screen of its own gets it on a web page, and the build's help says so.
+  def test_web_gives_a_game_the_screen_size_it_asks_for
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "sized.rb"), <<~GAME)
+        require "vblank"
+        VBlank.game("SIZED", consoles: %i[gba]) do
+          screen :bitmap, size: [320, 200]
+          game_loop { clear_screen :blue }
+        end
+      GAME
+
+      out, status = cli("build", "sized.rb", "--format", "web", dir: dir)
+      assert status.success?, out
+      page = File.read(File.join(dir, Dir.children(dir).find { |name| name.end_with?(".html") }))
+      assert_match(/<canvas id="screen" width="320" height="200"/, page)
+      help, = cli("help", "build", dir: dir)
+      assert_match(/size:/, help)
+    end
+  end
+
   # The IR dump is what the Advance's cartridge is made from, so a game for the Color alone has
   # none, and is refused saying so.
   def test_ir_refuses_a_game_for_the_color_alone
