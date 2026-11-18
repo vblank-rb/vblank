@@ -19,13 +19,23 @@ module VBlank
       # The way with nothing to see or hear, for a bot playing one long run many times.
       LOGIC = "logic"
 
-      # The ways, by the word `on:` takes, and the run each is (`vblank run --on` uses "js" for "web":
-      # see CommandLine::WAYS).
-      RUNS = { "interpreter" => -> { IR::Backends::Reference }, "native" => -> { IR::Backends::Native::HeadlessRun },
-               "web" => -> { IR::Backends::JS::HeadlessRun }, "ruby" => -> { IR::Backends::Ruby::HeadlessRun },
-               LOGIC => -> { IR::Backends::Native::RulesRun } }.freeze
+      # The ways, by the word `on:` takes (`vblank run --on` uses "js" for "web": see CommandLine::WAYS);
+      # LoweredGame.run_for says the run each is. Names alone, so any Ractor can read them.
+      RUNS = ["interpreter", "native", "web", "ruby", LOGIC].freeze
 
-      def self.ways = [EMULATOR, *RUNS.keys]
+      def self.ways = [EMULATOR, *RUNS]
+
+      # The run that plays the way +way+ names. Looked up when asked, as the lowerings load after this.
+      def self.run_for(way)
+        case way
+        when "interpreter" then IR::Backends::Reference
+        when "native" then IR::Backends::Native::HeadlessRun
+        when "web" then IR::Backends::JS::HeadlessRun
+        when "ruby" then IR::Backends::Ruby::HeadlessRun
+        when LOGIC then IR::Backends::Native::RulesRun
+        else raise KeyError, "key not found: #{way.inspect}"
+        end
+      end
 
       # More frames than any playing gets to: the playing decides when it is over (#finish).
       UNENDING = 1 << 30
@@ -41,7 +51,7 @@ module VBlank
       # takes one (Playthrough::SEEDED_WAYS); nil adds nothing.
       def initialize(program, way, speaker: false, match: nil, seed: nil)
         @console = program.described_console
-        @run = RUNS.fetch(way).call.new
+        @run = LoweredGame.run_for(way).new
         @run.play_as_match(seed: match.seed, players: match.players) if match
         @run.mix_seed_after_setup(seed) if seed
         @run.forgetting_moments if @run.respond_to?(:forgetting_moments)

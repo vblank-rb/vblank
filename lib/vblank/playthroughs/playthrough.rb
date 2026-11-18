@@ -278,7 +278,7 @@ module VBlank
       # somebody else made, which is only its bytes, plays on the emulator alone.
       def self.lowered_game(cartridge, on, save, speaker: false, match: nil, seed: nil)
         cartridge = cartridge_from(cartridge)
-        unless LoweredGame::RUNS.key?(on)
+        unless LoweredGame::RUNS.include?(on)
           raise ArgumentError, "There is no way to run a game called #{on.inspect}. The ways are " \
                                "#{LoweredGame.ways.join(', ')}."
         end

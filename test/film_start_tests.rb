@@ -4,15 +4,46 @@ require "tmpdir"
 
 # A FILM'S TWO SIDES OF ONE GAME, THE CARTRIDGE AND THE INTERPRETER, SHOW THE SAME PASS ON THE SAME
 # FRAME (Diagnostics::FilmCartridge): the interpreter's side is held back, a switched-off screen, for
-# the frames the console's cartridge takes to start up and show its first pass
-# (FilmCartridge::CARTRIDGE_START_FRAMES), on each screen a game can start on. Played by each console
-# whose cartridges start up for longer than a frame. Each including test says +console+.
+# the frames the game's own cartridge takes to start up and show its first pass, on each screen a game
+# can start on, and for a game with more to copy as it sets up. Played by each console whose cartridge
+# shows the interpreter's pictures pass for pass (not the Genesis, whose cartridge shows a sprite a
+# pass later). Each including test says +console+.
 #
-# Held to what the table means, not to its numbers: from the frame the interpreter's side first shows
+# Held to what the hold-back means, not to a number: from the frame the interpreter's side first shows
 # the game, every frame of the two sides is the same picture. The games move something a pixel every
 # pass, so no two passes look alike, and a side a frame early or late fails on its first frame.
 module FilmStartTests
   FRAMES = 30
+
+  # Characters for the cells of a map of many distinct tiles.
+  CELL_LETTERS = Ractor.make_shareable(("A".."Z").to_a + ("a".."z").to_a + ("0".."9").to_a +
+                                       %w[! @ # $ % & * + = ? / < > ~ ^ : ; , -])
+
+  # A sprite moving over a background of 80 distinct tiles on a map 40 cells wide: more to copy before
+  # the first pass than #sprite_game, which takes a frame longer to set up on the Color and the Super
+  # Nintendo.
+  private def big_sprite_game
+    letters = CELL_LETTERS
+    VBlank.build("BIG", console: console, out: StringIO.new, err: StringIO.new) do
+      screen :tiled
+      image(:dot, "#" => :red) { "########\n" * 8 }
+      kinds = letters.each_with_index.to_h do |letter, at|
+        name = :"tile#{at}"
+        image(name, "." => :blue, "o" => :green) do
+          Array.new(8) { |row| Array.new(8) { |col| ((row * 8) + col + at).to_s(2).count("1").even? ? "." : "o" }.join }.join("\n")
+        end
+        [letter, name]
+      end
+      tiles :set, kinds
+      background :field, tiles: :set, map: Array.new(32) { |row| Array.new(40) { |col| letters[((row * 40) + col) % letters.size] }.join }
+      dot = sprite :dot, at: [8, 24]
+      game_loop { dot.x += 1 }
+    end
+  end
+
+  def test_a_game_with_more_to_set_up_shows_its_first_pass_on_the_same_frame_on_both_sides
+    assert_sides_alike_from_first_pass(big_sprite_game)
+  end
 
   # A square the game paints itself, a pixel further right each pass.
   private def painted_game

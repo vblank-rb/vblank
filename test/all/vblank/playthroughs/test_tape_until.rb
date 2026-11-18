@@ -76,9 +76,6 @@ end
 # A TAPE OF PASSES PAST STRETCHES ITS COUNT DOES NOT MOVE ON: each `until` step goes on the tape as
 # itself, so the tape waits for the game on every build, however long its fade.
 class TestTapeUntil < Minitest::Test
-  # The ways a playthrough runs a game on are a table of procs (LoweredGame::RUNS) that only the main
-  # Ractor can read, as for every playthrough played on one.
-  runs_on_the_main_ractor!
   include TapeUntilGames
 
   private def recorded = to_the_play.play(quick_fade, in_passes: :steps, on: "interpreter").tape

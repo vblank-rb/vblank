@@ -41,31 +41,26 @@ module VBlank
     # save next to it would change the game the film shows. So every cartridge opened here gets an
     # empty folder, and closing it takes the folder away.
     class FilmCartridge
-      # HOW LONG A CARTRIDGE TAKES TO SHOW ITS FIRST PASS, in frames, by console and by the screen the
-      # game starts on. A cartridge powers on, sets up and only then reaches the game loop, and a
-      # console that copies a pass's picture to the screen in the blank after it (the Color, the Super
-      # Nintendo) shows a pass a frame later still; a lowering starts at the game's first statement and
-      # shows its first pass on its first frame. So a lowering's side is held back this many frames, and
-      # the two sides of one game show the same pass on the same frame of the film.
+      # HOW LONG THE GAME'S CARTRIDGE TAKES TO SHOW ITS FIRST PASS, found for each game as its lowering
+      # side opens. A cartridge powers on, sets up (copying the game's tiles and maps first, so a bigger
+      # game takes longer) and only then reaches the game loop, and a console that copies a pass's
+      # picture to the screen in the blank after it (the Color, the Super Nintendo) shows a pass a frame
+      # later still. A lowering starts at the game's first statement and shows its first pass on its
+      # first frame. So a lowering's side is held back the frames the cartridge plays before it shows
+      # the picture of its first pass, and the two sides show the same pass on the same frame.
       #
-      # Measured, not derived: an animated game filmed both ways, and the frame of the lowering each
-      # frame of the cartridge matched. test_film_cartridge.rb (the Advance), test_ps1_film.rb and
-      # film_start_tests.rb (the Color and the Super Nintendo) hold the two sides to the same picture
-      # from the first pass, so a start-up that gets quicker or slower fails there.
-      #
-      # A NUMBER FOR A SCREEN IS A NUMBER FOR A SIZE OF GAME. Setting up copies the game's tiles and maps
-      # before the first pass, so a game with more to copy reaches its first pass a frame or more later
-      # (on the Super Nintendo, a background of eighty distinct tiles; on the Color, a map wider than its
-      # 32 cells): these are the small games of film_start_tests.rb, and a bigger game's sides can be a
-      # frame apart. Testing::Pictures keeps the same kind of table for the checked runs, counted from
-      # another moment, so its numbers are not these.
-      CARTRIDGE_START_FRAMES = Ractor.make_shareable({ gba: { bitmap: 1, tiled: 1, rotozoom: 1 },
-                                                       gbc: { bitmap: 5, tiled: 2 }, snes: { bitmap: 8, tiled: 2 },
-                                                       ps1: { bitmap: 1 } })
-
-      # A console and screen nobody has measured (the Genesis's: its cartridge shows a sprite a pass after
-      # the interpreter does, so no number of frames held back lines the two up while a sprite moves).
-      UNMEASURED_START_FRAMES = 1
+      # LINED UP BY THE PICTURES, not by a count of frames per console: the game's cartridge is played in
+      # the emulator beside the interpreter, and the frames held back are the first offset at which the
+      # cartridge's pictures are the interpreter's, from the interpreter's first, for PICTURES_MATCHED
+      # pictures that are not all one picture (so a still start cannot match early). A game whose first
+      # STILL_PICTURES_SEARCHED pictures are all one is lined up on the first of them: before anything
+      # moves, any offset looks the same. One whose cartridge never shows the interpreter's pictures in
+      # LONGEST_START_FRAMES (a Genesis cartridge shows a sprite a pass after the interpreter does) is
+      # lined up on the first frame its cartridge shows the interpreter's first picture, else not held
+      # back at all.
+      PICTURES_MATCHED = 4
+      STILL_PICTURES_SEARCHED = 60
+      LONGEST_START_FRAMES = 600
 
       # The folder this cartridge's save memory is kept in while it runs.
       attr_reader :save_dir
@@ -86,7 +81,7 @@ module VBlank
         @blank = false
         @silent_step = false
         @lowered_without_sound = way && !sound
-        @reader = way ? open_lowering(program_from(game, console), way, sound) : open_cartridge(game, console)
+        @reader = way ? open_lowering(cartridge_with_program(game, console), way, sound) : open_cartridge(game, console)
         @reader.load_state(state) if state
         play_tape(Playthroughs::Tape.read(tape.to_s)) if tape
       rescue StandardError
@@ -137,10 +132,11 @@ module VBlank
 
       private
 
-      # The game played as a lowering, held back to start where the cartridge does (CARTRIDGE_START_FRAMES),
-      # handing over its sound a frame at a time where +sound+ asks.
-      def open_lowering(program, way, sound)
-        @frames_held_back = cartridge_start_frames(program)
+      # The game +cartridge+ holds, played as a lowering, held back to start where the cartridge does
+      # (#cartridge_start_frames), handing over its sound a frame at a time where +sound+ asks.
+      def open_lowering(cartridge, way, sound)
+        program = cartridge.source_program
+        @frames_held_back = cartridge_start_frames(cartridge, program)
         @blank = true
         lowered = Playthroughs::LoweredGame.new(program, way, speaker: sound)
         refuse_silent_lowering!(lowered, way) if sound
@@ -156,11 +152,50 @@ module VBlank
                              "show the side as ruby, js or native, or in the emulator, or do not hear this side."
       end
 
-      # The frames +program+'s cartridge plays before the frame that shows its first pass, by its
-      # console and the screen it starts on.
-      def cartridge_start_frames(program)
-        screen = program.walk.find { |node| node.kind == :screen }&.mode || :bitmap
-        CARTRIDGE_START_FRAMES.dig(program.described_console.name, screen) || UNMEASURED_START_FRAMES
+      # The frames +cartridge+ plays before the frame that shows the picture of its first pass: where its
+      # pictures in the emulator line up with +program+'s on the interpreter (PICTURES_MATCHED and the
+      # rest say how). The emulator plays in a save folder of its own, taken away after.
+      def cartridge_start_frames(cartridge, program)
+        expected = interpreter_pictures(program)
+        Dir.mktmpdir("film-start") do |folder|
+          reader = Verifier.new(cartridge, frames: 0, save_dir: folder)
+          recent = []
+          first_alike = nil
+          LONGEST_START_FRAMES.times do |played|
+            recent = (recent << reader.step(1, keys: 0).frame_gba).last(expected.size)
+            first_alike ||= played if recent.last == expected.first
+            return played + 1 - expected.size if recent == expected
+          end
+          first_alike || 0
+        ensure
+          reader&.close
+        end
+      end
+
+      # The interpreter's first pictures of +program+: PICTURES_MATCHED, or more until one differs from the
+      # rest, up to STILL_PICTURES_SEARCHED; the first alone when they never differ.
+      def interpreter_pictures(program)
+        interpreter = Playthroughs::LoweredGame.new(program, "interpreter")
+        pictures = []
+        until pictures.size >= PICTURES_MATCHED && pictures.uniq.size > 1
+          return pictures.first(1) if pictures.size >= STILL_PICTURES_SEARCHED
+
+          pictures << interpreter.step(1, keys: 0).frame_gba.dup
+        end
+        pictures
+      ensure
+        interpreter&.close
+      end
+
+      # A cartridge of +game+ that also holds the program it was built from, which a lowering plays:
+      # the game built for +console+, or a cartridge built here. A cartridge file holds none.
+      def cartridge_with_program(game, console)
+        cartridge = game_to_build?(game) ? game.build_rom(out: nil, profile: false, **{ console: console }.compact) : finished_cartridge(game, console)
+        cartridge.source_program or
+          raise ArgumentError, "A cartridge file can be shown only in the emulator, and this side gives a lowering. " \
+                               "To show the game another way, give the game or a cartridge built here. To show the " \
+                               "file, leave out `lowering:`."
+        cartridge
       end
 
       # The cartridge in the emulator its console's kit names (Console::Kit#open_probe), through the
@@ -172,17 +207,6 @@ module VBlank
                       finished_cartridge(game, console)
                     end
         Verifier.new(cartridge, frames: 0, save_dir: @save_dir)
-      end
-
-      # The checked program a lowering plays, as the cartridge holds it: the game's, for the console
-      # given, or the one a built cartridge was made from. A cartridge file holds none.
-      def program_from(game, console)
-        return game.checked_program(for_computer: false, **{ console: console }.compact) if game_to_build?(game)
-
-        finished_cartridge(game, console).source_program or
-          raise ArgumentError, "A cartridge file can be shown only in the emulator, and this side gives a lowering. " \
-                               "To show the game another way, give the game or a cartridge built here. To show the " \
-                               "file, leave out `lowering:`."
       end
 
       def game_to_build?(game) = game.respond_to?(:build_rom) && game.respond_to?(:checked_program)

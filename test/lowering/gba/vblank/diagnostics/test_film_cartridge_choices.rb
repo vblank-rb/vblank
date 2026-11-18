@@ -5,8 +5,9 @@ require "stringio"
 require "tmpdir"
 
 # WHAT A FILM SIDE IS TOLD, and what it refuses: the lowering that shows the game, and the console a
-# game to build is built for. Nothing here plays a cartridge in an emulator (test_film_cartridge.rb in
-# test/lowering/gba/ does), so every run plays it.
+# game to build is built for. A lowering side plays the game's cartridge in the emulator for its first
+# frames, to find how long the cartridge takes to start (FilmCartridge#cartridge_start_frames), so this
+# is the Advance's run's.
 class TestFilmCartridgeChoices < Minitest::Test
   # The game built as Ruby is played by a Ruby of its own: a child process, which hangs inside a
   # Ractor.
