@@ -81,6 +81,12 @@ module VBlank
       def read8(address) = SNESMemory.read8(@core, address)
       def read16(address) = SNESMemory.read16(@core, address)
       def read32(address) = SNESMemory.read32(@core, address)
+      def write32(address, value) = SNESMemory.write32(@core, address, value)
+
+      # THE CONSOLE'S WHOLE STATE, written to the file +path+ in bsnes's own format, and put back
+      # from one (Verifier#save_state, #load_state).
+      def save_state(path) = File.binwrite(path, @core.serialize)
+      def load_state(path) = @core.unserialize(File.binread(path))
 
       def palette = @core.cgram.unpack("v*")
 

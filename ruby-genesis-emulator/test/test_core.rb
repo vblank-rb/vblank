@@ -69,6 +69,16 @@ class TestCore < Minitest::Test
     assert_equal "\xDE\xAD\xBE\xEF".b, @core.wram.byteslice(0x200, 4)
   end
 
+  # A state saved puts back the work RAM it was saved with, over whatever was written after.
+  def test_a_saved_state_puts_work_ram_back
+    @core.wram_write32(0xFF8000, 0x1234_5678)
+    state = @core.serialize
+    @core.wram_write32(0xFF8000, 0x0BAD_F00D)
+    @core.unserialize(state)
+
+    assert_equal 0x1234_5678, @core.wram_read32(0xFF8000)
+  end
+
   def test_colour_memory_reads_what_the_cartridge_wrote
     assert_equal COLOR, @core.cram.unpack1("v")
     assert_equal 0b110_100_010, @core.color_ram.first

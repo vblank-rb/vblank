@@ -21,6 +21,17 @@ module VBlank
       def read16(core, address) = chip_ram?(address) ? chip_ram(core, address, 2).unpack1("v") : core.wram_read16(work_ram_offset(address))
       def read32(core, address) = chip_ram?(address) ? chip_ram(core, address, 4).unpack1("V") : core.wram_read32(work_ram_offset(address))
 
+      # A 32-bit word written into work RAM at +address+, low byte first as the 65816 keeps it. The
+      # Super FX's RAM is read here and not written.
+      def write32(core, address, value)
+        if chip_ram?(address)
+          raise ArgumentError, "#{format('$%06X', address)} is in the Super FX chip's RAM, and this reader writes only " \
+                               "work RAM. To fix this, write an address in work RAM."
+        end
+
+        core.wram_write32(work_ram_offset(address), value)
+      end
+
       # Where +address+ is in work RAM: an address in the first 8K is its own offset, and one in
       # banks $7E and $7F is counted from $7E:0000.
       def work_ram_offset(address) = address >= WORK_RAM_START ? address - WORK_RAM_START : address

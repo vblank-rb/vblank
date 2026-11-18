@@ -367,16 +367,13 @@ module VBlank
       # PUT THE CONSOLE BACK AS A SAVED STATE LEFT IT, the file +path+ an emulator wrote of this
       # same cartridge, and carry on from there: the next frame played is the one after the state
       # was saved. It is how a moment far into a game is reached without playing up to it. The
-      # picture read is the last frame played until #step plays one from the state.
+      # picture read is the last frame played until #step plays one from the state. The state is the
+      # emulator's own (libmgba's, bsnes's, Genesis Plus GX's or Beetle PSX's), so one saved by
+      # another emulator is not read.
       #
       # @return [self]
       def load_state(path)
         ensure_rendered!
-        unless @probe.respond_to?(:load_state)
-          raise ArgumentError, "A #{Console.for(@rom.console).title} cartridge cannot start from a saved state here. " \
-                               "Start it from power-on, or from a tape."
-        end
-
         @probe.load_state(path.to_s)
         self
       end
@@ -388,26 +385,18 @@ module VBlank
       # @return [self]
       def save_state(path)
         ensure_rendered!
-        unless @probe.respond_to?(:save_state)
-          raise ArgumentError, "A #{Console.for(@rom.console).title} cartridge cannot save its state here. " \
-                               "Play it to the moment again instead."
-        end
-
         @probe.save_state(path.to_s)
         self
       end
 
       # WRITE A 32-BIT WORD to the bus at +address+ (a multiple of four), in the processor's byte
-      # order, into the game while it runs: how a state no drive reaches cheaply is reached.
+      # order, into the game while it runs: how a state no drive reaches cheaply is reached. On the
+      # Super Nintendo and the Genesis it is the work RAM the reader reads, and on the PlayStation
+      # main RAM or the scratchpad.
       #
       # @return [self]
       def write32(address, value)
         ensure_rendered!
-        unless @probe.respond_to?(:write32)
-          raise ArgumentError, "A #{Console.for(@rom.console).title} cartridge cannot have its memory written here. " \
-                               "Reach the state by playing to it."
-        end
-
         @probe.write32(address, value)
         self
       end

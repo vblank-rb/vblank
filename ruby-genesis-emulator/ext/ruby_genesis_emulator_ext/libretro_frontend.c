@@ -96,6 +96,9 @@ struct core_functions {
     void (*set_controller_port_device)(unsigned, unsigned);
     void *(*get_memory_data)(unsigned);
     size_t (*get_memory_size)(unsigned);
+    size_t (*serialize_size)(void);
+    bool (*serialize)(void *, size_t);
+    bool (*unserialize)(const void *, size_t);
 };
 
 struct frontend {
@@ -407,6 +410,9 @@ static void find_core_functions(struct frontend *f)
     c->set_controller_port_device = (void (*)(unsigned, unsigned))core_function(f, "retro_set_controller_port_device");
     c->get_memory_data = (void *(*)(unsigned))core_function(f, "retro_get_memory_data");
     c->get_memory_size = (size_t (*)(unsigned))core_function(f, "retro_get_memory_size");
+    c->serialize_size = (size_t (*)(void))core_function(f, "retro_serialize_size");
+    c->serialize = (bool (*)(void *, size_t))core_function(f, "retro_serialize");
+    c->unserialize = (bool (*)(const void *, size_t))core_function(f, "retro_unserialize");
 }
 
 /*
@@ -592,6 +598,44 @@ static VALUE frontend_memory_write(VALUE self, VALUE id, VALUE offset, VALUE byt
     return Qnil;
 }
 
+/* THE CONSOLE'S WHOLE STATE, as the core writes it (retro_serialize): every chip's memory and
+ * registers, in the core's own format, for #unserialize to put back. The buffer is malloc'd, as the
+ * core may call back while it writes (a core that runs to a point it can save at). */
+static VALUE frontend_serialize(VALUE self)
+{
+    struct frontend *f = open_frontend(self);
+    size_t size = 0;
+    WITH_CURRENT(f, size = f->call.serialize_size());
+    if (!size) rb_raise(rb_eRuntimeError, "this libretro core saves no state");
+    void *data = malloc(size);
+    if (!data) rb_raise(rb_eNoMemError, "no memory for a state of %zu bytes", size);
+    bool written = false;
+    WITH_CURRENT(f, written = f->call.serialize(data, size));
+    if (!written) {
+        free(data);
+        rb_raise(rb_eRuntimeError, "this libretro core could not save its state");
+    }
+    VALUE state = rb_str_new(data, (long)size);
+    free(data);
+    return state;
+}
+
+/* Puts the console back as +bytes+, a state #serialize gave, left it (retro_unserialize): true when
+ * the core took it. */
+static VALUE frontend_unserialize(VALUE self, VALUE bytes)
+{
+    struct frontend *f = open_frontend(self);
+    StringValue(bytes);
+    size_t size = RSTRING_LEN(bytes);
+    void *data = malloc(size ? size : 1);
+    if (!data) rb_raise(rb_eNoMemError, "no memory for a state of %zu bytes", size);
+    memcpy(data, RSTRING_PTR(bytes), size);
+    bool taken = false;
+    WITH_CURRENT(f, taken = f->call.unserialize(data, size));
+    free(data);
+    return taken ? Qtrue : Qfalse;
+}
+
 /* Takes the game out (the core writes its saves), shuts the core and closes its library. Closing a
  * closed one does nothing. A frontend nobody closed is closed when Ruby frees it. */
 static VALUE frontend_close(VALUE self)
@@ -619,6 +663,8 @@ void libretro_frontend_define(VALUE outer)
     rb_define_method(frontend, "memory", frontend_memory, 1);
     rb_define_method(frontend, "memory_read", frontend_memory_read, 3);
     rb_define_method(frontend, "memory_write", frontend_memory_write, 3);
+    rb_define_method(frontend, "serialize", frontend_serialize, 0);
+    rb_define_method(frontend, "unserialize", frontend_unserialize, 1);
     rb_define_method(frontend, "close", frontend_close, 0);
     rb_define_method(frontend, "closed?", frontend_closed_p, 0);
 }

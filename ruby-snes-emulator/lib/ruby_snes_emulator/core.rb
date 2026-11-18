@@ -175,6 +175,16 @@ module RubySNESEmulator
       bytes.unpack("L<Q<" * (bytes.bytesize / 12)).each_slice(2).to_h
     end
 
+    # THE CONSOLE'S WHOLE STATE, as bsnes saves it: every chip's memory and registers, in bsnes's
+    # own format, for #unserialize to put back on a console playing the same cartridge.
+    def serialize = @frontend.serialize
+
+    def unserialize(state)
+      raise ArgumentError, "bsnes did not take this state. It must be one this core saved." unless @frontend.unserialize(state)
+
+      self
+    end
+
     # --- the memories ---
 
     def wram = memory(SYSTEM_RAM)

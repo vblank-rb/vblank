@@ -225,6 +225,16 @@ module RubyPS1Emulator
       end.flatten
     end
 
+    # THE CONSOLE'S WHOLE STATE, as Beetle PSX saves it: every chip's memory and registers, in its own
+    # format, for #unserialize to put back on a console playing the same program.
+    def serialize = @frontend.serialize
+
+    def unserialize(state)
+      raise ArgumentError, "Beetle PSX did not take this state. It must be one this core saved." unless @frontend.unserialize(state)
+
+      self
+    end
+
     # --- the memories ---
 
     # All 2 megabytes of main RAM, from 80000000h.

@@ -212,13 +212,14 @@ module VBlank
       # The emulator writes a whole word of four bytes at a time, so the word holding the value is
       # read, changed in its place, and written back: the bytes beside it are written again with
       # what they held, which is no change in memory and can be one in a register the console acts
-      # on when it is written. A value the Color keeps across two words is written into each of them
-      # in turn. Only the consoles whose emulator writes memory can be written (the Advance and the
-      # Color, whose processors keep the low byte first); on another it is refused saying so.
+      # on when it is written. A value kept across two words (the Color and the Super Nintendo keep
+      # one at any address) is written into each of them in turn. Each byte goes where the console's
+      # processor keeps it: the low byte first on most, the high byte first on the Genesis's 68000
+      # (Console::Kit#high_byte_first?).
       def write(place, value, as: nil)
         at, width = located(place, as)
         (at...(at + width.bytes)).group_by { |address| address & ~3 }.each do |boundary, addresses|
-          write_into_word(boundary, addresses.to_h { |address| [address, (value >> ((address - at) * 8)) & 0xFF] })
+          write_into_word(boundary, addresses.to_h { |address| [address, (value >> byte_shift(address - at, width.bytes)) & 0xFF] })
         end
         self
       end
@@ -297,11 +298,15 @@ module VBlank
       # read and written back once, low byte first.
       def write_into_word(boundary, bytes)
         word = bytes.reduce(@reader.mem32(boundary)) do |kept, (address, byte)|
-          shift = (address - boundary) * 8
+          shift = byte_shift(address - boundary, 4)
           (kept & ~(0xFF << shift) & 0xFFFF_FFFF) | (byte << shift)
         end
         @reader.write32(boundary, word)
       end
+
+      # How far up a number of +size+ bytes its byte +offset+ bytes from its start is, in bits, in the
+      # processor's byte order.
+      def byte_shift(offset, size) = (@kit.high_byte_first? ? size - 1 - offset : offset) * 8
 
       def label_from(place)
         at, as = Array(place)

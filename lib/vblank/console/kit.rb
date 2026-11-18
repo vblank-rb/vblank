@@ -62,6 +62,7 @@ module VBlank
     #                           (`vblank inspect`), or nil for a console with none yet
     #   words_at_any_address?   whether its processor reads a value of two or more bytes at any
     #                           address, an odd one included, and keeps it low byte first
+    #   high_byte_first?        whether its processor keeps a number's high byte at the lowest address
     #   original_formats        how its games keep tiles, colours and numbers (OriginalFormats),
     #                           which a port of one reads its data pack in; nil for none
     #
@@ -109,6 +110,10 @@ module VBlank
       # time and read a word at any address, so their games keep words at odd ones, and three-byte
       # numbers besides (the 65816's long addresses). Both keep the low byte first.
       def words_at_any_address? = false
+
+      # WHETHER ITS PROCESSOR KEEPS A NUMBER'S HIGH BYTE AT THE LOWEST ADDRESS: the 68000 of the
+      # Genesis does; the ARM, the SM83, the 65816 and the MIPS keep the low byte there.
+      def high_byte_first? = false
 
       # THE BOUNDARY A VALUE OF +bytes+ BYTES MUST START ON for its processor to read it whole: its
       # own size on the ARM and the MIPS, which read four bytes only at a multiple of four.
@@ -380,6 +385,7 @@ module VBlank
       def sprite_piece_sizes = [[8, 8]].freeze
       # The 68000 reads a word or a long word at any even address, and stops at an odd one.
       def value_alignment(bytes) = [bytes, 2].min
+      def high_byte_first? = true
     end
 
     # The PlayStation's. Its programs play in Beetle PSX, through ruby-ps1-emulator. A program is a PS-X

@@ -112,6 +112,12 @@ module VBlank
       def read8(address) = @core.wram_read8(work_ram_offset(address))
       def read16(address) = @core.wram_read16(work_ram_offset(address))
       def read32(address) = @core.wram_read32(work_ram_offset(address))
+      def write32(address, value) = @core.wram_write32(work_ram_offset(address), value)
+
+      # THE CONSOLE'S WHOLE STATE, written to the file +path+ in Genesis Plus GX's own format, and put
+      # back from one (Verifier#save_state, #load_state).
+      def save_state(path) = File.binwrite(path, @core.serialize)
+      def load_state(path) = @core.unserialize(File.binread(path))
 
       # The 64 colours as 15-bit colours, each channel's three bits widened to five.
       def palette = @core.color_ram.map { |color| COLORS.fetch(color) }

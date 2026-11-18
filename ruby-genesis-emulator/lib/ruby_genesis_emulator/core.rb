@@ -133,6 +133,16 @@ module RubyGenesisEmulator
     # by row.
     def video_buffer = @picture || ("\0".b * (@width * @height * 2))
 
+    # THE CONSOLE'S WHOLE STATE, as Genesis Plus GX saves it: every chip's memory and registers, in
+    # its own format, for #unserialize to put back on a console playing the same cartridge.
+    def serialize = @frontend.serialize
+
+    def unserialize(state)
+      raise ArgumentError, "Genesis Plus GX did not take this state. It must be one this core saved." unless @frontend.unserialize(state)
+
+      self
+    end
+
     # --- the memories ---
 
     # All 64K of work RAM, in the order the cartridge's code sees it, at $FF0000 to $FFFFFF.

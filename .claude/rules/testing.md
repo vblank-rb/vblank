@@ -162,6 +162,7 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `list_made_first_tests.rb` (a full list read or written before it is made, played on a cartridge console's own build alone, which must stop the game as the interpreter does: the Super Nintendo, the Genesis, the Color and the PlayStation),
 `long_list_tests.rb` (a list of more than 65,535 slots, played by each console with the memory for one: the Advance, of bytes, and the PlayStation, of words),
 `probe_by_name_tests.rb` (a probe reading a built cartridge's variables, lists and pools by name, played by the Advance and the Color),
+`probe_write_tests.rb` (a probe writing a value into a running cartridge's memory, in its processor's byte order, and saving and restoring the console, played by the Advance, the Super Nintendo, the Genesis and the PlayStation),
 `heard_alike_tests.rb` (two builds of one small tune held alike by what each cartridge puts out of its speakers, and a probe reading a frame's samples, played by each console whose emulator hands its sound over),
 `build_once_tests.rb` (what a cartridge build does once, its plan and its routines, held on each console that builds a cartridge),
 `song_instrument_tests.rb` (a song part playing a recorded instrument, played by each console that mixes them),
