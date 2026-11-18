@@ -1174,17 +1174,36 @@ void rg_start_file_put_tile_pixels(int32_t total, int32_t start, int32_t count, 
   memcpy(rg_screen_tile_pixels_to_fill(total) + start, pixels, (size_t)count * sizeof *pixels);
 }
 
-void rg_start_file_fill_followed_tiles(int32_t *followed, const int32_t *rules, int32_t banks) {
+/* Where the tile +down+ and +along+ of map cell +cell+ is among the places of a background's map
+ * read from the file: a cell is +side+ tiles square, +across+ cells to a row. */
+static int32_t start_file_map_place(int32_t cell, int32_t down, int32_t along, int32_t across, int32_t side) {
+  return ((((cell / across) * side) + down) * across * side) + ((cell % across) * side) + along;
+}
+
+/* The tile of the background at place +place+ of the map whose rules are +rules+, counted from
+ * the map's pool's first (rules[19]); a number from 0 on, each tile numbered where the pool's maps
+ * first name it, so a place showing a tile for the first time is the one whose number is how many
+ * the pool had before it (rg_start_file_fill_background). */
+static int32_t start_file_pool_tile(const int32_t *rules, const int16_t *map_cells, int32_t place) {
+  return map_cells[rules[25] + place] - rules[19];
+}
+
+void rg_start_file_fill_followed_tiles(int32_t *followed, const int32_t *rules, int32_t banks, const int16_t *map_cells,
+                                       const int32_t *slots_before) {
   int32_t map_at = rules[2], cells = rules[3], across = rules[4], side = rules[5], map_high_byte_first = rules[6];
   int32_t bank_at = rules[10], bank_bits = rules[11], bank_count = rules[16], held = rules[19], cell_bytes = rules[20];
-  int32_t columns = across * side, count = followed[2];
+  int32_t count = followed[2], next = slots_before[rules[26]];
   for (int32_t cell = 0; cell < cells; cell++) {
     uint32_t word = start_file_number(map_at + (cell * cell_bytes), cell_bytes, map_high_byte_first);
     int32_t bank = (int32_t)((word >> bank_at) & ((1u << bank_bits) - 1u));
-    if (bank >= bank_count || bank > 30 || !((banks >> bank) & 1)) continue;
+    int32_t followed_bank = bank < bank_count && bank <= 30 && ((banks >> bank) & 1);
     for (int32_t down = 0; down < side; down++)
-      for (int32_t along = 0; along < side; along++)
-        followed[3 + count++] = held + ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along;
+      for (int32_t along = 0; along < side; along++) {
+        int32_t tile = start_file_pool_tile(rules, map_cells, start_file_map_place(cell, down, along, across, side));
+        if (tile != next) continue;
+        next++;
+        if (followed_bank) followed[3 + count++] = held + tile;
+      }
   }
   int32_t told_at = rules[21], told_count = rules[22], told_first = rules[23];
   for (int32_t told = 0; told < told_count; told++) {
@@ -1219,32 +1238,41 @@ static void start_file_mark_moving_tile(int32_t *painted, const int32_t *rules, 
   }
 }
 
-void rg_start_file_fill_moving_cells(int32_t *painted, const int32_t *rules, const int32_t *moving, int32_t *pointed) {
+void rg_start_file_fill_moving_cells(int32_t *painted, const int32_t *rules, const int32_t *moving, int32_t *pointed,
+                                     const int16_t *map_cells, const int32_t *slots_before) {
   int32_t map_at = rules[2], cells = rules[3], across = rules[4], side = rules[5], map_high_byte_first = rules[6];
   int32_t held = rules[19], cell_bytes = rules[20], told_at = rules[21], told_count = rules[22], told_first = rules[23];
-  int32_t columns = across * side;
+  int32_t next = slots_before[rules[26]];
   for (int32_t cell = 0; cell < cells; cell++) {
     uint32_t word = start_file_number(map_at + (cell * cell_bytes), cell_bytes, map_high_byte_first);
     for (int32_t down = 0; down < side; down++)
-      for (int32_t along = 0; along < side; along++)
-        start_file_mark_moving_tile(painted, rules, moving, pointed, word, down, along,
-                                    held + ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along);
+      for (int32_t along = 0; along < side; along++) {
+        int32_t tile = start_file_pool_tile(rules, map_cells, start_file_map_place(cell, down, along, across, side));
+        if (tile != next) continue;
+        next++;
+        start_file_mark_moving_tile(painted, rules, moving, pointed, word, down, along, held + tile);
+      }
   }
   for (int32_t told = 0; told < told_count; told++)
     start_file_mark_moving_tile(painted, rules, moving, pointed,
                                 start_file_number(told_at + (told * cell_bytes), cell_bytes, map_high_byte_first), 0, 0, told_first + told);
 }
 
-void rg_start_file_fill_front_tiles(uint8_t *front, const int32_t *rules, int32_t start, int32_t front_bit) {
+void rg_start_file_fill_front_tiles(uint8_t *front, const int32_t *rules, int32_t start, int32_t front_bit, const int16_t *map_cells,
+                                    const int32_t *slots_before) {
   int32_t map_at = rules[2], cells = rules[3], across = rules[4], side = rules[5], map_high_byte_first = rules[6];
   int32_t held = rules[19], cell_bytes = rules[20], told_at = rules[21], told_count = rules[22], told_first = rules[23];
-  int32_t columns = across * side;
+  int32_t next = slots_before[rules[26]];
   for (int32_t cell = 0; cell < cells; cell++) {
     uint32_t word = start_file_number(map_at + (cell * cell_bytes), cell_bytes, map_high_byte_first);
     uint8_t in_front = (uint8_t)((word >> front_bit) & 1u);
     for (int32_t down = 0; down < side; down++)
-      for (int32_t along = 0; along < side; along++)
-        front[start + held + ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along] = in_front;
+      for (int32_t along = 0; along < side; along++) {
+        int32_t tile = start_file_pool_tile(rules, map_cells, start_file_map_place(cell, down, along, across, side));
+        if (tile != next) continue;
+        next++;
+        front[start + held + tile] = in_front;
+      }
   }
   for (int32_t told = 0; told < told_count; told++) {
     uint32_t word = start_file_number(told_at + (told * cell_bytes), cell_bytes, map_high_byte_first);
@@ -1306,18 +1334,62 @@ static void start_file_paint_cell_tile(const int32_t *rules, uint16_t *pixels, u
   }
 }
 
-void rg_start_file_fill_background(const int32_t *rules) {
+/* The number a tile as drawn is known by in its pool (rg_start_file_fill_background): the tile
+ * +down+ and +along+ of the cell +word+, its bank, its turn and its mark for being in front. A tile
+ * past the file's tiles is one number whatever else, since it draws nothing, and a bank past the
+ * colours is one more bank, since every such bank draws colour 0. The numbers run from 0 to
+ * start_file_tile_keys(rules) - 1. */
+static int64_t start_file_tile_key(const int32_t *rules, uint32_t word, int32_t down, int32_t along) {
+  int32_t side = rules[5], tile_bits = rules[7], mirror_bit = rules[8], flip_bit = rules[9], bank_at = rules[10];
+  int32_t bank_bits = rules[11], row_tiles = rules[12], tile_count = rules[14], bank_count = rules[16], front_bit = rules[29];
+  /* A bit past a cell of four bytes is never set; C cannot shift a number by all its bits. */
+  int32_t mirrored = mirror_bit < 32 ? (int32_t)((word >> mirror_bit) & 1u) : 0;
+  int32_t upside_down = flip_bit < 32 ? (int32_t)((word >> flip_bit) & 1u) : 0;
+  int32_t in_front = front_bit < 32 ? (int32_t)((word >> front_bit) & 1u) : 0;
+  int64_t bank = (int64_t)((word >> bank_at) & ((1u << bank_bits) - 1u));
+  int64_t tile = (int64_t)(word & ((1u << tile_bits) - 1u)) + ((upside_down ? side - 1 - down : down) * row_tiles) +
+                 (mirrored ? side - 1 - along : along);
+  int64_t banks = (int64_t)bank_count + 1;
+  if (tile >= tile_count) return (int64_t)tile_count * banks * 8;
+  if (bank > bank_count) bank = bank_count;
+  return ((((tile * banks) + bank) * 2 + mirrored) * 2 + upside_down) * 2 + in_front;
+}
+
+static int64_t start_file_tile_keys(const int32_t *rules) { return ((int64_t)rules[14] * ((int64_t)rules[16] + 1) * 8) + 1; }
+
+/* Which tile of its pool each tile as drawn was given, one more than its number (0 for none yet),
+ * by start_file_tile_key, from the pool's first map to its last, and how many the pool has. */
+static int32_t *pool_tiles;
+static int32_t pool_count;
+
+void rg_start_file_fill_background(const int32_t *rules, int16_t *map_cells, int32_t *slots_before) {
   int32_t total = rules[0], map_at = rules[2], cells = rules[3], across = rules[4], side = rules[5];
   int32_t map_high_byte_first = rules[6], held = rules[19], cell_bytes = rules[20];
   int32_t told_at = rules[21], told_count = rules[22], told_first = rules[23];
-  int32_t columns = across * side;
+  int32_t cells_at = rules[25], slots_at = rules[26], starts_pool = rules[27], ends_pool = rules[28];
   uint16_t *pixels = rg_screen_tile_pixels_to_fill(total);
+  if (starts_pool) {
+    free(pool_tiles);
+    pool_tiles = calloc((size_t)start_file_tile_keys(rules), sizeof *pool_tiles);
+    if (!pool_tiles) rg_fault("there is no room to read the map of a background from the file");
+    pool_count = 0;
+  }
+  slots_before[slots_at] = pool_count;
   for (int32_t cell = 0; cell < cells; cell++) {
     uint32_t word = start_file_number(map_at + (cell * cell_bytes), cell_bytes, map_high_byte_first);
     for (int32_t down = 0; down < side; down++)
-      for (int32_t along = 0; along < side; along++)
-        start_file_paint_cell_tile(rules, pixels, word, down, along,
-                                   held + ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along);
+      for (int32_t along = 0; along < side; along++) {
+        int64_t key = start_file_tile_key(rules, word, down, along);
+        if (!pool_tiles[key]) {
+          pool_tiles[key] = ++pool_count;
+          start_file_paint_cell_tile(rules, pixels, word, down, along, held + pool_count - 1);
+        }
+        map_cells[cells_at + start_file_map_place(cell, down, along, across, side)] = (int16_t)(held + pool_tiles[key] - 1);
+      }
+  }
+  if (ends_pool) {
+    free(pool_tiles);
+    pool_tiles = NULL;
   }
   for (int32_t told = 0; told < told_count; told++)
     start_file_paint_cell_tile(rules, pixels, start_file_number(told_at + (told * cell_bytes), cell_bytes, map_high_byte_first),

@@ -197,6 +197,74 @@ module PackBackgroundAreaGames
       end
     end
   end
+
+  # A WORLD OF BIG ROOMS OVER ONE SLOT OF TILES: each room a map of its own, many cells each, every
+  # one drawn from the town's four tiles and two banks, turned every way. A port draws a whole
+  # world's rooms so, and the rooms share what they draw: the same few tiles as drawn, however many
+  # cells and rooms there are.
+  WORLD_ROOMS = %i[hall cellar loft].freeze
+  WORLD_ACROSS = 40
+  WORLD_DOWN = 24
+  WORLD_MAPS_AT = 0x200
+
+  # The cell +at+ of room number +room+: [tile, bank, mirrored, upside down].
+  def self.world_cell(room, at) = [(at + (3 * room)) % 4, (at / 4) % 2, (at / 8).odd?, (at / 16).odd?]
+
+  # The rooms named +rooms+, each +across+ by +down+ cells, as Areas over the town's tiles and colours.
+  def self.world_areas(rooms, across, down)
+    rooms.each_with_index.to_h do |name, room|
+      cells = Array.new(across * down) { |at| world_cell(room, at) }
+      [name, Area.new(places: PLACES, banks: BANKS, cells: cells, map_at: WORLD_MAPS_AT + (room * across * down * 2),
+                      colors_at: TOWN_COLORS_AT, tiles_at: TOWN_TILES_AT)]
+    end
+  end
+
+  # The made-up original holding the rooms of +areas+ (#world_areas).
+  private def world_original(folder, areas)
+    last = areas.values.last
+    copy = "\0".b * (last.map_at + (last.cells.length * 2))
+    copy[TOWN_COLORS_AT, 64] = BANKS.flatten.pack("v*")
+    copy[TOWN_TILES_AT, 128] = PLACES.map(&LOW_HALF_FIRST).join
+    areas.each_value do |area|
+      copy[area.map_at, area.cells.length * 2] = area.cells.map { |cell| PackBackgroundAreaGames.advance_word(*cell) }.pack("v*")
+    end
+    path = File.join(folder, "made_up_world.bin")
+    File.binwrite(path, copy)
+    VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :gba,
+                               settings_file: File.join(folder, "made_up.yml"),
+                               releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
+  end
+
+  # The game walking the rooms of +areas+ (#world_areas), each map carrying its width, built as
+  # +options+ say; the loop is #emit_world_walk. Hands back the program and the pack file made.
+  private def world_game_and_file(folder, areas, across, options: VBlank::Cartridge::Options.new)
+    from = world_original(folder, areas)
+    b = VBlank::Builder.new(options: options)
+    b.instance_eval do
+      screen :tiled
+      pack = data_pack from: from, version: "1" do |slots|
+        slots.tiles :town_video, at: TOWN_TILES_AT, count: PLACES.length
+        slots.colors :town_colors, at: TOWN_COLORS_AT, count: 32
+        areas.each { |name, area| slots.numbers :"#{name}_map", at: area.map_at, count: area.cells.length, width: :half, signed: false }
+      end
+      world = background :world, tiles: pack[:town_video], colors: pack[:town_colors],
+                                 map: areas.keys.to_h { |name| [name, pack[:"#{name}_map"].as_map(across: across)] }
+      PackBackgroundAreaGames.emit_world_walk(self, world, areas.keys)
+    end
+    b.finalize_program
+    [b.program, b.made_data_pack_file]
+  end
+
+  # The first room on the first passes, and each next room two passes after the one before.
+  def self.emit_world_walk(builder, world, rooms)
+    builder.instance_eval do
+      tick = var :tick, 0
+      game_loop do
+        tick += 1
+        rooms.drop(1).each_with_index { |room, at| world.show_map room if tick == (2 * at) + 3 }
+      end
+    end
+  end
 end
 
 class TestPackBackgroundAreas < Minitest::Test
@@ -345,6 +413,32 @@ class TestPackBackgroundAreas < Minitest::Test
     end
     b.finalize_program
     b.program
+  end
+
+  # Big rooms over one slot of tiles, each shown in turn: every cell as the same rooms drawn by hand.
+  def test_a_world_of_big_rooms_over_one_tile_slot_shows_each_room
+    areas = PackBackgroundAreaGames.world_areas(WORLD_ROOMS, WORLD_ACROSS, WORLD_DOWN)
+    by_hand = areas_drawn_by_hand(areas, across: WORLD_ACROSS) { |world| PackBackgroundAreaGames.emit_world_walk(self, world, WORLD_ROOMS) }
+    Dir.mktmpdir do |folder|
+      walked, = world_game_and_file(folder, areas, WORLD_ACROSS)
+
+      { 2 => "the hall", 4 => "the cellar", 6 => "the loft" }.each do |frames, what|
+        assert_equal screen_at(by_hand, frames), screen_at(walked, frames), what
+      end
+    end
+  end
+
+  # With the pack left out, the build holds the tiles the rooms can draw, not a tile for every
+  # cell: a world bigger than a background's tiles builds.
+  def test_a_world_of_more_cells_than_a_background_holds_builds_with_the_pack_left_out
+    rooms = %i[field forest lake marsh]
+    areas = PackBackgroundAreaGames.world_areas(rooms, 126, 86)
+    left_out = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
+    Dir.mktmpdir do |folder|
+      program, = world_game_and_file(folder, areas, 126, options: left_out)
+
+      assert(program.walk.any? { |node| node.kind == :background && node.from_file })
+    end
   end
 
   def test_across_by_area_naming_other_areas_is_a_friendly_error

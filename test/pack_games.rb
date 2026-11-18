@@ -844,6 +844,11 @@ module PackGames
         end
         built(*made)
       end,
+      # A world of big rooms over one slot of tiles, each room walked into in turn.
+      game(:background_walking_a_world_of_big_rooms_over_one_tile_slot, passes: 7) do |folder, options|
+        areas = PackBackgroundAreaGames.world_areas(WORLD_ROOMS, WORLD_ACROSS, WORLD_DOWN)
+        built(*world_game_and_file(folder, areas, WORLD_ACROSS, options: options))
+      end,
       # The same over one slot of tiles and one of colours: one set of tiles, the map alone walked.
       game(:background_walking_between_areas_of_two_widths_over_one_tile_slot, passes: WALKS_ON + 4) do |folder, options|
         made = areas_game_and_file(areas_original(folder), options: options, one_tile_slot: true, across: ACROSS_BY_AREA) do |world|

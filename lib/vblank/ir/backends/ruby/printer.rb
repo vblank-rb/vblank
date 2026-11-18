@@ -119,6 +119,11 @@ module VBlank
           KEPT_AS_BYTES = Ractor.make_shareable(Set["rg_game_image_pixels", "rg_game_tile_pixels", "rg_game_map_cells",
                                                     "rg_game_music", "rg_game_recording_samples"])
 
+          # The tables of KEPT_AS_BYTES kept so, unfrozen, where the game writes them: the map cells,
+          # which the start file writes for a background read from it, and which the screen reads
+          # through their class (RgHalves#entries).
+          WRITTEN_AS_BYTES = Ractor.make_shareable(Set["rg_game_map_cells"])
+
           # The runtime's class for a table of KEPT_AS_BYTES, by the C type it is kept in.
           BYTES_CLASS = Ractor.make_shareable({ "int8_t" => "RgSignedBytes", "uint8_t" => "RgBytes", "int16_t" => "RgSignedHalves",
                                                 "uint16_t" => "RgHalves", "int32_t" => "RgWords" })
@@ -300,8 +305,8 @@ module VBlank
           def print_const_array(item)
             name = "@#{item.name.text}"
             frozen = item.writable ? "" : ".freeze"
-            if !item.writable && KEPT_AS_BYTES.include?(item.name.text)
-              print_table_of_bytes(item)
+            if KEPT_AS_BYTES.include?(item.name.text) && (!item.writable || WRITTEN_AS_BYTES.include?(item.name.text))
+              print_table_of_bytes(item, frozen)
             elsif item.values.size > MOST_WRITTEN_AS_NUMBERS && item.all_zeros?
               # Zeros until the start file fills them (ConstArray#all_zeros?): made at that size as
               # the game starts, not read from base64 of millions of zeros.
@@ -322,19 +327,20 @@ module VBlank
 
           # A table of KEPT_AS_BYTES: its bytes in base64, held as the runtime's class for its type.
           # An empty one holds one entry, nought, as an empty table written as numbers does. One of
-          # zeros alone is its size in bytes of zeros, made as the game starts.
-          def print_table_of_bytes(item)
+          # zeros alone is its size in bytes of zeros, made as the game starts. A table the start file
+          # writes (the map cells of a background read from it) is left unfrozen, +frozen+ empty.
+          def print_table_of_bytes(item, frozen = ".freeze")
             kept_as = BYTES_CLASS.fetch(item.type) { raise LoweringError, "the printer cannot keep C's #{item.type} as bytes" }
             packing = PACKING.fetch(item.type)
             if item.values.size > MOST_WRITTEN_AS_NUMBERS && item.all_zeros?
               bytes = item.values.size * [0].pack(packing).bytesize
-              return add_starting_value("@#{item.name.text} = #{kept_as}.of(\"\\0\".b * #{integer(bytes)}).freeze")
+              return add_starting_value("@#{item.name.text} = #{kept_as}.of(\"\\0\".b * #{integer(bytes)})#{frozen}")
             end
 
             refuse_numbers_past_32_bits!(item.values)
             values = item.values.empty? ? [0] : item.values
             bytes = [values.pack(PACKING.fetch(item.type))].pack("m0")
-            add_starting_value("@#{item.name.text} = #{kept_as}.of(#{string(bytes)}.unpack1(\"m\")).freeze")
+            add_starting_value("@#{item.name.text} = #{kept_as}.of(#{string(bytes)}.unpack1(\"m\"))#{frozen}")
           end
 
           # An array the start file fills (Statements::StartFileArray): its size alone, zeros until the runtime

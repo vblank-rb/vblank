@@ -174,7 +174,13 @@ extern const uint16_t rg_game_run_colors[];
 #define RG_CELL_EMPTY (-1)
 enum { RG_MAP_CELLS, RG_MAP_COLS, RG_MAP_ROWS, RG_MAP_GRID_COLS, RG_MAP_GRID_ROWS, RG_MAP_FIELDS };
 extern const int32_t rg_game_maps[];
+/* A game whose background is read from the start file writes the cells of its maps as it starts
+ * (rg_start_file_fill_background), and says so before this header (RG_MAP_CELLS_WRITABLE). */
+#ifdef RG_MAP_CELLS_WRITABLE
+extern int16_t rg_game_map_cells[];
+#else
 extern const int16_t rg_game_map_cells[];
+#endif
 
 extern const int32_t rg_game_always_up[];
 

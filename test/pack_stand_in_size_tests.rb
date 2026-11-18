@@ -3,6 +3,7 @@
 require "tmpdir"
 require "all/vblank/builder/test_pack_pose_bank_colors"
 require "all/vblank/builder/test_pack_tile_pictures"
+require "all/vblank/builder/test_pack_background_areas"
 
 # WHAT A PICTURE THE BUILD DOES NOT HOLD COSTS THE WRITTEN GAME. A build that reads its pack as the
 # game starts (a shell) knows a pose of the original's frames, or a background's tiles, only by its
@@ -45,6 +46,40 @@ module PackStandInSizeTests
   class Belts
     include PackTilePictureGames
   end
+
+  class Rooms
+    include PackBackgroundAreaGames
+
+    # The world of +rooms+ rooms, each +across+ by +down+ cells over one slot of four tiles, built
+    # with its pack left out.
+    def world_left_out(folder, rooms, across, down)
+      names = Array.new(rooms) { |at| :"room_#{at}" }
+      world_game_and_file(folder, PackBackgroundAreaGames.world_areas(names, across, down), across, options: LEFT_OUT).first
+    end
+  end
+
+  # How many different tiles as drawn the world's slot can make: four tiles, in two banks or a bank
+  # past them, each turned four ways, and one for a tile past the slot.
+  WORLD_TILES_AS_DRAWN = (4 * 3 * 4) + 1
+  # How many bytes of pixels a tile is kept in as the game runs.
+  TILE_PIXEL_BYTES = 64 * PIXEL_BYTES
+
+  # A BACKGROUND READ AS THE GAME STARTS HOLDS THE TILES ITS SLOT CAN DRAW, NOT A TILE FOR EVERY CELL:
+  # the cells name the tiles, as the console's map does. So rooms over one slot of tiles, however big
+  # and however many, take the room of what the slot can draw once.
+  def test_a_world_of_rooms_over_one_tile_slot_holds_what_the_slot_can_draw_once
+    one, three = [1, 3].map do |rooms|
+      Dir.mktmpdir { |folder| lowering_class.new(program_played(Rooms.new.world_left_out(folder, rooms, 40, 24))).start_file_tile_room_bytes }
+    end
+    most = (WORLD_TILES_AS_DRAWN + BANK_STAND_INS) * TILE_PIXEL_BYTES
+
+    assert_operator one, :<=, most, "one room of 960 cells holds #{one} bytes of tiles, more than its slot can draw"
+    assert_operator three - one, :<=, 2 * BANK_STAND_INS * TILE_PIXEL_BYTES,
+                    "three rooms over the same slot hold #{three} bytes of tiles, one holds #{one}: more than two rooms' stand-ins more"
+  end
+
+  # The stand-in tile the game holds for each bank of colours in each area, before the cells' tiles.
+  BANK_STAND_INS = 2
 
   def test_poses_read_at_start_made_bigger_cost_the_written_game_less_than_one_pose_of_pixels
     small, big = [SMALL_POSE, BIG_POSE].map do |size|

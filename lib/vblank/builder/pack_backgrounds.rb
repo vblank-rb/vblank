@@ -677,7 +677,7 @@ module VBlank
         made = pack_tiles_held_at_start(name, tiles: tiles, map: map, colors: colors, across: across, tiles_a_side: tiles_a_side,
                                               words: words, moving: moving, set_cells: set_cells, first: 0)
         where = made.where
-        refuse_oversized_map_at_start!(name, where, made.held.length)
+        refuse_oversized_map_at_start!(name, [where], made.held.length)
         tileset = :"background :#{name} tiles"
         tiles(tileset, made.held.to_h { |picture| [picture, picture] })
         handle = background(name, tiles: tileset, map: Array.new(where.rows) { Array.new(where.columns, made.held.first) }, **others)
@@ -709,11 +709,8 @@ module VBlank
           first += part.held.length
           [area, part]
         end
-        # Every area's tiles are one background's, so each area's map has room for what the rest leave.
-        every_tile = first + made.each_value.sum { |part| part.where.tiles_drawn }
-        made.each do |area, part|
-          refuse_oversized_map_at_start!(:"#{name}'s area :#{area}", part.where, every_tile - part.where.tiles_drawn)
-        end
+        # Every area's tiles are one background's, and areas drawn from the same art keep its tiles once.
+        refuse_oversized_map_at_start!(name, made.values.map(&:where), first)
         tilesets = made.to_h do |area, part|
           tileset = :"background :#{name}'s area :#{area} tiles"
           tiles(tileset, part.held.to_h { |picture| [picture, picture] })
@@ -816,7 +813,7 @@ module VBlank
 
       # THE ONE TILE THE BUILD HOLDS FOR A BACKGROUND DRAWN FROM THE WHOLE TABLE, read as the game
       # starts: a background has a tile, and its map names one, until the file is read and each
-      # cell has a tile of its own. Nothing draws it. It holds a colour of its own and no list,
+      # cell names the tile it draws. Nothing draws it. It holds a colour of its own and no list,
       # since tiles of 256 colours have no bank to name (#drawn_from_whole_table?).
       def declare_table_stand_in(name)
         side = Original::Slot::TILE_SIDE
@@ -922,16 +919,21 @@ module VBlank
         picture_from_start_file?(picture) || @run_tiles_read_at_start&.include?(picture) || @told_places_read_at_start&.include?(picture) || false
       end
 
-      # +held+ is how many tiles the build holds for it besides the map's: a stand-in for each bank,
-      # the runs of tiles that take turns, and the told cells'.
-      def refuse_oversized_map_at_start!(name, where, held)
+      # The tiles a background read as the game starts keeps for its maps (+records+, its
+      # IR::StartFile::Background records): each different tile as drawn once, the room for which
+      # is the most its slot can draw, or a tile for each place of its maps where that is fewer
+      # (IR::StartFile.cell_tile_pools). +held+ is how many tiles the build holds for it besides:
+      # a stand-in for each bank, the runs of tiles that take turns, and the told cells'.
+      def refuse_oversized_map_at_start!(name, records, held)
         most = MOST_TILES_READ_AT_START - held
-        return if where.tiles_drawn <= most
+        kept = IR::StartFile.cell_tile_pools(records).sum(&:room)
+        return if kept <= most
 
-        raise ArgumentError, "background :#{name} has a map of #{where.columns} by #{where.rows} tiles, which is " \
-                             "#{where.tiles_drawn} cells. This build reads its pack as the game starts, and such a " \
-                             "background can have #{most} cells at most. To fix this, give it a " \
-                             "smaller map, or build the game all-in-one."
+        raise ArgumentError, "background :#{name} reads its maps from the data pack as the game starts, and keeps " \
+                             "room for #{kept} different tiles for them. Such a background can keep #{most} at most. " \
+                             "A map keeps room for each tile of its slot, in each bank of colors and each turn, or for " \
+                             "each cell when that is fewer. To fix this, make the maps smaller, give areas fewer slots " \
+                             "of tiles and colors, or build the game all-in-one."
       end
 
       # The picture of +tile+ (a Console::CellTile), drawn from the list of its bank. Nil for a tile

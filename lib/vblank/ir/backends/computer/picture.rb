@@ -575,8 +575,9 @@ module VBlank
               bg.every_map.each_with_index do |map, number|
                 # A background that never comes round again has no grid to come round at.
                 maps.push(cells.length, *TileMap.size_of(map), *(bg.streams? ? [0, 0] : TileMap.grid(map)))
-                # Read from the start file, each cell names its own tile, in order, after the tiles
-                # the game holds and the cells' tiles of the sets before the map's own.
+                # Read from the start file, each cell's tile is written as the file is read, one of its
+                # pool's (StartFileFills#record_start_file_background_fill).
+                record_start_file_map_cells(bg, number, cells.length) if bg.from_file
                 cells.concat(bg.from_file ? cell_tiles_from_file(bg, number) : map_cells(map))
               end
               [bg.tile_w, bg.tile_h, first_map, Array(bg.maps).length, @backgrounds.fetch(bg.name),
@@ -590,7 +591,7 @@ module VBlank
             end
             [runtime_array("tile_pixels", "uint16_t", tile_pixels, grows: @tile_pixel_count > tile_pixels.length),
              runtime_array("backgrounds", "int32_t", fields),
-             runtime_array("maps", "int32_t", maps), runtime_array("map_cells", "int16_t", cells),
+             runtime_array("maps", "int32_t", maps), runtime_array("map_cells", "int16_t", cells, writable: writes_map_cells?),
              runtime_array("painted_tiles", "int32_t", painted_tiles, writable: paints_moving_cells?),
              runtime_array("run_colors", "uint16_t", run_colors, writable: marked_numbers_in?(:run_colors)),
              # Writable for a background read from the start file, whose cells' marks are read as it
@@ -613,13 +614,12 @@ module VBlank
             start
           end
 
-          # The tiles of the cells of map +number+ of +bg+, a background read from the start file:
-          # a tile of its own for each cell, in order, among those of the map's set
-          # (Nodes::Background#first_tiles_from_file).
+          # The cells of map +number+ of +bg+, a background read from the start file, until the file
+          # is read: each the first tile of the map's pool (Nodes::Background#first_tiles_from_file),
+          # see-through until then. The routine reading the file writes each cell's own.
           def cell_tiles_from_file(bg, number)
             set = bg.map_sets ? bg.map_sets.fetch(number) : 0
-            first = bg.first_tiles_from_file.fetch(set)
-            (first...(first + bg.from_file.fetch(set).tiles_drawn)).to_a
+            Array.new(bg.from_file.fetch(set).tiles_drawn, bg.first_tiles_from_file.fetch(set))
           end
 
           # RG_BG_FRONT of a background with no cells in front of the sprites.
@@ -629,8 +629,8 @@ module VBlank
           # there, by background.
           #
           # A BACKGROUND WHOSE MAP IS READ FROM THE START FILE IS NOT WRITTEN AT ALL. Its tiles are
-          # the file's: a tile for every cell of the map, see-through until the routine reading the
-          # file fills it (StartFileFills#record_start_file_background_fill), and before them the
+          # the file's: room for every different tile as drawn its maps can name, see-through until
+          # the routine reading the file fills it (StartFileFills#record_start_file_background_fill), and before them the
           # tiles the game holds, which are a tile the game paints (see-through until it does), a
           # picture read from the file, or a bank's stand-in that the map never names; all of it
           # again for each set of colours the background is drawn in. Written out, a title's screen
@@ -670,7 +670,8 @@ module VBlank
             at = start
             steps = color_swaps(bg)
             # A background whose map is read from the start file has, after the tiles the game
-            # holds for it, a tile for every cell of the map, see-through until the file is read
+            # holds for it, room for every different tile as drawn its maps can name
+            # (Nodes::Background#cell_tile_pools), see-through until the file is read
             # (StartFileFills#record_start_file_background_fill).
             cell_tiles = bg.from_file ? bg.tiles_drawn_from_file : 0
             record_start_file_background_fill(start, bg, steps) if bg.from_file
@@ -707,8 +708,8 @@ module VBlank
               painted_tiles.concat(run ? [@run_numbers.fetch(run.name), run.tiles.index(tile)] : [NOT_PAINTED, 0])
             end
             # A background read from the start file whose tiles take turns through pictures has
-            # a tile for every cell after the ones the game holds, none painted until the routine
-            # reading the file points the cells naming such a tile at a run's (StartFileFills).
+            # room for every tile its maps can name after the ones the game holds, none painted until
+            # the routine reading the file points each such tile at a run's (StartFileFills).
             if bg.from_file&.any? { |where| !where.moving.empty? }
               record_start_file_moving_cells(bg, starts.first)
               painted_tiles.concat(Array.new(bg.tiles_drawn_from_file * 2) { |at| at.even? ? NOT_PAINTED : 0 })
@@ -894,10 +895,10 @@ module VBlank
           # The rules for one background and one list it follows, made once, or nil where none of
           # its tiles is drawn from the list.
           #
-          # A BACKGROUND READ FROM THE START FILE has a tile for every cell of its map after the
-          # tiles the game holds, and which bank a cell is of is in the file. So its rules are
+          # A BACKGROUND READ FROM THE START FILE has room for every tile its maps can name after the
+          # tiles the game holds, and which bank a tile is drawn in is in the file. So its rules are
           # written with room for every one of those tiles, where the routine reading the file can
-          # write, and that routine adds the tiles of the cells whose bank is drawn from the list
+          # write, and that routine adds the tiles the maps name whose bank is drawn from the list
           # (StartFileFills#record_start_file_followed_tiles).
           def followed_tile_rules(bg, name)
             (@followed_tile_rules ||= {})[[bg.object_id, name]] ||= begin

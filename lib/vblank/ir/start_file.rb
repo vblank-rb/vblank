@@ -257,11 +257,43 @@ module VBlank
                                :told_at, :told_count, :told_first) do
         def initialize(moving: [].freeze, told_at: 0, told_count: 0, told_first: 0, **) = super
 
-        # How many tiles across and down the map is, and how many that makes: a tile of its own
-        # for each, since two cells are known to show one tile only once the file is read.
+        # How many tiles across and down the map is, and how many places of the map that makes.
         def columns = across * cell_tiles
         def rows = (cells / across) * cell_tiles
         def tiles_drawn = columns * rows
+
+        # THE MOST DIFFERENT TILES AS DRAWN THE MAP CAN NAME, whatever the file holds: each tile of
+        # the slot in each bank of colours or in a bank past them (all drawn in colour 0), turned
+        # each way the cell can turn it, in front of the sprites or not where that is read, and one
+        # more for a tile past the slot, which draws nothing. Which of them the map names is known
+        # only once the file is read, so a build for a computer keeps room for this many, or for a
+        # tile at every place of the map where that is fewer (StartFile.cell_tile_pools).
+        def most_different_tiles
+          turns = [map_words.mirror_bit, map_words.flip_bit].compact.length
+          banks = bank_count + ((1 << map_words.bank_bits) > bank_count ? 1 : 0)
+          (tile_count * banks * (1 << turns) * (map_words.reads_front ? 2 : 1)) + 1
+        end
+
+        # What every tile as drawn of the map is made from, the map itself left out: two records
+        # with the same art draw a cell the same, so their maps can name one tile for it.
+        def art = with(map_at: 0, cells: 0, across: 0, cell_tiles: 0, number_format: nil, told_at: 0, told_count: 0, told_first: 0)
+      end
+
+      # THE TILES A BUILD FOR A COMPUTER KEEPS FOR THE MAPS OF A BACKGROUND READ FROM THE FILE: the
+      # +sets+ (their numbers among the background's records) whose maps draw from the same art
+      # (Background#art), and +room+, how many tiles they keep together. Each different tile as
+      # drawn is kept once, and each place of every map of them names it, as a console's map names
+      # a tile of video memory; so a world of rooms over one slot of tiles keeps what the slot can
+      # draw, however many cells and rooms it has.
+      CellTilePool = Data.define(:sets, :room)
+
+      # The pools of +records+ (a background's Background records, in order), each in the order
+      # of its first set: the room is the most different tiles its art can draw, or a tile for every
+      # place of its maps where that is fewer.
+      def self.cell_tile_pools(records)
+        records.each_index.group_by { |set| records[set].art }.map do |art, sets|
+          CellTilePool.new(sets: sets, room: [sets.sum { |set| records[set].tiles_drawn }, art.most_different_tiles].min)
+        end
       end
 
       # A TILE OF A BACKGROUND READ FROM THE FILE THAT TAKES TURNS THROUGH PICTURES: +tile+, counted

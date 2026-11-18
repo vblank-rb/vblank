@@ -283,6 +283,13 @@ module VBlank
             (@image_pixel_count - @image_pixels_held) * ARRAY_TYPE_BYTES.fetch("int16_t")
           end
 
+          # THE BYTES OF ROOM THE GAME MAKES AS IT STARTS FOR THE BACKGROUND TILES THE START FILE FILLS,
+          # the same way. Public for the same tests; asking lowers the program.
+          def start_file_tile_room_bytes
+            top_level
+            (@tile_pixel_count - @tile_pixels_held) * ARRAY_TYPE_BYTES.fetch("uint16_t")
+          end
+
           private
 
           # --- the file ---
