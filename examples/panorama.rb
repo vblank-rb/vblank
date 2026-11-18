@@ -14,6 +14,11 @@
 # refused. `screen_width` and `screen_height` say which the build gave, as plain Ruby numbers
 # while the game is built, so the game asks "does the picture fit?" once, and each build holds
 # only the half of the answer it uses. Nothing in the game asks which machine it is on.
+#
+# Press Start for the second scene, a box to walk with the D-pad (B goes back). It is laid out for
+# 240×160 and says so on its own screen line, `screen :bitmap, size: [240, 160]`: a computer shows it
+# at that size in the middle of the same window, black round it, so the title can be 320×200 and
+# the walk 240×160 in one game file. The Advance shows both on its own screen.
 
 require_relative "../lib/vblank"
 
@@ -38,30 +43,55 @@ module Panorama
   # The picture's colours, row by row.
   def self.pixels = Array.new(WIDTH * HEIGHT) { |at| color_at(at % WIDTH, at / WIDTH) }
 
+  WALK = [240, 160].freeze # the walk's own screen, the Advance's size
+  BOX = 8           # how big the walker is
+
   GAME = VBlank.game("PANORAMA", consoles: %i[gba]) do
     # The screen this game would like. Where the build cannot give it, it gives its own.
     screen :bitmap, size: [WIDTH, HEIGHT]
     image :view, width: WIDTH, height: HEIGHT, data: Panorama.pixels
 
-    if screen_width >= WIDTH && screen_height >= HEIGHT
-      # It fits: draw it once, in the middle of whatever screen this is.
-      blit :view, (screen_width - WIDTH) / 2, (screen_height - HEIGHT) / 2
-      game_loop {} # nothing moves; the loop keeps the picture up
-    else
-      # It does not: show the middle rows, and walk the screen from the picture's left edge to its
-      # right and back, a pixel a pass. Drawing at a place left of the screen's edge shows the part
-      # of the picture to the right of it; what falls off the screen is not drawn.
-      farthest = WIDTH - screen_width
-      top = (screen_height - HEIGHT) / 2
-      pan = 0  # how far the screen is from the picture's left edge
-      step = 1 # and which way it is going
-      game_loop do
-        blit :view, -pan, top
+    mode = :title
+    pan = 0           # how far the title's screen is from the picture's left edge
+    step = 1          # and which way it is going
+    x = WALK[0] / 2   # where the walker is
+    y = WALK[1] / 2
+
+    # THE TITLE, on the game's screen: the picture whole where it fits, panned where it does not.
+    scene(:title) do
+      screen :bitmap
+      if screen_width >= WIDTH && screen_height >= HEIGHT
+        # It fits: draw it in the middle of whatever screen this is.
+        blit :view, (screen_width - WIDTH) / 2, (screen_height - HEIGHT) / 2
+      else
+        # It does not: show the middle rows, and walk the screen from the picture's left edge to its
+        # right and back, a pixel a pass. Drawing at a place left of the screen's edge shows the part
+        # of the picture to the right of it; what falls off the screen is not drawn.
+        farthest = WIDTH - screen_width
+        blit :view, -pan, (screen_height - HEIGHT) / 2
         pan += step
         step = -1 if pan >= farthest
         step = 1 if pan <= 0
       end
+      mode = :walk if pressed(:start)
     end
+
+    # THE WALK, on a 240×160 screen of its own, as a game laid out for the Advance plays. A computer
+    # shows it at that size in the middle of the window; the Advance's screen is that size already.
+    scene(:walk) do
+      screen :bitmap, size: WALK
+      clear_screen :gray
+      x += 2 if held(:right)
+      x -= 2 if held(:left)
+      y += 2 if held(:down)
+      y -= 2 if held(:up)
+      x.clamp!(0, screen_width - BOX)
+      y.clamp!(0, screen_height - BOX)
+      draw_rect_at x, y, BOX, BOX, :white
+      mode = :title if pressed(:b)
+    end
+
+    game_loop { call mode }
   end
 
   def self.program(**kwargs) = GAME.program(**kwargs)

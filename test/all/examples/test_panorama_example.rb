@@ -34,6 +34,22 @@ class TestPanoramaExample < Minitest::Test
     end
   end
 
+  # Start goes to the walk, a scene laid out for 240×160: a computer shows that size in the middle of
+  # its 320×200 window, the Advance its own screen, and the walker stands in the middle of it.
+  def test_the_walk_has_a_screen_of_its_own
+    skip_unless_written_for Panorama::GAME
+    program = Panorama.program(console: game_console, for_computer: plays_computer_builds?)
+    player = game_player
+    player.input_each_frame { |frame| frame == 3 ? [:start] : [] }
+    played = player.run(program, frames: 8)
+    width, height = played.shown_screen_size
+    middle_x, middle_y = Panorama::WALK.map { |side| side / 2 }
+
+    assert_equal Panorama::WALK, [width, height]
+    assert_equal shown(:white), played.screen.pixel(middle_x + 1, middle_y + 1), "the walker"
+    assert_equal shown(:gray), played.screen.pixel(0, 0), "the walk's ground"
+  end
+
   # The console's screen starts at the left edge of the picture and pans until its right edge shows.
   def test_a_console_pans_across_the_picture
     program = console_program
