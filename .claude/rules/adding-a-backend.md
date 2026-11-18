@@ -102,7 +102,9 @@ writing an instruction is shared, because two copies of a decision drift apart:
 
 - `Backends::LoweringPlan` — what a run reaches, the numbers timers and scenes are known by, how
   each table is kept, constant folding, the game loop in the console's order and which of its writes
-  are placed at the end of a pass (`placed_at_pass_end?`), and the refusals
+  are placed at the end of a pass (`placed_at_pass_end?`), which lists are made before anything can
+  read or write them (`lists_made_before_use`, the only lists whose index test a lowering may leave
+  out or hold to the capacity), and the refusals
   every console makes alike, in one order (`refuse_unbuildable!`: a start file, a step only the
   Advance has, what the lowering does not make yet, what the console's answers refuse, a routine
   that calls itself), which a lowering calls first and then adds its own refusals after.

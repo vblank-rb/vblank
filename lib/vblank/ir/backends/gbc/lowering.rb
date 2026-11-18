@@ -1612,10 +1612,15 @@ module VBlank
             base + (index * stride) if index.between?(0, capacity - 1)
           end
 
-          # The names of the lists #fixed_slot reads straight from.
+          # The names of the lists #fixed_slot reads straight from: only one made before anything can
+          # read or write it (LoweringPlan#lists_made_before_use), since until it is made it holds
+          # nothing, and a read there stops the game.
           def fixed_length_lists
             @fixed_length_lists ||= begin
-              full = @program.walk.filter_map { |node| node.name if node.kind == :list_new && !node.full_of.nil? }
+              first = @plan.lists_made_before_use
+              full = @program.walk.filter_map do |node|
+                node.name if node.kind == :list_new && !node.full_of.nil? && first.include?(node.name)
+              end
               others = @program.walk.reject { |node| FIXED_LENGTH_STEPS.include?(node.kind) }
               named = others.flat_map { |node| node.attrs.values.flat_map { |value| Array(value) } }.grep(Symbol)
               full - named

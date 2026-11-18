@@ -1435,13 +1435,18 @@ module VBlank
           # capacity for good, by name, with that capacity (the least, if made twice). Every way a
           # list's length changes is a list_push, a list_drop, a list_copy, or a list_new that makes it
           # empty; a list_fill or a list_sort leaves it as long as it was. Nothing taken from the
-          # front, so the first item stays in the first slot.
+          # front, so the first item stays in the first slot. Only one made before anything can read
+          # or write it (LoweringPlan#lists_made_before_use): until it is made it holds nothing, and a
+          # read there stops the game.
           def always_full_lists
             @always_full_lists ||= begin
               resized = @program.walk.filter_map do |node|
                 node.name if %i[list_push list_drop list_copy].include?(node.kind) || (node.kind == :list_new && !node.full_of)
               end
-              made = @program.walk.select { |node| node.kind == :list_new && node.full_of && !resized.include?(node.name) }
+              first = @plan.lists_made_before_use
+              made = @program.walk.select do |node|
+                node.kind == :list_new && node.full_of && !resized.include?(node.name) && first.include?(node.name)
+              end
               made.group_by(&:name).transform_values { |nodes| nodes.map(&:capacity).min }
             end
           end

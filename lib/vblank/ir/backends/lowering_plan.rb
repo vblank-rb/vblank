@@ -534,7 +534,73 @@ module VBlank
           end
         end
 
+        # THE LISTS MADE BEFORE ANYTHING CAN READ OR WRITE THEM, by name: each made by a statement of
+        # the program's own top level that comes before every statement that names it, however deep in
+        # the routines that statement calls. A read or a write before a list is made stops the
+        # interpreter's game (Reference#list_value: the list is empty), and a console checks it by the
+        # length it keeps, nought until the list is made. So only for one of these can a lowering leave
+        # out the test of an index, or test it against the capacity instead of the length: a list made
+        # full and never resized holds its capacity from the moment anything can reach it.
+        #
+        # A timer's tick and a bend run at a frame's boundary, so a list either of them names is made
+        # first only where nothing before it can reach a wait.
+        #
+        # A list made inside a scene or a routine is never one of these: it is made each time that
+        # runs, and something can reach the list before it first does.
+        def lists_made_before_use
+          @lists_made_before_use ||= begin
+            named = Set.new
+            made = Set.new
+            made_after_wait = Set.new
+            waited = false
+            @program.children.each do |child|
+              next if child.kind == :func
+
+              if child.kind == :list_new && !named.include?(child.name)
+                made << child.name
+                made_after_wait << child.name if waited
+              end
+              reached = statements_reached_from(child)
+              reached.each { |node| named.merge(names_in(node)) }
+              waited ||= statements_wait?(reached)
+            end
+            made - (made_after_wait & names_at_frame_boundaries)
+          end
+        end
+
         private
+
+        # The statements under +root+ and in every routine they call, however deep. Each routine's
+        # statements are found once a build: a program's top level is asked statement by statement.
+        def statements_reached_from(root)
+          found = Reach.statements_under(root)
+          reached = Set.new
+          waiting = Reach.routines_named(found)
+          until waiting.empty?
+            name = waiting.shift
+            next if reached.include?(name) || !@funcs.key?(name)
+
+            reached << name
+            body = routine_statements(name)
+            found += body
+            waiting.concat(Reach.routines_named(body))
+          end
+          found
+        end
+
+        # The names held in +node+'s operands: a list it reads or writes, among others.
+        def names_in(node) = node.named_operands.flat_map { |_field, held| Array(held).flatten.grep(Symbol) }
+
+        # Every name a timer's tick or a bend reaches, in the routines they call too.
+        def names_at_frame_boundaries
+          roots = @tick_handlers.values + @bend_roots
+          Reach.statements_from(*roots, *Reach.routines_called_from(@program, roots).map { |name| @funcs.fetch(name) })
+               .flat_map { |node| names_in(node) }.to_set
+        end
+
+        def routine_statements(name)
+          (@routine_statements ||= {})[name] ||= Reach.statements_under(@funcs.fetch(name))
+        end
 
         # Every node of the program naming a list, by the list's name.
         def list_uses

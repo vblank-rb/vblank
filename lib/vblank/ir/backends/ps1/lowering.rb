@@ -1092,25 +1092,13 @@ module VBlank
           # in the instruction rather than a length read from main RAM, which has no cache and makes the
           # processor wait for every load: a game of rooms reads its lists hundreds of times a pass. Such a
           # list is made full (`full_of:`) every time it is made, nothing pushes to it, drops from it or
-          # copies a table into it, and it is made among the program's first statements, before anything
-          # that could read a list runs: one read before then stops the interpreter's game (the list is not
-          # made yet), and must stop this one's, which the length read from RAM, nought, does. Only these kinds
-          # of statement may come first, and only when no value in them reads a list: a declaration, the
-          # screen chosen, a list made, a variable set.
-          STATEMENTS_BEFORE_FIXED_LISTS = Ractor.make_shareable(Set[:list_new, :screen, :set, :copy, :add, :sub,
-                                                                    *Nodes.of_role(:declaration)])
-          LIST_READING_VALUES = %i[list_get list_len].freeze
-
+          # copies a table into it, and it is made before anything can read or write it
+          # (LoweringPlan#lists_made_before_use): one read before then stops the interpreter's game (the
+          # list is not made yet), and must stop this one's, which the length read from RAM, nought, does.
           def lists_of_fixed_length(program)
             changed = program.walk.filter_map { |node| node.name if %i[list_push list_drop list_copy].include?(node.kind) }
             made = program.walk.select { |node| node.kind == :list_new }.group_by(&:name)
-            first = []
-            program.children.each do |child|
-              break unless STATEMENTS_BEFORE_FIXED_LISTS.include?(child.kind)
-              break if child.walk.any? { |node| LIST_READING_VALUES.include?(node.kind) }
-
-              first << child.name if child.kind == :list_new
-            end
+            first = @plan.lists_made_before_use
             made.filter_map { |name, news| name if news.all?(&:full_of) && first.include?(name) && !changed.include?(name) }
           end
 

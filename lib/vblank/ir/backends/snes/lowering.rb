@@ -2064,14 +2064,19 @@ module VBlank
           end
 
           # The lists made full of one number and never made longer or shorter after, so each holds
-          # its capacity for good, by name, with that capacity (the least, if made twice).
+          # its capacity for good, by name, with that capacity (the least, if made twice). Only one
+          # made before anything can read or write it (LoweringPlan#lists_made_before_use): until it
+          # is made it holds nothing, and a read there stops the game.
           def full_length_lists
             @full_length_lists ||= begin
               resized = @reachable.filter_map do |node|
                 node.name if %i[list_push list_drop list_fill list_copy save_load_list].include?(node.kind) ||
                              (node.kind == :list_new && !node.full_of)
               end
-              made = @reachable.select { |node| node.kind == :list_new && node.full_of && !resized.include?(node.name) }
+              first = @plan.lists_made_before_use
+              made = @reachable.select do |node|
+                node.kind == :list_new && node.full_of && !resized.include?(node.name) && first.include?(node.name)
+              end
               made.group_by(&:name).transform_values { |nodes| nodes.map(&:capacity).min }
             end
           end
