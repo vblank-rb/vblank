@@ -57,8 +57,11 @@ module VBlank
             # of the blank's 2280 instruction cycles, so the blank holds fewer than this keeps. One it
             # does not reach waits for the display at the top of the frame it shows, which is still
             # whole for a bar low on the screen.
+            # Its count's top bit is FAR_CELLS_IN_USE, set while the far list holds cells too, so a
+            # blank and a pass that never reach the far list find both lists empty in one test.
             CELLS = "rt picture cells"
-            CELLS_KEPT = 160
+            CELLS_KEPT = 127
+            FAR_CELLS_IN_USE = 0x80
             # A painted screen has no cells to change, and every byte it keeps low stays out of the
             # half of work memory its pictures take turns in (Paint).
             PAINTED_CELLS_ROOM = 32
@@ -1214,13 +1217,7 @@ module VBlank
               asm.jump_relative(:c, "rt_upload_more")
               asm.load(:a, [memory[CELLS]]) # cells the blank did not reach (rt_picture_cells_kept)
               asm.and_a(:a)
-              asm.jump_relative(:nz, "rt_upload_more")
-              asm.load(:a, [memory[FAR_CELLS] + 1]) # ...and the far list's (rt_cells_far_kept)
-              asm.cp_a(FAR_CELLS_AT >> 8)
-              asm.jump_relative(:nz, "rt_upload_more")
-              asm.load(:a, [memory[FAR_CELLS]])
-              asm.and_a(:a)
-              asm.jump_relative(:nz, "rt_upload_more")
+              asm.jump_relative(:nz, "rt_upload_more") # ...or the far list's (FAR_CELLS_IN_USE)
               if groups
                 asm.load(:a, [pending])
                 asm.add_a(:a) # carry from 0xFF
@@ -1361,7 +1358,9 @@ module VBlank
               asm.load(:hl, memory[CELLS])
               asm.load(:a, [:hl])
               asm.and_a(:a)
-              asm.jump(:z, "rt_picture_cells_far")
+              asm.ret(:z)
+              asm.bit(7, :a) # FAR_CELLS_IN_USE
+              asm.jump(:nz, "rt_picture_cells_with_far")
               asm.load(:b, :a)
               asm.xor_a(:a)
               asm.load([:hli], :a)
@@ -1387,7 +1386,7 @@ module VBlank
               asm.load(:a, [:hli])
               asm.load(:d, :a)
               2.times do |bank|
-                asm.load(:a, bank)
+                bank.zero? ? asm.xor_a(:a) : asm.load(:a, bank)
                 asm.load_high(h::VBK, :a)
                 asm.load(:a, [:hli])
                 asm.load([:de], :a)
@@ -1396,13 +1395,26 @@ module VBlank
               asm.jump_relative(:nz, "rt_picture_cells_next")
               asm.xor_a(:a)
               asm.load_high(h::VBK, :a)
-              asm.jump("rt_picture_cells_far") # ...and those past CELLS, once CELLS is all in
+              asm.ret
+
+              # CELLS with the far list after it: CELLS's cells as above, then the far list's. Where
+              # CELLS stops for the next blank the display is drawing, so the far list, which writes
+              # only in the blank, writes nothing and waits for that blank too.
+              asm.label("rt_picture_cells_with_far")
+              asm.and_a(~FAR_CELLS_IN_USE & 0xFF)
+              asm.jump(:z, "rt_picture_cells_far")
+              asm.load(:b, :a)
+              asm.load(:a, FAR_CELLS_IN_USE)
+              asm.load([:hli], :a)
+              asm.call("rt_picture_cells_next")
+              asm.jump("rt_picture_cells_far")
 
               # The B cells from HL on, moved to the front of CELLS for the next blank, in order.
               asm.label("rt_picture_cells_kept")
               asm.xor_a(:a)
               asm.load_high(h::VBK, :a)
-              asm.load(:a, :b)
+              asm.load(:a, [memory[CELLS]]) # FAR_CELLS_IN_USE, or nought
+              asm.or_a(:b)
               asm.load([memory[CELLS]], :a)
               asm.load(:de, memory[CELLS] + 1)
               asm.label("rt_picture_cells_move")
@@ -1798,7 +1810,7 @@ module VBlank
               asm.ei
               asm.dec(:b)
               asm.jump_relative(:nz, "rt_picture_cells_late")
-              asm.jump("rt_picture_cells_far") # which keeps its cells for the next blank
+              asm.ret
               emit_cell_ahead(asm)
             end
 
@@ -1907,7 +1919,9 @@ module VBlank
             def emit_cells_far(asm, memory)
               h = Console::GBCHardware
               far = memory[FAR_CELLS]
-              asm.label("rt_cells_push_far")
+              asm.label("rt_cells_push_far") # A = CELLS's count
+              asm.or_a(FAR_CELLS_IN_USE)
+              asm.load([memory[CELLS]], :a)
               asm.load(:d, :h)
               asm.load(:e, :l) # DE = the cell's place
               asm.load(:hl, far)
@@ -1937,7 +1951,10 @@ module VBlank
               asm.label("rt_cells_push_far_full")
               asm.load(:h, :d)
               asm.load(:l, :e)
-              asm.load(:a, CELLS_KEPT)
+              # CELLS is full whenever the far list is in use while a pass runs (rt_upload_whole holds
+              # the next pass until both are written), but its count is read rather than assumed.
+              asm.load(:a, [memory[CELLS]])
+              asm.and_a(~FAR_CELLS_IN_USE & 0xFF)
               asm.call("rt_cells_write_now")
               emit_cell_push_near(asm, memory)
 
@@ -1967,6 +1984,9 @@ module VBlank
                 asm.load([:hl], FAR_CELLS_AT >> 8)
                 asm.inc(:hl)
               end
+              asm.load(:a, [memory[CELLS]])
+              asm.and_a(~FAR_CELLS_IN_USE & 0xFF)
+              asm.load([memory[CELLS]], :a)
               asm.ret
 
               # rt_cells_far_kept(HL): the far list's cells from HL on are left for the next blank.
@@ -1975,6 +1995,9 @@ module VBlank
               asm.load([far + FAR_CELLS_FIRST], :a)
               asm.load(:a, :h)
               asm.load([far + FAR_CELLS_FIRST + 1], :a)
+              asm.load(:a, [memory[CELLS]])
+              asm.or_a(FAR_CELLS_IN_USE)
+              asm.load([memory[CELLS]], :a)
               asm.ret
               emit_cells_far_written(asm)
             end
@@ -1987,9 +2010,9 @@ module VBlank
               asm.label("rt_cells_far_to_near")
               asm.call("rt_cells_far_span")
               asm.jump(:z, "rt_cells_far_emptied")
-              asm.load(:a, [memory[CELLS]])
+              asm.load(:a, [memory[CELLS]]) # rt_bar_show left FAR_CELLS_IN_USE clear
               asm.cp_a(CELLS_KEPT)
-              asm.ret(:nc)
+              asm.jump(:nc, "rt_cells_far_kept") # full: the far list stays as it is
               asm.push(:hl)
               asm.load(:l, :a)
               asm.load(:h, 0)
@@ -2133,7 +2156,8 @@ module VBlank
               asm.push(:bc)
               asm.load(:b, :a)
               asm.load(:hl, memory[CELLS] + 1)
-              asm.call("rt_cells_write_rest")
+              asm.and_a(:a) # none: rt_cells_write_rest would take B nought for 256
+              asm.call(:nz, "rt_cells_write_rest")
               asm.call("rt_cells_write_far_now")
               asm.pop(:bc)
               asm.pop(:hl)
@@ -2836,7 +2860,8 @@ module VBlank
               asm.label("rt_bar_show")
               asm.load(:hl, memory[CELLS])
               asm.load(:a, [:hl])
-              asm.and_a(:a)
+              asm.and_a(~FAR_CELLS_IN_USE & 0xFF) # left clear here, set again by rt_cells_far_to_near
+              asm.load([:hl], :a)
               asm.jump_relative(:z, "rt_bar_show_far")
               asm.load(:b, :a)
               asm.load(:c, 0) # how many stay

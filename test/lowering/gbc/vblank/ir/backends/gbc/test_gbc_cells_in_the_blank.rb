@@ -120,6 +120,26 @@ class TestGBCCellsInTheBlank < Minitest::Test
     end
   end
 
+  # A pass that fills both lists after one that left the far list to several blanks: the cell the
+  # first pass changed twice, once in each list, ends as its last change, and the second pass's
+  # writing of its lists while the display draws puts nothing older over it.
+  def test_both_lists_filled_after_a_pass_left_to_several_blanks_keeps_the_last_change
+    GBC::CheckedRun.new.run(both_lists_after_far_pass_game, frames: 40)
+    pass
+  end
+
+  # A PASS THAT NEVER REACHES THE FAR LIST pays nothing for it: the first list's count says whether
+  # the far list holds cells too, so the blank's one test of it finds either. The budget is what
+  # the play game, its twelve cells a pass queued plainly, was awake for each pass before the far
+  # list was added.
+  PLAY_PASS_UNITS = 92_233
+
+  def test_a_pass_of_a_few_cells_pays_nothing_for_the_far_list
+    units = awake_units_a_pass(cells_written_now_game(12, 12, 15, now: false))
+
+    assert_operator units, :<=, PLAY_PASS_UNITS, "a play pass was awake for #{units.round} units"
+  end
+
   NOTHING_PRESSED = VBlank::Playthroughs::Tape.parse(<<~TAPE)
     vblank tape 1
     recorded on: CELLS 0x00000000
@@ -231,6 +251,54 @@ class TestGBCCellsInTheBlank < Minitest::Test
           SCREEN_CELLS.times { |i| field.set_tile i % 20, i / 20, "." }
         elsif (passes & 7) == 0
           SCREEN_CELLS.times { |i| field.set_tile i % 20, i / 20, "#" }
+        end
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # On pass 3 the corner cell changes, then 589 others, then the corner again, which lands in the far
+  # list; on pass 4, 1240 changes that leave the corner alone, more than both lists hold.
+  private def both_lists_after_far_pass_game
+    b = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
+    b.instance_eval do
+      screen :tiled
+      image(:red_art, "#" => :red) { "########\n" * 8 }
+      image(:blue_art, "#" => :blue) { "########\n" * 8 }
+      image(:green_art, "#" => :green) { "########\n" * 8 }
+      tiles :set, "#" => :red_art, "." => :blue_art, "g" => :green_art
+      field = background :field, tiles: :set, map: Array.new(32) { "#" * 32 }
+      passes = var :passes, 0
+      col = var :col, 0
+      row = var :row, 0
+      game_loop do
+        passes += 1
+        if passes == 3
+          field.set_tile 0, 0, "."
+          row = 0
+          repeat(19) do
+            col = 1
+            repeat(31) do
+              field.set_tile col, row, "."
+              col += 1
+            end
+            row += 1
+          end
+          field.set_tile 0, 0, "g"
+        end
+        if passes == 4
+          2.times do |round|
+            row = 0
+            repeat(round.zero? ? 32 : 8) do
+              col = 1
+              repeat(31) do
+                field.set_tile col, row, round.zero? ? "#" : "g"
+                col += 1
+              end
+              row += 1
+            end
+          end
         end
       end
     end
