@@ -867,17 +867,27 @@ module VBlank
               asm.data_words(halfwords)
               asm.label(Runtime::Colors::TABLES)
               asm.data_words(tables.length)
-              tables.each { |table| asm.data_words((table.y << 16) | table.x, (1 << 16) | table.capacity, starts[table], table.capacity / 2) }
-              @color_sources.each_value { |source| write_color_source(asm, source, starts) }
+              records = {}.compare_by_identity
+              tables.each_with_index do |table, at|
+                # The entries in use, an even number of them for the copy's words: a list's own table has room
+                # for 256 and holds what its pictures show.
+                used = [(table.entries.length + 1) & ~1, 2].max
+                records[table] = asm.label(Runtime::Colors.table_record(at))
+                asm.data_words((table.y << 16) | table.x, (1 << 16) | used, starts[table], used / 2, 0)
+              end
+              @color_sources.each_value { |source| write_color_source(asm, source, starts, records) }
               [asm.section]
             end
 
             # A source's table (Runtime::Colors): the set it holds, how many besides the declared colours, how many
-            # entries, where each is in "colors base", then each set's colours.
-            def write_color_source(asm, source, starts)
+            # entries, how many colour tables its entries are in; then each of those (its record in "colors
+            # tables", or nought for the backdrop), where each entry is in "colors base", and each set's colours.
+            def write_color_source(asm, source, starts, records)
+              touched = source.entries.map { |where, _| where == :backdrop ? 0 : records.fetch(where.first) }.uniq
               asm.align
               asm.label(source.label)
-              asm.data_words(0, source.sets - 1, source.entries.length)
+              asm.data_words(0, source.sets - 1, source.entries.length, touched.length)
+              asm.data_words(touched)
               asm.data_words(source.entries.map { |where, _| where == :backdrop ? 0 : starts[where.first] + (where.last * 2) })
               source.sets.times do |set|
                 asm.data_halves(source.entries.map { |_, colors| TextureMemory.texel_for_color(colors.fetch(set)) })
