@@ -332,16 +332,6 @@ module VBlank
         end
       end
 
-      # A list of more colours than one list holds is a pose of several banks (PackPoses, `banks:`),
-      # a list for each bank, which no list of the game's can stand in for.
-      def refuse_draw_with_banked_pose!(subject)
-        raise ArgumentError,
-              "#{subject} was told to draw_with a list of colors, and it shows a pose of several banks of colors " \
-              "(banks:). Such a pose has a list for each bank, so one list cannot take their place. To fix this, " \
-              "make a pose for each bank with bank:, show each pose with a sprite of its own, and tell that sprite " \
-              "to draw_with a list."
-      end
-
       # The same, for a sprite or pool whose poses are drawn from several lists and which was told
       # to draw every one of them with the list +names+ holds (#list_for_every_pose_list!). Each
       # pose swaps place for place into it, so the list is checked against each pose's own list.
@@ -516,6 +506,16 @@ module VBlank
       def name_of_colors(colors) = @color_lists.keys.find { |name| declared_colors(name) == colors }
 
       private
+
+      # A list of more colours than one list holds is a pose of several banks (PackPoses, `banks:`),
+      # a list for each bank, which no list of the game's can stand in for.
+      def refuse_draw_with_banked_pose!(subject)
+        raise ArgumentError,
+              "#{subject} was told to draw_with a list of colors, and it shows a pose of several banks of colors " \
+              "(banks:). Such a pose has a list for each bank, so one list cannot take their place. To fix this, " \
+              "make a pose for each bank with bank:, show each pose with a sprite of its own, and tell that sprite " \
+              "to draw_with a list."
+      end
 
       # Tiles of one background given colours that two of its lists, named apart, both hold.
       def refuse_unnamed_colors_of_two_lists!(subject, names)
