@@ -373,7 +373,15 @@ module VBlank
             on = boot.on if boot
             turning = (boot ? boot.turning : turning_background?) if turning.nil?
             bar = (boot ? boot.bar : bar_on_screen?) if bar.nil?
-            (turning ? MODE_1 : MODE_0) | tiled_bg_enable_bits(*[on].compact) | (bar || @layout.screen.boxes_backgrounds? ? WIN1_ENABLE : 0)
+            (turning ? MODE_1 : MODE_0) | tiled_bg_enable_bits(*[on].compact) | bar_window_bit(bar)
+          end
+
+          # The window a status bar on this screen is shown through: the second, or in a border the
+          # first, since the second is the game's screen there (BorderSprites#emit_bar_registers).
+          def bar_window_bit(bar)
+            return (bar ? WIN0_ENABLE : 0) if @layout.border
+
+            bar || @layout.screen.boxes_backgrounds? ? WIN1_ENABLE : 0
           end
 
           # THE SCREEN THE CONSOLE IS SET UP FOR BEFORE ANY SCENE HAS RUN, or nothing at all
@@ -416,10 +424,15 @@ module VBlank
           # one of them carries it — the bitmap screens' too, where the picture is the console's
           # third layer and the window cuts the effect on it like any other.
           #
-          # A game shown in a border has the first window on every screen too: it is the game's
+          # A game shown in a border has the second window on every screen: it is the game's
           # screen, the only place the blend reaches (see BorderSprites). The checks refuse a fade
-          # held to a rectangle in such a game, so the two never both want it.
-          def display_window_bits = (@layout.fading.rectangle_fades? || @layout.border) ? WIN0_ENABLE : 0
+          # held to a rectangle in such a game, and a background held to a box, which would want
+          # the windows too.
+          def display_window_bits
+            return WIN1_ENABLE if @layout.border
+
+            @layout.fading.rectangle_fades? ? WIN0_ENABLE : 0
+          end
 
           # The layers a program that declares no scenes uses — every one its
           # backgrounds landed on, and the first layer for a program with none, so a tiled
@@ -466,6 +479,7 @@ module VBlank
             @primitives.store_word_immediate(base, @primitives.var_addr(DISPCNT_STATE))
             @primitives.store_word_immediate(PAGE1, @primitives.var_addr(BACKBUF))
             @emitter.write_reg16(REG_DISPCNT, base | held)
+            emit_game_window_without_bar
             @primitives.store_word_immediate(MODE_BUFFERED, @primitives.var_addr(MODE_STATE))
             @scene_entry.emit_clear_used_markers # a new display: nothing any scene put up is there
             @background_drawing.emit_forget_all_held_tiles # ...nor any cell change waiting for it
@@ -490,6 +504,7 @@ module VBlank
             emit_painted_screen_settings
             emit_sprites_over_picture_again
             @emitter.write_reg16(REG_DISPCNT, MODE_3 | BG2_ENABLE | display_window_bits | sprites_over_picture_bits | held)
+            emit_game_window_without_bar
             @primitives.store_word_immediate(MODE_DIRECT, @primitives.var_addr(MODE_STATE))
             @scene_entry.emit_clear_used_markers # a new display: nothing any scene put up is there
             @background_drawing.emit_forget_all_held_tiles # ...nor any cell change waiting for it
@@ -826,6 +841,15 @@ module VBlank
             value = tiled_dispcnt(wanted.on, turning: wanted.turning, bar: wanted.bar)
             value |= OBJ_ENABLE | OBJ_1D_MAP if @layout.has_objects
             @sprite_drawing.emit_screen_layers(value) # leaves the sprites off on a frame hide_sprites asked for
+            emit_game_window_without_bar unless wanted.bar
+          end
+
+          # A SCREEN WITH NO STATUS BAR, IN A BORDER, shows every layer in the game's screen again: a
+          # screen with a bar left its layer out there (BorderSprites#emit_bar_registers), and the
+          # layer may be another background's on this screen, or the painted picture's. A game with no
+          # bar, or none in a border, emits nothing.
+          def emit_game_window_without_bar
+            @layout.border.emit_game_window_without_bar if @layout.border && bar_on_screen?
           end
 
           # Send a scene's sprite pictures when it takes over. Scenes share the room above

@@ -35,9 +35,16 @@ module VBlank
         #   (refused at ScreenLayout#refuse_sprite_colors_over_border!).
         #
         # A whole-screen fade or tint would darken the border too, since the console blends every
-        # layer it is told to across the whole screen. So the display's first window is the game's
+        # layer it is told to across the whole screen. So the display's second window is the game's
         # screen: inside it every layer shows and the blend applies, and outside it only the sprites
         # (which there are the border's) show, and nothing is blended (#emit_window).
+        #
+        # A STATUS BAR is the display's first window, a rectangle inside the game's screen from the
+        # bar's top down (#emit_bar_registers). Where two windows overlap, the display takes the
+        # first one's layers (GBATEK, "LCD I/O Window Feature": window 0 has the highest priority),
+        # so inside the bar it draws the bar's layer and the sprites, and in the rest of the game's
+        # screen every layer but the bar's. That is the second window, not the first, for the game's
+        # screen for that reason: the first would hide the bar's.
         #
         # What the game sees is a 160×144 screen. `screen_width` and `screen_height` give that size, the
         # interpreter plays the game on one, and every frame of the cartridge's middle is that
@@ -173,15 +180,64 @@ module VBlank
 
           def corner(way) = way == :x ? @left : @top
 
+          # The game's screen's height in rows, where a status bar's top is kept.
+          def game_screen_height = @inner[1]
+
+          # A STATUS BAR'S PLACE, in a border (BackgroundDrawing#emit_bar_registers is the whole
+          # screen's): its map's top-left corner drawn at the bar's top row of the game's screen, and
+          # the first window from there to the foot of the game's screen, the bar's layer and the
+          # sprites inside it. +top+ is a row written in the program, or nil for the row in ACC, already
+          # kept to the game's screen. +layer+ is the bar's background layer, +x_scroll+ and
+          # +y_scroll+ its scroll registers, and +scratch+ a register free to use.
+          def emit_bar_registers(layer, top:, x_scroll:, y_scroll:, scratch:)
+            bottom = @top + @inner[1]
+            if top
+              top = top.clamp(0, @inner[1])
+              write_reg16(y_scroll, scroll_value(-top, :y))
+              write_reg16(REG_WIN0V, ((top + @top) << 8) | bottom)
+            else
+              emit(ASM.rsb_imm(scratch, ACC, 0)) # the map's top row is drawn at the bar's top row
+              emit(ASM.sub_imm(scratch, scratch, @top)) # ...which is the corner's rows further down
+              store_halfword_reg(scratch, y_scroll)
+              emit(ASM.add_imm(ACC, ACC, @top))
+              emit(ASM.lsl_imm(ACC, ACC, 8))
+              emit(ASM.orr_imm(ACC, ACC, bottom))
+              store_halfword_acc(REG_WIN0V)
+            end
+            write_reg16(x_scroll, scroll_value(0, :x))
+            write_reg16(REG_WIN0H, (@left << 8) | (@left + @inner[0]))
+            write_reg16(REG_WININ, bar_window_layers(layer, WIN_OBJ) | (game_window_layers(layer) << WIN1_SHIFT))
+          end
+
+          # A BAR THAT COVERS SPRITES, in a border: ACC holds the sprites' switch for the bar's window,
+          # WIN_OBJ or nought, and the game's screen's window is written beside it unchanged.
+          def emit_bar_covers(layer)
+            emit(ASM.orr_imm(ACC, ACC, bar_window_layers(layer, 0)))
+            emit(ASM.orr_imm(ACC, ACC, game_window_layers(layer) << WIN1_SHIFT))
+            store_halfword_acc(REG_WININ)
+          end
+
+          # Every layer and the blend in the game's screen again, for a screen with no status bar.
+          def emit_game_window_without_bar = write_reg16(REG_WININ, game_window_layers(nil) << WIN1_SHIFT)
+
           private
 
-          # Inside the window: every layer, and the blend. Outside: the sprites alone, unblended.
+          # Inside the game's screen's window: every layer, and the blend. Outside every window: the
+          # sprites alone, unblended.
           def emit_window
-            write_reg16(REG_WIN0H, (@left << 8) | (@left + @inner[0]))
-            write_reg16(REG_WIN0V, (@top << 8) | (@top + @inner[1]))
-            write_reg16(REG_WININ, WIN_ALL_LAYERS | WIN_EFFECT)
+            write_reg16(REG_WIN1H, (@left << 8) | (@left + @inner[0]))
+            write_reg16(REG_WIN1V, (@top << 8) | (@top + @inner[1]))
+            write_reg16(REG_WININ, game_window_layers(nil) << WIN1_SHIFT)
             write_reg16(REG_WINOUT, WIN_OBJ)
           end
+
+          # The layers the bar's window shows: its own, the sprites where +sprites+ is WIN_OBJ, and the
+          # blend.
+          def bar_window_layers(layer, sprites) = (1 << layer) | sprites | WIN_EFFECT
+
+          # The layers the game's screen's window shows: every one but the bar's +layer+ (none for
+          # nil), and the blend.
+          def game_window_layers(layer) = (WIN_ALL_LAYERS & ~(layer ? 1 << layer : 0)) | WIN_EFFECT
 
           # The painted screen upright and at its own size, with the picture's corner at the game's.
           def emit_painted_screen_corner

@@ -171,10 +171,13 @@ module VBlank
             @lowering.value(node.top)
             emit(ASM.cmp_imm(ACC, 0))
             emit(ASM.mov_imm_cond(:lt, ACC, 0))
-            emit(ASM.cmp_imm(ACC, SCREEN_HEIGHT))
-            emit(ASM.mov_imm_cond(:gt, ACC, SCREEN_HEIGHT))
+            emit(ASM.cmp_imm(ACC, bar_screen_height))
+            emit(ASM.mov_imm_cond(:gt, ACC, bar_screen_height))
             emit_bar_registers(bg, top: nil)
           end
+
+          # The rows a status bar's top is kept to: the screen's, or in a border the game's screen's.
+          def bar_screen_height = @layout.border ? @layout.border.game_screen_height : SCREEN_HEIGHT
 
           # A BAR THAT COVERS SPRITES (StatusBar#covers_sprites=): the sprites are left out of the
           # layers shown inside the bar's window, which the display reads pixel by pixel, so a
@@ -184,6 +187,8 @@ module VBlank
             emit(ASM.cmp_imm(ACC, 0))
             emit(ASM.mov_imm_cond(:ne, ACC, 0))
             emit(ASM.mov_imm_cond(:eq, ACC, WIN_OBJ))
+            return @layout.border.emit_bar_covers(bg.bg) if @layout.border
+
             emit(ASM.orr_imm(ACC, ACC, (1 << bg.bg) | WIN_EFFECT))
             emit(ASM.lsl_imm(ACC, ACC, WIN1_SHIFT))
             store_halfword_acc(REG_WININ)
@@ -201,7 +206,15 @@ module VBlank
           #
           # +top+ is a row written in the program, or nil for the row in ACC, already kept to the
           # screen.
+          #
+          # In a border the bar is in the game's screen, and the windows are laid out another way
+          # (BorderSprites#emit_bar_registers).
           def emit_bar_registers(bg, top:)
+            if @layout.border
+              return @layout.border.emit_bar_registers(bg.bg, top: top, x_scroll: BG_HOFS_REGS[bg.bg],
+                                                              y_scroll: BG_VOFS_REGS[bg.bg], scratch: BAR_ROW)
+            end
+
             top = top.clamp(0, SCREEN_HEIGHT) if top
             if top
               write_reg16(BG_VOFS_REGS[bg.bg], -top & 0x1FF)

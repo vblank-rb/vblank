@@ -325,24 +325,35 @@ module VBlank
           # tiled screens are the kinds below 3. A frame asked for while the layer is already
           # off keeps it off. On a frame nobody asked, this costs a load, two compares and two
           # branches.
+          #
+          # IN A BORDER the layer stays on, since the border is sprites too (BorderSprites). There
+          # only the note moves on, and the copy into the console's table, which comes later in this
+          # gap, copies none of the game's rows on a frame the note says is off
+          # (#emit_held_table_copy_routine): every row of the game's is hidden for that frame, and
+          # the frame after copies them all again.
           def emit_switch_sprite_layer
             return unless hides_sprites?
 
             done = gensym
             turn_on = gensym
+            layer_switched = @layout.border.nil?
             load_var(ACC, SPRITES_HIDDEN)
             emit(ASM.cmp_imm(ACC, SPRITES_ASKED))
             emit_branch(:bcond, turn_on, cond: :ne)
             store_word_immediate(SPRITES_OFF, var_addr(SPRITES_HIDDEN))
-            emit_number(TMP, REG_DISPCNT)
-            emit(ASM.load_halfword(ACC, TMP))
-            emit(ASM.bic_imm(ACC, ACC, OBJ_ENABLE))
-            emit(ASM.store_halfword(ACC, TMP))
+            if layer_switched
+              emit_number(TMP, REG_DISPCNT)
+              emit(ASM.load_halfword(ACC, TMP))
+              emit(ASM.bic_imm(ACC, ACC, OBJ_ENABLE))
+              emit(ASM.store_halfword(ACC, TMP))
+            end
             emit_branch(:b, done)
             place_label(turn_on)
             emit(ASM.cmp_imm(ACC, SPRITES_OFF))
             emit_branch(:bcond, done, cond: :ne)
             store_word_immediate(SPRITES_SHOWN, var_addr(SPRITES_HIDDEN))
+            return place_label(done) unless layer_switched
+
             emit_number(TMP, REG_DISPCNT)
             emit(ASM.load_halfword(ACC, TMP))
             emit(ASM.and_imm(2, ACC, 7))
@@ -358,9 +369,12 @@ module VBlank
           # layer among them — and that write lands after the gap that switched the sprite layer
           # off for a frame, so on its own it would put the sprites straight back. So in a game
           # that calls `hide_sprites`, the sprite layer is left out of the write on the frame it is
-          # off for. A game that never calls it writes the value as it is.
+          # off for. A game that never calls it writes the value as it is, and so does a game in a
+          # border, whose sprite layer stays on (#emit_switch_sprite_layer).
           def emit_screen_layers(value)
-            return write_reg16(REG_DISPCNT, value) unless hides_sprites? && value.anybits?(OBJ_ENABLE)
+            unless hides_sprites? && value.anybits?(OBJ_ENABLE) && @layout.border.nil?
+              return write_reg16(REG_DISPCNT, value)
+            end
 
             write = gensym
             emit_number(ACC, value)
@@ -647,6 +661,14 @@ module VBlank
             emit(ASM.load_immediate(5, 0))
             emit(ASM.load_immediate(6, 0))
             emit_number(8, OAM_START + OAM_SIZE)
+            # In a border, a frame `hide_sprites` asked for copies none of the game's rows, so the
+            # hiding below reaches every row the last frame showed (#emit_switch_sprite_layer).
+            copied = gensym
+            if border && hides_sprites?
+              load_var(7, SPRITES_HIDDEN)
+              emit(ASM.cmp_imm(7, SPRITES_OFF))
+              emit_branch(:bcond, copied, cond: :eq)
+            end
             place_label(look)
             emit(ASM.load_halfword(ACC, TMP))
             emit(ASM.and_imm(7, ACC, OBJ_ROTSCALE | OBJ_HIDDEN_ATTR0))
@@ -673,6 +695,7 @@ module VBlank
             emit(ASM.add_imm(5, 5, 1))
             emit(ASM.cmp_reg(TMP, SPARE))
             emit_branch(:bcond, look, cond: :ne)
+            place_label(copied)
             load_var(ACC, LEFT_OUT)
             emit(ASM.add_reg(ACC, ACC, 6))
             store_var(ACC, LEFT_OUT)

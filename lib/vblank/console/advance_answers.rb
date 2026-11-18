@@ -34,11 +34,11 @@ module VBlank
         border: works("with `variants: { gba: :color_screen }`, the build shows the game's 160×144 screen at " \
                       "its own size in the middle of the screen, and the border fills the 40 columns at each " \
                       "side and the 8 rows above and below. Without `border`, the build draws a border of its " \
-                      "own. A fade or a tint does not change the border. That build does not make a status " \
-                      "bar, a light, a fade held to a rectangle or under a layer, a background bent row by " \
-                      "row or one that turns, `pixelate`, `hide_sprites` or `read_scanline` yet, and refuses " \
-                      "each. It gives the game 32 fewer sprites, which draw the border. Without the variant, " \
-                      "`border` does nothing."),
+                      "own. A fade or a tint does not change the border, and `hide_sprites` does not hide it. " \
+                      "A status bar is in the game's screen. That build does not make a light, a fade held " \
+                      "to a rectangle or under a layer, a background bent row by row or one that turns, " \
+                      "`pixelate` or `read_scanline` yet, and refuses each. It gives the game 32 fewer " \
+                      "sprites, which draw the border. Without the variant, `border` does nothing."),
         wait_vblank: works, halt: works, debug_halt: works,
         game_loop: works, once_a_frame: works, frames_since_power_on: works, each_pass: works,
         every: works, after: works, repeat: works, timer: works,

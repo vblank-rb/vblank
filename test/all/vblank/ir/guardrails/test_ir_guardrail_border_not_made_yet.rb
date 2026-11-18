@@ -31,22 +31,33 @@ class TestIrGuardrailBorderNotMadeYet < Minitest::Test
     end
   end
 
-  def test_a_status_bar_is_refused_in_a_border
-    found = findings(with_bar)
+  private def pixelated
+    game do
+      screen :tiled
+      image :dot, "#" => :white do "########\n" * 8 end
+      sprite :dot, at: [8, 8]
+      game_loop { pixelate 4 }
+    end
+  end
+
+  def test_pixelate_is_refused_in_a_border
+    found = findings(pixelated)
 
     assert_equal [:border_not_made_yet], found.map(&:check).uniq
-    assert_match(/status bar/, found.first.message)
+    assert_match(/pixelate/, found.first.message)
     assert_match(/in a border/, found.first.message)
     assert_equal :error, found.first.severity
   end
 
-  def test_hide_sprites_is_refused_in_a_border
-    assert_match(/hide_sprites/, findings(hiding_sprites).first.message)
+  def test_the_color_build_of_the_same_game_is_not_refused
+    assert_empty findings(pixelated, console: :gbc)
   end
 
-  def test_the_color_build_of_the_same_game_is_not_refused
-    assert_empty findings(with_bar, console: :gbc)
-    assert_empty findings(hiding_sprites, console: :gbc)
+  # A status bar and `hide_sprites` are what a game laid out for the Color uses, and the border
+  # build makes both (test/color_screen_tests.rb plays them).
+  def test_a_status_bar_and_hide_sprites_are_not_refused
+    assert_empty findings(with_bar)
+    assert_empty findings(hiding_sprites)
   end
 
   def test_a_game_that_uses_none_of_them_is_not_refused
