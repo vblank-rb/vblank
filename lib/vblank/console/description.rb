@@ -462,7 +462,7 @@ module VBlank
     # verb does on it is Console::SNESAnswers's to say.
     SUPER_NINTENDO = Description.new(name: :snes, title: "Super Nintendo", screen_width: 256, screen_height: 224,
                                      buttons: %i[a b select start right left up down r l x y].freeze, controllers: 2,
-                                     holds_background_above_row: true, background_box: nil, glides_recordings: true, sets_main_volume: true, sprites: 128,
+                                     holds_background_above_row: true, background_box: :own_window, glides_recordings: true, sets_main_volume: true, sprites: 128,
                                      # rt_paint_area keeps the area in memory, and a routine on a
                                      # Super FX chip is handed it (SNES::Lowering::Paint#emit_inside,
                                      # SNES::ChipCode#area_places).

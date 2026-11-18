@@ -21,7 +21,7 @@ module VBlank
             STATEMENT_KINDS = %i[
               screen background scroll_background set_tile set_tile_block show_map present_objects hide_sprites fade tint
               place_bar scroll_rows copy_tiles copy_owed_tiles background_colors color_list_holds see_through
-              pixelate
+              pixelate box_background
             ].freeze
 
             def emit_picture_statement(node)
@@ -44,6 +44,7 @@ module VBlank
               when :color_list_holds then emit_color_list_holds(node)
               when :see_through then emit_see_through_amount(node)
               when :pixelate then emit_pixelate(node)
+              when :box_background then emit_box_background(node)
               else raise LoweringError, "no writer here for #{node.kind.inspect}"
               end
             end
@@ -313,6 +314,11 @@ module VBlank
                 refuse_unmade!("a hardware sprite on a painted (bitmap) screen") unless @objects.empty?
               end
               refuse_unmade_doubled_screen! if doubled?
+              # The windows hide a layer on the main screen alone (TMW); a see-through layer is mixed
+              # from the sub screen, which this build does not hold to the box.
+              if Picture.boxes?(@program) && !SeeThrough.layers(@program).empty?
+                refuse_unmade!("a background held to a box (`show_only_inside`) beside a see-through layer")
+              end
               @program.walk.select { |node| node.kind == :background }.each do |bg|
                 unless bg.tile_w == bg.tile_h && [8, BIG_TILE].include?(bg.tile_w)
                   refuse_unmade!("background tiles of #{bg.tile_w}×#{bg.tile_h}")
@@ -1530,6 +1536,8 @@ module VBlank
             def refuse_unmade_third_layer!(held)
               words = third_layer_refusal_words(held)
               refuse_unmade!("#{words} drawn from 16×16 tiles") unless held.tile_w == 8
+              # The two windows are the two ordinary layers' (Runtime::BackgroundBox).
+              refuse_unmade!("#{words} held to a box (`show_only_inside`)") if held.boxed
               refuse_unmade!("#{words} bent row by row") if bends.any? { |bend| bend.name == held.name }
               refuse_unmade!("#{words} showing tiles painted from a list") if @tile_runs.any? { |run| held.tiles.intersect?(Array(run.tiles)) }
               return unless held.above_row
@@ -1627,6 +1635,7 @@ module VBlank
               emit_scene_colors(scene, arrival)
               arrival.map_choices.each { |var| store_number(place_of(var), 0) }
               arrival.scenery.each { |bg| emit_put_up(bg) }
+              emit_boxes_forgotten(arrival)
               ((0...@scene_layers).to_a - arrival.scenery.map { |bg| layer_of(bg) }).each do |layer|
                 runtime_call("rt_background_put_up", [Build.int(layer), Build.int(empty_grid.number), Build.int(1)])
               end
@@ -1908,6 +1917,45 @@ module VBlank
 
                 runtime_call("rt_bar_covers", [node.covers]) if node.covers
                 emit_unless_put_up(node, bar_note) { runtime_call("rt_bar_place", [Build.int(layer_of(bg)), node.top]) }
+              end
+            end
+
+            # Reference#exec_box_background: the background held to the part of its box on the screen
+            # (Reference#screen_box), or shown everywhere, from the next blank on
+            # (Runtime::BackgroundBox's rt_background_box). A box with nothing in it, of no width or
+            # height or wholly off the screen, is held as one of no lines.
+            def emit_box_background(node)
+              for_background(node) do |bg|
+                layer = Build.int(layer_of(bg))
+                width = Build.int(Runtime::Picture::SCREEN_WIDTH)
+                height = Build.int(Runtime::Picture::SCREEN_HEIGHT)
+                left = Build.clamped(node.x, 0, width)
+                right = Build.clamped(Build.binop(:+, node.x, node.width), 0, width)
+                top = Build.clamped(node.y, 0, height)
+                bottom = Build.clamped(Build.binop(:+, node.y, node.height), 0, height)
+                shown = Build.binop(:and, Build.binop(:and, Build.binop(:>, node.width, 0), Build.binop(:>, node.height, 0)),
+                                    Build.binop(:and, Build.binop(:<, left, right), Build.binop(:<, top, bottom)))
+                empty = fresh("box_empty")
+                done = fresh("box_done")
+                jump_unless(shown, empty)
+                runtime_call("rt_background_box", [layer, node.held, left, top, right, bottom])
+                @asm.brl(done)
+                @asm.label(empty)
+                runtime_call("rt_background_box", [layer, node.held, *Array.new(4) { Build.int(0) }])
+                @asm.label(done)
+              end
+            end
+
+            # Whether +program+ holds a background to a box (Runtime::BackgroundBox).
+            def self.boxes?(program) = program.walk.any? { |node| node.kind == :box_background }
+
+            # A scene taking over shows each background it puts up everywhere, whatever box its layer
+            # held before (Reference#put_up_background), until the game holds one to a box again.
+            def emit_boxes_forgotten(arrival)
+              return unless Picture.boxes?(@program)
+
+              arrival.scenery.map { |bg| layer_of(bg) }.uniq.select { |layer| LAYERS.include?(layer) }.each do |layer|
+                runtime_call("rt_background_box", [Build.int(layer), *Array.new(5) { Build.int(0) }])
               end
             end
 

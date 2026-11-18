@@ -43,6 +43,7 @@ module VBlank
           # line the game's picture shows (`screen :bitmap, shown_rows:`), the screen switched off on
           # the rest (Letterbox), or nil where it gives up none. +doubled+ is a painted screen of big
           # pixels (`screen :bitmap, pixel_size: 2`), shown on Mode 7 (PaintDoubled) in place of Paint.
+          # +boxes+ holds a background to a box the game moves (BackgroundBox).
           # +collides+ asks whether two sprites' drawn pixels touch (Collide), whose scratch takes 52
           # bytes of the direct page the game's busiest variables would otherwise have.
           Carries = Data.define(:collides,:board, :painted, :saves, :sound, :songs, :follows_level, :effects, :samples, :recording_voices,
@@ -51,7 +52,7 @@ module VBlank
                                 :scene_backdrops, :backdrop_follows, :dims, :math_turns, :bar_covers, :tile_sizes, :scene_tiles,
                                 :scene_background_tiles, :extra_buttons, :second_controller, :glides, :text_layer,
                                 :paint_turns, :third_layer, :chip_envelopes, :mosaic, :recorded_pans, :shown_band,
-                                :doubled) do
+                                :doubled, :boxes) do
             # What +program+ needs on +board+. The rest are what the build chose: +screen_colors+ and
             # +sprite_colors+ bring colours in by scene, +sprite_tiles+ and +background_tiles+ tiles.
             # +handover+ is what each of its scenes hands the next (SceneHandover) and +stacking+ how
@@ -88,7 +89,7 @@ module VBlank
                   third_layer: picture.third_layer?(program),
                   chip_envelopes: Lowering::Sound.chip_envelopes?(program), mosaic: picture.pixelates?(program),
                   recorded_pans: IR::Tunes.recorded_pans?(program), shown_band: Letterbox.band_of(program),
-                  doubled: Lowering::Paint.doubled?(program))
+                  doubled: Lowering::Paint.doubled?(program), boxes: picture.boxes?(program))
             end
 
             # A Super FX on the board (Chip).

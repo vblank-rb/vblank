@@ -7,6 +7,7 @@
 # games as that console:
 #
 #   test/console/gba/vblank/dsl/test_background_box.rb
+#   test/console/snes/vblank/dsl/test_background_box_on_the_super_nintendo.rb
 #
 # The games stack a red background in front of a green one that fills the screen, so a pixel says
 # which of the two the display drew there: red inside the box, green, the layer behind, outside it.

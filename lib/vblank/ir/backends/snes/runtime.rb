@@ -7,6 +7,7 @@ require_relative "runtime/frame"
 require_relative "runtime/blank"
 require_relative "runtime/lists"
 require_relative "runtime/picture"
+require_relative "runtime/background_box"
 require_relative "runtime/paint"
 require_relative "runtime/paint_doubled"
 require_relative "runtime/paint_doubled_send"
@@ -63,7 +64,8 @@ module VBlank
                                     bends: c.bends, scene_bends: c.scene_bends,
                                     tile_runs: c.tile_runs, held_runs: c.held_runs, math_turns: c.math_turns,
                                     bar_covers: c.bar_covers, tile_sizes: c.tile_sizes, scene_tiles: c.scene_tiles,
-                                    scene_background_tiles: c.scene_background_tiles, third_layer: c.third_layer)
+                                    scene_background_tiles: c.scene_background_tiles, third_layer: c.third_layer, boxes: c.boxes)
+            BackgroundBox.reserve(memory) if c.boxes
             Tint.reserve(memory, changing_colors: c.changing_colors, dims: c.dims)
             Chip.reserve(memory, extra_buttons: c.extra_buttons, second_controller: c.second_controller) if c.chip?
             Letterbox.reserve(memory, band: c.shown_band) if c.screen_off_round_picture?
@@ -111,6 +113,7 @@ module VBlank
                                       sprite_squares: lowered[:sprite_squares], changing_colors: c.changing_colors,
                                       math_turns: c.math_turns, scene_bars: lowered[:scene_bars], third_layer: c.third_layer,
                                       held_hides_sprites: c.held_hides_sprites)
+            BackgroundBox.emit(asm, memory, s.picture) if c.boxes
             if c.doubled
               PaintDoubled.emit(asm, memory, s.paint, band: c.shown_band, columns: lowering.paints_columns?)
             elsif c.painted

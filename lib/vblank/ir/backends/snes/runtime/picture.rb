@@ -154,9 +154,10 @@ module VBlank
             # The most lines one step of the table counts.
             MOST_STEP_LINES = 127
             SCREEN_HEIGHT = 224
+            SCREEN_WIDTH = 256
             # The channels the copying engine writes registers on a line at a time, a bit each, as
-            # HDMAEN takes them: the bar's and the bends' share the register, so it is written from
-            # here whole.
+            # HDMAEN takes them: the bar's, the bends' and the boxes' (BackgroundBox) share the
+            # register, so it is written from here whole.
             HDMA_CHANNELS = "rt hdma channels"
             # A bent layer's rows (a word each, the screen's height of them), its two line tables, and
             # for each layer which of its two the channel reads (0 or 1).
@@ -267,7 +268,8 @@ module VBlank
             def layer_maps(third_layer) = third_layer ? [*LAYER_MAPS, THIRD_LAYER_MAP] : LAYER_MAPS
 
             def reserve(memory, bar: false, row_held: false, alone_flag_in_line_table: false, bends: false, scene_bends: false, tile_runs: [], math_turns: false, bar_covers: false,
-                        tile_sizes: false, scene_tiles: false, scene_background_tiles: false, held_runs: {}, third_layer: false)
+                        tile_sizes: false, scene_tiles: false, scene_background_tiles: false, held_runs: {}, third_layer: false,
+                        boxes: false)
               memory.reserve(ROW_HELD, 2) if row_held
               memory.reserve(ROW_HELD_ALONE, 2) if alone_flag_in_line_table
               memory.reserve(SCENE_TILES, SCENE_TILES_BYTES) if scene_tiles
@@ -280,7 +282,7 @@ module VBlank
               tile_runs.each_with_index { |bytes, number| memory.reserve_far(tile_run_staging(number), bytes) }
               held_runs.each_key { |number| memory.reserve(tile_run_held(number), 2) }
               memory.reserve(BAR, BAR_BYTES) if bar
-              memory.reserve(HDMA_CHANNELS, 2) if bar || bends
+              memory.reserve(HDMA_CHANNELS, 2) if bar || bends || boxes
               if bends
                 memory.reserve(BEND_SHOWN, LAYER_MAPS.length * 2)
                 LAYER_MAPS.each_index do |layer|
@@ -1719,7 +1721,9 @@ module VBlank
               emit_bar_table(asm, memory, work, scene_bars: scene_bars, third_layer: third_layer,
                                                 held_hides_sprites: held_hides_sprites) if bar
               emit_bends_shown(asm, memory, bent)
-              emit_hdma_on(asm, memory) if bar || !bent.empty?
+              boxes = BackgroundBox.kept?(memory)
+              asm.jsr(asm.abs("rt_background_box_upload")) if boxes
+              emit_hdma_on(asm, memory) if bar || !bent.empty? || boxes
               asm.rts
             end
           end
