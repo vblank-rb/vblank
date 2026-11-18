@@ -15,11 +15,14 @@ class TestSNESCrowdedWorkRAM < Minitest::Test
   Part = Score::Part
   Note = Score::Note
   KEYS = %i[C5 D5 E5 F5 G5 A5 B5].freeze
+  HOT = 100
 
   # +effects+ sound effects, one asked for on each pass in turn, and +variables+ numbers, a few
   # of them busy every pass and +approaches+ of them stepping towards another; a bar as long as a
-  # sum of them shows what the game worked out.
-  def self.crowded(effects:, variables:, approaches: 0, variants: {})
+  # sum of them shows what the game worked out. With +all_stepped+ every one of the numbers is stepped
+  # once a pass, and in a loop of 16 turns HOT numbers are each read twice, more than the direct
+  # page holds, and a number `looped` once.
+  def self.crowded(effects:, variables:, approaches: 0, variants: {}, all_stepped: false)
     scores = Array.new(effects) do |i|
       Score.new(tempo: 150, priority: 10, parts: [Part.new(notes: [Note.new(at: 0, key: KEYS[i % KEYS.size], length: 2 + (i % 3))])])
     end
@@ -31,7 +34,16 @@ class TestSNESCrowdedWorkRAM < Minitest::Test
       pass = var :pass, 0
       which = var :which, 0
       total = var :total, 0
+      looped = var :looped, 1
+      hot = all_stepped ? Array.new(HOT) { |i| var :"hot#{i}", i } : []
       game_loop do
+        if all_stepped
+          many.each { |number| number.store!(number + 1) }
+          repeat(16) do
+            hot.each { |number| total += number + number }
+            total += looped
+          end
+        end
         pass += 1
         4.times { busy += 1 }
         which = pass % effects
@@ -70,6 +82,20 @@ class TestSNESCrowdedWorkRAM < Minitest::Test
     assert_operator places.runtime.fetch(SNES::Runtime::Sound::LOG), :>, 0xFFFF
     assert_operator places.variables.fetch(:busy), :<, 0x10000
     assert_operator places.variables.fetch(:number900), :>, 0xFFFF
+  end
+
+  # The variables that stay near are ranked by the loops around them (Backends::VariableUse), as the
+  # direct page's are: a number read once in a loop stays near before numbers stepped once a pass,
+  # though a count of the places each is named puts it below them. The loop's busier numbers take
+  # the direct page, so `looped` is ranked for the rest of the first 8K.
+  def test_a_number_read_in_a_loop_stays_near_before_numbers_stepped_once_a_pass
+    places = built(self.class.crowded(effects: 40, variables: 1300, all_stepped: true))
+
+    looped = places.variables.fetch(:looped)
+
+    refute SNES::Memory.direct?(looped), "the loop's busier numbers take the direct page"
+    assert_operator looped, :<, 0x10000
+    assert(places.variables.values.any? { |at| at > 0xFFFF }, "some numbers go further on")
   end
 
   # A game with room keeps everything where it always was.

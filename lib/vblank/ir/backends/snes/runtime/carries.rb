@@ -43,7 +43,9 @@ module VBlank
           # line the game's picture shows (`screen :bitmap, shown_rows:`), the screen switched off on
           # the rest (Letterbox), or nil where it gives up none. +doubled+ is a painted screen of big
           # pixels (`screen :bitmap, pixel_size: 2`), shown on Mode 7 (PaintDoubled) in place of Paint.
-          Carries = Data.define(:board, :painted, :saves, :sound, :songs, :follows_level, :effects, :samples, :recording_voices,
+          # +collides+ asks whether two sprites' drawn pixels touch (Collide), whose scratch takes 52
+          # bytes of the direct page the game's busiest variables would otherwise have.
+          Carries = Data.define(:collides,:board, :painted, :saves, :sound, :songs, :follows_level, :effects, :samples, :recording_voices,
                                 :holds_music, :wobbles, :steps_shapes, :swells, :slides, :sides, :status_bar, :row_held,
                                 :alone_flag_in_line_table, :held_hides_sprites, :bends, :scene_bends, :tile_runs, :straight_tile_runs, :held_runs, :changing_colors,
                                 :scene_backdrops, :backdrop_follows, :dims, :math_turns, :bar_covers, :tile_sizes, :scene_tiles,
@@ -60,7 +62,7 @@ module VBlank
               songs = Lowering::Sound.songs?(program)
               backdrops = picture.scene_backdrops?(program, handover)
               walks_areas = picture.walks_areas?(program) # an area's tiles and colours come in as the scene's do
-              new(board: board, painted: Lowering::Paint.painted?(program),
+              new(board: board, painted: Lowering::Paint.painted?(program), collides: Lowering::Collision.pixels_overlap_named?(program),
                   saves: (SaveLayout.memory_of(program).size if SaveLayout.named_by?(program)),
                   sound: Lowering::Sound.sounds?(program), songs: songs, follows_level: songs && SNES::Music.follows_level?(program),
                   effects: IR::Tunes.effects(program).uniq.size, samples: Lowering::Sound.samples?(program),

@@ -118,7 +118,7 @@ module VBlank
             end
             Tint.emit(asm, memory, s.tint, colors_shown: lowered[:colors_shown], changing_colors: c.changing_colors, dims: c.dims,
                                scene_backdrops: c.scene_backdrops, backdrop_follows: c.backdrop_follows)
-            Collide.emit(asm, memory, s.collide)
+            Collide.emit(asm, memory, s.collide) if c.collides
             Mosaic.emit(asm, memory, backgrounds: lowering.mosaic_backgrounds) if c.mosaic
             Chip.emit(asm, memory, pad: pad, extra_buttons: c.extra_buttons, second_controller: c.second_controller) if c.chip?
             if c.letterboxes?
@@ -167,7 +167,7 @@ module VBlank
                         blank: Blank.scratch(memory), lists: Lists.scratch(memory), picture: memory.scratch(8),
                         tile_runs: (Picture.run_scratch(memory) if c.tile_runs.length.positive?),
                         paint: (Paint.scratch(memory) if c.doubled || c.painted),
-                        tint: Tint.scratch(memory), collide: Collide.scratch(memory),
+                        tint: Tint.scratch(memory), collide: (Collide.scratch(memory) if c.collides),
                         saving: (Saving.scratch(memory) if c.saves))
           end
 

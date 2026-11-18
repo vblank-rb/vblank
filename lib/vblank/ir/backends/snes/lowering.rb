@@ -697,19 +697,19 @@ module VBlank
           # which the tune's player reads (Runtime::Music#emit_level).
           NEAR_ONLY = [IR::Tunes::LEVEL].freeze
 
-          # The variables that go past the first 8K, the ones named least. Before any variable goes far the runtime's tables do (Memory#reserve_table): the runtime
-          # reads those a few times a frame, and the game's code reads its variables all the time. So
-          # a game that does not fit with the tables near is built again with them far (SNES#build).
+          # The variables that go past the first 8K, the ones named least, weighted by the loops around
+          # each as the direct page's are (Backends::VariableUse): a number named once in a loop of
+          # many turns stays near before one named twice a pass. Before any variable goes far the
+          # runtime's tables do (Memory#reserve_table): the runtime reads those a few times a frame,
+          # and the game's code reads its variables all the time. So a game that does not fit with
+          # the tables near is built again with them far (SNES#build).
           def variables_kept_far(names)
             over = ((names.length * 4) - (@memory.near_bytes_left - NEAR_BYTES_KEPT)).ceildiv(4)
             return [] unless over.positive?
             raise @memory.near_full("the variable #{names.last.inspect}", 4) unless @memory.far_tables?
 
-            uses = @program.walk.each_with_object(Hash.new(0)) do |node, count|
-              named = node.kind == :var_ref ? node.name : (node.var if %i[set add sub].include?(node.kind))
-              count[named] += 1 if named
-            end
-            (names - NEAR_ONLY).min_by(over) { |name| uses[name] }
+            use = @plan.variable_use
+            (names - NEAR_ONLY).min_by(over) { |name| use.weight(name) }
           end
 
           # A routine of the game's, or the runtime's, called wherever it is.

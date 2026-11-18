@@ -11,6 +11,10 @@ module VBlank
           module Collision
             VALUE_KINDS = %i[pixels_overlap].freeze
 
+            # Whether +program+ asks anywhere whether two sprites' drawn pixels touch, so its runtime
+            # carries Runtime::Collide and its scratch on the direct page (Runtime::Carries#collides).
+            def self.pixels_overlap_named?(program) = program.walk.any? { |node| VALUE_KINDS.include?(node.kind) }
+
             def value_of_collision_kind(node)
               case node.kind
               when :pixels_overlap then value_of_pixels_overlap(node)
