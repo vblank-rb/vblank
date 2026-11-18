@@ -736,33 +736,7 @@ module VBlank
               asm.call("rt_buttons_now")
               asm.load([memory[HELD]], :a)
               asm.ret
-
-              # rt_held(button) and rt_pressed(button): 1 when it is down (or went down), -1 asking
-              # about any of them.
-              [["rt_held", HELD], ["rt_pressed", PRESSED]].each do |name, which|
-                asm.label(name)
-                asm.load_hl_sp(2)
-                asm.load(:a, [memory[which]])
-                asm.load(:d, :a)
-                asm.load(:a, [:hl])
-                asm.bit(7, :a)
-                asm.jump_relative(:nz, "#{name}_any")
-                asm.load(:e, :a)
-                asm.load(:a, :d)
-                asm.inc(:e)
-                asm.label("#{name}_shift")
-                asm.dec(:e)
-                asm.jump_relative(:z, "#{name}_bit")
-                asm.srl(:a)
-                asm.jump_relative("#{name}_shift")
-                asm.label("#{name}_bit")
-                asm.and_a(1)
-                asm.jump("rt_bool_of_nz")
-                asm.label("#{name}_any")
-                asm.load(:a, :d)
-                asm.and_a(:a)
-                asm.jump("rt_bool_of_nz")
-              end
+              # The game tests a bit of HELD or PRESSED where it asks (Lowering#emit_button_bits).
             end
 
             # What SHOWN holds once a stopped game's last picture is on the screen.

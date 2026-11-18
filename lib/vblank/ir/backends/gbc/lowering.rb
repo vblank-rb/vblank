@@ -2309,6 +2309,10 @@ module VBlank
             return if known&.zero?
             return @asm.jump(label) if known
 
+            if (test = button_test(condition))
+              emit_button_bits(test.read)
+              return @asm.jump(test.holds, label)
+            end
             if (equal = equality_of_kept(condition))
               compare_kept_with_number(*equal)
               return @asm.jump(condition.op == :== ? :z : :nz, label)
@@ -2329,6 +2333,9 @@ module VBlank
 
             if turned_round?(condition)
               jump_if(condition.lhs, label)
+            elsif (test = button_test(condition))
+              emit_button_bits(test.read)
+              @asm.jump(opposite_flag(test.holds), label)
             elsif (equal = equality_with_number(condition))
               compare_with_number(*equal)
               @asm.jump(condition.op == :== ? :nz : :z, label)
@@ -2805,8 +2812,43 @@ module VBlank
             value(Entry.new(drawing_table("data #{node.name}", 1, bytes), 1, false, Build.int(node.index)))
           end
 
-          def value_of_held(node) = runtime_call("rt_held", [Build.int(button_number(node.button))])
-          def value_of_pressed(node) = runtime_call("rt_pressed", [Build.int(button_number(node.button))])
+          # A BUTTON READ IS A BIT OF A BYTE, read where the game asks, as the console's own games
+          # test their joypad byte (Pan Docs, "Joypad Input"): the buttons are read once a frame into
+          # bytes of a bit each (Runtime::Frame, rt_pad_read, rt_read_buttons), the held ones and
+          # those pressed during the pass. The one controller is read whatever player is named, as
+          # the Color's answers allow only one.
+          def value_of_held(node) = value_of_button_read(node)
+          def value_of_pressed(node) = value_of_button_read(node)
+
+          def value_of_button_read(node)
+            emit_button_bits(node)
+            @asm.call("rt_bool_of_nz")
+          end
+
+          # Zero clear when +node+'s button (or any, for Buttons::ANY) is down or went down.
+          def emit_button_bits(node)
+            @asm.load(:a, [@memory[node.kind == :held ? Runtime::Frame::HELD : Runtime::Frame::PRESSED]])
+            number = button_number(node.button)
+            number.negative? ? @asm.and_a(:a) : @asm.and_a(1 << number)
+          end
+
+          # A button read tested as a condition: the read, and the flag that holds when the test does.
+          ButtonTest = Data.define(:read, :holds)
+
+          # The ButtonTest of +condition+ when it is a button read itself, or one compared with 0 or 1,
+          # the only numbers a read gives; else nil.
+          def button_test(condition)
+            return ButtonTest.new(read: condition, holds: :nz) if button_read?(condition)
+            return nil unless binop?(condition, :==) || binop?(condition, :!=)
+            return nil unless button_read?(condition.lhs) && [0, 1].include?(folded(condition.rhs))
+
+            down = (folded(condition.rhs) == 1) == (condition.op == :==)
+            ButtonTest.new(read: condition.lhs, holds: down ? :nz : :z)
+          end
+
+          def button_read?(node) = node.is_a?(Node) && %i[held pressed].include?(node.kind)
+
+          def opposite_flag(flag) = flag == :z ? :nz : :z
 
           # How many bits of a number hold its fraction: the runtime's sums are written for 0 to 32,
           # every scale the framework uses.

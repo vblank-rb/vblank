@@ -30,7 +30,7 @@ module VBlank
         # (Sound).
         #
         # The game's code (GBC::Lowering) calls its routines by their labels (rt_wait_vblank,
-        # rt_list_push, rt_held...), with the numbers on the stack (Runtime::Calls).
+        # rt_list_push, rt_far_word...), with the numbers on the stack (Runtime::Calls).
         module Runtime
           module_function
 
