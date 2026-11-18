@@ -1337,7 +1337,8 @@ module VBlank
 
           # The palettes each Room brings in, as rt_background_colors reads a list of them: a word
           # for each room, by its number, saying where its list is; then each list — how many
-          # palettes, then each one's number and its four colours — its parents' first. Where every
+          # palettes, a bit for each one's number, then each one's number and its four colours — its
+          # parents' first. Where every
           # screen's first palette is black alone, each list puts its own first, or black alone again
           # over the one another room put there.
           def emit_room_colors(asm)
@@ -1347,7 +1348,7 @@ module VBlank
               asm.label("art_room_colors_#{room.number}")
               listed = room.chain_palettes
               listed.unshift([0, room.first_palette_in_chain || backdrop_alone]) if @first_free
-              asm.data_bytes(listed.length)
+              asm.data_bytes(listed.length, listed.map { |number, _| 1 << number }.reduce(0, :|))
               listed.each do |number, palette|
                 asm.data_bytes(number)
                 asm.data_words(palette.colors)

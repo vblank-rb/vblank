@@ -1877,11 +1877,11 @@ module VBlank
             # rt_background_colors_far puts that bank in view to read it.
             def emit_background_colors_for_declaration(bg, which)
               refuse_walking_recolor!(bg)
-              steps = Array(bg.recolors)
               banked = @bank_background_colors
-              own = drawing_table("background_colors", 1, background_colors_table(bg, nil), banked: banked)
-              tables = steps.each_index.map do |step|
-                drawing_table("background_colors", 1, background_colors_table(bg, step), banked: banked)
+              palettes = [nil, *Array(bg.recolors).each_index].map { |step| background_colors_table(bg, step) }
+              changed = recolored_palettes(bg, palettes)
+              own, *tables = palettes.map do |table|
+                drawing_table("background_colors", 1, background_colors_bytes(table.slice(*changed)), banked: banked)
               end
               chosen = fresh("background_colors_chosen")
               own_chosen = fresh("background_colors_own") if banked
@@ -1917,8 +1917,8 @@ module VBlank
             end
 
             # The palettes a background's tiles are drawn in with its lists of colours number +step+
-            # (nil for its own), as rt_background_colors reads them: how many, then each palette's
-            # number and its four colours. Each tile's list swaps its colours by place
+            # (nil for its own): each palette's number to its four colours, which
+            # #background_colors_bytes writes as rt_background_colors reads them. Each tile's list swaps its colours by place
             # (Assets::Recolor), and two tiles are drawn from one palette only when they show the same
             # colours with every list (#recolor_steps_of). Where each screen brings its own tiles in,
             # the tiles counted are the ones the background shows, as its screen's tiles and colours
@@ -1948,7 +1948,30 @@ module VBlank
 
                 palettes[palette] = colors
               end
-              [palettes.size, *palettes.flat_map { |palette, colors| [palette, *colors.flat_map { |c| [c & 0xFF, c >> 8] }] }]
+              palettes
+            end
+
+            # The table rt_background_colors reads for +palettes+ (number to its four colours): how
+            # many, a bit for each number, then each number and its colours.
+            def background_colors_bytes(palettes)
+              bits = palettes.keys.sum { |palette| 1 << palette }
+              [palettes.size, bits, *palettes.flat_map { |palette, colors| [palette, *colors.flat_map { |c| [c & 0xFF, c >> 8] }] }]
+            end
+
+            # The palettes of +bg+ that its lists of colours change: those whose colours differ
+            # between its own and one of its steps. One that shows the same colours at every step
+            # holds what it held at power-on, so writing it again would only have the pass's end walk
+            # it and the blank send it for nothing. Kept whole, in case another writes those
+            # palettes, where a screen brings its own colours in or another background drawn with
+            # other colours names one of them.
+            def recolored_palettes(bg, tables)
+              every = tables.flat_map(&:keys).uniq
+              return every if @art.room_colors?
+
+              others = recolored_scenery.reject { |other| other.equal?(bg) }.flat_map do |other|
+                [nil, *Array(other.recolors).each_index].flat_map { |step| background_colors_table(other, step).keys }
+              end
+              every.select { |palette| others.include?(palette) || tables.map { |table| table[palette] }.uniq.length > 1 }
             end
 
             # The four colours tile +name+'s palette holds when drawn with +swaps+ (the list each of

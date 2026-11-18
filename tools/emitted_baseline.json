@@ -18,7 +18,7 @@
       "data": 0
     },
     "breakout@gbc": {
-      "code": 12272,
+      "code": 12392,
       "data": 45392
     },
     "buffered_bounce": {
@@ -34,7 +34,7 @@
       "data": 0
     },
     "chip_band@gbc": {
-      "code": 13787,
+      "code": 13865,
       "data": 13736
     },
     "clock": {
@@ -58,7 +58,7 @@
       "data": 0
     },
     "everywhere@gbc": {
-      "code": 8501,
+      "code": 8579,
       "data": 3392
     },
     "everywhere@genesis": {
@@ -74,7 +74,7 @@
       "data": 0
     },
     "flowers@gbc": {
-      "code": 6984,
+      "code": 7077,
       "data": 4736
     },
     "font_styles": {
@@ -138,7 +138,7 @@
       "data": 0
     },
     "pacman@gbc": {
-      "code": 8624,
+      "code": 8702,
       "data": 14272
     },
     "parallax": {
@@ -170,7 +170,7 @@
       "data": 0
     },
     "pong_gbc@gbc": {
-      "code": 14458,
+      "code": 14578,
       "data": 25888
     },
     "raycaster": {
@@ -186,7 +186,7 @@
       "data": 0
     },
     "scoreboard@gbc": {
-      "code": 8206,
+      "code": 8284,
       "data": 7600
     },
     "scroll": {
@@ -238,7 +238,7 @@
       "data": 0
     },
     "tower@gbc": {
-      "code": 8846,
+      "code": 8939,
       "data": 16032
     },
     "tower@genesis": {
@@ -254,7 +254,7 @@
       "data": 0
     },
     "wanderers@gbc": {
-      "code": 8224,
+      "code": 8313,
       "data": 5616
     }
   }

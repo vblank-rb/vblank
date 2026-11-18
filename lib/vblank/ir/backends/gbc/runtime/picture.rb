@@ -25,6 +25,7 @@ module VBlank
           module Picture
             # Where each of the runtime's own picture places is, by name.
             SHADOW_PALETTES = "rt picture palettes" # 64 bytes for the backgrounds, then 64 for the sprites
+            # The palettes the blank sends from the copy: a bit for each, the backgrounds' byte, then the sprites'.
             PALETTES_CHANGED = "rt picture palettes changed"
             SCROLL = "rt picture scroll" # X, then y
             NEXT_SPRITE = "rt picture next sprite" # The next free entry of the sprite table's copy (low byte)
@@ -96,13 +97,13 @@ module VBlank
             BEND_BASE = "rt picture bend base"
             BENDING = "rt picture bending"
             # A FADE OR TINT (#emit_tint): what the colours are moved toward (TOWARD_*), the colour, and how
-            # far (two bytes); then 1 while the colours are owed to the copy the blank sends, and 1 while
-            # the walk's tables are owed.
+            # far (two bytes); then the palettes whose colours are owed to the copy the blank sends, a bit
+            # for each (the backgrounds' byte, then the sprites'), and 1 while the walk's tables are owed.
             TINT = "rt picture tint"
             TINT_STEPS = 3
             TINT_COLORS_OWED = 5
-            TINT_TABLES_OWED = 6
-            TINT_BYTES = 7
+            TINT_TABLES_OWED = 7
+            TINT_BYTES = 8
             # In a game that fades or tints: a table for each channel, red's, green's and blue's, of
             # what each of its 32 values is walked to (#emit_tint_tables), all in one page; and in
             # quick memory, the low byte of where a run of colours being walked ends.
@@ -116,9 +117,10 @@ module VBlank
             MOST_DRAWN = 40
             # A GAME WHOSE SPRITES' LISTS BORROW THE EIGHT (Art#lends?, #emit_lend_colors): which
             # list each of the eight holds, one up so that nought is none; then a bit for each of the
-            # eight a sprite was placed in this pass, the same for the pass before, and 1 when a list
-            # was lent this pass, so its colours are to be copied; and how many times a sprite found
-            # all eight in use (LENT_MISSED bytes in, sixteen bits, held at the most it can count),
+            # eight a sprite was placed in this pass, the same for the pass before, and a bit for each
+            # of the eight lent this pass, whose colours are owed to the copy the blank sends; and how
+            # many times a sprite found all eight in use (LENT_MISSED bytes in, sixteen bits, held at
+            # the most it can count),
             # which a profile of the game reports (Diagnostics::GBCProfiler).
             LENT = "rt picture lent"
             LENT_MISSED = 8 + 3
@@ -197,7 +199,7 @@ module VBlank
               end
               PictureGroups.reserve(memory) if groups
               memory.reserve(SHADOW_PALETTES, 128)
-              memory.reserve(PALETTES_CHANGED, 1)
+              memory.reserve(PALETTES_CHANGED, 2)
               memory.reserve(SCROLL, 2)
               memory.reserve(NEXT_SPRITE, 1)
               memory.reserve(SPRITES_ENDED, 1)
@@ -268,7 +270,7 @@ module VBlank
               emit_choices(asm, memory)
               emit_overlap(asm, memory, index_in_bank: indexes_in_banks)
               emit_tint(asm, memory, drawn_palettes, palettes_in_use, walks: walks_colors)
-              emit_background_colors(asm, drawn_palettes) if drawn_palettes
+              emit_background_colors(asm, memory, drawn_palettes) if drawn_palettes
               emit_background_colors_far(asm) if banked_colors
             end
 
@@ -358,8 +360,9 @@ module VBlank
             # One holding that list already is the answer. A list holding none takes one nothing was
             # placed in this pass or the pass before — so one a sprite placed later in this pass still
             # wears is never taken from under it — and its colours are copied into the colours drawn
-            # now. rt_sprites_end notes them owed, and the pass's end walks them through the fade in force
-            # into the copy the blank sends (rt_tint_owed), so they reach the screen in the same blank as the sprite table that first reads them.
+            # now. rt_sprites_end notes the palettes lent owed, and the pass's end walks those alone
+            # through the fade in force into the copy the blank sends (rt_tint_owed), so they reach the
+            # screen in the same blank as the sprite table that first reads them.
             # A list that finds none free takes one holding a list of its own family that nothing was
             # placed in this pass (+families+, #emit_lend_family), its colours copied in the same way:
             # a sprite stepping through its lists a frame at a time keeps the one it wore. A list that
@@ -425,7 +428,8 @@ module VBlank
               asm.jump_relative("rt_lend_answer")
               asm.label("rt_lend_take")
               asm.load([:hl], :c)
-              asm.load(:a, 1)
+              asm.load(:a, [lent + 10]) # the one taken owes its colours
+              asm.or_a(:d)
               asm.load([lent + 10], :a)
               asm.push(:de)
               if first_kept
@@ -658,17 +662,24 @@ module VBlank
             end
 
             # rt_background_colors: HL = a table of a background's colours (Lowering::Picture
-            # #emit_background_colors) — how many palettes, then for each its number and its four
-            # colours — into the colours the pictures are drawn in now, noted owed: the pass's end walks
-            # them through the fade in force into the copy the blank sends (rt_tint_owed).
-            def emit_background_colors(asm, drawn_palettes)
+            # #emit_background_colors) — how many palettes, a bit for each palette it names, then for
+            # each its number and its four colours — into the colours the pictures are drawn in now,
+            # those palettes noted owed: the pass's end walks them alone through the fade in force into
+            # the copy the blank sends (rt_tint_owed).
+            def emit_background_colors(asm, memory, drawn_palettes)
+              owed = memory[TINT] + TINT_COLORS_OWED
               asm.label("rt_background_colors")
-              asm.load(:b, [:hl])
-              asm.inc(:hl)
+              asm.load(:a, [:hli])
+              asm.load(:b, :a)
+              asm.load(:a, [:hli])
+              asm.load(:c, :a)
+              asm.load(:a, [owed])
+              asm.or_a(:c)
+              asm.load([owed], :a)
               asm.label("rt_background_colors_next")
               asm.load(:a, :b)
               asm.and_a(:a)
-              asm.jump(:z, "rt_tint_owe")
+              asm.ret(:z)
               asm.load(:a, [:hli]) # the palette: drawn_palettes + 8 × its number
               3.times { asm.add_a(:a) }
               asm.add_a(drawn_palettes & 0xFF)
@@ -701,11 +712,6 @@ module VBlank
             TOWARD_BLACK = PaletteWalk::TOWARD_BLACK
             TOWARD_WHITE = PaletteWalk::TOWARD_WHITE
             TOWARD_COLOR = PaletteWalk::TOWARD_COLOR
-
-            # The palettes +numbers+ as runs of neighbours, [first, how many], for one walk each.
-            def palette_runs(numbers)
-              numbers.sort.slice_when { |a, b| b != a + 1 }.map { |run| [run.first, run.length] }
-            end
 
             # A colour has three channels of five bits, red in the lowest.
             CHANNEL_MAX = 31
@@ -770,6 +776,9 @@ module VBlank
               asm.load(:de, memory[SHADOW_PALETTES])
               asm.load(:b, 128)
               asm.call("rt_copy_b")
+              asm.load(:a, 0xFF) # every palette sent
+              asm.load([memory[PALETTES_CHANGED]], :a)
+              asm.load([memory[PALETTES_CHANGED] + 1], :a)
               if backdrop
                 # The first screen's backdrop, which the screen shows until the first frame, in place
                 # of the first list's first colour as the console is given the lists. The copy then
@@ -785,7 +794,7 @@ module VBlank
                 asm.load([shadow], :a)
                 asm.load(:a, [:hl])
                 asm.load([shadow + 1], :a)
-                asm.load(:a, 1)
+                asm.load(:a, 1) # the first background palette sent again, at the first frame
                 asm.load([memory[PALETTES_CHANGED]], :a)
               else
                 asm.call("rt_picture_write_palettes")
@@ -847,27 +856,65 @@ module VBlank
               asm.load_high(h::HDMA5, :a)
               asm.ret
 
-              # Every palette from the copy into the console: 64 bytes of background colours, then
-              # 64 of sprite colours, each written one byte after another, eight to a turn of the
-              # loop so the colours take a quarter of the blank rather than all of it.
+              # The palettes changed (PALETTES_CHANGED) from the copy into the console: the
+              # backgrounds' 64 bytes, then the sprites'.
+              changed = memory[PALETTES_CHANGED]
               asm.label("rt_picture_write_palettes")
-              asm.load(:hl, memory[SHADOW_PALETTES])
-              [h::BCPS, h::OCPS].each do |select|
-                asm.load(:a, 0x80)
-                asm.load_high(select, :a)
-                asm.load(:c, (select + 1) & 0xFF)
-                asm.load(:b, 8)
-                asm.label("rt_picture_palette_#{select}")
-                8.times do
-                  asm.load(:a, [:hli])
-                  asm.load_high([:c], :a)
-                end
-                asm.dec(:b)
-                asm.jump_relative(:nz, "rt_picture_palette_#{select}")
+              [h::BCPD, h::OCPD].each_with_index do |data, half|
+                asm.load(:hl, memory[SHADOW_PALETTES] + (half * 64))
+                asm.load(:a, [changed + half])
+                asm.load(:d, :a)
+                asm.load(:c, data & 0xFF)
+                asm.call("rt_picture_palettes_sent")
               end
               asm.xor_a(:a)
-              asm.load([memory[PALETTES_CHANGED]], :a)
+              asm.load([changed], :a)
+              asm.load([changed + 1], :a)
               asm.ret
+              emit_palettes_sent(asm)
+            end
+
+            # rt_picture_palettes_sent: D = a bit for each of eight palettes, the lowest first, HL =
+            # their copy, C = the low byte of the port their colours are written to (BCPD or OCPD),
+            # with the one that picks where the next is written (BCPS or OCPS) just below it. Pan Docs,
+            # "LCD Color Palettes": a byte of 0x80 + where puts the next write there and has each
+            # write after move one on, so a run of neighbouring palettes changed together is its
+            # place picked once and eight bytes a palette written, and one not changed costs a test.
+            # All eight changed, as a fade or tint makes them, is one place picked and 64 bytes.
+            def emit_palettes_sent(asm)
+              asm.label("rt_picture_palettes_sent")
+              asm.load(:e, 0x80)
+              asm.label("rt_picture_palette_next")
+              asm.load(:a, :d)
+              asm.and_a(:a)
+              asm.ret(:z)
+              asm.srl(:d)
+              asm.jump_relative(:nc, "rt_picture_palette_passed")
+              asm.load(:a, :e)
+              asm.dec(:c)
+              asm.load_high([:c], :a)
+              asm.inc(:c)
+              asm.label("rt_picture_palette_written")
+              8.times do
+                asm.load(:a, [:hli])
+                asm.load_high([:c], :a)
+              end
+              asm.load(:a, :e)
+              asm.add_a(8)
+              asm.load(:e, :a)
+              asm.srl(:d)
+              asm.jump_relative(:c, "rt_picture_palette_written") # the next is where the writes are
+              asm.label("rt_picture_palette_passed")
+              asm.load(:a, :l)
+              asm.add_a(8)
+              asm.load(:l, :a)
+              asm.load(:a, :h)
+              asm.adc_a(0)
+              asm.load(:h, :a)
+              asm.load(:a, :e)
+              asm.add_a(8)
+              asm.load(:e, :a)
+              asm.jump_relative("rt_picture_palette_next")
             end
 
             # The most blocks of 16 bytes one general-purpose copy moves in a game that counts the
@@ -1157,8 +1204,9 @@ module VBlank
                 asm.cp_a(Paint::PAINTED)
                 asm.call(:nz, "rt_oam_dma_held")
               end
-              asm.load(:a, [memory[PALETTES_CHANGED]])
-              asm.and_a(:a)
+              asm.load(:hl, memory[PALETTES_CHANGED])
+              asm.load(:a, [:hli])
+              asm.or_a([:hl])
               asm.call(:nz, "rt_picture_write_palettes")
               asm.load(:hl, memory[SCROLL])
               asm.load(:a, [:hli])
@@ -1473,12 +1521,15 @@ module VBlank
               asm.label("rt_sprites_end")
               asm.call("rt_picture_not_up_stop")
               if lends
+                # The palettes lent this pass, owed (Picture#emit_tint).
                 asm.load(:hl, memory[LENT] + 10)
                 asm.load(:a, [:hl])
                 asm.and_a(:a)
                 asm.jump_relative(:z, "rt_sprites_end_lent")
                 asm.load([:hl], 0)
-                asm.call("rt_tint_owe")
+                asm.load(:hl, memory[TINT] + TINT_COLORS_OWED + 1)
+                asm.or_a([:hl])
+                asm.load([:hl], :a)
                 asm.label("rt_sprites_end_lent")
               end
               # The sprites shown from here, on a screen drawn from tiles (rt_screen).
@@ -3321,26 +3372,32 @@ module VBlank
             #
             # NOTHING IS WALKED AT ONCE. rt_tint(toward, color, steps) notes a change and does nothing
             # when nothing changed, which is most frames of a game that sets its fade every frame; a
-            # list that changes its colours (rt_background_colors, a sprite's list lent) notes that
-            # the colours are owed (rt_tint_owe). rt_tint_owed, as the pass ends (Frame's
-            # rt_wait_vblank), works them out once, however many changes the pass made, and the blank
-            # sends them (Backends::PaletteWalk). With no walk in force every colour stays as it is,
-            # so the colours are copied across as they are — a few instructions a colour, which is
-            # what lets a game that fades by stepping its lists itself (`draw_with` every frame) keep
-            # a pass a frame. A game that never fades or tints (+walks+ false) has only that copy.
+            # list that changes its colours (rt_background_colors, a sprite's list lent) notes the
+            # palettes it wrote owed, a bit each (TINT_COLORS_OWED), and a change of the walk notes
+            # every palette in use. rt_tint_owed, as the pass ends (Frame's rt_wait_vblank), works the
+            # owed palettes out once, however many changes the pass made, and the blank sends those
+            # alone (Backends::PaletteWalk, #emit_palettes_sent). So one list changing under a fade
+            # walks its four colours, not every colour on the screen. With no walk in force every
+            # colour stays as it is, so the owed palettes are copied across as they are — a few
+            # instructions a colour, which is what lets a game that fades by stepping its lists itself
+            # (`draw_with` every frame) keep a pass a frame. A game that never fades or tints (+walks+
+            # false) has only that copy.
             def emit_tint(asm, memory, drawn_palettes, palettes_in_use, walks:)
               at = memory[TINT]
-              asm.label("rt_tint_owe")
-              asm.load(:a, 1)
-              asm.load([at + TINT_COLORS_OWED], :a)
-              asm.ret
-
+              owed = at + TINT_COLORS_OWED
+              changed = memory[PALETTES_CHANGED]
               asm.label("rt_tint_owed")
-              asm.load(:hl, at + TINT_COLORS_OWED)
-              asm.load(:a, [:hl])
-              asm.and_a(:a)
+              asm.load(:hl, owed)
+              asm.load(:a, [:hli])
+              asm.or_a([:hl])
               asm.ret(:z)
-              asm.load([:hl], 0)
+              # The palettes owed are the ones the blank sends.
+              asm.load(:hl, changed)
+              2.times do |half|
+                asm.load(:a, [owed + half])
+                asm.or_a([:hl])
+                asm.load([:hli], :a)
+              end
               # HL = where palette +first+'s colours are drawn from now.
               drawn_from = lambda do |first|
                 asm.load(:hl, drawn_palettes ? drawn_palettes + (first * 8) : "art_palettes")
@@ -3358,41 +3415,45 @@ module VBlank
                 asm.load(:a, [at + TINT_TABLES_OWED])
                 asm.and_a(:a)
                 asm.call(:nz, "rt_tint_tables")
-                tables = memory[WALK_TABLES]
-                palette_runs(palettes_in_use).each do |first, count|
+                [0, Art::PALETTES].each_with_index do |first, half|
                   drawn_from.call(first)
                   asm.load(:d, :h)
                   asm.load(:e, :l)
-                  asm.load(:a, (shadow + ((first + count) * 8)) & 0xFF)
-                  asm.load_high(memory[WALK_END], :a)
                   asm.load(:hl, shadow + (first * 8))
-                  asm.load(:b, tables >> 8)
-                  asm.call("rt_tint_colors")
+                  asm.load(:a, [owed + half])
+                  asm.call("rt_tint_walk_owed")
                 end
                 asm.jump("rt_tint_applied")
               end
               asm.label("rt_tint_copy")
-              palette_runs(palettes_in_use).each do |first, count|
+              [0, Art::PALETTES].each_with_index do |first, half|
                 drawn_from.call(first)
                 asm.load(:de, shadow + (first * 8))
-                asm.load(:b, count * 8)
-                asm.call("rt_copy_b")
+                asm.load(:a, [owed + half])
+                asm.call("rt_tint_copy_owed")
               end
               asm.label("rt_tint_applied")
-              asm.load(:a, 1)
-              asm.load([memory[PALETTES_CHANGED]], :a)
+              asm.xor_a(:a)
+              asm.load([owed], :a)
+              asm.load([owed + 1], :a)
               asm.ret
+              emit_tint_copy_owed(asm)
               return unless walks
 
-              emit_tint_set(asm, memory, at)
+              emit_tint_walk_owed(asm, memory[WALK_TABLES], memory[WALK_END])
+              emit_tint_set(asm, memory, at, palettes_in_use)
               emit_tint_tables(asm, at, memory[WALK_TABLES])
               emit_tint_colors(asm, memory[WALK_TABLES], memory[WALK_END])
             end
 
             # rt_tint(toward, color, steps): the walk in force from now on. The same as before does
             # nothing, and no steps either side is the colours as they are, whatever they were walked
-            # toward. A change is noted, and the colours and the tables are owed.
-            def emit_tint_set(asm, memory, at)
+            # toward. A change is noted, and the tables and every palette in use (+palettes_in_use+) are owed.
+            def emit_tint_set(asm, memory, at, palettes_in_use)
+              backgrounds, sprites = palettes_in_use.partition { |number| number < Art::PALETTES }
+              in_use = [backgrounds, sprites.map { |number| number - Art::PALETTES }].map do |numbers|
+                numbers.map { |number| 1 << number }.reduce(0, :|)
+              end
               arg = ->(i) { Calls.arg(memory, i, 3) }
               asm.label("rt_tint")
               asm.load_hl_sp(2)
@@ -3437,10 +3498,87 @@ module VBlank
               asm.load([:hli], :a)
               asm.load(:a, :b)
               asm.load([:hli], :a)
+              in_use.each do |bits| # TINT_COLORS_OWED
+                asm.load(:a, bits)
+                asm.load([:hli], :a)
+              end
               asm.load(:a, 1)
-              asm.load([:hli], :a) # TINT_COLORS_OWED
               asm.load([:hl], :a) # TINT_TABLES_OWED
               asm.ret
+            end
+
+            # rt_tint_copy_owed: A = a bit for each of eight palettes, the lowest first; each whose bit
+            # is set copied, its eight bytes from HL to DE, and each other passed over. Neighbours
+            # owed together are one copy (#emit_owed_run).
+            def emit_tint_copy_owed(asm)
+              asm.label("rt_tint_copy_owed")
+              asm.and_a(:a)
+              asm.ret(:z)
+              asm.srl(:a)
+              asm.jump_relative(:nc, "rt_tint_copy_passed")
+              emit_owed_run(asm, "rt_tint_copy_run", :c, nil)
+              asm.push(:af)
+              asm.load(:b, :c)
+              asm.call("rt_copy_b")
+              asm.jump_relative("rt_tint_copy_moved")
+              asm.label("rt_tint_copy_passed")
+              asm.push(:af)
+              asm.label("rt_tint_copy_moved") # past the palette whose bit was clear
+              asm.load(:bc, 8)
+              asm.add_hl(:bc)
+              emit_add_eight_to_de(asm)
+              asm.pop(:af)
+              asm.jump_relative("rt_tint_copy_owed")
+            end
+
+            # rt_tint_walk_owed: A = a bit for each of eight palettes, the lowest first; each whose bit
+            # is set walked, its four colours from DE into the copy at HL (rt_tint_colors), and each
+            # other passed over. Neighbours owed together are one walk (#emit_owed_run).
+            def emit_tint_walk_owed(asm, tables, end_at)
+              asm.label("rt_tint_walk_owed")
+              asm.and_a(:a)
+              asm.ret(:z)
+              asm.srl(:a)
+              asm.jump_relative(:nc, "rt_tint_walk_passed")
+              emit_owed_run(asm, "rt_tint_walk_run", :c, :l)
+              asm.push(:af)
+              asm.load(:a, :c)
+              asm.load_high(end_at, :a)
+              asm.load(:b, tables >> 8)
+              asm.call("rt_tint_colors")
+              asm.jump_relative("rt_tint_walk_moved")
+              asm.label("rt_tint_walk_passed")
+              asm.push(:af)
+              asm.label("rt_tint_walk_moved") # past the palette whose bit was clear
+              asm.load(:bc, 8)
+              asm.add_hl(:bc)
+              emit_add_eight_to_de(asm)
+              asm.pop(:af)
+              asm.jump_relative("rt_tint_walk_owed")
+            end
+
+            # A run of neighbouring palettes whose bits are set, the first's bit just shifted out of
+            # A: +count+ = +start+ (a register, or nought for nil) plus eight for each. The bit after the run, clear,
+            # is shifted out too, so the caller passes over that palette once the run is done.
+            def emit_owed_run(asm, label, count, start)
+              asm.load(:b, :a)
+              start ? asm.load(:a, start) : asm.xor_a(:a)
+              asm.label(label)
+              asm.add_a(8)
+              asm.srl(:b)
+              asm.jump_relative(:c, label)
+              asm.load(count, :a)
+              asm.load(:a, :b)
+            end
+
+            # DE moved on by eight. Keeps BC and HL.
+            def emit_add_eight_to_de(asm)
+              asm.load(:a, :e)
+              asm.add_a(8)
+              asm.load(:e, :a)
+              asm.load(:a, :d)
+              asm.adc_a(0)
+              asm.load(:d, :a)
             end
 
             # rt_tint_tables: WALK_TABLES worked out for the walk in force, which has steps (1 to 256).
