@@ -25,22 +25,29 @@ module VBlank
           # or WH2 and WH3); the bar's line table is channel 1 and the bends' 2 and 3. Channels 4 to
           # 7 are a painted screen's (Paint, Letterbox), and a painted screen has no backgrounds.
           #
-          #   rt_background_box(layer, held, left, top, right, bottom)
-          #       +layer+ held to the box (+held+ not nought), its edges already on the screen with
-          #       right and bottom just past it (Lowering::Picture#emit_box_background), or shown
-          #       everywhere (+held+ nought); from the next blank on
+          #   rt_background_box(layer, held, x, y, width, height)
+          #       +layer+ held to the box (+held+ not nought) or shown everywhere (+held+ nought),
+          #       from the next blank on. The game writes its box at every frame boundary, moved or
+          #       not (Lowering::Picture#emit_box_background), so the numbers it is handed are first
+          #       compared with the last ones: a box that stays where it was costs those compares.
+          #       One that moved is kept to the screen (Reference#screen_box) and made again in the
+          #       blank.
           #   rt_background_box_upload   in the blank (JSR): each layer's table made again, and the
           #                              windows set, where a box changed
           module BackgroundBox
             # For each of the two layers: whether it is held to a box, then the box's left, top,
-            # right and bottom (a word each). Then whether any changed since the last blank.
+            # right and bottom on the screen (a word each), then the five numbers it was last handed
+            # (32 bits each). Then whether any changed since the last blank.
             STATE = "rt background boxes"
             HELD = 0
             LEFT = 2
             TOP = 4
             RIGHT = 6
             BOTTOM = 8
-            LAYER_BYTES = 10
+            HANDED = 10
+            HANDED_NUMBERS = 5
+            HALVES = [0, 2].freeze # A 32-bit number's two words, low then high
+            LAYER_BYTES = HANDED + (HANDED_NUMBERS * 4)
             LAYERS = 2
             CHANGED = LAYERS * LAYER_BYTES
             STATE_BYTES = CHANGED + 2
@@ -83,22 +90,77 @@ module VBlank
               asm.lda(LAYER_BYTES)
               asm.label("rt_background_box_layer")
               asm.tax
-              # The game writes its box at every frame boundary, moved or not: the table is made
-              # again in the blank only when something in it changed.
-              [[1, HELD], [2, LEFT], [3, TOP], [4, RIGHT], [5, BOTTOM]].each do |n, at|
-                asm.lda(r.call(n))
-                asm.cmp(asm.abs_x(state + at))
+              handed = (1..HANDED_NUMBERS).flat_map { |n| HALVES.map { |half| [Memory.register(n) + half, state + HANDED + ((n - 1) * 4) + half] } }
+              handed.each do |from, kept|
+                asm.lda(asm.direct(from))
+                asm.cmp(asm.abs_x(kept))
                 asm.bne("rt_background_box_moved")
               end
               asm.rtl
               asm.label("rt_background_box_moved")
-              [[1, HELD], [2, LEFT], [3, TOP], [4, RIGHT], [5, BOTTOM]].each do |n, at|
-                asm.lda(r.call(n))
-                asm.sta(asm.abs_x(state + at))
+              handed.each do |from, kept|
+                asm.lda(asm.direct(from))
+                asm.sta(asm.abs_x(kept))
               end
               asm.lda(1)
               asm.sta(asm.abs(state + CHANGED))
+              asm.lda(r.call(1))
+              asm.ora(asm.direct(Memory.register(1) + 2))
+              asm.bne("rt_background_box_held")
+              asm.stz(asm.abs_x(state + HELD))
               asm.rtl
+              asm.label("rt_background_box_held")
+              asm.lda(1)
+              asm.sta(asm.abs_x(state + HELD))
+              # A width or a height of nought or less is a box with nothing in it.
+              [4, 5].each do |n|
+                asm.lda(asm.direct(Memory.register(n) + 2))
+                asm.branch_long(:bmi, "rt_background_box_empty")
+                asm.ora(r.call(n))
+                asm.branch_long(:beq, "rt_background_box_empty")
+              end
+              # Each edge kept to the screen: the left and top as handed, the right and bottom the
+              # sums, worked out in 32 bits (R6 and R7).
+              [[2, 4, 6, LEFT, RIGHT, Picture::SCREEN_WIDTH], [3, 5, 7, TOP, BOTTOM, Picture::SCREEN_HEIGHT]].each do |at, size, sum, near, far, most|
+                emit_kept_to_screen(asm, Memory.register(at), state + near, most)
+                asm.clc
+                asm.lda(r.call(at))
+                asm.adc(r.call(size))
+                asm.sta(r.call(sum))
+                asm.lda(asm.direct(Memory.register(at) + 2))
+                asm.adc(asm.direct(Memory.register(size) + 2))
+                asm.sta(asm.direct(Memory.register(sum) + 2))
+                emit_kept_to_screen(asm, Memory.register(sum), state + far, most)
+              end
+              # Nothing of it on the screen: a box with nothing in it.
+              [[LEFT, RIGHT], [TOP, BOTTOM]].each do |near, far|
+                asm.lda(asm.abs_x(state + near))
+                asm.cmp(asm.abs_x(state + far))
+                asm.bcs("rt_background_box_empty")
+              end
+              asm.rtl
+              asm.label("rt_background_box_empty")
+              [LEFT, TOP, RIGHT, BOTTOM].each { |at| asm.stz(asm.abs_x(state + at)) }
+              asm.rtl
+            end
+
+            # +out+ (a word, plus X) = the 32-bit number at +value+ on the direct page held from
+            # nought to +most+.
+            def emit_kept_to_screen(asm, value, out, most)
+              tag = "rt_background_box_kept_#{value}"
+              asm.lda(asm.direct(value + 2))
+              asm.bmi("#{tag}_none")
+              asm.bne("#{tag}_most")
+              asm.lda(asm.direct(value))
+              asm.cmp(most)
+              asm.bcc("#{tag}_store")
+              asm.label("#{tag}_most")
+              asm.lda(most)
+              asm.bra("#{tag}_store")
+              asm.label("#{tag}_none")
+              asm.lda(0)
+              asm.label("#{tag}_store")
+              asm.sta(asm.abs_x(out))
             end
 
             # rt_background_box_upload: where a box changed, each layer's table, its channel and the
@@ -146,7 +208,7 @@ module VBlank
               asm.lda(asm.abs(box + TOP))
               emit_steps(asm, table, work, "#{tag}_above") { emit_empty_edges(asm, work) }
               # The box's lines: its span, left to right less one, both inclusive. An empty box has
-              # no lines (Lowering::Picture#emit_box_background gives it nought for both).
+              # no lines (rt_background_box gives it nought for both).
               asm.lda(asm.abs(box + BOTTOM))
               asm.sec
               asm.sbc(asm.abs(box + TOP))

@@ -1922,27 +1922,11 @@ module VBlank
 
             # Reference#exec_box_background: the background held to the part of its box on the screen
             # (Reference#screen_box), or shown everywhere, from the next blank on
-            # (Runtime::BackgroundBox's rt_background_box). A box with nothing in it, of no width or
-            # height or wholly off the screen, is held as one of no lines.
+            # (Runtime::BackgroundBox's rt_background_box, which keeps the box to the screen only on a
+            # pass it moved).
             def emit_box_background(node)
               for_background(node) do |bg|
-                layer = Build.int(layer_of(bg))
-                width = Build.int(Runtime::Picture::SCREEN_WIDTH)
-                height = Build.int(Runtime::Picture::SCREEN_HEIGHT)
-                left = Build.clamped(node.x, 0, width)
-                right = Build.clamped(Build.binop(:+, node.x, node.width), 0, width)
-                top = Build.clamped(node.y, 0, height)
-                bottom = Build.clamped(Build.binop(:+, node.y, node.height), 0, height)
-                shown = Build.binop(:and, Build.binop(:and, Build.binop(:>, node.width, 0), Build.binop(:>, node.height, 0)),
-                                    Build.binop(:and, Build.binop(:<, left, right), Build.binop(:<, top, bottom)))
-                empty = fresh("box_empty")
-                done = fresh("box_done")
-                jump_unless(shown, empty)
-                runtime_call("rt_background_box", [layer, node.held, left, top, right, bottom])
-                @asm.brl(done)
-                @asm.label(empty)
-                runtime_call("rt_background_box", [layer, node.held, *Array.new(4) { Build.int(0) }])
-                @asm.label(done)
+                runtime_call("rt_background_box", [Build.int(layer_of(bg)), node.held, node.x, node.y, node.width, node.height])
               end
             end
 
