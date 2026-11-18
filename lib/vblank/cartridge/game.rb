@@ -112,8 +112,13 @@ module VBlank
       #
       # +variant+ is the console's variant it is built for (Console::Variant): the one the game
       # names for +console+ in `variants:` unless set, and nil for the plain console.
-      def program(settings: {}, console: @consoles.first, variant: variant_for(console))
-        evaluated(settings, refuse_console_not_for!(console), variant).program
+      #
+      # +for_computer+ builds the tree a computer's build plays (as C, a web page or Ruby): the game's
+      # `built_for_computer?` answers true, and the game is given the screen size it asks for
+      # (`screen :bitmap, size:`). False, the default, is the tree the console's cartridge is made
+      # from, which a test plays to check the cartridge against.
+      def program(settings: {}, console: @consoles.first, variant: variant_for(console), for_computer: false)
+        evaluated(settings, refuse_console_not_for!(console), variant, for_computer: for_computer).program
       end
 
       # THE KEPT NUMBERS THAT DIFFERED FROM WHAT THEY WERE COPIED FROM, as the game plays on the
@@ -276,11 +281,12 @@ module VBlank
       # it can cross to another core at all. Each core that asks runs the block once and
       # keeps the answer; running a block is cheap next to lowering it, and a core that
       # never asks pays nothing.
-      def evaluated(settings, console, variant)
+      def evaluated(settings, console, variant, for_computer: false)
         seen = (Ractor.current[:vblank_evaluated_games] ||= {})
-        seen[[self, settings, console, variant]] ||=
-          EvaluatedGame.new(@block, options: @options.with(console: console, variant: variant, consoles: @consoles),
-                                    settings: settings)
+        seen[[self, settings, console, variant, for_computer]] ||=
+          EvaluatedGame.new(@block, options: @options.with(console: console, variant: variant, consoles: @consoles,
+                                                           for_computer: for_computer),
+                                    settings: settings, screen_as_asked: for_computer)
       end
 
       # A GAME NAMES ITS CHIP WHERE IT NAMES ITS CONSOLES: `consoles: %i[gba snes], variants: {

@@ -31,8 +31,10 @@ module VBlank
       # +settings+ is what this one build was told, which the game reads with `setting`.
       #
       # +options+ is how the game is built (see {Options}).
-      def initialize(block, options: Options.new, progress: Messages::Progress.silent, settings: {})
-        @builder = Builder.new(options: options, progress: progress, settings: settings)
+      #
+      # +screen_as_asked+ gives the game the screen size it asks for (Builder#initialize).
+      def initialize(block, options: Options.new, progress: Messages::Progress.silent, settings: {}, screen_as_asked: false)
+        @builder = Builder.new(options: options, progress: progress, settings: settings, screen_as_asked: screen_as_asked)
         # `debug_halt` throws rather than returns, because it stops the game's block where it
         # stands and there is no other way out of somebody else's code. Catching it here is
         # what makes a truncated build a build like any other: everything above the call is

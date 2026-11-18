@@ -160,9 +160,14 @@ module VBlank
     #   pacing and the save memory it named
     # @param progress [VBlank::Messages::Progress] what a build says it is doing (see {#progress})
     # @param settings [Hash] what this build was told, read by the game with `setting` (see {Settings})
-    def initialize(options: Cartridge::Options.new, progress: Messages::Progress.silent, settings: {})
+    # @param screen_as_asked [Boolean] whether this build gives the game the screen size it asks for
+    #   (`screen :bitmap, size:`; see Drawing#apply_screen_size!): a computer's build that makes no
+    #   cartridge. False for a console's, whose screen is fixed.
+    def initialize(options: Cartridge::Options.new, progress: Messages::Progress.silent, settings: {},
+                   screen_as_asked: false)
       @frame_sync = options.frame_sync
       @for_computer = options.for_computer
+      @screen_as_asked = screen_as_asked
       @build_options = options # the console, variant and consoles `built_for?` answers from
       @save_memory = options.save_memory # kilobytes the game named, or nil to let its records decide
       @settings = settings.to_h.transform_keys(&:to_sym)

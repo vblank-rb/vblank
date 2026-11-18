@@ -132,7 +132,8 @@ module VBlank
   # +cartridge+ false stops once the program is checked and hands back the program, not a cartridge:
   # for a game played as Ruby (`vblank run`), which has no use for one. Every guardrail runs, and
   # what only making the cartridge finds (a game too big for it) is not asked.
-  # +for_computer+ is what the game's `built_for_computer?` answers; see {Cartridge::Options}.
+  # +for_computer+ is what the game's `built_for_computer?` answers; see {Cartridge::Options}. With
+  # +cartridge+ false it also gives the game the screen size it asks for (`screen :bitmap, size:`).
   # +players+ is how many players the game takes (`4`, `2..4`, or by console); see {Cartridge::Players}.
   # +consoles+ is every console the game is for, which `built_for?` may ask about; left out, it is
   # +console+ alone. A Game hands its `consoles:` here.
@@ -174,7 +175,11 @@ module VBlank
     end
 
     progress.step("Reading game")
-    evaluated = Cartridge::EvaluatedGame.new(block, options: options, progress: progress, settings: settings)
+    # A computer's build that makes no cartridge gives the game the screen size it asks for. One
+    # that makes a cartridge (a desktop program playing the console's start-up reads the start of
+    # one) is laid out on the console's screen, since the cartridge is the console's.
+    evaluated = Cartridge::EvaluatedGame.new(block, options: options, progress: progress, settings: settings,
+                                                    screen_as_asked: for_computer && !cartridge)
     on_read&.call(evaluated)
     program = evaluated.program
 

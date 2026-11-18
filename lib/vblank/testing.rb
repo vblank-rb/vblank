@@ -101,6 +101,13 @@ module VBlank
     # interpreter alone. Such a run has no Advance cartridge to check.
     def self.checked? = RUN.checked?
 
+    # Whether this run plays the game as a computer builds it (as C, JavaScript or Ruby), where a
+    # game is given the screen size it asks for (`screen :bitmap, size:`). A test builds the tree
+    # such a build plays with `game.program(console: game_console, for_computer: computer_run?)`;
+    # on the interpreter's run and a cartridge's it is the console's tree.
+    def self.computer_run? = RUN.plays_any_console?
+    def computer_run? = Testing.computer_run?
+
     # What plays a game in this run: the interpreter on the GBA lowering's run; on the native
     # lowering's the game built as C, driven through the same calls and checked against the
     # interpreter frame by frame (CheckedPlayer); and on the JavaScript lowering's the game built

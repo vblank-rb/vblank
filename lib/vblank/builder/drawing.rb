@@ -24,7 +24,9 @@ module VBlank
       #   draw_text "PONG", :center, screen_height / 4, :white
       #
       # On a screen of big pixels (`screen :bitmap, pixel_size: 2`) these are the small picture's
-      # size, which is what the game draws in.
+      # size, which is what the game draws in. Where the game asks a screen of its own
+      # (`screen :bitmap, size: [320, 200]`) they are what this build gave: that size on a
+      # computer's build, and the console's own screen on a cartridge.
       def screen_width
         @screen_size_read = :screen_width
         console.screen_width
@@ -142,8 +144,19 @@ module VBlank
       #
       # @example A view 160 rows high, with more time each frame to send it
       #   screen :bitmap, shown_rows: 32...192
+      #
+      # +size:+ is the size the game would like its screen to be, [width, height]. A computer's
+      # build (the desktop program, the web page, the Ruby file) gives it; a console gives its own
+      # fixed screen, and nothing is refused there. `screen_width` and `screen_height` answer what
+      # this build gave, so a game lays itself out from them and works out, while it is built,
+      # whether a picture fits. It is the whole game's, so it goes on the game's first `screen`
+      # line, before anything reads the screen's size, and every later screen is a painted one.
+      #
+      # @example A title picture shown whole where it fits, and panned across where it does not
+      #   screen :bitmap, size: [320, 200]
+      #   fits = screen_width >= 320 && screen_height >= 200
       def screen(mode, tear_free: false, colors: nil, late: :wait, pace: 60, backdrop: nil, backdrop_place: nil,
-                 pixel_size: 1, shown_rows: nil)
+                 pixel_size: 1, shown_rows: nil, size: nil)
         case mode
         when Symbol
           unless SCREEN_NAMES.include?(mode)
@@ -167,6 +180,7 @@ module VBlank
         # screen draws sprites in software; a tiled screen uses the console's sprite
         # hardware). A raw register value doesn't map to a friendly name, so it leaves
         # the mode unnamed.
+        apply_screen_size!(size, mode)
         size_said = apply_pixel_size!(pixel_size, mode)
         rows_kept = apply_shown_rows!(shown_rows, mode)
         @screen_line_written = true
@@ -188,6 +202,63 @@ module VBlank
                                          shown_rows: rows_kept))
         @backdrop_list = followed.with(screen: node) if followed
         node
+      end
+
+      # The most pixels a side a screen of the game's own can be. Each runtime keeps a whole picture
+      # as a number a pixel and the interpreter compares it every pass, so four million pixels is
+      # far past any screen a game draws, and a pixel's place stays well inside a 32-bit index.
+      MOST_SCREEN_SIDE = 2048
+
+      # THE SCREEN SIZE THE GAME ASKS FOR (`screen :bitmap, size: [320, 200]`), checked on every
+      # build and given where the build gives one: a computer's build that makes no cartridge
+      # (Builder#initialize's +screen_as_asked+). There the program carries it (Program#screen_size)
+      # and the builder lays the game out on it from this line on, which is why nothing may have
+      # read the screen's size before it. A console's build keeps its own screen and refuses
+      # nothing more, so one game file builds for both.
+      #
+      # WHY PER GAME AND NOT PER SCENE: the runtime's picture, the window and the interpreter's
+      # screen are made once, as the game starts, and a game reads its size as a number while it is
+      # built. A size per scene would need both to change as a scene arrives.
+      #
+      # WHY ONLY A PAINTED SCREEN: a computer's painted screen is a picture of any size, and every
+      # verb on it clips to the screen it was given. A tiled screen's layers, its status bar and its
+      # sprites have only been made for a console's screen so far.
+      private def apply_screen_size!(size, mode)
+        refuse_unpainted_screen_with_asked_size!(mode) if @screen_size_asked
+        return if size.nil?
+
+        unless size.is_a?(Array) && size.length == 2 && size.all? { |side| side.is_a?(Integer) && side.between?(1, MOST_SCREEN_SIDE) }
+          raise ArgumentError, "`size: #{size.inspect}` is not a screen size. Give the width and the height in " \
+                               "pixels, each from 1 to #{MOST_SCREEN_SIDE}, like `size: [320, 200]`."
+        end
+        unless mode == :bitmap
+          raise ArgumentError, "`size:` works only with `screen :bitmap`. To fix this, write " \
+                               "`screen :bitmap, size: #{size.inspect}`."
+        end
+        if @screen_line_written || @building_scene
+          raise ArgumentError, "`size:` must be on the game's first `screen` line, outside any scene. It sets the " \
+                               "size of the screen for the whole game. To fix this, move size: to that line."
+        end
+        if @screen_size_read
+          raise ArgumentError, "The game reads `#{@screen_size_read}` before `screen :bitmap, size: #{size.inspect}`. " \
+                               "size: can change the screen, so the size that the game read can be wrong. To fix " \
+                               "this, put the `screen` line first."
+        end
+
+        @screen_size_asked = size
+        return unless @screen_as_asked
+
+        @program.screen_size = size
+        @console = @program.described_console
+      end
+
+      # A game that asks a size of screen shows every one of its screens through the painted screen.
+      private def refuse_unpainted_screen_with_asked_size!(mode)
+        return if mode == :bitmap
+
+        raise ArgumentError, "This game says `size: #{@screen_size_asked.inspect}`, and this line asks for " \
+                             "`screen #{mode.inspect}`. In a game that asks a size of screen, every screen must be " \
+                             "`screen :bitmap`. To fix this, use `screen :bitmap` here, or remove size:."
       end
 
       # SETS THE GAME'S PIXEL SIZE on the program and the builder's console, and returns it as the

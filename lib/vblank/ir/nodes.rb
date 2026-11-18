@@ -1541,6 +1541,11 @@ module VBlank
       # while it is not drawing has them for its copy as well as the blank. It is the whole game's,
       # so it is the program's (#described_console).
       #
+      # +screen_size+ is [width, height] of a screen of the game's own (`screen :bitmap, size: [320,
+      # 200]`), set only where the build gives it: a computer's build that makes no cartridge
+      # (Builder::Drawing#apply_screen_size!). Absent on a console's build, whose screen is fixed,
+      # and for a game that asks none. The game is laid out and played on it (#described_console).
+      #
       # +verbs_written+ is the names of the verbs the game wrote that are written in other verbs
       # and leave no step of their own: a `pulse` is a sprite's size walked every frame, an iris a
       # light's. The steps say what the program does, which is all a backend needs, but not which
@@ -1555,7 +1560,7 @@ module VBlank
                  fraction_vars: :list, fraction_lists: :list, sprite_readings: :list, background_readings: :list,
                  players: :list, verbs_written: :list,
                  for_computer: :flag, for_unpacking: :flag, border: :text, border_size: :list, pixel_size: :int,
-                 shown_rows: :list, start_file: :start_file, mix_rate: :int, main_volume: :int, computer_controls: :list,
+                 shown_rows: :list, screen_size: :list, start_file: :start_file, mix_rate: :int, main_volume: :int, computer_controls: :list,
                  pools: :pool_shapes
 
         # +pools+ is each pool the game declared, as a lowering that keeps a pool its own way reads
@@ -1664,9 +1669,11 @@ module VBlank
         end
 
         # What the console this program was built for can do: its screen, buttons, sprites — the
-        # screen as the game sees it, so with the game's pixel size (#pixel_size) it is that many
-        # times smaller than the console's.
-        def described_console = console_description.with_pixel_size(pixel_size).with_shown_rows(shown_rows)
+        # screen as the game sees it: the size of its own where a computer's build gave one
+        # (#screen_size), and with the game's pixel size (#pixel_size) that many times smaller.
+        def described_console
+          console_description.with_screen_size(screen_size).with_pixel_size(pixel_size).with_shown_rows(shown_rows)
+        end
 
         # The console this program was built for, with its variant, as it is whatever the game's
         # pixel size. A program that names none cannot be laid out, and no console is assumed for

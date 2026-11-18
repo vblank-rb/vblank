@@ -277,6 +277,19 @@ module VBlank
              plays_bios_start_up: false)
       end
 
+      # This console as a computer's build plays it for a game that asks a screen of its own
+      # (`screen :bitmap, size: [320, 200]`): +size+ is [width, height], and nil leaves the console
+      # as it is. A computer's window is any size, so the screen is the size asked and the window
+      # opens that big. Nothing else changes: the buttons, the sound and the clock are still the
+      # console the program is made as, which is what --console promises. A border is the
+      # console's way of showing a smaller screen inside its own, and the start-up's logo is drawn
+      # for the console's screen, so a screen of its own has neither.
+      def with_screen_size(size)
+        return self if size.nil?
+
+        with(screen_width: size[0], screen_height: size[1], whole_screen_size: nil, plays_bios_start_up: false)
+      end
+
       # This console showing only the rows [first, past] of +rows+ (see +shown_rows+); the console
       # as it is for nil.
       def with_shown_rows(rows) = rows ? with(shown_rows: rows) : self
