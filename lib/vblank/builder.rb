@@ -163,8 +163,11 @@ module VBlank
     # @param screen_as_asked [Boolean] whether this build gives the game the screen size it asks for
     #   (`screen :bitmap, size:`; see Drawing#apply_screen_size!): a computer's build that makes no
     #   cartridge. False for a console's, whose screen is fixed.
+    # @param screen_size [Array, nil] a screen size already given, [width, height]: a program the
+    #   library makes to show in a game's window (a shell's menu, its unpacking) takes the screen the
+    #   game was given (Program#screen_size), so the window is never handed a picture of another size.
     def initialize(options: Cartridge::Options.new, progress: Messages::Progress.silent, settings: {},
-                   screen_as_asked: false)
+                   screen_as_asked: false, screen_size: nil)
       @frame_sync = options.frame_sync
       @for_computer = options.for_computer
       @screen_as_asked = screen_as_asked
@@ -298,6 +301,7 @@ module VBlank
                                                                                     console: options.console,
                                                                                     for_computer: options.for_computer),
                                for_computer: options.for_computer)
+      @program.screen_size = screen_size if screen_size
       @console = @program.described_console
       @container_stack = [@program]
       @shown_while = []        # the conditions open right here, for a declaration that is only presented under them

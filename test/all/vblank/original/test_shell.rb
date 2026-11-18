@@ -22,6 +22,25 @@ class TestOriginalShell < Minitest::Test
     end
   end
 
+  # A shell's menu and unpacking show in the game's window, so a game that asks a screen of its own
+  # (`screen :bitmap, size:`) has every part at that size, or the window is handed a picture of
+  # another.
+  def test_every_part_of_a_shell_has_the_screen_its_game_asks_for
+    Dir.mktmpdir do |folder|
+      from = original_nowhere(folder)
+      game = VBlank.game("SIZED SHELL", consoles: %i[gba]) do
+        screen :bitmap, size: [320, 200]
+        data_pack(from: from, version: "1") { |slots| slots.colors :palette, at: PALETTE_AT, count: 16 }
+        game_loop { wait_vblank }
+      end
+      shell = VBlank::Original::Shell.build(game, err: nil)
+
+      assert_equal({ [320, 200] => shell.parts.map(&:role).uniq },
+                   shell.parts.group_by { |part| part.program.described_console.screen_size }
+                        .transform_values { |parts| parts.map(&:role).uniq })
+    end
+  end
+
   # Each part of building a shell after the checks is a phase the build names, so a big port's
   # build has no long stretch with nothing said. The game is read once: its data pack comes from
   # the reading the checks were made on.

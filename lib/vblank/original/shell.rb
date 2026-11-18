@@ -268,7 +268,8 @@ module VBlank
         options = Cartridge::Options.new(console: game.console, variant: game.variant, for_computer: true)
         sentence = read_again_sentence(original_title).upcase.gsub(MENU_LETTERS, "")
         Builder.keeping_builder_in_use do
-          maker = Builder.new(options: options)
+          # The menu shows in the game's window, so it takes the screen the game was given.
+          maker = Builder.new(options: options, screen_size: game.screen_size)
           maker.program.start_file = IR::StartFile.new(called: MENU_START_TITLE, size: MENU_START_BYTES, checks: [])
           # The menu is played with the game's own keys too, so a web page's shell shows the same
           # Controls in its menu as in its game (the desktop's and vblank run's are the game's window).
