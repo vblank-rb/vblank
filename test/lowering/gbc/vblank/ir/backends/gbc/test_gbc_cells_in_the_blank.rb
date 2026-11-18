@@ -100,11 +100,73 @@ class TestGBCCellsInTheBlank < Minitest::Test
     pass
   end
 
+  # A CELL WRITTEN NOW (`now: true`) costs what the pass spends on it beyond the same cell queued
+  # plainly: a wait for a moment the display is not reading video memory, then the write (Pan Docs,
+  # "STAT": bit 1 clear in modes 0 and 1). Two shapes: a play pass of twelve cells spread down its
+  # frame with work between them, and a cut of eighty close together. The work between cells changes
+  # from pass to pass, so the waits are averaged over many places on the display's line rather than
+  # the few one fixed game lands on. Each budget is what a cell cost in these games when it was
+  # written as soon as the display allowed (the runtime before a test of whether the display had
+  # passed the cell's lines, which cost more than the wait it saved, was added and taken out again).
+  NOW_CELL_UNITS = { play: 458, cut: 472 }.freeze
+
+  def test_a_cell_written_now_costs_no_more_than_its_wait_and_write
+    { play: [12, 12, 15], cut: [80, 1, 3] }.each do |shape, (cells, spread, vary)|
+      now = awake_units_a_pass(cells_written_now_game(cells, spread, vary, now: true))
+      plain = awake_units_a_pass(cells_written_now_game(cells, spread, vary, now: false))
+      each_cell = (now - plain) / cells.to_f
+
+      assert_operator each_cell, :<=, NOW_CELL_UNITS.fetch(shape), "a cell written now in the #{shape} shape cost #{each_cell.round(1)} units"
+    end
+  end
+
   NOTHING_PRESSED = VBlank::Playthroughs::Tape.parse(<<~TAPE)
     vblank tape 1
     recorded on: CELLS 0x00000000
     starts from: power-on
   TAPE
+
+  # A frame of the Color at double speed in the profiler's units, a quarter of an instruction cycle:
+  # 154 lines of 228 instruction cycles.
+  UNITS_A_FRAME = 154 * 228 * 4
+
+  # The units the game is awake for each pass ended, over sixty frames.
+  private def awake_units_a_pass(program)
+    rom = VBlank::Console.for(:gbc).builder.cartridge_for(program, title: "CELLS")
+    result = rom.profile(out: StringIO.new, tape: NOTHING_PRESSED, frames: 10..69)
+    units = result.readings.sum { |reading| reading.awake_share * UNITS_A_FRAME }
+    units / result.readings.sum { |reading| reading.passes_ended.to_i }
+  end
+
+  # +cells+ cells a pass, each the other tile from the pass before, at places spread over the
+  # screen, with +spread+ turns of a loop after each and up to +vary+ more, a number the pass counts.
+  private def cells_written_now_game(cells, spread, vary, now:)
+    b = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
+    b.instance_eval do
+      screen :tiled
+      image(:red_art, "#" => :red) { "########\n" * 8 }
+      image(:blue_art, "#" => :blue) { "########\n" * 8 }
+      tiles :set, "#" => :red_art, "." => :blue_art
+      field = background :field, tiles: :set, map: Array.new(32) { "#" * 32 }
+      passes = var :passes, 0
+      work = var :work, 0
+      game_loop do
+        passes += 1
+        cells.times do |i|
+          col = (i * 7) % 20
+          row = (i * 5) % 18
+          if (passes & 1) == 0
+            field.set_tile col, row, ".", now: now
+          else
+            field.set_tile col, row, "#", now: now
+          end
+          repeat(spread + (passes & vary)) { work += 1 }
+        end
+      end
+    end
+    b.finalize_program
+    b.program
+  end
 
   private def bar_cells_game(cells, top: 0)
     b = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))

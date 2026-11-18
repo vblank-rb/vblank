@@ -1741,35 +1741,24 @@ module VBlank
               asm.jump(:nc, "rt_cells_push_far")
               emit_cell_push_near(asm, memory)
               if memory.reserved?(CELL_SHOWN_NOW)
-                # A cell on lines the display has drawn already cannot show on this frame, and the
-                # blank writes it with the pass: so only one it has not reached waits for it.
+                # Written as soon as the display allows, whatever line it is on. A test of whether it
+                # has passed the cell's lines already, to leave such a cell to the blank, costs more
+                # than the wait it saves: the wait is for one line's drawing at most, and a game's
+                # pass starts as the display starts, above most of its cells. With the display off,
+                # or in the blank, STAT reads a mode that never waits. Each wait leaves A nought.
                 asm.label("#{label}_shown")
-                asm.load_high(:a, h::LY)
-                asm.cp_a(h::SCREEN_HEIGHT)
-                asm.jump_relative(:nc, "#{label}_shown_write")
-                asm.load_high(:a, h::LCDC)
-                asm.bit(7, :a)
-                asm.jump_relative(:z, "#{label}_shown_write")
-                asm.load(:d, :h)
-                asm.load(:e, :l)
-                asm.push(:bc)
-                asm.call("rt_cell_ahead")
-                asm.pop(:bc)
-                asm.ret(:nc)
-                asm.label("#{label}_shown_write")
                 asm.di
+                asm.xor_a(:a)
                 [[0, :c], [1, :b]].each do |bank, byte|
-                  asm.load(:a, bank)
                   asm.load_high(h::VBK, :a)
                   asm.label("#{label}_wait_#{bank}")
                   asm.load_high(:a, h::STAT)
                   asm.and_a(0x02)
                   asm.jump_relative(:nz, "#{label}_wait_#{bank}")
-                  asm.load(:a, byte)
-                  asm.load([:hl], :a)
+                  asm.load([:hl], byte)
+                  asm.inc(:a) if bank.zero? # bank 1 next
                 end
-                asm.xor_a(:a)
-                asm.load_high(h::VBK, :a)
+                asm.load_high(h::VBK, :a) # A nought again: bank 0
                 asm.ei
                 asm.ret
               end
