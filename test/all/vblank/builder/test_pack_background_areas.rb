@@ -29,6 +29,9 @@ module PackBackgroundAreaGames
   # [tile, bank, mirrored, upside down], two to a row.
   Area = Data.define(:places, :banks, :cells, :map_at, :colors_at, :tiles_at)
   ACROSS = 2
+  # Each area's map at a width of its own, as a room of an original is its own size: the town two
+  # cells across and two down, the castle four across and one down.
+  ACROSS_BY_AREA = { town: 2, castle: 4 }.freeze
   AREAS = {
     town: Area.new(places: PLACES, banks: BANKS,
                    cells: [[1, 0, false, false], [2, 1, true, false], [3, 0, false, false], [1, 1, false, true]],
@@ -73,9 +76,10 @@ module PackBackgroundAreaGames
   # build made (nil for a build that leaves its pack out).
   #
   # With +one_tile_slot+ every area names the town's tiles and colours, and only its map is its own:
-  # an original keeping two maps over one set of tiles in video memory.
+  # an original keeping two maps over one set of tiles in video memory. +across+ is one width for
+  # every area's map, or a Hash of them by area.
   private def areas_game_and_file(from, options: VBlank::Cartridge::Options.new, turning: false, set_cells: nil, one_tile_slot: false,
-                                  &loop_body)
+                                  across: ACROSS, &loop_body)
     told = set_cells ? { set_cells: set_cells } : {}
     art_of = ->(name) { one_tile_slot ? :town : name }
     b = VBlank::Builder.new(options: options)
@@ -93,7 +97,7 @@ module PackBackgroundAreaGames
       groups << tile_pictures(:blocks, tiles: { pack[:town_video].tile(1) => pack[:turns].tiles(0, across: TURNS.length) }) if turning
       world = background :world, tiles: AREAS.keys.to_h { |name| [name, pack[:"#{art_of.(name)}_video"]] },
                                  map: AREAS.keys.to_h { |name| [name, pack[:"#{name}_map"]] },
-                                 colors: AREAS.keys.to_h { |name| [name, pack[:"#{art_of.(name)}_colors"]] }, across: ACROSS, **told
+                                 colors: AREAS.keys.to_h { |name| [name, pack[:"#{art_of.(name)}_colors"]] }, across: across, **told
       instance_exec(world, groups.first, &loop_body)
     end
     b.finalize_program
@@ -101,7 +105,7 @@ module PackBackgroundAreaGames
   end
 
   # THE ANSWER KEY: both areas drawn by hand, walked by the same loop.
-  private def areas_drawn_by_hand(areas = AREAS, &loop_body)
+  private def areas_drawn_by_hand(areas = AREAS, across: ACROSS, &loop_body)
     b = VBlank::Builder.new
     b.instance_eval do
       screen :tiled
@@ -120,7 +124,7 @@ module PackBackgroundAreaGames
           pictures[picture] = picture
         end
         tiles :"#{name}_by_hand", pictures
-        [name, drawn.each_slice(ACROSS).to_a]
+        [name, drawn.each_slice(across.is_a?(Hash) ? across.fetch(name) : across).to_a]
       end
       world = background :world, tiles: areas.keys.to_h { |name| [name, :"#{name}_by_hand"] }, map: maps
       instance_exec(world, &loop_body)
@@ -220,6 +224,48 @@ class TestPackBackgroundAreas < Minitest::Test
       end
       bottom_right = ->(frames) { game_player.run(walked, frames: frames).screen.then { |screen| (8...16).map { |x| screen.pixel(x, 12) } } }
       refute_equal bottom_right.(WALKS_ON - 1), bottom_right.(WALKS_ON + 1), "the castle's map shows"
+    end
+  end
+
+  # The town's map two cells across and the castle's four, each area's own width.
+  def test_each_area_map_shows_at_its_own_width
+    by_hand = areas_drawn_by_hand(across: ACROSS_BY_AREA) { |world| PackBackgroundAreaGames.emit_walk(self, world) }
+    Dir.mktmpdir do |folder|
+      walked, = areas_game_and_file(areas_original(folder), across: ACROSS_BY_AREA) do |world|
+        PackBackgroundAreaGames.emit_walk(self, world)
+      end
+
+      { 2 => "the town, 2 cells across", 5 => "the castle, 4 cells across", 9 => "the town again" }.each do |frames, what|
+        assert_equal screen_at(by_hand, frames), screen_at(walked, frames), what
+      end
+    end
+  end
+
+  # Maps of two widths over one slot of tiles and one of colours are one set of tiles: the walk
+  # changes the map alone.
+  def test_areas_of_two_widths_over_one_tile_slot_walk_between_their_maps
+    by_hand = areas_drawn_by_hand(AREAS_OVER_ONE_SLOT, across: ACROSS_BY_AREA) do |world|
+      PackBackgroundAreaGames.emit_walk_beside_sprite(self, world)
+    end
+    Dir.mktmpdir do |folder|
+      walked, = areas_game_and_file(areas_original(folder), one_tile_slot: true, across: ACROSS_BY_AREA) do |world|
+        PackBackgroundAreaGames.emit_walk_beside_sprite(self, world)
+      end
+
+      ((WALKS_ON - 1)..(WALKS_ON + 4)).each do |frames|
+        assert_equal screen_at(by_hand, frames), screen_at(walked, frames), "frame #{frames}"
+      end
+    end
+  end
+
+  def test_across_by_area_naming_other_areas_is_a_friendly_error
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) do
+        areas_game_and_file(areas_original(folder), across: { town: 2, keep: 4 }) { |world| PackBackgroundAreaGames.emit_walk(self, world) }
+      end
+
+      assert_match(/across:/, error.message)
+      assert_match(/the same areas/, error.message)
     end
   end
 

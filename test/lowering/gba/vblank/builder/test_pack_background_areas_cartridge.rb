@@ -35,6 +35,18 @@ class TestPackBackgroundAreasCartridge < Minitest::Test
     end
   end
 
+  # Maps of two widths over one slot of tiles: the cartridge streams each map at its own size and
+  # shows what the interpreter shows on every frame of the walk.
+  def test_areas_of_two_widths_over_one_tile_slot_show_each_map_as_the_interpreter_does
+    Dir.mktmpdir do |folder|
+      program, = areas_game_and_file(areas_original(folder), one_tile_slot: true, across: ACROSS_BY_AREA) do |world|
+        PackBackgroundAreaGames.emit_walk_beside_sprite(self, world)
+      end
+
+      assert_backends_agree(program, frames: (WALKS_ON - 1)..(WALKS_ON + 3))
+    end
+  end
+
   # Areas of slots of their own still bring their tiles in, so the routine is there to miss.
   def test_areas_of_their_own_slots_bring_their_tiles_in
     Dir.mktmpdir do |folder|

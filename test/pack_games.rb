@@ -830,6 +830,20 @@ module PackGames
         end
         built(*made)
       end,
+      # Each area's map at a width of its own, walked between.
+      game(:background_walking_between_areas_of_two_widths, passes: 9) do |folder, options|
+        made = areas_game_and_file(areas_original(folder), options: options, across: ACROSS_BY_AREA) do |world|
+          PackBackgroundAreaGames.emit_walk(self, world)
+        end
+        built(*made)
+      end,
+      # The same over one slot of tiles and one of colours: one set of tiles, the map alone walked.
+      game(:background_walking_between_areas_of_two_widths_over_one_tile_slot, passes: WALKS_ON + 4) do |folder, options|
+        made = areas_game_and_file(areas_original(folder), options: options, one_tile_slot: true, across: ACROSS_BY_AREA) do |world|
+          PackBackgroundAreaGames.emit_walk_beside_sprite(self, world)
+        end
+        built(*made)
+      end,
       game(:cells_written_in_each_area_of_a_walking_background, passes: 11) do |folder, options|
         told = [PackBackgroundAreaGames.advance_word(*WRITTEN)]
         made = areas_game_and_file(areas_original(folder), options: options, set_cells: told) do |world|

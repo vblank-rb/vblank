@@ -151,28 +151,36 @@ module VBlank
       # each area's map named for its area. So every console that walks a background between areas
       # walks this one, and `show_map` takes the area's name or its number. Areas over one slot of
       # tiles are one tileset, and walking between them changes only the map.
+      #
+      # EACH AREA'S MAP CAN BE A WIDTH OF ITS OWN. A room of an original is a map of the room's own
+      # size, so `across:` can be a Hash by area too, as the slots are:
+      #
+      #   background :rooms, tiles: pack[:house_video], map: { hall: pack[:hall_map], field: pack[:field_map] },
+      #                      colors: pack[:house_colors], across: { hall: 30, field: 126 }
+      #
+      # The maps are then of different sizes, which a background keeps whole and brings into view a
+      # strip at a time (IR::TileMap.streams?), as it does a game's own maps of different sizes.
       def pack_areas?(tiles, map, colors) = [tiles, map, colors].any? { |given| given.is_a?(Hash) && given.each_value.any?(DSL::PackSlot) }
 
       def declare_pack_background_areas(name, tiles:, map:, colors:, across:, cell:, set_cells: nil, cells_in_front: nil, **others)
-        areas = pack_area_names!(name, tiles: tiles, map: map, colors: colors)
+        areas = pack_area_names!(name, tiles: tiles, map: map, colors: colors, across: across)
         refuse_written_cells_on_areas!(name, set_cells, cells_in_front)
         slots = areas.to_h do |area|
-          [area, { tiles: slot_of_area(tiles, area), map: slot_of_area(map, area), colors: slot_of_area(colors, area) }]
+          [area, { tiles: setting_of_area(tiles, area), map: setting_of_area(map, area), colors: setting_of_area(colors, area),
+                   across: setting_of_area(across, area) }]
         end
         refuse_areas_of_two_shapes!(name, slots)
-        if pack_left_out?
-          return declare_pack_areas_read_at_start(name, slots, across: across, cell: cell, set_cells: set_cells, **others)
-        end
+        return declare_pack_areas_read_at_start(name, slots, cell: cell, set_cells: set_cells, **others) if pack_left_out?
 
         told = slots.keys.to_h { |area| [area, set_cells.is_a?(Hash) ? set_cells[area] : set_cells] }
         # Areas over one slot of tiles in one slot of colours, told the same cells, are made
         # together as one tileset, so they are one set to walk between (Builder::Tiled#background_from_sets).
         groups = slots.keys.group_by { |area| [slots[area][:tiles], slots[area][:colors], told[area]] }
         art = groups.each_value.reduce({}) do |made, areas|
-          made.merge(pack_areas_art(name, areas.to_h { |area| [area, slots[area][:map]] }, across: across, cell: cell,
-                                                                                         set_cells: told[areas.first],
-                                                                                         tiles: slots[areas.first][:tiles],
-                                                                                         colors: slots[areas.first][:colors]))
+          made.merge(pack_areas_art(name, areas.to_h { |area| [area, slots[area][:map]] },
+                                    across: areas.to_h { |area| [area, slots[area][:across]] }, cell: cell,
+                                    set_cells: told[areas.first], tiles: slots[areas.first][:tiles],
+                                    colors: slots[areas.first][:colors]))
         end
         art = slots.keys.to_h { |area| [area, art.fetch(area)] }
         handle = background(name, tiles: art.transform_values(&:tileset), map: art.transform_values(&:rows), **others)
@@ -188,13 +196,13 @@ module VBlank
       # the game may name for it, and the cells `set_cell` may write in it (a DSL::PackCells, or nil).
       PackAreaArt = Data.define(:tileset, :rows, :lists, :told)
 
-      # The slot +given+ names for +area+: its own in a Hash of slots by area, or the one slot every
-      # area shares.
-      def slot_of_area(given, area) = given.is_a?(Hash) ? given.fetch(area) : given
+      # What the setting +given+ (a slot, or across:'s width) names for +area+: its own in a Hash by
+      # area, or the one every area shares.
+      def setting_of_area(given, area) = given.is_a?(Hash) ? given.fetch(area) : given
 
-      # The areas of a background of the pack, from whichever of +given+ (tiles:, map:, colors:) are
-      # a Hash by area: each must name the same areas in the same order, since the maps are counted
-      # in that order.
+      # The areas of a background of the pack, from whichever of +given+ (tiles:, map:, colors:,
+      # across:) are a Hash by area: each must name the same areas in the same order, since the
+      # maps are counted in that order.
       def pack_area_names!(name, **given)
         named = given.select { |_, value| value.is_a?(Hash) }
         (setting, areas), *others = named.map { |key, value| [key, value.keys] }
@@ -202,7 +210,7 @@ module VBlank
         return areas unless other
 
         raise ArgumentError, "background :#{name} names the areas #{areas.map(&:inspect).join(', ')} in #{setting}: and the " \
-                             "areas #{differing.map(&:inspect).join(', ')} in #{other}:. Each Hash of slots by area must " \
+                             "areas #{differing.map(&:inspect).join(', ')} in #{other}:. Each Hash by area must " \
                              "name the same areas, in the same order."
       end
 
@@ -268,7 +276,8 @@ module VBlank
       # as one tileset: an original keeping several maps over one stretch of tiles in video memory
       # changes the map alone, and so does the walk between them. Hands back a PackAreaArt by area.
       #
-      # +set_cells+ are the cells `set_cell` may write in these areas, made pictures of their own.
+      # +across+ is each area's width, by area. +set_cells+ are the cells `set_cell` may write in
+      # these areas, made pictures of their own.
       def pack_areas_art(name, maps, tiles:, colors:, across:, cell:, set_cells: nil)
         own = if maps.one?
                 :"#{name}'s area :#{maps.keys.first}"
@@ -277,8 +286,8 @@ module VBlank
               end
         subject = "background :#{own}"
         words, moving = maps.map do |area, map|
-          refuse_bad_pack_area!(maps.one? ? own : :"#{name}'s area :#{area}", tiles: tiles, map: map, colors: colors, across: across,
-                                                                               cell: cell, set_cells: set_cells)
+          refuse_bad_pack_area!(maps.one? ? own : :"#{name}'s area :#{area}", tiles: tiles, map: map, colors: colors,
+                                                                               across: across.fetch(area), cell: cell, set_cells: set_cells)
         end.first
         tile_places = pack_tile_places(tiles, subject)
         bank_lists = if drawn_from_whole_table?(tiles)
@@ -289,7 +298,7 @@ module VBlank
         rows_by_area = maps.to_h do |area, map|
           map_cells = pack_map_cells(map, "background :#{name}'s area :#{area}'s map:")
           refuse_banks_over_table_tiles!(:"#{name}'s area :#{area}", tiles, map, map_cells)
-          [area, map_cells.each_slice(across).to_a]
+          [area, map_cells.each_slice(across.fetch(area)).to_a]
         end
         shape = PackMapShape.new(name: own, words: words, tiles_a_side: cell / Original::Slot::TILE_SIDE, tile_places: tile_places,
                                  bank_lists: bank_lists)
@@ -659,15 +668,16 @@ module VBlank
       # numbered after the areas' before it, and the areas one background walking between
       # tilesets (Builder::Tiled#background_from_sets), each area's map the size of its own and
       # naming its first stand-in. The node keeps a record of the file for each area, in order,
-      # and each backend that plays it reads every area's cells as the game starts. +slots+ are
-      # each area's tiles:, map: and colors:, by area.
-      def declare_pack_areas_read_at_start(name, slots, across:, cell:, set_cells: nil, **others)
+      # and each backend that plays it reads every area's cells as the game starts, each area's
+      # record holding its own width. +slots+ are each area's tiles:, map:, colors: and across:, by
+      # area.
+      def declare_pack_areas_read_at_start(name, slots, cell:, set_cells: nil, **others)
         first = 0
         made = slots.to_h do |area, given|
           own = :"#{name}'s area :#{area}"
           told = set_cells.is_a?(Hash) ? set_cells[area] : set_cells
-          words, moving = refuse_bad_pack_area!(own, across: across, cell: cell, set_cells: told, **given)
-          part = pack_tiles_held_at_start(own, **given, across: across, tiles_a_side: cell / Original::Slot::TILE_SIDE, words: words,
+          words, moving = refuse_bad_pack_area!(own, cell: cell, set_cells: told, **given)
+          part = pack_tiles_held_at_start(own, **given, tiles_a_side: cell / Original::Slot::TILE_SIDE, words: words,
                                                moving: moving, set_cells: told, first: first)
           first += part.held.length
           [area, part]
