@@ -194,6 +194,7 @@ power-on, for the Advance's, the Super Nintendo's, the Genesis's and the PlaySta
 `no_frames_games.rb` (a small room played for no frames, which ends before the runtime turns the screen
 on, for the Super Nintendo's, the Genesis's and the PlayStation's tests of the picture such a run reports),
 `speakers.rb` (which speaker a cartridge's voice is heard from),
+`heard_film.rb` (a film's sound read back by ffmpeg, each speaker's loudness a film frame at a time, and a game that starts a tone on a known pass, for the film's, the film tasks' and the film shell's tests),
 `many_tiles.rb` (backgrounds of many different tiles, for what a console does when they are too many to
 hold at once), `scene_sprite_pictures.rb` (scenes whose sprite pictures together are more than a console
 holds at once), `scene_color_lists.rb` (lists of fifteen colours, for a Super Nintendo screen's own

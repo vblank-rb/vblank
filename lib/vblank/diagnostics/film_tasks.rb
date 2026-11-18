@@ -21,6 +21,7 @@ module VBlank
     #     t.console = :ps1                             # build each game for this console
     #     t.lowering = "ruby"                          # show each side this way (the emulator if unsaid)
     #     t.shell = -> { MyGame::GAME }                # a port whose shell every film shows (FilmShell)
+    #     t.sound = "ours"                             # hear a side in every film (none if unsaid)
     #   end
     #
     # A SIDE is a label (written over its pictures) and its cartridge: a path to a cartridge file,
@@ -38,6 +39,11 @@ module VBlank
     # (Playthroughs::CommandLine::SHOWN_WAYS), which play the game itself, so a cartridge file is
     # shown only in the emulator.
     #
+    # SOUND. A film is silent unless something asks to hear it: `rake film NAME=door SOUND=ours` hears
+    # that side, `SOUND=side_by_side` two sides one on each speaker, and `SOUND=in_turn` shows the film
+    # once for each side, one heard each time (FilmSound). That is over the film file's `sound`, which is
+    # over the Rakefile's #sound.
+    #
     # A SHELL. A port made from an original (a game with a data_pack) sets #shell, the game or a
     # lambda answering it, and each film shows two sides before the others: "shell", the port's shell
     # from its first start, and "all-in-one", the same game built all-in-one, on the same pass
@@ -49,7 +55,7 @@ module VBlank
     # ffmpeg; nothing else a game does needs either, and a missing one stops the task saying what
     # to install.
     class FilmTasks < Rake::TaskLib
-      attr_accessor :name, :films, :out, :libs, :requires, :sides, :console, :lowering, :shell
+      attr_accessor :name, :films, :out, :libs, :requires, :sides, :console, :lowering, :shell, :sound
 
       def initialize(name = :film)
         super()
@@ -62,6 +68,7 @@ module VBlank
         @console = nil
         @lowering = nil
         @shell = nil
+        @sound = nil
         yield self if block_given?
         define_film_task
       end
@@ -71,12 +78,15 @@ module VBlank
 
       # Make the film +film_name+ and answer the MP4's path. +search_path+ is where ImageMagick and
       # ffmpeg are looked for (see Film.make). +console+ and +lowering+ are what each side is opened
-      # with unless it sets its own: the Rakefile's unless set.
-      def make_film(film_name, search_path: ENV.fetch("PATH", ""), console: self.console, lowering: self.lowering)
+      # with unless it sets its own: the Rakefile's unless set. +sound+ is which side is heard
+      # (Film.make's +sound:+), over the film file's; nil leaves the film file's, or the Rakefile's.
+      def make_film(film_name, search_path: ENV.fetch("PATH", ""), console: self.console, lowering: self.lowering,
+                    sound: nil)
         refuse_unknown_film!(film_name)
         load_game
         plan = FilmScript.read(File.join(films, "#{film_name}.rb"), sides: sides, console: console, lowering: lowering,
-                                                                     shell: shell)
+                                                                     shell: shell, sound: self.sound)
+        plan = plan.with(sound: sound_named(sound)) if sound
         plan.make(File.join(out, "#{film_name}.mp4"), search_path: search_path)
       end
 
@@ -85,10 +95,12 @@ module VBlank
       def define_film_task
         desc "Make a film as an MP4 in #{out} (NAME=<a film in #{films}/>; CONSOLE=<gba, gbc, snes, genesis or " \
              "ps1> builds the game for that console; LOWERING=<emulator, ruby, js, native or interpreter> shows it " \
-             "that way, the cartridge in its emulator if unsaid)"
+             "that way, the cartridge in its emulator if unsaid; SOUND=<a side's label, side_by_side or in_turn> " \
+             "puts sound in the film)"
         task(name) do
           path = make_film(ENV.fetch("NAME", nil), console: setting_from_environment("CONSOLE") || console,
-                                                   lowering: setting_from_environment("LOWERING") || lowering)
+                                                   lowering: setting_from_environment("LOWERING") || lowering,
+                                                   sound: setting_from_environment("SOUND"))
           puts "The film is at #{path}."
         rescue Film::MissingTool => e
           abort e.message
@@ -100,6 +112,13 @@ module VBlank
       def setting_from_environment(key)
         value = ENV.fetch(key, nil)
         value unless value.nil? || value.empty?
+      end
+
+      # A sound setting as Film.make takes it: `side_by_side` and `in_turn` written as words on a
+      # command line are FilmSound's settings, and any other word is a side's label.
+      def sound_named(sound)
+        setting = FilmSound::SETTINGS.find { |known| known.to_s == sound.to_s }
+        setting || sound.to_s
       end
 
       def load_game

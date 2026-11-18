@@ -34,6 +34,13 @@ module VBlank
     #
     # KEYS answers the buttons held on a frame: a button's name, a list of them, or nil.
     #
+    # SOUND is off unless asked for, and a film without it is the same MP4 it always was. +sound:+
+    # names the side heard ("ours"), or `:side_by_side` (two sides, one on each speaker) or `:in_turn`
+    # (the film shown once for each side, one heard each time); FilmSound says how each side's sound
+    # is kept in step with its frames. A heard side answers one more thing:
+    #
+    #   last_frame_samples    the samples of the frame played last, left and right by turns
+    #
     # It needs ImageMagick, which puts each pair of pictures together and writes the labels, and
     # ffmpeg, which makes the MP4. Both are looked for before any frame is played.
     class Film
@@ -75,12 +82,14 @@ module VBlank
 
       # Make the film and write it to +path+, which is handed back. +search_path+ is where the
       # programs are looked for, the folders of a PATH; left out, it is this process's.
-      # +scale+ is how many times the console's size each picture is shown at.
-      def self.make(path, sides:, parts:, keys: ->(_frame) {}, scale: PICTURE_SCALE, search_path: ENV.fetch("PATH", ""))
-        new(sides: sides, parts: parts, keys: keys, scale: scale, search_path: search_path).write(path)
+      # +scale+ is how many times the console's size each picture is shown at. +sound+ is which side
+      # is heard (FilmSound), none unless given.
+      def self.make(path, sides:, parts:, keys: ->(_frame) {}, scale: PICTURE_SCALE, sound: nil,
+                    search_path: ENV.fetch("PATH", ""))
+        new(sides: sides, parts: parts, keys: keys, scale: scale, sound: sound, search_path: search_path).write(path)
       end
 
-      def initialize(sides:, parts:, keys:, scale:, search_path:)
+      def initialize(sides:, parts:, keys:, scale:, search_path:, sound: nil)
         refuse_bad_sides!(sides)
         refuse_bad_parts!(parts)
         refuse_bad_scale!(scale)
@@ -88,35 +97,51 @@ module VBlank
         @parts = parts
         @keys = keys
         @scale = scale
+        @sound = sound
+        @heard = sound.nil? ? [] : FilmSound.heard_labels(sound, @sides.keys)
         @commands = find_commands!([IMAGEMAGICK, FFMPEG], search_path)
       end
 
       # Play every side, put the pictures together and write the MP4 to +path+, handed back.
       def write(path)
         shown = @parts.flat_map(&:to_a)
+        holds = hold_lengths(shown)
+        film_sound = FilmSound.new(@sound, parts: @parts, holds: holds) unless @heard.empty?
         Dir.mktmpdir("film-") do |dir|
-          @sides.each_value.with_index do |opener, side|
-            screenshot_side(opener, shown, File.join(dir, side.to_s))
+          @sides.each.with_index do |(label, opener), side|
+            heard = screenshot_side(opener, shown, File.join(dir, side.to_s), heard: @heard.include?(label))
+            film_sound&.keep(label, heard) if @heard.include?(label)
           end
           pictures = shown.map { |frame| compose_frame(dir, frame) }
           FileUtils.mkdir_p(File.dirname(File.expand_path(path)))
-          encode_mp4(pictures, hold_lengths(shown), dir, path)
+          if film_sound
+            encode_mp4_with_sound(pictures, holds, film_sound, dir, path)
+          else
+            encode_mp4(pictures, holds, dir, path)
+          end
         end
         path
       end
 
       private
 
-      # Every frame up to the last shown, with its buttons, and a picture of each one shown.
-      def screenshot_side(opener, shown, into)
+      # Every frame up to the last shown, with its buttons, and a picture of each one shown. Answers
+      # each shown frame's sound by its number where the side is +heard+, else nothing.
+      def screenshot_side(opener, shown, into, heard: false)
         FileUtils.mkdir_p(into)
         wanted = shown.to_set
         running = opener.call
+        refuse_side_without_sound!(running, File.basename(into).to_i) if heard
+        sound = {}
         first_size = nil
         taken = []
         (1..shown.max).each do |frame|
           running.step(1, keys: IR::Buttons.mask(@keys.call(frame)))
+          # Asked every frame, shown or not: a lowering hands over the sound made since it was last asked.
+          samples = running.last_frame_samples if heard
           next unless wanted.include?(frame)
+
+          sound[frame] = samples if heard
 
           running.screenshot(picture_path(into, frame))
           size = picture_size(picture_path(into, frame))
@@ -125,8 +150,17 @@ module VBlank
           refuse_size_change!(into, first_size, frame, size)
           taken << frame
         end
+        sound
       ensure
         running.close if running.respond_to?(:close)
+      end
+
+      # A side that is heard hands over each frame's sound (FilmSound); one that cannot is refused.
+      def refuse_side_without_sound!(running, side)
+        return if running.respond_to?(:last_frame_samples)
+
+        raise ArgumentError, "The side \"#{@sides.keys[side]}\" is heard, and it gives no sound: it does not answer " \
+                             "`last_frame_samples`. To fix this, hear another side with `sound:`, or leave out `sound:`."
       end
 
       # A PNG's width and height, from its header.
@@ -211,14 +245,31 @@ module VBlank
       # The MP4 at the console's own rate, each held picture repeated for as long as it is held:
       # a numbered link to it for each frame of the film, which ffmpeg reads as a run of pictures.
       def encode_mp4(pictures, holds, dir, out)
+        reel = write_reel(pictures, holds, dir)
+        system(@commands.fetch(FFMPEG), "-y", "-loglevel", "error", "-framerate", FRAME_RATE.to_s,
+               "-i", reel, "-pix_fmt", "yuv420p", "-c:v", "libx264", out, exception: true)
+      end
+
+      # The same with +film_sound+ (FilmSound) under the pictures, which are shown once for each side
+      # heard in turn. The sound is exactly as long as the pictures.
+      def encode_mp4_with_sound(pictures, holds, film_sound, dir, out)
+        reel = write_reel(pictures * film_sound.showings, holds * film_sound.showings, dir)
+        wav = film_sound.write_wav(File.join(dir, "sound.wav"))
+        system(@commands.fetch(FFMPEG), "-y", "-loglevel", "error", "-framerate", FRAME_RATE.to_s, "-i", reel,
+               "-i", wav, "-map", "0:v", "-map", "1:a", "-pix_fmt", "yuv420p", "-c:v", "libx264", "-c:a", "aac",
+               "-b:a", "192k", out, exception: true)
+      end
+
+      # A numbered link to each held picture for each frame of the film, which ffmpeg reads as a run
+      # of pictures: answers the pattern that names them.
+      def write_reel(pictures, holds, dir)
         reel = File.join(dir, "reel")
         FileUtils.mkdir_p(reel)
         at = 0
         pictures.zip(holds).each do |picture, held|
           held.times { FileUtils.ln_s(picture, File.join(reel, format("%06d.png", at += 1))) }
         end
-        system(@commands.fetch(FFMPEG), "-y", "-loglevel", "error", "-framerate", FRAME_RATE.to_s,
-               "-i", File.join(reel, "%06d.png"), "-pix_fmt", "yuv420p", "-c:v", "libx264", out, exception: true)
+        File.join(reel, "%06d.png")
       end
 
       # Each tool's command, found in +search_path+, or MissingTool naming every one not found.

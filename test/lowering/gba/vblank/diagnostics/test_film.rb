@@ -4,6 +4,7 @@ require "test_helper"
 require "json"
 require "open3"
 require "tmpdir"
+require "heard_film"
 
 # A film of one cartridge, or of two side by side: every frame of the parts asked for, doubled,
 # over a strip naming each side, held at the end of each part and at the end of the film, and
@@ -17,6 +18,7 @@ class TestFilm < Minitest::Test
   # A film is made by ImageMagick and ffmpeg, and its MP4 read back by ffprobe and ffmpeg: child
   # processes, which hang inside a Ractor.
   runs_on_the_main_ractor!
+  include HeardFilm
 
   Film = VBlank::Diagnostics::Film
 
@@ -167,7 +169,109 @@ class TestFilm < Minitest::Test
     assert_match(/brew install ffmpeg/, error.message)
   end
 
+  # SOUND. A film asked for none has no sound in it, and is the same bytes each time it is made.
+  def test_a_film_with_no_sound_asked_for_has_none
+    one = make_film(parts: [1..3])
+    first = File.binread(one)
+    again = make_film(parts: [1..3])
+
+    assert_empty audio_streams(one)
+    assert_equal first, File.binread(again)
+  end
+
+  # A side heard alone: its sound is on the film frames that show the frames it made it on.
+  def test_a_side_heard_alone_is_heard_on_the_frames_that_show_its_sound
+    rom = beeping_game(beep_on: 12)
+    film = File.join(scratch, "heard.mp4")
+    Film.make(film, sides: { "ours" => -> { opened(rom) }, "quiet" => -> { opened(game(CYCLE)) } }, parts: [1..40],
+                    sound: "ours")
+    left, right = film_sound(film)
+
+    assert_equal [2], audio_streams(film).map { |stream| stream["channels"] }
+    assert_in_delta onset_frame(rom) - 1, onset(left), 1, "the sound is not on the frames that show it"
+    assert_in_delta onset(left), onset(right), 0, "the side is heard as it made it, on both speakers"
+  end
+
+  # Two sides side by side, each on its own speaker: the first side's on the left.
+  def test_two_sides_side_by_side_are_each_heard_on_their_own_speaker
+    ours = beeping_game(beep_on: 8)
+    theirs = beeping_game(beep_on: 24)
+    film = File.join(scratch, "pair.mp4")
+    Film.make(film, sides: { "ours" => -> { opened(ours) }, "reference" => -> { opened(theirs) } }, parts: [1..40],
+                    sound: :side_by_side)
+    left, right = film_sound(film)
+
+    assert_in_delta onset_frame(ours) - 1, onset(left), 1
+    assert_in_delta onset_frame(theirs) - 1, onset(right), 1
+  end
+
+  # In turn: the film is shown once for each side, and each time one side is heard.
+  def test_sides_in_turn_show_the_film_once_for_each_side
+    ours = beeping_game(beep_on: 8)
+    theirs = beeping_game(beep_on: 24)
+    film = File.join(scratch, "turns.mp4")
+    Film.make(film, sides: { "ours" => -> { opened(ours) }, "reference" => -> { opened(theirs) } }, parts: [1..40],
+                    sound: :in_turn)
+    left, = film_sound(film)
+    shape = video_shape(film)
+
+    assert_equal 2 * SHORTEST, shape[:frames]
+    assert_in_delta onset_frame(ours) - 1, onset(left.first(SHORTEST)), 1
+    assert_in_delta onset_frame(theirs) - 1, onset(left.drop(SHORTEST)), 1
+  end
+
+  # The frames a part's end is held for are silent, and the next part is heard again.
+  def test_the_held_frames_at_a_parts_end_are_silent
+    rom = beeping_game(beep_on: 3)
+    film = File.join(scratch, "held.mp4")
+    Film.make(film, sides: { "ours" => -> { opened(rom) } }, parts: [2..10, 20..22], sound: "ours")
+    left, = film_sound(film)
+    loud = left.max
+
+    held = left[(9 + 2)...(9 + PART_END_HOLD - 3)]
+    assert(held.all? { |energy| energy < loud / 50 }, "a held frame is not silent")
+    assert_operator left[9 + PART_END_HOLD], :>, loud / 4, "the next part is not heard"
+  end
+
+  def test_sound_of_a_side_the_film_does_not_have_is_refused
+    error = assert_raises(ArgumentError) do
+      Film.make(File.join(scratch, "never.mp4"), sides: { "ours" => -> { flunk "opened" } }, parts: [1..2], sound: "theirs")
+    end
+    assert_match(/"theirs"/, error.message)
+    assert_match(/"ours"/, error.message)
+  end
+
+  def test_side_by_side_sound_of_one_side_is_refused
+    error = assert_raises(ArgumentError) do
+      Film.make(File.join(scratch, "never.mp4"), sides: { "ours" => -> { flunk "opened" } }, parts: [1..2],
+                                                 sound: :side_by_side)
+    end
+    assert_match(/two sides/, error.message)
+  end
+
+  # A side that cannot hand its sound over is refused, naming it.
+  def test_a_heard_side_that_gives_no_sound_is_refused
+    error = assert_raises(ArgumentError) do
+      Film.make(File.join(scratch, "never.mp4"), sides: { "program" => -> { GrowingScreen.new } }, parts: [1..2],
+                                                 sound: "program")
+    end
+    assert_match(/"program"/, error.message)
+    assert_match(/sound/, error.message)
+  end
+
   private def scratch = @scratch ||= Dir.mktmpdir("film-test")
+
+  # A game that paints red and blue by turns, and from pass +beep_on+ sounds a tone that does not fade.
+  private def beeping_game(beep_on:)
+    VBlank.build("FILMED", console: :gba, out: StringIO.new, err: StringIO.new, &beeping_game_source(beep_on))
+  end
+
+  # The first frame, counted from one, the cartridge itself puts its sound out on.
+  private def onset_frame(rom)
+    verifier = opened(rom)
+    verifier.step(40, keys: 0)
+    onset(verifier.audio_energy_by_frame) + 1
+  end
 
   def teardown
     FileUtils.rm_rf(@scratch) if @scratch

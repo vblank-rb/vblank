@@ -63,11 +63,13 @@ module VBlank
       # The folder this cartridge's save memory is kept in while it runs.
       attr_reader :save_dir
 
-      def self.open(game, tape: nil, state: nil, console: nil, lowering: nil)
-        new(game, tape: tape, state: state, console: console, lowering: lowering)
+      # +sound:+ true keeps the sound a lowering makes, a frame at a time, for a film that hears this side
+      # (#last_frame_samples). The emulator keeps a cartridge's sound whatever it is told.
+      def self.open(game, tape: nil, state: nil, console: nil, lowering: nil, sound: false)
+        new(game, tape: tape, state: state, console: console, lowering: lowering, sound: sound)
       end
 
-      def initialize(game, tape: nil, state: nil, console: nil, lowering: nil)
+      def initialize(game, tape: nil, state: nil, console: nil, lowering: nil, sound: false)
         refuse_tape_and_state!(tape, state)
         console = Console.named(console) if console
         way = Playthroughs::CommandLine.shown_way_named(lowering)
@@ -75,7 +77,9 @@ module VBlank
         @save_dir = Dir.mktmpdir("film-save")
         @frames_held_back = 0
         @blank = false
-        @reader = way ? open_lowering(program_from(game, console), way) : open_cartridge(game, console)
+        @silent_step = false
+        @lowered_without_sound = way && !sound
+        @reader = way ? open_lowering(program_from(game, console), way, sound) : open_cartridge(game, console)
         @reader.load_state(state) if state
         play_tape(Playthroughs::Tape.read(tape.to_s)) if tape
       rescue StandardError
@@ -91,7 +95,20 @@ module VBlank
         @frames_held_back -= waiting
         @reader.step(count - waiting, keys: keys) if count > waiting
         @blank = false if count > waiting
+        @silent_step = count <= waiting
         self
+      end
+
+      # The samples of the frames just played, left and right by turns (Verifier#last_frame_samples,
+      # Playthroughs::LoweredGame#last_frame_samples): none while a lowering is held back, when no game
+      # is running yet.
+      def last_frame_samples
+        if @lowered_without_sound
+          raise ArgumentError, "This side shows the game as a lowering and keeps no sound, so a film cannot hear it. " \
+                               "To fix this, open it with `sound: true`: `FilmCartridge.open(game, lowering:, sound: true)`."
+        end
+
+        @silent_step ? [] : @reader.last_frame_samples
       end
 
       def screenshot(path)
@@ -113,11 +130,23 @@ module VBlank
 
       private
 
-      # The game played as a lowering, held back to start where the cartridge does (CARTRIDGE_START_FRAMES).
-      def open_lowering(program, way)
+      # The game played as a lowering, held back to start where the cartridge does (CARTRIDGE_START_FRAMES),
+      # handing over its sound a frame at a time where +sound+ asks.
+      def open_lowering(program, way, sound)
         @frames_held_back = cartridge_start_frames(program)
         @blank = true
-        Playthroughs::LoweredGame.new(program, way)
+        lowered = Playthroughs::LoweredGame.new(program, way, speaker: sound)
+        refuse_silent_lowering!(lowered, way) if sound
+        lowered
+      end
+
+      # The interpreter keeps a log of what the game asked of the sound chip, and makes no samples.
+      def refuse_silent_lowering!(lowered, way)
+        return if lowered.sound_rate
+
+        lowered.close
+        raise ArgumentError, "A film cannot hear a game shown as #{way}: it makes no sound samples. To fix this, " \
+                             "show the side as ruby, js or native, or in the emulator, or do not hear this side."
       end
 
       # The frames +program+'s cartridge plays before the frame that shows its first pass, by its

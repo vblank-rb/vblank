@@ -65,19 +65,24 @@ module VBlank
       # films the menu and the unpacking before the game, so the frame the game begins on is this
       # machine's speed. +from+ :game plays the menu and the unpacking as the side opens, filming
       # neither, so the film's first frame is the game's first on any machine.
-      def open(from: :menu)
+      #
+      # +sound:+ true keeps the sound each picture is shown with, for a film that hears this side
+      # (#last_frame_samples on the side); without it the side keeps none.
+      def open(from: :menu, sound: false)
         unless COUNTED_FROM.include?(from)
           raise ArgumentError, "`from: #{from.inspect}` is not a place to start the shell's film. Give `from: :menu` " \
                                "to film the menu and the unpacking, or `from: :game` to start on the game's first frame."
         end
 
-        ShellSide.new(Live::Shell.from(@built), @copy, ->(frame) { @game_began_on = frame }, from_game: from == :game)
+        ShellSide.new(Live::Shell.from(@built), @copy, ->(frame) { @game_began_on = frame }, from_game: from == :game,
+                                                                                            sound: sound)
       end
 
       # The all-in-one build of the game, shown as a display switched off until the frame the shell's
       # game began on, then played from its first pass with the same buttons. Opened after the shell's
       # side has played past that frame (Film plays its sides in order, so list the shell first).
-      def all_in_one
+      # +sound:+ as #open's; the frames held back are silent.
+      def all_in_one(sound: false)
         unless @game_began_on
           raise ArgumentError, "The all-in-one side starts on the frame the shell's game began on, and the shell's side " \
                                "has not shown the game yet. To fix this, put the shell's side first in `sides:`, " \
@@ -86,7 +91,7 @@ module VBlank
 
         session = Live::Session.new(@game.checked_program(err: nil, console: @console))
         AllInOneSide.new(session, held_back: @game_began_on - 1, width: @built.game.described_console.screen_width,
-                                  height: @built.game.described_console.screen_height)
+                                  height: @built.game.described_console.screen_height, sound: sound)
       end
 
       # A copy that is one file is handed as that file. One that is a folder (a release of several
@@ -102,28 +107,76 @@ module VBlank
       # device answers) whose clock moves only when the play waits, as Live::Headless's does, and
       # which hands each picture back out of the Fiber the play runs in. It seats players as a window
       # does. +buttons+ answers the buttons held for a pass, by the pass's number.
+      #
+      # KEEPING SOUND (+keeps_sound+). A session shows a pass's picture and then hands over the pass's
+      # sound (Session#play_at_console_speed), so a picture handed out as it is shown would leave its
+      # sound for the next step. A device that keeps sound holds each picture back until the session's
+      # next call to it, the sound being the one that comes first, and hands the picture out then with
+      # the sound it was shown with (#sound_shown). The pictures come out in the same order, each on the
+      # same step; one still held when the play ends or the game begins is handed out by
+      # #hand_out_picture.
       class FilmedDevice
         attr_reader :now
         attr_writer :buttons
 
-        def initialize
+        # The samples handed over with the picture handed out last, left and right by turns.
+        attr_reader :sound_shown
+
+        def initialize(keeps_sound: false)
           @now = 0r
           @buttons = ->(_pass) { [] }
           @stopping = false
+          @keeps_sound = keeps_sound
+          @held_picture = nil
+          @sound = []
+          @sound_shown = []
         end
 
-        def show(pixels, width, height) = Fiber.yield(Live::Headless::Picture.new(pixels: pixels.dup, width: width, height: height))
-        def play_sound(_left, _rate, _right = nil) = nil
+        def show(pixels, width, height)
+          picture = Live::Headless::Picture.new(pixels: pixels.dup, width: width, height: height)
+          return Fiber.yield(picture) unless @keeps_sound
+
+          hand_out_picture
+          @held_picture = picture
+        end
+
+        # A pass's sound, the left speaker's and the right's (the left's again for a game with one).
+        def play_sound(left, _rate, right = nil)
+          return unless @keeps_sound
+
+          left ||= []
+          @sound.concat(left.zip(right || left).flatten.compact)
+          hand_out_picture
+        end
+
+        # The picture held back, with the sound that came since the one before, out of the Fiber.
+        def hand_out_picture
+          return unless @held_picture
+
+          picture = @held_picture
+          @held_picture = nil
+          @sound_shown = @sound
+          @sound = []
+          Fiber.yield(picture)
+        end
+
         def sound_waiting = nil
-        def held_buttons(pass) = @buttons.call(pass)
+        def held_buttons(pass) = hand_out_picture.then { @buttons.call(pass) }
         def fast_forward_speed(_pass) = 1
-        def hold_while_paused = false
+        def hold_while_paused = hand_out_picture.then { false }
         def seat_players(_most_players) = nil
         def notice(_words) = nil
-        def wait_until(seconds) = (@now = [@now, seconds.to_r].max)
+
+        def wait_until(seconds)
+          hand_out_picture
+          @now = [@now, seconds.to_r].max
+        end
 
         # Asked once a pass: true once the side is closing, which ends every play the shell is in.
-        def stop? = @stopping
+        def stop?
+          hand_out_picture
+          @stopping
+        end
 
         def stop! = (@stopping = true)
       end
@@ -136,23 +189,40 @@ module VBlank
         def pixels = @picture&.pixels
 
         # +play+ is a lambda, not a block: it is called in the Fiber after this method has returned.
-        def initialize(play)
-          @device = FilmedDevice.new
+        # +keeps_sound+ keeps the sound each picture is shown with (FilmedDevice).
+        def initialize(play, keeps_sound: false)
+          @device = FilmedDevice.new(keeps_sound: keeps_sound)
           @fiber = Fiber.new do
             play.call(@device)
+            @device.hand_out_picture
             nil
           end
           @picture = nil
+          @samples = []
+          @keeps_sound = keeps_sound
+        end
+
+        # The samples the picture stepped to last was shown with, left and right by turns: none for a
+        # step that showed no new picture. A play that keeps no sound is refused, not heard as silence.
+        def last_frame_samples
+          return @samples if @keeps_sound
+
+          raise ArgumentError, "This side of the shell keeps no sound, so a film cannot hear it. To fix this, open it " \
+                               "with `sound: true`: `shell.open(sound: true)` or `shell.all_in_one(sound: true)`."
         end
 
         # One picture further, with +keys+ (IR::Buttons.mask) the film's buttons for it. Answers what
         # the play handed out of its Fiber: the picture, GAME_BEGINS, or nil once the play has ended.
         def step_picture(keys)
           @keys = keys
+          @samples = []
           return unless @fiber.alive?
 
           shown = @fiber.resume
-          @picture = shown if shown.is_a?(Live::Headless::Picture)
+          if shown.is_a?(Live::Headless::Picture)
+            @picture = shown
+            @samples = @device.sound_shown
+          end
           shown
         end
 
@@ -185,7 +255,7 @@ module VBlank
       # film's first frame (#play_lead_in), so that frame is the game's first pass, played with the
       # film's buttons for it.
       class ShellSide
-        def initialize(shell, copy, game_began, from_game:)
+        def initialize(shell, copy, game_began, from_game:, sound: false)
           @folder = Dir.mktmpdir("film-shell")
           handed = File.join(@folder, File.basename(copy.path))
           FilmShell.hand_copy(copy, handed)
@@ -195,17 +265,21 @@ module VBlank
             shell.play(device, folder_path: File.join(@folder, "kept"), choose_copy: -> { handed },
                                refused: ->(words) { raise Refused, words },
                                play_game: lambda { |game|
+                                 device.hand_out_picture # the shell's last, on its own step
                                  Fiber.yield(GAME_BEGINS) if from_game
                                  game_began.call(@frame + 1)
                                  device.buttons = ->(_pass) { @play.film_buttons }
                                  Live::Session.new(game: game).play(device)
                                })
-          })
+          }, keeps_sound: sound)
           play_lead_in if from_game
         rescue StandardError
           close
           raise
         end
+
+        # The samples the frame just played was shown with, left and right by turns.
+        def last_frame_samples = @play.last_frame_samples
 
         def step(count = 1, keys: 0)
           count.times do
@@ -244,24 +318,30 @@ module VBlank
       # THE ALL-IN-ONE BUILD'S SIDE: +held_back+ frames of a display switched off, then +session+
       # played from its first pass with the film's buttons.
       class AllInOneSide
-        def initialize(session, held_back:, width:, height:)
+        def initialize(session, held_back:, width:, height:, sound: false)
           @held_back = held_back
           @off = Live::Headless::Picture.new(pixels: Array.new(width * height, IR::Backends::Reference::Framebuffer::HELD_OFF),
                                              width: width, height: height)
           @play = SteppedPlay.new(lambda { |device|
             device.buttons = ->(_pass) { @play.film_buttons }
             session.play(device)
-          })
+          }, keeps_sound: sound)
+          @silent_step = false
         end
 
         def step(count = 1, keys: 0)
           count.times do
-            next @held_back -= 1 if @held_back.positive?
+            @silent_step = @held_back.positive?
+            next @held_back -= 1 if @silent_step
 
             @play.step_picture(keys)
           end
           self
         end
+
+        # The samples the frame just played was shown with, left and right by turns: none while the
+        # display is switched off.
+        def last_frame_samples = @silent_step ? [] : @play.last_frame_samples
 
         def pixels = @play.pixels || @off.pixels
 

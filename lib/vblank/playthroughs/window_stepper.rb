@@ -79,12 +79,19 @@ module VBlank
         nil
       end
 
-      # The two speakers' sound of the frame just played, or silence.
+      # The two speakers' sound of the frame just played, or silence: a game with none, or one whose
+      # reader refuses to give samples (a PlayStation program's, PS1Reading), is played silent.
       def sound_of_frame
         return [@silence, @silence] unless @game.respond_to?(:last_frame_samples)
 
-        left, right = @game.last_frame_samples.each_slice(2).to_a.transpose
+        left, right = frame_samples.each_slice(2).to_a.transpose
         left ? [left, right] : [@silence, @silence]
+      end
+
+      def frame_samples
+        @game.last_frame_samples
+      rescue ArgumentError
+        []
       end
     end
   end

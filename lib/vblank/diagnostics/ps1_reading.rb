@@ -59,6 +59,7 @@ module VBlank
       # gem counts those samples without keeping them (RubyPS1Emulator::Core#sound_frames). So a
       # reader has none to give, and says so; silence would read as a program that makes no sound.
       def last_frame_sound = refuse_ps1_samples!
+      def last_frame_samples = refuse_ps1_samples!
       def loudest_by_frame = refuse_ps1_samples!
 
       private

@@ -154,6 +154,20 @@ class TestPS1Film < Minitest::Test
     assert_match(/console: :ps1/, error.message)
   end
 
+  # Beetle PSX here counts the program's samples and keeps none, so a film cannot hear a PlayStation
+  # side: it is refused, saying so, and not filmed silent.
+  def test_a_playstation_side_cannot_be_heard
+    film = File.join(scratch, "heard.mp4")
+    error = assert_raises(ArgumentError) do
+      VBlank::Diagnostics::Film.make(film, sides: { "ours" => -> { FilmCartridge.open(game) } }, parts: [1..3],
+                                           sound: "ours")
+    end
+
+    assert_match(/PlayStation/, error.message)
+    assert_match(/no sound samples/, error.message)
+    refute_path_exists film
+  end
+
   private def scratch = @scratch ||= Dir.mktmpdir("ps1-film-test")
 
   # A PS-X EXE made by hand (psx-spx, "CDROM File Formats" and the CPU and GPU chapters): it sets the
