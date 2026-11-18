@@ -239,9 +239,16 @@ module VBlank
           # rest are drawn in pieces of 8×8. A screen that does not fit even with none spent is cut
           # small alone (+small_sprite_scenes+). What each crowded screen gave up is in #lost_squares,
           # for the build to say.
+          #
+          # SPRITES OVER A PAINTED SCREEN (+painted_screen_room+). The painted screen takes video
+          # memory up to $7800 and two of its tiles past it (Runtime::Paint, "SPRITES OVER THE
+          # PICTURE"), so the sprites' tiles are the places left among the last 128: every other place
+          # is taken from the start, and the tiles copied at power-on start at the first of those
+          # (#sprite_tile_data). Each screen bringing its own tiles or colours in is not made there,
+          # so a game that does not fit is refused in plain words, naming the room.
           def initialize(backdrop: nil, sprite_squares: true, screen_colors: false, sprite_colors: false, scene_tiles: false,
                          background_tiles: false, lean_square_scenes: {}, small_sprite_scenes: [], third_layer: false,
-                         shared_held_lists: false, tile_memo: TileMemo.new)
+                         shared_held_lists: false, tile_memo: TileMemo.new, painted_screen_room: false)
             @tile_memo = tile_memo
             @shared_held_lists = shared_held_lists
             @held_offsets = {} # whose list => where in its palette it starts, where not at the first place
@@ -275,6 +282,8 @@ module VBlank
             @background_palettes = [[]] # each a list of up to fifteen colours
             @sprite_tiles = []
             @sprite_tile_numbers = {}
+            @painted_screen_room = painted_screen_room
+            take_painted_screen_tiles if painted_screen_room
             @sprite_palettes = [] # each a list of up to fifteen colours, or nil for one not used yet
             @sprite_palettes_for = { false => (0...PALETTES), true => (0...PALETTES) }
             @unmixed_scenes = []
@@ -764,13 +773,28 @@ module VBlank
 
           # The tiles in video memory from power-on: those every screen keeps, with those of +scene+,
           # the scene the game opens on, already beside them in a game that keeps tiles by scene.
-          def sprite_tile_data(scene = nil) = ((@scene_sprite_stores.dig(scene, 0) || @sprite_tiles).map { |bytes| bytes || blank_tile }.join)
+          # Beside a painted screen, the tiles from the first place the sprites have (+painted_screen_room+).
+          def sprite_tile_data(scene = nil)
+            tiles = (@scene_sprite_stores.dig(scene, 0) || @sprite_tiles).map { |bytes| bytes || blank_tile }
+            tiles = tiles.drop(Runtime::Paint::FIRST_SPRITE_TILE) if @painted_screen_room
+            tiles.join
+          end
           def background_tile_data(scene = nil) = ((@scene_background_stores.dig(scene, 0) || @background_tiles).map { |bytes| bytes || blank_tile }.join)
 
           private
 
           def blank_tile = ("\0".b * TILE_BYTES)
           def blank_bar_tile = ("\0".b * BAR_TILE_BYTES)
+
+          # Every sprite tile place the painted screen takes, filled so no sprite tile goes there:
+          # those before the last 128, and the clear and see-through tiles among those.
+          def take_painted_screen_tiles
+            taken = (0...Runtime::Paint::FIRST_SPRITE_TILE).to_a + Runtime::Paint::SPRITE_TILES_TAKEN
+            taken.each { |place| @sprite_tiles[place] = blank_tile }
+          end
+
+          # How many sprite tiles a painted screen leaves.
+          def painted_screen_sprite_tiles = MOST_SPRITE_TILES - Runtime::Paint::FIRST_SPRITE_TILE - Runtime::Paint::SPRITE_TILES_TAKEN.length
 
           # How many of the backgrounds' lists the third layer's colours take: one for each four of its lists.
           def bar_background_palettes = (@bar_palettes.length + BAR_PALETTES_A_LIST - 1) / BAR_PALETTES_A_LIST
@@ -872,7 +896,7 @@ module VBlank
           # changes is built again with those lists sharing sets (+shared_held_lists+): that is tried
           # last, so a game that fits without it keeps the sets it had.
           def too_much_error_for(palettes)
-            return TooManySpriteColors if palettes.equal?(@sprite_palettes) && !@sprite_colors
+            return TooManySpriteColors if palettes.equal?(@sprite_palettes) && !@sprite_colors && !@painted_screen_room
             return TooManyBackgroundColors if palettes.equal?(@background_palettes) && !@screen_colors
             return TooManyHeldBackgroundLists if !@shared_held_lists && held_lists_can_share? && background_palettes?(palettes)
 
@@ -886,7 +910,7 @@ module VBlank
 
           # The refusal for the sprites' tiles being full: the one that builds the game again with each
           # scene bringing its own in, where that has not been tried.
-          def sprite_tiles_error = @scene_tiles ? TooMuch : TooManySpriteTiles
+          def sprite_tiles_error = (@scene_tiles || @painted_screen_room) ? TooMuch : TooManySpriteTiles
           def background_tiles_error = @scene_background_tiles ? TooMuch : TooManyBackgroundTiles
 
           # [the first tile of +own+ that is not as +shared+ has it, every tile's bytes from there], or
@@ -1171,7 +1195,14 @@ module VBlank
           def refuse_too_many!(count, most, what, error = TooMuch)
             return if count < most
 
-            raise error, "The #{what} use more different 8×8 squares of picture than a Super Nintendo has room " \
+            if @painted_screen_room && what == "sprites"
+              raise error, "The sprites over the painted picture use more different 8×8 squares of picture than a " \
+                           "Super Nintendo has room for beside a painted screen (#{painted_screen_sprite_tiles}). The " \
+                           "painted screen takes the rest of video memory. To fix this, use fewer different " \
+                           "pictures for those sprites, or smaller ones."
+            end
+
+            raise error,"The #{what} use more different 8×8 squares of picture than a Super Nintendo has room " \
                            "for (#{most}). To fix this, use fewer different pictures."
           end
         end

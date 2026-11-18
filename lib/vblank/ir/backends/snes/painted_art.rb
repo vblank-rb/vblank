@@ -55,6 +55,7 @@ module VBlank
           def initialize
             @colors = [BLACK]
             @places = { BLACK => 0 }
+            @kept = {} # a list of colours kept for sprites: its first place -> its colours (#keep_places)
             @pictures = []
             @numbered = {}
             @shifts = {} # a picture's number -> the places across modulo eight it is painted at
@@ -89,20 +90,49 @@ module VBlank
           # The place of +color+ (15-bit) in the colour list, added there the first time.
           def place_of(color)
             @places[color] ||= begin
-              refuse_too_many_colors! if @colors.length >= COLORS
+              next_free_place
               @colors << color
               @colors.length - 1
             end
           end
 
+          # SPRITES OVER THE PICTURE draw from the second half of the colour memory, a list of sixteen
+          # places for each set of colours a sprite uses (Art#sprite_palette_at), so those places hold
+          # the sprites' colours, +colors+ from +first+ on, and the painting never paints in them,
+          # even where a colour is the same: a sprite's list can change as the game runs. Kept
+          # before the game paints anything, so the painting's places go round them.
+          def keep_places(first, colors)
+            raise ArgumentError, "places from #{first} are given out already" if first < @colors.length
+
+            @kept[first] = colors.dup.freeze
+          end
+
+          # Places the next colour added goes after: past the lists kept for sprites it has reached,
+          # and refused where the colour list is full.
+          private def next_free_place
+            while (kept = @kept[@colors.length])
+              @colors.concat(kept)
+            end
+            refuse_too_many_colors! if @colors.length >= COLORS
+          end
+
           # A place taken by the chip's black (place_never_nought) is not a colour of the game's, so a
-          # game refused only for that place is told so.
+          # game refused only for that place is told so. With sprites over the picture, their colours
+          # are named as the ones that share the list.
           def refuse_too_many_colors!
             refuse_no_place_for_chip_black! if @black_twin && @colors.length == COLORS
+            unless @kept.empty?
+              raise TooMuch, "This game paints more colours than a Super Nintendo can show beside its sprites. A " \
+                             "painted screen shows #{COLORS} colours, and the sprites over the picture take " \
+                             "#{kept_places} of them. To fix this, use fewer colours in the picture or in the sprites."
+            end
 
             raise TooMuch, "This game paints more than #{COLORS} different colours. A Super Nintendo shows " \
                            "#{COLORS} colours on a painted screen. To fix this, use fewer colours."
           end
+
+          # How many places the sprites' lists take.
+          def kept_places = @kept.each_value.sum(&:length)
 
           # The place of +color+ where place 0 may not stand for it: black, which is place 0, gets a
           # place of its own besides, the same black. The Super FX's PLOT leaves a pixel of place 0
@@ -117,6 +147,7 @@ module VBlank
 
             @black_twin ||= begin
               refuse_no_place_for_chip_black! if @colors.length >= COLORS
+              next_free_place
               @colors << BLACK
               @colors.length - 1
             end
@@ -150,7 +181,7 @@ module VBlank
 
           # A new place of the colour list, holding +color+ (15-bit) at power-on.
           def ink(color)
-            refuse_too_many_colors! if @colors.length >= COLORS
+            next_free_place
             @colors << color
             Ink.new(place: @colors.length - 1)
           end
@@ -158,16 +189,19 @@ module VBlank
           # The places that hold black, of those the game paints in.
           def black_places = @colors.each_index.select { |place| @colors[place] == BLACK }
 
-          # How many places are left in the colour list.
-          def places_left = COLORS - @colors.length
+          # How many places are left in the colour list: those not given out, less the sprites'.
+          def places_left = COLORS - @colors.length - @kept.sum { |first, colors| first >= @colors.length ? colors.length : 0 }
 
           # How many of the colour memory's colours the game paints in, from colour 0: the rest are
           # black and never painted with.
           def colors_painted = @colors.length
 
-          # The colour list as the console's colour memory takes it: 256 colours, two bytes each.
+          # The colour list as the console's colour memory takes it: 256 colours, two bytes each,
+          # the sprites' lists among them.
           def cgram
-            @colors.dup.fill(BLACK, @colors.length...COLORS).pack("v*")
+            all = @colors.dup.fill(BLACK, @colors.length...COLORS)
+            @kept.each { |first, colors| all[first, colors.length] = colors }
+            all.pack("v*")
           end
 
           private

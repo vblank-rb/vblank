@@ -84,10 +84,19 @@ module VBlank
 
             # Whether +program+'s painted screen shows text on a layer of its own (Runtime::TextLayer):
             # it writes text that can go there, and never moves the camera, whose room in video RAM
-            # the layer takes.
+            # the layer takes, and shows no sprite over the picture, whose tiles take the room the
+            # layer's tiles would.
             def self.text_layer?(program)
               painted?(program) && !doubled?(program) && program.walk.none? { |node| node.kind == :camera } &&
+                !sprites_over_picture?(program) &&
                 program.walk.any? { |node| node.kind == :draw_text && layer_pixels(node) }
+            end
+
+            # Whether +program+ shows sprites over its painted screen of small pixels
+            # (Runtime::Paint, "SPRITES OVER THE PICTURE"). Big pixels refuse such a sprite on every
+            # console (Guardrails::Checks::BiggerPixelsNotMadeYet).
+            def self.sprites_over_picture?(program)
+              painted?(program) && !doubled?(program) && IR::SpritesOverPicture.any?(program)
             end
 
             # Whether +program+'s painted screen can take turns between two pictures
@@ -214,6 +223,19 @@ module VBlank
             def painted? = @painted
 
             def doubled? = @doubled
+
+            # THE SPRITES' COLOURS ON A PAINTED SCREEN: the second half of the colour memory, where
+            # Art put each set of colours a sprite over the picture uses, kept from the painting
+            # (PaintedArt#keep_places), once those sets are all made and before anything is painted.
+            def keep_sprite_colors_from_painting
+              return unless @painted && Paint.sprites_over_picture?(@program)
+
+              sprites_at = Art::PALETTES * Art::PLACES
+              _, count = @art.colors_shown.find { |first, _| first == sprites_at }
+              return unless count
+
+              @painted_art.keep_places(sprites_at, @art.cgram.unpack("v*")[sprites_at, count])
+            end
 
             # The painted picture's rows: the small picture's with big pixels.
             def painted_height = @doubled ? Runtime::PaintDoubled::HEIGHT : Runtime::Picture::SCREEN_HEIGHT

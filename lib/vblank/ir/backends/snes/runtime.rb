@@ -112,12 +112,12 @@ module VBlank
                                       see_through: lowered[:see_through], sprite_depths: lowered[:sprite_depths], big_tiles: lowered[:big_tiles],
                                       sprite_squares: lowered[:sprite_squares], changing_colors: c.changing_colors,
                                       math_turns: c.math_turns, scene_bars: lowered[:scene_bars], third_layer: c.third_layer,
-                                      held_hides_sprites: c.held_hides_sprites)
+                                      held_hides_sprites: c.held_hides_sprites, sprites_over_picture: c.sprites_over_picture)
             BackgroundBox.emit(asm, memory, s.picture) if c.boxes
             if c.doubled
               PaintDoubled.emit(asm, memory, s.paint, band: c.shown_band, columns: lowering.paints_columns?)
             elsif c.painted
-              Paint.emit(asm, memory, s.paint, chip: c.chip?, columns: lowering.paints_columns?)
+              Paint.emit(asm, memory, s.paint, chip: c.chip?, columns: lowering.paints_columns?, sprites: c.sprites_over_picture)
             end
             Tint.emit(asm, memory, s.tint, colors_shown: lowered[:colors_shown], changing_colors: c.changing_colors, dims: c.dims,
                                scene_backdrops: c.scene_backdrops, backdrop_follows: c.backdrop_follows)

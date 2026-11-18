@@ -25,6 +25,19 @@ module VBlank
           # instead (TextLayer), whose map takes the rows of this map past the 32nd and whose tiles
           # the rest of video RAM past the see-through tile; such a game has no camera.
           #
+          # SPRITES OVER THE PICTURE (`sprite ..., over_picture: true`) are the console's own, drawn
+          # over the layer, and their tiles take the rest of video RAM instead, so such a game paints
+          # its text. A sprite's tile is four bits a pixel, 16 words, and OBSEL names where they are:
+          # 256 from a base at a multiple of $2000 words, and 256 more from $1000 words after it
+          # (fullsnes, "SNES PPU Sprites (OBJs)"). With the base at $6000 the first 256 are the
+          # screen's own tiles from $6000 and the next 256 its map from $7000, so a sprite's tile is
+          # one of the last 128, from $7800 (SPRITE_TILES_AT), less the clear and see-through tiles
+          # among them (SPRITE_TILES_TAKEN): Art places the sprites' tiles there. Their colours are
+          # the second half of the colour memory, which a sprite reads in lists of sixteen, so
+          # SNES::PaintedArt keeps each list a sprite uses from the painting. The blank sends the
+          # sprite table with the map (rt_paint_upload, SPRITE_TABLE_BYTES), so the sprites move in
+          # the frame the picture changes.
+          #
           # The map's rows past the picture's 28 show the see-through tile, so a view moved down or
           # up past the picture (`camera`) shows the backdrop there, colour 0 of the colour memory,
           # which is black and fades with the picture (Tint) as the interpreter's backdrop does. The
@@ -116,6 +129,17 @@ module VBlank
             CLEAR_CELL = 0xC3C3
             # The cell that shows the see-through tile, the tile after the clear tile.
             SEE_THROUGH_CELL = CLEAR_TILE + 1
+            # SPRITES OVER THE PICTURE (see the top): where their tiles start in video RAM, the
+            # first of them as a sprite numbers its tiles from OBSEL's base, and the ones the clear
+            # and see-through tiles take among them. A sprite's tile is 16 words.
+            SPRITE_TILE_WORDS = 16
+            SPRITE_TILES_AT = 0x7800
+            FIRST_SPRITE_TILE = (SPRITE_TILES_AT - Picture::SPRITE_TILES) / SPRITE_TILE_WORDS
+            SPRITE_TILES_TAKEN = ((CLEAR_TILE_AT - Picture::SPRITE_TILES) / SPRITE_TILE_WORDS...
+                                  (((SEE_THROUGH_CELL + 1) * TILE_BYTES / 2) - Picture::SPRITE_TILES) / SPRITE_TILE_WORDS).to_a.freeze
+            # The sprite table, sent whole with the map in the blank: 128 rows of four bytes, then
+            # 32 bytes of each row's two top bits.
+            SPRITE_TABLE_BYTES = 544
             # The map's rows: the picture's, then the see-through ones to its foot.
             MAP_ROWS = 64
             # BG1SC's size bits for a map 32 cells across and 64 down.
@@ -292,7 +316,8 @@ module VBlank
             end
 
             # +chip+ for a cartridge with a Super FX: see ChipPaint, which says what changes there.
-            def emit(asm, memory, s, chip: false, columns: false)
+            # +sprites+ for a game with sprites over the picture, whose table the blank sends.
+            def emit(asm, memory, s, chip: false, columns: false, sprites: false)
               bank = chip ? ChipPaint::COPY >> 16 : COPY >> 16
               logged = !chip
               emit_start(asm, memory, logged)
@@ -307,7 +332,7 @@ module VBlank
               emit_blit(asm, memory, s, bank, logged, chip: chip)
               emit_patches(asm, memory, s, bank, logged)
               emit_prepare(asm, memory, s, logged)
-              emit_upload(asm, memory, s, bank, logged)
+              emit_upload(asm, memory, s, bank, logged, sprites: sprites)
               emit_send_run(asm, memory, bank)
               emit_send_runs(asm, memory, s)
               emit_tables(asm)
@@ -2571,8 +2596,9 @@ module VBlank
 
             # +sum+ (a word of the direct page) and the bytes that go with the map in the blank: the
             # clear tile and the colours if they changed, and the map, whole on a Super FX cartridge
-            # when it changed and its runs of changed cells on a plain one (PaintLog).
-            def emit_count_with_map(asm, memory, sum, tag, logged)
+            # when it changed and its runs of changed cells on a plain one (PaintLog); with
+            # +sprites+, the sprite table, every pass.
+            def emit_count_with_map(asm, memory, sum, tag, logged, sprites: false)
               tint_changed = memory[Tint::STATE] + Tint::CHANGED
               flagged = [[memory[CLEAR_CHANGED], TILE_BYTES], [tint_changed, 512]]
               flagged.unshift([memory[MAP_CHANGED], MAP_BYTES]) unless logged
@@ -2585,6 +2611,12 @@ module VBlank
                 asm.adc(bytes)
                 asm.sta(asm.direct(sum))
                 asm.label(skip)
+              end
+              if sprites
+                asm.lda(asm.direct(sum))
+                asm.clc
+                asm.adc(SPRITE_TABLE_BYTES)
+                asm.sta(asm.direct(sum))
               end
               return unless logged
 
@@ -2605,8 +2637,9 @@ module VBlank
             # for (rt_paint_send_runs); then, all in one blank so they show together, the tiles on
             # the screen now (SHOWN_IN), the clear tile, the map and the colours of a fade or tint,
             # those of them that changed. More than a blank holds of those, the tiles go first, as
-            # the others did, and the rest in the blank after.
-            def emit_upload(asm, memory, s, bank, logged)
+            # the others did, and the rest in the blank after. With +sprites+, the sprite table goes
+            # with the map on every pass, so a sprite moves in the frame the picture under it changes.
+            def emit_upload(asm, memory, s, bank, logged, sprites: false)
               h = Console::SNESHardware
               asm.label("rt_paint_upload")
               if logged
@@ -2631,7 +2664,7 @@ module VBlank
               asm.label("rt_paint_upload_last")
               asm.stz(asm.abs(memory[RUNS_END]))
               asm.stz(asm.direct(s.height))
-              emit_count_with_map(asm, memory, s.height, "rt_paint_upload_count", logged)
+              emit_count_with_map(asm, memory, s.height, "rt_paint_upload_count", logged, sprites: sprites)
               asm.lda(asm.direct(s.height))
               asm.sta(asm.direct(s.chunk))
               asm.ldx(asm.abs(memory[IN_PLACE_START]))
@@ -2702,6 +2735,11 @@ module VBlank
                 asm.lda(memory[from] >> 16)
                 emit_copy_to_video_ram(asm)
                 asm.label(skip)
+              end
+              if sprites
+                oam = memory[Picture::SHADOW_OAM]
+                asm.stz(asm.abs(h::OAMADDL))
+                Picture.emit_dma(asm, h::DMA_TO_ONE_PORT, h::OAMDATA, asm.imm(oam & 0xFFFF), oam >> 16, SPRITE_TABLE_BYTES)
               end
               asm.jsr(asm.abs("rt_tint_upload"))
               # The camera: the layer's scroll, each register written twice, its low byte and then

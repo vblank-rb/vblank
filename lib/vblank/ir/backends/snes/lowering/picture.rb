@@ -280,7 +280,9 @@ module VBlank
               refuse_backdrops_of_its_own!
               @third_layer = Picture.third_layer?(@program)
               @alone_flag_in_line_table = Picture.alone_flag_in_line_table?(@program)
-              @art = Art.new(backdrop: @cache.handover.game_backdrop, sprite_squares: @sprite_squares,
+              over_picture = Lowering::Paint.sprites_over_picture?(@program)
+              @art = Art.new(backdrop: @cache.handover.game_backdrop, sprite_squares: @sprite_squares && !over_picture,
+                             painted_screen_room: over_picture,
                              screen_colors: @screen_colors, sprite_colors: @sprite_colors, scene_tiles: @sprite_tiles,
                              background_tiles: @scene_background_tiles, lean_square_scenes: @lean_square_scenes,
                              small_sprite_scenes: @small_sprite_scenes,
@@ -302,7 +304,8 @@ module VBlank
 
             # Each piece of the picture this lowering does not make yet, refused by name: the
             # build makes a tiled screen of 8×8 tiles, at most two backgrounds, and plain sprites,
-            # or a painted screen (Lowering::Paint) with nothing drawn from tiles over it.
+            # or a painted screen (Lowering::Paint) with nothing drawn from tiles over it but the
+            # sprites a game shows over the picture (Runtime::Paint, "SPRITES OVER THE PICTURE").
             def refuse_unmade_picture!
               refuse_unmade!("a sprite's pose drawn from sprite tiles the game loads (`sprite_tiles`)") if @program.walk.any? { |node| node.kind == :tile_pose }
               screens = @program.walk.select { |node| node.kind == :screen }.map(&:mode).uniq
@@ -311,7 +314,8 @@ module VBlank
               refuse_unmade!("both a painted (bitmap) screen and a tiled one") if screens.include?(:tiled) && painted?
               if painted?
                 refuse_unmade!("a background on a painted (bitmap) screen") unless @backgrounds.empty?
-                refuse_unmade!("a hardware sprite on a painted (bitmap) screen") unless @objects.empty?
+                refuse_unmade!("a hardware sprite on a painted (bitmap) screen") unless @objects.each_value.all?(&:over_picture)
+                refuse_unmade_sprites_on_chip_paint!
               end
               refuse_unmade_doubled_screen! if doubled?
               # The windows hide a layer on the main screen alone (TMW); a see-through layer is mixed
@@ -339,7 +343,20 @@ module VBlank
               raise NotMadeYet.new(DOUBLED_ON_CHIP, part: "the picture")
             end
 
-            DOUBLED_ON_CHIP = "This game has big pixels (`pixel_size: 2`) on a Super FX cartridge. The Super FX chip " \
+            # A sprite over a picture the Super FX paints: the chip's screen is switched off above and
+            # below the picture's rows (Runtime::Letterbox), and the copy in the blank is laid out for
+            # the chip's own copy of the screen. Neither is made to carry the sprite table yet.
+            def refuse_unmade_sprites_on_chip_paint!
+              return unless @chip_board && !@objects.empty?
+
+              raise NotMadeYet.new(SPRITES_ON_CHIP_PAINT, part: "the picture")
+            end
+
+            SPRITES_ON_CHIP_PAINT = "This game shows a sprite over the picture (`over_picture: true`) on a Super FX " \
+                                    "cartridge. The build does not make that yet. To fix this, build the game without " \
+                                    "the Super FX, or paint the sprite into the picture (remove `over_picture: true`)."
+
+            DOUBLED_ON_CHIP ="This game has big pixels (`pixel_size: 2`) on a Super FX cartridge. The Super FX chip " \
                               "paints its pixels in the tiles of a screen with small pixels. A screen with big pixels " \
                               "keeps one byte for each pixel, on the Super Nintendo's turning layer. The build does " \
                               "not make the chip paint that layout yet. To fix this, remove `pixel_size: 2`, or build " \

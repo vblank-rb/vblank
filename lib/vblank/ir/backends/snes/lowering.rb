@@ -334,6 +334,7 @@ module VBlank
             refuse_unsupported_save_memory!
             assign_background_layers unless painted?
             make_sprite_art
+            keep_sprite_colors_from_painting
             make_shared_background_colors
             reserve_patches
             # ...and the ones a game loop keeps of its own in the console's order (IR::Frames::ConsoleLoop).

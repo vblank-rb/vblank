@@ -310,10 +310,13 @@ module VBlank
             # +banded+ means the game's bends are kept as steps (Lowering::Picture#bends_by_bands?).
             # +held_hides_sprites+ for a game with a background shown alone without sprites
             # (Lowering::Picture.held_hides_sprites?): the line table can leave the sprites out then.
+            # +sprites_over_picture+ for a painted screen with sprites over it (Paint).
             def emit(asm, memory, work:, painted: false, bar: false, bent: [], banded: false, tile_runs: 0, run_scratch: nil, straight_tile_runs: false,
                      see_through: nil, sprite_depths: false, big_tiles: 0, sprite_squares: false, changing_colors: false,
-                     math_turns: false, scene_bars: false, held_runs: {}, third_layer: false, held_hides_sprites: false)
-              emit_start(asm, memory, painted, see_through, big_tiles, changing_colors, math_turns, third_layer)
+                     math_turns: false, scene_bars: false, held_runs: {}, third_layer: false, held_hides_sprites: false,
+                     sprites_over_picture: false)
+              emit_start(asm, memory, painted, see_through, big_tiles, changing_colors, math_turns, third_layer,
+                         sprites_over_picture: sprites_over_picture)
               emit_see_through_math(asm, memory) if math_turns
               emit_scene_tiles_noted(asm, memory) if memory.reserved?(SCENE_TILES)
               emit_scene_background_tiles_noted(asm, memory) if memory.reserved?(SCENE_BACKGROUND_TILES)
@@ -336,8 +339,9 @@ module VBlank
             end
 
             # The registers, then the tiles and the colours copied in while the screen is off — or,
-            # for a +painted+ screen, Runtime::Paint's.
-            def emit_start(asm, memory, painted, see_through = nil, big_tiles = 0, changing_colors = false, math_turns = false, third_layer = false)
+            # for a +painted+ screen, Runtime::Paint's, and with +sprites_over_picture+ the sprites'.
+            def emit_start(asm, memory, painted, see_through = nil, big_tiles = 0, changing_colors = false, math_turns = false,
+                           third_layer = false, sprites_over_picture: false)
               h = Console::SNESHardware
               asm.label("rt_picture_start")
               # WRIO's top bit lets a read of SLHV latch the line the picture is on, which the copy
@@ -349,6 +353,7 @@ module VBlank
               asm.rep(0x20)
               if painted
                 asm.jsl(asm.long("rt_paint_start"))
+                emit_sprites_over_picture_start(asm) if sprites_over_picture
                 asm.jml(asm.long("rt_sprites_begin"))
                 return
               end
@@ -379,6 +384,21 @@ module VBlank
               asm.jsl(asm.long("rt_colors_start")) if changing_colors
               asm.jsl(asm.long("rt_sprites_begin"))
               asm.rtl
+            end
+
+            # SPRITES OVER A PAINTED PICTURE (Paint, "SPRITES OVER THE PICTURE"): their tiles from
+            # OBSEL's base at $6000 with the second 256 straight after, 8×8 and 16×16 as on a tiled
+            # screen; the painted layer and the sprites on the main screen; and the sprites' tiles
+            # copied to the last of video RAM. With the screen off, before the first pass is shown.
+            def emit_sprites_over_picture_start(asm)
+              h = Console::SNESHardware
+              asm.sep(0x20)
+              asm.lda(SPRITE_TILES >> 13)
+              asm.sta(asm.abs(h::OBSEL))
+              asm.lda(0x01 | SPRITES_SHOWN)
+              asm.sta(asm.abs(h::TM))
+              asm.rep(0x20)
+              emit_dma_to_vram(asm, Paint::SPRITE_TILES_AT, "art sprite tiles", "art sprite tiles bytes")
             end
 
             # A LAYER HALF SEE-THROUGH (8-bit A): the layers behind it on the sub screen as well (TS);
