@@ -32,7 +32,8 @@ module VBlank
         # WHAT IT COSTS: a frame the view stayed inside the same cell copies nothing, and pays a
         # few dozen instructions to find that out — where the view is, which map, and four
         # comparisons. A frame it crossed one copies a column of 21 cells or a row of 31, a
-        # handful of instructions a cell. A jump is the whole view, 21 rows of 31.
+        # handful of instructions a cell. A jump is the whole view, 21 rows of 31, each row handed
+        # to the copying engine in one to four copies.
         module MapStreaming
           include Console::Hardware
 
@@ -72,8 +73,30 @@ module VBlank
           # ...and the one a cell's place is worked out in, beside ACC and TMP.
           STRIP_SCRATCH = 12
 
+          # The registers a whole fill works in (see #emit_view_fill): the row of the map it is
+          # on, where that row starts in the grid, and the copying engine's first register.
+          FILL_ROW = 12
+          FILL_GRID_ROW = 9
+          FILL_COPIER = 11
+
+          # The registers one run of a row is described in (see #emit_row_piece_routine): the
+          # grid column it starts at, how many cells, the engine's control bits, and where the
+          # cells are read from.
+          PIECE_COL = 2
+          PIECE_COUNT = 3
+          PIECE_CONTROL = 4
+          PIECE_SOURCE = 5
+
+          STACK_POINTER = 13
+
+          # Where a fill keeps three words on the stack, in bytes from its top: the view's first
+          # column, the row past its last, and the blank cell.
+          FILL_FIRST_COL = 0
+          FILL_END_ROW = 4
+          FILL_BLANK = 8
+
           # The variables this keeps for one background: the column and row the grid was last
-          # filled for, the column and row the view is at now, and the row a fill has reached.
+          # filled for, and the column and row the view is at now.
           def stream_var(name, what) = :"_stream_#{name}_#{what}"
 
           # The routine that brings one such background's view along its map (see
@@ -107,9 +130,8 @@ module VBlank
           #
           # It is a routine the build places like one somebody wrote, by what a frame spends in
           # it, so a game that scrolls a big map can keep it in the quick memory while there is
-          # room. That matters most on the frame the whole view is filled: twenty-one rows of
-          # thirty-one cells, a handful of instructions a cell, in a gap the layers are switched
-          # off for.
+          # room. That matters most on the frame the whole view is filled: twenty-one rows, a few
+          # dozen instructions and a copy or two a row, in a gap the layers are switched off for.
           def emit_stream_view_routine(bg)
             name = bg.stream.name
             refill = gensym
@@ -118,6 +140,7 @@ module VBlank
             rows_up = gensym
             done = gensym
             strip = gensym
+            piece = gensym
 
             emit_stream_source(bg)
 
@@ -155,15 +178,17 @@ module VBlank
             emit_branch(:b, done)
 
             place_label(refill)
-            emit_view_fill(name, filled, strip)
+            emit_view_fill(bg.stream.routine, name, filled, piece)
 
-            # The copy of one strip, called from each place above. It sits here, jumped over,
-            # so it moves wherever the routine around it is put.
+            # The copy of one strip and of one piece of a row, called from the places above.
+            # They sit here, jumped over, so they move wherever the routine around them is put.
             place_label(done)
             after = gensym
             emit_branch(:b, after)
             place_label(strip)
             emit_strip_routine(bg.stream.routine)
+            place_label(piece)
+            emit_row_piece_routine
             place_label(after)
           end
 
@@ -282,28 +307,129 @@ module VBlank
 
           # FILL THE WHOLE VIEW, a row at a time, for the place the view is at now, and mark that the
           # grid holds it.
-          def emit_view_fill(name, filled, strip)
-            row = stream_var(name, :fill_row)
+          #
+          # Each row is handed to the copying engine (GBATEK, "DMA Transfers": DMA3, halfwords)
+          # rather than written a cell at a time, because a cell at a time is a loop of a bounds
+          # test, a multiply and a store for every one of the 651 cells, and a fill comes in the
+          # gap with the layers off. A row is at most three runs: blank cells left of the map,
+          # the map's own cells, and blank cells right of it, and each run is one or two copies
+          # (see #emit_row_piece_routine). A row above or below the map is one run of blanks.
+          #
+          # The blank cell is copied from the stack, with the engine reading the same halfword
+          # over and over. So STREAM_BLANK's register is free during the fill, and holds the
+          # engine's address instead.
+          def emit_view_fill(routine, name, filled, piece)
             again = gensym
+            map_cells = gensym
+            blank_rest = gensym
+            next_row = gensym
             load_var(ACC, stream_var(name, :want_col))
             store_var(ACC, stream_var(name, :col))
-            load_var(ACC, stream_var(name, :want_row))
-            store_var(ACC, stream_var(name, :row))
-            store_var(ACC, row)
-            place_label(again)
-            load_var(STRIP_ROW, row)
-            load_var(STRIP_COL, stream_var(name, :col))
-            emit_row_strip
-            emit_branch(:bl, strip)
-            load_var(ACC, row)
-            emit(ASM.add_imm(ACC, ACC, 1))
-            store_var(ACC, row)
-            load_var(TMP, stream_var(name, :row))
+            load_var(TMP, stream_var(name, :want_row))
+            store_var(TMP, stream_var(name, :row))
+            emit(ASM.mov_reg(FILL_ROW, TMP))
             emit(ASM.add_imm(TMP, TMP, VIEW_ROWS))
-            emit(ASM.cmp_reg(ACC, TMP))
+            # Kept on the stack for the whole fill, since the registers are all taken: the view's
+            # first column, the row past its last, and the blank cell.
+            emit(ASM.push(ACC, TMP, STREAM_BLANK))
+            emit_number(FILL_COPIER, REG_DMA3SAD)
+
+            place_label(again)
+            # Every row of the view writes VIEW_COLS cells, in whichever runs.
+            @emitter.note_video_copy(Messages::MadeNames.words_for_made_name(routine), VIEW_COLS * 2)
+            emit(ASM.and_imm(FILL_GRID_ROW, FILL_ROW, STREAM_CELLS - 1))
+            emit(ASM.add_reg_lsl(FILL_GRID_ROW, STREAM_GRID, FILL_GRID_ROW, 6)) # 64 bytes a grid row
+            emit(ASM.ldr_offset(PIECE_COL, STACK_POINTER, FILL_FIRST_COL))
+            emit_number(PIECE_COUNT, VIEW_COLS)
+            emit_blank_piece_source
+            # Above or below the map, the whole row is blank. One unsigned test, as in the strip.
+            emit(ASM.cmp_reg(FILL_ROW, STREAM_ROWS))
+            emit_branch(:bcond, blank_rest, cond: :hs)
+            emit(ASM.cmp_imm(PIECE_COL, 0))
+            emit_branch(:bcond, map_cells, cond: :ge)
+            emit(ASM.rsb_imm(PIECE_COUNT, PIECE_COL, 0)) # the cells left of the map...
+            emit(ASM.cmp_imm(PIECE_COUNT, VIEW_COLS))
+            emit(ASM.mov_imm_cond(:gt, PIECE_COUNT, VIEW_COLS)) # ...no more than the row holds
+            emit_branch(:bl, piece)
+
+            place_label(map_cells)
+            emit_cells_left_in_row(next_row)
+            emit(ASM.cmp_reg(PIECE_COL, STREAM_COLS))
+            emit_branch(:bcond, blank_rest, cond: :ge) # the row is past the map's right edge
+            emit(ASM.sub_reg(ACC, STREAM_COLS, PIECE_COL))
+            emit(ASM.cmp_reg(PIECE_COUNT, ACC))
+            emit(ASM.mov_reg_cond(:gt, PIECE_COUNT, ACC)) # no further than the map's right edge
+            emit(ASM.mul(ACC, FILL_ROW, STREAM_COLS))
+            emit(ASM.add_reg(ACC, ACC, PIECE_COL))
+            emit(ASM.add_reg_lsl(PIECE_SOURCE, STREAM_SOURCE, ACC, 1)) # two bytes a cell
+            emit_number(PIECE_CONTROL, DMA_ENABLE | DMA_16BIT)
+            emit_branch(:bl, piece)
+            emit_cells_left_in_row(next_row)
+            emit_blank_piece_source
+            place_label(blank_rest)
+            emit_branch(:bl, piece)
+
+            place_label(next_row)
+            emit(ASM.add_imm(FILL_ROW, FILL_ROW, 1))
+            emit(ASM.ldr_offset(ACC, STACK_POINTER, FILL_END_ROW))
+            emit(ASM.cmp_reg(FILL_ROW, ACC))
             emit_branch(:bcond, again, cond: :lt)
+            emit(ASM.pop(ACC, TMP, STREAM_BLANK))
             emit_number(ACC, 1)
             store_var(ACC, filled)
+          end
+
+          # PIECE_COUNT = the cells of the row still to write, from PIECE_COL to the view's right
+          # edge, or a jump to +next_row+ when there are none.
+          def emit_cells_left_in_row(next_row)
+            emit(ASM.ldr_offset(ACC, STACK_POINTER, FILL_FIRST_COL))
+            emit(ASM.add_imm(ACC, ACC, VIEW_COLS))
+            emit(ASM.subs_reg(PIECE_COUNT, ACC, PIECE_COL))
+            emit_branch(:bcond, next_row, cond: :eq)
+          end
+
+          # The next piece copies the blank cell kept on the stack, the same halfword each time.
+          def emit_blank_piece_source
+            emit_number(PIECE_CONTROL, DMA_ENABLE | DMA_16BIT | DMA_SRC_FIXED)
+            emit(ASM.add_imm(PIECE_SOURCE, STACK_POINTER, FILL_BLANK))
+          end
+
+          # COPY ONE RUN OF A ROW INTO THE GRID: PIECE_COUNT cells (one or more) from
+          # PIECE_SOURCE, starting at column PIECE_COL of the grid row at FILL_GRID_ROW, with the
+          # engine's control bits in PIECE_CONTROL. Leaves PIECE_COL past the run.
+          #
+          # The grid is 32 cells across and the view comes round it, so a run that reaches the
+          # grid's right edge goes on from its left edge: two copies, the second from where the
+          # first stopped reading (unless the source is the one blank cell). The view is 31 cells
+          # wide, so a run never comes round twice.
+          #
+          # GBATEK, "DMA Transfers": the engine starts as the control word is written and the
+          # processor waits until it is done, so the next copy can be set up straight after.
+          def emit_row_piece_routine
+            done = gensym
+            emit(ASM.and_imm(ACC, PIECE_COL, STREAM_CELLS - 1))
+            emit(ASM.rsb_imm(TMP, ACC, STREAM_CELLS)) # cells before the grid's right edge
+            emit(ASM.cmp_reg(PIECE_COUNT, TMP))
+            emit(ASM.mov_reg_cond(:lt, TMP, PIECE_COUNT))
+            emit(ASM.add_reg_lsl(ACC, FILL_GRID_ROW, ACC, 1))
+            emit(ASM.str_offset(PIECE_SOURCE, FILL_COPIER, 0))
+            emit(ASM.str_offset(ACC, FILL_COPIER, Primitives::COPY_TO_STEP))
+            emit(ASM.orr_reg(ACC, PIECE_CONTROL, TMP))
+            emit(ASM.str_offset(ACC, FILL_COPIER, Primitives::COPY_START_STEP))
+            emit(ASM.add_reg(PIECE_COL, PIECE_COL, TMP))
+            emit(ASM.subs_reg(PIECE_COUNT, PIECE_COUNT, TMP))
+            emit_branch(:bcond, done, cond: :eq)
+            # The rest, from the grid row's first cell.
+            emit(ASM.tst_imm(PIECE_CONTROL, DMA_SRC_FIXED))
+            emit(ASM.lsl_imm(TMP, TMP, 1))
+            emit(ASM.add_reg_cond(:eq, PIECE_SOURCE, PIECE_SOURCE, TMP))
+            emit(ASM.str_offset(PIECE_SOURCE, FILL_COPIER, 0))
+            emit(ASM.str_offset(FILL_GRID_ROW, FILL_COPIER, Primitives::COPY_TO_STEP))
+            emit(ASM.orr_reg(ACC, PIECE_CONTROL, PIECE_COUNT))
+            emit(ASM.str_offset(ACC, FILL_COPIER, Primitives::COPY_START_STEP))
+            emit(ASM.add_reg(PIECE_COL, PIECE_COL, PIECE_COUNT))
+            place_label(done)
+            emit(ASM.return)
           end
 
           # COPY ONE STRIP OF CELLS FROM THE MAP INTO THE GRID, as described in the STRIP

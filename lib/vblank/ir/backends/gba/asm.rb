@@ -700,6 +700,12 @@ module VBlank
             [0xE0900000 | (rn << 16) | (rd << 12) | rm].pack("V")
           end
 
+          # SUBS rd, rn, rm — subtract and SET THE FLAGS, so a count taken down to nothing is
+          # tested by the branch after it with no compare.
+          def subs_reg(rd, rn, rm)
+            [0xE0500000 | (rn << 16) | (rd << 12) | rm].pack("V")
+          end
+
           # CMP{cond} rn, rm, LSL #shift — a compare that only happens when +cond+ holds, against
           # a register shifted up on the way. After a compare of two high halves, `cmpeq` of
           # the low halves makes the pair one compare of two numbers twice a register wide.

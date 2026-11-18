@@ -98,8 +98,10 @@ module VBlank
       # A finished profile. +unattributed+ is the share that ran outside every routine the build
       # knows about.
       # ONE KIND OF COPY INTO VIDEO MEMORY over the measured frames: what it is, how many times it
-      # ran, and the bytes it moved a frame, on average.
-      VideoCopyLine = Data.define(:source, :copies, :bytes_per_frame)
+      # ran, the bytes it moved in all, and the bytes it moved a frame, on average. A copy is one
+      # run of the build's marked instruction, which may be one cell or a whole row of them, so
+      # what a test of how much was written asks is +bytes+.
+      VideoCopyLine = Data.define(:source, :copies, :bytes, :bytes_per_frame)
 
       # +late_passes+ is, for each pass of the game loop that ended inside a break between
       # pictures that began while it ran, how many lines sooner it had to end. Such a pass
@@ -164,7 +166,7 @@ module VBlank
                                                     music_held: sound_drops.music_held,
                                                     voices: sound_drops.voices } : nil,
             video_copies: video_copies.map do |copy|
-              { source: copy.source, copies: copy.copies, bytes_per_frame: copy.bytes_per_frame }
+              { source: copy.source, copies: copy.copies, bytes: copy.bytes, bytes_per_frame: copy.bytes_per_frame }
             end,
             routines: lines.map do |line|
               { name: line.name.to_s, label: line.label, samples: line.samples,
@@ -344,7 +346,7 @@ module VBlank
           next if runs.zero?
 
           moved = sites.sum { |site| profile.pc.fetch(site[:at], 0) * site[:bytes] }
-          VideoCopyLine.new(source: source, copies: runs, bytes_per_frame: (moved / profile.frames.to_f).round)
+          VideoCopyLine.new(source: source, copies: runs, bytes: moved, bytes_per_frame: (moved / profile.frames.to_f).round)
         end.sort_by { |line| -line.bytes_per_frame }
       end
 

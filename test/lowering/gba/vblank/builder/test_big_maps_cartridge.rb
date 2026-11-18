@@ -36,10 +36,10 @@ class TestBigMapsCartridge < Minitest::Test
   # --- how much a view costs to put up ---
 
   # Cells the console copied into the view of background :ground over the 20 frames a profile
-  # measures, or 0 when it copied none.
-  private def cells_copied(rom)
-    copies = VBlank::Diagnostics::Profiler.run(rom, frames: 20, picture: false).video_copies
-    copies.find { |copy| copy.source.include?(":ground") }&.copies || 0
+  # measures, two bytes a cell, or 0 when it copied none.
+  private def cells_copied(rom, frames: 20, settle: VBlank::Diagnostics::Profiler::SETTLE)
+    copies = VBlank::Diagnostics::Profiler.run(rom, frames: frames, settle: settle, picture: false).video_copies
+    (copies.find { |copy| copy.source.include?(":ground") }&.bytes || 0) / 2
   end
 
   # A scene owning a big room takes over every fourth pass, for one pass. +body+ is what else
@@ -88,9 +88,6 @@ class TestBigMapsCartridge < Minitest::Test
   def test_a_first_takeover_named_at_the_end_of_the_pass_before_fills_the_view_once
     test = self
     rom = VBlank.build("BIGF1", console: :gba, out: nil, err: nil) { test.named_at_the_end_of_a_pass(self) }
-    copies = VBlank::Diagnostics::Profiler.run(rom, frames: 30, settle: 0, picture: false).video_copies
-    copied = copies.find { |copy| copy.source.include?(":ground") }&.copies || 0
-
-    assert_equal VIEW_CELLS + (5 * 21) + (3 * 31), copied, "cells copied into the view over the takeover"
+    assert_equal VIEW_CELLS + (5 * 21) + (3 * 31), cells_copied(rom, frames: 30, settle: 0), "cells copied into the view over the takeover"
   end
 end

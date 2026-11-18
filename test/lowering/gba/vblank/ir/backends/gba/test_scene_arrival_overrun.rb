@@ -28,16 +28,23 @@ class TestSceneArrivalOverrun < Minitest::Test
       n[((at / 8) * 6) + column - 2].zero? ? :red : :white
     end
   end
-  WIDE = 96 # a map wider than the console keeps, so the view of it is filled cell by cell
+  WIDE = 96 # a map wider than the console keeps, so the view of it is filled as the scene comes up
+
+  # The line of the gap a late handover waits for before the scene takes over: near the gap's end
+  # (line 227), so the setup after it runs into the picture however quick it is.
+  LATE_LINE = 215
 
   # A title, then a scene of +layers+ backgrounds, each a map of +tile_count+ different tiles, wide
-  # enough that the view of it is written cell by cell as the scene comes up. With +halts+ the scene
+  # enough that the view of it is filled as the scene comes up. With +late+ the pass that hands over
+  # spends the gap until LATE_LINE first, read off the console's line counter. With +halts+ the scene
   # stops the game on its first pass, as an end screen does, so no wait for a frame follows it.
-  private def handed_over(layers:, tile_count:, halts: false)
+  private def handed_over(layers:, tile_count:, late: false, halts: false)
     title_tile = TITLE
     side = WIDE
     handed_over_at = HANDED_OVER_AT
+    late_line = LATE_LINE
     b = Builder.new
+    b.extend(VBlank::Builder::Debug)
     b.instance_eval do
       screen :tiled
       tile_count.times { |n| image(:"stripe_#{n}", width: 8, height: 8, data: TestSceneArrivalOverrun.numbered_tile(n)) }
@@ -55,6 +62,12 @@ class TestSceneArrivalOverrun < Minitest::Test
       game_loop do
         pass += 1
         state = 1 if pass == handed_over_at
+        if late && pass == handed_over_at
+          line = read_scanline
+          while line < late_line
+            line = read_scanline
+          end
+        end
         case_var(:state) do
           when_val 0, :title
           when_val 1, :play
@@ -79,7 +92,7 @@ class TestSceneArrivalOverrun < Minitest::Test
   end
 
   def test_the_first_picture_of_a_scene_that_overruns_the_gap_is_the_backdrop_whole
-    pictures = backdrop_rows_from_handover(handed_over(layers: 3, tile_count: 900))
+    pictures = backdrop_rows_from_handover(handed_over(layers: 3, tile_count: 900, late: true))
 
     torn = pictures.reject { |rows| rows.empty? || rows.length == 160 }
     assert_empty torn, "a picture shows the backdrop on some rows and the scene on others: #{pictures.map(&:length)}"
@@ -89,7 +102,7 @@ class TestSceneArrivalOverrun < Minitest::Test
 
   # The layers held off come on in the next gap whatever the game does then, a stop included.
   def test_a_scene_that_overruns_the_gap_and_stops_the_game_is_up_on_the_next_picture
-    pictures = backdrop_rows_from_handover(handed_over(layers: 3, tile_count: 900, halts: true))
+    pictures = backdrop_rows_from_handover(handed_over(layers: 3, tile_count: 900, late: true, halts: true))
 
     assert_equal 160, pictures.first.length, "the first picture of the scene is the backdrop: #{pictures.map(&:length)}"
     assert_empty pictures[1], "the picture after shows the scene: #{pictures.map(&:length)}"
