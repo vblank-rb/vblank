@@ -414,11 +414,14 @@ module VBlank
             end
           end
 
-          # x + n and x - n for a small n, which rides inside the instruction.
+          # x + n and x - n for a small n, which rides inside the instruction; x + 0 and x - 0 are x,
+          # and cost nothing more (a box's bottom with no distance to it, a key with nothing added).
           def emit_small_add_or_subtract(node, value)
             return false unless SMALL_NUMBERS.cover?(value)
 
             @lowering.value(node.lhs)
+            return true if value.zero?
+
             @lowering.measure_value(node.rhs) do
               @emitter.emit(node.op == :+ ? ASM.add_imm(ACC, ACC, value) : ASM.sub_imm(ACC, ACC, value))
             end
