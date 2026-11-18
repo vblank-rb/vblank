@@ -631,8 +631,16 @@ module VBlank
             emit_number(ACC, 1)
             store_var(ACC, SET_CAME_IN)
 
-            emit_number(TMP, REG_DISPCNT)
-            emit(ASM.load_halfword(ACC, TMP))
+            if holds_layers?
+              # Layers held off from an earlier sending count as on in what is put back after.
+              emit_take_over_held_layers(SET_STRIDE) # free until the area's colours set it
+              emit_number(TMP, REG_DISPCNT)
+              emit(ASM.load_halfword(ACC, TMP))
+              emit(ASM.orr_reg(ACC, ACC, SET_STRIDE))
+            else
+              emit_number(TMP, REG_DISPCNT)
+              emit(ASM.load_halfword(ACC, TMP))
+            end
             store_var(ACC, SET_SWAP_DISPLAY)
             emit(ASM.bic_imm(ACC, ACC, BG0_ENABLE | BG1_ENABLE | BG2_ENABLE | BG3_ENABLE))
             emit(ASM.store_halfword(ACC, TMP))
@@ -648,8 +656,140 @@ module VBlank
             emit_area_colors_unless_up(name, bg)
             place_label(layers_back_on)
             load_var(ACC, SET_SWAP_DISPLAY)
+            emit_layers_back_on_or_held(ACC)
+          end
+
+          # THE BACKGROUND LAYERS HELD OFF UNTIL THE NEXT GAP, as their bits of the display's
+          # settings: nought while none is held.
+          #
+          # Sending a set of tiles or a scene's scenery happens with the background layers off,
+          # and the console goes on drawing while it does. When the work is bigger than the gap
+          # between pictures, it ends part way down a picture, and a layer switched on there
+          # shows from that row down: the top of the picture is the backdrop and the rest the
+          # new scenery, torn at a row set by how many cycles the work took. So a layer due back
+          # on part way down a picture is kept off for the rest of it and switched on by the
+          # screen's own interrupt at the start of the next gap (#emit_held_layers_on), whatever
+          # the game is doing then: waiting, showing a late page, or stopped. The picture is the
+          # backdrop, top to bottom, and the next one is whole. (GBATEK, LCD I/O Display Control:
+          # DISPCNT takes effect from the line being drawn; VCOUNT is that line, 0 to 159 on the
+          # picture and 160 to 227 in the gap; the V-Blank interrupt is requested as line 160
+          # starts.)
+          #
+          # What it holds is the layers the game wants on now: a write of the scene's layers on
+          # every pass puts its own wanted layers here while a hold lasts
+          # (#emit_display_control_keeping_held_off), and sending something new with the layers
+          # off takes the hold over (#emit_take_over_held_layers), so the interrupt never switches
+          # on a layer the game has turned off since, or one being sent to.
+          LAYERS_HELD = :_layers_held
+
+          # The display settings' bits that switch the four background layers on.
+          BG_LAYER_BITS = BG0_ENABLE | BG1_ENABLE | BG2_ENABLE | BG3_ENABLE
+
+          # Does this game switch background layers back on after sending them something, and
+          # wait for frames, so that it has a gap to hold them for? A game that does neither
+          # emits none of this.
+          def holds_layers?
+            !@layout.nil? && @layout.waits_for_frames && @layout.screen.layers_off_while_sending?
+          end
+
+          # Write +reg+, the display's settings with the background layers wanted back on, to
+          # the display: as it is in the gap, and with those layers held off part way down a
+          # picture. Uses TMP.
+          def emit_layers_back_on_or_held(reg)
+            unless holds_layers?
+              emit_number(TMP, REG_DISPCNT)
+              return emit(ASM.store_halfword(reg, TMP))
+            end
+
+            with_interrupts_held_off do
+              in_gap = gensym
+              write = gensym
+              emit_number(TMP, REG_VCOUNT)
+              emit(ASM.load_halfword(TMP, TMP))
+              emit(ASM.cmp_imm(TMP, SCREEN_HEIGHT))
+              emit_branch(:bcond, in_gap, cond: :hs)
+              emit(ASM.and_imm(TMP, reg, BG_LAYER_BITS))
+              store_var(TMP, LAYERS_HELD)
+              emit(ASM.bic_imm(reg, reg, BG_LAYER_BITS))
+              emit_branch(:b, write)
+              place_label(in_gap)
+              emit_number(TMP, 0) # on now, so nothing is held from an earlier sending
+              store_var(TMP, LAYERS_HELD)
+              place_label(write)
+              emit_number(TMP, REG_DISPCNT)
+              emit(ASM.store_halfword(reg, TMP))
+            end
+          end
+
+          # THE HOLD AND THE DISPLAY'S SETTINGS ARE WRITTEN AS A PAIR, with the interrupt switch
+          # off between them (GBATEK, Interrupt Control: IME, 0x4000208, bit 0 off holds every
+          # interrupt; one asked for meanwhile waits in IF and is taken as IME comes back on). The
+          # screen's interrupt switches on what is held, so one landing between the two writes
+          # would OR the held layers into the settings about to be replaced and clear the hold,
+          # and the write after would switch the layers off with nothing left to bring them back.
+          # The block may use TMP and ADDR; the switch as it was waits on the stack.
+          def with_interrupts_held_off
+            emit_number(TMP, REG_IME)
+            emit(ASM.load_halfword(ADDR, TMP))
+            emit(ASM.push(ADDR))
+            emit_number(ADDR, 0)
+            emit(ASM.store_halfword(ADDR, TMP))
+            yield
+            emit(ASM.pop(ADDR))
+            emit_number(TMP, REG_IME)
+            emit(ASM.store_halfword(ADDR, TMP)) # the interrupt switch as it was
+          end
+
+          # BEFORE SENDING SOMETHING WITH THE LAYERS OFF: the layers held from an earlier sending
+          # are taken over by this one, so the screen's interrupt cannot switch them on part way
+          # through it. +keep_in+, a register other than TMP, is handed the bits taken over, for a
+          # sending that puts back the settings it found (a set swap); they are read before the
+          # hold is cleared, so an interrupt between the two leaves them in the register or on the
+          # display, never lost. Uses TMP. Only for a game that holds layers (#holds_layers?).
+          def emit_take_over_held_layers(keep_in)
+            load_var(keep_in, LAYERS_HELD)
+            emit_number(TMP, 0)
+            store_var(TMP, LAYERS_HELD)
+          end
+
+          # Write +reg+, the display's settings written whole on every pass, to the display; where
+          # a hold lasts, with the background layers taken out and held instead, so the write does
+          # not switch them on part way down the picture they are held for, and the interrupt
+          # switches on the ones this pass wants. The hold and the write are one pair
+          # (#with_interrupts_held_off). Uses TMP.
+          def emit_display_control_keeping_held_off(reg)
+            with_interrupts_held_off do
+              none = gensym
+              load_var(TMP, LAYERS_HELD)
+              emit(ASM.cmp_imm(TMP, 0))
+              emit_branch(:bcond, none, cond: :eq)
+              emit(ASM.and_imm(TMP, reg, BG_LAYER_BITS))
+              store_var(TMP, LAYERS_HELD)
+              emit(ASM.bic_imm(reg, reg, BG_LAYER_BITS))
+              place_label(none)
+              emit_number(TMP, REG_DISPCNT)
+              emit(ASM.store_halfword(reg, TMP))
+            end
+          end
+
+          # Switch the layers held off back on, from the screen's interrupt as the gap between
+          # pictures starts, where nothing is being drawn. Nothing on a frame none is held. Uses
+          # ACC, TMP and ADDR, which the interrupt saves. On a painted screen (modes 3 to 5) the
+          # bits are harmless: GBATEK has those modes show BG2 alone, their picture.
+          def emit_held_layers_on
+            return unless holds_layers?
+
+            none = gensym
+            load_var(ACC, LAYERS_HELD)
+            emit(ASM.cmp_imm(ACC, 0))
+            emit_branch(:bcond, none, cond: :eq)
             emit_number(TMP, REG_DISPCNT)
-            emit(ASM.store_halfword(ACC, TMP))
+            emit(ASM.load_halfword(ADDR, TMP)) # the variables' scratch register: free until the store below
+            emit(ASM.orr_reg(ADDR, ADDR, ACC))
+            emit(ASM.store_halfword(ADDR, TMP))
+            emit_number(ACC, 0)
+            store_var(ACC, LAYERS_HELD)
+            place_label(none)
           end
 
           # Copy the tiles of the set in SET_PICKED over the stretch of tile memory every set of

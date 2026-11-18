@@ -747,7 +747,9 @@ module VBlank
           # runs, and a layer left on would show the last scene's maps drawn out of this
           # scene's pictures — garbage — for whatever is left of the frame. Off, it shows the
           # backdrop, which is the safe way to be wrong for part of one frame; the frame after
-          # is this scene's scenery, whole.
+          # is this scene's scenery, whole. Where the sending runs past the gap into a picture,
+          # the layers stay off for the rest of it, so that whole picture is the backdrop (see
+          # BackgroundDrawing::LAYERS_HELD).
           #
           # Only the background layers are touched: the sprites, the arrangement and the rest
           # of the display's settings stay as they were. A scene not drawn from tiles has no
@@ -758,11 +760,22 @@ module VBlank
             screen = @layout.screen.scene_send(name).screen
             return yield unless screen
 
+            # A hold left by an earlier sending is this one's now: the layers come back on below.
+            @background_drawing.emit_take_over_held_layers(ACC) if @background_drawing.holds_layers?
             change_display_control { emit(ASM.bic_imm(ACC, ACC, BG_ENABLE_MASK)) }
             yield
             on = screen.on.reduce(0) { |bits, layer| bits | BG_ENABLES[layer] }
-            change_display_control { emit(ASM.orr_imm(ACC, ACC, on)) } unless on.zero?
+            return if on.zero?
+
+            emit_number(TMP, REG_DISPCNT)
+            emit(ASM.load_halfword(ACC, TMP))
+            emit(ASM.orr_imm(ACC, ACC, on))
+            @background_drawing.emit_layers_back_on_or_held(ACC)
           end
+
+          # Switch on the background layers held off for the picture just drawn, in the gap
+          # between frames (see BackgroundDrawing::LAYERS_HELD).
+          def emit_held_layers_on = @background_drawing.emit_held_layers_on
 
           # Read the display's settings into ACC, let the block change them, write them back.
           def change_display_control
@@ -840,7 +853,13 @@ module VBlank
 
             value = tiled_dispcnt(wanted.on, turning: wanted.turning, bar: wanted.bar)
             value |= OBJ_ENABLE | OBJ_1D_MAP if @layout.has_objects
-            @sprite_drawing.emit_screen_layers(value) # leaves the sprites off on a frame hide_sprites asked for
+            # Leaves the sprites off on a frame hide_sprites asked for, and the background layers
+            # off for the rest of a picture the scene's setup ran into.
+            if @background_drawing.holds_layers?
+              @sprite_drawing.emit_screen_layers(value) { |reg| @background_drawing.emit_display_control_keeping_held_off(reg) }
+            else
+              @sprite_drawing.emit_screen_layers(value)
+            end
             emit_game_window_without_bar unless wanted.bar
           end
 

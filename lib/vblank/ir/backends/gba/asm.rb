@@ -233,6 +233,11 @@ module VBlank
             [0xE3C00000 | (rn << 16) | (rd << 12) | encoding].pack("V")
           end
 
+          # BIC rd, rn, rm — rn with the bits of rm cleared
+          def bic_reg(rd, rn, rm)
+            [0xE1C00000 | (rn << 16) | (rd << 12) | rm].pack("V")
+          end
+
           # ORR rd, rn, rm
           def orr_reg(rd, rn, rm)
             [0xE1800000 | (rn << 16) | (rd << 12) | rm].pack("V")

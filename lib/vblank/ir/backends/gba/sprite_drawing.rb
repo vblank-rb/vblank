@@ -371,18 +371,25 @@ module VBlank
           # that calls `hide_sprites`, the sprite layer is left out of the write on the frame it is
           # off for. A game that never calls it writes the value as it is, and so does a game in a
           # border, whose sprite layer stays on (#emit_switch_sprite_layer).
-          def emit_screen_layers(value)
-            unless hides_sprites? && value.anybits?(OBJ_ENABLE) && @layout.border.nil?
-              return write_reg16(REG_DISPCNT, value)
-            end
+          #
+          # A block, where given, is handed the register holding the value and writes it to the
+          # display itself: with the background layers held off for the rest of a picture
+          # (BackgroundDrawing#emit_display_control_keeping_held_off).
+          def emit_screen_layers(value, &writes_it)
+            hiding = hides_sprites? && value.anybits?(OBJ_ENABLE) && @layout.border.nil?
+            return write_reg16(REG_DISPCNT, value) unless hiding || writes_it
 
-            write = gensym
             emit_number(ACC, value)
-            load_var(TMP, SPRITES_HIDDEN)
-            emit(ASM.cmp_imm(TMP, SPRITES_OFF))
-            emit_branch(:bcond, write, cond: :ne)
-            emit(ASM.bic_imm(ACC, ACC, OBJ_ENABLE))
-            place_label(write)
+            if hiding
+              write = gensym
+              load_var(TMP, SPRITES_HIDDEN)
+              emit(ASM.cmp_imm(TMP, SPRITES_OFF))
+              emit_branch(:bcond, write, cond: :ne)
+              emit(ASM.bic_imm(ACC, ACC, OBJ_ENABLE))
+              place_label(write)
+            end
+            return writes_it.call(ACC) if writes_it
+
             emit_number(TMP, REG_DISPCNT)
             emit(ASM.store_halfword(ACC, TMP))
           end

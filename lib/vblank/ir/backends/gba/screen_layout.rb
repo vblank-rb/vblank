@@ -544,6 +544,11 @@ module VBlank
           # display which, as it takes over (see #scene_screens_for).
           def layers_differ_by_scene? = @scene_sends.each_value.filter_map(&:screen).uniq.size > 1
 
+          # Does the game ever switch the background layers off to send them something, a scene's
+          # scenery as it takes over or a set of tiles a background walks to, and on again after?
+          # (See BackgroundDrawing::LAYERS_HELD.)
+          def layers_off_while_sending? = walks_areas? || @scene_sends.each_value.any?(&:screen)
+
           # The screen of the first tiled scene declared — the one boot sets up where the
           # scenes differ (see Drawing#first_scene_layers).
           def first_scene_screen = @scene_sends.each_value.find(&:screen)&.screen
