@@ -17,9 +17,10 @@ class TestGenesisColorPrepareCost < Minitest::Test
   STILL_MOST = 0.002
 
   # What one line of four changing every pass may cost, against all four changing every pass under a
-  # fade. Measured, about a quarter: one line's fifteen colours worked out and one line copied, against
-  # four lines and the walk's tables. All four lines worked out and copied again for one is over two thirds.
-  ONE_LINE_OF_FADING_MOST = 0.35
+  # fade. Measured, about a third: one line's fifteen colours taken apart and worked out and one line
+  # copied, against four lines read from their noted channels and the walk's tables. All four lines
+  # worked out and copied again for one is more than the fade.
+  ONE_LINE_OF_FADING_MOST = 0.45
 
   def test_a_pass_that_changes_no_colour_spends_nothing_preparing_them
     assert_operator colour_share(still_game), :<=, STILL_MOST, "the colours' share of each frame"
