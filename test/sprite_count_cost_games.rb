@@ -72,13 +72,14 @@ module SpriteCountCostGames
     (added.last - added.first).fdiv(declared - SHOWING)
   end
 
-  # How many bytes of code +game+ built for +console+ holds: the code part of a build that counts it,
-  # or every routine of one that keeps a map of them.
+  # How many bytes of code +game+ built for +console+ holds: every routine of a build that keeps a map
+  # of them, or the code part of one that only counts it.
   def self.code_bytes(console, game)
     built = game.build_rom(console: console, out: StringIO.new, err: StringIO.new, profile: false).built
-    return built.bytes.fetch(:code) if built.respond_to?(:bytes)
-    return built.routines.sum { |_, span| span.size } if built.routines.is_a?(Hash)
+    routines = built.respond_to?(:routines) ? built.routines : nil
+    return built.bytes.fetch(:code) if routines.nil?
+    return routines.sum { |_, span| span.size } if routines.is_a?(Hash)
 
-    built.routines.sum { |routine| routine.addresses.size }
+    routines.sum { |routine| routine.addresses.size }
   end
 end
