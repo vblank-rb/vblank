@@ -66,7 +66,12 @@ module VBlank
     # game has set itself up; the same presses without either are another game. Only the interpreter
     # plays a game as a match (Reference#play_as_match), so a tape of one plays there and is refused
     # anywhere else. A tape with no such line, every tape written before matches kept theirs, has none.
-    Tape = Data.define(:title, :checksum, :starts_from, :steps, :in_passes, :match)
+    #
+    # A TAPE OF A PLAYING GIVEN A SEED OF ITS OWN (Playthrough#play's `seed:`) holds it (+seed+), on a
+    # line of heading after the match's: `seed: 4`. The seed is added to the game's random numbers once
+    # the game has set itself up, so the same presses without it are another game: such a tape plays
+    # with its seed, on the ways that take one (Playthrough::SEEDED_WAYS), and is refused anywhere else.
+    Tape = Data.define(:title, :checksum, :starts_from, :steps, :in_passes, :match, :seed)
 
     class Tape
       # What a tape's file opens with: what it is, and which way of writing one this is.
@@ -101,6 +106,10 @@ module VBlank
       # The way of running a game that plays it as a match, which a tape of a match plays on.
       MATCH_WAY = "interpreter"
 
+      # The line of heading a tape of a seeded playing has, and what follows it.
+      SEED_LINE = "seed: "
+      SEED_SAID = /\A-?\d+\z/
+
       # Where a playthrough starts, as the tape records it: the console switched on with a
       # cartridge nobody has played, or with one holding a save. A save is recorded with a
       # checksum of its bytes, like the cartridge's, for a person to tell which save the
@@ -119,11 +128,12 @@ module VBlank
       # title in the cartridge's own header and a checksum of every byte of it. +save+ is
       # the save memory the cartridge held when the console was switched on, or nil, and
       # +led_in+ whether a lead-in was played before the first of the steps. +in_passes+ is
-      # what the tape counts, nil for frames, and +match+ the Match it replays, nil for none.
-      def self.recorded_on(cartridge, steps, save:, led_in: false, in_passes: nil, match: nil)
+      # what the tape counts, nil for frames, +match+ the Match it replays, nil for none, and +seed+ the
+      # playing's own seed, nil for none.
+      def self.recorded_on(cartridge, steps, save:, led_in: false, in_passes: nil, match: nil, seed: nil)
         title, checksum = title_and_checksum_of(cartridge)
         new(title: title, checksum: checksum, starts_from: start_said(save: save, led_in: led_in), steps: steps,
-            in_passes: in_passes, match: match)
+            in_passes: in_passes, match: match, seed: seed)
       end
 
       # Where a playing started, as a tape records it. +save+ is the save memory the
@@ -179,9 +189,19 @@ module VBlank
 
       # A tape holds nothing but names and numbers, and is made so that every core can read
       # it: it can be kept in a constant, and handed from one Ractor to another.
-      def initialize(title:, checksum:, starts_from:, steps:, in_passes: nil, match: nil)
+      def initialize(title:, checksum:, starts_from:, steps:, in_passes: nil, match: nil, seed: nil)
         super(**Ractor.make_shareable({ title: title.dup, checksum: checksum, starts_from: starts_from.dup, steps: steps.dup,
-                                        in_passes: in_passes, match: match }))
+                                        in_passes: in_passes, match: match, seed: seed }))
+      end
+
+      # A tape of a seeded playing plays only where the seed is added, which nothing that plays a
+      # cartridge frame by frame does. +what+ names what was asked, in the middle of a sentence.
+      def refuse_seed_frame_by_frame!(what)
+        return if seed.nil?
+
+        raise ArgumentError, "This tape starts the random numbers at seed #{seed}, and #{what} plays a cartridge, which " \
+                             "cannot add a seed. To fix this, record the tape with no seed, on a cartridge built " \
+                             "with the seed it needs."
       end
 
       # Play the tape on +cartridge+, exactly as a playthrough plays its script: the block is
@@ -196,7 +216,7 @@ module VBlank
         refuse_missing_lead_in!(lead_in)
         refuse_match_elsewhere!(on)
         Playthrough::Playing.play(title, steps, cartridge, save: save, lead_in: lead_in, pictures_in: pictures_in, on: on,
-                                                           window: window, in_passes: in_passes, match: match,
+                                                           window: window, in_passes: in_passes, match: match, seed: seed,
                                                            progress: progress, &at_each_moment)
       end
 
@@ -217,6 +237,7 @@ module VBlank
       # A tape recorded from a save is compared from one (`save:`), and one recorded after
       # a lead-in with a lead-in for each cartridge (`lead_ins:`).
       def compare(first, second, **settings)
+        refuse_seed_frame_by_frame!("a comparison")
         refuse_compare_of_passes!
         refuse_missing_save!(save_for_both(settings), "tape.compare(first, second, save: ...)")
         refuse_missing_lead_in!(Array(settings[:lead_ins]).compact.first, "tape.compare(first, second, lead_ins: [..., ...])")
@@ -234,6 +255,7 @@ module VBlank
       # A tape recorded from a save or after a lead-in is given them here, as it is for a
       # comparison.
       def write_side_by_side_picture(first, second, path, at: nil, difference: true, **settings)
+        refuse_seed_frame_by_frame!("a picture of two cartridges")
         refuse_compare_of_passes!
         refuse_missing_save!(save_for_both(settings),
                              "tape.write_side_by_side_picture(first, second, path, at: ..., save: ...)")
@@ -256,6 +278,7 @@ module VBlank
       # with each line holding the frames its passes took there. A tape of frames comes back as it
       # is. What comes back is as strict as any tape of frames, and this tape stays the master.
       def in_frames_on(cartridge)
+        refuse_seed_frame_by_frame!("writing it as frames")
         return self unless in_passes
 
         cartridge = Playthrough.cartridge_from(cartridge)
@@ -437,7 +460,7 @@ module VBlank
       # The tape as the text of a file.
       def to_s
         heading = [FIRST_LINE, "recorded on: #{recorded_on_label}", "starts from: #{starts_from}", *counts_line,
-                   *match&.heading_line, ""]
+                   *match&.heading_line, *("#{SEED_LINE}#{seed}" if seed), ""]
         (heading + steps.map(&:tape_line)).join("\n") << "\n"
       end
 
@@ -508,9 +531,10 @@ module VBlank
           @heading_lines = HEADING_LINES
           in_passes = @in_passes = read_counts
           match = read_match
+          seed = read_seed
           @lines.each_with_index.drop(@heading_lines).each { |line, at| read_step(line, at + 1) }
           Tape.new(title: title, checksum: checksum, starts_from: starts_from, steps: @taping.steps, in_passes: in_passes,
-                   match: match)
+                   match: match, seed: seed)
         end
 
         private
@@ -567,6 +591,19 @@ module VBlank
 
           raise_unreadable_line!(@heading_lines, "This line must give the players and the seed of the match, " \
                                                  "like `#{Match.new(players: 2, seed: 1_234_567).heading_line}`.")
+        end
+
+        # The playing's own seed, from the optional line after the match's, or nil for none.
+        def read_seed
+          line = @lines[@heading_lines].to_s
+          return unless line.start_with?(SEED_LINE)
+
+          @heading_lines += 1
+          said = line.delete_prefix(SEED_LINE)
+          return said.to_i if SEED_SAID.match?(said)
+
+          raise_unreadable_line!(@heading_lines, "This line must give the seed the playing added to the random " \
+                                                 "numbers, as a whole number, like `#{SEED_LINE}4`.")
         end
 
         def read_step(line, number)

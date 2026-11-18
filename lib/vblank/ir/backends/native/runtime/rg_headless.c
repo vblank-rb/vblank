@@ -28,7 +28,12 @@
  * compares every frame pixel by pixel. Without it a frame is a few lines rather than a hundred
  * and fifty thousand characters, which is what lets a long run be driven a frame at a time.
  *
- * The options are --every-picture, and the eight below.
+ * The options are --every-picture, and the nine below.
+ *
+ * With --seed N the game's random numbers have N added to them at the first frame boundary, once the
+ * game has set itself up, as the interpreter adds a playing's seed (Reference#mix_seed_after_setup)
+ * and every machine of a match adds the match's. The routine that adds it (rg_game_mix_seed) is in a
+ * game built for it (Computer::Lowering, seeded); the seed is not, so one program plays every seed.
  *
  * With --start-file FILE the game is handed FILE as it starts (rg_start_file_read): the data pack
  * of a game built with its pack left out, or the copy of the original its unpacking reads. A game
@@ -114,6 +119,11 @@ static FILE *final_state;            /* ...open while they are written */
 static clock_t last_dot_clock;       /* when such a run last printed a "." to show it is not stuck */
 static const char *list_file_name;   /* the list such a run adds to a file of its own... */
 static const char *list_file_path;   /* ...and that file */
+static int seed_to_mix;              /* --seed was given, and is added at the first boundary */
+
+/* What a game built with no routine to add a seed has in its place: a game built for one has its own,
+ * which takes this one's place. Must stay weak: every game links against this file. */
+__attribute__((weak)) void rg_game_mix_seed(void) {}
 
 /* The whole of the file at +path+ as text, or NULL where it cannot be read. */
 static char *read_text_file(const char *path) {
@@ -143,6 +153,10 @@ static char *read_text_file(const char *path) {
 
 /* The state written or read at this frame boundary, as the options asked. */
 static void state_at_boundary(void) {
+  if (seed_to_mix) {
+    rg_game_mix_seed();
+    seed_to_mix = 0;
+  }
   if (state_in) {
     rg_state_read(state_in);
     free(state_in);
@@ -555,6 +569,9 @@ int rg_headless_main(int argc, char **argv) {
       }
     } else if (strcmp(argv[i], "--final-state") == 0 && i + 1 < argc) {
       final_state_path = argv[++i];
+    } else if (strcmp(argv[i], "--seed") == 0 && i + 1 < argc) {
+      rg_seed_given((int32_t)strtol(argv[++i], NULL, 10));
+      seed_to_mix = 1;
     } else if (strcmp(argv[i], "--list-file") == 0 && i + 2 < argc) {
       list_file_name = argv[++i];
       list_file_path = argv[++i];

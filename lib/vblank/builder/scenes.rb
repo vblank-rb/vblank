@@ -156,6 +156,7 @@ module VBlank
       end
 
       private def frames_of_tape(name, tape)
+        tape.refuse_seed_frame_by_frame!("measuring a scene")
         if tape.in_passes
           raise ArgumentError, "`scene :#{name}` was given `measure_holding:` with a tape that counts passes. " \
                                "The build measures a scene frame by frame. To fix this, give a tape that counts frames."

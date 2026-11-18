@@ -243,6 +243,7 @@ module VBlank
           raise ArgumentError, "tape: must be a tape. To get one, take `played.tape` from a playthrough, or read a " \
                                "file with `VBlank::Playthroughs::Tape.read(path)`."
         end
+        tape.refuse_seed_frame_by_frame!("a profile")
         if tape.in_passes
           raise ArgumentError, "This tape counts passes. A profile plays a tape a frame at a time. To fix this, give " \
                                "a tape of frames: `tape.in_frames_on(cartridge)`."

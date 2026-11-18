@@ -67,6 +67,7 @@ module VBlank
         saying_errors_plainly do
           refuse_flags_beside_logic!(on)
           refuse_in_passes_beside_tape!
+          refuse_unusable_seed!(on)
           playing = tape_or_playthrough(lead_in_flag: :lead_in)
           refuse_export_of_frames!(playing)
           lead_in = lead_in_named(options[:lead_in])
@@ -77,6 +78,7 @@ module VBlank
                          progress: progress }
             counted = in_passes_asked || (true if exporting? && !options[:tape])
             settings[:in_passes] = counted if counted
+            settings[:seed] = options[:seed] if options[:seed]
             playing.play(game, **settings).tap do |played|
               say_frames_and_moments(played, playing, game)
               write_tapes(played, export_cartridge)
@@ -90,7 +92,7 @@ module VBlank
 
       # Everything a playing with nobody at the controls is told on the command line, and so
       # nothing a person playing needs: each is refused without --tape or --script.
-      PLAYING_FLAGS = %i[playthrough lead_in pictures_in write_tape write_mgba_script write_bk2 in_passes].freeze
+      PLAYING_FLAGS = %i[playthrough lead_in pictures_in write_tape write_mgba_script write_bk2 in_passes seed].freeze
 
       # Compare the cartridges at the two paths and say where they drift, or that they agree.
       # Hands back what the comparison found.
@@ -143,7 +145,7 @@ module VBlank
       SETTINGS_WITH_FLAGS = (Comparison.settings + %i[lead_in pictures_in]).freeze
 
       # ...and the ones `vblank run` has a flag for, which are fewer: it starts no game from a save.
-      RUN_SETTINGS_WITH_FLAGS = %i[lead_in pictures_in in_passes].freeze
+      RUN_SETTINGS_WITH_FLAGS = %i[lead_in pictures_in in_passes seed].freeze
 
       # What a playing or a comparison stops with that is the caller's to fix: a setting that
       # makes no sense, a game that would not build (the checks stopped it, or its console's
@@ -190,6 +192,28 @@ module VBlank
         return unless options[:in_passes] && options[:tape]
 
         raise Refused, "--in-passes cannot go with --tape. A tape says what it counts. To fix this, remove --in-passes."
+      end
+
+      # --seed is added by the ways in Playthrough::SEEDED_WAYS, which the command's words name another
+      # way (CommandLine::WAYS); a tape keeps its own seed, and a run written out for an emulator plays
+      # a cartridge, which takes none. All of it is known before the game is built.
+      def refuse_unusable_seed!(on)
+        return unless options[:seed]
+
+        if options[:tape]
+          raise Refused, "--seed cannot go with --tape. A tape keeps the seed it was played with. To fix this, " \
+                         "remove --seed."
+        end
+        said = %i[write_mgba_script write_bk2].find { |flag| options[flag] }
+        if said
+          raise Refused, "--seed cannot go with #{flag_of(said)}. That writes the run for a cartridge, which cannot " \
+                         "add a seed. To fix this, remove --seed, and build the game with the seed it needs (--set)."
+        end
+        return if Playthrough::SEEDED_WAYS.include?(WAYS.fetch(on, on))
+
+        raise Refused, "--seed cannot go with --on #{on}. The ways that add a seed are " \
+                       "#{WAYS.select { |_, way| Playthrough::SEEDED_WAYS.include?(way) }.keys.join(', ')}. " \
+                       "To fix this, use --on logic."
       end
 
       # `--on logic` has no picture and no sound, and its frames are not the console's, so a tape

@@ -194,10 +194,13 @@ module VBlank
           # How many bytes a slot of a list takes, by the width it was declared with.
           SLOT_BYTES = Ractor.make_shareable({ byte: 1, half: 2, word: 4, nil => 4 })
 
-          # +title+ is the game's name, for the window.
-          def initialize(program, title: "VBlank")
+          # +title+ is the game's name, for the window. +seeded+ writes the routine that adds a seed to
+          # the game's random numbers (#mix_seed) for a game of one player too, for a windowless program
+          # handed a seed of a playing's own.
+          def initialize(program, title: "VBlank", seeded: false)
             @program = program
             @title = title
+            @seeded = seeded
             @names = Names.new
             @locals = 0
             @funcs = by_name(program.walk, :func)
@@ -354,7 +357,7 @@ module VBlank
              *routine_table_declarations,
              *routines, *answers, main, *start_file_routines,
              Statements::Function.new(name: @names.own("dump_state"), body: dump_state, exported: true),
-             *(@program.several_players? ? [Statements::Function.new(name: @names.own("mix_seed"), body: mix_seed, exported: true)] : [])]
+             *(@program.several_players? || @seeded ? [Statements::Function.new(name: @names.own("mix_seed"), body: mix_seed, exported: true)] : [])]
           end
 
           # The game's name as a C string. A character outside plain ASCII is written as '?', since
@@ -401,7 +404,8 @@ module VBlank
           # match's shared seed (rg_match_seed, nought when the game is played alone) to the game's random
           # numbers: what makes the colours `rand` picks differ from one match to the next and agree within one.
           # A game that never draws one has an empty routine, and a game for one player has none at all, so it
-          # builds as it did before matches were played.
+          # builds as it did before matches were played, unless it is built for a playing's own seed
+          # (+seeded+), which the windowless C program adds the same way (`--seed`, rg_headless.c).
           def mix_seed
             stream = Builder::Randomness::RNG_STATE
             return [] unless variable_names.include?(stream)

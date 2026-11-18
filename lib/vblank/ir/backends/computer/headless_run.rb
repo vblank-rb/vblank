@@ -405,6 +405,11 @@ module VBlank
           # the interpreter only (Playthroughs::Tape).
           def play_as_match(**) = refuse_unanswered!(:play_as_match)
 
+          # To add a seed to the game's random numbers once it has set itself up
+          # (Reference#mix_seed_after_setup). The game as C is handed one (Native::HeadlessRun); the
+          # other windowless programs are not yet.
+          def mix_seed_after_setup(_seed) = refuse_unanswered!(:mix_seed_after_setup)
+
           # Which compiler the program's own language turns its code into machine code with, as the
           # program reports itself before its first frame: :yjit or :none from the Ruby lowering's, and
           # nil from a program that does not report one (C needs none, and node's is always on).
@@ -443,7 +448,8 @@ module VBlank
                 @sound_read = 0
                 @pass_buttons = IR::Buttons::PassButtons.new
                 play_frames(exe, frames, [*frame_options(pictures.path), *sound_options(dir), *save_options(dir),
-                                          *held_options, *clock_options, *start_file_options(dir), *state_options(dir)])
+                                          *held_options, *clock_options, *start_file_options(dir), *state_options(dir),
+                                          *seed_options])
               end
               @state = read_state_written(dir) if @state_after
               read_sound(File.join(dir, "sound")) if @records_sound && !@sounds_as_played
@@ -456,6 +462,10 @@ module VBlank
 
           # What the program is told about what it prints each frame.
           def frame_options(picture_path) = ["--picture-out", picture_path]
+
+          # The seed the program adds to the game's random numbers: none, unless a build that takes one
+          # was handed one.
+          def seed_options = []
 
           def save_file(dir) = File.join(dir, "save")
           def state_file(dir) = File.join(dir, "state")

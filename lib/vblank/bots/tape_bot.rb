@@ -34,6 +34,10 @@ module VBlank
       # The tape as a list with one entry for each pass: the buttons down on it.
       def passes_of(tape)
         raise ArgumentError, "A bot plays a tape of passes, and this tape counts frames. To fix this, record it in passes." unless tape.in_passes
+        if tape.seed
+          raise ArgumentError, "This tape starts the random numbers at seed #{tape.seed}, and a match adds its own seed. " \
+                               "To fix this, record the tape with no seed."
+        end
         if tape.waits_on_game?
           raise ArgumentError, "This tape has `until` lines, which wait on the game. A bot gives its buttons before " \
                                "it sees the pass, so it cannot play them. To fix this, record the tape without " \

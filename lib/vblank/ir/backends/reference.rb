@@ -576,6 +576,16 @@ module VBlank
           self
         end
 
+        # ADD +seed+ TO THE GAME'S RANDOM NUMBERS once it has set itself up, at the end of its first pass,
+        # as a match adds its seed (#play_as_match) but with no other player: so one build plays as many
+        # runs of the random numbers as there are seeds, and a game that chose `seed 7` keeps its
+        # choice. The computer builds do the same at their first wait (Computer::Lowering#mix_seed,
+        # `--seed` to the windowless program). Returns self.
+        def mix_seed_after_setup(seed)
+          @match_seed = seed
+          self
+        end
+
         private
 
         # CAN WHAT IS SEEN THROUGH A LAYER CHANGE WHILE NOTHING MOVES? Then the picture is one
@@ -1356,13 +1366,14 @@ module VBlank
         end
 
         # The match's players and seed into the game, at the first wait of the run and never again
-        # (#play_as_match). Only a game that keeps random numbers has them to add the seed to, as only
-        # such a game's computer build has the routine that adds it (Computer::Lowering#mix_seed).
+        # (#play_as_match), or a playing's own seed (#mix_seed_after_setup). Only a game that keeps
+        # random numbers has them to add the seed to, as only such a game's computer build has the
+        # routine that adds it (Computer::Lowering#mix_seed).
         def join_match_at_first_wait
-          return if @match_players.nil? || @match_joined
+          return if (@match_players.nil? && @match_seed.nil?) || @match_joined
 
           @match_joined = true
-          @connected = [@connected, @match_players].max
+          @connected = [@connected, @match_players].max if @match_players
           stream = Builder::Randomness::RNG_STATE
           return unless @read_program && Reach.variables(@read_program).include?(stream)
 

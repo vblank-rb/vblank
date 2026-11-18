@@ -26,6 +26,16 @@ module VBlank
         @checksum = Zlib.crc32(source.to_s)
       end
 
+      # +game+ (a Cartridge::Game, what `VBlank.game` gives back) checked and not built: the checks
+      # every build makes, and none of what only a cartridge needs (lowering it, measuring it, putting
+      # it together). Made once, it plays on every way that runs the game itself, with a seed per
+      # playing (Playthrough#play) as often as wanted. +settings+, +console+, +err+ and +progress+ are
+      # as for Cartridge::Game#checked_program.
+      def self.of(game, settings: {}, console: game.consoles.first, err: $stderr, progress: Messages::Progress.silent)
+        program = game.checked_program(settings: settings, console: console, err: err, progress: progress)
+        new(program, title: game.title, source: [game.title, settings, console])
+      end
+
       def console = @source_program.console
       def header_title = @title
 

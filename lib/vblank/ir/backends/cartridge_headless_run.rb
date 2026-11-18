@@ -174,7 +174,7 @@ module VBlank
         # The rest of what the interpreter answers that no console's run can, each refused by name.
         refuses :peak_voices, :sound_drops, :sound_owners, :frame, :log, :screen_mode, :buffered, :volume_of,
                 :level_of, :loudness_by_voice, :write_save_copy, :write_save_vars, :full_depth_sound,
-                :play_as_match
+                :play_as_match, :mix_seed_after_setup # A cartridge's random numbers start where its build put them
 
         # Two the interpreter is told rather than asked, and no console's run will ever take.
         def frames_each_pass(&) = raise(RunComparison::AsksTheInterpreter, "for a pass to take several frames (`frames_each_pass`)")

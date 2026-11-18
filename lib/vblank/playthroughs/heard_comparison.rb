@@ -102,6 +102,7 @@ module VBlank
         end
         return unless presses.is_a?(Tape)
 
+        presses.refuse_seed_frame_by_frame!("a comparison of sound")
         if presses.in_passes
           raise ArgumentError, "This tape counts passes, and the sound is compared frame by frame. To fix this, give a " \
                                "tape of frames: `tape.in_frames_on(cartridge)`."

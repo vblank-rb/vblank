@@ -485,8 +485,11 @@ int32_t rg_players_connected(void) { return connected; }
 /* Which player the person at this machine is: the first, until a match names another. */
 int32_t rg_local_player(void) { return 1; }
 
-/* The match's shared seed: nought, since the desktop build plays no match yet. */
-int32_t rg_match_seed(void) { return 0; }
+/* The seed added to the game's random numbers: nought, since the desktop build plays no match yet,
+ * unless the windowless program was handed a playing's own seed (rg_seed_given). */
+static int32_t seed_given;
+void rg_seed_given(int32_t seed) { seed_given = seed; }
+int32_t rg_match_seed(void) { return seed_given; }
 
 /* THE FILE THE GAME IS HANDED AS IT STARTS (see rg_runtime.h): its bytes, a copy of the
  * driver's, or none yet. */

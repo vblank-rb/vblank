@@ -95,8 +95,13 @@ int32_t rg_pressed_by(int32_t player, int32_t mask);
 int32_t rg_players_connected(void);
 /* Which player the person at this machine is, from 1. Only what the game draws may depend on it. */
 int32_t rg_local_player(void);
-/* The seed machines in one match share for the game's random numbers: nought when the game is played alone. */
+/* The seed machines in one match share for the game's random numbers: nought when the game is played alone,
+ * or the seed a playing of its own was handed (rg_seed_given, the windowless program's `--seed`). */
 int32_t rg_match_seed(void);
+void rg_seed_given(int32_t seed);
+/* Adds rg_match_seed to the game's random numbers: written by a game built for several players or for a
+ * seed of a playing's own (Computer::Lowering#mix_seed). */
+void rg_game_mix_seed(void);
 
 /* A GAME'S TIMERS (`timer :beat, per_second: 60`): counters that tick so many times a second,
  * whatever the game is doing. Each has a number of its own. There is no clock here: a frame is

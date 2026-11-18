@@ -80,9 +80,12 @@ module VBlank
 
         # The program built into a program with no window (runtime/rg_headless.c), and the
         # path to it. See that file for how it is run and what it prints. Built with zig on
-        # its own, with no SDL to fetch or compile, which is what keeps the tests quick.
-        def build_headless(program, mode: :checked)
-          lowering = Lowering.new(program, title: "VBlank")
+        # its own, with no SDL to fetch or compile, which is what keeps the tests quick. +seeded+
+        # builds in the routine that adds a seed handed to the program (`--seed`) to the game's random
+        # numbers (Computer::Lowering#mix_seed); the seed is not in the C, so the program is one for
+        # every seed.
+        def build_headless(program, mode: :checked, seeded: false)
+          lowering = Lowering.new(program, title: "VBlank", seeded: seeded)
           numbers = Computer::ConsoleNumbers.header(program.described_console) + Computer::StateFile.c_text(program)
           game = write_source(lowering.source_files, numbers, lowering.runtime_features)
           Zig.compile_without_sdl([game, *HEADLESS_RUNTIME.map { |file| File.join(Zig::RUNTIME_DIR, file) }],

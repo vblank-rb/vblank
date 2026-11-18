@@ -96,10 +96,60 @@ module VBlank
       #
       # +progress+ (a Messages::Progress) is told how far the playing has got as it goes: a phase
       # from the start and one on from each moment, and the frame each has reached.
+      #
+      # +cartridge+ can also be the game itself (what `VBlank.game` gives back), for a way that runs
+      # the game itself: it is checked as a build checks it and played, and no cartridge is made (see
+      # UnbuiltGame.of, which checks it once for many playings).
+      #
+      # +seed+ is added to the game's random numbers once the game has set itself up (see SEEDED_WAYS),
+      # so one build plays as many runs of the random numbers as there are seeds. Nil adds nothing.
       def play(cartridge, save: nil, lead_in: nil, pictures_in: nil, on: nil, window: nil, in_passes: nil,
-               count_passes: false, progress: Messages::Progress.silent, &at_each_moment)
+               count_passes: false, seed: nil, progress: Messages::Progress.silent, &at_each_moment)
         Playing.play(@name, steps_for_playing, cartridge, save: save, lead_in: lead_in, pictures_in: pictures_in, on: on, window: window,
-                                               in_passes: in_passes, count_passes: count_passes, progress: progress, &at_each_moment)
+                                               in_passes: in_passes, count_passes: count_passes, seed: seed, progress: progress,
+                     &at_each_moment)
+      end
+
+      # THE WAYS A PLAYING CAN BE GIVEN A SEED OF ITS OWN: the interpreter, and the game as C, with its
+      # picture or its rules alone. Each adds the seed to the game's random numbers at the end of the
+      # game's first pass, the one it sets itself up in, as every machine of a match adds the match's
+      # seed (Reference#play_as_match), so a game that chose `seed 7` keeps its choice and each seed is
+      # another run from there. A cartridge's random numbers start where its build put them: a seed of
+      # the playing's own would have to change its bytes, or every cartridge would be built for it.
+      # The game as JavaScript or as Ruby is not handed one yet.
+      SEEDED_WAYS = %w[interpreter native logic].freeze
+
+      # A seed is a whole number the console's numbers hold, given to a way that takes one.
+      def self.refuse_unusable_seed!(seed, on, match: nil)
+        return if seed.nil?
+
+        unless seed.is_a?(Integer) && seed.between?(IR::Int32::MIN, IR::Int32::MAX)
+          raise ArgumentError, "`seed:` was #{seed.inspect}. It must be a whole number that fits in 32 bits, " \
+                               "like `seed: 4`."
+        end
+        if match
+          raise ArgumentError, "This tape is of a match, which has a seed of its own. To fix this, leave out `seed:`."
+        end
+        return if SEEDED_WAYS.include?(on)
+
+        raise ArgumentError, "This playing starts the random numbers at seed #{seed}. #{on ? "The #{on} way" : 'The emulator'} " \
+                             "cannot add a seed to the game's random numbers. The ways that can are " \
+                             "#{SEEDED_WAYS.join(', ')}: play there, with `on: \"logic\"` or `--on logic`. To play " \
+                             "the seed on a cartridge, build the cartridge with that seed."
+      end
+
+      # THE GAME ITSELF HANDED OVER IN PLACE OF A CARTRIDGE (a Cartridge::Game), for a way that runs the
+      # game itself: checked and not built (UnbuiltGame.of). Anything else is passed on as it is. The
+      # emulator plays a cartridge's bytes, so a game is built for it first, by its author.
+      def self.unbuilt_if_game(given, on, progress)
+        return given unless given.is_a?(Cartridge::Game)
+
+        if on.nil? || on == LoweredGame::EMULATOR
+          raise ArgumentError, "This is a game, not a cartridge, and the emulator plays a cartridge. To fix this, " \
+                               "build the cartridge (`game.build_rom`) and play that, or play the game another way " \
+                               "(`on: \"logic\"`)."
+        end
+        UnbuiltGame.of(given, progress: progress)
       end
 
       # Play this script on +game+, a console that is already running, as the lead-in to
@@ -189,10 +239,10 @@ module VBlank
       # +match+ is the match a tape replays (a Tape::Match), which only the interpreter takes (Tape#play
       # refuses it anywhere else). What comes back is a Started: the game, to ask, and what steps it.
       def self.power_on_and_lead_in(cartridge, save: nil, lead_in: nil, on: nil, window: nil, count_passes: false,
-                                    match: nil)
+                                    match: nil, seed: nil)
         refuse_unbuilt_game_on_emulator!(cartridge, on)
         game = if on && on != LoweredGame::EMULATOR
-                 lowered_game(cartridge, on, save, speaker: !window.nil?, match: match)
+                 lowered_game(cartridge, on, save, speaker: !window.nil?, match: match, seed: seed)
                else
                  power_on(cartridge, save: save, count_passes: count_passes || !window.nil?)
                end
@@ -226,7 +276,7 @@ module VBlank
 
       # The game inside +cartridge+ run the way +on+ names. That takes the game, so a cartridge
       # somebody else made, which is only its bytes, plays on the emulator alone.
-      def self.lowered_game(cartridge, on, save, speaker: false, match: nil)
+      def self.lowered_game(cartridge, on, save, speaker: false, match: nil, seed: nil)
         cartridge = cartridge_from(cartridge)
         unless LoweredGame::RUNS.key?(on)
           raise ArgumentError, "There is no way to run a game called #{on.inspect}. The ways are " \
@@ -236,7 +286,7 @@ module VBlank
           raise ArgumentError, "A cartridge file plays on the emulator alone. To play on #{on}, give the game file."
         raise ArgumentError, "A save plays on the emulator alone. To play on #{on}, leave the save out." if save
 
-        LoweredGame.new(program, on, speaker: speaker, match: match)
+        LoweredGame.new(program, on, speaker: speaker, match: match, seed: seed)
       end
 
       # WHAT A PLAYING CAN COUNT IN PASSES. The same buttons on the same pass give the same game only
@@ -397,8 +447,10 @@ module VBlank
         # The lead-in is played once the console is on and before the playing begins, so
         # none of it is on the tape.
         def self.play(title, steps, cartridge, save: nil, lead_in: nil, pictures_in: nil, on: nil, window: nil, in_passes: nil,
-                      count_passes: false, match: nil, progress: Messages::Progress.silent, &at_each_moment)
+                      count_passes: false, match: nil, seed: nil, progress: Messages::Progress.silent, &at_each_moment)
           Playthrough.refuse_lead_in_not_playthrough!(lead_in)
+          Playthrough.refuse_unusable_seed!(seed, on, match: match)
+          cartridge = Playthrough.unbuilt_if_game(cartridge, on, progress)
           save = Playthrough.save_from(save)
           save = Playthrough.save_fitted_to(cartridge = Playthrough.cartridge_from(cartridge), save) if save
           folder = PictureFolder.at(pictures_in, steps.flat_map(&:names))
@@ -409,12 +461,12 @@ module VBlank
           # while before its first frame, so it is a phase of its own.
           progress.step("Starting game")
           started = Playthrough.power_on_and_lead_in(cartridge, save: save, lead_in: lead_in, on: on, window: window,
-                                                                count_passes: counting, match: match)
+                                                                count_passes: counting, match: match, seed: seed)
           game = started.game
           stepper = in_passes ? PassStepper.new(game, in_passes, stepper: started.stepper) : started.stepper
           playing = new(title, cartridge, game, at_each_moment, stepper: stepper, frame_stepper: started.stepper,
                         save: save, folder: folder, led_in: !lead_in.nil?, in_passes: in_passes, match: match,
-                        progress: progress)
+                        seed: seed, progress: progress)
           progress.step(lead_in ? "playing from after the lead-in" : "playing from power-on")
           steps.each { |step| step.play(playing) }
           playing.played
@@ -433,10 +485,12 @@ module VBlank
         # plays the frames each hold asks for: the game itself, or a WindowStepper or PassStepper over it.
         # +frame_stepper+ plays a frame at a time whatever the counts are in, for a step that waits on the
         # game (Until): the game itself, or a WindowStepper.
-        # +match+ is the match a tape replays (a Tape::Match), for the tape this playing makes, or nil.
+        # +match+ is the match a tape replays (a Tape::Match), for the tape this playing makes, or nil;
+        # +seed+ the seed this playing added to the game's random numbers, for the tape too, or nil.
         def initialize(title, cartridge, game, at_each_moment, save:, folder:, stepper: game, frame_stepper: stepper,
-                       led_in: false, in_passes: nil, match: nil, progress: Messages::Progress.silent)
+                       led_in: false, in_passes: nil, match: nil, seed: nil, progress: Messages::Progress.silent)
           @title = title
+          @seed = seed
           @progress = progress
           @cartridge = cartridge
           @game = game
@@ -570,7 +624,7 @@ module VBlank
         # two can never disagree.
         def played
           tape = Tape.recorded_on(@cartridge, @taping.steps, save: @save, led_in: @led_in, in_passes: @in_passes,
-                                                             match: @match)
+                                                             match: @match, seed: @seed)
           Played.new(frames: tape.frames, moments: tape.moments, game: @game, tape: tape,
                      pictures: @pictures, picture_files: @picture_files, save: save_left)
         end

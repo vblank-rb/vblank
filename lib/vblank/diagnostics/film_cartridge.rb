@@ -193,6 +193,7 @@ module VBlank
       # A tape of passes holds no frame count, and one recorded from a save or after a lead-in
       # plays a different game from power-on.
       def refuse_unplayable_tape!(tape)
+        tape.refuse_seed_frame_by_frame!("a film")
         if tape.in_passes
           raise ArgumentError, "The tape counts passes of the game loop, and a film counts frames. Record the tape in " \
                                "frames, or write it out with `tape.in_frames_on(cartridge)`."

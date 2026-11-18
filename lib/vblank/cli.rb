@@ -971,6 +971,12 @@ module VBlank
                                  game at any speed on every way. COUNT is
                                  passes, or the name of a variable that the
                                  game adds to.
+        --seed N                 Add N to the game's random numbers once the
+                                 game has set itself up, so one build plays
+                                 another run of them for each N. Works with
+                                 --on logic, native and interpreter. The tape
+                                 keeps the seed. A cartridge cannot take one:
+                                 build it with --set instead.
         --pictures-in DIR        Write the screen at each moment to DIR, as a
                                  PNG named for the moment.
         --write-tape PATH        Write the presses that were made, as a tape.
@@ -1008,6 +1014,7 @@ module VBlank
     option :tape, banner: "PATH"
     option :lead_in, banner: "NAME"
     option :in_passes, banner: "COUNT"
+    option :seed, type: :numeric, banner: "N"
     option :pictures_in, banner: "DIR"
     option :write_tape, banner: "PATH"
     option :write_mgba_script, banner: "PATH"

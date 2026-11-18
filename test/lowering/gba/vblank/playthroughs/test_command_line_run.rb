@@ -165,6 +165,22 @@ class TestCommandLineRun < Minitest::Test
     end
   end
 
+  # --seed GOES ON THE TAPE, and the tape plays with it on another way that takes one.
+  def test_a_seed_is_kept_on_the_tape_and_played_again
+    with_game_and_scripts do |dir|
+      out, status = cli("run", "walker.rb", "--script", "walk.rb", "--on", "interpreter", "--seed", "3",
+                        "--write-tape", "walk.tape", dir: dir)
+
+      assert status.success?, out
+      assert_includes File.read(File.join(dir, "walk.tape")), "\nseed: 3\n"
+
+      out, status = cli("run", "walker.rb", "--tape", "walk.tape", "--on", "native", dir: dir)
+
+      assert status.success?, out
+      assert_match(/walked +frame 30$/, out)
+    end
+  end
+
   # A TAPE WRITTEN OUT FOR ANOTHER EMULATOR is how a console is reached from here: the game is
   # built as the Advance's cartridge for it, and the script mGBA loads is written.
   def test_write_mgba_script_writes_the_tape_for_mgba
@@ -388,6 +404,10 @@ class TestCommandLineRun < Minitest::Test
         ["walker.rb", "--script", "walk.rb", "--on", "basic"] => /--on basic.*ruby, js, native/,
         ["walker.rb", "--script", "walk.rb", "--pictures", "3"] => /--pictures.*person/,
         ["walker.rb", "--write-tape", "walk.tape"] => /--write-tape.*--tape or --script/,
+        ["walker.rb", "--script", "walk.rb", "--seed", "3"] => /--seed cannot go with --on ruby.*logic/,
+        ["walker.rb", "--tape", "walk.tape", "--on", "logic", "--seed", "3"] => /--seed cannot go with --tape/,
+        ["walker.rb", "--script", "walk.rb", "--on", "interpreter", "--seed", "3", "--write-bk2", "w.bk2"] =>
+          /--seed cannot go with --write-bk2/,
       }.each do |args, says|
         out, status = cli("run", *args, dir: dir)
 

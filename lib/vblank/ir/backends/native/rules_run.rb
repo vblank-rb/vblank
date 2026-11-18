@@ -50,7 +50,7 @@ module VBlank
                                 "To read it, play the game another way."
           end
 
-          def headless_program(program) = Native.new.build_headless(program, mode: :fast)
+          def headless_program(program) = Native.new.build_headless(program, mode: :fast, seeded: seeded?)
 
           def frame_options(_picture_path) = ["--asked"]
 

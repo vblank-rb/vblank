@@ -36,11 +36,14 @@ module VBlank
       # +speaker+ marks that somebody is listening, so a way that makes its sound as a file hands it over
       # a frame at a time (#last_frame_samples). +match+ is the match a tape replays (a Tape::Match),
       # which the interpreter plays the game as (Reference#play_as_match); the other ways have no
-      # match, and a tape of one is refused before it gets here (Tape#play).
-      def initialize(program, way, speaker: false, match: nil)
+      # match, and a tape of one is refused before it gets here (Tape#play). +seed+ is added to the
+      # game's random numbers once it has set itself up (Reference#mix_seed_after_setup), on a way that
+      # takes one (Playthrough::SEEDED_WAYS); nil adds nothing.
+      def initialize(program, way, speaker: false, match: nil, seed: nil)
         @console = program.described_console
         @run = RUNS.fetch(way).call.new
         @run.play_as_match(seed: match.seed, players: match.players) if match
+        @run.mix_seed_after_setup(seed) if seed
         @run.forgetting_moments if @run.respond_to?(:forgetting_moments)
         @speaker = speaker && @run.respond_to?(:sounding_as_played)
         @run.sounding_as_played if @speaker
