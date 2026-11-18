@@ -569,6 +569,6 @@ class TestList < Minitest::Test
     error = assert_raises(ArgumentError) do
       Builder.new.instance_eval { list :body, capacity: 8, width: :nibble }
     end
-    assert_match(/:byte, :half or :word/, error.message)
+    assert_match(/:byte, :half, :unsigned_half or :word/, error.message)
   end
 end
