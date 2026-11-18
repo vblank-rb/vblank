@@ -1789,8 +1789,31 @@ module VBlank
             emit_add_room_tiles(obj)
             orr_acc(obj.attr2_base) unless obj.attr2_base.zero?
             orr_picked_attr2(obj)
+            emit_orr_piece_bank(obj, piece)
             emit_store_acc_in_row(row, 4)
             store_halfword_acc(mirror + 4) if mirror
+          end
+
+          # The register a piece's own bank bits are held in from the load of its pose word to the
+          # write of attribute 2 (#emit_load_pose_word): nothing between evaluates an operand, and
+          # the draw works in the accumulator and TMP alone.
+          PIECE_BANK = 2 # GBA::SPARE, which is not defined yet as this file loads
+
+          # A PIECE THAT NAMES ITS OWN BANK OF COLOURS (Sprite#piece_banks): its bank bits into
+          # attribute 2 (GBATEK, "LCD OBJ - OAM Attributes": bits 12-15), a number where the pose is
+          # one the build knows and the word loaded beside the pose word where it is not.
+          def emit_orr_piece_bank(obj, piece)
+            return unless obj.piece_banks
+
+            fixed = const_int(obj.pose)
+            if fixed
+              row = piece * obj.pose_count
+              bits = obj.piece_banks[fixed.between?(0, obj.pose_count - 1) ? row + fixed : row]
+              return orr_acc(bits) unless bits.zero?
+
+              return
+            end
+            emit(ASM.orr_reg(ACC, ACC, PIECE_BANK))
           end
 
           # Carry "draw this one backwards" and "draw it upside down" from the pose word into
@@ -1827,11 +1850,22 @@ module VBlank
             emit_load_data_address(TMP, obj.pose_table)
             emit(ASM.add_reg(TMP, TMP, ACC))
             offset = row * 4
-            return emit(ASM.ldr(POSE_WORD, TMP)) if offset.zero?
-            return emit(ASM.ldr_offset(POSE_WORD, TMP, offset)) if offset < LDR_OFFSET_LIMIT
+            moved = emit_load_word_at(POSE_WORD, offset)
+            # A piece's own bank is the word as far past its pose word as the pose words are long
+            # (ScreenLayout#object_pose_table).
+            emit_load_word_at(PIECE_BANK, offset + (words.length * 4) - moved) if obj.piece_banks
+          end
 
-            emit_add_const(TMP, TMP, offset, ACC) # ACC is spent: the pose is already added in
-            emit(ASM.ldr(POSE_WORD, TMP))
+          # +register+ from the word +offset+ bytes past TMP, which is moved on where the offset is
+          # too far for one load (ACC is spent by then: the pose is already added in). Hands back
+          # how far TMP was moved.
+          def emit_load_word_at(register, offset)
+            return emit(ASM.ldr(register, TMP)).then { 0 } if offset.zero?
+            return emit(ASM.ldr_offset(register, TMP, offset)).then { 0 } if offset < LDR_OFFSET_LIMIT
+
+            emit_add_const(TMP, TMP, offset, ACC)
+            emit(ASM.ldr(register, TMP))
+            offset
           end
 
           # Drop the attr0 just written into the window twin's slot as well, with the bit

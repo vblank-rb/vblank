@@ -41,26 +41,30 @@ module PackPoseBankColorGames
 
   # A frame of two pieces of one tile each, side by side about the object's place: tile 0 left of
   # it and tile 1 right, each in the bank given. The word's top bit, the priority, is set too.
-  def self.frame_of(left_bank, right_bank)
-    pieces = [[-8, 0, left_bank], [0, 1, right_bank]].map do |x, tile, bank|
+  # +right_x+ is where the right piece starts: -4 puts it half over the left one, behind it.
+  def self.frame_of(left_bank, right_bank, right_x: 0)
+    pieces = [[-8, 0, left_bank], [right_x, 1, right_bank]].map do |x, tile, bank|
       [-8, 0, 0x5A, tile | (bank << 13) | 0x8000, x].pack("s>CCns>")
     end
     [pieces.length].pack("n") + pieces.join
   end
   FRAME_BYTES = 2 + (2 * 8)
-  # The frames, one after another: all of bank 1, all of bank 2, and one of banks 1 and 3.
+  # The frames, one after another: all of bank 1, all of bank 2, one of banks 1 and 3, and one of
+  # banks 1 and 3 whose piece of bank 3 sits half behind the piece of bank 1.
   IN_BANK_1 = 0
   IN_BANK_2 = FRAME_BYTES
   IN_TWO_BANKS = FRAME_BYTES * 2
-  FRAMES = (frame_of(1, 1) + frame_of(2, 2) + frame_of(1, 3)).freeze
+  OVERLAPPING = FRAME_BYTES * 3
+  FRAMES = (frame_of(1, 1) + frame_of(2, 2) + frame_of(1, 3) + frame_of(1, 3, right_x: -4)).freeze
 
   COLORS_AT = 0x40
   FRAMES_AT = 0x100
   TILES_AT = 0x200
   ORIGIN = [8, 8].freeze
 
-  private def original(folder)
-    tiles = TILES.map(&MadeUpOriginalLayouts::HIGH_HALF_FIRST).join
+  # The made-up copy, its two tiles +tiles+ (64 places each).
+  private def original(folder, tiles: TILES, platform: :genesis)
+    tiles = tiles.map(&MadeUpOriginalLayouts::HIGH_HALF_FIRST).join
     levels = TURNS.flat_map { |turn| MadeUpOriginalLayouts::LEVELS.rotate(turn) }
     colors = levels.map { |red, green, blue| (red << 1) | (green << 5) | (blue << 9) }.pack("n*")
     copy = "\0".b * (TILES_AT + tiles.bytesize)
@@ -69,7 +73,7 @@ module PackPoseBankColorGames
     copy[TILES_AT, tiles.bytesize] = tiles
     path = File.join(folder, "made_up.bin")
     File.binwrite(path, copy)
-    VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :genesis,
+    VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: platform,
                                settings_file: File.join(folder, "made_up.yml"),
                                releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
   end
@@ -84,17 +88,21 @@ module PackPoseBankColorGames
     [b.program, b.made_data_pack_file]
   end
 
-  # The same game's builder, its program made, for a test of its pack's unpacking.
-  private def game_builder_of(folder, options: VBlank::Cartridge::Options.new, &declares)
-    from = original(folder)
+  # The same game's builder, its program made, for a test of its pack's unpacking. +tiles+ are the
+  # copy's two tiles, +tile_colors+ how many colours the slot of tiles reads each as, and +platform+
+  # the console whose layout the copy keeps them in.
+  private def game_builder_of(folder, options: VBlank::Cartridge::Options.new, tiles: TILES, tile_colors: 16, platform: :genesis, &declares)
+    from = original(folder, tiles: tiles, platform: platform)
     b = Builder.new(options: options)
     b.instance_eval do
       screen :tiled
       pack = data_pack from: from, version: "1" do |slots|
-        slots.tiles :video, at: TILES_AT, count: TILES.length, colors: 16
+        slots.tiles :video, at: TILES_AT, count: TILES.length, colors: tile_colors
         slots.numbers :frames, at: FRAMES_AT, count: FRAMES.bytesize, width: :byte, signed: false
         slots.colors :palette, at: COLORS_AT, count: 64
         slots.colors :two_banks, at: COLORS_AT, count: 32
+        # Two colours on, so banks of four colours are not the same colours every other bank.
+        slots.colors :shifted, at: COLORS_AT + 4, count: 60
       end
       instance_exec(pack, &declares)
       game_loop { wait_vblank }

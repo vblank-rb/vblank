@@ -73,7 +73,31 @@ module VBlank
           { boxes: boxes, mirrors: reflect_mirrored_poses(poses, mirrors, boxes) }
         end
 
+        # WHICH BANK'S PART OF ITS COLOURS EACH BOX OF +bmp+ DRAWS, in the order #pieces_of gives the
+        # boxes, for a pose cut along its pieces; nil for any other pose, whose boxes can mix parts.
+        def parts_of(bmp)
+          return nil unless cut_by_pieces?(bmp)
+
+          drawn_pieces(bmp).map { |_, _, own| bmp.part_of_piece(own) }
+        end
+
+        # The places of each box of +bmp+'s own piece, in the order #pieces_of gives the boxes, for a
+        # pose cut along its pieces; nil for any other pose. An entry is stored from these, not from
+        # the picture, which shows a piece behind through a see-through part of the one in front.
+        def piece_places_of(bmp)
+          return nil unless cut_by_pieces?(bmp)
+
+          drawn_pieces(bmp).map { |_, _, own| own }
+        end
+
         private
+
+        # Whether +bmp+ is cut along its own pieces: a pose of several banks with as many pieces
+        # drawing something as one sprite may take.
+        def cut_by_pieces?(bmp) = bmp.banked? && drawn_pieces(bmp).length.between?(1, MAX_OBJECT_PIECES)
+
+        # The pieces of +bmp+ that draw something, front-most first.
+        def drawn_pieces(bmp) = bmp.pieces.reject { |_, _, own| own.each_byte.all?(&:zero?) }
 
         # A POSE THAT IS ANOTHER ONE MIRRORED IS NOT STORED AT ALL: it is drawn from the
         # source's tiles, reversed, so its boxes are the source's reflected in the canvas.
@@ -194,8 +218,16 @@ module VBlank
         #
         # Every pixel is read to find this, so it is remembered for the next build that holds
         # the same picture (see IR::Remembered).
+        #
+        # A POSE OF SEVERAL BANKS OF COLOURS (Assets::Image#banked?) is cut along its own pieces
+        # instead, front-most first: a console's sprite entry names one bank (GBATEK, "LCD OBJ - OAM
+        # Attributes": attribute 2, bits 12-15), so each entry must draw one bank's pixels, and each
+        # piece of the frame is of one bank (#parts_of). Where two pieces overlap, the one in front is
+        # the entry in front. Each entry holds its own piece's pixels alone (#piece_places_of), so
+        # where the one in front is see-through the one behind shows, as a console draws them.
         def pieces_of(bmp)
           Remembered.fetch(:sprite_pieces, bmp) do
+            next drawn_pieces(bmp).map { |dx, dy, own| [dx, dy, Assets::Image.side(own), Assets::Image.side(own)] } if cut_by_pieces?(bmp)
             next [pose_box(bmp)] if OBJ_SIZES.key?([bmp.width, bmp.height])
 
             left, top, right, bottom = drawn_extent(bmp)

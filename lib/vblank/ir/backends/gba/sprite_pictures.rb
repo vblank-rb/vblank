@@ -27,8 +27,12 @@ module VBlank
         # nil for any other sprite. Such a pose stores nothing: each of its own pieces' +starts+
         # is the number of its tile in the set, and the set's room is where they are counted from
         # (SpriteLayout#tile_set_placement).
+        #
+        # +piece_banks+ is, for a sprite of poses of several banks of colours
+        # (ScreenLayout#sprite_bank_parts), the bank each of each pose's pieces names, a list for
+        # each pose, padded as +boxes+ is; nil for any other sprite.
         SpritePictures = Data.define(:node, :place, :boxes, :mirrors, :encoded, :stored, :starts,
-                                     :repeats, :width, :height, :animates, :grouped, :tile_set) do
+                                     :repeats, :width, :height, :animates, :grouped, :tile_set, :piece_banks) do
           def name = node.name
           def scene = node.scene
           def animates? = animates
@@ -38,8 +42,9 @@ module VBlank
           def stored_bytes = stored.bytesize
 
           # EVERY POSE DRAWN OUT OF ONE BOX, and none of them another reversed. Then the sprite's
-          # own entry can carry that one size and the draw needs no table of poses.
-          def one_shape? = pieces == 1 && boxes.map(&:first).uniq.size == 1 && mirrors.none?
+          # own entry can carry that one size and the draw needs no table of poses. A sprite whose
+          # pieces name banks of their own carries a table, which holds each piece's bank.
+          def one_shape? = pieces == 1 && boxes.map(&:first).uniq.size == 1 && mirrors.none? && piece_banks.nil?
 
           # DOES ONE POSE'S TILES FOLLOW THE LAST'S, ALL THE WAY DOWN? That is what the plain
           # draw assumes: it multiplies the pose the game is showing by a fixed stride, so

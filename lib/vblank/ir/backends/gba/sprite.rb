@@ -78,10 +78,15 @@ module VBlank
         # layers: the depth each one puts it at, counted the way +layer_pick+ counts them,
         # and last the layer it was declared in (ScreenLayout#sprite_layer_depth_table). Its
         # +attr2_base+ then leaves the depth out. nil for every other sprite.
+        #
+        # +piece_banks+ is set on a sprite whose pieces each name a bank of colours of their own (a
+        # pose of several banks, SpritePictures#piece_banks): the bank bits of attribute 2 for each
+        # word of +pose_words+, in its order, which the pose table holds after those words. Its
+        # +attr2_base+ then leaves the bank out. nil for every other sprite.
         Sprite = Data.define(
           :slot, :pieces, :scene,
           :tiles, :tile_units, :tile_index, :frames, :frame_bytes, :rooms, :room_member, :pose_sends,
-          :pose, :pose_count, :alike, :per_pose, :pose_table, :pose_words, :mirrors,
+          :pose, :pose_count, :alike, :per_pose, :pose_table, :pose_words, :piece_banks, :mirrors,
           :offset_x, :offset_y, :width, :height,
           :x, :y, :active, :angle, :scale, :transformed, :scales, :affine_slot,
           :attr0_base, :attr1_base, :attr2_base, :recolor, :recolor_banks,

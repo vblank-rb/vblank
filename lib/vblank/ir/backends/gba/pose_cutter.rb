@@ -123,6 +123,25 @@ module VBlank
             place || indices.fetch(bmp.color_at(index))
           end
 
+          # ONE PIECE OF A POSE OF SEVERAL BANKS AS ITS SPRITE ENTRY'S TILES (SpriteCut#piece_places_of):
+          # the piece's own places, never the picture's, so where it is see-through over a piece of
+          # another bank behind it the entry holds nothing and the entry behind shows through. Each
+          # place is counted within its own bank, +bank_places+ to a bank, half a byte a pixel, the
+          # left pixel in the low half, in 8x8 tiles in reading order.
+          def encode_piece(own, bank_places)
+            side = Assets::Image.side(own)
+            places = own.bytes.map { |place| place.zero? ? 0 : place % bank_places }
+            tiles = side / TILE_PX
+            (0...tiles).flat_map do |tile_row|
+              (0...tiles).flat_map do |tile_col|
+                (0...TILE_PX).flat_map do |row|
+                  line = places[(((tile_row * TILE_PX) + row) * side) + (tile_col * TILE_PX), TILE_PX]
+                  line.each_slice(2).map { |left, right| left | (right << 4) }
+                end
+              end
+            end.pack("C*")
+          end
+
           private
 
           # THE PICTURE THE AUTHOR DREW HAS TO BE MADE OF WHOLE TILES, and small enough that

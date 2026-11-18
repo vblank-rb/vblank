@@ -2685,7 +2685,7 @@ module VBlank
           # The colour table +nodes+ draw from, going on from +after+ for a scene's own. +lists+
           # are the changing lists whose groups go in this table.
           def object_banks(nodes, after: nil, scene: nil, lists: [])
-            pictures = nodes.map do |node|
+            pictures = nodes.flat_map do |node|
               colors = []
               node.poses.each do |image|
                 bmp = @bitmaps.fetch(image) do
@@ -2695,11 +2695,13 @@ module VBlank
                 scan_object_colors(bmp, colors)
               end
               authored = authored_palette(node)
-              # A POSE OF SEVERAL BANKS (Builder::PackPoses, `banks:`) holds a list of sixteen for each,
-              # one after another, and its places count into the whole of it. One entry of the sprite
-              # table names one bank (GBATEK, "LCD OBJ - OAM Attributes": attribute 2, bits 12-15),
-              # and the cut of a picture into entries does not follow the frame's pieces, so such a
-              # sprite is stored a whole byte a pixel, drawn from the whole table.
+              if sprite_bank_parts(node)
+                (@banked_sprite_colors ||= {})[node.name] = colors.size
+                next bank_part_pictures(node, authored)
+              end
+              # A pose of several banks whose cut cannot follow its pieces (SpriteCut#parts_of: more
+              # pieces than one sprite takes, or a sprite that turns) has entries that mix banks, so
+              # it is stored a whole byte a pixel, drawn from the whole table.
               next PaletteBanks::Picture.new(key: node.name, colors: colors, wide: true) if authored && authored.length > PaletteBanks::BANK_SIZE
 
               PaletteBanks::Picture.new(key: node.name, colors: colors, authored: authored)
@@ -2710,6 +2712,53 @@ module VBlank
             PaletteBanks.new(pictures, after: after, first_entry_shown: false)
           rescue PaletteBanks::Overflow
             raise SpriteColorsOverflow, object_colors_overflow_message(pictures, scene)
+          end
+
+          # A SPRITE OF POSES OF SEVERAL BANKS (Assets::Image#banked?, `image ..., banks:`), drawn the
+          # console's way: each entry of the sprite table names its own bank of sixteen (GBATEK, "LCD
+          # OBJ - OAM Attributes": attribute 2, bits 12-15), so each bank's part of the poses' list is
+          # laid as a bank of its own, pinned as written, and two sprites or lists of the same colours
+          # share it. The sprite's own key is its first part, so it is stored the small way.
+          def bank_part_pictures(node, authored)
+            places = @bitmaps.fetch(node.poses.first).bank_places
+            parts = authored.each_slice(places).each_with_index.map do |part, k|
+              PaletteBanks::Picture.new(key: bank_part_key(node.name, k), colors: [], authored: part)
+            end
+            [PaletteBanks::Picture.new(key: node.name, colors: [], authored: authored.first(places)), *parts]
+          end
+
+          # What the bank of part +part+ of sprite +name+'s colours is asked for by.
+          def bank_part_key(name, part) = [:bank_part, name, part]
+
+          # Whether +key+ is one #bank_part_key made.
+          def bank_part_key?(key) = key.is_a?(Array) && key.first == :bank_part
+
+          # How many colours +picture+ (a PaletteBanks::Picture) draws, for a message: a sprite cut
+          # into banks counts every bank's colours it draws, which its own picture does not hold.
+          def colors_counted(picture) = @banked_sprite_colors&.[](picture.key) || picture.colors.size
+
+          # WHICH BANK'S PART EACH ENTRY OF EACH POSE OF +node+ DRAWS, for a sprite whose poses are all
+          # of several banks and cut along their pieces (SpriteCut#parts_of): a list for each pose, an
+          # entry a box, in the order of the cut. nil for any other sprite, which is drawn as before:
+          # one that turns, resizes or is painted is one box, and one drawn with other lists names one
+          # bank for all its entries. A pose that is another one turned has the parts of that one.
+          def sprite_bank_parts(node)
+            (@sprite_bank_parts ||= {}).fetch(node.name) do
+              @sprite_bank_parts[node.name] = bank_parts_found(node)
+            end
+          end
+
+          def bank_parts_found(node)
+            images = node.poses.map { |pose| @bitmaps.fetch(pose) }
+            return nil unless images.all?(&:banked?) && images.map(&:colors).uniq.one?
+            return nil if object_transformed?(node) || painted_sprite?(node) || !node.recolors.empty?
+
+            cutter = SpriteCut.new(@bitmaps)
+            mirrors = PoseCutter.new(@bitmaps).cut(node, transformed: false)[:mirrors]
+            parts = images.map { |bmp| cutter.parts_of(bmp) }
+            return nil if parts.each_with_index.any? { |list, k| list.nil? && mirrors[k].nil? }
+
+            parts.each_with_index.map { |list, k| mirrors[k] ? parts.fetch(mirrors[k].source) : list }
           end
 
           # The table a sprite's colours are in: its scene's, or the one every screen shows.
@@ -2940,8 +2989,9 @@ module VBlank
           # console's sprite table holds. Name the greediest pictures, since "255 colors"
           # on its own leaves the author hunting through their own art.
           def object_colors_overflow_message(pictures, scene = nil)
-            worst = pictures.max_by(3) { |picture| picture.colors.size }
-            named = worst.map { |picture| ":#{picture.key} (#{picture.colors.size})" }.join(", ")
+            counted = pictures.reject { |picture| bank_part_key?(picture.key) }
+                              .map { |picture| [picture.key, colors_counted(picture)] }
+            named = counted.max_by(3) { |_, count| count }.map { |key, count| ":#{key} (#{count})" }.join(", ")
             "#{whose_sprites(scene)} use more colors between them than the console's sprite table holds " \
               "(#{PaletteBanks::CAPACITY}, one of which means see-through).#{shared_sprites_note(scene)} The sprites " \
               "with the most colors are #{named}. Draw them from fewer colors, or use fewer sprites at once."
@@ -2974,7 +3024,13 @@ module VBlank
             pieces = boxes.map(&:size).max
             place = obj_banks_for(node).placement(node.name)
             encoded = node.poses.each_with_index.map do |image, k|
-              boxes[k].map { |box| cutter.encode(@bitmaps.fetch(image), place, box) } unless mirrors[k]
+              next if mirrors[k]
+
+              bmp = @bitmaps.fetch(image)
+              # A sprite cut into banks stores each entry from its own piece (SpriteCut#piece_places_of).
+              next SpriteCut.new(@bitmaps).piece_places_of(bmp).map { |own| cutter.encode_piece(own, bmp.bank_places) } if sprite_bank_parts(node)
+
+              boxes[k].map { |box| cutter.encode(bmp, place, box) }
             end
             in_set = grouped_pose_sets(node, mirrors)
             grouped = {}
@@ -3013,7 +3069,18 @@ module VBlank
                                stored: stored, starts: starts, repeats: repeats,
                                width: cut[:width], height: cut[:height],
                                animates: const_int(node.pose).nil? && node.poses.length > 1, grouped: grouped,
-                               tile_set: nil)
+                               tile_set: nil, piece_banks: sprite_piece_banks(node, pieces))
+          end
+
+          # The bank each entry of each pose of +node+ names, for a sprite of poses of several banks
+          # (#sprite_bank_parts), a filler entry naming 0; nil for any other sprite.
+          def sprite_piece_banks(node, pieces)
+            parts = sprite_bank_parts(node) or return nil
+
+            banks = obj_banks_for(node)
+            parts.map do |list|
+              list.map { |part| banks.placement(bank_part_key(node.name, part)).bank } + Array.new(pieces - list.length, 0)
+            end
           end
 
           # A SPRITE WHOSE POSES ARE DRAWN FROM A SET OF SPRITE TILES THE GAME LOADS (Nodes::TilePose):
@@ -3044,7 +3111,7 @@ module VBlank
                                stored: stored, starts: starts, repeats: 0,
                                width: poses.map(&:width).max, height: poses.map(&:height).max,
                                animates: const_int(node.pose).nil? && node.poses.length > 1, grouped: {},
-                               tile_set: [sets.first, own])
+                               tile_set: [sets.first, own], piece_banks: nil)
           end
 
           # Does +node+ show a pose drawn from a set of sprite tiles?
@@ -3093,6 +3160,7 @@ module VBlank
             # that differ carry NOTHING here — the size and shape come out of the table with
             # the rest of what changes, so these bases must not also hold the canvas's.
             shape, size = alike ? OBJ_SIZES.fetch(boxes.first.first.last(2)) : [0, 0]
+            piece_banks = (object_piece_bank_bits(pictures) unless alike)
             Sprite.new(
               slot: slot,
               pieces: pictures.pieces, # how many of the console's 128 places this one sprite takes
@@ -3114,7 +3182,8 @@ module VBlank
               mirrors: mirrors, # which poses are drawn backwards or upside down, so the draw knows to mark it
               pose_table: alike ? nil : :"__poses_#{name}",
               pose_words: alike ? nil : object_pose_table(name, boxes, starts, mirrors, tile_index,
-                                                          pictures.pieces),
+                                                          pictures.pieces, piece_banks),
+              piece_banks: piece_banks, # each piece's own bank, for a sprite of poses of several banks
               # Where the first pose sits inside the canvas it was drawn on. The sprite is
               # drawn that much further along so the picture does not move; for poses that
               # differ it comes out of the table instead.
@@ -3138,14 +3207,16 @@ module VBlank
               # which is every picture that names no layers.
               # A sprite that can change layer leaves the depth out, since a frame decides it.
               attr2_base: (node.layers.nil? ? hardware_priority(name) << OBJ_PRIORITY_SHIFT : 0) |
-                (place.narrow? && node.recolors.empty? ? place.bank << OBJ_BANK_SHIFT : 0),
+                (place.narrow? && node.recolors.empty? && piece_banks.nil? ? place.bank << OBJ_BANK_SHIFT : 0),
               recolor: node.recolor, recolor_banks: sprite_recolor_bank_table(node),
               layer_pick: node.layer_pick && IR::Build.var_ref(node.layer_pick),
               layer_depths: sprite_layer_depth_table(node),
             )
           end
 
-          def object_pose_table(name, boxes, starts, mirrors, tile_unit, pieces)
+          # +piece_banks+ (Sprite#piece_banks) follow the words in the table, one word each, so the
+          # draw finds a piece's bank as far past its word as the words are long.
+          def object_pose_table(name, boxes, starts, mirrors, tile_unit, pieces, piece_banks = nil)
             blob = :"__poses_#{name}"
             words = (0...pieces).flat_map do |piece|
               boxes.each_with_index.map do |list, k|
@@ -3155,12 +3226,21 @@ module VBlank
                   (mirrors[k]&.across ? POSE_MIRRORED : 0) | (mirrors[k]&.down ? POSE_UPSIDE_DOWN : 0)
               end
             end
-            @blobs[blob] = words.pack("V*")
+            @blobs[blob] = (words + (piece_banks || [])).pack("V*")
             # Kept unpacked: the draw reads one word straight out of the middle of this,
             # picked by the pose the game is showing, and there is no seeking into a
             # compressed stream.
             keep_unpacked!(blob)
             words
+          end
+
+          # The bank bits of attribute 2 for each piece of each pose (SpritePictures#piece_banks), in
+          # the order of the pose table's words: a piece's poses one after another. nil for a sprite
+          # whose pieces name no banks of their own.
+          def object_piece_bank_bits(pictures)
+            banks = pictures.piece_banks or return nil
+
+            (0...pictures.pieces).flat_map { |piece| banks.map { |list| list.fetch(piece) << OBJ_BANK_SHIFT } }
           end
 
           # A POSE THAT DRAWS LESS THAN ANOTHER HAS FEWER PIECES TO DRAW IT WITH, and the

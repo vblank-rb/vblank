@@ -757,9 +757,12 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   `bank:` and a bank past the slot; with the pack left out such a piece is not painted. A frame of one of the banks is
   drawn in that bank. One bank named (`banks: [3]`) is the pose `bank: 3` makes, a picture of that bank's list on
   every console, but a piece of another bank is refused all-in-one rather than left out. A pose's banks hold 256
-  colours at most (16 banks of sixteen-colour tiles), and a sprite showing such a pose is refused `draw_with`. On the Advance the sprite is stored a byte a pixel and drawn from the whole table of colours (one
-  entry of the sprite table names one bank, and the cut of a picture into entries does not follow the frame's pieces);
-  the Color, the Super Nintendo, the Genesis and the PlayStation builds do not make it yet and refuse it, naming
+  colours at most (16 banks of sixteen-colour tiles), and a sprite showing such a pose is refused `draw_with`. On the Advance each piece of the frame is
+  a sprite entry of its own naming its own bank in attribute 2, the frame's front piece the entry in front, and the
+  sprite is stored half a byte a pixel with each bank's list laid as a bank of sixteen, shared with any sprite drawn
+  from the same list (`SpriteCut#parts_of`, `ScreenLayout#bank_part_pictures`). Such a sprite is as many entries as its
+  frame has pieces, as the console's own games draw it. A sprite that turns or resizes, or a frame of more pieces than
+  one sprite takes, is stored a byte a pixel instead. The Color, the Super Nintendo, the Genesis and the PlayStation builds do not make it yet and refuse it, naming
   `bank:` and a sprite for each bank as the way round. Without `banks:`, a frame of two banks in the player's file, which
   the all-in-one build refuses, is drawn whole in its front piece's bank and follows that bank's list. Worked example:
   `test/all/vblank/builder/test_pack_pose_bank_colors.rb`. On a

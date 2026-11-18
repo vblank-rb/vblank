@@ -85,18 +85,29 @@ module VBlank
         end
       end
 
+      #
+      # +bank_places+ is, for a pose of the pieces of several banks of colours (Nodes::Bitmap
+      # #bank_places), how many places one bank's part of +colors+ is; nil for any other picture.
       Image = Data.define(:width, :height, :transparent, :pixels, :colors, :places, :colors_name, :pieces,
-                         :places_from_pack, :piece_groups) do
+                         :places_from_pack, :piece_groups, :bank_places) do
         def initialize(width:, height:, transparent:, pixels:, colors:, places:, colors_name: nil, pieces: nil,
-                       places_from_pack: false, piece_groups: nil) = super
+                       places_from_pack: false, piece_groups: nil, bank_places: nil) = super
 
         def self.of(node)
           new(width: node.width, height: node.height, transparent: node.transparent,
               pixels: node.pixels, colors: node.colors, places: node.places, colors_name: node.colors_name,
               pieces: (node.pieces if node.respond_to?(:pieces)),
               piece_groups: (node.piece_groups if node.respond_to?(:piece_groups)),
-              places_from_pack: node.respond_to?(:places_from_pack) && node.places_from_pack == true)
+              places_from_pack: node.respond_to?(:places_from_pack) && node.places_from_pack == true,
+              bank_places: (node.bank_places if node.respond_to?(:bank_places)))
         end
+
+        # Whether its colours are the lists of several banks, each piece in one of them.
+        def banked? = !bank_places.nil? && colors.length > bank_places
+
+        # Which bank's part of +colors+ a piece's own places (a piece of #pieces) are in: the part
+        # of the first place it draws, 0 for one that draws nothing.
+        def part_of_piece(own) = (own.each_byte.find(&:positive?) || 0) / bank_places
 
         # The list this picture was drawn from, as a background's recolouring keeps them apart.
         def list_drawn_from = [colors_name, colors]

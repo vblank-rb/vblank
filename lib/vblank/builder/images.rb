@@ -681,7 +681,8 @@ module VBlank
           node = Build.bitmap(name, width: turned.width, height: turned.height,
                                     pixels: turned.pixels, transparent: turned.transparent,
                                     colors: turned.colors, places: turned.places, colors_name: turned.colors_name,
-                                    pieces: turned.pieces, piece_groups: turned.piece_groups)
+                                    pieces: turned.pieces, piece_groups: turned.piece_groups,
+                                    bank_places: turned.bank_places)
           read_turned_picture_from_start_file(node, source, way)
           record_picture(node)
           box_x, box_y, box_w, box_h = @image_bounds[source] || [0, 0, turned.width, turned.height]
