@@ -115,6 +115,45 @@ class TestFilm < Minitest::Test
     refute_equal shown[1], shown[3]
   end
 
+  # A PROBE A GAME HAS DRIVEN TO THE MOMENT WORTH FILMING is a side as it stands: the film's frame 1
+  # is the frame after the probe's last, and closing the side closes the probe, its save folder too.
+  def test_a_probe_driven_first_is_filmed_from_where_it_stands
+    probe = VBlank::Playthroughs::Probe.open(game(CYCLE))
+    probe.step(5)
+    film = File.join(scratch, "probe.mp4")
+    Film.make(film, sides: { "probe" => -> { probe } }, parts: [1..4])
+    shape = video_shape(film)
+    reel = expected_reel([[1, 1], [2, 1], [3, 1], [4, SHORTEST - 3]])
+
+    assert_equal reel.map { |frame| CYCLE[colour_index(5 + frame)] }, colours_at(film, shape, x: GAME_X * 2)
+    assert_equal 9, probe.frame
+    refute Dir.exist?(probe.save_dir), "the probe's save folder is left behind"
+  end
+
+  # The film's buttons reach the probe, on the film's frames.
+  def test_a_probe_side_is_stepped_with_the_films_buttons
+    probe = VBlank::Playthroughs::Probe.open(game(CYCLE, step_with: :a))
+    probe.step(3, holding: :a)
+    film = File.join(scratch, "probe_pressed.mp4")
+    Film.make(film, sides: { "probe" => -> { probe } }, parts: [1..4], keys: ->(frame) { :a if frame >= 3 })
+    shown = colours_at(film, video_shape(film), x: GAME_X * 2)
+
+    assert_equal shown[0], shown[1]
+    refute_equal shown[1], shown[2]
+  end
+
+  # A probe heard: its sound is on the film's frames counted from where the probe stood.
+  def test_a_probe_side_is_heard_from_where_it_stands
+    rom = beeping_game(beep_on: 12)
+    probe = VBlank::Playthroughs::Probe.open(rom)
+    probe.step(4)
+    film = File.join(scratch, "probe_heard.mp4")
+    Film.make(film, sides: { "probe" => -> { probe } }, parts: [1..40], sound: "probe")
+    left, = film_sound(film)
+
+    assert_in_delta onset_frame(rom) - 1 - 4, onset(left), 1, "the sound is not on the frames that show it"
+  end
+
   # A side that draws a 256 wide picture for its first two frames and a 320 wide one after.
   class GrowingScreen
     def initialize = @frames = 0

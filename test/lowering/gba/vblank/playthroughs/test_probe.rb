@@ -36,6 +36,20 @@ class TestProbe < Minitest::Test
     end
   end
 
+  # A mask steps as the names do (a film steps its sides with one); both at once is refused.
+  def test_a_step_takes_the_buttons_as_a_mask
+    with_walker_file do |path, labels|
+      VBlank::Playthroughs::Probe.open(path, labels: labels) do |probe|
+        probe.step(10, keys: VBlank::IR::Buttons.mask(:right))
+
+        assert_equal 10, probe.frame
+        assert_operator probe.read("box_x"), :>, 20
+        error = assert_raises(ArgumentError) { probe.step(1, holding: :right, keys: 0) }
+        assert_match(/`holding:` and `keys:`/, error.message)
+      end
+    end
+  end
+
   def test_a_wait_that_never_ends_says_what_and_where
     with_walker_file do |path, labels|
       VBlank::Playthroughs::Probe.open(path, labels: labels) do |probe|

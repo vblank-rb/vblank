@@ -17,8 +17,9 @@ module VBlank
     #     keys: ->(frame) { :left if frame < 60 })
     #
     # A SIDE IS OPENED BY A CALLABLE, the side's label its key, and the callable answers a running
-    # cartridge whose NEXT frame is the film's first: a Verifier told to play no frames, or one a
-    # playthrough left standing at the moment worth filming. Film asks two things of it, and any
+    # cartridge whose NEXT frame is the film's first: a Verifier told to play no frames, one a
+    # playthrough left standing at the moment worth filming, or a Playthroughs::Probe a game drove
+    # there (closing it takes its save folder away too). Film asks two things of it, and any
     # object that answers them can be filmed (an emulator of a game's own, say):
     #
     #   step(1, keys: mask)   play one frame with these buttons down (IR::Buttons.mask, a bit each)

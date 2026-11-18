@@ -50,6 +50,14 @@ module VBlank
     # Everything else is read through #reader, the one reader over a running cartridge
     # (Diagnostics::Verifier): the picture, its pixels and colours, the sound, each console its own
     # way. Step the cartridge through the probe, never the reader, or #frame goes out of step.
+    #
+    # A PROBE IS A SIDE OF A FILM as it stands (Diagnostics::Film): it answers what a film asks of a
+    # side (#step with `keys:`, #screenshot, #last_frame_samples, #close), so a probe driven to the
+    # moment worth filming is filmed from its next frame, and the film closes it, save folder and all.
+    #
+    #   probe = Probe.open(rom)
+    #   probe.press_until(:start, "the first level", within: 20) { probe.var(:level) == 1 }
+    #   Diagnostics::Film.make("level.mp4", sides: { "ours" => -> { probe } }, parts: [1..120])
     class Probe
       # What was waited for did not happen in the frames allowed.
       class NeverHappened < StandardError; end
@@ -70,8 +78,9 @@ module VBlank
       PRESS_FRAMES = 4
       RELEASE_FRAMES = 8
 
-      # The reader over the running cartridge, and how many frames have been played since power-on.
-      attr_reader :reader, :frame
+      # The reader over the running cartridge, how many frames have been played since power-on, and
+      # the folder the save memory is kept in.
+      attr_reader :reader, :frame, :save_dir
 
       # A probe on +cartridge+ for the length of the block, closed when it ends; without a block, the
       # probe, for the caller to close.
@@ -101,7 +110,11 @@ module VBlank
 
       # Play +frames+ frames holding +holding+: a button, a list of them, nil for none, or a block
       # (anything answering `call`) handed the probe before each frame and answering what to hold.
-      def step(frames = 1, holding: nil)
+      # +keys+ is the same buttons as a mask (IR::Buttons.mask, a bit each), as Diagnostics::Film and
+      # the Verifier step a cartridge; give one or the other.
+      def step(frames = 1, holding: nil, keys: nil)
+        refuse_holding_and_keys!(holding, keys)
+        return step_with_mask(frames, keys) unless keys.nil?
         return step_holding_buttons(frames, holding) unless holding.respond_to?(:call)
 
         frames.times { step_holding_buttons(1, holding.call(self)) }
@@ -234,6 +247,13 @@ module VBlank
       #   probe.last_frame_sound.loudest   # => 0 for a frame of silence
       def last_frame_sound = @reader.last_frame_sound
 
+      # The samples of the frame played last, left and right by turns (Verifier#last_frame_samples):
+      # what a film asks of a side it hears.
+      def last_frame_samples = @reader.last_frame_samples
+
+      # Write the picture on screen now to +path+, a PNG (Verifier#screenshot).
+      def screenshot(path) = @reader.screenshot(path)
+
       # Write the console's whole state to +path+, to come back to with #load_state.
       def save_state(path)
         @reader.save_state(path.to_s)
@@ -258,10 +278,19 @@ module VBlank
 
       private
 
-      def step_holding_buttons(frames, buttons)
-        @reader.step(frames, keys: Playthrough.key_mask(Array(buttons)))
+      def step_holding_buttons(frames, buttons) = step_with_mask(frames, Playthrough.key_mask(Array(buttons)))
+
+      def step_with_mask(frames, mask)
+        @reader.step(frames, keys: mask)
         @frame += frames
         self
+      end
+
+      def refuse_holding_and_keys!(holding, keys)
+        return if holding.nil? || keys.nil?
+
+        raise ArgumentError, "A step was given `holding:` and `keys:`. They name the same buttons in two ways. " \
+                             "Give one of them: `holding: :a`, or `keys:` as a mask."
       end
 
       # The word at +boundary+ (a multiple of four) with +bytes+ (an address to its byte) put in it,
