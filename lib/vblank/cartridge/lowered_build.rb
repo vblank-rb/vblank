@@ -3,21 +3,16 @@
 module VBlank
   module Cartridge
     # THE CARTRIDGE OF A CONSOLE WHOSE LOWERING IS CHECKED BY A RUN OF ITS OWN — the Game Boy
-    # Color's and the Super Nintendo's — made from a checked program by the lowering its kit names
-    # (Console::CheckedKit#lowering). One build serves every such console, and the kit is what it is
-    # handed: what differs from one console to the next is the lowering, and the kit names it.
+    # Color's, the Super Nintendo's, the Genesis's and the PlayStation's — made from a checked
+    # program by the lowering its kit names (Console::CheckedKit#lowering). One build serves every
+    # such console: the lowering is what differs, and the kit names it.
     #
-    # Measuring, quick memory and the ROM validation are the Advance's and are not asked for, and a
-    # build that sets one of the Advance's settings is refused before it gets here
-    # (Cartridge::AdvanceBuild::SETTINGS). A routine asked to be listed (`dump_func`) is refused
-    # where the console's answers refuse it, in their words, and listed otherwise by the lister the
-    # kit names (Console::Kit#routine_lister). A request to list is the build's and not a step of
-    # the program, so it is asked here and not with the program's lines (Console::Answers#refusals).
+    # The build lowers the program, adds what the lowering found to the build's findings, and lists
+    # any routine the game asked to see (`dump_func`) with the lister the kit names
+    # (Console::Kit#routine_lister). Where the console's answers refuse that listing, the build
+    # refuses it in their words. A request to list belongs to the build, not to a step of the
+    # program, so it is checked here and not with the program's lines (Console::Answers#refusals).
     LoweredBuild = Data.define(:kit) do
-      # These consoles have no setting of their own: what they are built with every console has.
-      def console_settings = []
-      def refuse_unusable_settings!(_said) = nil
-
       # The cartridge for +request+ (a Cartridge::BuildRequest). What the lowering had to say about
       # what it decided joins the findings, so it is printed with the rest.
       def build(request)

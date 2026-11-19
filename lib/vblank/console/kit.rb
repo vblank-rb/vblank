@@ -25,12 +25,13 @@ module VBlank
     #                           says of the console's build (what the Color's does not make yet)
     #   builder                 what makes its cartridge (Cartridge::AdvanceBuild, say). It answers
     #                           build(request), the cartridge from a checked program and a
-    #                           Cartridge::BuildRequest; console_settings, the names of the CONSOLE
-    #                           SETTINGS it reads (build settings only some consoles have, such
-    #                           as the Advance's `stack_room:`); refuse_unusable_settings!(said),
-    #                           which refuses a value of one of those it cannot use; and
-    #                           cartridge_for(program, title:), the cartridge for a program alone,
-    #                           which is what a test plays
+    #                           Cartridge::BuildRequest; and cartridge_for(program, title:), the
+    #                           cartridge for a program alone, which is what a test plays
+    #   console_settings        the names of the CONSOLE SETTINGS its build reads (build settings
+    #                           only some consoles have, such as the Advance's `stack_room:`); none
+    #                           for most
+    #   refuse_unusable_settings!(said)
+    #                           refuses a value of one of those its build cannot use
     #   cartridge               the kind of cartridge that is (below)
     #   reading                 the module that gives the one reader (Diagnostics::Verifier) the
     #                           questions only its way of keeping things answers, when the reader
@@ -149,9 +150,11 @@ module VBlank
       # or nil for none. The Advance's own build lists its routines itself.
       def routine_lister = nil
 
-      # The console settings its build reads, by name, and whether +setting+ is one of them.
-      def console_settings = builder.console_settings
+      # The console settings its build reads, by name (none, for most), whether +setting+ is one of
+      # them, and the refusal of a value in +said+ (a setting's name to its value) the build cannot use.
+      def console_settings = []
       def console_setting?(setting) = console_settings.include?(setting)
+      def refuse_unusable_settings!(_said) = nil
 
       # The variants of this console a build can ask for (Console::Variant), by name: none, for most.
       def variants = {}
@@ -262,6 +265,8 @@ module VBlank
       def answers = AdvanceAnswers
       def answers_page = answers.reference
       def builder = Cartridge::AdvanceBuild
+      def console_settings = Cartridge::AdvanceBuild::SETTINGS
+      def refuse_unusable_settings!(said) = Cartridge::AdvanceBuild.refuse_unusable_settings!(said)
       def cartridge = Cartridge::ROM
       def reading = Diagnostics::AdvanceReading
       def dumps_ir? = true
@@ -464,7 +469,7 @@ module VBlank
                              "#{kits.map(&:title).join(' and the ')}. To fix this, remove `#{setting}:`. Or name " \
                              "the #{holders.first} in `#{named_in}`."
       end
-      kits.each { |kit| kit.builder.refuse_unusable_settings!(said.slice(*kit.console_settings)) }
+      kits.each { |kit| kit.refuse_unusable_settings!(said.slice(*kit.console_settings)) }
     end
 
     # +sizes+, the size of sprite piece a game names for each of its consoles, by console

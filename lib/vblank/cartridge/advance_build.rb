@@ -27,8 +27,6 @@ module VBlank
       # much of it.
       LEAST_STACK_ROOM = 64
 
-      def console_settings = SETTINGS
-
       # Refuses a value in +said+ (a setting's name to the value it was set to, for the settings
       # above) that the Advance's build cannot use, naming what it can.
       def refuse_unusable_settings!(said)
