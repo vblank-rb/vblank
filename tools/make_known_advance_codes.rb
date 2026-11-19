@@ -3,7 +3,7 @@
 require "json"
 require_relative "../lib/vblank/root"
 
-# Regenerate lib/vblank/data/known_game_codes.txt — the four-character codes of
+# Regenerate lib/vblank/data/known_advance_codes.txt — the four-character codes of
 # every real Game Boy Advance cartridge an emulator's catalogue knows about: the ones
 # that were sold, and the prototypes, betas and kiosk builds that got out too. A
 # prototype's code is as taken as a hit's — an emulator matches it the same way.
@@ -16,18 +16,18 @@ require_relative "../lib/vblank/root"
 #
 # Run it when the source list is updated:
 #
-#   ruby tools/make_known_game_codes.rb path/to/gba_games.json
+#   ruby tools/make_known_advance_codes.rb path/to/gba_games.json
 #
 # The source is a serial-keyed catalogue in the No-Intro naming convention
 # ("AGB-AXVE" => "Pokemon - Ruby Version (USA)"). Only the codes are kept — the names
 # are nobody's to copy, and the check does not need them.
-module MakeKnownGameCodes
-  OUT = VBlank.root.join("lib/vblank/data/known_game_codes.txt").to_s
+module MakeKnownAdvanceCodes
+  OUT = VBlank.root.join("lib/vblank/data/known_advance_codes.txt").to_s
 
   def self.run(source = nil)
     unless source && File.file?(source)
       raise "I cannot read #{source}. Pass the catalogue's path as an argument: " \
-            "ruby tools/make_known_game_codes.rb path/to/gba_games.json"
+            "ruby tools/make_known_advance_codes.rb path/to/gba_games.json"
     end
 
     # A handful of entries carry the maker code on the end ("AGB-BMVE01"), so take
@@ -43,4 +43,4 @@ module MakeKnownGameCodes
   end
 end
 
-MakeKnownGameCodes.run(*ARGV) if $PROGRAM_NAME == __FILE__
+MakeKnownAdvanceCodes.run(*ARGV) if $PROGRAM_NAME == __FILE__
