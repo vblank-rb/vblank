@@ -48,6 +48,10 @@ module VBlank
           # of a layer the scene owns.
           def emit_if_scene_up(marker, scene, &) = emit_if_var_names_scene(MARKERS.fetch(marker), scene, &)
 
+          # ...and the other way round: the block's code only while some other scene's +marker+
+          # things are up, or nobody's, which is when #emit_once_on_arrival sends them.
+          def emit_unless_scene_up(marker, scene, &) = emit_unless_holds(MARKERS.fetch(marker), scene_number(scene), &)
+
           # The same, reading the scene from +var+, a copy of a note or a scene named outright
           # (#emit_marker_copy_into, #emit_scene_number_into): for a routine called both where
           # the note records whose things are up and where a scene is taking over before it does.

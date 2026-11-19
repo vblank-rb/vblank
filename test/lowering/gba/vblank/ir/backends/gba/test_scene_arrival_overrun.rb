@@ -35,12 +35,6 @@ class TestSceneArrivalOverrun < Minitest::Test
   # (line 227), so the setup after it runs into the picture however quick it is.
   LATE_LINE = 215
 
-  # A title, then a scene of +layers+ backgrounds, each a map of +tile_count+ different tiles, wide
-  # enough that the view of it is filled as the scene comes up. With +late+ the pass that hands over
-  # spends the gap until LATE_LINE first (or until line +late+, a number), read off the console's
-  # line counter. With +halts+ the scene stops the game on its first pass, as an end screen does, so
-  # no wait for a frame follows it. With +bordered+ the game is laid out for the Game Boy Color's
-  # screen, shown in the middle of the Advance's with a border of blue and yellow round it.
   # A picture of 64×64 for the sprites a scene has of its own, number +n+: every 8×8 square cyan
   # down its first column, so each row of it shows cyan, and its own number in cyan and magenta
   # in the rest, so no square is like another and none is kept once for several.
@@ -55,16 +49,30 @@ class TestSceneArrivalOverrun < Minitest::Test
     end
   end
   OWN_SPRITES = 6 # a scene's own sprites, along the top: their pictures go up as it takes over
+  OWN_SPRITES_BORDERED = 4 # ...in a border, whose sprite memory keeps room for its own pictures
   OWN_SPRITE_ROWS = (0...64).freeze
-  # The columns only the last of them covers: its picture is the last copied, so the last a copy
-  # running into the picture reaches.
-  LAST_OWN_COLUMNS = ((OWN_SPRITES * 32)...((OWN_SPRITES * 32) + 32)).freeze
+  # How far apart they stand, on the whole screen and in a border's smaller one.
+  OWN_SPACING = 32
+  OWN_SPACING_BORDERED = 16
+  # Where a border puts the game's screen's corner on the console's (the Color's 160×144 in the
+  # middle of the Advance's 240×160).
+  BORDER_CORNER = [40, 8].freeze
 
-  private def handed_over(layers:, tile_count:, late: false, halts: false, bordered: false, own_sprites: 0, shared: false)
+  # A title, then a scene of +layers+ backgrounds, each a map of +tile_count+ different tiles, wide
+  # enough that the view of it is filled as the scene comes up. With +late+ the pass that hands over
+  # spends the gap until LATE_LINE first (or until line +late+, a number), read off the console's
+  # line counter. With +halts+ the scene stops the game on its first pass, as an end screen does, so no wait for a frame
+  # follows it. With +bordered+ the game is laid out for the Game Boy Color's screen, shown in the
+  # middle of the Advance's with a border of blue and yellow round it. With +own_sprites+ the scene
+  # has that many sprites of its own along the top. With +shared+ every scene shows a background
+  # declared outside them, and with +title_scenery+ false the title has none of its own.
+  private def handed_over(layers:, tile_count:, late: false, halts: false, bordered: false, own_sprites: 0, shared: false,
+                          title_scenery: true)
     title_tile = TITLE
     side = WIDE
     handed_over_at = HANDED_OVER_AT
     late_line = late == true ? LATE_LINE : late
+    spacing = bordered ? OWN_SPACING_BORDERED : OWN_SPACING
     b = bordered ? Builder.new(options: VBlank::Cartridge::Options.new(console: :gba, variant: :color_screen)) : Builder.new
     b.extend(VBlank::Builder::Debug)
     b.instance_eval do
@@ -83,11 +91,11 @@ class TestSceneArrivalOverrun < Minitest::Test
       pass = var :pass, 0
       # With +shared+, a background every scene shows, declared outside them.
       background :shared, tiles: :stripes, map: Array.new(20) { |row| Array.new(30) { |col| (row + col) % tile_count } } if shared
-      scene(:title) { background :title, tiles: :title_tiles, map: Array.new(20) { [0] * 30 } }
+      scene(:title) { background :title, tiles: :title_tiles, map: Array.new(20) { [0] * 30 } if title_scenery }
       own_sprites.times { |n| image(:"own_#{n}", width: 64, height: 64, data: TestSceneArrivalOverrun.numbered_picture(n)) }
       scene(:play) do
         layers.times { |layer| background :"layer_#{layer}", tiles: :stripes, map: map }
-        own_sprites.times { |n| sprite :"own_#{n}", at: [n * 32, 0], facing: { still: :"own_#{n}" } }
+        own_sprites.times { |n| sprite :"own_#{n}", at: [n * spacing, 0], facing: { still: :"own_#{n}" } }
         halt if halts
       end
       game_loop do
@@ -205,19 +213,102 @@ class TestSceneArrivalOverrun < Minitest::Test
     assert_sprites_whole_or_held(rows_shown_by_start_line(layers: 0, shared: true))
   end
 
-  # The rows of the last of the scene's own sprites showing on its first picture, by the line its
-  # setup started on.
-  private def rows_shown_by_start_line(layers:, shared: false)
-    ART_START_LINES.to_h do |line|
-      game = handed_over(layers: layers, tile_count: 16, late: line, own_sprites: OWN_SPRITES, shared: shared)
-      rom = assemble_rom(game, name: "OVERRUNS")
-      reader = VBlank::Diagnostics::Verifier.new(rom, frames: 0, vars: rom.var_addresses)
-      first = (1..(HANDED_OVER_AT + 4)).lazy.filter_map do
-        reader.step
-        reader.frame_gba if reader.var(:pass) == HANDED_OVER_AT
-      end.first
-      [line, OWN_SPRITE_ROWS.count { |row| first[(row * 240) + LAST_OWN_COLUMNS.first, LAST_OWN_COLUMNS.size].include?(CYAN) }]
+  # A GAME WITH NO BACKGROUNDS AT ALL, whose scenes have only sprites: every scene the game picks is
+  # still a screen of its own (IR::Stacking.every_scene), so it holds its layers as the others do.
+  def test_own_sprites_in_a_game_that_sends_no_scenery_are_never_torn_on_their_first_picture
+    assert_sprites_whole_or_held(rows_shown_by_start_line(layers: 0, title_scenery: false))
+  end
+
+  # A GAME IN A BORDER: its border is sprites, which stay up through a held picture, so a scene's
+  # own sprites must be held some other way. The border's top rows show its colours on the first
+  # picture whatever line the setup started on.
+  def test_own_sprites_in_a_border_are_never_torn_on_their_first_picture
+    rows = rows_shown_by_start_line(layers: 1, bordered: true)
+
+    assert_sprites_whole_or_held(rows.transform_values(&:first))
+    assert_equal [0], rows.values.map(&:last).uniq, "border rows showing one colour on the first picture: #{rows}"
+  end
+
+  # ...and where that scene stops the game on its first pass, its sprites come up on a picture
+  # after the stop, as the layers do: no pass after it copies them in. In a plain build and in one
+  # built to be checked against the interpreter, which stop the game in different places.
+  def test_own_sprites_in_a_border_come_up_after_a_scene_that_stops_the_game
+    game = handed_over(layers: 1, tile_count: 16, late: ART_START_LINES.last, halts: true,
+                       own_sprites: OWN_SPRITES_BORDERED, bordered: true)
+    left, top = BORDER_CORNER
+    # The columns only the last sprite covers.
+    first_column = left + ((OWN_SPRITES_BORDERED - 2) * OWN_SPACING_BORDERED) + 64
+    shown = { plain: assemble_rom(game, name: "STOPPED"),
+              checked: VBlank::Cartridge::AdvanceBuild.checked_cartridge_for(game, title: "STOPPED") }.transform_values do |rom|
+      picture = VBlank::Diagnostics::Verifier.new(rom, frames: HANDED_OVER_AT + 6).frame_gba
+      OWN_SPRITE_ROWS.count { |row| picture[((row + top) * 240) + first_column, OWN_SPACING_BORDERED].include?(CYAN) }
     end
+
+    assert_equal({ plain: OWN_SPRITE_ROWS.size, checked: OWN_SPRITE_ROWS.size }, shown,
+                 "rows of the scene's own sprite showing after the stop, by build")
+  end
+
+  # ONE HOLD FOR A SCENE'S SCENERY AND ITS SPRITE PICTURES. Switched on between the two and off
+  # again, a line drawn in that moment shows the scene with the last scene's sprite pictures, at a
+  # row set by timing. So the pictures add no switching off of their own: the display's layers go
+  # off as often in a game whose scene sends them after its scenery as in one whose scene sends
+  # scenery alone.
+  def test_a_scenes_scenery_and_sprite_pictures_are_sent_under_one_hold
+    with_sprites = layers_switched_off(handed_over(layers: 1, tile_count: 16, own_sprites: OWN_SPRITES))
+    scenery_alone = layers_switched_off(handed_over(layers: 1, tile_count: 16))
+
+    assert_operator scenery_alone, :>=, 1, "the layers went off for the scenery at least once"
+    assert_equal scenery_alone, with_sprites, "times the layers went off, with the scene's own sprites and without"
+  end
+
+  # How many times the display's settings went from some layer on to none, from power-on until a
+  # few passes after the handover.
+  DISPLAY_CONTROL = 0x0400_0000
+  LAYER_BITS = 0x1F00 # the four backgrounds and the sprites
+
+  private def layers_switched_off(game)
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "hold.gba")
+      assemble_rom(game, name: "ONEHOLD").write(path)
+      probe = VBlank::Diagnostics::Emulator.probe(path)
+      begin
+        probe.watch_display
+        probe.step(HANDED_OVER_AT + 4)
+        on = probe.display_writes.select { |write| write.kind == :register && write.address == DISPLAY_CONTROL }
+                  .map { |write| write.value.anybits?(LAYER_BITS) }
+        on.each_cons(2).count { |before, after| before && !after }
+      ensure
+        probe.close
+      end
+    end
+  end
+
+  # The rows of the last of the scene's own sprites showing on its first picture, by the line its
+  # setup started on; in a border, with how many of the border's top rows are one colour.
+  private def rows_shown_by_start_line(bordered: false, **game)
+    spacing = bordered ? OWN_SPACING_BORDERED : OWN_SPACING
+    count = bordered ? OWN_SPRITES_BORDERED : OWN_SPRITES
+    left, top = bordered ? BORDER_CORNER : [0, 0]
+    # The columns only the last of them covers: its picture is the last copied, so the last a copy
+    # running into the picture reaches.
+    columns = ((((count - 2) * spacing) + 64 + left)...(((count - 1) * spacing) + 64 + left))
+    ART_START_LINES.to_h do |line|
+      first = first_picture(handed_over(tile_count: 16, late: line, own_sprites: count, bordered: bordered, **game))
+      shown = OWN_SPRITE_ROWS.count { |row| first[((row + top) * 240) + columns.first, columns.size].include?(CYAN) }
+      next [line, shown] unless bordered
+
+      [line, [shown, BORDER_ROWS.count { |row| first[row * 240, 240].uniq.one? }]]
+    end
+  end
+
+  # The picture shown after the pass the scene takes over on.
+  private def first_picture(game)
+    rom = assemble_rom(game, name: "OVERRUNS")
+    reader = VBlank::Diagnostics::Verifier.new(rom, frames: 0, vars: rom.var_addresses)
+    (1..(HANDED_OVER_AT + 4)).lazy.filter_map do
+      reader.step
+      reader.frame_gba if reader.var(:pass) == HANDED_OVER_AT
+    end.first
   end
 
   private def assert_sprites_whole_or_held(rows)

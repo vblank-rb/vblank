@@ -259,7 +259,7 @@ module VBlank
                 by_scene.each { |group| emit_scene_sprites(group) }
                 emit_refresh_still_sprites
                 @layout.draw_runs.each { |run| emit_copy_draw_run(run) }
-                emit_call_held_table_copy
+                emit_game_rows_copied_in
               end
             end
           end
@@ -644,6 +644,62 @@ module VBlank
 
           def emit_call_held_table_copy
             @placement.emit_call_cold_routine(HELD_TABLE_ROUTINE) if @layout.held_sprites
+          end
+
+          # Set while the game's rows of the console's table are hidden for a sending in a border
+          # (#emit_hide_game_rows), until a copy writes them again.
+          GAME_ROWS_HIDDEN = :_game_rows_hidden
+
+          # Does this game hide its rows for a sending? A game in a border that holds its layers
+          # and has scenes with sprite pictures of their own.
+          def hides_game_rows? = !@layout.border.nil? && @layout.holds_layers? && @layout.screen.scene_art?
+
+          # The game's rows copied in again, and the note of them hidden cleared.
+          def emit_game_rows_copied_in
+            emit_call_held_table_copy
+            return unless hides_game_rows?
+
+            emit_number(ACC, 0)
+            store_var(ACC, GAME_ROWS_HIDDEN)
+          end
+
+          # WHERE THE GAME STOPS, the game's rows copied in again if a sending left them hidden: no
+          # pass after the stop copies them, and the screen's interrupt never writes the console's
+          # table in a border. With +wait+ the copy waits for the gap first, so the picture the
+          # sending ran into stays whole; without, the caller has waited already.
+          def emit_game_rows_back_at_stop(wait:)
+            return unless hides_game_rows?
+
+            past = gensym
+            load_var(ACC, GAME_ROWS_HIDDEN)
+            emit(ASM.cmp_imm(ACC, 0))
+            emit_branch(:bcond, past, cond: :eq)
+            emit(ASM.swi(GBA::SWI_VBLANK_INTR_WAIT << 16)) if wait
+            emit_game_rows_copied_in
+            place_label(past)
+          end
+
+          # THE GAME'S ROWS OF THE CONSOLE'S TABLE HIDDEN, as far as the last copy reached, leaving
+          # the border's rows before them up (BorderSprites). For a sending in a border, which
+          # cannot switch the sprites off without the border (Drawing#emit_with_layers_held_for_art):
+          # each row is the "hidden" marker in its first half (GBATEK, OBJ Attribute 0: bit 9 set
+          # with bit 8 clear), and the copy into the table writes them all again (#emit_call_held_table_copy).
+          # Uses ACC, TMP and ADDR.
+          def emit_hide_game_rows
+            loop_top = gensym
+            done = gensym
+            emit_number(ACC, 1)
+            store_var(ACC, GAME_ROWS_HIDDEN)
+            load_var(TMP, HELD_SHOWN_TO)
+            emit_number(ADDR, first_game_row)
+            emit_number(ACC, OBJ_HIDDEN_ATTR0)
+            place_label(loop_top)
+            emit(ASM.cmp_reg(ADDR, TMP))
+            emit_branch(:bcond, done, cond: :hs)
+            emit(ASM.store_halfword(ACC, ADDR))
+            emit(ASM.add_imm(ADDR, ADDR, 8))
+            emit_branch(:b, loop_top)
+            place_label(done)
           end
 
           # The first row of the console's table the game's sprites are copied to: the first, or the

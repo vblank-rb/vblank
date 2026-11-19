@@ -145,10 +145,14 @@ module VBlank
           # shows what the game drew last, then the end is marked as on the screen and the game
           # sleeps from frame to frame. A held pass stops at the same sleep, with its own pass shown.
           # In a game that never waits for the screen (+frames+ false) its interrupt is not armed:
-          # what it drew is on the screen already, and it stops where it is.
+          # what it drew is on the screen already, and it stops where it is. The block, where given,
+          # is what the drawing puts right in the gap after that last picture.
           def emit_stopping(frames:)
             @emitter.place_label(stopping_label)
-            @emitter.emit(ASM.swi(GBA::SWI_VBLANK_INTR_WAIT << 16)) if frames
+            if frames
+              @emitter.emit(ASM.swi(GBA::SWI_VBLANK_INTR_WAIT << 16))
+              yield if block_given?
+            end
             emit_word(Frame::SHOWN, Frame::END_SHOWN)
             @emitter.place_label(stopped_label)
             if frames

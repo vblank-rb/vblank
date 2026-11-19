@@ -601,11 +601,20 @@ module VBlank
             emit_scene_mode(name) if @layout.modes.switched_per_scene?
             emit_painted_run_places(name)
             emit_scene_scenery(name)
+            # ...and its own sprite pictures, which scenes share the room for, so a scene taking
+            # over sends its own and one already running sends nothing. Straight after scenery
+            # it sends, so one hold covers both (#emit_with_layers_held_for_art). A scene with no
+            # scenery of its own sends them after its backdrop, blend and light instead: those
+            # writes then land at the start of the gap, not part way down a picture the copy ran
+            # into, where a backdrop or a brightness changed under the hold would tear its colour.
+            sends_scenery = scene_handover.arrival(name).scenery.any?
+            emit_scene_art_upload(name) if sends_scenery
             emit_scene_backdrop(name) if scene_handover.backdrops?
             @raster.emit_light_leaving(name, @layout.scene_blend.fetch(name, BLD_OFF))
             emit_scene_blend(name)
             @raster.emit_light_for_lit_scene(name)
             emit_scene_layers(name)
+            emit_scene_art_upload(name) unless sends_scenery
           end
 
           # THE COLOUR THIS SCENE SHOWS WHEREVER NOTHING IS DRAWN, in a game where a screen sets one
@@ -767,7 +776,7 @@ module VBlank
             return yield unless screen
 
             on = screen.on.reduce(0) { |bits, layer| bits | BG_ENABLES[layer] }
-            return emit_with_layers_held_for_sending(on) { yield } if @background_drawing.holds_layers?
+            return emit_with_layers_held_for_sending(on, name) { yield } if @background_drawing.holds_layers?
 
             change_display_control { emit(ASM.bic_imm(ACC, ACC, BG_ENABLE_MASK)) }
             yield
@@ -777,14 +786,30 @@ module VBlank
           # The same, in a game that waits for frames: the background layers and the sprites go
           # off for the sending, and come back on, the scene's layers in place of the last
           # scene's, at once in the gap or at the start of the next gap where the sending ran
-          # into a picture (see BackgroundDrawing::LAYERS_HELD).
-          def emit_with_layers_held_for_sending(on)
+          # into a picture (see BackgroundDrawing::LAYERS_HELD). Where the scene's sprite pictures
+          # are sent next, the layers stay off for them, and they come on after (see
+          # #emit_with_layers_held_for_art).
+          def emit_with_layers_held_for_sending(on, name)
+            art_follows = art_held?(name)
+            @scene_entry.emit_unless_scene_up(:art, name) { @sprite_drawing.emit_hide_game_rows } if art_follows && @layout.border
             @background_drawing.emit_layers_off_for_sending(SCENE_SEND_DISPLAY)
             yield
             load_var(ACC, SCENE_SEND_DISPLAY)
             emit(ASM.bic_imm(ACC, ACC, BG_ENABLE_MASK))
             emit(ASM.orr_imm(ACC, ACC, on)) unless on.zero?
-            @background_drawing.emit_layers_back_on_or_held(ACC)
+            return @background_drawing.emit_layers_back_on_or_held(ACC) unless art_follows
+
+            # The pictures are sent when the note of whose are up names another scene, as
+            # SceneEntry#emit_once_on_arrival reads it: then the layers stay off for them.
+            store_var(ACC, SCENE_SEND_DISPLAY)
+            emit_number(ACC, 1)
+            store_var(ACC, SCENE_ART_FOLLOWS)
+            @scene_entry.emit_if_scene_up(:art, name) do
+              emit_number(ACC, 0)
+              store_var(ACC, SCENE_ART_FOLLOWS)
+              load_var(ACC, SCENE_SEND_DISPLAY)
+              @background_drawing.emit_layers_back_on_or_held(ACC)
+            end
           end
 
           # Where the display's settings are kept while a scene's scenery is sent.
@@ -930,13 +955,12 @@ module VBlank
               return
             end
 
-            # Its colours first: the groups its sprites name are this scene's now (see
-            # ScreenLayout#build_shared_object_palette). A scene a `case_var` picks has them sent
-            # with its sprites instead (see SpriteDrawing#emit_scene_colors_on_change).
-            sends_colors = colors && !@layout.screen.scene_colors_picked?(name)
             @scene_entry.emit_once_on_arrival(:art, name) do
-              emit_with_layers_held_for_art(name, sends: sends_colors || !art.empty? || !painted.empty?) do
-                @palette_tint.emit_send_scene_obj_palette(colors, @layout.screen.obj_palette_units, name) if sends_colors
+              emit_with_layers_held_for_art(name) do
+                # Its colours first: the groups its sprites name are this scene's now (see
+                # ScreenLayout#build_shared_object_palette). A scene a `case_var` picks has them
+                # sent with its sprites instead (see SpriteDrawing#emit_scene_colors_on_change).
+                @palette_tint.emit_send_scene_obj_palette(colors, @layout.screen.obj_palette_units, name) if sends_scene_colors?(name)
                 art.each { |blob, at, units| @uploads.emit_dma_blob(blob, SpriteDrawing::OBJ_TILE_BASE + (at * 32), units * 16) }
                 @sprite_drawing.emit_reset_resident_frames(rooms)
                 pools.each { |pool| @sprite_drawing.emit_forget_poses_sent(pool) }
@@ -949,6 +973,22 @@ module VBlank
             end
           end
 
+          # Does +name+ send its sprites' colours as it takes over, rather than with its sprites?
+          def sends_scene_colors?(name)
+            @layout.screen.scene_send(name).obj_palette && !@layout.screen.scene_colors_picked?(name)
+          end
+
+          # IS +name+'S SPRITE PICTURES' SENDING HELD (#emit_with_layers_held_for_art)? On a scene
+          # drawn from tiles in a game that holds its layers, where the scene sends its sprites'
+          # colours or copies pictures, since either landing part way down a picture tears it. A
+          # scene that only marks what it has sent writes nothing seen.
+          def art_held?(name)
+            own = @layout.screen.scene_send(name)
+            arrival = scene_handover.arrival(name)
+            sends = sends_scene_colors?(name) || !(own.art || []).empty? || !arrival.painted_pictures.empty?
+            sends && IR::SceneHandover.tiles?(IR::Modes::SCREEN_OF_MODE.fetch(arrival.mode)) && @background_drawing.holds_layers?
+          end
+
           # A SCENE'S SPRITE PICTURES SENT AS ITS SCENERY IS, with the layers and the sprites off,
           # and back on in the gap or held for the picture the copy ran into (see
           # BackgroundDrawing::LAYERS_HELD). The sprites' rows were written in the gap before
@@ -956,18 +996,49 @@ module VBlank
           # timing; held, that picture is the backdrop whole in every build, and the next is the
           # scene whole. A copy that ends inside the gap shows the scene on the picture after it,
           # as the interpreter does. A scene with no scenery of its own is held the same way: the
-          # pair keeps the display's settings as they were and puts them back. Only on a scene
-          # drawn from tiles in a game that holds its layers, and only where the scene sends its
-          # sprites' colours or copies pictures (+sends+), since either landing part way down a
-          # picture tears it; a scene that only marks what it has sent writes nothing seen.
-          def emit_with_layers_held_for_art(name, sends:)
-            tiled = IR::SceneHandover.tiles?(IR::Modes::SCREEN_OF_MODE.fetch(scene_handover.arrival(name).mode))
-            return yield unless sends && tiled && @background_drawing.holds_layers?
+          # pair keeps the display's settings as they were and puts them back.
+          #
+          # ONE HOLD FOR THE SCENERY AND THE PICTURES. Where the scene's scenery was sent just
+          # before, with the layers off, they are still off (SCENE_ART_FOLLOWS): switched on between
+          # the two, a line drawn in that moment would show the scene with the last scene's sprite
+          # pictures, at a row set by timing.
+          #
+          # In a border the sprites stay on through a hold, since the border is sprites, so the
+          # game's own rows of the sprite table are hidden instead (SpriteDrawing#emit_hide_game_rows),
+          # and copied in again (#emit_game_rows_back_in_gap).
+          def emit_with_layers_held_for_art(name)
+            return yield unless art_held?(name)
 
+            off = gensym
+            @sprite_drawing.emit_hide_game_rows if @layout.border
+            load_var(ACC, SCENE_ART_FOLLOWS)
+            emit(ASM.cmp_imm(ACC, 0))
+            emit_branch(:bcond, off, cond: :ne)
             @background_drawing.emit_layers_off_for_sending(SCENE_SEND_DISPLAY)
+            place_label(off)
             yield
+            emit_number(ACC, 0)
+            store_var(ACC, SCENE_ART_FOLLOWS)
             load_var(ACC, SCENE_SEND_DISPLAY)
             @background_drawing.emit_layers_back_on_or_held(ACC)
+            emit_game_rows_back_in_gap if @layout.border
+          end
+
+          # Set while a scene's scenery has been sent and its sprite pictures are about to be, with
+          # the layers left off between the two (#emit_with_layers_held_for_art).
+          SCENE_ART_FOLLOWS = :_scene_art_follows
+
+          # In a border, the game's rows of the sprite table copied in again where the sending
+          # ended in the gap; one that ran into the picture leaves them hidden for it, and the next
+          # pass copies them in the gap after (SpriteDrawing#emit_present_objects).
+          def emit_game_rows_back_in_gap
+            past = gensym
+            emit_number(TMP, REG_VCOUNT)
+            emit(ASM.load_halfword(TMP, TMP))
+            emit(ASM.cmp_imm(TMP, SCREEN_HEIGHT))
+            emit_branch(:bcond, past, cond: :lo)
+            @sprite_drawing.emit_game_rows_copied_in
+            place_label(past)
           end
 
           # End the pass a scene that loads first takes over on (see SceneEntry).

@@ -101,13 +101,10 @@ module VBlank
               @drawing.emit_scene_late_pages(name) # what this scene's screen does with a late page
               if @modes.scene_funcs.include?(name)
                 # ...a preamble: what this scene has to tell the display as it takes over.
-                # That is the screen mode, in a program that switches it per scene, and the
-                # layers this scene uses, in one whose scenes use different ones. A program
-                # that needs neither emits nothing here.
+                # That is the screen mode, in a program that switches it per scene, the
+                # layers this scene uses, in one whose scenes use different ones, and its own
+                # sprite pictures. A program that needs none of them emits nothing here.
                 @drawing.emit_scene_preamble(name)
-                # ...and its own sprite pictures, which scenes share the room for, so a
-                # scene taking over sends its own and one already running sends nothing.
-                @drawing.emit_scene_art_upload(name)
                 # ...and, with its pictures up, the end of the pass it took over on, for a scene
                 # that has that pass to itself.
                 @drawing.emit_return_on_arrival_pass(name)

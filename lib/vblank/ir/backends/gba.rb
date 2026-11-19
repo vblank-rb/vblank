@@ -1117,7 +1117,9 @@ module VBlank
           emit_mix_routine # the mixer's inner loop, placed in ROM and copied to IWRAM at boot
           emit_divide_routine # likewise the divide routine, for a divisor worked out at run time
           emit_divide_fix_routine # and the one for dividing numbers that hold a fraction
-          @bookkeeping&.emit_stopping(frames: @uses_vblank) # where a checked build's game halts or goes wrong
+          # Where a checked build's game halts or goes wrong; the game's sprite rows a sending hid in a
+          # border are copied in once the picture it ran into is drawn.
+          @bookkeeping&.emit_stopping(frames: @uses_vblank) { @sprite_drawing.emit_game_rows_back_at_stop(wait: false) }
           # The interrupt dispatcher itself, reached only via the vector. When it was worth
           # keeping in the quick memory it has already been emitted inside the moved block.
           while_emitting_interrupt { emit_irq_handler } if uses_irq? && !irq_runs_fast?
@@ -1235,7 +1237,10 @@ module VBlank
         # does: an EEPROM's last block is written back rather than lost.
         def emit_halt(node)
           @save.emit_chip_end_of_pass if @uses_save
-          @bookkeeping ? @bookkeeping.emit_halt : @statements.emit_halt(node)
+          return @bookkeeping.emit_halt if @bookkeeping
+
+          @sprite_drawing.emit_game_rows_back_at_stop(wait: @uses_vblank)
+          @statements.emit_halt(node)
         end
 
         # Forwards to @emit — the code buffer + two-pass label/fixup collaborator built
