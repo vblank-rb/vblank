@@ -1,8 +1,6 @@
 # Writing C from the IR: what sits between the tree and the text
 
-2026-10-11
-
-**The question.** `Backends::Native` will lower the same `IR::Node` tree that `Backends::GBA` and
+**The question.** `Backends::Native` lowers the same `IR::Node` tree that `Backends::GBA` and
 `Backends::Reference` consume into C, compiled by `zig cc` (clang) with SDL3 into one desktop
 executable. Every backend must compute exactly what `IR::Int32` computes. C makes several of those
 operations undefined or implementation-defined. What layer between the IR and the C text keeps the C
@@ -85,94 +83,29 @@ Each layer is built twice. One build uses `zig cc -O0`, which turns UBSan fully 
 flags; `-fno-sanitize-recover=all` makes a finding fail the test. The other uses `-O2`, because the
 optimizer is what turns hidden undefined behaviour into wrong answers.
 
-### Divide by zero follows the cartridge (decided 2026-10-11)
+### Divide by zero follows the cartridge
 
-Today the backends give three answers:
+Every backend gives the answer the Advance's divide routine gives, and `Int32` is the answer key for
+it:
 
-| | Reference | Cartridge | C |
-|---|---|---|---|
-| `x / 0` | raises `ZeroDivisionError` | 1 or -1, by the numerator's sign (`divide.rb` L430-438) | undefined |
-| `x % 0` | raises `ZeroDivisionError` | `x` (the divide routine leaves the numerator over and `emit_modulo` adds 0) | undefined |
-| `div_fix` by 0 | raises `ZeroDivisionError` | the same raw 1 or -1: the smallest fraction, not 1.0 (`emit_divide_fix_routine` branches to `emit_divide_by_zero`, L358-359) | undefined |
+| | answer |
+|---|---|
+| `x / 0` | 1 or -1, by the numerator's sign (`Int32.quotient_by_zero`) |
+| `x % 0` | `x` (`Int32.mod`) |
+| `div_fix` by 0 | the same raw 1 or -1: the smallest fraction, not 1.0 (`Int32.div_fix`) |
 
-**Native gives the cartridge's answer.** Generated C never contains a `/` or `%`. It calls `rg_div`,
-`rg_mod` and `rg_div_fix`, and each tests for a zero divisor and returns what the console's routine
-returns. The answer key still raises, so a program that divides by zero cannot be compared until
-`Int32` gives the cartridge's answer too. That change belongs to the main backends and is tracked as
-its own piece of work. Until it lands, the native tests do not divide by zero.
+Generated C never contains a `/` or `%`. It calls `rg_div`, `rg_mod` and `rg_div_fix`, and each
+tests for a zero divisor before dividing.
 
-Reading a list out of range is a different case. Reference raises, and what the cartridge does has
-not been checked. Native stops with the game's source line (`rg_fault`) until that is settled.
+Reading a list out of range stops the C build with the game's source line (`rg_fault`).
 
 ---
 
-## Proposed shape of the C emitter (for approval; no code written)
-
-```
-lib/vblank/ir/backends/native.rb            Backends::Native: program -> C source. The comment atop
-                                              it records the decisions above.
-lib/vblank/ir/backends/native/c.rb          The C syntax tree (Data classes, frozen):
-                                                expressions  Int, Name, AddressOf, Call
-                                                statements   Eval (a call as a statement), Assign,
-                                                             If, While, For, Break, Return, Block,
-                                                             Comment (carries Node#source)
-                                                top level    Global, ConstArray (tables, art),
-                                                             Function, FunctionTable (call_one_of),
-                                                             Include
-lib/vblank/ir/backends/native/printer.rb    The only place text is made. Literals, indentation,
-                                              escaping, one line per statement, /* pong.rb:42 */
-                                              comments (and #line behind a switch).
-lib/vblank/ir/backends/native/names.rb      IR name -> C identifier. A prefix per namespace
-                                              (v_ variable, f_ routine, l_ list, t_ table, ...),
-                                              bytes outside [A-Za-z0-9] escaped, wasm2c-style, so
-                                              distinct names stay distinct. A collision or a
-                                              reserved word is a LoweringError. A Name node can only
-                                              be made here.
-lib/vblank/ir/backends/native/values.rb     One method per value kind, as a VALUES table like
-                                              Reference's; each returns a C expression, almost
-                                              always a Call to an rg_ helper.
-lib/vblank/ir/backends/native/statements.rb One method per statement kind (STATEMENTS table);
-                                              each returns C statements. Control flow maps straight:
-                                              if/else, repeat -> for with the count read once and
-                                              stop_when tested before the body, case -> an if-chain
-                                              on a snapshot that runs every clause that matches
-                                              (as Reference's exec_case does), wait_vblank -> a
-                                              call into the runtime, which takes the frame.
-lib/vblank/ir/backends/native/runtime/rg_int32.h     Hand-written; mirrors int32.rb.
-lib/vblank/ir/backends/native/runtime/rg_runtime.h   The seam the generated code calls (frames,
-                                                       buttons, drawing, sound, saving). With
-                                                       rg_int32.h and rg_list.h (the game's
-                                                       lists), all game.c includes.
-lib/vblank/ir/backends/native/runtime/rg_sdl.c       The SDL3 implementation (later work).
-lib/vblank/ir/backends/native/runtime/rg_headless.c  The test and replay implementation.
-```
-
-How large: the tree, printer and names come to a few hundred lines of Ruby, and `rg_int32.h` to about
-150 lines of C. Building with zig, the screen and the sound runtime are each their own piece of work.
-The emitter does not depend on any of them.
-
-### Where SDL sits
+## Where SDL sits
 
 **The generated C never names SDL.** The game calls the runtime through one header, `rg_runtime.h`,
-which covers frames, buttons, drawing, sound and saving. `rg_runtime.c` answers those calls by
-handing each to a DRIVER (`rg_driver.h`), picked when the program starts. There are two:
-
-- **`rg_sdl.c`, the window.** It owns `main()` in the build people play: it opens the window and then
-  calls the game's entry routine. Its `wait_vblank` is where SDL is driven, once per console frame:
-  - Show the 240x160 picture. It goes into a streaming texture, scaled up by a whole number with
-    nearest-neighbour, in the console's own 15-bit colours (`SDL_PIXELFORMAT_XBGR1555`).
-  - Pump SDL's events and read the keyboard into the held buttons.
-  - Hand the frame's mixed sound to an `SDL_AudioStream` (not yet; sound is its own piece of work).
-  - Wait on its own clock until the next console frame (about 59.73 a second), not the monitor's
-    refresh.
-- **`rg_headless.c`, no window**, for tests and fast replay. It reads the held buttons for
-  each frame from standard input, prints each frame's picture and variables for the comparison with
-  Reference, and never sleeps.
-
-**The build people play carries both.** `./pong` opens the window; `./pong --headless FRAMES` runs the
-windowless driver, so a test can drive the very program a player runs. The tests themselves build
-with the windowless driver alone (`rg_headless_main.c` is that build's `main()`), with zig's compiler
-and no SDL, which keeps them quick and off the network.
+and the runtime hands each call to a driver (`rg_driver.h`): the window (`rg_sdl.c`) or no window
+(`rg_headless.c`, for the tests).
 
 **The game owns the loop, so SDL3's callback entry points do not fit.** `wait_vblank` can sit deep
 inside a routine: a program with no `game_loop`, or one built with `frame_sync: :manual`. So the game
@@ -182,7 +115,7 @@ cannot hand control back to a host loop each frame. Instead SDL is driven from i
 which would take coroutines. The build uses SDL3's ordinary `main` instead. The game runs on the main
 thread, which is where macOS wants events handled.
 
-**Checked against SDL 3.4.18's headers and at run time (2026-10-11):**
+**Checked against SDL 3.4.18's headers and at run time:**
 `SDL_PIXELFORMAT_XBGR1555` has red in bits 0-4 (masks R=001f, G=03e0, B=7c00);
 `SDL_SetRenderLogicalPresentation(r, 240, 160, SDL_LOGICAL_PRESENTATION_INTEGER_SCALE)`;
 `SDL_SetTextureScaleMode(tex, SDL_SCALEMODE_NEAREST)`;
@@ -196,29 +129,23 @@ only, for Windows's sake), and `SDL_INIT_VIDEO` and event pumping must stay on m
 `src/platform/sdl/sdl-events.c:188-198`, `src/platform/qt/InputController.cpp:64-73`): arrows for
 the pad, X = A, Z = B, A = L, S = R, Return = Start, Backspace = Select.
 
-This split also keeps the emitter testable with no window: every emitter test links the headless
-runtime.
+**Tests:**
 
-**Tests, all under `rake test:native` and none under `rake test`:**
-
-- `test_int32_helpers.rb` compiles one harness. It runs every helper over the cross product of edge
+- `test/lowering/native/vblank/ir/backends/native/test_int32_helpers.rb` compiles one harness. It runs every helper over the cross product of edge
   values (0, ±1, `MIN`, `MIN+1`, `MAX`, powers of two, shift counts -1, 0, 31, 32, 33), plus seeded
   random pairs, and compares each answer with `Int32`. It runs at `-O0` with UBSan on and at `-O2`.
   This test is the contract between the two languages.
-- `test_printer.rb` checks behaviour, not text. Every edge literal is printed into a C program that
-  prints it back. A corpus of awkward IR names (taken from the examples' real programs, plus
-  generated ones) must compile under `-Wreserved-identifier -Werror` and come out distinct.
-- `test_native_conformance.rb` runs the conformance fixture: it must cover every portable
-  kind, and its variables after N frames must match Reference's. Built at `-O0` with UBSan and at
-  `-O2`.
-
-To keep compile time down, each test puts all its cases into one C file and compiles once.
+- `test/all/vblank/ir/test_printer.rb` checks the printer by behaviour, not text.
+- The conformance fixture (`test/conformance_fixture.rb`), played on the native run by
+  `test/all/vblank/ir/test_cross_backend_conformance.rb`, must cover every portable kind, and its
+  variables after N frames must match Reference's.
 
 ---
 
 ## What the IR asks of C
 
-Line numbers are `lib/vblank/ir/int32.rb` at the current `native-backend` head.
+Line numbers are `lib/vblank/ir/int32.rb` as it was read for this research; the file has moved
+since, so look a rule up by its method name.
 
 | Int32 rule (int32.rb) | C problem it collides with | wasm2c | zig.h / Zig C backend | Nim | Spinel |
 |---|---|---|---|---|---|
@@ -246,8 +173,8 @@ Two things no prior system shares with this IR, so no helper can be copied as is
 - **Shift counts saturate instead of being masked or reversed.** wasm2c and Nim mask (`& 31`), which
   gives `x << 33 == x << 1`; Int32 gives 0. Spinel saturates but reverses on a negative count; Int32
   does not.
-- **`div` by zero has two answers today.** The Reference raises; the GBA lowering returns ±1 with the
-  numerator left over. A third backend has to pick one, and the conformance fixture should pin it.
+- **`div` by zero has the cartridge's answer**, ±1 with the numerator left over, which no prior
+  system gives.
 
 ---
 
@@ -696,9 +623,8 @@ So C23 changes none of the rules that matter here.
   `zig cc` Debug builds. Unsigned arithmetic keeps the generated C free of UB on its own.
 - **Every system sends `/` and `%` through a helper that tests the zero divisor and `MIN / -1`**
   (wasm2c `DIV_S`/`REM_S`, Spinel `sp_idiv`/`sp_imod`, Nim's codegen test plus `nimDivInt`), or
-  proves them impossible earlier (Zig). The Native backend needs `rg_div`/`rg_mod` helpers,
-  and the IR has to settle what `/ 0` returns, since the Reference raises and the GBA lowering returns
-  ±1.
+  proves them impossible earlier (Zig). The Native backend has `rg_div`/`rg_mod` helpers, and
+  `/ 0` returns the cartridge's answer everywhere (above).
 - **Ruby's floored `%` has two ready formulas**: `zig_mod_i32` and Spinel's `sp_imod` (with its
   `b == -1 → 0` case). Both match `Int32.mod` for nonzero divisors.
 - **No prior helper implements Int32's shift rule.** wasm2c and Nim mask the count; QBE takes it
