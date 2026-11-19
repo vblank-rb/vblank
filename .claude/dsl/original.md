@@ -966,12 +966,16 @@ end
   `test/all/vblank/builder/test_shell_screens.rb` (what is refused).
 
 **A port's shell check** — `rake shell:check`, from `Original::ShellCheckTasks` in the port's Rakefile
-(`t.game_file`, and `t.console` and `t.tape` if wanted), or `Live::ShellCheck.new(game, tape:).run` — does
-what a player does with nobody at the controls: builds the shell with no copy in reach, starts it with
-the copy this machine names, holds the pack it keeps to the all-in-one build's byte for byte, starts it
-again with that copy out of reach, and plays the tape (300 passes with nothing pressed without one) on
-both starts and the all-in-one build, holding every picture and sound to that build's. A machine that
-names no copy fails with `NotSet`'s words. Worked example: `test/lowering/ruby/vblank/live/test_shell_check.rb`.
+(`t.game_file`, and `t.console`, `t.tape` and `t.passes` if wanted), or
+`Live::ShellCheck.new(game, tape:, passes:).run` — does what a player does with nobody at the controls:
+builds the shell with no copy in reach, starts it with the copy this machine names, holds the pack it
+keeps to the all-in-one build's byte for byte, starts it again with that copy out of reach, and plays a
+short stretch on both starts and the all-in-one build, holding every picture and sound to that build's.
+The stretch is the tape's first `passes` passes (`Live::ShellCheck::STRETCH_PASSES`, 300, unless named;
+with no tape, that many with nothing pressed), and it does not follow the tape as the tape grows. The
+all-in-one build is built and played in a process of its own beside the shell's starts, where the check
+runs on the main Ractor. A machine that names no copy fails with `NotSet`'s words. Worked example:
+`test/lowering/ruby/vblank/live/test_shell_check.rb`.
 
 **The pack file** (`Original::Pack`): `"VBLANKPK"`, the format version (2 bytes), the copy's SHA-1 (20
 bytes), the build version (a length byte and the text), the slot count (2 bytes), each slot's name (a

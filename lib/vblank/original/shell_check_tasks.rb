@@ -12,25 +12,27 @@ module VBlank
     #   VBlank::Original::ShellCheckTasks.new do |t|
     #     t.game_file = "game.rb"               # the file `vblank run game.rb --shell` plays
     #     t.console = :gbc                      # every console the game names unless set
-    #     t.tape = "test/tapes/first_room.tape" # what is pressed; nothing for 300 passes unless set
+    #     t.tape = "test/tapes/first_room.tape" # what is pressed; nothing unless set
+    #     t.passes = 900                        # how much of it shell:check plays (Live::ShellCheck::STRETCH_PASSES unless set)
     #   end
     #
     # That defines one task:
     #
     #   rake shell:check   build the game as a shell, fill it from the copy this machine names,
-    #                      start it again with the copy out of reach, and hold the pack and the
-    #                      play to the all-in-one build's
+    #                      start it again with the copy out of reach, and hold the pack and a
+    #                      short stretch of play to the all-in-one build's
     #
     # The copy is found as the game's build finds it (Original::Game#copy). A machine that names
     # none stops with the words that say how to name one, and the task fails.
     class ShellCheckTasks < Rake::TaskLib
-      attr_accessor :game_file, :console, :tape
+      attr_accessor :game_file, :console, :tape, :passes
 
       def initialize
         super
         @game_file = nil
         @console = nil
         @tape = nil
+        @passes = nil
         yield self if block_given?
         define_tasks
       end
@@ -42,7 +44,8 @@ module VBlank
       def run_check
         require_relative "../live"
         game = loaded_game
-        Live::ShellCheck.new(game, consoles: console ? [console] : game.consoles, tape: tape && Playthroughs::Tape.read(tape)).run
+        Live::ShellCheck.new(game, consoles: console ? [console] : game.consoles, tape: tape && Playthroughs::Tape.read(tape),
+                                   passes: passes || Live::ShellCheck::STRETCH_PASSES).run
       end
 
       # The game the file declares (VBlank.game records it without building).

@@ -27,9 +27,12 @@ class TestShellCheckTasks < Minitest::Test
     path
   end
 
-  private def check_task(file)
+  private def check_task(file, passes: nil)
     Rake.application = Rake::Application.new
-    VBlank::Original::ShellCheckTasks.new { |t| t.game_file = file }
+    VBlank::Original::ShellCheckTasks.new do |t|
+      t.game_file = file
+      t.passes = passes if passes
+    end
     Rake::Task["shell:check"]
   end
 
@@ -40,6 +43,16 @@ class TestShellCheckTasks < Minitest::Test
       out, = capture_io { task.invoke }
 
       assert_match "plays as its all-in-one build does", out
+    end
+  end
+
+  def test_the_task_plays_the_stretch_the_rakefile_names
+    Dir.mktmpdir do |folder|
+      copy = File.join(folder, "made_up.gba").tap { |path| File.binwrite(path, COPY) }
+      task = check_task(game_file(folder, copy), passes: 40)
+      out, = capture_io { task.invoke }
+
+      assert_match "Comparing 40 passes", out
     end
   end
 

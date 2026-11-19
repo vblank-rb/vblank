@@ -16,7 +16,7 @@ class TestShellCheck < Minitest::Test
 
   ShellCheck = VBlank::Live::ShellCheck
 
-  private def check(game, said = [], tape: nil) = ShellCheck.new(game, tape: tape, say: ->(line) { said << line }).run
+  private def check(game, said = [], tape: nil, **options) = ShellCheck.new(game, tape: tape, say: ->(line) { said << line }, **options).run
 
   def test_a_port_whose_shell_plays_as_its_all_in_one_build_passes_every_step
     Dir.mktmpdir do |folder|
@@ -79,7 +79,30 @@ class TestShellCheck < Minitest::Test
       said = []
       check(port(original(folder)), said, tape: tape)
 
-      assert_match "Playing 25 passes", said.join("\n")
+      assert_match "Comparing 25 passes", said.join("\n")
+    end
+  end
+
+  # A port's tape grows with the game, and the check holds the shell's own workings: it plays the
+  # tape's first stretch alone, however long the tape is.
+  def test_the_check_plays_a_short_stretch_of_a_long_tape
+    Dir.mktmpdir do |folder|
+      tape = VBlank::Playthroughs::Tape.parse("vblank tape 1\nrecorded on: MADE UP 0x00000000\nstarts from: power-on\n\n" \
+                                              "1000 -\n1000 right\n")
+      said = []
+      check(port(original(folder)), said, tape: tape)
+
+      assert_match "Comparing #{ShellCheck::STRETCH_PASSES} passes", said.join("\n")
+      assert_operator ShellCheck::STRETCH_PASSES, :<, 2000
+    end
+  end
+
+  def test_a_port_can_name_how_long_a_stretch_the_check_plays
+    Dir.mktmpdir do |folder|
+      said = []
+      check(port(original(folder)), said, passes: 40)
+
+      assert_match "Comparing 40 passes", said.join("\n")
     end
   end
 
@@ -94,10 +117,13 @@ class TestShellCheck < Minitest::Test
         end
         game_loop { wait_vblank }
       end
-      failed = assert_raises(ShellCheck::Failed) { check(game) }
+      said = []
+      failed = assert_raises(ShellCheck::Failed) { check(game, said) }
 
       assert_match "not the all-in-one build's pack", failed.message
       assert_match "first at byte", failed.message
+      # Named before a second start, which would refuse the wrong pack in other words.
+      assert_empty said.grep(/Second start/)
     end
   end
 
