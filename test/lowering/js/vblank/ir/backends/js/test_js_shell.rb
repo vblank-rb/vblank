@@ -70,8 +70,37 @@ class TestJSShell < Minitest::Test
   end
 
   # The page opened once, with the browser's storage in +folder+, and what it printed.
-  private def open_shell(folder, steps, version: "1")
-    played_page(steps, html: shell_page_html(folder, version: version), browser: ["idb:#{File.join(folder, 'idb.json')}"])
+  private def open_shell(folder, steps, version: "1", pointer: :mouse)
+    played_page(steps, html: shell_page_html(folder, version: version), pointer: pointer,
+                       browser: ["idb:#{File.join(folder, 'idb.json')}"])
+  end
+
+  # The menu's first line chosen with A on the page's touch pad, the finger lifted before the menu
+  # ends: a finger landing lets the page open no picker, and the menu acts frames after the press.
+  TAP_LOAD_ROM = ["settle", "play 3", "finger 1 pad-a", "play 3", "lift 1", "play 12", "settle"].freeze
+
+  # On a phone the picker opens inside the player's next tap, and until then the page says to tap.
+  def test_a_tap_on_the_pad_opens_the_picker_at_the_next_tap
+    Dir.mktmpdir do |folder|
+      out = open_shell(folder, [*TAP_LOAD_ROM, "picker", "text said", "finger 2 screen", "lift 2", "picker", "text said"],
+                       pointer: :finger)
+
+      assert_equal ["picker 0", "picker 1"], out.grep(/\Apicker /)
+      asked, after = out.grep(/\Atext said/)
+      assert_match(/choose your copy/, asked)
+      assert_match(/hidden/, after)
+    end
+  end
+
+  # A finger still on A as the menu ends opens the picker as it lifts.
+  def test_a_finger_held_on_the_pad_opens_the_picker_as_it_lifts
+    Dir.mktmpdir do |folder|
+      out = open_shell(folder, ["settle", "play 3", "finger 1 pad-a", "play 15", "settle", "picker", "lift 1", "picker",
+                                "choose #{copy_at(folder)}", *unpack_and_play], pointer: :finger)
+
+      assert_equal ["picker 0", "picker 1"], out.grep(/\Apicker /)
+      assert_same_picture all_in_one_picture, pictures_in(out).last, "after the unpacking"
+    end
   end
 
   # The picture the all-in-one build's page shows, built in a folder of its own so the copy it

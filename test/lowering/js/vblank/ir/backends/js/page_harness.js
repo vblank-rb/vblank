@@ -28,7 +28,9 @@
  *                       down already: at its middle, or DX and DY of the way from there to its
  *                       right and bottom edges (each -1 to 1, so "1 0" is its right edge)
  *   finger N nowhere    ...slid off every part of the page
- *   lift N / cancel N   finger N lifted, or taken back by the browser (a scroll, a call coming in)
+ *   lift N / cancel N   finger N lifted, or taken back by the browser (a scroll, a call coming in);
+ *                       a lift is a press that lets a page open a file picker, and a finger
+ *                       going down is not, as in a browser
  *   pointer coarse / pointer fine   the screen's main pointer becoming a finger (a tablet with its
  *                       keyboard taken off) or a mouse (with it put back), which the page is told of
  *   check ID / uncheck ID   the page's checkbox of that id ticked or cleared (each starts as the
@@ -196,13 +198,16 @@ function finger(n, id, dx = 0, dy = 0) {
   } else {
     fingers.add(n);
     tell(pad, "pointerdown", { pointerId: Number(n), pointerType: "touch", ...at });
-    tell(page, "pointerdown");
+    tell(page, "pointerdown", { pointerId: Number(n), pointerType: "touch" });
   }
 }
 
+/* A finger's events go on up to the window, as a browser's do, the touch event after the pointer one. */
 function lift(n, type) {
   fingers.delete(n);
   tell(element("touchpad"), type, { pointerId: Number(n), pointerType: "touch" });
+  tell(page, type, { pointerId: Number(n), pointerType: "touch" });
+  tell(page, type === "pointerup" ? "touchend" : "touchcancel");
 }
 
 /* The file picker: an <input type="file"> the page makes and clicks waits here for a "choose" or "cancel-pick" step. */
@@ -566,7 +571,7 @@ async function steps() {
     else if (step === "focus") { focused = true; tell(page, "focus"); }
     else if (step === "hide") visible(false);
     else if (step === "show") visible(true);
-    else if (step === "click") { tell(element(what), "click"); tell(page, "pointerdown"); }
+    else if (step === "click") { tell(element(what), "click"); tell(page, "pointerdown", { pointerType: "mouse" }); tell(page, "click"); }
     else if (step === "finger") finger(what, ...rest);
     else if (step === "lift") lift(what, "pointerup");
     else if (step === "cancel") lift(what, "pointercancel");
