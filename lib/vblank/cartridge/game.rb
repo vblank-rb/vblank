@@ -172,6 +172,19 @@ module VBlank
         ShellParts.new(program: program, data_pack: read.declared_data_pack, first_screen: read.declared_shell_screen)
       end
 
+      # What a shell is held to (Live::ShellCheck): the all-in-one build's +program+, as
+      # #checked_program makes it, and its +data_pack_file+, as #data_pack_file makes it.
+      AllInOneParts = Data.define(:program, :data_pack_file)
+
+      # THE ALL-IN-ONE BUILD A SHELL IS HELD TO, an AllInOneParts, its program and its pack taken
+      # from one reading of the game (+on_read+), as #shell_parts takes the shell's: a big game
+      # takes as long to read as to check. The pack file is nil for a game with no data_pack.
+      def all_in_one_parts(err: $stderr, settings: {}, console: @consoles.first)
+        read = nil
+        program = checked_program(err: err, settings: settings, console: console, on_read: ->(evaluated) { read = evaluated })
+        AllInOneParts.new(program: program, data_pack_file: read.made_data_pack_file)
+      end
+
       # THE DATA PACK FILE THE ALL-IN-ONE BUILD MAKES from the copy of the original the game reads,
       # its bytes: the file a build for a computer that leaves its pack out is handed as it starts,
       # and the one a shell makes on the player's machine. Nil for a game with no data_pack.

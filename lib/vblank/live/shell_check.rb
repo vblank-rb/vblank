@@ -89,7 +89,8 @@ module VBlank
       private
 
       def run_for(console)
-        @say.call("Building #{@game.title} for #{console} all-in-one, alongside the shell")
+        when_built = Alongside.forkable? ? "alongside the shell" : "after the first start, with the pack comparison"
+        @say.call("Building #{@game.title} for #{console} all-in-one, #{when_built}")
         all_in_one = Alongside.start { all_in_one_made(console) }
         begin
           @say.call("Building #{@game.title} for #{console} as a shell, with no copy in reach")
@@ -104,11 +105,18 @@ module VBlank
         end
       end
 
-      # The all-in-one build's pack, and its play over the stretch.
+      # The all-in-one build's pack, and its play over the stretch. The game is read once for both.
+      #
+      # Most of this side's time is reading and checking the game, which is the same however often
+      # the check runs. The build plays the port's unpacking routine itself only where the pack
+      # cache the game names (`data_pack cache:`) has no entry, which its key makes happen once
+      # after each change to the routine, the copy or the part of VBlank that unpacks
+      # (Original::PackCache). That miss is the bulk of the side's time for a big port, and the
+      # next check reads the entry.
       def all_in_one_made(console)
-        program = @game.checked_program(err: nil, console: console)
-        pack = @game.data_pack_file(console: console) or
-          raise Failed, "#{@game.title} has no data_pack, so it has no shell to check."
+        parts = @game.all_in_one_parts(err: nil, console: console)
+        pack = parts.data_pack_file or raise Failed, "#{@game.title} has no data_pack, so it has no shell to check."
+        program = parts.program
         AllInOne.new(pack: pack, played: record_play(Session.new(program), program.described_console.framed_screen_size))
       end
 

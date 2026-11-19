@@ -3,6 +3,8 @@
 require "test_helper"
 
 require "stringio"
+require "tmpdir"
+require "made_up_original"
 
 # VBlank.game declares a game (title + codes + DSL block) without building or
 # writing it, and hands back a handle. The handle is what the reference interpreter
@@ -14,6 +16,7 @@ class TestGame < Minitest::Test
   # fact about the process. Main Ractor. See test_helper.
   runs_on_the_main_ractor!
 
+  include MadeUpOriginal
 
   def test_it_returns_a_handle_carrying_the_title_and_codes
     g = VBlank.game("MYGAME", consoles: %i[gba], code: "BMYG", maker: "01") { screen :bitmap }
@@ -177,6 +180,35 @@ class TestGame < Minitest::Test
     g = VBlank.game("Space Blast!", consoles: %i[gba], code: "BSPB", maker: "01") { screen :bitmap }
     assert_equal "space_blast.gba", g.default_filename
   end
+
+  # The game a check holds a shell to is read once for its program and its pack together: a big
+  # port takes many seconds to read.
+  def test_all_in_one_parts_reads_the_game_once_for_its_program_and_pack
+    Dir.mktmpdir do |folder|
+      test = self
+      from = original(folder)
+      game = VBlank.game("MADE UP", consoles: %i[gba]) do
+        test.count_read
+        screen :bitmap
+        pack = data_pack(from: from, version: "1") do |slots|
+          slots.colors :palette, at: MadeUpOriginal::PALETTE_AT, count: 16
+          slots.numbers :heights, count: MadeUpOriginal::HEIGHTS.length, width: :byte, signed: false
+          slots.fill_from_copy { |copy, into| copy.unpack_rle at: MadeUpOriginal::RLE_AT, into: into[:heights] }
+        end
+        heights = table :heights, pack[:heights]
+        game_loop { draw_rect_at heights[0] * 4, 40, 4, 4, :white }
+      end
+      @reads = 0
+      parts = game.all_in_one_parts(err: nil)
+
+      assert_equal 1, @reads
+      assert_equal game.data_pack_file, parts.data_pack_file
+      assert_equal VBlank::IR::Dump.source(game.checked_program(err: nil)), VBlank::IR::Dump.source(parts.program)
+    end
+  end
+
+  # Called by the game block of the test above each time the game is read.
+  def count_read = @reads += 1
 
   def test_a_block_is_required
     err = assert_raises(ArgumentError) { VBlank.game("NOBLOCK", consoles: %i[gba], code: "BNOB", maker: "01") }

@@ -840,6 +840,8 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
 - `game.data_pack_file` (a `Cartridge::Game`, `settings:`, `console:`) — the pack file the all-in-one
   build makes from the copy, its bytes: what a build with its pack left out is handed, and what a
   shell must make, byte for byte.
+- `game.all_in_one_parts` (`err:`, `settings:`, `console:`) — the program `checked_program` makes and the
+  pack `data_pack_file` makes, as `program` and `data_pack_file`, from one reading of the game.
 
 A cartridge build told `pack_at_start:` is refused at `data_pack`, and `vblank build --pack-at-start`
 for a cartridge before anything is built; every cartridge lowering refuses a program that reads a start
@@ -974,7 +976,9 @@ short stretch on both starts and the all-in-one build, holding every picture and
 The stretch is the tape's first `passes` passes (`Live::ShellCheck::STRETCH_PASSES`, 300, unless named;
 with no tape, that many with nothing pressed), and it does not follow the tape as the tape grows. The
 all-in-one build is built and played in a process of its own beside the shell's starts, where the check
-runs on the main Ractor. A machine that names no copy fails with `NotSet`'s words. Worked example:
+runs on the main Ractor; in any other Ractor, after the first start. That side reads the game once for its
+program and its pack (`game.all_in_one_parts`), and plays the unpacking routine only where the pack cache
+(`data_pack cache:`) has no entry: once after each change to the routine, the copy or VBlank. A machine that names no copy fails with `NotSet`'s words. Worked example:
 `test/lowering/ruby/vblank/live/test_shell_check.rb`.
 
 **A port's whole-game check** — `rake shell:whole_game`, from the same `ShellCheckTasks` (its tape is
