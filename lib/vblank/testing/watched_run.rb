@@ -20,10 +20,12 @@ module VBlank
     class WatchedRun
       CRASH_HEADER = "[BUG]"
 
-      # How long a crash report gets to finish, and how long a run may print nothing. A test that
-      # plays quietly for ten minutes does not exist here: the suite prints a dot for each test.
+      # How long a crash report gets to finish, and how long a run may print nothing. The suite
+      # prints a dot as each test ends, but nothing while one plays, and a test played in a Ractor
+      # has what it prints held until it ends. So the silence limit outlasts the longest test any
+      # game has: a shell check that plays a big game from power-on through three builds.
       CRASH_GRACE_SECONDS = 30
-      SILENCE_LIMIT_SECONDS = 600
+      SILENCE_LIMIT_SECONDS = 30 * 60
       SAMPLE_SECONDS = 3
 
       POLL_SECONDS = 0.1
