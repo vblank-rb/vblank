@@ -957,10 +957,7 @@ module VBlank
                *(rate ? [1, *start_file_number_rules(rate)] : [0, *double_halves(sample.rate), 0, 0]), *double_halves(note)]
             end
             first = note_sounds.size
-            where.count.times do |record|
-              note_sound_rows_kept << [:hz_room, where.at, record]
-              note_sounds << ([0] * NOTE_SOUND_NUMBERS)
-            end
+            where.count.times { note_sounds << ([0] * NOTE_SOUND_NUMBERS) }
             [HZ_RECORDED, *double_halves(mix_clock.rate), first, lists.size, *lists.flatten]
           end
 
@@ -1107,10 +1104,10 @@ module VBlank
                    shape ? 1 : 0, *(shape ? [shape.attack, shape.decay, shape.sustain, shape.release] : [0, 0, 0, 0])]
             settings = sample.settings_from_file
             kept = settings ? [row, pitch, own_shape.nil?] : row
-            at = note_sound_rows_kept.index(kept)
+            at = note_sound_row_numbers[kept]
             return at if at
 
-            note_sound_rows_kept << kept
+            note_sound_row_numbers[kept] = note_sounds.size
             note_sounds << row
             if settings
               @start_file_note_rows << StartFileNoteRow.new(row: note_sounds.size - 1, recording: sample.name, pitch: pitch,
@@ -1121,8 +1118,11 @@ module VBlank
 
           def note_sounds = @note_sounds ||= []
 
-          # What tells each row of note_sounds from the others, in the rows' order.
-          def note_sound_rows_kept = @note_sound_rows_kept ||= []
+          # What tells each row of note_sounds from the others, and the row it is: a note finds its row
+          # in one lookup. A game playing every song of an original has thousands of rows, and
+          # searching them in turn for each note made building it take minutes. The rows a recording
+          # keeps room in (#hz_note_rules) are no note's, so they are not here.
+          def note_sound_row_numbers = @note_sound_row_numbers ||= {}
 
           def note_sounds_table
             # rg_music_fill_notes is handed the table to write a note between keys into.
