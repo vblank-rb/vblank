@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "etc"
 require "json"
 require "open3"
 require "tmpdir"
@@ -180,6 +181,39 @@ class TestFilm < Minitest::Test
     end
     assert_match(/"program"/, error.message)
     assert_match(/256×240 on frame 1 and 320×240 on frame 3/, error.message)
+  end
+
+  # A side that shows the same two-colour picture on every frame.
+  class StillScreen
+    def step(_count, keys: 0) = self
+
+    def screenshot(path)
+      VBlank::Graphics::PNG.write(path, width: 240, height: 160, pixels: Array.new(240 * 160) { |i| i.even? ? 0 : 0x7FFF })
+    end
+  end
+
+  # Each frame is put together by an ImageMagick of its own, which Ruby only waits for, so several
+  # run at once. Counted by an ImageMagick that notes how many of it are running as it starts, and
+  # runs long enough that frames started together overlap.
+  def test_the_frames_are_put_together_several_at_once
+    skip_on_this_machine("this computer has one processor") if Etc.nprocessors < 2
+    tools = Dir.mktmpdir("film-path", scratch)
+    running = Dir.mktmpdir("running", scratch)
+    log = File.join(scratch, "running.log")
+    File.write(File.join(tools, "magick"), <<~SH)
+      #!/bin/sh
+      touch "#{running}/$$"
+      ls "#{running}" | wc -l >> "#{log}"
+      sleep 0.2
+      rm -f "#{running}/$$"
+      exec "#{program_path('magick')}" "$@"
+    SH
+    File.chmod(0o755, File.join(tools, "magick"))
+    File.symlink(program_path("ffmpeg"), File.join(tools, "ffmpeg"))
+
+    Film.make(File.join(scratch, "still.mp4"), sides: { "still" => -> { StillScreen.new } }, parts: [1..8], search_path: tools)
+
+    assert_operator File.readlines(log).map(&:to_i).max, :>=, 2, "every frame was put together alone"
   end
 
   def test_missing_ffmpeg_is_named_with_how_to_install_it_before_anything_plays

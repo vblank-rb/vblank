@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "etc"
 require "fileutils"
 require "tmpdir"
 
@@ -113,7 +114,7 @@ module VBlank
             heard = screenshot_side(opener, shown, File.join(dir, side.to_s), heard: @heard.include?(label))
             film_sound&.keep(label, heard) if @heard.include?(label)
           end
-          pictures = shown.map { |frame| compose_frame(dir, frame) }
+          pictures = compose_frames(dir, shown)
           FileUtils.mkdir_p(File.dirname(File.expand_path(path)))
           if film_sound
             encode_mp4_with_sound(pictures, holds, film_sound, dir, path)
@@ -203,6 +204,31 @@ module VBlank
       end
 
       def picture_path(dir, frame) = File.join(dir, format("%05d.png", frame))
+
+      # EVERY SHOWN FRAME PUT TOGETHER, SEVERAL AT ONCE. Each frame is an ImageMagick of its own
+      # (#compose_frame), and nearly all its time is ImageMagick's own work, most of it writing the
+      # PNG, while Ruby only waits for it. The frames do not depend on each other, so as many run
+      # at once as the computer has processors. Answers the composed pictures in the order shown.
+      def compose_frames(dir, shown)
+        jobs = Queue.new
+        shown.each_with_index { |frame, at| jobs << [frame, at] }
+        jobs.close
+        pictures = Array.new(shown.size)
+        workers = Array.new([Etc.nprocessors, shown.size].min) do
+          Thread.new do
+            Thread.current.report_on_exception = false # raised again by #join, in the film's own thread
+            while (job = jobs.pop)
+              frame, at = job
+              pictures[at] = compose_frame(dir, frame)
+            end
+          rescue StandardError
+            jobs.clear # the other workers stop at their next frame
+            raise
+          end
+        end
+        workers.each(&:join)
+        pictures
+      end
 
       # The pictures of +frame+ side by side, each doubled under a strip with its label, and the
       # frame's number at the right of the strip. +repage drops the canvas the join leaves
