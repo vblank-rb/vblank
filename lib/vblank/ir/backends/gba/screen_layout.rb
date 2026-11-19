@@ -2577,10 +2577,12 @@ module VBlank
           # draw with borrows, except two kinds that keep a group of their own. A list told to
           # hold other colours as the game runs already is a group that takes turns. And a list
           # the same as a sprite's own colours shares that sprite's group for nothing, so
-          # borrowing would only cost one.
+          # borrowing would only cost one. The same means the same colours drawn: a list that differs
+          # from a sprite's only in its see-through slot shares that sprite's group too.
           def lists_to_lend(nodes)
             own = nodes.filter_map { |node| authored_palette(node) }
-            nodes.flat_map { |node| node.recolors.grep(Array) }.uniq.reject { |list| own.include?(list) }
+            nodes.flat_map { |node| node.recolors.grep(Array) }.uniq
+                 .reject { |list| own.any? { |colors| PaletteBanks.same_drawn_colors?(colors, list) } }
                  .each_with_index.to_h
           end
 

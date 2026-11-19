@@ -527,6 +527,46 @@ class TestPictureStorage < Minitest::Test
     assert_equal four, banks.entries[1, 4]
   end
 
+  # The first entry of a list is never drawn, so two lists that differ only there are one bank.
+  # Lists read from another console's art often keep a real colour in that entry, a different
+  # one from list to list.
+  def test_lists_that_differ_only_in_the_see_through_slot_share_a_bank
+    banks = VBlank::IR::Backends::GBA::PaletteBanks.new(
+      [VBlank::IR::Backends::GBA::PaletteBanks::Picture.new(key: :a, colors: FIFTEEN, authored: [0x1234, *FIFTEEN]),
+       VBlank::IR::Backends::GBA::PaletteBanks::Picture.new(key: :b, colors: FIFTEEN, authored: [0x5678, *FIFTEEN])],
+      first_entry_shown: false
+    )
+
+    assert_equal banks.placement(:a).bank, banks.placement(:b).bank
+    assert_equal [banks.placement(:a).bank], banks.banks_used
+  end
+
+  # Nine lists drawn by eighteen sprites, each list given twice with a different see-through
+  # colour. Eighteen lists would be more than the sixteen banks, and some sprites would be stored
+  # the big way; nine are not, so every sprite is stored small and shows its own colour.
+  private def see_through_twins
+    proc do
+      screen :tiled
+      18.times do |i|
+        shown = VBlank::Graphics::Color.rgb(31 - ((i / 2) * 3), (i / 2) * 3, 16)
+        see_through = i.even? ? :white : :black
+        image :"p#{i}", width: 8, height: 8, data: Array.new(64, shown), colors: [see_through, shown]
+        sprite :"p#{i}", at: [8 + ((i % 9) * 24), 40 + ((i / 9) * 40)]
+      end
+      game_loop {}
+    end
+  end
+
+  def test_sprites_whose_lists_differ_only_in_the_see_through_slot_fit_the_banks
+    sprites = build("TWIN", &see_through_twins).built.video_memory.sprites
+    assert_equal [18, 0], [sprites.small, sprites.big], "every sprite is stored the small way"
+
+    builder = Builder.new
+    builder.instance_eval(&see_through_twins)
+    builder.finalize_program
+    assert_backends_agree(builder.program, frames: 2)
+  end
+
   # Fifteen colours no other picture uses, so no two can share a bank.
   private def picture_of_unshared_colors(key, i)
     VBlank::IR::Backends::GBA::PaletteBanks::Picture.new(

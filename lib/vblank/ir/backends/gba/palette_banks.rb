@@ -116,6 +116,14 @@ module VBlank
             def authored? = !authored.nil?
           end
 
+          # Do the authored lists +one+ and +other+ draw the same colours? Their see-through slots
+          # are left out: the console never draws slot 0 of a bank (GBATEK, "LCD Color Palettes":
+          # colour 0 of each 16-colour palette is transparent; the backdrop entry of the first
+          # background bank is kept apart, see #write_banks), so two lists that differ only there
+          # are one bank. A list taken from a console's own art often keeps a real colour in that
+          # slot, and a different one from list to list.
+          def self.same_drawn_colors?(one, other) = one.drop(1) == other.drop(1)
+
           # Where one picture ended up. +bank+ is nil for a wide picture (its numbers
           # run across the whole table); otherwise the group of sixteen it draws from.
           # +indices+ maps each of its colours to the number to write for that pixel.
@@ -266,7 +274,7 @@ module VBlank
           # Can +picture+ read an existing group without changing it?
           def fits_existing_bank?(bank, picture)
             return false unless bank[:keeps_to] == picture.keeps_to
-            return bank[:fixed] && bank[:colors] == picture.authored if picture.authored?
+            return bank[:fixed] && self.class.same_drawn_colors?(bank[:colors], picture.authored) if picture.authored?
 
             picture.colors.all? { |color| bank[:colors].include?(color) }
           end
@@ -377,7 +385,7 @@ module VBlank
 
           def bank_takes?(bank, picture)
             return false unless bank[:keeps_to] == picture.keeps_to
-            return bank[:fixed] && bank[:colors] == picture.authored if picture.authored?
+            return bank[:fixed] && self.class.same_drawn_colors?(bank[:colors], picture.authored) if picture.authored?
             return picture.colors.all? { |color| bank[:colors].include?(color) } if bank[:fixed]
 
             (bank[:colors] | picture.colors).size <= BANK_COLORS
