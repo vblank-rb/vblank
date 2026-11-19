@@ -79,7 +79,9 @@ module VBlank
                       "such a layer."),
         layer: works("see `layers`."),
         background: works("`cells_in_front: true` is refused: an Advance keeps one priority for a whole background, and no priority for one cell. To put a whole background in front of the sprites, use `layers`. " \
-                          "`above_row:` is refused: this build does not make it yet. `show_only_inside` uses the " \
+                          "`above_row:` is refused: this build does not make it yet. `hide` and `show` switch the " \
+                          "layer of the background off and on in the display settings. They use no window, so a " \
+                          "game can hide a background and have a light. `show_only_inside` uses the " \
                           "display's second window. One background at a time can be held to a box. A game " \
                           "that holds one cannot also have a light, a status bar, a fade held to part of the " \
                           "screen, or a fade under a layer, because these need the same windows. With " \

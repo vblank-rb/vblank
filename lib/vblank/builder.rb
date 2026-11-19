@@ -820,9 +820,12 @@ module VBlank
 
     # THE VARIABLES A BOX THE BACKGROUND +name+ IS HELD TO IS KEPT IN (Background#show_only_inside),
     # made the first time the game sets one: a background nobody holds to a box keeps none, and
-    # its game builds as it did. All five start at 0, which is everywhere.
-    def hold_background_to_box(name)
+    # its game builds as it did. All five start at 0, which is everywhere. +in_part+ is a box of
+    # some size (`show_only_inside`), +whole+ one of nothing (`hide`).
+    def hold_background_to_box(name, in_part: false, whole: false)
       declared = declared_background(name)
+      declared.boxed_in_part = true if in_part
+      declared.hidden_whole = true if whole
       declared.box ||= IR::Nodes::Background.box_vars(name).each do |var|
         at_boot(Build.set(var, Build.int(0)))
         ensure_var(var)
@@ -1701,15 +1704,21 @@ module VBlank
     # the reason a scroll is written there: the display reads which layers show where as it draws
     # each line, so a box moved while it draws would show two boxes on one picture. Every
     # declaration of the name carries the variable that holds whether it is held, which goes back to
-    # everywhere as its scene takes over (IR::SceneHandover).
+    # everywhere as its scene takes over (IR::SceneHandover). A background the game hides
+    # (`hide`) and never holds to a box of some size has every write marked whole
+    # (Nodes::BoxBackground), the ones left where the game set them in a program with no frame
+    # boundary too. One only ever shown everywhere is not marked, and builds as it did.
     def finalize_background_boxes
       boxed = backgrounds_that(&:held_to_box?)
       held = boxed.to_h { |name, background| [name, background.box.last] }
       @program.walk.each { |node| node.boxed = held[node.name] if node.kind == :background && held.key?(node.name) }
+      whole = boxed.select { |_, background| background.hidden_whole && !background.boxed_in_part }.keys
+      @inline_box_nodes.each { |node| node.whole = true if whole.include?(node.name) }
       write_between_frames(@inline_box_nodes, boxed) do |name, background|
         x, y, width, height, on = background.box.map { |var| Build.var_ref(var) }
         while_any_scene_up(background.scene_gates,
-                           Build.box_background(name, x: x, y: y, width: width, height: height, held: on))
+                           Build.box_background(name, x: x, y: y, width: width, height: height, held: on,
+                                                      whole: whole.include?(name) || nil))
       end
     end
 

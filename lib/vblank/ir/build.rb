@@ -852,11 +852,11 @@ module VBlank
 
       # Show the named background only inside the box at (+x+, +y+), +width+ by +height+
       # pixels, while +held+ is not 0; with +held+ 0 it shows everywhere (see
-      # Nodes::BoxBackground).
-      def box_background(name, x:, y:, width:, height:, held:)
+      # Nodes::BoxBackground). +whole+ is a box only ever all or nothing (`hide`, `show`).
+      def box_background(name, x:, y:, width:, height:, held:, whole: nil)
         Nodes.build(:box_background, name: name, x: to_value_node(x), y: to_value_node(y),
                                      width: to_value_node(width), height: to_value_node(height),
-                                     held: to_value_node(held))
+                                     held: to_value_node(held), whole: whole)
       end
 
       # Give every ROW of the picture its own sideways offset on top of the named

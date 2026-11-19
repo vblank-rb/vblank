@@ -43,6 +43,40 @@ class TestIRGuardrailBoxedBackgroundCannotShare < Minitest::Test
     assert_match(/the status bar :score/, refusal(program))
   end
 
+  # A background only hidden whole (`hide`) is its layer switched off on the Advance, so it takes
+  # no window.
+  def test_a_hidden_background_and_a_light_are_fine
+    b = Builder.new(options: VBlank::Cartridge::Options.new(console: :gba))
+    b.instance_eval do
+      screen :tiled
+      image(:i_blue, "#" => :blue) { "########\n" * 8 }
+      tiles :t, "#" => :i_blue
+      sword = background :sword, tiles: :t, map: ["#" * 20]
+      spotlight at: [120, 80], radius: 30
+      game_loop { sword.hide }
+    end
+    b.finalize_program
+
+    assert_nil refusal(b.program)
+  end
+
+  # `show_everywhere` alone asks for a box as it always did: it is `hide` that marks a background
+  # as hidden whole.
+  def test_show_everywhere_alone_and_a_light_are_still_refused
+    b = Builder.new(options: VBlank::Cartridge::Options.new(console: :gba))
+    b.instance_eval do
+      screen :tiled
+      image(:i_blue, "#" => :blue) { "########\n" * 8 }
+      tiles :t, "#" => :i_blue
+      dialogue = background :dialogue, tiles: :t, map: ["#" * 20]
+      spotlight at: [120, 80], radius: 30
+      game_loop { dialogue.show_everywhere }
+    end
+    b.finalize_program
+
+    assert_match(/background :dialogue to a box.*a light/, refusal(b.program))
+  end
+
   def test_two_backgrounds_held_to_boxes_on_one_screen_are_refused
     program = boxed_program do
       other = background :other, tiles: :t, map: ["#" * 20]

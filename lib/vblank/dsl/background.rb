@@ -613,7 +613,7 @@ module VBlank
       # nothing — it is set aside when that scene comes back.
       def show_only_inside(x, y, width, height)
         refuse_box_on_bitmap_screen!("show_only_inside")
-        x_var, y_var, w_var, h_var, held_var = @builder.hold_background_to_box(@name)
+        x_var, y_var, w_var, h_var, held_var = @builder.hold_background_to_box(@name, in_part: true)
         { x_var => x, y_var => y, w_var => width, h_var => height }.each do |var, value|
           record(Build.set(var, Value.node_for(value)))
         end
@@ -628,6 +628,40 @@ module VBlank
         *, held_var = @builder.hold_background_to_box(@name)
         record(Build.set(held_var, Build.int(0)))
         record_box_write
+      end
+
+      # SWITCH THE BACKGROUND OFF, from the frame after, the way a scroll shows:
+      #
+      #   sword.hide if passes == 90
+      #   sword.show if passes == 150
+      #
+      # Nothing of it is drawn, and the layers behind it and the backdrop show where it was. Its
+      # map, scroll and turn stay as they are, so `show` puts it back as it would be now. Sprites
+      # are not hidden with it.
+      #
+      # It is the box of `show_only_inside` with nothing in it, and `show` is `show_everywhere`, so
+      # the two words and the box share one setting: a box set after `hide` shows the background
+      # in that box. The difference is in what a console needs for it. A display that switches each
+      # layer on and off (the Advance's display control register) does it with that switch, so a
+      # background only ever hidden and shown takes none of the display's windows, which a light
+      # needs.
+      #
+      # It belongs to the scene the background belongs to, as a box does: a scene taking over
+      # shows its backgrounds again.
+      def hide
+        refuse_switch_on_bitmap_screen!("hide")
+        x_var, y_var, w_var, h_var, held_var = @builder.hold_background_to_box(@name, whole: true)
+        [x_var, y_var, w_var, h_var].each { |var| record(Build.set(var, Build.int(0))) }
+        record(Build.set(held_var, Build.int(1)))
+        record_box_write
+      end
+
+      # SWITCH THE BACKGROUND ON AGAIN after `hide`, from the frame after. A background never
+      # hidden shows already, and this changes nothing. It sets aside a box from
+      # `show_only_inside` too.
+      def show
+        refuse_switch_on_bitmap_screen!("show")
+        show_everywhere
       end
 
       # Slide each ROW of the picture sideways by its own amount, so the whole background
@@ -803,6 +837,16 @@ module VBlank
               "background :#{@name} is on a `screen :bitmap`, so #{verb} cannot hold it to a box. On this " \
               "screen, a background is painted into the picture one time. To show only a part of it, draw " \
               "that part with `blit`, or use `screen :tiled`."
+      end
+
+      # ...and a `screen :bitmap` has no layer to switch off either.
+      def refuse_switch_on_bitmap_screen!(verb)
+        return unless @bitmap
+
+        raise ArgumentError,
+              "background :#{@name} is on a `screen :bitmap`, so `#{verb}` cannot switch it off or on. On " \
+              "this screen, a background is painted into the picture one time. To remove it, paint the " \
+              "area again with `fill_rect` or `blit`, or use `screen :tiled`."
       end
 
       # Every map's walls, one grid after another, a byte a cell. A map with no walls of its

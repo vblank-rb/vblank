@@ -100,8 +100,13 @@ module VBlank
                                       "(`cells_in_front: true`)", console.cells_in_front)
           end
         when :box_background
-          Question.new(:background, "This line shows a background only inside a box (`show_only_inside`)",
-                       !console.background_box.nil?)
+          if node.whole
+            Question.new(:background, "This line switches a background off and on (`hide`, `show`)",
+                         !console.background_box.nil?)
+          else
+            Question.new(:background, "This line shows a background only inside a box (`show_only_inside`)",
+                         !console.background_box.nil?)
+          end
         when :song
           if node.voices.any? { |part| part.events.any? { |event| IR::Tunes.glides?(event) } }
             Question.new(:songs, "This game has a recorded note that glides (`glides: true`)", console.glides_recordings)

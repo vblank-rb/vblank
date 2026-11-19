@@ -179,7 +179,8 @@ module VBlank
                           "tiles must have no see-through pixel. Each cell of its map that can show must have " \
                           "a tile. If not, or if a layer is see-through, the build refuses the game. `show_only_inside` " \
                           "uses the console's windows, one for each of the two layers, and takes no processor time " \
-                          "as the screen is drawn. A background held to a box beside a see-through layer, or on the " \
+                          "as the screen is drawn. `hide` and `show` use the same windows as a box with nothing in " \
+                          "it. A background held to a box beside a see-through layer, or on the " \
                           "third layer, is refused: this build does not make it yet. `rotate` and " \
                           "`scale` are refused: the build does not use the one layer a Super Nintendo can turn. " \
                           "A background can be drawn from 16×16 tiles, which the console draws itself, as well as 8×8. " \

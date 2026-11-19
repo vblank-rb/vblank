@@ -1553,8 +1553,12 @@ module VBlank
             def refuse_unmade_third_layer!(held)
               words = third_layer_refusal_words(held)
               refuse_unmade!("#{words} drawn from 16×16 tiles") unless held.tile_w == 8
-              # The two windows are the two ordinary layers' (Runtime::BackgroundBox).
-              refuse_unmade!("#{words} held to a box (`show_only_inside`)") if held.boxed
+              # The two windows are the two ordinary layers' (Runtime::BackgroundBox). A background
+              # only hidden whole (`hide`) is a box with nothing in it here, so it needs one too.
+              if held.boxed
+                hidden_whole = @program.walk.any? { |node| node.kind == :box_background && node.name == held.name && node.whole }
+                refuse_unmade!(hidden_whole ? "#{words} switched off and on (`hide`, `show`)" : "#{words} held to a box (`show_only_inside`)")
+              end
               refuse_unmade!("#{words} bent row by row") if bends.any? { |bend| bend.name == held.name }
               refuse_unmade!("#{words} showing tiles painted from a list") if @tile_runs.any? { |run| held.tiles.intersect?(Array(run.tiles)) }
               return unless held.above_row

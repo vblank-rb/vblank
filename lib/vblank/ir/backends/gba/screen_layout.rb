@@ -838,15 +838,22 @@ module VBlank
           # Does the game hold a background to a box (`show_only_inside`), which takes the display's
           # second window (see BackgroundDrawing#emit_box_background)? A line that only ever shows a
           # background everywhere (held 0, written in the program) needs no window, as
-          # Checks::BoxedBackgroundCannotShare says.
+          # Checks::BoxedBackgroundCannotShare says, and nor does one only ever hidden whole.
           def boxes_backgrounds?
             return @boxes_backgrounds unless @boxes_backgrounds.nil?
 
-            @boxes_backgrounds = @program.walk.any? do |node|
-              node.kind == :box_background && !(node.held.kind == :int && node.held.value.zero?)
-            end
+            @boxes_backgrounds = @program.walk.any? { |node| node.kind == :box_background && node.in_part? }
           end
           public :boxes_backgrounds?
+
+          # Does the game hide a background whole (`hide`), which switches its layer off in the
+          # display's settings (see BackgroundDrawing#emit_layer_switch)?
+          def hides_layers?
+            return @hides_layers unless @hides_layers.nil?
+
+            @hides_layers = @program.walk.any? { |node| node.kind == :box_background && node.hides_whole? }
+          end
+          public :hides_layers?
 
           # Fill in part of what +scene+ sends as it takes over.
           def record_scene_send(scene, **part) = @scene_sends[scene] = scene_send(scene).with(**part)

@@ -166,6 +166,7 @@ module VBlank
                           "Each pixel is a number into a list of the background's colours, 4 bits a pixel for 15 " \
                           "colours or fewer and 8 for 255 or fewer, so `draw_with` and a fade change one list. " \
                           "A background of more colours takes 16 bits a pixel, and its colours cannot change. " \
+                          "`hide` leaves the background out of the drawing, and `show` draws it again. " \
                           "`show_only_inside` holds it to the chip's drawing area, and a background that turns or " \
                           "resizes is drawn as a textured shape. On a painted screen, a background is painted into the " \
                           "picture where it is put up. The build does not make one there that moves or changes yet. A " \

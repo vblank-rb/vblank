@@ -290,11 +290,25 @@ module VBlank
       #
       # Written in the gap between frames, as a scroll is, so the picture shows it from the frame
       # after. Telling a background that is not up changes nothing.
+      #
+      # +whole+ marks a background whose box is only ever all or nothing (`hide` and `show`): held,
+      # it is a box with nothing in it, so the background shows nowhere; not held, everywhere. A
+      # target whose display switches a whole layer off can do that in place of a box. Absent on
+      # a background the game also holds to a box of some size (`show_only_inside`).
       class BoxBackground
         include Node
         kind :box_background
         category :draw
-        operands name: :name, x: :value, y: :value, width: :value, height: :value, held: :value
+        operands name: :name, x: :value, y: :value, width: :value, height: :value, held: :value, whole: :flag
+
+        # Whether it can hold the background to a box of some size: not whole, and not a line
+        # that only ever shows it everywhere (+held+ 0, written in the program).
+        def in_part? = !whole && !shows_everywhere?
+
+        # Whether it can hide the whole background (see +whole+).
+        def hides_whole? = whole && !shows_everywhere?
+
+        def shows_everywhere? = held.kind == :int && held.value.zero?
       end
 
       # WHERE A STATUS BAR'S TOP IS, in screen rows: the bar covers the screen from there to the

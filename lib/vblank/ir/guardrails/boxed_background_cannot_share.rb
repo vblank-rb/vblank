@@ -30,10 +30,9 @@ module VBlank
 
           def detect(program)
             # A line that only ever shows a background everywhere (held 0, written in the program)
-            # asks for no window.
-            boxes = program.walk.select do |node|
-              node.kind == :box_background && !(node.held.kind == :int && node.held.value.zero?)
-            end
+            # asks for no window, and nor does one that only hides it whole (`hide`), which a
+            # console switches off as a layer.
+            boxes = program.walk.select { |node| node.kind == :box_background && node.in_part? }
             return [] if boxes.empty?
 
             found = two_on_one_screen(program, boxes.map(&:name).uniq) ||

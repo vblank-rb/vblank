@@ -94,10 +94,19 @@ class TestSNESThirdLayer < Minitest::Test
     refute_nil SNES.new.build(game_with_held([0x001F, 0x0000], scrolls: true, first: true, alone: true))
   end
 
+  # The third layer's background switched off with `hide` needs a window, as a box does, and the
+  # refusal says `hide`, not the box's verb.
+  def test_a_hidden_background_on_the_third_layer_is_refused_naming_hide
+    error = assert_raises(SNES::Lowering::NotMadeYet) { SNES.new.build(game_with_held([0x001F, 0x03E0], hides: true)) }
+
+    assert_match(/`hide`/, error.message)
+    refute_match(/show_only_inside/, error.message)
+  end
+
   # The arena of game_with_bar and a background of four rows held above row 32, its one tile in
   # stripes of +colors+; +scrolls+ moves it every pass, +first+ declares it before the arena,
-  # behind it, and +alone+ shows it alone above its row.
-  private def game_with_held(colors, scrolls: false, first: false, alone: false)
+  # behind it, +alone+ shows it alone above its row, and +hides+ switches it off every pass.
+  private def game_with_held(colors, scrolls: false, first: false, alone: false, hides: false)
     b = Builder.new
     b.instance_eval do
       screen :tiled
@@ -112,7 +121,10 @@ class TestSNESThirdLayer < Minitest::Test
       background :arena, tiles: :arena_tiles, map: Array.new(32) { "#" * 32 }
       background :clouds, tiles: :cloud_tiles, map: Array.new(32) { "o   " * 8 }
       top = background :top, tiles: :top_tiles, map: Array.new(4) { "t" * 32 }, above_row: 32, alone: alone unless first
-      game_loop { top.scroll_by 0, 1 if scrolls }
+      game_loop do
+        top.scroll_by 0, 1 if scrolls
+        top.hide if hides
+      end
     end
     b.finalize_program
     b.program.copy.tap { |program| program.console = :snes }

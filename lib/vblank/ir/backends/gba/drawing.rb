@@ -209,7 +209,7 @@ module VBlank
             value |= OBJ_ENABLE | OBJ_1D_MAP if @layout.has_objects
             value |= display_window_bits
             late = late_layer_enable_bits
-            return @emitter.write_reg16(REG_DISPCNT, value | initial_forced_blank_bit) if late.zero?
+            return @background_drawing.emit_display_control_written(value | initial_forced_blank_bit) if late.zero?
 
             emit_display_control_keeping(value & ~late, late)
           end
@@ -314,13 +314,17 @@ module VBlank
             change_display_control do
               emit(ASM.and_imm(ACC, ACC, late))
               [value & 0x00FF, value & 0xFF00].reject(&:zero?).each { |byte| emit(ASM.orr_imm(ACC, ACC, byte)) }
+              @background_drawing.emit_without_switched_off_layers(ACC, scratch: 2) # TMP holds the register's address
             end
           end
 
           def emit_enable_late_layer(background)
             return unless late_layers?
 
-            change_display_control { emit(ASM.orr_imm(ACC, ACC, layer_enable_bit(background))) }
+            change_display_control do
+              emit(ASM.orr_imm(ACC, ACC, layer_enable_bit(background)))
+              @background_drawing.emit_without_switched_off_layers(ACC, scratch: 2) # ...save one the game hid
+            end
           end
 
           # KEEP THE PICTURE SWITCHED OFF UNTIL THE FIRST FRAME HAS BEEN SET UP.
@@ -530,7 +534,7 @@ module VBlank
             @effects.emit_kept_tint_on_entry(IR::Modes::TILED)
             value = tiled_dispcnt
             value |= OBJ_ENABLE | OBJ_1D_MAP if @layout.has_objects
-            @emitter.write_reg16(REG_DISPCNT, value | held)
+            @background_drawing.emit_display_control_written(value | held)
             @primitives.store_word_immediate(MODE_TILED, @primitives.var_addr(MODE_STATE))
             @scene_entry.emit_clear_used_markers # a new display: nothing any scene put up is there
           end
@@ -577,7 +581,7 @@ module VBlank
             @effects.emit_kept_tint_on_entry(IR::Modes::AFFINE)
             value = MODE_2 | BG2_ENABLE | display_window_bits
             value |= OBJ_ENABLE | OBJ_1D_MAP if @layout.has_objects
-            @emitter.write_reg16(REG_DISPCNT, value | held)
+            @background_drawing.emit_display_control_written(value | held)
             @primitives.store_word_immediate(MODE_AFFINE, @primitives.var_addr(MODE_STATE))
             @scene_entry.emit_clear_used_markers # a new display: nothing any scene put up is there
           end
@@ -740,7 +744,7 @@ module VBlank
                   @uploads.emit_dma_blob(stretch.blob, VRAM_START + stretch.offset, stretch.units)
                 end
                 arrival.scenery.each { |node| @background_drawing.emit_background_hardware(node) }
-                @background_drawing.emit_box_set_aside
+                @background_drawing.emit_box_set_aside(arrival.scenery)
                 arrival.painted_tiles.each { |run| @background_drawing.emit_copy_tiles(Build.copy_tiles(run.name)) }
                 @raster.emit_bends_on_arrival(name)
               end
@@ -780,7 +784,12 @@ module VBlank
 
             change_display_control { emit(ASM.bic_imm(ACC, ACC, BG_ENABLE_MASK)) }
             yield
-            change_display_control { emit(ASM.orr_imm(ACC, ACC, on)) } unless on.zero?
+            return if on.zero?
+
+            change_display_control do
+              emit(ASM.orr_imm(ACC, ACC, on))
+              @background_drawing.emit_without_switched_off_layers(ACC, scratch: 2) # TMP holds the register's address
+            end
           end
 
           # The same, in a game that waits for frames: the background layers and the sprites go
@@ -899,10 +908,20 @@ module VBlank
 
             value = tiled_dispcnt(wanted.on, turning: wanted.turning, bar: wanted.bar)
             value |= OBJ_ENABLE | OBJ_1D_MAP if @layout.has_objects
-            # Leaves the sprites off on a frame hide_sprites asked for, and the layers
-            # off for the rest of a picture the scene's setup ran into.
+            # Leaves the sprites off on a frame hide_sprites asked for, the layers
+            # off for the rest of a picture the scene's setup ran into, and the layers the game
+            # hid off (BackgroundDrawing#emit_layer_switch).
             if @background_drawing.holds_layers?
-              @sprite_drawing.emit_screen_layers(value) { |reg| @background_drawing.emit_display_control_keeping_held_off(reg) }
+              @sprite_drawing.emit_screen_layers(value) do |reg|
+                @background_drawing.emit_without_switched_off_layers(reg)
+                @background_drawing.emit_display_control_keeping_held_off(reg)
+              end
+            elsif @layout.screen.hides_layers?
+              @sprite_drawing.emit_screen_layers(value) do |reg|
+                @background_drawing.emit_without_switched_off_layers(reg)
+                emit_number(TMP, REG_DISPCNT)
+                emit(ASM.store_halfword(reg, TMP))
+              end
             else
               @sprite_drawing.emit_screen_layers(value)
             end

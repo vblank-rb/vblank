@@ -259,7 +259,9 @@ module VBlank
             # The same layer for every declaration of one name (see ScreenLayout#layer_slots); a
             # background on a screen with no tiled layer has none, and nothing is told; nor is
             # anything in a game whose boxes only ever show everywhere, which has no window.
-            return if bg.nil? || !@layout.screen.boxes_backgrounds?
+            return if bg.nil?
+            return emit_layer_switch(node, bg) if node.whole
+            return unless @layout.screen.boxes_backgrounds?
 
             outside = (WIN_ALL_LAYERS & ~(1 << bg.bg)) | WIN_EFFECT
             everywhere = gensym
@@ -322,9 +324,112 @@ module VBlank
           end
 
           # A SCENE PUTTING ITS BACKGROUNDS UP SHOWS THEM EVERYWHERE: the last scene's box is set
-          # aside, and this scene's own, if it sets one, is told in the gap after this pass.
-          def emit_box_set_aside
+          # aside, and this scene's own, if it sets one, is told in the gap after this pass. The
+          # layers of +scenery+ are no longer switched off either (#emit_layer_switch): the scene
+          # switches its layers on as its sending ends, and a background every scene shows keeps
+          # its switch.
+          def emit_box_set_aside(scenery = [])
             write_reg16(REG_WINOUT, WIN_ALL_LAYERS | WIN_EFFECT) if @layout.screen.boxes_backgrounds?
+            return unless @layout.screen.hides_layers?
+
+            bits = scenery.filter_map { |node| @layout.screen.backgrounds[node.name] }
+                          .reduce(0) { |all, bg| all | layer_switch_bit(bg) }
+            return if bits.zero?
+
+            load_var(ACC, LAYERS_SWITCHED_OFF)
+            emit(ASM.bic_imm(ACC, ACC, bits))
+            store_var(ACC, LAYERS_SWITCHED_OFF)
+          end
+
+          # A BACKGROUND HIDDEN WHOLE (Nodes::BoxBackground#whole, `hide`) IS ITS LAYER SWITCHED
+          # OFF. The display's settings have a bit for each of the four background layers, and a
+          # layer whose bit is clear is not drawn at all, so what is behind it and the backdrop
+          # show (GBATEK, LCD I/O Display Control, DISPCNT bits 8 to 11). No window is used, so
+          # a light or a status bar can have both.
+          #
+          # The bit is changed here, in the gap between frames, where nothing is being drawn. But
+          # other writes switch the layers on later in a pass: a game whose scenes use different
+          # layers writes all of them every pass (Drawing#emit_scene_layers), and sending tiles
+          # with the layers off switches them back on after (#emit_layers_back_on_or_held), and
+          # entering a screen drawn from tiles writes them all (#emit_display_control_written). So the
+          # layers hidden are kept here too, and each of those writes leaves them off
+          # (#emit_without_switched_off_layers). Shown again, the bit is set only where this
+          # switched it off, so a layer off for another reason is left alone.
+          #
+          # WHAT IT COSTS, in every gap while its scene is up: the value's load and a compare. Shown,
+          # a load of the note and a test of the bit, and nothing more unless it was hidden. Hidden,
+          # every gap writes the note again and reads, changes and writes the display's settings
+          # (with the interrupts held off around the pair in a game that holds its layers), whether
+          # or not anything changed since the gap before. Each write of the layers elsewhere costs
+          # a load of the note and one instruction more. A game that never hides a background whole
+          # emits none of this.
+          LAYERS_SWITCHED_OFF = :_layers_switched_off
+
+          def layer_switch_bit(bg) = BG0_ENABLE << bg.bg
+
+          def emit_layer_switch(node, bg)
+            bit = layer_switch_bit(bg)
+            shown = gensym
+            done = gensym
+            @lowering.value(node.held)
+            emit(ASM.cmp_imm(ACC, 0))
+            emit_branch(:bcond, shown, cond: :eq)
+            load_var(ACC, LAYERS_SWITCHED_OFF)
+            emit(ASM.orr_imm(ACC, ACC, bit))
+            store_var(ACC, LAYERS_SWITCHED_OFF)
+            emit_display_control_changed { emit(ASM.bic_imm(ACC, ACC, bit)) }
+            emit_branch(:b, done)
+            place_label(shown)
+            load_var(ACC, LAYERS_SWITCHED_OFF)
+            emit(ASM.and_imm(TMP, ACC, bit))
+            emit(ASM.cmp_imm(TMP, 0))
+            emit_branch(:bcond, done, cond: :eq)
+            emit(ASM.bic_imm(ACC, ACC, bit))
+            store_var(ACC, LAYERS_SWITCHED_OFF)
+            emit_display_control_changed { emit(ASM.orr_imm(ACC, ACC, bit)) }
+            place_label(done)
+          end
+
+          # At power-on no layer is switched off, whatever the memory held.
+          def emit_no_layers_switched_off
+            store_word_immediate(0, var_addr(LAYERS_SWITCHED_OFF)) if @layout&.screen&.hides_layers?
+          end
+
+          # WRITE THE WHOLE OF THE DISPLAY'S SETTINGS, +value+, as a screen drawn from tiles is
+          # entered, save the layers the game has hidden (#emit_layer_switch). A hidden background
+          # every screen shows stays off as the screen comes back from one of another kind, as the
+          # interpreter shows it, until it is put back as declared and the gap after shows it again.
+          # So the note is cleared only at power-on and as a scene puts its own scenery up
+          # (#emit_box_set_aside). A game that hides none writes +value+ as it is.
+          def emit_display_control_written(value)
+            return write_reg16(REG_DISPCNT, value) unless @layout&.screen&.hides_layers?
+
+            emit_number(ACC, value)
+            emit_without_switched_off_layers(ACC)
+            emit_number(TMP, REG_DISPCNT)
+            emit(ASM.store_halfword(ACC, TMP))
+          end
+
+          # Clear from +reg+, the display's settings about to be written, the layers the game has
+          # hidden (#emit_layer_switch). Uses +scratch+. Nothing in a game that hides none.
+          def emit_without_switched_off_layers(reg, scratch: TMP)
+            return unless @layout&.screen&.hides_layers?
+
+            load_var(scratch, LAYERS_SWITCHED_OFF)
+            emit(ASM.bic_reg(reg, reg, scratch))
+          end
+
+          # Read the display's settings into ACC, let the block change them, write them back. Where
+          # the screen's interrupt can switch held layers on, with it off between the read and the
+          # write (#with_interrupts_held_off). Uses ACC and TMP.
+          def emit_display_control_changed
+            write = lambda do
+              emit_number(TMP, REG_DISPCNT)
+              emit(ASM.load_halfword(ACC, TMP))
+              yield
+              emit(ASM.store_halfword(ACC, TMP))
+            end
+            holds_layers? ? with_interrupts_held_off(&write) : write.call
           end
 
           # A BLOCK OF CELLS (Nodes::SetTileBlock) is its cells written one by one, as its children
@@ -731,6 +836,7 @@ module VBlank
           # they are in the gap, and with the layers held off part way down a picture, for the
           # screen's interrupt to switch on at the start of the next gap. Uses TMP.
           def emit_layers_back_on_or_held(reg)
+            emit_without_switched_off_layers(reg) # ...save the ones the game hid
             unless holds_layers?
               emit_number(TMP, REG_DISPCNT)
               return emit(ASM.store_halfword(reg, TMP))
