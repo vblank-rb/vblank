@@ -76,7 +76,7 @@ module VBlank
 
             finder = UseFinder.new
             parsed.value.accept(finder)
-            holders = moved_fields(finder.uses).each_slice(FIELDS_KEPT_IN_PLACE).to_a
+            holders = holders_of(moved_fields(finder.uses))
             holder_of = {}
             holders.each_with_index { |fields, at| fields.each { |field| holder_of[field] = at + 1 } }
 
@@ -98,13 +98,30 @@ module VBlank
             return [] if counts.length <= FIELDS_KEPT_IN_PLACE
 
             holders = 1
-            holders += 1 until counts.length - (FIELDS_KEPT_IN_PLACE - holders) <= holders * FIELDS_KEPT_IN_PLACE
-            refuse_too_many_fields!(counts.length, holders)
+            holders += 1 until holders == MOST_HOLDERS ||
+                               counts.length - (FIELDS_KEPT_IN_PLACE - holders) <= holders * FIELDS_KEPT_IN_PLACE
             order = counts.keys.each_with_index.to_h
             kept = counts.keys.max_by(FIELDS_KEPT_IN_PLACE - holders) do |name|
               [FIELDS_READ_EVERY_PIXEL.include?(name) ? 1 : 0, counts[name], -order[name]]
             end.to_set
-            counts.keys.reject { |name| kept.include?(name) }
+            moved = counts.keys.reject { |name| kept.include?(name) }
+            return moved if moved.length <= MOST_HOLDERS * FIELDS_KEPT_IN_PLACE
+
+            # Too many for the holders: the ones named most fill them, and the rest go to the last.
+            moved.sort_by { |name| [-counts[name], order[name]] }
+          end
+
+          # The most holders the game object keeps, leaving it room for the fields it keeps itself.
+          MOST_HOLDERS = FIELDS_KEPT_IN_PLACE / 2
+
+          # +moved+ dealt into holders of FIELDS_KEPT_IN_PLACE. Fields past what MOST_HOLDERS of them
+          # hold all go to the last one, which Ruby then keeps as a hash: slower for those fields
+          # alone, and only for a program of many thousands, such as an unpacking routine.
+          def holders_of(moved)
+            slices = moved.each_slice(FIELDS_KEPT_IN_PLACE).to_a
+            return slices if slices.length <= MOST_HOLDERS
+
+            [*slices.first(MOST_HOLDERS - 1), slices.drop(MOST_HOLDERS - 1).flatten]
           end
 
           # The list is of runtime/rg_screen.rb's fields, which every game carries, so one renamed
@@ -114,13 +131,6 @@ module VBlank
             return if missing.empty?
 
             raise SplitError, "FieldHolders::FIELDS_READ_EVERY_PIXEL names #{missing.join(', ')}, which the runtime never names"
-          end
-
-          def refuse_too_many_fields!(fields, holders)
-            return if holders < FIELDS_KEPT_IN_PLACE
-
-            raise SplitError, "the game keeps #{fields} fields, more than the Ruby build holds in " \
-                              "#{FIELDS_KEPT_IN_PLACE} holders of #{FIELDS_KEPT_IN_PLACE}"
           end
 
           # The text with each use of a moved field written as its holder's attribute.

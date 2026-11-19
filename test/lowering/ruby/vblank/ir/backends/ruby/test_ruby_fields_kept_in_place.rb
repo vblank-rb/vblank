@@ -64,6 +64,21 @@ class TestRubyFieldsKeptInPlace < Minitest::Test
     assert_includes error.message, "^(@rg_target)"
   end
 
+  # A program of more fields than the holders keep in place, as an unpacking routine of a big port
+  # is, still builds and runs: the fields named least go to the last holder, which Ruby keeps as a hash.
+  def test_a_program_of_many_thousand_fields_builds_and_keeps_every_field
+    holders = VBlank::IR::Backends::Ruby::FieldHolders
+    names = holders::FIELDS_READ_EVERY_PIXEL.to_a + Array.new(12_000) { |i| "f#{i}" }
+    text = +"def initialize\n  rg_fields_make\nend\n"
+    text << "def rg_fill\n#{names.each_with_index.map { |name, i| "  @#{name} = #{i}\n" }.join}end\n"
+    text << "def rg_sum\n  total = 0\n#{names.map { |name| "  total += @#{name}\n" }.join}  total\nend\n"
+    game = Class.new { class_eval(holders.split(text)) }.new
+    game.rg_fill
+
+    assert_equal (0...names.length).sum, game.rg_sum
+    assert_operator game.instance_variables.size, :<=, holders::FIELDS_KEPT_IN_PLACE
+  end
+
   # The Ruby run's player checks every pass against the interpreter as it plays.
   def test_a_game_of_many_variables_plays_as_the_interpreter_does
     played = game_player.run(many_variables, frames: 3)
