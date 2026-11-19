@@ -26,7 +26,7 @@ module VBlank
       # too (`rake test:lowering:native` plays only that), checked against the interpreter on
       # every frame, so a feature is not done until it works here as well.
       #
-      # How it writes C, and why that way (doc/research/writing-c.md has the reading behind it):
+      # How it writes C, and why that way (docs/research/writing-c.md has the reading behind it):
       #
       # - The game's arithmetic lives in runtime/rg_int32.h, a C function for each thing
       #   IR::Int32 and the interpreter do with a number. C leaves several of the things a game
