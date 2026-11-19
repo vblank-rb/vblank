@@ -305,8 +305,39 @@ module VBlank
           # Every routine that can wait for a frame is then made resumable (Resumable), so the place
           # the game has reached is in its globals between frames, in every language it is printed in.
           def top_level
-            items = Resumable.new(top_level_items).items
+            items = Resumable.new(top_level_items).items.map { |item| without_repeated_comments(item) }
             [*items, Statements::Function.new(name: @names.own("visit_state"), body: visit_state(items), exported: true)]
+          end
+
+          # A routine with each comment naming where in the game its statements were written left
+          # out where the comment before it, read down the routine, already names the same line. A
+          # Ruby loop in a game makes many statements from one line, and the comment above the first
+          # stands for the rest. Each resumable step starts afresh, since a printer may write a step
+          # as a function of its own.
+          def without_repeated_comments(item)
+            return item unless item.is_a?(Statements::Function)
+
+            item.with(body: comments_once(item.body, [nil]))
+          end
+
+          # +last+ holds the comment last kept, shared by every body read after it in the routine.
+          def comments_once(body, last)
+            body.filter_map do |statement|
+              case statement
+              when Statements::Comment
+                next if statement == last[0]
+
+                last[0] = statement
+              when Statements::If
+                statement = statement.with(body: comments_once(statement.body, last),
+                                           otherwise: comments_once(statement.otherwise, last))
+              when Statements::While, Statements::Block
+                statement = statement.with(body: comments_once(statement.body, last))
+              when Statements::Steps
+                statement = statement.with(steps: statement.steps.map { |step| comments_once(step, [nil]) })
+              end
+              statement
+            end
           end
 
           # THE GAME'S HALF OF THE STATE IMAGE (runtime/rg_state.h): every global the build wrote and every

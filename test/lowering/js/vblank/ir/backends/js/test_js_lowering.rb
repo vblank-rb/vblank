@@ -45,6 +45,27 @@ class TestJSLowering < Minitest::Test
     assert_match(/^\s+f_draw\(\);/, source)
   end
 
+  # Each piece of the game written out says which line of the game made it, once: lines a Ruby loop
+  # made one after another from the same line of the game carry that line's comment above the first.
+  def test_a_line_the_game_repeats_is_named_once
+    looped_line = nil
+    source = JS.new.lower(program_of do
+      screen :bitmap
+      a = 0
+      b = 0
+      game_loop do
+        looped_line = __LINE__ + 1
+        6.times { a += 1 }
+        b += 1
+      end
+    end)
+
+    looped = "/* #{File.basename(__FILE__)}:#{looped_line} */"
+
+    assert_equal 1, source.lines.count { |line| line.strip == looped },
+                 "six lines from one line of the game share one comment"
+  end
+
   # A wait deep inside a routine ends the frame from there, and the game takes up where it left
   # off, as the interpreter does.
   def test_a_wait_inside_a_routine_ends_the_frame_there
