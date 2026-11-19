@@ -41,7 +41,26 @@ class TestSceneArrivalOverrun < Minitest::Test
   # line counter. With +halts+ the scene stops the game on its first pass, as an end screen does, so
   # no wait for a frame follows it. With +bordered+ the game is laid out for the Game Boy Color's
   # screen, shown in the middle of the Advance's with a border of blue and yellow round it.
-  private def handed_over(layers:, tile_count:, late: false, halts: false, bordered: false)
+  # A picture of 64×64 for the sprites a scene has of its own, number +n+: every 8×8 square cyan
+  # down its first column, so each row of it shows cyan, and its own number in cyan and magenta
+  # in the rest, so no square is like another and none is kept once for several.
+  def self.numbered_picture(n)
+    (0...(64 * 64)).map do |at|
+      x = at % 64
+      y = at / 64
+      next :cyan if (x % 8).zero?
+
+      square = (n * 64) + ((y / 8) * 8) + (x / 8)
+      square[((y % 8) + (x % 8)) % 12].zero? ? :magenta : :cyan
+    end
+  end
+  OWN_SPRITES = 6 # a scene's own sprites, along the top: their pictures go up as it takes over
+  OWN_SPRITE_ROWS = (0...64).freeze
+  # The columns only the last of them covers: its picture is the last copied, so the last a copy
+  # running into the picture reaches.
+  LAST_OWN_COLUMNS = ((OWN_SPRITES * 32)...((OWN_SPRITES * 32) + 32)).freeze
+
+  private def handed_over(layers:, tile_count:, late: false, halts: false, bordered: false, own_sprites: 0, shared: false)
     title_tile = TITLE
     side = WIDE
     handed_over_at = HANDED_OVER_AT
@@ -62,14 +81,18 @@ class TestSceneArrivalOverrun < Minitest::Test
       map = Array.new(side) { |row| Array.new(side) { |col| ((row * side) + col) % tile_count } }
       state = var :state, 0
       pass = var :pass, 0
+      # With +shared+, a background every scene shows, declared outside them.
+      background :shared, tiles: :stripes, map: Array.new(20) { |row| Array.new(30) { |col| (row + col) % tile_count } } if shared
       scene(:title) { background :title, tiles: :title_tiles, map: Array.new(20) { [0] * 30 } }
+      own_sprites.times { |n| image(:"own_#{n}", width: 64, height: 64, data: TestSceneArrivalOverrun.numbered_picture(n)) }
       scene(:play) do
         layers.times { |layer| background :"layer_#{layer}", tiles: :stripes, map: map }
+        own_sprites.times { |n| sprite :"own_#{n}", at: [n * 32, 0], facing: { still: :"own_#{n}" } }
         halt if halts
       end
       game_loop do
         pass += 1
-        state = 1 if pass == handed_over_at
+        state = 1 if pass == handed_over_at && own_sprites.zero?
         if late && pass == handed_over_at
           line = read_scanline
           while line < late_line
@@ -80,6 +103,9 @@ class TestSceneArrivalOverrun < Minitest::Test
           when_val 0, :title
           when_val 1, :play
         end
+        # With sprites of its own, the scene is picked a pass ahead, so the gap that starts the
+        # pass it takes over on writes its sprites' rows before its setup sends their pictures.
+        state = 1 if pass == handed_over_at - 1 && own_sprites.positive?
       end
     end
     b.finalize_program
@@ -157,6 +183,48 @@ class TestSceneArrivalOverrun < Minitest::Test
     assert_equal [seen.values.first], seen.values.uniq,
                  "the scene's pictures by the line its setup started on: #{seen.transform_values { |pictures| pictures.map(&:length) }}"
     assert_equal 160, seen.values.first.first.length, "the first picture is the backdrop: #{seen.values.first.map(&:length)}"
+  end
+
+  # A SCENE'S OWN SPRITE PICTURES GO UP AFTER ITS SCENERY, as it takes over. Where the pictures run
+  # on into the picture, the sprites must not show there from the row the copy reached down: the
+  # sprite is up whole on that picture, or not at all, whichever line the setup started on. Torn,
+  # the line falls where the cycles put it, and two builds of one game a few instructions apart show
+  # different pictures. A setup that fits the gap shows the sprite whole on the picture after it, as
+  # the interpreter does; one that starts in the gap's last line runs into the picture, which is held.
+  ART_START_LINES = [160, 180, 190, 200, 205, 210, 215, 220, 224, 227].freeze
+  CYAN = Color.resolve(:cyan)
+
+  def test_a_scenes_own_sprites_are_never_torn_on_its_first_picture
+    assert_sprites_whole_or_held(rows_shown_by_start_line(layers: 1))
+  end
+
+  # The same for a scene with no background of its own: nothing of its scenery is sent before its
+  # sprite pictures. With +shared+ it shows a background declared outside every scene.
+  def test_own_sprites_of_a_scene_without_scenery_are_never_torn_on_its_first_picture
+    assert_sprites_whole_or_held(rows_shown_by_start_line(layers: 0))
+    assert_sprites_whole_or_held(rows_shown_by_start_line(layers: 0, shared: true))
+  end
+
+  # The rows of the last of the scene's own sprites showing on its first picture, by the line its
+  # setup started on.
+  private def rows_shown_by_start_line(layers:, shared: false)
+    ART_START_LINES.to_h do |line|
+      game = handed_over(layers: layers, tile_count: 16, late: line, own_sprites: OWN_SPRITES, shared: shared)
+      rom = assemble_rom(game, name: "OVERRUNS")
+      reader = VBlank::Diagnostics::Verifier.new(rom, frames: 0, vars: rom.var_addresses)
+      first = (1..(HANDED_OVER_AT + 4)).lazy.filter_map do
+        reader.step
+        reader.frame_gba if reader.var(:pass) == HANDED_OVER_AT
+      end.first
+      [line, OWN_SPRITE_ROWS.count { |row| first[(row * 240) + LAST_OWN_COLUMNS.first, LAST_OWN_COLUMNS.size].include?(CYAN) }]
+    end
+  end
+
+  private def assert_sprites_whole_or_held(rows)
+    assert_equal OWN_SPRITE_ROWS.size, rows.fetch(ART_START_LINES.first), "a setup that fits the gap shows the sprite whole: #{rows}"
+    assert_equal 0, rows.fetch(ART_START_LINES.last), "a setup run into the picture holds it whole: #{rows}"
+    assert_empty rows.reject { |_, shown| [0, OWN_SPRITE_ROWS.size].include?(shown) },
+                 "rows of the scene's own sprites showing on its first picture, by the line its setup started on: #{rows}"
   end
 
   def test_setups_a_little_apart_that_fit_the_gap_show_the_same_pictures

@@ -907,10 +907,11 @@ module VBlank
           # scene's pictures go into the same memory, so taking over has to mark those frames
           # as gone and mark this scene as the one loaded.
           #
-          # The copy lands where the scene's own routine runs, which is near the top of a
-          # frame rather than strictly between frames. A sprite caught half-replaced would
-          # show for one frame — on the frame a game changes what the whole screen is, and
-          # where the scene it is leaving has already stopped drawing its own sprites.
+          # The copy lands where the scene's own routine runs, after its scenery, so in the gap
+          # or past it. A copy that runs on into the picture would show the rows above the line
+          # it had reached without the scene's sprites and the rows below with them, the line
+          # set by how many cycles the pass spent getting there. So in a game that holds its
+          # layers, the copy is a sending like the scenery's (#emit_with_layers_held_for_art).
           def emit_scene_art_upload(name)
             own = @layout.screen.scene_send(name)
             art = own.art || []
@@ -929,22 +930,44 @@ module VBlank
               return
             end
 
+            # Its colours first: the groups its sprites name are this scene's now (see
+            # ScreenLayout#build_shared_object_palette). A scene a `case_var` picks has them sent
+            # with its sprites instead (see SpriteDrawing#emit_scene_colors_on_change).
+            sends_colors = colors && !@layout.screen.scene_colors_picked?(name)
             @scene_entry.emit_once_on_arrival(:art, name) do
-              # Its colours first: the groups its sprites name are this scene's now (see
-              # ScreenLayout#build_shared_object_palette). A scene a `case_var` picks has them sent
-              # with its sprites instead (see SpriteDrawing#emit_scene_colors_on_change).
-              if colors && !@layout.screen.scene_colors_picked?(name)
-                @palette_tint.emit_send_scene_obj_palette(colors, @layout.screen.obj_palette_units, name)
-              end
-              art.each { |blob, at, units| @uploads.emit_dma_blob(blob, SpriteDrawing::OBJ_TILE_BASE + (at * 32), units * 16) }
-              @sprite_drawing.emit_reset_resident_frames(rooms)
-              pools.each { |pool| @sprite_drawing.emit_forget_poses_sent(pool) }
-              @picture_group_copying.emit_forget_sets_of(name) # the groups it wants copied in before its sprites
+              emit_with_layers_held_for_art(name, sends: sends_colors || !art.empty? || !painted.empty?) do
+                @palette_tint.emit_send_scene_obj_palette(colors, @layout.screen.obj_palette_units, name) if sends_colors
+                art.each { |blob, at, units| @uploads.emit_dma_blob(blob, SpriteDrawing::OBJ_TILE_BASE + (at * 32), units * 16) }
+                @sprite_drawing.emit_reset_resident_frames(rooms)
+                pools.each { |pool| @sprite_drawing.emit_forget_poses_sent(pool) }
+                @picture_group_copying.emit_forget_sets_of(name) # the groups it wants copied in before its sprites
 
-              # A picture the game paints goes up from its list as it is now: the scene before
-              # used the same memory (see IR::SceneHandover).
-              painted.each { |run| @background_drawing.emit_copy_tiles(Build.copy_tiles(run.name)) }
+                # A picture the game paints goes up from its list as it is now: the scene before
+                # used the same memory (see IR::SceneHandover).
+                painted.each { |run| @background_drawing.emit_copy_tiles(Build.copy_tiles(run.name)) }
+              end
             end
+          end
+
+          # A SCENE'S SPRITE PICTURES SENT AS ITS SCENERY IS, with the layers and the sprites off,
+          # and back on in the gap or held for the picture the copy ran into (see
+          # BackgroundDrawing::LAYERS_HELD). The sprites' rows were written in the gap before
+          # this, so a picture the copy reaches part way down would show them torn at a row set by
+          # timing; held, that picture is the backdrop whole in every build, and the next is the
+          # scene whole. A copy that ends inside the gap shows the scene on the picture after it,
+          # as the interpreter does. A scene with no scenery of its own is held the same way: the
+          # pair keeps the display's settings as they were and puts them back. Only on a scene
+          # drawn from tiles in a game that holds its layers, and only where the scene sends its
+          # sprites' colours or copies pictures (+sends+), since either landing part way down a
+          # picture tears it; a scene that only marks what it has sent writes nothing seen.
+          def emit_with_layers_held_for_art(name, sends:)
+            tiled = IR::SceneHandover.tiles?(IR::Modes::SCREEN_OF_MODE.fetch(scene_handover.arrival(name).mode))
+            return yield unless sends && tiled && @background_drawing.holds_layers?
+
+            @background_drawing.emit_layers_off_for_sending(SCENE_SEND_DISPLAY)
+            yield
+            load_var(ACC, SCENE_SEND_DISPLAY)
+            @background_drawing.emit_layers_back_on_or_held(ACC)
           end
 
           # End the pass a scene that loads first takes over on (see SceneEntry).
