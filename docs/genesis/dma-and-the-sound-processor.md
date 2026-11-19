@@ -152,8 +152,6 @@ it, and nothing read says what it guards against, so it is left until a source d
 
 ## The pad read
 
-Changed on 2026-11-14.
-
 **The controller is read with the Z80 stopped** (S3), in a game that plays recordings: the blank's
 interrupt asks for the bus, waits for it, reads the pad (`rt_pad_read`) and lets go
 (`Recordings#emit_bus_for_pad`). The version register, also at `$A100xx`, is read only with the
@@ -169,8 +167,8 @@ Z80's queue and mailbox, and the version register's read.
 taken.** The blank's interrupt asked for the bus and left it held through the copies, the buttons
 and the music, until the end of the pass's wait. The blank's work here is mostly the 68000 writing
 the picture's maps and tiles and playing the music, not copies, so the Z80 stood still for some
-sixty samples a frame: a recording playing alone, with nothing else going on, crossed its middle at
-422.0 Hz for 433.3, with gaps of two waves; with eighty sprites, 401.0; painted, 384.9. Sonic 3 &
+sixty samples a frame and a recording played audibly flat, with gaps of whole waves, even with
+nothing else going on. Sonic 3 &
 Knuckles makes its blank's work almost all copies. Here each copy and each write into the Z80's
 memory is a stop of its own, a few instructions long.
 
@@ -178,14 +176,7 @@ memory is a stop of its own, a few instructions long.
 instructions more at each stop of the main program (the status register kept, interrupts held off,
 and the status register put back). A game with no recordings builds the same cartridge, byte for
 byte: every example built for the Genesis, a game of sprites, a painted one, and one with a song,
-a wave and a beep, each compared with the commit before.
-
-| | before | after |
-|---|---|---|
-| alone | 433.49 Hz | 433.49 Hz |
-| a wave part, a note every two frames | 433.68 Hz | 433.68 Hz |
-| 80 sprites | 433.46 Hz | 433.55 Hz |
-| painted, sixteen tiles a pass | 434.05 Hz | 434.14 Hz |
+a wave and a beep. A recording's pitch does not move measurably.
 
 `test_genesis_dma_guard.rb` holds the code: the pad read between the request and the release, and
 every copy's request with interrupts held off.
@@ -290,9 +281,8 @@ sample from the cartridge as it sounds it, so when it reads has not changed and 
 has. A read-ahead that kept off the bus during a copy would still be bound by S1, which makes no
 exception for a Z80 that promises not to look.
 
-**The Z80 now writes two FM registers** (the DAC's and `$27`). It was first made to note the one it
-was on for the 68000 to name again after its own writes; since the next change the 68000 writes no
-FM register at all in a game that plays recordings, and that went.
+**The Z80 writes two FM registers** (the DAC's and `$27`) every sample. In a game that plays
+recordings the 68000 writes no FM register at all ("A song's notes" below).
 
 **The chip's busy time.** Genesis Plus GX holds the chip busy for 32 of its cycles after each value
 written (`core/sound/sound.c`, `YM2612_Write`), a third of a sample. The program's two values a
@@ -320,17 +310,8 @@ lines of the blank with a recording playing and 13 without.
 
 A game with no recordings and no painted screen builds the same cartridge as before.
 
-### The pitch, before and after
-
-| | before | after |
-|---|---|---|
-| 1 sprite, recording | 425.681 Hz | 433.484 Hz |
-| 24 sprites, recording | 424.012 Hz | 433.500 Hz |
-| 80 sprites, recording | 420.461 Hz | 433.529 Hz |
-| painted, sixteen tiles a pass, recording | 384.262 Hz | 433.119 Hz |
-
-The recording is 433.333 Hz. `test_genesis_sound.rb` holds the first, third and fourth to within
-2 Hz.
+**The pitch.** A recording now plays at its own pitch with one sprite, eighty sprites and a painted
+screen alike; `test_genesis_sound.rb` holds each of those to within 2 Hz of the 433.333 Hz recorded.
 
 ## A song's notes
 
@@ -389,16 +370,9 @@ chip. That is what VBlank does now.
 
 A game with no recordings builds the same cartridge as before.
 
-### The pitch, before and after
-
-| | before | after |
-|---|---|---|
-| a wave part, a note every two frames | 379.3 Hz, a gap of 2.5 waves | 433.7 Hz, no gap past 1.14 waves |
-| a recording across two banks, going round, over 2.8 s | 433.50 Hz | 433.49 Hz |
-| PAL | 429.5 Hz | 433.0 Hz |
-
-The recording is 433.333 Hz. `test_genesis_sound.rb` holds each to within 2 Hz, and the first two
-to no gap of a quarter more than a wave.
+**The pitch.** A recording keeps its pitch under a song playing a note every two frames, across two
+banks going round, and on a PAL console; `test_genesis_sound.rb` holds each to within 2 Hz of the
+433.333 Hz recorded, and the first two to no gap of a quarter more than a wave.
 
 ### Not done
 
