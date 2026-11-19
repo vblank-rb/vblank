@@ -27,7 +27,9 @@ module VBlank
         # - A RESUMABLE ROUTINE PICKS ITS STEP BY HALVING (#print_step_choice), not by a `case`.
         # - WHERE A NAME LIVES. Everything the game keeps — its variables, lists, tables, the
         #   arrays of routines it calls by number, the art the runtime reads — is an instance
-        #   variable of the game, set in rg_game_setup; a routine's own locals are Ruby locals.
+        #   variable of the game, set in rg_game_setup; a routine's own locals are Ruby locals. The
+        #   printer writes each as an instance variable, and the build moves every one of them into
+        #   a holder object of no more than Ruby keeps at fixed places (FieldHolders).
         # - A ROUTINE IS A METHOD, called by name, and one picked from an array by number is that
         #   array's block calling it by name.
         # - A LONG ROUTINE IS SEVERAL METHODS. Ruby's compiler walks a method's branches by

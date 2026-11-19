@@ -5,6 +5,7 @@ require "fileutils"
 require "json"
 require "rbconfig"
 require "tmpdir"
+require_relative "ruby/field_holders"
 require_relative "ruby/printer"
 require_relative "ruby/lowering"
 require_relative "ruby/headless_run"
@@ -83,8 +84,9 @@ module VBlank
           lowering = Lowering.new(program)
           text, gaps = lowering.text_and_gaps(HEADLESS_FUNCTIONS)
           refuse_runtime_gaps!(gaps)
-          write_program([WRITTEN_BY, "class RgGame\n", lowering.console_text, *runtime_text(RUNTIME + [HEADLESS_DRIVER]),
-                         RuntimeFeatures.ruby_text(lowering.runtime_features), text, "end\n",
+          body = [lowering.console_text, *runtime_text(RUNTIME + [HEADLESS_DRIVER]),
+                  RuntimeFeatures.ruby_text(lowering.runtime_features), text].join
+          write_program([WRITTEN_BY, "class RgGame\n", FieldHolders.split(body), "end\n",
                          "RgGame.new.rg_headless_main(ARGV)\n"].join)
         end
 
@@ -157,11 +159,13 @@ module VBlank
 
         # The game as Ruby with its runtime and the live driver: the body of a LiveGame's class, which
         # LiveGame.new makes a game of each time it is asked. Anything the runtime lacks is refused.
+        # Its fields are kept in holders small enough for Ruby to keep in place (FieldHolders).
         def live_source(program)
           lowering = Lowering.new(program)
           text, gaps = lowering.text_and_gaps(LIVE_FUNCTIONS)
           refuse_runtime_gaps!(gaps)
-          [lowering.console_text, *runtime_text(RUNTIME + [LIVE_DRIVER]), RuntimeFeatures.ruby_text(lowering.runtime_features), text].join
+          FieldHolders.split([lowering.console_text, *runtime_text(RUNTIME + [LIVE_DRIVER]),
+                              RuntimeFeatures.ruby_text(lowering.runtime_features), text].join)
         end
 
         private

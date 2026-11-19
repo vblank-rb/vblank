@@ -23,8 +23,10 @@ RG_CLOCK_WEEKDAY = 6
 RG_CLOCK_PRESENT = 7
 RG_CLOCK_SET = 8
 
-# The game's own state first, then each part of the runtime's.
+# The holders every field below is kept in (rg_fields_make, which the build writes: see
+# Ruby::FieldHolders), then each part of the runtime's state, then the game's own.
 def initialize
+  rg_fields_make
   rg_runtime_setup
   rg_screen_setup
   rg_sound_setup
