@@ -53,6 +53,17 @@ class TestRubyFieldsKeptInPlace < Minitest::Test
     assert_operator largest.instance_variables.size, :<=, most, "instance variables of one #{largest.class}"
   end
 
+  # A pattern pinning one of the game's fields cannot pin it in a holder, so the build says so rather
+  # than writing Ruby that does not parse.
+  def test_a_pattern_pinning_a_field_is_refused_in_words
+    text = "def rg_matches?(value)\n  case value\n  in ^@rg_target then true\n  else false\n  end\nend\n"
+    error = assert_raises(VBlank::IR::Backends::Ruby::FieldHolders::SplitError) do
+      VBlank::IR::Backends::Ruby::FieldHolders.split(text)
+    end
+
+    assert_includes error.message, "^(@rg_target)"
+  end
+
   # The Ruby run's player checks every pass against the interpreter as it plays.
   def test_a_game_of_many_variables_plays_as_the_interpreter_does
     played = game_player.run(many_variables, frames: 3)

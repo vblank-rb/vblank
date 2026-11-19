@@ -223,6 +223,17 @@ module VBlank
               super
             end
 
+            # A pattern that pins an instance variable (`in ^@x`) cannot pin a holder's field: `^` takes
+            # a variable or a parenthesised expression, and `^@rg_fields_1.x` does not parse.
+            def visit_pinned_variable_node(node)
+              if @scope == :game && node.variable.is_a?(Prism::InstanceVariableReadNode)
+                raise SplitError, "the game's Ruby pins #{node.variable.name} in a pattern, which a field kept in a " \
+                                  "holder cannot be; write ^(#{node.variable.name}) instead"
+              end
+
+              super
+            end
+
             private
 
             def within(scope)
