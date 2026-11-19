@@ -355,6 +355,9 @@ module VBlank
         Graphics::PNG.write(path, width: screen_width, height: screen_height, pixels: frame_gba)
       end
 
+      # The same picture as Film asks for it, with no file: the console's colours and the size.
+      def screen_picture = Film::Picture.new(pixels: frame_gba, width: screen_width, height: screen_height)
+
       # Shut the emulator and remove the cartridge's file now, rather than whenever Ruby collects
       # this reader. Something that opens one cartridge after another (Film plays each side in
       # turn) calls this so only one emulator is running at a time. Nothing can be read after it.

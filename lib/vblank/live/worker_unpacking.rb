@@ -233,6 +233,20 @@ module VBlank
         rescue Ractor::ClosedError
           nil
         end
+        wait_for_idle_workers if @ended.all?
+      end
+
+      # Once every job has ended, each worker is waiting for its next, so :stop ends it at once:
+      # waited for here, nothing of the unpacking is left running when the play returns. A program
+      # that copies its process next (a film plays each side in a copy, Diagnostics::Film) copies
+      # one with no Ractor but its own. A worker stopped part way through a job is not waited for:
+      # it ends at its next frame, and a window closing should not wait on that.
+      def wait_for_idle_workers
+        @workers.each do |worker|
+          worker.join
+        rescue Ractor::RemoteError
+          nil # raised already, where its job failed
+        end
       end
 
       # WHO PLAYS A JOB IN ITS WORKER: it holds no buttons, and at most once every SEND_SECONDS

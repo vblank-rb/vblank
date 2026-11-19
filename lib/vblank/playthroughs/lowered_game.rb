@@ -111,6 +111,9 @@ module VBlank
         Graphics::PNG.write(path, width: screen_width, height: screen_height, pixels: frame_gba)
       end
 
+      # The same picture as a film asks for it, with no file (Diagnostics::Verifier#screen_picture).
+      def screen_picture = Diagnostics::Film::Picture.new(pixels: frame_gba, width: screen_width, height: screen_height)
+
       # The run stopped, as a film closes a side whose frames it has taken.
       def close = finish
 

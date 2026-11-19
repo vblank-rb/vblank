@@ -255,6 +255,9 @@ module VBlank
       # Write the picture on screen now to +path+, a PNG (Verifier#screenshot).
       def screenshot(path) = @reader.screenshot(path)
 
+      # The picture on screen now (Verifier#screen_picture): what a film asks of a side.
+      def screen_picture = @reader.screen_picture
+
       # Write the console's whole state to +path+, to come back to with #load_state.
       def save_state(path)
         @reader.save_state(path.to_s)

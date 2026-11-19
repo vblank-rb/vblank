@@ -113,6 +113,16 @@ module VBlank
         @silent_step ? [] : @reader.last_frame_samples
       end
 
+      # The picture as a film asks for it, with no file: as #screenshot's.
+      def screen_picture
+        return @reader.screen_picture unless @blank
+
+        width = @reader.screen_width
+        height = @reader.screen_height
+        Film::Picture.new(pixels: Array.new(width * height, IR::Backends::Reference::Framebuffer::HELD_OFF), width: width,
+                          height: height)
+      end
+
       def screenshot(path)
         return @reader.screenshot(path) unless @blank
 

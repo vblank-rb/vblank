@@ -18,6 +18,7 @@ require_relative "diagnostics/frame_sound"       # One frame's samples and the l
 require_relative "diagnostics/recorded_sound"    # The sound of a run, its older part in a scratch file
 require_relative "diagnostics/verifier"          # Real pixels and real sound read back through the emulator
 require_relative "diagnostics/film"              # A film of one cartridge running, or two side by side, as an MP4
+require_relative "diagnostics/film_reel"         # A film's pictures put together and handed to ffmpeg as they arrive
 require_relative "diagnostics/film_cartridge"    # One side of a film, brought to its first frame with a save folder of its own
 require_relative "diagnostics/film_script"       # A film written as a small file
 require_relative "diagnostics/film_shell"        # A port's shell filmed from its first start, as a side of a film

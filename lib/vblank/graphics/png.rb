@@ -72,7 +72,8 @@ module VBlank
         [data.bytesize].pack("N") + body + [Zlib.crc32(body)].pack("N")
       end
 
-      # A colour's red, green and blue as three bytes.
+      # A colour's red, green and blue as three bytes. Public for Diagnostics::Film, which hands a
+      # side's picture to ffmpeg in the same colours a PNG of it holds.
       def eight_bit_channels(colour)
         [0, 5, 10].map { |shift| (colour >> shift) & 0x1F }.map { |level| (level << 3) | (level >> 2) }.pack("C3")
       end
@@ -106,7 +107,7 @@ module VBlank
               "An alpha: value of #{wrong} is not possible. Each value must be from 0 to 255. " \
               "0 is see-through and 255 is solid."
       end
-      private_class_method :chunk, :eight_bit_channels, :refuse_wrong_size!, :refuse_alpha_outside_byte!
+      private_class_method :chunk, :refuse_wrong_size!, :refuse_alpha_outside_byte!
     end
   end
 end

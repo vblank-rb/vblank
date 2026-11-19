@@ -254,6 +254,22 @@ class TestFilmShell < Minitest::Test
     end
   end
 
+  # A film whose parts end before the shell's game begins has no frame to start the all-in-one side
+  # on. The two sides play at the same time, so the all-in-one side learns it as the shell's side ends,
+  # and the film stops saying so, rather than waiting for a frame that never comes.
+  def test_a_film_ending_before_the_shells_game_begins_is_refused
+    Dir.mktmpdir do |folder|
+      shell = FilmShell.new(port(original(folder)))
+      refused = assert_raises(ArgumentError) do
+        VBlank::Diagnostics::Film.make(File.join(folder, "never.mp4"),
+                                       sides: { "shell" => -> { shell.open }, "all-in-one" => -> { shell.all_in_one } },
+                                       parts: [1..2])
+      end
+
+      assert_match "has not shown the game yet", refused.message
+    end
+  end
+
   # Closing the side takes away the folder the copy was handed in and the pack kept, even part way
   # through the unpacking.
   def test_closing_the_side_leaves_nothing_of_the_copy

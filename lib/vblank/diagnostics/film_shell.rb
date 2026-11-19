@@ -62,6 +62,9 @@ module VBlank
 
       # The film frame the shell's game showed its first picture on, once a side opened by #open has
       # played that far; nil before. 1 for a side counted from the game, once it has played a frame.
+      # Where Film plays its sides at once, the shell's side plays in a copy of the process, so this
+      # stays nil here after the film: the all-in-one side learns the frame through GameStart, and
+      # nothing in VBlank reads this after a film.
       attr_reader :game_began_on
 
       # The shell from its first start, as a side Film plays (step, screenshot, close). +from+ :menu
@@ -77,24 +80,68 @@ module VBlank
                                "to film the menu and the unpacking, or `from: :game` to start on the game's first frame."
         end
 
-        ShellSide.new(Live::Shell.from(@built), @copy, ->(frame) { @game_began_on = frame }, from_game: from == :game,
-                                                                                            sound: sound)
+        @game_start&.close
+        game_start = @game_start = GameStart.new
+        began = lambda do |frame|
+          @game_began_on = frame
+          game_start.began_on(frame)
+        end
+        ShellSide.new(Live::Shell.from(@built), @copy, began, game_start, from_game: from == :game, sound: sound)
       end
 
       # The all-in-one build of the game, shown as a display switched off until the frame the shell's
       # game began on, then played from its first pass with the same buttons. Opened after the shell's
-      # side has played past that frame (Film plays its sides in order, so list the shell first).
+      # side has played past that frame (list the shell first in `sides:`), or, where Film plays its
+      # sides at once, after the shell's side is opened: it then learns the frame from the shell's
+      # side as that plays (GameStart), before its own first frame.
       # +sound:+ as #open's; the frames held back are silent.
       def all_in_one(sound: false)
-        unless @game_began_on
-          raise ArgumentError, "The all-in-one side starts on the frame the shell's game began on, and the shell's side " \
-                               "has not shown the game yet. To fix this, put the shell's side first in `sides:`, " \
-                               "and give parts that reach past the end of the unpacking."
+        held_back = if @game_began_on then @game_began_on - 1
+                    elsif @game_start&.may_begin? then @game_start
+                    else raise ArgumentError, GAME_NOT_SHOWN
+                    end
+        session = Live::Session.new(@game.checked_program(err: nil, console: @console))
+        AllInOneSide.new(session, held_back: held_back, width: @built.game.described_console.screen_width,
+                                  height: @built.game.described_console.screen_height, sound: sound)
+      end
+
+      GAME_NOT_SHOWN = "The all-in-one side starts on the frame the shell's game began on, and the shell's side " \
+                       "has not shown the game yet. To fix this, put the shell's side first in `sides:`, " \
+                       "and give parts that reach past the end of the unpacking."
+
+      # THE FRAME THE SHELL'S GAME BEGAN ON, PASSED BETWEEN PROCESSES. Where Film plays its sides at
+      # once, each in a copy of the film's process, the shell's side and the all-in-one side are
+      # opened first and then played apart, so the all-in-one side cannot read the frame from this
+      # object. The shell's side writes it down a pipe opened before the copies are made; the
+      # all-in-one side reads it before its first frame. Every other holder of the pipe's writing end
+      # closes it (the film's own process when the copies have started, the all-in-one side before it
+      # reads), so a shell whose game never begins ends the read rather than leaving it waiting.
+      class GameStart
+        def initialize
+          @reader, @writer = IO.pipe
         end
 
-        session = Live::Session.new(@game.checked_program(err: nil, console: @console))
-        AllInOneSide.new(session, held_back: @game_began_on - 1, width: @built.game.described_console.screen_width,
-                                  height: @built.game.described_console.screen_height, sound: sound)
+        # The shell's side, as its game shows its first picture on film frame +frame+.
+        def began_on(frame)
+          return if @writer.closed?
+
+          @writer.puts(frame)
+          @writer.flush
+        end
+
+        # True while a shell's side that may still begin its game holds the writing end.
+        def may_begin? = !@writer.closed?
+
+        def close_writer = (@writer.close unless @writer.closed?)
+
+        # The frame the shell's game began on, waited for. Raises where the shell's side ended first.
+        def wait_for_frame
+          close_writer
+          line = @reader.gets or raise ArgumentError, GAME_NOT_SHOWN
+          Integer(line)
+        end
+
+        def close = [@reader, @writer].each { |end_of_pipe| end_of_pipe.close unless end_of_pipe.closed? }
       end
 
       # A copy that is one file is handed as that file. One that is a folder (a release of several
@@ -191,6 +238,9 @@ module VBlank
         # The pixels of the picture shown last, a row at a time, as the console's screen shows them.
         def pixels = @picture&.pixels
 
+        # The picture shown last (pixels, width and height), or nil before the first.
+        attr_reader :picture
+
         # +play+ is a lambda, not a block: it is called in the Fiber after this method has returned.
         # +keeps_sound+ keeps the sound each picture is shown with (FilmedDevice).
         def initialize(play, keeps_sound: false)
@@ -256,9 +306,11 @@ module VBlank
       # THE SHELL'S SIDE. +copy+ is the copy handed to LOAD ROM, and +game_began+ is told the film
       # frame the game's first picture is on. +from_game+ plays the menu and the unpacking before the
       # film's first frame (#play_lead_in), so that frame is the game's first pass, played with the
-      # film's buttons for it.
+      # film's buttons for it. +game_start+ is the GameStart +game_began+ writes to, closed here once
+      # this side can no longer begin the game.
       class ShellSide
-        def initialize(shell, copy, game_began, from_game:, sound: false)
+        def initialize(shell, copy, game_began, game_start, from_game:, sound: false)
+          @game_start = game_start
           @folder = Dir.mktmpdir("film-shell")
           handed = File.join(@folder, File.basename(copy.path))
           FilmShell.hand_copy(copy, handed)
@@ -297,11 +349,22 @@ module VBlank
 
         def screenshot(path) = @play.screenshot(path)
 
+        # The picture on the film's frame just played, as a film asks for it.
+        def screen_picture = @play.picture
+
         # The shell stopped where it stands and its folder, the copy and the pack in it, taken away.
+        # A side played in another process has nothing to stop here.
         def close
-          @play&.stop
+          @play&.stop unless @played_elsewhere
+          @game_start.close_writer
           FileUtils.remove_entry(@folder, true) if @folder
           nil
+        end
+
+        # Film plays this side in a copy of its process: this one will never begin the game.
+        def played_in_another_process
+          @played_elsewhere = true
+          @game_start.close_writer
         end
 
         private
@@ -319,10 +382,12 @@ module VBlank
       end
 
       # THE ALL-IN-ONE BUILD'S SIDE: +held_back+ frames of a display switched off, then +session+
-      # played from its first pass with the film's buttons.
+      # played from its first pass with the film's buttons. +held_back+ is a number, or a GameStart
+      # whose frame is waited for before the first step.
       class AllInOneSide
         def initialize(session, held_back:, width:, height:, sound: false)
-          @held_back = held_back
+          @game_start = held_back if held_back.is_a?(GameStart)
+          @held_back = held_back unless @game_start
           @off = Live::Headless::Picture.new(pixels: Array.new(width * height, IR::Backends::Reference::Framebuffer::HELD_OFF),
                                              width: width, height: height)
           @play = SteppedPlay.new(lambda { |device|
@@ -333,6 +398,7 @@ module VBlank
         end
 
         def step(count = 1, keys: 0)
+          @held_back ||= @game_start.wait_for_frame - 1
           count.times do
             @silent_step = @held_back.positive?
             next @held_back -= 1 if @silent_step
@@ -348,13 +414,23 @@ module VBlank
 
         def pixels = @play.pixels || @off.pixels
 
+        # The picture on the film's frame just played: the display switched off until the game's first.
+        def screen_picture = @play.picture || @off
+
         def screenshot(path)
           return @play.screenshot(path) if @play.pixels
 
           Graphics::PNG.write(path, width: @off.width, height: @off.height, pixels: @off.pixels)
         end
 
-        def close = @play.stop
+        # A side played in another process has nothing to stop here.
+        def close = (@play.stop unless @played_elsewhere)
+
+        # Film plays this side in a copy of its process.
+        def played_in_another_process
+          @played_elsewhere = true
+          @game_start&.close_writer
+        end
       end
     end
   end

@@ -44,4 +44,14 @@ class TestWorkerUnpacking < Minitest::Test
       assert_equal [bar.filled], across.uniq
     end
   end
+
+  # Once the unpacking has ended, so has every worker: a film copies this process to play its sides
+  # (Diagnostics::Film), and copies it while nothing else is running in it.
+  def test_every_worker_has_ended_once_the_unpacking_has
+    Dir.mktmpdir do |folder|
+      pack_on(3, folder)
+
+      assert_equal 1, Ractor.count, "a worker is still running"
+    end
+  end
 end
