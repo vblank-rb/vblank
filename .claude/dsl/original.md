@@ -977,6 +977,16 @@ all-in-one build is built and played in a process of its own beside the shell's 
 runs on the main Ractor. A machine that names no copy fails with `NotSet`'s words. Worked example:
 `test/lowering/ruby/vblank/live/test_shell_check.rb`.
 
+**A port's whole-game check** — `rake shell:whole_game`, from the same `ShellCheckTasks` (its tape is
+`t.whole_game_tape`, or `t.tape` where that is not set), or `Original::WholeGameCheck.new(game, tape:).run`
+— plays the whole tape, however long, on the shell's game and the all-in-one build, both built as C
+(optimised) and played at once, as fast as the computer goes. The shell's game is handed the pack the
+shell's own unpacking writes as C from this machine's copy, held to the all-in-one build's byte for byte
+first. Every picture and every sample of sound is compared pass by pass as the two play, and the check
+stops at the first pass they differ on, naming it. It does not play the shell's menu, which the shell
+check holds. Run it when asked, never on every commit. It needs zig. Worked example:
+`test/lowering/native/vblank/original/test_whole_game_check.rb`.
+
 **The pack file** (`Original::Pack`): `"VBLANKPK"`, the format version (2 bytes), the copy's SHA-1 (20
 bytes), the build version (a length byte and the text), the slot count (2 bytes), each slot's name (a
 length byte and the text) and size (4 bytes), then each slot's bytes, then to the end of the file the

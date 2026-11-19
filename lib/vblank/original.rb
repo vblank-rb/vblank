@@ -44,6 +44,7 @@ VBlank.require_game_file "original/frame_rewrite"  # Each frame a game names, wr
 VBlank.require_game_file "original/unpacking_progress"  # The bar a shell shows while it unpacks
 require_relative "original/shell_facts"    # What every runtime is told about a shell
 require_relative "original/shell"          # A port built with no data, which makes its pack on the player's machine
+require_relative "original/whole_game_check"  # A shell's game held to its all-in-one build over a whole tape, as C
 require_relative "original/data_guard"     # The pre-commit check keeping the original's data out of the port's history
 # Its rake tasks, data_guard_tasks.rb, are a Rakefile's and are not required here.
 # Nor are labels.rb, symbol_file.rb and manifest.rb (the original's labels, the readers of each
