@@ -187,6 +187,52 @@ module CopyReaderTests
     end
   end
 
+  # STEPS ASKED FOR FROM A RUBY LOOP, each at places written in the program, are rows of a table
+  # that one loop of the routine reads (CopyReader#fold_constant_steps!), not a copy of the step
+  # each: the routine is the same size for forty steps as for four. A step at a place the routine
+  # works out as it runs is written as it is, and ends a run of rows. Each step still waits a
+  # frame after its block, so the routine ends on the same frame: SCATTERED_BYTES copies, the one
+  # placed by a read, then RLE_COPIES blocks of heights, a frame each.
+  SCATTERED_BYTES = 40
+  RLE_COPIES = 6
+  STEPS_FROM_LOOPS = SCATTERED_BYTES + 1 + RLE_COPIES
+
+  private def steps_from_loops(folder)
+    VBlank::Builder.new.data_pack(from: original(folder), version: "1") do |slots|
+      slots.numbers :scattered, count: SCATTERED_BYTES, width: :byte, signed: false
+      slots.numbers :pointed, count: 1, width: :byte, signed: false
+      slots.numbers :heights, count: HEIGHTS.length * RLE_COPIES, width: :byte, signed: false
+      slots.fill_from_copy do |copy, pack|
+        SCATTERED_BYTES.times { |n| copy.copy_bytes at: (n * 13) % COPY_SIZE, count: 1, into: pack[:scattered], start: n }
+        copy.copy_bytes at: copy.byte(SPEEDS_AT), count: 1, into: pack[:pointed]
+        RLE_COPIES.times { |n| copy.unpack_rle at: RLE_AT, into: pack[:heights], start: n * HEIGHTS.length }
+      end
+    end.unpacking
+  end
+
+  # How many calls the routine makes of the block routine named +part+.
+  private def block_calls(program, part)
+    target = VBlank::Messages::MadeNames.make(:unpacking_part, part: part)
+    program.walk.count { |node| node.kind == :call && node.target == target }
+  end
+
+  def test_steps_asked_for_from_a_loop_unpack_as_written_out_from_one_loop_of_the_routine
+    Dir.mktmpdir do |folder|
+      unpacking = steps_from_loops(folder)
+      played = unpacking.run_on(game_player, frames: STEPS_FROM_LOOPS)
+      one_frame_short = unpacking.run_on(game_player, frames: STEPS_FROM_LOOPS - 1)
+
+      assert_equal({ scattered: Array.new(SCATTERED_BYTES) { |n| COPY.getbyte((n * 13) % COPY_SIZE) }.pack("C*"),
+                     pointed: COPY.byteslice(COPY.getbyte(SPEEDS_AT), 1), heights: (HEIGHTS * RLE_COPIES).pack("C*") },
+                   unpacking.slot_bytes_in(played))
+      assert unpacking.finished_in?(played), "a frame for each step, and the routine ends"
+      refute unpacking.finished_in?(one_frame_short), "...and not a frame sooner"
+      # The forty copies are one call in a loop, the copy placed by a read one more; the six blocks of
+      # heights one call in a loop.
+      assert_equal [2, 1], [block_calls(unpacking.program, :copy), block_calls(unpacking.program, :unpack_rle)]
+    end
+  end
+
   # A routine can read the copy and write a slot a byte at a time, for a layout no building block
   # knows: here the speeds, read as halves high byte first, kept as their low bytes reversed.
   def test_a_routine_reads_and_writes_bytes_itself

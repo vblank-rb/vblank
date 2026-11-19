@@ -48,6 +48,7 @@ module VBlank
         @internals = Packing::BlockKitInternals.new(builder, copy: copy, pack: pack, faults: faults, before_wait: before_wait,
                                                              slot_bytes_done: slot_bytes_done)
         @kit = Packing::BlockKit.new(@internals)
+        @step_tables = StepTables.new(builder, @internals)
         @formats = formats
         @platform = platform
         @block_routines = {}
@@ -176,6 +177,10 @@ module VBlank
         (asked && @formats.any? { |offered| offered.format_name == asked }) || super
       end
 
+      # The steps asked for so far made into table loops where they can be (StepTables). The build
+      # asks once each stretch of the routine is built: the slots copied as they are, and each part.
+      def fold_constant_steps! = @step_tables.fold_into_tables!
+
       # A format's verb takes its places by name; one given +given+ in order is refused (FileReader asks too).
       def refuse_positional_arguments!(name, given)
         return if given.empty?
@@ -196,25 +201,27 @@ module VBlank
         start = settings.fetch(:start, 0)
         refuse_unless_slot!(into, verb)
         refuse_outside_slot!(into, start, 0)
-        format.format_settings.each { |name, default| @kit.setting(name).store!(settings.fetch(name, default)) }
+        format_stores = format.format_settings.map { |name, default| [@kit.setting(name), settings.fetch(name, default)] }
         emit_block_call(:"unpack_#{format.format_name}", at: settings.fetch(:at), slot: into, start: start, count: 0,
-                                                         format_number: @formats.index(format), file: file) do
+                                                         format_number: @formats.index(format), file: file,
+                                                         format_stores: format_stores) do
           @internals.with_lists_declared_by(format.format_name) { format.routine(@kit) }
         end
       end
 
-      # One block: what it is handed set in the kit's variables, its routine called (made the first
-      # time, from the block given), and a wait for the next frame. Its reads are held to +file+ (a
-      # FileReader), or to the whole copy for nil.
+      # One block: its format's settings (+format_stores+, each [variable, value]) and what it is
+      # handed set in the kit's variables, its routine called (made the first time, from the block
+      # given), and a wait for the next frame, as a step StepTables may fold into a table loop. Its
+      # reads are held to +file+ (a FileReader), or to the whole copy for nil.
       #
       # Every block writes +slot+, so the write is recorded here, where each one is built: a verb
       # added later cannot leave it out (SlotUses, which the pack cache's parts read).
-      def emit_block_call(routine_name, at:, slot:, start:, count:, format_number:, file: nil, &routine)
+      def emit_block_call(routine_name, at:, slot:, start:, count:, format_number:, file: nil, format_stores: [], &routine)
         slot.record_write
-        @internals.emit_block_arguments(at: at, slot: slot, start: start, count: count, format_number: format_number,
-                                        file: file)
-        @builder.call(define_block_routine(routine_name, &routine))
-        @internals.emit_wait
+        name = define_block_routine(routine_name, &routine)
+        arguments = @internals.block_arguments(at: at, slot: slot, start: start, count: count, format_number: format_number,
+                                               file: file)
+        @step_tables.emit_step(name, format_stores + arguments)
         nil
       end
 

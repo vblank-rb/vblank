@@ -37,6 +37,7 @@ require_relative "original/pack_library"   # The part of VBlank a kept pack is k
 require_relative "original/pack_cache"     # What the routine wrote, kept between builds
 # Must load before original/copy_reader, which mixes in each console's packed formats.
 require_relative "original/packing"        # The packed formats an unpacking routine reads, by console
+require_relative "original/step_tables"    # An unpacking routine's steps, kept as rows of tables
 # The unpacking routine's handles do their work in game words, so they come in as a part of a game does.
 VBlank.require_game_file "original/copy_reader"  # The copy and the pack as the unpacking routine sees them
 VBlank.require_game_file "original/frame_rewrite"  # Each frame a game names, written again as a record of VBlank's own

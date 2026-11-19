@@ -273,19 +273,20 @@ module VBlank
         # next file. The block's routine checks each read against the two ends (#outside_block_reads),
         # the same two tests whether the block reads the whole copy or one file.
         #
-        # What a block is handed, set before its routine is called.
-        def emit_block_arguments(at:, slot:, start:, count:, format_number:, file: nil)
-          routine_variable(:read_first).store!(file ? file.start : 0)
-          routine_variable(:read_ends).store!(file ? file.start + file.size : copy.length)
-          # The file's number, 1 first, or 0 for the whole copy.
-          routine_variable(:read_file).store!(file ? file.number + 1 : 0)
-          routine_variable(:from).store!(at)
-          routine_variable(:to).store!(slot.place(start))
-          routine_variable(:ends).store!(slot.place(slot.byte_size))
-          routine_variable(:slot_first).store!(slot.place(0))
-          routine_variable(:slot_number).store!(slot.number)
-          routine_variable(:count).store!(count)
-          routine_variable(:format_number).store!(format_number)
+        # What a block is handed, set before its routine is called: each variable of the routine's
+        # and what it is set to, in the order they are set (Original::StepTables stores them).
+        def block_arguments(at:, slot:, start:, count:, format_number:, file: nil)
+          [[routine_variable(:read_first), file ? file.start : 0],
+           [routine_variable(:read_ends), file ? file.start + file.size : copy.length],
+           # The file's number, 1 first, or 0 for the whole copy.
+           [routine_variable(:read_file), file ? file.number + 1 : 0],
+           [routine_variable(:from), at],
+           [routine_variable(:to), slot.place(start)],
+           [routine_variable(:ends), slot.place(slot.byte_size)],
+           [routine_variable(:slot_first), slot.place(0)],
+           [routine_variable(:slot_number), slot.number],
+           [routine_variable(:count), count],
+           [routine_variable(:format_number), format_number]]
         end
 
         # The start of a block's routine: the cursor at its first byte, no size expected yet.
@@ -344,7 +345,7 @@ module VBlank
           false
         end
 
-        # Whether the block may not read the copy at +at+ (#emit_block_arguments): a test the routine
+        # Whether the block may not read the copy at +at+ (#block_arguments): a test the routine
         # makes.
         def outside_block_reads(at) = at < routine_variable(:read_first) || at >= routine_variable(:read_ends)
 

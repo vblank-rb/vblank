@@ -618,6 +618,7 @@ module VBlank
             slots.reject(&:filled_by_routine?).each do |slot|
               reader.copy_bytes(at: slot.at, count: slot.byte_size, into: pack[slot.name])
             end
+            reader.fold_constant_steps!
           end
           routines.each do |routine|
             slot_uses[routine.part] ||= Original::SlotUses.new if routine.pieced?
@@ -642,6 +643,8 @@ module VBlank
               building.enter(routine)
               maker.instance_exec(reader, pack, release.name, &routine.block)
             end
+            # Before the part's statements and variables are recorded: a fold replaces statements and makes variables.
+            reader.fold_constant_steps!
             built_names.record_made_by(routine.part, maker.variables - made_before)
             part_programs&.record_part(routine.part, statements: maker.program.children.drop(statements_before),
                                                      functions: maker.declared_function_names - functions_before)

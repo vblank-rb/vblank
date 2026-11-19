@@ -254,6 +254,30 @@ class TestPackCacheParts < Minitest::Test
     end
   end
 
+  # TWO PARTS, EACH ASKING FOR STEPS FROM A RUBY LOOP, each made into a table loop
+  # (Original::StepTables). Built alone, a part makes the same tables as after the part before it,
+  # so it is no part built apart, and the pack put together from the parts is the whole routine's.
+  COPIES_A_PART = 4
+
+  def test_parts_whose_steps_are_made_into_table_loops_build_alike_alone
+    Dir.mktmpdir do |folder|
+      pack = VBlank::Builder.new.data_pack(from: original(folder), version: "1") do |slots|
+        slots.numbers :first, count: COPIES_A_PART, width: :byte, signed: false
+        slots.numbers :second, count: COPIES_A_PART, width: :byte, signed: false
+        slots.fill_from_copy :first do |copy, into|
+          COPIES_A_PART.times { |n| copy.copy_bytes at: SPEEDS_AT + n, count: 1, into: into[:first], start: n }
+        end
+        slots.fill_from_copy :second do |copy, into|
+          COPIES_A_PART.times { |n| copy.copy_bytes at: TILES_AT + (n * 3), count: 1, into: into[:second], start: n }
+        end
+      end
+      cache = PackCache.new(File.join(folder, "packs"))
+      made, = cached_pack(cache, pack.unpacking, pack.unpacking_parts)
+
+      assert_equal whole_routine_pack(pack.unpacking), made.to_bytes
+    end
+  end
+
   # RUBY STATE ONE PART'S BLOCK LEAVES FOR ANOTHER, which no program shows. Here the first part
   # sets an instance variable as it is built, and the second reads it to choose where it reads the
   # copy. Built alone, the second part reads somewhere else, so its cache entry would be keyed on
