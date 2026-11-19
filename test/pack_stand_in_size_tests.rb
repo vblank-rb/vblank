@@ -215,28 +215,37 @@ module PackStandInSizeTests
                     "from #{few} to #{many} bytes, more than the #{pictures} bytes of the belt's pictures held once"
   end
 
-  # ...and A SHOW COPIES THE PICTURE INTO THE RUNS OF THE BANKS THE MAP POINTS AT ALONE: which
-  # banks a cell names is in the file, so the game learns it as it starts. The map draws the belt
-  # in two banks of six, so two runs hold the belt's pictures, and the other four were never copied
-  # into at all, from power-on on. The runs are the framework's own lists, which only the lowered
-  # game is asked about: the interpreter copies into every run, and shows the same picture.
-  def test_a_show_copies_into_the_runs_of_the_banks_the_map_draws_from_alone
-    copied = Dir.mktmpdir do |folder|
-      words = PackTilePictureGames.title_belt_words(FEW_CELLS)
-      _, file = Belts.new.title_belt_game_and_file(folder, words: words, banks: MANY_BANKS)
-      program, = Belts.new.title_belt_game_and_file(folder, words: words, banks: MANY_BANKS, options: LEFT_OUT)
-      run = headless_run.hand_file(file).run(program_played(program), frames: SHOWS)
-      (0...MANY_BANKS).count { |bank| run.list(belt_run_list(bank)).any?(&:nonzero?) }
+  # ...and EVERY BANK'S RUN SHOWS FROM ONE LIST, WHICH A SHOW COPIES INTO ONLY WHILE A CELL NAMES THE
+  # TILE: each run shows the same bytes, the belt turned each way, so the belt's picture is in the
+  # game's memory once however many banks its slot has. Which cells name the tile is in the file, so
+  # the game learns it as it starts: a map that never names it leaves the list as it was at power-on,
+  # never copied into. The list is the framework's own, which only the lowered game is asked about:
+  # the interpreter copies into it always, and shows the same picture.
+  def test_every_banks_run_shows_from_one_list_copied_into_while_a_cell_names_the_tile
+    named, unnamed = [PackTilePictureGames.title_belt_words(FEW_CELLS), STILL_WORDS].map do |words|
+      Dir.mktmpdir do |folder|
+        _, file = Belts.new.title_belt_game_and_file(folder, words: words, banks: MANY_BANKS)
+        program, = Belts.new.title_belt_game_and_file(folder, words: words, banks: MANY_BANKS, options: LEFT_OUT)
+        run = headless_run.hand_file(file).run(program_played(program), frames: SHOWS)
+        assert_raises(StandardError, "a list for the run of bank 1") { run.list(belt_run_list(1)) }
+        run.list(BELT_LIST)
+      end
     end
 
-    assert_equal FEW_BANKS, copied, "the runs a show copied the belt into, of #{MANY_BANKS}"
+    assert named.any?(&:nonzero?), "a map naming the belt shows it from the one list"
+    assert unnamed.all?(&:zero?), "a map never naming the belt copied it into the list"
   end
 
   # The passes the belt game plays: each shows a picture, the second one from the third pass on.
   SHOWS = 6
 
-  # The list the run of the belt for +bank+ shows its picture from (Builder::PackTilePictures
-  # names a background's runs in the order of its banks).
+  # A map naming only still tiles (1 and 3), never the belt's tile 2.
+  STILL_WORDS = Array.new(FEW_CELLS) { |at| PackBackgroundGames::GENESIS_CELL.(at.even? ? 1 : 3, bank: (at / 2) % 2) }.freeze
+
+  # The list every bank's run of the belt shows from (Builder::PackTilePictures#pictures_shown_at_start).
+  BELT_LIST = VBlank::Messages::MadeNames.make(:tile_pictures_part, group: :belt, part: :shown)
+
+  # The list a run of the belt for +bank+ would show from, had each run a list of its own.
   private def belt_run_list(bank) = VBlank::Messages::MadeNames.make(:tile_pictures_part, group: :"belt_run_#{bank}", part: :shown)
 
   # Each lowering here builds on Computer::Lowering, which counts what the game keeps of the file.

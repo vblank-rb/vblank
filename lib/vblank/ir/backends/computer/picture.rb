@@ -495,10 +495,11 @@ module VBlank
           # as art that was drawn ahead of time.
           def every_place_of(run) = painted_image(run, (0...PLACES_IN_RUN_COLORS).to_a, width: PLACES_IN_RUN_COLORS, height: 1)
 
-          # The run whose list is +name+, or nil. Only a run of tiles is painted from a list: a pose
-          # drawn from sprite tiles (PoseRun) takes its tiles from a load of its set
-          # (rg_tile_pose_load), has no list, and so no cell of the file is ever pointed at it.
-          def run_painted_from(name) = @runs_painted_from_lists.each_value.find { |run| run.list == name }
+          # The runs whose list is +name+: one, or several that show the same bytes, or none. Only a
+          # run of tiles is painted from a list: a pose drawn from sprite tiles (PoseRun) takes its
+          # tiles from a load of its set (rg_tile_pose_load), has no list, and so no cell of the file
+          # is ever pointed at it.
+          def runs_painted_from(name) = @runs_painted_from_lists.each_value.select { |run| run.list == name }
 
           # The run that paints the tile +name+, or nil for a tile that is a picture.
           def run_painting(name) = @tile_runs.each_value.find { |run| run.tiles.include?(name) }

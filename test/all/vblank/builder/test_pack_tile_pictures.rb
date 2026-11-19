@@ -237,6 +237,75 @@ module PackTilePictureGames
     [b.program, b.made_data_pack_file]
   end
 
+  # A WORLD OF MANY ROOMS WHOSE TILES TAKE TURNS, over a slot of colours in sixteen banks, as a
+  # port's field is: ROOM_COUNT rooms, each a map of its own over one slot of tiles, and
+  # ROOM_KEYS of those tiles taking turns through the belt's three pictures, each key a picture
+  # further on than the one before. Room +room+'s map is ROOM_ACROSS cells naming keys in banks 0
+  # and 1, turned each way, then the still tile 0.
+  ROOM_COUNT = 12
+  ROOM_KEYS = 12
+  ROOM_BANKS = 16
+  ROOM_ACROSS = 4
+  ROOM_COLORS_AT = 0x40
+  ROOM_TILES_AT = ROOM_COLORS_AT + (ROOM_BANKS * 32)
+  ROOM_BELT_AT = ROOM_TILES_AT + ((ROOM_KEYS + 1) * 32)
+  ROOM_MAPS_AT = ROOM_BELT_AT + (BELT.length * 32)
+
+  # The key a room's cell +at+ names (1 to ROOM_KEYS), and the cell: [tile, bank, mirrored, upside down].
+  def self.room_cell(room, at)
+    return [0, 0, false, false] if at == ROOM_ACROSS - 1
+
+    [1 + ((room + at) % ROOM_KEYS), at % 2, at == 1, at == 2]
+  end
+
+  # The game walking the rooms, a room a pass from the second on, its keys showing picture
+  # (tick / 2) % 3. Hands back the program and the pack file the build made.
+  private def rooms_belt_game_and_file(folder, options: VBlank::Cartridge::Options.new)
+    copy = "\0".b * (ROOM_MAPS_AT + (ROOM_COUNT * ROOM_ACROSS * 2))
+    copy[ROOM_COLORS_AT, ROOM_BANKS * 32] = Array.new(ROOM_BANKS) { |bank| MadeUpOriginalLayouts::PALETTE.rotate(bank) }.flatten.pack("v*")
+    copy[ROOM_TILES_AT, (ROOM_KEYS + 1) * 32] = [PLACES[1], *Array.new(ROOM_KEYS, PLACES[2])].map(&LOW_HALF_FIRST).join
+    copy[ROOM_BELT_AT, BELT.length * 32] = BELT.map(&LOW_HALF_FIRST).join
+    ROOM_COUNT.times do |room|
+      words = Array.new(ROOM_ACROSS) do |at|
+        tile, bank, mirrored, upside_down = PackTilePictureGames.room_cell(room, at)
+        ADVANCE_CELL.(tile, bank: bank, mirrored: mirrored, upside_down: upside_down)
+      end
+      copy[ROOM_MAPS_AT + (room * ROOM_ACROSS * 2), ROOM_ACROSS * 2] = words.pack("v*")
+    end
+    path = File.join(folder, "made_up_rooms.bin")
+    File.binwrite(path, copy)
+    from = VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :gba,
+                                      settings_file: File.join(folder, "made_up.yml"),
+                                      releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
+    rooms = Array.new(ROOM_COUNT) { |room| :"room_#{room}" }
+    b = VBlank::Builder.new(options: options)
+    b.instance_eval do
+      screen :tiled
+      pack = data_pack from: from, version: "1" do |slots|
+        slots.tiles :video, at: ROOM_TILES_AT, count: ROOM_KEYS + 1
+        slots.tiles :belt, at: ROOM_BELT_AT, count: BELT.length
+        slots.colors :palette, at: ROOM_COLORS_AT, count: ROOM_BANKS * 16
+        rooms.each_with_index do |room, at|
+          slots.numbers :"#{room}_map", at: ROOM_MAPS_AT + (at * ROOM_ACROSS * 2), count: ROOM_ACROSS, width: :half, signed: false
+        end
+      end
+      keys = (1..ROOM_KEYS).to_h do |key|
+        [pack[:video].tile(key), Array.new(BELT.length) { |picture| pack[:belt].tile((key + picture) % BELT.length) }]
+      end
+      belt = tile_pictures :belt, tiles: keys
+      world = background :world, tiles: pack[:video], colors: pack[:palette],
+                                 map: rooms.to_h { |room| [room, pack[:"#{room}_map"].as_map(across: ROOM_ACROSS)] }
+      tick = var :tick, 0
+      game_loop do
+        tick += 1
+        belt.show((tick / 2) % 3)
+        rooms.drop(1).each_with_index { |room, at| world.show_map room if tick == at + 2 }
+      end
+    end
+    b.finalize_program
+    [b.program, b.made_data_pack_file]
+  end
+
   # A game of the made-up original for +platform+ whose map is +words+, its tile 2 taking turns
   # through the slot :belt. +step+ is run every pass, handed the group and a count of passes. With
   # +in_scene+ the background is declared in the scene that shows it, the group outside it. With
@@ -457,6 +526,20 @@ class TestPackTilePictures < Minitest::Test
         assert_equal BANKS.fetch(bank).fetch(place), screen.pixel(at_x + x, y), "#{why}: the pixel (#{x}, #{y}) of the cell at #{at_x}"
       end
     end
+  end
+
+  # A WORLD OF MANY ROOMS WHOSE TILES TAKE TURNS, BUILT WITH ITS PACK LEFT OUT, FITS THE CONSOLE'S
+  # MEMORY. Which banks and turns the maps name is in the file, so each room holds a run of every
+  # key turned every way for every bank. Every one of those runs shows the same pictures, so they
+  # show them from one list: the group's pictures once, not once for each room and bank, which
+  # would be more than the console's roomier memory.
+  def test_many_rooms_of_tiles_taking_turns_fit_the_console_built_with_the_pack_left_out
+    program = Dir.mktmpdir do |folder|
+      rooms_belt_game_and_file(folder, options: VBlank::Cartridge::Options.new(console: :gba, for_computer: true, pack_at_start: true)).first
+    end
+    errors = VBlank::IR::ProgramChecks.findings_for!(program).errors
+
+    assert_empty errors.map(&:message)
   end
 
   private def refusal(&declares)

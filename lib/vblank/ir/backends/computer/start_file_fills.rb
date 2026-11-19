@@ -580,11 +580,27 @@ module VBlank
 
           # +statement+, made only where the run +name+ is one a cell of the file is pointed at, or
           # always for a run every game shows (#runs_pointed_by_file).
-          def made_where_run_pointed(name, statement)
-            return statement unless runs_pointed_by_file.include?(name)
+          def made_where_run_pointed(name, statement) = made_where_any_run_pointed([name], statement)
 
-            pointed = Statements::Index.new(runs_pointed_array, Statements::Int.new(@run_numbers.fetch(name)))
-            Statements::If.new(condition: call("rg_eq", pointed, Statements::Int.new(1)), body: [statement])
+          # +statement+, made only where one of the runs +names+ (the runs showing from one list) is
+          # pointed at, or always where one of them is a run every game shows. The runs of a group
+          # read at start share one list (Builder::PackTilePictures#pictures_shown_at_start), so a
+          # copy into it is wanted while any of them shows.
+          def made_where_any_run_pointed(names, statement)
+            return statement unless names.all? { |name| runs_pointed_by_file.include?(name) }
+
+            tests = names.map do |name|
+              call("rg_eq", Statements::Index.new(runs_pointed_array, Statements::Int.new(@run_numbers.fetch(name))), Statements::Int.new(1))
+            end
+            Statements::If.new(condition: either_of(tests), body: [statement])
+          end
+
+          # Whether any of +tests+ holds, paired up as a balanced tree, so a list shown by many runs
+          # nests its test a few calls deep rather than one call for each run (a C compiler holds
+          # brackets to a depth of a few hundred).
+          def either_of(tests)
+            tests = tests.each_slice(2).map { |pair| pair.length == 2 ? call("rg_either", *pair) : pair.first } while tests.length > 1
+            tests.first
           end
 
           # Whether the routine reading the file writes the painted tiles, which are then declared

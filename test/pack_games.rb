@@ -2224,6 +2224,9 @@ module PackGames
       end,
       game(:cell_written_with_set_cell_taking_turns_through_pack_pictures, passes: 9) do |folder, options|
         built(*written_cell_game_and_file(folder, options: options))
+      end,
+      game(:tiles_taking_turns_in_many_rooms_over_sixteen_banks, passes: PackTilePictureGames::ROOM_COUNT + 2) do |folder, options|
+        built(*rooms_belt_game_and_file(folder, options: options))
       end
     ].freeze
   end

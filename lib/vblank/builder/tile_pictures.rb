@@ -44,19 +44,21 @@ module VBlank
       # cartridge holding +bytes+, each picture's tiles one after another. A group of `tile_pictures`
       # is one of these; a group of a pack's tiles is one for each background and bank that draws
       # it. +held+ is a table the caller made (a DSL::Table) in place of one made of +bytes+.
+      # +shown_in+ is a list the caller made and fills (PackTilePictures#pictures_shown_at_start), for
+      # runs that all show the same bytes, in place of a list of the run's own.
       # Hands back a TilePictureRun: the list, the table (a DSL::Table), the run, and the bytes a
       # picture takes.
-      private def declare_tile_picture_run(name, count:, colors:, side:, bytes:, fast:, held: nil)
+      private def declare_tile_picture_run(name, count:, colors:, side:, bytes:, fast:, held: nil, shown_in: nil)
         bytes_shown = count * TILE_BYTES * ((side / 8)**2)
-        list_name = Messages::MadeNames.make(:tile_pictures_part, group: name, part: :shown)
-        at_boot(Build.list_new(list_name, bytes_shown, width: :byte, fast: fast, full_of: 0))
-        list = DSL::List.new(self, list_name)
+        list_name = shown_in&.name || Messages::MadeNames.make(:tile_pictures_part, group: name, part: :shown)
+        at_boot(Build.list_new(list_name, bytes_shown, width: :byte, fast: fast, full_of: 0)) unless shown_in
+        list = shown_in || DSL::List.new(self, list_name)
         held ||= table(Messages::MadeNames.make(:tile_pictures_part, group: name, part: :pictures), bytes, width: :byte, signed: false)
         run = self.tiles(name, { from: list, count: count, colors: colors, held_in: held.name, tile_side: side })
         # At power-on, not here: this line can be inside a scene, whose body runs every pass, and
         # the first picture would be put back every time. A scene's screen copies a run in as it
         # comes up, so only a group declared outside any scene has its first copy to ask for.
-        at_boot(Build.list_copy(list_name, table: held.name, at: Build.int(0), count: bytes_shown))
+        at_boot(Build.list_copy(list_name, table: held.name, at: Build.int(0), count: bytes_shown)) unless shown_in
         run.changed(now: true) unless recording_game_code?
         TilePictureRun.new(list: list, held: held, run: run, bytes_shown: bytes_shown)
       end

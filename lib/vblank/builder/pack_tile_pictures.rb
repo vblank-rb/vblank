@@ -43,10 +43,14 @@ module VBlank
 
       private
 
-      # The routine `show` calls on a frame the picture changes: a copy into every run of the group.
+      # The routine `show` calls on a frame the picture changes: a copy into every list the group's
+      # runs show from, once each (the runs read at start share one), and every run marked changed.
       def emit_pack_tile_picture_copies(group)
+        copied = Set.new
         group.parts.each do |part|
-          part.list.copy_from(part.held, at: Build.binop(:*, group.shown.node, Build.int(part.bytes_shown)), count: part.bytes_shown)
+          if copied.add?(part.list.name)
+            part.list.copy_from(part.held, at: Build.binop(:*, group.shown.node, Build.int(part.bytes_shown)), count: part.bytes_shown)
+          end
           part.run.changed
         end
       end
@@ -223,6 +227,13 @@ module VBlank
       # A run's pictures are places, two a byte, and a bank is only the colours the places are
       # shown in, so every bank's run of a group copies from one table of its pictures
       # (#painted_pictures_read_at_start), however many banks and backgrounds draw the group.
+      #
+      # AND EVERY ONE OF THOSE RUNS SHOWS THE SAME BYTES: each key turned the four ways, the
+      # picture shown. So they show them from one list in memory (#pictures_shown_at_start), a
+      # `show` copies into it once, and each run sends it to its own tiles. A list for each run
+      # would hold the group's picture again for every bank of every background: a slot of sixteen
+      # banks drawn by a hundred rooms keeps it sixteen hundred times, more than a console's
+      # memory, where the all-in-one build keeps only the tiles its maps draw.
       def declare_pack_tile_runs_at_start(name, moving, where, first)
         tiles = []
         groups = moving.values.map(&:first).uniq
@@ -230,10 +241,11 @@ module VBlank
           keys = group.keys.length
           start = first + tiles.length
           held = painted_pictures_read_at_start(group)
+          shown_in = pictures_shown_at_start(group, held)
           where.bank_names.each_with_index do |list, bank|
             run = :"#{group.name}_run_#{group.parts.length}" # one for each background and bank
             group.parts << declare_tile_picture_run(run, count: keys * TURNS.length, colors: list, side: Original::Slot::TILE_SIDE,
-                                                         bytes: nil, fast: group.fast, held: held)
+                                                         bytes: nil, fast: group.fast, held: held, shown_in: shown_in)
             tiles.concat(Array.new(keys * TURNS.length) { |at| Messages::MadeNames.make(:tile_run_tile, run: run, number: at + 1) })
           end
           moving.filter_map do |tile, (each, key)|
@@ -248,6 +260,19 @@ module VBlank
       # starts. Declared the first time a background asks for it.
       def painted_pictures_read_at_start(group)
         (@pack_tile_pictures_at_start ||= {})[group.name] ||= declare_painted_pictures_read_at_start(group)
+      end
+
+      # The list every run of +group+ read at start shows its picture from: one picture of
+      # +held+, the first from power-on. Declared the first time a background asks for it.
+      def pictures_shown_at_start(group, held)
+        (@pack_tile_shown_at_start ||= {})[group.name] ||= begin
+          bytes_shown = group.keys.length * TURNS.length * TilePictures::TILE_BYTES
+          name = Messages::MadeNames.make(:tile_pictures_part, group: group.name, part: :shown)
+          at_boot(Build.list_new(name, bytes_shown, width: :byte, fast: group.fast, full_of: 0))
+          # At power-on, as a run of its own list is filled (TilePictures#declare_tile_picture_run).
+          at_boot(Build.list_copy(name, table: held.name, at: Build.int(0), count: bytes_shown))
+          DSL::List.new(self, name)
+        end
       end
 
       def declare_painted_pictures_read_at_start(group)
