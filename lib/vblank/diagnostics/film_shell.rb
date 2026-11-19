@@ -17,7 +17,9 @@ module VBlank
     #                                               parts: [1..2000])
     #
     # The shell is built with every copy hidden (Original::Shell.build) and played as Ruby
-    # (Live::Shell), as `vblank run --shell` and the shell check play it. The copy handed over is the
+    # (Live::Shell), with YJIT (Live.turn_on_yjit), as `vblank run --shell` and the shell check play
+    # it. The game waits for no clock (FilmedDevice): each side plays it as fast as this machine can,
+    # and the MP4 shows sixty frames a second whatever that took. The copy handed over is the
     # one this machine names (Original::Game#copy), so a machine that names none stops with
     # Original::NotSet, whose words say how to name one. The copy and the pack the shell keeps are in
     # a folder of the side's own, taken away when the side closes: nothing of the copy reaches the
@@ -46,6 +48,7 @@ module VBlank
       # first it names unless set.
       def initialize(game, console: nil)
         require_relative "../live"
+        Live.turn_on_yjit
         @game = game
         @console = console ? Console.named(console) : game.consoles.first
         @built = Original::Shell.build(game, console: @console, err: nil)

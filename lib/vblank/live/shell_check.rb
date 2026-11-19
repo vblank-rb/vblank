@@ -20,8 +20,9 @@ module VBlank
     # 5. plays the tape on both starts and on the all-in-one build, and compares every picture and
     #    every sample of sound.
     #
-    # The shell is played as Ruby (Live::Shell), the way `vblank run --shell` plays it, on a Headless
-    # device asked what the window is asked and opened at the window's size. A machine
+    # The shell is played as Ruby (Live::Shell) with YJIT (Live.turn_on_yjit), the way `vblank run
+    # --shell` plays it, on a Headless device asked what the window is asked and opened at the
+    # window's size. A machine
     # that names no copy stops at step 2 with Original::NotSet, whose words say how to name one. Any
     # other step that goes wrong raises Failed, saying which step and where it went wrong.
     class ShellCheck
@@ -57,6 +58,7 @@ module VBlank
       # Runs every step for each console. Raises Failed for a step that went wrong, or
       # Original::NotSet when this machine names no copy.
       def run
+        Live.turn_on_yjit
         @consoles.each { |console| run_for(console) }
         @say.call("The shell of #{@game.title} plays as its all-in-one build does")
       end

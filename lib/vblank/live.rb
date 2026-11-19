@@ -12,6 +12,7 @@
 # through Fiddle, which a game that only builds cartridges never needs, and Fiddle is loaded only
 # when a window is asked for.
 require_relative "../vblank"
+require_relative "live/yjit"           # Ruby's compiler of hot methods, turned on for a game played here
 require_relative "live/lateness"       # Which passes ran longer than a frame, and how much was garbage collection
 require_relative "live/rate"           # How fast play went: passes and frames a second
 require_relative "live/session"        # The game played a pass at a time through a device
