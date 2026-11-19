@@ -264,12 +264,50 @@ class TestFilm < Minitest::Test
     assert_operator steps.map { |line| line.split.last.to_i }.max, :>=, 2, "the sides were played one after the other"
   end
 
-  # Frames go to ffmpeg as soon as every side has played them, not once every side has finished.
-  def test_frames_reach_ffmpeg_while_the_sides_play_on
-    lines = logged_film(20, File.join(scratch, "arrivals.log"))
+  # A side like LoggedScreen that, before it plays its +last+ frame, waits for ffmpeg to have been
+  # handed a whole frame (the stand-in ffmpeg copies what it is handed to +handed+), and notes in
+  # +log+ whether it was. It waits at most WAIT_SECONDS, which only a film that hands over nothing
+  # until its sides have finished takes, so that film fails rather than hangs.
+  class WaitsForFfmpegScreen < LoggedScreen
+    WAIT_SECONDS = 30
 
-    assert_operator lines.index { |line| line.start_with?("ffmpeg") }, :<, lines.rindex { |line| line.start_with?("step") },
-                    "ffmpeg was started only once the sides had finished"
+    def initialize(colour, log, handed:, frame_bytes:, last:)
+      super(colour, Dir.mktmpdir, log)
+      @handed = handed
+      @frame_bytes = frame_bytes
+      @last = last
+      @played = 0
+    end
+
+    def step(_count, keys: 0)
+      @played += 1
+      return self unless @played == @last
+
+      give_up_at = now + WAIT_SECONDS
+      sleep 0.01 until handed_a_frame? || now > give_up_at
+      File.write(@log, handed_a_frame? ? "handed a frame\n" : "handed nothing\n", mode: "a")
+      self
+    end
+
+    private
+
+    def handed_a_frame? = (File.size?(@handed) || 0) >= @frame_bytes
+    def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  end
+
+  # Frames go to ffmpeg as soon as every side has played them, not once every side has finished:
+  # each side's last frame waits until ffmpeg has the first.
+  def test_frames_reach_ffmpeg_while_the_sides_play_on
+    log = File.join(scratch, "arrivals.log")
+    handed = File.join(scratch, "handed")
+    frame_bytes = (2 * 2 * 240) * ((2 * 160) + STRIP) * 3
+    sides = { "ours" => 0x001F, "theirs" => 0x7C00 }.transform_values do |colour|
+      -> { WaitsForFfmpegScreen.new(colour, log, handed: handed, frame_bytes: frame_bytes, last: 6) }
+    end
+    Film.make(File.join(scratch, "waited.mp4"), sides: sides, parts: [1..6], search_path: logged_tools(log, handed))
+
+    assert_equal ["handed a frame"] * 2, File.readlines(log, chomp: true).grep(/\Ahanded/),
+                 "ffmpeg was handed no frame until the sides had finished"
   end
 
   # A film whose second side's process cannot start, as when the computer has no room for another
