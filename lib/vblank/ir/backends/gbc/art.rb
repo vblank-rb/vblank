@@ -1081,7 +1081,8 @@ module VBlank
 
           # A tile drawn any other way — from colours, or from a list with a see-through place or
           # more than four colours: three colours of its own after the backdrop, in the order it
-          # first draws them, which its see-through pixels show.
+          # first draws them, which its see-through pixels show. Where no palette of exactly those
+          # is shown yet but one holds them all, the tile is drawn from that one (#holding_palette).
           def drawn_tile(name, image, drawing)
             drawn = tile_colors(image)
             if drawn.size > OWN_COLORS
@@ -1089,9 +1090,55 @@ module VBlank
                                    "#{OWN_COLORS} and the backdrop. To fix this, draw it in #{OWN_COLORS} colours."
             end
 
-            colors = [@backdrop, *drawn]
-            places = Array.new(64) { |i| image.tile_see_through_at?(i) ? 0 : drawn.index(image.color_at(i) & 0x7FFF) + 1 }
-            [tile_number_in(drawing.room, TileBytes.of(places)), drawn_palette_number(padded(colors), drawing)]
+            colors = padded([@backdrop, *drawn])
+            number, held = holding_palette(colors, drawing)
+            colors = held.colors if held
+            places = Array.new(64) do |i|
+              next 0 if image.tile_see_through_at?(i)
+
+              color = image.color_at(i) & 0x7FFF
+              (1...PLACES).find { |place| colors[place] == color }
+            end
+            [tile_number_in(drawing.room, TileBytes.of(places)), number || drawn_palette_number(colors, drawing)]
+          end
+
+          # A PALETTE SHOWN ALREADY THAT HOLDS A DRAWN TILE'S COLOURS. A tile's own palette keeps
+          # its colours in the order it first draws them, so the same tile mirrored or upside down,
+          # or a tile drawing two of another's three colours, would each take a palette of their own
+          # though one holds them all; a screen of a few tiles turned every way then needs more than
+          # the Color's eight background palettes (Pan Docs, "CGB Registers": eight palettes of four
+          # colours, each map cell's attribute byte naming one). The tile's pixels are written as
+          # that palette's places instead. Only a palette that starts with the backdrop, which the
+          # tile's see-through pixels show, and that no other list is drawn over (no swaps, and the
+          # tile is drawn with none), since a list drawn over it swaps it place for place.
+          #
+          # [number, palette] of one +drawing+'s screen shows, or nil where there is a palette of
+          # exactly +colors+ already (the usual way finds it, so a game that never needed this
+          # builds the same bytes) or none that holds them.
+          def holding_palette(colors, drawing)
+            return nil if drawing.recolor_steps
+
+            shown = shown_palettes(drawing.room)
+            return nil if shown.any? { |_, palette| palette.colors == colors }
+
+            wanted = colors.drop(1)
+            shown.find do |_, palette|
+              palette.swaps.nil? && palette.colors.first == @backdrop && wanted.all? { |color| palette.colors.include?(color) }
+            end
+          end
+
+          # [number, palette] of every background palette +room+'s tiles can be drawn from: those
+          # every screen keeps, and in a game whose screens bring their colours in, the room's own,
+          # the rooms' it carries and the first it puts in. Every screen's first is left out while
+          # it is held for something else: free for each room's own (#keep_art_asked_so_far), or
+          # black alone waiting for a palette that can be first (#background_palette_number).
+          def shown_palettes(room)
+            kept = @background_palettes.each_with_index.map { |palette, number| [number, palette] }
+            kept = kept.reject { |number, _| number.zero? } if @first_free || @black_held
+            return kept unless room && room_colors?
+
+            first = room.first_palette_in_chain
+            [*(first ? [[0, first]] : []), *kept, *room.chain_palettes]
           end
 
           # The colours a background tile draws, in the order its palette holds them after the
