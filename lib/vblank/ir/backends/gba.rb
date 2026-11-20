@@ -1073,7 +1073,7 @@ module VBlank
           @sprite_drawing.emit_no_scene_colors_sent # no scene's sprite colours sent yet
           @background_drawing.emit_held_tiles_at_power_on(program) # no cell change waiting yet
           @background_drawing.emit_no_layers_switched_off # no background hidden yet
-          emit_gap_writes_ended # no gap's writes running yet, so the first line mixes
+          @mixer.emit_no_gap_writes_running if mix_waits_for_gap? # so the first line mixes
           emit_copy_hot_code_to_iwram unless @fast_funcs.empty?
           emit_call_power_on_swap # the scenes' own routines that fit side by side, the ones the game loop runs first
           # THE MIXER IS BROUGHT UP BEFORE THE INTERRUPTS ARE ARMED, and the order is load-bearing

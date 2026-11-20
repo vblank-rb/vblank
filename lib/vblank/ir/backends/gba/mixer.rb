@@ -1442,9 +1442,9 @@ module VBlank
           # A mix taking most of the picture held those writes off for most of the picture, and
           # every row it reached showed last frame's sprites.
           #
-          # So the game marks its gap: GAP_WRITES_RUNNING is set as it wakes from the wait and
-          # cleared once its sprite table is written (SpriteDrawing#emit_present_objects). While it
-          # is set, the line-match interrupt mixes nothing, and moves the line it waits for one on
+          # So the game marks its gap: GAP_WRITES_RUNNING is counted up as it wakes from the wait and
+          # down once its sprite table is written (SpriteDrawing#emit_present_objects). While it
+          # is above nought, the line-match interrupt mixes nothing, and moves the line it waits for one on
           # (DISPSTAT bits 8-15, the line the match interrupt fires on; GBATEK, LCD I/O Interrupts
           # and Status). The first line after the writes end, it mixes, and puts the line back to
           # the first. The order is the one a game's own interrupt keeps: what the picture is made
@@ -1453,12 +1453,34 @@ module VBlank
           # A gap that is still running at MIX_LATEST_LINE is mixed over all the same: by then the
           # picture is torn either way, and the mix needs the rest of the picture to be done before
           # the next hand-over.
+          #
+          # IT IS A COUNT, NOT A YES OR NO, because one gap can hold another. A timer's handler that
+          # waits runs as the game wakes (FrameBoundaryCalls#emit_waiting_handlers), and so does a
+          # routine run once a frame; when either waits, its own gap starts and ends inside the
+          # frame's, and the frame's writes go on after it. Each wake counts one up and each written
+          # sprite table one down, so the frame's gap is still marked when the inner one ends. The
+          # count never goes below nought, so a table written with no wake before it cannot leave
+          # the mix waiting on every frame after.
           GAP_WRITES_RUNNING = :__gap_writes_running
           MIX_LATEST_LINE = 32 # Leaves the mix four fifths of the picture it had from line 0
 
-          def emit_gap_writes_started = @primitives.store_word_immediate(1, @primitives.var_addr(GAP_WRITES_RUNNING))
+          def emit_gap_writes_started
+            @primitives.load_var(ACC, GAP_WRITES_RUNNING)
+            @emitter.emit(ASM.add_imm(ACC, ACC, 1))
+            @primitives.store_var(ACC, GAP_WRITES_RUNNING)
+          end
 
-          def emit_gap_writes_ended = @primitives.store_word_immediate(0, @primitives.var_addr(GAP_WRITES_RUNNING))
+          def emit_gap_writes_ended
+            kept = @emitter.gensym
+            @primitives.load_var(ACC, GAP_WRITES_RUNNING)
+            @emitter.emit(ASM.subs_imm(ACC, ACC, 1))
+            @emitter.emit_branch(:bcond, kept, cond: :mi) # nought already: stays nought
+            @primitives.store_var(ACC, GAP_WRITES_RUNNING)
+            @emitter.place_label(kept)
+          end
+
+          # At power-on, no gap is running.
+          def emit_no_gap_writes_running = @primitives.store_word_immediate(0, @primitives.var_addr(GAP_WRITES_RUNNING))
 
           # The line-match interrupt's body when the mix waits for the gap. Uses r0 to r2, which
           # the BIOS saved, before the mix, which may use any register.

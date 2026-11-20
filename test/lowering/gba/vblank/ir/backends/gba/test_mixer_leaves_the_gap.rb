@@ -74,13 +74,14 @@ class TestMixerLeavesTheGap < Minitest::Test
   # write lands as far into the picture on a frame the recordings sound as on a quiet one.
   #
   # The gap is made long by the game itself: a body run in it waits for the display to reach
-  # LATE_LINE, wherever the lowering's own work in the gap ended, and the sprite table is
+  # +late_line+, wherever the lowering's own work in the gap ended, and the sprite table is
   # written after it.
-  LATE_LINE = 226
-  SOUND_STARTS = 10 # the pass the recordings start on; the passes before it are quiet
   THINGS = 64
 
-  private def gap_past_the_blank
+  # +sound_starts+ is the pass the recordings start on; the passes before it are quiet.
+  # +waiting_beat+ adds a timer whose handler waits a frame, four times a second: it runs as the
+  # game wakes, so its own gap comes inside the frame's, and the frame's gap writes go on after it.
+  private def gap_past_the_blank(sound_starts:, late_line:, waiting_beat: false)
     builder = Builder.new
     builder.extend(VBlank::Builder::Debug) # read_scanline
     builder.instance_eval do
@@ -88,17 +89,27 @@ class TestMixerLeavesTheGap < Minitest::Test
       image(:dot, "#" => :yellow) { (["#" * 8] * 8).join("\n") }
       things = pool :thing, x: 0, y: 0, capacity: THINGS, facing: { still: :dot }
       THINGS.times { |n| things.spawn(x: (n * 13) % 230, y: (n * 7) % 150) }
+      if waiting_beat
+        marker = sprite :marker, at: [0, 150], facing: { still: :dot }
+        steps = 0
+        beat = timer :beat, per_second: 4
+        beat.on_tick do
+          wait_vblank
+          steps += 1
+          marker.move_to steps % 200, 150 # so the frame's own table has a row to write
+        end
+      end
       pcm = Array.new(4096) { |i| ((i * 7) % 200) - 100 }
       clips = Array.new(VOICES) { |n| sample :"clip#{n}", pcm: pcm, rate: 32_768 }
       passes = 0
       waited = 0
       # The lines of the blank counted from its first, 0 to 67, and the picture's after them.
       once_a_frame do
-        waited += 1 while ((read_scanline + 68) % 228) < LATE_LINE - 160
+        waited += 1 while ((read_scanline + 68) % 228) < late_line - 160
       end
       game_loop do
         passes += 1
-        clips.each { |clip| clip.play(loop: true) } if passes == SOUND_STARTS
+        clips.each { |clip| clip.play(loop: true) } if passes == sound_starts
         things.each { |thing| thing.x = (thing.x + 1) % 230 }
       end
     end
@@ -107,12 +118,31 @@ class TestMixerLeavesTheGap < Minitest::Test
   end
 
   def test_the_sprite_table_is_written_before_the_mix_cuts_in
-    rows = sprite_table_rows_by_frame(gap_past_the_blank, frames: SOUND_STARTS + 12)
-    last_rows = rows.map { |frame| frame.max_by { |row| row < 160 ? row + 228 : row } }
-    quiet = last_rows[4...SOUND_STARTS]
-    loud = last_rows[(SOUND_STARTS + 2)..]
+    game = gap_past_the_blank(sound_starts: 10, late_line: 226)
+    assert_table_written_as_on_quiet_frames(game, sound_starts: 10, frames: 24)
+  end
 
-    assert_operator quiet.max, :<, 20, "the gap must reach a few rows past the blank, or this tests nothing: #{last_rows}"
+  # A handler's gap ends inside the frame's: the frame's own writes still come before the mix. The
+  # quiet frames take in two of the handler's, and so do the loud ones. The handler's gap and the
+  # frame's run on after each other, so the wait ends earlier, and the frame's writes still end
+  # before the mix's last line (Mixer::MIX_LATEST_LINE).
+  def test_a_handler_that_waits_leaves_the_frame_its_gap
+    game = gap_past_the_blank(sound_starts: 40, late_line: 200, waiting_beat: true)
+    assert_table_written_as_on_quiet_frames(game, sound_starts: 40, frames: 80)
+  end
+
+  # The last row each frame's writes to the sprite table landed on is no further into the picture
+  # once the recordings sound than on the quiet frames before them. A pass that took two frames
+  # starts the sound a frame or two after its pass number, so the loud frames start a little later.
+  # Rows are counted from the blank's first (160 is 0), the picture's rows after its 68.
+  private def assert_table_written_as_on_quiet_frames(rom, sound_starts:, frames:)
+    rows = sprite_table_rows_by_frame(rom, frames: frames)
+    last_rows = rows.map { |frame| frame.map { |row| (row + 68) % 228 }.max }
+    quiet = last_rows[4...sound_starts].compact
+    loud = last_rows[(sound_starts + 6)..].compact
+
+    assert_operator quiet.max, :>, 68, "the gap must reach past the blank, or this tests nothing: #{last_rows}"
+    assert_operator quiet.max, :<, 68 + GBA::Mixer::MIX_LATEST_LINE, "...and end before the mix's last line: #{last_rows}"
     assert_operator loud.max, :<=, quiet.max + 1, "the last row a write to the sprite table landed on, by frame: #{last_rows}"
   end
 
