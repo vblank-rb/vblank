@@ -22,7 +22,8 @@ end
 
 # One sprite on screen this frame. One that turns or resizes carries its angle and its size for
 # this frame, and whether its size ever changes. One that loses slices to a crowded line keeps them
-# as +cuts+, [line, piece, first column left out] each (#rg_mark_slices_left_out).
+# as +cuts+, three numbers a slice: the line, the piece and its first column left out
+# (#rg_mark_slices_left_out).
 RgPlaced = Struct.new(:sprite, :image, :x, :y, :level, :turned, :angle, :size, :resizes, :cuts)
 
 
@@ -102,10 +103,6 @@ end
 RG_SLIVER = 8
 RG_PIECE_NUMBERS = 4
 
-# One piece kept on a line (rg_sprites.c's line_piece): whose, which piece, its left edge on the
-# screen, its width, and its first column left out (its width for none).
-RgLinePiece = Struct.new(:sprite, :piece, :left, :width, :from)
-
 # rg_sprites.c's piece_on_screen
 def rg_piece_on_screen?(left, top, width, height)
   left > -width && left < RG_SCREEN_WIDTH && top > -height && top < RG_SCREEN_HEIGHT
@@ -114,92 +111,261 @@ end
 # rg_sprites.c's piece_takes_entry
 def rg_piece_takes_entry?(left, top, width, height)
   reach = @rg_game_image_pieces[1]
-  rg_piece_on_screen?(left, top, [width, reach].max, [height, reach].max)
+  rg_piece_on_screen?(left, top, width > reach ? width : reach, height > reach ? height : reach)
 end
 
-# SpriteLines.limit_slivers
-def rg_limit_slivers(kept)
-  fetched = 0
-  kept.reverse_each do |piece|
-    (0...piece.width).step(RG_SLIVER) do |offset|
-      sliver = piece.left + offset
-      next unless sliver > -RG_SLIVER && sliver < RG_SCREEN_WIDTH
+# WHAT A LINE'S LIMIT IS WORKED OUT IN, kept from pass to pass, so working it out makes no object:
+# each Array is written by place and only grows, and what a pass holds is counted beside it.
+#
+#   @rg_slice_order   the sprites' places, front-most first (the table's order)
+#   @rg_take_*        the table's entries, one a piece that takes one: its sprite, piece, left, top,
+#                     width and height
+#   @rg_line_head/_tail  the first and last node on each screen line, -1 for none
+#   @rg_node_*        the nodes, one a piece on a line: its entry, the next node on the line (-1 for
+#                     none), and its first column left out (its width for none)
+#   @rg_line_kept     the nodes a line keeps, while its limit is worked out
+def rg_slice_buffers
+  return if @rg_slice_order
 
-      if fetched == RG_SPRITE_SLIVERS_A_LINE
-        piece.from = offset
-        break
+  @rg_slice_order = []
+  @rg_take_sprite = []
+  @rg_take_numbers = [] # piece, left, top, width, height: five an entry
+  @rg_line_head = Array.new(RG_SCREEN_HEIGHT, -1)
+  @rg_line_tail = Array.new(RG_SCREEN_HEIGHT, -1)
+  @rg_node_take = []
+  @rg_node_next = []
+  @rg_node_from = []
+  @rg_line_kept = []
+end
+
+# SpriteLines.limit_slivers, over the +count+ nodes @rg_line_kept holds.
+def rg_limit_slivers(count)
+  fetched = 0
+  i = count - 1
+  while i >= 0
+    node = @rg_line_kept[i]
+    take = 5 * @rg_node_take[node]
+    left = @rg_take_numbers[take + 1]
+    width = @rg_take_numbers[take + 3]
+    offset = 0
+    while offset < width
+      sliver = left + offset
+      if sliver > -RG_SLIVER && sliver < RG_SCREEN_WIDTH
+        if fetched == RG_SPRITE_SLIVERS_A_LINE
+          @rg_node_from[node] = offset
+          break
+        end
+        fetched += 1
       end
-      fetched += 1
+      offset += RG_SLIVER
     end
+    i -= 1
   end
 end
 
-# SpriteLines.limit_pixels
-def rg_limit_pixels(kept)
+# SpriteLines.limit_pixels, over the same.
+def rg_limit_pixels(count)
   spent = 0
-  kept.each do |piece|
-    piece.from = [RG_SPRITE_PIXELS_A_LINE - spent, 0].max if spent + piece.width > RG_SPRITE_PIXELS_A_LINE
-    spent += piece.width
+  i = 0
+  while i < count
+    node = @rg_line_kept[i]
+    width = @rg_take_numbers[(5 * @rg_node_take[node]) + 3]
+    if spent + width > RG_SPRITE_PIXELS_A_LINE
+      left = RG_SPRITE_PIXELS_A_LINE - spent
+      @rg_node_from[node] = left < 0 ? 0 : left
+    end
+    spent += width
+    i += 1
+  end
+end
+
+# A slice left out of +sprite+: on +line+, of +piece+, from column +from+. A sprite's cuts are one
+# list, three numbers a slice, and the list is its sprite number's, kept from pass to pass
+# (@rg_cut_lists) and written by place, so it takes no new memory once it is long enough;
+# rg_trim_cuts cuts it to what this pass wrote. A sprite the last pass kept for a rebuild may hold
+# the same list: it is only ever compared with this pass's, whose places decide every cut, so a list
+# both hold is the same for both.
+def rg_note_cut(sprite, line, piece, from)
+  number = sprite.sprite
+  lists = (@rg_cut_lists ||= Array.new(RG_MAX_SPRITES))
+  used = (@rg_cut_used ||= Array.new(RG_MAX_SPRITES, -1)) # how much of each list this pass wrote; -1 for none
+  cuts = sprite.cuts
+  unless cuts
+    # A sprite number placed twice in one pass: the second takes a list of its own.
+    return sprite.cuts = [line, piece, from] if used[number] >= 0
+
+    cuts = sprite.cuts = (lists[number] ||= [])
+    used[number] = 0
+  end
+  return cuts << line << piece << from unless cuts.equal?(lists[number])
+
+  at = used[number]
+  cuts[at] = line
+  cuts[at + 1] = piece
+  cuts[at + 2] = from
+  used[number] = at + 3
+end
+
+# Each kept list of cuts in +placed+ cut to the slices this pass wrote in it, and made free for the
+# next pass.
+def rg_trim_cuts(placed)
+  used = @rg_cut_used or return
+  placed.each do |sprite|
+    cuts = sprite.cuts or next
+    number = sprite.sprite
+    next unless cuts.equal?(@rg_cut_lists[number])
+
+    cuts.pop while cuts.length > used[number]
+    used[number] = -1
   end
 end
 
 # Reference#mark_slices_left_out: each sprite that loses slices to a crowded line, or pieces to a
-# full table, keeps them as its +cuts+, [line, piece, first column left out] each. The table lists
-# them front-most first: the deepest level last, and inside a level the one drawn last first, and is
-# filled from the end RG_SPRITE_TABLE_FROM_BACK names. Each line's pieces are gathered in that
-# order, then held to the line's limit.
+# full table, keeps them as its +cuts+, three numbers a slice: the line, the piece and its first
+# column left out. The table lists them front-most first: the deepest level last, and inside a
+# level the one drawn last first, and is filled from the end RG_SPRITE_TABLE_FROM_BACK names. Each
+# line's pieces are gathered in that order, then held to the line's limit. Worked out in buffers kept
+# from pass to pass (#rg_slice_buffers), so a pass makes no object here but a sprite's list of cuts.
 def rg_mark_slices_left_out(placed)
   placed.each { |sprite| sprite.cuts = nil }
   return if (RG_SPRITE_PIECES_A_LINE == 0 && RG_SPRITE_PIECES_A_SCREEN == 0) || placed.empty?
 
-  taking = []
-  placed.each_index.sort_by { |at| [placed[at].level, at] }.reverse_each do |at|
-    sprite = placed[at]
-    pieces, start = rg_screen_image_pieces(sprite.image)
-    pieces[start].times do |piece|
-      listed = start + 1 + (RG_PIECE_NUMBERS * piece)
-      entry = [sprite, piece, sprite.x + pieces[listed], sprite.y + pieces[listed + 1], pieces[listed + 2], pieces[listed + 3]]
-      taking << entry if rg_piece_takes_entry?(*entry.drop(2))
+  rg_slice_buffers
+  order = @rg_slice_order
+  count = placed.length
+  # The deepest level last, the one drawn last first: an insertion sort, which sorts in place.
+  i = 0
+  while i < count
+    level = placed[i].level
+    at = i
+    while at > 0 && placed[order[at - 1]].level <= level
+      order[at] = order[at - 1]
+      at -= 1
     end
+    order[at] = i
+    i += 1
   end
-  lines = Array.new(RG_SCREEN_HEIGHT) { [] }
-  taking.each_with_index do |(sprite, piece, left, top, width, height), at|
-    next unless rg_piece_on_screen?(left, top, width, height)
 
-    in_table = RG_SPRITE_PIECES_A_SCREEN == 0 ||
-               (RG_SPRITE_TABLE_FROM_BACK ? at >= taking.length - RG_SPRITE_PIECES_A_SCREEN : at < RG_SPRITE_PIECES_A_SCREEN)
-    ([top, 0].max...[top + height, RG_SCREEN_HEIGHT].min).each do |line|
-      if in_table
-        lines[line] << RgLinePiece.new(sprite, piece, left, width, width)
-      else
-        (sprite.cuts ||= []) << [line, piece, 0]
+  numbers = @rg_take_numbers
+  taking = 0
+  k = 0
+  while k < count
+    sprite = placed[order[k]]
+    image = sprite.image
+    pieces = rg_screen_image_pieces_list(image)
+    start = rg_screen_image_pieces_start(image)
+    piece = 0
+    while piece < pieces[start]
+      listed = start + 1 + (RG_PIECE_NUMBERS * piece)
+      left = sprite.x + pieces[listed]
+      top = sprite.y + pieces[listed + 1]
+      width = pieces[listed + 2]
+      height = pieces[listed + 3]
+      if rg_piece_takes_entry?(left, top, width, height)
+        @rg_take_sprite[taking] = sprite
+        at = 5 * taking
+        numbers[at] = piece
+        numbers[at + 1] = left
+        numbers[at + 2] = top
+        numbers[at + 3] = width
+        numbers[at + 4] = height
+        taking += 1
+      end
+      piece += 1
+    end
+    k += 1
+  end
+
+  heads = @rg_line_head
+  tails = @rg_line_tail
+  heads.fill(-1)
+  tails.fill(-1)
+  nodes = 0
+  entry = 0
+  while entry < taking
+    at = 5 * entry
+    left = numbers[at + 1]
+    top = numbers[at + 2]
+    width = numbers[at + 3]
+    height = numbers[at + 4]
+    if rg_piece_on_screen?(left, top, width, height)
+      in_table = RG_SPRITE_PIECES_A_SCREEN == 0 ||
+                 (RG_SPRITE_TABLE_FROM_BACK ? entry >= taking - RG_SPRITE_PIECES_A_SCREEN : entry < RG_SPRITE_PIECES_A_SCREEN)
+      line = top < 0 ? 0 : top
+      past = top + height
+      past = RG_SCREEN_HEIGHT if past > RG_SCREEN_HEIGHT
+      while line < past
+        if in_table
+          @rg_node_take[nodes] = entry
+          @rg_node_next[nodes] = -1
+          @rg_node_from[nodes] = width
+          if heads[line] < 0
+            heads[line] = nodes
+          else
+            @rg_node_next[tails[line]] = nodes
+          end
+          tails[line] = nodes
+          nodes += 1
+        else
+          rg_note_cut(@rg_take_sprite[entry], line, numbers[at], 0)
+        end
+        line += 1
       end
     end
+    entry += 1
   end
-  return if RG_SPRITE_PIECES_A_LINE == 0
+  return rg_trim_cuts(placed) if RG_SPRITE_PIECES_A_LINE == 0
 
-  lines.each_with_index do |on_line, line|
-    on_line.drop(RG_SPRITE_PIECES_A_LINE).each { |dropped| (dropped.sprite.cuts ||= []) << [line, dropped.piece, 0] }
-    kept = on_line.first(RG_SPRITE_PIECES_A_LINE)
-    rg_limit_slivers(kept) if RG_SPRITE_SLIVERS_A_LINE != 0
-    rg_limit_pixels(kept) if RG_SPRITE_PIXELS_A_LINE != 0
-    kept.each { |piece| (piece.sprite.cuts ||= []) << [line, piece.piece, piece.from] if piece.from < piece.width }
+  kept = @rg_line_kept
+  line = 0
+  while line < RG_SCREEN_HEIGHT
+    kept_count = 0
+    node = heads[line]
+    while node >= 0
+      if kept_count < RG_SPRITE_PIECES_A_LINE
+        kept[kept_count] = node
+        kept_count += 1
+      else
+        take = @rg_node_take[node]
+        rg_note_cut(@rg_take_sprite[take], line, numbers[5 * take], 0)
+      end
+      node = @rg_node_next[node]
+    end
+    rg_limit_slivers(kept_count) if RG_SPRITE_SLIVERS_A_LINE != 0
+    rg_limit_pixels(kept_count) if RG_SPRITE_PIXELS_A_LINE != 0
+    i = 0
+    while i < kept_count
+      node = kept[i]
+      take = @rg_node_take[node]
+      from = @rg_node_from[node]
+      rg_note_cut(@rg_take_sprite[take], line, numbers[5 * take], from) if from < numbers[(5 * take) + 3]
+      i += 1
+    end
+    line += 1
   end
+  rg_trim_cuts(placed)
 end
 
 # SpriteLines.left_out_at?: left out where a piece covering it is left out of the line from that
 # column, and no piece drawn there covers it.
 def rg_left_out_at?(placed, col, row, line)
-  pieces, start = rg_screen_image_pieces(placed.image)
+  pieces = rg_screen_image_pieces_list(placed.image)
+  start = rg_screen_image_pieces_start(placed.image)
+  cuts = placed.cuts
   covered = false
-  pieces[start].times do |piece|
+  piece = 0
+  while piece < pieces[start]
     listed = start + 1 + (RG_PIECE_NUMBERS * piece)
     across = pieces[listed]
     down = pieces[listed + 1]
-    next if col < across || col >= across + pieces[listed + 2] || row < down || row >= down + pieces[listed + 3]
-    return false unless placed.cuts.any? { |cut_line, cut, from| cut_line == line && cut == piece && col - across >= from }
+    if col >= across && col < across + pieces[listed + 2] && row >= down && row < down + pieces[listed + 3]
+      cut = 0
+      cut += 3 until cut >= cuts.length || (cuts[cut] == line && cuts[cut + 1] == piece && col - across >= cuts[cut + 2])
+      return false if cut >= cuts.length
 
-    covered = true
+      covered = true
+    end
+    piece += 1
   end
   covered
 end
@@ -376,8 +542,18 @@ def rg_objects_end
     rg_mix_as_sprite(placed.sprite)
     rg_draw_placed(placed)
     rg_mix_nothing
-    @rg_last_drawn[placed.sprite] = [placed.x, placed.y]
+    rg_note_drawn_place(placed.sprite, placed.x, placed.y)
   end
+end
+
+# Where +sprite+ was last drawn straight onto the picture: its pair kept from pass to pass
+# (@rg_drawn_spots), written in place, so drawing a sprite makes no new object. The pair is read
+# once it is handed over (#rg_forget_drawn_place) and before the sprite is drawn again.
+def rg_note_drawn_place(sprite, x, y)
+  spot = (@rg_drawn_spots ||= Array.new(RG_MAX_SPRITES))[sprite] ||= [0, 0]
+  spot[0] = x
+  spot[1] = y
+  @rg_last_drawn[sprite] = spot
 end
 
 # Which of a row of +count+ things the number +said+ names, read the way the interpreter reads a
@@ -621,7 +797,7 @@ RgDrawnSpriteFields = Data.define(:drawn, :x, :y)
 def rg_placed_sprite_fields(placed)
   RgPlacedSpriteFields.new(sprite: placed.sprite, image: placed.image, x: placed.x, y: placed.y, level: placed.level,
                     turned: rg_state_flag(placed.turned), angle: placed.angle, size: placed.size,
-                    resizes: rg_state_flag(placed.resizes), cut_count: placed.cuts ? placed.cuts.length : 0)
+                    resizes: rg_state_flag(placed.resizes), cut_count: placed.cuts ? placed.cuts.length / 3 : 0)
 end
 
 # The +count+ sprites of +placed+ as field +name+, and the slices left out of them as +cuts_name+;
@@ -637,12 +813,12 @@ def rg_visit_placed_objects(name, cuts_name, placed, count, cuts_before)
   end
   cut_total = placed_fields.sum(&:cut_count)
   rg_state_refuse_damaged("more slices of sprites are left out than can be") if cut_total > RG_MOST_SLICES_LEFT_OUT - cuts_before
-  cuts = rg_state_records(cuts_name, placed.flat_map { |p| (p.cuts || []).map { |line, piece, from| RgCutFields.new(line, piece, from) } },
+  cuts = rg_state_records(cuts_name, placed.flat_map { |p| (p.cuts || []).each_slice(3).map { |line, piece, from| RgCutFields.new(line, piece, from) } },
                           RgCutFields, cut_total)
   return placed unless rg_state_reading
 
   placed_fields.map do |fields|
-    these = cuts.shift(fields.cut_count).map { |cut| [cut.line, cut.piece, cut.from] }
+    these = cuts.shift(fields.cut_count).flat_map { |cut| [cut.line, cut.piece, cut.from] }
     RgPlaced.new(fields.sprite, fields.image, fields.x, fields.y, fields.level, fields.turned != 0, fields.angle, fields.size,
                  fields.resizes, these.empty? ? nil : these)
   end
@@ -656,7 +832,7 @@ def rg_sprites_visit_state
     rg_state_refuse_damaged("more sprites are on screen than there is room for")
   end
   @rg_drawing = rg_visit_placed_objects("sprites.drawing", "sprites.drawing.cuts", @rg_drawing, counts.drawn, 0)
-  drawing_cuts = @rg_drawing.sum { |p| p.cuts ? p.cuts.length : 0 }
+  drawing_cuts = @rg_drawing.sum { |p| p.cuts ? p.cuts.length / 3 : 0 }
   @rg_sprite_layer = rg_visit_placed_objects("sprites.kept", "sprites.kept.cuts", @rg_sprite_layer, counts.kept, drawing_cuts)
 
   drawn_fields = @rg_last_drawn.map { |spot| spot ? RgDrawnSpriteFields.new(1, *spot) : RgDrawnSpriteFields.new(0, 0, 0) }

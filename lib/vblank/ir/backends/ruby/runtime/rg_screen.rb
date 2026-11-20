@@ -105,12 +105,13 @@ end
 # settings (the same Hash kept), for an answer kept from it (rg_colors_through), nil for a table never emptied.
 RgShownFilter = Struct.new(:table, :everywhere, :rows, :remix, :changes)
 
-# Where image +image+'s pieces are: [the array, where they start in it] (rg_screen.h,
-# rg_screen_image_pieces): those the start file lists for it, or else the game's own.
-def rg_screen_image_pieces(image)
-  read = @rg_image_pieces_read[image]
-  read ? [read, 0] : [@rg_game_image_pieces, @rg_game_image_pieces[2 + image]]
-end
+# Where image +image+'s pieces are (rg_screen.h, rg_screen_image_pieces): the Array they are in
+# (rg_screen_image_pieces_list) and where they start in it (rg_screen_image_pieces_start), those the
+# start file lists for it, or else the game's own. Two numbers from two calls, not a pair, which
+# would be an Array made for every sprite on every pass.
+def rg_screen_image_pieces_list(image) = @rg_image_pieces_read[image] || @rg_game_image_pieces
+
+def rg_screen_image_pieces_start(image) = @rg_image_pieces_read[image] ? 0 : @rg_game_image_pieces[2 + image]
 
 # +pieces+, how many and then four numbers each, are image +image+'s from now on (rg_screen.h,
 # rg_screen_read_image_pieces).
