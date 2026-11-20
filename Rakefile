@@ -6,6 +6,12 @@ require "bundler/setup"
 
 require "rake/testtask"
 require "rbconfig"
+
+# ON WINDOWS, the compiler, make, pkg-config and the libraries RubyInstaller's build tools (MSYS2)
+# installed are outside PATH unless a shell was set up for them. RubyInstaller puts them on PATH
+# itself while it installs a gem; this does the same for the emulators every test task builds, and
+# for everything those builds start. Nothing elsewhere: only RubyInstaller's Ruby has the module.
+RubyInstaller::Runtime.enable_msys_apps if defined?(RubyInstaller::Runtime)
 require_relative "ruby-gba-emulator/lib/ruby_gba_emulator/built_for"
 
 # The emulator's built extension and the sources it comes from. The emulator-backed tests run
