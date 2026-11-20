@@ -264,8 +264,13 @@ module VBlank
 
       def answers = AdvanceAnswers
       def answers_page = answers.reference
+      # THE SETTINGS ONLY THE ADVANCE HAS, by the name each is set with; what each does is told
+      # beside its build (Cartridge::AdvanceBuild). Kept here, not there, since the settings are
+      # asked of every build, a data pack's unpacking among them, which never builds a cartridge.
+      CONSOLE_SETTINGS = %i[code maker fast_cartridge fast_code stack_room profile].freeze
+
       def builder = Cartridge::AdvanceBuild
-      def console_settings = Cartridge::AdvanceBuild::SETTINGS
+      def console_settings = CONSOLE_SETTINGS
       def refuse_unusable_settings!(said) = Cartridge::AdvanceBuild.refuse_unusable_settings!(said)
       def cartridge = Cartridge::ROM
       def reading = Diagnostics::AdvanceReading

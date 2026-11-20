@@ -7,9 +7,9 @@ module VBlank
     module AdvanceBuild
       module_function
 
-      # THE SETTINGS ONLY THE ADVANCE HAS (its console settings), by the name each is set with. A
-      # game for the Advance and the Color sets them once, and its Color cartridge is built without
-      # them; a build for the Color alone that sets one is refused
+      # THE SETTINGS ONLY THE ADVANCE HAS (its console settings, Console::AdvanceKit::CONSOLE_SETTINGS),
+      # by the name each is set with. A game for the Advance and the Color sets them once, and its
+      # Color cartridge is built without them; a build for the Color alone that sets one is refused
       # (Console.refuse_unusable_console_settings!).
       #
       #   code, maker     the four characters an emulator tells one cartridge from another by, and
@@ -21,7 +21,7 @@ module VBlank
       #                   decides unless set (see IR::Backends::GBA::TopOfQuickMemory)
       #   profile         a measurement taken earlier, a path or a Diagnostics::RoutineProfile,
       #                   which decides what goes in the quick memory
-      SETTINGS = %i[code maker fast_cartridge fast_code stack_room profile].freeze
+      SETTINGS = Console::AdvanceKit::CONSOLE_SETTINGS
 
       # The least stack room a game can ask for: the console's own routines a game calls need this
       # much of it.
