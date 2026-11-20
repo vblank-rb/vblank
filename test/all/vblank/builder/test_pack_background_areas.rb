@@ -379,6 +379,107 @@ module PackBackgroundAreaGames
       end
     end
   end
+
+  # MANY ROOMS OVER TWO SETS OF TILES, as a port keeps a world's rooms: each room a small map of its
+  # own, every room of one set naming that set's slots of tiles and colours. The big set is the slot
+  # of an original's size (BIG_SLOT_PLACES, sixteen banks), whose first TURNING_KEYS tiles take turns
+  # through two pictures each; the small set is the town's four tiles and two banks. Every room is
+  # told the same cells (ROOM_TOLD) that `set_cell` writes.
+  ROOM_ACROSS = 4
+  ROOM_CELLS = 16
+  TURNING_KEYS = 8
+  # Cells either set can draw: the small set's tiles and banks, and on the big set tiles that take turns.
+  ROOM_TOLD = Ractor.make_shareable([[3, 1, false, false], [2, 0, true, false]])
+  ROOM_COLORS_AT = 0x40
+  ROOM_TILES_AT = ROOM_COLORS_AT + (16 * 32)
+  ROOM_TOWN_COLORS_AT = ROOM_TILES_AT + (1024 * 32)
+  ROOM_TOWN_TILES_AT = ROOM_TOWN_COLORS_AT + (2 * 32)
+  ROOM_MAPS_AT = ROOM_TOWN_TILES_AT + (4 * 32)
+  # The pictures the turning tiles take turns through: two each, tiles of the big slot past them.
+  ROOM_TURNS_AT = ROOM_TILES_AT + (100 * 32)
+
+  # The rooms of a world of +big+ rooms over the big set and +small+ over the small one, by name,
+  # each its set (:big or :town); a room of each set in turn while both have rooms left.
+  def self.two_set_rooms(big, small)
+    names = Array.new(big) { |at| [:"big_#{at}", :big] } + Array.new(small) { |at| [:"town_#{at}", :town] }
+    names.partition { |_, set| set == :big }.then { |bigs, towns| bigs.zip(towns).flatten(1).compact + towns.drop(bigs.length) }.to_h
+  end
+
+  # The cell +at+ of room number +room+ over +set+: [tile, bank, mirrored, upside down]. A big room
+  # names tiles that take turns and tiles that do not, in every bank.
+  def self.two_set_room_cell(set, room, at)
+    return world_cell(room, at) if set == :town
+
+    [(at + room) % (TURNING_KEYS + 4), (at + room) % 16, at.odd?, (at / 4).odd?]
+  end
+
+  # The made-up original holding both sets and every room of +rooms+ (#two_set_rooms).
+  private def two_set_original(folder, rooms)
+    copy = "\0".b * (ROOM_MAPS_AT + (rooms.length * ROOM_CELLS * 2))
+    copy[ROOM_COLORS_AT, 16 * 32] = BIG_SLOT_BANKS.flatten.pack("v*")
+    copy[ROOM_TILES_AT, 1024 * 32] = BIG_SLOT_PLACES.map(&LOW_HALF_FIRST).join
+    copy[ROOM_TOWN_COLORS_AT, 64] = BANKS.flatten.pack("v*")
+    copy[ROOM_TOWN_TILES_AT, 128] = PLACES.map(&LOW_HALF_FIRST).join
+    rooms.each_with_index do |(_, set), room|
+      words = Array.new(ROOM_CELLS) { |at| PackBackgroundAreaGames.advance_word(*PackBackgroundAreaGames.two_set_room_cell(set, room, at)) }
+      copy[ROOM_MAPS_AT + (room * ROOM_CELLS * 2), ROOM_CELLS * 2] = words.pack("v*")
+    end
+    path = File.join(folder, "made_up_rooms.bin")
+    File.binwrite(path, copy)
+    VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :gba,
+                               settings_file: File.join(folder, "made_up.yml"),
+                               releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
+  end
+
+  # The game walking the rooms of +rooms+ (#two_set_rooms), built as +options+ say. The block, run on
+  # the builder, is the game loop, handed the background, the group of the big set's turning tiles,
+  # and the told cells' numbers. Hands back the program and the pack file the build made.
+  private def two_set_rooms_game_and_file(folder, rooms, options: VBlank::Cartridge::Options.new, &loop_body)
+    from = two_set_original(folder, rooms)
+    told = ROOM_TOLD.map { |cell| PackBackgroundAreaGames.advance_word(*cell) }
+    b = VBlank::Builder.new(options: options)
+    b.instance_eval do
+      screen :tiled
+      pack = data_pack from: from, version: "1" do |slots|
+        slots.colors :big_colors, at: ROOM_COLORS_AT, count: 256
+        slots.tiles :big_video, at: ROOM_TILES_AT, count: 1024
+        slots.colors :town_colors, at: ROOM_TOWN_COLORS_AT, count: 32
+        slots.tiles :town_video, at: ROOM_TOWN_TILES_AT, count: 4
+        slots.tiles :turns, at: ROOM_TURNS_AT, count: 2 * TURNING_KEYS
+        rooms.each_key.with_index do |name, room|
+          slots.numbers :"#{name}_map", at: ROOM_MAPS_AT + (room * ROOM_CELLS * 2), count: ROOM_CELLS, width: :half, signed: false
+        end
+      end
+      belts = tile_pictures :belts, tiles: Array.new(TURNING_KEYS) { |key|
+        [pack[:big_video].tile(key), pack[:turns].tiles(2 * key, across: 2)]
+      }.to_h
+      world = background :world, tiles: rooms.transform_values { |set| pack[:"#{set}_video"] },
+                                 colors: rooms.transform_values { |set| pack[:"#{set}_colors"] },
+                                 map: rooms.to_h { |name, _| [name, pack[:"#{name}_map"].as_map(across: ROOM_ACROSS)] },
+                                 set_cells: told
+      instance_exec(world, belts, told, &loop_body)
+    end
+    b.finalize_program
+    [b.program, b.made_data_pack_file]
+  end
+
+  # Each room in turn, two passes each, the turning tiles showing their other picture every other
+  # two passes, and a told cell written in each room as it is walked into.
+  def self.emit_two_set_walk(builder, world, belts, told, rooms)
+    builder.instance_eval do
+      tick = var :tick, 0
+      game_loop do
+        tick += 1
+        belts.show((tick / 2) % 2)
+        rooms.each_with_index do |room, at|
+          next if at.zero?
+
+          world.show_map room if tick == 2 * at
+          world.set_cell at % ROOM_ACROSS, 1, told[at % told.length] if tick == (2 * at) + 1
+        end
+      end
+    end
+  end
 end
 
 class TestPackBackgroundAreas < Minitest::Test
@@ -565,6 +666,26 @@ class TestPackBackgroundAreas < Minitest::Test
 
       assert(program.walk.any? { |node| node.kind == :background && node.from_file })
     end
+  end
+
+  # Many rooms over two sets of tiles, the big set's tiles taking turns and every room told cells:
+  # with the pack left out the rooms of one set share its runs of turning tiles and its told cells'
+  # tiles, so what the build holds grows with the sets, and each room adds only a stand-in for each
+  # bank of its colours. Sixty rooms of the big set each holding runs of their own would be more
+  # tiles than a background read as the game starts can hold.
+  def test_many_rooms_over_two_tile_sets_share_each_sets_held_tiles_with_the_pack_left_out
+    left_out = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
+    held = [30, 60].to_h do |big|
+      Dir.mktmpdir do |folder|
+        rooms = PackBackgroundAreaGames.two_set_rooms(big, 2)
+        program, = two_set_rooms_game_and_file(folder, rooms, options: left_out) do |world, belts, told|
+          PackBackgroundAreaGames.emit_two_set_walk(self, world, belts, told, rooms.keys)
+        end
+        [big, program.walk.find { |node| node.kind == :background && node.from_file }.tiles.length]
+      end
+    end
+
+    assert_equal 30 * BIG_SLOT_BANKS.length, held[60] - held[30], "thirty more rooms hold a stand-in for each bank, and nothing else"
   end
 
   # More tiles than a background read as the game starts can hold, the told cells of a slot

@@ -730,14 +730,28 @@ module VBlank
       # and each backend that plays it reads every area's cells as the game starts, each area's
       # record holding its own width. +slots+ are each area's tiles:, map:, colors: and across:, by
       # area.
+      #
+      # AREAS OVER ONE SLOT OF TILES, IN ONE SLOT OF COLOURS, TOLD THE SAME CELLS share what is held
+      # for them, as built all-in-one they are one tileset: the first such area holds the runs of
+      # its tiles that take turns and its told cells' tiles, and each later one names those by
+      # number (#pack_tiles_shared_at_start). So what a world of rooms holds grows with its slots of
+      # tiles, not with its rooms.
       def declare_pack_areas_read_at_start(name, slots, cell:, set_cells: nil, cells_in_front: false, **others)
         first = 0
+        sharers = {}
         made = slots.to_h do |area, given|
           own = :"#{name}'s area :#{area}"
           told = set_cells.is_a?(Hash) ? set_cells[area] : set_cells
           words, moving = refuse_bad_pack_area!(own, cell: cell, set_cells: told, cells_in_front: cells_in_front, **given)
-          part = pack_tiles_held_at_start(own, **given, tiles_a_side: cell / Original::Slot::TILE_SIDE, words: words,
-                                               moving: moving, set_cells: told, first: first)
+          tiles_a_side = cell / Original::Slot::TILE_SIDE
+          sharer = sharers[[given[:tiles], given[:colors], told]]
+          part = if sharer
+                   pack_tiles_shared_at_start(own, sharer, **given, tiles_a_side: tiles_a_side, words: words)
+                 else
+                   sharers[[given[:tiles], given[:colors], told]] =
+                     pack_tiles_held_at_start(own, **given, tiles_a_side: tiles_a_side, words: words, moving: moving,
+                                                           set_cells: told, first: first)
+                 end
           first += part.held.length
           [area, part]
         end
@@ -772,6 +786,48 @@ module VBlank
       # The pictures and record of #declare_pack_background_read_at_start, for a background or an
       # area +name+ whose held tiles start at tile +first+ of the background's. Hands back a HeldAtStart.
       def pack_tiles_held_at_start(name, tiles:, map:, colors:, across:, tiles_a_side:, words:, moving:, set_cells:, first:)
+        where, stand_ins = pack_record_and_stand_ins_at_start(name, tiles: tiles, map: map, colors: colors, across: across,
+                                                                    tiles_a_side: tiles_a_side, words: words)
+        # The tiles that take turns through pictures follow, each a tile of a run (PackTilePictures).
+        unless moving.empty?
+          runs, where = declare_pack_tile_runs_at_start(name, moving, where, first + stand_ins.length)
+          (@run_tiles_read_at_start ||= Set.new).merge(runs)
+        end
+        told = {}
+        places = []
+        if set_cells.is_a?(DSL::PackSlot)
+          places, where = declare_told_slot_read_at_start(name, set_cells, where, first + [*stand_ins, *runs].uniq.length)
+          cells = DSL::PackCells.new(format: words, side: tiles_a_side, tiles_by_word: {}, place_tiles: places.zip)
+        else
+          cells = declare_pack_cells_written_later(name, set_cells, words, tiles_a_side, told, where.bank_names) do |tile, number|
+            # A told tile that takes turns is the run's tile for its bank and turn, as the map's are.
+            if moving.key?(tile.tile) && tile.bank < where.bank_count
+              next pack_run_tile_read_at_start(runs, where, first + stand_ins.length, tile)
+            end
+
+            declare_told_tile_read_at_start(name, tile, where, number)
+          end
+        end
+        HeldAtStart.new(where: where, held: [*stand_ins, *runs, *told.values, *places].uniq, told: told, cells: cells)
+      end
+
+      # The pictures and record of an area +name+ that shares what +sharer+ (the HeldAtStart of an
+      # earlier area over the same slots of tiles and colours, told the same cells) holds: its own
+      # map, and a stand-in for each bank of its own, since a set of tiles keeps its banks' stand-ins
+      # from its first tile (Computer::StartFileFills#record_start_file_followed_tiles). Its cells
+      # taking turns show the sharer's runs, and `set_cell` writes the sharer's told tiles, by their
+      # numbers among the background's. The sharer's record fills those told tiles, so this one
+      # names none.
+      def pack_tiles_shared_at_start(name, sharer, tiles:, map:, colors:, across:, tiles_a_side:, words:)
+        where, stand_ins = pack_record_and_stand_ins_at_start(name, tiles: tiles, map: map, colors: colors, across: across,
+                                                                    tiles_a_side: tiles_a_side, words: words)
+        HeldAtStart.new(where: where.with(moving: sharer.where.moving), held: stand_ins, told: sharer.told, cells: sharer.cells)
+      end
+
+      # Where a background or an area +name+ is in the file (an IR::StartFile::Background naming no
+      # tiles that take turns and no told cells yet), and the stand-ins it holds for it: one for
+      # each bank of its colours, or the one tile of a background drawn from the whole table.
+      def pack_record_and_stand_ins_at_start(name, tiles:, map:, colors:, across:, tiles_a_side:, words:)
         subject = "background :#{name}"
         [[tiles, "tiles:"], [map.with(first_pixel: 0, pixel_count: nil), "map:"], [colors, "colors:"]].each do |slot, what|
           refuse_slot_from_elsewhere!(slot, "#{subject}'s #{what}")
@@ -796,27 +852,7 @@ module VBlank
                     else
                       where.bank_names.each_with_index.map { |list, bank| declare_bank_stand_in(name, list, bank, where, subject) }
                     end
-        # The tiles that take turns through pictures follow, each a tile of a run (PackTilePictures).
-        unless moving.empty?
-          runs, where = declare_pack_tile_runs_at_start(name, moving, where, first + stand_ins.length)
-          (@run_tiles_read_at_start ||= Set.new).merge(runs)
-        end
-        told = {}
-        places = []
-        if set_cells.is_a?(DSL::PackSlot)
-          places, where = declare_told_slot_read_at_start(name, set_cells, where, first + [*stand_ins, *runs].uniq.length)
-          cells = DSL::PackCells.new(format: words, side: tiles_a_side, tiles_by_word: {}, place_tiles: places.zip)
-        else
-          cells = declare_pack_cells_written_later(name, set_cells, words, tiles_a_side, told, where.bank_names) do |tile, number|
-            # A told tile that takes turns is the run's tile for its bank and turn, as the map's are.
-            if moving.key?(tile.tile) && tile.bank < where.bank_count
-              next pack_run_tile_read_at_start(runs, where, first + stand_ins.length, tile)
-            end
-
-            declare_told_tile_read_at_start(name, tile, where, number)
-          end
-        end
-        HeldAtStart.new(where: where, held: [*stand_ins, *runs, *told.values, *places].uniq, told: told, cells: cells)
+        [where, stand_ins]
       end
 
       # THE CELLS A SLOT TELLS A BACKGROUND READ AS THE GAME STARTS (`set_cells: pack[:changes]`).

@@ -861,6 +861,15 @@ module PackGames
         end
         built(*made)
       end,
+      # Rooms of two sets of tiles taken in turn, the big set's tiles taking turns, a told cell
+      # written in each room: the rooms of one set share the tiles held for it.
+      game(:rooms_of_two_tile_sets_sharing_turning_tiles_and_told_cells, passes: 15) do |folder, options|
+        rooms = PackBackgroundAreaGames.two_set_rooms(4, 3)
+        made = two_set_rooms_game_and_file(folder, rooms, options: options) do |world, belts, told|
+          PackBackgroundAreaGames.emit_two_set_walk(self, world, belts, told, rooms.keys)
+        end
+        built(*made)
+      end,
       game(:cells_written_in_each_area_of_a_walking_background, passes: 11) do |folder, options|
         told = [PackBackgroundAreaGames.advance_word(*WRITTEN)]
         made = areas_game_and_file(areas_original(folder), options: options, set_cells: told) do |world|
