@@ -167,4 +167,18 @@ class TestPackCacheRoutineIndex < Minitest::Test
       assert_equal first, second
     end
   end
+
+  # Reads are watched from the moment the library loads, so every other open in the process passes
+  # through the watch: a file opened by its flags, as Tempfile opens one, opens as it would without it.
+  def test_a_file_opened_by_its_flags_opens_with_reads_watched
+    Tempfile.create("watched") do |file|
+      file.write("kept")
+      file.flush
+
+      assert_equal "kept", File.read(file.path)
+    end
+    assert VBlank::Original::FilesRead.write_only?(File::WRONLY | File::CREAT)
+    refute VBlank::Original::FilesRead.write_only?(File::RDWR | File::CREAT)
+    refute VBlank::Original::FilesRead.write_only?(File::RDONLY)
+  end
 end

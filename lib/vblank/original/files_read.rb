@@ -96,11 +96,15 @@ module VBlank
       end
       private_class_method :note_on_main
 
+      # The bits of an open's flags that say read, write or both. Ruby has no File::ACCMODE on
+      # every platform, so it is made from the three it always has.
+      ACCESS_BITS = File::RDONLY | File::WRONLY | File::RDWR
+
       # Whether +mode+, as File.open is given it (a string, flags, or nil), opens a file only to
       # write or append to it.
       def self.write_only?(mode)
         case mode
-        when Integer then (mode & File::ACCMODE) == File::WRONLY
+        when Integer then (mode & ACCESS_BITS) == File::WRONLY
         when String then mode.match?(/[wa]/) && !mode.include?("+")
         else false
         end
