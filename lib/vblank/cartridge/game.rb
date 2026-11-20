@@ -238,9 +238,11 @@ module VBlank
       #
       #   game_player.run(Cave.game.starting_with(mode: :playing, lives: 1, trail: [5, 6]).program, frames: 10)
       #
-      # A name no `var` or `list` of the build declares is refused when it is built, and so is a
-      # start of the wrong kind: a list for a variable, a fraction for a whole number, more items
-      # than the list holds. See Builder::ChosenStarts for why this is the program built with other
+      # A variable a scene or routine declares takes a start too, since a `var` line's start is set
+      # once at power-on wherever it is written; a list one declares is refused, since its body makes
+      # it again each time it runs. A name no `var` or `list` of the build declares is refused when
+      # it is built, and so is a start of the wrong kind: a list for a variable, a fraction for a
+      # whole number, more items than the list holds. See Builder::ChosenStarts for why this is the program built with other
       # starts rather than a state set in a running game.
       def starting_with(**starts) = with_options(@options.with(starts: @options.starts.merge(starts)))
 

@@ -102,7 +102,62 @@ class TestGameStartingWith < Minitest::Test
     assert_equal [5, 6], player.list(:trail)
   end
 
-  def test_a_start_for_what_a_scene_makes_each_time_it_starts_is_refused
+  # A PLAY SCENE THAT DECLARES WHERE THE HERO STANDS. A `var` line's start is set once at power-on
+  # wherever it is written, so the scene's variables are the game's from the start, and a chosen start
+  # stands in for the declared one as it does for a variable declared at the top. The title hands over
+  # on its second pass; play draws the hero and walks him a pixel a pass.
+  module Play
+    GREEN = VBlank::Graphics::Color.resolve(:green)
+
+    def self.game
+      VBlank.game("PLAY", consoles: %i[gba gbc snes genesis ps1]) do
+        screen :bitmap
+        mode = var :mode, :title
+        scene :title do
+          waited = var :waited, 0
+          waited += 1
+          mode = :playing if waited == 2
+        end
+        scene :playing do
+          hero_x = var :hero_x, 10
+          hero_y = var :hero_y, 20
+          clear_screen :black
+          fill_rect hero_x, hero_y, 4, 4, :green
+          hero_x += 1
+        end
+        game_loop { call mode }
+      end
+    end
+  end
+
+  def test_a_variable_a_scene_declares_starts_where_chosen
+    player = played(Play.game.starting_with(mode: :playing, hero_x: 88, hero_y: 40), 1)
+
+    assert_equal Play::GREEN, player.screen.pixel(88, 40), "the first frame of the scene shows the hero there"
+    assert_equal 0, player.screen.pixel(10, 20)
+    assert_equal 89, player[:hero_x]
+  end
+
+  def test_a_variable_a_scene_declares_is_set_once_and_not_again_as_the_scene_starts
+    player = played(Play.game.starting_with(hero_x: 88), 3)
+
+    assert_equal 89, player[:hero_x], "play began on the third pass and moved him once"
+  end
+
+  def test_a_variable_a_routine_declares_starts_where_chosen
+    game = VBlank.game("ROUTINE", consoles: %i[gba gbc snes genesis ps1]) do
+      screen :bitmap
+      func :step do
+        steps = var :steps, 0
+        steps += 1
+      end
+      game_loop { call :step }
+    end
+
+    assert_equal 12, played(game.starting_with(steps: 10), 2)[:steps]
+  end
+
+  def test_a_start_for_a_list_a_scene_makes_each_time_it_starts_is_refused
     game = VBlank.game("SCENES", consoles: %i[gba gbc snes genesis ps1]) do
       screen :bitmap
       mode = var :mode, :level

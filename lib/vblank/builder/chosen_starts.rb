@@ -9,9 +9,13 @@ module VBlank
     # order. `start_over` and a save_data record put either back there, as they put back a declared
     # start. What the game's own code does after that is the game's, as it is from any start.
     #
-    # A START IS FOR WHAT THE GAME MAKES ONCE, as it starts. A variable or list a scene or routine
-    # declares belongs to that routine's body, which can make it again each time it runs, so a
-    # start for one is refused rather than given again on every entry.
+    # A START IS FOR WHAT THE GAME MAKES ONCE, as it starts. A `var` line's start is set once at power-on
+    # wherever it is written (Variables#var), so a variable a scene or routine declares is the game's
+    # from power-on like any other, and its chosen start stands in for the declared one the same way:
+    # entering the scene does not set it again. What the scene's own code writes into it after that
+    # (a place copied out of a save as play begins) is the game's, as from any start. A `list` line
+    # makes the list where it is written, so one a scene or routine declares is made again each time
+    # that body runs; a start for one is refused rather than given again on every entry.
     #
     # WHY THE PROGRAM IS BUILT WITH OTHER STARTS, rather than a state written into the running game
     # from outside (a state image on a computer's build, a probe's write on a cartridge): a program
@@ -64,6 +68,7 @@ module VBlank
       # The items the build was given for the list +name+ to start with, which holds +capacity+
       # numbers, fractions where +bits+ is set, as the power-on statements that push them.
       def chosen_list_pushes(name, capacity, bits)
+        refuse_list_start_in_routine!(name) if @building_routine
         items = chosen_start_of(name)
         problem = if !items.is_a?(Array) || !items.all?(Numeric)
                     "is not a list of numbers"
@@ -88,7 +93,6 @@ module VBlank
       end
 
       def chosen_start_of(name)
-        refuse_start_in_routine!(name) if @building_routine
         (@starts_used ||= Set.new) << name
         @build_options.starts.fetch(name)
       end
@@ -98,13 +102,13 @@ module VBlank
                              "#{problem}. To fix this, give a start of the kind its declaration gives."
       end
 
-      def refuse_start_in_routine!(name)
+      def refuse_list_start_in_routine!(name)
         routine = @building_routine.to_s
         scene = routine.start_with?("_scene_")
         where = scene ? "the scene :#{routine.delete_prefix('_scene_')}" : "the routine :#{routine}"
-        raise ArgumentError, "starting_with sets :#{name}, which #{where} makes each time it #{scene ? 'starts' : 'runs'}. " \
-                             "A start sets only what the game makes once, as it starts. To fix this, declare :#{name} " \
-                             "outside #{where}, or play the game to that moment."
+        raise ArgumentError, "starting_with sets the list :#{name}, which #{where} makes again each time it " \
+                             "#{scene ? 'starts' : 'runs'}. A start sets only what the game makes once, as it starts. " \
+                             "To fix this, declare :#{name} outside #{where}, or play the game to that moment."
       end
 
       # Each chosen start that is a name, numbered as the variable numbers it: asked once every
