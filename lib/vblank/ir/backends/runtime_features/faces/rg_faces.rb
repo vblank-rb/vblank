@@ -118,10 +118,11 @@ def rg_face_row(row, from, to, left, right, image, numbers, spans, shading)
   plain = rg_painting_plain?
   if plain
     area = @rg_area
-    top, bottom = rg_kept_span(row, row + 1, RG_SCREEN_HEIGHT, area.top, area.bottom, area.in_force)
-    return if top >= bottom
+    in_force = area.in_force
+    return if rg_kept_first(row, area.top, in_force) >= rg_kept_past(row + 1, RG_SCREEN_HEIGHT, area.bottom, in_force)
 
-    first, past = rg_kept_span(first, past, RG_SCREEN_WIDTH, area.left, area.right, area.in_force)
+    first = rg_kept_first(first, area.left, in_force)
+    past = rg_kept_past(past, RG_SCREEN_WIDTH, area.right, in_force)
     return if first >= past
 
     target = @rg_target

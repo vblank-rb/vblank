@@ -112,6 +112,21 @@ class TestRubyObjectsAPass < Minitest::Test
     end
   end
 
+  # A picture drawn sixty times a pass, more times than a pass may allocate objects: each draw finds
+  # the picture's pixels (rg_picture_of), and must do so with no new object.
+  private def picture_drawn_sixty_times
+    built do
+      screen :bitmap
+      image(:dot, "#" => :white, "." => :red) { "#.\n.#" }
+      across = var :across, 0
+      game_loop do
+        across += 1
+        clear_screen :black
+        60.times { |row| blit :dot, (across + row) & 127, row * 2 }
+      end
+    end
+  end
+
   private def assert_allocates_little(program)
     a_pass = allocated_a_pass(program)
     assert_operator a_pass.objects, :<, MOST_OBJECTS_A_PASS, "objects allocated a pass"
@@ -132,6 +147,10 @@ class TestRubyObjectsAPass < Minitest::Test
 
   def test_a_fade_that_moves_every_pass_allocates_little_a_pass
     assert_allocates_little(fading_field)
+  end
+
+  def test_a_picture_drawn_many_times_allocates_little_a_pass
+    assert_allocates_little(picture_drawn_sixty_times)
   end
 
   def test_a_tune_allocates_little_a_pass

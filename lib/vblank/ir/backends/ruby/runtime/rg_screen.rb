@@ -355,15 +355,17 @@ end
 def rg_painting_plain? = !@rg_plain_layer && !@rg_mixing && !@rg_paint_fade && !rg_keeps_picture_without_sprites?
 
 # The columns or rows a shape from +start+ to +past+ keeps inside the screen's +side+ and the area's
-# +low+ and +high+ (when it is in force): the first, and the one after the last.
-def rg_kept_span(start, past, side, low, high, in_force)
+# +low+ and +high+ (when it is in force): the first (rg_kept_first), and the one after the last
+# (rg_kept_past). Two numbers from two calls, not a pair, since a pair is an Array made for every
+# shape drawn, for Ruby to collect.
+def rg_kept_first(start, low, in_force)
   first = start < 0 ? 0 : start
+  in_force && first < low ? low : first
+end
+
+def rg_kept_past(past, side, high, in_force)
   last = past > side ? side : past
-  if in_force
-    first = low if first < low
-    last = high if last > high
-  end
-  [first, last]
+  in_force && last > high ? high : last
 end
 
 # Framebuffer#fill_rect: every cell of the rectangle, each through rg_set_pixel. Walking only the
@@ -391,8 +393,11 @@ end
 # rg_fill_cells when painting plain (rg_painting_plain?): +color+ already the sixteen bits a cell holds.
 def rg_fill_cells_plain(x, y, width, height, color)
   area = @rg_area
-  left, right = rg_kept_span(x, x + width, RG_SCREEN_WIDTH, area.left, area.right, area.in_force)
-  top, bottom = rg_kept_span(y, y + height, RG_SCREEN_HEIGHT, area.top, area.bottom, area.in_force)
+  in_force = area.in_force
+  left = rg_kept_first(x, area.left, in_force)
+  right = rg_kept_past(x + width, RG_SCREEN_WIDTH, area.right, in_force)
+  top = rg_kept_first(y, area.top, in_force)
+  bottom = rg_kept_past(y + height, RG_SCREEN_HEIGHT, area.bottom, in_force)
   return if left >= right || top >= bottom
 
   @rg_picture_touched = true
@@ -649,15 +654,26 @@ end
 # of its places start where its pixels are places, or nil where they are colours (rg_screen.h) —
 # [pixels, start, width, height, colors]. A painted image's pixels are its own, from 0; any other is
 # in @rg_game_image_pixels.
+#
+# Each image's is made once and kept (@rg_pictures), so drawing a picture makes no new object. It is
+# made again whenever what it was made from differs: the image painted anew (its pixels another
+# Array), the game's pictures grown, or the image's numbers filled in from a data pack. A caller reads
+# the parts and never changes them.
 def rg_picture_of(image)
   info = RG_IMAGE_FIELDS * image
   painted = @rg_painted_images && @rg_painted_images[image]
+  art = painted || @rg_game_image_pixels
+  start = painted ? 0 : @rg_game_images[info]
   width = @rg_game_images[info + 1]
   height = @rg_game_images[info + 2]
-  return [painted, 0, width, height, nil] if painted
+  colors = painted ? nil : @rg_game_images[info + 3]
+  colors = nil if colors == RG_NO_IMAGE_COLORS
+  kept = (@rg_pictures ||= [])[image]
+  if kept && kept[0].equal?(art) && kept[1] == start && kept[2] == width && kept[3] == height && kept[4] == colors
+    return kept
+  end
 
-  colors = @rg_game_images[info + 3]
-  [@rg_game_image_pixels, @rg_game_images[info], width, height, colors == RG_NO_IMAGE_COLORS ? nil : colors]
+  @rg_pictures[image] = [art, start, width, height, colors].freeze
 end
 
 # Reference#run_tile_places: the 64 places of tile +which+ of a run's list, row by row. Each byte
@@ -772,8 +788,11 @@ end
 # +colors+ in +art+ where those are given (rg_picture_of).
 def rg_blit_plain(art, start, width, height, x, y, colors)
   area = @rg_area
-  left, right = rg_kept_span(x, x + width, RG_SCREEN_WIDTH, area.left, area.right, area.in_force)
-  top, bottom = rg_kept_span(y, y + height, RG_SCREEN_HEIGHT, area.top, area.bottom, area.in_force)
+  in_force = area.in_force
+  left = rg_kept_first(x, area.left, in_force)
+  right = rg_kept_past(x + width, RG_SCREEN_WIDTH, area.right, in_force)
+  top = rg_kept_first(y, area.top, in_force)
+  bottom = rg_kept_past(y + height, RG_SCREEN_HEIGHT, area.bottom, in_force)
   return if left >= right || top >= bottom
 
   target = @rg_target
