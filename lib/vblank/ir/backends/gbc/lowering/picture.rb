@@ -1602,7 +1602,8 @@ module VBlank
                 refuse_background!(bg, as_grid: true)
                 row = folded(node.row)
                 col = folded(node.col)
-                if row && (col || byte_column?(node.col))
+                # On maps of different sizes the cell is kept while the map up is asked (#emit_worked_out_cell_change).
+                if row && (col || byte_column?(node.col)) && maps_of_one_size?(bg)
                   return emit_cell_shown_when(node) do
                     cols, rows = map_size_of(bg)
                     routine = bg.bar? ? "rt_bar_cell" : "rt_background_cell"
@@ -1649,14 +1650,15 @@ module VBlank
               return runtime_call("rt_big_set", [node.col, node.row, cell]) if big?(bg)
 
               refuse_background!(bg, as_grid: true)
-              cols, rows = map_size_of(bg)
               shown = (@memory[Runtime::Picture::CELL_SHOWN_NOW] if node.now)
               if shown
                 @asm.load(:hl, shown)
                 @asm.inc([:hl])
               end
-              emit_cell_numbers(node.col, node.row, cols | (rows << 8), cell)
-              @asm.call("#{bg.bar? ? 'rt_bar_cell' : 'rt_background_cell'}_taken")
+              each_shown_map_size(bg) do |cols, rows|
+                emit_cell_numbers(node.col, node.row, cols | (rows << 8), cell)
+                @asm.call("#{bg.bar? ? 'rt_bar_cell' : 'rt_background_cell'}_taken")
+              end
               return unless shown
 
               @asm.load(:hl, shown)
@@ -1664,16 +1666,17 @@ module VBlank
             end
 
             def emit_cell_change(node, bg, cell)
-              cols, rows = map_size_of(bg)
-              routine = bg.bar? ? "rt_bar_cell" : "rt_background_cell" # a status bar's is in the window's grid
-              row = folded(node.row)
-              grid = bg.bar? ? Console::GBCHardware::TILE_MAP1 : Console::GBCHardware::TILE_MAP0
-              col = folded(node.col)
-              return emit_cell_at_known_place(routine, grid, col, row, [cols, rows], cell.value) if row && col
-              return emit_cell_at_known_row(routine, grid, node.col, row, [cols, rows], cell.value) if row && byte_column?(node.col)
+              each_shown_map_size(bg) do |cols, rows|
+                routine = bg.bar? ? "rt_bar_cell" : "rt_background_cell" # a status bar's is in the window's grid
+                row = folded(node.row)
+                grid = bg.bar? ? Console::GBCHardware::TILE_MAP1 : Console::GBCHardware::TILE_MAP0
+                col = folded(node.col)
+                next emit_cell_at_known_place(routine, grid, col, row, [cols, rows], cell.value) if row && col
+                next emit_cell_at_known_row(routine, grid, node.col, row, [cols, rows], cell.value) if row && byte_column?(node.col)
 
-              emit_cell_numbers(node.col, node.row, cols | (rows << 8), cell.value)
-              @asm.call("#{routine}_taken")
+                emit_cell_numbers(node.col, node.row, cols | (rows << 8), cell.value)
+                @asm.call("#{routine}_taken")
+              end
             end
 
             # A cell whose column, row and tile are all written in the program: its place in the
@@ -2091,6 +2094,18 @@ module VBlank
 
               raise LoweringError, "the background #{bg.name.inspect} has maps of different sizes and a cell changed with " \
                                    "`set_tile`, which #{build_name} cannot make yet."
+            end
+
+            # Whether every map of +bg+ is one size, so a cell change tests one edge whichever is up.
+            def maps_of_one_size?(bg) = bg.every_map.map { |map| TileMap.size_of(map) }.uniq.one?
+
+            # A CELL CHANGE ON MAPS OF DIFFERENT SIZES, each held whole in the grid: the edge it is
+            # tested against is the map's in the cells now (Reference#change_cell), so the block is
+            # written for each map's size, and the map in the cells picks which runs (#emit_for_map_shown).
+            def each_shown_map_size(bg)
+              return yield(map_size_of(bg)) if maps_of_one_size?(bg)
+
+              emit_for_map_shown(bg) { |which| yield TileMap.size_of(bg.every_map.fetch(which)) }
             end
 
             # A background's cells as the Color's grid of 32×32 holds them, for its map number

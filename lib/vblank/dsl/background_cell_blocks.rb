@@ -179,7 +179,7 @@ module VBlank
                 "#{verb} cannot change a block of it. To fix this, give each look of the room a map of its own " \
                 "and use show_map."
         end
-        refuse_set_tile_on_streamed_map!
+        refuse_block_on_streamed_map!(verb)
       end
 
       # RESTORING NEEDS THE MAP AS THE BUILD KNOWS IT. A background of several maps shows whichever

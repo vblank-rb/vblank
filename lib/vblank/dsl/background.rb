@@ -48,7 +48,7 @@ module VBlank
       def initialize(builder, name:, scroll_x:, scroll_y:, walls: [],
                      cells: [0, 0], tile_index: {}, bitmap: false, map_names: nil,
                      solid_cells: [], tile_size: [8, 8], node: nil, tile_pictures: [], walks_areas: false,
-                     streams: false, solid_tiles: nil, held: false)
+                     streams: false, solid_tiles: nil, held: false, area_tiles: nil)
         @builder = builder
         @held = held # its set_tile changes wait for the frame boundary (Builder::Tiled#background)
         @name = name
@@ -67,6 +67,7 @@ module VBlank
         @tile_index = tile_index
         @bitmap = bitmap
         @walks_areas = walks_areas # its maps are in several areas, each drawn from its own tiles
+        @area_tiles = area_tiles # each area's keys and maps (AreaTiles), for one that walks between areas
         @streams = streams # its maps are brought into view a strip at a time (see IR::TileMap.streams?)
         @map_names = map_names || [name]
         @lists_allowed_undrawn = [] # see #allow_undrawn_lists
@@ -154,25 +155,81 @@ module VBlank
       #
       # On a background declared `held: true` the change waits, with every other change the pass
       # makes, and they all show together on the next frame (Builder#finalize_held_tiles).
+      #
+      # ONE CALL FOR EVERY KIND OF BACKGROUND. The tile is named the way that background's map
+      # names its cells, so the same line opens a chest wherever the room came from:
+      #
+      #   rooms.set_tile 10, 4, "o"    # a background that walks between areas: a key of the
+      #                                #   tileset of the area showing
+      #   rooms.set_tile 10, 4, 0      # a background from the data pack: a cell number its
+      #                                #   set_cells: named, or a place of the slot it named
+      #
+      # The change stays as the view scrolls the cell out and back in, on a map of any size, and
+      # lasts until show_map puts that map up again: a console that brings a big map into view a
+      # strip at a time keeps the map showing in work memory once the game changes it, as its own
+      # games keep a room's cells, and brings each strip in from there.
       def set_tile(col, row, tile, now: nil)
         refuse_on_bitmap_screen!("set_tile", instead: "Draw over the spot with `blit`")
-        if @walks_areas && !@area_pack_cells
-          raise ArgumentError,
-                "background :#{@name} walks between areas, so a tile name can be in more than one area. " \
-                "set_tile cannot change a cell of it. To fix this, give each look of the room a map " \
-                "of its own and use show_map."
-        end
-        refuse_set_tile_on_streamed_map!
+        return set_cell(col, row, tile, now: now ? true : false) if (@pack_cells || @area_pack_cells) && !@tile_index.key?(tile)
+        return set_tile_in_area_showing(col, row, tile, now) if @walks_areas && @area_tiles && !@area_pack_cells
         return set_tile_picked_by(col, row, tile, now) if tile.is_a?(Value)
 
         index = @tile_index[tile]
         raise ArgumentError, unknown_tile_message(tile) if index.nil?
 
+        write_tile_number(col, row, index, now)
+        record_wall_change(col, row, index)
+        self
+      end
+
+      # Which of a background's tiles each key of one area's tileset names (+tile_index+), and the
+      # numbers of the area's maps (+maps+, a Range), for a background that walks between areas.
+      AreaTiles = Data.define(:tile_index, :maps)
+
+      # #set_tile on a background that walks between areas: the key names a tile of each area whose
+      # tileset has it, and the cell takes the tile of the area showing, one test of the map showing
+      # for each area that names another tile. An area whose tileset lacks the key leaves the cell
+      # alone. A key no area has is refused.
+      def set_tile_in_area_showing(col, row, tile, now)
+        if tile.is_a?(Value)
+          raise ArgumentError, "background :#{@name} walks between areas, and set_tile was given a number the game works " \
+                               "out. Each area names its tiles by its own keys. To fix this, give set_tile a key of the " \
+                               "tileset, written in the program."
+        end
+        held = @area_tiles.select { |area| area.tile_index.key?(tile) }
+        raise ArgumentError, unknown_tile_message(tile, keys: @area_tiles.flat_map { |area| area.tile_index.keys }.uniq) if held.empty?
+
+        by_number = held.group_by { |area| area.tile_index.fetch(tile) }
+        if by_number.one? && held.length == @area_tiles.length
+          write_tile_number(col, row, by_number.keys.first, now)
+          return self
+        end
+
+        by_number.each do |index, areas|
+          areas.each { |area| with_map_showing_in(area.maps) { write_tile_number(col, row, index, now) } }
+        end
+        self
+      end
+
+      # The block's lines run only while the map showing is one of +maps+ (a Range of map numbers).
+      def with_map_showing_in(maps)
+        tests = if maps.one?
+                  [PlainRuby::Steps::GameTest.new(showing == maps.first)]
+                else
+                  [PlainRuby::Steps::GameTest.new(showing >= maps.first), PlainRuby::Steps::GameTest.new(showing < maps.end)]
+                end
+        tests.each(&:open_yes_side)
+        yield
+        tests.reverse_each { |test| test.close_side(nil) }
+      end
+
+      # One cell given the background's tile number +index+, held for the end of the pass on a
+      # background declared `held: true`.
+      def write_tile_number(col, row, index, now)
         node = record(Build.set_tile(@name, Value.node_for(col), Value.node_for(row), index, now: now,
                                                                                             held: (true if @held)))
         @builder.note_held_tile_change(node) if @held
-        record_wall_change(col, row, index)
-        self
+        node
       end
 
       # A TILE PICKED BY A NUMBER THE GAME WORKS OUT, counting from nought through the tileset's
@@ -243,7 +300,6 @@ module VBlank
       # Called by PackCells, for a cell written as the original's own cell number. +now+ is #set_tile's.
       def set_tile_picked(col, row, number, keys, from: 0, now: nil)
         refuse_on_bitmap_screen!("set_cell", instead: "Draw over the spot with `blit`")
-        refuse_set_tile_on_streamed_map!
         tiles = keys.map { |key| key && @tile_index.fetch(key) }
         node = record(Build.set_tile_picked(@name, Value.node_for(col), Value.node_for(row), Value.node_for(number), tiles,
                                             from: from, now: now, held: (true if @held)))
@@ -865,17 +921,16 @@ module VBlank
         scene ? :"__solid_#{@name}__in_#{IR::Modes.strip_scene_prefix(scene)}" : :"__solid_#{@name}"
       end
 
-      # A MAP BROUGHT INTO VIEW A STRIP AT A TIME IS COPIED IN AGAIN AS THE VIEW MOVES. Its
-      # cells come out of the map in the cartridge each time they come into view, so a cell
-      # changed in the grid goes back to the map's own tile the next time it scrolls in.
-      def refuse_set_tile_on_streamed_map!
+      # A BLOCK OF CELLS OF A MAP BROUGHT INTO VIEW A STRIP AT A TIME. One cell of such a map is
+      # changed with set_tile, which a console keeps in the map showing as the view moves; a block
+      # (fill_cells, restore_cells) is not made for such a map yet. +verb+ is the block's.
+      def refuse_block_on_streamed_map!(verb)
         return unless @streams
 
         raise ArgumentError,
               "background :#{@name} has a map bigger than 64x64 cells, or maps that are not all one size. " \
-              "The cells of such a map are copied in again as the view moves, so set_tile cannot change " \
-              "one of them. To fix this, give each look of the room a map of its own, with `map: { open: ..., " \
-              "shut: ... }`, and change between them with show_map."
+              "#{verb} cannot change a block of such a map. To fix this, change its cells one at a time " \
+              "with set_tile."
       end
 
       # A background with one map is the ordinary kind and can never be handed another —
@@ -1120,10 +1175,10 @@ module VBlank
           "#{@map_names.map(&:inspect).join(', ')}."
       end
 
-      def unknown_tile_message(tile)
-        known = @tile_index.keys.first(8).map(&:inspect).join(", ")
+      def unknown_tile_message(tile, keys: @tile_index.keys)
+        known = keys.first(8).map(&:inspect).join(", ")
         "background :#{@name} has no tile #{tile.inspect}, so set_tile cannot put one there. Its " \
-          "tiles are #{known}#{@tile_index.size > 8 ? ', and more' : ''} — the ones its tileset names."
+          "tiles are #{known}#{keys.size > 8 ? ', and more' : ''} — the ones its tileset names."
       end
 
       # Asked of the build rather than kept here — see Builder#background_turns? for why

@@ -119,8 +119,9 @@ module PackBackgroundAreaGames
   # cells the unpacking writes from AREAS, and the changes slot holding TOLD_PLACES, a cell each
   # place. With +by_area+ each area is told by a slot of its own, the same cells; without, one slot
   # tells every area, and each draws the cell from its own tiles and colours. The loop is
-  # #emit_written_places. Hands back the program and the pack file the build made.
-  private def told_slot_areas_game_and_file(from, options: VBlank::Cartridge::Options.new, by_area: false)
+  # #emit_written_places, or the block given, run on the builder and handed the background.
+  # +across+ is ACROSS or a width by area. Hands back the program and the pack file the build made.
+  private def told_slot_areas_game_and_file(from, options: VBlank::Cartridge::Options.new, by_area: false, across: ACROSS, &loop_body)
     b = VBlank::Builder.new(options: options)
     b.instance_eval do
       screen :tiled
@@ -146,8 +147,8 @@ module PackBackgroundAreaGames
       world = background :world, tiles: AREAS.keys.to_h { |name| [name, pack[:"#{name}_video"]] },
                                  map: AREAS.keys.to_h { |name| [name, pack[:"#{name}_map"]] },
                                  colors: AREAS.keys.to_h { |name| [name, pack[:"#{name}_colors"]] },
-                                 across: ACROSS, set_cells: told
-      PackBackgroundAreaGames.emit_written_places(self, world)
+                                 across: across, set_cells: told
+      loop_body ? instance_exec(world, &loop_body) : PackBackgroundAreaGames.emit_written_places(self, world)
     end
     b.finalize_program
     [b.program, b.made_data_pack_file]

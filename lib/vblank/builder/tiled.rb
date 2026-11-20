@@ -527,7 +527,7 @@ module VBlank
                              held: false)
         refuse_background_in_game_loop!(name)
         if tiles.is_a?(Hash)
-          set, map_names, drawn, tile_names, grids, sets = background_from_sets(name, tiles, map, from)
+          set, map_names, drawn, tile_names, grids, sets, area_tiles = background_from_sets(name, tiles, map, from)
           img_rows = drawn.first.first
           index_of = {}
         else
@@ -630,6 +630,8 @@ module VBlank
                              tile_size: [set[:tile_w], set[:tile_h]],
                              # Areas, though all of one set of tiles (#background_from_sets).
                              walks_areas: tiles.is_a?(Hash),
+                             # ...and each area's keys, so set_tile names a tile of the area showing.
+                             area_tiles: area_tiles,
                              held: held,
                              tile_pictures: tiles.is_a?(Hash) ? tile_names.uniq : (set[:by_key].values + set[:by_number].values).uniq)
         @background_handles.last
@@ -914,6 +916,7 @@ module VBlank
         set_starts = []
         map_sets = []
         set_of_tiles = {}
+        area_tiles_by_key = []
         tiles.each_key do |area|
           names, area_drawn = background_maps(name, tiles[area], sets[area], map: map[area], from: nil)
           area_drawn = [area_drawn.first] if names == [name] # one map given as a grid, not a Hash
@@ -931,6 +934,8 @@ module VBlank
             grids << rows.map { |row| row.map { |img| img && index_of[img] } }
             map_sets << number
           end
+          area_tiles_by_key << DSL::Background::AreaTiles.new(tile_index: tile_lookup(sets[area], index_of),
+                                                              maps: map_names.length...(map_names.length + names.length))
           map_names.concat(names)
           drawn.concat(area_drawn)
         end
@@ -940,7 +945,7 @@ module VBlank
         merged = { by_key: {}, by_number: {}, tile_w: every.first[:tile_w], tile_h: every.first[:tile_h],
                    solid_images: every.flat_map { |set| set[:solid_images] || [] }.uniq }
         walked = { sets: set_names, set_starts: set_starts, map_sets: map_sets } unless set_names.one?
-        [merged, map_names, drawn, tile_names, grids, walked]
+        [merged, map_names, drawn, tile_names, grids, walked, area_tiles_by_key]
       end
 
       def refuse_tile_sets_shape!(name, tiles, map, from)

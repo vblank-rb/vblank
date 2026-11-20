@@ -231,7 +231,9 @@ class TestBackgroundTileSets < Minitest::Test
     assert_match(/two maps named :room/, error.message)
   end
 
-  def test_set_tile_on_a_walking_background_is_refused
+  # A key names a tile of the area showing (test/all/vblank/dsl/test_background_room_cells.rb); a
+  # number the game works out names no area's key.
+  def test_set_tile_on_a_walking_background_by_a_worked_out_number_is_refused
     error = refused do
       screen :tiled
       image(:a, "#" => :red) { (["#" * 8] * 8).join("\n") }
@@ -240,10 +242,11 @@ class TestBackgroundTileSets < Minitest::Test
       tiles :two, "#" => :b
       ground = background :ground, tiles: { shrine: :one, clearing: :two },
                                    map: { shrine: { hall: ["#"] }, clearing: { glade: ["#"] } }
-      game_loop { ground.set_tile 0, 0, "#" }
+      which = var :which, 0
+      game_loop { ground.set_tile 0, 0, which }
     end
 
-    assert_match(/use show_map/, error.message)
+    assert_match(/key of the tileset/, error.message)
   end
 
   def test_areas_whose_tiles_are_different_sizes_are_refused

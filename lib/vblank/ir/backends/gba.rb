@@ -1974,6 +1974,11 @@ module VBlank
               @functions.define_generated_func(routine) { @background_drawing.emit_stream_view_routine(bg) }
             end
           end
+          # ...and, for a map the game changes, the routine that changes a cell of it (see
+          # MapStreaming#emit_map_cell_write_routine), placed as any routine the game calls.
+          streamed.select { |bg| bg.stream.kept }.each do |bg|
+            @functions.define_generated_func(bg.stream.writer) { @background_drawing.emit_map_cell_write_routine(bg) }
+          end
         end
 
         # --- an effect placed in the stack ---

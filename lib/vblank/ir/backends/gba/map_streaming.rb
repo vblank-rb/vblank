@@ -110,6 +110,14 @@ module VBlank
             Messages::MadeNames.make(:view_along_map_in_scene, background: name, scene: IR::Modes.strip_scene_prefix(scene))
           end
 
+          # The routine that changes one cell of such a background's map (see
+          # #emit_map_cell_write_routine), named as #view_routine is.
+          def self.cell_write_routine(name, scene: nil)
+            return Messages::MadeNames.make(:map_cell_write, background: name) unless scene
+
+            Messages::MadeNames.make(:map_cell_write_in_scene, background: name, scene: IR::Modes.strip_scene_prefix(scene))
+          end
+
           # BRING THE CELLS AROUND THE VIEW IN, for a background whose map is brought into view a
           # strip at a time (+stream+, its StreamedMaps), before its scroll registers are
           # written. +x+ and +y+ are the values that hold where the view is now, in the map's own
@@ -221,6 +229,8 @@ module VBlank
             store_var(ACC, streamed)
             emit_number(ACC, 0)
             store_var(ACC, filled)
+            # A map the game changes is copied again, as declared, even the one already showing.
+            store_var(ACC, stream_var(node.name, :copied)) if bg.stream.kept
           end
 
           private
@@ -236,7 +246,8 @@ module VBlank
 
           # The map the strips come from: where it starts in the cartridge, its size and its
           # blank cell. Read off the table of maps by the number the background last showed —
-          # which is always a map it has, since a number naming none is never stored there.
+          # which is always a map it has, since a number naming none is never stored there. For a
+          # map the game changes, its copy in the roomy memory (#emit_kept_map_source).
           def emit_stream_source(bg)
             stream = bg.stream
             streamed, = IR::Nodes::Background.stream_vars(stream.name)
@@ -250,8 +261,141 @@ module VBlank
             emit(ASM.ldr_offset(STREAM_BLANK, TMP, 12))
             emit_load_data_address(TMP, stream.maps)
             emit(ASM.add_reg(STREAM_SOURCE, STREAM_SOURCE, TMP))
+            emit_kept_map_source(stream) if stream.kept
             emit_number(STREAM_GRID, VRAM_START + (bg.screen_block * SCREENBLOCK_BYTES))
           end
+
+          # A MAP THE GAME CHANGES (`set_tile`) is kept in the roomy memory while it is showing, and
+          # its strips come from there, so a changed cell scrolled out of view comes back changed. A
+          # console's own games keep a big room's cells in work memory the same way and bring each
+          # strip into the grid from there. The copy is made the first time it is wanted after
+          # show_map hands the background a map, or after the background goes up: one copy of the
+          # whole map by the copying engine (GBATEK, "DMA Transfers": DMA3, halfwords), which then
+          # holds the cells until the next. A frame that wants no new copy pays a load, an add and
+          # a compare to find that out.
+          #
+          # Comes in with the map's place in the cartridge in STREAM_SOURCE and its size in
+          # STREAM_COLS and STREAM_ROWS, and leaves STREAM_SOURCE at the copy.
+          def emit_kept_map_source(stream)
+            streamed, = IR::Nodes::Background.stream_vars(stream.name)
+            copied = stream_var(stream.name, :copied)
+            have = gensym
+            load_var(ACC, streamed)
+            emit(ASM.add_imm(ACC, ACC, 1)) # the copy notes its map's number and one, so nought is none
+            load_var(TMP, copied)
+            emit(ASM.cmp_reg(ACC, TMP))
+            emit_branch(:bcond, have, cond: :eq)
+            store_var(ACC, copied)
+            emit_number(STRIP_COL, REG_DMA3SAD)
+            emit(ASM.str_offset(STREAM_SOURCE, STRIP_COL, 0))
+            emit_number(ACC, kept_map_address(stream))
+            emit(ASM.str_offset(ACC, STRIP_COL, Primitives::COPY_TO_STEP))
+            emit(ASM.mul(ACC, STREAM_COLS, STREAM_ROWS))
+            emit_number(TMP, DMA_ENABLE | DMA_16BIT)
+            emit(ASM.orr_reg(ACC, ACC, TMP))
+            emit(ASM.str_offset(ACC, STRIP_COL, Primitives::COPY_START_STEP))
+            place_label(have)
+            emit_number(STREAM_SOURCE, kept_map_address(stream))
+          end
+
+          # Where the copy of a map the game changes is kept: room in the roomy memory for the
+          # biggest of the background's maps, one for each declaration.
+          def kept_map_address(stream)
+            (@kept_map_addresses ||= {})[stream.routine] ||= begin
+              cells = stream.kept_bytes / 2
+              fits = cells <= MOST_KEPT_MAP_CELLS && @memory.alloc_roomy(stream.kept_bytes)
+              fits or raise LoweringError, "background :#{stream.name} has a map of #{cells} cells, and the game changes " \
+                                           "its cells. The Game Boy Advance build keeps such a map of at most " \
+                                           "#{MOST_KEPT_MAP_CELLS} cells. To fix this, use smaller maps."
+            end
+          end
+
+          # WHAT THE COPY STOPS. The copying engine holds the processor, and the screen's interrupt
+          # with it, until the whole map is across (GBATEK, "DMA Transfers"). A cell is a halfword
+          # read from the cartridge, a sequential access of two cycles at the wait states the game
+          # runs with (Console::Hardware::WAITCNT_FAST), and one written to the roomy memory, three
+          # cycles for a halfword (GBATEK, "GBA Memory Map": two wait states). The sound mixer is
+          # built to hand over its buffer up to Mixer::LATE_ROOM late, which it sets from the
+          # longest copy the framework makes while a game runs, a whole-screen clear of a fifth of
+          # a frame. So the copy is held to that fifth too, and the sound never breaks for it.
+          KEPT_COPY_CYCLES_A_CELL = 5
+          MOST_KEPT_MAP_CELLS = Console::ADVANCE.cycles_a_frame / 5 / KEPT_COPY_CYCLES_A_CELL
+
+          public
+
+          # THE ROUTINE THAT CHANGES ONE CELL OF A MAP THE GAME CHANGES (`set_tile`), called with the
+          # cell's column and row and its new map entry in the background's own variables
+          # (#emit_streamed_tile_write). The cell is written in the copy (#emit_kept_map_source), and
+          # in the grid too where the grid holds it now, so it shows on the frame being drawn. A cell
+          # outside the grid comes in from the copy when a strip brings it into view. A cell
+          # outside the map changes nothing.
+          #
+          # It keeps the two registers a fast `repeat` holds its count and limit in
+          # (LoopForm::COUNTER, LIMIT), which the stream source lands in, so a cell changed inside
+          # such a loop leaves the loop counting: one save and one restore a cell written, where
+          # counting the loop in memory would cost every pass of every loop that writes a cell.
+          def emit_map_cell_write_routine(bg)
+            name = bg.stream.name
+            done = gensym
+            emit(ASM.push(LoopForm::COUNTER, LoopForm::LIMIT))
+            emit_stream_source(bg)
+            load_var(STRIP_COL, stream_var(name, :write_col))
+            load_var(STRIP_ROW, stream_var(name, :write_row))
+            # One unsigned compare catches both ends, as in the strip copy.
+            emit(ASM.cmp_reg(STRIP_COL, STREAM_COLS))
+            emit_branch(:bcond, done, cond: :hs)
+            emit(ASM.cmp_reg(STRIP_ROW, STREAM_ROWS))
+            emit_branch(:bcond, done, cond: :hs)
+            load_var(STRIP_COUNT, stream_var(name, :write_cell))
+            emit(ASM.mul(TMP, STRIP_ROW, STREAM_COLS))
+            emit(ASM.add_reg(TMP, TMP, STRIP_COL))
+            emit(ASM.add_reg_lsl(TMP, STREAM_SOURCE, TMP, 1)) # two bytes a cell
+            emit(ASM.store_halfword(STRIP_COUNT, TMP))
+            # The grid holds VIEW_COLS columns and VIEW_ROWS rows from the place it was last
+            # filled for, once it has been filled for this map.
+            load_var(ACC, IR::Nodes::Background.stream_vars(name).last)
+            emit(ASM.cmp_imm(ACC, 0))
+            emit_branch(:bcond, done, cond: :eq)
+            load_var(ACC, stream_var(name, :col))
+            emit(ASM.sub_reg(ACC, STRIP_COL, ACC))
+            emit(ASM.cmp_imm(ACC, VIEW_COLS))
+            emit_branch(:bcond, done, cond: :hs)
+            load_var(ACC, stream_var(name, :row))
+            emit(ASM.sub_reg(ACC, STRIP_ROW, ACC))
+            emit(ASM.cmp_imm(ACC, VIEW_ROWS))
+            emit_branch(:bcond, done, cond: :hs)
+            emit(ASM.and_imm(TMP, STRIP_ROW, STREAM_CELLS - 1))
+            emit(ASM.lsl_imm(TMP, TMP, 5))
+            emit(ASM.and_imm(STRIP_SCRATCH, STRIP_COL, STREAM_CELLS - 1))
+            emit(ASM.orr_reg(TMP, TMP, STRIP_SCRATCH))
+            emit(ASM.add_reg_lsl(TMP, STREAM_GRID, TMP, 1))
+            emit(ASM.store_halfword(STRIP_COUNT, TMP))
+            place_label(done)
+            emit(ASM.pop(LoopForm::COUNTER, LoopForm::LIMIT))
+          end
+
+          # ONE CELL OF A MAP BROUGHT IN A STRIP AT A TIME CHANGED (`set_tile`): its column, row and
+          # map entry handed to the background's own routine (#emit_map_cell_write_routine), so the
+          # cell stays changed in the copy the strips come from.
+          def emit_streamed_tile_write(node, bg, entry)
+            name = bg.stream.name
+            @lowering.value(node.col)
+            store_var(ACC, stream_var(name, :write_col))
+            @lowering.value(node.row)
+            store_var(ACC, stream_var(name, :write_row))
+            emit_number(ACC, entry)
+            store_var(ACC, stream_var(name, :write_cell))
+            @lowering.statement(Build.call(bg.stream.writer))
+          end
+
+          # The copy of a map the game changes is made again once something asks for it: after
+          # show_map, and as the background goes up, when nothing is known to be copied yet.
+          def emit_kept_map_forgotten(stream)
+            emit_number(ACC, 0)
+            store_var(ACC, stream_var(stream.name, :copied))
+          end
+
+          private
 
           # Go to +refill+ when the view moved more than MOST_STRIPS cells one way since the grid
           # was filled. One unsigned test covers both directions: the move plus MOST_STRIPS is

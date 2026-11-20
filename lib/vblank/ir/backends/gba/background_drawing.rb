@@ -130,6 +130,8 @@ module VBlank
             if bg.stream
               emit_number(ACC, 0)
               store_var(ACC, IR::Nodes::Background.stream_vars(node.name).first)
+              # A map the game changes goes up as declared, copied again (MapStreaming#emit_kept_map_source).
+              emit_kept_map_forgotten(bg.stream) if bg.stream.kept
               emit_stream_fill(bg, at_corner: true)
             else
               @uploads.emit_dma_blob(bg.map, VRAM_START + (bg.screen_block * SCREENBLOCK_BYTES), bg.map_units)
@@ -475,6 +477,7 @@ module VBlank
             end
             emit_for_each_declaration(node.name) do |bg|
               next if bg.nil? # a background with no tiled layer (a bitmap-mode program)
+              next emit_streamed_tile_change(node, bg) if bg.stream
 
               grid = bg.grid or raise_no_cells_to_change(node.name)
               # A tile only another scene's declaration of this name has, from a line written
@@ -485,6 +488,18 @@ module VBlank
 
               emit_computed_tile_write(node, bg, grid, entry)
             end
+          end
+
+          # A cell of a map brought into view a strip at a time (MapStreaming#emit_streamed_tile_write).
+          # A tile only another scene's declaration has writes nothing here, as on a grid.
+          def emit_streamed_tile_change(node, bg)
+            if node.held
+              raise LoweringError, "The background :#{node.name} has maps of different sizes or a map bigger than 64x64 " \
+                                   "cells, and it holds its cell changes (`held: true`). The Game Boy Advance build does " \
+                                   "not make that yet. To fix this, remove `held: true`."
+            end
+            entry = bg.stream.cells[node.tile] or return
+            emit_streamed_tile_write(node, bg, entry)
           end
 
           # A background that turns and resizes holds a tile number in each cell and nothing

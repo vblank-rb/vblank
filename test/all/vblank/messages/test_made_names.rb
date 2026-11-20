@@ -44,6 +44,8 @@ class TestMadeNames < Minitest::Test
     shared_rooms: { number: 0, part: :take },
     view_along_map: { background: :ground },
     view_along_map_in_scene: { background: :ground, scene: :cave },
+    map_cell_write: { background: :ground },
+    map_cell_write_in_scene: { background: :ground, scene: :cave },
     tile_run_tile: { run: :box, number: 3 },
     tile_run_pending: { number: 0 },
     painted_copies: {},
@@ -97,6 +99,9 @@ class TestMadeNames < Minitest::Test
         "bringing background :ground of the scene :cave another set of tiles",
       MadeNames.make(:view_along_map_in_scene, background: :ground, scene: :cave) =>
         "bringing the view of background :ground of the scene :cave along its map",
+      MadeNames.make(:map_cell_write, background: :ground) => "changing a cell of the map of background :ground",
+      MadeNames.make(:map_cell_write_in_scene, background: :ground, scene: :cave) =>
+        "changing a cell of the map of background :ground of the scene :cave",
       MadeNames.make(:shared_rooms, number: 0, part: :take) => "giving a sprite a room in sprite memory for the pose it shows",
       MadeNames.make(:shared_rooms, number: 0, part: :let_go) => "taking back the room of a sprite that is not shown",
       MadeNames.make(:pool_part, pool: :guard, part: :remove) => "removing an instance of pool :guard",

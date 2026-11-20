@@ -65,7 +65,13 @@ module VBlank
           # +name+ is the background's, and +routine+ the one that brings its view along (see
           # MapStreaming#emit_stream_view_routine), which is one for each scene's declaration of
           # a background declared in several.
-          StreamedMaps = Data.define(:name, :routine, :maps, :table)
+          #
+          # +kept+ is set where the game changes a cell of it (`set_tile`): the map showing is then
+          # kept in the roomy memory, +kept_bytes+ for the biggest map, and the strips come from that
+          # copy (see MapStreaming#emit_kept_map_source), and +writer+ is the routine that changes a
+          # cell of it. +cells+ is each of the background's tiles as a map entry holds it, every
+          # set's, nil the blank.
+          StreamedMaps = Data.define(:name, :routine, :maps, :table, :kept, :kept_bytes, :writer, :cells)
 
           # BRINGING ANOTHER SET OF TILES IN, for a background that walks between areas. Every
           # set's tile pictures are in +tiles+, +stride+ bytes each, and one of them at a time
@@ -1598,6 +1604,8 @@ module VBlank
               end
             end
             cell_for = cells_of_sets.first
+            every_set_cell = cells_of_sets.reduce(:merge) # the sets number different tiles of the background
+            refuse_emptied_cell_of_two_blanks!(node, set_stores)
             stored = set_stores.first.first
             entries = map_entries(node.map, cols, rows, stored.blank) { |index| cell_for.fetch(index) }
 
@@ -1630,11 +1638,27 @@ module VBlank
               char_base: stored.char_base,
               map_count: grids.size, map_bytes: entries.size * 2,
               # A tile of nil is the empty cell (Nodes::SetTile), the layer's blank tile, as the map's own are.
-              grid: (MapGrid.new(cols: cols, rows: rows, cells: cell_for.merge(nil => stored.blank)) unless streams),
+              # Every set's tiles are there, each as its own set names it: a cell is written with a
+              # tile of the area showing, whose set is the one in video memory.
+              grid: (MapGrid.new(cols: cols, rows: rows, cells: every_set_cell.merge(nil => stored.blank)) unless streams),
               colors: background_color_lists(node, banks, small),
               stream: stream
             ))
             note_followed_groups(node, banks, small)
+          end
+
+          # A CELL EMPTIED (`set_tile` with no tile) is the layer's blank tile, one entry for the
+          # background whichever area is up (MapGrid#cells, StreamedMaps#cells). Each set's blank is
+          # where that set's tiles are counted from, so sets counted from different places have
+          # different blanks, and the one entry would be wrong for all but the first. Refused here
+          # rather than written wrong.
+          def refuse_emptied_cell_of_two_blanks!(node, set_stores)
+            return if set_stores.map { |stored, _| stored.blank }.uniq.one?
+            return unless @program.walk.any? { |each| each.kind == :set_tile && each.name == node.name && each.tile.nil? && !each.picked? }
+
+            raise LoweringError, "background :#{node.name} walks between areas whose tiles sit in different places, and " \
+                                 "the game empties a cell of it. The Game Boy Advance build does not make that yet. To " \
+                                 "fix this, give the cell a see-through tile of the area instead."
           end
 
           # Keep which group of background colours each changing list +node+ follows is written
@@ -1710,8 +1734,12 @@ module VBlank
             sizes = :"__bg_map_sizes_#{declaration_tag(node)}"
             @blobs[sizes] = table.pack("V*")
             keep_unpacked!(sizes)
+            kept = @program.walk.any? { |each| each.kind == :set_tile && each.name == node.name }
             StreamedMaps.new(name: node.name, routine: MapStreaming.view_routine(node.name, scene: own_scene(node)),
-                             maps: maps, table: sizes)
+                             maps: maps, table: sizes, kept: kept,
+                             writer: (MapStreaming.cell_write_routine(node.name, scene: own_scene(node)) if kept),
+                             kept_bytes: grids.map { |map| IR::TileMap.size_of(map).reduce(:*) * 2 }.max,
+                             cells: cells_of_sets.reduce(:merge).merge(nil => set_stores.first.first.blank))
           end
 
           # What it takes to bring one of a background's sets of tiles in (see TileSetSwap): every
