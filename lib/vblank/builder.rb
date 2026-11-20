@@ -12,18 +12,30 @@ module VBlank
   # Must come before the concerns: a game file among them runs its `while` loops as it loads, and
   # a loop asks which builder is in use (PlainRuby::Steps::LoopTest).
   class Builder
-    # The builder of the game being built here, for a part of a game that makes a variable with
-    # no `var` of its own to call.
-    def self.in_use = Ractor.current[:vblank_builder_in_use]
+    IN_USE_KEY = :vblank_builder_in_use
+
+    # The builder of the game being built on this thread, for a part of a game that makes a
+    # variable with no `var` of its own to call.
+    #
+    # Kept on the thread, not the Ractor: two threads of one Ractor can build two games at once
+    # (minitest's threads, with --no-ractor), and each game's code must find its own builder. A
+    # thread variable is shared by the thread's fibers, so a build stepped through an Enumerator
+    # still finds it. Each Ractor has threads of its own, so this is per Ractor as well.
+    def self.in_use = Thread.current.thread_variable_get(IN_USE_KEY)
+
+    # Make +builder+ the one in use on this thread (Builder.new does this for each new builder).
+    def self.in_use=(builder)
+      Thread.current.thread_variable_set(IN_USE_KEY, builder)
+    end
 
     # Run the block, then put back the builder that was in use before it, whatever the block made.
     # Builder.new makes each new builder the one in use, so a builder made to build a program
     # beside the game (Builder::DataPacks#unpacking_program) would otherwise keep the game's parts.
     def self.keeping_builder_in_use
-      was = Ractor.current[:vblank_builder_in_use]
+      was = in_use
       yield
     ensure
-      Ractor.current[:vblank_builder_in_use] = was
+      self.in_use = was
     end
   end
 end
@@ -222,7 +234,7 @@ module VBlank
       @variables_with_no_var_line = []
       @unsaved_variables = Set.new # named `game_variables ..., saved: false` (Builder::SaveData)
       @instance_variable_uses = DSL::PlainRuby::InstanceVariables::Uses.new
-      Ractor.current[:vblank_builder_in_use] = self
+      Builder.in_use = self
       @boolean_variables = {}   # the variables started with `true` or `false`
       @timer_seq = 0           # counts every/after timers, to name each one's hidden counter var
       @rng_seq = 0             # counts anonymous random draws, to name each one's hidden var

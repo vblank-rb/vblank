@@ -3466,4 +3466,26 @@ class TestPlainRuby < Minitest::Test
 
     assert_match(/game_variables :score` to the game block/, error.message)
   end
+
+  # Game code reads the builder of the game being built on its own thread. A game built on another
+  # thread in between, as a test run in threads does, must not take its place.
+  def test_a_game_built_on_another_thread_leaves_this_threads_game_code_its_own_builder
+    builder = Builder.new
+    Thread.new { Builder.new }.join
+    game = VBlank::DSL::PlainRuby.rewrite(proc do
+      @score = 0
+      seen = var :seen, 0
+      game_loop do
+        @score += 1
+        seen.store!(@score)
+      end
+    end)
+
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      builder.instance_eval(&game)
+      builder.finalize_program
+    end
+
+    assert_match(/game_variables :score` to the game block/, error.message)
+  end
 end
