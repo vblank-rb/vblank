@@ -40,6 +40,8 @@
  *                       file the page fetches (from beside it) arrives before the first of them.
  *   skip N              N console frames of time go by with no browser frame: the page was busy,
  *                       and its next frame finds the frames it owes
+ *   allocated N         plays N frames as "play" does, and prints "allocated" and the bytes the page
+ *                       allocated a frame meanwhile, counted by V8's allocation sampler
  *   counts              prints "counts", how many frames the page has asked the browser for
  *                       (frames=), how many pictures it has put on a canvas (pictures=) and how many
  *                       sound buffers it has made (buffers=)
@@ -473,6 +475,32 @@ function play(frames) {
   }
 }
 
+/* HOW MUCH THE PAGE ALLOCATES A FRAME, while it plays +frames+ of them: V8's allocation sampler,
+ * told to take a sample at every ALLOCATION_SAMPLE_BYTES allocated, with no randomness in where, and
+ * to keep the samples of what was collected since, so the count is of everything allocated and the
+ * same on every run. Gives the bytes a frame, to the nearest sample. The browser's collector has to
+ * take back every byte of it, and a page that leaves it a great deal pauses for it. */
+const ALLOCATION_SAMPLE_BYTES = 256;
+function allocated_a_frame(frames) {
+  const v8 = require("v8");
+  const inspector = require("inspector");
+  v8.setFlagsFromString("--sampling-heap-profiler-suppress-randomness");
+  const session = new inspector.Session();
+  session.connect();
+  let samples = 0;
+  session.post("HeapProfiler.enable");
+  session.post("HeapProfiler.startSampling", {
+    samplingInterval: ALLOCATION_SAMPLE_BYTES, includeObjectsCollectedByMajorGC: true, includeObjectsCollectedByMinorGC: true,
+  });
+  play(frames);
+  session.post("HeapProfiler.stopSampling", (error, result) => {
+    if (error) throw new Error(`page_harness: the allocation sampler stopped: ${error.message}`);
+    samples = result.profile.samples.length;
+  });
+  session.disconnect();
+  return Math.round((samples * ALLOCATION_SAMPLE_BYTES) / frames);
+}
+
 /* The page was busy with something else: the time passes and no frame comes. */
 function skip(frames) {
   now += Number(frames) * FRAME_MS;
@@ -579,6 +607,7 @@ async function steps() {
     else if (step === "check" || step === "uncheck") { element(what).checked = step === "check"; tell(element(what), "change"); }
     else if (step === "play") play(Number(what));
     else if (step === "skip") skip(what);
+    else if (step === "allocated") printed.push(`allocated ${allocated_a_frame(Number(what))}`);
     else if (step === "pixel") printed.push(`pixel ${bytes_at(what, Number(rest[0]), Number(rest[1]))}`);
     else if (step === "counts") printed.push(`counts frames=${asked.frames} pictures=${asked.pictures} buffers=${asked.buffers}`);
     else if (step === "speaker") pull_speaker(Number(what));
