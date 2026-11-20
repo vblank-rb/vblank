@@ -108,16 +108,13 @@ Every file in [`examples/`](examples/) is a complete game or demo that teaches o
 
 ## Using it in a game
 
-Building a cartridge needs only Ruby. Checking or measuring one runs it in an emulator, through the `ruby-gba-emulator` gem, which lives in this repository but is not a dependency, so somebody who only builds cartridges needs no C compiler. Add both to a game's Gemfile in one block:
+VBlank is one gem. Add it to a game's Gemfile:
 
 ```ruby
-git "https://github.com/vblank-rb/vblank.git", glob: "{,ruby-gba-emulator/}*.gemspec" do
-  gem "vblank"
-  gem "ruby-gba-emulator"
-end
+gem "vblank", git: "https://github.com/vblank-rb/vblank.git"
 ```
 
-Keep it as one block. Two separate `gem ... github:` lines look the same but are two sources that clone into one folder, and the clone fails.
+Building a cartridge needs only Ruby. Checking or measuring one runs it in an emulator, and the emulators ship inside the gem: installing it builds them where the machine has a C compiler and the emulator's library. Where it cannot, the install still finishes, and the first check that needs an emulator says what is missing and how to fix it (install the tools, then `gem pristine vblank`).
 
 | To… | you need |
 |---|---|
@@ -127,7 +124,7 @@ Keep it as one block. Two separate `gem ... github:` lines look the same but are
 | build a program for a computer | zig 0.17 |
 | import a picture from a PNG | ImageMagick (`.aseprite` files are read in Ruby) |
 | test a game as JavaScript | node 18 or later |
-| check or measure a cartridge | `ruby-gba-emulator`: a C compiler and libmgba |
+| check or measure a cartridge | a C compiler and libmgba when the gem is installed |
 
 ## Status
 
