@@ -69,10 +69,10 @@ module RubySNESEmulator
       end
     end
 
-    # bsnes names the library for the platform: .so on Linux, .dylib on macOS. It is kept as .so
+    # bsnes names the library for the platform: .so on Linux, .dylib on macOS, .dll on Windows. It is kept as .so
     # whatever it was built as, since dlopen reads the file and never its name.
     def library_in(source)
-      built = Dir[File.join(source, "out", "bsnes_libretro.{so,dylib}")].first
+      built = Dir[File.join(source, "out", "bsnes_libretro.{so,dylib,dll}")].first
       built || raise(CannotBuild, "bsnes built, but left no library in bsnes/out/")
     end
 
