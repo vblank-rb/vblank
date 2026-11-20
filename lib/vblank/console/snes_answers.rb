@@ -40,6 +40,7 @@ module VBlank
                       "in each pass shows sooner. With `pixel_size: 2` the rows are rows of the small " \
                       "picture."),
         setting: works,
+        feature?: works,
         built_for_computer?: works("false on a cartridge."),
         built_for?: works("true when asked about :snes."),
         screen_width: works("256 on a Super Nintendo. 128 with `pixel_size: 2`."),

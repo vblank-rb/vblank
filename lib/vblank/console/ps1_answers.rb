@@ -50,6 +50,7 @@ module VBlank
                       "refused: a PlayStation can write its video memory at any time, so rows that do not " \
                       "show give it no more time."),
         setting: works,
+        feature?: works,
         built_for_computer?: works("false on a PlayStation."),
         built_for?: works("true when asked about :ps1."),
         screen_width: works("320 on a PlayStation."),

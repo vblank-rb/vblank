@@ -48,6 +48,7 @@ module VBlank
                       "`shown_rows:` is refused: a Game Boy Color cannot switch its screen off for some " \
                       "rows only."),
         setting: works,
+        feature?: works,
         built_for_computer?: works("false on a cartridge."),
         built_for?: works("true when asked about :gbc."),
         screen_width: works("160 on a Game Boy Color."),

@@ -44,7 +44,7 @@ and a test fails when the two differ.
 
 These work as their group files say:
 
-`setting`, `wait_vblank`, `halt`, `debug_halt`, `game_loop`, `once_a_frame`,
+`setting`, `feature?`, `wait_vblank`, `halt`, `debug_halt`, `game_loop`, `once_a_frame`,
 `frames_since_power_on`, `each_pass`, `every`, `after`, `repeat`, `timer`, `pixel`, `fill_rect`,
 `dma_fill_rect`, `draw_rect_at`, `draw_column_at`, `clear_screen`, `inside`, `grid`, `camera`,
 `keep_showing`, `place`, `viewer`, `screen_spot`, `change_picture`, `fade`, `tint`, `fade_in`,

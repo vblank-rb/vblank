@@ -52,6 +52,7 @@ module VBlank
                       "`pixel_size: 2` is refused: a Genesis cannot show a pixel bigger. " \
                       "`shown_rows:` is refused: the build does not give up rows of the screen yet."),
         setting: works,
+        feature?: works,
         built_for_computer?: works("false on a cartridge."),
         built_for?: works("true when asked about :genesis."),
         screen_width: works("320 on a Genesis."),

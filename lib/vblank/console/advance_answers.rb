@@ -25,7 +25,7 @@ module VBlank
                       "`shown_rows:` is refused: a Game Boy Advance can write its painted screen at any " \
                       "time, so rows that do not show give it no more time. To give up rows on a Super " \
                       "Nintendo only, write `shown_rows:` when `built_for?(:snes)` is true."),
-        setting: works, built_for_computer?: works("false on a cartridge."),
+        setting: works, feature?: works, built_for_computer?: works("false on a cartridge."),
         built_for?: works("true when asked about :gba."),
         screen_width: works("240 on a Game Boy Advance. 120 with `pixel_size: 2`. 160 on a game built with " \
                             "`variants: { gba: :color_screen }`, which is laid out for a Game Boy Color."),
