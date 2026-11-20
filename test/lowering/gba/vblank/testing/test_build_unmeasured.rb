@@ -6,8 +6,8 @@ require "tmpdir"
 require "vblank/testing/cartridge_cache"
 
 # A game's test helper sets once that the run builds its cartridges unmeasured
-# (Testing.build_unmeasured), so a scene helper shared with the game's films, which calls
-# `game.build_rom` itself, skips the measuring build in the tests and keeps measuring in a film.
+# (Testing.build_unmeasured), so a scene helper shared with the game's films, which builds the
+# game's cartridge itself, skips the measuring build in the tests and keeps measuring in a film.
 # Measuring plays the cartridge in the emulator, so this is the Advance's run alone.
 class TestBuildUnmeasured < Minitest::Test
   # Every test sets the run's setting, which the whole process shares.
