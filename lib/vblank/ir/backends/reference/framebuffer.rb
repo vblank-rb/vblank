@@ -433,12 +433,27 @@ module VBlank
           end
 
           # Paint a w-by-h rectangle whose top-left is (x, y). Any part hanging off
-          # the screen is clipped, because each cell goes through set_pixel.
+          # the screen, or outside the area drawing is held to, is clipped.
+          #
+          # Painted a row at a time: the rectangle is clipped once to the cells #paintable?
+          # allows, and each row is one fill. Every cell gets the same colour, because without
+          # a see-through layer #blend_into_cell asks only the colour, never the cell. A
+          # see-through layer mixes each cell with what is under it, so that is painted a
+          # cell at a time through #set_pixel, the plain way the rows stand in for.
           def fill_rect(x, y, width, height, color)
-            y.upto(y + height - 1) do |py|
-              x.upto(x + width - 1) do |px|
-                set_pixel(px, py, color)
-              end
+            return fill_rect_cell_by_cell(x, y, width, height, color) if @through
+
+            left, top, right, bottom = paintable_box(x, y, x + width, y + height)
+            return if right <= left || bottom <= top
+
+            color = apply_placed_fade(color)
+            scenery = @painting_sprite ? nil : @scenery
+            count = right - left
+            top.upto(bottom - 1) do |row|
+              at = (row * @width) + left
+              @pixels.fill(color, at, count)
+              scenery&.fill(color, at, count)
+              @mixed_tops&.fill(nil, at, count) # a cell painted solid over a mix is a mix no longer
             end
           end
 
@@ -767,6 +782,27 @@ module VBlank
               end
             end
             blended[0] | (blended[1] << 5) | (blended[2] << 10)
+          end
+
+          def fill_rect_cell_by_cell(x, y, width, height, color)
+            y.upto(y + height - 1) do |py|
+              x.upto(x + width - 1) do |px|
+                set_pixel(px, py, color)
+              end
+            end
+          end
+
+          # The box from (left, top) up to but not including (right, bottom), cut down to the
+          # cells #paintable? allows, as [left, top, right, bottom]. Empty when right <= left or
+          # bottom <= top.
+          def paintable_box(left, top, right, bottom)
+            left = left.clamp(0, @width)
+            right = right.clamp(0, @width)
+            top = top.clamp(0, @height)
+            bottom = bottom.clamp(0, @height)
+            return [left, top, right, bottom] unless @area
+
+            [[left, @area[0]].max, [top, @area[1]].max, [right, @area[2]].min, [bottom, @area[3]].min]
           end
 
           # Where a cell may be PAINTED: on the screen, and inside the area drawing is held to.
