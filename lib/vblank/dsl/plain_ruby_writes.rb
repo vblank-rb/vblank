@@ -51,7 +51,7 @@ module VBlank
           end
           game = tests_followed(current, tests, before_plain_start).any?(&:game?)
           return yield(value) if second_name && !game
-          if copies && Steps.variable?(value) && !own_variable?(current, owner, label)
+          if copies && Promotion.moved_instance_variable(current, value, owner, label).promoted?
             return yield(own_copy(label, value, owner))
           end
           unless Steps.variable?(current)
@@ -155,37 +155,37 @@ module VBlank
         # The variable a promotion makes is the place's own too, so a later line giving the place
         # another game variable (`@held = @states[0]`) copies the number into it.
         #
-        # A named instance variable still holding nil is left as it is. The line that sets it may be
-        # one this build skips, under a test decided while building (`@secret = called if
-        # @secret_floor`, with `@secret_floor` false), and then no game code reads or writes it, so
-        # it has no variable. Where the line does run, its write decides
-        # (InstanceVariables.refuse_nil_written_under_game_test!).
+        # Promotion.instance_variable decides a game's own instance variable: a named one still
+        # holding nil is left as it is (where its line does run, its write decides,
+        # InstanceVariables.refuse_nil_written_under_game_test!), and a named one uses its own game
+        # variable.
         def promote_place(value, test, *outer, may_stay_nil: false, owner: nil, label: nil)
           if owner
-            return value if value.nil? && InstanceVariables.followed?(owner, label)
+            answer = Promotion.instance_variable(owner, value, label)
+            return value if answer.reason == :named_still_nil
 
-            value = InstanceVariables.promotion_target(owner, value, label, test)
+            value = InstanceVariables.promotion_target(owner, value, label, test, answer)
           end
-          return value if Steps.variable?(value)
+          return value if Promotion.held(value).reason == :holds_variable
 
           promoted = promote(value, test, *outer, may_stay_nil: may_stay_nil)
           Steps.variable?(promoted) ? keep_as_own(promoted, owner, label) : promoted
         end
 
-        # #promote for a slot of a Hash or an Array. A slot that holds nothing yet has no number to
-        # keep, and a key a game works out is not a slot Ruby can name. A slot holding a game variable
-        # is left alone, so a frozen Hash of a part's variables stays usable.
+        # #promote for a slot of a Hash or an Array, where Promotion.slot and Promotion.held let it:
+        # a slot holding a game variable is left alone, so a frozen Hash of a part's variables stays
+        # usable.
         def promote_slot(collection, keys, test, *outer)
-          return unless (collection.is_a?(Hash) || collection.is_a?(Array)) && keys.none?(Value)
+          return unless Promotion.slot(collection, keys).promoted?
 
           current = slot(collection, keys, nil)
-          collection[*keys] = promote_place(current, test, *outer) unless current.nil? || Steps.variable?(current)
+          collection[*keys] = promote_place(current, test, *outer) if Promotion.held(current).promoted?
         end
 
         # #promote for an attribute of an object of the game's own.
         def promote_attribute(receiver, name, test, *outer)
           current = attribute(receiver, name)
-          return if current.nil? || Steps.variable?(current)
+          return unless Promotion.held(current).promoted?
 
           # A named field of a Struct is followed as an instance variable is.
           field = InstanceVariables.named_field?(receiver, name) ? { owner: receiver, label: :"@#{name}" } : {}
@@ -273,19 +273,11 @@ module VBlank
 
         # A plain name is about to be changed under +test+. A test the game makes runs both sides
         # while building, so a plain name would end up with the last side's value whichever way
-        # the game goes. It gets a hidden variable holding its value now, and the sides change that.
-        #
-        # Tests already open around this one have seen to a name read after them, in +outer+. One read
-        # only inside them, and still holding a variable it was handed, gets its own here: the sides
-        # would otherwise write the variable it came from, which is somebody else's. So does one given
-        # a plain number since (`differing = 0` at the top of a loop's body): the variable an outer
-        # test gave the name is no longer what it holds. +name+ is the name promoted: a hidden
-        # variable made for another name is that name's (`bend = out`, `out` promoted or keeping
-        # a copy), and `bend = 0` under this test must not write it.
+        # the game goes. Where Promotion.value_under_test says so, it gets a hidden variable holding
+        # its value now, and the sides change that. +name+ is the name promoted: the hidden variable
+        # is that name's own (#owned_by?).
         def promote(value, test, *outer, may_stay_nil: false, name: nil)
-          return value unless test.game?
-          return value if outer.any?(&:game?) && Steps.variable?(value) && !handed?(value) && owned_by?(value, name)
-          return value unless number_kept?(value)
+          return value unless Promotion.value_under_test(value, test, *outer, name: name).promoted?
 
           own = test.hidden_variable(:promoted, like: value.is_a?(Value) || value.is_a?(Float) ? value : nil)
           own.owner_name = name
@@ -428,12 +420,11 @@ module VBlank
         end
 
         # A number changed from a block that is a pool's `each` or a Ruby list's, which only running
-        # it can tell apart. Changed while game code is recorded, a plain number would change once,
-        # while building, and the game would never see it, so it becomes a game variable that starts
-        # at power-on with the number the name holds. While setting up, it is returned unchanged.
-        # See Rewriter#guarded_write_text.
+        # it can tell apart, made a game variable where Promotion.unplaced_change says so. It starts
+        # at power-on with the number the name holds. Otherwise it is returned unchanged. See
+        # Rewriter#guarded_write_text.
         def variable_while_recording(owner, current, name, recording, source: nil)
-          return current unless recording && whole_or_fraction?(current)
+          return current unless Promotion.unplaced_change(current, recording).promoted?
 
           variable_with_no_var_line(owner, name, current, source: source)
         end
@@ -441,13 +432,10 @@ module VBlank
         # The first line of such a name. Run while game code is recorded (in a method a game loop
         # calls), it sets the variable there, so each pass starts it afresh as Ruby's line would.
         def start_variable_while_recording(owner, value, name, recording, source: nil)
-          return value unless recording && whole_or_fraction?(value)
+          return value unless Promotion.unplaced_change(value, recording).promoted?
 
           give_variable(variable_with_no_var_line(owner, name, value.is_a?(Float) ? 0.0 : 0, source: source), value)
         end
-
-        # A Ruby whole number or fraction, unlike #number_kept?, which takes anything a game keeps.
-        def whole_or_fraction?(value) = value.is_a?(Integer) || value.is_a?(Float)
 
         # A variable the author never wrote `var` for, which the out-of-memory error names.
         #

@@ -265,6 +265,7 @@ module VBlank
         def rewritten(node)
           # Only VBlank's own files go without following instance variables (PlainRuby.library_file?).
           @names = LocalNames.new(node, library_file: !@follows_instance_variables)
+          @promotion = @names.promotion
           @heredoc_parts = heredoc_parts_in(node).sort_by { |part| part.location.start_offset }
           rewritten_text(node)
         end
@@ -373,7 +374,7 @@ module VBlank
 
         def gives_plain_value_before?(statement, write)
           statement.is_a?(Prism::LocalVariableWriteNode) && statement.name == write.name &&
-            statement.location.end_offset <= write.location.start_offset && @names.plain_name_write?(statement) &&
+            statement.location.end_offset <= write.location.start_offset && @promotion.local(statement).plain? &&
             !reads_local?(statement.value, write.name)
         end
 
@@ -652,13 +653,13 @@ module VBlank
         # looks, using the question the block's builder answers.
         #
         # A name of the scope around a block, changed in it under a test the game makes, was given a
-        # variable before the test if anything reads it after (LocalNames#plain_writes_in), and the
+        # variable before the test if anything reads it after (Promotion#before_test), and the
         # write goes to that under the tests open around the block. One nothing reads after is
         # Ruby's, since only code on that side reads it.
         #
-        # A number changed from a block that may be a pool's `each` (LocalNames#from_unknown_block?)
-        # is decided as each line runs. While the line records game code, the name is a game
-        # variable: its first line sets it there, so a method called on every pass starts it
+        # A number changed from a block that may be a pool's `each` (Promotion#local's
+        # :changed_from_unplaced_block) is decided as each line runs (Promotion.unplaced_change).
+        # While the line records game code, the name is a game variable: its first line sets it there, so a method called on every pass starts it
         # afresh, and a change from the block makes it one holding the number it has then. While
         # setting up it stays Ruby's, so `names.each { count += 1 }` over a Ruby list counts in Ruby.
         #
@@ -666,7 +667,7 @@ module VBlank
         # line made by now, and a promoted write under a test decided while building would only
         # give the name a working-out of it, so a pool's `each` would add once whatever it holds.
         def guarded_write_text(node, written)
-          return unknown_block_write_text(node) if @names.changed_from_unknown_block?(node)
+          return unknown_block_write_text(node) if @promotion.local(node).decided_while_running?
           return under_open_tests(@block_tests) { write_or_change_text(node) } if promoted_in_block?(node)
 
           written
@@ -677,7 +678,7 @@ module VBlank
         # shown == 0; shown = x`), so while game code is recorded the read makes it the game
         # variable too, or the test would be decided once, while building, from the number it held.
         def unknown_block_read_text(node)
-          return copied_text(node) unless @names.read_from_unknown_block?(node)
+          return copied_text(node) unless @promotion.local(node).decided_while_running?
 
           "(#{variable_while_recording_text(node)})"
         end
@@ -704,7 +705,7 @@ module VBlank
         RECORDING_TEST_SOURCE = "(respond_to?(:recording_game_code?) && recording_game_code?)"
 
         def promoted_in_block?(node)
-          !@block_tests.empty? && node.depth.positive? && @names.plain_name_write?(node) && @names.promoted?(node)
+          !@block_tests.empty? && node.depth.positive? && @promotion.write_under_test(node).promoted?
         end
 
         def write_or_change_text(node) = node.is_a?(Prism::LocalVariableOperatorWriteNode) ? change_text(node) : write_text(node)
@@ -796,7 +797,7 @@ module VBlank
           return picked_into_text(node) if picks_into_variable?(node)
           return joined_into_text(node, prefix) if joins_into_variable?(node)
 
-          case @names.action_for(node)
+          case @promotion.action_for(node)
           # The line that makes a variable outside a game block sets it wherever it runs after
           # power-on (Writes.variable_set_where_reached).
           when :declare then "#{prefix}#{declaration(node, sets_where_reached: true)}"
@@ -855,16 +856,16 @@ module VBlank
           "#{WRITES}.variable_set_where_reached(self, :#{name}, #{start}#{", sets: #{sets}" if sets}#{source_option_text})"
         end
 
-        # What a plain local is given: its value, kept as Ruby keeps it where LocalNames#copy_kept
+        # What a plain local is given: its value, kept as Ruby keeps it where Promotion#kept_copy
         # cannot prove that nothing changes it before it is read.
         #
         # A button read while setting up and kept for game code is noted for the build's warning
         # (Steps.kept_answer's +button_kept+).
         def kept_value_text(value, write)
-          kept = @names.copy_kept(write)
+          kept = @promotion.kept_copy(write).copy
           return value_text(value) unless kept
 
-          button = ", button_kept: true" if @names.button_read_later?(write)
+          button = ", button_kept: true" if @promotion.button_kept?(write)
           "#{STEPS}.kept_answer((#{value_text(value)}), copy: :#{kept}, name: :#{write.name}#{button})"
         end
 
@@ -881,7 +882,7 @@ module VBlank
         def logic_write_text(node, step)
           joined = "#{STEPS}.#{step}(#{node.name}) { #{rewritten_text(node.value)} }"
           return "#{node.name} = #{second_name_write(node.name, joined, node)}" if promoted?(node)
-          return copied_text(node) unless @names.action_for(node)
+          return copied_text(node) unless @promotion.action_for(node)
 
           "#{node.name} = #{assign_text(node.name, joined)}"
         end
@@ -970,7 +971,7 @@ module VBlank
           name = target.name
           return "#{name} = #{second_name_write(name, value)}" if promoted?(target)
 
-          case @names.action_for(target)
+          case @promotion.action_for(target)
           # One name of `count, other = 0, 0`. Its line sets it wherever it runs after power-on,
           # in game code and outside it (Writes.variable_set_where_reached).
           when :declare, :start
@@ -988,7 +989,7 @@ module VBlank
 
         def assign_text(name, value) = write_call(name, value, name)
 
-        def promoted?(node) = @names.promoted?(node) && !@open_tests.empty?
+        def promoted?(node) = @promotion.write_under_test(node).promoted? && !@open_tests.empty?
 
         def open_tests_text = "[#{@open_tests.join(', ')}]"
 
@@ -997,34 +998,31 @@ module VBlank
         # still holds whichever way the test goes. +outer+ are tests already open around this one.
         def promotions_text(node, sides, answer, outer: @open_tests)
           given = [answer, *outer].join(", ")
-          names = @names.names_to_promote(node, sides).map do |name|
-            stays = @names.written_on_every_side?(name, sides) ? "" : ", may_stay_nil: true"
+          promotions = @promotion.before_test(node, sides)
+          names = promotions.names.map do |each_name|
+            name = each_name.name
+            stays = each_name.on_every_side ? "" : ", may_stay_nil: true"
             "#{name} = #{WRITES}.promote(#{name}, #{given}#{stays}, name: :#{name}); "
           end
-          (names + @names.places_changed_in(sides).filter_map { |place| place_promotion_text(place, given) }).uniq.join
+          (names + promotions.places.map { |place| place_promotion_text(place, given) }).uniq.join
         end
 
-        # The same for an instance variable, a slot or an attribute, which any method can read, so
-        # nothing can show it is not read afterwards. A place written some other way than by a plain name
-        # and plain keys is left: if it turns out to need following, Writes.write stops the build.
-        def place_promotion_text(place, given)
+        # The same for an instance variable, a slot or an attribute.
+        def place_promotion_text(promotion, given)
+          place = promotion.node
+          return slot_promotion_text(place, promotion.keys, given) if promotion.keys
+
           case place
           when Prism::InstanceVariableWriteNode, Prism::InstanceVariableOperatorWriteNode
             owner = @follows_instance_variables ? ", owner: self, label: :#{place.name}" : ""
             "#{place.name} = #{WRITES}.promote_place(#{instance_variable_place_text(place.name)}, #{given}, " \
               "may_stay_nil: true#{owner}); "
-          when Prism::IndexOperatorWriteNode then slot_promotion_text(place, place.arguments.arguments, given)
           when Prism::CallOperatorWriteNode then attribute_promotion_text(place, place.read_name, given)
-          else
-            return slot_promotion_text(place, place.arguments.arguments[0...-1], given) if place.name == :[]=
-
-            attribute_promotion_text(place, place.name.to_s.delete_suffix("="), given)
+          else attribute_promotion_text(place, place.name.to_s.delete_suffix("="), given)
           end
         end
 
         def slot_promotion_text(place, keys, given)
-          return unless keys.all? { |key| LocalNames.plain_key?(key) }
-
           promotion = "#{WRITES}.promote_slot(#{place.receiver.slice}, [#{keys.map(&:slice).join(', ')}], #{given})"
           text_once_names_exist(promotion, [place.receiver, *keys])
         end
@@ -1044,7 +1042,7 @@ module VBlank
 
         def change_text(node)
           return "#{node.name} = #{change_call(node, second_name_options(node))}" if promoted?(node)
-          if @names.plain_name_write?(node)
+          if @promotion.local(node).plain?
             return "(#{WRITES}.note_handed_name_written(#{node.name}, nil, :#{node.name}); #{copied_text(node)})"
           end
 
@@ -1068,7 +1066,7 @@ module VBlank
 
           given = @lone_joins.key?(node) ? ", used: false" : ""
           given = ", into: #{into}" if into
-          return join_under_test_text(node, step, given) if @names.changes_under?(node, [node.right])
+          return join_under_test_text(node, step, given) if @promotion.before_test(node, [node.right]).changes?
 
           "#{STEPS}.#{step}(#{argument(node.left)}#{given}) { #{rewritten_text(node.right)} }"
         end
@@ -1365,7 +1363,7 @@ module VBlank
         def picks_into_variable?(write)
           return false if @names.keeps_truth?(write) || !answers_on_every_side?(write.value)
 
-          %i[assign start].include?(@names.action_for(write)) && !@names.first_write?(write)
+          %i[assign start].include?(@promotion.action_for(write)) && !@names.first_write?(write)
         end
 
         def answers_on_every_side?(value)
@@ -1381,7 +1379,7 @@ module VBlank
         # `done = a && work` on a game variable keeps the join's answer in `done` itself.
         def joins_into_variable?(write)
           [Prism::AndNode, Prism::OrNode].any? { |kind| write.value.is_a?(kind) } && !jump_in(write.value.right) &&
-            @names.action_for(write) == :assign && !@names.keeps_truth?(write)
+            @promotion.action_for(write) == :assign && !@names.keeps_truth?(write)
         end
 
         def joined_into_text(write, prefix)

@@ -312,27 +312,18 @@ module VBlank
         # A right side of `a, b = b, a`, kept before the writes reach what it reads.
         def number_now(value) = value.is_a?(Value) ? value.hidden_copy(:swap) : value
 
-        # What a plain local holds, as Ruby holds it, for a line LocalNames#copy_kept could not
+        # What a plain local holds, as Ruby holds it, for a line Promotion#kept_copy could not
         # prove safe to leave as a working-out: a number in a hidden variable of its own, holding
-        # the number of this line.
-        #
-        # +copy+ :numbers keeps every number: a working-out (`d = hp + 1`, `flags = packed[at]`),
-        # a test's answer, and a game variable that is a name's number in Ruby (`hp = 10`, `@seed`
-        # named by `game_variables`, a hidden one). :every_variable, for `first = hp` with `hp` a
-        # local the game changes, keeps hp's number whatever made its variable.
-        #
-        # What stays as it is, as in Ruby: a plain Ruby value; a handle the game holds as an
-        # object, a variable a `var` line or a verb made (`routine_var(:floors)`,
-        # `frames_since_power_on`), which the game hands about to change and to read live; and a
-        # working-out of numbers the cartridge holds fixed, which no line can change.
+        # the number of this line, where Promotion.copy says what is copied and what stays as it is.
+        # +copy+ is :numbers or :every_variable, from Promotion#kept_copy.
         #
         # +name+ is the local's: a copy is that name's own (Writes.promote), so another name given
         # it later and then a number never writes it.
         #
         # +button_kept+ marks a line outside game code that keeps a button for game code to read
-        # (LocalNames#button_read_later?), which the build warns of.
+        # (Promotion#button_kept?), which the build warns of.
         def kept_answer(value, copy: :numbers, name: nil, button_kept: false)
-          copied = copy_for_local(value, copy)
+          copied = copy_for_local(value, Promotion.copy(value, copy))
           return copied if copied.equal?(value)
 
           copied.owner_name = name
@@ -340,19 +331,16 @@ module VBlank
           copied
         end
 
-        def copy_for_local(value, copy)
-          return value.hidden_copy if copy == :every_variable && variable?(value)
-          return number_of_variable(value) if variable?(value)
-          return (value.changes_as_game_plays? ? value.hidden_copy : value) if value.is_a?(Value)
-          return value unless value.is_a?(Condition)
+        # A test's answer is kept as 1 or 0; any other number copied is the value's hidden copy.
+        def copy_for_local(value, answer)
+          return value unless answer.promoted?
+          return value.hidden_copy unless answer.reason == :copy_of_test_answer
 
           kept = value.hidden_variable(:copy)
           kept.mark_boolean!
           Writes.store_answer(kept, value)
           kept
         end
-
-        def number_of_variable(variable) = variable.number_in_ruby? ? variable.hidden_copy : variable
 
         def refuse_game_code!(message)
           raise Refused, "#{message}#{Messages::AuthorSource.at_author_line}"

@@ -340,14 +340,16 @@ module VBlank
         end
 
         # The same for a change under a test the game makes, about to be given a hidden variable
-        # (Writes.promote_place).
-        def promotion_target(owner, current, label, test)
-          uses = uses_while_recording(owner)
-          return current unless uses
-          return game_variable_of(owner, current, label) if uses.named?(owner, label)
-
-          uses.note_change(owner, label, current, current, operator: false) if test.game?
-          current
+        # (Writes.promote_place), where +answer+ is Promotion.instance_variable's: a named one's game
+        # variable, or what it holds, the change noted under a test the game makes.
+        def promotion_target(owner, current, label, test, answer)
+          case answer.reason
+          when :named_instance_variable then game_variable_of(owner, current, label)
+          when :not_named
+            uses_while_recording(owner).note_change(owner, label, current, current, operator: false) if test.game?
+            current
+          else current
+          end
         end
 
         # A line of game code gives +owner+'s named +label+, still holding nil, a number under a test
