@@ -46,8 +46,18 @@ module VBlank
       # keeping lists of kinds of their own (see Nodes.of_role).
       module Declarations
         # This kind's name — the symbol the tree, the reports and the tests speak in.
+        #
+        # Declaring it also writes the kind's own Node#kind, a method that returns the name
+        # and nothing more. Every backend asks a node its kind for every node it runs or
+        # lowers, and the shared Node#kind has to find the class first (#node_class), which
+        # makes new objects on each call. Written out as source rather than made from a block,
+        # for the reason #operands gives: another Ractor cannot call a method made from a block.
         def kind(name = nil)
-          name ? @kind = name : @kind
+          return @kind unless name
+
+          @kind = name
+          class_eval "def kind = #{name.inspect}", __FILE__, __LINE__
+          name
         end
 
         # Which section of a frame's work this kind belongs to (see CATEGORIES).
@@ -165,6 +175,8 @@ module VBlank
         children.each { |child| add_child(child) }
       end
 
+      # Every kind that declares its name answers this itself (Declarations#kind); this is
+      # for a class that declares none.
       def kind = node_class.kind
 
       # THIS NODE'S CLASS, FOUND THROUGH Kernel#class BOUND TO IT (bind_call), NOT BY `self.class`,
