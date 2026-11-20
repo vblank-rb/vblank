@@ -4003,10 +4003,11 @@ module VBlank
           bmp = @bitmaps.fetch(name) { raise ProgramError, "blit of undefined image #{name.inspect}" }
           pixels = @data.fetch(name)
           transparent = bmp.transparent
+          width = bmp.width
 
           bmp.height.times do |row|
-            bmp.width.times do |col|
-              at = (row * bmp.width) + col
+            width.times do |col|
+              at = (row * width) + col
               i = at * 2
               color = pixels.getbyte(i) | (pixels.getbyte(i + 1) << 8)
               next if transparent && color == transparent
