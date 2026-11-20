@@ -169,6 +169,10 @@ module VBlank
     # Measuring chooses what goes in a quick memory, which only some consoles have.
     kit = Console.for(options.console)
     profile = false unless kit.measured_builds? && cartridge
+    # ...and only a build that chooses. With `fast_code: false` nothing is chosen, so building the
+    # game once and playing each scene would measure for a choice nobody makes, at the cost of a
+    # whole second build. A measurement handed over already is left to the build to read.
+    profile = false if profile == true && options.fast_code == false
     if profile == true
       return build_measured(title, code: code, maker: maker, validate: validate, out: out, err: err,
                             progress: progress, settings: settings, **options.to_h, &block)

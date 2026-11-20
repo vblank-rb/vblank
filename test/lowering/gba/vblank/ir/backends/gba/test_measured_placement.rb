@@ -24,8 +24,8 @@ class TestMeasuredPlacement < Minitest::Test
 
   # The work lives in the second scene. Nothing reaches it by holding a button — a scene is
   # switched by a press, and a held button is one press however long it is held.
-  private def game_with_work_in_a_later_scene
-    VBlank.game("MPLC", consoles: %i[gba], code: "MPLC", maker: "01") do
+  private def game_with_work_in_a_later_scene(**settings)
+    VBlank.game("MPLC", consoles: %i[gba], code: "MPLC", maker: "01", **settings) do
       screen :bitmap
       clear_screen :black
       var :state, 0
@@ -79,6 +79,23 @@ class TestMeasuredPlacement < Minitest::Test
         assert_match(/measures/, out.string, "...and says how to get the measured one")
       end
     end
+  end
+
+  # A GAME BUILT WITH `fast_code: false` IS NOT BUILT TWICE. The measurement only decides what
+  # the build chooses for the quick memory, and with the choosing off there is nothing for it to
+  # decide: so the build that measures, and the run of each scene, are skipped. Counted by the
+  # phases the build names: the first build is one line of the real one.
+  def test_a_build_with_the_choosing_off_runs_no_measuring_build
+    assert_equal 0, measuring_builds(game_with_work_in_a_later_scene(fast_code: false))
+    assert_equal 1, measuring_builds(game_with_work_in_a_later_scene),
+                 "with the choosing on, the game is built once to measure"
+  end
+
+  private def measuring_builds(game)
+    said = StringIO.new
+    game.build_rom(out: StringIO.new, err: StringIO.new, profile: true,
+                   progress: VBlank::Messages::Progress.to(said))
+    said.string.lines.count { |line| line.strip.start_with?("Building once to measure") }
   end
 
   # A ROUTINE ON EVERY SCREEN OUTRANKS ONE ON A SINGLE SCREEN THAT DOES LESS IN ALL. The game

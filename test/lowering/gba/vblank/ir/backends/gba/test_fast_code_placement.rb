@@ -110,7 +110,7 @@ class TestFastCodePlacement < Minitest::Test
       rom.write(file.path)
       file.flush
       probe = RubyGBAEmulator.open(file.path)
-      reading = 3.times.map { probe.busy_scanlines(settle: 20) }.min
+      reading = Array.new(3) { probe.busy_scanlines(settle: 20) }.min
       probe.close
       return reading
     end
@@ -128,6 +128,21 @@ class TestFastCodePlacement < Minitest::Test
   def test_a_named_routine_still_moves_with_the_choosing_off
     report = placement_of(looping_program(fast: true), fast_code: false)
     assert_equal [:work], report.funcs
+  end
+
+  # ...and placing it costs no measuring pass: with the choosing off there is nothing to choose,
+  # so the routine named goes in as it comes out, and only its fit is checked. Counted by the
+  # phases the build names, one per lowering it makes to measure.
+  def test_a_named_routine_is_placed_without_measuring_with_the_choosing_off
+    assert_equal 0, measuring_phases(looping_program(fast: true), fast_code: false)
+    assert_operator measuring_phases(looping_program(fast: true), fast_code: true), :>=, 1,
+                    "with the choosing on, the build measures before it chooses"
+  end
+
+  private def measuring_phases(program, **opts)
+    said = StringIO.new
+    GBA.new(progress: VBlank::Messages::Progress.to(said), **opts).lower(program)
+    said.string.lines.count { |line| line.strip.start_with?("Measuring") }
   end
 
   # And a routine marked `fast: false` is left alone even when the framework would have
@@ -697,5 +712,25 @@ class TestFastCodePlacement < Minitest::Test
     err = assert_raises(GBA::LoweringError) { GBA.new.lower(builder.program) }
     assert_match(/fast: true/, err.message)
     assert_match(/work/, err.message)
+  end
+
+  # ...and with the choosing off, where nothing measures it first, the routine is still checked
+  # against the room it came out at, and the error still names it.
+  def test_a_named_routine_that_cannot_fit_is_a_friendly_error_with_the_choosing_off
+    builder = Builder.new
+    builder.instance_eval do
+      screen :bitmap
+      clear_screen :black
+      list :big, capacity: 7000, fast: true
+      big = var :b, 0
+      func(:work, fast: true) { 400.times { big += 1 } }
+      game_loop { wait_vblank; call :work }
+    end
+    builder.finalize_program
+
+    err = assert_raises(GBA::LoweringError) { GBA.new(fast_code: false).lower(builder.program) }
+    assert_match(/fast: true/, err.message)
+    assert_match(/work/, err.message)
+    refute_match(/fast_code: false/, err.message, "the setting is already in use")
   end
 end

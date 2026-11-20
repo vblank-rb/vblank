@@ -1041,6 +1041,7 @@ module VBlank
             node.kind == :var_ref && node.name == IR::Frames::COUNT
           end
           @background_drawing.layout = layout
+          keep_routines_of_insisted_scenes # known only now, and wanted before any call to them is emitted
           # Fast ROM + prefetch, first, unless it's all raw or the caller asked to keep
           # the console's cautious power-on timing.
           emit_waitcnt_setup if @fast_cartridge && !raw_escape_hatch?(program)

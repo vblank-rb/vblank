@@ -201,7 +201,11 @@ module VBlank
           # names — empty when there is nothing worth moving or the author turned it off.
           def choose_fast_funcs(program)
             insisted = @insisted = funcs_marked(program, true)
-            return insisted if insisted.empty? && !@fast_code
+            # WITH THE CHOOSING OFF NOTHING IS MEASURED. The measuring pass is a whole lowering, and
+            # its sizes are only there to choose by; the routines the author insisted on go in
+            # without them, as they come out, and #check_fast_code_fits! still stops a build they
+            # do not fit. So such a build lowers the program once.
+            return insisted unless @fast_code
 
             # The program whole is weighed with each piece a measured build cut counted in its
             # routine (RoutineProfile#with_pieces_counted_in_routines); the pieces, by their own.
@@ -283,6 +287,16 @@ module VBlank
             end
             allocate_variables_where_measured(probe)
             chosen
+          end
+
+          # A SCENE INSISTED ON TAKES THE ROUTINES THE BUILD MADE FOR IT, with the choosing off too.
+          # With it on, the measuring pass names them (#insisted_routines); with it off there is
+          # none, so they are added here, once this lowering has made them and before anything
+          # calls one. A build with the choosing on has chosen them already.
+          def keep_routines_of_insisted_scenes
+            return if @fast_code || @insisted.nil? || @insisted.empty?
+
+            @fast_funcs |= routines_for_scenes.filter_map { |routine, scene| routine if @insisted.include?(scene) }
           end
 
           # The program this build lowers: the one it was handed, or that program with its routines
@@ -781,6 +795,16 @@ module VBlank
           def check_fast_code_fits!
             over = @memory.overrun
             return if over.zero?
+
+            # With the choosing off, everything kept there is what the author insisted on, so the
+            # error names those routines rather than offering the setting already in use.
+            unless @fast_code
+              named = @fast_funcs.map { |name| "`#{name}`" }.join(", ")
+              raise LoweringError,
+                    "this program needs #{@memory.used} bytes of the console's quick memory, " \
+                    "which is #{over} more than there is. #{@hot_bytes} of it is the routines marked " \
+                    "`fast: true`: #{named}. To fix this, remove `fast: true` from one of them."
+            end
 
             raise LoweringError,
                   "this program needs #{@memory.used} bytes of the console's quick memory, " \
