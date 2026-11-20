@@ -786,7 +786,7 @@ module VBlank
       # The pictures and record of #declare_pack_background_read_at_start, for a background or an
       # area +name+ whose held tiles start at tile +first+ of the background's. Hands back a HeldAtStart.
       def pack_tiles_held_at_start(name, tiles:, map:, colors:, across:, tiles_a_side:, words:, moving:, set_cells:, first:)
-        where, stand_ins = pack_record_and_stand_ins_at_start(name, tiles: tiles, map: map, colors: colors, across: across,
+        where, stand_ins = pack_stand_ins(name, tiles: tiles, map: map, colors: colors, across: across,
                                                                     tiles_a_side: tiles_a_side, words: words)
         # The tiles that take turns through pictures follow, each a tile of a run (PackTilePictures).
         unless moving.empty?
@@ -819,7 +819,7 @@ module VBlank
       # numbers among the background's. The sharer's record fills those told tiles, so this one
       # names none.
       def pack_tiles_shared_at_start(name, sharer, tiles:, map:, colors:, across:, tiles_a_side:, words:)
-        where, stand_ins = pack_record_and_stand_ins_at_start(name, tiles: tiles, map: map, colors: colors, across: across,
+        where, stand_ins = pack_stand_ins(name, tiles: tiles, map: map, colors: colors, across: across,
                                                                     tiles_a_side: tiles_a_side, words: words)
         HeldAtStart.new(where: where.with(moving: sharer.where.moving), held: stand_ins, told: sharer.told, cells: sharer.cells)
       end
@@ -827,7 +827,7 @@ module VBlank
       # Where a background or an area +name+ is in the file (an IR::StartFile::Background naming no
       # tiles that take turns and no told cells yet), and the stand-ins it holds for it: one for
       # each bank of its colours, or the one tile of a background drawn from the whole table.
-      def pack_record_and_stand_ins_at_start(name, tiles:, map:, colors:, across:, tiles_a_side:, words:)
+      def pack_stand_ins(name, tiles:, map:, colors:, across:, tiles_a_side:, words:)
         subject = "background :#{name}"
         [[tiles, "tiles:"], [map.with(first_pixel: 0, pixel_count: nil), "map:"], [colors, "colors:"]].each do |slot, what|
           refuse_slot_from_elsewhere!(slot, "#{subject}'s #{what}")
