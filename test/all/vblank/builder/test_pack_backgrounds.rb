@@ -463,15 +463,17 @@ class TestPackBackgrounds < Minitest::Test
     end
   end
 
-  def test_a_map_of_more_cells_than_a_build_reading_its_pack_keeps_is_refused
+  # A build reading its pack as the game starts holds the slot's tiles once and numbers only the
+  # different tiles as drawn its map names, so a map of more cells than a cell's tile can number
+  # builds: its size alone is no limit. What such a build refuses is told in
+  # TestPackBackgroundAreas, and a map naming too many different tiles stops the game as it starts.
+  def test_a_map_of_more_cells_than_a_tile_number_builds_reading_its_pack
     Dir.mktmpdir do |folder|
       words = [ADVANCE_CELL.(1)] * (256 * 129)
       options = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
-      error = assert_raises(ArgumentError) do
-        pack_game(original(folder, :gba, PLACES.map(&LOW_HALF_FIRST).join, words), 4, words, across: 256, cell: 8, options: options)
-      end
+      program = pack_game(original(folder, :gba, PLACES.map(&LOW_HALF_FIRST).join, words), 4, words, across: 256, cell: 8, options: options)
 
-      assert_includes error.message, "cells"
+      assert(program.walk.any? { |node| node.kind == :background && node.from_file })
     end
   end
 
