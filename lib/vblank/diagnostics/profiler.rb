@@ -116,7 +116,8 @@ module VBlank
                            :reached, :tearing, :flicker, :tick_rates, :sound_drops, :video_copies,
                            :late_passes, :split_hints, :list_touches, :late_hand_overs,
                            :pages_shown_at_once, :pages_shown_part_way, :power_on_pass, :colors_short,
-                           :sprites_left_out, :gap_overruns, :routine_lines) do
+                           :sprites_left_out, :gap_overruns, :routine_lines, :gaps_into_picture,
+                           :gap_writes_missed) do
         # +split_hints+ are the parts of routines that missed the quick memory worth making a
         # `func` of (see SplitHints), busiest first. +list_touches+ is how many times the run read
         # or wrote each list, by its name. +late_hand_overs+ are the scenes that run late on the
@@ -132,10 +133,14 @@ module VBlank
         # .sprites_left_out_line), each one row on one frame; nil for a game whose rows fit it.
         # +gap_overruns+ are the passes whose gap after the wait ran past the next break (see
         # GapOverrun), in the order they ran. +routine_lines+ are the routines `lines:` asked for,
-        # each with its time by line (see RoutineLines); empty where nobody asked.
+        # each with its time by line (see RoutineLines); empty where nobody asked. +gaps_into_picture+
+        # are the passes whose gap after the wait changed the display while the picture was drawn
+        # (see GapIntoPicture), in the order they ran; +gap_writes_missed+ how many runs of those
+        # changes the emulator had no room to keep, so a list cut short says so.
         def initialize(split_hints: [], list_touches: {}, late_hand_overs: [], pages_shown_at_once: 0,
                        pages_shown_part_way: 0, power_on_pass: nil, colors_short: nil, sprites_left_out: nil,
-                       gap_overruns: [], routine_lines: [], **rest) = super
+                       gap_overruns: [], routine_lines: [], gaps_into_picture: [], gap_writes_missed: 0,
+                       **rest) = super
 
         def dropping_frames? = fps < 59.5
 
@@ -149,6 +154,7 @@ module VBlank
             keys: keys.map(&:to_s), unattributed: unattributed, reached: reached.to_h,
             late_passes: late_passes, power_on_pass: power_on_pass&.to_h,
             gap_overruns: gap_overruns.map(&:to_h),
+            gaps_into_picture: gaps_into_picture.map(&:to_h), gap_writes_missed: gap_writes_missed,
             pages_shown_at_once: pages_shown_at_once,
             pages_shown_part_way: pages_shown_part_way, colors_short: colors_short,
             sprites_left_out: sprites_left_out,
@@ -269,7 +275,9 @@ module VBlank
                 pages_shown_at_once: shown_at_once,
                 pages_shown_part_way: count_at_sites(profile, late_pages.select { |site| site[:tears] }, loaded_sets),
                 fps: pictures_per_second(profile, shown_at_once),
-                power_on_pass: power_on_pass, gap_overruns: gap_overruns, **counted)
+                power_on_pass: power_on_pass, gap_overruns: gap_overruns,
+                gaps_into_picture: GapIntoPicture.of(profile.passes),
+                gap_writes_missed: profile.gap_writes_missed, **counted)
       end
 
       # WHERE EACH GAP AFTER A GAME LOOP'S WAIT ENDS, as the addresses a measured run watches (see
@@ -291,6 +299,68 @@ module VBlank
             new(pass: at + 1, lines: pass.gap_overran_by) if pass.gap_overran_by
           end
         end
+      end
+
+      # A PASS WHOSE GAP AFTER ITS WAIT CHANGED THE DISPLAY WHILE THE PICTURE WAS BEING DRAWN. The
+      # screen draws each row from the sprite table, the colours and the display registers as they
+      # stand when it reaches that row (GBATEK, "LCD I/O Display Control", "LCD OBJ - OAM
+      # Attributes"), so what the gap changes is meant to be changed in the break, before the first
+      # row. A gap that starts in the break and runs on into the picture changes them part way down:
+      # the rows above show the old sprites or colours and the rows below the new, and the picture
+      # tears. That can happen with the pass ending in good time and the gap ending long before the
+      # next break, so neither the late passes nor GapOverrun see it.
+      #
+      # +pass+ is which pass, counted as GapOverrun counts; +writes+ what changed late (LateWrite),
+      # one for each part of the display, in the order the gap first changed them.
+      GapIntoPicture = Data.define(:pass, :writes) do
+        def self.of(passes)
+          passes.each_with_index.filter_map do |pass, at|
+            writes = LateWrite.of(pass.gap_writes_in_picture)
+            new(pass: at + 1, writes: writes) unless writes.empty?
+          end
+        end
+
+        def to_h = { pass: pass, writes: writes.map(&:to_h) }
+      end
+
+      # Each part of the display a gap can change late, in the words the report gives it. The display
+      # registers are told apart by what they set (GBATEK, "LCD I/O"); one not named here is
+      # :display_settings.
+      LATE_WRITE_WORDS = { sprites: "the sprites", sprite_colors: "the sprites' colours",
+                           background_colors: "the backgrounds' colours", layers_shown: "which layers show",
+                           background_settings: "the backgrounds' settings",
+                           background_scroll: "the backgrounds' scroll",
+                           background_turn: "turned or stretched backgrounds", windows: "the windows",
+                           pixelation: "pixelation", blending: "blending and fades",
+                           display_settings: "the display settings" }.freeze
+
+      # The display registers by their offset from the start of the console's registers, and the
+      # part of LATE_WRITE_WORDS each is.
+      LATE_WRITE_REGISTERS = [[0x00..0x01, :layers_shown], [0x08..0x0F, :background_settings],
+                              [0x10..0x1F, :background_scroll], [0x20..0x3F, :background_turn],
+                              [0x40..0x4B, :windows], [0x4C..0x4F, :pixelation], [0x50..0x55, :blending]].freeze
+
+      # ONE PART OF THE DISPLAY A GAP CHANGED IN THE PICTURE, and the rows the screen was drawing
+      # from the first change to the last. +part+ is one of LATE_WRITE_WORDS' keys.
+      LateWrite = Data.define(:part, :rows) do
+        # +writes+ (RubyGBAEmulator::Probe::GapWrite) as one LateWrite for each part, its rows from
+        # the first of them to the last.
+        def self.of(writes)
+          writes.group_by { |write| part_of(write.from) }.map do |part, runs|
+            new(part: part, rows: runs.map { |run| run.rows.first }.min..runs.map { |run| run.rows.last }.max)
+          end
+        end
+
+        def self.part_of(address)
+          case address >> 24
+          when 0x07 then :sprites
+          when 0x05 then (address & 0x200).zero? ? :background_colors : :sprite_colors
+          else LATE_WRITE_REGISTERS.find { |offsets, _| offsets.cover?(address & 0xFFFF) }&.last || :display_settings
+          end
+        end
+
+        def words = LATE_WRITE_WORDS.fetch(part)
+        def to_h = { part: part.to_s, rows: [rows.first, rows.last] }
       end
 
       # NEW PICTURES A SECOND. The emulator counts the frames the game finished its work in by
@@ -670,7 +740,7 @@ module VBlank
                finished: a.finished + b.finished,
                pc: a.pc.merge(b.pc) { |_, x, y| x + y },
                cycles: a.cycles.merge(b.cycles) { |_, x, y| x + y }, late: a.late + b.late,
-               passes: a.passes + b.passes,
+               passes: a.passes + b.passes, gap_writes_missed: a.gap_writes_missed + b.gap_writes_missed,
                touches: a.touches.merge(b.touches) { |_, x, y| x + y })
       end
 
@@ -963,6 +1033,7 @@ module VBlank
         power_on_pass_line(result.power_on_pass, printer, result.frames)
         late_pass_line(result.late_passes, printer)
         gap_overrun_lines(result.gap_overruns, printer)
+        gap_into_picture_lines(result.gaps_into_picture, result.gap_writes_missed, printer)
         shown_at_once_line(result, printer)
         result.late_hand_overs.each { |late| printer.puts("  #{HandOvers.message(late)}") }
         tearing_line(result.tearing, printer)
@@ -1071,18 +1142,53 @@ module VBlank
 
       # The words for +overruns+, each a GapOverrun. A pass is named by its number in the run.
       def self.gap_overrun_message(overruns)
-        passes = overruns.map(&:pass)
-        named =
-          if passes.one? then "pass #{passes.first}"
-          elsif passes.size <= GAP_OVERRUNS_NAMED then "passes #{passes[0...-1].join(', ')} and #{passes.last}"
-          else "passes #{passes.first(GAP_OVERRUNS_NAMED).join(', ')} and #{passes.size - GAP_OVERRUNS_NAMED} more"
-          end
         lines = overruns.map(&:lines)
         lost = overruns.one? ? "there" : "each time"
-        "In #{named}, the screen updates after the wait ran #{lines_phrase(lines)} past the next break " \
-          "between pictures. So the game lost a picture #{lost}. Ending these updates " \
+        "In #{passes_named(overruns.map(&:pass))}, the screen updates after the wait ran #{lines_phrase(lines)} " \
+          "past the next break between pictures. So the game lost a picture #{lost}. Ending these updates " \
           "#{counted(lines.max, 'line')} sooner keeps the picture."
       end
+
+      # "pass 3", "passes 3, 4 and 9", "passes 3, 4, 5, 6, 7 and 12 more": +passes+ by number, the
+      # first GAP_OVERRUNS_NAMED of them named.
+      def self.passes_named(passes)
+        if passes.one? then "pass #{passes.first}"
+        elsif passes.size <= GAP_OVERRUNS_NAMED then "passes #{passes[0...-1].join(', ')} and #{passes.last}"
+        else "passes #{passes.first(GAP_OVERRUNS_NAMED).join(', ')} and #{passes.size - GAP_OVERRUNS_NAMED} more"
+        end
+      end
+
+      # Said only about passes whose gap after the wait changed the display on a row of the picture
+      # (see GapIntoPicture): what changed late, and the rows, across every such pass. Each one is a
+      # picture that can show a seam, however much time the pass had to spare.
+      # +missed+ is how many runs of changes the emulator had no room for; above nought, a line says
+      # the list is cut short.
+      def self.gap_into_picture_lines(gaps, missed, printer)
+        return if gaps.nil? || gaps.empty?
+
+        gap_into_picture_message(gaps).each_line(chomp: true) { |line| printer.puts("  #{line}", severity: :bad) }
+        return unless missed.to_i.positive?
+
+        printer.puts("  This list is not complete: there was no room for #{counted(missed, 'more run')} of changes.",
+                     severity: :bad)
+      end
+
+      # The words for +gaps+, each a GapIntoPicture: one line naming the passes, a line for each part
+      # of the display with the rows it changed on in all of them, and what to do.
+      def self.gap_into_picture_message(gaps)
+        parts = gaps.flat_map(&:writes).group_by(&:part).map do |part, writes|
+          rows = writes.map { |write| write.rows.first }.min..writes.map { |write| write.rows.last }.max
+          "  #{LATE_WRITE_WORDS.fetch(part)}: #{rows_phrase(rows)}"
+        end
+        <<~WORDS.chomp
+          In #{passes_named(gaps.map(&:pass))}, the screen updates after the wait went on into the picture. The screen drew some rows before these changed, so the picture can tear:
+          #{parts.join("\n")}
+          These must change in the break between pictures. Do less work between pictures, or do a big copy over more frames.
+        WORDS
+      end
+
+      # "row 20", "rows 20 to 31".
+      def self.rows_phrase(rows) = rows.first == rows.last ? "row #{rows.first}" : "rows #{rows.first} to #{rows.last}"
 
       # "3 lines", "1 to 9 lines": the least and the most of +lines+.
       def self.lines_phrase(lines) = "#{lines.minmax.uniq.join(' to ')} #{lines.max == 1 ? 'line' : 'lines'}"

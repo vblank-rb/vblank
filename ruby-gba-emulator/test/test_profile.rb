@@ -392,6 +392,91 @@ class TestRubyGBAEmulatorProfile < Minitest::Test
     assert(passes.all? { |_, _, gap| gap.nil? }, "no gap ran past a break: #{passes.inspect}")
   end
 
+  # A game whose gap after each wait spins to each line of +lines+ in turn and writes its one sprite's
+  # row into the sprite table there. A line of the picture is reached by first waiting for the screen
+  # to leave the break, so the write lands on that row of the next picture; a line of the break is
+  # waited for straight away. A line after the first goes through the next break first, so [150, 10]
+  # writes on row 150 and then on row 10 of the picture after. Hand-built, because the gap holds only
+  # what the framework places there.
+  private def sprite_gap_rom(*lines)
+    b = VBlank::IR::Build
+    turns = 0
+    spin_until = lambda do |test|
+      b.repeat(b.int(100_000), :"__repeat_#{turns += 1}", b.add(:spin, b.int(1)), stop_when: test)
+    end
+    writes = lines.each_with_index.flat_map do |line, at|
+      spins = []
+      spins << spin_until.call(b.binop(:>=, b.read_scanline, b.int(160))) if at.positive?
+      spins << spin_until.call(b.binop(:<, b.read_scanline, b.int(160))) if line < 160
+      spins << spin_until.call(b.binop(:>=, b.read_scanline, b.int(line)))
+      spins + [b.present_objects([:ship])]
+    end
+    program = b.program(
+      b.screen(:tiled),
+      b.bitmap(:dot, width: 8, height: 8, pixels: ([0x7FFF] * 64).pack("v*"), transparent: 0),
+      b.object(:ship, poses: %i[dot], pose: b.int(0), x: b.var_ref(:x), y: b.int(20), active: b.int(1)),
+      b.set(:x, b.int(0)), b.set(:spin, b.int(0)),
+      b.loop_(b.wait_vblank,
+              b.if_(b.binop(:>=, b.var_ref(:x), b.int(0)), *writes),
+              b.add(:x, b.int(1))),
+      console: :gba
+    )
+    VBlank::Cartridge::AdvanceBuild.cartridge_for(program, title: "PGPW")
+  end
+
+  # Each pass but the first, as its gap's writes in the picture.
+  private def gap_writes_by_pass(rom)
+    with_probe(write_rom(rom, "gapwrites")) do |probe|
+      gap_ends = rom.built.gap_ends.map { |site| site[:at] }
+      probe.profile(frames: 10, settle: 10, gap_ends: gap_ends).passes.drop(1).map(&:gap_writes_in_picture)
+    end
+  end
+
+  # A GAP THAT RUNS ON INTO THE PICTURE WRITES WHAT WAS MEANT FOR THE BREAK WHILE THE ROWS ARE DRAWN.
+  # The sprite's row moves every pass, so every gap writes the sprite table, on line 20 of the picture.
+  def test_a_gap_that_runs_into_the_picture_says_what_it_wrote_there_and_on_which_rows
+    passes = gap_writes_by_pass(sprite_gap_rom(20))
+
+    refute_empty passes
+    passes.each do |writes|
+      sprite_table = writes.find { |write| (write.from >> 24) == 0x07 }
+
+      refute_nil sprite_table, "each gap wrote the sprite table in the picture: #{writes.inspect}"
+      assert_includes 20..23, sprite_table.rows.first, "on the row the gap reached: #{writes.inspect}"
+    end
+  end
+
+  # A gap that writes the sprite table low in one picture and again near the top of the next is two
+  # runs, each with its rows in order, not one run whose rows go backwards.
+  def test_a_gap_that_writes_again_in_the_next_picture_starts_a_new_run
+    passes = gap_writes_by_pass(sprite_gap_rom(150, 10))
+
+    refute_empty passes
+    passes.each do |writes|
+      rows = writes.select { |write| (write.from >> 24) == 0x07 }.map(&:rows)
+
+      assert_equal 2, rows.size, "two runs of the sprite table: #{writes.inspect}"
+      assert_includes 150..153, rows.first.first
+      assert_includes 10..13, rows.last.first
+      assert(rows.all? { |range| range.first <= range.last }, "no run's rows go backwards: #{rows.inspect}")
+    end
+  end
+
+  def test_a_gap_that_keeps_to_the_break_writes_nothing_in_the_picture
+    passes = gap_writes_by_pass(sprite_gap_rom(200))
+
+    refute_empty passes
+    assert(passes.all?(&:empty?), "every write was in the break: #{passes.inspect}")
+  end
+
+  # Nothing is watched unless the caller names where a gap ends.
+  def test_a_profile_asked_about_no_gap_lists_no_writes
+    rom = sprite_gap_rom(20)
+    passes = with_probe(write_rom(rom, "nogap")) { |probe| probe.profile(frames: 10, settle: 10).passes }
+
+    assert(passes.all? { |pass| pass.gap_writes_in_picture.empty? })
+  end
+
   # WHAT A FRAME READS AND WRITES, word by word, beside what it runs. A number kept in the quick
   # memory and read 300 times a pass is touched 300 times a frame; one that a frame never reads is
   # not in the count at all. This is what lets a build weigh keeping a list in the quick memory

@@ -3335,6 +3335,25 @@ enum {
 /* The most passes one profile keeps: one a frame for longer than anybody profiles. */
 #define PROF_PASSES_MAX 4096
 
+/* The most runs of display writes one profile keeps from gaps that ran into the picture. A run is
+ * one part of the display written over and over in one pass (the whole sprite table is one), so a
+ * gap that runs late every frame for a second fills a few hundred. */
+#define GAP_WRITES_MAX 2048
+
+/* ONE RUN OF WRITES A GAP MADE TO ONE PART OF THE DISPLAY while the picture was being drawn: which
+ * pass, the lowest and highest address written, the first and last row the screen was drawing,
+ * and how many writes. The parts are the sprite table, the background colours, the sprite colours,
+ * and each display register on its own. */
+struct gap_write {
+    int      pass;
+    uint32_t part;
+    uint32_t first;
+    uint32_t last;
+    uint16_t first_row;
+    uint16_t last_row;
+    uint32_t count;
+};
+
 struct pc_tally {
     uint32_t *count[PROF_REGIONS];
     /* CYCLES each address took, beside how many times it ran. Not the same thing: a store that
@@ -3374,6 +3393,13 @@ struct pc_tally {
     int       gap_breaks;
     int       gap_line;
     int      *gap_overran_by;
+    /* WHAT THE GAP WROTE TO THE DISPLAY WHILE THE PICTURE WAS BEING DRAWN. +gap_open+ is set while
+     * the game sleeps and cleared as the gap's end arrives, so it covers the wake and the gap after
+     * it, and never the tail of a pass the run began part way through. See gap_display_write. */
+    int       gap_open;
+    struct gap_write *gap_writes;
+    long      gap_write_count;
+    long      gap_writes_missed;
     uint64_t  samples;   /* instructions seen */
     uint64_t  halted;    /* CYCLES slept, not steps — see profile_one_frame */
     uint64_t  elsewhere; /* executing somewhere we have no room to count */
@@ -3427,6 +3453,9 @@ pc_tally_free(struct pc_tally *t)
     free(t->gap_ends);
     t->gap_ends = NULL;
     t->gap_end_count = 0;
+    free(t->gap_writes);
+    t->gap_writes = NULL;
+    t->gap_write_count = 0;
 }
 
 /* Flat arrays rather than a hash: an address maps straight to a slot, so the
@@ -3613,6 +3642,7 @@ profile_one_frame(struct mgba_core *mc, struct pc_tally *t)
              * so far, and the line, both as they stand before this instruction runs. */
             if (t->gap_end_count && !t->gap_reached && games_code && at_gap_end(t, pc)) {
                 t->gap_reached = 1;
+                t->gap_open = 0;
                 t->gap_breaks = t->breaks_began;
                 t->gap_line = gba->video.vcount;
             }
@@ -3659,6 +3689,12 @@ profile_one_frame(struct mgba_core *mc, struct pc_tally *t)
         if (t->awake) {
             slept_this_frame = 1;
             int line = gba->video.vcount;
+            /* A pass that never reached a gap's end the caller named (one whose gap ends in code the
+             * caller left out) cannot say where its gap stopped, so what it wrote in the picture may
+             * be its own later work: dropped rather than blamed on the gap. */
+            if (!t->gap_reached)
+                while (t->gap_write_count && t->gap_writes[t->gap_write_count - 1].pass == (int)t->pass_count)
+                    t->gap_write_count--;
             /* A wake that ran only an interrupt's handler and went back to sleep — a timer going
              * off while the game waits for the screen — is not a pass of the game. */
             if (t->games_code_ran && t->pass_count < PROF_PASSES_MAX) {
@@ -3671,6 +3707,7 @@ profile_one_frame(struct mgba_core *mc, struct pc_tally *t)
             t->gap_reached = 0;
         }
         t->awake = 0;
+        t->gap_open = t->gap_writes != NULL; /* the wake from this sleep starts a gap */
 
         core->step(core);
         t->last_line = gba->video.vcount;
@@ -3746,6 +3783,7 @@ struct touch_tally {
     uint32_t *count[TOUCH_REGIONS];
     size_t    slots[TOUCH_REGIONS];
     struct ARMMemory wrapped; /* the functions the wrappers hand on to */
+    struct pc_tally *gap;     /* where a gap's late display writes go, or NULL when none is asked */
 };
 
 static GEMBA_PER_THREAD struct touch_tally *s_touching = NULL;
@@ -3766,23 +3804,156 @@ touch_word(uint32_t address)
     t->count[region][offset / TOUCH_GRAIN]++;
 }
 
+/* --------------------------------------------------------- */
+/* A WRITE MEANT FOR THE BREAK THAT LANDED IN THE PICTURE.    */
+/*                                                            */
+/* The screen draws each row from the sprite table (OAM), the */
+/* colours (palette memory) and the display registers as     */
+/* they stand when it reaches that row (GBATEK, "LCD I/O      */
+/* Display Control" and "LCD OBJ - OAM Attributes"). A game   */
+/* changes them in the break between pictures, 68 rows when   */
+/* nothing is drawn, so every row of the next picture sees    */
+/* the new values. A gap that runs on past the break changes  */
+/* them while the rows are being drawn: the rows above the    */
+/* write show the old values and the rows below it the new.   */
+/*                                                            */
+/* So, while a gap is open, each store to those parts made    */
+/* on a row of the picture is written down with the row. Left */
+/* out: a store made in an interrupt's handler, and one made  */
+/* by a copy the screen or the sound started — those are how  */
+/* a game changes the display row by row on purpose. Also     */
+/* left out are the registers that say when to interrupt      */
+/* (DISPSTAT) and the row being drawn (VCOUNT), which draw    */
+/* nothing.                                                   */
+/*                                                            */
+/* A store anywhere else costs one shift and a compare, and   */
+/* none at all is made unless the caller named a gap's end.   */
+/* --------------------------------------------------------- */
+
+/* The last display register a gap's write is kept for: BLDY, the fade's brightness. */
+#define GAP_REGISTERS_END 0x56
+
+/* Which part of the display +address+ is, or 0 for none a gap's writes are kept for. A colour or
+ * sprite address is folded onto its first mirror. +byte+ is a store of one byte, which the sprite
+ * table ignores (GBATEK, "LCD OBJ - OAM Attributes": OAM takes 16- and 32-bit writes only). */
+static inline uint32_t
+gap_display_part(uint32_t address, int byte, uint32_t *at)
+{
+    uint32_t offset;
+    switch (address >> BASE_OFFSET) {
+    case 0x4:
+        offset = address & 0x00FFFFFE;
+        if (offset >= GAP_REGISTERS_END || offset == 0x04 || offset == 0x06)
+            return 0;
+        *at = BASE_IO | offset;
+        return *at;
+    case 0x5:
+        *at = BASE_PALETTE_RAM | (address & 0x3FE);
+        return BASE_PALETTE_RAM | (address & 0x200); /* backgrounds' colours, then sprites' */
+    case 0x7:
+        if (byte)
+            return 0;
+        *at = BASE_OAM | (address & 0x3FE);
+        return BASE_OAM;
+    default:
+        return 0;
+    }
+}
+
+static void
+gap_display_write(struct ARMCore *cpu, uint32_t address, int byte)
+{
+    struct pc_tally *t = s_touching->gap;
+    struct GBA *gba;
+    struct gap_write *last;
+    uint32_t part, at;
+    uint16_t row;
+    int active;
+
+    /* Past the last pass the profile keeps there is no pass to tag a write with. */
+    if (!t->gap_open || cpu->cpsr.priv == MODE_IRQ || t->pass_count >= PROF_PASSES_MAX)
+        return;
+    part = gap_display_part(address, byte, &at);
+    if (!part)
+        return;
+    gba = (struct GBA *)cpu->master;
+    row = (uint16_t)gba->video.vcount;
+    if (row >= GBA_VIDEO_VERTICAL_PIXELS)
+        return;
+    active = gba->memory.activeDMA;
+    if (active >= 0 && GBADMARegisterGetTiming(gba->memory.dma[active].reg) != GBA_DMA_TIMING_NOW)
+        return;
+
+    last = t->gap_write_count ? &t->gap_writes[t->gap_write_count - 1] : NULL;
+    /* A row above the run's last is the next picture's: the gap ran through a break, and that is a
+     * run of its own, or the run's rows would go backwards. */
+    if (last && last->pass == (int)t->pass_count && last->part == part && row >= last->last_row) {
+        if (at < last->first) last->first = at;
+        if (at > last->last) last->last = at;
+        last->last_row = row;
+        last->count++;
+        return;
+    }
+    if (t->gap_write_count >= GAP_WRITES_MAX) {
+        t->gap_writes_missed++;
+        return;
+    }
+    last = &t->gap_writes[t->gap_write_count++];
+    last->pass = (int)t->pass_count;
+    last->part = part;
+    last->first = last->last = at;
+    last->first_row = last->last_row = row;
+    last->count = 1;
+}
+
+/* A store goes on to gap_display_write only when a gap was asked about and the store is to the
+ * display's memory at all, so every other store pays the one test. */
+static inline void
+watch_gap_store(struct ARMCore *cpu, uint32_t address, int byte)
+{
+    if (!s_touching->gap)
+        return;
+    switch (address >> BASE_OFFSET) {
+    case 0x4: case 0x5: case 0x7: /* the registers, the colours, the sprite table */
+        gap_display_write(cpu, address, byte);
+        break;
+    default:
+        break;
+    }
+}
+
 /* Each register a load or store of several moves is a word of its own, one after another up from
  * the lowest. Where that lowest word is depends on which way the instruction walks from its base,
  * and whether it steps before or after each word. */
+static uint32_t
+lowest_word(uint32_t base, int words, enum LSMDirection direction)
+{
+    uint32_t span = (uint32_t)(words * 4);
+    switch (direction) {
+    case LSM_IA: return base;
+    case LSM_IB: return base + 4;
+    case LSM_DA: return base - span + 4;
+    default:     return base - span; /* LSM_DB */
+    }
+}
+
 static void
 touch_words(uint32_t base, int mask, enum LSMDirection direction)
 {
     int words = __builtin_popcount((unsigned)mask & 0xFFFF);
-    uint32_t span = (uint32_t)(words * 4);
-    uint32_t lowest;
-    switch (direction) {
-    case LSM_IA: lowest = base;            break;
-    case LSM_IB: lowest = base + 4;        break;
-    case LSM_DA: lowest = base - span + 4; break;
-    default:     lowest = base - span;     break; /* LSM_DB */
-    }
+    uint32_t lowest = lowest_word(base, words, direction);
     for (int i = 0; i < words; ++i)
         touch_word(lowest + (uint32_t)(i * 4));
+}
+
+/* The same words as touch_words, for a gap's display writes. */
+static void
+watch_gap_words(struct ARMCore *cpu, uint32_t base, int mask, enum LSMDirection direction)
+{
+    int words = __builtin_popcount((unsigned)mask & 0xFFFF);
+    uint32_t lowest = lowest_word(base, words, direction);
+    for (int i = 0; i < words; ++i)
+        watch_gap_store(cpu, lowest + (uint32_t)(i * 4), 0);
 }
 
 static uint32_t
@@ -3810,6 +3981,7 @@ static void
 touch_store32(struct ARMCore *cpu, uint32_t address, int32_t value, int *cycles)
 {
     touch_word(address);
+    watch_gap_store(cpu, address, 0);
     s_touching->wrapped.store32(cpu, address, value, cycles);
 }
 
@@ -3817,6 +3989,7 @@ static void
 touch_store16(struct ARMCore *cpu, uint32_t address, int16_t value, int *cycles)
 {
     touch_word(address);
+    watch_gap_store(cpu, address, 0);
     s_touching->wrapped.store16(cpu, address, value, cycles);
 }
 
@@ -3824,6 +3997,7 @@ static void
 touch_store8(struct ARMCore *cpu, uint32_t address, int8_t value, int *cycles)
 {
     touch_word(address);
+    watch_gap_store(cpu, address, 1);
     s_touching->wrapped.store8(cpu, address, value, cycles);
 }
 
@@ -3838,6 +4012,8 @@ static uint32_t
 touch_store_multiple(struct ARMCore *cpu, uint32_t base, int mask, enum LSMDirection direction, int *cycles)
 {
     touch_words(base, mask, direction);
+    if (s_touching->gap)
+        watch_gap_words(cpu, base, mask, direction);
     return s_touching->wrapped.storeMultiple(cpu, base, mask, direction, cycles);
 }
 
@@ -3926,6 +4102,11 @@ touch_tally_hash(const struct touch_tally *t)
  *              — the second below nothing asleep inside a break it missed, the third -1
  *              for a gap that ended before any break began or was not seen
  *   :touches   { word address => reads and writes } in the two working memories
+ *   :gap_writes for each run of writes a gap made to one part of the display on a row of the
+ *              picture, [pass, lowest address, highest address, first row, last row, writes]
+ *              (see gap_display_write); the pass is counted from 0 as :passes is, and one past
+ *              the last is a pass the run ended inside. Empty unless +rb_gap_ends+ names any.
+ *   :gap_writes_missed how many runs there was no room left for
  *
  * +rb_gap_ends+ is an Array of the addresses whose arrival ends the gap after a wait
  * (see pc_tally), empty for none. The caller decides what has settled and what to
@@ -3954,7 +4135,8 @@ mgba_core_profile(VALUE self, VALUE rb_frames, VALUE rb_keys, VALUE rb_gap_ends)
         rb_raise(rb_eNoMemError, "could not allocate the profile tally");
     if (gap_end_count) {
         tally.gap_ends = calloc((size_t)gap_end_count, sizeof(uint32_t));
-        if (!tally.gap_ends) {
+        tally.gap_writes = calloc(GAP_WRITES_MAX, sizeof(struct gap_write));
+        if (!tally.gap_ends || !tally.gap_writes) {
             pc_tally_free(&tally);
             rb_raise(rb_eNoMemError, "could not allocate the profile tally");
         }
@@ -3966,6 +4148,7 @@ mgba_core_profile(VALUE self, VALUE rb_frames, VALUE rb_keys, VALUE rb_gap_ends)
         pc_tally_free(&tally);
         rb_raise(rb_eNoMemError, "could not allocate the profile tally");
     }
+    touched.gap = tally.gap_writes ? &tally : NULL;
 
     if (!NIL_P(rb_keys))
         core->setKeys(core, (uint32_t)NUM2UINT(rb_keys));
@@ -3998,6 +4181,20 @@ mgba_core_profile(VALUE self, VALUE rb_frames, VALUE rb_keys, VALUE rb_gap_ends)
         rb_ary_push(passes, rb_ary_new_from_args(3, INT2NUM(tally.missed[i]), INT2NUM(tally.ended_before[i]),
                                                  INT2NUM(tally.gap_overran_by[i])));
     rb_hash_aset(out, ID2SYM(rb_intern("passes")), passes);
+    VALUE gap_writes = rb_ary_new_capa(tally.gap_write_count);
+    for (long i = 0; i < tally.gap_write_count; ++i) {
+        const struct gap_write *w = &tally.gap_writes[i];
+        VALUE row = rb_ary_new_capa(6);
+        rb_ary_push(row, INT2NUM(w->pass));
+        rb_ary_push(row, UINT2NUM(w->first));
+        rb_ary_push(row, UINT2NUM(w->last));
+        rb_ary_push(row, INT2NUM(w->first_row));
+        rb_ary_push(row, INT2NUM(w->last_row));
+        rb_ary_push(row, UINT2NUM(w->count));
+        rb_ary_push(gap_writes, row);
+    }
+    rb_hash_aset(out, ID2SYM(rb_intern("gap_writes")), gap_writes);
+    rb_hash_aset(out, ID2SYM(rb_intern("gap_writes_missed")), LONG2NUM(tally.gap_writes_missed));
     rb_hash_aset(out, ID2SYM(rb_intern("touches")), touch_tally_hash(&touched));
 
     pc_tally_free(&tally);

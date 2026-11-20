@@ -269,6 +269,74 @@ class TestProfiler < Minitest::Test
     refute_match(/updates after the wait/, late.string)
   end
 
+  # A game with one sprite moving a pixel a pass, whose gap after the wait spins to line +gap_until+
+  # before it writes the sprite's row: a line of the picture after the screen has left the break, so
+  # the sprite table changes on that row; a line of the break straight away. Hand-built for the reason
+  # game_whose_gap_runs_to gives.
+  private def game_writing_its_sprite_on_line(gap_until)
+    b = VBlank::IR::Build
+    spin_until = ->(index, test) { b.repeat(b.int(100_000), index, b.add(:spin, b.int(1)), stop_when: test) }
+    spins = []
+    spins << spin_until.call(:__repeat_1, b.binop(:<, b.read_scanline, b.int(160))) if gap_until < 160
+    spins << spin_until.call(:__repeat_2, b.binop(:>=, b.read_scanline, b.int(gap_until)))
+    program = b.program(
+      b.screen(:tiled),
+      b.bitmap(:dot, width: 8, height: 8, pixels: ([0x7FFF] * 64).pack("v*"), transparent: 0),
+      b.object(:ship, poses: %i[dot], pose: b.int(0), x: b.var_ref(:x), y: b.int(20), active: b.int(1)),
+      b.set(:x, b.int(0)), b.set(:spin, b.int(0)),
+      b.loop_(b.wait_vblank,
+              b.if_(b.binop(:>=, b.var_ref(:x), b.int(0)), *spins, b.present_objects([:ship])),
+              b.add(:x, b.int(1))),
+      console: :gba
+    )
+    assemble_rom(program, name: "PTEAR")
+  end
+
+  # A GAP THAT RUNS FROM THE BREAK ON INTO THE PICTURE TEARS IT, though the pass ends in good time and
+  # the gap long before the next break. The report names the pass and what changed late, with the row.
+  def test_a_gap_that_runs_into_the_picture_names_the_pass_and_the_rows_its_changes_landed_on
+    out = StringIO.new
+    result = game_writing_its_sprite_on_line(20).profile(out: out, frames: 6)
+
+    refute_empty result.gaps_into_picture
+    assert_empty result.late_passes
+    assert_empty result.gap_overruns
+    sprites = result.gaps_into_picture.first.writes.find { |write| write.part == :sprites }
+    refute_nil sprites, result.gaps_into_picture.inspect
+    assert_includes 20..23, sprites.rows.first
+    assert_match(/passes? \d+.*updates after the wait went on into the picture/, out.string)
+    assert_match(/the sprites: rows? 2\d/, out.string)
+  end
+
+  def test_a_gap_that_runs_into_the_picture_comes_back_as_data_too
+    out = StringIO.new
+    game_writing_its_sprite_on_line(20).profile(format: :json, out: out, frames: 6)
+    gap = JSON.parse(out.string)["gaps_into_picture"].first
+
+    assert_operator gap["pass"], :>=, 1
+    assert_includes gap["writes"].map { |write| write["part"] }, "sprites"
+  end
+
+  # The emulator keeps a fixed number of runs of these changes; a list it cut short says so.
+  def test_a_list_of_late_changes_cut_short_says_so
+    result = game_writing_its_sprite_on_line(20).profile(out: StringIO.new, frames: 6)
+    whole = StringIO.new
+    VBlank::Diagnostics::Profiler.render(result, out: whole)
+    cut = StringIO.new
+    VBlank::Diagnostics::Profiler.render(result.with(gap_writes_missed: 3), out: cut)
+
+    refute_match(/not complete/, whole.string)
+    assert_match(/This list is not complete: there was no room for 3 more runs of changes/, cut.string)
+  end
+
+  def test_a_gap_that_keeps_to_the_break_reports_nothing_new
+    out = StringIO.new
+    result = game_writing_its_sprite_on_line(200).profile(out: out, frames: 6)
+
+    assert_empty result.gaps_into_picture
+    refute_match(/into the picture/, out.string)
+  end
+
   # A game whose setting up waits for the screen to reach each line of +lines+ in turn, so the pass
   # from power-on ends on the last of them whatever the lowering emits. A line in the picture after
   # one in the break is waited for from below it, so the setting up runs on into the next picture.
