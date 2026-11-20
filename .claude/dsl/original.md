@@ -365,6 +365,23 @@ from that copy. The game's code says each piece's shape and size; it never depen
   a build really runs and reads. The key also holds the routine's defaults (the `DEFAULTS` of the
   records it uses), so a changed default plays it again. A pack kept by an older VBlank misses
   once, and the build keeps it again under the new key.
+  A routine of one part whose pack is kept is not even built: beside the pack the cache keeps the
+  files the routine was built from, each hashed (`Original::RoutineFiles`: every file read in the
+  process since VBlank loaded and while the routine was built, and the game's own Ruby files), and a
+  later build whose files all hash the same reads the pack straight away
+  (`PackCache#pack_of_routine`). A changed file builds the routine again, and a program that comes
+  out the same still reads the kept pack. The routine is told apart by where its blocks are written
+  and the plain values (numbers, text, lists of them) they can see (`Original::RoutineDeclaration`).
+  In one process, a routine built once is shared by later builds of the same declaration
+  (`Original::RoutineBuild`). A routine in named parts is built every build, as below.
+  **What a cached routine may depend on**: the game's own Ruby files, files the routine or the game
+  reads by name (`File.read`, `File.open`, `JSON.load_file`, `Zlib::GzipReader.open`), at load or as
+  it builds, and plain local values its blocks can see. **What it must not depend on** without
+  naming it in the declaration (as a plain local, or in the pack's `version:`): `ENV`, a folder's
+  listing (`Dir.glob`, `Dir.children`), a value from the clock or from random numbers, a file read
+  before VBlank loaded, by a C extension, or in the machine's temporary folder outside the routine's
+  own build, and an object's state that no file holds. The cache cannot see those, so a change to
+  them reads a stale pack. A stale pack is cleared by deleting the cache folder.
   The key is the whole routine, so a change to any of it runs all of it again, unless the routine is
   in named parts. Then each part is kept apart, and a change to one part plays that part again and takes
   the rest from the cache (`Original::UnpackingParts`). Two parts are played together when one reads a

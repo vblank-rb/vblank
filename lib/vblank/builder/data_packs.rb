@@ -81,12 +81,12 @@ module VBlank
       # routine reads, besides those of the original's platform. +cache+ names a folder, which git
       # must ignore, to keep what the unpacking routine writes in, so a later build with the same
       # copy and routine reads it back instead of running the routine again (Original::PackCache).
-      def data_pack(from:, version: nil, formats: [], cache: nil, &)
+      def data_pack(from:, version: nil, formats: [], cache: nil, &declare)
         refuse_second_data_pack!
         refuse_missing_pack_version!(version)
         @data_pack_platform = from.platform
         reading = copy_reading_for(from.platform, formats)
-        return declare_pack_read_at_start(from, version, reading, &) if @build_options.pack_at_start
+        return declare_pack_read_at_start(from, version, reading, &declare) if @build_options.pack_at_start
 
         copy = from.is_a?(Original::Copy) ? from : from.copy
         refuse_copy_without_hash!(copy)
@@ -100,15 +100,21 @@ module VBlank
         # Every slot copied as it is must lie inside the copy, whichever way the pack is made.
         copied = copy_release_slots.reject(&:filled_by_routine?).to_h { |slot| [slot.name, slot.cut_from(bytes)] }
         routines = slots.routines
-        whole_names = Original::BuiltNames.new
-        # The slots each part in pieces writes, as the whole routine's build records them, which
-        # the split for several workers is built from (#pieced_unpacking).
-        whole_uses = {}
-        # What each part put in the whole routine's program, which each part built alone is held to.
-        whole_programs = Original::PartPrograms.new
+        # The whole routine, built the first time something asks for it (Original::RoutineBuild):
+        # a pack the cache keeps already needs none. Its build records the names it made, the
+        # slots each part used, which the split for several workers is built from
+        # (#pieced_unpacking), and what each part put in its program, which each part built alone
+        # is held to (#unpacking_parts).
         unless routines.empty?
-          unpacking = unpacking_program(bytes, copy_release_slots, routines, reading, release: copy_release, built_names: whole_names,
-                                                                                    slot_uses: whole_uses, part_programs: whole_programs)
+          declaration = Original::RoutineDeclaration.new(
+            declared_by: declare, slots: copy_release_slots, routines: routines, platform: reading.platform,
+            formats: reading.formats, release: copy_release, console: @build_options.console,
+            variant: @build_options.variant, screen_size: @program.screen_size
+          )
+          whole = Original::RoutineBuild.new(declaration: declaration, copy_bytes: bytes) do |names, uses, programs|
+            unpacking_program(bytes, copy_release_slots, routines, reading, release: copy_release, built_names: names,
+                                                                            slot_uses: uses, part_programs: programs)
+          end
         end
         # Built once, the first time the cache or a test asks; nil is an answer too.
         parts_built = false
@@ -117,24 +123,27 @@ module VBlank
           unless parts_built
             if routines.size > 1
               parts = unpacking_parts(bytes, copy_release_slots, routines, reading, copy_release,
-                                      Original::WholeRoutine.new(unpacking: unpacking, names: whole_names, programs: whole_programs))
+                                      Original::WholeRoutine.new(unpacking: whole.unpacking, names: whole.names,
+                                                                 programs: whole.programs))
             end
             parts_built = true
           end
           parts
         end
-        @data_pack_contents = if unpacking
-                                unpacked_pack(unpacking, cache, sha1: copy.sha1, build_version: version, make_parts: make_parts)
+        @data_pack_contents = if whole
+                                unpacked_pack(whole, cache, sha1: copy.sha1, build_version: version, make_parts: make_parts)
                               else
                                 Original::Pack.from_bytes(Original::Pack.holding(copied, sha1: copy.sha1, build_version: version).to_bytes)
                               end
         @data_pack_slots = slots.list.to_h { |slot| [slot.name, slot] }
-        made = { Original::FrameRecord::Section.new(sources: []) => unpacking }
+        made = {}
         pieced = {}
         @data_pack = DSL::DataPack.new(rom_sha1: @data_pack_contents.rom_sha1, build_version: @data_pack_contents.build_version,
                                        slots: slots.list, platform: from.platform, make_unpacking_parts: make_parts,
                                        make_unpacking: lambda { |_release|
                                          frames = pack_frame_section_for_unpacking!
+                                         next whole.unpacking if whole && frames.sources.empty?
+
                                          made[frames] ||= unpacking_program(bytes, copy_release_slots, routines, reading,
                                                                             release: copy_release, frames: frames)
                                        },
@@ -143,7 +152,7 @@ module VBlank
                                          pieced.fetch(frames) do
                                            pieced[frames] = pieced_unpacking(bytes, copy_release_slots, routines, reading,
                                                                              release: copy_release, frames: frames,
-                                                                             whole_uses: whole_uses)
+                                                                             whole_uses: routines.any?(&:pieced?) ? whole.uses : {})
                                          end
                                        })
       end
@@ -843,16 +852,25 @@ module VBlank
                              "`pack.unpacking(release: release)`."
       end
 
-      # The pack the routine writes, for the copy whose SHA-1 is +sha1+ and the build
-      # +build_version+, read back from +cache+ (a folder, or nil for none) where it is kept, part by
-      # part where the routine is in parts (+make_parts+ makes its Original::UnpackingParts).
-      def unpacked_pack(unpacking, cache, sha1:, build_version:, make_parts:)
-        play = lambda do |path, played = unpacking, _part_names = nil|
-          play_unpacking(played, path, sha1: sha1, build_version: build_version)
+      # The pack the routine +whole+ (an Original::RoutineBuild) writes, for the copy whose SHA-1 is
+      # +sha1+ and the build +build_version+, read back from +cache+ (a folder, or nil for none)
+      # where it is kept, part by part where the routine is in parts (+make_parts+ makes its
+      # Original::UnpackingParts).
+      #
+      # A routine of one part whose pack is kept is not built at all (PackCache#pack_of_routine). A
+      # routine in parts is built, whole and each part alone, before the cache is asked, since each
+      # part's key is made from its program built alone.
+      def unpacked_pack(whole, cache, sha1:, build_version:, make_parts:)
+        play = lambda do |path, played = nil, _part_names = nil|
+          play_unpacking(played || whole.unpacking, path, sha1: sha1, build_version: build_version)
         end
         return Original::Pack.read_from_temporary_file(&play) if cache.nil?
 
-        Original::PackCache.new(cache).pack(unpacking, sha1: sha1, build_version: build_version, parts: make_parts.call, &play)
+        kept = Original::PackCache.new(cache)
+        parts = make_parts.call
+        return kept.pack(whole.unpacking, sha1: sha1, build_version: build_version, parts: parts, &play) if parts
+
+        kept.pack_of_routine(whole, sha1: sha1, build_version: build_version, &play)
       end
 
       # THE ROUTINE'S PARTS (Original::UnpackingParts), for the pack cache: each part of

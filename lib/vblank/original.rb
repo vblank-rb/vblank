@@ -34,6 +34,10 @@ require_relative "original/unpacking"      # The routine that fills the pack, as
 require_relative "original/unpacking_parts"  # The routine's parts, which the pack cache keeps apart
 require_relative "original/pieced_unpacking"  # The routine split for several workers, a piece each
 require_relative "original/pack_library"   # The part of VBlank a kept pack is keyed on
+require_relative "original/files_read"     # The files a block read, by their full paths
+require_relative "original/routine_files"  # The files an unpacking routine was built from, each hashed
+require_relative "original/routine_declaration"  # What an unpacking routine is declared from, as text
+require_relative "original/routine_build"  # The whole routine, built when first asked for, once a process
 require_relative "original/pack_cache"     # What the routine wrote, kept between builds
 # Must load before original/copy_reader, which mixes in each console's packed formats.
 require_relative "original/packing"        # The packed formats an unpacking routine reads, by console
