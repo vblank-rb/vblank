@@ -33,6 +33,7 @@ require_relative "live/shell"          # A port with no data: its menu, its unpa
 require_relative "live/shell_check"    # A port's shell played against its all-in-one build
 require_relative "live/sdl"            # A window for a person: SDL3 through Fiddle, loaded when asked for
 require_relative "live/build_watch"    # A window waiting while a helper process builds its game
+require_relative "live/match_play"     # Hosting or joining a match, from the facts of the game alone
 require_relative "live/build_inputs"   # What a build read, recorded as it read it
 require_relative "live/written_games"  # Games written out by earlier launches, kept while current
 require_relative "live/build_helper"   # That helper: started, and what it runs

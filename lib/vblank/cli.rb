@@ -1158,7 +1158,7 @@ module VBlank
       device = VBlank::Live::BotDevice.new(bot, passes: options[:pictures], on_notice: ->(words) { say words })
       begin
         live_session(game, program, network).play(device)
-      rescue *MATCH_FAILURES => e
+      rescue *match_failures => e
         raise Thor::Error, match_failure_message(e)
       end
       say_match_summary(network, events_said: true)
@@ -1355,11 +1355,13 @@ module VBlank
       slot = VBlank::Live::WrittenGames.new(VBlank::Live::WrittenGames.root)
                                        .slot(game_file: game_file, console: console, settings: given_settings)
       library = VBlank::Live::WrittenGames.library_key
-      unless slot.current?(console: console, settings: given_settings, library: library)
+      match = !match_launch(game_file).nil?
+      unless slot.current?(console: console, settings: given_settings, library: library, match: match)
         pid, pipe = VBlank::Live::BuildHelper.start(game_file: game_file, console: console, settings: given_settings,
-                                                    slot: slot, library: library)
+                                                    slot: slot, library: library, match: match)
       end
-      VBlank::Live::WindowProcess.become(window_launch(game, console, slot.script_path, pid), helper_pipe: pipe, zjit: zjit_on?)
+      VBlank::Live::WindowProcess.become(window_launch(game_file, game, console, slot.script_path, pid), helper_pipe: pipe,
+                                                                                                      zjit: zjit_on?, match: match)
     rescue ArgumentError => e
       raise build_stopped(e)
     rescue SystemCallError => e
@@ -1370,13 +1372,15 @@ module VBlank
 
     # What the window's process is told (runtime/rg_window_main.rb): the window opens at the
     # console's size, and is fitted to the game once it is written. +pid+ is the helper building
-    # it, nil for a game written already.
-    def window_launch(game, console, written, pid)
+    # it, nil for a game written already. A match over a network (--host, --join) adds what
+    # Live::MatchPlay is told (#match_launch), and keeps no save states.
+    def window_launch(game_file, game, console, written, pid)
       described = VBlank::Console.described(console)
       width, height = described.framed_screen_size
+      match = match_launch(game_file)
       { title: game.title, width: width, height: height, pixel_size: described.pixel_size, menu: game.menu?,
-        buttons: described.buttons, state_folder: state_folder_name(game, nil), written_path: written,
-        helper_pid: pid, yjit: options[:yjit],
+        buttons: described.buttons, state_folder: state_folder_name(game, match), written_path: written,
+        helper_pid: pid, yjit: options[:yjit], match: match,
         options: { scale: options[:scale], pictures: options[:pictures], uncapped: options[:uncapped],
                    "collect-garbage": options[:collect_garbage], "settings-file": options[:settings_file],
                    "config-dir": options[:config_dir], "record-sound": options[:record_sound] }.compact }
@@ -1384,11 +1388,21 @@ module VBlank
 
     # Whether the play goes through a helper process (#play_built_in_helper): a person playing in a
     # window, on a Ruby that can hand the helper a descriptor and replace itself with the window's
-    # process (Live::WindowProcess.available?), in no mode the written game does not carry yet. A match
-    # over a network plays in this process, as before.
+    # process (Live::WindowProcess.available?).
     def build_in_helper?
       require_relative "live"
-      VBlank::Live::WindowProcess.available? && !options[:host] && !options[:join]
+      VBlank::Live::WindowProcess.available?
+    end
+
+    # What the window's process is told of a match: Live::MatchPlay's options (#match_options, but
+    # for how it speaks), whether it has a window, and the keys it holds with none; nil when this is
+    # no match.
+    def match_launch(game_file)
+      return nil unless options[:host] || options[:join]
+
+      { game_file: game_file, host: options[:host], join: options[:join], relay: options[:relay], players: options[:players],
+        input_delay: options[:input_delay], window: options[:window] != false, keys: options[:keys] || [],
+        console_titles: VBlank::Console.kits.to_h { |kit| [kit.name.to_s, kit.title] } }
     end
 
     # The game of a shell, played in its window with save states: only the game offers them, once the
@@ -1613,7 +1627,7 @@ module VBlank
     rescue VBlank::Live::SDL::Missing, VBlank::Live::SDL::Failed, VBlank::IR::ProgramError,
            VBlank::Live::SaveFile::NotThisGamesSave => e
       raise Thor::Error, e.message
-    rescue *MATCH_FAILURES => e
+    rescue *match_failures => e
       raise Thor::Error, match_failure_message(e)
     ensure
       build_progress.done # a window that would not open leaves its phase open
@@ -1621,87 +1635,39 @@ module VBlank
       write_recorded_sound(recording) if recording # a play that went wrong is the one most worth hearing
     end
 
-    # What stops a match, each already in plain words.
-    MATCH_FAILURES = [VBlank::Network::Refused, VBlank::Network::Desync, VBlank::Network::ConnectionLost,
-                      VBlank::Network::ConnectionFailed, VBlank::Network::VersionMismatch, VBlank::Network::RoomRefused,
-                      VBlank::Network::BadMessage].freeze
-
-    # The words for what stopped a match. A machine whose game went another way than another machine's
-    # first writes the tape of the match and the report into a new folder, which nothing removes, and
-    # the words say where: the tape replays this machine's game on the interpreter, pass for pass.
-    def match_failure_message(error)
-      return error.message unless error.is_a?(VBlank::Network::Desync)
-
-      require "tmpdir"
-      error.report.written_message(error.report.write_in(Dir.mktmpdir("vblank-match-")))
+    # What stops a match, each already in plain words (Live::MatchPlay::FAILURES).
+    def match_failures
+      require_relative "live"
+      VBlank::Live::MatchPlay::FAILURES
     end
 
-    # The match this command is to play (--host or --join), not yet begun: the host has opened its port and
-    # said where it can be found, or the joining computer has connected. Nil when it is not a match.
+    # The words for what stopped a match (Live::MatchPlay.failure_message).
+    def match_failure_message(error) = VBlank::Live::MatchPlay.failure_message(error)
+
+    # The match this command is to play (--host or --join), begun: the host has opened its port and
+    # said where it can be found, or the joining computer has connected, and everybody is in. Nil
+    # when it is not a match. The window's own process does the same from the facts a helper wrote
+    # (runtime/rg_window_main.rb); this is the one-process path, which a bot takes.
     def network_to_play(game_file, game, program)
       return nil unless options[:host] || options[:join]
 
-      refuse_match_for_one_player!(game, program)
-      fingerprint = VBlank::Network::Fingerprint.of(program, title: game.title)
-      lockstep = if options[:relay] then meet_on_relay(game_file, program, fingerprint)
-                 elsif options[:host] then open_match_as_host(game_file, program, fingerprint)
-                 else connect_to_match_host(fingerprint)
-                 end
-      say "Waiting for the other players. Press Ctrl-C to give up." if options[:host]
+      require_relative "live"
+      match = VBlank::Live::MatchPlay.new(VBlank::Live::MatchPlay.facts_of(program, title: game.title), **match_options(game_file))
+      lockstep = match.open
+      say match.waiting_line if match.waiting_line
       lockstep.begin_match
       say "The match has begun. You are player #{lockstep.player}."
       lockstep
-    rescue ArgumentError, *MATCH_FAILURES => e
+    rescue ArgumentError, VBlank::Live::MatchPlay::Refused, *match_failures => e
       raise Thor::Error, e.message
     rescue Interrupt
       raise Thor::Error, "You stopped the wait, so no match was played."
     end
 
-    # A match is for a game that takes more than one player. A game for one player is built without what a match
-    # needs (Program#several_players?).
-    def refuse_match_for_one_player!(game, program)
-      return if program.several_players?
-
-      raise Thor::Error, "#{game.title} is a game for one player, so it cannot play in a match. To fix this, say on " \
-                         "VBlank.game how many players it takes, for example players: 1..2."
-    end
-
-    def players_in_match(program)
-      players = options[:players] || 2
-      most = program.most_players
-      if most && players > most
-        raise Thor::Error, "--players #{players} is more than this game takes. The game takes at most #{most}. " \
-                           "To fix this, give --players #{most} or fewer."
-      end
-      players
-    end
-
-    # A match through the relay: --host makes a room and says its code, --join CODE joins one.
-    def meet_on_relay(game_file, program, fingerprint)
-      url = VBlank::Network::RelayPlay.url_from(options[:relay])
-      input_delay = options[:input_delay] || VBlank::Network::Lockstep::DEFAULT_INPUT_DELAY_PASSES
-      return VBlank::Network::RelayPlay.join(url, options[:join], fingerprint: fingerprint).tap { say "Joined the room #{options[:join]}." } unless options[:host]
-
-      lockstep, code = VBlank::Network::RelayPlay.host(url, players: players_in_match(program), input_delay: input_delay, fingerprint: fingerprint)
-      say "Made the room #{code} on the relay. The others can join with:"
-      say "  vblank run #{game_file} --relay --join #{code}"
-      lockstep
-    end
-
-    def open_match_as_host(game_file, program, fingerprint)
-      players = players_in_match(program)
-      lockstep, port = VBlank::Network::DirectPlay.host(port: Integer(options[:host], 10), players: players,
-                                                        input_delay: options[:input_delay] || VBlank::Network::Lockstep::DEFAULT_INPUT_DELAY_PASSES,
-                                                        fingerprint: fingerprint)
-      say "Hosting a match for #{players} players on port #{port}. The others can join with one of:"
-      VBlank::Network::DirectPlay.addresses_for(port).each { |address| say "  vblank run #{game_file} --join #{address}" }
-      lockstep
-    end
-
-    def connect_to_match_host(fingerprint)
-      address = VBlank::Network::DirectPlay::Address.parse(options[:join])
-      say "Joining the match at #{address}."
-      VBlank::Network::DirectPlay.join(address, fingerprint: fingerprint)
+    # What Live::MatchPlay is told of this command's options.
+    def match_options(game_file)
+      { game_file: game_file, host: options[:host], join: options[:join], relay: options[:relay], players: options[:players],
+        input_delay: options[:input_delay], say: ->(line) { say line } }
     end
 
     def refuse_mismatched_match_options!
@@ -1749,14 +1715,13 @@ module VBlank
       device = VBlank::Live::Headless.new(frames: options[:pictures], buttons: keys, on_notice: ->(words) { say words },
                                           keeps_save: false)
       session.play(device).tap { say_match_summary(network, events_said: true) }
-    rescue *MATCH_FAILURES => e
+    rescue *match_failures => e
       raise Thor::Error, match_failure_message(e)
     end
 
     # +events_said+ is true where the events were said as they came, and need no telling again.
     def say_match_summary(network, events_said: false)
-      network.events.each { |event| say event.words } unless events_said
-      say "The match is over. The computers agreed on every checkpoint."
+      VBlank::Live::MatchPlay.summary_lines(network, events_said: events_said).each { |line| say line }
     end
 
     # A bot plays in a match, so it needs a way into one.

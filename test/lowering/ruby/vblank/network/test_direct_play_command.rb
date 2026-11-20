@@ -4,6 +4,7 @@ require "test_helper"
 require "open3"
 require "rbconfig"
 require "timeout"
+require "tmpdir"
 require "English"
 
 # `vblank run GAME --host` IN ONE PROCESS AND `--join ADDRESS` IN ANOTHER, over a TCP port on this computer,
@@ -60,6 +61,50 @@ class TestDirectPlayCommand < Minitest::Test
     assert_includes hosting.lines.join, "You are player 1."
     assert_includes joining.lines.join, "You are player 2."
     [hosting, joining].each { |run| assert_match(/agreed on every checkpoint/, run.lines.join) }
+  end
+
+  # A MATCH IN WINDOWS, EACH GAME BUILT IN A HELPER (Live::BuildHelper) and played in the window's own
+  # process, as a person plays one: SDL's dummy windows, which nobody sees. The game file notes each
+  # process that loads it: the command and its helper, on each computer.
+  def test_two_windows_play_one_match_each_game_built_by_a_helper
+    Dir.mktmpdir do |dir|
+      pids = File.join(dir, "pids.txt")
+      game = File.join(dir, "pair.rb")
+      File.write(game, <<~GAME)
+        File.write(#{pids.dump}, "\#{Process.pid}\\n", mode: "a")
+        VBlank.game("PAIR", consoles: %i[gba], players: { computer: 1..2, else: 1 }) do
+          screen :bitmap
+          x = 10
+          game_loop do
+            x += 1
+            clear_screen :blue
+            fill_rect x & 127, 10, 4, 4, :white
+          end
+        end
+      GAME
+      # Each computer keeps its written games in a place of its own, as two computers would.
+      in_window = lambda do |computer, *args|
+        windows = { "SDL_VIDEODRIVER" => "dummy", "SDL_AUDIODRIVER" => "dummy", "RUBY_YJIT_ENABLE" => nil,
+                    "VBLANK_WRITTEN_GAMES" => File.join(dir, "written games of #{computer}") }
+        io = IO.popen(windows, [RUBY, BIN, "run", game, *args, "--pictures", "40", "--settings-file", File.join(dir, "settings.txt"),
+                                { err: %i[child out] }])
+        Run.new(io, [], io.pid)
+      end
+      hosting = in_window.call("host", "--host", "0")
+      port = port_of(hosting)
+      flunk hosting.lines.join if port.nil?
+      joining = in_window.call("joiner", "--join", "127.0.0.1:#{port}")
+
+      joined = joining.finish
+      hosted = hosting.finish
+
+      assert_predicate joined, :success?, joining.lines.join
+      assert_predicate hosted, :success?, hosting.lines.join
+      [hosting, joining].each { |run| assert_match(/agreed on every checkpoint/, run.lines.join) }
+      loaded = File.readlines(pids).map(&:to_i)
+      assert_equal 4, loaded.size, "each command and each helper loaded the game"
+      assert_equal 2, (loaded - [hosting.pid, joining.pid]).uniq.size, "two helpers built the game"
+    end
   end
 
   def test_a_killed_process_is_a_player_who_left_and_the_other_goes_on

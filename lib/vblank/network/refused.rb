@@ -33,7 +33,21 @@ module VBlank
         end
       end
 
-      def self.console_title(fingerprint) = Console.described(fingerprint.console.to_sym).title
+      # The title of the console +fingerprint+ is built for. The library's own description says it;
+      # where the library is not loaded (the window's process, Live::MatchPlay) the titles it was
+      # handed do (#console_titles=), and a console named in neither is said by its name.
+      def self.console_title(fingerprint)
+        name = fingerprint.console.to_s
+        return Console.described(name.to_sym).title if defined?(Console.described)
+
+        (@console_titles || {}).fetch(name, name)
+      end
+
+      class << self
+        # The consoles' titles, by name, for a process that has no Console (#console_title). Set once,
+        # on the main Ractor, before a match starts.
+        attr_writer :console_titles
+      end
 
       def initialize(reason, words)
         @reason = reason

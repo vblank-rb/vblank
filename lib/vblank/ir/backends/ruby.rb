@@ -108,8 +108,11 @@ module VBlank
         # the game as a shell (Original::Shell): the file holds none of the original's data, and
         # makes the pack from the player's copy the first time it is played (Live::Shell). +progress+ (a
         # Messages::Progress) is told each step as it begins.
+        #
+        # +match+ writes in what a match over a network needs to know of the game (#match_facts), which
+        # takes a while for a big game, so only a build that will play in one asks for it.
         def build_script(game, path, console:, settings: {}, err: $stderr, pack_at_start: false, shell: false,
-                         progress: Messages::Progress.silent)
+                         progress: Messages::Progress.silent, match: false)
           if shell
             built = Original::Shell.build(game, console: console, settings: settings, err: err, progress: progress)
             progress.step("Writing Ruby")
@@ -118,7 +121,8 @@ module VBlank
             program = Computer::CheckedProgram.build(game, console: console, settings: settings, err: err, progress: progress,
                                                     pack_at_start: pack_at_start)
             progress.step("Writing Ruby")
-            File.write(path, script(program, title: game.title, menu: game.menu?, code: game.identifying_code))
+            File.write(path, script(program, title: game.title, menu: game.menu?, code: game.identifying_code,
+                                             match: (match_facts(program, title: game.title) if match)))
           end
           path
         ensure
@@ -128,16 +132,27 @@ module VBlank
         # ...the file's text, for +program+ in a window titled +title+, with a menu or not, and as
         # the Original::Shell +shell+ when there is one. +code+ is the game's code, which names the
         # folder its save states and save memory are kept in (WrittenGame#state_folder); nil keeps none.
-        def script(program, title:, menu: true, code: nil, shell: nil)
+        # +match+ is #match_facts, or nil for a game written with none.
+        def script(program, title:, menu: true, code: nil, shell: nil, match: nil)
           [SCRIPT_TOP, *SCRIPT_PARTS.map { |part| File.read(VBlank.root.join("lib", part), encoding: Encoding::UTF_8) },
            *(shell ? SHELL_PARTS.map { |part| File.read(VBlank.root.join("lib", part), encoding: Encoding::UTF_8) } : []),
            "VBlank::Graphics::MenuFont::CARRIED = <<'#{FONT_END}'\n#{File.read(Graphics::MenuFont::PATH, encoding: Encoding::UTF_8)}#{FONT_END}\n",
            "module VBlankScript\n", WrittenGame::PART_BEGINS,
            "  TITLE = #{title.to_s.inspect}\n  CONSOLE_TITLE = #{program.described_console.title.inspect}\n  MENU = #{menu}\n",
            "  GAME_CODE = #{code.nil? ? 'nil' : code.to_s.inspect}\n",
+           "  MATCH = #{match ? JSON.generate(match).inspect : 'nil'}\n",
            "  SOURCE = #{script_heredoc(live_source(program), SCRIPT_END)}",
            shell ? script_shell_text(shell) : "  SHELL_FACTS = nil\n", WrittenGame::PART_ENDS, "end\n",
            File.read(File.join(RUNTIME_DIR, SCRIPT_MAIN), encoding: Encoding::UTF_8).delete_prefix(MAGIC_COMMENT)].join
+        end
+
+        # WHAT A MATCH OVER A NETWORK NEEDS TO KNOW OF +program+, titled +title+, as plain values: its
+        # fingerprint's parts (Network::Fingerprint), whether it is built for several players and the
+        # most it seats. Live::MatchPlay::MatchFacts is made from them, in a process with no build.
+        def match_facts(program, title:)
+          fingerprint = Network::Fingerprint.of(program, title: title)
+          { "title" => title.to_s, "console" => fingerprint.console, "digest" => fingerprint.digest,
+            "several_players" => program.several_players?, "most_players" => program.most_players }
         end
 
         MAGIC_COMMENT = "# frozen_string_literal: true\n" # The first line of every file of the library's

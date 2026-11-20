@@ -22,13 +22,14 @@ module VBlank
 
       # A helper building the game in +game_file+ for +console+ (a Symbol), told +settings+ (--set's,
       # names to text), keeping it in +slot+ (a WrittenGames::Slot) under +library+ (the command's
-      # WrittenGames::LibraryKey, worked out once for the launch). Gives back its pid and the end of
+      # WrittenGames::LibraryKey, worked out once for the launch). +match+ writes in what a match needs
+      # to know of the game (Ruby#build_script). Gives back its pid and the end of
       # the pipe it says what it is doing on, which BuildWatch reads.
-      def self.start(game_file:, console:, settings:, slot:, library:)
+      def self.start(game_file:, console:, settings:, slot:, library:, match: false)
         reader, writer = IO.pipe
         pid = Process.spawn(RbConfig.ruby, "-I", VBlank.root.join("lib").to_s, "-e", STARTER, "--",
                             File.expand_path(game_file), console.to_s, slot.folder, JSON.generate(settings),
-                            JSON.generate(library.to_plain), PIPE_FD => writer, in: File::NULL)
+                            JSON.generate(library.to_plain), match.to_s, PIPE_FD => writer, in: File::NULL)
         writer.close
         [pid, reader]
       end
@@ -40,7 +41,8 @@ module VBlank
       # A window that has gone (closed, or killed) leaves the pipe with no reader, and Ctrl-C at the
       # terminal reaches this process too: either ends it quietly, with nothing more to say.
       def self.main(arguments)
-        game_file, console, folder, settings, library = arguments
+        game_file, console, folder, settings, library, match = arguments
+        match = match == "true"
         settings = JSON.parse(settings).transform_keys(&:to_sym)
         library = WrittenGames::LibraryKey.new(**JSON.parse(library).transform_keys(&:to_sym))
         slot = WrittenGames::Slot.new(folder)
@@ -61,10 +63,10 @@ module VBlank
             BuildInputs.under_way.note_path(game_file)
             game = load_game(game_file)
             title = game.title
-            IR::Backends::Ruby.new.build_script(game, slot.writing_path, console: console.to_sym, progress: sender,
+            IR::Backends::Ruby.new.build_script(game, slot.writing_path, console: console.to_sym, progress: sender, match: match,
                                                                          settings: settings)
           end
-          slot.keep(inputs, console: console, settings: settings, library: library)
+          slot.keep(inputs, console: console, settings: settings, library: library, match: match)
           sender.say("written", slot.script_path)
           exit 0
         rescue IR::Backends::Ruby::RuntimeGap => e

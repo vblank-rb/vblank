@@ -58,7 +58,9 @@ module VBlankScript
   # fitted to the game here; nil opens one for it. The window is closed however the play ends.
   # +options+ are #main's, by its names, and :state_folder, where save states and the game's save
   # memory are kept (Live::StateSlots.folder_name), the written game's own when left out.
-  def self.play(written, options, window: nil)
+  # +network+ is the match it plays in (a Network::Lockstep, begun), nil for none: only vblank run's
+  # window plays one (Live::MatchPlay), a written-out script never does.
+  def self.play(written, options, window: nil, network: nil)
     game = written.live_game
     if window
       problems = window.fit_game(width: game.width, height: game.height, pixel_size: game.pixel_size,
@@ -77,11 +79,12 @@ module VBlankScript
     recording = VBlank::Live::Recording.new(window, frame_seconds: game.frame_seconds) if options[:"record-sound"]
     play_game = lambda do |playing|
       VBlank::Live::Session.new(game: playing, uncapped: options[:uncapped], stop_after_passes: options[:pictures],
-                                collect_garbage: options.fetch(:"collect-garbage", true))
+                                collect_garbage: options.fetch(:"collect-garbage", true), network: network)
                            .play(recording || window)
     end
     rate = written.shell ? play_shell(written, window, options, play_game) : play_game.call(game)
     say_rate(written.title, rate, game.frame_seconds) if rate
+    VBlank::Live::MatchPlay.summary_lines(network).each { |line| puts line } if network
   rescue VBlank::Live::SDL::Missing, VBlank::Live::SDL::Failed, VBlank::IR::ProgramError => e
     warn e.message
     exit 1
@@ -100,10 +103,12 @@ module VBlankScript
   end
 
   # How fast +rate+ went, once the play stops, as vblank run says it.
-  def self.say_rate(title, rate, frame_seconds)
+  # +lateness+ false leaves out which passes ran late, for a play on a clock that only moves as it
+  # plays (a match with no window).
+  def self.say_rate(title, rate, frame_seconds, lateness: true)
     if rate.passes_after_setup.positive?
       puts rate.words(console_frame_seconds: frame_seconds)
-      puts rate.lateness.words if rate.lateness
+      puts rate.lateness.words if rate.lateness && lateness
     end
     return unless rate.stopped_itself?
 

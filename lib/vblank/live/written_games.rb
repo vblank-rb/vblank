@@ -87,12 +87,15 @@ module VBlank
 
         # Whether the game kept here can be played as it is: built for +console+ and +settings+ by
         # the library whose LibraryKey is +library+, on this Ruby, from everything as it is now; the
-        # very file its build kept; and no one else able to have changed it.
-        def current?(console:, settings:, library:)
+        # very file its build kept; and no one else able to have changed it. With +match+, it must
+        # hold what a match needs to know of the game too (Ruby#build_script's +match+), which a
+        # build writes in only when asked.
+        def current?(console:, settings:, library:, match: false)
           return false unless File.file?(script_path) && File.file?(record_path) && owners_alone?
 
           record = JSON.parse(File.read(record_path))
-          record["format"] == FORMAT && record["console"] == console.to_s && record["settings"] == plain_settings(settings) &&
+          (!match || record["match"] == true) &&
+            record["format"] == FORMAT && record["console"] == console.to_s && record["settings"] == plain_settings(settings) &&
             record["ruby"] == RUBY_VERSION && record["library"] == library.to_plain &&
             record["game"] == Digest::SHA256.file(script_path).hexdigest &&
             BuildInputs.from_plain(record.fetch("inputs")).current?
@@ -116,13 +119,15 @@ module VBlank
         end
 
         # The game this process's build wrote to #writing_path kept, with what the build read
-        # (+inputs+, a BuildInputs) and what it was built for.
-        def keep(inputs, console:, settings:, library:)
+        # (+inputs+, a BuildInputs) and what it was built for; +match+ when the game holds what a
+        # match needs to know of it.
+        def keep(inputs, console:, settings:, library:, match: false)
           File.chmod(FILE_MODE, writing_path)
           game = Digest::SHA256.file(writing_path).hexdigest
           File.rename(writing_path, script_path)
           record = { "format" => FORMAT, "console" => console.to_s, "settings" => plain_settings(settings),
-                     "ruby" => RUBY_VERSION, "library" => library.to_plain, "game" => game, "inputs" => inputs.to_plain }
+                     "ruby" => RUBY_VERSION, "library" => library.to_plain, "game" => game, "match" => match,
+                     "inputs" => inputs.to_plain }
           writing = "#{record_path}.#{Process.pid}.writing"
           File.open(writing, "w", FILE_MODE) { |file| file.write(JSON.generate(record)) }
           File.rename(writing, record_path)

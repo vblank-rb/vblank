@@ -43,6 +43,16 @@ module VBlank
       # One line of what the helper says.
       def self.message_line(kind, value) = "#{JSON.generate([kind, value])}\n"
 
+      # THE WAIT WITH NO WINDOW, for a play that has none (a match with --no-window): it shows
+      # nothing and never asks to stop, so the watch ends when the helper does. A refusal is said on
+      # the terminal (#watch's +terminal+) and shown nowhere, so watch it with +refusal_frames+ 0.
+      class Unseen
+        def show_waiting(_lines) = nil
+        def stop? = false
+        def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        def wait_until(_seconds) = nil
+      end
+
       # +io+ is the helper's end of what it says, +pid+ the helper, and +title+ the game's, which
       # the window says it is building.
       def initialize(io, pid:, title:)

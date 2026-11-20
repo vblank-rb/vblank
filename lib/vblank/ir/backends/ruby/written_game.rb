@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "json"
+
 module VBlank
   module IR
     module Backends
@@ -14,9 +16,11 @@ module VBlank
         # Carried in every script, so it names nothing of the library a script does not carry.
         #
         # +code+ is the game's code (Cartridge::Game#identifying_code), or nil for a game written
-        # with none, which keeps no save states. +shell+ is a Shell, the parts Live::Shell is made
-        # from as text, or nil for a game that is not one.
-        WrittenGame = Data.define(:title, :console_title, :menu, :code, :source, :shell) do
+        # with none, which keeps no save states. +match+ is what a match over a network needs to know
+        # of the game (Ruby#match_facts, as plain values), or nil for a game written with none.
+        # +shell+ is a Shell, the parts Live::Shell is made from as text, or nil for a game that is
+        # not one.
+        WrittenGame = Data.define(:title, :console_title, :menu, :code, :match, :source, :shell) do
           # The game as Ruby, made a game ready to play afresh each time it is asked.
           def live_game = LiveGame.new(source)
 
@@ -40,7 +44,8 @@ module VBlank
             facts = holder.const_get(:SHELL_FACTS)
             shell = (Shell.new(facts: facts, menu: holder.const_get(:SHELL_MENU), unpackings: holder.const_get(:SHELL_UNPACKINGS)) if facts)
             new(title: holder.const_get(:TITLE), console_title: holder.const_get(:CONSOLE_TITLE), menu: holder.const_get(:MENU),
-                code: holder.const_get(:GAME_CODE), source: holder.const_get(:SOURCE), shell: shell)
+                code: holder.const_get(:GAME_CODE), match: holder.const_get(:MATCH)&.then { |text| JSON.parse(text) },
+                source: holder.const_get(:SOURCE), shell: shell)
           end
 
           # The game in the script at +path+: its part is read into a module of its own and taken from
