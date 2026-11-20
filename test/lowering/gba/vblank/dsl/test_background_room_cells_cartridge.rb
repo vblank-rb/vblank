@@ -14,6 +14,12 @@ class TestBackgroundRoomCellsCartridge < Minitest::Test
 
   # The frames each moment of the walk is read at.
   MOMENT_FRAMES = MOMENTS.map(&:first).freeze
+  # A room of more cells than one piece of the copy of a changed map: three pieces.
+  BIG_ACROSS = 256
+  BIG_DOWN = 128
+  # A frame's lines, and a line's cycles (GBATEK, "LCD Dimensions and Timings").
+  FRAME_LINES = 228
+  LINE_CYCLES = 1232
 
   def test_a_room_of_its_own_size_keeps_its_changed_cell_through_scrolling
     assert_backends_agree(RoomCellGames.baked_rooms_game, frames: MOMENT_FRAMES)
@@ -32,21 +38,59 @@ class TestBackgroundRoomCellsCartridge < Minitest::Test
     assert_backends_agree(RoomCellGames.big_room_looped_game, frames: 4)
   end
 
-  # The copy of a changed map holds the processor while it runs, so a map whose copy would take
-  # longer than the sound mixer can wait is refused, naming the most cells the build keeps.
-  def test_a_changed_map_too_big_to_copy_in_time_is_refused
-    program = VBlank::Builder.new.tap do |b|
-      b.instance_eval do
-        screen :tiled
-        RoomCellGames.declare_room_tiles(self)
-        ground = background :ground, tiles: :house_tiles, map: ["." * 120] * 100
-        game_loop { ground.set_tile 1, 1, "o" }
-      end
-      b.finalize_program
-    end.program
+  # A changed map of more cells than one copy of the copying engine may move is copied in pieces,
+  # and keeps its changed cell through scrolling as a smaller one does.
+  def test_a_changed_map_bigger_than_one_copy_keeps_its_changed_cell_through_scrolling
+    program = RoomCellGames.big_room_game(across: BIG_ACROSS, down: BIG_DOWN)
 
-    error = assert_raises(VBlank::IR::Backends::GBA::LoweringError) { assemble_rom(program) }
-    assert_match(/at most \d+ cells/, error.message)
+    assert_backends_agree(program, frames: [OPEN_IN_HALL, SCROLL_AWAY, SCROLL_BACK].map { |pass| pass + SETTLED })
+  end
+
+  # A PIECE OF THE COPY HOLDS THE SCREEN'S INTERRUPT OFF NO LONGER THAN THE MIXER CAN WAIT. The
+  # copy is made in the gap after show_map, and how long it takes is measured in the emulator: the
+  # line the next pass starts on, against the same game that changes no cell and so copies nothing.
+  # A piece is MapStreaming::KEPT_COPY_PIECE_CELLS of the cells measured. Its lines must be no more
+  # than the mixer can wait (Mixer::LATE_ROOM), and the cycles a cell measured must be the ones the
+  # piece is sized by (MapStreaming::KEPT_COPY_CYCLES_A_CELL), give or take the one line a reading
+  # of the line can be off by.
+  def test_a_piece_of_a_big_changed_map_copy_is_inside_the_mixers_late_room
+    streaming = VBlank::IR::Backends::GBA::MapStreaming
+    started = %i[changes unchanged].to_h { |kind| [kind, line_after_big_map_shown(changes: kind == :changes)] }
+    copy_lines = (started[:changes] - started[:unchanged]) % FRAME_LINES
+    cells = BIG_ACROSS * BIG_DOWN
+    piece_lines = copy_lines * streaming::KEPT_COPY_PIECE_CELLS / cells.to_f
+    late_lines = VBlank::IR::Backends::GBA::Mixer::LATE_ROOM / LINE_CYCLES.to_f
+
+    assert_operator copy_lines, :>, 0, "the copy of #{cells} cells is made in the gap after show_map"
+    assert_operator piece_lines, :<=, late_lines,
+                    "the copy of #{cells} cells took #{copy_lines} lines, so a piece takes #{piece_lines.round(1)}, " \
+                    "past the #{late_lines.round(1)} the mixer can wait"
+    assert_in_delta streaming::KEPT_COPY_CYCLES_A_CELL * cells, copy_lines * LINE_CYCLES, LINE_CYCLES,
+                    "the copy's cycles, measured, against the cycles a cell the piece is sized by"
+  end
+
+  # The line the pass after show_map hands over one of two maps of BIG_ACROSS by BIG_DOWN cells
+  # starts on, read in the emulator. With +changes+ the game changes a cell later, so the gap
+  # copies the map it hands over.
+  private def line_after_big_map_shown(changes:)
+    maps = %i[hall pit].each_with_index.to_h do |room, at|
+      [room, Array.new(BIG_DOWN) { |row| Array.new(BIG_ACROSS) { |col| ".#"[(col + row + at) % 2] }.join }]
+    end
+    rom = VBlank.build("BIGCOPY", console: :gba, validate: false, out: StringIO.new, err: StringIO.new) do
+      extend VBlank::Builder::Debug
+      screen :tiled
+      RoomCellGames.declare_room_tiles(self)
+      ground = background :ground, tiles: :house_tiles, map: maps
+      pass = var :pass, 0
+      line = var :line, 0
+      game_loop do
+        pass += 1
+        line = read_scanline if pass == 4
+        ground.show_map 1 if pass == 3
+        ground.set_tile 1, 1, "o" if changes && pass == 20
+      end
+    end
+    assert_emulator_loads_rom(rom, frames: 8).var(:line)
   end
 
   # A game that changes no cell of its big map keeps no copy of it: the strips come from the

@@ -269,10 +269,17 @@ module VBlank
           # its strips come from there, so a changed cell scrolled out of view comes back changed. A
           # console's own games keep a big room's cells in work memory the same way and bring each
           # strip into the grid from there. The copy is made the first time it is wanted after
-          # show_map hands the background a map, or after the background goes up: one copy of the
-          # whole map by the copying engine (GBATEK, "DMA Transfers": DMA3, halfwords), which then
-          # holds the cells until the next. A frame that wants no new copy pays a load, an add and
-          # a compare to find that out.
+          # show_map hands the background a map, or after the background goes up, by the copying
+          # engine (GBATEK, "DMA Transfers": DMA3, halfwords), which then holds the cells until the
+          # next. The whole copy is made before the routine goes on, so every cell the strips read
+          # or `set_tile` writes is in it, and no changed cell is ever copied over. A frame that
+          # wants no new copy pays a load, an add and a compare to find that out.
+          #
+          # A BIG MAP IS COPIED IN PIECES of KEPT_COPY_PIECE_CELLS cells at most, one after another.
+          # The engine holds the processor and the screen's interrupt only while one piece moves, and
+          # the processor takes an interrupt waiting for it between two pieces, so the sound mixer's
+          # hand-over is never held off longer than one piece (#KEPT_COPY_PIECE_CELLS). A map of up
+          # to that many cells is one piece, as it always was.
           #
           # Comes in with the map's place in the cartridge in STREAM_SOURCE and its size in
           # STREAM_COLS and STREAM_ROWS, and leaves STREAM_SOURCE at the copy.
@@ -286,40 +293,73 @@ module VBlank
             emit(ASM.cmp_reg(ACC, TMP))
             emit_branch(:bcond, have, cond: :eq)
             store_var(ACC, copied)
-            emit_number(STRIP_COL, REG_DMA3SAD)
-            emit(ASM.str_offset(STREAM_SOURCE, STRIP_COL, 0))
-            emit_number(ACC, kept_map_address(stream))
-            emit(ASM.str_offset(ACC, STRIP_COL, Primitives::COPY_TO_STEP))
-            emit(ASM.mul(ACC, STREAM_COLS, STREAM_ROWS))
-            emit_number(TMP, DMA_ENABLE | DMA_16BIT)
-            emit(ASM.orr_reg(ACC, ACC, TMP))
-            emit(ASM.str_offset(ACC, STRIP_COL, Primitives::COPY_START_STEP))
+            if stream.kept_bytes / 2 > KEPT_COPY_PIECE_CELLS
+              emit_kept_map_copy_in_pieces(stream)
+            else
+              emit_number(STRIP_COL, REG_DMA3SAD)
+              emit(ASM.str_offset(STREAM_SOURCE, STRIP_COL, 0))
+              emit_number(ACC, kept_map_address(stream))
+              emit(ASM.str_offset(ACC, STRIP_COL, Primitives::COPY_TO_STEP))
+              emit(ASM.mul(ACC, STREAM_COLS, STREAM_ROWS))
+              emit_number(TMP, DMA_ENABLE | DMA_16BIT)
+              emit(ASM.orr_reg(ACC, ACC, TMP))
+              emit(ASM.str_offset(ACC, STRIP_COL, Primitives::COPY_START_STEP))
+            end
             place_label(have)
             emit_number(STREAM_SOURCE, kept_map_address(stream))
+          end
+
+          # The copy of #emit_kept_map_source for a background whose biggest map is more than one
+          # piece: KEPT_COPY_PIECE_CELLS cells a piece, the last piece what is left. Works in the
+          # strip registers, which the strips and the cell write set again after.
+          def emit_kept_map_copy_in_pieces(stream)
+            again = gensym
+            from = STRIP_ROW
+            to = STRIP_COUNT
+            piece = STRIP_ACROSS
+            control = STRIP_DOWN
+            emit_number(STRIP_COL, REG_DMA3SAD)
+            emit(ASM.mov_reg(from, STREAM_SOURCE))
+            emit_number(to, kept_map_address(stream))
+            emit_number(piece, KEPT_COPY_PIECE_CELLS)
+            emit_number(control, DMA_ENABLE | DMA_16BIT)
+            emit(ASM.mul(ACC, STREAM_COLS, STREAM_ROWS)) # the cells left to copy
+            place_label(again)
+            emit(ASM.cmp_reg(ACC, piece))
+            emit(ASM.mov_reg(TMP, ACC))
+            emit(ASM.mov_reg_cond(:gt, TMP, piece)) # this piece: what is left, no more than a piece
+            emit(ASM.str_offset(from, STRIP_COL, 0))
+            emit(ASM.str_offset(to, STRIP_COL, Primitives::COPY_TO_STEP))
+            emit(ASM.orr_reg(STRIP_SCRATCH, TMP, control))
+            emit(ASM.str_offset(STRIP_SCRATCH, STRIP_COL, Primitives::COPY_START_STEP))
+            emit(ASM.add_reg_lsl(from, from, TMP, 1)) # two bytes a cell
+            emit(ASM.add_reg_lsl(to, to, TMP, 1))
+            emit(ASM.subs_reg(ACC, ACC, TMP))
+            emit_branch(:bcond, again, cond: :ne)
           end
 
           # Where the copy of a map the game changes is kept: room in the roomy memory for the
           # biggest of the background's maps, one for each declaration.
           def kept_map_address(stream)
-            (@kept_map_addresses ||= {})[stream.routine] ||= begin
-              cells = stream.kept_bytes / 2
-              fits = cells <= MOST_KEPT_MAP_CELLS && @memory.alloc_roomy(stream.kept_bytes)
-              fits or raise LoweringError, "background :#{stream.name} has a map of #{cells} cells, and the game changes " \
-                                           "its cells. The Game Boy Advance build keeps such a map of at most " \
-                                           "#{MOST_KEPT_MAP_CELLS} cells. To fix this, use smaller maps."
-            end
+            (@kept_map_addresses ||= {})[stream.routine] ||=
+              @memory.alloc_roomy(stream.kept_bytes) or
+              raise LoweringError, "background :#{stream.name} has a map of #{stream.kept_bytes / 2} cells, and the game " \
+                                   "changes its cells. The console's roomy memory is full, so there is no room for a copy " \
+                                   "of that map. To fix this, use smaller maps."
           end
 
-          # WHAT THE COPY STOPS. The copying engine holds the processor, and the screen's interrupt
-          # with it, until the whole map is across (GBATEK, "DMA Transfers"). A cell is a halfword
-          # read from the cartridge, a sequential access of two cycles at the wait states the game
-          # runs with (Console::Hardware::WAITCNT_FAST), and one written to the roomy memory, three
-          # cycles for a halfword (GBATEK, "GBA Memory Map": two wait states). The sound mixer is
-          # built to hand over its buffer up to Mixer::LATE_ROOM late, which it sets from the
-          # longest copy the framework makes while a game runs, a whole-screen clear of a fifth of
-          # a frame. So the copy is held to that fifth too, and the sound never breaks for it.
+          # HOW LONG ONE PIECE OF THE COPY HOLDS THE SCREEN'S INTERRUPT OFF. The copying engine holds
+          # the processor, and the screen's interrupt with it, until a piece is across (GBATEK, "DMA
+          # Transfers"). A cell is a halfword read from the cartridge, a sequential access of two
+          # cycles at the wait states the game runs with (Console::Hardware::WAITCNT_FAST), and one
+          # written to the roomy memory, three cycles for a halfword (GBATEK, "GBA Memory Map": two
+          # wait states). The sound mixer is built to hand over its buffer up to Mixer::LATE_ROOM
+          # late, which it sets from the longest copy the framework makes while a game runs, a
+          # whole-screen clear of a fifth of a frame. So a piece is held to that fifth too, and the
+          # sound never breaks for it: a fifth of a frame's 228 lines of 1232 cycles is under 46
+          # lines.
           KEPT_COPY_CYCLES_A_CELL = 5
-          MOST_KEPT_MAP_CELLS = Console::ADVANCE.cycles_a_frame / 5 / KEPT_COPY_CYCLES_A_CELL
+          KEPT_COPY_PIECE_CELLS = Console::ADVANCE.cycles_a_frame / 5 / KEPT_COPY_CYCLES_A_CELL
 
           public
 

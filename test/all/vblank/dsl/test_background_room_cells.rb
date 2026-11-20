@@ -111,10 +111,11 @@ module RoomCellGames
   end
 
   # ONE ROOM OF 80x20 CELLS, more than any console's grid holds: its chest opened with set_tile on
-  # OPEN_IN_HALL, or, without +writes+, open in the map already; scrolled away and back.
-  def self.big_room_game(writes: true)
+  # OPEN_IN_HALL, or, without +writes+, open in the map already; scrolled away and back. +across+
+  # and +down+ make the room another size.
+  def self.big_room_game(writes: true, across: 80, down: 20)
     chest = writes ? "c" : "o"
-    map = Array.new(20) { |row| Array.new(80) { |col| [col, row] == HALL_CHEST ? chest : ".#"[(col + row) % 2] }.join }
+    map = Array.new(down) { |row| Array.new(across) { |col| [col, row] == HALL_CHEST ? chest : ".#"[(col + row) % 2] }.join }
     b = VBlank::Builder.new
     b.instance_eval do
       screen :tiled
