@@ -395,8 +395,9 @@ module VBlank
 
           # The effects, highest rank first; which of the console's voices they use; and where
           # each is in the table. Nothing at all for a game with none.
-          def prepare_sound_effects(program)
-            ranked = IR::Tunes.effects_by_rank(IR::Tunes.effects(program).map { |name| @songs.fetch(name) })
+          # +names+ is every effect the program's lists name (IR::Tunes.effects).
+          def prepare_sound_effects(program, names)
+            ranked = IR::Tunes.effects_by_rank(names.map { |name| @songs.fetch(name) })
             @effects = ranked.map(&:first)
             @effect_ranks = ranked.to_h
             @effect_lists = {}
@@ -475,54 +476,64 @@ module VBlank
           # voices their recorded parts will use. A tune that is written but never played costs
           # nothing. The score itself waits for #register_audio_blobs, because a recorded note's step
           # depends on the rate the mixer settles on.
+          #
+          # THE PROGRAM IS WALKED ONCE for what this asks of it, and the songs it plays are worked
+          # out once (IR::Tunes.played_songs and .playable_songs each walk it again, and the
+          # questions below ask them a dozen times). A program that declares no song, and names
+          # no list of songs or of effects, plays nothing: then neither is asked at all, and what
+          # this sets is what any game with no tune gets.
           def prepare_music(program)
-            program.walk.each do |node|
+            asked = program.walk.select { |node| MUSIC_ASK_KINDS.include?(node.kind) || level_set?(node) }
+            asked.each do |node|
               next unless node.kind == :play_song
 
               @songs.key?(node.name) || raise(LoweringError, "play_song for undefined song #{node.name.inspect}")
             end
-            assign_song_numbers!(program)
+            plays_nothing = @songs.empty? && asked.none? { |node| SONG_LIST_KINDS.include?(node.kind) }
+            played = plays_nothing ? [] : IR::Tunes.played_songs(program)
+            playable = plays_nothing ? [] : IR::Tunes.playable_songs(program)
+            plays_nothing ? clear_song_numbers : assign_song_numbers!(program)
             @recorded_note_routines.clear
-            @counts_stops = program.walk.any? { |node| node.kind == :stop_music }
+            @counts_stops = asked.any? { |node| node.kind == :stop_music }
             # ...and one that never holds its music checks for it nowhere (see #emit_hold_music).
-            @holds_music = program.walk.any? { |node| node.kind == :hold_music }
-            @starts_songs_here = program.walk.any? { |node| %i[play_song play_from_list].include?(node.kind) && node.this_frame }
-            @starts_effects_here = program.walk.any? { |node| node.kind == :play_sound_effect && node.this_frame }
+            @holds_music = asked.any? { |node| node.kind == :hold_music }
+            @starts_songs_here = asked.any? { |node| %i[play_song play_from_list].include?(node.kind) && node.this_frame }
+            @starts_effects_here = asked.any? { |node| node.kind == :play_sound_effect && node.this_frame }
             # A game that never moves the music volume plays every note exactly as it was written,
             # and none of the working-out for one is emitted.
-            @scales = program.walk.any? { |node| node.kind == :set && node.var == IR::Tunes::LEVEL }
+            @scales = asked.any? { |node| level_set?(node) }
             # ...and one whose square notes never fade, swell or slide by themselves holds every one
             # of them for it (IR::Tunes.changes_by_itself?), with no test of each.
-            @fades = IR::Tunes.played_songs(program).any? do |song|
+            @fades = played.any? do |song|
               song.voices.any? { |part| part.events.any? { |event| IR::Tunes.changes_by_itself?(part, event) } }
             end
             # ...and one where no note slides its pitch, a song's or a sound effect's, writes nothing
             # but 0 to the first square voice's slide (see #emit_slide).
             # ...and one where no note wobbles keeps its rows at their size and steps nothing (see
             # #emit_step_wobbles).
-            @wobbles = IR::Tunes.playable_songs(program).any? do |song|
+            @wobbles = playable.any? do |song|
               song.voices.any? { |part| part.events.any? { |event| VBlank::Audio::Vibrato.moves?(IR::Tunes.said_vibrato(part, event)) } }
             end
             # ...and one where a vibrato carries its swing on marks in each row whether the note keeps
             # the swing (KEEPS_SWING; see #emit_start_wobble).
-            @carries = @wobbles && IR::Tunes.playable_songs(program).any? do |song|
+            @carries = @wobbles && playable.any? do |song|
               song.voices.any? { |part| part.events.any? { |event| IR::Tunes.said_vibrato(part, event)&.carries } }
             end
             # ...and one where every note plays from both speakers never writes which (see
             # #emit_set_speakers).
-            @pans = IR::Tunes.playable_songs(program).any? do |song|
+            @pans = playable.any? do |song|
               song.voices.any? { |part| part.events.any? { |event| IR::Tunes.note_side(part, event) } }
             end
             # ...and one where no square note steps its shapes steps none (see #emit_step_shapes).
-            @shape_steps = IR::Tunes.playable_songs(program).any? do |song|
+            @shape_steps = playable.any? do |song|
               song.voices.any? { |part| part.events.any? { |event| IR::Tunes.said_duty(part, event)&.steps? } }
             end
-            @slides = IR::Tunes.playable_songs(program).any? do |song|
+            @slides = playable.any? do |song|
               song.voices.any? { |part| part.events.any? { |event| VBlank::Audio::PitchSlide.moves?(IR::Tunes.said_slide(part, event)) } }
             end
             # ...and one where no note swells up from volume 0 holds a voice by its volume alone (see
             # #emit_take_voice).
-            @swells_from_nothing = IR::Tunes.playable_songs(program).any? do |song|
+            @swells_from_nothing = playable.any? do |song|
               song.voices.any? do |part|
                 part.events.any? do |event|
                   IR::Tunes.said_fade(part, event)&.swells_by_itself? && (event[3] || part.volume).zero?
@@ -531,26 +542,26 @@ module VBlank
             end
             # ...and one that moves the music volume with no song's note that swells by itself
             # holds none under it (see #emit_step_swells).
-            @swells = @scales ? IR::Tunes.swelling_voice_kinds(program) : []
-            @loops = IR::Tunes.played_songs(program).any? { |song| IR::Tunes.loop_frame(song).positive? }
+            @swells = @scales && !plays_nothing ? IR::Tunes.swelling_voice_kinds(program) : []
+            @loops = played.any? { |song| IR::Tunes.loop_frame(song).positive? }
             # A game whose every tune comes round emits nothing for one that ends.
-            @any_plays_once = IR::Tunes.played_songs(program).any? { |song| IR::Tunes.plays_once?(song) }
-            recorded = IR::Tunes.most_recorded_parts(program)
+            @any_plays_once = played.any? { |song| IR::Tunes.plays_once?(song) }
+            recorded = plays_nothing ? 0 : IR::Tunes.most_recorded_parts(program)
             if recorded > VBlank::Audio::Sound::MIXER_VOICES # refused before this by Guardrails::Checks::SongTooManyParts
               raise LoweringError, "a song has #{recorded} recorded parts, and the mixer has #{VBlank::Audio::Sound::MIXER_VOICES} voices"
             end
 
             # The wave and noise lanes are added only for a game that has a part on them, so a
             # game that uses neither emits nothing for them at all.
-            console = CONSOLE_LANES.select { |kind, _| IR::Tunes.played_songs(program).any? { |song| IR::Tunes.parts_on(song, kind).positive? } }
+            console = CONSOLE_LANES.select { |kind, _| played.any? { |song| IR::Tunes.parts_on(song, kind).positive? } }
             @lanes = MUSIC_CHANNELS.map { |channel| Lane.new(:square, channel) } +
                      Array.new(recorded) { |lane| Lane.new(:recorded, lane) } +
                      console.map { |kind, channel| Lane.new(kind, channel) }
             @waves = console.key?(:wave)
             # A game where a wave note names a waveform of its own keeps where it is on each wave row,
             # and each note puts its waveform in as it starts (see WAVE_LOADED).
-            @note_waves = IR::Tunes.notes_name_waves?(IR::Tunes.playable_songs(program))
-            prepare_sound_effects(program)
+            @note_waves = IR::Tunes.notes_name_waves?(playable)
+            prepare_sound_effects(program, plays_nothing ? [] : IR::Tunes.effects(program))
             # One directory entry: the tune's length in frames, which lanes it uses, where it
             # loops from, and where each lane's events start — and, in a game with sound effects,
             # the tune's rank — rounded up to a power of two, so finding a tune's entry is a shift
@@ -564,6 +575,25 @@ module VBlank
             @glides = (recorded.positive? || Array(@effect_lanes).any? { |lane| lane.kind == :recorded }) &&
                       IR::Backends::SongTable.glides?(program)
             @mixer.music_glides! if @glides
+          end
+
+          # What #prepare_music reads off the program in its one walk: what plays a tune or an
+          # effect, stops or holds the music, and the lists that name songs or effects.
+          MUSIC_ASK_KINDS = %i[play_song play_from_list play_sound_effect stop_music hold_music
+                               song_list sound_effect_list].to_set.freeze
+
+          # The kinds that name a song by its name, so a game with one plays something, or is
+          # refused for naming a song it does not have.
+          SONG_LIST_KINDS = %i[play_from_list song_list sound_effect_list].freeze
+
+          # Does +node+ set the music volume?
+          def level_set?(node) = node.kind == :set && node.var == IR::Tunes::LEVEL
+
+          # A game that plays nothing numbers no tune (see #assign_song_numbers!).
+          def clear_song_numbers
+            @song_numbers = {}
+            @list_bases = {}
+            @list_sizes = {}
           end
 
           # Put every tune the program plays in the cartridge, as one score.
