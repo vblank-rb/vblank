@@ -23,7 +23,9 @@ class TestWholeGameCheck < Minitest::Test
   # A windowless run of a game as C that, while STOP_SETTING is set, stops with an error that is
   # not a StandardError, as a run that runs out of memory or meets a Ruby fault does.
   module StopsAsItStarts
-    def run(...)
+    # The interpreter's words written out, since every player is held to them (TestSuitesSplit) and
+    # a prepended (...) would hide them for the rest of the process.
+    def run(program, max_steps: nil, frames: nil)
       raise NotImplementedError, "made-up stop of the play" if ENV.key?(TestWholeGameCheck::STOP_SETTING)
 
       super
