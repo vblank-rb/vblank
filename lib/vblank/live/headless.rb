@@ -67,6 +67,9 @@ module VBlank
       # a game that names none), one a play, in the order they were played.
       attr_reader :pictures, :sounds, :sound_rate, :now, :gaps, :most_waiting, :notices, :seat_counts
 
+      # The lines shown while the window waited for its game (#show_waiting), a list a frame.
+      attr_reader :waiting
+
       # The game's save memory (a SaveMemory), or nil when +keeps_save+ is false. The session asks
       # for it as each play starts (Session#read_save_file), as it asks the window for its SaveFile.
       attr_reader :save_file
@@ -88,6 +91,7 @@ module VBlank
         @pass_seconds = pass_seconds.respond_to?(:call) ? pass_seconds : ->(_pass) { pass_seconds }
         @speaker = speaker
         @pictures = []
+        @waiting = []
         @notices = []
         @sounds = []
         @sound_rate = nil # until the first frame's sound gives it
@@ -97,6 +101,10 @@ module VBlank
         @most_waiting = 0r
         @speaker_done_at = nil # when what the speaker holds has all been played; nil before any sound
       end
+
+      # Lines of words in place of a picture, while a game is built elsewhere (BuildWatch): kept,
+      # and counted among the frames this device shows.
+      def show_waiting(lines) = @waiting << lines.dup
 
       # The picture is the game's own and is drawn over next frame, so a copy is kept.
       def show(pixels, width, height)
@@ -138,7 +146,7 @@ module VBlank
         @on_notice&.call(words)
       end
 
-      def stop? = @pictures.size >= @frames
+      def stop? = @pictures.size + @waiting.size >= @frames
 
       def fast_forward_speed(pass) = @fast_forward.include?(pass) ? @fast_forward_speed : 1
 

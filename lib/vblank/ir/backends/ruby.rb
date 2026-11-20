@@ -11,6 +11,7 @@ require_relative "ruby/lowering"
 require_relative "ruby/headless_run"
 require_relative "ruby/checked_run"
 require_relative "ruby/live_game"
+require_relative "ruby/written_game"
 
 module VBlank
   module IR
@@ -130,9 +131,10 @@ module VBlank
           [SCRIPT_TOP, *SCRIPT_PARTS.map { |part| File.read(VBlank.root.join("lib", part), encoding: Encoding::UTF_8) },
            *(shell ? SHELL_PARTS.map { |part| File.read(VBlank.root.join("lib", part), encoding: Encoding::UTF_8) } : []),
            "VBlank::Graphics::MenuFont::CARRIED = <<'#{FONT_END}'\n#{File.read(Graphics::MenuFont::PATH, encoding: Encoding::UTF_8)}#{FONT_END}\n",
-           "module VBlankScript\n  TITLE = #{title.to_s.inspect}\n  MENU = #{menu}\n",
+           "module VBlankScript\n", WrittenGame::PART_BEGINS,
+           "  TITLE = #{title.to_s.inspect}\n  CONSOLE_TITLE = #{program.described_console.title.inspect}\n  MENU = #{menu}\n",
            "  SOURCE = #{script_heredoc(live_source(program), SCRIPT_END)}",
-           shell ? script_shell_text(shell) : "  SHELL_FACTS = nil\n", "end\n",
+           shell ? script_shell_text(shell) : "  SHELL_FACTS = nil\n", WrittenGame::PART_ENDS, "end\n",
            File.read(File.join(RUNTIME_DIR, SCRIPT_MAIN), encoding: Encoding::UTF_8).delete_prefix(MAGIC_COMMENT)].join
         end
 
@@ -142,7 +144,8 @@ module VBlank
         # The library files a script carries, in the order they load: what the play code names
         # first, then the play code itself.
         SCRIPT_PARTS = %w[vblank/ir/buttons.rb vblank/ir/computer_controls.rb vblank/ir/program_error.rb
-                          vblank/ir/backends/ruby/live_game.rb vblank/graphics/menu_font.rb vblank/live/window_menu.rb
+                          vblank/ir/backends/ruby/live_game.rb vblank/ir/backends/ruby/written_game.rb
+                          vblank/graphics/menu_font.rb vblank/live/window_menu.rb
                           vblank/live/lateness.rb vblank/live/rate.rb vblank/live/menu.rb vblank/live/settings.rb
                           vblank/live/settings_file.rb vblank/live/seats.rb vblank/live/session.rb vblank/live/sdl.rb].freeze
         # What a shell's script carries besides: the check of a kept pack, the words for a wrong copy,
@@ -173,7 +176,9 @@ module VBlank
         # +text+ as a heredoc ending at the line +ending+, which no line of it may be; +after+ is what
         # follows it on the line it starts on (a comma between arguments).
         def script_heredoc(text, ending, after = "")
-          raise BuildError, "the game's Ruby has a line #{ending}, which ends it early in a script" if text.lines.include?("#{ending}\n")
+          lines = text.lines
+          raise BuildError, "the game's Ruby has a line #{ending}, which ends it early in a script" if lines.include?("#{ending}\n")
+          raise BuildError, "the game's Ruby has the line that ends a script's game part" if lines.include?(WrittenGame::PART_ENDS)
 
           "<<'#{ending}'#{after}\n#{text}\n#{ending}\n"
         end

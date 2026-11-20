@@ -132,7 +132,33 @@ module VBlank
         @out
       end
 
+      # WHAT A WINDOW WAITING FOR ITS GAME DRAWS (a game a helper process builds, BuildWatch): +lines+
+      # of words in the middle of a window +width+ by +height+ pixels, one under another, a line too
+      # wide for the window broken between words. Gives WindowMenu::Words.
+      def waiting_drawing(lines, width:, height:, density:)
+        @out = []
+        @density = density
+        @font = Graphics::MenuFont.load
+        rows = lines.flat_map { |line| broken_to_width(line, width - (2 * size(:pad))) }
+        line = size(:status_line)
+        top = (height - (rows.size * line)) / 2
+        rows.each_with_index { |text, index| add_words(text, (width - width_of(text)) / 2, top + (index * line), :text) }
+        @out
+      end
+
       private
+
+      # +text+ as lines no wider than +room+ pixels, broken between words; a word wider than that
+      # has a line of its own.
+      def broken_to_width(text, room)
+        text.split.each_with_object([]) do |word, rows|
+          if rows.empty? || width_of("#{rows.last} #{word}") > room
+            rows << word
+          else
+            rows[-1] = "#{rows.last} #{word}"
+          end
+        end
+      end
 
       def lines = @headings[@heading].lines
 

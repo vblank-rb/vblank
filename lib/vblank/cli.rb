@@ -1062,6 +1062,7 @@ module VBlank
 
       game = load_game(game_file)
       return say_rate(game, *play_shell_in_window(game)) if options[:shell]
+      return play_built_in_helper(game_file, game) if build_in_helper?
 
       program = program_to_run(game)
       require_relative "live"
@@ -1331,6 +1332,53 @@ module VBlank
     ensure
       build_progress.done # a phase that stopped leaves its line open
       window&.close
+    end
+
+    # A PERSON PLAYING, WITH THE BUILD IN ANOTHER PROCESS. A helper process builds the game and writes
+    # it out as one Ruby file (Live::BuildHelper), and this command becomes the window's process
+    # (Live::WindowProcess), which opens the window at once, shows the build's progress, and plays the
+    # written game. The build's memory is the helper's and goes when it ends, so a big game plays
+    # with none of it to look after. Nothing more is said here: the window says what the build does.
+    #
+    # What the written game cannot do yet plays in this process instead (#build_in_helper?).
+    def play_built_in_helper(game_file, game)
+      console = game.refuse_console_not_for!(console_to_play(game))
+      require_relative "live"
+      require "tmpdir"
+      folder = Dir.mktmpdir("vblank-run-")
+      written = File.join(folder, "#{File.basename(game_file, '.rb')}-ruby.rb")
+      pid, pipe = VBlank::Live::BuildHelper.start(game_file: game_file, console: console, settings: given_settings,
+                                                  written_path: written)
+      VBlank::Live::WindowProcess.become(window_launch(game, console, written, folder, pid), helper_pipe: pipe, zjit: zjit_on?)
+    rescue ArgumentError => e
+      raise build_stopped(e)
+    rescue SystemCallError => e
+      # This process could not become the window's, so nothing else will end the helper or remove its folder.
+      VBlank::Live::BuildWatch.new(pipe, pid: pid, title: game.title).stop_helper if pid
+      FileUtils.rm_rf(folder) if folder
+      raise Thor::Error, "VBlank cannot open the window for #{game.title}: #{e.message}"
+    end
+
+    # What the window's process is told (runtime/rg_window_main.rb): the window opens at the
+    # console's size, and is fitted to the game once it is written.
+    def window_launch(game, console, written, folder, pid)
+      described = VBlank::Console.described(console)
+      width, height = described.framed_screen_size
+      { title: game.title, width: width, height: height, pixel_size: described.pixel_size, menu: game.menu?,
+        buttons: described.buttons, state_folder: state_folder_name(game, nil), written_path: written,
+        written_folder: folder, helper_pid: pid, yjit: options[:yjit],
+        options: { scale: options[:scale], pictures: options[:pictures], uncapped: options[:uncapped],
+                   "collect-garbage": options[:collect_garbage], "settings-file": options[:settings_file],
+                   "config-dir": options[:config_dir] }.compact }
+    end
+
+    # Whether the play goes through a helper process (#play_built_in_helper): a person playing in a
+    # window, on a Ruby that can hand the helper a descriptor and replace itself with the window's
+    # process (Live::WindowProcess.available?), in no mode the written game does not carry yet. A match
+    # over a network and --record-sound play in this process, as before.
+    def build_in_helper?
+      require_relative "live"
+      VBlank::Live::WindowProcess.available? && !options[:record_sound] && !options[:host] && !options[:join]
     end
 
     # The game of a shell, played in its window with save states: only the game offers them, once the

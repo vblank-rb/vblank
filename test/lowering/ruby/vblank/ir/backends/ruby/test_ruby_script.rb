@@ -35,7 +35,8 @@ class TestRubyScript < Minitest::Test
     played, status = play_alone(color_game, :gbc, "--pictures", "3")
 
     assert status.success?, played
-    assert_match(/Playing COLORSCRIPT\. Press P to pause/, played, "a game with no menu says nothing of F1")
+    assert_match(/Playing COLORSCRIPT for the Game Boy Color in Ruby [\d.]+ with \w+( JIT)?\. Press P to pause/, played,
+                 "a game with no menu says nothing of F1")
     assert_match(/2 frames in/, played)
   end
 

@@ -536,6 +536,23 @@ class TestSDL < Minitest::Test
     window&.close
   end
 
+  # A WINDOW OPENED BEFORE ITS GAME IS BUILT (vblank run opens it at the console's size while a
+  # helper builds the game) takes the game's picture once it is known: words while it waits, then
+  # the game's size, at the scale it was opened at, and a picture of the old size is refused.
+  def test_a_window_waits_in_words_then_fits_the_game
+    flunk "SDL3 is not installed: #{SDL::INSTALL_LINE}" unless SDL.available?
+    window = SDL.new(title: "TEST", scale: 2, width: 240, height: 160)
+    window.show_waiting(["Building TEST", "Checking for mistakes  3/9"])
+    problems = window.fit_game(width: 160, height: 144, pixel_size: 1)
+    window.show(Array.new(160 * 144, 0), 160, 144)
+
+    assert_nil problems
+    assert_equal [320, 288], window.window_size
+    assert_raises(ArgumentError) { window.show(Array.new(240 * 160, 0), 240, 160) }
+  ensure
+    window&.close
+  end
+
   # The menu's size of a window of big pixels is the console's whole screen times the scale, as for
   # any game.
   def test_the_menu_sizes_a_window_of_big_pixels_as_the_consoles_screen

@@ -1085,6 +1085,11 @@ module VBlank
 
       def self.save_dir = SAVE_DIR
 
+      # The directory taken away now, by a process about to replace itself with another program
+      # (Live::WindowProcess), which finishes no objects and so never runs the keeper. Something
+      # that opens a cartridge afterwards makes it again, as the emulator always has.
+      def self.remove_save_dir = FileUtils.remove_entry(SAVE_DIR, true)
+
       # Fill the chip before the console is turned on. The emulator looks for it as a file
       # named after the ROM, in the save directory, and reads it in as the chip's contents.
       # The file is as big as the cartridge's chip: a save memory made without a size takes the

@@ -32,3 +32,6 @@ require_relative "live/worker_unpacking" # The same split in pieces, on a Ractor
 require_relative "live/shell"          # A port with no data: its menu, its unpacking and its kept pack
 require_relative "live/shell_check"    # A port's shell played against its all-in-one build
 require_relative "live/sdl"            # A window for a person: SDL3 through Fiddle, loaded when asked for
+require_relative "live/build_watch"    # A window waiting while a helper process builds its game
+require_relative "live/build_helper"   # That helper: started, and what it runs
+require_relative "live/window_process" # The process vblank run becomes to play what the helper wrote

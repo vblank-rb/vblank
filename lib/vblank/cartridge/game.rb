@@ -363,6 +363,21 @@ module VBlank
       # process runs, and a worker Ractor may not read a global at all.
       MAIN_SCRIPT = $PROGRAM_NAME
 
+      # +console+, when the game is for it; a plain refusal when it is not. Public for vblank run,
+      # which asks before it opens a window for a game a helper process builds.
+      def refuse_console_not_for!(console)
+        console = console.to_sym
+        return console if @consoles.include?(console)
+
+        described = Console.described(console)
+        raise ArgumentError, "#{@title} is written for the #{@consoles.map { |name| Console.described(name).title }.join(' and ')}, " \
+                             "not the #{described.title}. A #{described.title} has a #{described.screen_width}×" \
+                             "#{described.screen_height} screen. To build it for one, lay the game out from " \
+                             "`screen_width` and `screen_height` rather than numbers for one screen, and say " \
+                             "`consoles: %i[#{(@consoles + [console]).join(' ')}]` where the game is named." \
+                             "#{border_fix_words(console)}"
+      end
+
       private
 
       # Is +path+ the very script Ruby was told to run? Compared as full paths so a
@@ -435,20 +450,6 @@ module VBlank
 
         raise ArgumentError, "#{@title} names players: for the #{Console.described(key).title}, and the game is not " \
                              "for it. To fix this, add :#{key} to consoles:, or remove it from players:."
-      end
-
-      # +console+, when the game is for it; a plain refusal when it is not.
-      def refuse_console_not_for!(console)
-        console = console.to_sym
-        return console if @consoles.include?(console)
-
-        described = Console.described(console)
-        raise ArgumentError, "#{@title} is written for the #{@consoles.map { |name| Console.described(name).title }.join(' and ')}, " \
-                             "not the #{described.title}. A #{described.title} has a #{described.screen_width}×" \
-                             "#{described.screen_height} screen. To build it for one, lay the game out from " \
-                             "`screen_width` and `screen_height` rather than numbers for one screen, and say " \
-                             "`consoles: %i[#{(@consoles + [console]).join(' ')}]` where the game is named." \
-                             "#{border_fix_words(console)}"
       end
 
       # The second fix for a game asked for a console whose screen is bigger than its own: a variant

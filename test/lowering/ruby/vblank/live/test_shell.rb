@@ -452,4 +452,23 @@ class TestShell < Minitest::Test
       assert_holds_none_of original_pieces, File.binread(path), "the Ruby script"
     end
   end
+
+  # ...and read back from the file (Ruby::WrittenGame.read, as the window vblank run opens reads a
+  # game a helper process wrote), the shell plays its game from the kept pack as the all-in-one
+  # build plays, picture for picture.
+  def test_a_shell_written_as_one_ruby_file_and_read_back_plays_as_the_all_in_one_build
+    Dir.mktmpdir do |folder|
+      path = VBlank::IR::Backends::Ruby.new.build_script(port_without_copy(folder), File.join(folder, "port-ruby.rb"),
+                                                          console: :gba, err: StringIO.new, shell: true)
+      FileUtils.mkdir_p(File.join(folder, "kept"))
+      File.binwrite(File.join(folder, "kept", PACK_FILE), all_in_one_pack)
+      written = VBlank::IR::Backends::Ruby::WrittenGame.read(path)
+      shell = Shell.new(facts: VBlank::Original::ShellFacts.from_plain(JSON.parse(written.shell.facts)), game: written.source,
+                        menu: written.shell.menu, unpackings: written.shell.unpackings)
+      played = play_shell(shell, folder, picked: nil)
+
+      assert_equal all_in_one_pictures, played.game_pictures
+      assert_empty played.menu_pictures, "the kept pack is read, so the menu never plays"
+    end
+  end
 end

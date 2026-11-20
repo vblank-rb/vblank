@@ -1,0 +1,57 @@
+# frozen_string_literal: true
+
+module VBlank
+  module IR
+    module Backends
+      class Ruby
+        # THE GAME A FILE WRITTEN OUT AS ONE RUBY FILE PLAYS (Ruby#script), read back. Such a file is
+        # the library's window and session copied in, then the game's part: its title, the console
+        # it is for, whether it has a menu, its Ruby, and a shell's parts where it is one. Played with
+        # `ruby game-ruby.rb`, the file's own main makes one of these from its constants
+        # (WrittenGame.of); the window vblank run opens reads one from a file a helper process wrote
+        # (WrittenGame.read). Both then play it the same way (rg_script_main.rb's VBlankScript.play).
+        #
+        # Carried in every script, so it names nothing of the library a script does not carry.
+        #
+        # +shell+ is a Shell, the parts Live::Shell is made from as text, or nil for a game that is
+        # not one.
+        WrittenGame = Data.define(:title, :console_title, :menu, :source, :shell) do
+          # The game as Ruby, made a game ready to play afresh each time it is asked.
+          def live_game = LiveGame.new(source)
+        end
+
+        class WrittenGame
+          # A SHELL'S PARTS AS A SCRIPT HOLDS THEM: +facts+, Original::ShellFacts as JSON, and its
+          # +menu+ and each of its +unpackings+ as Ruby (Live::Shell.new takes them as they are).
+          Shell = Data.define(:facts, :menu, :unpackings)
+
+          # The lines the game's part of a script starts and ends at. #read takes only what lies
+          # between them, so nothing of the copied library is read twice.
+          PART_BEGINS = "  # THE GAME THIS FILE PLAYS, read back by WrittenGame.read\n"
+          PART_ENDS = "  # THE END OF THE GAME'S PART\n"
+
+          # The game a script holds in +holder+'s constants (VBlankScript's, written by Ruby#script).
+          def self.of(holder)
+            facts = holder.const_get(:SHELL_FACTS)
+            shell = (Shell.new(facts: facts, menu: holder.const_get(:SHELL_MENU), unpackings: holder.const_get(:SHELL_UNPACKINGS)) if facts)
+            new(title: holder.const_get(:TITLE), console_title: holder.const_get(:CONSOLE_TITLE), menu: holder.const_get(:MENU),
+                source: holder.const_get(:SOURCE), shell: shell)
+          end
+
+          # The game in the script at +path+: its part is read into a module of its own and taken from
+          # there, as the script's main takes it. ArgumentError for a file that holds no game's part.
+          def self.read(path)
+            text = File.read(path, encoding: Encoding::UTF_8)
+            from = text.index("\n#{PART_BEGINS}")
+            upto = from && text.index("\n#{PART_ENDS}", from)
+            raise ArgumentError, "#{path} is not a game that VBlank wrote out as Ruby." unless upto
+
+            holder = Module.new
+            holder.module_eval(text[(from + 1)...upto], path, text[0..from].count("\n") + 1)
+            of(holder)
+          end
+        end
+      end
+    end
+  end
+end

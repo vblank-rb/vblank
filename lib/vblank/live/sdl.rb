@@ -221,17 +221,11 @@ module VBlank
         @sdl = self.class.binding_for(library)
         @title = title
         @config_dir = config_dir
-        @width = width
-        @height = height
-        @shown_width = width * pixel_size # the picture as the window shows it at a scale of 1
-        @shown_height = height * pixel_size
+        @settings_file_asked = settings_file
         @closed = false
         @has_menu = menu
-        @player_settings = Settings.new(key_names: KeyNames.new(@sdl), game_controls: game_controls, buttons: buttons)
-        @console_buttons = buttons # the ones read, of player 2's keys too
-        @settings_file = settings_file && SettingsFile.new(title: title, folder_of: ->(name) { settings_folder(name) },
-                                                           asked: (settings_file unless settings_file == :usual))
-        @settings_problems = @settings_file ? @settings_file.load(@player_settings) : []
+        take_picture_size(width, height, pixel_size)
+        read_player_settings(game_controls, buttons)
         scale ||= @player_settings.window.scale
         @kept_from_game = [] # keys pressed for the menu, kept from the game until they come up
         @pads = {} # the gamepads plugged in, by SDL's number for each
@@ -250,11 +244,28 @@ module VBlank
         end
         @states = states_in(state_folder_name) if menu && state_folder_name
         @save_file = save_file_in(state_folder_name) if state_folder_name
-        @menu = Menu.new(settings: @player_settings.window.with(scale: scale), picture: [@shown_width, @shown_height],
-                         controls: @player_settings,
-                         scales: WindowMenu::SCALES.min..[largest_scale_that_fits, scale].max, states: @states)
-        @settings = @menu.settings # as the window last made them so
+        make_menu(scale)
         @sdl.SDL_SetWindowFullscreen(@window, 1) if @settings.fullscreen
+      end
+
+      # THE WINDOW FITTED TO THE GAME IT WILL PLAY, once it is known: a window opened before its game
+      # was built (vblank run opens it at once, at the console's size, while a helper process builds
+      # the game) takes the game's picture size and its own keys here (#initialize's +width+,
+      # +height+, +pixel_size+, +game_controls+ and +buttons+). The settings file is read again with
+      # the game's keys, so what it says about them is used; the size the window is played at is
+      # kept. Gives back #settings_problems_message for the file as read now.
+      def fit_game(width:, height:, pixel_size: 1, game_controls: nil, buttons: WindowMenu::ADVANCE_BUTTONS)
+        write_settings if @player_settings.unwritten?
+        scale = @settings.scale
+        if [width, height, pixel_size] != [@width, @height, @shown_width / @width]
+          take_picture_size(width, height, pixel_size)
+          @sdl.SDL_DestroyTexture(@texture)
+          make_picture_texture
+          @sdl.SDL_SetWindowSize(@window, @shown_width * scale, @shown_height * scale)
+        end
+        read_player_settings(game_controls, buttons)
+        make_menu(scale)
+        settings_problems_message
       end
 
       # --- save states (Session says when they are taken) ---
@@ -340,6 +351,25 @@ module VBlank
         count_frame_rate
         @sdl.SDL_UpdateTexture(@texture, nil, pixels.pack("v*"), @width * 2)
         redraw_window
+      end
+
+      # Lines of words over black in place of a picture, while the game this window will play is
+      # built in another process (BuildWatch), with whatever SDL has heard from the window since.
+      def show_waiting(lines)
+        read_events
+        write_settings_when_due
+        @sdl.SDL_SetRenderDrawColor(@renderer, 0, 0, 0, 255)
+        @sdl.SDL_RenderClear(@renderer)
+        upload_menu_letters
+        width, height = output_size
+        @sdl.SDL_SetRenderLogicalPresentation(@renderer, 0, 0, LOGICAL_PRESENTATION_DISABLED)
+        begin
+          @menu.waiting_drawing(lines, width: width, height: height, density: pixel_density).each { |words| draw_words(words) }
+        ensure
+          @sdl.SDL_SetRenderLogicalPresentation(@renderer, @shown_width, @shown_height, LOGICAL_PRESENTATION_LETTERBOX)
+        end
+        draw_menu_and_status
+        @sdl.SDL_RenderPresent(@renderer)
       end
 
       # True while what is shown is the picture before, so the frame rate leaves it out, where something
@@ -627,6 +657,16 @@ module VBlank
         raise_failed!("open the window") if @window.null?
         @renderer = @sdl.SDL_CreateRenderer(@window, nil)
         raise_failed!("draw in the window") if @renderer.null?
+        make_picture_texture
+        @sdl.SDL_SetRenderDrawBlendMode(@renderer, BLENDMODE_BLEND) # the menu's boxes are see-through
+        @event = Fiddle::Pointer.malloc(EVENT_BYTES, Fiddle::RUBY_FREE)
+        upload_menu_letters
+        # Gamepads, where SDL can read them: a computer where it cannot plays with the keyboard alone.
+        @sdl.SDL_InitSubSystem(INIT_GAMEPAD)
+      end
+
+      # The card the game's picture is put on, its size, and the window's logical size to match.
+      def make_picture_texture
         # The picture is drawn over the whole of the logical size, so a picture of big pixels is
         # stretched to it, each pixel the same whole number of the window's.
         raise_failed!("keep the picture's shape") if @sdl.SDL_SetRenderLogicalPresentation(
@@ -635,11 +675,34 @@ module VBlank
         @texture = @sdl.SDL_CreateTexture(@renderer, PIXELFORMAT_XBGR1555, TEXTUREACCESS_STREAMING, @width, @height)
         raise_failed!("make the picture") if @texture.null?
         raise_failed!("keep the pixels sharp") if @sdl.SDL_SetTextureScaleMode(@texture, SCALEMODE_NEAREST).zero?
-        @sdl.SDL_SetRenderDrawBlendMode(@renderer, BLENDMODE_BLEND) # the menu's boxes are see-through
-        @event = Fiddle::Pointer.malloc(EVENT_BYTES, Fiddle::RUBY_FREE)
-        upload_menu_letters
-        # Gamepads, where SDL can read them: a computer where it cannot plays with the keyboard alone.
-        @sdl.SDL_InitSubSystem(INIT_GAMEPAD)
+      end
+
+      # The picture the window shows: +width+ by +height+ pixels, each +pixel_size+ of the window's
+      # at a scale of 1.
+      def take_picture_size(width, height, pixel_size)
+        @width = width
+        @height = height
+        @shown_width = width * pixel_size # the picture as the window shows it at a scale of 1
+        @shown_height = height * pixel_size
+      end
+
+      # The player's settings, with the game's own keys (+game_controls+) and the console's
+      # +buttons+, read from the settings file where there is one (#initialize's +settings_file+).
+      def read_player_settings(game_controls, buttons)
+        @player_settings = Settings.new(key_names: KeyNames.new(@sdl), game_controls: game_controls, buttons: buttons)
+        @console_buttons = buttons # the ones read, of player 2's keys too
+        asked = @settings_file_asked
+        @settings_file = asked && SettingsFile.new(title: @title, folder_of: ->(name) { settings_folder(name) },
+                                                   asked: (asked unless asked == :usual))
+        @settings_problems = @settings_file ? @settings_file.load(@player_settings) : []
+      end
+
+      # The menu over the picture, the window at +scale+.
+      def make_menu(scale)
+        @menu = Menu.new(settings: @player_settings.window.with(scale: scale), picture: [@shown_width, @shown_height],
+                         controls: @player_settings,
+                         scales: WindowMenu::SCALES.min..[largest_scale_that_fits, scale].max, states: @states)
+        @settings = @menu.settings # as the window last made them so
       end
 
       # The menu font's picture of every letter at the screen's density, on the screen's card (an

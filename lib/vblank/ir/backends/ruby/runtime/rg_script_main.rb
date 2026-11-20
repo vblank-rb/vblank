@@ -3,8 +3,10 @@
 # THE LAST PART OF A GAME WRITTEN OUT AS ONE RUBY FILE (Ruby#script): what runs when somebody
 # plays it with `ruby game-ruby.rb`. Everything above it in that file — the game as Ruby in
 # VBlankScript::SOURCE, its title and whether it has a menu, and the window, the menu and the
-# session it plays in — was copied in when it was built, so it needs no vblank gem. It is never
-# loaded by the library itself. What vblank run says as it plays is said here in the same words.
+# session it plays in — was copied in when it was built, so it needs no vblank gem. The library
+# itself never loads it, but the window vblank run opens does (rg_window_main.rb), and plays the
+# game a helper process wrote through VBlankScript.play, as a script plays its own. What vblank
+# run says as it plays is said here in the same words.
 require "json"
 require "optparse"
 
@@ -26,48 +28,84 @@ module VBlankScript
     %i[scale pictures].each do |name|
       raise OptionParser::InvalidArgument, "--#{name} must be a whole number above 0" if options[name]&.<(1)
     end
-    # YJIT turns the Ruby that runs most often into machine code as the game plays, which plays it
-    # several times faster. A Ruby built without it plays the game slower, and one started with
-    # ZJIT, the other of Ruby's compilers, keeps it.
-    RubyVM::YJIT.enable if defined?(RubyVM::YJIT) && !RubyVM::YJIT.enabled? && !(defined?(RubyVM::ZJIT) && RubyVM::ZJIT.enabled?)
-    play(options)
-  rescue OptionParser::ParseError, VBlank::Live::SDL::Missing, VBlank::Live::SDL::Failed, VBlank::IR::ProgramError => e
+    turn_on_yjit
+    play(VBlank::IR::Backends::Ruby::WrittenGame.of(self), options)
+  rescue OptionParser::ParseError => e
     warn e.message
     exit 1
   end
 
-  def self.play(options)
-    game = VBlank::IR::Backends::Ruby::LiveGame.new(SOURCE)
-    window = VBlank::Live::SDL.new(title: TITLE, scale: options[:scale], width: game.width, height: game.height,
-                                   pixel_size: game.pixel_size, menu: MENU, settings_file: options[:"settings-file"] || :usual,
-                                   config_dir: options[:"config-dir"], game_controls: game.controls, buttons: game.buttons)
-    warn window.settings_problems_message if window.settings_problems_message
-    puts "Playing #{TITLE}. #{'Press F1 or ` for the menu. ' if MENU}Press P to pause. Hold Tab to play fast. " \
-         "Press Escape to stop."
+  # YJIT turns the Ruby that runs most often into machine code as the game plays, which plays it
+  # several times faster. A Ruby built without it plays the game slower, and one started with
+  # ZJIT, the other of Ruby's compilers, keeps it.
+  def self.turn_on_yjit
+    RubyVM::YJIT.enable if defined?(RubyVM::YJIT) && !RubyVM::YJIT.enabled? && !zjit_on?
+  end
+
+  def self.zjit_on? = defined?(RubyVM::ZJIT) && RubyVM::ZJIT.enabled?
+
+  # Which of Ruby's compilers turns the game's Ruby into machine code as it plays.
+  def self.jit_in_use
+    return "YJIT" if defined?(RubyVM::YJIT) && RubyVM::YJIT.enabled?
+    return "ZJIT" if zjit_on?
+
+    "no JIT"
+  end
+
+  # Plays +written+ (an IR::Backends::Ruby::WrittenGame) until the player stops it, and says how fast
+  # it went. +window+ is one opened already, before the game was known (rg_window_main.rb), which is
+  # fitted to the game here; nil opens one for it. The window is closed however the play ends.
+  # +options+ are #main's, by its names, and :state_folder, where save states and the game's save
+  # memory are kept (Live::StateSlots.folder_name), for none when left out.
+  def self.play(written, options, window: nil)
+    game = written.live_game
+    if window
+      problems = window.fit_game(width: game.width, height: game.height, pixel_size: game.pixel_size,
+                                 game_controls: game.controls, buttons: game.buttons)
+    else
+      window = VBlank::Live::SDL.new(title: written.title, scale: options[:scale], width: game.width, height: game.height,
+                                     pixel_size: game.pixel_size, menu: written.menu,
+                                     settings_file: options[:"settings-file"] || :usual, config_dir: options[:"config-dir"],
+                                     state_folder_name: options[:state_folder], game_controls: game.controls,
+                                     buttons: game.buttons)
+      problems = window.settings_problems_message
+    end
+    warn problems if problems
+    puts "Playing #{written.title} for the #{written.console_title} in Ruby #{RUBY_VERSION} with #{jit_in_use}. " \
+         "#{'Press F1 or ` for the menu. ' if written.menu}Press P to pause. Hold Tab to play fast. Press Escape to stop."
     play_game = lambda do |playing|
       VBlank::Live::Session.new(game: playing, uncapped: options[:uncapped], stop_after_passes: options[:pictures],
                                 collect_garbage: options.fetch(:"collect-garbage", true))
                            .play(window)
     end
-    rate = SHELL_FACTS ? play_shell(window, options, play_game) : play_game.call(game)
-    return unless rate
-
-    if rate.passes_after_setup.positive?
-      puts rate.words(console_frame_seconds: game.frame_seconds)
-      puts rate.lateness.words if rate.lateness
-    end
-    puts "#{TITLE} stopped itself. Its last picture stayed in the window." if rate.stopped_itself?
+    rate = written.shell ? play_shell(written, window, options, play_game) : play_game.call(game)
+    say_rate(written.title, rate, game.frame_seconds) if rate
+  rescue VBlank::Live::SDL::Missing, VBlank::Live::SDL::Failed, VBlank::IR::ProgramError => e
+    warn e.message
+    exit 1
   ensure
     window&.close
   end
 
+  # How fast +rate+ went, once the play stops, as vblank run says it.
+  def self.say_rate(title, rate, frame_seconds)
+    if rate.passes_after_setup.positive?
+      puts rate.words(console_frame_seconds: frame_seconds)
+      puts rate.lateness.words if rate.lateness
+    end
+    return unless rate.stopped_itself?
+
+    puts "#{title} stopped itself after #{rate.passes == 1 ? '1 frame' : "#{rate.passes} frames"}. " \
+         "Its last picture stayed in the window."
+  end
+
   # A game built as a shell (Live::Shell): the game from its kept pack, or its menu until the player
   # loads a copy. Gives back how fast the game went, or nil when the player stopped before it played.
-  def self.play_shell(window, options, play_game)
-    shell = VBlank::Live::Shell.new(facts: VBlank::Original::ShellFacts.from_plain(JSON.parse(SHELL_FACTS)), game: SOURCE,
-                                    menu: SHELL_MENU, unpackings: SHELL_UNPACKINGS)
+  def self.play_shell(written, window, options, play_game)
+    shell = VBlank::Live::Shell.new(facts: VBlank::Original::ShellFacts.from_plain(JSON.parse(written.shell.facts)),
+                                    game: written.source, menu: written.shell.menu, unpackings: written.shell.unpackings)
     folder = options[:"pack-folder"] || window.folder_for(shell.folder) or
-      raise VBlank::Live::SDL::Failed, "#{TITLE} cannot make the folder to keep its data pack in. Give one with --pack-folder."
+      raise VBlank::Live::SDL::Failed, "#{written.title} cannot make the folder to keep its data pack in. Give one with --pack-folder."
     shell.play(window, folder_path: folder, choose_copy: shell.copy_chooser(window), open_settings: -> { window.open_menu },
                        refused: lambda { |words|
                          warn words

@@ -71,7 +71,7 @@ class TestCLI < Minitest::Test
   # What a command said once its build's phases ("  Reading game  0.1s") and its "Building ... -
   # Please wait." are taken out: the refusal, whose first line is what a person reads first.
   private def refusal_lines(out)
-    out.lines.map(&:chomp).reject { |line| line.start_with?("  ") || line.start_with?("Building ") }
+    out.lines.map(&:chomp).reject { |line| line.start_with?("  ", "Building ") }
   end
 
   # A build that stops says so in its first line, before the reason, so nobody reads the reason
@@ -90,10 +90,12 @@ class TestCLI < Minitest::Test
     end
   end
 
+  # The build is the helper's, and the window shows the reason too (for one picture here, where a
+  # person's window shows it until they close it).
   def test_run_says_its_build_stopped_before_the_reason
     Dir.mktmpdir do |dir|
       File.write(File.join(dir, "oops.rb"), LOOP_ON_A_NUMBER)
-      out, status = cli("run", "oops.rb", dir: dir)
+      out, status = run_in_dummy_window(dir, "oops.rb", "--pictures", "1")
 
       refute status.success?, out
       lines = refusal_lines(out)
@@ -745,10 +747,60 @@ class TestCLI < Minitest::Test
       out, status = run_in_dummy_window(dir, "demo.rb", "--pictures", "3", "--console", "gba")
 
       assert status.success?, out
-      assert_match(/^Building DEMO - Please wait\.$/, out)
       assert_match(/in Ruby #{Regexp.escape(RUBY_VERSION)} with YJIT\./o, out)
       assert_match(/Press P to pause/, out)
       refute_match(/No window|Played \d+ frames/, out)
+    end
+  end
+
+  # THE BUILD IS ANOTHER PROCESS'S. The window's process is the one vblank run started (it becomes
+  # the window), and the game is built by a helper it starts, which ends once the game is written:
+  # the game file is loaded by the command and again by the helper, each noting its process, and
+  # what the window plays is the helper's build. The command says nothing of the build itself.
+  def test_run_builds_the_game_in_a_helper_process_and_plays_it_in_the_window
+    Dir.mktmpdir do |dir|
+      pids = File.join(dir, "pids.txt")
+      File.write(File.join(dir, "demo.rb"), <<~GAME)
+        File.write(#{pids.dump}, "\#{Process.pid}\\n", mode: "a")
+        VBlank.game("DEMO", consoles: %i[gba]) { game_loop { clear_screen :blue } }
+      GAME
+      drivers = { "SDL_VIDEODRIVER" => "dummy", "SDL_AUDIODRIVER" => "dummy", "RUBY_YJIT_ENABLE" => nil }
+      out, status, window = Open3.popen2e(drivers, RUBY, BIN, "run", "demo.rb", "--pictures", "3", "--settings-file",
+                                          File.join(dir, "settings.txt"), chdir: dir) do |stdin, output, waiter|
+        stdin.close
+        [output.read, waiter.value, waiter.pid]
+      end
+      flunk out.lines.first.chomp if out.include?("cannot find SDL3")
+
+      assert status.success?, out
+      assert_match(/2 frames in/, out)
+      command, helper = File.readlines(pids).map(&:to_i)
+      assert_equal window, command
+      refute_nil helper, "the game is loaded a second time, by the helper"
+      refute_equal window, helper
+      refute_match(/Building|Please wait/, out)
+    end
+  end
+
+  # A game whose build stops is said in the window and on the terminal, and the command fails. The
+  # private folder the helper was to write the game in is gone: such a folder can hold an original's data.
+  def test_run_says_why_a_game_built_by_the_helper_cannot_play
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "broken.rb"), <<~GAME)
+        VBlank.game("BROKEN", consoles: %i[gba]) { game_loop { clear_screen :blue if held(:z) } }
+      GAME
+      temporary = File.join(dir, "tmp")
+      FileUtils.mkdir_p(temporary)
+      drivers = { "SDL_VIDEODRIVER" => "dummy", "SDL_AUDIODRIVER" => "dummy", "RUBY_YJIT_ENABLE" => nil, "TMPDIR" => temporary }
+      out, status = Open3.capture2e(drivers, RUBY, BIN, "run", "broken.rb", "--pictures", "3", "--settings-file",
+                                    File.join(dir, "settings.txt"), chdir: dir)
+      flunk out.lines.first.chomp if out.include?("cannot find SDL3")
+
+      refute status.success?, out
+      assert_equal 1, out.scan("z is not a known button").size, out
+      refute_match(/\.rb:\d+:in/, out, "should not leak a backtrace")
+      # Nothing at all: exec runs no at_exit hook, so the command tidies what the library made too.
+      assert_empty Dir.children(temporary)
     end
   end
 
