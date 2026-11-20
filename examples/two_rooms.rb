@@ -57,7 +57,9 @@ module TwoRooms
   STONE = 0
   BRICK = 1
 
-  GAME = VBlank.game("TWO ROOMS", consoles: %i[gba ps1]) do
+  # The rooms-drawn count in the corner is a feature of its own: the game as built has it, and a
+  # test that wants the rooms alone builds `GAME.with_features` without it.
+  GAME = VBlank.game("TWO ROOMS", consoles: %i[gba ps1], features: { counter: [] }) do
     # `vblank build examples/two_rooms.rb --console gba --set pixel_size=2` draws the rooms at half
     # the width and half the height, and the Advance shows each pixel as a square of four: a
     # quarter of the drawing for a chunkier look.
@@ -183,7 +185,7 @@ module TwoRooms
       end
 
       # How many rooms this frame drew, in the corner.
-      draw_number rooms_drawn, 4, 4, :white, digits: 1
+      draw_number rooms_drawn, 4, 4, :white, digits: 1 if feature?(:counter)
     end
   end
 
