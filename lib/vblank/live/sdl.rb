@@ -49,10 +49,36 @@ module VBlank
 
       # Where SDL3 is looked for when neither +library:+ nor VBLANK_SDL3 names it: the names each
       # system's loader finds by itself, then the folders Homebrew installs into on a Mac.
-      LIBRARIES = Ractor.make_shareable(%w[libSDL3.dylib libSDL3.0.dylib libSDL3.so.0 libSDL3.so SDL3.dll
-                                           /opt/homebrew/lib/libSDL3.dylib /usr/local/lib/libSDL3.dylib])
+      # On Windows, the bare name, which the loader looks for beside Ruby and on PATH, and then the
+      # folder RubyInstaller's build tools (MSYS2) install their libraries into, where
+      # `ridk exec pacman -S mingw-w64-ucrt-x86_64-sdl3` puts it.
+      def self.libraries(windows: Gem.win_platform?)
+        return %w[libSDL3.dylib libSDL3.0.dylib libSDL3.so.0 libSDL3.so /opt/homebrew/lib/libSDL3.dylib
+                  /usr/local/lib/libSDL3.dylib] unless windows
 
-      INSTALL_LINE = "On macOS, run `brew install sdl3`. On Debian or Ubuntu, run `apt install libsdl3-dev`."
+        ["SDL3.dll", *msys2_sdl3]
+      end
+
+      # SDL3.dll in RubyInstaller's MSYS2, when this Ruby is a RubyInstaller one with it installed.
+      def self.msys2_sdl3
+        return [] unless defined?(RubyInstaller::Runtime)
+
+        [File.join(RubyInstaller::Runtime.msys2_installation.msys_path, "ucrt64", "bin", "SDL3.dll")]
+      rescue StandardError
+        [] # no MSYS2 set up for this Ruby
+      end
+
+      # How to install SDL3 on the system asking.
+      def self.install_line(windows: Gem.win_platform?)
+        return "On macOS, run `brew install sdl3`. On Debian or Ubuntu, run `apt install libsdl3-dev`." unless windows
+
+        "On Windows, run `ridk exec pacman -S mingw-w64-ucrt-x86_64-sdl3`. Or download " \
+          "SDL3-<version>-win32-x64.zip from https://github.com/libsdl-org/SDL/releases and set VBLANK_SDL3 to " \
+          "the path of the SDL3.dll in it."
+      end
+
+      LIBRARIES = Ractor.make_shareable(libraries)
+      INSTALL_LINE = install_line.freeze
 
       # SDL's own numbers, from its headers.
       INIT_VIDEO = 0x20

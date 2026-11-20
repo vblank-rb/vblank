@@ -585,7 +585,17 @@ class TestSDL < Minitest::Test
     error = assert_raises(SDL::Missing) { SDL.new(title: "TEST", scale: 1, library: "/nowhere/libSDL3.dylib") }
 
     assert_match(%r{cannot open SDL3 at /nowhere/libSDL3.dylib}, error.message)
-    assert_match(/brew install sdl3/, error.message)
+    assert_match(/brew install sdl3/, error.message) unless Gem.win_platform?
+  end
+
+  # Windows is told its own way to install SDL3 and looks for SDL3.dll, never a Mac or Linux file.
+  def test_windows_is_told_its_own_way_to_install_sdl3
+    assert_match(/mingw-w64-ucrt-x86_64-sdl3/, SDL.install_line(windows: true))
+    assert_match(/SDL3\.dll/, SDL.install_line(windows: true))
+    refute_match(/brew/, SDL.install_line(windows: true))
+    assert_equal "SDL3.dll", SDL.libraries(windows: true).first
+    assert(SDL.libraries(windows: true).all? { |name| name.end_with?("SDL3.dll") })
+    refute_includes SDL.libraries(windows: false), "SDL3.dll"
   end
 
   private
