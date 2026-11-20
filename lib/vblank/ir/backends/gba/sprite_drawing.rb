@@ -244,15 +244,19 @@ module VBlank
           # the display to start the next picture, so it never takes the gap from this. The console composites the sprites over the background for
           # free — there's nothing to erase, unlike a software sprite.
           #
-          # The groups the game set as up are brought in first, so a sprite showing one of their
-          # pictures draws it on the frame it first shows it (see PictureGroupCopying).
+          # THE TABLE FIRST, THE GROUPS' PICTURES AFTER. The groups the game set as up are brought
+          # in last (see PictureGroupCopying), so a sprite showing one of their pictures draws it on
+          # the frame it first shows it, as long as the copy ends inside the gap. The table has to
+          # be written while nothing is drawn: the display reads a sprite's row of it as it draws
+          # each line (GBATEK, LCD OBJ - OAM Attributes). A group's pictures are a big copy, and
+          # copied first, one longer than what is left of the gap would push the table's writes
+          # down into the picture, tearing a row of sprites part way down it.
           def emit_present_objects(node)
             by_scene = @layout.scene_sprites
             emit_switch_sprite_layer
             emit_unless_set_just_came_in do
               @scene_entry.emit_unless_scene_is_loading do
                 emit_scene_colors_on_change # before any row is written
-                @picture_group_copying.emit_calls_to_routines
                 emit_count_lending_frame
                 emit_hide_scene_rows_on_change
                 emit_write_sprite_rows(node.names - @layout.movement.still - by_scene.flat_map(&:names))
@@ -260,6 +264,7 @@ module VBlank
                 emit_refresh_still_sprites
                 @layout.draw_runs.each { |run| emit_copy_draw_run(run) }
                 emit_game_rows_copied_in
+                @picture_group_copying.emit_calls_to_routines
               end
             end
           end

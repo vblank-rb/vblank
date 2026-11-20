@@ -198,4 +198,60 @@ class TestPictureGroupsOnTheConsole < Minitest::Test
     prog = maze_of_forty_rooms
     [5, 7, 12, 13].each { |frames| assert_backends_agree(prog, frames: frames, name: "MAZE") }
   end
+
+  # THE SPRITE TABLE GOES IN BEFORE A GROUP'S PICTURES. The table must be written while nothing is
+  # drawn (GBATEK, OAM: the display reads it as it draws each row), and a group's pictures are a big
+  # copy. Copied first, they push the table's writes down the gap, and a copy longer than what is
+  # left of the gap pushes them into the picture, where a row of sprites tears. So the table lands
+  # on the same rows of the gap on a frame a group comes up as on a frame nothing is copied.
+  ROOM_PICTURES = 8 # 64x64 pictures a room: sixteen kilobytes, a good part of the gap to copy
+
+  private def two_big_rooms
+    program do |t|
+      screen :tiled
+      pictures = (0...(ROOM_PICTURES * 2)).map { |n| :"wall_#{n}" }
+      pictures.each_with_index { |name, n| image name, width: 64, height: 64, data: t.big_art(n) }
+      image(:dot, "#" => :yellow) { (["#" * 8] * 8).join("\n") }
+      rooms = picture_groups :walls, { 0 => pictures.first(ROOM_PICTURES), 1 => pictures.last(ROOM_PICTURES) }
+      wall = sprite :wall, facing: pictures.to_h { |name| [name, name] }, at: [8, 90]
+      runner = sprite :runner, at: [0, 0], facing: { still: :dot }
+      passes = 0
+      room = 0
+      rooms.show 0
+      wall.face pictures, showing: 0
+      game_loop do
+        passes += 1
+        room = (passes / 4) % 2
+        rooms.show room
+        wall.face pictures, showing: room * ROOM_PICTURES
+        runner.move_to passes, 0
+      end
+    end
+  end
+
+  def test_the_sprite_table_is_written_before_a_group_is_copied_in
+    # From the third frame on, a room comes up every fourth one and the runner moves on every one.
+    last_rows = sprite_table_rows_by_frame(two_big_rooms, frames: 16).map(&:max)
+
+    assert_equal [last_rows[3]], last_rows[3..].uniq, "the last row a write to the sprite table landed on, by frame: #{last_rows}"
+  end
+
+  # The rows each frame's writes to the sprite table landed on, a list a frame from power-on.
+  private def sprite_table_rows_by_frame(game, frames:)
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "rooms.gba")
+      assemble_rom(game, name: "ROOMS").write(path)
+      probe = VBlank::Diagnostics::Emulator.probe(path)
+      begin
+        probe.watch_display
+        Array.new(frames) do
+          probe.display_writes.clear
+          probe.step(1)
+          probe.display_writes.select { |write| write.kind == :sprite }.map(&:row)
+        end
+      ensure
+        probe.close
+      end
+    end
+  end
 end

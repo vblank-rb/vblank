@@ -6,7 +6,7 @@ module VBlank
       class GBA
         # BRINGING A SET OF PICTURE GROUPS' GROUPS UP, on the console (see GroupedPictures).
         #
-        # `show` only writes down which groups the game wants up. Between frames, before the
+        # `show` only writes down which groups the game wants up. Between frames, after the
         # sprites are written, the set's routine copies in the pictures of each group that is
         # wanted and was not up, and nothing else: a room the game stays in costs a compare a slot,
         # and walking into the next costs that room's pictures. A group that stays up as another
@@ -55,7 +55,8 @@ module VBlank
             store_var(ACC, plan.shown.fetch(node.slot))
           end
 
-          # Every set's routine, in the gap before the sprites are written.
+          # Every set's routine, in the gap after the sprites are written: the table must go in
+          # while nothing is drawn, and this copy is long (SpriteDrawing#emit_present_objects).
           def emit_calls_to_routines
             @plans.each_value { |plan| @lowering.statement(Build.call(plan.routine)) }
           end
@@ -75,14 +76,14 @@ module VBlank
           end
 
           # ON A CHANGE OF SCREEN no group's pictures are in sprite memory, and the groups the game
-          # wants are copied in again before the sprites are next written.
+          # wants are copied in again in the gap the sprites are next written in.
           def emit_forget_every_set_up
             @plans.each_value { |plan| emit_forget(plan.up) }
           end
 
           # AS A SCENE TAKES OVER none of its own groups is up, since another scene's pictures were
           # in their room. The groups it wants are still the ones it wanted as it left, as the
-          # interpreter has it, and they are copied in again before its sprites are next written:
+          # interpreter has it, and they are copied in again in the gap its sprites are next written in:
           # a scene given the screen back draws its sprites as they were left, and a scene that
           # loads first does so before any of its own code has run to name which groups it wants.
           def emit_forget_sets_of(scene)
