@@ -787,8 +787,13 @@ module VBlank
           # backdrop they show nowhere, but on a sprite they would, so two builds of one game a
           # few hundred cycles apart would draw that picture's sprites differently.
           #
-          # Which side of the gap's end a sending finishes on is still timing: one that ends in
-          # the last lines of the gap shows the scene, a little later the backdrop. Hold every
+          # A sending that ends in a later gap than the one its pass started in is held too: the
+          # picture after that gap is drawn while the pass is late, and is held whichever side of
+          # the gap's end the sending finished on (#emit_branch_unless_in_pass_gap).
+          #
+          # In a pass on time, which side of the gap's end a sending finishes on is still timing:
+          # one that ends in the last lines of the gap shows the scene, a little later the
+          # backdrop. Hold every
           # sending instead and the first picture of every scene would be the backdrop, where
           # the interpreter, and every game's scene that fits the gap, shows the scenery.
           # (GBATEK, LCD I/O Display Control: DISPCNT takes effect from the line being drawn;
@@ -848,8 +853,10 @@ module VBlank
           end
 
           # AFTER SENDING: write +reg+, the display's settings with the layers wanted back on: as
-          # they are in the gap, and with the layers held off part way down a picture, for the
-          # screen's interrupt to switch on at the start of the next gap. Uses TMP.
+          # they are in the gap the pass started in, and with the layers held off anywhere else,
+          # for the screen's interrupt to switch on at the start of the next gap
+          # (#emit_branch_unless_in_pass_gap).
+          # Uses TMP and ADDR.
           def emit_layers_back_on_or_held(reg)
             emit_without_switched_off_layers(reg) # ...save the ones the game hid
             unless holds_layers?
@@ -858,23 +865,53 @@ module VBlank
             end
 
             with_interrupts_held_off do
-              in_gap = gensym
+              held = gensym
               write = gensym
-              emit_number(TMP, REG_VCOUNT)
-              emit(ASM.load_halfword(TMP, TMP))
-              emit(ASM.cmp_imm(TMP, SCREEN_HEIGHT))
-              emit_branch(:bcond, in_gap, cond: :hs)
+              emit_branch_unless_in_pass_gap(held)
+              emit_number(TMP, 0) # on now, so nothing is held from an earlier sending
+              store_var(TMP, LAYERS_HELD)
+              emit_branch(:b, write)
+              place_label(held)
               emit(ASM.and_imm(TMP, reg, held_layer_bits))
               store_var(TMP, LAYERS_HELD)
               emit(ASM.bic_imm(reg, reg, held_layer_bits))
-              emit_branch(:b, write)
-              place_label(in_gap)
-              emit_number(TMP, 0) # on now, so nothing is held from an earlier sending
-              store_var(TMP, LAYERS_HELD)
               place_label(write)
               emit_number(TMP, REG_DISPCNT)
               emit(ASM.store_halfword(reg, TMP))
             end
+          end
+
+          # WHEN A SENDING'S LAYERS MAY COME ON AT ONCE: in the gap the pass started in, and only
+          # there. Part way down a picture they would tear it (LAYERS_HELD). In a LATER gap, which
+          # a pass reaches only after running past the start of one, the picture after is drawn
+          # while the pass is still finishing: the pass's own picture is the one after its wait,
+          # where the interpreter shows the scene. Switched on there, that late picture showed the
+          # scene where the sending ended in the gap and the backdrop where it ran a few lines on,
+          # so two builds of one game whose pictures take different times to send differed on it.
+          # Held, the late picture is the backdrop whichever way the sending ended, and the scene
+          # comes up at the start of the gap the pass's wait ends in.
+          #
+          # A gap has started since the pass began when the screen's interrupt has counted one
+          # (Frames: COUNT moved from SEEN, the mark taken as the pass began) or has one waiting,
+          # which it does when the gap started while interrupts were held off (GBATEK, Interrupt
+          # Control: IF bit 0 is set as V-Blank starts, and stays set until the handler clears it).
+          # Before the game loop's first mark the marks are not yet a pass's, and the layers are
+          # held: the picture is off until the first wait anyway (Drawing#initial_forced_blank_bit),
+          # and the interrupt that wakes it switches them on. Jumps to +held+ unless the layers may
+          # come on. Interrupts must be held off. Uses TMP and ADDR.
+          def emit_branch_unless_in_pass_gap(held)
+            emit_number(TMP, REG_VCOUNT)
+            emit(ASM.load_halfword(TMP, TMP))
+            emit(ASM.cmp_imm(TMP, SCREEN_HEIGHT))
+            emit_branch(:bcond, held, cond: :lo)
+            emit_number(TMP, REG_IF)
+            emit(ASM.load_halfword(TMP, TMP))
+            emit(ASM.tst_imm(TMP, IRQ_VBLANK))
+            emit_branch(:bcond, held, cond: :ne)
+            load_var(TMP, IR::Frames::COUNT)
+            load_var(ADDR, IR::Frames::SEEN)
+            emit(ASM.cmp_reg(TMP, ADDR))
+            emit_branch(:bcond, held, cond: :ne)
           end
 
           # THE HOLD AND THE DISPLAY'S SETTINGS ARE WRITTEN AS A PAIR (Primitives

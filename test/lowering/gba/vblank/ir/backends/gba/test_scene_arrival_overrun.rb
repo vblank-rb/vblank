@@ -66,8 +66,10 @@ class TestSceneArrivalOverrun < Minitest::Test
   # middle of the Advance's with a border of blue and yellow round it. With +own_sprites+ the scene
   # has that many sprites of its own along the top. With +shared+ every scene shows a background
   # declared outside them, and with +title_scenery+ false the title has none of its own.
+  # With +missed_gap+ the pass that hands over first runs on to line MISSED_GAP_LINE of the picture
+  # after its gap, so it has missed the next gap's start by the time it reaches +late+.
   private def handed_over(layers:, tile_count:, late: false, halts: false, bordered: false, own_sprites: 0, shared: false,
-                          title_scenery: true)
+                          title_scenery: true, missed_gap: false)
     title_tile = TITLE
     side = WIDE
     handed_over_at = HANDED_OVER_AT
@@ -102,6 +104,12 @@ class TestSceneArrivalOverrun < Minitest::Test
         pass += 1
         state = 1 if pass == handed_over_at && own_sprites.zero?
         if late && pass == handed_over_at
+          if missed_gap
+            line = read_scanline
+            while line != TestSceneArrivalOverrun::MISSED_GAP_LINE
+              line = read_scanline
+            end
+          end
           line = read_scanline
           while line < late_line
             line = read_scanline
@@ -316,6 +324,37 @@ class TestSceneArrivalOverrun < Minitest::Test
     assert_equal 0, rows.fetch(ART_START_LINES.last), "a setup run into the picture holds it whole: #{rows}"
     assert_empty rows.reject { |_, shown| [0, OWN_SPRITE_ROWS.size].include?(shown) },
                  "rows of the scene's own sprites showing on its first picture, by the line its setup started on: #{rows}"
+  end
+
+  # A PASS THAT HAS ALREADY MISSED A GAP when its scene takes over is late, and the picture drawn
+  # while it finishes is not one the interpreter has: the pass's own picture is the one after its
+  # wait. So that late picture holds the scene off whether the setup ends in the gap or runs on past
+  # it, and two builds of one game whose setups take different times show the same pictures from
+  # power-on. Here the setup starts at lines spread over the gap, so it ends in the gap at the first
+  # and runs into the picture at the last.
+  MISSED_GAP_LINE = 100
+  MISSED_GAP_START_LINES = [165, 190, 210, 227].freeze
+
+  def test_a_late_pass_shows_its_scene_on_the_same_picture_wherever_its_setup_ends
+    seen = MISSED_GAP_START_LINES.to_h do |line|
+      [line, pictures_from_power_on(handed_over(layers: 1, tile_count: 16, own_sprites: OWN_SPRITES, late: line, missed_gap: true))]
+    end
+
+    assert_equal [seen.values.first], seen.values.uniq,
+                 "the pictures from power-on by the line the late pass's setup started on: #{seen}"
+    assert_includes seen.values.first.drop(1), 160, "the late picture, after power-on's, is the backdrop whole: #{seen.values.first}"
+    assert_equal 0, seen.values.first.last, "the scene is up whole after: #{seen.values.first}"
+  end
+
+  # Each picture from power-on until a few after the handover, as the rows of it that are one colour.
+  private def pictures_from_power_on(game)
+    rom = assemble_rom(game, name: "LATEPASS")
+    reader = VBlank::Diagnostics::Verifier.new(rom, frames: 0, vars: rom.var_addresses)
+    (1..(HANDED_OVER_AT + 6)).map do
+      reader.step
+      picture = reader.frame_gba
+      (0...160).count { |row| picture[row * 240, 240].uniq.one? }
+    end
   end
 
   def test_setups_a_little_apart_that_fit_the_gap_show_the_same_pictures
