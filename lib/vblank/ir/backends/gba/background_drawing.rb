@@ -791,7 +791,9 @@ module VBlank
           # picture after that gap is drawn while the pass is late, and is held whichever side of
           # the gap's end the sending finished on (#emit_branch_unless_in_pass_gap).
           #
-          # In a pass on time, which side of the gap's end a sending finishes on is still timing:
+          # A scene's sending counted at more than half the gap is held on
+          # every build, wherever it ends (Drawing#first_picture_held?). For a smaller one in a
+          # pass on time, which side of the gap's end it finishes on is still timing:
           # one that ends in the last lines of the gap shows the scene, a little later the
           # backdrop. Hold every
           # sending instead and the first picture of every scene would be the backdrop, where
@@ -855,9 +857,10 @@ module VBlank
           # AFTER SENDING: write +reg+, the display's settings with the layers wanted back on: as
           # they are in the gap the pass started in, and with the layers held off anywhere else,
           # for the screen's interrupt to switch on at the start of the next gap
-          # (#emit_branch_unless_in_pass_gap).
+          # (#emit_branch_unless_in_pass_gap). With +held+ they are held wherever the sending ended,
+          # for a scene whose sending can run past the gap (Drawing::SENDING_ROOM_CYCLES).
           # Uses TMP and ADDR.
-          def emit_layers_back_on_or_held(reg)
+          def emit_layers_back_on_or_held(reg, held: false)
             emit_without_switched_off_layers(reg) # ...save the ones the game hid
             unless holds_layers?
               emit_number(TMP, REG_DISPCNT)
@@ -865,13 +868,15 @@ module VBlank
             end
 
             with_interrupts_held_off do
-              held = gensym
               write = gensym
-              emit_branch_unless_in_pass_gap(held)
-              emit_number(TMP, 0) # on now, so nothing is held from an earlier sending
-              store_var(TMP, LAYERS_HELD)
-              emit_branch(:b, write)
-              place_label(held)
+              unless held
+                held_label = gensym
+                emit_branch_unless_in_pass_gap(held_label)
+                emit_number(TMP, 0) # on now, so nothing is held from an earlier sending
+                store_var(TMP, LAYERS_HELD)
+                emit_branch(:b, write)
+                place_label(held_label)
+              end
               emit(ASM.and_imm(TMP, reg, held_layer_bits))
               store_var(TMP, LAYERS_HELD)
               emit(ASM.bic_imm(reg, reg, held_layer_bits))

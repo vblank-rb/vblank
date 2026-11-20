@@ -806,7 +806,7 @@ module VBlank
             load_var(ACC, SCENE_SEND_DISPLAY)
             emit(ASM.bic_imm(ACC, ACC, BG_ENABLE_MASK))
             emit(ASM.orr_imm(ACC, ACC, on)) unless on.zero?
-            return @background_drawing.emit_layers_back_on_or_held(ACC) unless art_follows
+            return @background_drawing.emit_layers_back_on_or_held(ACC, held: first_picture_held?(name)) unless art_follows
 
             # The pictures are sent when the note of whose are up names another scene, as
             # SceneEntry#emit_once_on_arrival reads it: then the layers stay off for them.
@@ -817,7 +817,7 @@ module VBlank
               emit_number(ACC, 0)
               store_var(ACC, SCENE_ART_FOLLOWS)
               load_var(ACC, SCENE_SEND_DISPLAY)
-              @background_drawing.emit_layers_back_on_or_held(ACC)
+              @background_drawing.emit_layers_back_on_or_held(ACC, held: first_picture_held?(name))
             end
           end
 
@@ -1039,8 +1039,75 @@ module VBlank
             emit_number(ACC, 0)
             store_var(ACC, SCENE_ART_FOLLOWS)
             load_var(ACC, SCENE_SEND_DISPLAY)
-            @background_drawing.emit_layers_back_on_or_held(ACC)
-            emit_game_rows_back_in_gap if @layout.border
+            @background_drawing.emit_layers_back_on_or_held(ACC, held: first_picture_held?(name))
+            emit_game_rows_back_in_gap if @layout.border && !first_picture_held?(name)
+          end
+
+          # A SCENE WHOSE SENDING CAN RUN PAST THE GAP HOLDS ITS FIRST PICTURE WHATEVER THE TIMING.
+          #
+          # Where a sending ends decides whether the picture after it shows the scene (in the gap)
+          # or the backdrop (past it), and two builds of one game move their pictures from different
+          # memories at different speeds: the all-in-one build from the cartridge, one built with
+          # its data pack left out from the pack's copy in work memory. Near the gap's end one shows
+          # the scene and the other holds it. So a scene whose sending can need more than the room
+          # the gap leaves it (SENDING_ROOM_CYCLES) is held for the picture after it on every build,
+          # wherever it ends, and the scene shows on the one after that. The count is made from
+          # what the sending moves, which is the same on every build of a game, so every build
+          # decides alike. A scene whose sending fits is left to the timing, as before (see
+          # BackgroundDrawing::LAYERS_HELD).
+          #
+          # What it moves is counted at the slowest source any build reads it from. The copying
+          # engine reads a halfword and writes it for each unit (GBATEK, "DMA Transfers": 2N +
+          # 2(n-1)S + xI): from the cartridge at the power-on wait states a build keeps with
+          # `fast_cartridge: false` a sequential halfword is three cycles, from work memory three
+          # too (two wait states), and the write to video or palette memory one (GBATEK, "GBA
+          # Memory Map", "System Control"). Four cycles a halfword is two a byte.
+          SENDING_CYCLES_A_BYTE = 2
+
+          # A map filled by the processor rather than copied whole: the view of a background whose
+          # map is bigger than video memory keeps, filled round its corner a row at a time
+          # (MapStreaming). Counted as the block of cells the console keeps for it, each read and
+          # written by a few instructions: a fixed eight cycles a cell.
+          STREAM_FILL_CYCLES = MapStreaming::STREAM_CELLS * MapStreaming::STREAM_CELLS * 8
+
+          # The room a scene's sending has: half the gap between pictures (GBATEK, "LCD Dimensions
+          # and Timings": 228 lines of 1232 cycles, 160 of them drawn). The other half is for the
+          # pass's own work in the gap before the scene's routine runs: the sprite table and the
+          # sound's handover, and whatever the game's loop does before it picks the scene. The game
+          # decides how much that is, and the build cannot count it, so the room keeps half the gap
+          # for it rather than a figure that one game's loop already passes.
+          LINE_CYCLES = 1232
+          GAP_CYCLES = LINE_CYCLES * (228 - SCREEN_HEIGHT)
+          SENDING_ROOM_CYCLES = GAP_CYCLES / 2
+
+          # Is +name+'s first picture held whatever the timing (see SENDING_ROOM_CYCLES)? Never in a
+          # game that does not hold its layers, which has no gap to hold them for.
+          def first_picture_held?(name)
+            (@first_picture_held ||= {}).fetch(name) do
+              @first_picture_held[name] = @background_drawing.holds_layers? && scene_sending_cycles(name) > SENDING_ROOM_CYCLES
+            end
+          end
+
+          # The cycles +name+'s sending is counted to take as it takes over: its tile pictures, maps
+          # and colours, its painted tiles, and its sprite pictures and colours (#emit_scene_scenery,
+          # #emit_scene_art_upload), at SENDING_CYCLES_A_BYTE, and STREAM_FILL_CYCLES for each map
+          # the processor fills. A map the BIOS unpacks into place is counted as the bytes it
+          # unpacks to, at the copying engine's rate.
+          def scene_sending_cycles(name)
+            own = @layout.screen.scene_send(name)
+            arrival = scene_handover.arrival(name)
+            halfwords = (own.tiles || []).sum(&:units) + (own.art || []).sum { |_blob, _at, units| units * 16 }
+            halfwords += @layout.screen.bg_shared.palette_units if own.bg_palette
+            halfwords += @layout.screen.obj_palette_units if sends_scene_colors?(name)
+            filled = 0
+            arrival.scenery.each do |node|
+              bg = @layout.screen.declared_background(node)
+              bg.stream ? filled += 1 : halfwords += bg.map_units
+            end
+            painted = (arrival.painted_tiles + arrival.painted_pictures).sum do |run|
+              @layout.screen.painted_vram&.[](run.name)&.bytes || 0
+            end
+            (((halfwords * 2) + painted) * SENDING_CYCLES_A_BYTE) + (filled * STREAM_FILL_CYCLES)
           end
 
           # Set while a scene's scenery has been sent and its sprite pictures are about to be, with

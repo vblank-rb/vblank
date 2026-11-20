@@ -357,6 +357,22 @@ class TestSceneArrivalOverrun < Minitest::Test
     end
   end
 
+  # A SCENE WHOSE SENDING CAN NEED MORE THAN THE GAP LEAVES IT holds its first picture wherever the
+  # sending ends: two builds of one game move its pictures from different memories at different
+  # speeds, and one ending in the gap where the other runs a few lines on must not show a different
+  # picture. Here a background of many tiles, its setup started where it fits the gap (with no wait,
+  # and at line 190) and where it runs into the picture.
+  BIG_SENDING_START_LINES = [false, 190, 215, 227].freeze
+
+  def test_a_scene_whose_sending_can_pass_the_gap_holds_its_first_picture_wherever_it_ends
+    seen = BIG_SENDING_START_LINES.to_h { |line| [line, backdrop_rows_from_handover(handed_over(layers: 1, tile_count: 900, late: line))] }
+
+    assert_equal [seen.values.first], seen.values.uniq,
+                 "the scene's pictures by the line its setup started on: #{seen.transform_values { |pictures| pictures.map(&:length) }}"
+    assert_equal 160, seen.values.first.first.length, "the first picture is the backdrop: #{seen.values.first.map(&:length)}"
+    assert_empty seen.values.first.last, "the scene is up whole after: #{seen.values.first.map(&:length)}"
+  end
+
   def test_setups_a_little_apart_that_fit_the_gap_show_the_same_pictures
     seen = FITTING_LINES.to_h { |line| [line, backdrop_rows_from_handover(handed_over(layers: 1, tile_count: 16, late: line))] }
 
