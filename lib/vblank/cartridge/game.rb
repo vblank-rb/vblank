@@ -54,11 +54,16 @@ module VBlank
       # +options+ is part of what the cartridge is — how much save memory it has, how quickly
       # it reads — so like +code+ it is set where the game is named. +menu+ false is a game whose
       # window, played on a computer, opens no menu over the picture.
-      def initialize(title, consoles:, code: nil, maker: nil, block:, options: Options.new, menu: true, variants: {})
+      #
+      # +settings+ are what every build of this handle is told (#with_settings), by name in order of
+      # name, a copy of their own so the handle can cross to another core.
+      def initialize(title, consoles:, code: nil, maker: nil, block:, options: Options.new, menu: true, variants: {},
+                     settings: {})
         @title = title
         @code = code
         @maker = maker
         @options = options
+        @settings = Ractor.make_shareable(settings.to_h { |name, value| [name.to_sym, value] }.sort.to_h, copy: true)
         @menu = menu
         @consoles = Console.refuse_unknown_consoles!(consoles, setting: "consoles:")
         @variants = refuse_unusable_variants!(variants)
@@ -127,7 +132,8 @@ module VBlank
       #
       # +settings+ are what this build is told, read by the game with `setting` — which floors,
       # which screen it boots on. A test builds a variant by passing a value here, and nothing
-      # anybody else is building changes. Remembered per set of settings.
+      # anybody else is building changes. Remembered per set of settings. They are added to the
+      # handle's own (#with_settings), and a name given in both is refused.
       #
       # +console+ is the console it is built for, the first the game names unless set: the game
       # reads that console's screen as its block runs (`screen_width`), so the tree is that
@@ -141,7 +147,7 @@ module VBlank
       # (`screen :bitmap, size:`). False, the default, is the tree the console's cartridge is made
       # from, which a test plays to check the cartridge against.
       def program(settings: {}, console: @consoles.first, variant: variant_for(console), for_computer: false)
-        evaluated(settings, refuse_console_not_for!(console), variant, for_computer: for_computer).program
+        evaluated(merged_settings(settings), refuse_console_not_for!(console), variant, for_computer: for_computer).program
       end
 
       # THE KEPT NUMBERS THAT DIFFERED FROM WHAT THEY WERE COPIED FROM, as the game plays on the
@@ -158,7 +164,7 @@ module VBlank
       # The block, if given, is handed the interpreter before it plays, to hold buttons
       # (`input_each_frame`). +settings+, +console+ and +variant+ are as for #program.
       def copies_that_differed(frames:, settings: {}, console: @consoles.first, variant: variant_for(console))
-        evaluated = evaluated(settings, refuse_console_not_for!(console), variant)
+        evaluated = evaluated(merged_settings(settings), refuse_console_not_for!(console), variant)
         watch = IR::Backends::Reference::CopyWatch
         copies = evaluated.hidden_variable_notes.select { |note| note.why == :copy }
                           .to_h { |note| [note.name, watch::CopyLine.new(source: note.source, local: note.local)] }
@@ -213,7 +219,7 @@ module VBlank
       # and the one a shell makes on the player's machine. Nil for a game with no data_pack.
       def data_pack_file(settings: {}, console: @consoles.first)
         options = @options.with(console: console, variant: variant_for(console), consoles: @consoles, for_computer: true)
-        EvaluatedGame.new(@block, options: options, settings: settings).made_data_pack_file
+        EvaluatedGame.new(@block, options: options, settings: merged_settings(settings)).made_data_pack_file
       end
 
       # THE SAME GAME BUILT WITH THE FEATURES +names+ ALONE, and what each brings (see
@@ -238,6 +244,29 @@ module VBlank
       # starts rather than a state set in a running game.
       def starting_with(**starts) = with_options(@options.with(starts: @options.starts.merge(starts)))
 
+      # THE SAME GAME TOLD +settings+, read by `setting` in the block as a call's `settings:` is, on top
+      # of any this handle has already, a later value for a name taking its place. A new handle, this
+      # one unchanged. Everything that builds the handle — #program, #build_rom, a CartridgeCache, a
+      # film — is told them, so a test hands one handle around and never a hash beside it, and a cache
+      # keeps a build of other settings apart.
+      #
+      #   ROOM = Cave.game.with_features(:hero).with_settings(room: 2).starting_with(hero_x: 40)
+      #
+      # A call's `settings:` adds to these. A name given in both is refused, since one of the two
+      # values would be dropped without a word.
+      def with_settings(**settings) = with_options(@options, settings: @settings.merge(settings))
+
+      # The settings a build of this handle is told: its own (#with_settings) with +given+, a call's
+      # `settings:`, added. Public for Testing::CartridgeCache, which keys a cartridge by them.
+      def merged_settings(given)
+        given = given.to_h { |name, value| [name.to_sym, value] }
+        name = (given.keys & @settings.keys).first
+        return @settings.merge(given) unless name
+
+        raise ArgumentError, "This build gives the setting :#{name} two times: in with_settings and in settings:. " \
+                             "To fix this, give :#{name} in one of them only."
+      end
+
       # The variant the game names for +console+ in `variants:`, or nil.
       def variant_for(console) = @variants[console.to_sym]
 
@@ -256,7 +285,7 @@ module VBlank
       # the source. Pass a path or a {RoutineProfile} to use a measurement taken by hand, for a
       # moment the automatic one cannot reach.
       #
-      # +settings+ are what this build is told, as for #program.
+      # +settings+ are what this build is told, as for #program, added to the handle's (#with_settings).
       #
       # +console+ is the console the cartridge is for, the first the game names unless set: a
       # Game Boy Advance cartridge (Cartridge::ROM) or a Game Boy Color one (Cartridge::GBCROM).
@@ -279,8 +308,10 @@ module VBlank
                     profile: Game.measured_by_default?, settings: {}, console: @consoles.first, variant: variant_for(console),
                     cartridge: true, for_computer: false, pack_at_start: false, on_read: nil, from_cache: true)
         console = refuse_console_not_for!(console)
+        told = merged_settings(settings)
         cache = from_cache && profile == false && Game.unmeasured_builds&.cache
         if cache && validate && cartridge && !for_computer && !pack_at_start && on_read.nil?
+          # The call's own settings: the cache builds this handle, which adds its settings again.
           return cache.cartridge(self, console: console, variant: variant, settings: settings)
         end
 
@@ -289,7 +320,7 @@ module VBlank
                                     pack_at_start: pack_at_start).to_h }
         options = options.except(*(Console.console_settings - Console.for(console).console_settings))
         VBlank.build(@title, validate: validate, out: out, err: err, progress: progress, profile: profile,
-                              settings: settings, cartridge: cartridge, on_read: on_read, **options, &@block)
+                              settings: told, cartridge: cartridge, on_read: on_read, **options, &@block)
       end
 
       # A friendly output filename from the title, ending as the console's cartridges do:
@@ -339,11 +370,11 @@ module VBlank
         !program.nil? && File.expand_path(path) == File.expand_path(program)
       end
 
-      # This game with +options+ in place of its own: a handle of its own, never registered as a game
-      # declared (VBlank.registered_games), since it is a build of one.
-      def with_options(options)
+      # This game with +options+ and +settings+ in place of its own: a handle of its own, never
+      # registered as a game declared (VBlank.registered_games), since it is a build of one.
+      def with_options(options, settings: @settings)
         self.class.new(@title, consoles: @consoles, code: @code, maker: @maker, block: @block, options: options,
-                               menu: @menu, variants: @variants)
+                               menu: @menu, variants: @variants, settings: settings)
       end
 
       # The console settings this game sets, by name, to their values.

@@ -158,8 +158,9 @@ module VBlank
           # Marshal is not: it writes an object it has met before as a link back, so a program whose
           # pieces are shared on one process and equal copies on another gave two keys.
           what = @sources || Digest::SHA256.hexdigest(IR::Dump.source(game.program(settings: settings, console: console, variant: variant)))
+          # Every setting the build is told, the handle's (Game#with_settings) and the call's.
           header = Digest::SHA256.hexdigest(Marshal.dump([game.title, game.code, game.maker, game.options.to_h, console, variant,
-                                                          settings, profile]))
+                                                          game.merged_settings(settings), profile]))
           parts = KeyParts.new(library: @library, ruby: @ruby, game: what, header: header, inputs: @inputs)
           [Digest::SHA256.hexdigest(parts.to_h.values.join(" ")), parts]
         end
@@ -167,11 +168,12 @@ module VBlank
 
       # How a report names a cartridge: the game, the console, the features it was built with where it
       # was built with some alone (Game#with_features), the starts it was given (Game#starting_with),
-      # and the settings that make it one.
+      # and the settings that make it one, the handle's (Game#with_settings) with the call's.
       def label_for(game, console, variant, settings, profile)
         built = game.options if game.options.is_a?(Cartridge::Options)
         features = built&.features_built
         starts = built&.starts
+        settings = game.merged_settings(settings)
         [game.title, console, variant, ("features #{features.join(',')}" if features),
          ("starting #{starts.sort.to_h}" unless starts.nil? || starts.empty?),
          (settings.sort.to_h unless settings.empty?), ("measured" if profile)].compact.join(" ")

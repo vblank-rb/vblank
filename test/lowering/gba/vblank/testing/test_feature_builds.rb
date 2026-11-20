@@ -5,6 +5,7 @@ require "stringio"
 require "tmpdir"
 require "vblank/testing/cartridge_cache"
 require "all/vblank/builder/test_features"
+require "all/vblank/cartridge/test_game_with_settings"
 
 # A game's test builds the smallest cartridge that answers its question, `game.with_features(...)`
 # (Cartridge::Features), and shares it: a feature left out is not in the cartridge at all, and the
@@ -46,6 +47,21 @@ class TestFeatureBuilds < Minitest::Test
                   "asked twice in a run, it is built once"
       assert_equal :miss, ask(first, Cave.game), "the whole game is another cartridge"
       assert_equal :hit, ask(VBlank::Testing::CartridgeCache.new(folder), Cave.game.with_features(:hero, :bat))
+    end
+  end
+
+  # Settings on the handle (Game#with_settings) make a cartridge of their own, as features do, and
+  # one built as the call's settings: is the same cartridge.
+  def test_a_build_with_settings_is_kept_apart_by_its_settings
+    room = TestGameWithSettings::Room.game
+    Dir.mktmpdir do |folder|
+      first = VBlank::Testing::CartridgeCache.new(folder)
+
+      assert_equal :miss, ask(first, room.with_settings(room: 2))
+      assert_equal :miss, ask(first, room.with_settings(room: 3)), "other settings are another cartridge"
+      assert_equal :hit, ask(VBlank::Testing::CartridgeCache.new(folder), room.with_settings(room: 2))
+      assert_equal room.build_rom(out: nil, err: nil, profile: false, settings: { room: 2 }).buffer,
+                   room.with_settings(room: 2).build_rom(out: nil, err: nil, profile: false).buffer
     end
   end
 end

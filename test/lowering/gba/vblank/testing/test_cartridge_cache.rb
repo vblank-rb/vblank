@@ -52,6 +52,7 @@ class TestCartridgeCache < Minitest::Test
   HandBuiltGame = Struct.new(:program_made, :title, :code, :maker, :options) do
     def program(**) = program_made
     def variant_for(_console) = nil
+    def merged_settings(settings) = settings
     def build_rom(**) = ROM.assemble(GBA.new.lower(program_made), title: title)
   end
 
