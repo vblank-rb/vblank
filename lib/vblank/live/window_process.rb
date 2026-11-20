@@ -11,10 +11,6 @@ module VBlank
     # loads only what a game written out as one Ruby file carries, from the library's own files, and
     # the window's wait for the build (BuildWatch).
     module WindowProcess
-      # What the window loads besides what a script carries: where it keeps save states and the
-      # game's save memory, which vblank run's window offers and a script's does not.
-      BESIDE_SCRIPT_PARTS = %w[vblank/live/state_slots.rb vblank/live/save_file.rb].freeze
-
       # Whether this Ruby can become the window's process: it hands the helper a descriptor it
       # spawns it with (Process.spawn's descriptor mapping) and replaces itself keeping that
       # descriptor open (Kernel.exec), neither of which Windows or JRuby does.
@@ -26,7 +22,7 @@ module VBlank
       # Ruby with ZJIT, as the command's was. Never returns.
       def self.become(launch, helper_pipe:, zjit: false)
         runtime = IR::Backends::Ruby::RUNTIME_DIR
-        loaded = (IR::Backends::Ruby::SCRIPT_PARTS + BESIDE_SCRIPT_PARTS).map { |part| VBlank.root.join("lib", part).to_s } +
+        loaded = IR::Backends::Ruby::SCRIPT_PARTS.map { |part| VBlank.root.join("lib", part).to_s } +
                  [File.join(runtime, "rg_script_main.rb"), File.join(__dir__, "build_watch.rb")]
         kept_open = helper_pipe ? { helper_pipe => helper_pipe } : {}
         # Must come just before exec, which runs no at_exit hook and finishes no object.

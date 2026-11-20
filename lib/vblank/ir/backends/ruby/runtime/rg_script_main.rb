@@ -56,7 +56,7 @@ module VBlankScript
   # it went. +window+ is one opened already, before the game was known (rg_window_main.rb), which is
   # fitted to the game here; nil opens one for it. The window is closed however the play ends.
   # +options+ are #main's, by its names, and :state_folder, where save states and the game's save
-  # memory are kept (Live::StateSlots.folder_name), for none when left out.
+  # memory are kept (Live::StateSlots.folder_name), the written game's own when left out.
   def self.play(written, options, window: nil)
     game = written.live_game
     if window
@@ -66,7 +66,7 @@ module VBlankScript
       window = VBlank::Live::SDL.new(title: written.title, scale: options[:scale], width: game.width, height: game.height,
                                      pixel_size: game.pixel_size, menu: written.menu,
                                      settings_file: options[:"settings-file"] || :usual, config_dir: options[:"config-dir"],
-                                     state_folder_name: options[:state_folder], game_controls: game.controls,
+                                     state_folder_name: options.fetch(:state_folder, written.state_folder), game_controls: game.controls,
                                      buttons: game.buttons)
       problems = window.settings_problems_message
     end

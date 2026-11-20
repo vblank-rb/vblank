@@ -49,4 +49,17 @@ class TestWrittenGame < Minitest::Test
       assert_nil written.shell
     end
   end
+
+  # SAVE STATES AND THE SAVE FILE: a written game says where its window keeps them, the folder
+  # vblank run's window keeps them in (StateSlots.folder_name, from the title and the game's code),
+  # so a state saved in one is in the menu of the other.
+  def test_a_written_game_keeps_its_states_where_vblank_run_keeps_them
+    Dir.mktmpdir do |dir|
+      path = Ruby.new.build_script(mover, File.join(dir, "mover-ruby.rb"), console: :gba, err: StringIO.new)
+      written = Ruby::WrittenGame.read(path)
+
+      assert_equal VBlank::Live::StateSlots.folder_name(title: "MOVER", code: mover.identifying_code), written.state_folder
+      assert_includes File.read(path), "class StateSlots", "the script carries what keeps the states"
+    end
+  end
 end

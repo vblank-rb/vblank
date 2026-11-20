@@ -113,12 +113,12 @@ module VBlank
           if shell
             built = Original::Shell.build(game, console: console, settings: settings, err: err, progress: progress)
             progress.step("Writing Ruby")
-            File.write(path, script(built.game, title: game.title, menu: game.menu?, shell: built))
+            File.write(path, script(built.game, title: game.title, menu: game.menu?, code: game.identifying_code, shell: built))
           else
             program = Computer::CheckedProgram.build(game, console: console, settings: settings, err: err, progress: progress,
                                                     pack_at_start: pack_at_start)
             progress.step("Writing Ruby")
-            File.write(path, script(program, title: game.title, menu: game.menu?))
+            File.write(path, script(program, title: game.title, menu: game.menu?, code: game.identifying_code))
           end
           path
         ensure
@@ -126,13 +126,15 @@ module VBlank
         end
 
         # ...the file's text, for +program+ in a window titled +title+, with a menu or not, and as
-        # the Original::Shell +shell+ when there is one.
-        def script(program, title:, menu: true, shell: nil)
+        # the Original::Shell +shell+ when there is one. +code+ is the game's code, which names the
+        # folder its save states and save memory are kept in (WrittenGame#state_folder); nil keeps none.
+        def script(program, title:, menu: true, code: nil, shell: nil)
           [SCRIPT_TOP, *SCRIPT_PARTS.map { |part| File.read(VBlank.root.join("lib", part), encoding: Encoding::UTF_8) },
            *(shell ? SHELL_PARTS.map { |part| File.read(VBlank.root.join("lib", part), encoding: Encoding::UTF_8) } : []),
            "VBlank::Graphics::MenuFont::CARRIED = <<'#{FONT_END}'\n#{File.read(Graphics::MenuFont::PATH, encoding: Encoding::UTF_8)}#{FONT_END}\n",
            "module VBlankScript\n", WrittenGame::PART_BEGINS,
            "  TITLE = #{title.to_s.inspect}\n  CONSOLE_TITLE = #{program.described_console.title.inspect}\n  MENU = #{menu}\n",
+           "  GAME_CODE = #{code.nil? ? 'nil' : code.to_s.inspect}\n",
            "  SOURCE = #{script_heredoc(live_source(program), SCRIPT_END)}",
            shell ? script_shell_text(shell) : "  SHELL_FACTS = nil\n", WrittenGame::PART_ENDS, "end\n",
            File.read(File.join(RUNTIME_DIR, SCRIPT_MAIN), encoding: Encoding::UTF_8).delete_prefix(MAGIC_COMMENT)].join
@@ -147,7 +149,8 @@ module VBlank
                           vblank/ir/backends/ruby/live_game.rb vblank/ir/backends/ruby/written_game.rb
                           vblank/graphics/menu_font.rb vblank/live/window_menu.rb
                           vblank/live/lateness.rb vblank/live/rate.rb vblank/live/menu.rb vblank/live/settings.rb
-                          vblank/live/settings_file.rb vblank/live/seats.rb vblank/live/session.rb vblank/live/sdl.rb].freeze
+                          vblank/live/settings_file.rb vblank/live/seats.rb vblank/live/state_slots.rb vblank/live/save_file.rb
+                          vblank/live/session.rb vblank/live/sdl.rb].freeze
         # What a shell's script carries besides: the check of a kept pack, the words for a wrong copy,
         # the shell's facts and the shell itself, each needing nothing of the library the script does
         # not carry.

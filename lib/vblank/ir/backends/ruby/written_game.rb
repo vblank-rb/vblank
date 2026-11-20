@@ -13,11 +13,16 @@ module VBlank
         #
         # Carried in every script, so it names nothing of the library a script does not carry.
         #
-        # +shell+ is a Shell, the parts Live::Shell is made from as text, or nil for a game that is
-        # not one.
-        WrittenGame = Data.define(:title, :console_title, :menu, :source, :shell) do
+        # +code+ is the game's code (Cartridge::Game#identifying_code), or nil for a game written
+        # with none, which keeps no save states. +shell+ is a Shell, the parts Live::Shell is made
+        # from as text, or nil for a game that is not one.
+        WrittenGame = Data.define(:title, :console_title, :menu, :code, :source, :shell) do
           # The game as Ruby, made a game ready to play afresh each time it is asked.
           def live_game = LiveGame.new(source)
+
+          # The folder its window keeps save states and the game's save memory in, the one vblank
+          # run's keeps them in (Live::StateSlots.folder_name), or nil for none.
+          def state_folder = (Live::StateSlots.folder_name(title: title, code: code) if code)
         end
 
         class WrittenGame
@@ -35,7 +40,7 @@ module VBlank
             facts = holder.const_get(:SHELL_FACTS)
             shell = (Shell.new(facts: facts, menu: holder.const_get(:SHELL_MENU), unpackings: holder.const_get(:SHELL_UNPACKINGS)) if facts)
             new(title: holder.const_get(:TITLE), console_title: holder.const_get(:CONSOLE_TITLE), menu: holder.const_get(:MENU),
-                source: holder.const_get(:SOURCE), shell: shell)
+                code: holder.const_get(:GAME_CODE), source: holder.const_get(:SOURCE), shell: shell)
           end
 
           # The game in the script at +path+: its part is read into a module of its own and taken from
