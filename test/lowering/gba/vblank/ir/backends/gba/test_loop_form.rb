@@ -586,6 +586,24 @@ class TestLoopForm < Minitest::Test
     assert_equal 64, read_var(rom, :seen)
   end
 
+  # A `while` with nothing in its body has no last line adding one, so it is no counted while
+  # (LoopForm#counted_while): it is the loop that waits on something the console changes,
+  # `nil while read_scanline < 160`, and it is lowered as any other repeat. Here its test is
+  # false from the start, so the game goes past it every pass.
+  def test_a_while_with_nothing_in_its_body_goes_on_past_it
+    rom = VBlank.build("LOOPNONE", console: :gba, err: StringIO.new, out: StringIO.new) do
+      screen :bitmap
+      n = var :n, 5
+      passes = 0
+      game_loop do
+        nil while n < 3
+        passes += 1
+      end
+    end
+
+    assert_operator read_var(rom, :passes), :>, 0
+  end
+
   # The instructions a pass of the loop runs beyond its body. Each form is measured at PASSES
   # and at twice that, so what either spends once — setting the loop up, or the first statement
   # finding the variables — cancels out of the difference. The body is given the builder, a

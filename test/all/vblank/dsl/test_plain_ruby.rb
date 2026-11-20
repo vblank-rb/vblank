@@ -2445,6 +2445,39 @@ class TestPlainRuby < Minitest::Test
     assert_equal [0, 1], [player[:left], player[:after]]
   end
 
+  # A loop written on one line whose body gives its own test's name a new number, a name that
+  # first held a working-out (`line = read_scanline` then `line = read_scanline while ...`). The
+  # test is written after the body but asked before it, each round, so the body's number is the
+  # one the next round asks about, as in the same loop written as a block. Each name is read
+  # nowhere after its loop, which is what left it a plain Ruby name.
+  def test_a_one_line_while_that_sets_its_own_tests_name_asks_the_new_number
+    player = played(frames: 2) do
+      marks = list :marks, capacity: 8, width: :byte, full_of: 0
+      one_line = var(:one_line, 0)
+      one_line_until = var(:one_line_until, 0)
+      as_block = var(:as_block, 0)
+      game_loop do
+        marks[4] = 9
+        at = 0
+        seen = marks[at]
+        seen = marks[at += 1] while seen != 9
+        one_line.store!(at)
+        at = 0
+        found = marks[at]
+        found = marks[at += 1] until found == 9
+        one_line_until.store!(at)
+        at = 0
+        mark = marks[at]
+        while mark != 9
+          mark = marks[at += 1]
+        end
+        as_block.store!(at)
+      end
+    end
+
+    assert_equal [4, 4, 4], [player[:one_line], player[:one_line_until], player[:as_block]]
+  end
+
   def test_until_stops_once_the_test_holds
     player = played(frames: 2) do
       n = 0

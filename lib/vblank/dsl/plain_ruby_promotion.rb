@@ -397,11 +397,12 @@ module VBlank
           LocalNames::LOOPS.any? { |kind| node.is_a?(kind) } ? around | [node] : around
         end
 
-        # Is +local+ read in +loop+ at or before +write+, so the next round reads what it wrote?
+        # Is +local+ read in +loop+ at or before +write+, or in its test, so the next round reads
+        # what it wrote?
         def read_next_round?(local, loop, write)
           from = loop.location.start_offset
           to = write.location.start_offset
-          local.reads.any? { |read| read.location.start_offset.between?(from, to) }
+          local.reads.any? { |read| read.location.start_offset.between?(from, to) || in_loop_test?(read, loop) }
         end
 
         # Does each of +sides+ write +name+, so that it holds something whichever way the test goes?
@@ -568,17 +569,22 @@ module VBlank
           !@names.written_in_game_code?(write) && local.reads.any? { |read| @names.read_in_game_code?(read) }
         end
 
-        # Is +read+ above +write+ in a loop that holds both, with one of +changes+ in that loop?
+        # Is +read+ above +write+ in a loop that holds both, or in that loop's test, with one of
+        # +changes+ in that loop?
         def read_next_time_round?(read, write, changes)
-          return false unless read.location.start_offset < write.location.start_offset
-
           @names.loops_around(write).any? do |each_loop|
-            inside?(read, each_loop) &&
+            above = read.location.start_offset < write.location.start_offset && inside?(read, each_loop)
+            (above || in_loop_test?(read, each_loop)) &&
               changes.any? { |change| change.offset.between?(each_loop.location.start_offset, each_loop.location.end_offset) }
           end
         end
 
         def inside?(node, outer) = node.location.start_offset >= outer.location.start_offset && node.location.end_offset <= outer.location.end_offset
+
+        # Is +read+ in the test of +loop+? A loop asks its test again after each round, wherever
+        # the test is written: `line = read_scanline while line >= 160` has it after the line it
+        # guards, and the next round still asks about the number that line wrote.
+        def in_loop_test?(read, loop) = inside?(read, loop.predicate)
 
         # `sound_setting = menu_art && @sound_setting`, set while setting up and read only as a
         # whole argument (`Menus.new(sound_setting: sound_setting)`). Handing a game variable to a

@@ -212,8 +212,10 @@ module VBlank
           # business. #loop_shapes hands it over the way #var_addresses hands over where a
           # variable landed.
           def emit_repeat(node)
+            # Not `counted&.step.equal?(...)`: a loop with an empty body has no last statement, and
+            # nil is nil.
             counted = walk_plan.loop_form.counted_while(node)
-            if counted&.step.equal?(node.children.last)
+            if counted && counted.step.equal?(node.children.last)
               shape = counted_while_in_registers?(node, counted) ? :registers : :memory
               return record_loop_shape(node, shape) { emit_counted_while(node, counted, shape) }
             end
