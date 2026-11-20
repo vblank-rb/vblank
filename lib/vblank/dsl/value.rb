@@ -615,6 +615,34 @@ module VBlank
         mutate { @builder.approach!(@name, operand_matching(target, "compare"), operand_matching(step, "add")) }
       end
 
+      # Turn +velocity+ round when this number is at either end of +range+: at or below the low
+      # end the velocity is made positive, at or above the high end negative. That is a ball
+      # coming back off a wall:
+      #
+      #   x.bounce!(dx, 0..right) { beep :click }
+      #
+      # Only the velocity changes. This number is left where it is, so a ball that has gone a
+      # little past the wall is still there next pass, and still turned the right way: the
+      # velocity is SET to point away from the wall rather than flipped, so a second pass on
+      # the wall cannot send it back in. The block, if there is one, runs at each turn, once
+      # for whichever end was hit. The range's ends may be numbers or the game's own numbers.
+      #
+      # It is the two tests a game would write itself, and so it costs what they cost.
+      def bounce!(velocity, range, &on_turn)
+        refuse_bounce_velocity!(velocity)
+        refuse_bounce_range!(range)
+
+        (self <= range.begin).record_branch do
+          velocity.abs!
+          on_turn&.call
+        end
+        (self >= range.end).record_branch do
+          velocity.negate_abs!
+          on_turn&.call
+        end
+        self
+      end
+
       # Replace the variable with its absolute value.
       def abs!
         mutate { @builder.abs!(@name) }
@@ -670,6 +698,33 @@ module VBlank
       attr_reader :bang_spelling
 
       private
+
+      # The velocity is changed, so it must name somewhere a number is kept: a variable, or a
+      # field of a pool's thing.
+      def refuse_bounce_velocity!(velocity)
+        return if velocity.is_a?(Value) && velocity.handle?
+
+        raise ArgumentError,
+              "`bounce!` must have a variable for the speed, because it changes the speed at a wall. " \
+              "You gave #{Messages::PlainWords.words_for_given(velocity)}. " \
+              "Give the variable that holds the speed, for example `x.bounce!(dx, 0..right)`.#{at_dsl_line}"
+      end
+
+      # A range with both ends, and its high end in it. `0...100` stops short of 100, and a
+      # number with a fraction can sit between 99 and 100, so there is no one number to turn at.
+      def refuse_bounce_range!(range)
+        given = Messages::PlainWords.words_for_given(range)
+        unless range.is_a?(Range) && !range.begin.nil? && !range.end.nil?
+          raise ArgumentError,
+                "`bounce!` must have a range with a low end and a high end, for example `0..right`. " \
+                "You gave #{given}.#{at_dsl_line}"
+        end
+        return unless range.exclude_end?
+
+        raise ArgumentError,
+              "`bounce!` must have a range that includes its high end. `#{given}` stops before its high end. " \
+              "Write two dots: `#{given.sub('...', '..')}`.#{at_dsl_line}"
+      end
 
       def compare(op, other)
         Condition.new(@builder, Build.binop(op, @node, align!(other, describe_op(op))))

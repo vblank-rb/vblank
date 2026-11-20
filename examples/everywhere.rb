@@ -79,23 +79,10 @@ module Everywhere
 
       x += dx
       y += dy
-      # At a wall the ball turns round: `abs!` sends it right or down, `negate_abs!` left or up.
-      if x <= 0
-        dx.abs!
-        beep :click
-      end
-      if x >= right
-        dx.negate_abs!
-        beep :click
-      end
-      if y <= 0
-        dy.abs!
-        beep :click
-      end
-      if y >= bottom
-        dy.negate_abs!
-        beep :click
-      end
+      # At a wall the ball turns round: at the low end of the range its speed is made to point
+      # right or down, at the high end left or up, and the block clicks at each turn.
+      x.bounce!(dx, 0..right) { beep :click }
+      y.bounce!(dy, 0..bottom) { beep :click }
       ball.move_to x, y
     end
   end

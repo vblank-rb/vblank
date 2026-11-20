@@ -210,17 +210,11 @@ module Breakout
       ball_x += ball_dx
       ball_y += ball_dy
 
-      # Bounce off the two side walls and the ceiling. abs/negate_abs force the
-      # direction rather than just flipping it, so a ball wedged against a wall for
-      # a frame can't rattle back and forth.
-      if ball_x <= 0
-        ball_dx.abs!
-        beep :wall
-      end
-      if ball_x >= layout.width - BALL_SIZE
-        ball_dx.negate_abs!
-        beep :wall
-      end
+      # Bounce off the two side walls and the ceiling. Both force the direction
+      # rather than just flipping it, so a ball wedged against a wall for a frame
+      # can't rattle back and forth. The floor is not a wall (it is the pit, below),
+      # so the ceiling is one test of its own: abs! sends the ball down.
+      ball_x.bounce!(ball_dx, 0..layout.width - BALL_SIZE) { beep :wall }
       if ball_y <= 0
         ball_dy.abs!
         beep :wall

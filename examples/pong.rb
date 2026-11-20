@@ -171,17 +171,9 @@ module PongGame
       ball_x += ball_dx
       ball_y += ball_dy
 
-      # Bounce off top wall
-      if ball_y <= 0
-        ball_dy.abs!
-        beep :wall_bounce
-      end
-
-      # Bounce off bottom wall
-      if ball_y >= SCREEN_H - BALL_SIZE
-        ball_dy.negate_abs!
-        beep :wall_bounce
-      end
+      # Bounce off the top and bottom walls: at the top the ball is sent down, at the bottom
+      # up, with a beep each time.
+      ball_y.bounce!(ball_dy, 0..SCREEN_H - BALL_SIZE) { beep :wall_bounce }
 
       # Paddle collisions. The ball bounces only when its rectangle truly overlaps a
       # paddle's — the horizontal band AND the vertical span. The vertical test is
