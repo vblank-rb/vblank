@@ -165,9 +165,12 @@ module VBlank
         end
       end
 
-      # How a report names a cartridge: the game, the console, and the settings that make it one.
+      # How a report names a cartridge: the game, the console, the features it was built with where it
+      # was built with some alone (Game#with_features), and the settings that make it one.
       def label_for(game, console, variant, settings, profile)
-        [game.title, console, variant, (settings.sort.to_h unless settings.empty?), ("measured" if profile)].compact.join(" ")
+        features = game.options.features_built if game.options.respond_to?(:features_built)
+        [game.title, console, variant, ("features #{features.join(',')}" if features),
+         (settings.sort.to_h unless settings.empty?), ("measured" if profile)].compact.join(" ")
       end
 
       def files_digest(paths)

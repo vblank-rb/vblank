@@ -51,11 +51,18 @@ module VBlank
     # +pack_at_start+ makes a build for a computer leave the game's data pack out: `data_pack` reads
     # no copy of the original, and the program reads the pack from a file it is handed as it starts
     # (Builder::DataPacks says how). A cartridge build refuses it there, since a cartridge holds its data.
+    #
+    # +features+ are the parts of the game a build can leave out, each to the features it brings, as
+    # the game named them (Cartridge::Features). +features_built+ are the ones this build has, each
+    # with what it brings, or nil for every one (Game#with_features).
     Options = Data.define(:frame_sync, :fast_cartridge, :fast_code, :save_memory, :stack_room, :console,
-                          :variant, :sprite_piece_size, :for_computer, :players, :consoles, :pack_at_start) do
+                          :variant, :sprite_piece_size, :for_computer, :players, :consoles, :pack_at_start,
+                          :features, :features_built) do
       def initialize(frame_sync: :auto, fast_cartridge: nil, fast_code: nil, save_memory: nil, stack_room: nil,
                      console: nil, variant: nil, sprite_piece_size: {}, for_computer: false, players: nil,
-                     consoles: nil, pack_at_start: false)
+                     consoles: nil, pack_at_start: false, features: {}, features_built: nil)
+        features = Features.refuse_unusable!(features)
+        features_built = Features.brought_by(features, features_built) unless features_built.nil?
         console = Console.named(console) unless console.nil?
         consoles = consoles&.map { |name| Console.named(name) }&.freeze
         sprite_piece_size = Console.refuse_unusable_sprite_piece_sizes!(sprite_piece_size).freeze
@@ -80,6 +87,9 @@ module VBlank
       # The consoles the game is for: the ones it names, or the one console this build names when it
       # was given no list.
       def game_consoles = consoles || [console].compact
+
+      # Whether this build has the feature +name+, which the game declares.
+      def feature_built?(name) = features_built.nil? || features_built.include?(name)
     end
   end
 end

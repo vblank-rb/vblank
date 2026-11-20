@@ -59,6 +59,7 @@ require_relative "builder/sampled_audio"
 require_relative "builder/layers"
 require_relative "builder/draw_order"
 require_relative "builder/settings"
+require_relative "builder/features"
 require_relative "builder/parts"
 require_relative "builder/save_program"
 require_relative "builder/save_records"
@@ -129,6 +130,7 @@ module VBlank
     include Layers     # layers, layer (a named place in the stack: what sits in front of what)
     include DrawOrder  # draw_in_order (sprites drawn in an order the game works out)
     include Settings   # setting (what this build was told: which floors, which screen it boots on)
+    include Features   # feature? (whether this build has a part of the game a build can leave out)
     include SaveData   # save_data (records of the game's state, saved when the game asks for it; see Saves)
     include Parts      # part, start_over (a new game: a part of the game's state back as declared)
     include GameEffects # uses (a game's own effect packs, for its build alone)

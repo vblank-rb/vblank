@@ -141,11 +141,13 @@ module VBlank
   # +on_read+, when given, is called with the game as read (a Cartridge::EvaluatedGame), before it is
   # checked: for a caller that needs more of what the game declared than the program, such as a
   # shell's data pack, without reading a big game a second time.
+  # +features+ and +features_built+ are the game's features and the ones this build has; see
+  # {Cartridge::Features}.
   def self.build(title, code: nil, maker: nil, validate: true, frame_sync: :auto, fast_cartridge: nil,
                  fast_code: nil, out: $stdout, err: $stderr, progress: Messages::Progress.silent,
                  profile: false, settings: {}, save_memory: nil, stack_room: nil, console: nil, variant: nil,
                  sprite_piece_size: {}, cartridge: true, for_computer: false, players: nil, consoles: nil,
-                 pack_at_start: false, on_read: nil, &block)
+                 pack_at_start: false, features: {}, features_built: nil, on_read: nil, &block)
     block = DSL::PlainRuby.game_block(block) if block
     # The settings that say how the game is built travel as one value from here on (see
     # {Cartridge::Options}), checked now so a setting that cannot be right stops the build first.
@@ -153,7 +155,7 @@ module VBlank
                                      fast_code: fast_code, save_memory: save_memory, stack_room: stack_room,
                                      console: console, variant: variant, sprite_piece_size: sprite_piece_size,
                                      for_computer: for_computer, players: players, consoles: consoles,
-                                     pack_at_start: pack_at_start)
+                                     pack_at_start: pack_at_start, features: features, features_built: features_built)
     refuse_unnamed_console!(title) if options.console.nil?
     # A measurement taken earlier is a console setting; true and false only say whether to measure.
     said = Console.console_settings_said(code: code, maker: maker, **options.to_h,

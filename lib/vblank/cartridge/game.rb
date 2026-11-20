@@ -216,6 +216,15 @@ module VBlank
         EvaluatedGame.new(@block, options: options, settings: settings).made_data_pack_file
       end
 
+      # THE SAME GAME BUILT WITH THE FEATURES +names+ ALONE, and what each brings (see
+      # Cartridge::Features): a new handle, this one unchanged. A name the game does not declare is
+      # refused here. Everything that builds the handle — #program, #build_rom, a CartridgeCache —
+      # builds the smaller game, and a cache keeps it apart from the whole one.
+      #
+      #   SMALL = Cave.game.with_features(:hero)
+      #   game_player.run(SMALL.program, frames: 60)
+      def with_features(*names) = with_options(@options.with(features_built: names.flatten.map(&:to_sym)))
+
       # The variant the game names for +console+ in `variants:`, or nil.
       def variant_for(console) = @variants[console.to_sym]
 
@@ -315,6 +324,13 @@ module VBlank
       def main_script?(path)
         program = MAIN_SCRIPT
         !program.nil? && File.expand_path(path) == File.expand_path(program)
+      end
+
+      # This game with +options+ in place of its own: a handle of its own, never registered as a game
+      # declared (VBlank.registered_games), since it is a build of one.
+      def with_options(options)
+        self.class.new(@title, consoles: @consoles, code: @code, maker: @maker, block: @block, options: options,
+                               menu: @menu, variants: @variants)
       end
 
       # The console settings this game sets, by name, to their values.
@@ -457,11 +473,15 @@ module VBlank
     # +players+ is how many players the game takes: `players: 4`, `players: 2..4`, or by console,
     # `players: { snes: 1..2, computer: 1..8, else: 1 }` (see Cartridge::Players).
     #
+    # +features+ names the parts of the game a build can leave out, each to the features it brings:
+    # `features: { hero: %i[lamp], lamp: [], bat: [] }`. The block asks `feature?(:bat)`, and
+    # `game.with_features(:hero)` is the game built with those alone (see Cartridge::Features).
+    #
     # The block is written in normal Ruby (see DSL::PlainRuby). +allow+ names libraries it may use,
     # on the author's word that they are safe here.
     def game(title, code: nil, maker: nil, frame_sync: :auto, fast_cartridge: nil, fast_code: nil,
              save_memory: nil, stack_room: nil, consoles: nil, menu: true, variants: {}, sprite_piece_size: {},
-             players: nil, allow: [], &block)
+             players: nil, features: {}, allow: [], &block)
       unless block
         raise ArgumentError, %(VBlank.game needs a block: VBlank.game("NAME", consoles: %i[gba]) { ... })
       end
@@ -473,7 +493,7 @@ module VBlank
 
       options = Cartridge::Options.new(frame_sync: frame_sync, fast_cartridge: fast_cartridge,
                                        fast_code: fast_code, save_memory: save_memory, stack_room: stack_room,
-                                       sprite_piece_size: sprite_piece_size, players: players)
+                                       sprite_piece_size: sprite_piece_size, players: players, features: features)
       handle = Cartridge::Game.new(title, code: code, maker: maker, block: DSL::PlainRuby.game_block(block, allow: allow),
                                           options: options, consoles: consoles, menu: menu, variants: variants)
       Ractor.current[:vblank_registered_games] = registered_games + [handle]
