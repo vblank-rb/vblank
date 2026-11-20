@@ -404,6 +404,24 @@ module VBlank
             @mixed_unders[(y * @width) + x] = under
           end
 
+          # Put back +count+ cells of +scene+ from (x, y) rightwards, each as #put_back_cell
+          # would. Copied as one row where nothing about a cell needs it alone: nothing is
+          # blended as it is painted, nothing is kept beside the picture, the scene has no
+          # mixed cells, and every cell of it in the row holds a colour. Otherwise a cell at a
+          # time, through #put_back_cell, the plain way the row stands in for.
+          def put_back_row(scene, x, y, count)
+            return put_back_cells(scene, x, y, count) unless copies_rows_from?(scene)
+
+            left, top, right, bottom = paintable_box(x, y, x + count, y + 1)
+            return if right <= left || bottom <= top
+
+            at = (top * @width) + left
+            row = scene.stored_row(at, right - left)
+            return put_back_cells(scene, x, y, count) if row.include?(nil)
+
+            @pixels[at, right - left] = row
+          end
+
           # Paint a horizontal run of cells: +count+ of them starting at (x, y), read
           # from +colors+ beginning at +from+. A nil in +colors+ leaves that cell as it
           # is, so a see-through pixel keeps whatever is behind it.
@@ -519,7 +537,25 @@ module VBlank
             top && [top, @mixed_unders[at], @mixed_weights]
           end
 
+          # The +count+ stored cells from cell +at+ on, as they are, for #put_back_row.
+          def stored_row(at, count) = @pixels[at, count]
+
+          # Whether any cell was ever mixed with a see-through layer.
+          def keeps_mixes? = !@mixed_tops.nil?
+
           private
+
+          def put_back_cells(scene, x, y, count)
+            count.times { |col| put_back_cell(scene, x + col, y) }
+          end
+
+          # Can a row of +scene+ be copied onto this picture as it stands? Only where a cell
+          # put back is its colour and nothing else: the same size of screen, no blend while
+          # painting, no scenery or mixes kept here, and no mixes kept in the scene.
+          def copies_rows_from?(scene)
+            scene.width == @width && scene.height == @height && !@blending && @scenery.nil? &&
+              @mixed_tops.nil? && !scene.keeps_mixes?
+          end
 
           # What a pixel outside the light's span shows, where the picture has +color+: that colour
           # darkened, or for a light that shows nothing outside it, the colour of nothing drawn.

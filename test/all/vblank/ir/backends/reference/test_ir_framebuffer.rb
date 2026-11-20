@@ -82,6 +82,43 @@ class TestIRFramebuffer < Minitest::Test
     assert_equal [0] * 16, fb.to_a
   end
 
+  # put_back_row copies a row of the scene at once where it can, and #put_back_cell a cell at
+  # a time is the plain way it stands in for. Each of these puts the same rows back both ways
+  # on screens set up alike, the rows hanging off the left and right edges and one row off the
+  # bottom, and the pictures must match.
+  def test_put_back_row_matches_putting_back_cell_by_cell
+    assert_put_back_row_matches_cells
+  end
+
+  def test_put_back_row_matches_cell_by_cell_inside_an_area
+    assert_put_back_row_matches_cells { |fb| fb.draw_inside(2, 3, 5, 4) }
+  end
+
+  def test_put_back_row_matches_cell_by_cell_where_the_scene_has_holes
+    holes = lambda do |scene|
+      scene.clear(nil)
+      scene.fill_rect(4, 0, 3, 10, Color.rgb(9, 9, 9))
+    end
+    assert_put_back_row_matches_cells(scene_fill: nil, scene_setup: holes)
+  end
+
+  def test_put_back_row_matches_cell_by_cell_where_the_scene_was_mixed
+    mixed = lambda do |scene|
+      scene.set_paint_see_through([10, 6])
+      scene.fill_rect(1, 1, 8, 8, Color.rgb(31, 0, 31))
+      scene.set_paint_see_through(nil)
+    end
+    assert_put_back_row_matches_cells(scene_setup: mixed)
+  end
+
+  def test_put_back_row_matches_cell_by_cell_under_a_placed_fade
+    assert_put_back_row_matches_cells { |fb| fb.set_paint_fade(:white, 5) }
+  end
+
+  def test_put_back_row_matches_cell_by_cell_with_the_scenery_kept
+    assert_put_back_row_matches_cells(sprite_after: true, &:keep_scenery)
+  end
+
   def test_clear_paints_every_pixel
     fb = Framebuffer.new(width: 3, height: 2)
     fb.clear(0x2222)
@@ -126,6 +163,37 @@ class TestIRFramebuffer < Minitest::Test
         fb.fill_rect(1, 1, 3, 3, Color.rgb(0, 31, 0))
       end
       fb.tint_to(Color.rgb(0, 0, 31), 50) if tint_after
+    end
+
+    assert_equal by_cells.to_a, by_rows.to_a
+    assert_equal by_cells.shown, by_rows.shown
+  end
+
+  # A 12x10 scene with a pattern on it, made ready by +scene_setup+, and two 12x10 screens
+  # of another pattern made ready by the block. Rows 2 to 10 of a patch from x -3, 14 wide,
+  # are put back from the scene: by put_back_row on one screen, by put_back_cell on the other.
+  # +sprite_after+ paints a see-through sprite over both afterwards, which is mixed with the
+  # scenery kept apart.
+  private def assert_put_back_row_matches_cells(scene_fill: 0, scene_setup: nil, sprite_after: false)
+    scene = Framebuffer.new(width: 12, height: 10, fill: scene_fill)
+    12.times { |x| 10.times { |y| scene.set_pixel(x, y, Color.rgb(x, y * 3, 20)) } }
+    scene_setup&.call(scene)
+    by_rows, by_cells = Array.new(2) do
+      fb = Framebuffer.new(width: 12, height: 10)
+      12.times { |x| 10.times { |y| fb.set_pixel(x, y, Color.rgb(30, x * 2, y)) } }
+      yield fb if block_given?
+      fb
+    end
+    2.upto(10) do |y|
+      by_rows.put_back_row(scene, -3, y, 14)
+      -3.upto(10) { |x| by_cells.put_back_cell(scene, x, y) }
+    end
+    [by_rows, by_cells].each do |fb|
+      if sprite_after
+        fb.set_paint_see_through([8, 8], sprite: true)
+        fb.fill_rect(0, 1, 6, 6, Color.rgb(0, 0, 31))
+      end
+      fb.tint_to(Color.rgb(0, 31, 0), 50)
     end
 
     assert_equal by_cells.to_a, by_rows.to_a

@@ -3562,9 +3562,7 @@ module VBlank
         # Copy a width×height patch of the settled scene back onto the screen (skipping
         # any cell that falls off it), erasing whatever an object had drawn there.
         def restore_patch(scene, x, y, width, height)
-          height.times do |row|
-            width.times { |col| @screen.put_back_cell(scene, x + col, y + row) }
-          end
+          height.times { |row| @screen.put_back_row(scene, x, y + row, width) }
         end
 
         # Draw an image turned +degrees+ clockwise and +scale+ times its size, about its
