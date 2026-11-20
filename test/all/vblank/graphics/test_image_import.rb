@@ -162,6 +162,17 @@ class TestImageImport < Minitest::Test
                  "the 2x2 fixture converts to red, green, blue, white (row-major)"
   end
 
+  # An adapter given for a block is that thread's alone: another thread importing at the same time
+  # still reads the real file.
+  def test_an_adapter_given_on_one_thread_is_not_used_on_another
+    all_black = FakeAdapter.new("\0".b * 12)
+    other_thread = Image.with_adapter(all_black) do
+      Thread.new { Image.load(TWO_BY_TWO, width: 2, height: 2).data }.value
+    end
+
+    assert_equal EXPECTED, other_thread
+  end
+
   def test_image_magick_resizes_down_to_the_requested_size
     # A 4x4 solid red asked for at 2x2: resize is exercised, and a solid color
     # averages to itself, so the result is unambiguously four reds.

@@ -296,4 +296,20 @@ class TestOriginalGame < Minitest::Test
       assert_match "damaged", error.message
     end
   end
+
+  # A shell built on one thread hides the copies from that thread alone: a game on another thread
+  # at the same time still finds its copy.
+  def test_copies_hidden_on_one_thread_are_found_on_another
+    Dir.mktmpdir do |folder|
+      path = write(folder, "named.gb", RIGHT)
+      found = game(folder, env: named(path))
+
+      other_thread = VBlank::Original.without_copies do
+        assert_raises(VBlank::Original::NotSet) { found.copy }
+        Thread.new { found.copy.path }.value
+      end
+
+      assert_equal path, other_thread
+    end
+  end
 end

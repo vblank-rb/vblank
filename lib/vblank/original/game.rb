@@ -28,18 +28,22 @@ module VBlank
 
     # A SHELL IS BUILT WITH NO COPY ON THE MACHINE, so a port whose code depends on what the copy
     # holds cannot be built as one. While the block runs, every Game answers NotSet whatever names a
-    # copy (Shell.build turns that into the words naming the line that asked). Kept per Ractor, as
-    # each core builds its own games.
+    # copy (Shell.build turns that into the words naming the line that asked). Kept per thread, not
+    # per Ractor: two threads of one Ractor can build at once, and a shell built on one must not hide
+    # the copy from a game built on the other. Each Ractor has threads of its own.
     def self.without_copies
-      before = Ractor.current[:vblank_copies_hidden]
-      Ractor.current[:vblank_copies_hidden] = true
+      thread = Thread.current
+      before = thread.thread_variable_get(COPIES_HIDDEN_KEY)
+      thread.thread_variable_set(COPIES_HIDDEN_KEY, true)
       yield
     ensure
-      Ractor.current[:vblank_copies_hidden] = before
+      thread.thread_variable_set(COPIES_HIDDEN_KEY, before)
     end
 
-    # Whether a shell is being built here now (Original.without_copies).
-    def self.copies_hidden? = Ractor.current[:vblank_copies_hidden] == true
+    COPIES_HIDDEN_KEY = :vblank_copies_hidden
+
+    # Whether a shell is being built on this thread now (Original.without_copies).
+    def self.copies_hidden? = Thread.current.thread_variable_get(COPIES_HIDDEN_KEY) == true
 
     # WHAT AN ORIGINAL FROM A COMPUTER NAMES AS ITS PLATFORM. An original names any platform: a
     # console's name (Console::KITS), this, or one VBlank does not list (:arcade, :nes).
