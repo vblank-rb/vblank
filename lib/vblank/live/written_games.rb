@@ -63,10 +63,11 @@ module VBlank
       def initialize(root) = @root = root
 
       # The place a build of the game in +game_file+, launched from +working_folder+, for +console+,
-      # told +settings+, is kept.
-      def slot(game_file:, console:, settings:, working_folder: Dir.pwd)
+      # told +settings+, is kept; +shell+ for the game built as a shell (Original::Shell), which is
+      # another written game and kept apart.
+      def slot(game_file:, console:, settings:, working_folder: Dir.pwd, shell: false)
         game_file = File.expand_path(game_file)
-        identity = JSON.generate([game_file, File.expand_path(working_folder), console.to_s, settings.sort.to_h])
+        identity = JSON.generate([game_file, File.expand_path(working_folder), console.to_s, settings.sort.to_h, *("shell" if shell)])
         name = "#{File.basename(game_file, '.rb').gsub(/[^A-Za-z0-9_-]/, '_')}-#{Digest::SHA256.hexdigest(identity)[0, 16]}"
         Slot.new(File.join(@root, name))
       end

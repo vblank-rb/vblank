@@ -70,11 +70,14 @@ module VBlankWindow
   def self.match_failures = defined?(VBlank::Live::MatchPlay) ? [VBlank::Live::MatchPlay::Refused, *VBlank::Live::MatchPlay::FAILURES] : []
 
   # The window, at the console's size until the game is known.
+  # A shell's window offers save states only once its game plays (VBlankScript.play), so it opens
+  # with none.
   def self.open_window(launch, options)
     VBlank::Live::SDL.new(title: launch.fetch("title"), scale: options[:scale], width: launch.fetch("width"),
                           height: launch.fetch("height"), pixel_size: launch.fetch("pixel_size"), menu: launch.fetch("menu"),
                           settings_file: options[:"settings-file"] || :usual, config_dir: options[:"config-dir"],
-                          state_folder_name: launch["state_folder"], buttons: launch.fetch("buttons").map(&:to_sym))
+                          state_folder_name: (launch["state_folder"] unless launch["shell"]),
+                          buttons: launch.fetch("buttons").map(&:to_sym))
   end
 
   # The match +written+ plays in, hosted or joined as +match+ says, and begun: everybody is in. The

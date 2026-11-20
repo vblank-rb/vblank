@@ -24,9 +24,12 @@ module VBlankScript
       parser.on("--settings-file FILE", "Read and write the window's settings in FILE only.")
       parser.on("--config-dir DIR", "Keep the window's settings files in DIR.")
       parser.on("--record-sound FILE", "Keep the sound the game makes, and write it to FILE (a .wav) when the play stops.")
-      parser.on("--pack-folder DIR", "Keep the game's data pack in DIR.") if SHELL_FACTS
+      if SHELL_FACTS
+        parser.on("--pack-folder DIR", "Keep the game's data pack in DIR.")
+        parser.on("--unpack-workers N", Integer, "Make the data pack on N cores. Default: every core.")
+      end
     end.parse!(arguments, into: options)
-    %i[scale pictures].each do |name|
+    %i[scale pictures unpack-workers].each do |name|
       raise OptionParser::InvalidArgument, "--#{name} must be a whole number above 0" if options[name]&.<(1)
     end
     turn_on_yjit
@@ -60,8 +63,12 @@ module VBlankScript
   # memory are kept (Live::StateSlots.folder_name), the written game's own when left out.
   # +network+ is the match it plays in (a Network::Lockstep, begun), nil for none: only vblank run's
   # window plays one (Live::MatchPlay), a written-out script never does.
+  #
+  # A SHELL'S WINDOW offers save states only while its game plays, never its menu or its unpacking
+  # (Original::Shell::Part#keeps_states?), so a window opened for one is opened with none.
   def self.play(written, options, window: nil, network: nil)
     game = written.live_game
+    states = options.fetch(:state_folder, written.state_folder)
     if window
       problems = window.fit_game(width: game.width, height: game.height, pixel_size: game.pixel_size,
                                  game_controls: game.controls, buttons: game.buttons)
@@ -69,7 +76,7 @@ module VBlankScript
       window = VBlank::Live::SDL.new(title: written.title, scale: options[:scale], width: game.width, height: game.height,
                                      pixel_size: game.pixel_size, menu: written.menu,
                                      settings_file: options[:"settings-file"] || :usual, config_dir: options[:"config-dir"],
-                                     state_folder_name: options.fetch(:state_folder, written.state_folder), game_controls: game.controls,
+                                     state_folder_name: (states unless written.shell), game_controls: game.controls,
                                      buttons: game.buttons)
       problems = window.settings_problems_message
     end
@@ -78,9 +85,12 @@ module VBlankScript
          "#{'Press F1 or ` for the menu. ' if written.menu}Press P to pause. Hold Tab to play fast. Press Escape to stop."
     recording = VBlank::Live::Recording.new(window, frame_seconds: game.frame_seconds) if options[:"record-sound"]
     play_game = lambda do |playing|
+      window.offer_states(states) if written.shell && states
       VBlank::Live::Session.new(game: playing, uncapped: options[:uncapped], stop_after_passes: options[:pictures],
                                 collect_garbage: options.fetch(:"collect-garbage", true), network: network)
                            .play(recording || window)
+    ensure
+      window.withdraw_states if written.shell
     end
     rate = written.shell ? play_shell(written, window, options, play_game) : play_game.call(game)
     say_rate(written.title, rate, game.frame_seconds) if rate
@@ -118,16 +128,28 @@ module VBlankScript
 
   # A game built as a shell (Live::Shell): the game from its kept pack, or its menu until the player
   # loads a copy. Gives back how fast the game went, or nil when the player stopped before it played.
+  # An unpacking split in pieces plays on --unpack-workers cores, every core when not given.
   def self.play_shell(written, window, options, play_game)
     shell = VBlank::Live::Shell.new(facts: VBlank::Original::ShellFacts.from_plain(JSON.parse(written.shell.facts)),
-                                    game: written.source, menu: written.shell.menu, unpackings: written.shell.unpackings)
+                                    game: written.source, menu: written.shell.menu, unpackings: written.shell.unpackings,
+                                    workers: unpack_workers(options[:"unpack-workers"]),
+                                    worker_programs: written.shell.worker_programs)
     folder = options[:"pack-folder"] || window.folder_for(shell.folder) or
       raise VBlank::Live::SDL::Failed, "#{written.title} cannot make the folder to keep its data pack in. Give one with --pack-folder."
+    puts "Playing #{written.title} as a shell. Its data pack is kept in #{folder}."
     shell.play(window, folder_path: folder, choose_copy: shell.copy_chooser(window), open_settings: -> { window.open_menu },
                        refused: lambda { |words|
                          warn words
                          window.notice(words)
                        }, kept_pack_refused: ->(words) { warn words }, play_game: play_game)
+  end
+
+  # How many cores an unpacking in pieces plays on: +asked+, or every core, and never more than
+  # there are, as Original::PiecedUnpacking.worker_count says for a shell played by vblank run
+  # in one process.
+  def self.unpack_workers(asked)
+    require "etc"
+    [asked || Etc.nprocessors, Etc.nprocessors].min
   end
 end
 

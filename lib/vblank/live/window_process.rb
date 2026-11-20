@@ -26,10 +26,11 @@ module VBlank
       # Becomes the window's process: +launch+ is what rg_window_main.rb reads (its comment lists
       # it), and +helper_pipe+ the end of the pipe the helper says what it is doing on, kept open
       # across, or nil when no helper builds (the game is written already). +zjit+ starts the new
-      # Ruby with ZJIT, as the command's was. +match+ loads MATCH_PARTS too. Never returns.
-      def self.become(launch, helper_pipe:, zjit: false, match: false)
+      # Ruby with ZJIT, as the command's was. +match+ loads MATCH_PARTS too, and +shell+ what a
+      # shell's script carries besides (Ruby::SHELL_PARTS). Never returns.
+      def self.become(launch, helper_pipe:, zjit: false, match: false, shell: false)
         runtime = IR::Backends::Ruby::RUNTIME_DIR
-        parts = IR::Backends::Ruby::SCRIPT_PARTS + (match ? MATCH_PARTS : [])
+        parts = IR::Backends::Ruby::SCRIPT_PARTS + (match ? MATCH_PARTS : []) + (shell ? IR::Backends::Ruby::SHELL_PARTS : [])
         loaded = parts.map { |part| VBlank.root.join("lib", part).to_s } +
                  [File.join(runtime, "rg_script_main.rb"), File.join(__dir__, "build_watch.rb")]
         kept_open = helper_pipe ? { helper_pipe => helper_pipe } : {}

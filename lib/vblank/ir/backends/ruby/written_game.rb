@@ -31,8 +31,9 @@ module VBlank
 
         class WrittenGame
           # A SHELL'S PARTS AS A SCRIPT HOLDS THEM: +facts+, Original::ShellFacts as JSON, and its
-          # +menu+ and each of its +unpackings+ as Ruby (Live::Shell.new takes them as they are).
-          Shell = Data.define(:facts, :menu, :unpackings)
+          # +menu+, each of its +unpackings+ (nil for one split in pieces) and each piece's program
+          # (+worker_programs+) as Ruby (Live::Shell.new takes them as they are).
+          Shell = Data.define(:facts, :menu, :unpackings, :worker_programs)
 
           # The lines the game's part of a script starts and ends at. #read takes only what lies
           # between them, so nothing of the copied library is read twice.
@@ -42,7 +43,10 @@ module VBlank
           # The game a script holds in +holder+'s constants (VBlankScript's, written by Ruby#script).
           def self.of(holder)
             facts = holder.const_get(:SHELL_FACTS)
-            shell = (Shell.new(facts: facts, menu: holder.const_get(:SHELL_MENU), unpackings: holder.const_get(:SHELL_UNPACKINGS)) if facts)
+            if facts
+              shell = Shell.new(facts: facts, menu: holder.const_get(:SHELL_MENU), unpackings: holder.const_get(:SHELL_UNPACKINGS),
+                                worker_programs: holder.const_get(:SHELL_WORKER_PROGRAMS))
+            end
             new(title: holder.const_get(:TITLE), console_title: holder.const_get(:CONSOLE_TITLE), menu: holder.const_get(:MENU),
                 code: holder.const_get(:GAME_CODE), match: holder.const_get(:MATCH)&.then { |text| JSON.parse(text) },
                 source: holder.const_get(:SOURCE), shell: shell)

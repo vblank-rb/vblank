@@ -1066,8 +1066,8 @@ module VBlank
       return play_unattended(game_file, way) if unattended?
 
       game = load_game(game_file)
-      return say_rate(game, *play_shell_in_window(game)) if options[:shell]
       return play_built_in_helper(game_file, game) if build_in_helper?
+      return say_rate(game, *play_shell_in_window(game)) if options[:shell]
 
       program = program_to_run(game)
       require_relative "live"
@@ -1352,16 +1352,17 @@ module VBlank
     def play_built_in_helper(game_file, game)
       console = game.refuse_console_not_for!(console_to_play(game))
       require_relative "live"
+      shell = options[:shell]
       slot = VBlank::Live::WrittenGames.new(VBlank::Live::WrittenGames.root)
-                                       .slot(game_file: game_file, console: console, settings: given_settings)
+                                       .slot(game_file: game_file, console: console, settings: given_settings, shell: shell)
       library = VBlank::Live::WrittenGames.library_key
       match = !match_launch(game_file).nil?
       unless slot.current?(console: console, settings: given_settings, library: library, match: match)
         pid, pipe = VBlank::Live::BuildHelper.start(game_file: game_file, console: console, settings: given_settings,
-                                                    slot: slot, library: library, match: match)
+                                                    slot: slot, library: library, match: match, shell: shell)
       end
       VBlank::Live::WindowProcess.become(window_launch(game_file, game, console, slot.script_path, pid), helper_pipe: pipe,
-                                                                                                      zjit: zjit_on?, match: match)
+                                                                                                      zjit: zjit_on?, match: match, shell: shell)
     rescue ArgumentError => e
       raise build_stopped(e)
     rescue SystemCallError => e
@@ -1373,17 +1374,19 @@ module VBlank
     # What the window's process is told (runtime/rg_window_main.rb): the window opens at the
     # console's size, and is fitted to the game once it is written. +pid+ is the helper building
     # it, nil for a game written already. A match over a network (--host, --join) adds what
-    # Live::MatchPlay is told (#match_launch), and keeps no save states.
+    # Live::MatchPlay is told (#match_launch), and keeps no save states. A shell (--shell) opens its
+    # window with none, and offers them once its game plays.
     def window_launch(game_file, game, console, written, pid)
       described = VBlank::Console.described(console)
       width, height = described.framed_screen_size
       match = match_launch(game_file)
       { title: game.title, width: width, height: height, pixel_size: described.pixel_size, menu: game.menu?,
         buttons: described.buttons, state_folder: state_folder_name(game, match), written_path: written,
-        helper_pid: pid, yjit: options[:yjit], match: match,
+        helper_pid: pid, yjit: options[:yjit], match: match, shell: options[:shell],
         options: { scale: options[:scale], pictures: options[:pictures], uncapped: options[:uncapped],
                    "collect-garbage": options[:collect_garbage], "settings-file": options[:settings_file],
-                   "config-dir": options[:config_dir], "record-sound": options[:record_sound] }.compact }
+                   "config-dir": options[:config_dir], "record-sound": options[:record_sound],
+                   "pack-folder": options[:pack_folder], "unpack-workers": options[:unpack_workers] }.compact }
     end
 
     # Whether the play goes through a helper process (#play_built_in_helper): a person playing in a

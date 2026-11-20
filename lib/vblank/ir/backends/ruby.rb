@@ -171,7 +171,7 @@ module VBlank
         # the shell's facts and the shell itself, each needing nothing of the library the script does
         # not carry.
         SHELL_PARTS = %w[vblank/ir/start_file.rb vblank/original/releases.rb vblank/original/shell_facts.rb
-                         vblank/live/background_unpacking.rb vblank/live/shell.rb].freeze
+                         vblank/live/background_unpacking.rb vblank/live/worker_unpacking.rb vblank/live/shell.rb].freeze
         SCRIPT_MAIN = "rg_script_main.rb" # In RUNTIME_DIR: what plays the game, last in a script
         # The line the game's Ruby ends at in a script, which no line of the game's can be, and the
         # line the menu's letters (Graphics::MenuFont::PATH, carried after the parts) end at.
@@ -205,13 +205,24 @@ module VBlank
         # The data of +shell+ (an Original::Shell) a script holds, from which rg_script_main.rb makes
         # its Live::Shell: SHELL_FACTS, the ShellFacts as JSON (ShellFacts#to_plain), and SHELL_MENU
         # and SHELL_UNPACKINGS, the menu and each unpacking as Ruby, in heredocs.
+        #
+        # AN UNPACKING SPLIT IN PIECES (ShellFacts#pieces) is written as its split, as Live::Shell.from
+        # writes it: each piece's program once in SHELL_WORKER_PROGRAMS, in the order the pieces number
+        # them, and nil in its place among SHELL_UNPACKINGS, so the script unpacks on several workers
+        # (Live::WorkerUnpacking) and never carries the whole routine besides.
         def script_shell_text(shell)
           unpackings = shell.unpackings.each_with_index.map do |unpacking, number|
+            next "    nil,\n" if shell.facts.split?(number)
+
             "    #{script_heredoc(live_source(unpacking.program), "#{SCRIPT_END}_UNPACKING_#{number}", ',')}"
+          end
+          workers = shell.worker_programs.each_with_index.map do |worker, number|
+            "    #{script_heredoc(live_source(worker.program), "#{SCRIPT_END}_WORKER_#{number}", ',')}"
           end
           ["  SHELL_FACTS = #{script_heredoc(JSON.generate(shell.facts.to_plain), "#{SCRIPT_END}_FACTS")}",
            "  SHELL_MENU = #{script_heredoc(live_source(shell.menu), "#{SCRIPT_END}_MENU")}",
-           "  SHELL_UNPACKINGS = [\n#{unpackings.join}  ].freeze\n"].join
+           "  SHELL_UNPACKINGS = [\n#{unpackings.join}  ].freeze\n",
+           "  SHELL_WORKER_PROGRAMS = [\n#{workers.join}  ].freeze\n"].join
         end
 
         def refuse_runtime_gaps!(gaps)

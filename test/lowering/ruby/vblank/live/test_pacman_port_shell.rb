@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "open3"
 require "stringio"
 require "tmpdir"
 require "vblank/live"
@@ -119,6 +120,32 @@ class TestPacmanPortShell < Minitest::Test
 
       assert_match "not a release of Pac-Man that this game knows", played.refusals.first
       refute File.exist?(File.join(folder, "kept", PACK_FILE))
+    end
+  end
+
+  # `vblank run --shell` BUILDS THE SHELL IN A HELPER and the window's own process plays it: here
+  # from the pack kept in --pack-folder, for the pictures asked for, in SDL's dummy window. The port
+  # is loaded by the command and by its helper, each noting its process.
+  def test_run_shell_builds_the_shell_in_a_helper_and_plays_the_kept_pack
+    flunk "SDL3 is not installed: #{VBlank::Live::SDL::INSTALL_LINE}" unless VBlank::Live::SDL.available?
+
+    Dir.mktmpdir do |dir|
+      pids = File.join(dir, "pids.txt")
+      kept = File.join(dir, "kept")
+      FileUtils.mkdir_p(kept)
+      File.binwrite(File.join(kept, PACK_FILE), all_in_one_pack)
+      File.write(File.join(dir, "port.rb"), "File.write(#{pids.dump}, \"\#{Process.pid}\\n\", mode: \"a\")\n" \
+                                            "require #{VBlank.root.join('test/fixtures/pacman_port/pacman_port').to_s.dump}\n" \
+                                            "PacmanPort.game\n")
+      window = { "SDL_VIDEODRIVER" => "dummy", "SDL_AUDIODRIVER" => "dummy", "RUBY_YJIT_ENABLE" => nil }
+      out, status = Open3.capture2e(window, RbConfig.ruby, VBlank.root.join("bin/vblank").to_s, "run", "port.rb", "--shell",
+                                    "--pack-folder", kept, "--pictures", "3", "--settings-file", File.join(dir, "settings.txt"),
+                                    chdir: dir)
+
+      assert status.success?, out
+      assert_match(/as a shell\. Its data pack is kept in #{Regexp.escape(kept)}/, out)
+      assert_match(/2 frames in/, out)
+      assert_equal 2, File.readlines(pids).uniq.size, "the command and its helper loaded the port"
     end
   end
 
