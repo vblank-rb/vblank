@@ -296,7 +296,7 @@ module VBlank
         raise ArgumentError, "set_cell was given `now: #{now.inspect}`. It must be true or false." unless [true, false].include?(now)
 
         told = @area_pack_cells.each_with_index.select do |cells, _|
-          cells && (!word.is_a?(Integer) || cells.tiles_of(word))
+          cells && (!word.is_a?(Integer) || cells.writes?(word))
         end
         told = [@area_pack_cells.each_with_index.find { |cells, _| cells }] if told.empty? # its refusal names the cell
         told.each do |cells, area|

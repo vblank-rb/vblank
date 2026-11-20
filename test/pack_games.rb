@@ -868,6 +868,14 @@ module PackGames
         end
         built(*made)
       end,
+      # Cells told by one slot of map cells for every area, written by place in the area showing.
+      game(:cells_told_by_a_slot_in_each_area_of_a_walking_background, passes: TOLD_CASTLE_PASS + 3) do |folder, options|
+        built(*told_slot_areas_game_and_file(areas_original(folder), options: options))
+      end,
+      # The same told by a slot an area, a Hash by area.
+      game(:cells_told_by_a_slot_an_area_of_a_walking_background, passes: TOLD_CASTLE_PASS + 3) do |folder, options|
+        built(*told_slot_areas_game_and_file(areas_original(folder), options: options, by_area: true))
+      end,
       game(:tile_taking_turns_in_one_area_of_a_walking_background, passes: 9) do |folder, options|
         made = areas_game_and_file(areas_original(folder), options: options, turning: true) do |world, blocks|
           PackBackgroundAreaGames.emit_turning_walk(self, world, blocks)
@@ -916,6 +924,14 @@ module PackGames
       end,
       game(:background_cell_written_in_front_of_a_sprite, passes: WRITTEN_PASS + 3) do |folder, options|
         built(*front_game_and_file(folder, written: true, options: options))
+      end,
+      # Areas over one slot of tiles marking cells in front, one pool of tiles for both, and a cell
+      # a slot told written in each.
+      game(:cells_in_front_in_areas_over_one_tile_slot, passes: FAR_WRITTEN_PASS + 3) do |folder, options|
+        built(*front_areas_game_and_file(folder, options: options))
+      end,
+      game(:cells_in_front_in_areas_each_over_a_tile_slot, passes: FAR_WRITTEN_PASS + 3) do |folder, options|
+        built(*front_areas_game_and_file(folder, own_tiles: true, options: options))
       end
     ].freeze
   end

@@ -50,7 +50,60 @@ module PackCellsInFrontGames
   # is in front is over the cells in front as well.
   HAND_COLOR = MadeUpOriginalLayouts::PALETTE[14]
 
+  # A SECOND AREA, for a background walking between areas: the same cells, each mark the other way.
+  FAR_CELLS = CELLS.map { |tile, front| [tile, !front] }.freeze
+  # The passes the walking game (#front_areas_game_and_file) writes WRITTEN in the first area on,
+  # walks to the second on, and writes WRITTEN there on.
+  NEAR_WRITTEN_PASS = 4
+  FAR_WALK_PASS = 7
+  FAR_WRITTEN_PASS = 10
+
   VBlank::Testing::InRactors.share_constants(self)
+
+  # THE GAME WALKING BETWEEN TWO AREAS (`map:` a Hash by area) marking cells in front: :near is
+  # CELLS and :far FAR_CELLS, each a slot of map cells the unpacking writes, both over the one slot
+  # of tiles, or with +own_tiles+ each area over a slot of its own holding the same tiles. Told
+  # WRITTEN by a slot of one place (`set_cells: pack[:changes]`), it writes it at WRITTEN_AT in each
+  # area, on NEAR_WRITTEN_PASS and FAR_WRITTEN_PASS, and walks to :far on FAR_WALK_PASS. The walker
+  # is under the cells, at SPRITE_AT. Hands back the program and the pack file the build made.
+  private def front_areas_game_and_file(folder, own_tiles: false, options: VBlank::Cartridge::Options.new)
+    from = front_original(folder)
+    b = VBlank::Builder.new(options: options)
+    b.instance_eval do
+      screen :tiled
+      pack = data_pack from: from, version: "1" do |slots|
+        slots.tiles :video, at: TILES_AT, count: PLACES.length, colors: 16
+        slots.tiles :far_video, at: TILES_AT, count: PLACES.length, colors: 16 if own_tiles
+        slots.colors :palette, at: COLORS_AT, count: 32
+        slots.map_cells :near_map, count: CELLS.length
+        slots.map_cells :far_map, count: CELLS.length
+        slots.map_cells :changes, count: 1
+        slots.fill_from_copy do |_copy, filled|
+          { near_map: CELLS, far_map: FAR_CELLS, changes: [WRITTEN] }.each do |slot, cells|
+            cells.each_with_index { |(tile, front), at| filled[slot].write_cell(at, tile: tile, in_front: front) }
+          end
+        end
+      end
+      machine = background :machine, tiles: { near: pack[:video], far: pack[own_tiles ? :far_video : :video] },
+                                     map: { near: pack[:near_map], far: pack[:far_map] }, colors: pack[:palette],
+                                     across: ACROSS, cells_in_front: true, set_cells: pack[:changes]
+      image :walker, width: SPRITE_SIDE, height: SPRITE_SIDE, data: Array.new(SPRITE_SIDE * SPRITE_SIDE, SPRITE_COLOR)
+      sprite :walker, at: SPRITE_AT
+      passes = var :passes, 0
+      game_loop do
+        passes.store!(passes + 1)
+        machine.set_cell WRITTEN_AT % ACROSS, WRITTEN_AT / ACROSS, 0 if passes == NEAR_WRITTEN_PASS
+        machine.show_map :far if passes == FAR_WALK_PASS
+        machine.set_cell WRITTEN_AT % ACROSS, WRITTEN_AT / ACROSS, 0 if passes == FAR_WRITTEN_PASS
+        wait_vblank
+      end
+    end
+    b.finalize_program
+    [b.program, b.made_data_pack_file]
+  end
+
+  # +cells+ with WRITTEN at WRITTEN_AT.
+  private def with_written(cells) = cells.dup.tap { |written| written[WRITTEN_AT] = WRITTEN }
 
   # THE GAME OF TWO SPRITES IN FRONT TAKING TURNS: the pointer and the hand, each of one colour all
   # over and both in front, at SPRITE_AT over the original's map with its cells in front, put in
@@ -244,6 +297,26 @@ module PackCellsInFrontTests
       shown.each { |colors| assert_equal 1, colors.length, "one sprite covers every pixel under it: #{colors.inspect}" }
       assert_includes [[POINTER_COLOR, HAND_COLOR], [HAND_COLOR, POINTER_COLOR]], shown.first(2).flatten
       assert_equal shown.first(2) * 2, shown, "the two take turns in front a frame each"
+    end
+  end
+
+  # A background walking between areas marks each area's cells in front, and a cell a slot told it,
+  # written in each area, brings its mark: over one slot of tiles, or a slot an area.
+  def test_cells_in_front_follow_the_area_showing_and_the_cells_written_there
+    Dir.mktmpdir do |folder|
+      [false, true].each do |own_tiles|
+        program, = front_areas_game_and_file(folder, own_tiles: own_tiles)
+        tiles = own_tiles ? "a slot of tiles an area" : "one slot of tiles"
+        { NEAR_WRITTEN_PASS - 1 => [CELLS, "the first area"],
+          NEAR_WRITTEN_PASS + 2 => [with_written(CELLS), "the first area, a cell written"],
+          FAR_WALK_PASS + 2 => [FAR_CELLS, "the second area"],
+          FAR_WRITTEN_PASS + 2 => [with_written(FAR_CELLS), "the second area, a cell written"] }.each do |frames, (cells, what)|
+          screen = game_player.run(program, frames: frames).screen
+          wanted = wanted_pixels(cells: cells)
+
+          assert_equal wanted, shown_pixels(screen, wanted), "#{what}, over #{tiles}"
+        end
+      end
     end
   end
 

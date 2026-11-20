@@ -33,6 +33,10 @@ module VBlank
       # The tileset keys of the cell +word+ stands for, or nil for a number not told.
       def tiles_of(word) = tiles_by_word[read_part(word)]
 
+      # Is +told+, a number written in the game, one `set_cell` can write here: a place of the slot
+      # where a slot told the cells, or else a told cell number?
+      def writes?(told) = place_tiles ? told.between?(0, place_tiles.length - 1) : !tiles_of(told).nil?
+
       # Is the layout VBlank's own record (Original::MapCell), a map of map cells?
       def map_cells? = format.without_front_read == Original::MapCell::FORMAT
 
