@@ -6,6 +6,12 @@ require "mkmf"
 # SDL2, no Tk — this is the headless core for dev/test verification. rcheevos
 # (RetroAchievements) is opt-in and compiled out by default; see the bottom.
 
+# ON WINDOWS (MinGW), Ruby's win32.h declares gettimeofday with a struct timezone, and MinGW's
+# sys/time.h, which libmgba's headers include, declares it again with restrict pointers; the two
+# clash and nothing that includes both compiles. MinGW guards its declaration with this macro, so
+# defining it keeps Ruby's alone. The function is the same one either way.
+$CPPFLAGS << " -D_GETTIMEOFDAY_DEFINED" if RUBY_PLATFORM.include?("mingw")
+
 def add_mgba_deps
   # Dependencies libmgba pulls in, needed when linking the static archive.
   $libs << " -lz" unless $libs.include?("-lz")
