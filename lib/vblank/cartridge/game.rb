@@ -13,6 +13,29 @@ module VBlank
     # #build_rom (the finished cartridge) — so an example is one `VBlank.game` call
     # instead of a module of wiring.
     class Game
+      # EVERY BUILD OF A RUN UNMEASURED, set once for a game's test run (Testing.build_unmeasured):
+      # #build_rom then builds without measuring unless a caller passes +profile+, and with a +cache+
+      # (a Testing::CartridgeCache) reads and keeps what it builds there. A game's tests mostly do not
+      # care where a routine lands, and a measured build is a whole build and a play of every scene
+      # more; `vblank build` and a film run in processes of their own, which never set it.
+      UnmeasuredBuilds = Data.define(:cache)
+
+      @unmeasured_builds = nil
+
+      class << self
+        # The run's UnmeasuredBuilds, or nil when builds measure as usual.
+        attr_reader :unmeasured_builds
+
+        # Must be set on the main Ractor before any other starts: it is held shareable, so a test in a
+        # Ractor of its own can read it, and only the main Ractor may set it.
+        def unmeasured_builds=(setting)
+          @unmeasured_builds = Ractor.make_shareable(setting)
+        end
+
+        # Whether #build_rom measures where its caller does not say.
+        def measured_by_default? = unmeasured_builds.nil?
+      end
+
       # +options+ is how the game is built (see {Options}), as the game set it.
       attr_reader :title, :code, :maker, :options
 
@@ -226,10 +249,19 @@ module VBlank
       # about (`built_for_computer?`). +pack_at_start+ leaves the game's data pack out, for a build
       # for a computer that makes no cartridge (+cartridge+ false); see Cartridge::Options. +on_read+
       # is as for VBlank.build.
+      #
+      # A test run that set Game.unmeasured_builds builds unmeasured unless +profile+ is passed, and
+      # with its cache reads a plain cartridge build from there, printing nothing. +from_cache+ false
+      # builds it all the same: that is how the cache itself builds one.
       def build_rom(out: $stdout, err: $stderr, validate: true, progress: Messages::Progress.silent,
-                    profile: true, settings: {}, console: @consoles.first, variant: variant_for(console), cartridge: true,
-                    for_computer: false, pack_at_start: false, on_read: nil)
+                    profile: Game.measured_by_default?, settings: {}, console: @consoles.first, variant: variant_for(console),
+                    cartridge: true, for_computer: false, pack_at_start: false, on_read: nil, from_cache: true)
         console = refuse_console_not_for!(console)
+        cache = from_cache && profile == false && Game.unmeasured_builds&.cache
+        if cache && validate && cartridge && !for_computer && !pack_at_start && on_read.nil?
+          return cache.cartridge(self, console: console, variant: variant, settings: settings)
+        end
+
         options = { code: @code, maker: @maker,
                     **@options.with(console: console, variant: variant, for_computer: for_computer, consoles: @consoles,
                                     pack_at_start: pack_at_start).to_h }

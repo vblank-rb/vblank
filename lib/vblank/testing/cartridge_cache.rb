@@ -109,7 +109,8 @@ module VBlank
         return kept if kept
 
         built[[object_id, key]] = read_or_build(key, label, parts, key_seconds) do
-          game.build_rom(out: nil, err: nil, profile: profile, settings: settings, console: console, variant: variant)
+          game.build_rom(out: nil, err: nil, profile: profile, settings: settings, console: console, variant: variant,
+                         from_cache: false)
         end
       end
 

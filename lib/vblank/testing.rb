@@ -129,6 +129,17 @@ module VBlank
     # The class game_player makes one of, for this run (Lowering::Run#player).
     def self.player_class = RUN.player_class
 
+    # EVERY CARTRIDGE THE RUN BUILDS IS UNMEASURED, unless a test asks: a game's test helper calls
+    # this once, before the tests start, so a helper calling `game.build_rom` skips the measuring
+    # build (Cartridge::Game.unmeasured_builds). Given the run's +cache+ (a CartridgeCache), such a
+    # build is read from it and kept there between runs. A call passing `profile: true` measures.
+    #
+    #   BUILDS = VBlank::Testing::CartridgeCache.new(".cache/builds")
+    #   VBlank::Testing.build_unmeasured(cache: BUILDS)
+    def self.build_unmeasured(cache: nil)
+      Cartridge::Game.unmeasured_builds = Cartridge::Game::UnmeasuredBuilds.new(cache: cache)
+    end
+
     # A test the native lowering cannot play yet skips itself on a native run, saying +why+
     # (skip_on_native) — and a checked run ends by counting its skips by reason, so these cannot
     # pile up unseen. On the GBA lowering's run it does nothing. There is one for every checked
