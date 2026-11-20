@@ -225,6 +225,19 @@ module VBlank
       #   game_player.run(SMALL.program, frames: 60)
       def with_features(*names) = with_options(@options.with(features_built: names.flatten.map(&:to_sym)))
 
+      # THE SAME GAME STARTED IN A CHOSEN STATE: each variable and list named in +starts+ starts at
+      # the value given in place of the one its `var` or `list` declares, on top of any this handle
+      # starts already. A new handle, this one unchanged. A variable that holds names starts at a
+      # name (`mode: :playing`), so this picks the scene too; a list starts holding the items given.
+      #
+      #   game_player.run(Cave.game.starting_with(mode: :playing, lives: 1, trail: [5, 6]).program, frames: 10)
+      #
+      # A name no `var` or `list` of the build declares is refused when it is built, and so is a
+      # start of the wrong kind: a list for a variable, a fraction for a whole number, more items
+      # than the list holds. See Builder::ChosenStarts for why this is the program built with other
+      # starts rather than a state set in a running game.
+      def starting_with(**starts) = with_options(@options.with(starts: @options.starts.merge(starts)))
+
       # The variant the game names for +console+ in `variants:`, or nil.
       def variant_for(console) = @variants[console.to_sym]
 

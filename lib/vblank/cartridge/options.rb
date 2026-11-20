@@ -55,13 +55,18 @@ module VBlank
     # +features+ are the parts of the game a build can leave out, each to the features it brings, as
     # the game named them (Cartridge::Features). +features_built+ are the ones this build has, each
     # with what it brings, or nil for every one (Game#with_features).
+    #
+    # +starts+ are what this build starts variables and lists at in place of what the game declares,
+    # by name (Game#starting_with), in order of name; empty for the game as declared.
     Options = Data.define(:frame_sync, :fast_cartridge, :fast_code, :save_memory, :stack_room, :console,
                           :variant, :sprite_piece_size, :for_computer, :players, :consoles, :pack_at_start,
-                          :features, :features_built) do
+                          :features, :features_built, :starts) do
       def initialize(frame_sync: :auto, fast_cartridge: nil, fast_code: nil, save_memory: nil, stack_room: nil,
                      console: nil, variant: nil, sprite_piece_size: {}, for_computer: false, players: nil,
-                     consoles: nil, pack_at_start: false, features: {}, features_built: nil)
+                     consoles: nil, pack_at_start: false, features: {}, features_built: nil, starts: {})
         features = Features.refuse_unusable!(features)
+        # In order of name, so starts given in any order are one build and one key in a build cache.
+        starts = Ractor.make_shareable(starts.to_h { |name, value| [name.to_sym, value.dup] }.sort.to_h)
         features_built = Features.brought_by(features, features_built) unless features_built.nil?
         console = Console.named(console) unless console.nil?
         consoles = consoles&.map { |name| Console.named(name) }&.freeze

@@ -601,6 +601,8 @@ module VBlank
         layout.pools.each { |part| reset_pool_part(part, layout.pools) }
         layout.kept.each do |item|
           next if random_numbers?(item.name) || pooled.include?(item.name)
+          # A list a build started in a chosen state gave items holds them again, as power-on made it.
+          next @port.emit_list_start.call(item.name) if item.kind == :list && @port.chosen_list_start.call(item.name)
           # A list declared full of a value is made full again, as power-on made it.
           made = list_new_node(item.name) if item.kind == :list
           next record(Build.list_new_like(made)) if made&.full_of

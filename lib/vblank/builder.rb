@@ -60,6 +60,7 @@ require_relative "builder/layers"
 require_relative "builder/draw_order"
 require_relative "builder/settings"
 require_relative "builder/features"
+require_relative "builder/chosen_starts"
 require_relative "builder/parts"
 require_relative "builder/save_program"
 require_relative "builder/save_records"
@@ -131,6 +132,7 @@ module VBlank
     include DrawOrder  # draw_in_order (sprites drawn in an order the game works out)
     include Settings   # setting (what this build was told: which floors, which screen it boots on)
     include Features   # feature? (whether this build has a part of the game a build can leave out)
+    include ChosenStarts # the starts a build started in a chosen state gives variables and lists
     include SaveData   # save_data (records of the game's state, saved when the game asks for it; see Saves)
     include Parts      # part, start_over (a new game: a part of the game's state back as declared)
     include GameEffects # uses (a game's own effect packs, for its build alone)
@@ -425,8 +427,12 @@ module VBlank
       example = full_of if holds.nil? && full_of.is_a?(Numeric)
       bits = list_fraction_bits(name, example)
       refuse_unsigned_half_fractions!(name, bits)
+      # A build started in a chosen state makes it empty and then holds the items given (Game#starting_with).
+      chosen = chosen_list_pushes(name, capacity, bits) if chosen_start?(name)
+      full_of = nil if chosen
       record(Build.list_new(name, capacity, width: width, fast: fast,
                                             full_of: list_starting_item(name, full_of, bits)))
+      chosen&.each { |push| record(push.copy) }
       @fraction_lists[name] = bits if bits
       add_part_member(:list, name)
       DSL::List.new(self, name, fraction_bits: bits)
@@ -678,6 +684,7 @@ module VBlank
 
       emitted = {}
       emit_bodies(emitted, default_screen_mode, holding_back: true)
+      number_chosen_name_starts! # every name a variable is given is known, before start_over copies its start
       refuse_parts_named_like_scenes! # every scene is declared by now
       # Every routine the game wrote is built, so nothing more can be kept in a save_data
       # record: the records are laid out now, and the routines that read them built after —
@@ -687,6 +694,7 @@ module VBlank
       lay_out_save_records
       emit_bodies(emitted, default_screen_mode)
       refuse_scene_without_screen_line! # every scene's body is built by now
+      refuse_starts_not_declared! # ...and so is every `var` and `list` a start can name
       # Every line of game code is recorded, so each plain flag's tests and changes are known.
       @instance_variable_uses.refuse_game_flags!
 

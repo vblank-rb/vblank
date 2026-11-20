@@ -25,6 +25,14 @@ class TestOptions < Minitest::Test
     end
   end
 
+  # Chosen starts given in any order are one build, so a build cache keys them as one.
+  def test_chosen_starts_are_held_in_one_order
+    one = VBlank::Cartridge::Options.new(starts: { lives: 1, mode: :playing })
+    other = VBlank::Cartridge::Options.new(starts: { mode: :playing, lives: 1 })
+
+    assert_equal Marshal.dump(one.starts), Marshal.dump(other.starts)
+  end
+
   def test_a_variant_without_a_console_is_refused
     error = assert_raises(ArgumentError) { VBlank::Cartridge::Options.new(variant: :superfx) }
 

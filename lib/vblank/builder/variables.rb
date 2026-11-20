@@ -55,9 +55,16 @@ module VBlank
         end
         refuse_conflicting_declaration!(name, value, width: width)
         ensure_var(name)
-        keep_narrow(name, width, value)
         @name_vars[name] ||= DSL::NameSet.new("the variable :#{name}") if value.is_a?(Symbol)
-        at_boot(Build.set(name, stored_node(name, value)))
+        # A build started in a chosen state starts it there instead (Game#starting_with).
+        if chosen_start?(name)
+          start = chosen_variable_start(name, value)
+          keep_narrow(name, width, start)
+          at_boot(chosen_start_set(name, start))
+        else
+          keep_narrow(name, width, value)
+          at_boot(Build.set(name, stored_node(name, value)))
+        end
         add_part_member(:var, name)
         value_handle_for(name)
       end

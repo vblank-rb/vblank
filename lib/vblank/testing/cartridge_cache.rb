@@ -166,10 +166,14 @@ module VBlank
       end
 
       # How a report names a cartridge: the game, the console, the features it was built with where it
-      # was built with some alone (Game#with_features), and the settings that make it one.
+      # was built with some alone (Game#with_features), the starts it was given (Game#starting_with),
+      # and the settings that make it one.
       def label_for(game, console, variant, settings, profile)
-        features = game.options.features_built if game.options.respond_to?(:features_built)
+        built = game.options if game.options.is_a?(Cartridge::Options)
+        features = built&.features_built
+        starts = built&.starts
         [game.title, console, variant, ("features #{features.join(',')}" if features),
+         ("starting #{starts.sort.to_h}" unless starts.nil? || starts.empty?),
          (settings.sort.to_h unless settings.empty?), ("measured" if profile)].compact.join(" ")
       end
 

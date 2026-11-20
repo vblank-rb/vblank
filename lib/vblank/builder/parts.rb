@@ -36,7 +36,8 @@ module VBlank
     #     the start is the number power-on stored). A start worked out as the game runs is worked
     #     out again, now: from a variable outside the part it takes that variable as it is, and
     #     `var :x, rand(1..6)` rolls again.
-    #   - a list is made again as declared: empty, or full of its `full_of:` value.
+    #   - a list is made again as declared: empty, or full of its `full_of:` value, or holding the
+    #     items a build started in a chosen state gave it (Game#starting_with).
     #   - a pool is emptied the way power-on leaves it, every slot free.
     #   - an `every` or `after` counts from nought again, so an `after` fires again.
     #   - an `each_pass` job is stopped.
@@ -190,11 +191,20 @@ module VBlank
         part_members.fetch(name, []).each do |member|
           case member.kind
           when :var then emit_variable_start(member.thing)
-          when :list then record(Build.list_new_like(declared_list_node(member.thing)))
+          when :list then emit_list_start(member.thing)
           when :pool then pool_refill_nodes(member.thing).each { |node| record(node) }
           when :shown then member.thing.shown ? member.thing.sprite.show : member.thing.sprite.hide
           end
         end
+      end
+
+      # The list made again as power-on made it: as declared, or holding the items a build started in
+      # a chosen state gave it (ChosenStarts).
+      def emit_list_start(name)
+        made = declared_list_node(name)
+        return emit_chosen_list_start(name, made) if chosen_list_start?(name)
+
+        record(Build.list_new_like(made))
       end
 
       # The variable set to what power-on set it to. The start is the node power-on stored,

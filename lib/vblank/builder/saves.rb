@@ -24,9 +24,12 @@ module VBlank
       # kilobytes, or nil to let the records decide, and +save_memories+ the memories the console's
       # cartridge can carry (IR::SaveLayout.offered_by), which the records pick from. +console+ is
       # the console's Console::Description, named where the records fit none of them.
+      # +chosen_list_start+ asks whether a build started in a chosen state gave a list its items, and
+      # +emit_list_start+ makes such a list again holding them (Builder::ChosenStarts).
       Port = Data.define(:handle, :record, :repeat, :at_boot, :ensure_var, :declare_func, :run_each_pass,
                          :start_value, :list_new_node, :save_var, :saved_vars, :pool_refill, :save_memory,
-                         :save_memories, :console, :fraction_bits, :loop_counter)
+                         :save_memories, :console, :fraction_bits, :loop_counter, :chosen_list_start,
+                         :emit_list_start)
 
       include SaveProgram
       include SaveRecords
@@ -306,6 +309,8 @@ module VBlank
           pool_refill: ->(pool) { pool_refill_nodes(pool) },
           save_memory: @save_memory, save_memories: save_memories, console: @console,
           fraction_bits: ->(name) { @fraction_vars[name] || @fraction_lists[name] },
+          chosen_list_start: ->(name) { chosen_list_start?(name) },
+          emit_list_start: ->(name) { emit_list_start(name) },
         ))
       end
     end
