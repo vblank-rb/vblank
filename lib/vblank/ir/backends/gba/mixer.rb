@@ -1433,6 +1433,67 @@ module VBlank
             @emitter.place_label(done)
           end
 
+          # THE MIX WAITS FOR THE GAME'S GAP WRITES. The mix is built in the display's line-match
+          # interrupt at the first line of the picture (GBA#emit_irq_handler), so that the gap is
+          # the game's. But a gap can run past its last line: a long copy, a long routine run once
+          # a frame, a gap that started late. The game is then still writing its sprite table and
+          # its colours as the picture starts, and an interrupt holds the main code off for as long
+          # as it runs (GBATEK, interrupts: IME is cleared on entry and nothing here sets it again).
+          # A mix taking most of the picture held those writes off for most of the picture, and
+          # every row it reached showed last frame's sprites.
+          #
+          # So the game marks its gap: GAP_WRITES_RUNNING is set as it wakes from the wait and
+          # cleared once its sprite table is written (SpriteDrawing#emit_present_objects). While it
+          # is set, the line-match interrupt mixes nothing, and moves the line it waits for one on
+          # (DISPSTAT bits 8-15, the line the match interrupt fires on; GBATEK, LCD I/O Interrupts
+          # and Status). The first line after the writes end, it mixes, and puts the line back to
+          # the first. The order is the one a game's own interrupt keeps: what the picture is made
+          # of first, the sound after.
+          #
+          # A gap that is still running at MIX_LATEST_LINE is mixed over all the same: by then the
+          # picture is torn either way, and the mix needs the rest of the picture to be done before
+          # the next hand-over.
+          GAP_WRITES_RUNNING = :__gap_writes_running
+          MIX_LATEST_LINE = 32 # Leaves the mix four fifths of the picture it had from line 0
+
+          def emit_gap_writes_started = @primitives.store_word_immediate(1, @primitives.var_addr(GAP_WRITES_RUNNING))
+
+          def emit_gap_writes_ended = @primitives.store_word_immediate(0, @primitives.var_addr(GAP_WRITES_RUNNING))
+
+          # The line-match interrupt's body when the mix waits for the gap. Uses r0 to r2, which
+          # the BIOS saved, before the mix, which may use any register.
+          def emit_mixer_fill_after_gap_writes
+            e = @emitter
+            ask = e.gensym
+            mix = e.gensym
+            done = e.gensym
+            e.place_label(ask)
+            @primitives.load_var(ACC, GAP_WRITES_RUNNING)
+            e.emit(ASM.cmp_imm(ACC, 0))
+            e.emit_branch(:bcond, mix, cond: :eq)          # the gap's writes are done: mix
+            e.emit(ASM.load_immediate(TMP, REG_VCOUNT))
+            e.emit(ASM.load_halfword(ACC, TMP))            # r0 = the line being drawn
+            e.emit(ASM.cmp_imm(ACC, MIX_LATEST_LINE))
+            e.emit_branch(:bcond, mix, cond: :hs)          # as late as the mix can start: mix
+            e.emit(ASM.add_imm(ACC, ACC, 1))
+            e.emit(ASM.load_immediate(TMP, REG_DISPSTAT + 1))
+            e.emit(ASM.strb(ACC, TMP))                     # ask again at the next line
+            # ...unless the display reached that line while it was being asked for: a match
+            # already passed would never come this frame, and the frame would get no mix. So
+            # the line is read again, and if it is there already the question is asked anew.
+            e.emit(ASM.load_immediate(TMP, REG_VCOUNT))
+            e.emit(ASM.load_halfword(2, TMP))              # r2 = the line being drawn now
+            e.emit(ASM.cmp_reg(2, ACC))
+            e.emit_branch(:bcond, ask, cond: :hs)
+            e.emit_branch(:b, done)
+            e.place_label(mix)
+            e.emit(ASM.load_immediate(ACC, 0))
+            e.emit(ASM.load_immediate(TMP, REG_DISPSTAT + 1))
+            e.emit(ASM.strb(ACC, TMP))                     # the next frame's match at the first line
+            emit_mixer_fill
+            e.place_label(done)
+          end
+
           # Copy the first guard_lots of +from+ to just past the end of +to+, a word at a time.
           def emit_copy_overrun_lots(from:, to:)
             e = @emitter

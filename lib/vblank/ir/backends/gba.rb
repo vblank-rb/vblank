@@ -344,6 +344,11 @@ module VBlank
         def emit_flip_if_buffered = @drawing.emit_flip_if_buffered
         def emit_skip_wait_for_late_page(shown) = @drawing.emit_skip_wait_for_late_page(shown)
         def emit_end_forced_blank = @drawing.emit_end_forced_blank
+        # The game woke from its wait and starts its writes in the gap (Audio), or has written its
+        # sprite table and ended them (SpriteDrawing, through `placement: self`). Nothing for a
+        # game whose mix does not wait for them (see #mix_waits_for_gap?).
+        def emit_gap_writes_started = (@mixer.emit_gap_writes_started if mix_waits_for_gap?)
+        def emit_gap_writes_ended = (@mixer.emit_gap_writes_ended if mix_waits_for_gap?)
         # Where the game loop starts (see Frames#emit_reset_frame_mark), and only where the
         # screen's interrupt counts frames at all. The buttons start here too: a tap made while
         # the game was setting up, with the screen still off, is not one the game should act on.
@@ -1068,6 +1073,7 @@ module VBlank
           @sprite_drawing.emit_no_scene_colors_sent # no scene's sprite colours sent yet
           @background_drawing.emit_held_tiles_at_power_on(program) # no cell change waiting yet
           @background_drawing.emit_no_layers_switched_off # no background hidden yet
+          emit_gap_writes_ended # no gap's writes running yet, so the first line mixes
           emit_copy_hot_code_to_iwram unless @fast_funcs.empty?
           emit_call_power_on_swap # the scenes' own routines that fit side by side, the ones the game loop runs first
           # THE MIXER IS BROUGHT UP BEFORE THE INTERRUPTS ARE ARMED, and the order is load-bearing
@@ -1510,8 +1516,13 @@ module VBlank
           # writes into the next picture, and its top rows showed last frame's sprites. So the
           # gap is the game's, and the sound is built when the display starts the next picture.
           # It is still once a frame, by the screen's clock, and still ahead of the next
-          # hand-over by most of a frame.
-          emit_irq_source(IRQ_VCOUNT) { emit_mixer_fill } if mixes_at_first_line?
+          # hand-over by most of a frame. And where the game's gap runs on into the picture, the
+          # mix waits for it to end (see Mixer::GAP_WRITES_RUNNING).
+          if mixes_at_first_line?
+            emit_irq_source(IRQ_VCOUNT) do
+              mix_waits_for_gap? ? @mixer.emit_mixer_fill_after_gap_writes : emit_mixer_fill
+            end
+          end
           irq_timers.each do |name, info|
             emit_irq_source(timer_irq_bit(info[:rate])) do
               # WHERE THIS HANDLER'S FIRST INSTRUCTION SITS, kept so a profile can count how
@@ -1581,6 +1592,11 @@ module VBlank
         def mixes_at_first_line?
           @mixer.plays_samples? && !interrupts_rows?
         end
+
+        # Whether the mix at the first line waits for the game's writes in the gap to end (see
+        # Mixer::GAP_WRITES_RUNNING). Only a game with sprites marks where they end, as its sprite
+        # table is written, so a game with none mixes at the first line as before.
+        def mix_waits_for_gap? = mixes_at_first_line? && @has_objects
 
         # Service one source: if its +bit+ is pending in REG_IF, run its handler (the block,
         # if any) and acknowledge it. REG_IF is loaded fresh here because a previous

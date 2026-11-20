@@ -267,6 +267,9 @@ module VBlank
                 @picture_group_copying.emit_calls_to_routines
               end
             end
+            # The sprite table is written, and the mix need wait no longer (see
+            # Mixer::GAP_WRITES_RUNNING).
+            @placement.emit_gap_writes_ended
           end
 
           # BRINGING AN AREA'S TILES IN IS THE LONGEST THING A FRAME EVER DOES, and it comes just

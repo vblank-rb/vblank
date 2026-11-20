@@ -1642,6 +1642,9 @@ module VBlank
             @drawing.emit_skip_wait_for_late_page(shown_late)
             @emitter.emit(ASM.swi(SWI_VBLANK_INTR_WAIT << 16))
             @emitter.place_label(shown_late)
+            # The gap's writes start, and the mix at the first line waits for them (see
+            # Mixer::GAP_WRITES_RUNNING).
+            @drawing.emit_gap_writes_started
             @bookkeeping&.emit_frames_taken
 
             # How many frames the pass that just ended really took. First thing after the wait,
