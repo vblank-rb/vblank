@@ -47,7 +47,9 @@ module RubySNESEmulator
     end
 
     def on_path?(tool)
-      ENV.fetch("PATH", "").split(File::PATH_SEPARATOR).any? { |dir| File.executable?(File.join(dir, tool)) }
+      # On Windows a tool is a file with an extension (g++.exe), so those are tried too.
+      names = [tool] + (Gem.win_platform? ? ENV.fetch("PATHEXT", ".EXE").split(";").map { |ext| tool + ext.downcase } : [])
+      ENV.fetch("PATH", "").split(File::PATH_SEPARATOR).any? { |dir| names.any? { |name| File.executable?(File.join(dir, name)) } }
     end
 
     # Makes the core and puts it at +target+, or raises CannotBuild saying why and leaves nothing
@@ -60,7 +62,7 @@ module RubySNESEmulator
       Dir.mktmpdir("bsnes") do |dir|
         archive = File.join(dir, "bsnes.tar.gz")
         download.call(archive)
-        run.call("tar", "xzf", archive, "-C", dir, "--strip-components=1")
+        run.call("tar", "xzf", archive, *(Gem.win_platform? ? ["--force-local"] : []), "-C", dir, "--strip-components=1")
         run.call("patch", "--quiet", "-d", dir, "-p1", "-i", PATCH)
         source = File.join(dir, "bsnes")
         run.call("make", "-C", source, "target=libretro", "binary=library", "build=performance",

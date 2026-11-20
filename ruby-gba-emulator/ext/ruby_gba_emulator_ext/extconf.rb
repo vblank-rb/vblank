@@ -8,9 +8,9 @@ require "mkmf"
 
 # ON WINDOWS (MinGW), Ruby's win32.h declares gettimeofday with a struct timezone, and MinGW's
 # sys/time.h, which libmgba's headers include, declares it again with restrict pointers; the two
-# clash and nothing that includes both compiles. MinGW guards its declaration with this macro, so
-# defining it keeps Ruby's alone. The function is the same one either way.
-$CPPFLAGS << " -D_GETTIMEOFDAY_DEFINED" if RUBY_PLATFORM.include?("mingw")
+# clash and nothing that includes both compiles. Defining MinGW's own guards for that declaration
+# and for the header keeps Ruby's alone, which win32.h already gives with the same struct timeval.
+$CPPFLAGS << " -D_GETTIMEOFDAY_DEFINED -D_SYS_TIME_H_" if RUBY_PLATFORM.include?("mingw")
 
 def add_mgba_deps
   # Dependencies libmgba pulls in, needed when linking the static archive.

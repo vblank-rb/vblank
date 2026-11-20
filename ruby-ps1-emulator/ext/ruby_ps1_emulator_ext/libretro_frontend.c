@@ -34,10 +34,28 @@
  */
 #include "libretro_frontend.h"
 
+#ifdef _WIN32
+/* Windows has no dlfcn.h: the same four calls over LoadLibrary. dlerror gives the system message. */
+#include <windows.h>
+static char dl_error_text[256];
+static void *dlopen(const char *path, int flags) {
+    (void)flags;
+    void *h = (void *)LoadLibraryA(path);
+    if (!h) snprintf(dl_error_text, sizeof dl_error_text, "LoadLibrary failed for %s (error %lu)", path, GetLastError());
+    return h;
+}
+static void *dlsym(void *h, const char *name) { return (void *)GetProcAddress((HMODULE)h, name); }
+static int dlclose(void *h) { return FreeLibrary((HMODULE)h) ? 0 : 1; }
+static const char *dlerror(void) { return dl_error_text; }
+#define RTLD_NOW 0
+#define RTLD_LOCAL 0
+#else
 #include <dlfcn.h>
+#endif
 #include <ruby/thread.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 

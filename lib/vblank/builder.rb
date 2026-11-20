@@ -2147,7 +2147,7 @@ module VBlank
     # looked. (Resolving against the current directory alone is a classic footgun:
     # it works when you run from the project root and mysteriously fails otherwise.)
     def resolve_asset_path(path)
-      return path if File.absolute_path?(path)
+      return path if File.absolute_path?(path) || path.start_with?("/") # "/x" is rooted on Windows too
 
       dir = caller_script_dir
       if dir

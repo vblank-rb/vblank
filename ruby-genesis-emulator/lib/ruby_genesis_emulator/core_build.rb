@@ -48,7 +48,9 @@ module RubyGenesisEmulator
     end
 
     def on_path?(tool)
-      ENV.fetch("PATH", "").split(File::PATH_SEPARATOR).any? { |dir| File.executable?(File.join(dir, tool)) }
+      # On Windows a tool is a file with an extension (g++.exe), so those are tried too.
+      names = [tool] + (Gem.win_platform? ? ENV.fetch("PATHEXT", ".EXE").split(";").map { |ext| tool + ext.downcase } : [])
+      ENV.fetch("PATH", "").split(File::PATH_SEPARATOR).any? { |dir| names.any? { |name| File.executable?(File.join(dir, name)) } }
     end
 
     # Makes the core and puts it at +target+, or raises CannotBuild saying why and leaves nothing there.
@@ -63,7 +65,7 @@ module RubyGenesisEmulator
         download.call(archive)
         source = File.join(dir, "source")
         FileUtils.mkdir_p(source)
-        run.call("tar", "xzf", archive, "-C", source, "--strip-components=1")
+        run.call("tar", "xzf", archive, *(Gem.win_platform? ? ["--force-local"] : []), "-C", source, "--strip-components=1")
         run.call("patch", "--quiet", "-d", source, "-p1", "-i", PATCH)
         run.call("make", "-C", source, "-f", "Makefile.libretro", "-j#{Etc.nprocessors}")
         move_into_place(library_in(source), target)
