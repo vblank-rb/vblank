@@ -57,6 +57,8 @@ module VBlank
       # Runs the whole-game check on the whole-game tape, or the shell check's. Raises
       # WholeGameCheck::Failed, or NotSet when this machine names no copy.
       def run_whole_game_check
+        # A Rakefile loads only this file, so the library comes in as the task runs, as for shell:check.
+        require_relative "../live"
         path = whole_game_tape || tape or
           raise ArgumentError, "The whole-game check names no tape. Set t.whole_game_tape in the Rakefile to a tape " \
                                "recorded from power-on."

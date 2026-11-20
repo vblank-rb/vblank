@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "open3"
 require "tmpdir"
 require "vblank/original/shell_check_tasks"
 require "made_up_original"
@@ -62,6 +63,25 @@ class TestWholeGameTask < Minitest::Test
       out, = capture_io { task.invoke }
 
       assert_match "400 passes", out
+    end
+  end
+
+  # A port's Rakefile requires only the tasks' file, so the task must bring in the library itself:
+  # played by rake in a Ruby of its own that has loaded nothing else.
+  def test_the_task_plays_from_a_rakefile_that_loads_only_the_tasks
+    Dir.mktmpdir do |folder|
+      File.write(File.join(folder, "Rakefile"), <<~RUBY)
+        require "vblank/original/shell_check_tasks"
+        VBlank::Original::ShellCheckTasks.new do |t|
+          t.game_file = #{game_file(folder).inspect}
+          t.whole_game_tape = #{tape_file(folder).inspect}
+        end
+      RUBY
+      said, status = Open3.capture2e({ "RUBYOPT" => nil }, RbConfig.ruby, "-I", VBlank.root.join("lib").to_s,
+                                     "-S", "rake", "shell:whole_game", chdir: folder)
+
+      assert status.success?, said
+      assert_match "plays the whole tape as its all-in-one build does", said
     end
   end
 
