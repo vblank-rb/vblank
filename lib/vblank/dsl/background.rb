@@ -213,6 +213,8 @@ module VBlank
 
       # The block's lines run only while the map showing is one of +maps+ (a Range of map numbers).
       def with_map_showing_in(maps)
+        return yield if map_count == 1 # the only map is always the one showing
+
         tests = if maps.one?
                   [PlainRuby::Steps::GameTest.new(showing == maps.first)]
                 else
@@ -355,6 +357,12 @@ module VBlank
           cells && (!word.is_a?(Integer) || cells.writes?(word))
         end
         told = [@area_pack_cells.each_with_index.find { |cells, _| cells }] if told.empty? # its refusal names the cell
+        # One area is the only map there is, always showing, so its cell needs no test.
+        if map_count == 1
+          told.first.first.write(self, col, row, word, now: now || nil)
+          return self
+        end
+
         told.each do |cells, area|
           test = PlainRuby::Steps::GameTest.new(showing == area)
           test.open_yes_side

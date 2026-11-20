@@ -690,6 +690,39 @@ class TestPackBackgroundAreas < Minitest::Test
     end
   end
 
+  # A background declared by area with one area only, as a game's one-room test cartridge is: its
+  # cell is written straight, as the same background declared without areas writes it.
+  private def one_area_game(from, by_area:)
+    word = PackBackgroundAreaGames.advance_word(*WRITTEN)
+    b = VBlank::Builder.new
+    b.instance_eval do
+      screen :tiled
+      pack = data_pack from: from, version: "1" do |slots|
+        slots.tiles :town_video, at: TOWN_TILES_AT, count: 4
+        slots.numbers :town_map, at: TOWN_MAP_AT, count: 4, width: :half, signed: false
+        slots.colors :town_colors, at: TOWN_COLORS_AT, count: 32
+      end
+      wrap = ->(slot) { by_area ? { town: slot } : slot }
+      world = background :world, tiles: wrap.(pack[:town_video]), map: wrap.(pack[:town_map]),
+                                 colors: wrap.(pack[:town_colors]), across: ACROSS, set_cells: wrap.([word])
+      tick = var :tick, 0
+      game_loop do
+        tick += 1
+        world.set_cell 0, 0, word if tick == 2
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  def test_a_cell_written_on_a_background_of_one_area_is_written_straight
+    Dir.mktmpdir do |folder|
+      from = areas_original(folder)
+
+      assert_equal screen_at(one_area_game(from, by_area: false), 4), screen_at(one_area_game(from, by_area: true), 4)
+    end
+  end
+
   def test_a_cell_no_area_was_told_is_a_friendly_error
     told = PackBackgroundAreaGames.advance_word(*WRITTEN)
     Dir.mktmpdir do |folder|
