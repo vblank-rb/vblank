@@ -1101,7 +1101,7 @@ module PackGames
         end
       end,
       # `set_tile` names a tile of the background's own, and which tiles the map draws is in the file.
-      game(:set_tile_by_a_number_on_a_pack_background, passes: 4, refused: refused_by_builder("set_cell")) do |folder, options|
+      game(:set_tile_by_a_number_on_a_pack_background, passes: 4) do |folder, options|
         advance_cells_game(folder, options, MAP_TILES.flatten.map { |tile| ADVANCE_CELL.(tile) }, set_cells: [ADVANCE_CELL.(3)]) do |world|
           which = var :which, 0
           game_loop do
