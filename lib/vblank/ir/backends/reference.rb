@@ -841,8 +841,9 @@ module VBlank
         ] + Nodes.of_role(:declaration)).freeze
 
         # A statement, by its kind. A `case` over literal kinds is one table lookup and a call.
-        def exec_by_kind(node)
-          case node.kind
+        # +kind+ is the node's, handed on by #exec, which has already read it.
+        def exec_by_kind(node, kind = node.kind)
+          case kind
           when :program then exec_program(node)
           when :set then exec_set(node)
           when :add then exec_add(node)
@@ -945,13 +946,14 @@ module VBlank
           # screen diverge from the console's. Which kinds are hardware-only comes from
           # IR::Portability, so a kind newly tagged there is refused here automatically,
           # with no new branch to add.
-          if Portability.hardware_only?(node.kind)
+          kind = node.kind
+          if Portability.hardware_only?(kind)
             raise ProgramError,
-                  "the reference backend can't run #{node.kind.inspect} — it's a hardware-only op the " \
+                  "the reference backend can't run #{kind.inspect} — it's a hardware-only op the " \
                   "interpreter can't model; keep it out of code you run headlessly"
           end
           paint_owed_repaint if @picture_owed && !defers_repaint?(node)
-          exec_by_kind(node)
+          exec_by_kind(node, kind)
         end
 
         def exec_program(node)
@@ -4347,8 +4349,24 @@ module VBlank
           when :save_sum then value_of_save_sum(node)
           when :timer_ticks then value_of_timer_ticks(node)
           when :clock then value_of_clock(node)
-          else raise ProgramError, "not a value node: #{node.kind.inspect}"
+          else
+            refuse_hardware_only_value!(node)
+            raise ProgramError, "not a value node: #{node.kind.inspect}"
           end
+        end
+
+        # A hardware-only value (reading the live scanline) has no meaning off the
+        # console — the interpreter has no real timing to report. Refuse it plainly
+        # rather than invent a number, the same stance exec takes for hardware-only
+        # statements. Which value kinds are hardware-only comes from IR::Portability.
+        # Asked only of a kind no arm of #value_by_kind names, which every hardware-only
+        # kind is, so a value the interpreter runs never pays for the question.
+        def refuse_hardware_only_value!(node)
+          return unless Portability.hardware_only?(node.kind)
+
+          raise ProgramError,
+                "the reference backend can't evaluate #{node.kind.inspect} — it's a hardware-only value the " \
+                "interpreter can't model; it only means something on real hardware"
         end
 
         # Evaluate an operand to a signed 32-bit integer. Operands are normally
@@ -4357,23 +4375,9 @@ module VBlank
           case operand
           when Integer then Int32.wrap(operand)
           when Symbol then @vars[operand]
-          when Node then eval_node(operand)
+          when Node then value_by_kind(operand)
           else raise ProgramError, "cannot evaluate operand #{operand.inspect}"
           end
-        end
-
-        def eval_node(node)
-          # A hardware-only value (reading the live scanline) has no meaning off the
-          # console — the interpreter has no real timing to report. Refuse it plainly
-          # rather than invent a number, the same stance exec takes for hardware-only
-          # statements. Which value kinds are hardware-only comes from IR::Portability.
-          if Portability.hardware_only?(node.kind)
-            raise ProgramError,
-                  "the reference backend can't evaluate #{node.kind.inspect} — it's a hardware-only value the " \
-                  "interpreter can't model; it only means something on real hardware"
-          end
-
-          value_by_kind(node)
         end
 
         def value_of_int(node)
