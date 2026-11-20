@@ -764,7 +764,8 @@ class TestCLI < Minitest::Test
         File.write(#{pids.dump}, "\#{Process.pid}\\n", mode: "a")
         VBlank.game("DEMO", consoles: %i[gba]) { game_loop { clear_screen :blue } }
       GAME
-      drivers = { "SDL_VIDEODRIVER" => "dummy", "SDL_AUDIODRIVER" => "dummy", "RUBY_YJIT_ENABLE" => nil }
+      drivers = { "SDL_VIDEODRIVER" => "dummy", "SDL_AUDIODRIVER" => "dummy", "RUBY_YJIT_ENABLE" => nil,
+                  "VBLANK_WRITTEN_GAMES" => File.join(dir, "written games") }
       out, status, window = Open3.popen2e(drivers, RUBY, BIN, "run", "demo.rb", "--pictures", "3", "--settings-file",
                                           File.join(dir, "settings.txt"), chdir: dir) do |stdin, output, waiter|
         stdin.close
@@ -782,6 +783,78 @@ class TestCLI < Minitest::Test
     end
   end
 
+  # A GAME WRITTEN OUT IS PLAYED AGAIN WHILE IT IS CURRENT. The second launch starts no helper; a
+  # launch after anything the build read has changed builds again: the game file, a file it reads
+  # as it is built, the console, a --set. (A change to VBlank itself is held to in
+  # test_written_games.rb, since a test cannot change the library it runs.) Each process that loads
+  # the game file notes it, so a launch that builds notes two lines and one that reuses notes one.
+  def test_run_plays_a_current_written_game_again_and_builds_a_stale_one_again
+    Dir.mktmpdir do |dir|
+      pids = File.join(dir, "pids.txt")
+      File.write(File.join(dir, "level.txt"), "1")
+      game = File.join(dir, "demo.rb")
+      File.write(game, <<~GAME)
+        File.write(#{pids.dump}, "\#{Process.pid}\\n", mode: "a")
+        level = File.read(File.join(__dir__, "level.txt")).to_i
+        VBlank.game("DEMO", consoles: %i[gba gbc]) do
+          shade = setting :shade, 1
+          game_loop { clear_screen level + shade > 2 ? :blue : :red }
+        end
+      GAME
+      launches = lambda do |*args|
+        before = File.exist?(pids) ? File.readlines(pids).size : 0
+        args = ["--console", "gba", *args] unless args.include?("--console")
+        out, status = run_in_dummy_window(dir, "demo.rb", "--pictures", "2", *args)
+        assert status.success?, out
+        File.readlines(pids).size - before - 1 # the helpers that loaded the game: the builds
+      end
+
+      assert_equal 1, launches.call, "the first launch builds"
+      assert_equal 0, launches.call, "a current written game is played again"
+      File.write(File.join(dir, "level.txt"), "2")
+      assert_equal 1, launches.call, "a file the build read changed"
+      assert_equal 0, launches.call
+      File.write(game, "#{File.read(game)}\n# a comment\n")
+      assert_equal 1, launches.call, "the game file changed"
+      assert_equal 1, launches.call("--set", "shade=2"), "a setting the build was not told before"
+      assert_equal 0, launches.call("--set", "shade=2")
+      assert_equal 1, launches.call("--console", "gbc"), "another console"
+      assert_equal 0, launches.call, "each kept beside the others"
+    end
+  end
+
+  # A game that reads a file by a path relative to the working folder is built again when launched
+  # from another folder, where that path is another file; and each is kept for its own folder.
+  def test_run_builds_a_game_launched_from_another_folder_again
+    Dir.mktmpdir do |dir|
+      pids = File.join(dir, "pids.txt")
+      game = File.join(dir, "demo.rb")
+      File.write(game, <<~GAME)
+        File.write(#{pids.dump}, "\#{Process.pid}\\n", mode: "a")
+        level = File.read("level.txt").to_i
+        VBlank.game("DEMO", consoles: %i[gba]) { game_loop { clear_screen level > 1 ? :blue : :red } }
+      GAME
+      %w[one two].each_with_index do |folder, index|
+        FileUtils.mkdir_p(File.join(dir, folder))
+        File.write(File.join(dir, folder, "level.txt"), (index + 1).to_s)
+      end
+      drivers = { "SDL_VIDEODRIVER" => "dummy", "SDL_AUDIODRIVER" => "dummy", "RUBY_YJIT_ENABLE" => nil,
+                  "VBLANK_WRITTEN_GAMES" => File.join(dir, "written games") }
+      launches = lambda do |folder|
+        before = File.exist?(pids) ? File.readlines(pids).size : 0
+        out, status = Open3.capture2e(drivers, RUBY, BIN, "run", game, "--pictures", "2", "--settings-file",
+                                      File.join(dir, "settings.txt"), chdir: File.join(dir, folder))
+        flunk out.lines.first.chomp if out.include?("cannot find SDL3")
+        assert status.success?, out
+        File.readlines(pids).size - before - 1
+      end
+
+      assert_equal 1, launches.call("one")
+      assert_equal 1, launches.call("two"), "another working folder, where level.txt is another file"
+      assert_equal 0, launches.call("one")
+    end
+  end
+
   # A game whose build stops is said in the window and on the terminal, and the command fails. The
   # private folder the helper was to write the game in is gone: such a folder can hold an original's data.
   def test_run_says_why_a_game_built_by_the_helper_cannot_play
@@ -791,7 +864,8 @@ class TestCLI < Minitest::Test
       GAME
       temporary = File.join(dir, "tmp")
       FileUtils.mkdir_p(temporary)
-      drivers = { "SDL_VIDEODRIVER" => "dummy", "SDL_AUDIODRIVER" => "dummy", "RUBY_YJIT_ENABLE" => nil, "TMPDIR" => temporary }
+      drivers = { "SDL_VIDEODRIVER" => "dummy", "SDL_AUDIODRIVER" => "dummy", "RUBY_YJIT_ENABLE" => nil, "TMPDIR" => temporary,
+                  "VBLANK_WRITTEN_GAMES" => File.join(dir, "written games") }
       out, status = Open3.capture2e(drivers, RUBY, BIN, "run", "broken.rb", "--pictures", "3", "--settings-file",
                                     File.join(dir, "settings.txt"), chdir: dir)
       flunk out.lines.first.chomp if out.include?("cannot find SDL3")
@@ -992,8 +1066,10 @@ class TestCLI < Minitest::Test
 
   # `vblank run` on SDL's dummy drivers, failing where SDL3 is not installed, with a settings file
   # of its own, so it plays the same whatever the person running the tests has chosen.
+  # Written games are kept in a folder of the test's own (VBLANK_WRITTEN_GAMES), never the person's.
   private def run_in_dummy_window(dir, *args)
-    drivers = { "SDL_VIDEODRIVER" => "dummy", "SDL_AUDIODRIVER" => "dummy", "RUBY_YJIT_ENABLE" => nil }
+    drivers = { "SDL_VIDEODRIVER" => "dummy", "SDL_AUDIODRIVER" => "dummy", "RUBY_YJIT_ENABLE" => nil,
+                "VBLANK_WRITTEN_GAMES" => File.join(dir, "written games") }
     args += ["--settings-file", File.join(dir, "settings.txt")] unless args.include?("--settings-file")
     out, status = Open3.capture2e(drivers, RUBY, BIN, "run", *args, chdir: dir)
     flunk out.lines.first.chomp if out.include?("cannot find SDL3")

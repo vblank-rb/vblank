@@ -44,6 +44,7 @@ module VBlank
           # divides into tiles before it slices — asking for the pixels at that exact
           # size is then a no-op resize, so no tile is ever squashed.
           def dimensions(path)
+            note_handed_over(path)
             out, err, status = Open3.capture3(binary, path, "-format", "%w %h", "info:")
             unless status.success?
               raise Error, "ImageMagick cannot read #{path.inspect}. #{err.strip}"
@@ -75,6 +76,7 @@ module VBlank
           # -depth 8 FORMAT:-  writes the raw 8-bit channels straight to stdout, no
           #                  file header — just the pixels.
           def extract(path, width, height, format:, background:)
+            note_handed_over(path)
             box = "#{width}x#{height}"
             args = [binary, path,
                     "-background", background,
@@ -86,6 +88,15 @@ module VBlank
             end
 
             out
+          end
+
+          # ImageMagick reads the picture itself, in a process of its own, where no Ruby read sees it.
+          # A build vblank run keeps (Live::WrittenGames) is played again only while every file it
+          # read is unchanged, so the picture is named to the record of what the build read. That
+          # record is vblank run's alone, loaded with the window (vblank/live), so a build anywhere
+          # else, where it is not loaded, says nothing.
+          def note_handed_over(path)
+            Live::BuildInputs.note_read(path) if defined?(Live::BuildInputs)
           end
 
           # Whether +name+ can actually run — the honest test is to invoke it.

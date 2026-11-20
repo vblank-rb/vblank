@@ -768,7 +768,12 @@ module VBlank
 
       With no --tape and no --script, you play the game in a window, at the
       speed of the console. When the play stops, the command prints how fast the
-      game ran.
+      game ran. The window opens at once and shows the build as it goes. The
+      game it builds is kept, and the next time it plays at once, until the game
+      file, a file it reads, the console, a --set, the folder you run it from
+      or VBlank changes. It is kept
+      in ~/Library/Caches/vblank (on a Mac) or ~/.cache/vblank, or in the folder
+      that VBLANK_WRITTEN_GAMES names.
 
       With --tape or --script, nobody is at the controls: the tape or the script
       holds the buttons. The command prints how many frames went by and the
@@ -1341,32 +1346,37 @@ module VBlank
     # with none of it to look after. Nothing more is said here: the window says what the build does.
     #
     # What the written game cannot do yet plays in this process instead (#build_in_helper?).
+    #
+    # A game written out by an earlier launch, and still current, is played again with no helper at
+    # all (Live::WrittenGames).
     def play_built_in_helper(game_file, game)
       console = game.refuse_console_not_for!(console_to_play(game))
       require_relative "live"
-      require "tmpdir"
-      folder = Dir.mktmpdir("vblank-run-")
-      written = File.join(folder, "#{File.basename(game_file, '.rb')}-ruby.rb")
-      pid, pipe = VBlank::Live::BuildHelper.start(game_file: game_file, console: console, settings: given_settings,
-                                                  written_path: written)
-      VBlank::Live::WindowProcess.become(window_launch(game, console, written, folder, pid), helper_pipe: pipe, zjit: zjit_on?)
+      slot = VBlank::Live::WrittenGames.new(VBlank::Live::WrittenGames.root)
+                                       .slot(game_file: game_file, console: console, settings: given_settings)
+      library = VBlank::Live::WrittenGames.library_key
+      unless slot.current?(console: console, settings: given_settings, library: library)
+        pid, pipe = VBlank::Live::BuildHelper.start(game_file: game_file, console: console, settings: given_settings,
+                                                    slot: slot, library: library)
+      end
+      VBlank::Live::WindowProcess.become(window_launch(game, console, slot.script_path, pid), helper_pipe: pipe, zjit: zjit_on?)
     rescue ArgumentError => e
       raise build_stopped(e)
     rescue SystemCallError => e
-      # This process could not become the window's, so nothing else will end the helper or remove its folder.
+      # This process could not become the window's, so nothing else will end the helper.
       VBlank::Live::BuildWatch.new(pipe, pid: pid, title: game.title).stop_helper if pid
-      FileUtils.rm_rf(folder) if folder
       raise Thor::Error, "VBlank cannot open the window for #{game.title}: #{e.message}"
     end
 
     # What the window's process is told (runtime/rg_window_main.rb): the window opens at the
-    # console's size, and is fitted to the game once it is written.
-    def window_launch(game, console, written, folder, pid)
+    # console's size, and is fitted to the game once it is written. +pid+ is the helper building
+    # it, nil for a game written already.
+    def window_launch(game, console, written, pid)
       described = VBlank::Console.described(console)
       width, height = described.framed_screen_size
       { title: game.title, width: width, height: height, pixel_size: described.pixel_size, menu: game.menu?,
         buttons: described.buttons, state_folder: state_folder_name(game, nil), written_path: written,
-        written_folder: folder, helper_pid: pid, yjit: options[:yjit],
+        helper_pid: pid, yjit: options[:yjit],
         options: { scale: options[:scale], pictures: options[:pictures], uncapped: options[:uncapped],
                    "collect-garbage": options[:collect_garbage], "settings-file": options[:settings_file],
                    "config-dir": options[:config_dir] }.compact }
