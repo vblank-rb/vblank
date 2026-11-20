@@ -20,7 +20,9 @@ class TestRubyScript < Minitest::Test
     Dir.mktmpdir do |dir|
       path = Ruby.new.build_script(game, File.join(dir, "game-ruby.rb"), console: console, err: StringIO.new)
       # A settings file of its own, so it plays the same whatever the person running it has chosen.
-      Open3.capture2e(ALONE, RbConfig.ruby, path, *arguments, "--settings-file", File.join(dir, "settings.txt"), chdir: dir)
+      played = Open3.capture2e(ALONE, RbConfig.ruby, path, *arguments, "--settings-file", File.join(dir, "settings.txt"), chdir: dir)
+      yield dir if block_given? && played.last.success? # what the play left in its folder, read before it goes
+      played
     end
   end
 
@@ -47,6 +49,22 @@ class TestRubyScript < Minitest::Test
 
     assert status.success?, played
     assert_match(/Press F1 or ` for the menu/, played)
+  end
+
+  # --record-sound keeps what the game handed the speaker, as vblank run's does: the script carries
+  # the recording and the .wav writer.
+  def test_a_script_records_the_sound_to_a_wav
+    game = VBlank.game("BEEPSCRIPT", consoles: %i[gba]) do
+      enable_sound
+      define_sound :tone, frequency: 880, duty: :quarter, decay: :fast, volume: 12
+      game_loop { beep :tone }
+    end
+    played, status = play_alone(game, :gba, "--pictures", "6", "--record-sound", "heard.wav") do |dir|
+      assert_equal "RIFF", File.binread(File.join(dir, "heard.wav"), 4)
+    end
+
+    assert status.success?, played
+    assert_match(/The sound the game made is in heard\.wav\./, played)
   end
 
   # A number of pictures that could never be reached is refused in words, rather than played forever.

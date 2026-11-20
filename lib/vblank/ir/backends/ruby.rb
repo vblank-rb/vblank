@@ -150,7 +150,8 @@ module VBlank
                           vblank/graphics/menu_font.rb vblank/live/window_menu.rb
                           vblank/live/lateness.rb vblank/live/rate.rb vblank/live/menu.rb vblank/live/settings.rb
                           vblank/live/settings_file.rb vblank/live/seats.rb vblank/live/state_slots.rb vblank/live/save_file.rb
-                          vblank/live/session.rb vblank/live/sdl.rb].freeze
+                          vblank/live/session.rb vblank/live/sdl.rb vblank/diagnostics/sound_recording.rb
+                          vblank/live/recording.rb].freeze
         # What a shell's script carries besides: the check of a kept pack, the words for a wrong copy,
         # the shell's facts and the shell itself, each needing nothing of the library the script does
         # not carry.

@@ -1379,16 +1379,16 @@ module VBlank
         helper_pid: pid, yjit: options[:yjit],
         options: { scale: options[:scale], pictures: options[:pictures], uncapped: options[:uncapped],
                    "collect-garbage": options[:collect_garbage], "settings-file": options[:settings_file],
-                   "config-dir": options[:config_dir] }.compact }
+                   "config-dir": options[:config_dir], "record-sound": options[:record_sound] }.compact }
     end
 
     # Whether the play goes through a helper process (#play_built_in_helper): a person playing in a
     # window, on a Ruby that can hand the helper a descriptor and replace itself with the window's
     # process (Live::WindowProcess.available?), in no mode the written game does not carry yet. A match
-    # over a network and --record-sound play in this process, as before.
+    # over a network plays in this process, as before.
     def build_in_helper?
       require_relative "live"
-      VBlank::Live::WindowProcess.available? && !options[:record_sound] && !options[:host] && !options[:join]
+      VBlank::Live::WindowProcess.available? && !options[:host] && !options[:join]
     end
 
     # The game of a shell, played in its window with save states: only the game offers them, once the

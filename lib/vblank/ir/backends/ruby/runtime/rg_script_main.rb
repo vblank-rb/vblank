@@ -23,6 +23,7 @@ module VBlankScript
       parser.on("--[no-]collect-garbage", "Collect Ruby's garbage once the game has set itself up. Default: on.")
       parser.on("--settings-file FILE", "Read and write the window's settings in FILE only.")
       parser.on("--config-dir DIR", "Keep the window's settings files in DIR.")
+      parser.on("--record-sound FILE", "Keep the sound the game makes, and write it to FILE (a .wav) when the play stops.")
       parser.on("--pack-folder DIR", "Keep the game's data pack in DIR.") if SHELL_FACTS
     end.parse!(arguments, into: options)
     %i[scale pictures].each do |name|
@@ -73,10 +74,11 @@ module VBlankScript
     warn problems if problems
     puts "Playing #{written.title} for the #{written.console_title} in Ruby #{RUBY_VERSION} with #{jit_in_use}. " \
          "#{'Press F1 or ` for the menu. ' if written.menu}Press P to pause. Hold Tab to play fast. Press Escape to stop."
+    recording = VBlank::Live::Recording.new(window, frame_seconds: game.frame_seconds) if options[:"record-sound"]
     play_game = lambda do |playing|
       VBlank::Live::Session.new(game: playing, uncapped: options[:uncapped], stop_after_passes: options[:pictures],
                                 collect_garbage: options.fetch(:"collect-garbage", true))
-                           .play(window)
+                           .play(recording || window)
     end
     rate = written.shell ? play_shell(written, window, options, play_game) : play_game.call(game)
     say_rate(written.title, rate, game.frame_seconds) if rate
@@ -85,6 +87,16 @@ module VBlankScript
     exit 1
   ensure
     window&.close
+    write_recorded_sound(recording, options[:"record-sound"]) if recording # a play that went wrong is the one most worth hearing
+  end
+
+  # What +recording+ kept, written to +path+, as vblank run says it.
+  def self.write_recorded_sound(recording, path)
+    sound = recording.sound
+    return puts("The game made no sound, so VBlank wrote no #{path}.") unless sound
+
+    sound.write_wav(path)
+    puts "The sound the game made is in #{path}."
   end
 
   # How fast +rate+ went, once the play stops, as vblank run says it.
