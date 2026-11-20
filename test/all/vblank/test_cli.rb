@@ -1005,6 +1005,19 @@ class TestCLI < Minitest::Test
     end
   end
 
+  # `vblank run --shell` with no pack kept plays the shell's menu, and --pictures stops it there as
+  # it stops a game: the menu waits for a player who is not there.
+  def test_run_shell_with_no_pack_stops_its_menu_after_the_pictures_asked_for
+    Dir.mktmpdir do |dir|
+      fixture = VBlank.root.join("test/fixtures/pacman_port")
+      File.write(File.join(dir, "port.rb"), "require #{fixture.join('pacman_port').to_s.dump}\nPacmanPort.game\n")
+      out, status = run_in_dummy_window(dir, "port.rb", "--shell", "--pack-folder", File.join(dir, "kept"), "--pictures", "3")
+
+      assert status.success?, out
+      assert_match(/as a shell\. Its data pack is kept in #{Regexp.escape(File.join(dir, 'kept'))}/, out)
+    end
+  end
+
   # A console the game does not name is refused in words, before any window opens.
   def test_run_refuses_a_console_the_game_is_not_for
     Dir.mktmpdir do |dir|

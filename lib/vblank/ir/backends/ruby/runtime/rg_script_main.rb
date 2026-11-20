@@ -141,7 +141,8 @@ module VBlankScript
                        refused: lambda { |words|
                          warn words
                          window.notice(words)
-                       }, kept_pack_refused: ->(words) { warn words }, play_game: play_game)
+                       }, kept_pack_refused: ->(words) { warn words }, play_game: play_game,
+                       stop_after_passes: options[:pictures])
   end
 
   # How many cores an unpacking in pieces plays on: +asked+, or every core, and never more than
