@@ -366,7 +366,7 @@ module VBlank
       # Both carry the line the sprite was declared on: nobody wrote these statements, and
       # the work they do is this sprite's, so that is where a cost report should point.
       #
-      # WHETHER A SPRITE IS SHOWN AND WHETHER IT IS ON THE PICTURE ARE TWO QUESTIONS, and each
+      # Whether a sprite is shown and whether it is on the picture are two questions, and each
       # sprite keeps a variable for each. Shown is what the game sets with `hide` and `show`.
       # On the picture is a fact about the pixels: the sprite was drawn, what it covered is
       # remembered, and nothing has replaced that part of the picture since. They come apart

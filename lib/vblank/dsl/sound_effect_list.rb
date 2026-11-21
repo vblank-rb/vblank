@@ -5,7 +5,7 @@ module VBlank
     # The game's sound effects, handed over as Scores and played by name or number — what
     # `sound_effects` gives back.
     #
-    #   sfx = sound_effects :sfx, { hit: HIT, spark: SPARK }
+    #   sfx = sound_effects :sfx, { hit: hit, spark: SPARK }
     #   sfx.play :hit
     #   sfx.play which        # whichever one a number the game holds names
     #

@@ -2,7 +2,7 @@
 
 module VBlank
   module DSL
-    # A SHELL'S FIRST SCREEN, as a game makes it its own (Builder#shell_screen hands this to the
+    # A shell's first screen, as a game makes it its own (Builder#shell_screen hands this to the
     # game's block). A shell is the build with none of the original's data in it, and its first
     # screen is what a player sees until their own copy has been read: a title, a line saying what
     # the game needs, and the lines LOAD ROM and SETTINGS. VBlank writes that screen
@@ -10,28 +10,28 @@ module VBlank
     #
     #   shell_screen do |first|
     #     font :runes, glyphs: RUNES                  # declared here: this screen is a program of its own
-    #     image :sky, width: 240, height: 160, data: SKY
+    #     image :sky, width: 240, height: 160, data: sky
     #     first.font :runes
     #     first.title "ÆON"
-    #     first.needs "LOAD YOUR COPY OF ÆON"
+    #     first.needs "load your copy of ÆON"
     #     first.colors title: :yellow, cursor: :white, ground: :blue
     #     first.picture :sky
-    #     first.line "CREDITS", shows: :credits
-    #     scene(:credits) { draw_text "MADE BY US", :center, 40, :white, font: :runes }
+    #     first.line "credits", shows: :credits
+    #     scene(:credits) { draw_text "made by us", :center, 40, :white, font: :runes }
     #   end
     #
-    # ONE WORD FOR ONE THING. The SCREEN is the first screen. A LINE is one row a player can put
-    # the cursor on and choose; LOAD ROM and SETTINGS are lines, always there. The TITLE and what
-    # the game NEEDS are words above the lines, which cannot be chosen. A line is in one of three
+    # One word for one thing. The SCREEN is the first screen. A line is one row a player can put
+    # the cursor on and choose; LOAD ROM and settings are lines, always there. The TITLE and what
+    # the game needs are words above the lines, which cannot be chosen. A line is in one of three
     # states, each a colour: plain (+line+), under the cursor (+cursor+), and chosen (+chosen+).
-    # The GROUND is the colour behind everything, and the PICTURE is drawn over it, under the words.
+    # The GROUND is the colour behind everything, and the picture is drawn over it, under the words.
     #
-    # WHAT A LINE OF THE GAME'S OWN MAY DO is a short list, since the shell is not the game: it
+    # What a line of the game's own may do is a short list, since the shell is not the game: it
     # shows a scene written in the block and comes back to the menu when the player presses A, B
     # or Start (+shows:+). Nothing else yet. It cannot ask for the copy, start the game or end the
     # shell: those are LOAD ROM's and the shell's.
     #
-    # NOTHING HERE MAY COME FROM THE DATA PACK. The screen shows before the player's copy is read,
+    # Nothing here may come from the data pack. The screen shows before the player's copy is read,
     # so the pack holds nothing yet: a slot given to any of these, or to a verb in the block, is
     # refused in plain words (#refuse_pack_slot!).
     class ShellScreen
@@ -74,7 +74,7 @@ module VBlank
       # The words of the line that says what the game needs, in place of VBlank's.
       def needs(words) = @needs_words = words_given("needs", words)
 
-      # The words of LOAD ROM and of SETTINGS, for a font that lacks their letters or a game in
+      # The words of LOAD ROM and of settings, for a font that lacks their letters or a game in
       # another language. The lines stay, and do what they do.
       def labels(load_rom: nil, settings: nil)
         @labels[:load_rom] = words_given("labels load_rom:", load_rom) unless load_rom.nil?

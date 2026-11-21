@@ -43,7 +43,7 @@ module VBlank
         self
       end
 
-      # GIVE THE LIGHT A SHAPE OF THE GAME'S OWN, a row of the screen at a time. The block is
+      # Give the light a shape of the game's own, a row of the screen at a time. The block is
       # handed the row, 0 at the top, and gives back how far the light reaches either side of
       # its middle on that row — or the row's two edges, `[left, right]`, the columns from left
       # up to (not including) right. The circle is the shape a light has until it is given one.
@@ -66,7 +66,7 @@ module VBlank
       # the midpoint circle the console's own games draw.
       def circle(row) = @builder.light_circle(self, row)
 
-      # SHOW THE LIGHT AS IT STANDS ON THE PICTURE BEING DRAWN, not the next one. A change to the
+      # Show the light as it stands on the picture being drawn, not the next one. A change to the
       # light otherwise shows a picture later, like a sprite's place, because its rows are
       # worked out in the gap before a frame. A game whose own light is handed to the display
       # while the picture is drawn shows a change at once — an iris that opens on the frame it
