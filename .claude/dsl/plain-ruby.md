@@ -190,6 +190,11 @@ instance variables.
   `true`/`false`. A `case` with no subject asks each `when` in turn. `case … in` takes the same
   values, with `a | b` between them; any other pattern (a binding, an array, a guard) is Ruby's, on
   a plain value only.
+- **A `case` that picks a scene**: `case state`, `when 0 then call :title`, `when 1 then call :playing`.
+  On a game variable, with every `when` a whole number (or a constant holding one) and every arm one
+  `call` of a scene, it is the game's scene dispatch, the one `call mode` makes (`scenes.md`). Any
+  other `case` that calls a scene is refused, saying what to write. A `case` whose arms call funcs is
+  the chain of tests above.
 - `nil` is Ruby's: `target = nil`, then `if target`, `target.nil?`, `target == nil`, `target != nil`,
   `target || 7`. Read as a number, nil is 0.
 
