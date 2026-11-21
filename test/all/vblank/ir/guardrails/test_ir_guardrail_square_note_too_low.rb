@@ -4,7 +4,7 @@ require "test_helper"
 
 require "stringio"
 
-# The square-wave voice has a lowest pitch, 64 Hz, and a lower note is played AT it — a different
+# The square-wave voice has a lowest pitch, 64 Hz, and a lower note is played at it — a different
 # note, with nothing to say so. A song block's note names never go that low, but a pitch in Hz can,
 # and a Score's MIDI keys reach it easily. The build warns, naming the note and the lowest one that
 # sounds right, and still builds: the song plays, one note of it wrong.
@@ -21,7 +21,7 @@ class TestSquareNoteTooLowGuardrail < Minitest::Test
     Check.new.detect(program(song(:low, total_frames: 8, voices: [voice])))
   end
 
-  # WHY IT IS WORTH SAYING: below the bottom, different notes come out as one pitch.
+  # Why it is worth saying: below the bottom, different notes come out as one pitch.
   def test_two_different_notes_under_the_bottom_sound_the_same
     assert_equal Registers.frequency_value(64), Registers.frequency_value(49)
     assert_equal Registers.frequency_value(64), Registers.frequency_value(33)
@@ -84,7 +84,7 @@ class TestSquareNoteTooLowGuardrail < Minitest::Test
     assert_match(/2 notes that are too low/, said)
   end
 
-  # MUSIC LIFTED OFF A CARTRIDGE ALREADY PLAYED THESE NOTES AT THE BOTTOM. A cartridge's own sound
+  # Music lifted off a cartridge already played these notes at the bottom. A cartridge's own sound
   # engine clamps a key below C2 to C2 before the console ever sees it, so a decoded sound effect
   # with a note down there is playing what the original played, and every way out the warning
   # offers would change the sound. A Score says so, and is quiet; a hand-written part beside it

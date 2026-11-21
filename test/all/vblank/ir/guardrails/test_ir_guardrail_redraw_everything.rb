@@ -3,7 +3,7 @@
 require "test_helper"
 
 # The structural render-budget guardrail: warn when a game clears the whole screen
-# and repaints a GROWING collection every frame — the "rebuild the whole frame from
+# and repaints a growing collection every frame — the "rebuild the whole frame from
 # scratch" pattern that tears once the collection grows. Cheap and high-signal (no
 # cost weights); it only looks at the steady per-frame path, so a once-per-round
 # repaint behind a press is (correctly) left alone.
@@ -44,7 +44,7 @@ class TestRedrawEverythingGuardrail < Minitest::Test
                  "the incremental Snake draws per-cell in the steady loop; only its menus clear"
   end
 
-  # The clear+growing-redraw pattern is exactly what double buffering is FOR: it
+  # The clear+growing-redraw pattern is exactly what double buffering is for: it
   # can't tear when buffered, so this tear-specific warning stays quiet. (If the
   # redraw is genuinely too heavy, the draw-budget check catches the frame-rate
   # drop — that's a different concern.)
