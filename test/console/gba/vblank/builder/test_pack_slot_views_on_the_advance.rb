@@ -34,7 +34,7 @@ class TestPackSlotViewsOnTheAdvance < Minitest::Test
     end
   end
 
-  # What the game with a slot for each part shows after each of frames.
+  # What the game with a slot for each part shows after each of FRAMES.
   private def pictures_from_slots_of_their_own(from, &more)
     separate, = two_shapes_game_and_file(from, views: false, &more)
     FRAMES.to_h { |count| [count, game_player.run(separate, frames: count).screen.to_a] }

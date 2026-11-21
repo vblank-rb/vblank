@@ -18,7 +18,7 @@ end
 
 # The Shmup example: a whole game split across files — examples/shmup/player.rb,
 # enemies.rb, hud.rb — each a plain Ruby object that takes the build and calls the DSL
-# verbs on it, wired into two scenes (playing and a game over screen). This proves the
+# verbs on it, wired into two scenes (PLAYING and a game over screen). This proves the
 # multi-file pattern and real scenes end to end: the parts declare their own sprites and
 # HUD inside the playing scene (so they vanish on the game-over screen), collaborate (an
 # enemy touching the ship calls the HUD's hit), and losing the last ship switches scenes —

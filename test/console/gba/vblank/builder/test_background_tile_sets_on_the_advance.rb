@@ -79,7 +79,7 @@ class TestBackgroundTileSetsOnTheAdvance < Minitest::Test
 
   GROUPS = 9 # groups of fifteen colours an area draws from; the console's table holds sixteen
 
-  # An area of groups tiles, each drawn in fifteen colours no other tile uses — so each tile
+  # An area of GROUPS tiles, each drawn in fifteen colours no other tile uses — so each tile
   # needs a group of sixteen of its own, and two areas together need more than there are.
   private def colorful_tiles(area)
     (0...GROUPS).map do |t|
