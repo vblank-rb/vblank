@@ -102,7 +102,7 @@ module VBlank
 
             # The chip's way each see-through background of +program+ is mixed in (Console::PS1Hardware::
             # SEMI_TRANSPARENCY_MODES), by background: those in a layer whose amounts are numbers the chip mixes,
-            # and hidden for one in a layer that shows nothing of itself (`transparency: 100`), which is not drawn.
+            # and HIDDEN for one in a layer that shows nothing of itself (`transparency: 100`), which is not drawn.
             # A layer drawn whole (`transparency: 0`) is no mix, and an amount the chip cannot mix was refused
             # before the build (Console::PS1Answers.see_through_refusals).
             def self.see_through_modes(program)

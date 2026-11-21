@@ -235,7 +235,7 @@ module VBlank
 
           # --- an instruction the code works out, named by its mnemonic ---
 
-          # A load or a store, +op+ one of loads or stores: for a width the code works out.
+          # A load or a store, +op+ one of LOADS or STORES: for a width the code works out.
           def load(op, rt, distance, base) = emit_load(op, LOADS.fetch(op), rt, distance, base)
           def store(op, rt, distance, base) = emit_store(op, STORES.fetch(op), rt, distance, base)
 

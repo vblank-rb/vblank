@@ -8,7 +8,7 @@ module VBlank
         #
         # A PlayStation has 2 megabytes of main RAM, and the program itself is loaded into it (a PS-X
         # EXE). The rest is the game's: the runtime's own state, the game's variables and lists, and
-        # the stack. What the game keeps comes first, from the first byte a program owns, and the
+        # the stack. What the game keeps comes FIRST, from the first byte a program owns, and the
         # program is loaded straight after it:
         #
         #   80010000h-...        the runtime's own state, then the game's variables and lists, upward

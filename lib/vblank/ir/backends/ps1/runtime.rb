@@ -26,7 +26,7 @@ module VBlank
         # the sound chip (Sound).
         #
         # How its routines are called. With JAL, from anywhere in the program, and they return with
-        # `jr ra`. Their numbers are in arguments (a0, a1, a2, a3, then t4 to t7) and their answer in v0.
+        # `jr ra`. Their numbers are in ARGUMENTS (a0, a1, a2, a3, then t4 to t7) and their answer in v0.
         # A routine may change at, v0, v1, the argument registers and t0 to t9, and keeps s0 to s7, gp
         # and sp as it found them; one that calls another keeps its own return address on the stack.
         # gp points into the region the game keeps its numbers in (Memory::BASE), fp at the scratchpad

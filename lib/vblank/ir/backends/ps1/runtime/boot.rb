@@ -255,7 +255,7 @@ module VBlank
               end
             end
 
-            # The frames setting up takes, counted in k1. The region the interrupt keeps frames in is not
+            # The frames setting up takes, counted in k1. The region the interrupt keeps FRAMES in is not
             # cleared yet, and is cleared later, so while setting up the count is kept in k1, a register that
             # is the interrupt's alone (R3000::REGISTERS): nought means the interrupt does all its work, and
             # anything else that it only counts blanks, k1 being one more than the blanks counted
@@ -269,7 +269,7 @@ module VBlank
               asm.mtc0(:t0, R3000::COP0_STATUS)
             end
 
-            # The blanks counted in k1 become frames, and k1 nought hands the interrupt its whole work, with
+            # The blanks counted in k1 become FRAMES, and k1 nought hands the interrupt its whole work, with
             # every interrupt held off meanwhile; #emit_interrupts_on lets them in again, a blank that began
             # meanwhile still waiting.
             def emit_counting_handed_over(asm, memory)
