@@ -2,7 +2,7 @@
 
 module VBlank
   module Console
-    # What every verb does on a PlayStation (Console::Answers says what an answer is).
+    # What every verb does on a PLAYSTATION (Console::Answers says what an answer is).
     #
     # The PlayStation is a 32-bit console of 1994 with a MIPS R3000A at its heart and a graphics chip
     # that draws flat, shaded and textured triangles, rectangles and lines into a megabyte of video RAM
@@ -317,7 +317,7 @@ module VBlank
         "`shows: #{layer.shows.value}, shows_behind: #{layer.behind.value}`"
       end
 
-      # What .claude/dsl/playstation.md says: every answer, in the order answers gives them, and what the
+      # What .claude/dsl/playstation.md says: every answer, in the order ANSWERS gives them, and what the
       # PlayStation's build does not make yet — +not_yet+, the lowering's own list of the program's kinds
       # it refuses for now, by what they are part of (Kit#answers_page).
       def self.reference(not_yet: {})

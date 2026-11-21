@@ -308,7 +308,7 @@ module VBlank
         instrument: works("see `sample`.")
       })
 
-      # What .claude/dsl/sega-genesis.md says: every answer, in the order answers gives them, and what
+      # What .claude/dsl/sega-genesis.md says: every answer, in the order ANSWERS gives them, and what
       # the Genesis's build does not make yet — +not_yet+, the lowering's own list of the program's
       # kinds it refuses for now, by what they are part of (Kit#answers_page).
       def self.reference(not_yet: {})

@@ -30,7 +30,7 @@ module VBlank
       def colors = 1 << plane_bits.length
     end
 
-    # A colour in two bytes: whether the high byte is first, and the lowest bit of each channel
+    # A COLOUR in two bytes: whether the high byte is first, and the lowest bit of each channel
     # in the two bytes read as one number, each +channel_bits+ wide (3 to 5). A channel narrower than
     # five bits is widened to five as the console shows it (its bits repeated, so the brightest is 31).
     ColorFormat = Data.define(:high_byte_first, :red_at, :green_at, :blue_at, :channel_bits)
@@ -137,13 +137,13 @@ module VBlank
     # Two bit planes, a row's plane 0 then plane 1, the left pixel in a byte's top bit.
     TWO_PLANE_TILES = TileFormat.new(plane_bits: [0, 8], row_bits: 16,
                                      column_bits: (0...8).map { |x| 7 - x })
-    # A byte a pixel, row by row: a tile of 256 colours, 64 bytes, each byte a place in the whole
+    # A BYTE a pixel, row by row: a tile of 256 colours, 64 bytes, each byte a place in the whole
     # table of colours. It is how a layer that turns and resizes keeps its pictures, since the
     # console reads one of its pixels at a time and never a row of them: the Advance's turning
     # layer, and the Super Nintendo's Mode 7. A byte is a byte in every layout, so a slot of
     # tiles of 256 colours is kept this way whatever console the original is for.
     BYTE_A_PIXEL_TILES = TileFormat.new(plane_bits: (0...8).to_a, row_bits: 64, column_bits: (0...8).map { |x| x * 8 })
-    # A byte a cell: the map of such a layer. The byte is the tile's number and nothing else,
+    # A BYTE a cell: the map of such a layer. The byte is the tile's number and nothing else,
     # with no bit to turn the tile and none to pick a bank, so every tile draws from the first.
     BYTE_MAP_CELLS = MapWordFormat.new(tile_bits: 8, mirror_bit: nil, flip_bit: nil, bank_at: 0, bank_bits: 0,
                                        row_tiles: nil, cell_bytes: 1)

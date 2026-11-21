@@ -92,7 +92,7 @@ module VBlank
       #
       # The cartridge (ROM) is slow memory. Every time the CPU fetches an instruction
       # or reads data from the .gba, it stalls a few cycles waiting for the ROM chip —
-      # "wait states". At power-on the console picks the slowest, safest timing (so any
+      # "wait states". At power-on the console picks the SLOWEST, safest timing (so any
       # cartridge works), which makes code that runs from ROM crawl.
       #
       # Real cartridges are faster than that worst case, so a game writes this register
