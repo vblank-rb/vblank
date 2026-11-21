@@ -6,7 +6,7 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # ONE SPRITE, PICTURES GIVEN DIFFERENT LISTS OF COLORS, on a console whose build keeps one
+        # One sprite, pictures given different lists of colors, on a console whose build keeps one
         # list for a whole sprite.
         #
         # A sprite's pixels are not colors. Each is a small number, a place in a list of
@@ -64,17 +64,17 @@ module VBlank
 
           private
 
-          # ON A CONSOLE WHOSE BUILD SHOWS EACH POSE IN ITS OWN LIST'S COLORS, what is left to refuse
+          # On a console whose build shows each pose in its own list's colors, what is left to refuse
           # is a sprite told to follow those lists (Object#follows_each), where the build cannot
           # do that yet (Console::Description#pose_lists).
           #
-          # A sprite of ONE picture following its list is a sprite drawn with that list, which every
+          # A sprite of one picture following its list is a sprite drawn with that list, which every
           # console's build makes, so it is not refused. A build that reads its pack as the game
           # starts makes one of a pose whose list its frame picks (Builder::PackPoses
           # #follow_lists_chosen_at_start), where the build that holds the pack draws the sprite with
           # the list.
           #
-          # A sprite of SEVERAL such poses, all of banks of one slot, is not refused either. Which
+          # A sprite of several such poses, all of banks of one slot, is not refused either. Which
           # bank each frame names is in the player's file, read as the game starts, so the build
           # cannot tell. Where every frame names one bank, the build that holds the pack draws the
           # sprite with that bank's list, as above. Where they name two, which that build refuses, the
@@ -119,7 +119,7 @@ module VBlank
               "of the #{SpriteWords.member_word(node)} the same `colors:` list. Then tell it to `draw_with` that list."
           end
 
-          # A PICTURE'S LIST AS IT IS COMPARED WITH ANOTHER: +colors+ as they are, except where the
+          # A picture's list as it is compared with another: +colors+ as they are, except where the
           # program reads its data pack as it starts (+start_file+) and a pose is drawn in the bank
           # its frame names. That pose's list is a marker for each place of "the bank frame N names"
           # (StartFile::ChosenColor), so two frames give two lists even where both name one bank,
@@ -155,7 +155,7 @@ module VBlank
               "it to `draw_with` a list that `colors` declares."
           end
 
-          # A POSE OF SEVERAL BANKS (Nodes::Bitmap#bank_places, `banks:`) beside a pose of other banks:
+          # A pose of several banks (Nodes::Bitmap#bank_places, `banks:`) beside a pose of other banks:
           # their `colors:` may be the same slot, so "different lists" would send the author to a list
           # that is the same. The banks the poses name are what differ.
           def banks_message(node, by_list, console)

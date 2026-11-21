@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # A PICTURE THE GAME PAINTS FROM A LIST IS THE WHOLE OF THE SPRITE THAT SHOWS IT.
+        # A picture the game paints from a list is the whole of the sprite that shows it.
         #
         # The console keeps such a picture in one room of sprite memory, which the game's list
         # is copied into whenever the game marks it `changed`, and the sprite points at that room. A

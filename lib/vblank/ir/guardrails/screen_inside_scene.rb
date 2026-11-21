@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # A scene picks its screen AS IT TAKES OVER, and that is read off the top of its block:
+        # A scene picks its screen as it takes over, and that is read off the top of its block:
         # the console switches the display before the scene's scenery goes up, because changing
         # the kind of screen wipes whatever was up (see IR::SceneHandover). A `screen` anywhere
         # else in a scene — under a test, or in a routine it calls — would change the screen

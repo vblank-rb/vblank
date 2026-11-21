@@ -5,7 +5,7 @@ module VBlank
     module Guardrails
       module Checks
         # Shared machinery for the one-time-setup guardrails. Several footguns are the
-        # same shape: a verb meant to run ONCE (seed the random stream, create a list)
+        # same shape: a verb meant to run once (seed the random stream, create a list)
         # written directly inside a per-frame context, where it silently re-runs every
         # frame. This finds those contexts so each check only has to name which verb it
         # cares about and how to phrase the fix.
@@ -15,10 +15,10 @@ module VBlank
         # dispatched by case_var, or a routine the loop calls). `after` is one-shot, so
         # its body runs once and isn't one. A conditional (`if`) isn't a container
         # either — a setup op it guards may be a deliberate, one-off re-run — so only a
-        # verb that is a DIRECT statement of a per-frame body is caught.
+        # verb that is a direct statement of a per-frame body is caught.
         module PerFrameScope
           # Every func that runs each frame: the funcs reached from inside a per-frame
-          # loop (the game loop and its timers) by UNCONDITIONAL calls, followed
+          # loop (the game loop and its timers) by unconditional calls, followed
           # transitively — a func a per-frame func unconditionally calls is itself
           # per-frame. A call guarded by a condition or an input edge
           # (`call :new_game if pressed(:start)`) runs on demand, not each frame,
@@ -67,7 +67,7 @@ module VBlank
             end
           end
 
-          # The funcs a node UNCONDITIONALLY calls or dispatches to: the routines its
+          # The funcs a node unconditionally calls or dispatches to: the routines its
           # DIRECT statement children can call. A call nested inside a conditional isn't
           # included — it doesn't run every time its container does. (A case_var, and a
           # call picked by number, run one of theirs each time, so all of them count.)

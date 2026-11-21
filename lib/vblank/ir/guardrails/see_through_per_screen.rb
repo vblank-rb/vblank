@@ -8,9 +8,9 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # TWO SEE-THROUGH LAYERS ON ONE SCREEN.
+        # Two see-through layers on one screen.
         #
-        # The console blends ONE layer with what is behind it, so a screen has one
+        # The console blends one layer with what is behind it, so a screen has one
         # see-through layer. A game can have several — a title whose light rays shimmer,
         # and a menu whose window glows over its backdrop — as long as no screen shows
         # two of them.
