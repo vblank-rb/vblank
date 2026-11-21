@@ -83,7 +83,7 @@ class TestTimer < Minitest::Test
     assert_equal 20, run_ticks(per_second: 120, stop_frame: 10)[:snap]
   end
 
-  # A WHOLE TICK COUNTS ON THE FRAME IT FALLS DUE, at any rate. Ten a second is a tick every six
+  # A whole tick counts on the frame it falls due, at any rate. Ten a second is a tick every six
   # frames, so six frames in it reads 1; three a second reads 3 a second in. Counted by adding a
   # tenth of a tick a frame as a fraction, the sum lands a hair under the whole tick, and the
   # count read one short on exactly those frames.
@@ -198,14 +198,14 @@ class TestTimer < Minitest::Test
     assert_equal 5, run_on_tick(per_second: 60, stop_frame: 10, stop_at: 5)[:hits]
   end
 
-  # A HANDLER IS THE TIMER'S, NOT THE LINE'S. `on_tick` says what a timer does when it
+  # A handler is the timer's, not the line's. `on_tick` says what a timer does when it
   # ticks, the way `once_a_frame` says what happens each frame, so a handler written inside
   # a routine nothing calls still answers every tick once the timer runs — on both runners.
   def test_a_handler_inside_a_routine_nothing_calls_still_runs
     assert_equal 10, game_player.run(handler_in_uncalled_routine_program, frames: 10)[:hits]
   end
 
-  # A HANDLER CAN CALL THE ROUTINE IT INTERRUPTED. The handler runs at the frame boundary, which here is
+  # A handler can call the routine it interrupted. The handler runs at the frame boundary, which here is
   # inside :step's own wait, so :step runs again while the first call is still going: the first call's
   # first item writes 0, then the tick's call writes 5, 6 and 7 (it waits for nothing), so the first
   # frame ends on 567. A cartridge keeps a routine's own numbers (its loop's count) at fixed places,
@@ -240,7 +240,7 @@ class TestTimer < Minitest::Test
     assert_equal 567, seen.fetch(1)
   end
 
-  # ...AND THE INTERRUPTED CALL CARRIES ON WHERE IT WAS. The game waits inside :walk, four steps a
+  # ...AND the interrupted call carries on where it was. The game waits inside :walk, four steps a
   # walk, and every other frame the tick runs :walk again from its start, to its end without
   # waiting. The game's own walk then goes on from the step it had reached, so a walk takes the
   # game four of its frames however often the tick walks too. A build that runs the game's routines
@@ -285,7 +285,7 @@ class TestTimer < Minitest::Test
                   [28, 2, 5], [29, 2, 5], [34, 2, 6], [35, 2, 6], [40, 2, 7]], (1..14).map { |frame| seen.fetch(frame) }
   end
 
-  # A HANDLER THAT WAITS INSIDE ITS OWN LOOP KEEPS ITS PLACE IN IT. Its wait is a frame boundary too, so the
+  # A handler that waits inside its own loop keeps its place in it. Its wait is a frame boundary too, so the
   # handler runs again inside it, to its end without waiting, and the first run then goes on from the turn it
   # had reached: a run that waits takes three frames, and the runs inside it walk three turns each. A
   # cartridge keeps a loop's count at a fixed place, which the inner run would leave finished.
@@ -328,7 +328,7 @@ class TestTimer < Minitest::Test
     assert_equal [7, 18, 2, 1], reads.map { |name| run[name] }
   end
 
-  # ...AND THE SAME WHEN THE WAIT IS IN A ROUTINE IT CALLS. Two turns here, each waiting in :breather. The
+  # ...AND the same when the wait is in a routine it calls. Two turns here, each waiting in :breather. The
   # game's waits are its own (`frame_sync: :manual`), so the routine's is not taken as the game loop's.
   def test_a_handler_waiting_in_a_routine_inside_a_repeat_keeps_its_turn
     b = Builder.new(options: VBlank::Cartridge::Options.new(frame_sync: :manual))
@@ -364,7 +364,7 @@ class TestTimer < Minitest::Test
     assert_equal({ 2 => [1, 2, 1], 3 => [2, 4, 1], 5 => [3, 6, 1], 6 => [4, 8, 1], 8 => [5, 10, 1] }, seen)
   end
 
-  # A HANDLER CAN DRAW. On a painted screen it draws what the game's own lines draw, a number
+  # A handler can draw. On a painted screen it draws what the game's own lines draw, a number
   # here; on a tear-free one what it draws goes on the page being drawn, so the loop's next
   # clear takes it away before that page is shown and the screen stays blue. (A Color keeps one
   # page, the one being drawn, so there too the clear covers it before the run ends.) Every lowering
@@ -399,7 +399,7 @@ class TestTimer < Minitest::Test
     assert_equal Color.resolve(:blue), game_player.run(b.program, frames: 6).screen.pixel(44, 44)
   end
 
-  # ...AND WHAT IT DRAWS WAITS FOR THE PAGE AFTER, however much it draws: a hundred and fifty squares are more
+  # ...AND what it draws waits for the page after, however much it draws: a hundred and fifty squares are more
   # than a console keeps waiting at once, and none of them shows over the blue. The squares read are the first
   # and one inside the smallest screen, the Color's.
   def test_a_handler_drawing_much_on_a_tear_free_screen_draws_on_the_page_being_drawn
@@ -417,7 +417,7 @@ class TestTimer < Minitest::Test
     assert_equal [Color.resolve(:blue)] * 2, [screen.pixel(2, 2), screen.pixel(130, 130)]
   end
 
-  # A SPRITE OVER A TEAR-FREE PICTURE THAT A HANDLER MOVES shows where the pass left it, on that pass's
+  # A sprite over a tear-free picture that a handler moves shows where the pass left it, on that pass's
   # frame: the frame boundary places it before the handler runs, and the handler's move shows a frame later.
   # The first frame is not read: a console that keeps two pages places the sprite as the boundary trades
   # them, and one that keeps one (the Color, the Super Nintendo, the Genesis) has placed nothing before the
@@ -441,7 +441,7 @@ class TestTimer < Minitest::Test
     assert_equal [28, 36, 44, 52, 60], seen.drop(1)
   end
 
-  # A HANDLER READS THE BUTTONS of the frame it ticks on: A held for three frames is three ticks
+  # A handler reads the buttons of the frame it ticks on: A held for three frames is three ticks
   # holding it and one press, and a tap later is one more of each.
   def test_a_handler_reads_the_buttons_of_its_frame
     b = Builder.new

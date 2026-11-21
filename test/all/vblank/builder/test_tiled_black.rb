@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# BLACK DRAWN BY COLOUR ON A BACKGROUND is see-through, unless the tileset says `black: :solid`. A
+# Black drawn by colour on a background is see-through, unless the tileset says `black: :solid`. A
 # tile whose left half is black and right half white, over a red backdrop: the left half shows
 # red through it, or stays black.
 class TestTiledBlack < Minitest::Test
@@ -79,7 +79,7 @@ class TestTiledBlack < Minitest::Test
     b.program
   end
 
-  # A BACKGROUND ON A PAINTED SCREEN is stamped into the picture, and black means there what it means
+  # A background on a painted screen is stamped into the picture, and black means there what it means
   # on a tiled one: the picture under it stays, unless the tileset says black is solid.
   private def stamped_game(**says)
     b = Builder.new
