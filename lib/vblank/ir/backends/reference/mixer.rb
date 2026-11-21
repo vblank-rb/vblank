@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class Reference
-        # THE VOICES SEVERAL RECORDED SOUNDS SHARE, and the sound they make together — the same
+        # The voices several recorded sounds share, and the sound they make together — the same
         # software mixer the console runs, written in Ruby.
         #
         # On the console the CPU adds every sounding recording together itself, a slice of sound
@@ -13,10 +13,10 @@ module VBlank
         # the very bytes the cartridge writes, held to them by a test. So it is also where that
         # arithmetic is written down in Ruby, for anything else that has to make the same sound.
         #
-        # ONE FRAME'S SLICE, as the cartridge makes it (#mix). Each sounding voice reads its
+        # One frame's slice, as the cartridge makes it (#mix). Each sounding voice reads its
         # recording from where it got to, one sample for each sample of the slice, and adds the
         # sample times its loudness, over 512, into a running total for that place in the slice.
-        # How fast it reads is its STEP: how many samples of the recording go by for each sample
+        # How fast it reads is its step: how many samples of the recording go by for each sample
         # of the slice, in 65536ths, so a note pitched up reads faster and one recorded at
         # another rate is read at the rate the mix runs at. The part of a sample that does not
         # make a whole one is carried, frame to frame. A voice that reaches the end of its
@@ -26,12 +26,12 @@ module VBlank
         # loud voice and a loud one of the other sign cancel. A frame with no voice sounding is
         # silence.
         #
-        # A NOTE WITH A SHAPE slides its loudness rather than stepping it (see #step_envelopes):
+        # A note with a shape slides its loudness rather than stepping it (see #step_envelopes):
         # once a frame the shape sets where the note should be by the frame's end, and the
         # loudness moves there a little with every sample. That loudness, its GAIN, keeps sixteen
         # bits of fraction, since a slow fade moves it by much less than one a sample.
         #
-        # THE VOICES ARE SHARED between the game's own sounds, a song's recorded parts and a sound
+        # The voices are shared between the game's own sounds, a song's recorded parts and a sound
         # effect's, each taking one only while it sounds. A slot's +owner+ marks whose it is:
         # +:game+, a song's part by its lane number, or an effect's part as [effect, lane]. Who
         # gives way when they run out is a stated rule both backends keep — see #start_music_note.
@@ -41,7 +41,7 @@ module VBlank
         # {Framebuffer} makes. What both mixers have to work out alike, such as how fast a note
         # reads its recording, is asked of IR::Mixing, so neither is the only one that knows.
         class Mixer
-          # THE MIX'S OWN NUMBERS, the ones the cartridge's mixer uses too, which is what this one
+          # The mix's own numbers, the ones the cartridge's mixer uses too, which is what this one
           # has to agree with byte for byte (see Sound::MIX_LEVELS for what each is).
           LOUDNESS = Audio::Sound::MIX_LEVELS
           VOL_SHIFT = Audio::Sound::VOL_SHIFT
@@ -50,7 +50,7 @@ module VBlank
           RAMP_SPLIT = Audio::Sound::RAMP_SPLIT
           LOUDNESS_TO_GAIN = Audio::Sound::LOUDNESS_TO_GAIN
 
-          # ONE SOUNDING VOICE: the sample it is playing, whose it is, the level a game's play
+          # One sounding voice: the sample it is playing, whose it is, the level a game's play
           # asked for, and its ticket — and where it has got to in its recording.
           #
           # A Struct and not a Data, which is the one place this codebase reaches for one: every
@@ -100,12 +100,12 @@ module VBlank
           # The most that ever sounded at once — how much polyphony the run really used.
           attr_reader :peak
 
-          # EVERY FRAME'S SLICE OF SOUND, oldest first: as many signed samples as the mix makes a
+          # Every frame's slice of sound, oldest first: as many signed samples as the mix makes a
           # frame, the bytes the cartridge's mixer writes. Empty for a program that mixes no
           # recording, which has no mix.
           attr_reader :slices
 
-          # EVERY FRAME'S SLICE AS A COMPUTER'S BUILD MIXES IT, oldest first. In a program with a
+          # Every frame's slice as a computer's build mixes it, oldest first. In a program with a
           # recording of sixteen bits (IR::Mixing.full_depth?), the same voices read at sixteen bits
           # and each sum held to what sixteen bits hold; in any other, #slices, which is what such a
           # build mixes then. The console's build mixes #slices whatever the program, from the 8-bit
@@ -131,10 +131,10 @@ module VBlank
             @shapes = false
           end
 
-          # WHAT THE MIX RUNS AT, settled once for the whole program the way the cartridge settles
+          # What the mix runs at, settled once for the whole program the way the cartridge settles
           # it: the sample clock (its rate, and how many samples it plays a frame), and whether
           # any note in the program has a shape. That second one changes what the mix reads for a
-          # note WITHOUT one: in a program that shapes nothing, its loudness; in one that shapes
+          # note without one: in a program that shapes nothing, its loudness; in one that shapes
           # something, its gain, which is set as the note starts and again whenever the music
           # volume moves (see #rescale_music). Until this is set there is no mix. +voices+ is how
           # many recordings the console sounds together (Console::Description#recordings_at_once):
@@ -187,7 +187,7 @@ module VBlank
             @slots.compact.find { |v| v.owner == GAME && v.name == name }&.volume
           end
 
-          # WHAT THIS RUN COULD NOT PLAY: how many plays and notes found every voice busy and were
+          # What this run could not play: how many plays and notes found every voice busy and were
           # dropped, and how the music and the game were splitting the voices at the worst of
           # them. The same shape the console's own count is read back in
           # (Verifier#sound_drops), so the two backends' answers meet in one equality.
@@ -204,7 +204,7 @@ module VBlank
           # free, the quietest note of a song or an effect that is falling away (see
           # #start_music_note); with none of those either, the new one is dropped.
           #
-          # A SOUND WITH A SHAPE STARTS IT AS IT IS PLAYED, the way a key struck on an instrument
+          # A sound with a shape starts it as it is played, the way a key struck on an instrument
           # sounds at once: its shape moves on once here, and its gain starts at that level. The
           # game plays in its pass, after the shapes have moved for the frame and before the frame's
           # mix, so a sound started at nothing would be mixed once at nothing: an attack of 255,
@@ -235,7 +235,7 @@ module VBlank
             voice.ramp = 0
           end
 
-          # A VOICE AT THE TOP OF RECORDING +name+, read at +frequency+, going +back+ at its end,
+          # A voice at the top of recording +name+, read at +frequency+, going +back+ at its end,
           # at +loudness+ out of 512 and shaped by +envelope+. One with a shape starts at nothing and
           # climbs, its gain at nothing until the shape's first frame sets it; one without carries
           # no shape at all and sounds flat out from its first sample.
@@ -255,7 +255,7 @@ module VBlank
             @log << [:stop_sample]
           end
 
-          # ONE FRAME'S SLICE OF SOUND (see the class's own note for what each step is): every
+          # One frame's slice of sound (see the class's own note for what each step is): every
           # sounding voice read for a frame's worth of samples, summed, and each sum held to a
           # byte. A voice that reaches the end of its recording with nowhere to read back to
           # gives its voice back there; a game's sound that reads back logs it, so a loop shows
@@ -307,7 +307,7 @@ module VBlank
 
           # --- the voices the recorded parts of songs and sound effects borrow ---
 
-          # WHICH VOICE A NOTE OF A SONG OR A SOUND EFFECT GETS, by the rule the console's player
+          # Which voice a note of a song or a sound effect gets, by the rule the console's player
           # keeps (GBA::Mixer#emit_take_music_voice_routine). In order:
           #
           #   1. the part's own voice, if it is still sounding a note with no shape;
@@ -323,7 +323,7 @@ module VBlank
           # can fill them. Another part of the same song or effect has the same rank, so is never
           # taken.
           #
-          # A part's sounding note WITH a shape is not taken over: its note ends here, and it falls
+          # A part's sounding note with a shape is not taken over: its note ends here, and it falls
           # away on its own voice while the new note takes another. Taking it over would stop the
           # old wave dead, which is the click the shape is there to remove.
           #
@@ -345,7 +345,7 @@ module VBlank
                                                         envelope || info.envelope))
           end
 
-          # A NOTE THAT GLIDES: the voice sounding +owner+'s note, if it still has one, reads on from
+          # A note that glides: the voice sounding +owner+'s note, if it still has one, reads on from
           # where it has got to at +frequency+, and plays at +loudness+ from here where the glide
           # names its own volume, set as the music volume sets one (#rescale_music); with nil it keeps
           # the loudness it had. Its shape goes on as it was. True when the part had a note sounding.
@@ -357,7 +357,7 @@ module VBlank
             true
           end
 
-          # THE MUSIC VOLUME HAS MOVED: the voice sounding +owner+'s note, if it still has one,
+          # The music volume has moved: the voice sounding +owner+'s note, if it still has one,
           # plays it at +loudness+ from now on. A note falling away is an earlier one, and is
           # left alone. True when the part had a note sounding to rescale.
           #
@@ -376,7 +376,7 @@ module VBlank
           # A part rests: its voice, if it still has one, goes quiet and is free for anybody. True
           # when it had one.
           #
-          # A SHAPED NOTE IS NOT SILENCED HERE, only told to start falling — it goes on sounding,
+          # A shaped note is not silenced here, only told to start falling — it goes on sounding,
           # more quietly each frame, until there is none of it left (see #step_envelopes). That
           # is the whole difference between a note that ends and a note that clicks.
           def release_music(owner)
@@ -404,7 +404,7 @@ module VBlank
           # falling.
           def releasing?(voice) = voice.owner != GAME && [FALLING, DONE].include?(voice.phase)
 
-          # THE QUIETEST OF A SONG'S NOTES FALLING AWAY — the first thing to give way when a voice
+          # The quietest of a song's notes falling away — the first thing to give way when a voice
           # is wanted and none is free, since it is on its way out already, and cutting the
           # quietest short is the smallest jump. The first of them, when two are as quiet, which is
           # the one the console's walk over its voices keeps.
@@ -412,7 +412,7 @@ module VBlank
             @slots.each_index.select { |i| @slots[i] && releasing?(@slots[i]) }.min_by { |i| @slots[i].level }
           end
 
-          # THE LOWEST-RANKED SOUND RANKED BELOW +rank+ — the game's own first, the one playing
+          # The lowest-ranked sound ranked below +rank+ — the game's own first, the one playing
           # longest of those, and then the lowest-ranked note of a song or an effect. The first of
           # them in the order of the voices, when two rank the same, which is the one the console's
           # walk over its voices keeps.
@@ -433,7 +433,7 @@ module VBlank
             true
           end
 
-          # ONE FRAME OF EVERY SOUNDING NOTE'S SHAPE — the counterpart of the pass the console
+          # One frame of every sounding note's shape — the counterpart of the pass the console
           # runs between the tune's frame and the mix (GBA::Mixer#emit_envelope_step). The rule
           # itself is neither backend's: it is {VBlank::Audio::Envelope}#step, so the two cannot differ
           # about how fast a note fades. A note that has fallen to nothing is over, and its voice
@@ -453,11 +453,11 @@ module VBlank
             end
           end
 
-          # THE GAIN A SHAPED NOTE ENDS THE FRAME AT, and the slide to it, one step a sample.
+          # The gain a shaped note ends the frame at, and the slide to it, one step a sample.
           #
           # The end is the loudness asked for, scaled by the level: a level is a byte and the
           # scale out of 256, so the level's own top bit is added back in, making a full 255 count
-          # as 256. The product is a WHOLE number of 256ths, the rest dropped — the loudness's
+          # as 256. The product is a whole number of 256ths, the rest dropped — the loudness's
           # own half a 256th included — which is how a cartridge's own sound engine works a
           # channel's loudness out once a frame, (level x (right + left)) >> 9: so a quiet note
           # falls silent on the frame its whole loudness reaches nothing, while its level is still
@@ -465,7 +465,7 @@ module VBlank
           # sample below the middle until the level ran out. Below half a level the two are the
           # same sum. Above it they part by the top bit added back: a note held at full is the
           # loudness asked for, where the engine's comes out a step under it, so every game's full
-          # notes stay as loud as they were asked. A note's FIRST frame does not slide, it
+          # notes stay as loud as they were asked. A note's first frame does not slide, it
           # starts there: a recording starts from its own beginning, so there is nothing before
           # it to be smooth with.
           #
@@ -489,7 +489,7 @@ module VBlank
             @slots.compact.find { |v| v.name == name }&.level
           end
 
-          # HOW LOUD EACH SOUNDING VOICE PLAYS, out of 512, in the order of #sounding: the loudness its play
+          # How loud each sounding voice plays, out of 512, in the order of #sounding: the loudness its play
           # or note asked for, as the music volume has moved it since (#rescale_music). Its shape's level
           # (#level_of) scales it further, frame by frame.
           def loudness_by_voice = @slots.compact.map(&:loudness)
@@ -503,7 +503,7 @@ module VBlank
 
           private
 
-          # A SOUND WAS JUST LOST — every voice was busy, so this play, or this note of a song or
+          # A sound was just lost — every voice was busy, so this play, or this note of a song or
           # an effect, is dropped rather than cutting off one it may not. Counted here so a test
           # can hold the interpreter's answer against the console's, which is measured the same
           # way (see {SoundDrops}, and GBA::Mixer#emit_count_dropped_sound for the console's half). A drop

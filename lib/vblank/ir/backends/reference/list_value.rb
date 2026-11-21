@@ -100,7 +100,7 @@ module VBlank
 
           private
 
-          # WHAT A SLOT REALLY HOLDS once a number has been put in it. A word-wide slot holds
+          # What a slot really holds once a number has been put in it. A word-wide slot holds
           # the number; a narrower one keeps the low bits that fit and drops the rest, which is
           # what the console's byte and halfword stores do and so is what this has to do to
           # agree with it. The value comes back the way the console's sign-extending load reads

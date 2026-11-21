@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class Reference
-        # THE MUSIC PLAYER — the reference backend's counterpart to the one the console runs
+        # The music player — the reference backend's counterpart to the one the console runs
         # from the screen's own interrupt (GBA::Audio#emit_music_tick).
         #
         # A song is a set of parts played together, each walking its own list of events, all
@@ -13,9 +13,9 @@ module VBlank
         # — including the awkward moments, which are the end of a song and a part with no voice
         # free to sound on.
         #
-        # IT HOLDS THE MIXER, the way GBA::Audio holds GBA::Mixer, and for the same reason: a
+        # It holds the mixer, the way GBA::Audio holds GBA::Mixer, and for the same reason: a
         # part that plays a recording sounds each note on one of the mixer's voices. A part on
-        # one of the console's OWN voices — the square wave, the wave voice, the noise voice —
+        # one of the console's own voices — the square wave, the wave voice, the noise voice —
         # takes none, which is what makes those parts cheap.
         #
         # It calls nothing back into the interpreter. What it is given is a log to write into,
@@ -79,12 +79,12 @@ module VBlank
           # START effect number +which+ of a list at the next frame — from its first note, whether
           # or not it is sounding already. A number naming no effect plays nothing.
           #
-          # AN EFFECT IN A GROUP is decided here, as it is asked for, the way the console decides it
+          # An effect in a group is decided here, as it is asked for, the way the console decides it
           # (IR::Tunes.priority_of): if another of its group is sounding or already asked for, an effect
           # of lower priority is not played, and one of at least that priority stops that one on
           # the next frame and starts in its place.
           #
-          # ASKED FOR `this_frame: true`, it starts here rather than at the next frame: an effect of
+          # Asked for `this_frame: true`, it starts here rather than at the next frame: an effect of
           # a group waiting to be cut off is stopped here, and its first frame is played here, so
           # the next frame plays its second. No effect sounding, and not the tune, is moved on.
           def request_effect(list, which, this_frame: false)
@@ -104,7 +104,7 @@ module VBlank
             start_effect_here(name) if this_frame
           end
 
-          # NAME THE TUNE PLAYING NOW. The player takes it up at the next frame, so this can be
+          # Name the tune playing now. The player takes it up at the next frame, so this can be
           # written once or every frame, from a branch or a scene, and it is the same tune.
           def request_song(name)
             @songs[name] || raise(ProgramError, "play_song for undefined song #{name.inspect}")
@@ -124,7 +124,7 @@ module VBlank
             true
           end
 
-          # A TUNE NAMED `this_frame: true`, started where the game names it rather than at the
+          # A tune named `this_frame: true`, started where the game names it rather than at the
           # next frame: the catching up and the tune's first frame, here, so the next frame plays
           # its second. Sound effects are not moved on — they had this frame already. Naming the
           # tune already playing changes nothing, as it does at a frame. +level+ is the music
@@ -133,7 +133,7 @@ module VBlank
             play_song_frame(level) if switch_to_wanted_song && @playing
           end
 
-          # THE GAME'S OWN SOUND took +channel+ — a `beep`, the game's `wave` or `stop_wave` — so it
+          # The game's own sound took +channel+ — a `beep`, the game's `wave` or `stop_wave` — so it
           # wobbles no note of a song's, and steps no song note's shapes: the next note written there
           # sets them again.
           def game_sound_on(channel)
@@ -149,13 +149,13 @@ module VBlank
             @stops += 1
           end
 
-          # THE TUNE STAYS WHERE IT IS, from the next frame, or carries on. Held, its frame does not
+          # The tune stays where it is, from the next frame, or carries on. Held, its frame does not
           # move and no note of it starts, and the voices it holds are left as they are: no wobble
           # moves them and no shape steps. The console counts a swell by itself, so that goes on,
           # and the music volume still reaches a note held. Whatever changes the tune lets it go.
           def hold(held) = @held = held
 
-          # ONE FRAME OF THE PLAYER — the same steps, in the same order, as the console's.
+          # One frame of the player — the same steps, in the same order, as the console's.
           #
           # First it catches up with what the program asked for. A different tune than the one
           # playing silences the old one and starts the new one from its first frame; no tune at
@@ -176,7 +176,7 @@ module VBlank
           # program that never sets one. A change reaches the notes already sounding before any
           # new note is played, which is the order the console does it in.
           #
-          # SOUND EFFECTS PLAY AROUND THE SONG, highest rank first (IR::Tunes.effects_by_rank): the
+          # Sound effects play around the song, highest rank first (IR::Tunes.effects_by_rank): the
           # effects that outrank the tune before its parts, the rest after. So a note that loses
           # its voice to one due on the same frame is never written at all, rather than written
           # and then covered — whoever writes a voice first on a frame is whoever keeps it.
@@ -249,7 +249,7 @@ module VBlank
               elsif lane && level
                 record_note_volume([:mixer, lane], frequency.zero? ? 0 : IR::Tunes.mix_loudness(volume || part.volume))
               end
-              # A part on the WAVE or NOISE voice: the console makes the sound itself, so no
+              # A part on the wave or noise voice: the console makes the sound itself, so no
               # mixer voice is taken — the whole point of putting a part there.
               log_wave_or_noise(kind, part, event) if %i[wave noise].include?(kind)
               @cursors[number] += 1
@@ -257,7 +257,7 @@ module VBlank
             advance_song_frame(song)
           end
 
-          # A NOTE SETTING ITS VOICE, written in the log (IR::Tunes.voice_entry), and the voice wobbling it
+          # A note setting its voice, written in the log (IR::Tunes.voice_entry), and the voice wobbling it
           # from here when it asks for it — a note that does not, and a rest, leave the voice still.
           def set_voice(channel, who, part, event)
             frequency = event[1]
@@ -276,7 +276,7 @@ module VBlank
             @swells.delete(channel)
           end
 
-          # A SONG'S SQUARE NOTE OR DRUM HIT THAT SWELLS BY ITSELF, struck at +written+ under the music volume:
+          # A song's square note or drum hit that swells by itself, struck at +written+ under the music volume:
           # counted from here, so it is held at the music volume (IR::Tunes::Swell). A note that slides
           # is left alone, as the music volume leaves it: striking it again would start its slide over.
           def hold_swell_under_level(channel, part, event, written)
@@ -288,7 +288,7 @@ module VBlank
             @swells[channel] = IR::Tunes::Swell.starting(fade.step, IR::Tunes.scaled_volume(written, @level))
           end
 
-          # EVERY SWELLING NOTE HELD UNDER THE MUSIC VOLUME, at the end of the player's frame and the
+          # Every swelling note held under the music volume, at the end of the player's frame and the
           # voices in order, before the wobbles and the shapes, which put a note struck again back at
           # its frame's pitch and shape: struck again when the music volume asks (logged as
           # [:loudness, channel, volume], with the swell after it when it swells on), then counted on
@@ -303,7 +303,7 @@ module VBlank
             end
           end
 
-          # EVERY SQUARE NOTE THAT STEPS ITS SHAPE given the shape of the frame it is on, at the end of
+          # Every square note that steps its shape given the shape of the frame it is on, at the end of
           # the player's frame and the voices in order, after the wobbles (Audio::Duty says how a note
           # steps them): the note's first frame its first shape, and on. The shape is written every
           # frame, so a held note sounded again at a new music volume, in its first shape, is back in
@@ -318,7 +318,7 @@ module VBlank
             end
           end
 
-          # EVERY WOBBLING VOICE MOVED ON A FRAME, the voices in order, once everything due on the
+          # Every wobbling voice moved on a frame, the voices in order, once everything due on the
           # frame has played: [:wobble, channel, steps] when it moves the voice's pitch.
           # +channel+ wobbles nothing now; where its swing was is kept for a vibrato that carries.
           def stop_wobble(channel)
@@ -360,13 +360,13 @@ module VBlank
             end
           end
 
-          # WHAT A VOICE A SOUND EFFECT CAN SHARE WAS SET TO — the square voices, the wave voice and
+          # What a voice a sound effect can share was set to — the square voices, the wave voice and
           # the noise voice — is logged as [:voice, channel, who, frequency, volume] whenever the song
           # or an effect writes it, and as a frequency and volume of 0 when an effect's end silences
           # it. A tune that stops logs [:stop_music] instead. A note on the wave voice is in its own
           # part's waveform, which the [:wave] entry beside it names.
           #
-          # ONE SOUND EFFECT'S FRAME. Asked for, it starts from its first note; at its end it lets
+          # One sound effect's frame. Asked for, it starts from its first note; at its end it lets
           # go of the voices it still holds, silencing them; and sounding, it plays whatever notes
           # are due, on the voices its rank lets it take.
           def play_effect_frame(name, rank, asked)
@@ -436,7 +436,7 @@ module VBlank
             IR::Tunes.recorded_parts(@songs.fetch(name)).times { |lane| @log << [:note, name, 0] if @mixer.release_music([name, lane]) }
           end
 
-          # MAY A NOTE OF THIS RANK SOUND ON +channel+? Yes when nobody holding it outranks it
+          # May a note of this rank sound on +channel+? Yes when nobody holding it outranks it
           # (IR::Tunes.song_rank) — and then it holds the voice while it +sounds+, where a rest or
           # a note at volume 0 lets it go.
           def claim_channel(channel, rank, sounds:)
@@ -458,7 +458,7 @@ module VBlank
           # playing and start the new one from its first frame. A voice a sound effect holds is
           # the effect's, and is left alone.
           #
-          # A TUNE THAT ENDED (IR::Tunes.plays_once?) is looked at first. While the program still names
+          # A tune that ended (IR::Tunes.plays_once?) is looked at first. While the program still names
           # it and has not asked to stop, nothing plays: its parts go quiet on the frame after its
           # last, and it stays that way. Anything else the program asks for forgets the end, and is
           # then caught up with as usual.
@@ -509,7 +509,7 @@ module VBlank
             @cursors.fill(0)
           end
 
-          # THE MUSIC VOLUME HAS MOVED: every voice holding a note takes the new level — a square
+          # The music volume has moved: every voice holding a note takes the new level — a square
           # voice by sounding the note again, since it takes a volume only as a note starts, and
           # the wave voice and a mixer voice simply, since they take one while they play. Either
           # way the voice is now at the new volume, which is what the log says.
@@ -576,11 +576,11 @@ module VBlank
             follows_level ? IR::Tunes.scaled_volume(loudness, @level) : loudness
           end
 
-          # A SONG'S NOTE ON THE WAVE OR NOISE VOICE. The console makes both sounds itself, so
+          # A song's note on the wave or noise voice. The console makes both sounds itself, so
           # there is nothing to mix and nothing to keep — the note is simply what the voice is
           # doing now, which is why a part here costs no mixer voice.
           #
-          # Logged in the same shape the `wave` and `noise` VERBS log a sound effect, because
+          # Logged in the same shape the `wave` and `noise` verbs log a sound effect, because
           # they really are the same voice: a game that plays a hit while its drum part is
           # playing one gets whichever came last, and a test that reads the log sees exactly
           # that.
