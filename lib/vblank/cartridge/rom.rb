@@ -23,7 +23,7 @@ module VBlank
 
       attr_reader :buffer, :code_offset
 
-      # WHAT EVERY ADVANCE CARTRIDGE'S HEADER HOLDS, whoever made the cartridge — asked of a
+      # What every Advance cartridge's header holds, whoever made the cartridge — asked of a
       # cartridge file too (Diagnostics::CartridgeFile), which has nothing but its bytes.
       #
       # The console a cartridge of this kind is for; whether +bytes+ are one (every Advance
@@ -36,7 +36,7 @@ module VBlank
       def console = self.class.console
       def header_title = self.class.title_field_of(@buffer)
 
-      # WHAT THE BUILD WORKED OUT about this cartridge, or nil when nothing did (see
+      # What the build worked out about this cartridge, or nil when nothing did (see
       # {BuildRecord}). It arrives whole, at construction, so a ROM is either a cartridge
       # that can report on itself or a cartridge that cannot — never half of each. Nil is
       # what "assembled straight from machine code" looks like.
@@ -143,29 +143,29 @@ module VBlank
         end
       end
 
-      # WHAT THE BUILD MADE OF THIS GAME, AND WHAT IT COST WHEN IT RAN.
+      # What the build made of this game, and what it cost when it ran.
       #
-      # TWO HALVES, AND NEITHER ANSWERS THE QUESTION ALONE. First {BuildReport}: what the build
+      # Two halves, and neither answers the question alone. First {BuildReport}: what the build
       # made — how big each routine came out, which fit in the console's quick memory and which
       # missed. Then the measurement: which routines the console really spent its frames in, the
       # rate it produced, and how much of each frame was left over. The run says a routine is
       # most of the frame; the build says that routine missed the quick memory by four tenths of
       # a kilobyte. A reader given only the first goes and rewrites the routine.
       #
-      # NOTHING HERE IS PREDICTED. This framework used to carry an estimate — a frame priced in
+      # Nothing here is predicted. This framework used to carry an estimate — a frame priced in
       # scanlines against a budget, with a verdict of fits or tears — and it was a second
       # statement of what the hardware costs, kept in step with the backend by hand, so every
       # mispricing was a bug. Both halves here are facts: one read off the build, one counted off
       # a real run.
       #
       # +scene+ names which screen to measure, and it is usually the thing you want: a game boots
-      # to its title, and holding a button will not get past one — a menu reads the press EDGE, so
+      # to its title, and holding a button will not get past one — a menu reads the press edge, so
       # a held button is one press however long it is held. Naming a scene holds the game there
       # and measures that, with nobody having to play it (see {Profiler.profile_holding_words}).
       #
       # +from+ names a saved moment instead — an emulator save state, made by playing to the
       # moment once. It is the general answer, and the one for a moment a scene cannot give: a
-      # scene booted into gives the routines that scene RUNS, where a saved moment also gives the
+      # scene booted into gives the routines that scene runs, where a saved moment also gives the
       # STATE that makes it expensive. The boss scene with nothing spawned is not the boss fight.
       # A state from a different build of the game is refused, because its addresses have all
       # moved and reading it would measure the wrong code while still looking like numbers.

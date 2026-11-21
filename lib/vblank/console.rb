@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# THE CONSOLES THEMSELVES, NAMED: what a game can tell about each one (its screen, its buttons, how
+# The consoles themselves, named: what a game can tell about each one (its screen, its buttons, how
 # many sprites it shows, what it does with each verb), and for each the addresses of the registers
 # that drive its display, sound, copying engines and timers, and the flags written into them; and
 # which of the library's parts serve each one (Console::Kit). Nothing here does anything; it

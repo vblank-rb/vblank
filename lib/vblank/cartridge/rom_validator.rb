@@ -7,7 +7,7 @@ module VBlank
     # header: too small, a wrong fixed byte or Nintendo logo, a bad header checksum,
     # an entry branch that doesn't point at the code, no code at all, an empty title.
     #
-    # These checks only make sense AFTER lowering, once there's a real ROM to look
+    # These checks only make sense after lowering, once there's a real ROM to look
     # at, so they run at finalization — unlike the IR guardrails, which reason about
     # the program before any bytes exist. An error means the ROM won't run; a
     # warning means it runs but something's off.
@@ -16,7 +16,7 @@ module VBlank
     #   result = VBlank::Cartridge::ROMValidator.check(rom)
     #   result.ok? # => true if no errors
     #
-    # AN ADVANCE CARTRIDGE'S ALONE. It reads what the Advance's build and hardware keep, and only
+    # An Advance cartridge's alone. It reads what the Advance's build and hardware keep, and only
     # Cartridge::ROM and the Advance's Profiler reach it; a Color cartridge's profile is GBCProfiler's.
     class ROMValidator
       include Console::Hardware

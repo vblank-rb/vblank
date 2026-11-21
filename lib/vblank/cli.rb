@@ -7,7 +7,7 @@ module VBlank
   # Thor is required here and in bin/vblank only — never by the library — so
   # building a ROM in code or in a test does not depend on it.
   #
-  # THE HELP IS WRITTEN OUT BY HAND, one page a command, beside the options it explains. Thor can
+  # The help is written out by hand, one page a command, beside the options it explains. Thor can
   # make a help page from each option's own line, and what it makes is one line an option, as
   # wide as the longest, with every option of every format in one list and the explaining in a
   # paragraph after. Nobody reads that. A page here is what a person wants first, the commands
@@ -66,7 +66,7 @@ module VBlank
       exit(given_args.first == "compare" ? NOT_COMPARED : 1)
     end
 
-    # THERE IS NO `vblank play`. It played a script or a tape on the cartridge, in the emulator, while
+    # There is no `vblank play`. It played a script or a tape on the cartridge, in the emulator, while
     # `vblank run` played the game as Ruby with a person at the controls. Nothing in the two names
     # showed which ran the game how, and a bot was run on the emulator by somebody sure it was Ruby.
     # Now `vblank run` plays a game either way, so the old name is refused with the line to write
@@ -312,7 +312,7 @@ module VBlank
       Run vblank COMMAND --help to see a command's options.
     TEXT
 
-    # THE CONSOLES, as the help pages name them, from the kits (Console::KITS): every console a game
+    # The consoles, as the help pages name them, from the kits (Console::KITS): every console a game
     # can be for is offered wherever a command takes --console, with nothing to add here for one.
     CONSOLE_NAMES = VBlank::Console.kits.map { |kit| kit.name.to_s }.freeze
     # "gba, gbc or snes"
@@ -1340,7 +1340,7 @@ module VBlank
       window&.close
     end
 
-    # A PERSON PLAYING, WITH THE BUILD IN ANOTHER PROCESS. A helper process builds the game and writes
+    # A person playing, with the build in another process. A helper process builds the game and writes
     # it out as one Ruby file (Live::BuildHelper), and this command becomes the window's process
     # (Live::WindowProcess), which opens the window at once, shows the build's progress, and plays the
     # written game. The build's memory is the helper's and goes when it ends, so a big game plays
@@ -1819,7 +1819,7 @@ module VBlank
     # The "game" format (--format=game, the default): a cartridge for each console the game names,
     # or for the one --console names.
     #
-    # EACH IS BUILT WHATEVER HAPPENS TO THE OTHER. A game for both consoles that the Color cannot
+    # Each is built whatever happens to the other. A game for both consoles that the Color cannot
     # play still gets its Advance cartridge, and the command then ends saying why the Color's was
     # not made and how to stop asking for it — which may be all the game needs, since not every
     # game is for the Color. It still ends as a failure: a console the game names was not built.
@@ -2189,7 +2189,7 @@ module VBlank
 
     # +error+, which stopped the command, as the error the command ends with, saying +message+.
     #
-    # A BUILD THAT STOPPED SAYS SO IN ITS FIRST LINE (Messages::BuildStopped), because its reason
+    # A build that stopped says so in its first line (Messages::BuildStopped), because its reason
     # alone does not say that nothing was made. This is the one place the command line adds that
     # line: every rescue of a build hands its error here. The error is a VBlank::BuildError, or one
     # the playthroughs made from one (its cause). A build the guardrails stopped printed the line

@@ -4,7 +4,7 @@ require "json"
 
 module VBlank
   module Cartridge
-    # A SUPER NINTENDO CARTRIDGE: the banks the SNES lowering linked, laid out the LoROM way, with
+    # A Super Nintendo cartridge: the banks the SNES lowering linked, laid out the LoROM way, with
     # the header and vectors the console reads.
     #
     # The header sits at $FFC0 of the first bank, which in a LoROM file is offset $7FC0: a title of
@@ -20,7 +20,7 @@ module VBlank
     # emulation mode, so reset is the emulation one; the game switches to native mode at once, and
     # the vertical blank's interrupt (NMI) and the rest are the native ones from then on.
     #
-    # THE BOARD. A plain cartridge is ROM alone (with battery-backed RAM when the game saves). A
+    # The board. A plain cartridge is ROM alone (with battery-backed RAM when the game saves). A
     # cartridge with a Super FX 2 is a board of its own, and its header declares it, because an emulator
     # or a flash cart reads the header to know which board to be:
     #
@@ -66,7 +66,7 @@ module VBlank
 
       PLAIN = Board.new(name: :plain, map_mode: LOROM_FAST, fast: true, most_banks: 128, chip_ram_bytes: 0,
                         save_bank: SRAM_BANK, most_save_bytes: Console::SNES_PLAIN_SAVE_MEMORIES.last.first * 1024)
-      # THE SAVE ON A SUPER FX BOARD. The chip's 64K at $70 is all spoken for (Runtime::ChipPaint):
+      # The save on a super FX board. The chip's 64K at $70 is all spoken for (Runtime::ChipPaint):
       # the painted screen's 56K, the tiles' generations, the list of tiles the chip readied, the
       # blocks a rectangle and a picture are handed over in, and the chip's numbers in what is
       # left. A save of 32K does not fit beside them. So a game that saves gets a board with 128K
@@ -123,7 +123,7 @@ module VBlank
       # +banks+ is the linked cartridge, its first 32K first. +vectors+ names where each vector
       # points, by VECTORS's names; one not named points where reset does.
       # +save_bytes+ is how much battery-backed RAM it has, a power of two from 2K, or nought.
-      # +board+ is the kind of board (BOARDS), a plain one unless set.
+      # +board+ is the kind of board (boards), a plain one unless set.
       def initialize(banks, title:, vectors:, save_bytes: 0, built: nil, board: PLAIN)
         @built = built
         @board = board
@@ -174,7 +174,7 @@ module VBlank
         end
       end
 
-      # HOW MUCH OF THE SOUND CHIP'S MEMORY THE GAME USES. The chip has 64K of its own, which the
+      # How much of the sound chip's memory the game uses. The chip has 64K of its own, which the
       # console's processor cannot see: its program, the table of its recordings and the recordings
       # are sent there (IR::Backends::SNES::Runtime::Sound#image). +used+ counts from its first
       # byte, the chip's own working memory included, to the end of what the game sends; +room+ is
@@ -197,7 +197,7 @@ module VBlank
 
       def write(path) = ROM.write_bytes(path, @bytes)
 
-      # HOW MANY FRAMES ITS PASSES TOOK: the cartridge run in the emulator
+      # How many frames its passes took: the cartridge run in the emulator
       # (Diagnostics::SNESProfiler), reported for a person or as JSON. +keys+ are held from
       # power-on, and +settle+ passes run before the +frames+ passes measured.
       #
