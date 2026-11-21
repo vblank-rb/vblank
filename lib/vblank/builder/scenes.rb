@@ -192,7 +192,17 @@ module VBlank
 
       # Runs the scene that matches the value of a variable.
       #
-      # The block lists the matches with `when_val`, each a value and the name of a scene.
+      # This is the older form of a plain Ruby `case` whose every `when` calls one scene, which
+      # builds the same dispatch:
+      #
+      # ```ruby
+      # case state
+      # when 0 then call :title
+      # when 1 then call :playing
+      # end
+      # ```
+      #
+      # Here the block lists the matches with `when_val`, each a value and the name of a scene.
       #
       # ```ruby
       # case_var :state do
@@ -231,6 +241,51 @@ module VBlank
       end
 
       private
+
+      # Does a plain Ruby `case` pick scenes, so it can be the dispatch `case_var` builds? The
+      # rewrite of game code asks this of a `case` written as one (DSL::PlainRuby::Rewriter#
+      # scene_dispatch_shape?), and builds the ordinary chain of tests where the answer is no.
+      # +arms+ are `[[value, ...], name]`, one for each `when`.
+      #
+      # The subject must be a game variable that keeps a plain whole number, every value a whole
+      # number, and every name a scene declared by now that no func shares. A working-out as the
+      # subject stays a chain: the dispatch and everything that asks which scene is up (its
+      # sprites, its scenery, what goes in the quick memory as it takes over) read one variable,
+      # and a copy of the working-out made for it would be a second variable saying the same thing.
+      # A `call` of a func stays a chain too: a routine named in a dispatch is taken for a scene.
+      def scene_case?(subject, arms)
+        return false unless subject.is_a?(DSL::Value) && subject.node.kind == :var_ref
+        return false if subject.truth || subject.fraction? || subject.boolean? || subject.names
+
+        arms.all? do |values, name|
+          values.all?(Integer) && @functions.key?(:"_scene_#{name}") && !@functions.key?(name)
+        end
+      end
+
+      # Records the dispatch for a `case` that #scene_case? said picks scenes. A value two arms
+      # share runs the first, as in Ruby.
+      def emit_scene_case(subject, arms)
+        clauses = arms.flat_map { |values, name| values.map { |value| [value, name] } }.uniq(&:first)
+        refuse_scene_picked_twice!(clauses)
+        variable = subject.node.name
+        ensure_var(variable)
+        record(Build.case_(variable, clauses.map { |value, name| [value, :"_scene_#{name}"] }))
+        nil
+      end
+
+      #--
+      # What a scene shows is held to the one value that picks it (Builder#scan_scene_gates), so a
+      # scene picked by a second value would run with its sprites and scenery hidden.
+      #++
+      def refuse_scene_picked_twice!(clauses)
+        name, = clauses.group_by(&:last).find { |_, picked| picked.size > 1 }
+        return unless name
+
+        values = clauses.select { |_, each| each == name }.map(&:first)
+        raise ArgumentError, "This `case` picks the scene :#{name} with more than one number: " \
+                             "#{values.join(', ')}. A scene can be picked by one number only. To fix this, " \
+                             "give :#{name} one `when`, and keep the state at that number while the scene is up."
+      end
 
       # Call the routine whose name +value+ holds. The routines are that value's own names, and
       # the last of them is not known yet — a name first used further down the program is one
@@ -337,10 +392,20 @@ module VBlank
 
       def check_target_defined!(name)
         return if @functions.key?(name)
+        raise ArgumentError, scene_called_by_name_message(name) if @functions.key?(:"_scene_#{name}")
 
         raise ArgumentError,
               "The function :#{name} is called but never defined. To fix this, define it with " \
               "`func :#{name} do ... end`. Or correct the name in the call."
+      end
+
+      # `call :title` where :title is a scene, outside a dispatch that picks scenes (#scene_case?).
+      def scene_called_by_name_message(name)
+        "`call :#{name}` names a scene, and a scene runs only from a dispatch that picks scenes. " \
+          "To fix this, put the call in a `case` on a game variable, after the `scene :#{name}` line: " \
+          "`case state`, then `when 0 then call :#{name}`. A name is a game variable when game code changes " \
+          "it, such as `state = 1` in a scene. Each `when` must be a whole number, and each must call one " \
+          "scene. Or keep the scene's name in a variable, `mode = :#{name}`, and write `call mode`."
       end
     end
   end

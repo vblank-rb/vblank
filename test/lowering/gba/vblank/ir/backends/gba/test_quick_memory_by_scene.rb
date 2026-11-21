@@ -113,6 +113,32 @@ class TestQuickMemoryByScene < Minitest::Test
     builder.program
   end
 
+  # The same game as #two_screens, whose screen is picked with a plain Ruby `case`.
+  private def two_screens_by_plain_case(adds:)
+    builder = Builder.new
+    builder.instance_eval do
+      a = 0
+      b = 0
+      t = 0
+      where = 0
+      func(:title_work) { adds.times { a += 1 } }
+      func(:play_work) { adds.times { b += 1 } }
+      scene(:title) { call :title_work }
+      scene(:play) { call :play_work }
+      game_loop do
+        t += 1
+        where = 1 if t == 6
+        where = 0 if t == 12
+        case where
+        when 0 then call :title
+        when 1 then call :play
+        end
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
   # A game whose play screen insists on a routine of about +adds+ additions in the quick memory,
   # and whose file screen saves a record that insists on its save routines there too.
   # With +logos+, the game opens on a screen of logos that has no routines of its own, as a
@@ -396,6 +422,18 @@ class TestQuickMemoryByScene < Minitest::Test
     assert_includes report.scenes.fetch(:play), :play_work
     assert_equal BIG * 6, v.var(:b), "play ran its six passes, each whole"
     assert_equal BIG * v.var(:t), v.var(:a) + v.var(:b), "every pass ran one scene's routine whole"
+  end
+
+  # A plain `case` whose every arm calls a scene is the same dispatch as `case_var`: the same
+  # cartridge, its scenes' routines swapped in as each takes over.
+  def test_screens_picked_by_plain_case_build_the_cartridge_case_var_builds
+    plain = two_screens_by_plain_case(adds: BIG)
+    report = placement_of(plain)
+
+    assert_includes report.scenes.fetch(:title), :title_work
+    assert_includes report.scenes.fetch(:play), :play_work
+    assert_equal assemble_rom(two_screens(adds: BIG), name: "PLAINCASE").buffer,
+                 assemble_rom(plain, name: "PLAINCASE").buffer
   end
 
   # Each scene's room goes to what a frame of that scene spends the most in. A routine both

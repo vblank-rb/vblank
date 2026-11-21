@@ -37,6 +37,58 @@ module ScenesGames
     end
   end
 
+  OVER = 2 # The state the last of #three_screens is up for
+
+  # Three screens picked by a number, each handing on to the next on a pass the loop counts, the
+  # last named by a constant. +plain_case+ picks with a plain Ruby `case`, and
+  # otherwise with `case_var`. The title has a sprite of its own, shown only while it is up.
+  private def three_screens(plain_case:)
+    builder = Builder.new
+    builder.instance_eval do
+      screen :tiled
+      image(:block, "#" => :red) { "########\n" * 8 }
+      state = 0
+      step = 0
+      ran_title = 0
+      ran_play = 0
+      ran_over = 0
+      scene(:title) do
+        sprite :block, at: [40, 40]
+        ran_title += 1
+        state = 1 if step == 2
+      end
+      scene(:play) do
+        ran_play += 1
+        state = OVER if step == 5
+      end
+      scene(:over) do
+        ran_over += 1
+        state = 0 if step == 8
+      end
+      if plain_case
+        game_loop do
+          case state
+          when 0 then call :title
+          when 1 then call :play
+          when OVER then call :over
+          end
+          step += 1
+        end
+      else
+        game_loop do
+          case_var :state do
+            when_val 0, :title
+            when_val 1, :play
+            when_val OVER, :over
+          end
+          step += 1
+        end
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
   # A routine declared the first time something asks for it: the outer one declares the
   # middle one inside its own body, and the middle one declares the inner one. Bodies are
   # built after the program block, so these declarations happen while other bodies are
@@ -105,6 +157,90 @@ class TestScenes < Minitest::Test
     assert_equal [1, 0, 0], [ran[:ran_first], ran[:ran_second], ran[:ran_third]],
                  "one pass should run one scene body, whatever that scene sets the state to"
     assert_equal 1, ran[:state], "the scene it handed on to runs on the NEXT pass"
+  end
+
+  # ========================================================================
+  # A plain Ruby case that picks a scene
+  # ========================================================================
+
+  def test_scenes_picked_by_a_plain_case_play_as_with_case_var
+    counts = ->(ran) { %i[ran_title ran_play ran_over state].map { |name| ran[name] } }
+    by_case_var = game_player.run(three_screens(plain_case: false), frames: 12)
+    by_plain_case = game_player.run(three_screens(plain_case: true), frames: 12)
+
+    assert_equal [6, 3, 3, 0], counts.call(by_case_var)
+    assert_equal counts.call(by_case_var), counts.call(by_plain_case)
+  end
+
+  def test_a_scenes_sprite_shows_only_while_a_plain_case_has_it_up
+    shown = lambda do |plain_case, frames|
+      player = game_player
+      player.run(three_screens(plain_case: plain_case), frames: frames)
+      player.screen.pixel(44, 44)
+    end
+
+    refute_equal shown.call(false, 2), shown.call(false, 6), "the title's sprite goes when play takes over"
+    assert_equal [shown.call(false, 2), shown.call(false, 6)], [shown.call(true, 2), shown.call(true, 6)]
+  end
+
+  # A `case` whose arms call funcs is the chain of tests it always was: one arm a pass, though
+  # the func that runs hands on to the next value.
+  def test_a_plain_case_that_calls_funcs_runs_one_arm_a_pass
+    builder = Builder.new
+    builder.instance_eval do
+      state = 0
+      ran_first = 0
+      ran_second = 0
+      func(:first) { ran_first += 1; state = 1 }
+      func(:second) { ran_second += 1 }
+      game_loop do
+        case state
+        when 0 then call :first
+        when 1 then call :second
+        end
+      end
+    end
+    builder.finalize_program
+    ran = game_player.run(builder.program, frames: 3)
+
+    assert_equal [1, 2], [ran[:ran_first], ran[:ran_second]]
+  end
+
+  # What a scene shows is held to the one number that picks it, so a second is refused.
+  def test_a_plain_case_that_picks_one_scene_with_two_numbers_is_a_friendly_error
+    builder = Builder.new
+    error = assert_raises(ArgumentError) do
+      builder.instance_eval do
+        state = 0
+        scene(:title) { state = 1 }
+        game_loop do
+          case state
+          when 0, 1 then call :title
+          end
+        end
+      end
+    end
+
+    assert_match(/:title with more than one number/, error.message)
+  end
+
+  # A scene is picked by a game variable. A `case` on a working-out is a chain of tests, and a
+  # scene named there is a friendly error saying what to write.
+  def test_a_scene_called_from_a_case_on_a_working_out_is_a_friendly_error
+    builder = Builder.new
+    builder.instance_eval do
+      state = 0
+      scene(:title) { state = 1 }
+      game_loop do
+        case state + 1
+        when 1 then call :title
+        end
+      end
+    end
+    error = assert_raises(ArgumentError) { builder.finalize_program }
+
+    assert_match(/names a scene/, error.message)
+    assert_match(/case state/, error.message)
   end
 
   # ========================================================================

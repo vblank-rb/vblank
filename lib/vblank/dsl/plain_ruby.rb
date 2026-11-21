@@ -1194,7 +1194,43 @@ module VBlank
           opened = (node.predicate || node).location
           given = node.predicate ? "#{subject} = #{rewritten_text(node.predicate)}; " : ""
           breaks = line_ends_between(node.predicate ? opened.end_offset : opened.start_offset, node.conditions.first.location.start_offset)
-          "(#{given}#{breaks}#{arm_text(node, 0, subject, kept)})"
+          chain = arm_text(node, 0, subject, kept)
+          chain = scene_dispatch_text(node, subject, chain) if !kept && scene_dispatch_shape?(node)
+          "(#{given}#{breaks}#{chain})"
+        end
+
+        # A `case` that picks a scene by a number: a subject, `when`s of whole numbers or
+        # constants, each arm one `call :name` and nothing else, and no `else` or an empty one.
+        # Whether the subject is a game variable and each name a scene is known only as the line
+        # runs (Builder::Scenes#scene_case?).
+        def scene_dispatch_shape?(node)
+          node.is_a?(Prism::CaseNode) && node.predicate && node.else_clause&.statements.nil? &&
+            node.conditions.all? do |arm|
+              arm.conditions.all? { |choice| SCENE_DISPATCH_VALUES.any? { |kind| choice.is_a?(kind) } } &&
+                lone_named_call?(arm.statements)
+            end
+        end
+
+        # What a `when` of a scene dispatch can hold: a whole number or a constant naming one.
+        SCENE_DISPATCH_VALUES = [Prism::IntegerNode, Prism::ConstantReadNode, Prism::ConstantPathNode].freeze
+
+        # `call :name`, alone on its side.
+        def lone_named_call?(statements)
+          call = statements&.body&.first
+          statements.body.one? && call.is_a?(Prism::CallNode) && call.name == :call && call.receiver.nil? &&
+            call.block.nil? && call.arguments&.arguments&.one? && call.arguments.arguments.first.is_a?(Prism::SymbolNode)
+        end
+
+        # The scene dispatch `case_var` builds where the line turns out to pick scenes, and the
+        # chain of tests where it does not. The arms are worked out once, before either.
+        def scene_dispatch_text(node, subject, chain)
+          arms = node.conditions.map do |arm|
+            values = arm.conditions.map { |choice| rewritten_text(choice) }.join(", ")
+            "[[#{values}], #{arm.statements.body.first.arguments.arguments.first.slice}]"
+          end
+          held = "__plain_ruby_#{@answers += 1}"
+          "#{held} = [#{arms.join(', ')}]; if ::VBlank::Builder === self && scene_case?(#{subject}, #{held}) " \
+            "then emit_scene_case(#{subject}, #{held}) else #{chain} end"
         end
 
         def arm_text(node, index, subject, kept)
