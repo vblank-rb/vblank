@@ -4,11 +4,11 @@ module VBlank
   module IR
     module Backends
       class PS1
-        # WHERE EVERYTHING THE GAME KEEPS LIVES WHILE IT RUNS.
+        # Where everything the game keeps lives while it runs.
         #
         # A PlayStation has 2 megabytes of main RAM, and the program itself is loaded into it (a PS-X
         # EXE). The rest is the game's: the runtime's own state, the game's variables and lists, and
-        # the stack. What the game keeps comes FIRST, from the first byte a program owns, and the
+        # the stack. What the game keeps comes first, from the first byte a program owns, and the
         # program is loaded straight after it:
         #
         #   80010000h-...        the runtime's own state, then the game's variables and lists, upward
@@ -17,7 +17,7 @@ module VBlank
         #   801F8000h-801FFFEFh  the stack, 32K, growing down from the top
         #   1F800000h-1F8003FFh  the scratchpad: the numbers read most (see below)
         #
-        # WHY THAT WAY ROUND. Every place is given out while the program is still being written, and
+        # Why that way round. Every place is given out while the program is still being written, and
         # the code is written with the places in it, so a place cannot wait to learn how big the
         # program came to. The program can: every address in it is a hole the Linker fills, and a PS-X
         # EXE's header says where it is loaded. So the places count up from a fixed start, and the
@@ -25,16 +25,16 @@ module VBlank
         # leaves the rest of the 2 megabytes to lists, and a game of few numbers leaves it to code and
         # tables. Whether the two fit together is known once both are (PS1#build).
         #
-        # THE GAME'S CODE REACHES ITS VARIABLES WITH ONE REGISTER. gp (the "global pointer") holds the
+        # The game's code reaches its variables with one register. gp (the "global pointer") holds the
         # address 32K into the region, and a load or a store names a place as a signed 16-bit distance
         # from a register (`lw t0, -32760(gp)`), so the first 64K of the region is one instruction away.
         # A place past that takes one more instruction, to put the top half of its address in a
         # register first. gp is set at power-on and never changed.
         #
-        # EVERY PLACE IS A WHOLE NUMBER OF WORDS, and starts at an address that is a multiple of four:
+        # Every place is a whole number of words, and starts at an address that is a multiple of four:
         # the R3000 stops with an address error when it reads a word from anywhere else.
         #
-        # THE GAME'S MOST-READ NUMBERS ARE IN THE SCRATCHPAD, not in main RAM. The processor has no cache
+        # The game's most-read numbers are in the scratchpad, not in main RAM. The processor has no cache
         # for data: every load from main RAM goes out over the bus and waits for it, several cycles
         # each, where a load from the scratchpad (1K inside the processor, at 1F800000h) takes one. The
         # console's own games kept the numbers their inner loops read there for that reason. So a game's

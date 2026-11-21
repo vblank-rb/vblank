@@ -126,7 +126,7 @@ module VBlank
 
             public
 
-            # THE ROW A NOTE OF A RECORDED PART PLAYS (Reference::Mixer#start_music_note, SongTable asks it):
+            # The row a note of a recorded part plays (Reference::Mixer#start_music_note, SongTable asks it):
             # recording +name+ read at +frequency+, from its start, back to where it holds from at its end (or
             # once through, for one that does not hold), at its written +volume+ as a mix's loudness, shaped by
             # +envelope+ (the note's or its part's), or by the recording's own when it has none. Nothing is
@@ -178,7 +178,7 @@ module VBlank
               runtime_call("rt_recordings_stop", [Build.int(name), Build.int(sound_entry_number([:stop_sample]))])
             end
 
-            # THE VOICE'S PITCH for a play read +step+ samples of its recording for each of the mix's, in
+            # The voice's pitch for a play read +step+ samples of its recording for each of the mix's, in
             # 65536ths: the chip reads 4096ths of a sample for each of its 44100 a second, which is the rate
             # the mix runs at (Console::Description#recording_voice_hz), so a sixteenth of the step.
             def recording_pitch(step) = (step / 16.0).round.clamp(1, SPUWrites::PITCH_TOP)

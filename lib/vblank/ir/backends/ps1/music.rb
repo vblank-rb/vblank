@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class PS1
-        # A GAME'S SONGS AND SOUND EFFECTS, AS THE PLAYSTATION'S PLAYER READS THEM (Runtime::Music): the
+        # A game's songs and sound effects, as the PlayStation's player reads them (Runtime::Music): the
         # table is SongTable's, and what is the PlayStation's is here. A chip write is a write to the sound
         # chip (SPUWrites), sent as one of Runtime::Sound's commands, and every place in the table is a
         # halfword, as on the Genesis.

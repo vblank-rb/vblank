@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class PS1
         class Lowering
-          # A DRAW ORDER'S SORT THAT LEAVES OUT WHAT IS NOT SHOWING (IR ListSort's +shown+). Mixed into
+          # A draw order's sort that leaves out what is not showing (IR ListSort's +shown+). Mixed into
           # Lowering, whose sort written in place (Lowering#emit_fixed_front_sort) it starts past the
           # things not showing.
           #
@@ -107,7 +107,7 @@ module VBlank
             # with it, and +changed+ set where one came or went; then the list moved round if one did. A
             # place known to show always is not asked: its flag stays as it started.
             #
-            # WHAT A PLACE DOES WITH ITS ANSWER IS WRITTEN ONCE (#emit_flag_marking), and each place
+            # What a place does with its answer is written once (#emit_flag_marking), and each place
             # calls it with the answer in a0: five instructions a place, where the whole of it written
             # out at every place was near thirty. The sort is straight code run once a pass, so every
             # byte of it is fetched from main RAM through the processor's 4 KB instruction cache each
@@ -147,7 +147,7 @@ module VBlank
               @asm.jal(marking)
             end
 
-            # THE CODE EACH PLACE CALLS, at +label+, with a0 its answer. Back at once where the place's
+            # The code each place calls, at +label+, with a0 its answer. Back at once where the place's
             # flag already says so; otherwise the flag turned over, the count of places not showing
             # moved by one, and +changed+ set. v0, v1 and t9 are worked with, and whatever setting a
             # number of the lowering's own works with.
@@ -193,7 +193,7 @@ module VBlank
               @setting_sort_keys = false
             end
 
-            # THE LIST MOVED ROUND, on a pass where a place came or went: copied aside, then the entries not
+            # The list moved round, on a pass where a place came or went: copied aside, then the entries not
             # showing written back from the front in the order they stood, then the entries showing after
             # them in theirs. t0 reads, t1 writes, t2 counts, t3 is the entry, t4 the flags.
             def emit_shown_partition(kept, list)
