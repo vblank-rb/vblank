@@ -3,7 +3,7 @@
 require "test_helper"
 require "screen_backdrop_games"
 
-# THE COLOR KEEPS ONE BACKDROP FOR THE GAME. It has no single backdrop colour: each of its
+# The color keeps one backdrop for the game. It has no single backdrop colour: each of its
 # background colour lists keeps its own first colour, which the see-through pixels of the tiles drawn
 # from it show, and an empty cell shows the first list's. So the game's backdrop is built into every
 # list, and a scene that says another is refused, saying what to do.

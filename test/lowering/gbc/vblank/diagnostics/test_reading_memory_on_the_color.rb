@@ -3,11 +3,11 @@
 require "test_helper"
 require "tmpdir"
 
-# WHAT A READER OF A RUNNING COLOR CARTRIDGE READS IS WHAT MEMORY HOLDS, whatever the console is
+# What a reader of a running color cartridge reads is what memory holds, whatever the console is
 # doing as the frame ends. While the console copies a sprite table (OAM DMA) the processor reading
 # work memory gets 0xFF, as the copy has the bus; a reader is not the processor, and a variable read
 # then must not read -1. The cartridge here does nothing else: with the screen off it writes 0x5A
-# at HOLDS, then copies the sprite table from work memory again and again, so most frames end
+# at holds, then copies the sprite table from work memory again and again, so most frames end
 # during a copy.
 class TestReadingMemoryOnTheColor < Minitest::Test
   HOLDS = 0xC100
@@ -17,7 +17,7 @@ class TestReadingMemoryOnTheColor < Minitest::Test
   # takes, return.
   DMA_ROUTINE = [0x3E, 0xC0, 0xE0, 0x46, 0x3E, 0x28, 0x3D, 0x20, 0xFD, 0xC9].freeze
 
-  # The program at 0x150: interrupts off, the screen off in its blank, 0x5A at HOLDS, the copy put
+  # The program at 0x150: interrupts off, the screen off in its blank, 0x5A at holds, the copy put
   # into quick memory, then the copy called for ever.
   private def program
     [0xF3,
