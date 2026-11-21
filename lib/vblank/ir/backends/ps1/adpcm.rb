@@ -4,12 +4,12 @@ module VBlank
   module IR
     module Backends
       class PS1
-        # THE SOUND CHIP'S OWN WAY OF KEEPING A SOUND: blocks of 16 bytes, each holding 28 samples in four
+        # The sound chip's own way of keeping a sound: blocks of 16 bytes, each holding 28 samples in four
         # bits apiece. The PlayStation's sound chip (the SPU) plays nothing else: every voice reads these
         # blocks out of the chip's own 512K of sound memory and turns them back into samples of 16 bits as
         # it goes, so the processor writes nothing per sample.
         #
-        # A BLOCK (psx-spx, "SPU ADPCM Samples"; Beetle PSX, spu.c SPU_RunDecoder): its first byte holds a
+        # A block (psx-spx, "SPU ADPCM Samples"; Beetle PSX, spu.c SPU_RunDecoder): its first byte holds a
         # shift in its low four bits and a filter in its high four, its second byte flags, and then 14
         # bytes of 28 samples, the low four bits of each byte first. A sample is its four bits, signed,
         # moved to the top of 16 bits and shifted right by the shift (`(int16)(nibble << 12) >> shift`),
@@ -43,7 +43,7 @@ module VBlank
           # and, when +loop+, flagged to go round for ever from sample +loop_from+ (a whole number of blocks
           # in), and otherwise to end and go quiet after the last.
           #
-          # EACH BLOCK TAKES THE FILTER AND SHIFT THAT COME NEAREST ITS SAMPLES, every pair tried, each
+          # Each block takes the filter and shift that come nearest its samples, every pair tried, each
           # nibble the nearest the decoder can be brought to its sample from where the block before left
           # it, as the chip itself will be. Two blocks take filter 0, which looks at nothing before them:
           # the first, which the chip starts with nothing before it, and the loop's first, which the chip

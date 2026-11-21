@@ -12,14 +12,14 @@ module VBlank
         # these instead and play its game on a PlayStation with nothing else changed. The interpreter plays
         # the program on the PlayStation's screen, 320×240, and the two pictures are compared over it.
         #
-        # THE FACES OF A PLACE ARE THE CHIP'S. The PlayStation's graphics chip fills them, by rules of its
+        # The faces of a place are the chip's. The PlayStation's graphics chip fills them, by rules of its
         # own (Runtime::Faces says why), so the interpreter is told to fill each face the way the chip
         # does: the triangles the runtime sends for it (FacePieces) drawn by the chip's rules
         # (PolygonFill). Everything the place's drawing works out — turning, cutting at
         # the near limit, where each corner lands, `screen_spot` — is still the interpreter's own, and the
         # whole picture is still compared, every pixel with none let off.
         #
-        # SO IS THE MIX OF A SEE-THROUGH LAYER. The chip mixes in five bits a channel (SemiTransparency), and
+        # So is the mix of a see-through layer. The chip mixes in five bits a channel (SemiTransparency), and
         # the interpreter widens to eight first, so the interpreter is told to mix the chip's way: which pixels
         # are mixed, with what, at which shares, stays its own.
         class CheckedRun < HeadlessRun
@@ -52,7 +52,7 @@ module VBlank
           # them (HeadlessRun.sounding_voices).
           def sounding_levels(run) = HeadlessRun.sounding_voices(run)
 
-          # THE SOUND LOG AND THE SOUND CHIP ITSELF, past the moments: every entry of the log, and the first
+          # The sound log and the sound chip itself, past the moments: every entry of the log, and the first
           # time the game was found waiting with a register of the chip holding something other than what
           # the interpreter's log says it must, as far as the entries the program had logged then
           # (SPUWrites.after). The log agreeing is not enough: a write dropped on the way or sent to the wrong

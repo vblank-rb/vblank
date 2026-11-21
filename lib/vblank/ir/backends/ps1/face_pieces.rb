@@ -4,14 +4,14 @@ module VBlank
   module IR
     module Backends
       class PS1
-        # WHAT THE PROCESSOR SENDS THE GRAPHICS CHIP FOR ONE FACE OF A PLACE, worked out in Ruby the way
+        # What the processor sends the graphics chip for one face of a place, worked out in Ruby the way
         # Runtime::Faces works it out in MIPS, number for number. The runtime is held to this: the
         # PlayStation's checked run draws what these triangles make, by the chip's own rules
         # (PS1::PolygonFill), and compares that with what the chip drew in the emulator,
         # every pixel. So this file is the plain statement of the routine, and the MIPS is the same
         # sums again.
         #
-        # WHY A FACE IS CUT BEFORE THE CHIP SEES IT. The chip fills a textured triangle by itself, fast,
+        # Why a face is cut before the chip sees it. The chip fills a textured triangle by itself, fast,
         # but it has limits the interpreter's fill does not have:
         #
         # - a corner is a whole pixel, at most 1023 pixels across from the others and 511 down, or the
@@ -27,21 +27,21 @@ module VBlank
         #    clipped (#sent_unclipped?). It is held to its edges (`window:`, `inside`) by the chip's
         #    drawing area, set to them, never by cutting it, so through any window the chip fills each
         #    pixel from the same triangles as on the whole screen.
-        # 2. IN PERSPECTIVE, CUT INTO CELLS, along rows and columns from its top left corner, their width
+        # 2. In perspective, cut into cells, along rows and columns from its top left corner, their width
         #    and height the face's own (#cell_side_shifts): small where it is near and at a slant, narrow
         #    the way its nearness changes, and none at all for most faces far off or seen straight on. Each new corner's place on the picture is worked out
         #    exactly (the place over the distance, times the distance, as Reference#place_in_perspective
         #    does), and the chip steps straight between. That is how the console's own games drew a near
         #    wall. The face is cut into strips along its rows' lines (#each_strip), and each strip into
         #    cells by walking its edges across it (#each_cell_in_strip), not by cutting it again.
-        # 3. CUT WHERE THE PICTURE WOULD RUN PAST A BYTE: a piece whose place on the picture spans more
+        # 3. Cut where the picture would run past a byte: a piece whose place on the picture spans more
         #    than 256 is cut at 256 past its least, as often as it takes. The picture repeats by the
         #    chip's texture window (GP0 E2h), so each piece's places are moved by whole pictures to
         #    start between 0 and the picture's size.
         # 4. SENT as a fan of triangles from the piece's first corner, each corner rounded to the
         #    nearest whole pixel; a triangle with no area is left out (the chip draws nothing of one).
         #
-        # A FACE LIT BY A SHADING IS SHADED BY THE CHIP, as the console's own games lit their walls: each
+        # A face lit by a shading is shaded by the chip, as the console's own games lit their walls: each
         # corner of a triangle carries a colour, the chip steps it across the triangle as it steps the
         # place on the picture, and multiplies each texel's red, green and blue by it (GP0 34h, a shaded
         # textured triangle; 80h is the texel as it is, nought is black). A corner's colour comes from its
@@ -52,15 +52,15 @@ module VBlank
         # the shading gives it; and the chip scales red, green and blue alike, so a shading that does
         # anything else to a colour than darken it (a tint, a fog) is drawn as the colour darkened.
         #
-        # A corner is NUMBERS numbers, by these places: X and Y, in sixteenths of a pixel; U_SOURCE,
-        # V_SOURCE and NEARNESS, what the place on the picture is worked out from (without perspective
+        # A corner is numbers numbers, by these places: X and Y, in sixteenths of a pixel; U_SOURCE,
+        # V_SOURCE and nearness, what the place on the picture is worked out from (without perspective
         # u and v themselves, with sixteen fraction bits, and no nearness; in perspective u and v over
         # the distance and one over the distance, as Reference::FaceEdges.in_perspective has them);
-        # TEXEL_U, TEXEL_V, the whole texel the corner sends; and SHADE, a lit face's colour with sixteen
+        # TEXEL_U, TEXEL_V, the whole texel the corner sends; and shade, a lit face's colour with sixteen
         # bits of fraction (#corner_from_list), and nought on a face that is not lit. Every sum is IR::Int32's,
         # so it wraps where the processor's does.
         #
-        # WHERE A CUT CROSSES AN EDGE, the new corner is worked out once, from the end of the edge
+        # Where a cut crosses an edge, the new corner is worked out once, from the end of the edge
         # below the line towards the end above it, and given to both sides; so the two pieces on either
         # side of a line share their corners to the bit and the chip leaves no crack between them.
         module FacePieces
@@ -177,7 +177,7 @@ module VBlank
           # drawing area, set to the face's edges, holds its pixels to them, as the console's own games left
           # a polygon on the screen to the chip. Clipping it would keep every corner and make none.
           #
-          # WHY THE SCREEN AND NEVER THE FACE'S EDGES. A face is cut into pieces at the same corners however
+          # Why the screen and never the face's edges. A face is cut into pieces at the same corners however
           # small its window, so the chip fills each pixel inside the window from the same triangles as on
           # the whole screen, and the drawing area only leaves out the pixels past it. Clipped to a window,
           # the face would be cut along the window's sides into other triangles, each corner rounded to a
@@ -192,7 +192,7 @@ module VBlank
             end
           end
 
-          # HOW BIG THE CELLS ARE THAT A FACE IN PERSPECTIVE IS CUT INTO, a side each way: [across, down],
+          # How big the cells are that a face in perspective is cut into, a side each way: [across, down],
           # each a power of two of pixels from LEAST_CELL_SHIFT to MOST_CELL_SHIFT, for +face+ as clipped.
           #
           # The chip steps the place on the picture straight across a cell, where the true place steps with
@@ -213,7 +213,7 @@ module VBlank
           # whose nearness changes down the screen, is cut into wide cells; a wall at the viewer's side into
           # tall narrow ones; a far wall at a slant into columns only.
           #
-          # FIRST, THE WHOLE FACE. A face whose nearness changes by a share c of its least across it, and
+          # First, the whole face. A face whose nearness changes by a share c of its least across it, and
           # whose longer reach is e pixels, is off by about c * e / 4 pixels sent as it is; within the
           # pixels allowed, it is one cell, and nothing more is worked out. That is most of a place's faces,
           # a few pixels big or far off, and it costs one divide (Runtime::Faces's rt_face_one_cell, which a
@@ -289,7 +289,7 @@ module VBlank
           # than the lines strictly inside it, at whole sides from its least (#each_strip).
           def cells_along(reach, shift) = Int32.add(Int32.shift_right(Int32.sub(reach, 1), shift + 4), 1)
 
-          # HOW FAST THE NEARNESS CHANGES ACROSS +face+ AND DOWN IT: [rx, ry], a share of its least a pixel,
+          # How fast the nearness changes across +face+ AND DOWN IT: [rx, ry], a share of its least a pixel,
           # with SLOPE_BITS of fraction, each held to MOST_SLOPE.
           #
           # Each corner's nearness is taken as a share of the least past it, e = (w - least) over the least
@@ -384,7 +384,7 @@ module VBlank
             [below, above]
           end
 
-          # WHERE A CUT ACROSS THE SCREEN CROSSES THE EDGE FROM +from+ TO +to+, worked out from the edge it
+          # Where a cut across the screen crosses the edge from +from+ to +to+, worked out from the edge it
           # is part of, so the same wherever the cuts before it fell (#corner_between from the end below
           # the line).
           #
@@ -413,7 +413,7 @@ module VBlank
           #
           # Only what is read again is stepped, the rest left as the start's. On a line across the screen
           # the texel is worked out afresh, so it is not stepped (SCREEN_CUT_NUMBERS). A cut on the picture
-          # comes after every cut across the screen, so nothing reads U_SOURCE, V_SOURCE or NEARNESS again
+          # comes after every cut across the screen, so nothing reads U_SOURCE, V_SOURCE or nearness again
           # (LATE_CUT_NUMBERS). Each multiply left out is one the runtime spares a corner.
           def corner_between(from, to, from_side, to_side, number, line, spans)
             start, finish, start_side, finish_side = from_side.negative? ? [from, to, from_side, to_side] : [to, from, to_side, from_side]
@@ -438,13 +438,13 @@ module VBlank
           # each strip into its cells along the columns' lines, every cell's width, from its leftmost
           # corner, left to right (#each_cell_in_strip).
           #
-          # THE CELLS START AT THE FACE'S OWN CORNER, not at the screen's: a face of a far room is a
+          # The cells start at the face's own corner, not at the screen's: a face of a far room is a
           # few cells wide, and lined up on the screen it would cross a line wherever it fell,
           # however small, and be sent in two pieces or four. Every strip of a face is cut along the
           # same columns, so a corner made on the line between two strips is a corner of the pieces on
           # both sides, and the chip leaves no crack between them.
           #
-          # CELLS OUTSIDE THE FACE'S +edges+ ([left, top, right, bottom], in pixels) are not made at all. The
+          # Cells outside the face's +edges+ ([left, top, right, bottom], in pixels) are not made at all. The
           # cells' sides and their lines are the whole face's on the screen, whatever its edges, so every
           # cell inside them is the one the whole screen makes. The face is cut straight at the last line
           # at or before the left and the top edge (#line_at_or_before), which makes the corners the cuts
@@ -505,10 +505,10 @@ module VBlank
           # The first line, +start+ and a multiple of +side+ on, strictly past +least+.
           def first_line(least, start, side) = Int32.add(Int32.add(start, Int32.bit_and(Int32.sub(least, start), Int32.sub(0, side))), side)
 
-          # THE CELLS OF ONE STRIP of a face (a part between two of its rows' lines), left to right: the
+          # The cells of one strip of a face (a part between two of its rows' lines), left to right: the
           # parts #each_strip cuts it into along the columns' lines, made without cutting.
           #
-          # WHY. A cut walks every corner of the piece it cuts and writes two new pieces, and cutting each
+          # Why. A cut walks every corner of the piece it cuts and writes two new pieces, and cutting each
           # strip into cells that way, column by column, was most of what drawing a near wall cost. But a
           # strip is two runs of corners from its least x to its most, one each way round, x rising along
           # both (#strip_chains): its cell between two lines is the corners of each run between them and
@@ -575,7 +575,7 @@ module VBlank
           # its most in order round.
           StripChains = Data.define(:forward, :backward, :most_run)
 
-          # THE TWO RUNS OF +strip+ FROM ITS LEAST X TO ITS MOST, or nil where x does not rise strictly
+          # The two runs of +strip+ from its least X to its most, or nil where x does not rise strictly
           # along both, or more than two corners are at its least (#each_cell_in_strip). Where two
           # corners share the least x (a strip whose left side is upright), the runs start at the two of
           # them; where several share the most, they end at the two ends of those. The corners at the least
@@ -628,7 +628,7 @@ module VBlank
             run
           end
 
-          # ONE RUN OF A STRIP (StripChains) walked across it, a column's line at a time.
+          # One run of a strip (StripChains) walked across it, a column's line at a time.
           class ChainWalk
             def initialize(corners)
               @corners = corners
@@ -711,7 +711,7 @@ module VBlank
           # blue: its whole part, held to FULL_COLOR.
           def corner_color(shade) = [Int32.shift_right(shade, 16), FULL_COLOR].min
 
-          # WHAT THE DARKEST LIGHT ADDS TO A CORNER'S COLOUR, with sixteen bits of fraction, for a shading of
+          # What the darkest light adds to a corner's colour, with sixteen bits of fraction, for a shading of
           # +levels+ levels: one level's worth of FULL_COLOR. The interpreter shows light 0 at the shading's
           # level nought, and a shading that darkens evenly makes level nought one level's worth bright, not
           # black; level n is n + 1 levels' worth. So the colour at a light is FULL_COLOR times the light and

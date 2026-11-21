@@ -10,7 +10,7 @@ module VBlank
         # video RAM where the graphics chip is told to show it; its pad's buttons by the shared names; and
         # a run of no frames ending before the picture is on.
         #
-        # THE PROGRAM STARTS ON THE EMULATOR'S FIRST FRAME. Beetle PSX runs OpenBIOS when no BIOS of Sony's
+        # The program starts on the emulator's first frame. Beetle PSX runs OpenBIOS when no BIOS of Sony's
         # is in its system folder, and ruby-ps1-emulator's patch starts the program at power-on there, so
         # no frames go by in a BIOS first. The frames the runtime counts start as the picture comes on, at
         # the end of the first pass, as every cartridge console's do.
@@ -47,7 +47,7 @@ module VBlank
           # entries (SPUWrites.after). Empty for a game that makes no sound.
           attr_reader :spu_reads
 
-          # WHAT WAS HEARD: the loudest sample in each frame from power-on, left or right, as a number from 0
+          # What was heard: the loudest sample in each frame from power-on, left or right, as a number from 0
           # to 32768.
           attr_reader :loudest_each_frame
 
@@ -61,7 +61,7 @@ module VBlank
             @keep_sound = keep_sound
           end
 
-          # THE RECORDINGS SOUNDING at the moment the run ended, or the one a watching block is asked at
+          # The recordings sounding at the moment the run ended, or the one a watching block is asked at
           # (Reference#active_samples): the program's own count (Runtime::Recordings), place by place, as the
           # interpreter's mixer keeps them voice by voice.
           def active_samples = (@sounding || []).map(&:name)
@@ -74,7 +74,7 @@ module VBlank
           # them (Reference#loudness_by_voice).
           def loudness_by_voice = (@sounding || []).map(&:loudness)
 
-          # THE RECORDINGS SOUNDING in +run+ (this run, or the interpreter it is checked against), a voice
+          # The recordings sounding in +run+ (this run, or the interpreter it is checked against), a voice
           # each in the order of the voices: its name, its shape's level and its loudness. A pass's moment
           # holds them, so a recorded note at the wrong loudness is a moment the two disagree on.
           def self.sounding_voices(run)
@@ -115,7 +115,7 @@ module VBlank
           # The rest of what the interpreter answers, each refused by name.
           refuses :clock_at
 
-          # HOW MANY LINES THE SCREEN HAD DRAWN since the last blank began when +pass+ went to sleep, by
+          # How many lines the screen had drawn since the last blank began when +pass+ went to sleep, by
           # the pass's number as #frames_took has it, read off the console's line timer
           # (Runtime::Frame::END_LINES). For a pass that took several frames a blank began while it ran,
           # so this is how many lines too late it went to sleep to take a frame fewer. Nothing the
@@ -173,7 +173,7 @@ module VBlank
           # it is not pressed.
           def set_buttons(buttons) = @core.set_buttons(buttons.filter_map { |button| PAD_BUTTONS[button.to_sym] })
 
-          # A RUN OF NO FRAMES ends as the first pass does, before anything is shown
+          # A run of no frames ends as the first pass does, before anything is shown
           # (CartridgeHeadlessRun#end_before_first_picture): the runtime turns the display on as the
           # first pass is shown (Runtime::Frame::DISPLAY_ON).
           def ends_before_first_picture?(frames) = frames.zero?
@@ -249,7 +249,7 @@ module VBlank
           # A page of the screen in video RAM: its top line, and its pixels as they were read.
           PageRead = Data.define(:top_line, :colors)
 
-          # THE PICTURE A PASS DREW IS READ AS THE GAME WAITS AT ITS END, from the page it drew into
+          # The picture a pass drew is read as the game waits at its end, from the page it drew into
           # (Runtime::Paint::PASS_PAGE_Y). The graphics chip draws into video RAM the moment it is told
           # to, and on a screen of one page that is the page shown: by the time the reader finds the pass
           # on the screen, the game has gone on into the next pass and drawn some of it there.
@@ -264,7 +264,7 @@ module VBlank
             PageRead.new(top_line: top, colors: shown_apart? ? nil : read_page_colors(top))
           end
 
-          # ...AND IT COUNTS ONLY IF IT IS THE PAGE SHOWN. As the pass went on the screen the runtime kept
+          # ...AND it counts only if it is the page shown. As the pass went on the screen the runtime kept
           # which page the chip was showing (Runtime::Paint::PASS_SHOWN_PAGE_Y); that has to be the page the
           # pass drew. And what the runtime keeps of the page it last told the chip to show
           # (Runtime::Paint::SHOWN_PAGE_Y) has to be what the chip's display start holds now, so a command the
@@ -290,8 +290,8 @@ module VBlank
           def slot_place_of(name, width) = @places.slot_places.fetch(name) { super }
 
           # The moment of +frame+ — a pass's number, or :end for the moment the run ended on. +sounds+ is how
-          # many entries the sound log held as the game was found waiting (#read_sounds). A PASS'S SOUNDS
-          # ARE COUNTED AS ITS WAIT ENDS, where the program keeps the count (Runtime::Sound::LOGGED_BY_PASS),
+          # many entries the sound log held as the game was found waiting (#read_sounds). A pass's sounds
+          # are counted as its wait ends, where the program keeps the count (Runtime::Sound::LOGGED_BY_PASS),
           # as the music of the frame boundary will be played there. The moment the run ended on has no
           # boundary after it.
           def record_moment(frame, variables, lists, picture, sounds)
