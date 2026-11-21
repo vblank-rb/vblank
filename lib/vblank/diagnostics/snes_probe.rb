@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # A RUNNING SUPER NINTENDO CARTRIDGE, answering what the one reader (Verifier) asks of a running
+    # A running Super Nintendo cartridge, answering what the one reader (Verifier) asks of a running
     # cartridge. The Advance and the Color play in libmgba, whose probe (RubyGBAEmulator::Probe) the
     # reader was written over; this plays in bsnes and takes the same calls.
     #
@@ -18,7 +18,7 @@ module VBlank
         @last_audio = []
       end
 
-      # THE BYTES OF THE .srm FILE AS IT WOULD BE WRITTEN NOW, or nil for a cartridge with no
+      # The bytes of the .srm file as it would be written now, or nil for a cartridge with no
       # battery. bsnes writes that file only when the cartridge is taken out, so a reader asking
       # while the cartridge runs reads the RAM the file is made from. On a Super FX board that is
       # the chip's RAM, its working memory first (SNESReading.save_file_of gives where the save is).
@@ -83,7 +83,7 @@ module VBlank
       def read32(address) = SNESMemory.read32(@core, address)
       def write32(address, value) = SNESMemory.write32(@core, address, value)
 
-      # THE CONSOLE'S WHOLE STATE, written to the file +path+ in bsnes's own format, and put back
+      # The console's whole state, written to the file +path+ in bsnes's own format, and put back
       # from one (Verifier#save_state, #load_state).
       def save_state(path) = File.binwrite(path, @core.serialize)
       def load_state(path) = @core.unserialize(File.binread(path))

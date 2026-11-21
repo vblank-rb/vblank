@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # A RUNNING SUPER NINTENDO CARTRIDGE'S MEMORY, read by the address its own code uses. Two kinds
+    # A running Super Nintendo cartridge's memory, read by the address its own code uses. Two kinds
     # of memory hold a game's numbers. Work RAM is the console's own: banks $7E and $7F, and its
     # first 8K is seen again at the low addresses every bank shares, so an address there is its own
     # offset. A Super FX cartridge has RAM of its own too, which the console sees as bank $70
