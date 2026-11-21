@@ -4,17 +4,17 @@ module VBlank
   module IR
     module Backends
       class SNES
-        # THE SUPER FX, ONE INSTRUCTION AT A TIME: an assembler for the GSU, the processor some
+        # The super FX, one instruction at a time: an assembler for the GSU, the processor some
         # Super Nintendo cartridges carry beside the console's own (the Super FX 2 of Yoshi's Island
         # and Doom is the GSU-2). It is a processor of its own, inside the cartridge, with its own
         # instructions and nothing in common with the 65816 but the cartridge it shares:
         #
         #   - sixteen 16-bit registers, R0 to R15. R15 is the program counter; R1 and R2 are where
-        #     PLOT puts its next pixel (x and y), R12 and R13 what LOOP counts down and goes back to,
+        #     PLOT puts its next pixel (x and y), R12 and R13 what loop counts down and goes back to,
         #     R14 the ROM address GETB reads from, R11 where LINK leaves a return address.
         #   - an instruction is mostly one byte, its register in the low four bits. Which registers
-        #     a sum reads and writes is set beforehand by prefixes: FROM Rn names where the next
-        #     instruction reads from (the "source"), TO Rn where it writes (the "destination"), and
+        #     a sum reads and writes is set beforehand by prefixes: from Rn names where the next
+        #     instruction reads from (the "source"), to Rn where it writes (the "destination"), and
         #     WITH Rn both. Without them both are R0, and after each instruction both go back to R0.
         #   - ALT1, ALT2 and ALT3 are prefixes too: each turns the next opcode into another
         #     instruction (ADD Rn after ALT1 is ADC Rn, after ALT2 ADD #n, after ALT3 ADC #n).
@@ -108,13 +108,13 @@ module VBlank
             define_method(name) { |operand| sum(name, operand) }
           end
 
-          # The sum +name+ (one of SUMS) on the source and +operand+: for a sum the code works out
+          # The sum +name+ (one of sums) on the source and +operand+: for a sum the code works out
           # rather than writes.
           def sum(name, operand)
             base, register_prefix, number_prefix = SUMS.fetch(name)
             if operand.is_a?(Imm)
               raise Error, "#{name} has no number form" unless number_prefix
-              # $70 and $C0 are MERGE and HIB whatever prefix comes before them.
+              # $70 and $C0 are merge and HIB whatever prefix comes before them.
               raise Error, "#{name} cannot take #0" if operand.value.zero? && %i[and_ bic or_ xor].include?(name)
 
               emit(number_prefix, base | checked_nibble(operand.value, name))

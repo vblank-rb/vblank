@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class SNES
-        # WHAT A SOUND IS, IN THE S-DSP'S REGISTERS. The Super Nintendo's sound unit mixes eight
+        # What a sound is, in the S-DSP's registers. The Super Nintendo's sound unit mixes eight
         # voices, and everything one of them does is a handful of registers: which recording it plays
         # (its source number, an entry in the sample table), how fast it reads through it (its
         # pitch), how loud it is on the left and on the right, how its loudness rises and falls (its
@@ -16,14 +16,14 @@ module VBlank
         # pass and holds them to the writes the interpreter's log up to then says (#after) — so a
         # write that never arrived, arrived late or arrived wrong shows up, in the sound unit itself.
         #
-        # THE SQUARE VOICES. The Advance has two voices that play a square wave of their own, in four
+        # The square voices. The Advance has two voices that play a square wave of their own, in four
         # widths. The S-DSP has none: it only plays recordings. So each width is a short looped
         # recording of a square wave (Samples), and a beep picks one by its source number: the one
         # whose wave is 32 samples long when the note is low enough, and the one of 8 samples above
         # that. Its pitch register, where $1000 reads 32000 samples a second (fullsnes, "SNES APU DSP
         # BRR Pitch"), is then the note's frequency * the wave's samples * $1000 / 32000.
         #
-        # THE FADE. The Advance fades a beep a volume step at a time, a step every 1, 3 or 5 64ths of
+        # The fade. The Advance fades a beep a volume step at a time, a step every 1, 3 or 5 64ths of
         # a second (Audio::Sound::FADE_STEP_SIXTY_FOURTHS), so volume v fading :fast is gone in v/64
         # of a second, and a quiet beep sooner than a loud one. The S-DSP's envelope instead starts
         # each note at the top (the fastest attack, ADSR1 $8F) and, in its sustain mode, takes it
@@ -39,7 +39,7 @@ module VBlank
           BEEP_VOICE = 1
           NOISE_VOICE = 3
 
-          # THE WAVE VOICE, the Advance's third, plays the game's own 32-step waveforms (Samples.wave).
+          # The wave voice, the Advance's third, plays the game's own 32-step waveforms (Samples.wave).
           # The Advance makes its four quieter loudnesses by cutting every step down, so each
           # loudness is a waveform of its own (#wave_steps), recorded at the loudness of a beep at
           # 15; the voice has no fade, so its envelope is a fixed gain at the top (ADSR1 bit 7 nought
@@ -49,7 +49,7 @@ module VBlank
           ADSR_OFF = 0x00 # ADSR1 with bit 7 nought: the envelope is GAIN's
           FIXED_TOP = 0x7F # GAIN with bit 7 nought: a fixed level, the most there is
 
-          # NOISE. A hiss is the S-DSP's own noise generator, a register of fifteen random bits, as
+          # Noise. A hiss is the S-DSP's own noise generator, a register of fifteen random bits, as
           # the Advance's is: the noise voice's bit in NON switches it from its recording to the
           # generator, and the generator's clock is FLG's low five bits, one of the 32 rates (a rate
           # steps it 32000 / RATE_SAMPLES[rate] times a second, so 32000 at the most). A metallic
@@ -58,19 +58,19 @@ module VBlank
           # NOISE_HIT_HALVINGS. The Advance clocks a :high hiss eight times as fast as a :mid one,
           # past the DSP's fastest; there the two come out only twice as far apart.
           #
-          # THE GENERATOR IS LOUDER than a recording at the same volume: its output swings the whole
+          # The generator is louder than a recording at the same volume: its output swings the whole
           # of $4000 either way (fullsnes, "NON"), and the recordings Samples makes swing 7 * 2^11 / 2.
           # The Advance's noise and square voices swing alike, so a hiss's volume registers are scaled
           # down by the two swings (HISS_SCALE), and a hiss is as loud as a beep at the same volume.
           #
-          # FLG IS SHARED. Its top three bits mute the sound unit, hold every voice off and stop the
+          # FLG is shared. Its top three bits mute the sound unit, hold every voice off and stop the
           # echo writing; its low five are the noise clock. So neither enable_sound nor a noise hit
           # writes all of FLG: each changes only its own bits, which the sound unit's program does
           # with the DSP's register in hand (Runtime::Sound's "set some bits" commands), written here
           # as [SET_BITS, FLAGS, mask, bits]. A hit before enable_sound sets the clock and leaves the
           # sound unit muted, as the Advance makes no sound before it either.
           #
-          # KEY-OFF IS SHARED TOO, a bit a voice, and a voice's bit holds until something clears it: a
+          # Key-off is shared too, a bit a voice, and a voice's bit holds until something clears it: a
           # key-on under it plays nothing (fullsnes, "KON/KOFF Notes"). So a voice is let go by
           # setting its bit alone, and every key-on clears its own bit first (#key_on); writing all
           # of KOFF would let go of, or take back, another voice's note.
@@ -150,7 +150,7 @@ module VBlank
              [NOISE_ON, 0], [PITCH_MODULATION, 0], [KEY_OFF, 0]]
           end
 
-          # A SONG'S PARTS play on the voices the Advance's are, by the channel the interpreter names
+          # A song's parts play on the voices the Advance's are, by the channel the interpreter names
           # each by (Reference::Player#console_channel): the first square part on voice 0, the second
           # on voice 1, which beeps share as they share the Advance's second, a wave part on the wave
           # voice and a noise part on the noise voice. A square note holds at a fixed gain, as the
@@ -161,7 +161,7 @@ module VBlank
           SQUARE_VOICES = { 1 => 0, 2 => 1 }.freeze
           CHANNEL_VOICES = SQUARE_VOICES.merge(3 => WAVE_VOICE, 4 => NOISE_VOICE).freeze
 
-          # WHAT A LOG ENTRY DOES NOT SAY. The interpreter logs a song's note as the voice set to a
+          # What a log entry does not say. The interpreter logs a song's note as the voice set to a
           # frequency and volume, which is all the Advance's player writes; the square's width is the
           # part's, written once; and a tune stopping as [:stop_music], whichever tune it was. So the
           # writes are worked out with the game's +waves+ (its wave voice's waveforms, in the order its
@@ -216,7 +216,7 @@ module VBlank
             CHANNEL_VOICES.fetch(channel) != WAVE_VOICE || VBlank::Audio::Sound.wave_level(volume) != :mute
           end
 
-          # THE MUSIC VOLUME reaching +song+'s note on channel +channel+, now at +volume+ (0..15): a
+          # The music volume reaching +song+'s note on channel +channel+, now at +volume+ (0..15): a
           # square or noise voice's volume registers, as its note's are worked out; the wave voice,
           # whose loudness is in its recording, changed to the part's waveform at the nearest of the
           # Advance's five loudnesses to +volume+, as the Advance plays it.
@@ -252,7 +252,7 @@ module VBlank
                            [base + ADSR1, ADSR_OFF], [base + GAIN, FIXED_TOP]], volume, fade) + key_on(voice)
           end
 
-          # A NOTE WOBBLING: the voice on +channel+ playing a +frequency+ Hz note +steps+ of the Advance's
+          # A note wobbling: the voice on +channel+ playing a +frequency+ Hz note +steps+ of the Advance's
           # pitch number from it (Audio::Vibrato), which the voice's pitch registers hold on the wave
           # length the note is on. The note is not started again, so nothing else is written.
           def wobble(channel, frequency, steps)
@@ -264,13 +264,13 @@ module VBlank
             [[(voice << 4) + PITCH_LOW, pitch & 0xFF], [(voice << 4) + PITCH_HIGH, pitch >> 8]]
           end
 
-          # A SQUARE NOTE STEPPING ITS SHAPE: the voice on +channel+ reading the recording of +shape+
+          # A square note stepping its shape: the voice on +channel+ reading the recording of +shape+
           # for a +frequency+ Hz note.
           def shape(channel, frequency, shape)
             [[(CHANNEL_VOICES.fetch(channel) << 4) + SOURCE, Samples.source(shape, wave_for(frequency))]]
           end
 
-          # A NOTE SLIDING: the voice on +channel+ taken to the pitch of +count+ (Audio::PitchSlide),
+          # A note sliding: the voice on +channel+ taken to the pitch of +count+ (Audio::PitchSlide),
           # the chip reading the recording for +shape+ when the slide has left the wave length of
           # +was+, the count before. The note is not started again, so nothing else is written. With
           # no +shape+, a note stepping through its shapes, whose steps are written for the wave
@@ -293,7 +293,7 @@ module VBlank
 
           SQUARE_CLOCK = 131_072.0
 
-          # A SLIDE RUN OFF THE TOP: the voice silent at once. Only the envelope is written, since a
+          # A slide run off the top: the voice silent at once. Only the envelope is written, since a
           # key-off held would stay in a register the sound log has an answer for.
           def slide_stop(channel)
             base = CHANNEL_VOICES.fetch(channel) << 4
@@ -309,7 +309,7 @@ module VBlank
           GAIN_RISES = 0xC0
           GAIN_RISE_STEPS = 64
 
-          # A NOTE THAT CHANGES ITS OWN LOUDNESS. The sound chip counts a voice's envelope by itself,
+          # A note that changes its own loudness. The sound chip counts a voice's envelope by itself,
           # as the Advance's voice counts its volume, so a fade is one write: the envelope's rate. A
           # fade goes down the way a beep's does (#fade_rate). A swell climbs from nought to the top
           # of the envelope, with the voice's volume at the top, in the time the Advance's voice
@@ -348,7 +348,7 @@ module VBlank
           # The volume of +voice+ while its note swells: the most there is, as it climbs.
           def swell_top(voice) = voice == NOISE_VOICE ? (15 * VOLUME_STEP * HISS_SCALE).round : 15 * VOLUME_STEP
 
-          # A SWELLING NOTE STRUCK AT THE MUSIC VOLUME, where the player's count puts it
+          # A swelling note struck at the music volume, where the player's count puts it
           # (Reference::Player#step_swells): an +entry+ of [:loudness, channel, volume], with the
           # swell after it if it climbs on. Holding, the envelope stops at its top and the voice's
           # volume sets the loudness, as any held note's does; the volume goes first, since the other
@@ -484,7 +484,7 @@ module VBlank
             steps
           end
 
-          # THE WRITES A RUN OF THE LOG MEANS, in order, with what one entry says of the next:
+          # The writes a run of the log means, in order, with what one entry says of the next:
           #
           # - the tune a [:loudness ...] for a held note reaches is the one whose note was logged last
           #   (or +song+ before any), since a tune plays its first frame's notes, rests included, as
@@ -569,7 +569,7 @@ module VBlank
           # Where a [:voice ...] entry holds its side (IR::Tunes.voice_entry).
           SIDE_OF_VOICE_ENTRY = 8
 
-          # A NOTE FROM ONE SPEAKER: each voice of the sound chip has a volume for each side, so the
+          # A note from one speaker: each voice of the sound chip has a volume for each side, so the
           # other side's is nought (+side+ :left or :right).
           def heard_from_one_side(writes, side)
             silent = side == :left ? VOLUME_RIGHT : VOLUME_LEFT
@@ -607,7 +607,7 @@ module VBlank
           # What the registers hold after the sound log +entries+, by register, for each one written,
           # and FLG and KOFF, which the sound unit starts as at_power_on sets and whose bits an entry
           # changes only some of. +voicing+ as for #for_entry.
-          # WHICH TUNE A STOP STOPPED is the cartridge's to name (Music.stop_entry), since the
+          # Which tune a stop stopped is the cartridge's to name (Music.stop_entry), since the
           # interpreter's [:stop_music] does not. Where a tune has logged a note since the last stop,
           # the log says it too, and the two must agree: the index in +entries+ (the cartridge's log,
           # stops named) of the first stop that names another tune, or nil. With no note since the
@@ -639,7 +639,7 @@ module VBlank
             held.except(*slide_registers(entries))
           end
 
-          # WHAT THE LOG CANNOT ANSWER FOR. A slide logs nothing as it moves, on the interpreter as on
+          # What the log cannot answer for. A slide logs nothing as it moves, on the interpreter as on
           # the Advance, whose voice does the moving. So while the last note of a channel slides,
           # the registers the player moves it with have no expected value. A rest or a tune's stop
           # leaves them where the slide took them, so it is the last note that sounded that decides.

@@ -13,7 +13,7 @@ module VBlank
         # within a step for a see-through layer, and a run of no frames ending before the screen is
         # on.
         class HeadlessRun < CartridgeHeadlessRun
-          # A PICTURE HELD WITHIN A STEP OF EACH CHANNEL, the picture of a Moment for a game with a
+          # A picture held within a step of each channel, the picture of a Moment for a game with a
           # layer half see-through (Lowering::Picture#refuse_unmade_see_through!). The console adds
           # the two sides' 5-bit channels and halves the sum; the interpreter widens both to eight
           # bits, mixes them and narrows the mix back, which comes out a step higher for some pairs
@@ -141,7 +141,7 @@ module VBlank
           # recordings — for a test to read a recording the DSP plays. Nil for a game with no sound.
           attr_reader :apu_ram
 
-          # WHAT WAS HEARD: the loudest sample bsnes played in each screen frame from power-on, left
+          # What was heard: the loudest sample bsnes played in each screen frame from power-on, left
           # or right, as a number from 0 to 32768. The registers hold what the sound unit was told
           # at the end of each pass; this gives what came out between, so a test can measure a
           # sound's shape — a rest's silence, a fade's length — where the registers cannot see it.
@@ -223,7 +223,7 @@ module VBlank
           # the run ends on.
           def moment_ready?(pass, frames) = pass > frames || sounds_counted?(pass)
 
-          # A RUN OF NO FRAMES ends as the first pass does, before anything is shown
+          # A run of no frames ends as the first pass does, before anything is shown
           # (CartridgeHeadlessRun#end_before_first_picture): Runtime::Frame turns the screen on as the
           # first pass is shown.
           def ends_before_first_picture?(frames) = frames.zero?
@@ -235,7 +235,7 @@ module VBlank
           # interpreter's switched-off white.
           def screen_forced_off? = @core.colors.none?(&:positive?)
 
-          # FRAME 1 CAN BE READ BEFORE IT IS DECIDED. An emulated frame ends as the console starts its
+          # FRAME 1 can be read before it is decided. An emulated frame ends as the console starts its
           # vertical blank, and the blank's interrupt reads the controller as it starts — so a first
           # pass that ends late in a frame finds that frame's interrupt, frame 1's, taken before the
           # emulator stops and the pass is seen to be over: frame 1 read the buttons held from
@@ -290,7 +290,7 @@ module VBlank
           # The moment of +frame+ — a pass's number, or :end for the moment the run ended on. +sounds+
           # is how many entries the sound log held as the game was found waiting (#read_sounds).
           #
-          # A PASS'S SOUNDS INCLUDE ITS FRAME BOUNDARY'S MUSIC, which the interpreter plays after the
+          # A pass's sounds include its frame boundary's music, which the interpreter plays after the
           # pass, before anything reads the frame (Reference#advance_frame). The cartridge plays it
           # where the wait ends (Runtime::Music), after the game was found waiting, so a pass's moment
           # takes the count the cartridge kept as that wait ended (Runtime::Sound::LOGGED_BY_PASS),

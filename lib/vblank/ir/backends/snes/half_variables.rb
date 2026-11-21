@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class SNES
-        # THE VARIABLES THAT ONLY EVER HOLD 16 BITS, though the game never declared them narrow, so
+        # The variables that only ever hold 16 BITS, though the game never declared them narrow, so
         # the Super Nintendo's lowering keeps each in two bytes (Lowering#half_variable?). The 65816
         # works 16 bits at a time with its accumulator wide (fullsnes, "CPU 65XX Microprocessor"), so
         # a four-byte variable is two loads and two stores for every read and write, and a sum is two

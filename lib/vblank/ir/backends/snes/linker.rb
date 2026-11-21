@@ -4,12 +4,12 @@ module VBlank
   module IR
     module Backends
       class SNES
-        # WHERE EVERYTHING GOES IN THE CARTRIDGE, and the holes the assembler left filled in.
+        # Where everything goes in the cartridge, and the holes the assembler left filled in.
         #
         # A Super Nintendo cartridge laid out the LoROM way is seen by the processor as banks of
         # 32K: bank $80 holds the cartridge's first 32K at addresses $8000 to $FFFF, bank $81 the
         # next 32K, and so on. (The lower half of each of those banks is the console's own: work
-        # RAM, the picture and sound chips' registers.) Banks $80 and up are the FAST copy of the
+        # RAM, the picture and sound chips' registers.) Banks $80 and up are the fast copy of the
         # cartridge — the same bytes as banks $00 and up, read a third faster once the cartridge
         # declares it can keep up (Console::SNESHardware::MEMSEL) — so everything is placed there. A
         # Super FX board shows its ROM in banks $80 and up too, so the layout is the same there; that
@@ -39,7 +39,7 @@ module VBlank
 
           class Error < StandardError; end
 
-          # Raised when the GAME is more than the cartridge has room for. It names the game's parts by
+          # Raised when the game is more than the cartridge has room for. It names the game's parts by
           # what they are, never by the sections they went in.
           class TooBig < LoweringError; end
 
