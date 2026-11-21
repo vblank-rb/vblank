@@ -5,7 +5,7 @@
 # A disc of sunlight turns and swells overhead while two sheets of light shafts drift
 # past it at different speeds. That is the console's MIXED arrangement — two background
 # layers that scroll beside one that turns and resizes — and this file never says so. A
-# background turns because something turns it, and `sun.rotate` on the line below is the
+# background turns because something turns it, and `sun.rotate!` on the line below is the
 # whole of the asking.
 #
 # What makes it worth a title screen rather than a test is what happens next: press START
@@ -121,7 +121,7 @@ module Dive
     end
 
     def update
-      @sun.rotate(@sun.angle + TURN_PER_FRAME)
+      @sun.rotate!(@sun.angle + TURN_PER_FRAME)
       breathe
       @far.scroll_by FAR_DRIFT, 0
       @near.scroll_by NEAR_DRIFT, 0

@@ -791,7 +791,6 @@ module VBlank
         extend_declaration_tail if declaring
         self
       end
-      alias rotate rotate!  # :nodoc: until examples/dive/title.rb is moved to rotate!
 
       # Draw the background bigger or smaller as a whole, about the middle of the screen —
       # the affine counterpart to a sprite's `scale`. 1.0 is the size it was drawn at, 2.0
