@@ -5,7 +5,7 @@ require "stringio"
 require "tmpdir"
 require VBlank.root.join("tools/suite_lock").to_s
 
-# A WHOLE RUN HAS THE MACHINE TO ITSELF. `rake test` and each lowering's run on its own are
+# A whole run has the machine to itself. `rake test` and each lowering's run on its own are
 # sized to use the machine, so the second to start waits for the first, and says so.
 class TestSuiteLock < Minitest::Test
   def test_a_second_run_waits_for_the_first_and_says_what_it_waits_for

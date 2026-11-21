@@ -3,7 +3,7 @@
 require "test_helper"
 require "open3"
 
-# THE SUITE RUNS EVERY TEST IN A RACTOR OF ITS OWN, and naming one test must not quietly stop
+# The suite runs every test in a Ractor of its own, and naming one test must not quietly stop
 # that. Rake's test task reads TESTOPTS INSTEAD of the options the task was given, not as well
 # as them, so a Rakefile that only put `--ractor` in the task's own options lost it the moment
 # anybody picked a test by name: that one test then ran on plain threads, where something the
@@ -39,7 +39,7 @@ class TestRakefile < Minitest::Test
     assert_match(/(^| )--ractor( |$)/, run_options("--name='/test_rgb_packs_channels|ractor/'"))
   end
 
-  # THE GBA RUN BUILDS EVERY EMULATOR ITS TESTS OPEN. Its reader's tests play a Super Nintendo
+  # The GBA run builds every emulator its tests open. Its reader's tests play a Super Nintendo
   # cartridge in bsnes and a PlayStation program in Beetle PSX (test/lowering/gba/), so in a
   # checkout that never built those, a run that did not build them first failed those tests.
   def test_the_gba_run_builds_each_emulator_its_tests_play

@@ -3,7 +3,7 @@
 require "test_helper"
 require VBlank.root.join("tools/rubocop/reach_around").to_s
 
-# A CALL MADE AROUND AN OBJECT STOPS A COMMIT: the project's cop, which the pre-commit hook runs on
+# A call made around an object stops a commit: the project's cop, which the pre-commit hook runs on
 # the Ruby files being committed, flags each way of calling a method without writing its name, and
 # leaves a call written out alone.
 class TestReachAround < Minitest::Test

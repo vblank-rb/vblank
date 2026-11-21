@@ -5,7 +5,7 @@ require "open3"
 
 # tools/native_examples.rb says, for every example, whether the native lowering can write it as
 # C today and what it is refused for when it cannot. Trying an example compiles nothing, so this
-# runs on every `rake test`: what the list is USED for — holding an example that builds to
+# runs on every `rake test`: what the list is used for — holding an example that builds to
 # having its tests played as C — is the native run's (test_native_examples.rb).
 class TestNativeExamplesTool < Minitest::Test
   # Starts a child process, which Ruby cannot do from inside a Ractor — the spawn waits for
