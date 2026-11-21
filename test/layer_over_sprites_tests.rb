@@ -117,7 +117,7 @@ module LayerOverSpritesGames
   private def on_bare_floor(way) = [BARE_FLOOR_X, ROWS.fetch(way) + 2]
 end
 
-# A SEE-THROUGH BACKGROUND OVER SPRITES. A cloud's shadow passes over the grass and over whoever
+# A see-through background over sprites. A cloud's shadow passes over the grass and over whoever
 # is walking on it: the layer mixes with the sprites behind it as it mixes with the backgrounds
 # behind it, and a sprite in front of it is drawn over it, as it is.
 #

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# A GAME'S LISTS AND POOLS READ OFF A RUNNING CARTRIDGE, played by each console that has a cartridge.
+# A game's lists and pools read off a running cartridge, played by each console that has a cartridge.
 # The game does its work in its first passes and then idles, so the cartridge and the interpreter
 # hold the same numbers however their frames line up. Each including test says +console+.
 module ListReadingTests

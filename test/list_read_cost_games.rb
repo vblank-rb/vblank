@@ -2,7 +2,7 @@
 
 require "stringio"
 
-# WHAT A LIST READ AT A WORKED-OUT INDEX COSTS, for each console's own cost test: four lists of 32,
+# What a list read at a worked-out index costs, for each console's own cost test: four lists of 32,
 # each always full, read once a pass each into a variable (`x = row[i]`), against the same game
 # reading none. The index is a variable the game sets (:variable), a number masked to the list's
 # length (:mask, `row[(t + 3) & 31]`), or a loop's count (:count, `repeat(8) { |n| x = row[n] }`, so

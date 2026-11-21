@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# A LIST READ OR WRITTEN BEFORE IT IS MADE, played on a cartridge console's own build alone, not
+# A list read or written before it is made, played on a cartridge console's own build alone, not
 # beside the interpreter, which would stop first and hide what the cartridge does. The interpreter
 # stops the game there (the list holds nothing until it is made), and so must the cartridge, even
 # for a list made full and never resized, whose index a build tests against its capacity or not at
