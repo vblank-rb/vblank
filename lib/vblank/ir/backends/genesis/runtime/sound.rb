@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class Genesis
         module Runtime
-          # THE SOUND CHIPS, AND HOW THE 68000 TALKS TO THEM. A Genesis has two: the PSG, whose port the
+          # The sound chips, and how the 68000 talks to them. A Genesis has two: the PSG, whose port the
           # 68000 writes a byte at a time, and the YM2612, which sits on the sound processor's side of the
           # console. The 68000 reaches it only while the sound processor (a Z80) has been asked to stay off
           # its bus (Runtime::Boot), and each of its registers is two writes, which register and then what
@@ -13,11 +13,11 @@ module VBlank
           # Z80 run and plays through it (Runtime::Recordings), and the FM chip is then the Z80's: the
           # 68000's writes to it go into the Z80's queue, and the Z80 makes them.
           #
-          # NOTHING SOUNDS UNTIL `enable_sound`, as nothing does on the Advance: until then ON is nought and
+          # Nothing sounds until `enable_sound`, as nothing does on the Advance: until then ON is nought and
           # the writes here go nowhere, and a voice's loudness does not move. A sound before it is still
           # in the sound log, as it is in the interpreter's.
           #
-          # A VOICE'S LOUDNESS. A PSG voice holds a loudness and has no way of changing it, so a note that
+          # A voice's loudness. A PSG voice holds a loudness and has no way of changing it, so a note that
           # fades or swells is the runtime's work: each voice's volume is kept here, with the number of
           # 64ths of a second between its steps, and once a frame each is counted on (rt_sound_fades) the
           # way the Advance's voice counts itself.
@@ -45,7 +45,7 @@ module VBlank
             COUNTS = "rt sound counts" # A word for each voice: how far to its next step
             VOICES = 4
 
-            # THE SOUND LOG, for whoever reads a run back: every sound statement the game ran, as the number
+            # The sound log, for whoever reads a run back: every sound statement the game ran, as the number
             # the lowering gave its entry of the interpreter's log (Lowering::Sound), the last LOG_LENGTH of
             # them in a ring, and how many there have been (16 bits).
             LOG = "rt sound log"
@@ -160,13 +160,13 @@ module VBlank
             # rt_fm_write in a game that plays recordings, where the FM chip is the Z80's: the write put
             # in the Z80's queue (Recordings#emit_queued), which the Z80 makes between two samples.
             #
-            # THE TIMERS' REGISTER ($27) ALSO HOLDS THE THIRD VOICE'S MODE, and the Z80 writes it every
+            # The timers' register ($27) also holds the third voice's mode, and the Z80 writes it every
             # sample. So a write to it from the game's side is not queued as it is: its mode is written
             # into each of the Z80's own writes of it (Recordings::TIMER_WRITES), and what is queued is
             # the mode with the timers left counting, which changes nothing of theirs while a recording
             # plays and nothing that matters while none does.
             #
-            # A WRITE THAT WOULD CHANGE NOTHING IS NOT QUEUED. Each register's last value is kept
+            # A write that would change nothing is not queued. Each register's last value is kept
             # (Recordings::FM_KEPT, a word each, $FFFF for one not written yet), and a write of the same
             # value again is dropped. A note sets its voice's every register, some thirty, and a voice
             # playing one instrument changes only a few of them from note to note; each write the Z80

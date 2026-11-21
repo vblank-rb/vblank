@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class Genesis
         module Runtime
-          # A TILED SCREEN, as a Genesis keeps one: two planes of tiles that scroll, and sprites over
+          # A tiled screen, as a Genesis keeps one: two planes of tiles that scroll, and sprites over
           # them. Everything is in video RAM, which only the video chip's two ports reach, so the game
           # works on its own notes of what it wants (where each plane is scrolled to, which map each
           # shows, which cells changed, which sprites are placed) and the blank after each pass writes
@@ -20,19 +20,19 @@ module VBlank
           #   $C000        plane A's map, which draws over plane B's, and $E000 plane B's: 8K each,
           #                which holds the biggest map there is, 64 cells across and 64 down
           #
-          # A MAP IS A GRID OF CELLS, a word each: the tile's number in the low eleven bits and its
+          # A map is a grid of cells, a word each: the tile's number in the low eleven bits and its
           # palette in the two bits at 13. A plane is 32 or 64 cells across and down (the game's
           # backgrounds all have one size), and coming off one edge it comes round to the other, which is
           # what the interpreter's backgrounds do.
           #
-          # THE SPRITE TABLE is a list the chip walks from row 0, each row naming the next by its
+          # The sprite table is a list the chip walks from row 0, each row naming the next by its
           # link, and it draws a row in front of the rows after it. A game places its sprites back to
           # front, so they are noted in that order and written to the table the other way round, the
           # last placed first, each linked to the one after, the last to nothing. A row draws a piece
           # of one to four tiles across and one to four down, from tiles that follow one another in
           # video memory down each column in turn; its size is in the byte above its link.
           #
-          # A SCROLL REGISTER MOVES THE PLANE, not the view over it: a plane scrolled right by 5 shows
+          # A scroll register moves the plane, not the view over it: a plane scrolled right by 5 shows
           # what was 5 pixels to the left. A game's view at x is the plane scrolled by -x. Vertically
           # it is the other way: the plane scrolled up by y shows what was y below.
           module Tiles
@@ -114,7 +114,7 @@ module VBlank
                                                     poses: poses, blocks: blocks)
             end
 
-            # A SCENE'S OWN TILES, brought in as it takes over. rt_scene_tiles(table) notes the table of
+            # A scene's own tiles, brought in as it takes over. rt_scene_tiles(table) notes the table of
             # the arriving scene's tiles (D0), and the blank at the end of the pass copies them
             # (rt_scene_tiles_copied) over the last scene's, into the room past the tiles every screen shows.
             #
@@ -205,7 +205,7 @@ module VBlank
               asm.rts
             end
 
-            # THE MAPS. rt_background_put_up(plane, grid, reset): the grid (a place in "art grids":
+            # The maps. rt_background_put_up(plane, grid, reset): the grid (a place in "art grids":
             # where its cells are, how many across and how many down) is noted to be copied onto the plane
             # in the blank, and every cell the game changed on that plane before is let go, since the
             # map covers it; with +reset+ not nought the view goes back to the corner. rt_background_scroll
@@ -255,7 +255,7 @@ module VBlank
               emit_block_noted(asm, at, columns) if blocks
             end
 
-            # A BLOCK OF CELLS IS THREE NOTES OF THE QUEUE (Nodes::SetTileBlock), written in the blank as
+            # A block of cells is three notes of the queue (Nodes::SetTileBlock), written in the blank as
             # a console's own game writes a box: the chip pointed at the start of each row once, then
             # each cell of the row one word after another, the chip moving on by itself. The notes are:
             #
@@ -346,7 +346,7 @@ module VBlank
               asm.rts
             end
 
-            # A FULL QUEUE IS WRITTEN EARLY, and the cell that found it full is noted after, in a queue
+            # A full queue is written early, and the cell that found it full is noted after, in a queue
             # empty again. Everything noted before it reaches video memory before it does, so the
             # order the game changed its cells in holds: the maps waiting to go up first, as the blank
             # puts them (a cell changed after a put-up lands on the new map), then the cells.
@@ -362,7 +362,7 @@ module VBlank
               asm.moveq(0, asm.d(4))
             end
 
-            # THE COMMAND THAT POINTS THE CHIP AT A CELL is two words: the first holds the low fourteen
+            # The command that points the chip at a cell is two words: the first holds the low fourteen
             # bits of the cell's address in video memory, and the second its top two, which are the same
             # for every cell of both maps. So a cell is noted with its first word worked out
             # (Lowering::Picture#emit_cell_command_word), and the blank writes that word, then this
@@ -413,13 +413,13 @@ module VBlank
               asm.label("rt_cells_let_go_done")
             end
 
-            # SPRITES, PLACED IN ONE WALK. A pass places its sprites one after another, back to front,
+            # Sprites, placed in one walk. A pass places its sprites one after another, back to front,
             # with nothing else between them, so where the walk has got to stays in registers from
             # rt_sprites_begin to rt_sprites_end, as a console's own games keep it while they walk
             # their objects:
             #
             #   A2  where the next row of the sprite table is noted, which is just under the last one
-            #   A3  where the next sprite's row for a reader goes (DRAWN)
+            #   A3  where the next sprite's row for a reader goes (drawn)
             #   D4  the link the next row takes, which is also how many rows the table has left
             #
             # rt_sprites_begin forgets the sprites of the last pass and starts the walk, and
@@ -439,7 +439,7 @@ module VBlank
             # names now. Every piece is then drawn from that palette, and a D5 the table has no list for
             # draws it from the palette its own picture names.
             #
-            # A READER'S ROW is four words: whose, which picture, where. A game has a row of it for
+            # A reader's row is four words: whose, which picture, where. A game has a row of it for
             # every sprite that can be up together, which the build holds to the table's 80
             # (Console::Description#sprite_places, Checks::TooManySprites): only a sprite that shows is
             # placed, and two scenes never up together count apart. So the walk never counts them.
@@ -470,7 +470,7 @@ module VBlank
             # A piece's word with the two bits that name its palette cleared, for a sprite drawn in a list.
             PALETTE_CLEARED = 0x9FFF
 
-            # A PICTURE'S PIECES, as rt_sprite_place reads them: the picture's number for a reader, how
+            # A picture's pieces, as rt_sprite_place reads them: the picture's number for a reader, how
             # many pieces less one, the box they all lie in, then each piece as the row of the sprite
             # table it becomes, last long word first.
             #
@@ -516,7 +516,7 @@ module VBlank
             # A sprite any part of whose box is off the screen, or whose pieces the table has not rows
             # enough for, goes on to the loop that tests each piece (#emit_pieces_tested).
             #
-            # THE NOTES ARE THE TABLE'S OWN ROWS, kept from the end of their room backwards: the piece
+            # The notes are the table's own rows, kept from the end of their room backwards: the piece
             # noted first, which is drawn behind the rest, is the table's last row, and each row links to
             # the row after it, the one noted before. So a row's link is known as it is noted, 80 less
             # how many are noted already, and the blank copies the rows as they stand
@@ -611,7 +611,7 @@ module VBlank
               asm.move(:w, asm.d(0), asm.d(7))
             end
 
-            # rt_sprite_place_tested: THE PIECES OF A SPRITE THAT IS NOT WHOLLY ON THE SCREEN, each
+            # rt_sprite_place_tested: the pieces of a sprite that is not wholly on the screen, each
             # tested by itself and noted if any of it shows and the table has a row for it. A0 is at
             # the first of them (#picture_words), D5 is how many less one, D2 and D3 the sprite's place,
             # and A4 its palette (#emit_palette_chosen).
@@ -725,7 +725,7 @@ module VBlank
               asm.label("rt_upload_screen_was_on")
             end
 
-            # THE GRID NOTED FOR PLANE +plane+, if any, COPIED ONTO IT BY THE VIDEO CHIP (DMA), straight
+            # The grid noted for plane +plane+, if any, copied onto it by the video chip (DMA), straight
             # from the cartridge. A map of 64 by 64 cells is 8K, and the processor handing the chip a
             # word at a time (two instructions a cell, a move and a loop) takes a whole frame over it,
             # most of it while the screen is drawn, so the scene it brings arrives a frame late and the
@@ -733,7 +733,7 @@ module VBlank
             # how the console's own games send a screen's map; that is nearly all of an 8K map in the
             # blank, and what is left goes in at the top of the next frame, the processor stopped meanwhile.
             #
-            # SO THE ROWS THE VIEW SHOWS GO FIRST. The copy starts at the row of the plane at the top of
+            # So the rows the view shows go first. The copy starts at the row of the plane at the top of
             # the view (where the pass left its scroll), runs to the grid's last row and comes round to
             # its first: the rows still going in as the frame starts are the ones just above the view,
             # which it does not show.
@@ -979,7 +979,7 @@ module VBlank
               asm.label("rt_upload_sprites_done")
             end
 
-            # THE REST OF THE ROWS, COPIED BY THE VIDEO CHIP ITSELF (DMA), as a console's own games send
+            # The rest of the rows, copied by the video chip itself (DMA), as a console's own games send
             # their sprite table: the chip is told how many words, where they are in work RAM and where
             # they go, and reads them itself with the processor stopped, several times as fast as the
             # processor hands them over a long word at a time. The rows are in the notes in the order

@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class Genesis
         module Runtime
-          # THE PICTURE: what a pass changed on the screen, copied to the console in the blank
+          # The picture: what a pass changed on the screen, copied to the console in the blank
           # (rt_upload), everything at once while the screen is still off (rt_upload_whole), and the
           # part the game's own picture asks for.
           module Picture
@@ -50,11 +50,11 @@ module VBlank
               emit_screen_on(asm, memory)
             end
 
-            # A COPY BY THE VIDEO CHIP (DMA) STARTED: the command in +command+, a data register, written to
+            # A copy by the video chip (DMA) started: the command in +command+, a data register, written to
             # the chip's control port, which +port+ points at. The chip takes the 68000's bus for itself
             # with that write and gives it back when the last word is in video memory.
             #
-            # THE SOUND PROCESSOR IS STOPPED FOR IT, in a game that plays recordings (+samples+). The Z80
+            # The sound processor is stopped for it, in a game that plays recordings (+samples+). The Z80
             # reads a recording out of the cartridge through the 68000's bus, a byte every sample, and
             # the console's maker tells its games to send the Z80 a bus request before every copy of
             # this kind, from the cartridge or from work RAM alike: on some consoles a Z80 that reaches
@@ -71,7 +71,7 @@ module VBlank
             # A game with no recordings pays nothing for that: its Z80 has been held stopped since
             # power-on (Boot#emit_sound_quiet) and never reaches for the bus.
             #
-            # THE COMMAND GOES AS TWO WORDS READ FROM WORK RAM, for every game. The console's maker
+            # The command goes as two words read from work RAM, for every game. The console's maker
             # says a copy now and then fails unless the write that starts it is a word, not a long
             # word, and is read from work RAM, and its own games keep a word of RAM for it. Here the
             # command is put on the stack, which is in work RAM, and its two halves are written from

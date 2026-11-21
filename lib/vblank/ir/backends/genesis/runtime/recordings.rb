@@ -5,29 +5,29 @@ module VBlank
     module Backends
       class Genesis
         module Runtime
-          # A GAME'S RECORDINGS (`play_sample`, `stop_sample`, a song's recorded part).
+          # A game's recordings (`play_sample`, `stop_sample`, a song's recorded part).
           #
-          # THE FM CHIP'S SIXTH VOICE CAN BE A SPEAKER HELD BY HAND: with its DAC on, the chip plays whatever
+          # The FM chip's sixth voice can be a speaker held by hand: with its DAC on, the chip plays whatever
           # byte it was last told in register $2A, so a recording is a byte written thirteen thousand times a
           # second. That is far too often for the 68000, with a game to run, so it is the sound processor's
           # one job: the Z80 is sent a little program at power-on (#driver), which reads the recording from
           # the cartridge through its window onto the 68000's memory and writes one byte after another, and
           # the game goes on. A Genesis sounds one recording at a time.
           #
-          # HOW THE TWO TALK. The 68000 can write into the Z80's memory only after asking for its bus, which
+          # How the two talk. The 68000 can write into the Z80's memory only after asking for its bus, which
           # stops the Z80 for that moment. It leaves what to play in the mailbox at the top of that memory
-          # (MAILBOX), and puts an entry in the queue beside it (QUEUE) saying so, which the Z80 looks at
-          # between samples. THE FM CHIP IS THE Z80'S ALONE in a game that plays recordings: the 68000's
+          # (MAILBOX), and puts an entry in the queue beside it (queue) saying so, which the Z80 looks at
+          # between samples. The FM chip is the Z80's alone in a game that plays recordings: the 68000's
           # writes to it are entries in the same queue (Sound's rt_fm_write), and the Z80 makes one a
           # sample, between the DAC's writes. The console's own sound drivers do the same, so the 68000
           # never stops the Z80 for longer than it takes to write a few bytes into its memory.
           #
-          # THE COUNT IS THE INTERPRETER'S. What the game can tell of a recording (the log saying it came
+          # The count is the interpreter's. What the game can tell of a recording (the log saying it came
           # round again, the place coming free at its end) follows where it has got to, so the 68000 keeps
           # that as the interpreter's mixer does, in whole samples and 65536ths, moved on once a frame by
           # the samples a frame reads (Console::SampleClock.on_voices).
           #
-          # A SONG'S RECORDED PART plays its notes in the same place, by the interpreter's rule
+          # A song's recorded part plays its notes in the same place, by the interpreter's rule
           # (Reference::Mixer#start_music_note): the part's own, while it still sounds a note; the place if it
           # is free; or the sound in it, if that ranks below the song. With neither, the note is not played. A
           # rest gives the part's place back, and so does the tune stopping.
@@ -42,7 +42,7 @@ module VBlank
             NAME = 20
             STEP = 22 # Samples of the recording a sample of the Z80's, in 256ths
             ROW_BYTES = 24
-            # ...and in a game with a recorded note off the middle (SIDES), the speakers it plays from, as the
+            # ...and in a game with a recorded note off the middle (sides), the speakers it plays from, as the
             # FM chip's register $B6 of its second part keeps them for the sixth voice, which the DAC is.
             SIDE = 24
             # ...nought in a glide's row where the glide names no side and keeps the note's.
@@ -59,7 +59,7 @@ module VBlank
             PLACE_ADVANCE = 16
             PLACE_ADVANCE_FRACTION = 20
             PLACE_LOGGED = 22
-            # ...and whose it is: nought for the game's own, a part's OWNER number for a song's (its place among
+            # ...and whose it is: nought for the game's own, a part's owner number for a song's (its place among
             # the song's recorded parts, one up), and for a sound effect's the same in the low byte under the
             # effect's number, one up (EFFECT_OWNER and over); and the rank it holds the place at, nought for
             # the game's own, which rank below every song.
@@ -68,12 +68,12 @@ module VBlank
             PLACE_BYTES = 28
             EFFECT_OWNER = 0x100
 
-            # A row's LOGGED for a note of a song: nothing is logged as it comes round again.
+            # A row's logged for a note of a song: nothing is logged as it comes round again.
             NOT_LOGGED = 0xFFFF
             # Each of the last Frame::STEPS_KEPT passes' recording as its wait ended, a word each, by the
             # pass's number less its multiples of STEPS_KEPT.
             KEPT_BY_PASS = "rt recordings kept by pass"
-            # WHAT COULD NOT BE PLAYED (Reference::Mixer#drops): how many plays and notes found the place
+            # What could not be played (Reference::Mixer#drops): how many plays and notes found the place
             # busy, and whether a song's held it at one of those moments.
             DROPS = "rt recordings drops"
             DROPS_MUSIC = "rt recordings drops music"
@@ -81,7 +81,7 @@ module VBlank
 
             ALL = 0xFFFF
 
-            # THE Z80'S SIDE. Everything it reads is in its own memory, at QUEUE and MAILBOX on.
+            # The Z80's side. Everything it reads is in its own memory, at queue and mailbox on.
             MAILBOX = 0x1F00
             QUEUE_WRITTEN = 0 # How far the 68000 has written the queue, a byte that goes round
             PLAYS = 1 # Nought to go quiet
@@ -98,7 +98,7 @@ module VBlank
 
             QUEUE_READ = 20 # How far the Z80 has read the queue, the same way
 
-            # THE QUEUE: what the Z80 is asked to do, in order, an entry at each of 256 places that go
+            # The queue: what the Z80 is asked to do, in order, an entry at each of 256 places that go
             # round. An entry is three bytes, each on a page of its own so one count finds all three:
             # which of the FM chip's two parts it is for (its ports are two along for the second), the
             # register and the value; or PLAY_ENTRY in the first, for a new play in the mailbox.
@@ -131,7 +131,7 @@ module VBlank
             Z80_MEMORY = 0xA00000
             WINDOW = 0x8000 # Where the window starts in the Z80's memory, and how much it shows
 
-            # THE Z80'S CLOCK FOR A SAMPLE IS THE FM CHIP'S FIRST TIMER (#driver). A timer of that chip
+            # The Z80's clock for a sample is the FM chip's first timer (#driver). A timer of that chip
             # counts in ticks of 144 cycles of the chip's clock, which is the 68000's: an NTSC console's
             # crystal divided by seven. A PAL console's crystal is a little slower, so the same ticks
             # come a little further apart there, and a play's step is made that much longer (PAL_STEP_EXTRA).
@@ -154,7 +154,7 @@ module VBlank
             TIMERS_COUNTING = 0x0F # Both counting and raising their flags
             SAMPLE_TICK_SEEN = 0x1F # ...and the first timer's flag cleared
             BOTH_TICKS_SEEN = 0x3F # ...and both flags cleared
-            # THE SAME REGISTER HOLDS THE THIRD FM VOICE'S MODE in its top two bits, so every write the
+            # The same register holds the third FM voice's mode in its top two bits, so every write the
             # Z80 makes to it carries the mode the game last gave: the 68000 writes the mode into each
             # of the Z80's writes (TIMER_WRITES, the labels of their values in #driver) as it asks for it.
             MODE_BITS = 0xC0
@@ -171,7 +171,7 @@ module VBlank
             # +glides+ for a game with a recorded note that glides (`glides: true`), whose runtime then
             # carries what bends one (#emit_glide) and its sound processor takes a new step mid-play.
             # +sides+ for a game with a recorded note off the middle of the speakers, whose rows then name
-            # the speakers each play is heard from (SIDE), and whose places set them.
+            # the speakers each play is heard from (side), and whose places set them.
             def reserve(memory, glides: false, sides: false)
               memory.reserve(GLIDES, 2) if glides
               memory.reserve(SIDES, 2) if sides
@@ -181,7 +181,7 @@ module VBlank
               memory.reserve(FM_KEPT, FM_REGISTERS * 2)
             end
 
-            # A play's row, for "recording_plays": +start+ a label. +side+, in a game with SIDES, is the
+            # A play's row, for "recording_plays": +start+ a label. +side+, in a game with sides, is the
             # speakers' bits it plays from (ChipWrites::BOTH_SPEAKERS and its two), and nil in any other.
             def emit_row(asm, start:, length:, back:, advance:, logged:, name:, step:, side: nil)
               asm.data_longs(start)
@@ -190,7 +190,7 @@ module VBlank
               asm.data_words(side) if side
             end
 
-            # How long a row is in a game with or without SIDES.
+            # How long a row is in a game with or without sides.
             def row_bytes(memory) = memory.reserved?(SIDES) ? ROW_BYTES_WITH_SIDE : ROW_BYTES
 
             def emit(asm, memory)
@@ -209,7 +209,7 @@ module VBlank
               emit_bus_for_pad(asm)
             end
 
-            # STOPPING THE Z80. The 68000 stops it for three things: a copy by the video chip, a write into
+            # Stopping the Z80. The 68000 stops it for three things: a copy by the video chip, a write into
             # the Z80's memory, and a read of the controller's port, which the console's maker says must
             # not come just before a Z80 read of the cartridge (S3 in docs/genesis/dma-and-the-sound-processor.md).
             # The controller is read in the blank's interrupt, so the interrupt asks for the bus too
@@ -218,7 +218,7 @@ module VBlank
             # bus until it lets go: the interrupt never comes inside one of its stops, and a stop of the
             # interrupt's own is over before the main program runs again.
             #
-            # A STOP FOR EACH, NOT ONE FOR THE WHOLE BLANK. Sonic 3 & Knuckles stops its Z80 once in the
+            # A stop for each, not one for the whole blank. Sonic 3 & Knuckles stops its Z80 once in the
             # blank and makes every copy and the controller's read inside that one stop. That was tried
             # here and measured: the blank's work here is mostly the 68000 writing the picture's maps and
             # tiles itself and playing the music, not copies, so one stop for all of it held the DAC still
@@ -263,7 +263,7 @@ module VBlank
             end
 
             # rt_z80_queued(register, value, part in D3): an entry put in the Z80's queue, the bus held.
-            # D2 and A1 are used. A FULL QUEUE is let go of for a little while, the Z80 taking entries
+            # D2 and A1 are used. A full queue is let go of for a little while, the Z80 taking entries
             # meanwhile, until there is a place.
             def emit_queued(asm)
               mail = ->(field) { asm.abs_l(Z80_MEMORY + MAILBOX + field) }
@@ -545,7 +545,7 @@ module VBlank
               asm.rts
             end
 
-            # The row A4 points at's STEP into the mailbox's Z80_STEP, A2 pointing at it, low byte first and A2
+            # The row A4 points at's step into the mailbox's Z80_STEP, A2 pointing at it, low byte first and A2
             # moved past it: on a PAL console made PAL_STEP_EXTRA longer, and no more than $FFFF. +done+ names
             # the label it reaches once the step is known. Uses D1 and D2.
             def emit_step_mailed(asm, done)
@@ -565,10 +565,10 @@ module VBlank
               asm.move(:b, asm.d(1), asm.post(2))
             end
 
-            # The speakers the row A4 points at plays from (SIDE) told to the FM chip's register $B6 of its second
+            # The speakers the row A4 points at plays from (side) told to the FM chip's register $B6 of its second
             # part, the sixth voice's, which the DAC plays through: queued for the Z80 as any FM write is, and
             # dropped when it is what the register holds already (Sound#emit_fm_write_queued). Uses D0 to D3 and A1.
-            # With +unless_kept+, a label, a SIDE of SIDE_KEPT writes nothing.
+            # With +unless_kept+, a label, a side of SIDE_KEPT writes nothing.
             def emit_side_queued(asm, unless_kept: nil)
               asm.move(:w, asm.imm(0x100 | (ChipWrites::SPEAKERS + 2)), asm.d(0))
               asm.move(:w, asm.disp(4, SIDE), asm.d(1))
@@ -580,7 +580,7 @@ module VBlank
             # rt_recordings_glide(row, owner): the note +owner+'s part sounds, if it has the place, reads on at
             # the row's pitch (Reference::Mixer#glide_music_note): how far a frame takes it, and the Z80 told
             # its new step (GLIDE_ENTRY), which it takes from where it has got to, so nothing starts again; and
-            # in a game with SIDES, the speakers the row names. A Genesis plays a recording at the one loudness,
+            # in a game with sides, the speakers the row names. A Genesis plays a recording at the one loudness,
             # so the glide's loudness reaches only the log, as the music volume's does. D0 = 1 when the part had
             # a note, nought when not.
             def emit_glide(asm, at, rows, sides: false)
@@ -618,7 +618,7 @@ module VBlank
               asm.rts
             end
 
-            # THE Z80'S PROGRAM, assembled, the mailbox and the chips by the numbers above. Its registers: HL
+            # The Z80's program, assembled, the mailbox and the chips by the numbers above. Its registers: HL
             # where it reads in the window, DE its step, C the fraction of a sample, and B the samples a
             # stop covered while it passes over them; and in its second set, HL and DE the FM chip's
             # first two ports, B the samples sounded since the second timer last came round, and C how far
@@ -631,14 +631,14 @@ module VBlank
             #          for while on its last bank, the tick's flag cleared, and the queue looked at: one
             #          entry taken, if there is one
             #
-            # A SAMPLE SOUNDS ON A TICK OF THE FM CHIP'S FIRST TIMER, NOT AFTER A COUNTED WAIT. The Z80 is
+            # A sample sounds on a tick of the FM chip's first timer, not after a counted wait. The Z80 is
             # stopped many times a frame: for every block the video chip copies (Picture#emit_dma_started),
             # and for the queue. A program that counts its own cycles from one sample to the next loses
             # the length of every stop, so the recording plays flat for as long as the stops go on. The
             # timer is in the FM chip and counts whether the Z80 runs or not, so the gap between two
             # samples no longer depends on how long the work between them took.
             #
-            # THE SAMPLES A STOP COVERED ARE PASSED OVER, NOT SOUNDED LATE. The timer's flag says a tick
+            # The samples a stop covered are passed over, not sounded late. The timer's flag says a tick
             # came, not how many, so ticks that came while the Z80 was stopped would be lost with it.
             # The second timer is set to come round with every 256th tick of the first. The program
             # counts the samples it sounds in a byte, and when the second timer's flag shows, what the
@@ -647,7 +647,7 @@ module VBlank
             # recording is back where the clock says within 256 samples of any stop, a little over a
             # frame. A stop longer than the second timer's round loses a whole round.
             #
-            # THE FM CHIP IS WRITTEN HERE ALONE, so the register named is always one the program named
+            # The FM chip is written here alone, so the register named is always one the program named
             # itself, and it names the DAC's again after every other. A song's note is some thirty
             # registers. The 68000 used to write them itself, stopping the Z80 for each and for the
             # chip's waits round it, which held the DAC still for long enough to lose whole waves of a
@@ -824,7 +824,7 @@ module VBlank
                 z.bytes(0x04) # INC B
                 z.bytes(0xD9) # EXX
                 emit_sample_passed.call(:sounded, :sounded_passed, patched: true)
-                # THE TICK'S FLAG IS CLEARED AFTER HL HAS MOVED ON, NOT BEFORE. The chip takes a while
+                # The tick's flag is cleared after HL has moved on, not before. The chip takes a while
                 # over each value written to it, a third of a sample's time. Moving HL on first puts
                 # more than that while between the DAC's write and this one, and the rest of the
                 # loop and the wait for the tick put as much between this one and the DAC's next.
@@ -904,7 +904,7 @@ module VBlank
               end.assembled
             end
 
-            # A GLIDE, in a game whose notes glide: an entry of the queue that is GLIDE_ENTRY gives the play
+            # A glide, in a game whose notes glide: an entry of the queue that is GLIDE_ENTRY gives the play
             # the mailbox's step from here, where it has got to, and is taken at once with nothing playing.
             # The two places that send an entry onward to a new play send it here first (#driver's
             # :wait_play and :loop_play, reached by the jumps to :wait_entry and :loop_entry instead).
@@ -952,7 +952,7 @@ module VBlank
               def call_bank = jump(0xCD, :set_bank)
 
               # The jumps filled in. The program must end below the queue, which is the Z80's memory
-              # from QUEUE on.
+              # from queue on.
               def assembled
                 @jumps.each do |at, target|
                   place = @labels.fetch(target)
