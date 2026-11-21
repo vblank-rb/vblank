@@ -8,7 +8,7 @@ module VBlank
     # A name the labels do not hold. The message names the labels nearest it.
     class UnknownLabel < KeyError; end
 
-    # THE ORIGINAL'S LABELS: where each routine, table and variable sits, by the name its decompilation
+    # The original's labels: where each routine, table and variable sits, by the name its decompilation
     # gives it, read from a file of VBlank's own.
     #
     #   labels = VBlank::Original::Labels.read("data/labels.json")
@@ -20,7 +20,7 @@ module VBlank
     # The file is written once, by the port's harvest, from the symbol file the assembler wrote
     # (SymbolFile reads one of each format); it is committed, so nothing else needs the decompilation.
     #
-    # TWO NUMBERS FOR ONE PLACE. A cartridge is mapped into the console's memory, so a byte of it has
+    # Two numbers for one place. A cartridge is mapped into the console's memory, so a byte of it has
     # its place in the file (the offset, which reading the copy wants) and the address the processor
     # sees it at (which a probe of a running console wants). On a console that switches banks of the
     # cartridge into one window, many offsets share an address. A cartridge label keeps both; a

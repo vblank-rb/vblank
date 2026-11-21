@@ -2,7 +2,7 @@
 
 module VBlank
   module Original
-    # A FRAME OF A SPRITE AS THE DATA PACK KEEPS IT: a record of VBlank's own, one fixed layout
+    # A frame of a sprite as the data pack keeps it: a record of VBlank's own, one fixed layout
     # whatever the original. Every original keeps a frame its own way, and a port says how with an
     # Original::FrameLayout. Only the pack's unpacking reads a frame that way: it writes each frame
     # the game names again as the record below (FrameRewrite, as game code), and everything that
@@ -11,21 +11,21 @@ module VBlank
     # (rg_start_file_fill_pose in each). So a layout no original has had before is taught to
     # FrameLayout alone.
     #
-    # THE RECORD NAMES TILES, NEVER PIXELS. A piece says which tile of the pose's slot of tiles it
+    # The record names tiles, never pixels. A piece says which tile of the pose's slot of tiles it
     # starts at, so a console that keeps a slot's tiles once for everything drawn from them still
     # does. Which bank of the original's colours a piece is drawn from is in the record too: that
     # is the original's data, not its layout.
     #
-    # THE LAYOUT, every number low byte first. This is the one place it is written down: the Ruby
+    # The layout, every number low byte first. This is the one place it is written down: the Ruby
     # that writes and reads a record takes it from the constants here, and each runtime's reader
     # names this file beside the same offsets.
     #
-    #   A FRAME          HEADER_BYTES, then its pieces, the one in front first
+    #   A frame          HEADER_BYTES, then its pieces, the one in front first
     #     0  2 bytes     pieces held: how many pieces follow
     #     2  2 bytes     pieces named: how many the original's frame says it has (more than are
     #                    held where the frame ran past its slot)
     #
-    #   A PIECE          PIECE_BYTES
+    #   A piece          PIECE_BYTES
     #     0  2 bytes     x, signed, from the object's place
     #     2  2 bytes     y, signed, from the object's place
     #     4  2 bytes     its first tile, counted from the first tile of the pose's `tiles:`
@@ -33,7 +33,7 @@ module VBlank
     #     8  2 bytes     row step: how many tiles on the tile one row down is
     #    10  1 byte      columns: how many tiles across it is
     #    11  1 byte      rows: how many tiles down it is
-    #    12  1 byte      turns: MIRRORED and UPSIDE_DOWN, the whole piece turned as one
+    #    12  1 byte      turns: mirrored and UPSIDE_DOWN, the whole piece turned as one
     #    13  1 byte      0
     #    14  2 bytes     bank: which bank of the original's colours it is drawn from, 0 where its
     #                    layout names none
@@ -42,9 +42,9 @@ module VBlank
     # r * row step. The two steps are how a console orders a sprite's tiles in its video memory,
     # worked out as the record is written, so a reader multiplies and adds and asks nothing.
     #
-    # WHERE THE RECORDS ARE IN THE PACK: after its last slot (Pack), as a Section.
+    # Where the records are in the pack: after its last slot (Pack), as a Section.
     #
-    # THE PACK KEEPS EACH FRAME TWICE, its slot's raw bytes and its record, and that is chosen.
+    # The pack keeps each frame twice, its slot's raw bytes and its record, and that is chosen.
     # A slot that only frames read could be left out of the pack's file, but nothing knows which
     # slot that is until the whole game is declared, and a slot's place in the file is fixed
     # before that: `data_pack` lays the file out (Pack.layout) before the game names a verb, and a
@@ -57,7 +57,7 @@ module VBlank
     # where an original keeps one in four to eight, so the raw slot is the smaller part of what its
     # frames cost in the file, and leaving it out is not worth a second layout of the pack.
     #
-    # THE RECORDS ARE ASSEMBLED TWICE, here in Ruby (Source#record, Section#bytes) and as game code
+    # The records are assembled twice, here in Ruby (Source#record, Section#bytes) and as game code
     # (FrameRewrite), and that is chosen too. The build that holds the pack needs a frame's pieces
     # the moment `image` names it, before the game has named the frames after it, so Source#record
     # is needed whatever the pack's file is made with; Section#bytes only lays those records out.
@@ -86,7 +86,7 @@ module VBlank
       # The highest number a part of two bytes holds: a tile, a step or a count past it is kept as it.
       MOST = 0xFFFF
 
-      # ONE PIECE OF A FRAME. As a record is read every part is a number. As one is written
+      # One piece of a frame. As a record is read every part is a number. As one is written
       # (FrameLayout#piece_from) a part is a number in the build, and a value of the game's in the
       # unpacking, which works it out as it runs.
       Piece = Data.define(:x, :y, :tile, :column_step, :row_step, :columns, :rows, :turns, :bank) do
@@ -96,7 +96,7 @@ module VBlank
         # The tile the piece shows at +column+ and +row+ of itself (0 first), before it is turned.
         def tile_at(column, row) = tile + (column * column_step) + (row * row_step)
 
-        # THE BLOCKS A PICTURE OF PIECES IS MADE OF, which a pose cuts this piece into once it is
+        # The blocks a picture of pieces is made of, which a pose cuts this piece into once it is
         # turned: a picture's pieces are 8x8 or 16x16, so blocks of two tiles a side where two are
         # left each way and of one along an odd edge. Each is [column, row, tiles a side], counted
         # in tiles from the turned piece's top left; a piece of 4 by 4 tiles is four blocks. The
@@ -114,7 +114,7 @@ module VBlank
         end
       end
 
-      # A FRAME AS READ BACK: how many pieces the original's frame names, and the pieces held.
+      # A frame as read back: how many pieces the original's frame names, and the pieces held.
       Frame = Data.define(:named, :pieces)
 
       # The bytes of +piece+, PIECE_BYTES of them in the order above. Each is a number, or a value
@@ -143,7 +143,7 @@ module VBlank
         Frame.new(named: named, pieces: pieces)
       end
 
-      # ONE FRAME A GAME NAMES (`pack[:frames].frame(at, layout:)`): the +slot+ of bytes it is in (an
+      # One frame a game names (`pack[:frames].frame(at, layout:)`): the +slot+ of bytes it is in (an
       # Original::Slot), the byte it starts at, how many pieces it has where its layout does not
       # say (nil where it does), its +layout+ (an Original::FrameLayout), and the values its pose
       # gives the layout's reader (FrameLayout#pose_values_for: numbers by name, none for a layout
@@ -171,7 +171,7 @@ module VBlank
         end
       end
 
-      # THE RECORDS OF EVERY FRAME A GAME NAMES, as the pack keeps them after its last slot:
+      # The records of every frame a game names, as the pack keeps them after its last slot:
       #
       #   a directory      ENTRY_BYTES for each frame, in the order the game named them: where the
       #                    frame's record starts, counted from the section's first byte, or 0 for a
@@ -181,7 +181,7 @@ module VBlank
       #
       # A frame that starts with its count has as many pieces as the player's copy says, so where a
       # record starts is known only once the frames before it are written: the directory says. The
-      # section's SIZE follows from the game's own words alone (#size), as every slot's does, since
+      # section's size follows from the game's own words alone (#size), as every slot's does, since
       # a build that leaves its pack out must know the file's size: the pieces a game gave a frame,
       # and for the frames that say their own count as many pieces as their slot could hold between
       # them. Frames laid over each other can ask for more; a record that does not fit keeps the
@@ -218,13 +218,13 @@ module VBlank
           [laid.directory.pack("V*"), *laid.records].join.b.ljust(size, "\0".b)
         end
 
-        # THE ORDER THE RECORDS ARE WRITTEN IN, which is not always the order the game named the
+        # The order the records are written in, which is not always the order the game named the
         # frames: the unpacking reads the frames of one slot kept one way in one loop
         # (FrameRewrite), so their records are written together, each group where its first frame
         # was named. Each group is a list of [source, its number in the directory].
         def groups_in_writing_order = sources.each_with_index.group_by { |source, _| [source.slot.name, source.layout] }.values
 
-        # FRAMES THAT OVERLAP. #size gives the frames of one slot that say their own count as many
+        # Frames that overlap. #size gives the frames of one slot that say their own count as many
         # pieces as the slot holds, which is enough while no two of them share bytes. Frames that
         # overlap can name more, and then a record has too little room for its pieces, or none:
         # the number in the directory of the first such source to be written, read from
@@ -258,7 +258,7 @@ module VBlank
         end
       end
 
-      # A SECTION LAID OUT (Section#bytes): where each record starts by number in the directory (0
+      # A section laid out (Section#bytes): where each record starts by number in the directory (0
       # for one with no room), the records in the order they are written, and the number of the
       # first record cut short or left out for want of room (nil for none).
       LaidOut = Data.define(:directory, :records, :first_cut)
