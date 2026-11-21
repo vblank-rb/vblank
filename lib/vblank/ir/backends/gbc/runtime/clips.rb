@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         module Runtime
-          # A RECORDING PLAYED A BIT AT A TIME (GBC::Clips), on the wave voice, by the timer.
+          # A recording played a bit at a time (GBC::Clips), on the wave voice, by the timer.
           #
           # The wave voice plays 32 steps of a wave over and over, each step a height from 0 to 15.
           # Fill every step with 15 and the voice stands still at full height; what it is heard at is
@@ -14,7 +14,7 @@ module VBlank
           # recording by setting that volume, full for a sample's 1 and nothing for its 0. The Color's
           # own games speak this way.
           #
-          # THE TIMER DECIDES WHEN. It counts up from where it is told, and as it passes 255 it starts
+          # The timer decides when. It counts up from where it is told, and as it passes 255 it starts
           # over and interrupts the game: told to start each count TIMER_COUNTS short of the top, it
           # interrupts 133 times a frame, which is the sample clock the interpreter mixes at
           # (Console::SampleClock). Each interrupt sets the volume for one sample and goes back to the
@@ -28,13 +28,13 @@ module VBlank
           # stops itself, or goes back to where it holds from if it loops. The timer running is what
           # shows a clip is playing.
           #
-          # A LOOPING CLIP'S LAPS are counted a frame at a time with the music (rt_clip_lap), in
+          # A looping clip's laps are counted a frame at a time with the music (rt_clip_lap), in
           # 65536ths of a sample of the recording, the interpreter's own count of where its walk is
           # (GBC::Clips::Laps): what is left to the end goes down by a frame's walk, and each time it
           # falls below nought it goes up by what the loop goes back, and the lap is reported at
           # rt_clip_came_round, with the recording's number in A, for the run's log.
           #
-          # THE CLIP IS IN A BANK OF THE CARTRIDGE, and the interrupt comes between any two of the
+          # The clip is in a bank of the cartridge, and the interrupt comes between any two of the
           # game's instructions, with whatever bank the game had in view. The interrupt puts the clip's
           # bank in view for the read and the game's back after it, which it knows because in a game
           # with a clip every bank switch writes the bank down first (SM83#select_rom_bank_unnoted, at
@@ -54,8 +54,8 @@ module VBlank
             # screen is off for, the timer counts those until the first frame (Frame#emit_dark_start),
             # and a clip played while the game sets up waits for it.
             PLAYING = "rt clip playing"
-            # WHAT SOUNDS AS THE INTERPRETER COUNTS IT, beside the samples themselves: the frames the
-            # recording sounding has left (0 for none, ALWAYS for one that loops) and its number, both
+            # What sounds as the interpreter counts it, beside the samples themselves: the frames the
+            # recording sounding has left (0 for none, always for one that loops) and its number, both
             # moved only at a frame's music (#emit_frame), as the interpreter's mix moves its voices at
             # the frame boundary; and what the game asked for since — the frames and number of a clip it
             # played, and 1 where it stopped the one sounding — which that frame takes up first. A run
@@ -137,10 +137,10 @@ module VBlank
               emit_lap(asm, memory) if laps?(memory)
             end
 
-            # WHILE A RECORDING PLAYS THE WAVE VOICE IS ITS OWN: the music player's writes to it are
+            # While a recording plays the wave voice is its own: the music player's writes to it are
             # passed over. When the recording is over the music has it back on its next frame: a wave
             # note held across it is put back, waveform and all (Music#emit_wave_back), and a part
-            # that rested is heard at its next note. PLAYING is what shows one is playing. A and the
+            # that rested is heard at its next note. Playing is what shows one is playing. A and the
             # flags are spent.
             def emit_return_while_recording_plays(asm, memory)
               asm.load_high(:a, memory[PLAYING])
@@ -278,7 +278,7 @@ module VBlank
               asm.ret
             end
 
-            # A SAMPLE IS LOST, not only late, when the timer waits longer than a sample for the
+            # A sample is lost, not only late, when the timer waits longer than a sample for the
             # processor (a few hundred cycles), since the timer counts on and interrupts once for both.
             # So the game's own routines that hold every interrupt off while they play a frame of
             # music — a tune or an effect started where the game names it, the music stopped — let the
@@ -366,7 +366,7 @@ module VBlank
               asm.ret
             end
 
-            # THE VOICE IS THE GAME'S AGAIN as a recording ends: the last `wave` or `stop_wave` the game
+            # The voice is the game's again as a recording ends: the last `wave` or `stop_wave` the game
             # called is written now (Sound::GAME_WAVE), and a wave note the music is holding is put back
             # on its next frame (Music::WAVE_BACK). A, C and HL are spent.
             def emit_wave_back(asm, memory)
@@ -382,18 +382,18 @@ module VBlank
               asm.load([memory[Music::WAVE_BACK]], :a)
             end
 
-            # THE TIMER'S INTERRUPT: one sample. The byte being played moves up a bit, and the bit that
+            # The timer's interrupt: one sample. The byte being played moves up a bit, and the bit that
             # leaves its top sets the volume. When only the 1 put below the bits is left, it leaves
             # instead, and the byte is spent: the next is read, with a 1 put below its bits, and its top
             # bit plays. With no byte left, the clip is over, or a looping one goes back to where it
             # holds from and reads on.
             #
-            # THE LAST BYTE OF A CLIP THAT ENDS PART WAY THROUGH IT is read with nothing below its bits:
+            # The last byte of a clip that ends part way through it is read with nothing below its bits:
             # the 1 just past its last sample (GBC::Clips.packed) is then what leaves it, and the clip is
             # over on its last sample. The carry put below is settled before the byte is read, and
             # nothing on the way changes it: loads leave every flag as it was.
             #
-            # A LINE OF A BENT SCREEN IS NOT HELD UP BY IT, in a game that bends one (+lines+). Each
+            # A line of a bent screen is not held up by it, in a game that bends one (+lines+). Each
             # row's bend is written as the line before it ends, and has to land in the short gap
             # before the display draws the next (Runtime::Picture, rt_hblank_interrupt); reading a
             # byte of the clip takes most of that gap. So the line's interrupt alone is let in while
@@ -508,7 +508,7 @@ module VBlank
               asm.or_a(:l)
             end
 
-            # A FRAME OF WHAT SOUNDS (SOUNDING), called with the music's frame and before it, as the
+            # A frame of what sounds (sounding), called with the music's frame and before it, as the
             # interpreter's mix moves its voices before its tune: a stop the game asked for, then a clip it
             # played, then a frame off the count of the one sounding — which a loop's never runs down.
             # Then, in a game that loops one, its laps. Every register is spent.
@@ -553,7 +553,7 @@ module VBlank
               laps?(memory) ? asm.jump("rt_clip_lap") : asm.ret
             end
 
-            # A FRAME OF A LOOPING CLIP'S LAPS, called with the music's frame and before it, as the
+            # A frame of a looping clip's laps, called with the music's frame and before it, as the
             # interpreter mixes a frame before it moves its tune on (Reference#advance_frame). Nothing
             # while no clip plays or the one playing does not loop. Each sum goes a byte at a time, low
             # byte first, with the carry between: nothing on the way changes it but the sum itself.

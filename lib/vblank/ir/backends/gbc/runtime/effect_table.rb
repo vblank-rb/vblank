@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         module Runtime
-          # THE SOUND EFFECTS OF A GAME WITH MANY OF THEM, played by one set of routines from tables.
+          # The sound effects of a game with many of them, played by one set of routines from tables.
           #
           # Runtime::Effects writes each effect's routines out for it, which is quick to play and
           # takes the better part of a kilobyte of the part of the cartridge always in view for
@@ -21,10 +21,10 @@ module VBlank
           # tone, how many notes (two) and where they are (two).
           #
           # What each effect keeps while it plays is Effects' STATE_BYTES and two for each part, in
-          # STATE_STRIDE bytes of STATES, so where is a shift of its number.
+          # STATE_STRIDE bytes of states, so where is a shift of its number.
           #
-          # WHAT IS AWAKE. A frame has only so many cycles and most effects are quiet on most of
-          # them, so a frame does not look at every effect to find that out. AWAKE lists the effects
+          # What is awake. A frame has only so many cycles and most effects are quiet on most of
+          # them, so a frame does not look at every effect to find that out. Awake lists the effects
           # asked for or sounding, highest rank first: how many, then for each its rank and its
           # number. An effect joins as it is asked for (rt_sfx_wake) and leaves when it has nothing
           # more to do (rt_sfx_sweep), so a frame's work follows what is sounding and not how many
@@ -46,7 +46,7 @@ module VBlank
             ROW_AT = 5 # Two bytes
             PART = 7
             CURSOR_AT = 8 # Two bytes
-            # The effect asked for, the effect a walk has reached, and how far a walk over AWAKE has gone.
+            # The effect asked for, the effect a walk has reached, and how far a walk over awake has gone.
             ASKED_FOR = 10
             WALKED = 11
             AWAKE_AT = 12
@@ -77,7 +77,7 @@ module VBlank
               memory.reserve(AWAKE, 1 + (AWAKE_ENTRY_BYTES * effects.length))
             end
 
-            # +_by_rank+ is what Runtime::Effects takes in the same place: here AWAKE keeps the order.
+            # +_by_rank+ is what Runtime::Effects takes in the same place: here awake keeps the order.
             def emit(asm, memory, effects, _by_rank, slides: false, pans: false, fades: false, bytes: GBC::Music::NOTE_BYTES)
               keeps = effects.any?(&:keeps_voices)
               Effects.emit_claim(asm, memory, fades)
@@ -222,7 +222,7 @@ module VBlank
               end
             end
 
-            # rt_sfx_sweep: AWAKE closed up over every effect with nothing left to do, which keeps
+            # rt_sfx_sweep: awake closed up over every effect with nothing left to do, which keeps
             # the rest in their order. It is only reached with something in the list.
             def emit_sweep(asm, memory)
               asm.label("rt_sfx_sweep")
@@ -258,7 +258,7 @@ module VBlank
               asm.ret
             end
 
-            # rt_sfx_frame(A = an effect in AWAKE): one frame of it, Runtime::Effects#emit_frame's.
+            # rt_sfx_frame(A = an effect in awake): one frame of it, Runtime::Effects#emit_frame's.
             # A run of the cartridge reads the effect starting at rt_sfx_started, in A.
             def emit_frame(asm, memory)
               now = memory[NOW]
@@ -602,7 +602,7 @@ module VBlank
               # ...and on into rt_sfx_wake, which keeps carry clear.
             end
 
-            # rt_sfx_wake: the effect asked for joins AWAKE in its place by rank. The new entry walks
+            # rt_sfx_wake: the effect asked for joins awake in its place by rank. The new entry walks
             # down the list, changing places with each entry of lower rank it meets, and the entry
             # it is carrying at the end takes the free place. No two effects share a rank.
             def emit_wake(asm, memory)

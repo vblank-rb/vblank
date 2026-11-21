@@ -5,12 +5,12 @@ module VBlank
     module Backends
       class GBC
         module Runtime
-          # THE SOUND EFFECTS, played over the song by the music player (Runtime::Music) in the
+          # The sound effects, played over the song by the music player (Runtime::Music) in the
           # frame's interrupt, with the same steps in the same order as the interpreter's player
           # (Reference::Player): a short tune that plays once, from its first note, when the game
           # asks for it.
           #
-          # The song and the effects share the console's four voices. Whoever has the higher RANK
+          # The song and the effects share the console's four voices. Whoever has the higher rank
           # sounds on a voice they both want (IR::Tunes.song_rank): each voice keeps the rank of
           # whoever holds it, as a byte (GBC::Music#rank), and a note takes a voice only from a
           # rank no higher than its own. A frame plays the effects that outrank the song before the
@@ -411,7 +411,7 @@ module VBlank
               asm.jump("rt_voice_write")
             end
 
-            # ...nor a swell of the song's held under the music volume, on the voice ([PART]).
+            # ...nor a swell of the song's held under the music volume, on the voice ([part]).
             def emit_end_song_swell(asm, memory)
               asm.load(:a, [memory[Music::PART]])
               Music.swell_voices(memory).each do |voice|
