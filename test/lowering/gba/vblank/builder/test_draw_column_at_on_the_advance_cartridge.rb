@@ -9,7 +9,7 @@ require "console/gba/vblank/builder/test_draw_column_at_on_the_advance"
 class TestDrawColumnAtOnTheAdvanceCartridge < Minitest::Test
   include DrawColumnAtOnTheAdvanceGames
 
-  # A first-person view draws its columns in a LOOP, so this is the case that matters most, and
+  # A first-person view draws its columns in a loop, so this is the case that matters most, and
   # it was broken: a loop keeps its count in the console's registers unless the body needs them,
   # and a stretched column needs them twice over — it works in them, and it calls the divide
   # routine to find its step. Undeclared, the first column drew and the loop then walked off.

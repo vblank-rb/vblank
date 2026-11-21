@@ -15,7 +15,7 @@ class TestFramesSincePowerOnCartridge < Minitest::Test
     assert_frames_setting_up_counted(:gba, busy: 30_000)
   end
 
-  # A SONG WITH A RECORDED PART starts the sound mixer at power-on, and the mixer takes most of a
+  # A song with a recorded part starts the sound mixer at power-on, and the mixer takes most of a
   # frame to find its footing before the screen's interrupt is armed. Those frames are shown too.
   def test_the_frames_the_mixer_takes_to_start_are_counted
     frame, read = first_pass_frame_and_reading(:gba, screen_waiting_game(hold: GREEN_FROM_FRAME, song: true))
