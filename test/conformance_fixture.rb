@@ -2,19 +2,19 @@
 
 require "test_helper"
 
-# The cross-backend conformance fixture: ONE synthetic IR program that exercises
+# The cross-backend conformance fixture: one synthetic IR program that exercises
 # (nearly) every supported IR feature — not a game, a kitchen sink. It exists so
 # a backend can't silently lag: run it through every backend and an unimplemented
 # feature hits that backend's "unsupported" branch and fails the test.
 #
-# MAINTENANCE OBLIGATION: when you add a new IR feature (a node kind or a binop
+# Maintenance obligation: when you add a new IR feature (a node kind or a binop
 # operator), add it here. The coverage test asserts this fixture touches every
-# kind in Node::CATEGORY and every operator in OPERATORS, so a forgotten feature
+# kind in Node::CATEGORY and every operator in operators, so a forgotten feature
 # fails loudly. See the cross-backend rule in .claude/CLAUDE.md.
 #
 # The lone exception is `raw` — pre-assembled native bytes, which the portable
 # interpreter legitimately can't run (there's no ARM CPU behind it). It lives in
-# an UNCALLED func here: present in the tree (so the GBA backend lowers it and
+# an uncalled func here: present in the tree (so the GBA backend lowers it and
 # coverage sees it), but never reached during interpretation. Which kinds are
 # exempt comes straight from each kind's own tier (see Node::Declarations#tier) —
 # not a list hardcoded here.
@@ -141,7 +141,7 @@ module ConformanceFixture
       B.set(:acc, B.binop(:<<, B.int(1), B.int(40))),          # 0 — off the top end
       B.set(:acc, B.binop(:>>, B.int(-1), B.int(40))),         # -1 — the sign fills in
       B.set(:acc, B.binop(:>>, B.int(255), B.int(-1))),        # 0 — a negative count, likewise
-      # Dividing and wrapping with a NEGATIVE numerator, which is where the two round
+      # Dividing and wrapping with a negative numerator, which is where the two round
       # differently and where a backend taking a shortcut goes wrong. -7 / 4 truncates
       # toward zero to -1, while -7 % 4 takes the sign of the divisor and is 1. A
       # backend may reduce a divisor written into the program — one way for a power of
@@ -155,7 +155,7 @@ module ConformanceFixture
       B.set(:acc, B.binop(:/, B.int(3599), B.int(60))), # 59 — frames into seconds, and a
       B.set(:acc, B.binop(:/, B.int(-1), B.int(60))),   # divisor whose reciprocal needs a fixup
       # mul_fix — a multiply whose product is formed at full width. The operands are
-      # chosen so a plain 32-bit multiply gets a DIFFERENT answer: 1.5 * 1.5 with 16
+      # chosen so a plain 32-bit multiply gets a different answer: 1.5 * 1.5 with 16
       # fraction bits needs 9,663,676,416 on the way, which wraps. A backend that
       # lowered this as an ordinary multiply would pass a coverage check and still be
       # wrong, so the differential comparison has something real to disagree about.
@@ -196,17 +196,17 @@ module ConformanceFixture
       # counted loop rather than unrolled rows. :x is 7 here, so it draws seven rows —
       # a backend that mishandled the count would draw a different number of them.
       B.draw_rect_at(B.int(30), B.int(30), B.int(4), B.var_ref(:x), :white),
-      # ...and one whose WIDTH it works out, at an ODD column and an ODD width, which is
+      # ...and one whose width it works out, at an odd column and an odd width, which is
       # the case a backend cannot settle while building: on a screen that writes two
       # pixels at a time, the rect's first and last pixel then land in different halves
       # of their units and have to be spliced in one at a time.
       B.draw_rect_at(B.int(41), B.int(40), B.var_ref(:x), B.int(2), :white),
       # One column of a picture, stretched to a height the program works out (:x is 7). The
-      # stretch is the part a backend can get subtly wrong: it must walk DOWN THE SCREEN asking
+      # stretch is the part a backend can get subtly wrong: it must walk down the screen asking
       # which picture row belongs at each screen row, so seven screen rows show the picture's
       # four rows spread over them — walking the picture instead would leave gaps.
       B.draw_column_at(:sprite, B.int(1), B.int(60), B.int(30), B.var_ref(:x)),
-      # ...and as a STRIP, whose pixels share one walk down the screen. At an odd column, so a
+      # ...and as a strip, whose pixels share one walk down the screen. At an odd column, so a
       # backend whose pixels are packed in pairs has to splice rather than write whole ones.
       B.draw_column_at(:sprite, B.int(1), B.int(71), B.int(30), B.var_ref(:x), width: 3),
       # ...and one held to a part of the picture, which cuts it off short of where it asked to
@@ -216,7 +216,7 @@ module ConformanceFixture
       B.inside(80, 30, 8, 4,
                B.draw_column_at(:sprite, B.int(1), B.int(82), B.int(28), B.int(12)),
                B.dma_fill_rect(78, 28, 12, 8, :white)),
-      # A place drawn as a viewer sees it: here the statements under it are one face of FIVE
+      # A place drawn as a viewer sees it: here the statements under it are one face of five
       # corners filled with a picture, as a place's routine fills a face the near limit cut. The
       # corners are in sixteenths of a pixel and lean, so every row starts and ends somewhere new,
       # and they fall from -1 to 3 on a picture two pixels wide, so the picture repeats both ways.
@@ -356,7 +356,7 @@ module ConformanceFixture
       # nothing is blended inside it either, so what this pins is that every backend can be
       # told a rectangle at all.
       B.fade(toward: :black, amount: B.int(0), reaches: :inside, area: [0, 0, 120, 80]),
-      # ...and the sibling effect that mixes a color IN rather than changing brightness.
+      # ...and the sibling effect that mixes a color in rather than changing brightness.
       # Also at 0, for the same reason: nothing is blended either way, so the picture is
       # unchanged and what this pins is that every backend can be told to tint at all.
       B.tint(color: :red, amount: B.int(0)),

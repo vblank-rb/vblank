@@ -4,10 +4,10 @@ require "test_helper"
 require VBlank.root.join("examples/chip_band").to_s
 
 # The chip band example (examples/chip_band.rb): a list of tunes on the console's own voices, the
-# one the cursor is on playing. HELD NOTES holds every note; FADING NOTES is the same notes,
-# faded and swelled by the voices; SLIDING NOTES slides the lead's pitch, WOBBLING NOTES wobbles
-# it, LEFT AND RIGHT spreads the parts across the two speakers, SHIMMERING NOTES steps the lead's
-# shapes, and DETUNED NOTES plays the lead sharp beside itself and an octave down. The game is
+# one the cursor is on playing. HELD NOTES holds every note; fading notes is the same notes,
+# faded and swelled by the voices; sliding notes slides the lead's pitch, wobbling notes wobbles
+# it, left and right spreads the parts across the two speakers, shimmering notes steps the lead's
+# shapes, and detuned notes plays the lead sharp beside itself and an octave down. The game is
 # made for the Game Boy Advance and the Game Boy Color, so these tests are played on every run
 # that plays games as the Advance; the same tests for the Color are in
 # test/console/gbc/examples/test_chip_band_example.rb.
@@ -33,7 +33,7 @@ class TestChipBandExample < Minitest::Test
        .map { |_, voice, _song, _pitch, _volume, fade| [voice, fade] }
   end
 
-  # FADING NOTES faded out with A: the chords' pad falls silent with the music.
+  # Fading notes faded out with A: the chords' pad falls silent with the music.
   def test_a_fades_the_swelling_pad_with_the_music
     player = game_player
     frame = 0
