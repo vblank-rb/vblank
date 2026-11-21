@@ -186,7 +186,7 @@ module VBlank
             REPEAT = 0x80 # A step's count with this bit: a new value on every line of it
             BEND_TABLE_BYTES = 1 + (BEND_STEP_LINES * 2) + 1 + (BEND_STEP_LINES * 2) + 1
             # A bend that holds one value for whole bands of rows needs no value for every line. A step
-            # with no repeat bit writes the register once and leaves it for as many lines as it counts,
+            # with no REPEAT bit writes the register once and leaves it for as many lines as it counts,
             # so such a layer's table is a step for each band, three bytes where the other is 450.
             # Its rows hold those steps in place of a word a row: each step BAND_STEP_BYTES, the lines
             # and then the offset, and lines of nought after the last.

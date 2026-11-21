@@ -24,7 +24,7 @@ module VBlank
           #   (rt_paint_doubled_swap): the copy just painted is sent, and the other is painted next.
           # - Sent behind the game. What the pass's own blank cannot hold is sent by the blank's
           #   interrupt in the blanks after (rt_paint_doubled_behind), while the next pass is
-          #   painted; with the last piece there, shown is set to that pass. A pass ending while the last
+          #   painted; with the last piece there, SHOWN is set to that pass. A pass ending while the last
           #   picture is still going sends the rest itself first, and then waits for a blank of its
           #   own, so every picture is on the screen whole for a frame at least.
           # - Stale rows. The copy about to be painted is behind the other where the last pass
@@ -102,7 +102,7 @@ module VBlank
             def behind?(memory) = memory.reserved?(SENDING)
 
             # On to +target+ while a picture is still being sent behind the game (Frame's
-            # rt_show_pass, which then leaves shown to rt_paint_doubled_behind). Nothing with one copy.
+            # rt_show_pass, which then leaves SHOWN to rt_paint_doubled_behind). Nothing with one copy.
             def emit_branch_if_sending(asm, memory, target)
               return unless behind?(memory)
 
@@ -398,7 +398,7 @@ module VBlank
                 asm.bra("rt_paint_upload_swap")
                 asm.label("rt_paint_upload_all")
                 asm.jsr(asm.abs("rt_paint_doubled_send_all"))
-                # All of it is there: Frame's rt_show_pass sets shown, as for one copy.
+                # All of it is there: Frame's rt_show_pass sets SHOWN, as for one copy.
                 asm.label("rt_paint_upload_sent")
                 asm.lda(frame.call(Frame::FRAMES))
                 asm.sta(frame.call(DONE_FRAME))
@@ -611,8 +611,8 @@ module VBlank
             end
 
             # rt_paint_doubled_behind (JSR, from the blank's interrupt): more of the picture being
-            # sent, and once all of it is there, shown set to its pass. Not while the game is at the end of
-            # a pass (waiting), copying in its own blank (uploading) or stopping: it reads the line
+            # sent, and once all of it is there, SHOWN set to its pass. Not while the game is at the end of
+            # a pass (WAITING), copying in its own blank (UPLOADING) or stopping: it reads the line
             # the picture is on then, a latch and two reads that the interrupt's own reading would
             # spoil, and it sends what is left itself. The interrupt counts the frame after this,
             # so the frame it finished in is FRAMES + 1.

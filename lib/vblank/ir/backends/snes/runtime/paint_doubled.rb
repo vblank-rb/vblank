@@ -34,7 +34,7 @@ module VBlank
           #   word $0000 + tile × 64 + row × 8 + column   (high byte)  a pixel of a tile
           #   word $0000 + cell row × 128 + cell column   (low byte)   a cell of the map
           #
-          # The game paints into a copy in work RAM, in the last bank, laid out as video RAM keeps the
+          # The game paints into a COPY in work RAM, in the last bank, laid out as video RAM keeps the
           # tiles (Layout). With the tiles numbered down each column, a column of tiles is 896 bytes
           # one after another, and inside it the pixel below any pixel is always 8 bytes on, tile or
           # no tile. So the pixel (x, y) is the byte
@@ -1059,7 +1059,7 @@ module VBlank
             end
 
             # The usual column, its numbers all well inside 16 bits: a height and a width below
-            # SMALL, and a place across and down no further than small either side of nought. Its
+            # SMALL, and a place across and down no further than SMALL either side of nought. Its
             # rows and pixels across shown are worked out in 16 bits, which nothing there can
             # overflow, and it goes on to rt_paint_column_shown; any other goes on to the 32-bit
             # sums after this.
@@ -1163,7 +1163,7 @@ module VBlank
             end
 
             # The code for each height a column of a picture +picture_height+ rows tall can be shown
-            # whole at, 1 to height (rt_paint_column), as sections for the Linker, each height's
+            # whole at, 1 to HEIGHT (rt_paint_column), as sections for the Linker, each height's
             # code under #scaler_label, at most +most_bytes+ to a section. The code for height h is
             # reached with A 8 bits wide, the column's places in the data bank at Y and the copy's
             # byte of the column's top in X, and for each row k reads the picture's row

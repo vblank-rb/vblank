@@ -25,7 +25,7 @@ module VBlank
           # pass's picture is the other one. No tile is painted, keyed or sent.
           #
           # The other picture is shown again only as it was: each of its tiles readied since left
-          # as it had it (shared; one painted at once, rt_paint_mark_now, or holding something else
+          # as it had it (SHARED; one painted at once, rt_paint_mark_now, or holding something else
           # is the other picture gone, OTHER_VALID), and the screen cleared to the colour it was.
           # Else the pass is made as any other. A pass that comes to differ from the last early
           # (SMALL_PREFIX) is written in the other half, its first paintings copied there, so the
@@ -69,7 +69,7 @@ module VBlank
             ROW_BYTES = Paint::COLUMNS * 2
             # Tiles both pictures show. A wall painted on every pass is in both pictures, and the
             # pass that paints it readies its tiles in its own generation, out of the other's. Such
-            # a tile is shared, not touched, when the pass leaves it as the other picture had it (the
+            # a tile is SHARED, not touched, when the pass leaves it as the other picture had it (the
             # same key, PaintLog::KEYS_COPY, checked as the pass ends): it is kept on a list, and each
             # turn puts the tiles on it in the generation shown. Each entry is the tile and its key
             # then (SHARED_ENTRY_BYTES); a pass sharing more than MOST_SHARED touches the other.
@@ -414,7 +414,7 @@ module VBlank
               asm.label("#{tag}_not_shared")
             end
 
-            # rt_paint_shared_note (JSR, as emit_shared_noted): the tile put on the shared list with
+            # rt_paint_shared_note (JSR, as emit_shared_noted): the tile put on the SHARED list with
             # the key of what the copy holds; the other picture gone when the list is full, and
             # nothing more noted once it is.
             def emit_shared_note(asm, memory)
@@ -449,7 +449,7 @@ module VBlank
             end
 
             # rt_paint_shared_checked (JSR, as a pass ends, after its flush): the other picture gone if
-            # a tile on the shared list holds something else now than it had there. Uses X and Y.
+            # a tile on the SHARED list holds something else now than it had there. Uses X and Y.
             def emit_shared_checked(asm, memory)
               keys = memory[PaintLog::KEYS_COPY]
               asm.label("rt_paint_shared_checked")
@@ -489,7 +489,7 @@ module VBlank
               asm.rts
             end
 
-            # In rt_paint_turn: each tile on the shared list put in the generation now shown, as a
+            # In rt_paint_turn: each tile on the SHARED list put in the generation now shown, as a
             # tile of this picture's. Uses X and Y.
             def emit_shared_shown(asm, memory)
               asm.ldy(0)
