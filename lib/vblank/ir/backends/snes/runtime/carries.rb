@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # WHAT THIS CARTRIDGE'S RUNTIME CARRIES, worked out once for a build from the program and from
+          # What this cartridge's runtime carries, worked out once for a build from the program and from
           # what the build chose to do. Both steps read this one value: Runtime.reserve, which has to
           # keep the runtime's places before the game's, so before the lowering exists, and
           # Runtime.sections, which writes the routines those places serve. Every fact is a field with
@@ -44,7 +44,7 @@ module VBlank
           # the rest (Letterbox), or nil where it gives up none. +doubled+ is a painted screen of big
           # pixels (`screen :bitmap, pixel_size: 2`), shown on Mode 7 (PaintDoubled) in place of Paint.
           # +boxes+ holds a background to a box the game moves (BackgroundBox).
-          # +sprites_over_picture+ shows sprites over a painted screen (Paint, "SPRITES OVER THE PICTURE").
+          # +sprites_over_picture+ shows sprites over a painted screen (Paint, "sprites over the picture").
           # +collides+ asks whether two sprites' drawn pixels touch (Collide), whose scratch takes 52
           # bytes of the direct page the game's busiest variables would otherwise have.
           Carries = Data.define(:collides,:board, :painted, :saves, :sound, :songs, :follows_level, :effects, :samples, :recording_voices,
