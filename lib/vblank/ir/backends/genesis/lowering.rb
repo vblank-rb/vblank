@@ -45,6 +45,7 @@ module VBlank
           include Division
           include Products
           include ControlFlow
+          include ListPacking::Loops
           include SceneryWrites
           include MeasuredOnCopies
           include TileRuns
@@ -276,7 +277,6 @@ module VBlank
           # Whether the game holds numbers with a fraction, which is when the cartridge carries the
           # routines that work them out (Runtime::Int32.emit_fractions).
           def fractions? = @program.walk.any? { |node| %i[mul_fix div_fix].include?(node.kind) }
-
 
           # The game's code, as sections for the Linker: its data, every routine a run can reach, and
           # the program itself.
@@ -940,10 +940,6 @@ module VBlank
           def emit_list_push(node) = list_call("rt_list_push", node, node.value)
           def emit_list_drop(node) = list_call("rt_list_drop", node, Build.int(node.from == :front ? 1 : 0))
           def emit_list_fill(node) = list_call("rt_list_fill", node, node.from, node.count, node.value)
-
-          # Reference#exec_list_pack, written as the loop it stands for (IR::ListPacking): this
-          # console has no block copy of its own for it yet.
-          def emit_list_pack(node) = IR::ListPacking.loops_for(node).each { |loop| statement(loop) }
 
           # A LIST THAT ALWAYS HOLDS ITS CAPACITY, read or written at a number written in the program
           # below that capacity: the slot is at an address known here, and the index can never be

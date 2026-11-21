@@ -32,6 +32,24 @@ module VBlank
           loop.default_source!(node.source)
         end
       end
+
+      # The test of whether +node+'s whole run lands inside the list it writes into, as a value: 1
+      # where it starts at slot nought or later and its last byte is below that list's length, else
+      # 0. Where it holds, the loop writes every byte and stops nothing, so a copy of the run means
+      # the same. The start is held against the length less the run's bytes, which no list is long
+      # enough to take below nought by wrapping, where the start plus them could wrap.
+      def fit_test(node)
+        bytes = WIDTH_BYTES.fetch(node.width)
+        room = Build.binop(:-, Build.list_len(node.into), Build.binop(:*, Build.list_len(node.name), Build.int(bytes)))
+        Build.binop(:&, Build.binop(:>=, node.at.copy, Build.int(0)), Build.binop(:<=, node.at.copy, room))
+      end
+
+      # THE STEP WRITTEN OUT AS ITS LOOP, for a cartridge lowering with no copy of its own for it
+      # (Backends::ListPackBlocks::OWN_WAYS names those that have one). Mixed into the lowering, which
+      # gives statement(node).
+      module Loops
+        def emit_list_pack(node) = ListPacking.loops_for(node).each { |loop| statement(loop) }
+      end
     end
   end
 end

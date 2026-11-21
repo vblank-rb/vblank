@@ -37,6 +37,7 @@ module VBlank
           end
 
           include ControlFlow
+          include ListPacking::Loops
           include DrawOrderWalk
           include SceneryWrites
           include MeasuredOnCopies
@@ -1519,10 +1520,6 @@ module VBlank
           def emit_list_drop(node) = list_call("rt_list_drop", node, Build.int(node.from == :front ? 1 : 0))
           def emit_list_fill(node) = list_call("rt_list_fill", node, node.from, node.count, node.value)
 
-          # Reference#exec_list_pack, written as the loop it stands for (IR::ListPacking): this
-          # console has no block copy of its own for it yet.
-          def emit_list_pack(node) = IR::ListPacking.loops_for(node).each { |loop| statement(loop) }
-
           # How many a list holds is a word of its header, read where it is: three instructions, where
           # the runtime's call takes the list's place handed over, the jump there and back, and the
           # header found from the place. A pool asks it of its retired things at the end of every walk.
@@ -2932,7 +2929,6 @@ module VBlank
           ensure
             @shown_asked = nil
           end
-
 
           # The routine that turns a run round (#emit_keyed_sort), called with X twice a place whose
           # item and the one before have just been swapped. Carry clear when the item after it is not

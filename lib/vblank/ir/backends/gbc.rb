@@ -411,6 +411,7 @@ module VBlank
                                              byte_fills: lowering.fills_byte_lists?, queues: lowering.keeps_queues?,
                                              half_queues: lowering.keeps_half_queues?,
                                              save_list_moves: lowering.moves_lists_to_save?,
+                                             list_packs: lowering.packs_lists?,
                                              sprites_over_picture: IR::SpritesOverPicture.any?(program),
                                              indexes_in_banks: view.indexes_in_banks,
                                              byte_divides: lowering.divides_by_written_bytes?,

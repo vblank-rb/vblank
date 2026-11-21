@@ -100,13 +100,14 @@ module VBlank
           # screens' tiles and colours and its maps are kept are in a bank (GBC#roomier_view).
           # +byte_divides+ means it divides by a byte written in it (Lowering#divides_by_written_bytes?).
           # +save_list_moves+ means it moves a whole list to or from save memory (Lists#emit_save_moves).
+          # +list_packs+ means it copies a list's items into a list of bytes as one run (Lists#emit_list_pack).
           # +clamps_outside+ means it holds a number between ends of up to two bytes
           # (Lowering#clamps_outside?). +far_words+ means it reads a picked cell from a banked table
           # (Lowering#reads_far_words?). +walks_colors+ is as for #reserve.
           def sections(memory, main:, art:, music_level: nil, songs: false, music: nil, frame_begins: nil, runs: [],
                        drawn_palettes: nil, big_maps: nil, together: false, bar_rows: nil, bar_maps: false, clips: nil,
                        count_at: nil, banked_colors: false, byte_fills: false, queues: false, half_queues: false,
-                       sprites_over_picture: false, indexes_in_banks: false, byte_divides: false, save_list_moves: false,
+                       sprites_over_picture: false, indexes_in_banks: false, byte_divides: false, save_list_moves: false, list_packs: false,
                        clamps_outside: false, far_words: false, walks_colors: false)
             # A game whose songs are kept in banks notes every bank the runtime puts in view, for the
             # music player to put back (SM83#select_rom_bank, Music::BANK_NOTED); one that plays a
@@ -121,7 +122,7 @@ module VBlank
             Calls.emit(asm, memory, clamps_outside: clamps_outside, far_words: far_words)
             Frame.emit(asm, memory, together: together, count_at: count_at, songs: songs)
             Lists.emit(asm, memory, byte_fills: byte_fills, queues: queues, half_queues: half_queues,
-                                    save_moves: save_list_moves)
+                                    save_moves: save_list_moves, packs: list_packs)
             Picture.emit(asm, memory, sprite_tiles: art.sprite_tiles.length, background_tiles: art.background_tiles.length,
                                       runs: runs, drawn_palettes: drawn_palettes, lends: art.lending,
                                       palettes_in_use: art.palettes_in_use, groups: art.groups?, bar_rows: bar_rows,

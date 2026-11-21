@@ -36,6 +36,7 @@ module VBlank
           end
 
           include ControlFlow
+          include ListPackBlocks
           include DrawOrderWalk
           include SceneryWrites
 
@@ -397,6 +398,10 @@ module VBlank
           # Whether the game moves a whole list to or from save memory, so wants the routines that do
           # it as a block (Runtime::Lists#emit_save_moves).
           def moves_lists_to_save? = SaveListMoves.moved_in?(@program)
+
+          # Whether the game copies a list's items into a list of bytes as one run, so wants the
+          # routine that does it (Runtime::Lists#emit_list_pack).
+          def packs_lists? = @reachable.any? { |node| node.kind == :list_pack && list_pack_block?(node) }
 
           # Whether the game pushes onto a list of halves or takes from one's front, so wants the
           # routines that push and read such a list quickly (Runtime::Lists#emit_queue_routines).
@@ -1180,9 +1185,24 @@ module VBlank
 
           def emit_list_fill(node) = list_call("rt_list_fill", node, node.from, node.count, node.value)
 
-          # Reference#exec_list_pack, written as the loop it stands for (IR::ListPacking): this
-          # console has no block copy of its own for it yet.
-          def emit_list_pack(node) = IR::ListPacking.loops_for(node).each { |loop| statement(loop) }
+          # A list_pack's run copied by the runtime (ListPackBlocks, Runtime::Lists#emit_list_pack):
+          # the list read, the list written into, and the slot the run starts on.
+          def emit_list_pack_block(node)
+            list_call("rt_list_pack", node, Build.int(@lists.fetch(node.into).first), node.at)
+          end
+
+          # Whether the slots of a list_pack's two lists are a copy's (ListPackBlocks): the list read
+          # kept at the width it declares and the one written into kept in bytes, neither a pool's
+          # field, and the one written into never taken from its front, so its slot nought is the
+          # first after its header.
+          def list_pack_block?(node)
+            [node.name, node.into].none? { |name| @slot_places.key?(name) } &&
+              slot_bytes(node.name) == ListPacking::WIDTH_BYTES.fetch(node.width) && slot_bytes(node.into) == 1 &&
+              !front_dropped_lists.include?(node.into)
+          end
+
+          # How many bytes a slot of list +name+ is kept in.
+          def slot_bytes(name) = list_placed(Build.list_len(name))[2]
 
           # A run of a table's entries copied into a list: the table's place and how it keeps its
           # entries, so the runtime reads them as a run does.

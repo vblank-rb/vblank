@@ -108,6 +108,11 @@ writing an instruction is shared, because two copies of a decision drift apart:
   every console makes alike, in one order (`refuse_unbuildable!`: a start file, a step only the
   Advance has, what the lowering does not make yet, what the console's answers refuse, a routine
   that calls itself), which a lowering calls first and then adds its own refusals after.
+- `Backends::ListPackBlocks` — a list's items copied into a list of bytes as one run (IR `list_pack`,
+  what a save's snapshot is made of), taken only where the run is seen to fit as the game runs and
+  the loop it stands for otherwise; the lowering gives the copy and says when its slots are a copy's.
+  A lowering with no copy mixes in `IR::ListPacking::Loops`; `ListPackBlocks::OWN_WAYS` names the
+  ones with their own way, the Advance's too, and `test_list_pack_blocks.rb` holds the list.
 - `Backends::MeasuredOnCopies` — `bytes_of`, a run of statements measured on copies of the
   lowering's state (`LoweringState#on_copies`), for `RoutineCuts`; the lowering gives its
   `measuring_assembler`. The Color measures its own way, listed with its reason in

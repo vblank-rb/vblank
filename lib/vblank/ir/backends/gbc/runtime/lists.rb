@@ -40,11 +40,12 @@ module VBlank
             # +queues+ that it pushes bytes or takes from a front (Lowering#keeps_queues?), and
             # +half_queues+ that it pushes onto a list of halves or takes from one's front
             # (Lowering#keeps_half_queues?).
-            def emit(asm, memory, byte_fills: false, queues: false, half_queues: false, save_moves: false)
+            def emit(asm, memory, byte_fills: false, queues: false, half_queues: false, save_moves: false, packs: false)
               q = Quick.for(memory)
               emit_helpers(asm, memory, q)
               emit_routines(asm, memory, q, byte_fills)
               emit_save_moves(asm, memory, q) if save_moves
+              emit_list_pack(asm, memory, q) if packs
               widths = NARROW_WIDTHS.keys.select { |width| width == 1 ? queues : half_queues }
               emit_queue_routines(asm, memory, q, widths) if widths.any?
               emit_shift(asm, memory) if queues
@@ -1013,6 +1014,121 @@ module VBlank
               asm.or_a(:c)
               asm.jump_relative(:nz, "rt_save_store_list_byte")
               asm.jump("rt_save_off")
+            end
+
+            # A LIST'S ITEMS COPIED INTO A LIST OF BYTES (IR list_pack, Backends::ListPackBlocks): what
+            # a save's snapshot is made of. A slot keeps its bytes lowest first (rt_list_write), as the
+            # list of bytes wants them, so the run is a copy, one LD A,(DE) and one LD (HL+),A a byte
+            # (Pan Docs, "CPU Instruction Set"), where a list_set a byte took two calls, each taking its
+            # numbers and finding its slot again.
+            #
+            # rt_list_pack(list, into, at): every item of +list+, oldest first, into +into+ from its
+            # slot +at+ on. The lowering calls it only for a run it has seen fits, into a list of bytes
+            # never taken from its front, so the run lands at +into+'s slots plus +at+ and nothing is
+            # checked here. The list read is a ring, so its oldest item can be in any slot: the copy
+            # runs from there to where its slots end, and what is left from its first slot.
+            def emit_list_pack(asm, memory, q)
+              into = arg(memory, 1, 3)
+              at = arg(memory, 2, 3)
+              ring_end = memory.args + 24 # where the list's slots end
+              rest = memory.args + 26 # the bytes left after the first run
+
+              asm.label("rt_list_pack")
+              emit_args_read(asm, 3)
+              # Where the run goes, kept on the stack: the slots of +into+, from slot +at+.
+              asm.load_high(:a, into)
+              asm.load(:l, :a)
+              asm.load_high(:a, into + 1)
+              asm.load(:h, :a)
+              asm.load(:de, HEADER)
+              asm.add_hl(:de)
+              asm.load_high(:a, at)
+              asm.load(:e, :a)
+              asm.load_high(:a, at + 1)
+              asm.load(:d, :a)
+              asm.add_hl(:de)
+              asm.push(:hl)
+              asm.load(:a, arg_at(memory, 0, 3))
+              asm.call("rt_list_open")
+              # The bytes to copy: the length × the width.
+              asm.load_high(:a, q.length)
+              asm.load_high(q.entry, :a)
+              asm.load_high(:a, q.length + 1)
+              asm.load_high(q.entry + 1, :a)
+              emit_times_slot_width(asm, q, q.entry, "rt_list_pack")
+              # Where the slots end, and DE where the oldest item is.
+              asm.load_high(:a, q.capacity)
+              asm.load(:e, :a)
+              asm.load_high(:a, q.capacity + 1)
+              asm.load(:d, :a)
+              asm.call("rt_list_slot_address")
+              asm.load(:a, :l)
+              asm.load_high(ring_end, :a)
+              asm.load(:a, :h)
+              asm.load_high(ring_end + 1, :a)
+              asm.load_high(:a, q.front)
+              asm.load(:e, :a)
+              asm.load_high(:a, q.front + 1)
+              asm.load(:d, :a)
+              asm.call("rt_list_slot_address")
+              asm.load(:d, :h)
+              asm.load(:e, :l)
+              # BC = the room from the oldest item to where the slots end, and HL = the bytes less it.
+              asm.load_high(:a, ring_end)
+              asm.sub_a(:e)
+              asm.load(:c, :a)
+              asm.load_high(:a, ring_end + 1)
+              asm.sbc_a(:d)
+              asm.load(:b, :a)
+              asm.load_high(:a, q.entry)
+              asm.sub_a(:c)
+              asm.load(:l, :a)
+              asm.load_high(:a, q.entry + 1)
+              asm.sbc_a(:b)
+              asm.load(:h, :a)
+              asm.jump_relative(:c, "rt_list_pack_in_one")
+              # More than the room: the first run fills it, and the rest comes after.
+              asm.load(:a, :l)
+              asm.load_high(rest, :a)
+              asm.load(:a, :h)
+              asm.load_high(rest + 1, :a)
+              asm.jump_relative("rt_list_pack_runs")
+              asm.label("rt_list_pack_in_one")
+              asm.load_high(:a, q.entry)
+              asm.load(:c, :a)
+              asm.load_high(:a, q.entry + 1)
+              asm.load(:b, :a)
+              asm.xor_a(:a)
+              asm.load_high(rest, :a)
+              asm.load_high(rest + 1, :a)
+              asm.label("rt_list_pack_runs")
+              asm.pop(:hl)
+              asm.call("rt_list_pack_run")
+              asm.load_high(:a, rest)
+              asm.load(:c, :a)
+              asm.load_high(:a, rest + 1)
+              asm.load(:b, :a)
+              asm.push(:hl)
+              list_address(asm, q)
+              asm.load(:de, HEADER)
+              asm.add_hl(:de)
+              asm.load(:d, :h)
+              asm.load(:e, :l)
+              asm.pop(:hl)
+              # BC bytes from DE to HL, none for a BC of nought.
+              asm.label("rt_list_pack_run")
+              asm.load(:a, :b)
+              asm.or_a(:c)
+              asm.ret(:z)
+              asm.label("rt_list_pack_byte")
+              asm.load(:a, [:de])
+              asm.load([:hli], :a)
+              asm.inc(:de)
+              asm.dec(:bc)
+              asm.load(:a, :b)
+              asm.or_a(:c)
+              asm.jump_relative(:nz, "rt_list_pack_byte")
+              asm.ret
             end
 
             # The 16-bit count at quick-memory address +at+ made a count of bytes: doubled once for a
