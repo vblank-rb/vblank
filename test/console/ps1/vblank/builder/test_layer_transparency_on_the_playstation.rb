@@ -3,7 +3,7 @@
 require "test_helper"
 require "see_through_scenery_tests"
 
-# A SEE-THROUGH LAYER OF SCENERY on every run that plays games as the PlayStation. Its graphics chip mixes
+# A see-through layer of scenery on every run that plays games as the PlayStation. Its graphics chip mixes
 # a layer with what is behind it in three ways that are shares of the two: half of each, all of each added,
 # and a quarter of the layer added to all of what is behind (Console::PS1Hardware::SEMI_TRANSPARENCY_MODES).
 # A layer at one of those amounts is drawn see-through; any other amount, or one the game works out as it
