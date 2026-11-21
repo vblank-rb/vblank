@@ -4,13 +4,13 @@ module VBlank
   module IR
     module Backends
       class SNES
-        # ONE PROGRAM, LOWERED STRAIGHT TO 65816 MACHINE CODE: the Super Nintendo's peer of the GBA
+        # One program, lowered straight to 65816 machine code: the Super Nintendo's peer of the GBA
         # and Game Boy Color lowerings. It walks the IR with a table naming the method for each kind
         # of statement and each kind of value (the interpreter's own shape, Reference), and emits the
         # instructions through the assembler (W65816), calling the runtime (SNES::Runtime) for what
         # is too long to write in place.
         #
-        # HOW A NUMBER IS WORKED OUT. Every value leaves its answer in R0, the first working number on
+        # How a number is worked out. Every value leaves its answer in R0, the first working number on
         # the direct page (Memory.register), its low half first. A sum of two works the left-hand side
         # out into R0 and takes the right-hand side from where it already is — a number written in
         # the program is part of the instruction, a variable is read where it lives — so `x + 1` is
@@ -20,7 +20,7 @@ module VBlank
         # one statement to the next, so a statement never has to know what came before it. A and the
         # index registers are 16 bits wide throughout.
         #
-        # WHERE THINGS LIVE. The game's variables, and each routine's own numbers — a loop's count, a
+        # Where things live. The game's variables, and each routine's own numbers — a loop's count, a
         # `case`'s reading — are places in the first 8K of work RAM (Memory), fixed while the program
         # is built, so a routine cannot call itself, and a program in which one can is refused. Lists
         # are in the rest of work RAM. Every routine is called with JSL and returns with RTL, so it can
@@ -42,7 +42,7 @@ module VBlank
           include SceneryWrites
           include MeasuredOnCopies
 
-          # EVERY KIND THIS LOWERING WRITES: its own, each by a method called by name in
+          # Every kind this lowering writes: its own, each by a method called by name in
           # #emit_statement and #value_of_kind, and each part's (Picture, Paint and the rest, and the
           # loops and tests every cartridge lowering shares, ControlFlow), which each part writes in a
           # case of its own. A declaration writes nothing where it is. Read by
@@ -148,7 +148,7 @@ module VBlank
             end
           end
 
-          # EVERY KIND THIS LOWERING CANNOT MAKE YET, by what it is part of. A kind leaves the list the
+          # Every kind this lowering cannot make yet, by what it is part of. A kind leaves the list the
           # day the Super Nintendo does it; test_snes_kind_coverage.rb holds the list and the tables
           # above to every kind there is.
           NOT_LOWERED_YET = Ractor.make_shareable({
@@ -195,7 +195,7 @@ module VBlank
           # The console this lowers for (BuildCache).
           CONSOLE = Console::SUPER_NINTENDO
 
-          # WHAT THE SUPER NINTENDO'S LOWERING ALONE WORKS OUT FROM THE PROGRAM, once a build for all
+          # What the Super Nintendo's lowering alone works out from the program, once a build for all
           # its tries (BuildCache#facts): what its background pictures' pixels come to
           # (Art::TileMemo), whether its scenes have backdrops of their own, and what the runtime
           # carries for each set of choices a try is built with (Runtime::Carries, SNES#build).
@@ -653,14 +653,14 @@ module VBlank
           # lowering: a routine's own numbers go past it rather than into these.
           NEAR_BYTES_LAST = 0x80
 
-          # EVERY VARIABLE A PLACE, THE ONES USED MOST IN THE FIRST 8K OF WORK RAM. That is the part
+          # Every variable a place, the ones used most in the first 8K of work RAM. That is the part
           # the code reaches quickly, and a game with many numbers can want more of it than there
           # is. The ones it names least go past it, in the rest of the 128K: the game's own and the
           # ones the framework keeps for it (`__approach_2`) alike, since the lowering reads and
           # writes every one by the address it was given. A game that fits is laid out as it always
           # was. Only the variables the runtime reads by a 16-bit address stay near (NEAR_ONLY).
           #
-          # AND THE BUSIEST ON THE DIRECT PAGE, as many as fit in the room the runtime's scratch
+          # And the busiest on the direct page, as many as fit in the room the runtime's scratch
           # leaves there (Memory#reserve_direct): chosen by how often the game names each, weighted
           # by the loops around it (Backends::VariableUse), and given their places before the rest so
           # that a game too big for the first 8K sends the least named far, not these. A direct page
@@ -816,7 +816,7 @@ module VBlank
             store(node.var)
           end
 
-          # A VARIABLE KEPT IN TWO BYTES SET TO +value+: only the low half of the number is worked out
+          # A variable kept in two bytes set to +value+: only the low half of the number is worked out
           # (#emit_low_half), since the variable keeps nothing else, and stored with one STA. The
           # value is proven to fit 16 bits (HalfVariables), so those are the whole number with its sign.
           def emit_set_half(name, value)
@@ -848,7 +848,7 @@ module VBlank
             plain_slot_read?(node)
           end
 
-          # A LIST'S SLOT STRAIGHT INTO A VARIABLE: each half read and stored where it goes, a narrow
+          # A list's slot straight into a variable: each half read and stored where it goes, a narrow
           # slot's sign spread into the high half as it is stored, where working it out into R0 and
           # storing that reads and writes every half twice. A pool's walk reads the next thing from its
           # list of links this way on every turn.
@@ -1160,7 +1160,7 @@ module VBlank
             emit_sum(name, :+, Build.int(1))
           end
 
-          # A LOOP'S COUNT THAT CANNOT LEAVE ITS LOW HALF: a repeat whose number of turns is written in
+          # A loop's count that cannot leave its low half: a repeat whose number of turns is written in
           # the program and below $8000 counts from nought to that number, so the high half of its
           # count is the nought it started with on every turn. Each turn ends adding one and
           # comparing with the number of turns, and a 32-bit sum and a signed compare of both halves
@@ -1169,7 +1169,7 @@ module VBlank
           # still a whole number in its variable, for the body and for after the loop, since the high
           # half is never written but by the nought the loop starts with.
           #
-          # AND IN Y, where nothing reads the count but the loop (a `repeat` whose index the body never
+          # And in Y, where nothing reads the count but the loop (a `repeat` whose index the body never
           # names, as most loops written `repeat(n) { ... }` are) and nothing in the loop changes Y. An
           # INC of a count in work RAM is eight cycles at sixteen bits and the compare loads it again;
           # INY and CPY with the number are two and three (cycle counts in fullsnes and the SNESdev
@@ -1260,7 +1260,7 @@ module VBlank
           # Whether +name+ is a loop's count that stays in its low half (#with_counter_held).
           def short_counter?(name) = (@short_counters || {}).key?(name)
 
-          # TWO OF A POOL'S SLOTS TESTED EQUAL, OR NOT: `other.index != e.index`, a pool thing passing
+          # Two of a pool's slots tested equal, or not: `other.index != e.index`, a pool thing passing
           # over itself as it walks the others. A variable a pool keeps a slot in holds one below the
           # pool's capacity whenever it is read (DSL::Pool::SLOT_PARTS), so its high half is nought and
           # the low halves alone answer. The branch taken when the test does not hold, or nil.
@@ -1524,7 +1524,7 @@ module VBlank
             @asm.bcc(again)
           end
 
-          # A LIST FULL OF NOUGHT in work RAM has its slots cleared by the copying engine, a byte in
+          # A list full of nought in work RAM has its slots cleared by the copying engine, a byte in
           # one slow cycle, rather than by the runtime's fill, which finds and writes each slot in
           # turn. A save record's table and buffers are declared so, and are made at power-on before
           # the game's first pass. A list in a Super FX's RAM is out of the work RAM port's reach.
@@ -1574,7 +1574,7 @@ module VBlank
             @asm.stz(@asm.direct(R0 + 2))
           end
 
-          # A LIST NOTHING TAKES FROM THE FRONT keeps its first item in its first slot for good, so an
+          # A list nothing takes from the front keeps its first item in its first slot for good, so an
           # item's slot is its index, and its place is known here: one load with X as the index, past
           # one test that the index is inside the list. The runtime's way finds the place from the
           # list's header, which takes as long as ten sums, and a game walking a map held in a list
@@ -1698,7 +1698,7 @@ module VBlank
             @lists.fetch(node.name) { raise LoweringError, "the list #{node.name.inspect} is used and never declared" }
           end
 
-          # WHERE A LIST'S SLOTS ARE: its header (where the runtime keeps its capacity, front and
+          # Where a list's slots are: its header (where the runtime keeps its capacity, front and
           # length), slot 0, and the bytes from one slot to the next. A list of the game's own has its
           # slots straight after its header, a slot as wide as the list. A pool's slot lists are where
           # its layout put them (Backends::PoolLayout, #place_pool_slots): today's lists the same way,
@@ -1750,7 +1750,7 @@ module VBlank
             end
           end
 
-          # THE SLOT A LIST IS KEPT IN: the one it was declared with, or a narrower one where every
+          # The slot a list is kept in: the one it was declared with, or a narrower one where every
           # number written to it is proven to fit (NumberRanges#list_widths), which keeps each exactly
           # and reads it back as the wider slot would: a pool's field of places on the screen kept in
           # two bytes, worked by the paths a field declared `widths: :half` takes.
@@ -1795,7 +1795,7 @@ module VBlank
             !capacity.nil? && capacity.between?(1, 0x7FFF) && !@plan.statements_wait?(node.walk.to_a)
           end
 
-          # A WALK OF A POOL STEPPED AS THE CONSOLE'S OWN GAMES STEP ONE. The tree's walk keeps the
+          # A walk of a pool stepped as the console's own games step one. The tree's walk keeps the
           # thing it goes to next and the last it visits as 32-bit numbers, tests the next against
           # NONE in both halves, copies it into the thing it is on, compares that with the last, reads
           # the link out as 32 bits with its sign spread, and counts its turns to the pool's capacity.
@@ -1859,7 +1859,7 @@ module VBlank
             counted_in_y ? emit_walk_turns_from_y(index, folded(node.count)) : emit_walk_index_kept_below(index, folded(node.count))
           end
 
-          # THE WALK'S TURNS COUNTED IN Y. The repeat's index is a variable, and counting it there is
+          # The walk's turns counted in Y. The repeat's index is a variable, and counting it there is
           # an INC of memory each turn, eight cycles at sixteen bits, where an INY is two (the cycle
           # counts in fullsnes and the SNESdev wiki's 65816 reference). Y is set before the walk and the index written from it once, as the walk ends.
           # Whether Y keeps it through the body is known only once the body is written
@@ -1885,7 +1885,7 @@ module VBlank
             @asm.sty(at_place(index))
           end
 
-          # THE THING A WALK IS ON, KEPT ONLY AS X HOLDS IT. Each turn of #emit_stepped_walk loads the
+          # The thing a walk is on, kept only as X holds it. Each turn of #emit_stepped_walk loads the
           # thing's place, the slot times the stride, into X, and the slot itself is worked out of
           # it by halving and written to the walk's variable for the body to read. Where the body
           # reads that variable only as the index of a slot of the pool's lists, or to compare it with
@@ -2032,7 +2032,7 @@ module VBlank
               !list_slots(node).scaled?
           end
 
-          # A LINK KEPT AS THE SLOT TIMES THE STRIDE read as the tree holds it, into R0: NONE, kept as
+          # A link kept as the slot times the stride read as the tree holds it, into R0: NONE, kept as
           # $FFFF, as -1; any other, halved back to the slot.
           def emit_scaled_slot_read(node)
             slots = list_slots(node)
@@ -2085,7 +2085,7 @@ module VBlank
             @list_slots.fetch(name) { raise LoweringError, "the list #{name.inspect} is used and never declared" }
           end
 
-          # AN INDEX THAT CANNOT FALL OUTSIDE ITS LIST. A list made full and never made longer or
+          # An index that cannot fall outside its list. A list made full and never made longer or
           # shorter holds its capacity for good, so a number written in the program below that
           # capacity is always inside it: a pool's sprite reading its place in the order, a draw
           # order setting the number of each of its things. And a pool knows its slots are in its
@@ -2130,7 +2130,7 @@ module VBlank
             end
           end
 
-          # THE LENGTH OF A LIST THAT ALWAYS HOLDS ITS CAPACITY (#full_length_lists), by the place of
+          # The length of a list that always holds its capacity (#full_length_lists), by the place of
           # its header, for an index compared with it as a number written in the instruction. That is
           # three bytes read from the cartridge where the length kept in the header is a long address
           # and two bytes read from work RAM, which the console reads at its slower speed (fullsnes,
@@ -2215,7 +2215,7 @@ module VBlank
             @asm.tax
           end
 
-          # WHAT X HOLDS WHEN A SLOT IS READ AT IT: the low half of the variable +index+ (a place in
+          # What X holds when a slot is read at it: the low half of the variable +index+ (a place in
           # memory) times +width+, as an assembler's note (W65816#x_holds). Two reads of one slot, or of
           # slots as wide in two lists, one after the other, need X set once: a pool's walk reads the
           # thing's link and whether it is live from two lists of bytes at the slot it is on. Nil for
@@ -2269,7 +2269,7 @@ module VBlank
             @asm.sta(slot_operand(slots, 2, x))
           end
 
-          # A NUMBER GOING INTO A BYTE OR HALF SLOT keeps only the slot's low bits
+          # A number going into a byte or half slot keeps only the slot's low bits
           # (Reference::ListValue#wrap_to_width), and the low bits of a sum, a difference or a bit
           # operation come from the low bits of its two sides alone. So such a number made of those,
           # of slots, variables and numbers written in the program, is worked out in its low half
@@ -2469,7 +2469,7 @@ module VBlank
             true
           end
 
-          # A LIST PUT IN ORDER, written in place (Reference#exec_list_sort): an insertion sort over
+          # A list put in order, written in place (Reference#exec_list_sort): an insertion sort over
           # the slots, which are where they are for good (a list nothing takes from the front keeps
           # its first item in its first slot), so both lists are reached with their own addresses.
           # Each item is taken in turn and moved back past every item before it whose number is
@@ -2679,7 +2679,7 @@ module VBlank
             @asm.rep(0x20)
           end
 
-          # A SORT WHOSE NUMBERS ARE KEPT BY PLACE IN THE ORDER, the way a draw order's is
+          # A sort whose numbers are kept by place in the order, the way a draw order's is
           # (Builder::DrawOrder#order_sort_nodes): every frame its routine works out one number for
           # each thing, by the thing's place in the run, and sorts the order by them.
           #
@@ -2699,7 +2699,7 @@ module VBlank
           # a thing for a number that is a copy of its place (Builder::DrawOrder#without_common_addend
           # leaves out an amount every thing adds), eight for a sum, the index read among them.
           #
-          # THE ORDER IS KEPT IN THESE TABLES, NOT IN THE LIST. Three tables in the first 8K, where a
+          # The order is kept in these tables, not in the list. Three tables in the first 8K, where a
           # 16-bit address reaches them: the numbers, by place, low halves and high halves apart;
           # where each item is, as twice its place, by item; and each place's item doubled, by place, which is
           # what the sprites are placed from (Picture#emit_ordered_run), so placing an ordered sprite
@@ -2713,7 +2713,7 @@ module VBlank
           # one index reaches a place's number and its item, and an item doubled is where it is in the
           # table of places: two times its place.
           #
-          # THE TABLES AS THE DIRECT PAGE, for a sort written where it is called
+          # The tables as the direct page, for a sort written where it is called
           # (#sort_written_in_place?) whose numbers are each read where they are. The direct page is
           # the 256 bytes an instruction names with one byte rather than two, a fetch from the
           # cartridge fewer, and the processor's D register says where it starts. Moved to the page
@@ -2792,7 +2792,7 @@ module VBlank
             @asm = kept
           end
 
-          # A DRAW ORDER'S ROUTINE WRITTEN WHERE IT IS CALLED. The routine (Builder::DrawOrder
+          # A draw order's routine written where it is called. The routine (Builder::DrawOrder
           # #finalize_draw_orders) is the numbers written by place and the sort, called once
           # before the frame's sprites are placed: a long call and its return are about as much
           # as two places' compares, so where it is called once its statements are written there
@@ -2867,7 +2867,7 @@ module VBlank
             end
           end
 
-          # A KEY PROVEN TO STAY IN 16 BITS (NumberRanges) is worked out in its low half alone: the
+          # A key proven to stay in 16 BITS (NumberRanges) is worked out in its low half alone: the
           # whole number is that half with its sign spread upward, so the high half is nought for a
           # key never below nought, and otherwise nought or all ones by the sign. A key read from a
           # variable kept in two bytes (HalfVariables) or a list kept in half words
@@ -2919,7 +2919,7 @@ module VBlank
           # The sort itself: each place after the first compared with the one before it, and the
           # routine that moves an item back called only for one that has to go.
           #
-          # AN ORDER THAT TURNS ROUND. Moving each item back a place at a time is a step for every
+          # An order that turns round. Moving each item back a place at a time is a step for every
           # pair of things that passed each other, so when every thing passes every other (the
           # whole order turned round, as when everything is flipped top to bottom) a pool of 32 is
           # nearly 500 steps, more than a frame on this processor. So before an item goes back further
@@ -2932,7 +2932,7 @@ module VBlank
           # Two things passing, the move nearly every frame makes, never reach the routine except
           # at the first place, which has no place before it to tell the two apart.
           #
-          # A SORT HANDED +shown+ (ShownSort) starts at the place after the first thing showing, through
+          # A sort handed +shown+ (ShownSort) starts at the place after the first thing showing, through
           # a table. The places before it hold the number nothing is strictly beyond, so the compares,
           # the turning of a run and the moving routine stop there with nothing added.
           def emit_keyed_sort(keyed, shown = nil)
@@ -3365,7 +3365,7 @@ module VBlank
           # Reference#timer_ticks: nought for a timer never started, which is what its count starts at.
           def value_of_timer_ticks(node) = value(timer_number(node.name, :ticks))
 
-          # THE ROUTINES THE RUNTIME RUNS AT EACH FRAME BOUNDARY: one that moves every running timer
+          # The routines the runtime runs at each frame boundary: one that moves every running timer
           # on, in the order the timers were first started, and one for each timer, which moves it on
           # and runs its handler. None for a game with no timers.
           def timer_sections
@@ -3476,7 +3476,7 @@ module VBlank
 
           def binop?(node, op) = node.is_a?(Node) && node.kind == :binop && node.op == op
 
-          # A COMPARISON'S ANSWER TESTED AGAINST 1 OR 0 — `(2 < count) == 1`, which is how a pool's
+          # A comparison's answer tested against 1 OR 0 — `(2 < count) == 1`, which is how a pool's
           # drawing asks whether a slot is among the live ones — is the comparison itself, or its
           # opposite: a comparison is 1 or 0, so `== 1` and `!= 0` hold when it does, and `== 0` and
           # `!= 1` when it does not. Jumping on the comparison's own flags skips making a 1 or a 0
@@ -3496,7 +3496,7 @@ module VBlank
             nil
           end
 
-          # The two sides of a comparison compared, and the branch that is taken when it does NOT hold.
+          # The two sides of a comparison compared, and the branch that is taken when it does not hold.
           #
           # Equal or not: the low halves compared and, when they match, the high halves; the zero flag
           # gives the answer. Less or more: the left subtracted from the right or the right from the left, the low
@@ -3537,7 +3537,7 @@ module VBlank
             { :== => :bne, :!= => :beq, :< => :bpl, :> => :bpl, :>= => :bmi, :<= => :bmi }.fetch(op)
           end
 
-          # TWO NUMBERS PROVEN TO STAY IN 16 BITS (NumberRanges), COMPARED IN 16. Such a number's high
+          # Two numbers proven to stay in 16 BITS (NumberRanges), compared in 16. Such a number's high
           # half is only its sign spread upward, so its low half alone is the number, and the
           # processor's 16-bit accumulator compares two of them in one instruction: CMP for equal,
           # and for an order CMP's carry when neither is below nought, or a subtract whose sign is
@@ -3587,7 +3587,7 @@ module VBlank
 
           def within_half?(range) = NumberRanges.inside?(range, NumberRanges::HALF)
 
-          # HOW FAR APART, TESTED AGAINST A SMALL NUMBER: `(other.x - e.x).abs < 16`, a thing checking
+          # How far apart, tested against a small number: `(other.x - e.x).abs < 16`, a thing checking
           # whether another is near it, which a game asks for every pair of things every frame. Worked
           # out the long way, the difference is made positive (a negate of both halves when it is not)
           # and then compared, signed, in both halves with the number. Here the difference's high half
@@ -3636,7 +3636,7 @@ module VBlank
             :bcs
           end
 
-          # HOW FAR APART TWO HALF-WORD SLOTS ARE, TESTED AGAINST A SMALL NUMBER: a pool whose places
+          # How far apart two half-word slots are, tested against a small number: a pool whose places
           # are kept in half words (`widths: { x: :half }`), checking one thing against another. Each
           # slot reads back as a number from -32768 to 32767, so the difference fits in 17 bits, and
           # the processor's 16-bit subtract says all of it: when it does not overflow, the 16 bits are
@@ -3719,7 +3719,7 @@ module VBlank
             [distance, limit] if limit.between?(1, 0x7FFF)
           end
 
-          # +node+ worked out with its low half in R0 and its high half in A. A sum or difference
+          # +node+ worked out with its low half in R0 and its high half in a. A sum or difference
           # ends on its high half, which is not stored.
           def emit_high_half_in_a(node)
             unless sum_in_halves?(node) && %i[+ -].include?(node.op) && !folded(node)
@@ -3737,7 +3737,7 @@ module VBlank
             end
           end
 
-          # A BYTE OR HALF SLOT OF A LIST TESTED EQUAL, OR NOT, TO A NUMBER WRITTEN IN THE PROGRAM. A
+          # A byte or half slot of a list tested equal, or not, to a number written in the program. A
           # narrow slot reads back with its top bit as the sign (#emit_read_slot_at_x), so it equals a
           # number that fits its width exactly when its own bits are that number's low bits: one
           # compare of the slot where it is, where reading it out as 32 bits takes the sign worked
@@ -3843,7 +3843,7 @@ module VBlank
             end
           end
 
-          # A WHOLE NUMBER PLUS OR MINUS A SLOT OF TWO BYTES, `x += dx` with a step kept in half words:
+          # A whole number plus or minus a slot of two bytes, `x += dx` with a step kept in half words:
           # the slot's low half added where it is, at X, and its high half, nought or all ones by its
           # sign, added as a number written in the program, picked by a branch on the sign. The carry
           # from the low halves is kept across the load and the branch, which leave it alone. The
@@ -4109,7 +4109,7 @@ module VBlank
             kept_read(node)
           end
 
-          # A LIST'S SLOT THAT A LOOP READS ON EVERY TURN AND NEVER CHANGES, read once before it. A
+          # A list's slot that a loop reads on every turn and never changes, read once before it. A
           # thing of a pool checked against each other thing reads its own fields at its own slot
           # for every pair: `(other.x - e.x).abs < 16`, where `e`'s slot and the field's list stay as
           # they are through the walk. Each such read, worked out every turn, sets X to the slot and
@@ -4223,7 +4223,7 @@ module VBlank
             with_right_halves(left, right, slot_at_x: slot_at_x) { |halves| yield(in_r0, halves) }
           end
 
-          # A WORD SLOT OF A LIST READ WHERE IT IS, as one side of a sum or a comparison: X set to the
+          # A word slot of a list read where it is, as one side of a sum or a comparison: X set to the
           # slot from an index that needs nothing worked out, and the two halves read at X by the
           # instruction that uses them. Worked out into R0 instead, the slot is read and stored, then
           # pushed and pulled back beside the other side; a check of one pool thing against another,
@@ -4315,7 +4315,7 @@ module VBlank
             true
           end
 
-          # THE CONSOLE DIVIDES 16 BITS BY A BYTE BY ITSELF: a number written to WRDIVL and WRDIVH and a
+          # The console divides 16 BITS BY A BYTE BY ITSELF: a number written to WRDIVL and WRDIVH and a
           # byte to WRDIVB, and sixteen cycles later the quotient is at RDDIVL and the remainder at
           # RDMPYL. So a `/` or `%` by a byte written in the program, of a number that turns out to be
           # from nought to 65535 (a score, a count, a place on the screen: what a game divides by ten
@@ -4376,7 +4376,7 @@ module VBlank
             @asm.label(zero)
           end
 
-          # A SHIFT BY A NUMBER WRITTEN IN THE PROGRAM is written in place, never as a call of
+          # A shift by a number written in the program is written in place, never as a call of
           # rt_shl32 or rt_shr32, which move the number a bit at a time round a loop. The 65816 can
           # read and write 16 bits at any byte, so a shift by a whole byte is a move: a load from
           # one byte along and a store, two instructions a half. A shift by sixteen is a move of
@@ -4467,7 +4467,7 @@ module VBlank
             @asm.stx(@asm.direct(R0 + 2))
           end
 
-          # A PRODUCT BY A NUMBER WRITTEN IN THE PROGRAM is written in place, never as a call of
+          # A product by a number written in the program is written in place, never as a call of
           # rt_mul32. By a power of two it is a shift left (#emit_shift_left_of_r0), none at all for
           # one; by any other number up to 255 either way it is four turns of the console's own
           # multiplier (#emit_product_by_byte_of_r0); a number below nought turns the product round
@@ -4498,7 +4498,7 @@ module VBlank
             false
           end
 
-          # A PRODUCT BY A COMPARISON is the other number while the comparison holds and nought while
+          # A product by a comparison is the other number while the comparison holds and nought while
           # it does not, since a comparison is 1 or 0. That is how a sprite declared in a scene, or
           # under an `if`, is shown only while its scene is up or its test holds: its shown flag
           # times `state == 3`, worked out for every such sprite in every pass. So the comparison
@@ -4595,7 +4595,7 @@ module VBlank
             [lhs, count]
           end
 
-          # A SHIFT RIGHT BY A BYTE OR MORE OF A NUMBER THAT IS KEPT SOMEWHERE — a variable, or a
+          # A shift right by a byte or more of a number that is kept somewhere — a variable, or a
           # word slot of a list — is read from that place a byte or more along, where the number's
           # higher bytes already are: `x >> 8`'s low half is x's bytes 1 and 2, read as one word,
           # and its high half is byte 3 with the sign above it. That skips copying x into R0 only to
@@ -4733,7 +4733,7 @@ module VBlank
           # in order and pushed, then they are pulled into their working numbers, the last first; then
           # the ones that are only a number or a variable are put in theirs.
           #
-          # WHEN EACH IS ONLY READ INTO R0 — a list's item at an index already somewhere, or where a
+          # When each is only read into R0 — a list's item at an index already somewhere, or where a
           # label is — none of them can touch another's working number, so each is read and moved
           # straight into its own: four instructions, where the stack took two pushes and two pulls
           # with a store after each. A pool's sprite is placed every pass with three such reads.

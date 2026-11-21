@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class SNES
         class Lowering
-          # WHETHER TWO SPRITES' DRAWN PIXELS TOUCH (`pixels_overlap`), lowered for a Super
+          # Whether two sprites' drawn pixels touch (`pixels_overlap`), lowered for a Super
           # Nintendo: a call into Runtime::Collide, and each picture a sprite can show made into a
           # mask of where it draws while the program is built. Mixed into Lowering.
           module Collision

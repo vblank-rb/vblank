@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class SNES
         class Lowering
-          # A PAINTED SCREEN, lowered for a Super Nintendo: each drawing statement a call into
+          # A painted screen, lowered for a Super Nintendo: each drawing statement a call into
           # Runtime::Paint, and what it paints — its colours, its pictures, its text — made into
           # SNES::PaintedArt while the program is built. Mixed into Lowering.
           #
@@ -93,7 +93,7 @@ module VBlank
             end
 
             # Whether +program+ shows sprites over its painted screen of small pixels
-            # (Runtime::Paint, "SPRITES OVER THE PICTURE"). Big pixels refuse such a sprite on every
+            # (Runtime::Paint, "sprites over the picture"). Big pixels refuse such a sprite on every
             # console (Guardrails::Checks::BiggerPixelsNotMadeYet).
             def self.sprites_over_picture?(program)
               painted?(program) && !doubled?(program) && IR::SpritesOverPicture.any?(program)
@@ -224,7 +224,7 @@ module VBlank
 
             def doubled? = @doubled
 
-            # THE SPRITES' COLOURS ON A PAINTED SCREEN: the second half of the colour memory, where
+            # The sprites' colours on a painted screen: the second half of the colour memory, where
             # Art put each set of colours a sprite over the picture uses, kept from the painting
             # (PaintedArt#keep_places), once those sets are all made and before anything is painted.
             def keep_sprite_colors_from_painting
@@ -501,7 +501,7 @@ module VBlank
               @asm.label(done)
             end
 
-            # A COLUMN ON A SCREEN OF BIG PIXELS is handed to the runtime as it is (Runtime::PaintDoubled's
+            # A column on a screen of big pixels is handed to the runtime as it is (Runtime::PaintDoubled's
             # rt_paint_column), which works out the rows and pixels across shown and draws it, with
             # the picture's record (#doubled_column_sections). The step down the picture is its height
             # in 65536ths over the height drawn, and a division of 32 bits is a routine of a bit at a
@@ -688,7 +688,7 @@ module VBlank
             # picked while the game runs, one of two pictures, the picked one when +showing+ is not
             # nought.
             #
-            # TEXT WHOSE COLOUR IS PICKED AS THE GAME RUNS is painted in an INK of its own, where
+            # Text whose colour is picked as the game runs is painted in an ink of its own, where
             # there is a place of the colour list to spare for one: a third picture of the words,
             # painted in the ink's place, whose colour is set as the text is drawn
             # (Runtime::Paint's rt_paint_blit_inked). The ink's pixels are the same whichever colour
