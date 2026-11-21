@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      # A CONSOLE'S OWN CARTRIDGE PLAYED IN THE EMULATOR, and then the same buttons, pass for pass,
+      # A console's own cartridge played in the emulator, and then the same buttons, pass for pass,
       # played on the interpreter — stopping at the first pass the two disagree on, about any variable,
       # any list or pool, or any pixel. Every checked run makes the same comparison and says it in the
       # same words (RunComparison).
@@ -89,7 +89,7 @@ module VBlank
         # Each frame's buttons as they are sent, kept to play the same ones on the interpreter.
         def buttons_sent(frame) = (@played[frame] = super)
 
-        # THE CARTRIDGE IS BUILT BEFORE THE INTERPRETER PLAYS A FRAME, so that what the build does not
+        # The cartridge is built before the interpreter plays a frame, so that what the build does not
         # make yet (NotMadeYet) is raised before a game it could never be held to is played. Any other
         # refusal is left for the cartridge's own run to make, after the interpreter has had its say:
         # a program the interpreter calls wrong is wrong in the interpreter's words.

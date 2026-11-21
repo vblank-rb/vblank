@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       module Computer
-        # THE CONSOLE THE C IS BUILT AS, written where the runtime reads it: rg_console_numbers.h,
+        # The console the C is built as, written where the runtime reads it: rg_console_numbers.h,
         # beside game.c, which runtime/rg_console.h includes. Its screen is the size of the
         # runtime's buffers, and its whole screen the size of its window: bigger where the game's
         # screen is shown in a border (Console::Description#bordered?), whose corner is RG_GAME_LEFT

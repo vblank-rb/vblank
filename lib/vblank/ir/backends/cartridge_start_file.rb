@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      # A CARTRIDGE IS NEVER HANDED A FILE AS IT STARTS. A game built with its data pack left out
+      # A cartridge is never handed a file as it starts. A game built with its data pack left out
       # reads its pack from one (IR::StartFile), and a cartridge holds its own data. The build
       # refuses such a game at `data_pack` in plain words (Builder::DataPacks); this is the backstop
       # every cartridge lowering calls first, for a program that reached it some other way.

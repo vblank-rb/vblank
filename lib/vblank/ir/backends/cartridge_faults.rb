@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      # WHAT WENT WRONG IN A CARTRIDGE THAT STOPPED, by number: one table for every console whose
+      # What went wrong in a cartridge that stopped, by number: one table for every console whose
       # runtime keeps the number where a reader can find it (GBC::Runtime::Frame and
       # SNES::Runtime::Frame take these in). The runtime writes the number as it stops the game, and
       # the reader of the running cartridge turns it back into the interpreter's words
