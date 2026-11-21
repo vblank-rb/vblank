@@ -2,7 +2,7 @@
 
 # Author text is published on the website, so three things that read wrongly there are refused.
 #
-# - A paragraph that opens with words in capitals ("the game holds handles. ...") reads as shouting.
+# - A paragraph that opens with words in capitals ("THE GAME HOLDS HANDLES. ...") reads as shouting.
 #   A lead-in to several paragraphs is a Markdown subheading (### or lower), a lead-in to one
 #   paragraph is its plain first sentence, and one to engineer material goes behind `#--`.
 # - A paragraph that opens with an ellipsis ("...and the world slides left") reads as a fragment. A
