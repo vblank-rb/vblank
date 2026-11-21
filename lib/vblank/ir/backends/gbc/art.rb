@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBC
-        # A GAME'S PICTURES, MADE INTO WHAT A GAME BOY COLOR DRAWS FROM, while the program is built.
+        # A game's pictures, made into what a Game Boy Color draws from, while the program is built.
         #
         # The Color draws everything from TILES: 8×8 pictures of two bits a pixel, so each pixel is
         # one of four places in a list of colours (a PALETTE). The background is a grid of tiles,
@@ -66,9 +66,9 @@ module VBlank
           # (Runtime::Paint), so its tiled screens have the rest.
           PAINTING_BACKGROUND_TILES = 128
 
-          # MORE SPRITE LISTS THAN THE COLOR HOLDS. A game whose sprites between them wear more
+          # More sprite lists than the color holds. A game whose sprites between them wear more
           # than eight lists of colours still fits when no more than eight are on the screen at
-          # once: each list then BORROWS one of the eight as a sprite wearing it is placed, and
+          # once: each list then borrows one of the eight as a sprite wearing it is placed, and
           # its colours are copied in (Runtime::Picture#emit_lend_colors). A game is first built
           # with a list of its own for each, which costs nothing as it runs; this is raised when
           # that runs out, and the build is made again lending them (GBC#build).
@@ -78,9 +78,9 @@ module VBlank
           # the eight holds in a byte, one up so that nought is none.
           MOST_LENT = 254
 
-          # MORE LENT LISTS THAN A BYTE NUMBERS. A game whose sprites between them wear more than
+          # More lent lists than a byte numbers. A game whose sprites between them wear more than
           # MOST_LENT lists still fits when no one scene's sprites wear more, since a scene never
-          # shows another's sprites: each scene then NUMBERS ITS OWN, and its arrival tells the
+          # shows another's sprites: each scene then numbers its own, and its arrival tells the
           # lending which scene's lists the numbers mean (Runtime::Picture#emit_lend_scene). The lists
           # sprites in no scene wear keep one number in every scene, counted down from the top, so
           # a scene's own count up beneath them. A game is first built numbering them once for the
@@ -88,15 +88,15 @@ module VBlank
           # them by scene (GBC#build).
           class TooManyLentLists < LoweringError; end
 
-          # MORE BACKGROUND TILES THAN THE COLOR HOLDS AT ONCE. A game whose backgrounds between
+          # More background tiles than the color holds at once. A game whose backgrounds between
           # them need more tiles than its picture memory holds still fits when no one screen needs
-          # more: each screen then BRINGS ITS OWN TILES IN as it comes up (a Room, and
+          # more: each screen then brings its own tiles in as it comes up (a Room, and
           # Runtime::Picture#emit_rooms). A game is first built with every tile in memory from
           # power-on, which costs nothing as it runs; this is raised when that runs out, and the
           # build is made again with rooms (GBC#build).
           class TooManyBackgroundTiles < LoweringError; end
 
-          # MORE SPRITE TILES THAN THE COLOR HOLDS AT ONCE. A game whose sprite pictures between them
+          # More sprite tiles than the color holds at once. A game whose sprite pictures between them
           # need more tiles than its 256 still fits when no one scene's need more: a picture only one
           # scene's sprites show is then numbered among that scene's own, past the tiles every screen
           # keeps, and comes in with the scene's room as it takes over (#scene_tile, Room). A game is
@@ -105,20 +105,20 @@ module VBlank
           # (GBC#build).
           class TooManySpriteTiles < LoweringError; end
 
-          # MORE BACKGROUND LISTS OF COLOURS THAN THE COLOR HOLDS AT ONCE. A game whose backgrounds
+          # More background lists of colours than the color holds at once. A game whose backgrounds
           # between them draw from more than eight lists still fits when no one screen draws from
           # more: each screen then brings its own palettes in with its tiles (a Room's +palettes+). A
           # game is first built with every palette in the console from power-on; this is raised when
           # that runs out, and the build is made again with rooms that carry colours (GBC#build).
           class TooManyBackgroundLists < LoweringError; end
 
-          # MORE LISTS OF COLOURS THAN ONE SCREEN HOLDS, with the ones every screen keeps. Where a
+          # More lists of colours than one screen holds, with the ones every screen keeps. Where a
           # tile that draws nothing took the first palette for every screen (#blank_tile), the
           # build is made again with that palette left each screen's own (GBC#build); otherwise the
           # words are the author's.
           class TooManyRoomLists < LoweringError; end
 
-          # THE TILES ONE SCREEN BRINGS IN, past the ones every screen keeps from power-on: a scene's
+          # The tiles one screen brings in, past the ones every screen keeps from power-on: a scene's
           # own backgrounds' tiles, or one area's of a background that walks between areas. +number+
           # is the one the runtime brings it in by (one up, so that nought is none), or nil for a
           # scene's tiles that only its areas' rooms bring in (+parent+ of each of those). +base+ is
@@ -191,8 +191,8 @@ module VBlank
           # in place of black.
           #
           # +piece_height+ is how tall the console draws every entry of its sprite table: 8, or 16
-          # where the game asked for 8×16 pieces (Console::GBCHardware::SPRITE_PIECE_SIZES). A TALL
-          # PIECE is a tile and the one numbered after it, drawn one under the other from one entry, so
+          # where the game asked for 8×16 pieces (Console::GBCHardware::SPRITE_PIECE_SIZES). A tall
+          # piece is a tile and the one numbered after it, drawn one under the other from one entry, so
           # a sprite of pieces stacked in pairs takes half the forty. Each tile a sprite keeps is then
           # a pair of the console's tiles at an even number, cut 8 wide and 16 tall, and turned upside
           # down whole, which is how the console turns a tall piece: the two halves change places.
@@ -295,8 +295,8 @@ module VBlank
             @wearer_scenes[wearer] = scene if scene
           end
 
-          # LISTS ONE SPRITE WEARS BY TURNS, AND NO OTHER SPRITE EVER DOES — the lists of its
-          # `draw_with`, in each of its poses — are a FAMILY, numbered from 1. A sprite stepping
+          # Lists one sprite wears by turns, and no other sprite ever does — the lists of its
+          # `draw_with`, in each of its poses — are a family, numbered from 1. A sprite stepping
           # through them a frame at a time (a fade done with lists) takes the one of the eight its
           # family held the frame before, rather than waiting for a list nothing wore for a whole
           # frame (Runtime::Picture#emit_lend_colors). Since no other sprite wears the family's lists,
@@ -367,7 +367,7 @@ module VBlank
           # Has the game pictures grouped by room, copied in as a room comes up (Runtime::PictureGroups)?
           def groups? = !@grouped.empty?
 
-          # EVERY SET OF PICTURE GROUPS' ROOM IN SPRITE MEMORY, one after another past the tiles every
+          # Every set of picture groups' room in sprite memory, one after another past the tiles every
           # screen keeps, once every picture is known. A set's grouped pictures share its room as
           # their groups allow (IR::PictureGroupPlaces), counted in tiles; each set has a room of its
           # own, so a scene given the screen back finds its groups' pictures where it left them.
@@ -415,7 +415,7 @@ module VBlank
           # Whether +room+, or a room it carries, brings sprite pictures in.
           def brings_pictures_in?(room) = room.chain.any? { |link| @room_scenes.key?(link.id) }
 
-          # THE FIRST TILE EVERY SCENE'S OWN ARE NUMBERED FROM: past the tiles every screen keeps and
+          # The first tile every scene's own are numbered from: past the tiles every screen keeps and
           # the groups' rooms, once every picture is known, at an even number where pieces are tall.
           # Every scene's own start here, so they take turns with the same sprite memory.
           def scene_tiles_base
@@ -448,7 +448,7 @@ module VBlank
             backgrounds
           end
 
-          # THE BACKDROP OF THE FIRST SCREEN, where the first list every screen keeps does not hold
+          # The backdrop of the first screen, where the first list every screen keeps does not hold
           # it; nil where it does. The screen shows it from power-on until the game's first frame
           # (Runtime::Boot#emit_backdrop, Runtime::Picture#emit_start), and the first list's own
           # first colour from then on, which is what the screen shows before a scene comes up:
@@ -522,7 +522,7 @@ module VBlank
             end
           end
 
-          # A PICTURE THE GAME MADE OF PIECES (Assets::Image#pieces) is shown from those pieces, each
+          # A picture the game made of pieces (Assets::Image#pieces) is shown from those pieces, each
           # where the game put it and in its order, the first in front — not cut on the 8-pixel grid,
           # which for pieces off the grid puts more of them on one line than the console shows. How
           # big it is matters only to a test of its pixels against another's (Lowering::Picture
@@ -559,7 +559,7 @@ module VBlank
             SpritePieces.stacked(pieces.map { |dx, dy, own| [dx, dy, own.bytes] }, piece_height: @piece_height)
           end
 
-          # A SPRITE'S PICTURE THE GAME PAINTS from a list (Nodes::TileRun with a picture): every 8×8
+          # A sprite's picture the game paints from a list (Nodes::TileRun with a picture): every 8×8
           # piece of it, in the order the list keeps them — left to right, then top to bottom — a tile
           # of its own, empty until the game's first copy. Its outline is not known while the game is
           # built, so it collides with nothing.
@@ -577,7 +577,7 @@ module VBlank
             end
           end
 
-          # A SET OF SPRITE TILES THE GAME LOADS (Nodes::SpriteTiles): +count+ tiles of its own in
+          # A set of sprite tiles the game loads (Nodes::SpriteTiles): +count+ tiles of its own in
           # sprite memory, side by side and empty until the game's first load, and the number of the
           # first. They sit in one bank of 128, so a load's tiles are one stretch of one bank: a set
           # that would cross into the next starts there instead.
@@ -593,7 +593,7 @@ module VBlank
             end
           end
 
-          # A POSE DRAWN FROM A SET (Nodes::TilePose): a piece for each of its tiles, pointing at the
+          # A pose drawn from a set (Nodes::TilePose): a piece for each of its tiles, pointing at the
           # set's tile in sprite memory, so it keeps no tiles of its own and shows what the set holds
           # now. Where the console draws 8×16 pieces, a tile at an even place of the set and the one
           # after it under it are one piece, and a pose made otherwise cannot be drawn: the build
@@ -773,12 +773,12 @@ module VBlank
           # where no empty cell shows (#background_tile).
           TileDrawing = Data.define(:room, :recolor_steps, :any_first)
 
-          # A BACKGROUND PALETTE: its four colours, and for one a background draws with other lists,
+          # A background palette: its four colours, and for one a background draws with other lists,
           # the four it shows with each of them (see #background_tile). Two palettes are the same
           # only when both are.
           BackgroundPalette = Data.define(:colors, :swaps)
 
-          # A TILE DRAWN BY PLACE that #list_order does not take — one with see-through pixels, or
+          # A tile drawn by place that #list_order does not take — one with see-through pixels, or
           # from a list of more than four colours — for one a background draws with other lists.
           # Another list drawn over it swaps it place for place, so a list holding one colour at two
           # of its places shows two colours then; drawn by its colours, the two would be one colour of
@@ -805,7 +805,7 @@ module VBlank
 
           def see_through_tile?(image) = tile_fact(:see_through, image) { (0...64).any? { |i| image.tile_see_through_at?(i) } }
 
-          # WHAT A TILE'S PICTURE ALONE GIVES (#list_order, #drawn_places, #tile_colors,
+          # What a tile's picture alone gives (#list_order, #drawn_places, #tile_colors,
           # #see_through_tile?): each a scan of its 64 pixels, and a build asks each of them for every
           # cell, every step of a background's colours and every try. So each answer is kept in
           # +tile_facts+, which the lowering hands every try of one build (BuildCache), by the
@@ -835,7 +835,7 @@ module VBlank
             [tile_number_in(drawing.room, TileBytes.of(places)), drawn_palette_number(colors, drawing, keeps_backdrop: see_through)]
           end
 
-          # A TILE FROM A DATA PACK SLOT, drawn by place from a list of four colours or fewer, kept as the Color keeps one:
+          # A tile from a data pack slot, drawn by place from a list of four colours or fewer, kept as the Color keeps one:
           # each pixel's place is its number in the tile, and the palette is the backdrop and then
           # the list's colours after its first, in the list's order. So a tile read from a data pack
           # in the Color's own layout (Console::GBCHardware::ORIGINAL_FORMATS) goes into the
@@ -859,7 +859,7 @@ module VBlank
             end
           end
 
-          # LISTS OF FOUR WHOSE TILES WOULD SPLIT. A tile drawn by place from a list of four colours
+          # Lists of four whose tiles would split. A tile drawn by place from a list of four colours
           # or fewer, place 0 see-through, is drawn by its colours: one that never shows place 0
           # takes the list's colours alone (#list_order), and one that does takes the backdrop and
           # the colours it draws (#drawn_tile). So one list's tiles can take two palettes or more,
@@ -892,7 +892,7 @@ module VBlank
             [tile_number_in(drawing.room, TileBytes.of(places)), drawn_palette_number(kept_colors(image) { |place| image.colors[place] }, drawing)]
           end
 
-          # A TILE DRAWN BY PLACE FROM A LIST OF FOUR, with no see-through pixel, the way a cartridge
+          # A tile drawn by place from a list of four, with no see-through pixel, the way a cartridge
           # made for the Color draws its screens: the list is its palette, all four colours of it,
           # and every tile from the same list shares that palette — so eight lists are the Color's
           # eight palettes. The backdrop has no place in it, since nothing of the tile shows
@@ -1024,7 +1024,7 @@ module VBlank
           # port writes to take its words away again).
           def draws_nothing?(image) = tile_fact(:draws_nothing, image) { (0...64).all? { |i| image.tile_see_through_at?(i) } }
 
-          # A TILE THAT DRAWS NOTHING (#draws_nothing?): every pixel shows its palette's first colour,
+          # A tile that draws nothing (#draws_nothing?): every pixel shows its palette's first colour,
           # so any palette whose first colour is the backdrop with every list it is drawn with shows
           # it rightly, and it takes no palette of its own.
           #
@@ -1102,7 +1102,7 @@ module VBlank
             [tile_number_in(drawing.room, TileBytes.of(places)), number || drawn_palette_number(colors, drawing)]
           end
 
-          # A PALETTE SHOWN ALREADY THAT HOLDS A DRAWN TILE'S COLOURS. A tile's own palette keeps
+          # A palette shown already that holds a drawn tile's colours. A tile's own palette keeps
           # its colours in the order it first draws them, so the same tile mirrored or upside down,
           # or a tile drawing two of another's three colours, would each take a palette of their own
           # though one holds them all; a screen of a few tiles turned every way then needs more than
@@ -1149,7 +1149,7 @@ module VBlank
             end
           end
 
-          # A TILE THE GAME PAINTS from a list (Nodes::TileRun): a tile number of its own, never
+          # A tile the game paints from a list (Nodes::TileRun): a tile number of its own, never
           # shared with another tile however alike the two start, since the game writes it as it
           # runs; empty until the game's first copy, as the interpreter's is. +colors+ is the run's
           # list, see-through first, and gives its palette: the backdrop where it is see-through.
@@ -1407,7 +1407,7 @@ module VBlank
           # top in a game whose scenes number their own (#sprite_list_number).
           def kept_list_number(at) = lists_by_scene? ? MOST_LENT - 1 - at : at
 
-          # THE LISTS ONE SCENE'S OWN SPRITES WEAR, in a bank: their colours, eight bytes a list, then
+          # The lists one scene's own sprites wear, in a bank: their colours, eight bytes a list, then
           # each one's family, nought for none (#lent_family), both by the scene's numbers.
           def lent_scene_section(scene, at)
             own = @scene_palettes.fetch(scene)
@@ -1419,7 +1419,7 @@ module VBlank
             asm.section
           end
 
-          # A SPRITE PICTURE'S PIECES AND MASK, in a bank of the cartridge rather than the part always
+          # A sprite picture's pieces and mask, in a bank of the cartridge rather than the part always
           # in view: four bytes a piece and a bit a pixel come to more than its tiles' own share of
           # that part for a big picture, so a game of many rooms would fill it long before the
           # pictures' tiles fill their banks. The runtime
@@ -1650,7 +1650,7 @@ module VBlank
             [@sprite_tile_numbers[bytes], 0]
           end
 
-          # THE TILES EVERY SCREEN KEEPS PAST WHAT THE CONSOLE HOLDS, said the moment they pass it
+          # The tiles every screen keeps past what the console holds, said the moment they pass it
           # rather than once the whole game is lowered (#refuse_too_many_tiles!): they only grow, so
           # the build stops this try there and tries again with each scene bringing its own pictures
           # in (GBC#build), without making the rest of a try that cannot fit. The words are the

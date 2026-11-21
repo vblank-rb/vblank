@@ -63,9 +63,9 @@ module VBlank
 
           def kit = Console.for(:gbc)
 
-          # THE SONG THE COLOR'S PLAYER TAKES UP at its next step (CartridgeHeadlessRun#next_song_number),
+          # The song the color's player takes up at its next step (CartridgeHeadlessRun#next_song_number),
           # from its byte fields: a song the game named is taken up when START is set, and a stop
-          # quiets the music where the game asks, so PLAYING already says it. A tune that played once
+          # quiets the music where the game asks, so playing already says it. A tune that played once
           # and has ended (Runtime::Music::ENDED) is none while it is the one the game names.
           def next_song_number
             playing = music_field(Runtime::Music::PLAYING, 1) or return nil
@@ -123,7 +123,7 @@ module VBlank
             @dark_frames = dark ? half(dark) : 0
           end
 
-          # A PASS'S PICTURE IS READ FROM THE FRAME DRAWN AFTER IT, while the next pass runs, and the
+          # A pass's picture is read from the frame drawn after it, while the next pass runs, and the
           # interpreter's picture of a pass holds nothing of the pass after. A cell shown on the
           # frame being drawn would be seen a pass early, on whichever rows the display had not
           # reached, so here such a cell shows with the rest of its pass.

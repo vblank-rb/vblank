@@ -45,11 +45,11 @@ require_relative "gbc/checked_run"
 module VBlank
   module IR
     module Backends
-      # The game as a GAME BOY COLOR cartridge: the same program every other backend runs, lowered
+      # The game as a Game Boy Color cartridge: the same program every other backend runs, lowered
       # to the SM83, the Color's 8-bit processor, and laid out in a cartridge with a memory bank
       # controller.
       #
-      # HOW IT IS MADE. GBC::Lowering walks the IR and emits SM83 machine code, as the GBA lowering
+      # How it is made. GBC::Lowering walks the IR and emits SM83 machine code, as the GBA lowering
       # emits ARM. What it works out before writing an instruction — what a run reaches, how a
       # table is kept, where a routine too big for a bank is cut, how sections fill the banks — it
       # shares with the Super Nintendo's lowering (LoweringPlan, RoutineCuts, Sections), so the two
@@ -67,7 +67,7 @@ module VBlank
       # interpreter, given the Color's screen, and comparing every variable, list and pixel after
       # every pass of the game loop (GBC::CheckedRun).
       class GBC
-        # WHERE A RUNNING CARTRIDGE KEEPS WHAT A READER WANTS, which nothing in its bytes shows:
+        # Where a running cartridge keeps what a reader wants, which nothing in its bytes shows:
         # every variable by the game's name, every list (its place, its capacity, its slot width),
         # where the runtime keeps how the run stands (Runtime::Frame's names), where every label of
         # the code went (the Linker's places), and where each of the game's routines is — a
@@ -93,7 +93,7 @@ module VBlank
           # back with its sign copied up from its top byte.
           def variable_bytes(name) = kept_bytes.fetch(name, 4)
 
-          # THE SPRITES THE GAME PLACED IN ITS LAST PASS, as the interpreter gives them
+          # The sprites the game placed in its last pass, as the interpreter gives them
           # (Reference#sprites): who each is, which picture it shows and where, back to front. The
           # runtime keeps them in a table of its own (Runtime::Picture::DRAWN), front-most first as
           # the console draws them, so anything reading a running cartridge asks the same of it.
@@ -168,7 +168,7 @@ module VBlank
 
         # +program+ as a cartridge (Cartridge::GBCROM), carrying its Places.
         #
-        # A BUILD IS A SERIES OF TRIES (BuildTries), each a whole lowering, until one fits. The first
+        # A build is a series of tries (BuildTries), each a whole lowering, until one fits. The first
         # keeps everything the simple way. A try stops at the first thing that does not fit, which
         # decides what the next try changes (#settings_after):
         #
@@ -243,7 +243,7 @@ module VBlank
           end
         end
 
-        # THE PART OF THE CARTRIDGE ALWAYS IN VIEW is 16384 bytes, and a game that does not fit there
+        # The part of the cartridge always in view is 16384 bytes, and a game that does not fit there
         # is built again keeping more of itself in the banks, in this order (#next_view): its
         # songs' notes (GBC::Music#sections); its sprites' tables of poses in each list
         # (Lowering::Picture); the tables of what its backgrounds' palettes show at each step of a
@@ -275,9 +275,9 @@ module VBlank
         # The step after +view+ (#roomier_view), nil after the last: for a game with +songs+ and
         # sound +effects+.
         #
-        # THE LAST WAY TO FIT THE PART ALWAYS IN VIEW: everything kept in the banks that the build
+        # The last way to fit the part always in view: everything kept in the banks that the build
         # can keep there — its songs' notes, its sound effects, its sprites' pose tables, its fades'
-        # colour tables and every table of its own but the smallest — and the INDEXES as well, the
+        # colour tables and every table of its own but the smallest — and the indexes as well, the
         # small tables that record where each of those things is. Each is a few bytes, but a few bytes
         # for every song, every sprite picture, every screen and every routine a call picks from
         # add up, so a game that keeps adding songs and screens fills the part always in view with
@@ -304,7 +304,7 @@ module VBlank
                     banked_table_bytes: view.bank_background_colors ? smaller : view.banked_table_bytes)
         end
 
-        # AT MOST HOW MANY BYTES +later+ MOVES OUT OF VIEW that +view+ kept there, read off the try
+        # At most how many bytes +later+ moves out of view that +view+ kept there, read off the try
         # that +spans+ measured (#in_view_spans) and +lowering+ made. Moving a thing to the banks
         # never shrinks the rest of what is in view: what stays to record where it went, and the code
         # that puts its bank in view, is the same size or bigger. So a try's part in view, less these bytes, is the least
