@@ -2,15 +2,15 @@
 
 module VBlank
   module Console
-    # WHAT EVERY VERB DOES ON A GAME BOY COLOR (Console::Answers says what an answer is).
+    # What every verb does on a Game Boy Color (Console::Answers says what an answer is).
     #
     # The Game Boy Color is a much smaller machine than the Advance: a 160×144 screen, one background
     # layer, forty sprites (ten to a line) of four colours each, no way to turn or resize a layer,
     # to see one layer through another, or to play a recording. A game written for the Advance is
-    # mostly made of things it CAN do — tiles, sprites, the square, wave and noise voices, which the
+    # mostly made of things it can do — tiles, sprites, the square, wave and noise voices, which the
     # Advance inherited from it — and the Color build is limited and does not pretend.
     #
-    # A GAME NAMES WHICH CONSOLES IT IS FOR (`VBlank.game "PONG", consoles: %i[gba gbc]`), and is
+    # A game names which consoles it is for (`VBlank.game "PONG", consoles: %i[gba gbc]`), and is
     # built for the Color only when it names it. A game written for a 240×160 screen that is
     # built for a 160×144 one has a third of its picture cut away, which no warning would make
     # right; so reaching the second console is a decision the author makes once, in the game's
@@ -313,7 +313,7 @@ module VBlank
                             "`song`). Write the part for the square or wave voice.")
       })
 
-      # WHAT .claude/dsl/game-boy-color.md SAYS: every answer, in the order ANSWERS gives them, and
+      # What .claude/dsl/game-boy-color.md says: every answer, in the order answers gives them, and
       # what the Color's build does not make yet — +not_yet+, the lowering's own list of the
       # program's kinds it refuses for now, by what they are part of, which the Color's kit hands
       # in (Kit#answers_page).

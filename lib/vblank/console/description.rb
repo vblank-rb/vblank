@@ -13,12 +13,12 @@ module VBlank
     SNES_PLAIN_SAVE_MEMORIES = Ractor.make_shareable([[32, :battery]])
     SNES_SUPER_FX_SAVE_MEMORIES = Ractor.make_shareable([[64, :battery]])
 
-    # WHAT A CONSOLE IS, AS FAR AS A GAME CAN TELL: how big its screen is, which buttons it has, how
+    # What a console is, as far as a game can tell: how big its screen is, which buttons it has, how
     # many sprites it shows, and which of the picture's tricks it can do at all. The builder, the
     # build checks and the interpreter read these, so a game is laid out, checked and played for the
     # screen it will be shown on.
     #
-    # It holds nothing about HOW the console is driven — register addresses, memory, the processor —
+    # It holds nothing about how the console is driven — register addresses, memory, the processor —
     # which is each lowering's own business (Console::Hardware is the Advance's). A program carries
     # the name of the console it was built for, and anything that reads it asks
     # Program#described_console.
@@ -101,7 +101,7 @@ module VBlank
     # stood at each of those moments, a hiss of its own and a lower one. A backend that makes the
     # sound itself looks at the hiss at the same moments to make the same one. +lowest_square_hz+ is
     # the bottom of a square voice, or nil where it has none: a chip that tunes one by a number of
-    # clock ticks a wave runs out of ticks, and plays a lower note AT its bottom, a different note
+    # clock ticks a wave runs out of ticks, and plays a lower note at its bottom, a different note
     # with nothing to say so. A console whose square is a recording reads it more slowly and has no
     # such place. +largest_memory_bytes+ is how
     # many bytes the largest memory a game's lists and pools are kept in holds: one pool is kept

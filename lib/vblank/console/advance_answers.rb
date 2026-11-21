@@ -2,7 +2,7 @@
 
 module VBlank
   module Console
-    # WHAT EVERY VERB DOES ON A GAME BOY ADVANCE (Console::Answers says what an answer is).
+    # What every verb does on a Game Boy Advance (Console::Answers says what an answer is).
     #
     # Every verb works: the verbs were written for the Advance first, and its hardware does all of
     # them. The table is written out all the same, so the Advance answers the same question every
@@ -187,7 +187,7 @@ module VBlank
       end
       private_class_method :background_and_sprite_refusals, :background_and_sprite_message
 
-      # WHAT .claude/dsl/game-boy-advance.md SAYS: the answers with words of their own, then every
+      # What .claude/dsl/game-boy-advance.md says: the answers with words of their own, then every
       # other verb by name.
       def self.reference
         said, plain = ANSWERS.keys.partition { |verb| answer(verb).words != PLAIN }

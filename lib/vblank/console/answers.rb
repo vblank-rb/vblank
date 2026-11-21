@@ -2,7 +2,7 @@
 
 module VBlank
   module Console
-    # WHAT EVERY VERB DOES ON A CONSOLE, decided once for each console and written down in a table
+    # What every verb does on a console, decided once for each console and written down in a table
     # of its own (Console::AdvanceAnswers, Console::ColorAnswers), where the build checks and the
     # reference both read it. Every verb gets one of two answers:
     #
@@ -11,7 +11,7 @@ module VBlank
     # - :refused — the build stops before anything is made, naming the hardware the console lacks
     #   and what to use instead.
     #
-    # NOTHING IS SHOWN DIFFERENTLY. A turned layer shown unturned, a mosaic left sharp: each is a
+    # Nothing is shown differently. A turned layer shown unturned, a mosaic left sharp: each is a
     # game that looks right on one console and quietly wrong on the other, which a teaching tool
     # must not ship. What a console's hardware cannot do, the author hears about while building,
     # not while playing.
@@ -28,7 +28,7 @@ module VBlank
     #               new verb has no answer on any console until somebody decides one
     #   PLAIN       what a verb that works answers when it has nothing more to say
     #   PAGE        the file under .claude/dsl/ that is the table written out
-    #   reference   the text of PAGE, asked for through the console's kit (Kit#answers_page),
+    #   reference   the text of page, asked for through the console's kit (Kit#answers_page),
     #               which hands it anything the page names from the console's build.
     #               `ruby tools/console_answers.rb` writes it, and a test fails when the two
     #               differ, so the reference cannot say one thing while the build does another
@@ -89,7 +89,7 @@ module VBlank
       # How the reference names each verdict.
       VERDICT_WORDS = { works: "works", refused: "**refused**" }.freeze
 
-      # An answer that works, in +words+, or in the table's own (PLAIN) for a verb with nothing
+      # An answer that works, in +words+, or in the table's own (plain) for a verb with nothing
       # more to say.
       def works(words = self::PLAIN) = Answer.new(:works, words)
 
@@ -113,7 +113,7 @@ module VBlank
         pointed && answer(pointed) ? words_of(pointed) : words
       end
 
-      # EVERY LINE OF +nodes+ (a program's steps) THAT +console+ CANNOT DO, as Refusals in this
+      # Every line of +nodes+ (a program's steps) that +console+ cannot do, as Refusals in this
       # table's words, in the program's order. Empty for a program the console plays.
       #
       # A verb the game wrote that is made of another verb's steps (Questions::WRITTEN_VERBS) is
@@ -141,7 +141,7 @@ module VBlank
         "#{question.words}, and a #{console.title} cannot: #{words_of(question.verb)}"
       end
 
-      # The reference's line for the answer to each verb in +verbs+, in the order ANSWERS gives them.
+      # The reference's line for the answer to each verb in +verbs+, in the order answers gives them.
       def answer_lines(verbs = self::ANSWERS.keys)
         verbs.map do |verb|
           answer = self::ANSWERS.fetch(verb)
