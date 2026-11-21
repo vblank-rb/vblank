@@ -4,7 +4,7 @@ require "test_helper"
 require "differential"
 require "status_bar_games"
 
-# A STATUS BAR is a strip of tiles fixed to the screen, from a row the game says down to the
+# A status bar is a strip of tiles fixed to the screen, from a row the game says down to the
 # bottom, over a field that scrolls and changes under it: the score along the bottom of a
 # pinball table, the lives and keys along the bottom of a dungeon. It does not scroll with the
 # field, it has its own tiles and colours, and the game can slide it down out of view and back
@@ -167,7 +167,7 @@ class TestStatusBar < Minitest::Test
     assert_backends_agree(prog, frames: [3, 4, 5], name: "BARTAKE")
   end
 
-  # A BAR PUT UP BY A ROUTINE THE LOOP CALLS (the way a game's routine that draws the screen does)
+  # A bar put up by a routine the loop calls (the way a game's routine that draws the screen does)
   # shows from the first frame the field does, before the loop has run its line. The interpreter
   # builds the picture from the scenery every screen shows, the bar at its declared top among it,
   # as soon as a background goes up (IR::SceneHandover#bar_shown_early). Frame 1 is shown before the

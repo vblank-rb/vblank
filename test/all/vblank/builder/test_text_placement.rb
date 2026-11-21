@@ -55,7 +55,7 @@ module TextPlacementGames
   end
 end
 
-# SAYING WHERE TEXT GOES WITHOUT COUNTING PIXELS FIRST.
+# Saying where text goes without counting pixels first.
 #
 # A centred title cannot be a number somebody worked out. A proportional font has no
 # per-character width to multiply by, so every such number is wrong by its own amount
@@ -124,7 +124,7 @@ class TestTextPlacement < Minitest::Test
     assert_text_at s, "IM", 0, Y, font: :vari
   end
 
-  # A NUMBER STILL MEANS A NUMBER. Naming an edge is the addition, not a replacement.
+  # A number still means a number. Naming an edge is the addition, not a replacement.
   def test_a_column_you_give_is_still_where_it_goes
     s = bitmap_screen { draw_text "IM", 100, Y, :white, font: :vari }
 
@@ -148,7 +148,7 @@ class TestTextPlacement < Minitest::Test
     assert_text_at open, "IM", 120 - IM_WIDE, Y, font: :vari
   end
 
-  # A HEADING OVER A PANEL centres on the panel, because that is plainly what was
+  # A heading over a panel centres on the panel, because that is plainly what was
   # meant — an `inside` block already says which part of the screen is being drawn.
   def test_an_inside_block_is_what_center_centres_on
     s = bitmap_screen do
@@ -187,7 +187,7 @@ class TestTextPlacement < Minitest::Test
     assert_text_at game_player.run(@built, frames: 1).screen, "IM", left, Y, font: :vari
   end
 
-  # A LIVE NUMBER KEEPS ITS COLUMNS, proportional font or not, so a digit that changes
+  # A live number keeps its columns, proportional font or not, so a digit that changes
   # never moves the ones beside it: "18" in a font where 1 is one pixel and 8 is five
   # still puts its 8 a whole cell along, on both runners.
   def test_a_live_number_on_a_tiled_screen_keeps_a_column_per_digit

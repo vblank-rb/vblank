@@ -76,7 +76,7 @@ end
 # and it paints the same pixels. What it saves is on a tiled screen, where the console
 # draws each character as its own little sprite out of a table of 128: two draws are two
 # sprites for every character with one of them always hidden, where this is one sprite
-# that changes colour. So these tests check the PICTURE on both screens, and the sprite
+# that changes colour. So these tests check the picture on both screens, and the sprite
 # COUNT on the tiled one — the saving is the whole reason the form exists.
 class TestTextTwoColors < Minitest::Test
   include Differential

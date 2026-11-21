@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# TILES TAKING TURNS THROUGH PICTURES HELD IN THE CARTRIDGE: flowers and water over a map that does
+# Tiles taking turns through pictures held in the cartridge: flowers and water over a map that does
 # not change. One word says which picture a whole group shows.
 class TestTilePictures < Minitest::Test
   include Differential
