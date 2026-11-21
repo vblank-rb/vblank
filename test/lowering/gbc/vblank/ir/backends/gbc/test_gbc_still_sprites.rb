@@ -113,7 +113,7 @@ class TestGBCStillSprites < Minitest::Test
         passes += 1
       end
       game_loop do
-        case_var(:showing) { when_val 0, :border }
+        call({ 0 => :border }, number: :showing)
       end
     end
   end

@@ -55,7 +55,6 @@ These work as their group files say:
 `picture_groups`, `pool`, `box`, `tiles`, `canvas`, `tile_pictures`, `sprite_tiles`,
 `draw_text`, `draw_number`, `text_width`, `text_height`, `menu`, `var`, `save_var`, `save_data`,
 `clock`, `saves_keep_everything`, `part`, `start_over`, `list`, `func`, `call`, `scene`,
-`case_var`, `most_players`, `seed`, `randomize`, `roll`, `rand`, `chance`, `random_numbers`,
-`define_sound`, `beep`, `noise`, `wave`, `stop_wave`, `play_song`, `stop_music`, `hold_music`,
-`release_music`, `music_volume`, `fade_music_in`, `fade_music_out`, `sound_effects`, `sample`,
-`instrument`.
+`most_players`, `seed`, `randomize`, `roll`, `rand`, `chance`, `random_numbers`, `define_sound`,
+`beep`, `noise`, `wave`, `stop_wave`, `play_song`, `stop_music`, `hold_music`, `release_music`,
+`music_volume`, `fade_music_in`, `fade_music_out`, `sound_effects`, `sample`, `instrument`.

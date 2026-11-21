@@ -47,9 +47,9 @@ module VBlank
         SLOT_KEYS = Ractor.make_shareable({ any: :any_slot, worked_out: :slot_at_worked_out_key })
 
         # The verbs that run game code written somewhere else, where they are called: the routine
-        # `func` made (`call`), the scene `case_var` picks, and `start_over`, which sets a part's
+        # `func` made (`call`), the scene a dispatch picks, and `start_over`, which sets a part's
         # variables back to their starts.
-        VERBS_RUNNING_GAME_CODE = %i[call case_var start_over].freeze
+        VERBS_RUNNING_GAME_CODE = %i[call start_over].freeze
 
         # Writes by game code to a local of the scope the block sits in.
         attr_reader :outside_writes

@@ -27,7 +27,7 @@ class TestPoolEmptySlotCost < Minitest::Test
         end
         rocks.each { |r| r.x += 1 }
       end
-      game_loop { case_var(:where) { when_val 0, :play } }
+      game_loop { call({ 0 => :play }, number: :where) }
     end
   end
 

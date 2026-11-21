@@ -496,7 +496,7 @@ class TestIRBackendGBA < Minitest::Test
     end
   end
 
-  def test_case_var_dispatches_to_the_active_scene
+  def test_case_dispatches_to_the_active_scene
     # state == 1 -> the :playing scene draws blue; :title (state 0) draws red.
     rom = lower(program(
       screen(:bitmap),

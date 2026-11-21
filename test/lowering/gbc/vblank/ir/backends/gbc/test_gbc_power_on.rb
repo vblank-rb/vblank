@@ -71,10 +71,7 @@ class TestGBCPowerOn < Minitest::Test
       repeat(setting_up) { count += 1 }
       var :state, 0
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :busy
-        end
+        call({ 0 => :title, 1 => :busy }, number: :state)
       end
     end
     b.finalize_program

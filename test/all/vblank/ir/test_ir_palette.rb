@@ -208,7 +208,7 @@ class TestIRPalette < Minitest::Test
       Palette.build(program do
         scene(:a) { screen :bitmap, tear_free: true, colors: %i[black red] }
         scene(:b) { screen :bitmap, tear_free: true, colors: %i[black blue green] }
-        game_loop { case_var(:state) { when_val 0, :a; when_val 1, :b } }
+        game_loop { call({ 0 => :a, 1 => :b }, number: :state) }
       end)
     end
 
@@ -219,7 +219,7 @@ class TestIRPalette < Minitest::Test
     pal = Palette.build(program do
       scene(:a) { screen :bitmap, tear_free: true, colors: %i[black red] }
       scene(:b) { screen :bitmap, tear_free: true, colors: %i[black red] }
-      game_loop { case_var(:state) { when_val 0, :a; when_val 1, :b } }
+      game_loop { call({ 0 => :a, 1 => :b }, number: :state) }
     end)
 
     assert_equal 2, pal.size

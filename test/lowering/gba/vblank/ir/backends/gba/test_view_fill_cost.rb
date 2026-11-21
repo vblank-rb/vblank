@@ -50,10 +50,7 @@ class TestViewFillCost < Minitest::Test
         pass += 1
         state = 1 if pass == 3
         before = read_scanline
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
         after = read_scanline
         halt if state == 1
       end

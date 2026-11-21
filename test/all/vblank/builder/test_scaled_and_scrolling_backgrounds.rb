@@ -106,10 +106,7 @@ class TestScaledAndScrollingBackgrounds < Minitest::Test
       end
       game_loop do
         wait_vblank
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
       end
     end
     b.finalize_program

@@ -192,10 +192,7 @@ class TestGenesisCheckedRun < Minitest::Test
       scene(:title) { ticks += 1; state = 1 if ticks > 3 }
       scene(:play) { ticks += 10; if ticks > 50 then state = 0; ticks = 0 end }
       game_loop do
-        case_var :state do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
       end
     end
 

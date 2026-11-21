@@ -257,10 +257,7 @@ class TestFastCodePlacement < Minitest::Test
         hero.move :down
       end
       game_loop do
-        case_var(:state) do
-          when_val 0, :menu
-          when_val 1, :playing
-        end
+        call({ 0 => :menu, 1 => :playing }, number: :state)
       end
     end
     builder.finalize_program
@@ -481,11 +478,7 @@ class TestFastCodePlacement < Minitest::Test
       end
       scene(:over) { draw_number :score, 10, 30, :white, digits: 6 }
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :playing
-          when_val 2, :over
-        end
+        call({ 0 => :title, 1 => :playing, 2 => :over }, number: :state)
       end
     end
     builder.finalize_program

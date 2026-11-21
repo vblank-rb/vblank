@@ -1351,7 +1351,7 @@ module VBlank
           # everything it goes on to call before moving to the next.
           #
           # Depth first, and that is the whole of this rule's judgement. Level by level looks
-          # more sensible and is worse, because of scenes: a `case_var` puts every scene one
+          # more sensible and is worse, because of scenes: a scene dispatch puts every scene one
           # call from the frame, so all of them — the title, the game-over screen, the one
           # being played — rank ahead of anything a scene itself calls. The room then goes to
           # screens that are not on, and the routines doing the work are left in the cartridge.
@@ -1383,7 +1383,7 @@ module VBlank
 
           # The routines one body reaches: the ones it calls outright, the scenes a dispatch
           # can land on, and every routine a call picked by number can. A scene is a routine
-          # and a `case_var` is how a game reaches the one it is playing, so leaving those out
+          # and a scene dispatch is how a game reaches the one it is playing, so leaving those out
           # would miss the most important routine in most games — the playing scene.
           def callees_of(node)
             node.walk.flat_map(&:callees)

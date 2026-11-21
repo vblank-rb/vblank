@@ -72,9 +72,7 @@ module SceneSpritePictures
         tick += 1
         seen = frames_since_power_on if seen
         state = (tick / PASSES_A_SCENE) % scenes.length
-        case_var(:state) do
-          scenes.each_with_index { |scene, s| when_val s, scene }
-        end
+        call scenes.each_with_index.to_h { |scene, s| [s, scene] }, number: :state
       end
     end
   end

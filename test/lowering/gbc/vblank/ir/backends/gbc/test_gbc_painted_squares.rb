@@ -59,10 +59,7 @@ class TestGBCPaintedSquares < Minitest::Test
         scene(:cool) { pixel 15, 23, :green }
         game_loop do
           state = 1 if pressed(:a)
-          case_var(:state) do
-            when_val 0, :warm
-            when_val 1, :cool
-          end
+          call({ 0 => :warm, 1 => :cool }, number: :state)
         end
       end)
     end

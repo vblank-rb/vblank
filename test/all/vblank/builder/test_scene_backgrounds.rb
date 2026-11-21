@@ -42,10 +42,7 @@ module SceneBackgroundGames
       game_loop do
         tick += 1
         state = 1 if tick > SWITCH_AT
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
   end
@@ -70,10 +67,7 @@ module SceneBackgroundGames
       scene(:walk) { state = 0 if tick == SWITCH_AT + 3 }
       game_loop do
         tick += 1
-        case_var(:state) do
-          when_val 0, :room
-          when_val 1, :walk
-        end
+        call({ 0 => :room, 1 => :walk }, number: :state)
       end
     end
   end
@@ -101,10 +95,7 @@ module SceneBackgroundGames
       game_loop do
         tick += 1
         state = 1 if tick > SWITCH_AT
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
   end
@@ -134,7 +125,7 @@ module SceneBackgroundGames
           field.scroll_by 1, 0
         end
         var :state, 0
-        game_loop { case_var(:state) { when_val 0, :play } }
+        game_loop { call({ 0 => :play }, number: :state) }
       else
         field = background :field, tiles: :set, map: striped
         game_loop { field.scroll_by 1, 0 }
@@ -179,7 +170,7 @@ module SceneBackgroundGames
       var :state, 0
       game_loop do
         tick += 1
-        case_var(:state) { when_val 0, :play }
+        call({ 0 => :play }, number: :state)
       end
     end
   end
@@ -209,10 +200,7 @@ module SceneBackgroundGames
         tick += 1
         state = 1 if tick == 4 # away...
         state = 0 if tick == 7 # ...and back
-        case_var(:state) do
-          when_val 0, :play
-          when_val 1, :away
-        end
+        call({ 0 => :play, 1 => :away }, number: :state)
       end
     end
   end
@@ -243,10 +231,7 @@ module SceneBackgroundGames
         tick += 1
         state = 1 if tick == 4 # away...
         state = 0 if tick == 7 # ...and back
-        case_var(:state) do
-          when_val 0, :play
-          when_val 1, :away
-        end
+        call({ 0 => :play, 1 => :away }, number: :state)
       end
     end
   end
@@ -273,10 +258,7 @@ module SceneBackgroundGames
         tick += 1
         state = 1 if tick == 3 # away to the bitmap screen
         state = 0 if tick == 6 # ...and back
-        case_var(:state) do
-          when_val 0, :tiled_one
-          when_val 1, :bitmap_one
-        end
+        call({ 0 => :tiled_one, 1 => :bitmap_one }, number: :state)
       end
     end
   end
@@ -315,10 +297,7 @@ module SceneBackgroundGames
       end
 
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
       end
     end
   end
@@ -371,7 +350,7 @@ class TestSceneBackgrounds < Minitest::Test
       scene(:one) { 3.times { |i| layer(:"o#{i}") { background :"one_#{i}", tiles: :red_set, map: map } } }
       scene(:two) { 3.times { |i| layer(:"t#{i}") { background :"two_#{i}", tiles: :blue_set, map: map } } }
       var :state, 0
-      game_loop { case_var(:state) { when_val 0, :one; when_val 1, :two } }
+      game_loop { call({ 0 => :one, 1 => :two }, number: :state) }
     end
 
     GBA.new.lower(prog) # six layers over two scenes is three at a time, and fits
@@ -433,11 +412,7 @@ class TestSceneBackgrounds < Minitest::Test
         tick += 1
         state = 1 if tick > 5
         state = 2 if tick > 10
-        case_var(:state) do
-          when_val 0, :left
-          when_val 1, :right
-          when_val 2, :plain
-        end
+        call({ 0 => :left, 1 => :right, 2 => :plain }, number: :state)
       end
     end
   end
@@ -458,10 +433,7 @@ class TestSceneBackgrounds < Minitest::Test
       scene(:plain) { background :two, tiles: :set, map: map }
       state = var :state, 1
       game_loop do
-        case_var(:state) do
-          when_val 0, :bent
-          when_val 1, :plain
-        end
+        call({ 0 => :bent, 1 => :plain }, number: :state)
       end
     end
   end
@@ -480,10 +452,7 @@ class TestSceneBackgrounds < Minitest::Test
         tick += 1
         state = 1 if tick > SWITCH_AT
         state = 0 if tick > 8
-        case_var(:state) do
-          when_val 0, :bent
-          when_val 1, :plain
-        end
+        call({ 0 => :bent, 1 => :plain }, number: :state)
       end
     end
   end
@@ -589,10 +558,7 @@ class TestSceneBackgrounds < Minitest::Test
         tick += 1
         state = 1 if tick == test.class::TILES_SWITCH_AT
         state = 0 if tick == test.class::TILES_SWITCH_AT * 2
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
   end
@@ -647,10 +613,7 @@ class TestSceneBackgrounds < Minitest::Test
         state = 1 if tick == switch
         state = 0 if tick == switch * 3
         fade :black, dim
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
   end
@@ -689,7 +652,7 @@ class TestSceneBackgrounds < Minitest::Test
         instance_exec(["#" * 32], &block)
         game_loop do
           state = 1 - state
-          case_var(:state) { scenes.each_with_index { |name, value| when_val value, name } }
+          call scenes.each_with_index.to_h { |name, value| [value, name] }, number: :state
         end
       end
     end.message
@@ -719,12 +682,12 @@ class TestSceneBackgrounds < Minitest::Test
 
   def test_a_name_in_two_scenes_cannot_turn_in_either_order
     turned_first = refused_name do |map|
-      scene(:one) { background(:world, tiles: :world_tiles, map: Array.new(32) { map.first }).rotate(10) }
+      scene(:one) { background(:world, tiles: :world_tiles, map: Array.new(32) { map.first }).rotate!(10) }
       scene(:two) { background :world, tiles: :world_tiles, map: Array.new(32) { map.first } }
     end
     turned_last = refused_name do |map|
       scene(:one) { background :world, tiles: :world_tiles, map: Array.new(32) { map.first } }
-      scene(:two) { background(:world, tiles: :world_tiles, map: Array.new(32) { map.first }).rotate(10) }
+      scene(:two) { background(:world, tiles: :world_tiles, map: Array.new(32) { map.first }).rotate!(10) }
     end
 
     [turned_first, turned_last].each { |message| assert_match(/two scenes and turns or resizes/, message) }
@@ -757,10 +720,7 @@ class TestSceneBackgrounds < Minitest::Test
         tick += 1
         state = 1 if tick == test.class::NAME_SWITCH_AT
         state = 0 if tick == test.class::NAME_SWITCH_AT * 2
-        case_var(:state) do
-          when_val 0, :level_one
-          when_val 1, :level_two
-        end
+        call({ 0 => :level_one, 1 => :level_two }, number: :state)
       end
     end
   end
@@ -806,10 +766,7 @@ class TestSceneBackgrounds < Minitest::Test
       game_loop do
         tick += 1
         state = 1 if tick == test.class::NAME_SWITCH_AT * 2
-        case_var(:state) do
-          when_val 0, :level_one
-          when_val 1, :level_two
-        end
+        call({ 0 => :level_one, 1 => :level_two }, number: :state)
       end
     end
   end
@@ -841,10 +798,7 @@ class TestSceneBackgrounds < Minitest::Test
       game_loop do
         tick += 1
         state = 1 if tick == test.class::NAME_SWITCH_AT
-        case_var(:state) do
-          when_val 0, :level_one
-          when_val 1, :level_two
-        end
+        call({ 0 => :level_one, 1 => :level_two }, number: :state)
       end
     end
   end
@@ -886,10 +840,7 @@ class TestSceneBackgrounds < Minitest::Test
         tick += 1
         state = 1 if tick == 5
         state = 0 if tick == 7
-        case_var(:state) do
-          when_val 0, :hall
-          when_val 1, :away
-        end
+        call({ 0 => :hall, 1 => :away }, number: :state)
       end
     end
   end

@@ -45,7 +45,7 @@ module PlacedFadeAcrossScenesGames
         turn += 1
         mode.store!(1) if turn == CHANGES_ON
         mode.store!(0) if back_on && turn == back_on
-        case_var(:mode) { when_val 0, :title; when_val 1, :playing }
+        call({ 0 => :title, 1 => :playing }, number: :mode)
       end
     end
     builder.finalize_program

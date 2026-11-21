@@ -95,7 +95,7 @@ class TestTilePictures < Minitest::Test
         tick += 1
         instance_exec(water, tick, &step)
       end
-      game_loop { case_var(:where) { when_val 0, :play } }
+      game_loop { call({ 0 => :play }, number: :where) }
     end
     b.finalize_program
     b.program

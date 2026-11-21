@@ -69,7 +69,7 @@ class TestPoolPicturesSentWhenShown < Minitest::Test
         tick += 1
         state = 1 if tick == 8
         state = 0 if tick == 11
-        case_var(:state) { when_val 0, :playing; when_val 1, :away }
+        call({ 0 => :playing, 1 => :away }, number: :state)
       end
     end
   end
@@ -124,7 +124,7 @@ class TestPoolPicturesSentWhenShown < Minitest::Test
       game_loop do
         tick += 1
         state = 0 if tick == 3
-        case_var(:state) { when_val 0, :playing; when_val 1, :away }
+        call({ 0 => :playing, 1 => :away }, number: :state)
       end
     end
   end
@@ -153,7 +153,7 @@ class TestPoolPicturesSentWhenShown < Minitest::Test
         shards.each { |shard| shard.face poses, showing: shard.look }
       end
       scene(:away) {}
-      game_loop { case_var(:state) { when_val 0, :playing; when_val 1, :away } }
+      game_loop { call({ 0 => :playing, 1 => :away }, number: :state) }
     end
   end
 

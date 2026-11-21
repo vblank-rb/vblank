@@ -42,7 +42,7 @@ module PoolPosesGames
           placed = 1
         end
       end
-      game_loop { case_var(:state) { when_val 0, :play } }
+      game_loop { call({ 0 => :play }, number: :state) }
     end
     b.finalize_program
     b.program

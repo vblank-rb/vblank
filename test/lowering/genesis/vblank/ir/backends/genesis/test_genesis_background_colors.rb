@@ -68,10 +68,7 @@ class TestGenesisBackgroundColors < Minitest::Test
         tick += 1
         state = 1 if tick == 4
         state = 0 if tick == 7
-        case_var(:state) do
-          when_val 0, :hall
-          when_val 1, :cellar
-        end
+        call({ 0 => :hall, 1 => :cellar }, number: :state)
       end
     end
   end

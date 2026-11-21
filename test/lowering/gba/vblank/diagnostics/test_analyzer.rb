@@ -88,10 +88,7 @@ class TestAnalyzer < Minitest::Test
       scene(:play) { clear_screen :red }
       game_loop do
         wait_vblank
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
       end
     end
     b.finalize_program
@@ -301,7 +298,7 @@ class TestAnalyzer < Minitest::Test
       var :state, 0
       scene(:title) { clear_screen :blue }
       scene(:play) { clear_screen :red }
-      game_loop { case_var(:state) { when_val 0, :title; when_val 1, :play } }
+      game_loop { call({ 0 => :title, 1 => :play }, number: :state) }
     end
     b.finalize_program
     b.program

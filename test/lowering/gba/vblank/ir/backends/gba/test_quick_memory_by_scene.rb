@@ -33,10 +33,7 @@ class TestQuickMemoryByScene < Minitest::Test
         t += 1
         where = 1 if t == 6
         where = 0 if t == 12
-        case_var(:where) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :where)
       end
     end
     builder.finalize_program
@@ -80,10 +77,7 @@ class TestQuickMemoryByScene < Minitest::Test
         call :heap if t == 1
         where = 1 if t == 6
         where = 0 if t == 12
-        case_var(:where) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :where)
       end
     end
     builder.finalize_program
@@ -182,12 +176,12 @@ class TestQuickMemoryByScene < Minitest::Test
       scene(:play) { call :play_work }
       game_loop do
         where = 1 if pressed(:start)
-        case_var(:where) do
-          when_val 2, :logos if logos
-          when_val 1, :play if play_first
-          when_val 0, :files
-          when_val 1, :play unless play_first
-        end
+        screens = {}
+        screens[2] = :logos if logos
+        screens[1] = :play if play_first
+        screens[0] = :files
+        screens[1] = :play unless play_first
+        call screens, number: :where
       end
     end
     builder.finalize_program
@@ -214,10 +208,7 @@ class TestQuickMemoryByScene < Minitest::Test
       end
       game_loop do
         where = 1 if pressed(:a)
-        case_var(:where) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :where)
       end
     end
     builder.finalize_program
@@ -258,10 +249,7 @@ class TestQuickMemoryByScene < Minitest::Test
         where = 1 if t == 3
         where = 0 if t == 9
         call :play_extra if where == 1
-        case_var(:where) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :where)
       end
     end
     builder.finalize_program
@@ -291,10 +279,7 @@ class TestQuickMemoryByScene < Minitest::Test
         if where == 1
           extra.times { c += 1 }
         end
-        case_var(:where) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :where)
       end
     end
     builder.finalize_program
@@ -349,10 +334,7 @@ class TestQuickMemoryByScene < Minitest::Test
       scene(:play) { call :play_work }
       game_loop do
         repeat(5) { |i| c += i if where == 1 }
-        case_var(:where) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :where)
       end
     end
     builder.finalize_program
@@ -383,10 +365,7 @@ class TestQuickMemoryByScene < Minitest::Test
       end
       game_loop do
         where = 1 if pressed(:a)
-        case_var(:where) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :where)
       end
     end
     builder.finalize_program
@@ -449,26 +428,19 @@ class TestQuickMemoryByScene < Minitest::Test
     assert_equal BIG * v.var(:t), v.var(:a) + v.var(:b), "every pass ran one scene's routine whole"
   end
 
-  # A plain `case` whose every arm calls a scene is the same dispatch as `case_var`: the same
-  # cartridge, its scenes' routines swapped in as each takes over.
-  def test_screens_picked_by_plain_case_build_the_cartridge_case_var_builds
+  # A plain `case` whose every arm calls a scene and `call` with a Hash of those scenes are one
+  # dispatch: the same cartridge, its scenes' routines swapped in as each takes over, whether the
+  # Hash is built in a loop or written out with the variable's name.
+  def test_screens_picked_by_plain_case_and_from_a_hash_build_one_cartridge
     plain = two_screens_by_plain_case(adds: BIG)
-    report = placement_of(plain)
-
-    assert_includes report.scenes.fetch(:title), :title_work
-    assert_includes report.scenes.fetch(:play), :play_work
-    assert_equal assemble_rom(two_screens(adds: BIG), name: "PLAINCASE").buffer,
-                 assemble_rom(plain, name: "PLAINCASE").buffer
-  end
-
-  # Scenes picked by `call` from a Hash are the same dispatch again, byte for byte.
-  def test_screens_picked_from_a_hash_build_the_cartridge_case_var_builds
     by_hash = two_screens_by_hash(adds: BIG)
     report = placement_of(by_hash)
 
+    assert_includes report.scenes.fetch(:title), :title_work
     assert_includes report.scenes.fetch(:play), :play_work
-    assert_equal assemble_rom(two_screens(adds: BIG), name: "HASHCASE").buffer,
-                 assemble_rom(by_hash, name: "HASHCASE").buffer
+    plain_bytes = assemble_rom(plain, name: "HASHCASE").buffer
+    assert_equal plain_bytes, assemble_rom(by_hash, name: "HASHCASE").buffer
+    assert_equal plain_bytes, assemble_rom(two_screens(adds: BIG), name: "HASHCASE").buffer
   end
 
   # Each scene's room goes to what a frame of that scene spends the most in. A routine both
@@ -599,10 +571,7 @@ class TestQuickMemoryByScene < Minitest::Test
         heap.push 1
         300.times { spin += 1 }
         where = 1 if pressed(:start)
-        case_var(:where) do
-          when_val 0, :files
-          when_val 1, :play
-        end
+        call({ 0 => :files, 1 => :play }, number: :where)
       end
     end
   end

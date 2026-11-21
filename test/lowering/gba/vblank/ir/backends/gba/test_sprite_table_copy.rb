@@ -103,10 +103,7 @@ class TestSpriteTableCopy < Minitest::Test
         t += 1
         where = 1 if t == 10
         where = 0 if t == 13
-        case_var(:where) do
-          when_val 0, :play
-          when_val 1, :rest
-        end
+        call({ 0 => :play, 1 => :rest }, number: :where)
       end
     end
     builder.finalize_program

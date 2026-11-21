@@ -161,10 +161,7 @@ class TestSpritesOnALineOnTheSuperNintendo < Minitest::Test
         17.times { |i| sprite :"row#{i}", at: [i * 14, 80], image: names.last }
       end
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :crowded
-        end
+        call({ 0 => :title, 1 => :crowded }, number: :state)
       end
     end
     screen = game_player.run(game, frames: 3).screen

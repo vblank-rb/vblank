@@ -132,10 +132,7 @@ class TestIRGuardrailBackgroundLayers < Minitest::Test
       end
       game_loop do
         wait_vblank
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
       end
     end
     b.finalize_program
@@ -171,10 +168,7 @@ class TestIRGuardrailBackgroundLayers < Minitest::Test
       end
       game_loop do
         wait_vblank
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
       end
     end
     b.finalize_program
@@ -202,7 +196,7 @@ class TestIRGuardrailBackgroundLayers < Minitest::Test
       end
       game_loop do
         wait_vblank
-        case_var(:state) { when_val 0, :title }
+        call({ 0 => :title }, number: :state)
       end
     end
     b.finalize_program
@@ -236,10 +230,7 @@ class TestIRGuardrailBackgroundLayers < Minitest::Test
       end
       game_loop do
         wait_vblank
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :map_screen
-        end
+        call({ 0 => :title, 1 => :map_screen }, number: :state)
       end
     end
     b.finalize_program
@@ -267,7 +258,7 @@ class TestIRGuardrailBackgroundLayers < Minitest::Test
       end
       game_loop do
         wait_vblank
-        case_var(:state) { when_val 0, :title }
+        call({ 0 => :title }, number: :state)
       end
     end
     b.finalize_program
@@ -379,7 +370,7 @@ class TestIRGuardrailBackgroundLayers < Minitest::Test
     background :sky, tiles: :floor, map: ["#" * 4] * 4
     var :state, 0
     scene(:town) { background :town, tiles: :floor, map: ["#" * 4] * 4 }
-    game_loop { case_var(:state) { when_val 0, :town } }
+    game_loop { call({ 0 => :town }, number: :state) }
   end
 
   # A second scene with a background of its own takes turns with the first, and is not refused.
@@ -391,10 +382,7 @@ class TestIRGuardrailBackgroundLayers < Minitest::Test
     scene(:town) { background :town, tiles: :floor, map: ["#" * 4] * 4 }
     scene(:cave) { background :cave, tiles: :floor, map: ["#" * 4] * 4 }
     game_loop do
-      case_var :state do
-        when_val 0, :town
-        when_val 1, :cave
-      end
+      call({ 0 => :town, 1 => :cave }, number: :state)
       state = 1 - state
     end
   end

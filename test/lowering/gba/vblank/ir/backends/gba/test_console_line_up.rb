@@ -230,10 +230,7 @@ class TestConsoleLineUp < Minitest::Test
         background :bg, tiles: :set, map: FULL_MAP
       end
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
       end
     end
     err = assert_raises(ArgumentError) { console_frames_for(prog, 4) }

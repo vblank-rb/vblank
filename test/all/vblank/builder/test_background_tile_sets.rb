@@ -147,10 +147,7 @@ class TestBackgroundTileSets < Minitest::Test
         pass += 1
         mode = 0 if pass == 4
         mode = 1 if pass == 6
-        case_var(:mode) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :mode)
       end
     end
   end
@@ -415,10 +412,7 @@ class TestBackgroundTileSets < Minitest::Test
         where = 1 if tick == 8
         state = 0 if tick == 10
         where = 0 if tick == 12
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
   end

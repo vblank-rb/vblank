@@ -140,10 +140,7 @@ module BackgroundBoxTests
         passes += 1
         state = 1 if passes == 6
         state = 0 if passes == 8
-        case_var(:state) do
-          when_val 0, :boxed
-          when_val 1, :away
-        end
+        call({ 0 => :boxed, 1 => :away }, number: :state)
       end
     end
     b.finalize_program

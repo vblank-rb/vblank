@@ -18,7 +18,6 @@ class TestPlainRubyNames < Minitest::Test
 
   def test_a_call_of_a_routine_in_vblanks_own_file_keeps_a_local_read_before_it
     assert kept_across?("call :step_on")
-    assert kept_across?("case_var :mode")
     assert kept_across?("start_over :level")
   end
 

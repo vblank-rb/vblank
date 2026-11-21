@@ -36,10 +36,7 @@ class TestMeasuredPlacement < Minitest::Test
       func(:the_hot_one) { repeat(3000) { x += 1 } }
 
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :playing
-        end
+        call({ 0 => :title, 1 => :playing }, number: :state)
       end
     end
   end
@@ -119,12 +116,7 @@ class TestMeasuredPlacement < Minitest::Test
       scene(:playing) { x += 1 }
       game_loop do
         call :everywhere
-        case_var(:state) do
-          when_val 0, :logos
-          when_val 1, :title
-          when_val 2, :files
-          when_val 3, :playing
-        end
+        call({ 0 => :logos, 1 => :title, 2 => :files, 3 => :playing }, number: :state)
       end
     end
   end
@@ -219,10 +211,7 @@ class TestMeasuredPlacement < Minitest::Test
         files[1].save if pressed(:start)
       end
       game_loop do
-        case_var(:state) do
-          when_val 0, :files
-          when_val 1, :playing
-        end
+        call({ 0 => :files, 1 => :playing }, number: :state)
       end
     end
     placement = game.build_rom(out: StringIO.new, err: StringIO.new, profile: true).built.placement
@@ -245,10 +234,7 @@ class TestMeasuredPlacement < Minitest::Test
       scene(:playing, **measuring) { call :fighting if held(:b) }
       func(:fighting) { repeat(3000) { x += 1 } }
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :playing
-        end
+        call({ 0 => :title, 1 => :playing }, number: :state)
       end
     end
   end
@@ -297,10 +283,7 @@ class TestMeasuredPlacement < Minitest::Test
       scene(:playing, measure_holding: tape) { call :fighting if pressed(:b) }
       func(:fighting) { repeat(3000) { x += 1 } }
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :playing
-        end
+        call({ 0 => :title, 1 => :playing }, number: :state)
       end
     end
     rom = game.build_rom(out: StringIO.new, err: StringIO.new)

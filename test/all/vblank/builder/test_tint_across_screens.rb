@@ -109,10 +109,7 @@ class TestTintAcrossScreens < Minitest::Test
         ticks += 1
         state = 1 if ticks == 3
         flash_screen :red, frames: 12 if ticks == 8
-        case_var(:state) do
-          when_val 0, :painted
-          when_val 1, :tiles
-        end
+        call({ 0 => :painted, 1 => :tiles }, number: :state)
       end
     end
   end

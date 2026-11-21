@@ -108,10 +108,7 @@ class TestNativePicture < Minitest::Test
       end
       scene(:walled) { background :wall, tiles: :wall, map: ["#" * 30] * 20 }
       game_loop do
-        case_var :state do
-          when_val 0, :waiting
-          when_val 1, :walled
-        end
+        call({ 0 => :waiting, 1 => :walled }, number: :state)
       end
     end
 
@@ -284,11 +281,7 @@ class TestNativePicture < Minitest::Test
         state = 0 if ticks == 11
       end
       game_loop do
-        case_var :state do
-          when_val 0, :nowhere
-          when_val 1, :indoors
-          when_val 2, :outdoors
-        end
+        call({ 0 => :nowhere, 1 => :indoors, 2 => :outdoors }, number: :state)
       end
     end
 
@@ -321,10 +314,7 @@ class TestNativePicture < Minitest::Test
       end
       scene(:without) { ticks += 1 }
       game_loop do
-        case_var :state do
-          when_val 0, :with_scenery
-          when_val 1, :without
-        end
+        call({ 0 => :with_scenery, 1 => :without }, number: :state)
       end
     end
 
@@ -643,11 +633,7 @@ class TestNativePicture < Minitest::Test
       game_loop do
         ticks += 1
         state = ticks / 4 % 3
-        case_var :state do
-          when_val 0, :tear_free
-          when_val 1, :plain
-          when_val 2, :tiled
-        end
+        call({ 0 => :tear_free, 1 => :plain, 2 => :tiled }, number: :state)
       end
     end
 
@@ -908,11 +894,7 @@ class TestNativePicture < Minitest::Test
       game_loop do
         ticks += 1
         state = order[ticks]
-        case_var :state do
-          when_val 0, :room
-          when_val 1, :bare
-          when_val 2, :painted
-        end
+        call({ 0 => :room, 1 => :bare, 2 => :painted }, number: :state)
       end
     end
 
@@ -955,10 +937,7 @@ class TestNativePicture < Minitest::Test
       game_loop do
         ticks += 1
         state = order[ticks]
-        case_var :state do
-          when_val 0, :first
-          when_val 1, :second
-        end
+        call({ 0 => :first, 1 => :second }, number: :state)
       end
     end
 
@@ -992,10 +971,7 @@ class TestNativePicture < Minitest::Test
       game_loop do
         ticks += 1
         state = order[ticks]
-        case_var :state do
-          when_val 0, :first
-          when_val 1, :second
-        end
+        call({ 0 => :first, 1 => :second }, number: :state)
       end
     end
 
@@ -1030,10 +1006,7 @@ class TestNativePicture < Minitest::Test
       game_loop do
         ticks += 1
         state = order[ticks]
-        case_var :state do
-          when_val 0, :first
-          when_val 1, :second
-        end
+        call({ 0 => :first, 1 => :second }, number: :state)
       end
     end
 
@@ -1069,10 +1042,7 @@ class TestNativePicture < Minitest::Test
       game_loop do
         ticks += 1
         state = order[ticks]
-        case_var :state do
-          when_val 0, :first
-          when_val 1, :second
-        end
+        call({ 0 => :first, 1 => :second }, number: :state)
       end
     end
 
@@ -1586,10 +1556,7 @@ class TestNativePicture < Minitest::Test
         fade :black, 0 if n == 8
       end
       game_loop do
-        case_var :state do
-          when_val 0, :title
-          when_val 1, :pool
-        end
+        call({ 0 => :title, 1 => :pool }, number: :state)
         state = 1 if n == 3
         n += 1
       end
@@ -1940,10 +1907,7 @@ class TestNativePicture < Minitest::Test
       end
       scene(:inside) { n += 0 }
       game_loop do
-        case_var :state do
-          when_val 0, :outside
-          when_val 1, :inside
-        end
+        call({ 0 => :outside, 1 => :inside }, number: :state)
         state = 1 if n == 5
         state = 0 if n == 7
         n += 1
@@ -1982,10 +1946,7 @@ class TestNativePicture < Minitest::Test
       scene(:pool) { layer(:water, transparency: 50) { background :waves, tiles: :waves, map: ["~" * 30] * 20 } }
       scene(:shrine) { layer(:glow, shows: 20 + (n * 5), shows_behind: 100) { background :rays, tiles: :rays, map: ["r" * 30] * 20 } }
       game_loop do
-        case_var :state do
-          when_val 0, :pool
-          when_val 1, :shrine
-        end
+        call({ 0 => :pool, 1 => :shrine }, number: :state)
         state = 1 if n == 3
         state = 0 if n == 7
         n += 1
@@ -2100,10 +2061,7 @@ class TestNativePicture < Minitest::Test
       end
       scene(:shore) { background :ground, tiles: :ground, map: ["# ##"] * 20 }
       game_loop do
-        case_var :state do
-          when_val 0, :lake
-          when_val 1, :shore
-        end
+        call({ 0 => :lake, 1 => :shore }, number: :state)
         ball.move :right, by: 3
         state = 1 if n == 3
         state = 0 if n == 6
@@ -2233,7 +2191,7 @@ class TestNativePicture < Minitest::Test
       scene(:hall) { state = 0 if n == 11 }
       game_loop do
         n += 1
-        case_var(:state) { when_val 0, :room; when_val 1, :hall }
+        call({ 0 => :room, 1 => :hall }, number: :state)
       end
     end
 

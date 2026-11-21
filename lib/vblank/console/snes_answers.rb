@@ -246,7 +246,6 @@ module VBlank
                     "and a copy from a table into one, and calls of other `on_chip` routines; any other step is refused)."),
         call: works,
         scene: works("see `func` for `fast:`."),
-        case_var: works,
         uses: works("a pack's verbs are verbs of the game's own, and each one has its answer here."),
         data_pack: works("the cartridge holds what each slot holds, as if the game had written it."),
         shell_screen: works("the cartridge holds nothing of it. Only a build as a shell shows a first screen."),

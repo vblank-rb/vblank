@@ -212,11 +212,7 @@ class TestGBCPackSceneArrival < Minitest::Test
         fade :white, (pass % 2) * 50 if fading
         state = 1 if pass == FIRST_PASS
         state = 2 if pass == SECOND_PASS
-        case_var(:state) do
-          when_val 0, :blank
-          when_val 1, :screen_0
-          when_val 2, :screen_1
-        end
+        call({ 0 => :blank, 1 => :screen_0, 2 => :screen_1 }, number: :state)
       end
     end
   end

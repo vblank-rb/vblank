@@ -35,10 +35,7 @@ module ScreenBackdropGames
       game_loop do
         tick += 1
         state = 1 if tick == 6
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :board
-        end
+        call({ 0 => :title, 1 => :board }, number: :state)
       end
     end
     b.finalize_program

@@ -49,10 +49,7 @@ class TestSceneSpriteWrites < Minitest::Test
         t += 1
         where = 1 if t == 6
         where = 0 if t == 12
-        case_var(:where) do
-          when_val 0, :playing
-          when_val 1, :files
-        end
+        call({ 0 => :playing, 1 => :files }, number: :where)
       end
     end
   end
@@ -117,7 +114,7 @@ class TestSceneSpriteWrites < Minitest::Test
           thing.remove if made == spawned && thing.index == 2
         end
       end
-      game_loop { case_var(:where) { when_val 0, :playing } }
+      game_loop { call({ 0 => :playing }, number: :where) }
     end
   end
 

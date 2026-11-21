@@ -106,9 +106,7 @@ class TestGenesisBigMapArrival < Minitest::Test
       end
       game_loop do
         pass += 1
-        case_var(:pass) do
-          count.times { |map| when_val map + 1, :"map_#{map}" }
-        end
+        call count.times.to_h { |map| [map + 1, :"map_#{map}"] }, number: :pass
       end
     end
     b.finalize_program
@@ -142,10 +140,7 @@ class TestGenesisBigMapArrival < Minitest::Test
       game_loop do
         pass += 1
         state = 1 if pass == CHANGE_PASS
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :map
-        end
+        call({ 0 => :title, 1 => :map }, number: :state)
       end
     end
   end

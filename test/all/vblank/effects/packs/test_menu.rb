@@ -261,10 +261,7 @@ class TestMenu < Minitest::Test
       state = var :state, 0
       game_loop do
         clear_screen :black
-        case_var(:state) do
-          when_val 0, :picking
-          when_val 1, :away
-        end
+        call({ 0 => :picking, 1 => :away }, number: :state)
       end
       scene :picking do
         menu(:main, at: [X, Y], spacing: SPACING) do |rows|
@@ -293,10 +290,7 @@ class TestMenu < Minitest::Test
       state = var :state, 0
       game_loop do
         clear_screen :black
-        case_var(:state) do
-          when_val 0, :picking
-          when_val 1, :away
-        end
+        call({ 0 => :picking, 1 => :away }, number: :state)
       end
       scene :picking do
         menu(:main, at: [X, Y], spacing: SPACING, starts_on: 2) do |rows|
@@ -612,10 +606,7 @@ class TestMenu < Minitest::Test
       screen :tiled
       state = var :state, 0
       game_loop do
-        case_var(:state) do
-          when_val 0, :picking
-          when_val 1, :away
-        end
+        call({ 0 => :picking, 1 => :away }, number: :state)
       end
       scene :picking do
         menu(:main, at: [X, Y], spacing: SPACING, color: :gray, picked: :white) do |rows|

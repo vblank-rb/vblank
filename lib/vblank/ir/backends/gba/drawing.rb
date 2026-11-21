@@ -977,7 +977,7 @@ module VBlank
             @scene_entry.emit_once_on_arrival(:art, name) do
               emit_with_layers_held_for_art(name) do
                 # Its colours first: the groups its sprites name are this scene's now (see
-                # ScreenLayout#build_shared_object_palette). A scene a `case_var` picks has them
+                # ScreenLayout#build_shared_object_palette). A scene the scene dispatch picks has them
                 # sent with its sprites instead (see SpriteDrawing#emit_scene_colors_on_change).
                 @palette_tint.emit_send_scene_obj_palette(colors, @layout.screen.obj_palette_units, name) if sends_scene_colors?(name)
                 art.each { |blob, at, units| @uploads.emit_dma_blob(blob, SpriteDrawing::OBJ_TILE_BASE + (at * 32), units * 16) }
@@ -1178,7 +1178,7 @@ module VBlank
 
           # What the screen a scene draws on does with a late page — its own `screen`, or the
           # game's — set at the top of the scene's routine every pass. That is every scene,
-          # however the game reaches it: one the game loop picks with `case_var` and one it
+          # however the game reaches it: one the game loop picks with a scene dispatch and one it
           # calls by a name it keeps in a variable alike. A routine that is not a scene is on
           # whatever screen is up, and sets nothing.
           def emit_scene_late_pages(name)

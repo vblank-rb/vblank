@@ -33,10 +33,7 @@ class TestSurveySaves < Minitest::Test
         files[0].save if pressed(:a)
       end
       game_loop do
-        case_var(:where) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :where)
       end
     end
     game.build_rom(out: StringIO.new, err: StringIO.new, profile: false)

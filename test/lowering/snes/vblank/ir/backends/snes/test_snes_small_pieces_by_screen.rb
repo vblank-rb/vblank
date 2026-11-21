@@ -29,10 +29,7 @@ class TestSNESSmallPiecesByScreen < Minitest::Test
       scene(:title) { sprite :word, at: [40, 40] }
       scene(:crowded) { sprite :far, at: [80, 80], facing: names.to_h { |name| [name, name] } }
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :crowded
-        end
+        call({ 0 => :title, 1 => :crowded }, number: :state)
         steps += 1
         state = 1 if steps == 1000
       end
@@ -64,10 +61,7 @@ class TestSNESSmallPiecesByScreen < Minitest::Test
         sprite :last, at: [120, 80], image: names.last
       end
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :crowded
-        end
+        call({ 0 => :title, 1 => :crowded }, number: :state)
       end
     end
   end
@@ -95,9 +89,7 @@ class TestSNESSmallPiecesByScreen < Minitest::Test
       end
       state = 0
       game_loop do
-        case_var(:state) do
-          screens.times { |screen_number| when_val screen_number, :"crowded#{screen_number}" }
-        end
+        call screens.times.to_h { |screen_number| [screen_number, :"crowded#{screen_number}"] }, number: :state
         state += 1
         state = 0 if state == screens
       end

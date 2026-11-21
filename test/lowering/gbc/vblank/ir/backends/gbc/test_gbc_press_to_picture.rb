@@ -55,7 +55,7 @@ class TestGBCPressToPicture < Minitest::Test
         draw_in_order cursor, mark
         cursor.x += 16 if pressed(:down)
       end
-      game_loop { case_var(:state) { when_val 0, :title } }
+      game_loop { call({ 0 => :title }, number: :state) }
     end
     b.finalize_program
     b.program
@@ -90,7 +90,7 @@ class TestGBCPressToPicture < Minitest::Test
       var :state, 0
       on = var :on, 1
       scene(:title) { ball.x += 16 if pressed(:down) }
-      game_loop { case_var(:state) { when_val 0, :title } if on == 1 }
+      game_loop { call({ 0 => :title }, number: :state) if on == 1 }
     end
   end
 

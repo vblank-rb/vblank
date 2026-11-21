@@ -210,7 +210,7 @@ class TestSpotlightOnTheAdvance < Minitest::Test
       game_loop do
         turn += 1
         mode = back ? 0 : 1 if turn == 6
-        case_var(:mode) { when_val 0, :title; when_val 1, :playing }
+        call({ 0 => :title, 1 => :playing }, number: :mode)
       end
     end
   end
@@ -298,7 +298,7 @@ class TestSpotlightOnTheAdvance < Minitest::Test
       game_loop do
         turn += 1
         mode = 1 - ((turn >> 2) & 1)
-        case_var(:mode) { when_val 0, :title; when_val 1, :playing }
+        call({ 0 => :title, 1 => :playing }, number: :mode)
       end
     end
 

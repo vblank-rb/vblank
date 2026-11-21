@@ -200,10 +200,7 @@ class TestRecolorSeveralListsCartridge < Minitest::Test
         recolor :words, sets.fetch(:words), showing: 2 if pass == 3
         recolor :sign, sets.fetch(:sign), showing: 0 if pass == 6
         recolor :words, :words if pass == 9
-        case_var(:state) do
-          when_val 0, :menu
-          when_val 1, :title
-        end
+        call({ 0 => :menu, 1 => :title }, number: :state)
       end
     end
   end

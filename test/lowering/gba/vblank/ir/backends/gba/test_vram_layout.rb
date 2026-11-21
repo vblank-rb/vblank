@@ -207,7 +207,7 @@ class TestVramLayout < Minitest::Test
                           map: { dry: { tunnel: grid }, wet: { pool: grid } }
       end
       var :state, 0
-      game_loop { case_var(:state) { when_val 0, :cave } }
+      game_loop { call({ 0 => :cave }, number: :state) }
     end
     builder.finalize_program
 

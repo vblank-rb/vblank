@@ -296,11 +296,9 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
       game_loop do
         pass += 1
         where = rooms == :hall ? 2 : 1 if pass == room_at
-        case_var(:where) do
-          when_val 0, :title
-          when_val 1, :room
-          when_val 2, :hall if rooms
-        end
+        screens = { 0 => :title, 1 => :room }
+        screens[2] = :hall if rooms
+        call screens, number: :where
       end
     end
   end
@@ -458,10 +456,7 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
       game_loop do
         pass += 1
         where = first == :title ? 1 : 0 if pass == swap_at
-        case_var(:where) do
-          when_val 0, :title
-          when_val 1, :room
-        end
+        call({ 0 => :title, 1 => :room }, number: :where)
       end
     end
   end
@@ -506,11 +501,9 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
         where = 0 if title && pass == 3
         where = 1 if pass == (title ? 6 : 4)
         where = 0 if pass == (title ? 9 : 8)
-        case_var(:where) do
-          when_val 0, :misty
-          when_val 1, :foggy
-          when_val 2, :title if title
-        end
+        screens = { 0 => :misty, 1 => :foggy }
+        screens[2] = :title if title
+        call screens, number: :where
       end
     end
   end
@@ -817,17 +810,14 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
         bars.call
         scene(:haunted) { layer(:glass) { sprite :ghost, at: [100, 16] } }
         var :where, 0
-        game_loop { case_var(:where) { when_val 0, :haunted } }
+        game_loop { call({ 0 => :haunted }, number: :where) }
       when :other_scene
         scene(:barred, &bars)
         scene(:haunted) { layer(:glass) { sprite :ghost, at: [100, 16] } }
         where = var :where, 0
         game_loop do
           where.approach! 1, 1
-          case_var(:where) do
-            when_val 0, :barred
-            when_val 1, :haunted
-          end
+          call({ 0 => :barred, 1 => :haunted }, number: :where)
         end
       end
     end

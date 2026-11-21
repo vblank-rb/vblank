@@ -33,10 +33,7 @@ class TestGenesisOrderedSpriteScenes < Minitest::Test
       game_loop do
         t += 1
         state.store! 1 if t == SWITCH_AT
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :room
-        end
+        call({ 0 => :title, 1 => :room }, number: :state)
       end
     end
   end

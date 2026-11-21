@@ -78,10 +78,7 @@ class TestStillFramesOnTheAdvance < Minitest::Test
         state = 1 if tick == 2
         state = 0 if tick == 5
         state = 1 if tick == CHANGE_AT + 4
-        case_var(:state) do
-          when_val 0, :bare
-          when_val 1, :covered
-        end
+        call({ 0 => :bare, 1 => :covered }, number: :state)
       end
     end
 
@@ -99,10 +96,7 @@ class TestStillFramesOnTheAdvance < Minitest::Test
       game_loop do
         tick += 1
         state = 0 if tick == CHANGE_AT
-        case_var(:state) do
-          when_val 0, :sky
-          when_val 1, :covered
-        end
+        call({ 0 => :sky, 1 => :covered }, number: :state)
       end
     end
 
@@ -280,11 +274,7 @@ class TestStillFramesOnTheAdvance < Minitest::Test
       game_loop do
         tick += 1
         state = 1 if tick == CHANGE_AT
-        case_var(:state) do
-          when_val 0, :first
-          when_val 1, :second
-          when_val 2, :never
-        end
+        call({ 0 => :first, 1 => :second, 2 => :never }, number: :state)
       end
     end
     screen = game_player.run(prog, frames: FRAMES).screen
@@ -306,10 +296,7 @@ class TestStillFramesOnTheAdvance < Minitest::Test
         field.scroll_to(*SCROLL)
         tick += 1
         state = 1 if tick == CHANGE_AT
-        case_var(:state) do
-          when_val 0, :covered
-          when_val 1, :bare
-        end
+        call({ 0 => :covered, 1 => :bare }, number: :state)
       end
     end
 

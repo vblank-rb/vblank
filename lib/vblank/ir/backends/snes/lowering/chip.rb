@@ -83,7 +83,7 @@ module VBlank
             def chip_step_words(node)
               kind = node.kind
               return "a wait for the next frame" if kind == :wait_vblank
-              return "a change of scene (case_var), and a scene sets up the screen, which only the console can do" if kind == :case
+              return "a change of scene (a scene dispatch), and a scene sets up the screen, which only the console can do" if kind == :case
               return "a drawing step (#{kind})" if node.category == :draw
               return "a sound step (#{kind})" if node.category == :sound
               return "putting a list in order (list_sort)" if kind == :list_sort

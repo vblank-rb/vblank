@@ -56,10 +56,7 @@ class TestSceneTilesOnTheGenesis < Minitest::Test
         state = 0 if tick == switch * 3 if handed_over_by_scene
       end
       dispatch = lambda do
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
       game_loop do
         tick += 1
@@ -117,10 +114,7 @@ class TestSceneTilesOnTheGenesis < Minitest::Test
       end
       func(:pause) { wait_vblank } if changed_by == :timer_and_wait
       dispatch = lambda do
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
       game_loop do
         wait_vblank if changed_by == :timer_and_wait

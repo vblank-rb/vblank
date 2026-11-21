@@ -18,7 +18,7 @@ module VBlank
       #   what it is handed, and whatever an object was handed as it was made.
       #
       # Code this source does not show (a method of another file called on nothing, `call` of a
-      # routine made elsewhere, `case_var`, `start_over`) can change anything, so it counts as a
+      # routine made elsewhere, `start_over`) can change anything, so it counts as a
       # change of every name.
       module CallChanges
         # What one call can change: +names+, each as #names_read_by keys it (a local, an instance

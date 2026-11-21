@@ -33,10 +33,7 @@ class TestStatusBarOnTheAdvance < Minitest::Test
         tick += 1
         state = 1 if tick == 6
         state = 0 if tick == 12
-        case_var(:state) do
-          when_val 0, :paint
-          when_val 1, :play
-        end
+        call({ 0 => :paint, 1 => :play }, number: :state)
       end
     end
 

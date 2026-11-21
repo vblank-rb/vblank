@@ -26,10 +26,7 @@ class TestSNESTileSizesByScene < Minitest::Test
         step += 1
         state = 1 if step == 8
         state = 0 if step == 16
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :stage
-        end
+        call({ 0 => :title, 1 => :stage }, number: :state)
       end
     end
     b.finalize_program
@@ -66,10 +63,7 @@ class TestSNESTileSizesByScene < Minitest::Test
       game_loop do
         step += 1
         state = 1 if step == 8
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :stage
-        end
+        call({ 0 => :title, 1 => :stage }, number: :state)
       end
     end
     b.finalize_program

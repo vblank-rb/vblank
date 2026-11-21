@@ -17,8 +17,9 @@ module VBlank
         # and for a scene it is
         #
         # > Nothing switches to the scene :<name>, so it never runs. It is still in the cartridge.
-        # > To fix this, add it to a `case_var` with `when_val`, or set a variable to :<name> and
-        # > write `call` with that variable. Or remove the scene.
+        # > To fix this, give it a `when` in a `case` on a game variable, such as `when 1 then call
+        # > :<name>`. Or set a variable to :<name> and write `call` with that variable. Or remove the
+        # > scene.
         #
         # The code reads as if it does something, and the screen shows that it does not. The
         # usual cause is a `call` that was never written, or one written to a name spelled another
@@ -33,7 +34,7 @@ module VBlank
         # main body, the game loop, a timer's handler), and from there every routine a
         # reached one can call. Whatever way a node hands control to a routine, it declares that
         # through #callees — a plain `call`, a call picked by number, a call on a variable
-        # holding routine names, a scene a `case_var` lands on — so a new way of calling is
+        # holding routine names, a scene the scene dispatch lands on — so a new way of calling is
         # followed here as soon as its kind answers that. The routines the framework writes
         # and calls for itself are not the author's to hear about, and are left out.
         #
@@ -88,9 +89,9 @@ module VBlank
             scene = Modes.strip_scene_prefix(name)
             if scene != name.to_s
               return "Nothing switches to the scene :#{scene}, so it never runs. It is still in " \
-                     "the cartridge. To fix this, add it to a `case_var` with `when_val`, or " \
-                     "set a variable to :#{scene} and write `call` with that variable. Or remove " \
-                     "the scene."
+                     "the cartridge. To fix this, give it a `when` in a `case` on a game variable, such as " \
+                     "`when 1 then call :#{scene}`. Or set a variable to :#{scene} and write `call` with " \
+                     "that variable. Or remove the scene."
             end
 
             "Nothing calls the routine :#{name}, so it never runs. It is still in the cartridge. " \

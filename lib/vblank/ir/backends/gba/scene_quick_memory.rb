@@ -137,7 +137,7 @@ module VBlank
 
           private
 
-          # The game's scene dispatch, if it has one this can swap at: a `case_var` written in
+          # The game's scene dispatch, if it has one this can swap at: a case node written in
           # the game loop's own body whose every clause names a scene. A dispatch anywhere else
           # could be inside a routine a set holds, and copying over it there would copy over
           # the code doing the copying.

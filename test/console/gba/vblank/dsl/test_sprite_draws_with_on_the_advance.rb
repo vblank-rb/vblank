@@ -133,10 +133,7 @@ class TestSpriteDrawsWithOnTheAdvance < Minitest::Test
         tick += 1
         state = 1 if tick > SECOND_SCENE_AT
         state = 0 if tick > FIRST_SCENE_AGAIN_AT
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
     builder.finalize_program
@@ -181,10 +178,7 @@ class TestSpriteDrawsWithOnTheAdvance < Minitest::Test
         tick += 1
         state = 1 if tick > SECOND_SCENE_AT
         state = 0 if tick > FIRST_SCENE_AGAIN_AT
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
     builder.finalize_program

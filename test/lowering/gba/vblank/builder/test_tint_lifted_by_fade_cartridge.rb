@@ -108,10 +108,7 @@ class TestTintLiftedByFadeCartridge < Minitest::Test
         state = 1 if pass == LIFT_PASS + 2
         tint :red, 50 if pass == TINT_PASS
         fade :black, 25 if pass == LIFT_PASS
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :menu
-        end
+        call({ 0 => :title, 1 => :menu }, number: :state)
       end
     end
   end
@@ -164,7 +161,7 @@ class TestTintLiftedByFadeCartridge < Minitest::Test
         pass += 1
         tint :red, 50 if pass == TINT_PASS
         fade :black, 25 if pass == LIFT_PASS
-        case_var(:state) { when_val 0, :title }
+        call({ 0 => :title }, number: :state)
       end
     end
     builder.finalize_program

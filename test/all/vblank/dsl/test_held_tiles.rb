@@ -85,10 +85,7 @@ module HeldTilesGames
           hud.set_tile 3, 1, "."
           state.store! 1
         end
-        case_var(:state) do
-          when_val 0, :first
-          when_val 1, :second
-        end
+        call({ 0 => :first, 1 => :second }, number: :state)
       end
     end
   end
@@ -124,8 +121,8 @@ module HeldTilesGames
       game_loop do
         frames += 1
         # Two choices, so the painted scene arrives in the pass the room's cell changed.
-        case_var(:state) { when_val 0, :room }
-        case_var(:state) { when_val 1, :paint }
+        call({ 0 => :room }, number: :state)
+        call({ 1 => :paint }, number: :state)
       end
     end
   end
@@ -260,10 +257,7 @@ class TestHeldTiles < Minitest::Test
       scene(:first) { background :box, tiles: :frame, map: ["##"], held: true }
       scene(:second) { background :box, tiles: :frame, map: ["##"] }
       game_loop do
-        case_var(:state) do
-          when_val 0, :first
-          when_val 1, :second
-        end
+        call({ 0 => :first, 1 => :second }, number: :state)
         state.store! 1
       end
     end

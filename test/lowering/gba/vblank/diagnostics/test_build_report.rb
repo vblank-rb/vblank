@@ -70,10 +70,7 @@ class TestBuildReport < Minitest::Test
       scene(:play) { call :play_work }
       game_loop do
         where = 1 if pressed(:a)
-        case_var(:where) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :where)
       end
     end
     text = report_for(rom)
@@ -100,10 +97,7 @@ class TestBuildReport < Minitest::Test
       end
       game_loop do
         where = 1 if pressed(:a)
-        case_var(:where) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :where)
       end
     end
     text = report_for(rom)
@@ -375,7 +369,7 @@ class TestBuildReport < Minitest::Test
           layer(:near) { background :"#{scene_name}_near", tiles: :set, map: grid }
         end
       end
-      game_loop { case_var(:state) { when_val 0, :title; when_val 1, :play } }
+      game_loop { call({ 0 => :title, 1 => :play }, number: :state) }
     end
     text = report_for(rom)
 

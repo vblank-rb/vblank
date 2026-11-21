@@ -49,7 +49,7 @@ class TestSpriteMemoryMap < Minitest::Test
         PICTURES[6..17].each_with_index { |name, n| sprite :"statue_#{n}", facing: { still: name }, at: [n * 8, 40] }
         sprite :hero, frames: PICTURES[18..25], rate: 2, at: [100, 100]
       end
-      game_loop { case_var(:state) { when_val 0, :playing; when_val 1, :menu } }
+      game_loop { call({ 0 => :playing, 1 => :menu }, number: :state) }
     end
   end
 
@@ -167,7 +167,7 @@ class TestSpriteMemoryMap < Minitest::Test
           PICTURES[1..16].each_with_index { |name, n| sprite :"statue_#{n}", facing: { still: name }, at: [n * 8, 40] }
           pool :gull, x: 0, y: 0, capacity: 2, image: :art_17
         end
-        game_loop { case_var(:state) { when_val 0, :gallery } }
+        game_loop { call({ 0 => :gallery }, number: :state) }
       end
     end
     gallery = screens(error.sprite_memory).fetch(:gallery)

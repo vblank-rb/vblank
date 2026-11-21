@@ -44,10 +44,7 @@ class TestBackgroundSwitch < Minitest::Test
       game_loop do
         tick += 1
         sword.hide
-        case_var(:state) do
-          when_val 0, :field
-          when_val 1, :painted
-        end
+        call({ 0 => :field, 1 => :painted }, number: :state)
       end
     end
     b.finalize_program

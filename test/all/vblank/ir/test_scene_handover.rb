@@ -25,7 +25,7 @@ class TestSceneHandover < Minitest::Test
       end
       scene(:walk) { nil }
       var :state, 0
-      game_loop { case_var(:state) { when_val 0, :menu; when_val 1, :walk } }
+      game_loop { call({ 0 => :menu, 1 => :walk }, number: :state) }
     end
     b.finalize_program
     b.program
@@ -54,7 +54,7 @@ class TestSceneHandover < Minitest::Test
       end
       scene(:walk) { nil }
       var :state, 0
-      game_loop { case_var(:state) { when_val 0, :talk; when_val 1, :walk } }
+      game_loop { call({ 0 => :talk, 1 => :walk }, number: :state) }
     end
     b.finalize_program
     b.program
@@ -105,7 +105,7 @@ class TestSceneHandover < Minitest::Test
       scene(:title) { screen :bitmap }
       scene(:play) { nil }
       var :state, 0
-      game_loop { case_var(:state) { when_val 0, :title; when_val 1, :play } }
+      game_loop { call({ 0 => :title, 1 => :play }, number: :state) }
     end
     b.finalize_program
     handover = Handover.of(b.program)

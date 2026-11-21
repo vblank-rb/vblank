@@ -131,7 +131,7 @@ class TestBuilderIR < Minitest::Test
     ), got
   end
 
-  def test_scene_and_case_var_build_func_and_case_nodes
+  def test_scene_and_scene_dispatch_build_func_and_case_nodes
     got = tree do
       var :state, 0
       scene :title do
@@ -141,14 +141,11 @@ class TestBuilderIR < Minitest::Test
         clear_screen :white
       end
       game_loop do
-        case_var :state do
-          when_val 0, :title
-          when_val 1, :playing
-        end
+        call({ 0 => :title, 1 => :playing }, number: :state)
       end
     end
 
-    # A scene is a func named _scene_<name>; case_var is one case node whose
+    # A scene is a func named _scene_<name>; the dispatch is one case node whose
     # clauses point at those scene funcs. The loop opens with the frame boundary the
     # framework puts there, since a game loop runs once per frame.
     assert_same_shape program(

@@ -70,10 +70,7 @@ class TestSceneArrivalCopy < Minitest::Test
       game_loop do
         pass += 1
         state = 1 if pass == test.class::HANDED_OVER_AT
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
       end
     end
     b.finalize_program

@@ -92,10 +92,7 @@ class TestBackgroundDrawsWithCartridge < Minitest::Test
       end
       game_loop do
         state = 1 if pressed(:b)
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :turn
-        end
+        call({ 0 => :title, 1 => :turn }, number: :state)
       end
     end
     builder.finalize_program

@@ -103,10 +103,7 @@ class TestRulesRun < Minitest::Test
       game_loop do
         passes += 1
         state = 1 if passes == 60
-        case_var(:state) do
-          when_val 0, :walking
-          when_val 1, :opening
-        end
+        call({ 0 => :walking, 1 => :opening }, number: :state)
       end
     end
     b.finalize_program

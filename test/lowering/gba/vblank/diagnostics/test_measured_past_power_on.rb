@@ -23,7 +23,7 @@ class TestMeasuredPastPowerOn < Minitest::Test
       var :where, 0
       scene(:play) { clear_screen :black }
       game_loop do
-        case_var(:where) { when_val 0, :play }
+        call({ 0 => :play }, number: :where)
       end
     end
     game.build_rom(out: StringIO.new, err: StringIO.new, profile: false)
@@ -40,7 +40,7 @@ class TestMeasuredPastPowerOn < Minitest::Test
         repeat(60_000) { pixel 1, 1, :red } if passes < 100
       end
       game_loop do
-        case_var(:where) { when_val 0, :play }
+        call({ 0 => :play }, number: :where)
       end
     end
     game.build_rom(out: StringIO.new, err: StringIO.new, profile: false)

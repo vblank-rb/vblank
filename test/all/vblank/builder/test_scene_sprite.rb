@@ -57,10 +57,7 @@ module SceneSpriteGames
       end
       game_loop do
         state = REST if step == 3
-        case_var(:state) do
-          when_val PLAY, :play
-          when_val REST, :rest
-        end
+        call({ PLAY => :play, REST => :rest }, number: :state)
         instance_exec(shared, step, &each_pass) if each_pass
         step += 1
       end
@@ -91,10 +88,7 @@ class TestSceneSprite < Minitest::Test
       instance_exec(state, step, &scenes)
       game_loop do
         instance_exec(state, step, &first) if first
-        case_var(:state) do
-          when_val PLAY, :play
-          when_val REST, :rest
-        end
+        call({ PLAY => :play, REST => :rest }, number: :state)
         step += 1
       end
     end
@@ -224,7 +218,7 @@ class TestSceneSprite < Minitest::Test
       scene(:play) { sprite(:block, at: START).move :right, by: 3 }
       game_loop do
         shared.move :down, by: 3
-        case_var(:state) { when_val PLAY, :play }
+        call({ PLAY => :play }, number: :state)
       end
     end
     b.finalize_program
@@ -329,10 +323,7 @@ class TestSceneSprite < Minitest::Test
       end
       game_loop do
         state = REST if step == 3
-        case_var(:state) do
-          when_val PLAY, :play
-          when_val REST, :rest
-        end
+        call({ PLAY => :play, REST => :rest }, number: :state)
         step += 1
       end
     end

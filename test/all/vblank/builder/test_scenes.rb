@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# Scenes, the dispatch that picks one (`case_var`), and routines declared from inside another
+# Scenes, the dispatch that picks one (a plain `case`, or `call` with a Hash), and routines declared from inside another
 # routine's body, played on every run. That each of them builds into the Advance's cartridge and
 # does the same on its console, read in the emulator, is in
 # test/lowering/gba/vblank/builder/test_scenes_cartridge.rb, which plays the games kept here in
@@ -28,11 +28,7 @@ module ScenesGames
       scene(:second) { ran_second += 1; state = 2 }
       scene(:third)  { ran_third += 1 }
 
-      case_var :state do
-        when_val 0, :first
-        when_val 1, :second
-        when_val 2, :third
-      end
+      call({ 0 => :first, 1 => :second, 2 => :third }, number: :state)
       halt
     end
   end
@@ -40,9 +36,9 @@ module ScenesGames
   OVER = 2 # The state the last of #three_screens is up for
 
   # Three screens picked by a number, each handing on to the next on a pass the loop counts, the
-  # last named by a constant. +pick+ is how the scene is picked: `:case_var`, a plain Ruby
-  # `case` (`:plain_case`), or `call` with a Hash built while the cartridge is made (`:hash`),
-  # with an `if` and a loop. The title has a sprite of its own, shown only while it is up.
+  # last named by a constant. +pick+ is how the scene is picked: a plain Ruby `case`
+  # (`:plain_case`), or `call` with a Hash built while the cartridge is made (`:hash`), with an
+  # `if` and a loop. The title has a sprite of its own, shown only while it is up.
   private def three_screens(pick:)
     builder = Builder.new
     builder.instance_eval do
@@ -81,15 +77,6 @@ module ScenesGames
           when 0 then call :title
           when 1 then call :play
           when OVER then call :over
-          end
-          step += 1
-        end
-      when :case_var
-        game_loop do
-          case_var :state do
-            when_val 0, :title
-            when_val 1, :play
-            when_val OVER, :over
           end
           step += 1
         end
@@ -139,10 +126,7 @@ module ScenesGames
         began = step if began == -1
       end
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
         step += 1
       end
     end
@@ -155,7 +139,7 @@ class TestScenes < Minitest::Test
   include ScenesGames
 
   # ========================================================================
-  # case_var
+  # The scene dispatch
   # ========================================================================
 
   def test_a_scene_that_hands_on_does_not_run_the_scene_it_hands_to
@@ -173,37 +157,33 @@ class TestScenes < Minitest::Test
   # A plain Ruby case that picks a scene
   # ========================================================================
 
-  def test_scenes_picked_by_a_plain_case_play_as_with_case_var
+  def test_scenes_picked_by_a_plain_case_run_one_a_pass_each_handing_on
     counts = ->(ran) { %i[ran_title ran_play ran_over state].map { |name| ran[name] } }
-    by_case_var = game_player.run(three_screens(pick: :case_var), frames: 12)
     by_plain_case = game_player.run(three_screens(pick: :plain_case), frames: 12)
 
-    assert_equal [6, 3, 3, 0], counts.call(by_case_var)
-    assert_equal counts.call(by_case_var), counts.call(by_plain_case)
+    assert_equal [6, 3, 3, 0], counts.call(by_plain_case)
   end
 
   def test_a_scenes_sprite_shows_only_while_a_plain_case_has_it_up
-    shown = lambda do |pick, frames|
+    shown = lambda do |frames|
       player = game_player
-      player.run(three_screens(pick: pick), frames: frames)
+      player.run(three_screens(pick: :plain_case), frames: frames)
       player.screen.pixel(44, 44)
     end
 
-    refute_equal shown.call(:case_var, 2), shown.call(:case_var, 6), "the title's sprite goes when play takes over"
-    assert_equal [shown.call(:case_var, 2), shown.call(:case_var, 6)],
-                 [shown.call(:plain_case, 2), shown.call(:plain_case, 6)]
+    refute_equal shown.call(2), shown.call(6), "the title's sprite goes when play takes over"
   end
 
   # ========================================================================
   # call with a Hash of numbers to scenes
   # ========================================================================
 
-  def test_scenes_picked_from_a_hash_play_as_with_case_var
+  def test_scenes_picked_from_a_hash_play_as_with_a_plain_case
     counts = ->(ran) { %i[ran_title ran_play ran_over state].map { |name| ran[name] } }
-    by_case_var = game_player.run(three_screens(pick: :case_var), frames: 12)
+    by_plain_case = game_player.run(three_screens(pick: :plain_case), frames: 12)
     by_hash = game_player.run(three_screens(pick: :hash), frames: 12)
 
-    assert_equal counts.call(by_case_var), counts.call(by_hash)
+    assert_equal counts.call(by_plain_case), counts.call(by_hash)
   end
 
   def test_a_scenes_sprite_shows_only_while_a_hash_has_it_up
@@ -213,7 +193,7 @@ class TestScenes < Minitest::Test
       player.screen.pixel(44, 44)
     end
 
-    assert_equal [shown.call(:case_var, 2), shown.call(:case_var, 6)], [shown.call(:hash, 2), shown.call(:hash, 6)]
+    assert_equal [shown.call(:plain_case, 2), shown.call(:plain_case, 6)], [shown.call(:hash, 2), shown.call(:hash, 6)]
   end
 
   def test_a_hash_that_picks_one_scene_with_two_numbers_is_a_friendly_error
@@ -242,29 +222,37 @@ class TestScenes < Minitest::Test
   end
 
   def test_a_hash_of_scenes_and_funcs_together_is_a_friendly_error
-    error = assert_raises(ArgumentError) do
-      Builder.new.instance_eval do
-        state = 0
-        scene(:title) { state = 1 }
-        func(:reset) { state = 0 }
-        game_loop { call({ 0 => :title, 1 => :reset }, number: state) }
-      end
-    end
-
-    assert_match(/scenes and funcs together/, error.message)
-  end
-
-  # The Hash is made the dispatch as its line runs, so a scene declared below it is not one yet.
-  def test_a_hash_naming_a_scene_declared_below_it_is_a_friendly_error
     builder = Builder.new
     builder.instance_eval do
       state = 0
-      game_loop { call({ 0 => :title }, number: state) }
-      scene(:title) { state = 0 }
+      scene(:title) { state = 1 }
+      func(:reset) { state = 0 }
+      game_loop { call({ 0 => :title, 1 => :reset }, number: state) }
     end
     error = assert_raises(ArgumentError) { builder.finalize_program }
 
-    assert_match(/:title is a scene declared below/, error.message)
+    assert_match(/scenes and other routines together/, error.message)
+  end
+
+  # Unlike a plain `case`, a Hash can name scenes declared below it: it is made the dispatch once
+  # every scene is declared.
+  def test_a_hash_naming_scenes_declared_below_it_picks_them
+    builder = Builder.new
+    builder.instance_eval do
+      state = 0
+      ran_title = 0
+      ran_play = 0
+      game_loop { call({ 0 => :title, 1 => :play }, number: state) }
+      scene(:title) do
+        ran_title += 1
+        state = 1
+      end
+      scene(:play) { ran_play += 1 }
+    end
+    builder.finalize_program
+    ran = game_player.run(builder.program, frames: 4)
+
+    assert_equal [1, 3], [ran[:ran_title], ran[:ran_play]]
   end
 
   def test_a_func_declared_after_a_hash_with_a_scenes_name_is_a_friendly_error
@@ -441,7 +429,7 @@ class TestScenes < Minitest::Test
       n = 0
       scene(:play, measure_holding: %i[b]) { n += 1 }
       game_loop do
-        case_var(:state) { when_val 0, :play }
+        call({ 0 => :play }, number: :state)
       end
     end
     builder.finalize_program

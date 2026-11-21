@@ -41,10 +41,7 @@ class TestSceneBackdropOnTheSuperNintendo < Minitest::Test
         faded = 0 if tick == 9
         fade :white, faded
         state = 1 if tick == 6
-        case_var(:state) do
-          when_val 0, :board
-          when_val 1, :title
-        end
+        call({ 0 => :board, 1 => :title }, number: :state)
       end
     end
     b.finalize_program

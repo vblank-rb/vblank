@@ -362,10 +362,7 @@ class TestDrawInOrder < Minitest::Test
       game_loop do
         t += 1
         state = ((t / 11) % 4) == 3 ? 1 : 0
-        case_var(:state) do
-          when_val 0, :playing
-          when_val 1, :resting
-        end
+        call({ 0 => :playing, 1 => :resting }, number: :state)
       end
     end
   end
@@ -870,7 +867,7 @@ class TestDrawInOrder < Minitest::Test
         draw_in_order one, two
       end
       var :state, 0
-      game_loop { case_var(:state) { when_val 0, :playing } }
+      game_loop { call({ 0 => :playing }, number: :state) }
     end
 
     assert_match(/scene/, message)

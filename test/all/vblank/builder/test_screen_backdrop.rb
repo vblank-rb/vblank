@@ -26,7 +26,7 @@ class TestScreenBackdrop < Minitest::Test
       game_loop do
         state = 0 if tick == up_at
         tick += 1
-        case_var(:state) { when_val 0, :corner }
+        call({ 0 => :corner }, number: :state)
       end
     end
     b.finalize_program

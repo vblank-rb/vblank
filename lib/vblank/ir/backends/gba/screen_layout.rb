@@ -576,7 +576,7 @@ module VBlank
           # The sprite colour tables sent with the sprites (see
           # SpriteDrawing#emit_scene_colors_on_change), and the one variable that picks their scenes.
           # Only in a game whose loop writes the frame's sprites, and where every scene sending a
-          # table of its own is reached one way: by one clause of a `case_var` on that one variable,
+          # table of its own is reached one way: by one clause of a scene dispatch on that one variable,
           # and by nothing else. There the variable says which scene's sprites are up, so it can say
           # which table goes in. A scene also called by name, or picked by a second variable, is up
           # when the variable does not say so, and two variables could each send a table over the
@@ -609,7 +609,7 @@ module VBlank
             ScenesPicked.new(state: states.first, picks: picks)
           end
 
-          # Every way each scene is reached: [variable, value] for each `case_var` clause naming it,
+          # Every way each scene is reached: [variable, value] for each scene dispatch clause naming it,
           # nil for each call by name.
           def scene_reaches
             @program.walk.each_with_object(Hash.new { |hash, scene| hash[scene] = [] }) do |node, reached|
@@ -2988,7 +2988,7 @@ module VBlank
                     "The sprite :#{node.declared || node.name} can put_in_layer, and it is on screens where its " \
                     "layers are at different depths. The game does not pick those screens with one variable, " \
                     "so the sprite cannot know which screen is up. To fix this, declare the sprite inside each " \
-                    "scene, or pick every scene with one `case_var`."
+                    "scene, or pick every scene with one `case`."
             end
             [states.first, rows.to_h { |scene, row| [gates[scene].last, row] }]
           end

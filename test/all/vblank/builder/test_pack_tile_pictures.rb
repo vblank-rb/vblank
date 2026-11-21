@@ -119,10 +119,7 @@ module PackTilePictureGames
         pass += 1
         CHANGING_LISTS.each_key { |list| recolor list, [:"#{list}_dusk"], showing: pass % 2 }
         state = 1 if pass == TITLE_PASSES
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :lair
-        end
+        call({ 0 => :title, 1 => :lair }, number: :state)
       end
     end
     b.finalize_program
@@ -231,7 +228,7 @@ module PackTilePictureGames
         end
         blocks.show((tick / 2) % 3)
       end
-      game_loop { case_var(:where) { when_val 0, :stage } }
+      game_loop { call({ 0 => :stage }, number: :where) }
     end
     b.finalize_program
     [b.program, b.made_data_pack_file]
@@ -337,7 +334,7 @@ module PackTilePictureGames
           tick += 1
           instance_exec(belt, tick, &step)
         end
-        game_loop { case_var(:where) { when_val 0, :play } }
+        game_loop { call({ 0 => :play }, number: :where) }
       else
         instance_exec(&show)
         game_loop do

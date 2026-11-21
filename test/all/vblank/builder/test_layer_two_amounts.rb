@@ -188,10 +188,7 @@ class TestLayerTwoAmounts < Minitest::Test
         where = 1 if pressed(:a)
         where = 0 if pressed(:b)
         glow = 6
-        case_var(:where) do
-          when_val 0, :title
-          when_val 1, :files
-        end
+        call({ 0 => :title, 1 => :files }, number: :where)
       end
     end
   end
@@ -221,7 +218,7 @@ class TestLayerTwoAmounts < Minitest::Test
         layer(:glass, transparency: 60) { background :pane, tiles: :twos, map: ["#"] }
       end
       var :where, 0
-      game_loop { case_var(:where) { when_val 0, :inside } }
+      game_loop { call({ 0 => :inside }, number: :where) }
     end
     checks = [VBlank::IR::Guardrails::Checks::SeeThroughPerScreen.new]
     message = VBlank::IR::Guardrails::Validator.new(checks: checks).run(both, autofix: false).errors.first.message

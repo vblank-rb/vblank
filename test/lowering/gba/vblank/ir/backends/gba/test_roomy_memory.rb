@@ -134,7 +134,7 @@ class TestRoomyMemory < Minitest::Test
       cold.push 1
       var :state, 0
       scene(:playing) { hot.push 2 }
-      game_loop { case_var(:state) { when_val 0, :playing } }
+      game_loop { call({ 0 => :playing }, number: :state) }
     end
 
     moved = roomy_of(rom).collections.keys
@@ -306,10 +306,7 @@ class TestRoomyMemory < Minitest::Test
       game_loop do
         trickle[3] = spin
         where = 1 if pressed(:start)
-        case_var(:where) do
-          when_val 0, :left
-          when_val 1, :right
-        end
+        call({ 0 => :left, 1 => :right }, number: :where)
       end
     end
   end

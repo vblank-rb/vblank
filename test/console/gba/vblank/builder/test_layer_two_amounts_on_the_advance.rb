@@ -60,10 +60,7 @@ module LayerTwoAmountsGames
         where = 1 if pressed(:a)
         where = 0 if pressed(:b)
         glow = 6
-        case_var(:where) do
-          when_val 0, :title
-          when_val 1, :files
-        end
+        call({ 0 => :title, 1 => :files }, number: :where)
       end
     end
   end

@@ -63,10 +63,7 @@ module ColorScreenGames
     game_loop do
       tick += 1
       state = 1 if tick == 4
-      case_var(:state) do
-        when_val 0, :play
-        when_val 1, :menu
-      end
+      call({ 0 => :play, 1 => :menu }, number: :state)
     end
   end)
 

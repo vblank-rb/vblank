@@ -40,7 +40,7 @@ class TestPlacedFadeBesideLightCartridge < Minitest::Test
         turn += 1
         mode.store!(1) if turn == LIT_ON
         mode.store!(0) if turn == BACK_ON
-        case_var(:mode) { when_val 0, :title; when_val 1, :lit }
+        call({ 0 => :title, 1 => :lit }, number: :mode)
       end
     end
     builder.finalize_program

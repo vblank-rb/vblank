@@ -154,10 +154,7 @@ module SceneColorGames
         level = 0 if level < 0
         state = 0 if pass == FIRST_SCENE_AGAIN_PASS
         fade :black, level
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
     b.finalize_program
@@ -229,10 +226,7 @@ module SceneColorGames
         recolor :lights_colors, %i[lights_dim_colors], showing: 1 if pass == LIGHTS_BACK_PASS
         state = 1 if pass == LAIR_PASS
         state = 0 if pass == TITLE_AGAIN_PASS
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :lair
-        end
+        call({ 0 => :title, 1 => :lair }, number: :state)
       end
     end
     b.finalize_program
@@ -291,10 +285,7 @@ module SceneColorGames
       game_loop do
         pass += 1
         state = 1 if pass == LIST_SCENE_PASS
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :pieces
-        end
+        call({ 0 => :title, 1 => :pieces }, number: :state)
       end
     end
     b.finalize_program

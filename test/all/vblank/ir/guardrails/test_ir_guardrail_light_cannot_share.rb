@@ -83,7 +83,7 @@ class TestIrGuardrailLightCannotShare < Minitest::Test
       var :mode, 0
       scene(:title) { instance_exec(&title) }
       scene(:playing) { instance_exec(&playing) }
-      game_loop { case_var(:mode) { when_val 0, :title; when_val 1, :playing } }
+      game_loop { call({ 0 => :title, 1 => :playing }, number: :mode) }
     end
     builder.finalize_program
     Check.new.detect(builder.program)
@@ -110,7 +110,7 @@ class TestIrGuardrailLightCannotShare < Minitest::Test
       var :mode, 0
       scene(:title) { instance_exec(&water) }
       scene(:playing) { iris_out from: 150, by: 4 }
-      game_loop { case_var(:mode) { when_val 0, :title; when_val 1, :playing } }
+      game_loop { call({ 0 => :title, 1 => :playing }, number: :mode) }
     end
 
     refute_nil rom
@@ -182,7 +182,7 @@ class TestIrGuardrailLightCannotShare < Minitest::Test
       scene(:playing) { iris_out from: 150, by: 4 }
       game_loop do
         fade :black, 50, under: :ui
-        case_var(:mode) { when_val 0, :playing }
+        call({ 0 => :playing }, number: :mode)
       end
     end
     builder.finalize_program
@@ -195,7 +195,7 @@ class TestIrGuardrailLightCannotShare < Minitest::Test
   def test_a_light_in_a_game_that_shows_a_bitmap_screen_is_an_error
     found = findings do
       scene(:title) { screen :bitmap }
-      case_var(:mode) { when_val 0, :title }
+      call({ 0 => :title }, number: :mode)
     end
 
     assert_match(/screen :bitmap/, found.map(&:message).join)

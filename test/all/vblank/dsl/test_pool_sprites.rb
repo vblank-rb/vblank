@@ -147,10 +147,7 @@ class TestPoolSprites < Minitest::Test
       end
       game_loop do
         wait_vblank
-        case_var(:state) do
-          when_val 0, :menu
-          when_val 1, :play
-        end
+        call({ 0 => :menu, 1 => :play }, number: :state)
       end
     end
     b.finalize_program
@@ -170,7 +167,7 @@ class TestPoolSprites < Minitest::Test
         wave = pool :enemy, x: 0, y: 0, capacity: 4, image: :ufo
         wave.spawn x: 50, y: 50 if wave.count == 0
       end
-      game_loop { wait_vblank; case_var(:state) { when_val 0, :menu; when_val 1, :play } }
+      game_loop { wait_vblank; call({ 0 => :menu, 1 => :play }, number: :state) }
     end
     b2.finalize_program
     on_play = game_player.run(b2.program)

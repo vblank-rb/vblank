@@ -123,7 +123,7 @@ class TestPackBarBesideSpritesOnTheSuperNintendo < Minitest::Test
       end
       game_loop do
         walk += 1
-        case_var(:state) { when_val 0, :stage }
+        call({ 0 => :stage }, number: :state)
       end
     end
     b.finalize_program

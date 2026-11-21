@@ -285,10 +285,7 @@ class TestSceneHandoverScenarios < Minitest::Test
       instance_eval do
         game_loop do
           tick.increase! 1
-          case_var(:state) do
-            when_val 0, first
-            when_val 1, second
-          end
+          call({ 0 => first, 1 => second }, number: :state)
         end
       end
     end
@@ -313,11 +310,9 @@ class TestSceneHandoverScenarios < Minitest::Test
         game_loop do
           tick += 1
           yield tick, state if block_given?
-          case_var(:state) do
-            when_val 0, :tiled_screen
-            when_val 1, :bitmap_screen
-            when_val 2, third if third
-          end
+          screens = { 0 => :tiled_screen, 1 => :bitmap_screen }
+          screens[2] = third if third
+          call screens, number: :state
         end
       end
     end
@@ -438,7 +433,7 @@ class TestSceneHandoverScenarios < Minitest::Test
         clear_screen :blue
         background :field, tiles: :set, map: Array.new(4) { "#" * 4 }
       end
-      game_loop { case_var(:state) { when_val 0, :field } }
+      game_loop { call({ 0 => :field }, number: :state) }
     end
   end
 
@@ -462,10 +457,7 @@ class TestSceneHandoverScenarios < Minitest::Test
       end
       game_loop do
         tick += 1
-        case_var(:state) do
-          when_val 0, :paint
-          when_val 1, :play
-        end
+        call({ 0 => :paint, 1 => :play }, number: :state)
       end
     end
   end
@@ -493,10 +485,7 @@ class TestSceneHandoverScenarios < Minitest::Test
       end
       game_loop do
         tick += 1
-        case_var(:state) do
-          when_val 0, :paint
-          when_val 1, :play
-        end
+        call({ 0 => :paint, 1 => :play }, number: :state)
       end
     end
   end
@@ -517,10 +506,7 @@ class TestSceneHandoverScenarios < Minitest::Test
       end
       game_loop do
         tick += 1
-        case_var(:state) do
-          when_val 0, :tiled_screen
-          when_val 1, :bitmap_screen
-        end
+        call({ 0 => :tiled_screen, 1 => :bitmap_screen }, number: :state)
       end
     end
   end

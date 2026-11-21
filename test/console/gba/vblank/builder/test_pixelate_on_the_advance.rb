@@ -574,10 +574,7 @@ class TestPixelateOnTheAdvance < Minitest::Test
       game_loop do
         ticks += 1
         state = 1 if ticks == 6
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :world
-        end
+        call({ 0 => :title, 1 => :world }, number: :state)
       end
     end
 

@@ -259,7 +259,7 @@ class TestBackgroundDrawsWith < Minitest::Test
         end
       end
       game_loop do
-        case_var(:showing) { 3.times { |s| when_val s, :"room#{s}" } }
+        call 3.times.to_h { |s| [s, :"room#{s}"] }, number: :showing
         step += 1
       end
     end

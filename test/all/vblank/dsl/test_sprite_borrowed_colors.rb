@@ -121,10 +121,7 @@ class TestSpriteBorrowedColors < Minitest::Test
         tick += 1
         state = (tick / 7) % 2
         things.each { |thing| thing.draw_with KIND_LISTS, showing: thing.kind }
-        case_var(:state) do
-          when_val 0, :plain
-          when_val 1, :dotted
-        end
+        call({ 0 => :plain, 1 => :dotted }, number: :state)
       end
     end
 

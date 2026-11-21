@@ -48,7 +48,7 @@ class TestIRGuardrailRoutineNeverCalled < Minitest::Test
       var :state, 0
       scene(:title) { clear_screen :black }
       scene(:credits) { clear_screen :white }
-      game_loop { case_var(:state) { when_val 0, :title } }
+      game_loop { call({ 0 => :title }, number: :state) }
     end
 
     assert_equal 1, found.size

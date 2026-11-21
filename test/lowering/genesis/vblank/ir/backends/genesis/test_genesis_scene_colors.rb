@@ -104,10 +104,7 @@ class TestGenesisSceneColors < Minitest::Test
       scene(:one) { 2.times { |which| sprite :"pose_0_#{which}", at: [16 + (which * 16), 16] } }
       scene(:two) { 2.times { |which| sprite :"pose_1_#{which}", at: [16 + (which * 16), 16] } }
       dispatch = lambda do
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
       game_loop do
         tick += 1
@@ -136,6 +133,6 @@ class TestGenesisSceneColors < Minitest::Test
     error = assert_raises(Genesis::LoweringError) { Genesis.new.build(sprite_scenes(inside_test: true)) }
 
     assert_includes error.message, "share the same sets of colours for their sprites"
-    assert_includes error.message, "move `case_var(:state)` to the top"
+    assert_includes error.message, "move the line that picks the scene by `state` to the top"
   end
 end

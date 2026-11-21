@@ -96,10 +96,7 @@ class TestGBCLowering < Minitest::Test
         which += 1
       end
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
         every(3) { beats += 1 }
         if held(:a)
           total -= 7

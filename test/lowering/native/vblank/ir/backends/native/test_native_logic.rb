@@ -175,10 +175,7 @@ class TestNativeLogic < Minitest::Test
       end
       scene(:playing) { call :bump }
       game_loop do
-        case_var :state do
-          when_val 0, :title
-          when_val 1, :playing
-        end
+        call({ 0 => :title, 1 => :playing }, number: :state)
       end
     end
 

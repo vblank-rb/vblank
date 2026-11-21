@@ -87,10 +87,7 @@ module LayerOverSpritesGames
         game_loop do
           pass += 1
           where = 1 if pass == switch_at
-          case_var(:where) do
-            when_val 0, :title
-            when_val 1, :room
-          end
+          call({ 0 => :title, 1 => :room }, number: :where)
         end
       else
         instance_exec(&room)

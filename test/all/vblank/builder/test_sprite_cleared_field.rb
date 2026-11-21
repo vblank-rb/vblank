@@ -179,10 +179,7 @@ class TestSpriteClearedField < Minitest::Test
       scene(:play) { instance_exec(sprite(:block, at: START), state, step, &play) }
       scene(:rest) {}
       game_loop do
-        case_var(:state) do
-          when_val PLAY, :play
-          when_val REST, :rest
-        end
+        call({ PLAY => :play, REST => :rest }, number: :state)
         step += 1
       end
     end

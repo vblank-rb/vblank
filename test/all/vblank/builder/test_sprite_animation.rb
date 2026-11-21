@@ -39,7 +39,7 @@ module SpriteAnimationGames
           declare.call
           count.call
         end
-        game_loop { case_var(:state) { when_val 0, :play } }
+        game_loop { call({ 0 => :play }, number: :state) }
       else
         declare.call
         game_loop do

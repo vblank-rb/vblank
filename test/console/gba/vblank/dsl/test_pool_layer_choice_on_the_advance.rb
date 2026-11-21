@@ -131,10 +131,7 @@ class TestPoolLayerChoiceOnTheAdvance < Minitest::Test
         guards.put_in_layer :upper
       end
       game_loop do
-        case_var(:mode) do
-          when_val 0, :field
-          when_val 1, :house
-        end
+        call({ 0 => :field, 1 => :house }, number: :mode)
       end
     end
   end

@@ -183,11 +183,7 @@ class TestColorsInUse < Minitest::Test
         tick += 1
         state = 1 if tick > 3
         state = 2 if tick > 6
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-          when_val 2, :three
-        end
+        call({ 0 => :one, 1 => :two, 2 => :three }, number: :state)
       end
     end
   end

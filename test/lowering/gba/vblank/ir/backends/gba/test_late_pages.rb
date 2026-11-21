@@ -154,14 +154,11 @@ class TestLatePages < Minitest::Test
         clear_screen :gray
         repeat(ENDS_NEAR_THE_TOP) { done += 1 }
       end
-      if dispatch == :case_var
+      if dispatch == :number
         state = 0
         game_loop do
           after(5) { state = stay == :menu ? 0 : 1 }
-          case_var(:state) do
-            when_val 0, :menu
-            when_val 1, :play
-          end
+          call({ 0 => :menu, 1 => :play }, number: :state)
         end
       else
         mode = var :mode, :menu
@@ -178,7 +175,7 @@ class TestLatePages < Minitest::Test
   def test_a_scene_with_no_screen_line_shows_a_late_page_as_the_games_screen_says
     require_emulator!
 
-    assert_operator profile_of(two_scene_program(:case_var, :play), "LATEPLAY").fps, :>, 35.0
+    assert_operator profile_of(two_scene_program(:number, :play), "LATEPLAY").fps, :>, 35.0
   end
 
   def test_a_scene_the_game_calls_by_name_does_the_same
@@ -190,7 +187,7 @@ class TestLatePages < Minitest::Test
   def test_a_scene_whose_own_screen_waits_still_waits
     require_emulator!
 
-    assert_in_delta 30.0, profile_of(two_scene_program(:case_var, :menu), "LATEMENU").fps, 0.5
+    assert_in_delta 30.0, profile_of(two_scene_program(:number, :menu), "LATEMENU").fps, 0.5
   end
 
   # What is drawn does not change, only when it is shown.

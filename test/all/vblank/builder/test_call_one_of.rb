@@ -261,7 +261,12 @@ class TestCallOneOf < Minitest::Test
 
   # The table a Hash is laid out as has a slot for every number from its first key to its last.
   def test_a_hash_whose_keys_are_far_apart_is_refused
-    err = assert_raises(ArgumentError) { program_with { call({ 0 => :a, 5000 => :b }, number: 0) } }
+    err = assert_raises(ArgumentError) do
+      program_with do
+        which = var :which, 0
+        call({ 0 => :a, 5000 => :b }, number: which)
+      end
+    end
 
     assert_match(/0 to 5000/, err.message)
   end

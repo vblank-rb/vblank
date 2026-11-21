@@ -197,7 +197,7 @@ class TestNameVariables < Minitest::Test
 
   # --- a name that picks a SCENE ---
   #
-  # `call mode` over names that are scenes is the same thing as a `case_var` over them: each
+  # `call mode` over names that are scenes is the same thing as a `case` calling them: each
   # scene owns what it declares — its tiled text, its sprites, its scenery — and shows it only
   # while it runs.
 

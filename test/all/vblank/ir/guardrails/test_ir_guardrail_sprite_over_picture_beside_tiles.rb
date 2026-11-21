@@ -24,10 +24,7 @@ class TestIRGuardrailSpriteOverPictureBesideTiles < Minitest::Test
       end
       scene(:map) { screen map_screen }
       game_loop do
-        case_var :state do
-          when_val 0, :play
-          when_val 1, :map
-        end
+        call({ 0 => :play, 1 => :map }, number: :state)
       end
     end
     b.finalize_program

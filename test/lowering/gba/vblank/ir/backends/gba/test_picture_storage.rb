@@ -149,10 +149,7 @@ class TestPictureStorage < Minitest::Test
       scene(:one) { per_scene.times { |i| sprite :"art#{i}", at: [8 * i, 20] } }
       scene(:two) { per_scene.times { |i| sprite :"art#{per_scene + i}", at: [8 * i, 60] } }
       game_loop do
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
         state = 0
       end
     end
@@ -202,10 +199,7 @@ class TestPictureStorage < Minitest::Test
       game_loop do
         frames += 1
         state = 1 if frames >= switch_at
-        case_var(:state) do
-          when_val 0, :first
-          when_val 1, :second
-        end
+        call({ 0 => :first, 1 => :second }, number: :state)
       end
     end
     builder.finalize_program

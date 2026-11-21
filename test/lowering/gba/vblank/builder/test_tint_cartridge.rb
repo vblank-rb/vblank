@@ -132,10 +132,7 @@ class TestTintCartridge < Minitest::Test
         ticks += 1
         state = (ticks / 5) % 2
         tint :red, (ticks * 4) % 100
-        case_var(:state) do
-          when_val 0, :painted
-          when_val 1, :tiles
-        end
+        call({ 0 => :painted, 1 => :tiles }, number: :state)
       end
     end
     b.finalize_program

@@ -71,10 +71,7 @@ class TestPerSceneModeCartridge < Minitest::Test
       end
       game_loop do
         wait_vblank
-        case_var :state do
-          when_val 0, :a
-          when_val 1, :b
-        end
+        call({ 0 => :a, 1 => :b }, number: :state)
       end
     end
     b.finalize_program
@@ -114,7 +111,7 @@ class TestPerSceneModeCartridge < Minitest::Test
 
       game_loop do
         wait_vblank
-        case_var(:state) { when_val 0, :title; when_val 1, :playing }
+        call({ 0 => :title, 1 => :playing }, number: :state)
       end
     end
     b.finalize_program
@@ -156,7 +153,7 @@ class TestPerSceneModeCartridge < Minitest::Test
         zoom.approach! 4.0, 0.15
         board.scale(zoom)
       end
-      game_loop { wait_vblank; case_var(:state) { when_val 0, :title } }
+      game_loop { wait_vblank; call({ 0 => :title }, number: :state) }
     end
     b.finalize_program
     rom = VBlank::Cartridge::ROM.assemble(GBA.new.lower(b.program), title: "ZOOM", code: "BZOM", maker: "01")

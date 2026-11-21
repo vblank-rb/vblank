@@ -132,7 +132,7 @@ module VBlank
     include Places     # place, viewer, draw_place (a first-person view of a place made of flat faces)
     include Variables  # set/var, add, sub, negate/flip, copy, abs, negate_abs, clamp, variables
     include ControlFlow # game_loop, wait_vblank, repeat, every, after, halt, debug_halt
-    include Scenes     # func, call, scene, case_var, dump_func
+    include Scenes     # func, call, scene, dump_func
     include Collision  # box (overlaps? lives on the shape — Box/Sprite via Bounds)
     include Tiled      # tiles, background (tiled-graphics surface; hardware lowering to follow)
     include TileRuns   # tiles from: a list — tiles the game paints as it runs
@@ -295,7 +295,7 @@ module VBlank
       @per_pass_routines = []    # func names the framework calls once a pass, after the frame boundary
       @pass_jobs = {}            # each_pass jobs by name (or their routine's, when unnamed)
       @each_frame_seq = 0        # counts once_a_frame bodies, to name each one's hidden routine
-      @scene_gates = {}        # scene func name → [state_var, value] it's dispatched on (from case_var), for gating its presentation
+      @scene_gates = {}        # scene func name → [state_var, value] it's dispatched on (from the scene dispatch), for gating its presentation
       @current_scene_gate = nil # while a scene func's body is being built: the [state_var, value] its declarations belong to
       @building_scene = nil    # the scene func name currently being built (lets its presentation be declared inside it)
       @layer_stack = []        # the layers the program declared, back to front (see Builder::Layers)
@@ -691,8 +691,9 @@ module VBlank
     # call and case target names a function that exists. Called automatically by
     # VBlank.build after the DSL block.
     def finalize_program
-      convert_scene_name_dispatches # `call mode` over scene names is a case_var over them
-      @scene_gates = scan_scene_gates # which state value each scene is shown for (from case_var)
+      resolve_hash_dispatches! # a Hash given to `call` is a scene dispatch or a call by number
+      convert_scene_name_dispatches # `call mode` over scene names is a scene dispatch over them
+      @scene_gates = scan_scene_gates # which state value each scene is shown for (from the scene dispatch)
 
       # The program's default display mode — whatever the top-level `screen` left set.
       # Each scene starts from this, so one scene's `screen` (a tiled game) can't leak
@@ -747,7 +748,6 @@ module VBlank
       finalize_per_pass_routines
       refuse_non_scenes_in_scene_dispatch!
       refuse_func_named_like_case_scene!
-      refuse_scene_declared_after_hash!
       finalize_name_dispatches
       finalize_pool_walks
       finalize_pool_colors
@@ -1579,7 +1579,7 @@ module VBlank
       @persisted.any? { |v| v.name == name }
     end
 
-    # Which scenes are shown for which state, read from the case_var dispatch(es):
+    # Which scenes are shown for which state, read from the scene dispatch (case nodes):
     # a scene func named as a case target is presented only while the dispatched
     # variable holds that clause's value. Maps a scene func name → [state_var, value],
     # so a sprite/HUD declared inside that scene can be gated to when the scene is live.
@@ -2069,7 +2069,7 @@ module VBlank
     end
 
     # A name that picks a scene. `call mode` runs the routine its variable names, and when
-    # those names are scenes it is exactly a `case_var` over them — so it is made one, here,
+    # those names are scenes it is exactly a scene dispatch (a case node) over them — so it is made one, here,
     # before any scene's body is built. Everything that asks which scene a thing belongs to
     # reads case dispatches (a scene's text, sprites and scenery are shown only while it
     # runs; the display is told its layers as it takes over), and it all then works for
@@ -2331,7 +2331,7 @@ module VBlank
     # is the builder), or a plain Ruby object when a game is split across files — there
     # the block still sees that object's @ivars, while its bare verbs resolve against the
     # build it was handed (see examples/shmup). +args+ pass through to a block that takes them (a loop
-    # index). Sub-DSLs with their own vocabulary — `entry`, `case_var`, `font`, `song` —
+    # index). Sub-DSLs with their own vocabulary — `entry`, `font`, `song` —
     # keep instance_eval instead, since their blocks speak a different verb set.
     def run_block(*args)
       yield(*args)

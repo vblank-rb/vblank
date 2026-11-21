@@ -150,7 +150,7 @@ module ManyRoomsGame
       end
       game_loop do
         tick += 1
-        case_var(:state) { when_val 0, :play }
+        call({ 0 => :play }, number: :state)
       end
     end
   end

@@ -24,11 +24,7 @@ class TestExamplesUseEveryVerb < Minitest::Test
   # data pack left out, so it needs one too.
   # colors_name_of gives the name of the list a picture is drawn from, which a game needs only
   # for a pose that takes its colours from a data pack's frame; elsewhere the game wrote the name.
-  # case_var is the older spelling of a plain `case` whose arms each call a scene, which builds the
-  # same dispatch and is what the examples write; it stays only until the games built on VBlank
-  # have moved off it.
-  NOT_FOR_AN_EXAMPLE = %i[debug_halt dump_func entry data_pack shell_screen colors_name_of built_for_computer?
-                          case_var].freeze
+  NOT_FOR_AN_EXAMPLE = %i[debug_halt dump_func entry data_pack shell_screen colors_name_of built_for_computer?].freeze
 
   def test_every_verb_is_called_in_an_example
     called = Dir[VBlank.root.join("examples/**/*.rb").to_s].each_with_object(Set.new) do |path, names|

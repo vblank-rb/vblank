@@ -50,7 +50,7 @@ class TestPictureGroupsMemoryMap < Minitest::Test
         rooms.show room
         gulls.each { |gull| gull.face PICTURES[1..6], showing: gull.look }
       end
-      game_loop { case_var(:state) { when_val 0, :harbor } }
+      game_loop { call({ 0 => :harbor }, number: :state) }
     end
   end
 
@@ -171,7 +171,7 @@ class TestPictureGroupsMemoryMap < Minitest::Test
         PICTURES.each_with_index { |name, n| image name, width: 64, height: 64, data: art.call(n) }
         var :state, 0
         instance_exec(&block)
-        game_loop { case_var(:state) { when_val 0, :gallery } }
+        game_loop { call({ 0 => :gallery }, number: :state) }
       end
     end.message
   end

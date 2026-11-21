@@ -128,10 +128,7 @@ class TestStatusBar < Minitest::Test
         tick += 1
         state = 1 if tick == 5
         state = 0 if tick == 8
-        case_var(:state) do
-          when_val 0, :play
-          when_val 1, :pause
-        end
+        call({ 0 => :play, 1 => :pause }, number: :state)
       end
     end
   end
@@ -155,10 +152,7 @@ class TestStatusBar < Minitest::Test
       game_loop do
         tick += 1
         state = 1 if tick == 4
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
 
@@ -256,7 +250,7 @@ class TestStatusBar < Minitest::Test
       state = var :state, 0
       scene(:play) { background :field, tiles: :field_tiles, map: Array.new(32) { "#" * 32 } }
       game_loop do
-        case_var(:state) { when_val 0, :play }
+        call({ 0 => :play }, number: :state)
         call :put_up_bar if step >= 3
         step += 1
       end

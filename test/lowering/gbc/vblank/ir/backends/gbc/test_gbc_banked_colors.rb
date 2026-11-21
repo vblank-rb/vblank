@@ -38,7 +38,7 @@ class TestGBCBankedColors < Minitest::Test
       game_loop do
         step = (step + 1) % STEPS
         state = (state + 1) % PLACES if step == 0
-        case_var(:state) { PLACES.times { |place| when_val place, :"screen#{place}" } }
+        call PLACES.times.to_h { |place| [place, :"screen#{place}"] }, number: :state
       end
     end
     b.finalize_program

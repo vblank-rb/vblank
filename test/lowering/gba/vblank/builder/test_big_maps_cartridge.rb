@@ -61,10 +61,7 @@ class TestBigMapsCartridge < Minitest::Test
         pass += 1
         mode = 0
         mode = 1 if (pass & 3) == 0
-        case_var(:mode) do
-          when_val 0, :waiting
-          when_val 1, :playing
-        end
+        call({ 0 => :waiting, 1 => :playing }, number: :mode)
       end
     end
   end

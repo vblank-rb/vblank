@@ -113,10 +113,7 @@ class TestScreenBackdropList < Minitest::Test
         step += 1 if step < STEPS.length - 1
         state = 1 if tick == 5
         recolor :screen_colors, STEPS.each_index.map { |n| :"step#{n}" }, showing: step
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :board
-        end
+        call({ 0 => :title, 1 => :board }, number: :state)
       end
     end
     b.finalize_program
@@ -196,7 +193,7 @@ class TestScreenBackdropList < Minitest::Test
       screen :tiled, backdrop: :screen_colors
       var :state, 0
       scene(:title) { screen :tiled, backdrop: :white }
-      game_loop { case_var(:state) { when_val 0, :title } }
+      game_loop { call({ 0 => :title }, number: :state) }
     end
 
     assert_match(/backdrop of its own/, error.message)
@@ -208,7 +205,7 @@ class TestScreenBackdropList < Minitest::Test
       screen :tiled, backdrop: :screen_colors
       var :state, 0
       scene(:title) { screen :bitmap }
-      game_loop { case_var(:state) { when_val 0, :title } }
+      game_loop { call({ 0 => :title }, number: :state) }
     end
 
     assert_match(/bitmap screen has no backdrop/, error.message)

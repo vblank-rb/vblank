@@ -53,10 +53,7 @@ class TestSeeThroughAmountsPlacement < Minitest::Test
         t += 1
         where = 1 if t == 6
         where = 0 if t == 12
-        case_var(:where) do
-          when_val 0, :title
-          when_val 1, :playing
-        end
+        call({ 0 => :title, 1 => :playing }, number: :where)
       end
     end
   end
@@ -136,10 +133,7 @@ class TestSeeThroughAmountsPlacement < Minitest::Test
       game_loop do
         t += 1
         where = 1 if t == 4
-        case_var(:where) do
-          when_val 0, :intro
-          when_val 1, :title
-        end
+        call({ 0 => :intro, 1 => :title }, number: :where)
       end
     end
   end
@@ -185,10 +179,7 @@ class TestSeeThroughAmountsPlacement < Minitest::Test
         t += 1
         step = t % 4
         where = 1 if t == 6
-        case_var(:where) do
-          when_val 0, :title
-          when_val 1, :playing
-        end
+        call({ 0 => :title, 1 => :playing }, number: :where)
       end
     end
   end

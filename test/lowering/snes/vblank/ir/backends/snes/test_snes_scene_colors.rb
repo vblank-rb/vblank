@@ -27,10 +27,7 @@ class TestSNESSceneColors < Minitest::Test
       game_loop do
         tick += 1
         state = 1 if tick == switch
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
   end
@@ -72,7 +69,7 @@ class TestSNESSceneColors < Minitest::Test
         scene(:crowded) { background :crowded, tiles: :one_set, map: [row] }
         state = var :state, 0
         game_loop do
-          case_var(:state) { when_val 0, :crowded }
+          call({ 0 => :crowded }, number: :state)
         end
       end
     end
@@ -110,7 +107,7 @@ class TestSNESSceneColors < Minitest::Test
         end
         game_loop do
           walk += 1
-          case_var(:state) { when_val 0, :stage }
+          call({ 0 => :stage }, number: :state)
         end
       end
     end

@@ -209,10 +209,7 @@ class TestRowBendCartridge < Minitest::Test
       scene(:first_place) { wait_vblank if waiting == 1 }
       scene(:second_place) { twos += 1 if waiting == 1 }
       func(:visit) do
-        case_var(:place) do
-          when_val 1, :first_place
-          when_val 2, :second_place
-        end
+        call({ 1 => :first_place, 2 => :second_place }, number: :place)
       end
       water.scroll_each_row do |row|
         if row == 0

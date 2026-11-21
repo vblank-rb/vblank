@@ -61,7 +61,7 @@ class TestRoutineLines < Minitest::Test
       y = var :y, 0
       var :state, 0
       scene(:play) { repeat(50) { y += 1 } }
-      game_loop { case_var(:state) { when_val 0, :play } }
+      game_loop { call({ 0 => :play }, number: :state) }
     end
     builder.finalize_program
     result = VBlank::Diagnostics::Profiler.run(assemble_rom(builder.program, name: "LOOPED"), frames: 5, picture: false,

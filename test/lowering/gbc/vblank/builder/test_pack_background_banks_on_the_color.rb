@@ -97,10 +97,7 @@ class TestPackBackgroundBanksOnTheColor < Minitest::Test
       game_loop do
         wait_vblank
         step.store!(step + 1)
-        case_var(:state) do
-          when_val 0, :field
-          when_val 1, :hut
-        end
+        call({ 0 => :field, 1 => :hut }, number: :state)
       end
     end
     b.finalize_program

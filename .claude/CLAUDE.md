@@ -409,7 +409,7 @@ game runs, or state shared across Ractors.
 - `r10`/`r11` are scratch registers for variable operations, `r12` for addresses
 - Functions use `PUSH {lr}` / `POP {pc}` for call/return
 - Conditionals emit inverse-condition branches to skip over blocks
-- `case_var` reloads the variable before each comparison (scene calls clobber r10)
+- The scene dispatch (the case node a scene-picking `case` or `call` builds) copies its variable once, then reloads that copy before each comparison (scene calls clobber r10)
 - Sound: channel 2 for beep/SFX, channel 1 for music (no conflicts)
 - Music is played from the VBlank interrupt, not where `play_song` is written: the game only
   names the tune, and the player walks each part's event table in ROM once per real frame

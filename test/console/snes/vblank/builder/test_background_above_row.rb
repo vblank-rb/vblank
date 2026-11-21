@@ -84,7 +84,7 @@ class TestBackgroundAboveRow < Minitest::Test
       end
       game_loop do
         passes += 1
-        case_var(:state) { when_val 0, :stage }
+        call({ 0 => :stage }, number: :state)
       end
     end
     b.finalize_program
@@ -142,10 +142,7 @@ class TestBackgroundAboveRow < Minitest::Test
       game_loop do
         passes += 1
         state = 1 if passes == 6
-        case_var(:state) do
-          when_val 0, :held
-          when_val 1, :plain
-        end
+        call({ 0 => :held, 1 => :plain }, number: :state)
       end
     end
     b.finalize_program
@@ -336,7 +333,7 @@ class TestBackgroundAboveRow < Minitest::Test
       background :score, tiles: :bar_set, map: Array.new(4) { "t" * 32 }, above_row: ROWS, alone: :without_sprites
       var :state, 0
       scene(:stage) { background :lives, tiles: :bar_set, map: Array.new(2) { "t" * 32 }, above_row: 16, alone: true }
-      game_loop { case_var(:state) { when_val 0, :stage } }
+      game_loop { call({ 0 => :stage }, number: :state) }
     end
     b.finalize_program
     b.program
@@ -373,10 +370,7 @@ class TestBackgroundAboveRow < Minitest::Test
       game_loop do
         passes += 1
         state = 1 if passes == 6
-        case_var(:state) do
-          when_val 0, :held
-          when_val 1, after
-        end
+        call({ 0 => :held, 1 => after }, number: :state)
       end
     end
     b.finalize_program

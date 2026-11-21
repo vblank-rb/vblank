@@ -111,7 +111,6 @@ and a test fails when the two differ. The Advance's answers are in
 - `func` — works: `fast:` means nothing on a Genesis, which runs all of its code alike.
 - `call` — works: the same as on the Advance.
 - `scene` — works: see `func` for `fast:`.
-- `case_var` — works: the same as on the Advance.
 - `uses` — works: a pack's verbs are verbs of the game's own, and each one has its answer here.
 - `data_pack` — works: the cartridge holds what each slot holds, as if the game had written it.
 - `shell_screen` — works: the cartridge holds nothing of it. Only a build as a shell shows a first screen.

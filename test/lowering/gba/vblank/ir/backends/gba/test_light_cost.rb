@@ -111,7 +111,7 @@ class TestLightCost < Minitest::Test
         later = var :later, 0
         scene(:title) { layer(:water, transparency: 50) { background :pond, tiles: :set, map: ["#" * 32] * 32 } }
         scene(:playing) { iris_out from: 150, by: 4 if iris && later == 1 }
-        game_loop { case_var(:mode) { when_val 0, :title; when_val 1, :playing } }
+        game_loop { call({ 0 => :title, 1 => :playing }, number: :mode) }
       end
     end
 

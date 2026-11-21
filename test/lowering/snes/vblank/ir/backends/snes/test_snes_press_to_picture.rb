@@ -54,7 +54,7 @@ class TestSNESPressToPicture < Minitest::Test
         draw_in_order cursor, mark
         cursor.x += 16 if pressed(:down)
       end
-      game_loop { case_var(:state) { when_val 0, :title } }
+      game_loop { call({ 0 => :title }, number: :state) }
     end
     b.finalize_program
     b.program

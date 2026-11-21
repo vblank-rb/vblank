@@ -214,10 +214,7 @@ class TestSetTile < Minitest::Test
         room.set_tile 3, 1, "." if frames == 1
         state = 1 if frames == 3
         state = 0 if frames == 6
-        case_var(:state) do
-          when_val 0, :play
-          when_val 1, :pause
-        end
+        call({ 0 => :play, 1 => :pause }, number: :state)
         frames += 1
       end
     end

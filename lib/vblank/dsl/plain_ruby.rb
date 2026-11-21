@@ -1246,7 +1246,7 @@ module VBlank
             call.block.nil? && call.arguments&.arguments&.one? && call.arguments.arguments.first.is_a?(Prism::SymbolNode)
         end
 
-        # The scene dispatch `case_var` builds where the line turns out to pick scenes, and the
+        # The scene dispatch (a case node) where the line turns out to pick scenes, and the
         # chain of tests where it does not. The arms are worked out once, before either.
         def scene_dispatch_text(node, subject, chain)
           arms = node.conditions.map do |arm|

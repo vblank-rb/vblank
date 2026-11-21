@@ -115,10 +115,7 @@ class TestSceneArrivalOverrun < Minitest::Test
             line = read_scanline
           end
         end
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
         # With sprites of its own, the scene is picked a pass ahead, so the gap that starts the
         # pass it takes over on writes its sprites' rows before its setup sends their pictures.
         state = 1 if pass == handed_over_at - 1 && own_sprites.positive?

@@ -35,11 +35,7 @@ class TestScreenBackdropListOnTheAdvance < Minitest::Test
         recolor :screen_colors, :lit if tick >= 2
         state = 1 if tick == 4
         state = 2 if back && tick == 8
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :turn
-          when_val 2, :board
-        end
+        call({ 0 => :title, 1 => :turn, 2 => :board }, number: :state)
       end
     end
     b.finalize_program

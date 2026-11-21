@@ -523,10 +523,7 @@ class TestProfiler < Minitest::Test
       func(:the_work) { repeat(2000) { x += 1 } }
 
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :playing
-        end
+        call({ 0 => :title, 1 => :playing }, number: :state)
       end
     end
   end
@@ -557,10 +554,7 @@ class TestProfiler < Minitest::Test
       func(:the_work) { repeat(2000) { x += 1 } }
 
       game_loop do
-        case_var(:state) do
-          when_val 1, :busy
-          when_val 2, :idle
-        end
+        call({ 1 => :busy, 2 => :idle }, number: :state)
       end
     end
 

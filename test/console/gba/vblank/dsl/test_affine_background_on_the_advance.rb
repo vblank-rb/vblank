@@ -315,7 +315,7 @@ class TestAffineBackgroundOnTheAdvance < Minitest::Test
         board = background(:board, tiles: :t, map: map).turns_around(40, 80).scale(4.0)
         board.scale.approach! 1.0, 1.0
       end
-      game_loop { case_var(:state) { when_val 0, :title } }
+      game_loop { call({ 0 => :title }, number: :state) }
     end
     builder.finalize_program
     i = game_player.run(builder.program, frames: 8)

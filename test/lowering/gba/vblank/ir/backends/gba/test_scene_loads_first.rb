@@ -36,10 +36,7 @@ class TestSceneLoadsFirst < Minitest::Test
         repeat(WORK) { |i| sum = sum + (i * 3) }
       end
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
         step += 1
       end
     end
@@ -92,10 +89,7 @@ class TestSceneLoadsFirst < Minitest::Test
       end
       scene(:play, loads_first: true) { nil }
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
         step += 1
       end
     end

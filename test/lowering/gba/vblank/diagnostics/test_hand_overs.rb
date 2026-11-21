@@ -33,10 +33,7 @@ class TestHandOvers < Minitest::Test
         repeat(WORK) { |i| sum = sum + (i * 3) } if work_in == :scene
       end
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
         repeat(WORK) { |i| sum = sum + (i * 3) } if work_in == :loop
       end
     end

@@ -587,10 +587,7 @@ class TestSpriteDrawsWith < Minitest::Test
         tick += 1
         state = 1 if tick > SECOND_SCENE_AT
         state = 0 if tick > FIRST_SCENE_AGAIN_AT
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
     builder.finalize_program
@@ -626,10 +623,7 @@ class TestSpriteDrawsWith < Minitest::Test
         tick += 1
         state = 1 if tick > SECOND_SCENE_AT
         state = 0 if tick > FIRST_SCENE_AGAIN_AT
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
     builder.finalize_program
@@ -655,10 +649,7 @@ class TestSpriteDrawsWith < Minitest::Test
       end
       var :state, 0
       game_loop do
-        case_var(:state) do
-          when_val 0, :calm
-          when_val 1, :busy
-        end
+        call({ 0 => :calm, 1 => :busy }, number: :state)
       end
     end
 
@@ -688,10 +679,7 @@ class TestSpriteDrawsWith < Minitest::Test
       game_loop do
         tick += 1
         state = (tick / 6) % 2
-        case_var(:state) do
-          when_val 0, :first
-          when_val 1, :second
-        end
+        call({ 0 => :first, 1 => :second }, number: :state)
       end
     end
     builder.finalize_program

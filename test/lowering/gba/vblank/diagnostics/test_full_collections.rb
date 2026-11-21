@@ -144,10 +144,7 @@ class TestFullCollections < Minitest::Test
       scene(:title) { total += 1 }
       scene(:playing) { walk.call }
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :playing
-        end
+        call({ 0 => :title, 1 => :playing }, number: :state)
       end
     end
 

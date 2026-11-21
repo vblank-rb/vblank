@@ -482,8 +482,8 @@ module VBlank
               "The scenes of this game share #{turns.shared}. " \
                 "The game changes `#{name}`#{line_words(change)}. Then, in the same pass, it uses `#{name}` " \
                 "to pick a scene inside an `if`#{line_words(dispatch)}. On that pass, the sprites of the " \
-                "last scene show with the wrong #{turns.shown_wrong}. To fix this, move `case_var(:#{name})` to the top " \
-                "of the game loop, outside the `if`. Or change `#{name}` after the `case_var`."
+                "last scene show with the wrong #{turns.shown_wrong}. To fix this, move the line that picks the scene by `#{name}` to the top " \
+                "of the game loop, outside the `if`. Or change `#{name}` after that line."
             end
 
             def timer_across_wait_message(dispatch, (timer, change), wait, shared)
@@ -493,7 +493,7 @@ module VBlank
                 "The timer `#{timer}` changes `#{name}`#{line_words(change)}. A timer moves on each time " \
                 "the game waits for the screen. The game waits for the screen#{line_words(wait)}, and then, " \
                 "in the same pass, it uses `#{name}` to pick a scene inside an `if`#{line_words(dispatch)}. On that pass, the " \
-                "sprites of the last scene can show with the wrong #{turns.shown_wrong}. To fix this, move `case_var(:#{name})` to " \
+                "sprites of the last scene can show with the wrong #{turns.shown_wrong}. To fix this, move the line that picks the scene by `#{name}` to " \
                 "the top of the game loop, outside the `if`. Or change `#{name}` in the game loop, not in the timer."
             end
 
@@ -503,7 +503,7 @@ module VBlank
               "The scenes of this game share #{turns.shared}. " \
                 "The game uses `#{name}` to pick a scene#{line_words(dispatch)}, after `wait_vblank`#{line_words(wait)} in the " \
                 "game loop. The sprites of a pass show before the pass picks its scene, so on the first pass the sprites " \
-                "show with the wrong #{turns.shown_wrong}. To fix this, move `case_var(:#{name})` above `wait_vblank`."
+                "show with the wrong #{turns.shown_wrong}. To fix this, move the line that picks the scene by `#{name}` above `wait_vblank`."
             end
 
             # " at file.rb:12" for the line that wrote +node+, or the nearest line around it that the

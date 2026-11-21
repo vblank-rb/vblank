@@ -29,10 +29,7 @@ class TestGBCTileRooms < Minitest::Test
       scene(:hut) { background :hut, tiles: :small_tiles, map: small }
       state = var :state, 0
       game_loop do
-        case_var(:state) do
-          when_val 0, :vast
-          when_val 1, :hut
-        end
+        call({ 0 => :vast, 1 => :hut }, number: :state)
       end
     end
     error = assert_raises(GBC::LoweringError) { GBC.new.build(program) }
@@ -58,10 +55,7 @@ class TestGBCTileRooms < Minitest::Test
       end
       var :state, 0
       game_loop do
-        case_var(:state) do
-          when_val 0, :vast
-          when_val 1, :hut
-        end
+        call({ 0 => :vast, 1 => :hut }, number: :state)
       end
     end
     error = assert_raises(GBC::LoweringError) { GBC.new.build(program) }
@@ -127,10 +121,7 @@ class TestGBCTileRooms < Minitest::Test
       scene(:two) { background :two, tiles: :second_tiles, map: second }
       state = var :state, 0
       game_loop do
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
 
@@ -161,10 +152,7 @@ class TestGBCTileRooms < Minitest::Test
         tick += 1
         where = 1 if tick == 3
         state = 1 if tick == 7
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
 

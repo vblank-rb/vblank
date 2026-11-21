@@ -262,10 +262,7 @@ class TestSNESPicture < Minitest::Test
       game_loop do
         tick.increase! 1
         state = 1 if tick == 8
-        case_var(:state) do
-          when_val 0, :play
-          when_val 1, :title
-        end
+        call({ 0 => :play, 1 => :title }, number: :state)
       end
     end
     blue = VBlank::Graphics::Color.resolve(:blue)
@@ -354,7 +351,7 @@ class TestSNESPicture < Minitest::Test
         layer(:front) { background :frame, tiles: :set, map: ["##"] }
         state = var :state, 0
         scene(:play) { layer(:back) { background :room, tiles: :set, map: ["##"] } }
-        game_loop { case_var(:state) { when_val 0, :play } }
+        game_loop { call({ 0 => :play }, number: :state) }
       end)
     end
 
@@ -583,10 +580,7 @@ class TestSNESPicture < Minitest::Test
       game_loop do
         t += 1
         where = 1 if t == 10
-        case_var(:where) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :where)
       end
     end
   end
@@ -718,10 +712,7 @@ class TestSNESPicture < Minitest::Test
       game_loop do
         phase += 1
         shown = frames_since_power_on
-        case_var(:state) do
-          when_val 0, :bent
-          when_val 1, :plain
-        end
+        call({ 0 => :bent, 1 => :plain }, number: :state)
       end
     end
     run = SNES::HeadlessRun.new.run(program, frames: 20)
@@ -998,10 +989,7 @@ class TestSNESPicture < Minitest::Test
       game_loop do
         t += 1
         state = 1 if t > 8
-        case_var(:state) do
-          when_val 0, :misty
-          when_val 1, :plain
-        end
+        call({ 0 => :misty, 1 => :plain }, number: :state)
       end
     end
   end
@@ -1031,10 +1019,7 @@ class TestSNESPicture < Minitest::Test
         state = 1 if t > 8
         state = 0 if t > 16
         glow = 0 if solid_at && t == solid_at
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :map
-        end
+        call({ 0 => :title, 1 => :map }, number: :state)
       end
     end
   end

@@ -44,10 +44,7 @@ class TestSceneSpriteTilesOnTheSuperNintendo < Minitest::Test
         state = 1 if tick == switch
         state = 0 if tick == switch * 3
         dispatch = lambda do
-          case_var(:state) do
-            when_val 0, :one
-            when_val 1, :two
-          end
+          call({ 0 => :one, 1 => :two }, number: :state)
         end
         if dispatch_inside_test
           dispatch.call if tick >= 0
@@ -93,10 +90,7 @@ class TestSceneSpriteTilesOnTheSuperNintendo < Minitest::Test
         tick += 1
         opened = frames_since_power_on if tick == 2
         state = 1 if tick == 5
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
     b.finalize_program

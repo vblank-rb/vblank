@@ -206,7 +206,7 @@ class TestSpriteOneFrameAtATime < Minitest::Test
         state = 1 if tick == 3
         state = 0 if tick == 5
         state = 1 if tick == 8
-        case_var(:state) { when_val 0, :playing; when_val 1, :paused }
+        call({ 0 => :playing, 1 => :paused }, number: :state)
       end
     end
   end
@@ -267,7 +267,7 @@ class TestSpriteOneFrameAtATime < Minitest::Test
       var :state, 0
       scene(:playing) { sprite :hero, at: [40, 40], frames: frames, rate: 1 }
       scene(:paused) {}
-      game_loop { case_var(:state) { when_val 0, :playing; when_val 1, :paused } }
+      game_loop { call({ 0 => :playing, 1 => :paused }, number: :state) }
     end
     assert_operator sprite_memory_used(prog), :<=, SPRITE_MEMORY
   end

@@ -173,7 +173,7 @@ class TestSpotlightShowNow < Minitest::Test
       game_loop do
         turn += 1
         mode = 1 if turn == OPENS
-        case_var(:mode) { when_val 0, :title; when_val 1, :playing }
+        call({ 0 => :title, 1 => :playing }, number: :mode)
       end
     end
     taking_turns.finalize_program

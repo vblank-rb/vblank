@@ -158,10 +158,7 @@ module TintGames
           state = 0
           level = 0
         end
-        case_var :state do
-          when_val 0, :field
-          when_val 1, :away
-        end
+        call({ 0 => :field, 1 => :away }, number: :state)
       end
     end
     b.finalize_program

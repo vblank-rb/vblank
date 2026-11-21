@@ -27,7 +27,7 @@ module PerSceneModeOnTheAdvanceGames
       end
       game_loop do
         wait_vblank
-        case_var(:state) { when_val 0, :title; when_val 1, :spin }
+        call({ 0 => :title, 1 => :spin }, number: :state)
       end
     end
     b.finalize_program

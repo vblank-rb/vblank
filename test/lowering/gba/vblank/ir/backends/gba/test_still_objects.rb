@@ -53,10 +53,7 @@ class TestStillObjects < Minitest::Test
       end
       scene(:playing) { sprite(:hero, at: [100, 100]).move(:right, by: 1) }
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :playing
-        end
+        call({ 0 => :title, 1 => :playing }, number: :state)
       end
     end
   end
@@ -170,7 +167,7 @@ class TestStillObjects < Minitest::Test
       image :sign, width: 16, height: 16, data: Array.new(256, YELLOW)
       var :state, -1
       scene(:title) { sprite(:sign, at: [40, 40]) }
-      game_loop { case_var(:state) { when_val(-1, :title) } }
+      game_loop { call({ -1 => :title }, number: :state) }
     end
   end
 
@@ -197,10 +194,7 @@ class TestStillObjects < Minitest::Test
       end
       game_loop do
         wait_vblank
-        case_var :state do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
       end
     end
   end

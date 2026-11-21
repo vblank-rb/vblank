@@ -167,7 +167,7 @@ class TestLayers < Minitest::Test
       var :state, 0
       scene(:playing) { layer(:actors) { sprite :guy, at: [10, 10] } }
       scene(:over) { layer(:ui) { sprite :guy, at: [20, 20] } }
-      game_loop { case_var(:state) { when_val 0, :playing; when_val 1, :over } }
+      game_loop { call({ 0 => :playing, 1 => :over }, number: :state) }
     end
 
     assert_equal %i[actors ui], layers_of(prog, :object)

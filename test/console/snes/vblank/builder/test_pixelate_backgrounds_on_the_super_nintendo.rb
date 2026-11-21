@@ -180,10 +180,7 @@ class TestPixelateBackgroundsOnTheSuperNintendo < Minitest::Test
         state = 1 if step == 4
         state = 0 if step == 9
         pixelate size, sprites: false
-        case_var(:state) do
-          when_val 0, :menu
-          when_val 1, :stage
-        end
+        call({ 0 => :menu, 1 => :stage }, number: :state)
       end
     end
     b.finalize_program

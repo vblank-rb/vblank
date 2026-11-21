@@ -23,10 +23,7 @@ class TestGenesisScenery < Minitest::Test
         tick += 1
         state = 1 if tick == 5
         state = 0 if tick == 10
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
 
@@ -43,10 +40,7 @@ class TestGenesisScenery < Minitest::Test
       game_loop do
         tick += 1
         state = 1 if tick == 5
-        case_var(:state) do
-          when_val 0, :first
-          when_val 1, :bare
-        end
+        call({ 0 => :first, 1 => :bare }, number: :state)
       end
     end
 
@@ -64,10 +58,7 @@ class TestGenesisScenery < Minitest::Test
       game_loop do
         tick += 1
         state = 1 if tick == 5
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
 
@@ -84,7 +75,7 @@ class TestGenesisScenery < Minitest::Test
           background :nearer, tiles: :blue_set, map: Array.new(20) { "#" * 30 }
         end
         state = var :state, 0
-        game_loop { case_var(:state) { when_val 0, :one } }
+        game_loop { call({ 0 => :one }, number: :state) }
       end)
     end
 
@@ -98,7 +89,7 @@ class TestGenesisScenery < Minitest::Test
         background :field, tiles: :red_set, map: Array.new(20) { "#" * 30 }
         scene(:one) { screen :tiled, backdrop: :blue }
         state = var :state, 0
-        game_loop { case_var(:state) { when_val 0, :one } }
+        game_loop { call({ 0 => :one }, number: :state) }
       end)
     end
 
@@ -124,10 +115,7 @@ class TestGenesisScenery < Minitest::Test
         scene(:tiny) { background :tiny, tiles: :small_set, map: small }
         state = var :state, 0
         game_loop do
-          case_var(:state) do
-            when_val 0, :huge
-            when_val 1, :tiny
-          end
+          call({ 0 => :huge, 1 => :tiny }, number: :state)
         end
       end)
     end
@@ -144,7 +132,7 @@ class TestGenesisScenery < Minitest::Test
 
     assert_match(/changes `state`/, error.message)
     assert_match(/inside an `if`/, error.message)
-    assert_match(/move `case_var\(:state\)` to the top of the game loop/, error.message)
+    assert_match(/move the line that picks the scene by `state` to the top of the game loop/, error.message)
   end
 
   # A timer moves on each time the game waits for the screen. A routine that waits, called before the
@@ -169,7 +157,7 @@ class TestGenesisScenery < Minitest::Test
       error = assert_raises(Genesis::LoweringError) { Genesis.new.build(program) }
 
       assert_match(/after `wait_vblank` at \S+:\d+/, error.message)
-      assert_match(/move `case_var\(:state\)` above `wait_vblank`/, error.message)
+      assert_match(/move the line that picks the scene by `state` above `wait_vblank`/, error.message)
     end
   end
 

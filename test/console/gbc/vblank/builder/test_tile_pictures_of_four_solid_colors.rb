@@ -81,10 +81,7 @@ class TestTilePicturesOfFourSolidColors < Minitest::Test
       game_loop do
         passes += 1
         state = 1 if passes == 6
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :field
-        end
+        call({ 0 => :title, 1 => :field }, number: :state)
       end
     end
     b.finalize_program

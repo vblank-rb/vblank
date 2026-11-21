@@ -100,7 +100,7 @@ class TestSpritesShareRooms < Minitest::Test
         tick += 1
         state = 1 if tick == 12
         state = 0 if tick == 15
-        case_var(:state) { when_val 0, :playing; when_val 1, :away }
+        call({ 0 => :playing, 1 => :away }, number: :state)
       end
     end
   end
@@ -177,7 +177,7 @@ class TestSpritesShareRooms < Minitest::Test
         shards.each { |shard| shard.face names, showing: shard.look }
       end
       scene(:menu) { statues.each_with_index { |name, n| sprite name, at: [n * 8, 40] } }
-      game_loop { case_var(:state) { when_val 0, :playing; when_val 1, :menu } }
+      game_loop { call({ 0 => :playing, 1 => :menu }, number: :state) }
     end
   end
 

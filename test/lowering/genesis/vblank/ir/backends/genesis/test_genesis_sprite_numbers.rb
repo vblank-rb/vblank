@@ -28,7 +28,7 @@ class TestGenesisSpriteNumbers < Minitest::Test
       state = var :state, 0
       game_loop do
         t += 1
-        case_var(:state) { when_val 0, :play }
+        call({ 0 => :play }, number: :state)
       end
     end
   end

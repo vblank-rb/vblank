@@ -133,10 +133,7 @@ class TestGenesisCellBlocks < Minitest::Test
       end
       scene(:other) { background :other, tiles: :set, map: Array.new(28) { "." * 40 } }
       game_loop do
-        case_var(:state) do
-          when_val 0, :field
-          when_val 1, :other
-        end
+        call({ 0 => :field, 1 => :other }, number: :state)
       end
     end
 

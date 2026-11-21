@@ -45,10 +45,7 @@ module TintedHandover
       game_loop do
         ticks += 1
         state = 1 if ticks == 4
-        case_var(:state) do
-          when_val 0, :screen0
-          when_val 1, :screen1
-        end
+        call({ 0 => :screen0, 1 => :screen1 }, number: :state)
       end
     end
     b.finalize_program

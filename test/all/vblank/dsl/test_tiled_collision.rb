@@ -188,10 +188,7 @@ class TestTiledCollision < Minitest::Test
           state = 0
           hero.x = 16
         end
-        case_var(:state) do
-          when_val 0, :hall
-          when_val 1, :away
-        end
+        call({ 0 => :hall, 1 => :away }, number: :state)
       end
     end
   end
@@ -230,10 +227,7 @@ class TestTiledCollision < Minitest::Test
           state = 1
           hero.x = 16
         end
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
     builder.finalize_program

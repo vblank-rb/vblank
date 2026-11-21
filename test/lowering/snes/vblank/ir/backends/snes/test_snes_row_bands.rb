@@ -29,7 +29,7 @@ class TestSNESRowBands < Minitest::Test
       scene(:title) { put_up.call } if in_scene
       var :state, 0
       game_loop do
-        case_var(:state) { when_val 0, :title } if in_scene
+        call({ 0 => :title }, number: :state) if in_scene
         repeat(steps) { work += 1 }
         lower += 1
       end

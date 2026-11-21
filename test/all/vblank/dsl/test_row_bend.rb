@@ -398,10 +398,7 @@ class TestRowBend < Minitest::Test
       end
       game_loop do
         passes += 1
-        case_var(:state) do
-          when_val 0, :sea
-          when_val 1, :shore
-        end
+        call({ 0 => :sea, 1 => :shore }, number: :state)
       end
     end
     b.finalize_program

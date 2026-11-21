@@ -91,10 +91,7 @@ class TestManySpritesOnThePlayStation < Minitest::Test
         frame += 1
         scene_up = 1 if frame == 6
         scene_up = 0 if frame == 12
-        case_var(:scene_up) do
-          when_val 0, :first
-          when_val 1, :second
-        end
+        call({ 0 => :first, 1 => :second }, number: :scene_up)
       end
     end
   end

@@ -136,11 +136,7 @@ module PackBackdropGames
         instance_exec(level, &each_pass)
         state = 1 if tick == TITLE_PASS
         state = 2 if tick == MENU_PASS
-        case_var(:state) do
-          when_val 0, :logos
-          when_val 1, :title
-          when_val 2, :menu
-        end
+        call({ 0 => :logos, 1 => :title, 2 => :menu }, number: :state)
       end
     end
     b.finalize_program

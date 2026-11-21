@@ -172,7 +172,7 @@ class TestValuesWorkedOutOnce < Minitest::Test
         end
       end
       game_loop do
-        case_var(:state) { when_val 0, :stage }
+        call({ 0 => :stage }, number: :state)
       end
     end
 

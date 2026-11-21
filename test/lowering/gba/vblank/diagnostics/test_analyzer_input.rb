@@ -236,10 +236,7 @@ class TestAnalyzerInput < Minitest::Test
       end
       scene(:playing) { repeat(OVER_A_FRAME) { x += 1 } }
       game_loop do
-        case_var(:state) do
-          when_val 0, :over
-          when_val 1, :playing
-        end
+        call({ 0 => :over, 1 => :playing }, number: :state)
       end
     end
     over = Analyzer.measure_program(program, stays_in: { var: :state, value: 0 })
@@ -261,9 +258,7 @@ class TestAnalyzerInput < Minitest::Test
         end
       end
       game_loop do
-        case_var(:state) do
-          when_val 0, :playing
-        end
+        call({ 0 => :playing }, number: :state)
       end
     end
     result = Analyzer.measure_program(program, stays_in: { var: :state, value: 0 })

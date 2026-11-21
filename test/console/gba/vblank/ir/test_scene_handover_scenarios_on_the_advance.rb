@@ -88,11 +88,9 @@ class TestSceneHandoverScenariosOnTheAdvance < Minitest::Test
         game_loop do
           tick += 1
           yield tick if block_given?
-          case_var(:state) do
-            when_val 0, :tiled_screen
-            when_val 1, :bitmap_screen
-            when_val 2, third if third
-          end
+          screens = { 0 => :tiled_screen, 1 => :bitmap_screen }
+          screens[2] = third if third
+          call screens, number: :state
         end
       end
     end

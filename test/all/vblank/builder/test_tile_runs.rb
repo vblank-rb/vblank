@@ -48,7 +48,7 @@ class TestTileRuns < Minitest::Test
       end
       game_loop do
         frame += 1
-        case_var(:state) { when_val 0, :talking; when_val 1, :walking }
+        call({ 0 => :talking, 1 => :walking }, number: :state)
       end
     end
     b.finalize_program
@@ -86,7 +86,7 @@ class TestTileRuns < Minitest::Test
       var :state, 0
       game_loop do
         frame += 1
-        case_var(:state) { when_val 0, :talking }
+        call({ 0 => :talking }, number: :state)
       end
     end
     b.finalize_program
@@ -126,7 +126,7 @@ class TestTileRuns < Minitest::Test
       end
       game_loop do
         frame += 1
-        case_var(:state) { when_val 0, :house; when_val 1, :road }
+        call({ 0 => :house, 1 => :road }, number: :state)
       end
     end
     b.finalize_program
@@ -541,7 +541,7 @@ class TestTileRuns < Minitest::Test
       end
       game_loop do
         frame += 1
-        case_var(:state) { when_val 0, :talking; when_val 1, :walking }
+        call({ 0 => :talking, 1 => :walking }, number: :state)
       end
     end
     b.finalize_program
@@ -587,7 +587,7 @@ class TestTileRuns < Minitest::Test
       end
       game_loop do
         frame += 1
-        case_var(:state) { when_val 0, :house; when_val 1, :shop }
+        call({ 0 => :house, 1 => :shop }, number: :state)
       end
     end
     b.finalize_program

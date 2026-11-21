@@ -65,7 +65,7 @@ class TestWornListsSharePicturesOnTheSuperNintendo < Minitest::Test
         two.draw_with :third
       end
       var :state, 0
-      game_loop { case_var(:state) { when_val 0, :stage } }
+      game_loop { call({ 0 => :stage }, number: :state) }
     end
     b.finalize_program
     b.program
@@ -135,7 +135,7 @@ class TestWornListsSharePicturesOnTheSuperNintendo < Minitest::Test
       scene(:one) { PICTURES.times { |n| sprite :"picture#{n}", at: [(n % COLUMNS) * SIZE, (n / COLUMNS) * SIZE] } }
       scene(:two) { PICTURES.times { |n| sprite :"picture#{n + PICTURES}", at: [(n % COLUMNS) * SIZE, (n / COLUMNS) * SIZE] } }
       var :state, 0
-      game_loop { case_var(:state) { when_val 0, :one; when_val 1, :two } }
+      game_loop { call({ 0 => :one, 1 => :two }, number: :state) }
     end
     b.finalize_program
     b.program
@@ -178,7 +178,7 @@ class TestWornListsSharePicturesOnTheSuperNintendo < Minitest::Test
         solid.last(6).each_with_index { |name, at| sprite name, at: [at * 8, 152] }
       end
       var :state, 0
-      game_loop { case_var(:state) { when_val 0, :one; when_val 1, :two } }
+      game_loop { call({ 0 => :one, 1 => :two }, number: :state) }
     end
     b.finalize_program
     b.program
@@ -231,7 +231,7 @@ class TestWornListsSharePicturesOnTheSuperNintendo < Minitest::Test
         sprite(sign, at: [160, 0]).draw_with :list4
       end
       var :state, 1
-      game_loop { case_var(:state) { when_val 0, :title; when_val 1, :stage } }
+      game_loop { call({ 0 => :title, 1 => :stage }, number: :state) }
     end
     b.finalize_program
     b.program

@@ -110,7 +110,6 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `func` — works: `fast:` means nothing on a PlayStation, which runs all of its code alike.
 - `call` — works: the same as on the Advance.
 - `scene` — works: see `func` for `fast:`.
-- `case_var` — works: the same as on the Advance.
 - `uses` — works: a pack's verbs are verbs of the game's own, and each one has its answer here.
 - `data_pack` — works: the program holds what each slot holds, as if the game had written it.
 - `shell_screen` — works: the program holds nothing of it. Only a build as a shell shows a first screen.

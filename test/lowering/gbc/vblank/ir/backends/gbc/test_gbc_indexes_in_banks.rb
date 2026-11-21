@@ -101,7 +101,7 @@ class TestGBCIndexesInBanks < Minitest::Test
         sfx.play :zap3 if tick == 4
         call %i[hit_low hit_high], number: tick % 2
         showing = (showing + 1) % shown.length if (tick % SCREEN_FRAMES) == 0
-        case_var(:showing) { shown.each_with_index { |name, at| when_val at, name } }
+        call shown.each_with_index.to_h { |name, at| [at, name] }, number: :showing
       end
     end
     b.finalize_program

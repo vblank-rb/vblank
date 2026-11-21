@@ -12,7 +12,7 @@ module VBlank
         #
         # A "per-frame container" is one whose body re-runs each frame: the game loop, a
         # runtime-counted repeat, an every-N-frames timer, or a per-frame func (a scene
-        # dispatched by case_var, or a routine the loop calls). `after` is one-shot, so
+        # picked by the scene dispatch, or a routine the loop calls). `after` is one-shot, so
         # its body runs once and isn't one. A conditional (`if`) isn't a container
         # either — a setup op it guards may be a deliberate, one-off re-run — so only a
         # verb that is a direct statement of a per-frame body is caught.
@@ -69,7 +69,7 @@ module VBlank
 
           # The funcs a node unconditionally calls or dispatches to: the routines its
           # DIRECT statement children can call. A call nested inside a conditional isn't
-          # included — it doesn't run every time its container does. (A case_var, and a
+          # included — it doesn't run every time its container does. (A scene dispatch, and a
           # call picked by number, run one of theirs each time, so all of them count.)
           def direct_call_targets(node)
             node.children.flat_map(&:callees)

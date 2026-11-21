@@ -64,10 +64,7 @@ class TestSNESSceneRecordings < Minitest::Test
       game_loop do
         step += 1
         state = 1 if step == CAVE_TAKES_OVER
-        case_var(:state) do
-          when_val 0, :hall
-          when_val 1, :cave
-        end
+        call({ 0 => :hall, 1 => :cave }, number: :state)
       end
     end
   end

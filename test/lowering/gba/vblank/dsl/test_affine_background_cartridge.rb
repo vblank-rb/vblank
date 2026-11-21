@@ -251,7 +251,7 @@ class TestAffineBackgroundCartridge < Minitest::Test
         state = 0 if waiting == 0
       end
 
-      game_loop { case_var(:state) { when_val 0, :zoomed; when_val 1, :away } }
+      game_loop { call({ 0 => :zoomed, 1 => :away }, number: :state) }
     end
     builder.finalize_program
     builder.program

@@ -157,10 +157,9 @@ class TestTiledColorLists < Minitest::Test
             step = 0
           end
           state = scenes if bare_at && tick == bare_at
-          case_var(:state) do
-            scenes.times { |k| when_val k, :"screen#{k}" }
-            when_val scenes, :bare
-          end
+          screens = scenes.times.to_h { |k| [k, :"screen#{k}"] }
+          screens[scenes] = :bare
+          call screens, number: :state
         end
       end
     end
@@ -214,7 +213,7 @@ class TestTiledColorLists < Minitest::Test
       game_loop do
         tick += 1
         state = 0 if tick == 5
-        case_var(:state) { when_val 0, :board }
+        call({ 0 => :board }, number: :state)
       end
     end
     b.finalize_program
@@ -243,10 +242,7 @@ class TestTiledColorLists < Minitest::Test
       game_loop do
         tick += 1
         state = (tick / 4) % 2
-        case_var(:state) do
-          when_val 0, :dim
-          when_val 1, :plain
-        end
+        call({ 0 => :dim, 1 => :plain }, number: :state)
       end
     end
     b.finalize_program
@@ -280,10 +276,7 @@ class TestTiledColorLists < Minitest::Test
       game_loop do
         tick += 1
         state = (tick / 4) % 2
-        case_var(:state) do
-          when_val 0, :dim
-          when_val 1, :plain
-        end
+        call({ 0 => :dim, 1 => :plain }, number: :state)
       end
     end
     b.finalize_program

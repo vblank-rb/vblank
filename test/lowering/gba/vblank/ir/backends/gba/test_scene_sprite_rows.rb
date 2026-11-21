@@ -44,10 +44,7 @@ class TestSceneSpriteRows < Minitest::Test
         t += 1
         where = 1 if t == 6
         where = 0 if t == 12
-        case_var(:where) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :where)
       end
     end
     builder.finalize_program
@@ -94,10 +91,7 @@ class TestSceneSpriteRows < Minitest::Test
         t += 1
         where = 1 if t == 6
         where = 0 if t == 12
-        case_var(:where) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :where)
       end
     end
     builder.finalize_program

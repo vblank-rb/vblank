@@ -228,10 +228,7 @@ class TestStillFrames < Minitest::Test
       game_loop do
         tick += 1
         state = cover_first ? 0 : 1 if tick == CHANGE_AT
-        case_var(:state) do
-          when_val 0, :bare
-          when_val 1, :covered
-        end
+        call({ 0 => :bare, 1 => :covered }, number: :state)
       end
     end
   end
@@ -259,10 +256,7 @@ class TestStillFrames < Minitest::Test
         state = 1 if tick == 2
         state = 0 if tick == 5
         state = 1 if tick == CHANGE_AT + 4
-        case_var(:state) do
-          when_val 0, :bare
-          when_val 1, :covered
-        end
+        call({ 0 => :bare, 1 => :covered }, number: :state)
       end
     end
 
@@ -278,10 +272,7 @@ class TestStillFrames < Minitest::Test
       game_loop do
         tick += 1
         state = 1 if tick == CHANGE_AT
-        case_var(:state) do
-          when_val 0, :first
-          when_val 1, :second
-        end
+        call({ 0 => :first, 1 => :second }, number: :state)
       end
     end
 

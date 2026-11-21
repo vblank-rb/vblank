@@ -92,10 +92,7 @@ class TestGenesisCellQueue < Minitest::Test
       game_loop do
         tick += 1
         state = 1 if tick == 3
-        case_var(:state) do
-          when_val 0, :waiting
-          when_val 1, :boxed
-        end
+        call({ 0 => :waiting, 1 => :boxed }, number: :state)
       end
     end
     run = game_player.run(game.program(console: :genesis), frames: 3)

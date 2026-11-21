@@ -338,7 +338,7 @@ module PackBackgroundSetCellGames
       game_loop do
         wait_vblank
         pass += 1
-        case_var(:state) { when_val 0, :title }
+        call({ 0 => :title }, number: :state)
       end
     end
     b.finalize_program

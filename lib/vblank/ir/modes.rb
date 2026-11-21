@@ -228,7 +228,7 @@ module VBlank
         @program.children.reject { |node| node.kind == :func }
       end
 
-      # The funcs a `case_var` in the main body dispatches to — the real mode-switch
+      # The funcs a scene dispatch (case node) in the main body picks — the real mode-switch
       # entry points, the only routines that "own" the display the way a scene does.
       def scene_targets
         targets = []
@@ -236,10 +236,10 @@ module VBlank
         targets
       end
 
-      # Every func called from somewhere in the main body other than by a case_var — this
+      # Every func called from somewhere in the main body other than by a scene dispatch — this
       # catches `once_a_frame`'s hidden routine and any other bare per-frame helper, and a
-      # routine picked by number, alongside a case_var's own targets (a scene can itself be
-      # reached by a plain `call` too, e.g. a game with no case_var at all).
+      # routine picked by number, alongside a scene dispatch's own targets (a scene can itself be
+      # reached by a plain `call` too, e.g. a game with no scene dispatch at all).
       def main_body_call_targets
         targets = []
         main_body.each { |node| node.walk { |n| targets.concat(n.callees) unless n.kind == :case } }

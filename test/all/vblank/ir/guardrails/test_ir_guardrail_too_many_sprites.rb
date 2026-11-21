@@ -52,11 +52,7 @@ class TestIRGuardrailTooManySprites < Minitest::Test
       scene(:play) { layer(:front) { play.times { |i| sprite :dot, at: [i % 30 * 8, i / 30 * 8] } } }
       scene(:over) {}
       game_loop do
-        case_var(:where) do
-          when_val 0, :title
-          when_val 1, :play
-          when_val 2, :over
-        end
+        call({ 0 => :title, 1 => :play, 2 => :over }, number: :where)
       end
     end
     b.finalize_program
@@ -142,10 +138,7 @@ class TestIRGuardrailTooManySprites < Minitest::Test
       scene(:title) { draw_in_order(*Array.new(title) { |i| sprite :"actor_#{i}", at: [i % 30 * 8, i / 30 * 8], facing: { down: :dot } }) }
       scene(:room) { room.times { |i| sprite :dot, at: [i % 30 * 8, i / 30 * 8] } }
       game_loop do
-        case_var(:where) do
-          when_val 0, :title
-          when_val 1, :room
-        end
+        call({ 0 => :title, 1 => :room }, number: :where)
       end
     end
     b.finalize_program

@@ -61,10 +61,7 @@ module BigMapsGames
       end
       game_loop do
         pass += 1
-        case_var(:mode) do
-          when_val 0, :menu
-          when_val 1, :playing
-        end
+        call({ 0 => :menu, 1 => :playing }, number: :mode)
         mode = 1 if pass == 10
       end
     end
@@ -259,10 +256,7 @@ class TestBigMaps < Minitest::Test
         pass += 1
         mode = 1 if pass == 6
         mode = 0 if pass == 8
-        case_var(:mode) do
-          when_val 0, :outside
-          when_val 1, :inside
-        end
+        call({ 0 => :outside, 1 => :inside }, number: :mode)
       end
     end
   end
@@ -307,10 +301,7 @@ class TestBigMaps < Minitest::Test
         x += 6
         mode = 1 if pass == 6
         mode = 0 if pass == 12
-        case_var(:mode) do
-          when_val 0, :forest
-          when_val 1, :swamp
-        end
+        call({ 0 => :forest, 1 => :swamp }, number: :mode)
       end
     end
   end

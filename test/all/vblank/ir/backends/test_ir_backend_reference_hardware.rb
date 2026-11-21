@@ -329,10 +329,7 @@ class TestIRBackendReferenceHardware < Minitest::Test
         else
           state = 1 if tick == 4
         end
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :plain
-        end
+        call({ 0 => :title, 1 => :plain }, number: :state)
       end
     end
     builder.finalize_program

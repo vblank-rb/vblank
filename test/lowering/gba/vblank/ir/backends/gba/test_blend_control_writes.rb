@@ -42,7 +42,7 @@ class TestBlendControlWrites < Minitest::Test
       game_loop do
         turn += 1
         mode = numbers.fetch(to) if turn == TURN
-        case_var(:mode) { when_val 0, :title; when_val 1, :dim; when_val 2, :playing }
+        call({ 0 => :title, 1 => :dim, 2 => :playing }, number: :mode)
       end
     end
     b.finalize_program

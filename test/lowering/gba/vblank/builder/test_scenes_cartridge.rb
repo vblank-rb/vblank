@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/builder/test_scenes"
 
-# Scenes and `case_var` on the Advance's own cartridge: that each shape builds into one, and what
+# Scenes and the dispatch that picks one on the Advance's own cartridge: that each shape builds into one, and what
 # its console runs, read in the emulator. What every run plays is in
 # test/all/vblank/builder/test_scenes.rb, which keeps the games both files play in ScenesGames.
 class TestScenesCartridge < Minitest::Test
@@ -47,10 +47,10 @@ class TestScenesCartridge < Minitest::Test
   end
 
   # ========================================================================
-  # case_var
+  # The scene dispatch
   # ========================================================================
 
-  def test_case_var_builds
+  def test_scene_dispatch_builds
     rom = build do
       screen :bitmap
       scene :title do
@@ -61,16 +61,13 @@ class TestScenesCartridge < Minitest::Test
       end
 
       state = var :state, 0
-      case_var :state do
-        when_val 0, :title
-        when_val 1, :playing
-      end
+      call({ 0 => :title, 1 => :playing }, number: :state)
       halt
     end
     assert_operator rom.size, :>, 0
   end
 
-  def test_case_var_with_game_loop
+  def test_scene_dispatch_with_game_loop
     rom = build do
       screen :bitmap
 
@@ -85,16 +82,13 @@ class TestScenesCartridge < Minitest::Test
 
       state = var :state, 0
       game_loop do
-        case_var :state do
-          when_val 0, :title
-          when_val 1, :playing
-        end
+        call({ 0 => :title, 1 => :playing }, number: :state)
       end
     end
     assert_operator rom.size, :>, 0
   end
 
-  def test_case_var_with_input_transition
+  def test_scene_dispatch_with_input_transition
     rom = build do
       state = 0
       screen :bitmap
@@ -111,21 +105,18 @@ class TestScenesCartridge < Minitest::Test
 
       state = 0
       game_loop do
-        case_var :state do
-          when_val 0, :title
-          when_val 1, :playing
-        end
+        call({ 0 => :title, 1 => :playing }, number: :state)
       end
     end
     assert_operator rom.size, :>, 0
   end
 
-  # Regression: case_var must reload the variable before each comparison, since a
+  # Regression: the dispatch must reload the variable before each comparison, since a
   # called scene clobbers scratch registers. The observable guarantee is that
   # exactly one scene runs — the matching one — even with a scene between two
   # other comparisons. Each scene clears the whole screen, so a stale compare
   # that ran a second scene would leave the wrong color on screen.
-  def test_case_var_dispatches_to_only_the_matching_scene
+  def test_scene_dispatch_runs_only_the_matching_scene
     rom = build do
       screen :bitmap
 
@@ -134,11 +125,9 @@ class TestScenesCartridge < Minitest::Test
       scene :green_scene do clear_screen :green end
 
       state = var :state, 1
-      case_var :state do
-        when_val 0, :red_scene
-        when_val 1, :blue_scene   # the match — runs, then clobbers scratch
-        when_val 2, :green_scene  # must NOT run: state is reloaded, still 1
-      end
+      call({ 0 => :red_scene,
+             1 => :blue_scene, # the match — runs, then clobbers scratch
+             2 => :green_scene }, number: :state) # must NOT run: state is reloaded, still 1
       halt
     end
 
@@ -207,10 +196,7 @@ class TestScenesCartridge < Minitest::Test
 
       state = var :state, 0
       game_loop do
-        case_var :state do
-          when_val 0, :title
-          when_val 1, :other
-        end
+        call({ 0 => :title, 1 => :other }, number: :state)
       end
     end
 

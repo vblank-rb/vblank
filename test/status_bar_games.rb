@@ -148,10 +148,7 @@ module StatusBarGames
       game_loop do
         tick += 1
         state = 1 if tick == 4
-        case_var(:state) do
-          when_val 0, :menu
-          when_val 1, :play
-        end
+        call({ 0 => :menu, 1 => :play }, number: :state)
       end
     end
   end

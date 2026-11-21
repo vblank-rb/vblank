@@ -57,7 +57,7 @@ class TestScreenLayout < Minitest::Test
       scene(:first) { 4.times { |i| background :"a#{i}", tiles: :set, map: map } }
       scene(:second) { 4.times { |i| background :"b#{i}", tiles: :set, map: map } }
       var :state, 0
-      game_loop { case_var(:state) { when_val 0, :first; when_val 1, :second } }
+      game_loop { call({ 0 => :first, 1 => :second }, number: :state) }
     end
 
     first = (0...4).map { |i| layout.hardware_layers.fetch(:"a#{i}") }
@@ -74,7 +74,7 @@ class TestScreenLayout < Minitest::Test
       scene(:first) { background :hall, tiles: :set, map: map }
       scene(:second) { background :cave, tiles: :set, map: map }
       var :state, 0
-      game_loop { case_var(:state) { when_val 0, :first; when_val 1, :second } }
+      game_loop { call({ 0 => :first, 1 => :second }, number: :state) }
     end
 
     sky = layout.hardware_layers.fetch(:sky)

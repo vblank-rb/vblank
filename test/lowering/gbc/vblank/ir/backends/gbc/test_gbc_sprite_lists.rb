@@ -64,7 +64,7 @@ class TestGBCSpriteLists < Minitest::Test
         end
       end
       game_loop do
-        case_var(:showing) { scenes.times { |s| when_val s, :"fading#{s}" } }
+        call scenes.times.to_h { |s| [s, :"fading#{s}"] }, number: :showing
       end
     end
   end

@@ -143,10 +143,7 @@ class TestSNESPackSceneArrival < Minitest::Test
       game_loop do
         pass += 1
         state = 1 if pass == CHANGE_PASS
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :map
-        end
+        call({ 0 => :title, 1 => :map }, number: :state)
       end
     end
   end

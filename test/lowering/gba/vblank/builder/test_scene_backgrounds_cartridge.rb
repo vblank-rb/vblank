@@ -62,10 +62,7 @@ class TestSceneBackgroundsCartridge < Minitest::Test
       game_loop do
         tick += 1
         state = 1 if tick > SWITCH_AT
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
   end
@@ -101,10 +98,7 @@ class TestSceneBackgroundsCartridge < Minitest::Test
       game_loop do
         tick += 1
         state = 1 if tick > SWITCH_AT
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
   end
@@ -224,10 +218,7 @@ class TestSceneBackgroundsCartridge < Minitest::Test
       game_loop do
         tick += 1
         state = 1 if tick > SWITCH_AT
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
       end
     end
   end
@@ -325,10 +316,7 @@ class TestSceneBackgroundsCartridge < Minitest::Test
       end
 
       game_loop do
-        case_var :state do
-          when_val 0, :first
-          when_val 1, :second
-        end
+        call({ 0 => :first, 1 => :second }, number: :state)
       end
     end
   end
@@ -391,10 +379,7 @@ class TestSceneBackgroundsCartridge < Minitest::Test
       end
 
       game_loop do
-        case_var :state do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
       end
     end
   end
@@ -561,7 +546,7 @@ class TestSceneBackgroundsCartridge < Minitest::Test
         sword.angle.approach! 0, 10 if turning
       end
 
-      game_loop { case_var(:state) { when_val 0, :title } }
+      game_loop { call({ 0 => :title }, number: :state) }
       var :state, 0
     end
   end
@@ -608,10 +593,7 @@ class TestSceneBackgroundsCartridge < Minitest::Test
         tick += 1
         state = 1 if tick > SECOND_SCENE_AT
         state = 0 if tick > FIRST_SCENE_AGAIN_AT
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
   end
@@ -642,10 +624,7 @@ class TestSceneBackgroundsCartridge < Minitest::Test
       game_loop do
         tick += 1
         state = 1 if tick > SWITCH_AT
-        case_var(:state) do
-          when_val 0, :small
-          when_val 1, :big
-        end
+        call({ 0 => :small, 1 => :big }, number: :state)
       end
     end
   end

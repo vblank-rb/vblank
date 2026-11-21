@@ -57,10 +57,7 @@ class TestHideSprites < Minitest::Test
           state = 1
           hide_sprites
         end
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
       end
     end
   end

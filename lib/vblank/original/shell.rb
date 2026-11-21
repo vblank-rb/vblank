@@ -346,7 +346,7 @@ module VBlank
                 # own drawing, each pass until a button sends the player back.
                 (scene_up > 0).record_branch do
                   clear_screen look.colors.fetch(:ground)
-                  case_var(MENU_SCENE) { shown.each_with_index { |menu_line, at| when_val at + 1, menu_line.scene } }
+                  call shown.each_with_index.to_h { |menu_line, at| [at + 1, menu_line.scene] }, number: MENU_SCENE
                   %i[a b start].each { |button| pressed(button).record_branch { scene_up.store!(0) } }
                 end.else { play_menu.call }
               end

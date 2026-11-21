@@ -341,10 +341,7 @@ class TestEffectsRegistry < Minitest::Test
 
       game_loop do
         frame += 1
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :playing
-        end
+        call({ 0 => :title, 1 => :playing }, number: :state)
         halt if frame >= 4
       end
     end)

@@ -108,7 +108,7 @@ class TestPictureGroupsOnTheConsole < Minitest::Test
         state = 0 if tick == 3
         state = 1 if tick == 8
         state = 0 if tick == 10
-        case_var(:state) { when_val 0, :maze; when_val 1, :away }
+        call({ 0 => :maze, 1 => :away }, number: :state)
       end
     end
   end
@@ -143,7 +143,7 @@ class TestPictureGroupsOnTheConsole < Minitest::Test
         up.show here
         state = 1 if tick == 3
         state = 0 if tick == 5
-        case_var(:state) { when_val 0, :walking; when_val 1, :away }
+        call({ 0 => :walking, 1 => :away }, number: :state)
       end
     end
   end
@@ -176,7 +176,7 @@ class TestPictureGroupsOnTheConsole < Minitest::Test
         tick += 1
         state = 1 if tick == 3
         state = 0 if tick == 6
-        case_var(:state) { when_val 0, :harbor; when_val 1, :away }
+        call({ 0 => :harbor, 1 => :away }, number: :state)
       end
     end
   end

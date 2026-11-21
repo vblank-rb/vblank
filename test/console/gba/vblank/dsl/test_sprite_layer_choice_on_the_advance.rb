@@ -111,10 +111,7 @@ class TestSpriteLayerChoiceOnTheAdvance < Minitest::Test
         hero.put_in_layer %i[upper walking stairs], showing: depth
       end
       game_loop do
-        case_var(:mode) do
-          when_val 0, :title
-          when_val 1, :room
-        end
+        call({ 0 => :title, 1 => :room }, number: :mode)
       end
     end
   end
@@ -152,10 +149,7 @@ class TestSpriteLayerChoiceOnTheAdvance < Minitest::Test
       end
       game_loop do
         hero.put_in_layer %i[upper walking stairs], showing: depth
-        case_var(:mode) do
-          when_val 0, :plain
-          when_val 1, :room
-        end
+        call({ 0 => :plain, 1 => :room }, number: :mode)
       end
     end
   end

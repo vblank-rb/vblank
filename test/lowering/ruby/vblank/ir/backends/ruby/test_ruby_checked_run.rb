@@ -54,7 +54,7 @@ class TestRubyCheckedRun < Minitest::Test
         state = 1 if count == 3
       end
       scene(:done) { halt }
-      game_loop { case_var(:state) { when_val 0, :counting; when_val 1, :done } }
+      game_loop { call({ 0 => :counting, 1 => :done }, number: :state) }
     end
 
     assert_equal 3, CheckedRun.new.run(program, frames: 10)[:count]

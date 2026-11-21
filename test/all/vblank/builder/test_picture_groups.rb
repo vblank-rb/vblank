@@ -204,7 +204,7 @@ class TestPictureGroups < Minitest::Test
       end
       game_loop do
         passes += 1
-        case_var(:state) { when_val 0, :sea }
+        call({ 0 => :sea }, number: :state)
       end
     end
     b.finalize_program
@@ -249,7 +249,7 @@ class TestPictureGroups < Minitest::Test
         passes += 1
         state = 1 if passes == 3
         state = 0 if passes == 5
-        case_var(:state) { when_val 0, :sea; when_val 1, :port }
+        call({ 0 => :sea, 1 => :port }, number: :state)
       end
     end
     b.finalize_program
