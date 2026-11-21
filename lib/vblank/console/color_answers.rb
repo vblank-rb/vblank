@@ -313,7 +313,7 @@ module VBlank
                             "`song`). Write the part for the square or wave voice.")
       })
 
-      # What .claude/dsl/game-boy-color.md says: every answer, in the order answers gives them, and
+      # What .claude/dsl/game-boy-color.md says: every answer, in the order ANSWERS gives them, and
       # what the Color's build does not make yet — +not_yet+, the lowering's own list of the
       # program's kinds it refuses for now, by what they are part of, which the Color's kit hands
       # in (Kit#answers_page).

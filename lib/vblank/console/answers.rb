@@ -89,7 +89,7 @@ module VBlank
       # How the reference names each verdict.
       VERDICT_WORDS = { works: "works", refused: "**refused**" }.freeze
 
-      # An answer that works, in +words+, or in the table's own (plain) for a verb with nothing
+      # An answer that works, in +words+, or in the table's own (PLAIN) for a verb with nothing
       # more to say.
       def works(words = self::PLAIN) = Answer.new(:works, words)
 
@@ -141,7 +141,7 @@ module VBlank
         "#{question.words}, and a #{console.title} cannot: #{words_of(question.verb)}"
       end
 
-      # The reference's line for the answer to each verb in +verbs+, in the order answers gives them.
+      # The reference's line for the answer to each verb in +verbs+, in the order ANSWERS gives them.
       def answer_lines(verbs = self::ANSWERS.keys)
         verbs.map do |verb|
           answer = self::ANSWERS.fetch(verb)

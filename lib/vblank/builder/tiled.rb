@@ -134,7 +134,7 @@ module VBlank
       #   `:solid` keeps black as a colour, so that an outline in black does not come out full of
       #   holes.
       #--
-      # Black as a colour. A tile has no marker of its own for "nothing here", so black drawn by
+      # Black as a COLOUR. A tile has no marker of its own for "nothing here", so black drawn by
       # colour stands for it. A tile set that sets `black: :solid` holds its pictures as place
       # numbers, every backend then reads them as it reads any such art, and black takes a colour
       # slot of its own on the console. See #solid_black_image. The pixels of a list the game owns
@@ -199,7 +199,7 @@ module VBlank
               "layer behind show through black, or black: :solid, which keeps black as a colour."
       end
 
-      # Black as a colour. A tile has no marker of its own for "nothing here", so black drawn by colour
+      # Black as a COLOUR. A tile has no marker of its own for "nothing here", so black drawn by colour
       # stands for it, and an outline in black comes out full of holes. Art given as place numbers
       # never had that trouble: place 0 is see-through and black at any other place is a colour. So
       # a tileset that sets `black: :solid` holds its pictures as place numbers, every backend then

@@ -111,7 +111,7 @@ module VBlank
 
       private
 
-      # A power of two in size, of at least smallest, with the empty part of the cartridge as the
+      # A power of two in size, of at least SMALLEST, with the empty part of the cartridge as the
       # bytes of an erased chip.
       def padded(bytes)
         size = SMALLEST
