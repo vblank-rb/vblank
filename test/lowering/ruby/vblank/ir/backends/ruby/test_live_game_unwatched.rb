@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A GAME BUILT AS RUBY, PLAYED BY NOBODY WHO WATCHES OR LISTENS. A data pack's unpacking runs as Ruby
+# A game built as Ruby, played by nobody who watches or listens. A data pack's unpacking runs as Ruby
 # with nobody at the window, so the picture and the sound the runtime would make at the end of each
 # frame are work thrown away: in a long unpacking, about half of it. A player says each frame whether
 # it wants the picture and the sound (picture_wanted?, sound_wanted?), and is handed nil for what it

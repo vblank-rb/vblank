@@ -7,7 +7,7 @@ require "vblank/diagnostics/film_tasks"
 require "shell_tests"
 require "heard_film"
 
-# A PORT'S SHELL FILMED FROM ITS FIRST START (Diagnostics::FilmShell), with the made-up port
+# A port's shell filmed from its first start (Diagnostics::FilmShell), with the made-up port
 # (shell_tests.rb's). On the Ruby run alone: the shell plays as Ruby whatever run it is in.
 #
 # The answer key is the shell played by Live::Shell on a Headless device, as the shell tests play
