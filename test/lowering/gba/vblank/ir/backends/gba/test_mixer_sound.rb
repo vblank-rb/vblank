@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "zlib"
 
-# WHAT THE MIX ROUTINE PLAYS, pinned to the byte.
+# What the mix routine plays, pinned to the byte.
 #
 # The routine's inner loop mixes more than one sample each time round (see
 # Mixer::SAMPLES_A_PASS), and each copy of its body has a jump of its own for a recording
@@ -15,10 +15,10 @@ require "zlib"
 # So this plays a game that exercises every one of those paths for 120 frames — five looping
 # clips of different lengths, a one-shot ending part way through a pass, a pitched one, and a
 # shaped chord — and compares a checksum of every byte the console played. The number was
-# taken from the routine mixing ONE sample each time round, which is the form whose sound was
+# taken from the routine mixing one sample each time round, which is the form whose sound was
 # right before it changed. A deliberate change to what the mix plays takes the number again.
 #
-# THE NUMBER ALSO HOLDS THE GAME'S TIMING. A mix runs while the game does, so one instruction more
+# The number also holds the game's timing. A mix runs while the game does, so one instruction more
 # or fewer in this game's loop moves when a play lands against the mix and changes every byte after
 # it. A change to the code the game loop is lowered to takes the number again too, once the game is
 # seen to make the same plays on the same frames.

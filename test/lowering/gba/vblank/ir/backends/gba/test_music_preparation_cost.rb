@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHAT GETTING A GAME'S MUSIC READY COSTS THE BUILD, counted in walks of the whole program. Each
+# What getting a game's music ready costs the build, counted in walks of the whole program. Each
 # walk visits every node, so on a big game each one is a cost a build pays on every lowering, and
 # a game with no sound used to pay for many of them to learn that it plays nothing.
 class TestMusicPreparationCost < Minitest::Test
