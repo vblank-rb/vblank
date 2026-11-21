@@ -5,7 +5,7 @@ require "stringio"
 require "tmpdir"
 require "all/vblank/builder/test_pack_pose_bank_colors"
 
-# WHAT A SPRITE ENTRY NAMING ITS OWN BANK COSTS THE DRAW, measured in the emulator. A sprite of a pose
+# What a sprite entry naming its own bank costs the draw, measured in the emulator. A sprite of a pose
 # of several banks (`image ..., banks:`) has each entry name its piece's bank in attribute 2 (GBATEK,
 # "LCD OBJ - OAM Attributes", bits 12-15), read from the pose table beside the piece's pose word: one
 # more load and one OR an entry, where a sprite of one bank folds its bank into a number written once.
@@ -32,7 +32,7 @@ class TestBankedSpriteDrawCost < Minitest::Test
     end
   end
 
-  # The cycles a frame the game of SPRITES sprites spends awake, each stepping between a pose and it
+  # The cycles a frame the game of sprites sprites spends awake, each stepping between a pose and it
   # turned round: the frame of banks 1 and 3, or a picture of two pieces in bank 1's colours.
   private def awake_cycles(folder, banked:)
     test = self

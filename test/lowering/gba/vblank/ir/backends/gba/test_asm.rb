@@ -92,7 +92,7 @@ class TestASM < Minitest::Test
     assert_equal 0x100, decode_load_immediate(A.load_immediate(0, 0x100))
   end
 
-  # A BYTE THAT IS NOUGHT CONTRIBUTES NOTHING, and that goes for the LOW byte too — which
+  # A byte that is nought contributes nothing, and that goes for the LOW byte too — which
   # it did not, because the sequence used to start from byte nought whatever was in it.
   # Every address ending in a round number paid an instruction for that, and a program that
   # lays its memory out in blocks is full of them.
@@ -104,7 +104,7 @@ class TestASM < Minitest::Test
                  "the same address one slot along really does need its low byte"
   end
 
-  # A NUMBER WHOSE OPPOSITE IS ONE BYTE IS ONE INSTRUCTION. The chip can load the opposite of
+  # A number whose opposite is one byte is one instruction. The chip can load the opposite of
   # a number — every bit turned over — as readily as the number, so "every bit set" is the
   # opposite of nought rather than four bytes put together one at a time. A mask with one
   # byte cleared is the same thing, and so is minus one, which is the commonest of them.
@@ -129,7 +129,7 @@ class TestASM < Minitest::Test
                  "two bytes set, and its opposite is two bytes too"
   end
 
-  # THE FIXED LOAD STAYS FOUR, whatever the number. Its size is what lets a slot be set
+  # The fixed load stays four, whatever the number. Its size is what lets a slot be set
   # aside before the number is known and filled in afterwards without moving what follows.
   def test_the_fixed_load_is_four_instructions_for_every_value
     [0, 0xFF, 0xFFFFFFFF, 0xFFFFFF00, 0x08001234].each do |value|

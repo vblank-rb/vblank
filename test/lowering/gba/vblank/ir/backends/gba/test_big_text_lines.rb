@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A LONG LINE OF FIXED TEXT IN A GAME'S OWN BIG LETTERS. A short line is an instruction or two for
+# A long line of fixed text in a game's own big letters. A short line is an instruction or two for
 # each lit pixel, laid out in the code, and quick. In big letters that is most of a cartridge, so a
 # line with many pixels keeps where they go in a table, and one routine stamps them.
 class TestBigTextLines < Minitest::Test

@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "all/vblank/builder/test_pack_pose_bank_colors"
 
-# A SPRITE OF A POSE OF SEVERAL BANKS (`image ..., banks:`) on the Advance's cartridge: each piece of
+# A sprite of a pose of several banks (`image ..., banks:`) on the Advance's cartridge: each piece of
 # the frame is a sprite entry of its own whose attribute 2 names that piece's bank (GBATEK, "LCD OBJ -
 # OAM Attributes", bits 12-15), so the picture is stored half a byte a pixel like any sprite of one
 # bank. Its pixels are held to the interpreter by test/console/gba/vblank/builder/

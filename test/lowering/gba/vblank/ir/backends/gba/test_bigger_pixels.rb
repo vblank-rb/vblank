@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE ADVANCE SHOWS EACH PIXEL OF A GAME OF BIG PIXELS AS A SQUARE OF FOUR
+# The Advance shows each pixel of a game of big pixels as a square of four
 # (`screen :bitmap, pixel_size: 2`, Backends::GBA::Drawing#emit_bigger_pixels): read in the emulator,
 # the whole 240×160 picture is the game's 120×80 one with every pixel doubled across and down, on a
 # plain painted screen and a tear-free one.
