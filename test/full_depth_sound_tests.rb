@@ -2,7 +2,7 @@
 
 require "all/vblank/audio/test_wav_import"
 
-# A RECORDING OF SIXTEEN BITS, played at all sixteen. A game gives `sample` 16-bit sound (a 16-bit
+# A recording of sixteen bits, played at all sixteen. A game gives `sample` 16-bit sound (a 16-bit
 # WAV, or `pcm:` with `bits: 16`), and a build for a computer (C, JavaScript, Ruby) mixes every bit
 # of it, where a console's build keeps what that console holds, the high byte, as it always has.
 # What a computer build mixes is `full_depth_sound`; the interpreter works it out too, and the

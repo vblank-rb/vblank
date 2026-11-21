@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# THE PACKED FORMATS OF SEGA GENESIS GAMES, in plain Ruby, for the tests of `copy.unpack_nemesis`
+# The packed formats of Sega Genesis games, in plain Ruby, for the tests of `copy.unpack_nemesis`
 # and `copy.unpack_enigma` (Original::Packing::Genesis). Each decoder here is the answer key,
 # written from the 68000 routine retail games run (`NemDec` and `EniDec`, as Dr. Robotnik's Mean
 # Bean Machine has them), never from another program's reading of the format. Each writer makes a
@@ -154,7 +154,7 @@ module GenesisPackingAnswers
   # header: the width of a spelt cell in bits; which flips a spelt cell carries a bit for (bit 1 the
   # vertical, $1000, read first; bit 0 the horizontal, $800); the counting word and the repeating
   # word, high byte first, each with +base+ added. Then the ops, each a code and a count less one in
-  # 4 bits. THIS GAME'S EniDec READS ONLY THE TWO FLIP BITS of a spelt cell, not the palette and
+  # 4 bits. This game's EniDec reads only the two flip bits of a spelt cell, not the palette and
   # priority bits the format's usual reading has; the flips are OR'd into the base and the cell's
   # bits added to that.
   def enigma_cells(bytes, at = 0, base: 0)

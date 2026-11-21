@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A whole SCENE as a plain class in its own file — the coarse-grained version of the
+# A whole scene as a plain class in its own file — the coarse-grained version of the
 # multi-file parts pattern. It takes the build, declares its own presentation in
 # initialize (a green marker; declared inside its scene, so it belongs to that scene), and
 # exposes `update` as its per-frame entry point. No base class, no magic — the same POROs

@@ -4,7 +4,7 @@ require "fileutils"
 require "tmpdir"
 require "made_up_original"
 
-# A MADE-UP ORIGINAL THAT IS A FOLDER OF FILES, the way a computer game's is (Wolfenstein 3D's
+# A made-up original that is a folder of files, the way a computer game's is (Wolfenstein 3D's
 # VSWAP.WL6, MAPHEAD.WL6 and the rest), and a port reading it, for the copy, copy reader and shell
 # tests. The folder is test/fixtures/folder_original/:
 #

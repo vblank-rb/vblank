@@ -6,7 +6,7 @@ require "all/vblank/builder/test_pack_poses"
 require "all/vblank/builder/test_pack_poses_of_words"
 require "pack_pose_read_by_the_game_games"
 
-# THE FRAMES A GAME NAMES, WRITTEN BY ITS PACK'S UNPACKING AS RECORDS OF VBLANK'S OWN
+# The frames a game names, written by its pack's unpacking as records of VBLANK's own
 # (Original::FrameRewrite, Original::FrameRecord). An unpacking is game code, so the run's player
 # plays it; the answer key is the pack file the all-in-one build made, whose records the build
 # worked out in Ruby from the same layouts (Original::FrameRecord::Section#bytes). The two must be
@@ -55,7 +55,7 @@ module FrameRecordUnpackingTests
   SIZE = [64, 64].freeze
 
   # Must be InRactors.share_constants, not Ractor.make_shareable alone: tests in several Ractors
-  # write COPY to a file at once (InRactors.shareable says what that does to a plain frozen String).
+  # write copy to a file at once (InRactors.shareable says what that does to a plain frozen String).
   VBlank::Testing::InRactors.share_constants(self)
 
   private def frames_original(folder)
@@ -145,7 +145,7 @@ module FrameRecordUnpackingTests
     assert_unpacking_writes_the_builds_pack(by_routine: true)
   end
 
-  # A FRAME THE GAME READS WITH A READER OF ITS OWN (PackPoseReadByTheGameGames), given a value
+  # A frame the game reads with a reader of its own (PackPoseReadByTheGameGames), given a value
   # from each pose: the reader's sums, run on the game's values, are the routine, and write the
   # records the build worked out in Ruby from the same reader. One frame given two values is two
   # records, each its own tiles.
@@ -180,7 +180,7 @@ module FrameRecordUnpackingTests
     def copy(folder) = File.binread(File.join(folder, "made_up_blocks.bin"))
   end
 
-  # FRAMES OF TWO SLOTS NAMED IN TURN: the unpacking writes the frames of one slot kept one way
+  # Frames of two slots named in turn: the unpacking writes the frames of one slot kept one way
   # in one loop, and its records land in the order the build lays them out too.
   def test_the_records_of_frames_of_two_slots_named_in_turn_are_the_builds
     Dir.mktmpdir do |folder|
@@ -218,7 +218,7 @@ module FrameRecordUnpackingTests
     b
   end
 
-  # SEVEN POSES OF 64x64 AT ONE PLACE, read from the pack as the game starts: more pieces than the
+  # Seven poses of 64x64 at one place, read from the pack as the game starts: more pieces than the
   # Game Boy Color's sprite table holds, so the pieces furthest back are left out. The game as C,
   # JavaScript and Ruby each leave out the ones the interpreter does (each run's player checks
   # every frame against it), and the interpreter draws the same picture from the pack it is
@@ -233,7 +233,7 @@ module FrameRecordUnpackingTests
     end
   end
 
-  # AN UNPACKING ASKED FOR BEFORE THE GAME NAMES ALL ITS FRAMES writes no record of the frames
+  # An unpacking asked for before the game names all its frames writes no record of the frames
   # named after it, so a frame named after it is refused, saying when to ask.
   def test_a_frame_named_after_the_unpacking_was_made_is_refused
     Dir.mktmpdir do |folder|
@@ -262,7 +262,7 @@ module FrameRecordUnpackingTests
     end
   end
 
-  # FRAMES OF ONE SLOT THAT OVERLAP can hold more pieces between them than the slot does, which is
+  # Frames of one slot that overlap can hold more pieces between them than the slot does, which is
   # more than the pack keeps room for. The all-in-one build refuses them, and the unpacking stops
   # with a fault, so a shell refuses the copy rather than drawing nothing.
   def test_frames_that_overlap_past_the_packs_room_are_refused
