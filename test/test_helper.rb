@@ -152,7 +152,7 @@ end
 # ancestors of the class it is used in, so `Reference` and `Color` resolve inside
 # any test with nothing declared in the file.
 #
-# It IS a monkey-patch of somebody else's class, which is worth knowing. The
+# It is a monkey-patch of somebody else's class, which is worth knowing. The
 # alternatives are a base class every test has to remember to inherit from, or
 # the per-file boilerplate this replaces. RSpec effectively does this too.
 #

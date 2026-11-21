@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# TWO PEOPLE AT ONE CONSOLE. Each reads their own controller, and a game can also ask whether a
+# Two people at one console. Each reads their own controller, and a game can also ask whether a
 # button is down on either. A test holds the second controller's buttons as :p2_left. Played by
 # each console whose build reads two controllers (test/console/snes/vblank/builder/test_two_players.rb,
 # test/console/genesis/vblank/builder/test_two_players_on_the_genesis.rb).

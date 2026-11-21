@@ -177,7 +177,7 @@ module StatusBarGames
     end
   end
 
-  # LETTERS BY NUMBERS THE GAME WORKS OUT, as text it reads from a table: each number counts
+  # Letters by numbers the game works out, as text it reads from a table: each number counts
   # through the bar's tileset keys in the order they were written (green, blue, red, white), and
   # a number that names no key (below nought, or past the last) leaves its cell as it was. On the
   # third pass the bar's first row is written from LETTER_NUMBERS, and a cell of its second row at
