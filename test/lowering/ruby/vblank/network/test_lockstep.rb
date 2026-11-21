@@ -6,7 +6,7 @@ require "zlib"
 require "vblank/live"
 require VBlank.root.join("examples/wanderers").to_s
 
-# TWO AND FOUR COPIES OF ONE GAME PLAYING ONE MATCH (examples/wanderers.rb built as Ruby), joined
+# Two and four copies of one game playing one match (examples/wanderers.rb built as Ruby), joined
 # by a simulated network that lives in this process and that the test controls: a message can be
 # late, held back, or never sent because its sender left. Each copy is a Live::Session with its own
 # headless window and a Network::Lockstep, and the test runs them side by side, a round at a time.
@@ -121,7 +121,7 @@ class TestLockstep < Minitest::Test
     refute_equal picture_checks(copies.first)[1], picture_checks(copies.first).last, "the walkers moved"
   end
 
-  # THE NETWORK IS SLOWER OR FASTER and the match does not notice: the same pictures, whatever the
+  # The network is slower or faster and the match does not notice: the same pictures, whatever the
   # delay on each link and whatever input delay the host picked.
   def test_copies_agree_under_every_delay_the_test_sets
     [[0, 0], [0, 1], [1, 3], [2, 7], [5, 2]].each do |input_delay, rounds|
@@ -168,7 +168,7 @@ class TestLockstep < Minitest::Test
     copies.first.device.pictures.last.pixels
   end
 
-  # A COPY WHOSE RANDOM NUMBERS DIFFER is not the same game, and the match says so at the first
+  # A copy whose random numbers differ is not the same game, and the match says so at the first
   # checkpoint it can: the report names the pass and the last one where every machine agreed.
   def test_a_copy_given_another_seed_is_reported_at_the_first_checkpoint
     net, copies = match_of(2, checkpoint_every: 4)
@@ -293,7 +293,7 @@ class TestLockstep < Minitest::Test
     assert_equal picture_checks(copies.first).last, picture_check(played.game.frame_gba)
   end
 
-  # TWO COPIES GO OUT OF STEP ON PURPOSE under a seed that is not nought. The report's tape is written to
+  # Two copies go out of step on purpose under a seed that is not nought. The report's tape is written to
   # a file, read back, and played on the interpreter, which shows the picture of the machine that stayed
   # right on every pass the tape holds.
   def test_a_match_out_of_step_writes_a_tape_the_interpreter_replays_as_the_machine_that_stayed_right
@@ -341,7 +341,7 @@ class TestLockstep < Minitest::Test
     assert_match(/interpreter/, error.message)
   end
 
-  # A MACHINE IN THE ROOM THAT IS NOT IN THE MATCH (refused, or never asked) can send any message, and none of
+  # A machine in the room that is not in the match (refused, or never asked) can send any message, and none of
   # its messages moves the match: a false checkpoint, buttons, and the host's own words, which only the host's
   # count.
   def test_a_machine_outside_the_match_cannot_stop_it_or_steer_it

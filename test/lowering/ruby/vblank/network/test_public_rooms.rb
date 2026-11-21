@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# PUBLIC ROOMS ON THE RELAY: a room made public is listed, with its name and how many are in it, to a machine
+# Public rooms on the relay: a room made public is listed, with its name and how many are in it, to a machine
 # running the same game, and to no machine running another. A client asks with RelayTransport.list_rooms. The
 # relay's side of this is held to docs/network/exchanges.json by test_stand_in_relay.rb; this is what a game
 # does with it, over a line to a relay in this process.

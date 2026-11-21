@@ -6,7 +6,7 @@ require "zlib"
 require "vblank/live"
 require VBlank.root.join("examples/wanderers").to_s
 
-# TWO RUBY BUILDS SHARING A ROOM ON THE STAND-IN RELAY OVER A WEBSOCKET: the relay listens on a port of this
+# Two Ruby builds sharing a room on the stand-in relay over a WebSocket: the relay listens on a port of this
 # computer (StandInRelayServer, in a thread), and each machine, in a thread of its own, connects to it with
 # the WebSocket client, makes the room or joins it by its code, and plays. The machines wait on real sockets,
 # and the match is the same match whichever thread is quicker, which is what lockstep is for.
