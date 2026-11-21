@@ -3,7 +3,7 @@
 require "test_helper"
 require "tmpdir"
 
-# A LIST KEEPS EACH ITEM IN THE ROOM ITS WIDTH SAYS, in the game as C as on the console: a list of
+# A list keeps each item in the room its width says, in the game as C as on the console: a list of
 # bytes costs a byte an item, so a port's pack of hundreds of megabytes, one list of bytes, costs
 # its own size in the C that unpacks it and not four times it. A narrow slot still keeps the low
 # bits and reads them back as the interpreter does (Reference::ListValue#wrap_to_width); every list

@@ -34,7 +34,7 @@ class TestNativeLogic < Minitest::Test
     assert_equal 13, last.variables.fetch(:x), "three passes each added three, and nothing else moved it"
   end
 
-  # TIMERS. A rate that is no whole number of ticks a frame, so the part of a tick left over has
+  # Timers. A rate that is no whole number of ticks a frame, so the part of a tick left over has
   # to be carried the way the interpreter carries it; a fast one whose handler runs several times
   # a frame; a handler written inside a routine nothing calls, which is still its timer's; a
   # second handler that takes the first one's place; a timer stopped and started again, which
