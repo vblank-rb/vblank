@@ -11,7 +11,7 @@ require VBlank.root.join("examples/lit_corridor").to_s
 class TestLitCorridorExampleCartridge < Minitest::Test
   include Differential
 
-  # THE LAMP FLICKERS WITH NOBODY AT THE CONTROLS, so the picture changes from one pass to the next
+  # The lamp flickers with nobody at the controls, so the picture changes from one pass to the next
   # even standing still, and a pass takes the cartridge several frames. On the frame a pass ends the
   # count of passes has gone up and the page that pass drew is not shown until the next frame, so
   # that one frame shows the pass before the one counted. Which frame that is moves whenever the

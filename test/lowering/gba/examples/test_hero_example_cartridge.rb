@@ -9,8 +9,8 @@ require "console/gba/examples/test_hero_example"
 class TestHeroExampleCartridge < Minitest::Test
   include HeroExamplePlaces
 
-  # THE WAY INTO THE GAME ON THE CONSOLE, as a lead-in every console test here starts with:
-  # the game opens on its file screen, A picks FILE 1, whose menu opens on NEW GAME since
+  # The way into the game on the console, as a lead-in every console test here starts with:
+  # the game opens on its file screen, A picks FILE 1, whose menu opens on new game since
   # the file is empty, and A again starts the game. Nothing in it is counted, so each
   # test's own script begins with the hero standing in the world.
   private def new_game_lead_in
@@ -23,7 +23,7 @@ class TestHeroExampleCartridge < Minitest::Test
     end
   end
 
-  # THE CARTRIDGE AS IT SHIPS, built the way `ruby examples/hero.rb` builds it: measured, and
+  # The cartridge as it ships, built the way `ruby examples/hero.rb` builds it: measured, and
   # its code placed by what the measuring found. The tests that say the game really renders
   # on the console run this one, since it is the one a player gets.
   private def shipped_hero = Hero.build_rom(err: StringIO.new)

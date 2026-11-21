@@ -48,7 +48,7 @@ class TestJukeboxExampleCartridge < Minitest::Test
     assert_operator energy[85..].max, :>, loud, "and the next tune comes up (#{energy.inspect})"
   end
 
-  # HOORAY ON THE BIG CHORD takes a voice from the tune, which has every one; the part that lost
+  # Hooray on the big chord takes a voice from the tune, which has every one; the part that lost
   # it has it back at the next big chord, two measures on — on the console as on the interpreter.
   def test_hooray_takes_a_voice_from_the_tunes_big_chord_on_the_console
     assert_hooray_takes_a_voice_from_the_big_chord(console_jukebox(Listener.new(chord: :big, presses: [[:a, 0]]),
@@ -63,7 +63,7 @@ class TestJukeboxExampleCartridge < Minitest::Test
                                   console_jukebox(Listener.new(chord: :small, presses: [[:b, 0]]), frames: 200))
   end
 
-  # A SECOND PRESS STARTS HOORAY AGAIN from its first note: on the console, a few frames after the
+  # A second press starts hooray again from its first note: on the console, a few frames after the
   # second press, HOORAY's voice is reading the first note's pitch again where its second note
   # would otherwise be sounding.
   def test_hooray_pressed_again_starts_from_its_first_note
@@ -74,7 +74,7 @@ class TestJukeboxExampleCartridge < Minitest::Test
     assert_equal first_note, steps[14], "the first note again, where the second was due (#{steps.inspect})"
   end
 
-  # HOORAY KEEPS SOUNDING, AT ITS OWN VOLUME, while the music fades: A, then DOWN moves the cursor
+  # Hooray keeps sounding, at its own volume, while the music fades: A, then DOWN moves the cursor
   # off the tune. The console keeps its voice through the fade, and says how loud.
   def test_hooray_does_not_fade_with_the_music
     moments = console_jukebox(Listener.new(**HOORAY_THEN_DOWN), frames: 200)
@@ -86,7 +86,7 @@ class TestJukeboxExampleCartridge < Minitest::Test
     assert_operator tune.last, :<, tune.first, "while the tune goes quiet"
   end
 
-  # HOORAY OVER THE SMALL CHORD, heard on the console: louder than the same frames with nobody
+  # Hooray over the small chord, heard on the console: louder than the same frames with nobody
   # pressing A, and once it has ended, frame for frame the same sound as those — the tune was not
   # touched and did not slip.
   #

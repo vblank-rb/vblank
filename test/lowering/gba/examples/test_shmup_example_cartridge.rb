@@ -85,7 +85,7 @@ class TestShmupExampleCartridge < Minitest::Test
   end
 
   # And the game-over screen renders on the console: run long enough (at rest) to lose all
-  # three ships, and the GAME OVER banner is on screen — scene-switched presentation, live
+  # three ships, and the game over banner is on screen — scene-switched presentation, live
   # on hardware.
   def test_the_game_over_screen_renders_on_the_console
     v = assert_emulator_loads_rom(Shmup.build_rom(out: StringIO.new, err: StringIO.new), frames: 380)
