@@ -240,7 +240,7 @@ class TestMusic < Minitest::Test
     passes
   end
 
-  # THE SONG MOVES ON FROM THE GAME'S FIRST FRAME, however long setting up took: frames spent
+  # The song moves on from the game's first frame, however long setting up took: frames spent
   # before the first picture is shown play no music, so the notes land on the same passes as in a
   # game that sets up at once.
   def test_a_long_setting_up_moves_no_note

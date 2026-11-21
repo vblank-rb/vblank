@@ -5,7 +5,7 @@ require "test_helper"
 # Layers — `layers` to name the depths a picture is built from, `layer do ... end` to
 # put things in them.
 #
-# What is under test here is the MODEL: which layer each declaration ended up in. The
+# What is under test here is the model: which layer each declaration ended up in. The
 # friendly errors and warnings a layer brings with it are a set of their own, in
 # test_layer_guardrails.rb. What each layer becomes on a console, and the drawing order
 # that follows from it, is asserted with the backends. What the Advance's cartridge shows and
@@ -23,7 +23,7 @@ module LayersGames
     b.program
   end
 
-  # Two sprites overlapping in layers that REVERSE the order they were declared in.
+  # Two sprites overlapping in layers that reverse the order they were declared in.
   private def two_reversed_sprites(kind)
     program do
       screen kind
@@ -31,7 +31,7 @@ module LayersGames
       image(:heart, "#" => :red) { (["#" * 8] * 8).join("\n") }
       clear_screen :blue if kind == :bitmap
       layers :behind, :front
-      # The pillar declared FIRST but placed at the FRONT, so declaration order and the
+      # The pillar declared first but placed at the front, so declaration order and the
       # stack disagree on purpose.
       layer(:front) { sprite :pillar, at: OVERLAP }
       layer(:behind) { sprite :heart, at: OVERLAP }
@@ -157,7 +157,7 @@ class TestLayers < Minitest::Test
     assert_equal 5, nodes(prog, :object).length
   end
 
-  # A layer says WHERE IN THE STACK and a scene says WHEN. They are different axes, so
+  # A layer says where in the stack and a scene says when. They are different axes, so
   # a sprite can be in both and neither has to know about the other.
   def test_a_layer_inside_a_scene_holds_for_that_scene_only
     prog = program do
@@ -284,7 +284,7 @@ class TestLayers < Minitest::Test
 
   # --- both screens honor the stack for sprites ---
   #
-  # The picture, not the tree. Two sprites overlapping in layers that REVERSE the order
+  # The picture, not the tree. Two sprites overlapping in layers that reverse the order
   # they were declared in: the one in front must be the one the stack put there, and both
   # screen kinds must agree on which that is.
 

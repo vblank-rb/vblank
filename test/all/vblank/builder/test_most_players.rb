@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE MOST PLAYERS A BUILD SEATS, asked while the game is built (`most_players`), so a game says
+# The most players a build seats, asked while the game is built (`most_players`), so a game says
 # how many players it takes once, in `players:`, and lays out its seats from the answer.
 class TestMostPlayers < Minitest::Test
   private def game(players: { computer: 1..4, else: 1 })
