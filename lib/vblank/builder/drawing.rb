@@ -2,12 +2,24 @@
 
 module VBlank
   class Builder
-    # The bitmap drawing verbs: pick a screen mode, then put color on the screen —
-    # single pixels, filled rectangles (fixed or run-time positioned), a whole-screen
-    # clear. A concern of {Builder}, mixed in so these stay flat DSL verbs.
+    # Drawing and the screen
     #
+    # `screen` chooses what kind of screen the game draws on. A bitmap screen is a canvas you put
+    # colour on, with `pixel`, `fill_rect`, `clear_screen` and the others. A tiled screen is made
+    # of tile and sprite layers, which is how most games are drawn. Coordinates are pixels from the
+    # top left of the screen. `fade`, `tint`, `pixelate`, `spotlight` and `camera` change how the
+    # whole picture is shown without redrawing it, so they cost the same however much is on screen.
+    #
+    # ```ruby
+    # screen :bitmap
+    # clear_screen :blue
+    # fill_rect 40, 40, 60, 30, :red
+    # pixel 120, 80, :white
+    # ```
+    #--
     # The screen's size is the console's the game is built for (Builder#console), never one
-    # console's numbers written here.
+    # console's numbers written here. A concern of Builder, mixed in so these stay flat DSL verbs.
+    #++
     module Drawing
       # The screens {#screen} knows by name: a pixel canvas, tile and sprite layers (most
       # games), and one background that turns and resizes with no scrolling ones. How each is
@@ -15,21 +27,30 @@ module VBlank
       # isn't a separate name here: it's `screen :bitmap, tear_free: true`.
       SCREEN_NAMES = %i[bitmap tiled rotozoom].freeze
 
-      # HOW BIG THE SCREEN IS, in pixels: 240 across and 160 down on a Game Boy Advance, 160 and
-      # 144 on a Game Boy Color. A game written for both lays itself out from these rather than
-      # from numbers for one screen, so the same block builds for either (see `consoles:` on
-      # `VBlank.game`):
+      # Gives how wide the screen is, in pixels, as a plain Ruby number while the game is built.
       #
-      #   paddle_x = screen_width - 12
-      #   draw_text "PONG", :center, screen_height / 4, :white
+      # It is 240 on a Game Boy Advance and 160 on a Game Boy Color. A game written for both lays
+      # itself out from `screen_width` and `screen_height` instead of from numbers for one screen,
+      # so that the same block builds for either.
       #
-      # On a screen of big pixels (`screen :bitmap, pixel_size: 2`) these are the small picture's
-      # size, which is what the game draws in. Where the game asks a screen of its own
-      # (`screen :bitmap, size: [320, 200]`) they are what this build gave: that size on a
+      # ```ruby
+      # paddle_x = screen_width - 12
+      # draw_text "PONG", :center, screen_height / 4, :white
+      # ```
+      #
+      # On a screen of big pixels (`screen :bitmap, pixel_size: 2`) these are the size of the small
+      # picture, which is what the game draws in. Where the game asks for a screen of its own size
+      # (`screen :bitmap, size: [320, 200]`), they are what this build gave: that size on a
       # computer's build, and the console's own screen on a cartridge.
+      #--
+      # A later line that changes the size (`screen :bitmap, size:` or `pixel_size:`) is refused
+      # rather than leave this verb laid out for another screen. `screen_width` reads it this way,
+      # and so does every verb that centres, clips or checks against the screen as it is built.
+      #++
       def screen_width = read_screen_size(:screen_width)[0]
 
-      # See #screen_width.
+      # Gives how tall the screen is, in pixels, as a plain Ruby number while the game is built. It
+      # is 160 on a Game Boy Advance and 144 on a Game Boy Color. See `screen_width`.
       def screen_height = read_screen_size(:screen_height)[1]
 
       # THE SCREEN'S SIZE, [width, height], as a verb named +verb+ lays itself out by it: noted, so
@@ -41,123 +62,98 @@ module VBlank
         console.screen_size
       end
 
-      # Choose what kind of screen you're drawing on.
+      # Chooses what kind of screen the game draws on.
       #
-      # @param mode [Symbol, Integer] a friendly name or raw REG_DISPCNT value
+      # ```ruby
+      # screen :bitmap          # a pixel canvas
+      # screen :tiled           # tile and sprite layers
+      # ```
       #
-      # @example Friendly
-      #   screen :bitmap          # a pixel canvas
-      #   screen :tiled           # tile/sprite layers
+      # `:bitmap` is a canvas you put colour on. `:tiled` is made of tile and sprite layers, which
+      # is how most games are drawn. `:rotozoom` is one background that turns and resizes, with no
+      # scrolling ones. The number of tile layers a `:tiled` screen has is not written here. The
+      # console lays its tile layers out two ways: four that scroll, or two that scroll plus one
+      # that turns and resizes. A game gets the second exactly when it turns a background, with
+      # `background(...).rotate` or `.scale`, so the build reads the arrangement off what was
+      # declared. Declaring more scrolling layers than the arrangement holds is an error that names
+      # both numbers, and a layer is never left undrawn quietly.
       #
-      # HOW MANY TILE LAYERS `screen :tiled` HAS IS NOT FIXED, and nothing in a program
-      # names which arrangement it wants. The console lays its tile layers out two ways:
-      # four that scroll, or two that scroll plus one that turns and resizes. A game gets
-      # the second exactly when it turns a background (`background(...).rotate` /
-      # `.scale`), because turning one IS asking for it — so the build reads the
-      # arrangement off what was declared rather than off a name written here. Declaring
-      # more scrolling layers than the arrangement holds is a friendly error naming both
-      # counts, never a layer quietly left undrawn. See {Backends::GBA::Drawing#tiled_dispcnt}.
+      # A screen can be tear-proof. With `tear_free: true`, `screen :bitmap` is drawn to a hidden
+      # page and shown all at once, so the picture can never tear no matter how much you draw. It
+      # costs some colour range, because a 256-colour palette is built from the colours you use, so
+      # it is a choice you make: plain `screen :bitmap` stays direct-colour.
       #
-      # @example Raw (full control, the Advance's display register written as it is)
-      #   hw = VBlank::Console::Hardware
-      #   screen hw::MODE_3 | hw::BG2_ENABLE | hw::OBJ_ENABLE
+      # ```ruby
+      # screen :bitmap, tear_free: true
+      # screen :bitmap, tear_free: true, colors: imported.colors   # colours that came with the art
+      # screen :bitmap, tear_free: true, late: 40                  # a late page shown at once, if the tear is in the top quarter
+      # screen :bitmap, tear_free: true, late: :show_now, pace: 30 # a game at thirty that does not drop to twenty
+      # screen :bitmap, tear_free: true, pixel_size: 2             # a first-person view drawn at half size
+      # screen :bitmap, shown_rows: 32...192                       # a view 160 rows high
+      # screen :bitmap, size: [320, 200]
+      # ```
       #
-      # Pass +tear_free: true+ to make `screen :bitmap` tear-proof: the framework
-      # draws each frame to a hidden screen and shows it all at once, so the picture
-      # can never tear no matter how much you draw. It costs some color range (a
-      # 256-color palette built automatically from the colors you use), so it's
-      # opt-in; plain `screen :bitmap` stays direct-color. (Under the hood this is
-      # double buffering, which the IR and backend call "buffered".)
+      # `backdrop:` is the colour shown wherever nothing is drawn. It can be the name of a `colors`
+      # list, which the backdrop then follows. Whatever the game tells the list to hold with
+      # `recolor`, the backdrop shows its first colour, on the same frame as everything else drawn
+      # with the list. That is how a console game's own fade takes the backdrop with the picture.
+      # It can also be a slot of colours of the data pack, or one bank of it, and is then the
+      # colour the slot holds first: the colour the original's own screen shows wherever none of
+      # its tiles draws. A scene's own `screen` line takes it.
       #
-      # @example Tear-proof
-      #   screen :bitmap, tear_free: true
+      # ```ruby
+      # colors :screen_colors, [:navy, :white, :gray]
+      # screen :tiled, backdrop: :screen_colors
+      # recolor :screen_colors, color_walk(:screen_colors, from: :black), showing: step
       #
-      # Pass +colors:+ to set which colors the screen shows, instead of letting the
-      # framework work them out from the ones you name. You want this only when your
-      # pictures come from somewhere that already decided — art imported from another
-      # game or a paint program, whose pixels are numbers that pick out of ITS table.
-      # Give the colors in that table's order and the pictures line up. Everything
-      # else is unchanged: you still write color names, and you never write a slot
-      # number. A color you draw with that is not in the list is a friendly error.
+      # scene(:logos) do
+      #   screen :tiled, backdrop: pack[:logo_colors]
+      #   background :logos, tiles: pack[:logo_video], map: pack[:logo_map], colors: pack[:logo_colors], across: 32
+      # end
+      # ```
       #
-      # @example Colors that came with the art
-      #   screen :bitmap, tear_free: true, colors: imported.colors
-      #
-      # Pass +late:+ to choose what the tear-free screen does with a page the game finished too
-      # late for the break between pictures it was meant for. By default (+:wait+) it waits for
-      # the next break, so it never tears — but a frame a little late then costs a whole frame,
-      # and a game at sixty drops to thirty for it. +:show_now+ shows such a page as soon as
-      # it is done, which can tear on those frames. A row number (0 to 159) shows it at once
-      # only while the screen is still drawing above that row, where a tear is least seen, and
-      # waits otherwise. A late page finished during the break itself is shown at once by
-      # either, since nothing is being drawn then. Set per `screen`, so a scene can allow it while the
-      # game plays and forbid it on a menu. `rom.profile` counts the pages it showed at once.
-      #
-      # +pace:+ sets what LATE means: the pictures a second the game aims for — 60 (the
-      # default), 30, 20 or 15. A page is late when it misses the break that rate aims at. A
-      # game that runs at thirty and sets `pace: 30` shows at once only the pages that ran
-      # over thirty, and the ones on time at thirty wait as they always did.
-      #
-      # @example A late page shown at once, if the tear is in the top quarter
-      #   screen :bitmap, tear_free: true, late: 40
-      # @example A game at thirty that does not drop to twenty on a heavy frame
-      #   screen :bitmap, tear_free: true, late: :show_now, pace: 30
-      #
-      # +backdrop:+ is the colour shown wherever nothing is drawn. It is a colour, or the name of
-      # a `colors` list, which the backdrop then follows: whatever the game tells the list to hold
-      # with `recolor`, the backdrop shows its first colour (+backdrop_place:+ picks another),
-      # on the same frame as everything else drawn with the list. That is how a console game's
-      # own fade takes the backdrop with the picture (see ColorLists#followed_backdrop_list).
-      #
-      # @example A backdrop that fades with the picture
-      #   colors :screen_colors, [:navy, :white, :gray]
-      #   screen :tiled, backdrop: :screen_colors
-      #   recolor :screen_colors, color_walk(:screen_colors, from: :black), showing: step
-      #
-      # +backdrop:+ also takes a slot of colours of the data pack, or one bank of it, and is then
-      # the colour the slot holds first (+backdrop_place:+ picks another): the colour the original's
-      # own screen shows wherever none of its tiles draws (see DataPacks#pack_backdrop_color). It
-      # is a colour like one written in the game, so a scene's own `screen` line takes it. A build
-      # that reads its pack as the game starts reads the colour then
-      # (DataPacks#pack_backdrop_in_start_file).
-      #
-      # @example A scene whose backdrop is the first colour its original loaded
-      #   scene(:logos) do
-      #     screen :tiled, backdrop: pack[:logo_colors]
-      #     background :logos, tiles: pack[:logo_video], map: pack[:logo_map], colors: pack[:logo_colors], across: 32
-      #   end
-      #
-      # +pixel_size: 2+ shows each pixel of a painted screen twice as wide and twice as tall: the
-      # game draws a picture half the screen's width and height, and the console shows it filling
-      # the screen. Everything the game draws costs a quarter of what it did — the old games that
-      # drew a first-person view did this for speed — at a chunkier look. `screen_width` and
-      # `screen_height` answer the small picture's size, and every verb draws in its pixels. It is
-      # the whole game's, so it goes on the game's first `screen` line, before anything reads the
-      # screen's size; every later screen is a painted one too.
-      #
-      # @example A first-person view drawn at half size
-      #   screen :bitmap, tear_free: true, pixel_size: 2
-      #
-      # +shown_rows:+ gives up the rows of a painted screen outside a range: the picture stops
-      # early, and those rows show black whatever is painted there. A console that can copy to its
-      # video memory only while it is not drawing has those rows to copy in as well as the gap
-      # between pictures, so a picture that changes a lot each pass arrives sooner. It is the whole
-      # game's, so it goes on the game's first `screen` line, and every later screen is a painted one.
-      # With `pixel_size: 2` the rows are the small picture's.
-      #
-      # @example A view 160 rows high, with more time each frame to send it
-      #   screen :bitmap, shown_rows: 32...192
-      #
-      # +size:+ is the size the game would like its screen to be, [width, height]. A computer's
-      # build (the desktop program, the web page, the Ruby file) gives it; a console gives its own
-      # fixed screen, and nothing is refused there. `screen_width` and `screen_height` answer what
-      # this build gave, so a game lays itself out from them and works out, while it is built,
-      # whether a picture fits. It is the whole game's, so it goes on the game's first `screen`
-      # line, before anything reads the screen's size, and every later screen is a painted one.
-      #
-      # @example A title picture shown whole where it fits, and panned across where it does not
-      #   screen :bitmap, size: [320, 200]
-      #   fits = screen_width >= 320 && screen_height >= 200
+      # * `mode` - `:bitmap`, `:tiled` or `:rotozoom`. A raw number for the Advance's display
+      #   register is also accepted, for full control.
+      # * `tear_free:` - `true` for a screen that never tears.
+      # * `colors:` - which colours the screen shows, instead of letting the framework work them
+      #   out from the ones you name. You want this only when your pictures come from somewhere
+      #   that already decided, such as art imported from another game or a paint program, whose
+      #   pixels are numbers that pick out of its table. Give the colours in that table's order and
+      #   the pictures line up. You still write colour names, and a colour that is not in the list
+      #   is an error.
+      # * `late:` - what a tear-free screen does with a page the game finished too late for the
+      #   break between pictures it was meant for. `:wait` (the default) waits for the next break,
+      #   so it never tears, but a frame a little late then costs a whole frame, and a game at sixty
+      #   drops to thirty. `:show_now` shows such a page as soon as it is done, which can tear on
+      #   those frames. A row number from 0 to 159 shows it at once only while the screen is still
+      #   drawing above that row, where a tear is least seen, and waits otherwise. It is set for each
+      #   `screen`, so a scene can allow it while the game plays and forbid it on a menu.
+      # * `pace:` - the pictures a second the game aims for, which sets what late means: 60 (the
+      #   default), 30, 20 or 15. A page is late when it misses the break that rate aims at.
+      # * `backdrop:` - the colour shown wherever nothing is drawn.
+      # * `backdrop_place:` - which colour of a list or a data pack slot the backdrop shows. The
+      #   default is the first.
+      # * `pixel_size:` - 2 shows each pixel of a painted screen twice as wide and twice as tall.
+      #   The game draws a picture half the screen's width and height, and the console shows it
+      #   filling the screen. Everything the game draws costs a quarter of what it did, at a chunkier
+      #   look. It is the whole game's, so it goes on the game's first `screen` line, before
+      #   anything reads the screen's size, and every later screen is a painted one too.
+      # * `shown_rows:` - gives up the rows of a painted screen outside a range: the picture stops
+      #   early, and those rows show black. A console that can copy to its video memory only while
+      #   it is not drawing has those rows to copy in as well as the gap between pictures, so a
+      #   picture that changes a lot each pass arrives sooner. It is the whole game's, like
+      #   `pixel_size:`.
+      # * `size:` - the size the game would like its screen to be, `[width, height]`. A computer's
+      #   build, the desktop program, the web page or the Ruby file, gives it. A console gives its
+      #   own fixed screen, and nothing is refused there. `screen_width` and `screen_height` answer
+      #   what this build gave, so a game lays itself out from them. It is the whole game's.
+      #--
+      # See Backends::GBA::Drawing#tiled_dispcnt for the arrangement. The tear-proof double-buffered
+      # screen is not a separate name here: the IR and backend call it "buffered". `backdrop:` that
+      # follows a list is ColorLists#followed_backdrop_list; from the pack it is
+      # DataPacks#pack_backdrop_color, or DataPacks#pack_backdrop_in_start_file in a build that
+      # reads its pack as the game starts. `rom.profile` counts the pages `late:` showed at once.
+      #++
       def screen(mode, tear_free: false, colors: nil, late: :wait, pace: 60, backdrop: nil, backdrop_place: nil,
                  pixel_size: 1, shown_rows: nil, size: nil)
         case mode
@@ -508,33 +504,31 @@ module VBlank
       # Introspection behind `keep_showing`: how many pictures the chosen screen keeps. A game reads none of this.
       def screen_pages = @tear_free ? 2 : 1  # :nodoc:
 
-      # Everything the block draws stays inside this part of the screen. What falls outside is
-      # CUT OFF rather than covered up: those pixels are never worked out, so the drawing costs
-      # what fits and not what was asked for.
+      # Keeps everything the block draws inside one part of the screen.
       #
-      #   inside 0, 0, 240, 128 do
-      #     ...the game...
-      #   end
-      #   draw_the_status_bar   # ...and this is outside it, so it draws
+      # What falls outside is cut off and not covered up. Those pixels are never worked out, so the
+      # drawing costs what fits and not what was asked for.
       #
-      # This is what a game with a panel wants — a strip of world with a row of numbers under
-      # it, a map beside it, a letterboxed cut scene. Without it the world is drawn over the
-      # whole screen and the panel painted on top, and everything under the panel was drawn for
-      # nothing. In a first-person view, where a near wall is drawn taller than the screen, that
-      # is most of a near wall.
+      # ```ruby
+      # inside 0, 0, 240, 128 do
+      #   # ...the game...
+      # end
+      # draw_the_status_bar   # this is outside it, so it draws
+      # ```
       #
-      # It clips; it does not move. A pixel drawn at (10, 10) is at (10, 10) whatever area is in
-      # force — so an area can be put round drawing that already works, and only the parts that
-      # were falling outside change.
+      # It is what a game with a panel wants: a strip of world with a row of numbers under it, a map
+      # beside it, or a letterboxed cut scene. Without it the world is drawn over the whole screen
+      # and the panel painted on top, and everything under the panel was drawn for nothing. In a
+      # first-person view, where a near wall is drawn taller than the screen, that is most of a near
+      # wall.
       #
-      # The edges are settled while you write the program, because where a panel goes is part of
-      # how a screen is laid out rather than something a game works out as it runs. Areas do not
-      # nest inside each other.
+      # It clips and does not move. A pixel drawn at (10, 10) is at (10, 10) whatever area is in
+      # force, so an area can be put round drawing that already works. The edges are settled while
+      # you write the game, because where a panel goes is part of how a screen is laid out and not
+      # something a game works out as it runs. Areas do not nest inside each other.
       #
-      # @param x [Integer] left edge
-      # @param y [Integer] top edge
-      # @param w [Integer] width in pixels
-      # @param h [Integer] height in pixels
+      # * `x` and `y` - the top left corner.
+      # * `w` and `h` - the width and height in pixels.
       def inside(x, y, w, h, &block)
         raise ArgumentError, "inside needs a block: inside(x, y, w, h) { ... }" unless block
 
@@ -558,70 +552,83 @@ module VBlank
         @inside_area = nil
       end
 
-      # Draw a single pixel in bitmap mode (MODE_3).
-      # Writes a 15-bit color to VRAM at the (x, y) offset.
+      # Draws a single pixel on a bitmap screen.
       #
-      # @param x [Integer] horizontal position (0-239)
-      # @param y [Integer] vertical position (0-159)
-      # @param c [Symbol, String, Integer] color (see {Color.resolve})
+      # ```ruby
+      # pixel 120, 80, :red
+      # ```
+      #
+      # * `x` - across, from 0 at the left edge.
+      # * `y` - down, from 0 at the top edge.
+      # * `c` - the colour: a name, a hex string such as `"#00FF00"`, or a colour from `rgb`.
       def pixel(x, y, c)
         validate_coords!(x, y)
         record(Build.pixel(x, y, c))
       end
 
-      # Fill a rectangle in bitmap mode (MODE_3).
+      # Fills a rectangle with one colour on a bitmap screen.
       #
-      # A place and size written in the program are drawn by the fill made for them, unrolled
-      # while building. Any of the four the game works out as it runs (a variable, an expression,
-      # a variable's name) makes it the rectangle `draw_rect_at` draws, which every console
-      # reads its numbers for as it runs: a game need not know which verb is which.
+      # A place and size written in the game are drawn by a fill made for them. Any of the four that
+      # the game works out as it runs, such as a variable or a calculation, makes it the rectangle
+      # `draw_rect_at` draws. A game need not know which verb is which.
       #
-      # @param x [Integer, Symbol, Value] left edge (0-239)
-      # @param y [Integer, Symbol, Value] top edge (0-159)
-      # @param w [Integer, Symbol, Value] width in pixels
-      # @param h [Integer, Symbol, Value] height in pixels
-      # @param c [Symbol, String, Integer] fill color
+      # ```ruby
+      # fill_rect 50, 50, 30, 20, rgb(31, 31, 0)
+      # ```
+      #
+      # * `x` and `y` - the top left corner.
+      # * `w` and `h` - the width and height in pixels.
+      # * `c` - the fill colour.
       def fill_rect(x, y, w, h, c)
         record_fixed_or_runtime_rect(:fill_rect, x, y, w, h, c) { |*fixed| Build.fill_rect(*fixed, c) }
       end
 
-      # Clear the entire screen to a solid color.
-      # Much faster than pixel-by-pixel: one DMA transfer fills all of VRAM.
+      # Clears the whole screen to one colour.
       #
-      # @param c [Symbol, String, Integer] fill color
+      # It is much faster than drawing pixel by pixel. Paint a field that does not change once,
+      # before the game loop.
+      #
+      # ```ruby
+      # clear_screen :blue
+      # ```
+      #
+      # * `c` - the colour.
+      #--
+      # One DMA transfer fills all of video memory.
+      #++
       def clear_screen(c)
         record(Build.clear_screen(c))
       end
 
-      # --- the camera ---
-
-      # Move the visible window over the whole picture. `camera 0, 0` shows it as
-      # drawn; any other offset slides everything on screen at once.
+      # Moves the visible window over the whole picture.
       #
-      # Nothing is redrawn — the picture stays where it is and the window moves — so
-      # this costs the same however much is on screen. Where the window falls outside
-      # the picture there is nothing to show, and the backdrop appears along that edge,
-      # which is why a shake keeps its offset small.
+      # `camera 0, 0` shows it as drawn, and any other offset slides everything on screen at once.
+      # Nothing is redrawn. The picture stays where it is and the window moves, so this costs the
+      # same however much is on screen. Where the window falls outside the picture there is nothing
+      # to show, and the backdrop appears along that edge, which is why a shake keeps its offset
+      # small.
       #
-      # ON A TILED SCREEN there is no one picture to slide. What the console shows is its
-      # backgrounds and its sprites, each placed by the console as it draws, so the camera
-      # moves every one of them by the same amount: each background's scroll registers get
-      # the camera added to wherever the game scrolled it, and each sprite is placed that far
-      # the other way. The game's own numbers never change — a sprite's x is still where the
-      # game put it, and `blocked_by` still reads the world — only where the console shows
-      # them. Past a background's edge shows what a scroll there shows. A status bar and the
-      # letters of `draw_text`/`draw_number` stay where they are, as the part of the screen
-      # that holds the score, and so does a turning background, which turns about a point
-      # rather than scrolling.
+      # ```ruby
+      # camera hero.x - 120, hero.y - 80
+      # ```
       #
-      # It is written in the gap between frames with the scrolls, so a background and a
-      # sprite move on the same frame. Nothing here is one console's: every lowering already
-      # writes a background's scroll and places its sprites, so each does this its own way
-      # (see #finalize_tiled_camera). That is for a game whose every screen is tiled; a game
-      # with a painted screen too keeps the camera for its painted one.
+      # On a tiled screen there is no one picture to slide. The camera moves every background and
+      # every sprite by the same amount. The game's own numbers never change: a sprite's `x` is
+      # still where the game put it, and `blocked_by` still reads the world. Past a background's
+      # edge shows what a scroll there shows. A status bar and the letters of `draw_text` and
+      # `draw_number` stay where they are, as the part of the screen that holds the score, and so
+      # does a turning background, which turns about a point and does not scroll. A game with a
+      # painted screen too keeps the camera for its painted one.
       #
-      # @param x [Symbol, Integer, Value] the window's left edge, in pixels
-      # @param y [Symbol, Integer, Value] the window's top edge, in pixels
+      # * `x` - the window's left edge, in pixels.
+      # * `y` - the window's top edge, in pixels.
+      #--
+      # On a tiled screen each background's scroll registers get the camera added to wherever the
+      # game scrolled it, and each sprite is placed that far the other way. It is written in the gap
+      # between frames with the scrolls, so a background and a sprite move on the same frame. Every
+      # lowering already writes a background's scroll and places its sprites, so each does this its
+      # own way (see #finalize_tiled_camera).
+      #++
       def camera(x, y)
         record(Build.camera(x: DSL::Value.node_for(x), y: DSL::Value.node_for(y)))
         ensure_var(x)
@@ -743,48 +750,58 @@ module VBlank
       # the whole screen toward without redrawing anything.
       FADE_COLORS = %i[black white].freeze
 
-      # Fade the whole screen toward black or white.
+      # Fades the whole screen toward black or white.
       #
-      # `amount` is how far, from 0 (the picture as drawn) to 100 (nothing left but
-      # that color). Nothing is redrawn — the picture is all still there, and comes
-      # back untouched when the fade lifts — so this costs the same however much is on
-      # screen, and it works on either kind of screen.
+      # `amount` is how far, from 0 (the picture as drawn) to 100 (nothing left but that colour).
+      # Nothing is redrawn. The picture is all still there and comes back untouched when the fade
+      # lifts, so this costs the same however much is on screen, and it works on either kind of
+      # screen.
       #
-      #   fade :black             # black out
-      #   fade :black, 0          # back to normal
-      #   fade :white, 50         # halfway to white
+      # ```ruby
+      # fade :black             # black out
+      # fade :black, 0          # back to normal
+      # fade :white, 50         # halfway to white
+      # ```
       #
-      # It sets the level at the moment you call it. To fade over time, move a
-      # variable and pass it: this is the primitive `fade_in` / `fade_out` sit on.
+      # It sets the level at the moment you call it. To fade over time, move a variable and pass
+      # it. This is what `fade_in` and `fade_out` are built on.
       #
-      #   level = var :level, 0
-      #   game_loop do
-      #     level.approach! 100, 4   # walk it up over a few frames
-      #     fade :black, level
-      #   end
+      # ```ruby
+      # level = var :level, 0
+      # game_loop do
+      #   level.approach! 100, 4   # walk it up over a few frames
+      #   fade :black, level
+      # end
+      # ```
       #
-      # `under:` puts the fade at a place in the stack instead of over the whole
-      # picture: it names a layer, and that layer and everything in front of it are
-      # left alone. Fade the game out and keep the score showing:
+      # `under:` puts the fade at a place in the stack instead of over the whole picture. It names
+      # a layer, and that layer and everything in front of it are left alone. Fade the game out and
+      # keep the score showing:
       #
-      #   layers :world, :actors, :ui
-      #   fade :black, 100, under: :ui
+      # ```ruby
+      # layers :world, :actors, :ui
+      # fade :black, 100, under: :ui
+      # ```
       #
-      # `inside:` holds the fade to a rectangle of the screen, `[x, y, width, height]`, and
-      # leaves the rest as drawn; `outside:` fades everything but the rectangle. Fade the view
-      # and keep the status bar under it, or dim a game behind a pause box:
+      # `inside:` holds the fade to a rectangle of the screen and leaves the rest as drawn.
+      # `outside:` fades everything but the rectangle. Fade the view and keep the status bar under
+      # it, or dim a game behind a pause box:
       #
-      #   fade :black, 100, inside: [0, 0, 240, 128]
-      #   fade :black, 50, outside: [60, 40, 120, 80]
+      # ```ruby
+      # fade :black, 100, inside: [0, 0, 240, 128]
+      # fade :black, 50, outside: [60, 40, 120, 80]
+      # ```
       #
-      # The display does it with a window — a rectangle it is told about — and its darkening
+      # * `toward` - `:black` or `:white`.
+      # * `amount` - how far, from 0 to 100: a number, a variable or a calculation. A fraction asks
+      #   for finer steps.
+      # * `under:` - a layer this fade sits under. The default is the whole screen.
+      # * `inside:` - the rectangle `[x, y, width, height]` the fade is held to.
+      # * `outside:` - the rectangle the fade leaves alone.
+      #--
+      # The display does a rectangle with a window, a rectangle it is told about, and its darkening
       # switched on in one part and off in the other, so it is as free as a whole-screen fade.
-      #
-      # @param toward [Symbol] :black or :white
-      # @param amount [Symbol, Integer, Float, Value] how far, 0 to 100 (a fraction asks for finer steps)
-      # @param under [Symbol, nil] a layer this fade sits under, or nil for the whole screen
-      # @param inside [Array<Integer>, nil] the rectangle the fade is held to
-      # @param outside [Array<Integer>, nil] the rectangle the fade leaves alone
+      #++
       def fade(toward, amount = 100, under: nil, inside: nil, outside: nil)
         unless FADE_COLORS.include?(toward)
           raise ArgumentError,
@@ -840,77 +857,84 @@ module VBlank
 
       public
 
-      # Tint the whole screen toward a color — red for damage, blue for cold water,
-      # orange for a sunset. `fade`'s sibling, for the colors a fade cannot reach.
+      # Tints the whole screen toward a colour, such as red for damage, blue for cold water or
+      # orange for a sunset.
       #
-      # `amount` is how far, from 0 (the picture as drawn) to 100 (nothing left but
-      # that color). Nothing is redrawn, so the picture is all still there and comes
-      # back untouched when the tint lifts.
+      # It is `fade`'s sibling, for the colours a fade cannot reach. `amount` is how far, from 0
+      # (the picture as drawn) to 100 (nothing left but that colour). Nothing is redrawn, so the
+      # picture is all still there and comes back untouched when the tint lifts.
       #
-      #   tint :red               # everything red
-      #   tint :red, 0            # back to normal
-      #   tint :orange, 30        # a warm wash over the picture
+      # ```ruby
+      # tint :red               # everything red
+      # tint :red, 0            # back to normal
+      # tint :orange, 30        # a warm wash over the picture
+      # ```
       #
-      # Like `fade` it sets the level where you call it, so tinting over time is a
-      # variable moved a little each frame:
+      # Like `fade`, it sets the level where you call it, so tinting over time is a variable moved
+      # a little each frame:
       #
-      #   hurt = var :hurt, 0
-      #   game_loop do
-      #     hurt.approach! 0, 6      # ease it back off
-      #     tint :red, hurt
-      #   end
+      # ```ruby
+      # hurt = var :hurt, 0
+      # game_loop do
+      #   hurt.approach! 0, 6      # ease it back off
+      #   tint :red, hurt
+      # end
+      # ```
       #
-      # @param color [Symbol, String, Integer] the color to move the picture toward
-      # @param amount [Symbol, Integer, Float, Value] how far, 0 to 100 (a fraction asks for finer steps)
+      # * `color` - the colour to move the picture toward.
+      # * `amount` - how far, from 0 to 100: a number, a variable or a calculation. A fraction asks
+      #   for finer steps.
       def tint(color, amount = 100)
         node, bits = effect_amount(:tint, amount)
         record(Build.tint(color: Graphics::Color.resolve(color), amount: node, fraction_bits: bits))
         ensure_var(amount)
       end
 
-      # Show the whole screen in flat blocks — the pixelate effect of a scene change, a
-      # hit, a dream, a teleport.
+      # Shows the whole screen in flat blocks, as the pixelate effect of a scene change, a hit, a
+      # dream or a teleport.
       #
-      # `size` is how many pixels a block is each way: 1 is the picture as drawn, 8 is
-      # blocks of eight by eight, and 16 is the biggest the console draws. Nothing is
-      # redrawn — the console does it as it draws, so the picture is all still there and
-      # comes back untouched — and it costs the same however much is on screen.
+      # `size` is how many pixels a block is each way: 1 is the picture as drawn, 8 is blocks of
+      # eight by eight, and 16 is the biggest the console draws. Nothing is redrawn. The console
+      # does it as it draws, so the picture is all still there and comes back untouched, and it
+      # costs the same however much is on screen.
       #
-      #   pixelate 8              # big blocks
-      #   pixelate 1              # back to normal
+      # ```ruby
+      # pixelate 8              # big blocks
+      # pixelate 1              # back to normal
+      # ```
       #
-      # It sets the size where you call it, so pixelating over time is a variable moved
-      # a little each frame:
+      # It sets the size where you call it, so pixelating over time is a variable moved a little
+      # each frame:
       #
-      #   blocks = var :blocks, 1
-      #   game_loop do
-      #     blocks.approach! 16, 1
-      #     pixelate blocks
-      #   end
+      # ```ruby
+      # blocks = var :blocks, 1
+      # game_loop do
+      #   blocks.approach! 16, 1
+      #   pixelate blocks
+      # end
+      # ```
       #
-      # `under:` leaves part of the picture as drawn: it names a layer, and that layer and
+      # `under:` leaves part of the picture as drawn. It names a layer, and that layer and
       # everything in front of it stay sharp. Pixelate the game and keep the score readable:
       #
-      #   layers :world, :actors, :ui
-      #   pixelate 8, under: :ui
+      # ```ruby
+      # layers :world, :actors, :ui
+      # pixelate 8, under: :ui
+      # ```
       #
       # A game names one place, and every `pixelate` in it names the same one.
       #
-      # `sprites: false` puts the backgrounds alone in blocks and leaves every sprite as
-      # drawn, which is all a Super Nintendo's display can do, so a game for one says it:
-      #
-      #   pixelate 16 - brightness, sprites: false
-      #
-      # It is one choice for the whole game too, like the place.
-      #
-      # A status bar stays as drawn unless the game writes `status_bar: true`: then it is in
-      # blocks too, in the one grid from the top of the screen that everything else's blocks are
-      # in. One choice for the whole game as well.
-      #
-      # @param size [Symbol, Integer, Value] how many pixels a block is each way, 1 to 16
-      # @param under [Symbol, nil] a layer left as drawn with everything in front of it, or nil for the whole screen
-      # @param sprites [Boolean] whether the sprites are put in blocks with the backgrounds
-      # @param status_bar [Boolean] whether a status bar is put in blocks with the backgrounds
+      # * `size` - how many pixels a block is each way, from 1 to 16: a number, a variable or a
+      #   calculation.
+      # * `under:` - a layer left as drawn with everything in front of it. The default is the whole
+      #   screen.
+      # * `sprites:` - `false` puts the backgrounds alone in blocks and leaves every sprite as
+      #   drawn, which is all a Super Nintendo's display can do, so a game for one says it:
+      #   `pixelate 16 - brightness, sprites: false`. It is one choice for the whole game, like the
+      #   place.
+      # * `status_bar:` - `true` puts a status bar in blocks too, in the one grid from the top of the
+      #   screen that everything else's blocks are in. Otherwise a status bar stays as drawn. It is
+      #   one choice for the whole game too.
       def pixelate(size, under: nil, sprites: true, status_bar: false)
         refuse_unusable_block_size!(size)
         check_effect_layer!(:pixelate, under) if under
@@ -923,45 +947,49 @@ module VBlank
         ensure_var(size)
       end
 
-      # A light: the picture as drawn inside a circle, and darkened everywhere outside it.
-      # A lantern in a cave, a torch in a dungeon, a searchlight sweeping a yard. Declare it
-      # once, where it starts, and move it with the handle it hands back:
+      # Makes a light: the picture as drawn inside a circle, and darkened everywhere outside it.
       #
-      #   light = spotlight at: [120, 80], radius: 40, dark: 75
-      #   game_loop do
-      #     light.move_to hero.x + 8, hero.y + 8
-      #   end
+      # It is a lantern in a cave, a torch in a dungeon or a searchlight sweeping a yard. Declare
+      # it once, where it starts, and move it with the handle it gives back.
       #
-      # `at:` is where the middle of the light starts, in screen pixels, `radius:` how far it
-      # reaches, and `dark:` how dark the rest of the picture is, 0 (as drawn) to 100 (black).
-      # All three are where it STARTS, applied once at power-on, the way `var` takes its
-      # starting value; the handle's `x`, `y`, `radius` and `dark` are what the game changes.
+      # ```ruby
+      # light = spotlight at: [120, 80], radius: 40, dark: 75
+      # game_loop do
+      #   light.move_to hero.x + 8, hero.y + 8
+      # end
+      # ```
       #
-      # Nothing is redrawn. The console darkens the picture as it draws it, and is told
-      # where the circle is one row at a time, so a light costs the same however much is on
-      # screen: working its edge out for each row, in the gap before every frame.
+      # `at:`, `radius:` and `dark:` are where the light starts, applied once at power-on, the way
+      # `var` takes its starting value. The handle's `x`, `y`, `radius` and `dark` are what the game
+      # changes. Nothing is redrawn. The console darkens the picture as it draws it, so a light costs
+      # the same however much is on screen.
       #
-      # `spotlight` with nothing after it hands back the game's light, which is how anything
-      # that works on the light finds it — an `iris_out`, a routine in another file. A game
-      # with no light yet gets one that reaches past every edge of the screen and darkens
-      # nothing, so the picture is as drawn until something moves it.
+      # `spotlight` with nothing after it gives back the game's light, which is how anything that
+      # works on the light finds it, such as an `iris_out` or a routine in another file. A game with
+      # no light yet gets one that reaches past every edge of the screen and darkens nothing, so the
+      # picture is as drawn until something moves it.
       #
-      # `outside: :nothing` makes it a light that SHOWS NOTHING OUTSIDE IT, where a light
-      # otherwise darkens what is there: outside the circle no layer and no sprite is drawn, so
-      # the screen's backdrop colour shows, black unless the game gave the screen another. It
-      # is the circle a scene change closes, and the one light that shares a scene with a
-      # see-through layer, because it darkens nothing: the layer goes on mixing inside the
-      # circle. Its `dark` is then a switch, 0 for off and 100 for on, which is what
-      # `iris_out` and `iris_in` set. It is said once, where the game's light is declared:
+      # `outside: :nothing` makes a light that shows nothing outside it, where a light otherwise
+      # darkens what is there. Outside the circle no layer and no sprite is drawn, so the screen's
+      # backdrop colour shows, black unless the game gave the screen another. It is the circle a
+      # scene change closes, and the one light that shares a scene with a see-through layer, because
+      # it darkens nothing and the layer goes on mixing inside the circle. Its `dark` is then a
+      # switch, 0 for off and 100 for on, which is what `iris_out` and `iris_in` set. It is said once,
+      # where the game's light is declared.
       #
-      #   spotlight outside: :nothing    # the game's light, off until an `iris_out` closes it
-      #   spotlight at: [120, 80], radius: 40, outside: :nothing
+      # ```ruby
+      # spotlight outside: :nothing    # the game's light, off until an iris_out closes it
+      # spotlight at: [120, 80], radius: 40, outside: :nothing
+      # ```
       #
-      # @param at [Array(Integer, Integer)] where the middle of the light starts, in screen pixels
-      # @param radius [Integer] how far it reaches from its middle, in pixels
-      # @param dark [Integer] how dark the picture is outside it, 0 to 100
-      # @param outside [Symbol, nil] :darkened (what a light does unless told) or :nothing
-      # @return [DSL::Spotlight]
+      # * `at:` - where the middle of the light starts, as `[x, y]` in screen pixels.
+      # * `radius:` - how far it reaches from its middle, in pixels.
+      # * `dark:` - how dark the picture is outside it, from 0 (as drawn) to 100 (black).
+      # * `outside:` - `:darkened` (what a light does unless told) or `:nothing`.
+      #--
+      # The console is told where the circle is one row at a time, so the circle's edge is worked
+      # out for each row, in the gap before every frame. Returns a DSL::Spotlight.
+      #++
       def spotlight(at: nil, radius: nil, dark: nil, outside: nil)
         refuse_unknown_light_outside!(outside)
         said = !(at.nil? && radius.nil? && dark.nil?)
@@ -1039,47 +1067,49 @@ module VBlank
         record(Build.show_light_now)
       end
 
-      # Fill a rectangle at a fixed position and size. A number the game works out makes it
-      # the rectangle `draw_rect_at` draws, as for #fill_rect.
+      # Fills a rectangle at a fixed place and size, with the console's fast fill.
       #
-      # @param x [Integer, Symbol, Value] left edge
-      # @param y [Integer, Symbol, Value] top edge
-      # @param w [Integer, Symbol, Value] width in pixels (must be even for the fast fill)
-      # @param h [Integer, Symbol, Value] height in pixels
-      # @param c [Symbol, String, Integer] fill color
+      # A number that the game works out makes it the rectangle `draw_rect_at` draws, as for
+      # `fill_rect`.
+      #
+      # ```ruby
+      # dma_fill_rect 119, 2, 2, 12, :gray
+      # ```
+      #
+      # * `x` and `y` - the top left corner.
+      # * `w` - the width in pixels. It must be even for the fast fill.
+      # * `h` - the height in pixels.
+      # * `c` - the fill colour.
       def dma_fill_rect(x, y, w, h, c)
         record_fixed_or_runtime_rect(:dma_fill_rect, x, y, w, h, c) { |*fixed| Build.dma_fill_rect(*fixed, c) }
       end
 
-      # Draw ONE COLUMN of a picture, stretched to a height the game works out.
+      # Draws one column of a picture, stretched to a height the game works out.
       #
-      # This is what a first-person view is made of. For each strip across the screen a
-      # game works out how far away the wall is, turns that into a height, and draws a
-      # column of a wall picture that tall — near walls tall, far walls short. Do that
-      # across the screen and a flat grid of cells looks like rooms you can walk through.
+      # A first-person view is made of this. For each strip across the screen a game works out how
+      # far away the wall is, turns that into a height, and draws a column of a wall picture that
+      # tall: near walls tall and far walls short. Do that across the screen and a flat grid of
+      # cells looks like rooms you can walk through.
       #
-      #   draw_column_at :bricks, slice: ray_hit, x: col * 2, top: top, height: tall
+      # ```ruby
+      # draw_column_at :bricks, slice: ray_hit, x: col * 2, top: top, height: tall
+      # ```
       #
-      # +slice+ picks the column of the picture (which part of the wall you are looking
-      # at); +x+ is where it lands on screen; +top+ and +height+ are where it starts and
-      # how tall it is. All four can be worked out as the game runs.
+      # A height of zero or less draws nothing, and anything off the top or bottom of the screen is
+      # clipped, so a wall you are nose to nose with needs no test around it. All of `slice:`, `x:`,
+      # `top:` and `height:` can be worked out as the game runs.
       #
-      # A height of zero or less draws nothing, and anything off the top or bottom of the
-      # screen is clipped, so a wall you are nose-to-nose with needs no test around it.
-      #
-      # +width+ is how many pixels ACROSS the strip is, 1 by default. A view drawing
-      # strips wider than a pixel wants this rather than a loop of its own: the whole
-      # strip shows the same picture column at the same height, so one walk down the
-      # screen fills all of it. Calling this once per pixel instead works out the same
-      # answer that many times over.
-      #
-      # @param name [Symbol] a picture defined with {#image}
-      # @param slice [Symbol, Integer, Value] which column of the picture
-      # @param x [Symbol, Integer, Value] where it lands on screen
-      # @param top [Symbol, Integer, Value] the screen row it starts on
-      # @param height [Symbol, Integer, Value] how tall to stretch it
-      # @param width [Integer] how many pixels across, settled while building
-      # @param estimate [Object] does nothing but earn a warning (see Builder#record_estimate_line)
+      # * `name` - a picture made with `image`.
+      # * `slice:` - which column of the picture, which part of the wall you are looking at.
+      # * `x:` - where it lands on the screen.
+      # * `top:` - the screen row it starts on.
+      # * `height:` - how tall to stretch it.
+      # * `width:` - how many pixels across the strip is, set while the game is built. The default
+      #   is 1. A view that draws strips wider than a pixel wants this and not a loop of its own,
+      #   since the whole strip shows the same picture column at the same height, and one walk down
+      #   the screen fills all of it.
+      # * `estimate:` - is not used any more. It changes nothing, and the build warns and names each
+      #   line that still gives one.
       def draw_column_at(name, slice:, x:, top:, height:, width: 1, estimate: nil)
         record_estimate_line(estimate)
         unless @images.key?(name)
@@ -1099,45 +1129,48 @@ module VBlank
         [slice, x, top, height].each { |operand| ensure_var(operand) }
       end
 
-      # Draw a filled rectangle at a position, and to a height, the game can work out
-      # as it runs. The position and the height may each be a variable, an expression,
-      # or a plain number; only the width is settled while building, and it must be
-      # even (for the fast fill).
+      # Draws a filled rectangle at a place and to a height that the game works out as it runs.
       #
-      # A height the game computes is what a bar or a column needs — a health meter
-      # that shrinks, a wall column in a first-person view, a tower that grows:
+      # The place and the height can each be a variable, a calculation or a plain number. Only the
+      # width is set while the game is built, and it must be even for the fast fill. A height the
+      # game works out is what a bar or a column needs, such as a health meter that shrinks, a wall
+      # column in a first-person view or a tower that grows. A height of zero or less draws
+      # nothing, so a bar can empty completely without a test around it.
       #
-      #   draw_rect_at 8, 8, 40, health, :red     # a meter as tall as the health left
+      # ```ruby
+      # draw_rect_at 8, 8, 40, health, :red     # a meter as tall as the health left
+      # ```
       #
-      # A height of zero or less draws nothing, so a bar can empty completely without
-      # a test around it.
-      #
-      # @param x_pos [Symbol, Integer, Value] x position
-      # @param y_pos [Symbol, Integer, Value] y position
-      # @param w [Integer] width in pixels (must be even, settled while building)
-      # @param h [Symbol, Integer, Value] height in pixels
-      # @param c [Symbol, String, Integer] fill color
-      # @param estimate [Object] does nothing but earn a warning (see Builder#record_estimate_line)
+      # * `x_pos` and `y_pos` - the top left corner.
+      # * `w` - the width in pixels. It must be even.
+      # * `h` - the height in pixels.
+      # * `c` - the fill colour.
+      # * `estimate:` - is not used any more. It changes nothing, and the build warns and names each
+      #   line that still gives one.
       def draw_rect_at(x_pos, y_pos, w, h, c, estimate: nil)
         record_estimate_line(estimate)
         record_runtime_rect(x_pos, y_pos, w, h, c)
       end
 
-      # Lay out a board of equal cells and get a handle for painting them one at a
-      # time. The game then works in cell coordinates (0, 1, 2 …) — set_cell and
-      # clear_cell handle the pixel arithmetic — so a tile game reads as a tile game
-      # and each step touches only the cells that changed. See {Grid}.
+      # Lays out a board of equal cells and gives a handle for painting them one at a time.
       #
-      #   board = grid :board, cols: 30, rows: 20, cell: 8, over: :black
-      #   board.set_cell   x, y, :white   # paint one cell
-      #   board.clear_cell x, y            # return it to the background (:black)
+      # The game then works in cell coordinates (0, 1, 2 and so on) and the handle does the pixel
+      # arithmetic, so a tile game reads as a tile game and each step touches only the cells that
+      # changed.
       #
-      # @param name [Symbol] the board's name
-      # @param cols [Integer] columns across
-      # @param rows [Integer] rows down
-      # @param cell [Integer] a cell's size in pixels (even)
-      # @param over [Symbol, String, Integer] the background color a cleared cell shows
-      # @return [Grid] a handle with set_cell / clear_cell
+      # ```ruby
+      # board = grid :board, cols: 30, rows: 20, cell: 8, over: :black
+      # board.set_cell   x, y, :white   # paint one cell
+      # board.clear_cell x, y           # return it to the background (:black)
+      # ```
+      #
+      # * `name` - the board's name, as a symbol.
+      # * `cols:` - how many columns across.
+      # * `rows:` - how many rows down.
+      # * `cell:` - a cell's size in pixels. It must be even.
+      # * `over:` - the background colour a cleared cell shows.
+      #
+      # Returns a handle that answers `set_cell` and `clear_cell`.
       def grid(name, cols:, rows:, cell:, over:)
         DSL::Grid.new(self, name: name, cols: cols, rows: rows, cell: cell, over: over)
       end
