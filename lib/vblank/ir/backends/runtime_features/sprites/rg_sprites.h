@@ -39,7 +39,7 @@ int32_t rg_place_in_ordered_run(int32_t said, int32_t count);
  * names none is a fault. */
 int32_t rg_pose_image(const int32_t *poses, int32_t count, int32_t pose);
 
-/* Do two sprites' DRAWN pixels touch — one that is not see-through in each, on the same spot? */
+/* Do two sprites' drawn pixels touch — one that is not see-through in each, on the same spot? */
 int32_t rg_pixels_overlap(int32_t a_image, int32_t a_x, int32_t a_y, int32_t b_image, int32_t b_x, int32_t b_y);
 
 #endif

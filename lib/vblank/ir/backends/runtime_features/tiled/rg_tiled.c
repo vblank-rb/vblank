@@ -1,5 +1,5 @@
 /*
- * SCENERY DRAWN FROM TILES (Reference @bg_shown and the rest): backgrounds and status bars, the
+ * Scenery drawn from tiles (Reference @bg_shown and the rest): backgrounds and status bars, the
  * maps they show and the cells the game changes, their scroll, turn, bends and boxes, the order a
  * stack of layers puts them in, and a scene's scenery coming down. A runtime feature
  * (backends/runtime_features.rb): this file is included at the end of rg_screen.c, for a game
@@ -38,7 +38,7 @@ static int32_t shown_count, shown_room;
  * written at the entry that keeps it for the name (keeper_of, RG_BG_KEPT_BY), and the slots of
  * the other entries are never used.
  *
- * WHAT A BACKGROUND'S CELLS HOLD NOW (Reference @bg_maps): which map, of which entry's maps, and
+ * What a background's cells hold now (Reference @bg_maps): which map, of which entry's maps, and
  * the run's own copy of that map's cells, made the first time one of them is changed or another
  * map is handed over. The entry is the declaration that was up then (declaration_up), since two
  * scenes' declarations of one name can each have maps of their own. Until then each background
@@ -146,7 +146,7 @@ static int32_t in_map(int32_t background, int64_t row, int64_t col) {
 /* Where a cell of the map is among its cells, which are kept row after row. */
 static int64_t cell_place(int32_t background, int64_t row, int64_t col) { return row * map_cols(background) + col; }
 
-/* Reference#map_of: what a cell holds NOW, in the run's own copy where there is one. Below nought
+/* Reference#map_of: what a cell holds now, in the run's own copy where there is one. Below nought
  * where it holds no tile. */
 static int32_t map_cell(int32_t background, int64_t row, int64_t col) {
   if (!in_map(background, row, col)) return RG_CELL_EMPTY;
@@ -303,7 +303,7 @@ static void remember_put_up(int32_t background) {
  * background) only the ones a named layer puts in front of it. */
 static int32_t in_order_asked(int32_t entry, int32_t over) { return over < 0 || behind(over, entry); }
 
-/* Where the LAST entry for +background+ lands once the entries asked for are put in the order the
+/* Where the last entry for +background+ lands once the entries asked for are put in the order the
  * stack asks for (IR::Stacking.order_by_stack), counting from 0 among them, or -1 when it has no
  * entry. An entry that named no layer stays where it is. The ones that did are sorted by how far
  * forward their layers are — two in one layer keeping the order they came in — and handed, in that
@@ -379,7 +379,7 @@ static void forget_held_tiles(int32_t background) {
 }
 
 /* Reference#put_up_background. A stamp only covers where it has solid pixels, so a background a
- * named layer puts BEHIND one already up would land in front of it; the ones it belongs behind
+ * named layer puts behind one already up would land in front of it; the ones it belongs behind
  * are stamped again over it. A turned background is painted through its turn at the next rebuild,
  * and a status bar from its own top,
  * rather than stamped as drawn. So is anything put up while a placed fade is in the picture, which
@@ -600,7 +600,7 @@ static void lay_scenery(int64_t px, int64_t py, uint16_t color) {
   if (sprites_seen_through()) picture_without_sprites[py * RG_SCREEN_WIDTH + px] = *into;
 }
 
-/* ONE ROW OF THE SCREEN FROM ONE ROW OF A BACKGROUND'S MAP: the screen's pixel px shows map column
+/* One row of the screen from one row of a background's map: the screen's pixel px shows map column
  * off_x + px, taken round at +wrap_w+ where the map wraps, or not at all (0) where it does not.
  * +my+ is not below nought. Where the map has no cell or no tile, or the tile is see-through,
  * what is behind stays.
@@ -844,7 +844,7 @@ static void paint_status_bar(int32_t bar) {
     }
 }
 
-/* Reference#paint_scenery_in_blocks: ONE BACKGROUND IN BLOCKS of +block+ pixels each way, by the
+/* Reference#paint_scenery_in_blocks: one background in blocks of +block+ pixels each way, by the
  * display's own rule, while the picture is shown in them (rg_hook_block_size).
  *
  * The blocks are fixed to the screen, and each shows the color the background has at the block's
@@ -852,7 +852,7 @@ static void paint_status_bar(int32_t bar) {
  * corner that is see-through leaves the whole block see-through.
  *
  * Down and across are done apart, because a display draws a row at a time. Down: every row of a
- * block is drawn from the map row its top row shows, and still placed by its OWN bend, so a
+ * block is drawn from the map row its top row shows, and still placed by its own bend, so a
  * background bent row by row keeps each row's bend and a block of it is a sheared one. Across:
  * each pixel of a row then takes the one at the start of its block in that same row. So the
  * background goes onto the sheet rows first, and is laid on the picture through the blocks, with

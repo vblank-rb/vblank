@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# SPRITES AND THEIR DRAW ORDER (Reference#exec_present_objects and the sprites it keeps): the sprites
+# Sprites and their draw order (Reference#exec_present_objects and the sprites it keeps): the sprites
 # on screen this frame, taken off and put back on a picture that stays, kept for a picture that is
 # built again, turned and resized, left out of a crowded line, shown over a painted screen, and put
 # into blocks while the picture is pixelated. Also the order a worked-out draw order places them in,
@@ -64,7 +64,7 @@ end
 
 # Reference#blit_image_transformed: a picture turned +angle+ degrees clockwise and drawn at +size+,
 # about its own middle, its top left as drawn at (x, y). The console walks the patch of screen the
-# sprite can cover — twice the picture each way, centered on it — and for each pixel works BACK
+# sprite can cover — twice the picture each way, centered on it — and for each pixel works back
 # through the turn to the pixel of the picture that lands there; one that falls outside the picture
 # is not drawn. A screen pixel is taken at its whole coordinate and the answer rounded down.
 def rg_blit_image_turned(image, x, y, angle, size, resizes)
@@ -114,7 +114,7 @@ def rg_piece_takes_entry?(left, top, width, height)
   rg_piece_on_screen?(left, top, width > reach ? width : reach, height > reach ? height : reach)
 end
 
-# WHAT A LINE'S LIMIT IS WORKED OUT IN, kept from pass to pass, so working it out makes no object:
+# What a line's limit is worked out in, kept from pass to pass, so working it out makes no object:
 # each Array is written by place and only grows, and what a pass holds is counted beside it.
 #
 #   @rg_slice_order   the sprites' places, front-most first (the table's order)
@@ -677,7 +677,7 @@ end
 
 # SpriteBlocks#paint_turned: a sprite that turns or resizes, drawn in a box twice its picture's size
 # about the picture's middle. A block that starts left of the box shows what the turned picture
-# would show ONE COLUMN before the box begins; one that starts above it shows the box's first row;
+# would show one column before the box begins; one that starts above it shows the box's first row;
 # and the last block across is drawn whole.
 def rg_paint_turned_in_blocks(placed)
   picture = rg_picture_of(placed.image)

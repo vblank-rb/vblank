@@ -1,5 +1,5 @@
 /*
- * SPRITES AND THEIR DRAW ORDER (Reference#exec_present_objects and the sprites it keeps): the
+ * Sprites and their draw order (Reference#exec_present_objects and the sprites it keeps): the
  * sprites on screen this frame, taken off and put back on a picture that stays, kept for a picture
  * that is built again, turned and resized, left out of a crowded line, shown over a painted
  * screen, and put into blocks while the picture is pixelated. Also the order a worked-out draw
@@ -23,7 +23,7 @@ static int32_t drawing_count, sprite_layer_count;
 typedef struct { int32_t drawn, x, y; } drawn_place;
 static drawn_place last_drawn[RG_MAX_SPRITES];
 
-/* SPRITES OVER A PAINTED PICTURE (Reference#show_objects_over_picture): a layer of their own in
+/* Sprites over a painted picture (Reference#show_objects_over_picture): a layer of their own in
  * front of the picture, at the screen's own places, one color or RG_NOTHING_IN_FRONT for each,
  * painted as the screen's plain layer (paint_onto_plain_layer) and shown while +over_picture_up+
  * (rg_sprites_front_layer). */
@@ -39,7 +39,7 @@ static void mix_as_sprite(int32_t sprite) {
 
 static int64_t whole_root(int64_t value);
 
-/* WHICH ROWS OF THE SCREEN THE BOX OF A TURNED SPRITE IS SHOWN ON (Reference::TurnedBox, which
+/* Which rows of the screen the box of a turned sprite is shown on (Reference::TurnedBox, which
  * says why). The display counts the rows of a sprite's box in 256 lines that come round, and the
  * screen is fewer than that, so a box taller than the lines below the screen — a picture 64
  * pixels tall, whose box is 128 rows — shows its end at the top of the screen when it stands near
@@ -71,7 +71,7 @@ static int turned_box_on_screen(int64_t top, int64_t width, int64_t height, int3
  * +size+, about its own middle, its top left as drawn at (x, y).
  *
  * The console does not turn the picture and stamp it down. It walks the patch of screen the
- * sprite can cover and, for each pixel of it, works BACK through the turn to the pixel of the
+ * sprite can cover and, for each pixel of it, works back through the turn to the pixel of the
  * picture that lands there; one that falls outside the picture is not drawn. The patch is twice
  * the picture each way, centered on it, so a corner swung out by the turn has room, and a
  * picture grown past twice its size is cut off at that box. A screen pixel is taken at its whole
@@ -561,7 +561,7 @@ static int64_t turned_row(int64_t py, int64_t top, int64_t height) {
 /* SpriteBlocks#paint_turned, and the walk back to the picture Reference#paint_object_in_blocks
  * hands it: a sprite that turns or resizes, drawn in a box twice its picture's size about the
  * picture's middle. A block that starts left of the box shows what the turned picture would show
- * ONE COLUMN before the box begins, which is nearly always nothing; one that starts above it
+ * one column before the box begins, which is nearly always nothing; one that starts above it
  * shows the box's first row; and the last block across is drawn whole. */
 static void paint_turned_in_blocks(const placed_object *placed) {
   picture art = picture_of(placed->image);
