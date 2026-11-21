@@ -3,7 +3,7 @@
 require "digest"
 require "fileutils"
 
-# WHERE A PLAYER'S GAME BOY ADVANCE BIOS IS FOUND, and whether it is used, as a table both copies of
+# Where a player's Game Boy Advance BIOS is found, and whether it is used, as a table both copies of
 # the rule are held to: the Ruby one (Live::ConsoleBIOS.find) and the C one
 # (runtime/rg_console_bios.h). No test has a real BIOS: it is Nintendo's, and never goes in the
 # repository. So the files here are made up, and the rule is told which SHA-1 to accept (the
