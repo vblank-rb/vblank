@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A COLOR CARTRIDGE THAT RUMBLES (`rumble`, Runtime::Rumble): it says in its header that it carries
+# A color cartridge that rumbles (`rumble`, Runtime::Rumble): it says in its header that it carries
 # a motor, and the game runs the motor a frame at a time by the pattern it said, as Pokémon
 # Pinball shakes the player's hands when the ball hits a bumper. The emulator reports the motor as
 # the cartridge sets it.
@@ -30,7 +30,7 @@ class TestGBCRumble < Minitest::Test
 
   PRESS = 20
 
-  # The motor on each frame from power-on, as "#" and ".", A pressed on frame PRESS.
+  # The motor on each frame from power-on, as "#" and ".", A pressed on frame press.
   private def felt(program, frames: PRESS + 16)
     rom = VBlank::Console.for(:gbc).builder.cartridge_for(program, title: "BUMPER")
     a = VBlank::Console::Hardware::KEY_A
@@ -39,7 +39,7 @@ class TestGBCRumble < Minitest::Test
   end
 
   def test_the_motor_runs_the_pattern_for_the_frames_said
-    # The press is held on frame PRESS, the pass that sees it says the rumble, and the motor runs
+    # The press is held on frame press, the pass that sees it says the rumble, and the motor runs
     # from the frame after: ten frames of the pattern, round again, then still.
     assert_equal "#{'.' * PRESS}##..#.#.##......", felt(bumper)
   end

@@ -3,7 +3,7 @@
 require "test_helper"
 require "power_on_frame_games"
 
-# HOW LONG A COLOR CARTRIDGE TAKES FROM POWER-ON TO THE GAME'S FIRST PASS. Every Color game clears
+# How long a color cartridge takes from power-on to the game's first pass. Every Color game clears
 # work memory and both banks of video memory before its first line, which a console's own games do
 # in a frame or so with the fastest loop and the console's own copy (Runtime::Boot). What a game
 # declares is set up after that, and takes what it takes. frames_since_power_on, read on the first
@@ -50,7 +50,7 @@ class TestGBCSettingUp < Minitest::Test
     assert_equal frame - 1, reading
   end
 
-  # WHEREVER SETTING UP ENDS AGAINST A FRAME'S END, the first pass reads the frames gone before it.
+  # Wherever setting up ends against a frame's end, the first pass reads the frames gone before it.
   # Setting up that ends a turn of a spin later can put the first pass a frame later, and the turns
   # either side of each place it does are where a count kept apart from the emulator's frames can
   # disagree with them. Each such place over the first few frames, found by halving, and the turns

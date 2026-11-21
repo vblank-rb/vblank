@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# SAVING ON A GAME BOY COLOR CARTRIDGE. Its battery-backed memory holds the same bytes the
+# Saving on a Game Boy Color cartridge. Its battery-backed memory holds the same bytes the
 # interpreter's IR::SaveImage holds, so a save made by either starts the game on the other, and a
 # save survives the console going off: two runs handed the same image are a power cycle.
 class TestGBCSaves < Minitest::Test

@@ -3,7 +3,7 @@
 require "test_helper"
 require "save_snapshot_cost_games"
 
-# WHAT A SAVE'S SNAPSHOT OF A LIST COSTS ON THE GAME BOY COLOR, measured in the emulator: a record
+# What a save's snapshot of a list costs on the Game Boy Color, measured in the emulator: a record
 # keeping a list of 64 words, 256 bytes, copied into the record's buffer on the pass the save is asked
 # (SaveSnapshotCostGames). The runtime copies the run (Runtime::Lists#emit_list_pack): LD A,(DE),
 # LD (HL+),A, INC DE, DEC BC, LD A,B, OR C and JR NZ, thirteen machine cycles a byte (Pan Docs, "CPU
