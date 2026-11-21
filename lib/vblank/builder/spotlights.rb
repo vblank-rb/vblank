@@ -114,7 +114,7 @@ module VBlank
       MIDPOINT_HALF_WIDTHS = (0..MIDPOINT_LARGEST).flat_map { |size| midpoint_half_widths(size) }.freeze  # :nodoc:
 
       # The statement that darkens the picture outside the circle +light+ gives. Its edges read
-      # the row's half width, which #work_out_half_width puts in half first. With +shuts_out+ it
+      # the row's half width, which #work_out_half_width puts in HALF first. With +shuts_out+ it
       # shows nothing outside the circle, where it would darken (Nodes::ShadeOutside).
       def shade_node(builder, light, shuts_out: false)
         half = builder.var(HALF, 0)
@@ -134,7 +134,7 @@ module VBlank
          builder.table(MIDPOINT, MIDPOINT_HALF_WIDTHS, width: :byte)]
       end
 
-      # The statements that put the row's half width in half, recorded where +builder+ is
+      # The statements that put the row's half width in HALF, recorded where +builder+ is
       # recording — the light's own statement, which runs them once a row. One of the two ways
       # runs on a row, picked by the light's size: working out both and choosing between them
       # would cost a row both, and the light is worked out for every row of every frame.

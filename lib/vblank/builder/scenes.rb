@@ -77,7 +77,7 @@ module VBlank
       # mode = :playing if pressed(:start)
       #
       # HANDLERS = %i[op_end op_wait op_walk op_say]
-      # scripts.each { |s| call handlers, number: s.opcode }
+      # scripts.each { |s| call HANDLERS, number: s.opcode }
       # ```
       #
       # * `name` - a routine's name, a list of names, or a variable that holds a name.

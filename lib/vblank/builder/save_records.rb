@@ -744,7 +744,7 @@ module VBlank
         Build.binop(:*, within, layout.directory_at(:state, index))
       end
 
-      # One peek at a copy, written wherever the game reads it — which on a file-select screen
+      # One peek at a COPY, written wherever the game reads it — which on a file-select screen
       # is before the record names what it keeps, so where the thing sits in a copy is not known
       # yet. The line gets a stand-in for the number, named after the record, and
       # #resolve_save_data_peeks puts the real reading in its place once every record is laid

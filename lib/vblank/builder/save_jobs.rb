@@ -3,7 +3,7 @@
 module VBlank
   class Builder
     #--
-    # Saving in the background: every save, erase and copy a game asks for is a job, and jobs
+    # Saving in the background: every save, erase and copy a game asks for is a JOB, and jobs
     # are written into save memory a piece at a time, once a pass of the game loop, while the
     # game goes on.
     #
@@ -144,7 +144,7 @@ module VBlank
 
       # --- the three a record's own routines reach the queue through ---
 
-      # Ask for a job on +layout+'s copy in its copy scratch: room is made, a save is
+      # Ask for a JOB on +layout+'s copy in its copy scratch: room is made, a save is
       # snapshotted into its buffer there and then, and the job goes in line.
       #
       # What happens when one of this record's jobs is already in hand is the record's to choose
@@ -261,7 +261,7 @@ module VBlank
         end
       end
 
-      # Take a job, named by the ask scratch: it runs now when nothing does, and waits otherwise.
+      # Take a JOB, named by the ask scratch: it runs now when nothing does, and waits otherwise.
       # Make room first (see the class comment), and pick which of its record's two buffers a
       # snapshot goes in.
       def save_jobs_pick_slot
