@@ -53,7 +53,7 @@ module SpriteGames
 end
 
 # The `sprite` helper: a named image that moves around leaving no trail, repainted
-# by the framework each frame. These assert BEHAVIOR on both backends — the sprite
+# by the framework each frame. These assert behavior on both backends — the sprite
 # appears, moves without smearing, and hides/shows cleanly — the interpreter as the
 # oracle, the emulator for the console.
 #
@@ -113,17 +113,17 @@ class TestSprite < Minitest::Test
     assert moved, "the sprite didn't move right"
   end
 
-  # TWO OVERLAPPING SPRITES THAT BOTH MOVE — the case the single-sprite test above
+  # Two overlapping sprites that both move — the case the single-sprite test above
   # cannot reach, and the one the repaint gets wrong if its two passes run the same way
   # round.
   #
-  # A sprite remembers what was under it when it drew, so where two overlap the FRONT
-  # one's memory holds the BACK one's pixels. Putting them back has to undo the drawing
+  # A sprite remembers what was under it when it drew, so where two overlap the front
+  # one's memory holds the back one's pixels. Putting them back has to undo the drawing
   # exactly — front first. Erase the back one first and the front one's restore paints
   # those borrowed pixels over background already cleaned, and nothing repaints them: a
   # stale copy sits there for the rest of the game.
   #
-  # So the tell is the overlap square once BOTH have left it.
+  # So the tell is the overlap square once both have left it.
   def test_two_overlapping_sprites_leave_no_copy_of_each_other_behind
     b = VBlank::Builder.new
     b.instance_eval do

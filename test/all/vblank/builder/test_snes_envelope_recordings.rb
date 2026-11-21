@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A RECORDING GIVEN THE SUPER NINTENDO SOUND CHIP'S OWN ENVELOPE BYTES (Builder#sample's
+# A recording given the Super Nintendo sound chip's own envelope bytes (Builder#sample's
 # `envelope:` as an Audio::SNESEnvelope) plays on every console as the ordinary envelope nearest
 # them. Here with the bytes that sound a note flat out, whose nearest envelope is no shape at all,
 # so every console plays it; bytes that shape a note are test/snes_envelope_tests.rb, on the

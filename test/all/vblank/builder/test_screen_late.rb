@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# `late:` on the tear-free screen says WHEN a late page is shown, never what is on it — so on
+# `late:` on the tear-free screen says when a late page is shown, never what is on it — so on
 # every lowering the game draws the same picture with it as without it. When it is shown is the
 # console's to measure (see test/lowering/gba/vblank/ir/backends/gba/test_late_pages.rb).
 class TestScreenLate < Minitest::Test

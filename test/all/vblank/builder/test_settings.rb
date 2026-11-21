@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# WHAT A GAME IS TOLD WHEN IT IS BUILT. A game that comes in several cuts reads which one with
+# What a game is told when it is built. A game that comes in several cuts reads which one with
 # `setting`, and the build hands the answer to that one build — so a test can build a one-floor
 # cartridge beside a sixty-floor one, on another core at the same moment, and neither sees the
 # other's. Before this the only way in was the environment, which the whole process shares.
