@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# Layers, as a PICTURE: what a declared stack actually changes about what you see.
+# Layers, as a picture: what a declared stack actually changes about what you see.
 #
 # Every test here is built so declaration order and layer order DISAGREE — the thing
 # that must end up on top is written first, so it would be underneath if the stack were
@@ -76,7 +76,7 @@ class TestLayerStacking < Minitest::Test
   # --- the HUD, which is what started all this ---
 
   # A glyph lights only some of its 8x8 cell, so asking one pixel would answer about the
-  # letter's shape rather than about the stack. Ask whether ANY of the cell shows the
+  # letter's shape rather than about the stack. Ask whether any of the cell shows the
   # text's color instead.
   private def glyph_shows?(screen, x, y)
     (0...8).any? { |dy| (0...8).any? { |dx| screen.pixel(x + dx, y + dy) == RED } }

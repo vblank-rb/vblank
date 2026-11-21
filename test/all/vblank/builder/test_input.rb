@@ -12,7 +12,7 @@ module InputGames
     VBlank.build("INPTEST", console: :gba, validate: validate, out: nil, err: nil, &block)
   end
 
-  # A BUTTON HELD WHILE THE POWER COMES ON IS ONE PRESS. Nothing was down before the game
+  # A button held while the power comes on is one press. Nothing was down before the game
   # started, so the first frame that finds it down is its press edge — the same one press a
   # button held for any other stretch is, however long it stays down. The console starts with
   # nothing down; the interpreter used to count the button as already down before the first
@@ -31,7 +31,7 @@ module InputGames
     builder.program
   end
 
-  # ANY BUTTON AT ALL — how a game gets out of an attract screen. `held(:any)` holds while
+  # Any button at all — how a game gets out of an attract screen. `held(:any)` holds while
   # something is down; `pressed(:any)` is true on a frame some button went down, so pressing A
   # while LEFT is still held is a press, and a button held on and on is one press however long.
   private def counting_any_button
@@ -55,7 +55,7 @@ module InputGames
   ANY_BUTTON_FRAMES = Ractor.make_shareable({ 3 => [:left], 4 => [:left], 5 => [:left], 6 => %i[left a],
                                               7 => %i[left a], 9 => [:b] })
 
-  # A PRESS IS NEVER LOST TO A SLOW GAME. A game whose pass takes two frames goes round the
+  # A press is never lost to a slow game. A game whose pass takes two frames goes round the
   # loop thirty times a second, and a tap that goes down and comes up again inside one pass
   # used to be missed: both of the pass's readings found the button up. The buttons are
   # read on every frame the screen shows, so a tap one frame long is one press whichever

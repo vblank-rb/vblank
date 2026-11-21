@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A PICTURE MADE OF 8x8 PIECES, each where the game puts it: `image :frame, colors:, pieces:`, as a
+# A picture made of 8x8 PIECES, each where the game puts it: `image :frame, colors:, pieces:`, as a
 # cartridge's own sprites are kept — a border of pieces off the 8-pixel grid, a figure whose arm
 # piece overlaps its body. The earlier piece of two that overlap is in front, and every piece shows,
 # on every console, however the pieces sit against the grid.

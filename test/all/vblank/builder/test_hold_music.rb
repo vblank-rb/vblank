@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE MUSIC HELD WHERE IT IS, and let go again. While the next screen loads a game can hold the
+# The music held where it is, and let go again. While the next screen loads a game can hold the
 # tune: the notes sounding ring on, nothing new starts, and `release_music` carries on from the
 # note it stopped before. The log says a note as [:voice, voice, tune, pitch, volume, ...].
 #

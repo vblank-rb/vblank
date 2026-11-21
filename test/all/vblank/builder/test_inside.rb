@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A PART OF THE SCREEN THAT DRAWING STAYS INSIDE.
+# A part of the screen that drawing stays inside.
 #
 # What makes it worth having is not that the picture comes out right — a game could paint a
 # panel over the top afterwards and get the same picture. It is that the pixels outside are
@@ -121,7 +121,7 @@ class TestInside < Minitest::Test
                  "and the caller's edges are back in force for the fill that followed the call"
   end
 
-  # AN AREA HOLDS DRAWING, NOT THE DISPLAY. A game whose frames end while an area is open shows
+  # An area holds drawing, not the display. A game whose frames end while an area is open shows
   # the whole picture all the same — the area only says where drawing may land — and a window
   # moved over the picture moves over all of it. The picture is read at a frame boundary, while
   # the area is still open: outside the area it shows the red square moved by the window. The
