@@ -5,7 +5,7 @@ require_relative "../lib/vblank"
 # Generate the art and sound examples/piano.rb imports: a left hand drawn in a few
 # poses, and one recorded piano note.
 #
-# Like tools/make_example_assets.rb, the point is that game assets are FILES you
+# Like tools/make_example_assets.rb, the point is that game assets are files you
 # drop in — but the repo still needs a couple of real ones checked in to import.
 # Rather than commit opaque binaries, this draws/synthesizes them from plain data
 # so you can see (and change) exactly what they contain, then re-run to regenerate:
@@ -29,7 +29,7 @@ module MakePianoAssets
   # a shallow palm, evenly spaced so each lines up with a 16px-wide key below it.
   # Seen as the back of a LEFT hand: left to right they are pinky, ring, middle,
   # index. Their RESTING lengths differ — middle longest, pinky shortest — which is
-  # what makes the silhouette read as a hand and not a comb; a finger PRESSING a key
+  # what makes the silhouette read as a hand and not a comb; a finger pressing a key
   # extends down to a common lower row (a clear, uniform stab onto the keys).
   HAND_W = 64
   HAND_H = 32
