@@ -7,7 +7,7 @@ require "zlib"
 require "vblank/live"
 require VBlank.root.join("examples/wanderers").to_s
 
-# MACHINES THAT CONNECT TO EACH OTHER DIRECTLY: one hosts (it is the room, and player 1) and the others
+# Machines that connect to each other directly: one hosts (it is the room, and player 1) and the others
 # connect to it over a socket, in a test a UNIXSocket pair, and once a TCP port on this machine. Each machine
 # runs in a thread of its own because each really waits on its socket; the match is the same match whatever
 # order the threads happen to run in, which is what lockstep is for. The pieces are a LineChannel (a line of

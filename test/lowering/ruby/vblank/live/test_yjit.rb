@@ -4,7 +4,7 @@ require "test_helper"
 require "open3"
 require "tmpdir"
 
-# A GAME PLAYED AS RUBY IN THIS PROCESS PLAYS WITH YJIT (Live.turn_on_yjit), as `vblank run` plays
+# A game played as Ruby in this process plays with YJIT (Live.turn_on_yjit), as `vblank run` plays
 # it, wherever the process was started: the shell check and a film of a shell turn it on in a Ruby
 # started without it, as a port's rake task or film script starts one. Each is played in a Ruby of
 # its own, started with YJIT off, which reports whether YJIT was on once the play was over.
@@ -26,7 +26,7 @@ class TestYJIT < Minitest::Test
     end
   RUBY
 
-  # +play+, Ruby run after PORT, in a Ruby started with YJIT off and +env+ set: whether YJIT was on
+  # +play+, Ruby run after port, in a Ruby started with YJIT off and +env+ set: whether YJIT was on
   # after it.
   private def yjit_after(play, env: {})
     Dir.mktmpdir do |folder|
