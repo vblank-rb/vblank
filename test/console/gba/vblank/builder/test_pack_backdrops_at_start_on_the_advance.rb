@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/builder/test_pack_backdrops"
 
-# EACH SCENE'S BACKDROP FROM THE PACK, ITS PACK LEFT OUT: the three scenes of PackBackdropGames
+# Each scene's backdrop from the pack, its pack left out: the three scenes of PackBackdropGames
 # built with `pack_at_start: true` and handed the pack file show what the all-in-one build shows on
 # every frame. Each scene is a background read as the game starts and a backdrop read then too, as
 # an original's logo screen is: a field of its first colour behind its logos.

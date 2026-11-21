@@ -2,10 +2,10 @@
 
 require "test_helper"
 
-# THE TESTS OF vblank/builder/test_music_volume.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY, kept apart so that the
+# The tests of vblank/builder/test_music_volume.rb that only the Game Boy Advance can play, kept apart so that the
 # Game Boy Color's run never loads them (test/console/gba); the rest are in that file.
 #
-# HOW LOUD THE MUSIC PLAYS, moved while it plays.
+# How loud the music plays, moved while it plays.
 #
 # A part's volume is written into the song. `music_volume` scales every part of whatever song
 # is playing, while it plays — a settings screen's music slider, and the level `fade_music_out`

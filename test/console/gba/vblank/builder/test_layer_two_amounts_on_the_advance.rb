@@ -28,7 +28,7 @@ module LayerTwoAmountsGames
   # red: 255*25/16 is past full, so 31; green and blue: 255*15/16 = 239 -> 29
   BRIGHT_MIXED = [31, 29, 29].freeze
 
-  # ONE SEE-THROUGH LAYER PER SCREEN, NOT PER GAME. A title whose light rays the game
+  # One see-through layer per screen, not per game. A title whose light rays the game
   # steps, and a file screen whose window sits over its backdrop at fixed amounts: each
   # scene has a see-through layer of its own, and the two are never on screen together.
   # A press of A moves from the title to the file screen, and a press of B back.
@@ -73,10 +73,10 @@ module LayerTwoAmountsGames
   private def title_pixel = game_player.run(two_screens_program, frames: 4).screen.pixel(*DIM)
 end
 
-# THE TESTS OF vblank/builder/test_layer_two_amounts.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY, kept apart so that the
+# The tests of vblank/builder/test_layer_two_amounts.rb that only the Game Boy Advance can play, kept apart so that the
 # Game Boy Color's run never loads them (test/console/gba); the rest are in that file.
 #
-# A SEE-THROUGH LAYER GIVEN TWO AMOUNTS: how much of ITSELF shows, and how much of what is
+# A see-through layer given two amounts: how much of itself shows, and how much of what is
 # BEHIND it. `transparency:` splits one whole between the two; these need not add to one,
 # and a sum past a whole comes out brighter than either side and stops at full brightness —
 # which is how a window glows over a backdrop, or a shaft of light brightens a forest.
@@ -122,7 +122,7 @@ class TestLayerTwoAmountsOnTheAdvance < Minitest::Test
     assert_equal rgb5(*BRIGHT_MIXED), screen.pixel(*BRIGHT), "past a whole, a channel stops at full"
   end
 
-  # AMOUNTS THE GAME WORKS OUT, the way a retail title steps its light rays through
+  # Amounts the game works out, the way a retail title steps its light rays through
   # (9,9) (8,10) (7,11) sixteenths — the layer fading as what is behind comes up. Here the
   # step moves every frame, so the frame read decides the pair.
   private def stepping_program
@@ -155,7 +155,7 @@ class TestLayerTwoAmountsOnTheAdvance < Minitest::Test
     (2..6).each { |frames| assert_backends_agree(stepping_program, frames: frames) }
   end
 
-  # A WALKER IN FRONT OF MIST THAT THICKENS, on a picture where nothing scrolls. The mist's
+  # A walker in front of mist that thickens, on a picture where nothing scrolls. The mist's
   # amounts step every third frame while the walker moves a pixel every frame: the walker is
   # drawn on every one of those frames, the ones where the mist changed included.
   private def walker_in_front_of_thickening_mist
@@ -197,7 +197,7 @@ class TestLayerTwoAmountsOnTheAdvance < Minitest::Test
     (3..8).each { |frames| assert_backends_agree(walker_in_front_of_thickening_mist, frames: frames) }
   end
 
-  # A TINT OVER TWO AMOUNTS THAT ADD UP TO MORE THAN A WHOLE, the way a retail title fades
+  # A tint over two amounts that add up to more than a whole, the way a retail title fades
   # in from white over its light rays. The console's tint on this screen moves the colours
   # in the table, and the display then mixes the moved colours, so both sides carry the
   # tint's share of white into a sum of eighteen sixteenths. Mixing first and tinting the
@@ -210,7 +210,7 @@ class TestLayerTwoAmountsOnTheAdvance < Minitest::Test
     end
   end
 
-  # The same over a picture that STAYS: the glass's amounts never change and nothing
+  # The same over a picture that stays: the glass's amounts never change and nothing
   # scrolls, so the scenery is painted once and a walker in front of it is drawn onto it,
   # the scenery put back behind it as it moves on. What is put back is a mix too, and the
   # tint has to reach both sides of it.
@@ -238,7 +238,7 @@ class TestLayerTwoAmountsOnTheAdvance < Minitest::Test
     (3..6).each { |frames| assert_backends_agree(walker_over_still_glass, frames: frames) }
   end
 
-  # A see-through SPRITE under a tint: it is mixed with the scenery behind it, and the
+  # A see-through sprite under a tint: it is mixed with the scenery behind it, and the
   # tint reaches both before the mix, as it does for a layer of scenery.
   private def ghost_under_a_tint
     tile = SOLID_TILE
@@ -261,7 +261,7 @@ class TestLayerTwoAmountsOnTheAdvance < Minitest::Test
     (3..5).each { |frames| assert_backends_agree(ghost_under_a_tint, frames: frames) }
   end
 
-  # A layer of SPRITES takes the same two amounts: the console blends each sprite in the
+  # A layer of sprites takes the same two amounts: the console blends each sprite in the
   # layer through its own table entry rather than naming a layer, and the shares are the
   # same register.
   def test_a_layer_of_sprites_takes_two_amounts

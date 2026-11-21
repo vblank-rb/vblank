@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/builder/test_pack_backdrops"
 
-# A SCENE SAYS ITS BACKDROP IS A COLOUR OF THE DATA PACK, as the original's screens each show the
+# A scene says its backdrop is a colour of the data pack, as the original's screens each show the
 # first colour of the colours they loaded: the logos the pack's first colour, the title the second
 # bank's, and a menu that says none the game's. A tint a game fades its screen in with moves the
 # backdrop with the picture, on the frame it moves the picture. The Advance keeps one backdrop
