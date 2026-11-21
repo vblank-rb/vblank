@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# TEXT ON A PAINTED SCREEN IS A FEW CELLS OF A MAP, as the console's own games keep it
+# Text on a painted screen is a few cells of a map, as the console's own games keep it
 # (Runtime::TextLayer): four rows of 21 letters cost their first pass what an unchanged pass
 # costs. Painted into tiles of eight bits a pixel they were nearly a frame of painting and about
 # 6K to send, more than a blank holds, so the first pass took four frames. Read off the console

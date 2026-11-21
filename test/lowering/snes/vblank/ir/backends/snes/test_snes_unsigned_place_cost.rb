@@ -3,7 +3,7 @@
 require "test_helper"
 require "unsigned_place_cost_games"
 
-# A POOL'S PLACES IN 256THS OF A PIXEL ON THE SUPER NINTENDO, measured in the emulator: places from
+# A pool's places in 256THS OF A PIXEL ON THE SUPER NINTENDO, measured in the emulator: places from
 # 0 to 65535 kept with `& 0xFFFF`, which no signed slot holds, kept in half words read back with no
 # sign (SNES::Lowering#unsigned_list?) and compared with one CMP of their 16 bits
 # (SNES::Lowering#compare_within_halves). The console's own games keep such a place in one word.

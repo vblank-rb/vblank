@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# EACH SCREEN SAYS WHAT SIZE ITS TILES ARE. The console has one setting for each layer, so it is
+# Each screen says what size its tiles are. The console has one setting for each layer, so it is
 # told as a scene takes over, beside the scene's art: a title of 16×16 tiles and a stage of 16×16
 # cells under a status bar of 8×8. The checked run compares the pictures on every pass.
 class TestSNESTileSizesByScene < Minitest::Test

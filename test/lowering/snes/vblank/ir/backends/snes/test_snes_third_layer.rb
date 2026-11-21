@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A STATUS BAR ON THE THIRD LAYER, beside two backgrounds (SNES::Lowering::Picture
+# A status bar on the third layer, beside two backgrounds (SNES::Lowering::Picture
 # .third_layer?): its tiles are four-colour, from eight lists of three colours, and
 # a bar whose art does not fit that is refused by name. A bar of many lists, its cells changed as
 # a score's are, is drawn as the interpreter draws it on every pass.
@@ -39,7 +39,7 @@ class TestSNESThirdLayer < Minitest::Test
     assert_match(/8 lists of 3 colours/, error.message)
   end
 
-  # A BAR ON THE THIRD LAYER THAT WALKS ITS COLOURS (`draw_with`), up from black and past its last
+  # A bar on the third layer that walks its colours (`draw_with`), up from black and past its last
   # step back to its own: its eight lists of three are written again on the pass the game names
   # another step, each colour as the list and place it was drawn at gives it. Green is in both of
   # the bar's lists, at different places, and the two greens walk apart.
@@ -49,7 +49,7 @@ class TestSNESThirdLayer < Minitest::Test
     assert_operator run[:step], :>=, 6
   end
 
-  # A BACKGROUND HELD ABOVE A ROW beside two others goes on the third layer too, and shows alone
+  # A background held above a row beside two others goes on the third layer too, and shows alone
   # above its row: a tile it cannot draw in four colours is refused as a bar's is, and so is one
   # that could show the arena behind it, which that layer cannot.
   def test_a_held_tile_of_four_colours_is_refused_naming_the_background_and_the_tile
@@ -88,7 +88,7 @@ class TestSNESThirdLayer < Minitest::Test
     assert_match(/alone: true/, error.message)
   end
 
-  # SHOWN ALONE (`alone: true`), the interpreter draws nothing else above the row either, so see-through
+  # Shown alone (`alone: true`), the interpreter draws nothing else above the row either, so see-through
   # pixels, empty cells and a place behind the arena all build.
   def test_a_held_background_shown_alone_builds_see_through_scrolled_and_behind_the_arena
     refute_nil SNES.new.build(game_with_held([0x001F, 0x0000], scrolls: true, first: true, alone: true))
