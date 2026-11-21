@@ -398,20 +398,6 @@ class TestPlainRubyRefusals < Minitest::Test
     end
   end
 
-  def test_an_old_way_of_changing_a_variable_is_refused
-    assert_refused("A game does not need `set!`") { game_loop { hp = var(:hp, 0); hp.set! 1 } }
-    assert_refused("A game does not need `add!`") { game_loop { add! :hp, 1 } }
-    assert_refused("A game does not need `copy!`") { game_loop { copy! :a, :b } }
-  end
-
-  def test_an_old_way_of_changing_a_variable_is_refused_in_a_part_too
-    builder = Builder.new
-    hp = builder.var(:hp, 5)
-
-    error = assert_raises(Refused) { hp.sub!(1) }
-    assert_includes error.message, "A game does not need `sub!`"
-  end
-
   def test_the_librarys_own_branch_is_refused_in_a_game
     assert_refused("A game does not need `when_true`") { game_loop { held(:a).when_true { wait_vblank } } }
   end

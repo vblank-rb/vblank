@@ -30,7 +30,7 @@ module VBlank
         # and the count has both. Straight-line code is exactly the case where what was
         # emitted is what runs, and a node that emitted no jump is marked so.
         #
-        # Keyed by identity, not by value. Two `add :score, 1` statements written in
+        # Keyed by identity, not by value. Two `score += 1` statements written in
         # different places are equal as trees — {IR::Node} compares by shape — and they are
         # not the same statement. A Hash comparing them by value would merge the two and
         # report one statement that cost twice as much.

@@ -12,17 +12,12 @@ module VBlank
     module ChangingWord
       module_function
 
-      # +written+ is the call as the author wrote it (`hp.add`, `add :hp, 1`), +bang+ the same with
+      # +written+ is the call as the author wrote it (`abs :hp`), +bang+ the same with
       # its `!`, +instead+ how to get the same number without changing anything, and +at+ the line
       # they wrote it on.
       def refusal(written:, bang:, instead: "", at: "")
         "`#{written}` does not change a variable. A word that changes a variable ends in `!`. " \
           "To change it, write `#{bang}`.#{instead}#{at}"
-      end
-
-      # The same slip for a word plain Ruby has an operator for: +fix+ is that line, `hp += 1`.
-      def plain_ruby_refusal(written:, fix:, instead: "", at: "")
-        "`#{written}` does not change a variable. To change it, write `#{fix}`.#{instead}#{at}"
       end
 
       # A word the library keeps for itself. A game writes these in plain Ruby.
@@ -35,18 +30,6 @@ module VBlank
       def low_level_test_refusal(word, plain_if, at: "")
         "A game does not need `#{word}`. To fix this, write `#{plain_if}` and put the block's lines " \
           "under it, with `end` after them.#{at}"
-      end
-
-      # ...and that advice, for a word whose new-number form is an operator: `hp + 1`. The two
-      # sides are named the way the author would write them, and a side with no name to give — an
-      # expression worked out on the spot — leaves the advice out rather than describing itself.
-      def operator_advice(left, operator, right, handles: false)
-        left = as_source_text(left)
-        right = as_source_text(right)
-        return "" if operator.nil? || left.nil? || right.nil?
-
-        tail = handles ? " with the handles that `var` gives you" : ""
-        " To get a new number and keep the variable as it is, write `#{left} #{operator} #{right}`#{tail}."
       end
 
       # The arguments of a flat verb as the author wrote them: a name with its colon, a number as

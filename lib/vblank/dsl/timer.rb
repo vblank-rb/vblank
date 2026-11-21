@@ -34,7 +34,7 @@ module VBlank
       # so it runs at the timer's rate, precisely, independent of the game loop (where
       # `every`/`after` top out at the frame rate). Returns self so it chains.
       #
-      #   timer(:beat, per_second: 100).on_tick { add :metronome, 1 }
+      #   timer(:beat, per_second: 100).on_tick { metronome += 1 }
       #
       # This is a low-level building block: it's the machinery higher-level features (a
       # metronome, sampled-audio playback, music timing) are meant to sit on top of, so a

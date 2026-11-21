@@ -271,69 +271,9 @@ module VBlank
       # says which word does — and, where there is one, how to get the same number without
       # changing anything (see {ChangingWord}).
       #
-      # A number is what `abs` and its four neighbours give back, on the variable's own handle;
-      # for adding and subtracting it is what `+` and `-` already are; and `set` and `copy`
-      # have no such form, since neither answers a question about a number.
+      # A number is what each gives back, on the variable's own handle.
       CHANGING_HANDLE_WORDS = { abs: :abs, negate_abs: :negate_abs, negate: :flip, flip: :flip,  # :nodoc:
                                 clamp: :clamp, approach: :approach }.freeze
-      CHANGING_OPERATOR_WORDS = { add: :+, sub: :-, add_var: :+, sub_var: :- }.freeze  # :nodoc:
-
-      # The words plain Ruby has an operator for, which is what a game writes.
-      PLAIN_RUBY_OPERATORS = { set: "=", copy: "=", add: "+=", add_var: "+=", sub: "-=", sub_var: "-=" }.freeze  # :nodoc:
-
-      # :method: set
-      #
-      # Is not used any more. Assign with plain Ruby instead: `hp = 10`.
-      #
-      # Calling `set :hp, 10` raises an error that says so, with the line to write instead.
-      #
-      # * `name` - the variable.
-      # * `value` - the number to store.
-
-      # :method: copy
-      #
-      # Is not used any more. Assign with plain Ruby instead: `x = y`.
-      #
-      # Calling `copy :x, :y` raises an error that says so, with the line to write instead.
-      #
-      # * `dest` - the variable to change.
-      # * `src` - the variable to read.
-
-      # :method: add
-      #
-      # Is not used any more. Add with plain Ruby instead: `x += 1`.
-      #
-      # Calling `add :x, 1` raises an error that says so, with the line to write instead.
-      #
-      # * `name` - the variable.
-      # * `operand` - the number to add.
-
-      # :method: add_var
-      #
-      # Is not used any more. Add one variable to another with plain Ruby instead: `x += y`.
-      #
-      # Calling `add_var :x, :y` raises an error that says so, with the line to write instead.
-      #
-      # * `name` - the variable.
-      # * `operand` - the variable to add.
-
-      # :method: sub
-      #
-      # Is not used any more. Subtract with plain Ruby instead: `x -= 1`.
-      #
-      # Calling `sub :x, 1` raises an error that says so, with the line to write instead.
-      #
-      # * `name` - the variable.
-      # * `operand` - the number to subtract.
-
-      # :method: sub_var
-      #
-      # Is not used any more. Subtract one variable from another with plain Ruby instead: `x -= y`.
-      #
-      # Calling `sub_var :x, :y` raises an error that says so, with the line to write instead.
-      #
-      # * `name` - the variable.
-      # * `operand` - the variable to subtract.
 
       # :method: abs
       #
@@ -389,7 +329,7 @@ module VBlank
 
       # Written out as source rather than made from a block, so another Ractor can call them —
       # see {IR::Node.operands} for why a block-backed method cannot be.
-      (CHANGING_HANDLE_WORDS.keys + CHANGING_OPERATOR_WORDS.keys + %i[set copy]).each do |verb|
+      CHANGING_HANDLE_WORDS.each_key do |verb|
         class_eval <<~REFUSAL, __FILE__, __LINE__ + 1
           def #{verb}(name = nil, *rest)
             raise ArgumentError, changing_verb_message(:#{verb}, name, rest)
@@ -478,28 +418,11 @@ module VBlank
         written = DSL::ChangingWord.arguments_text([name, *rest])
         said = written.empty? ? "" : " #{written}"
         at = Messages::AuthorSource.at_author_line
-        operator = PLAIN_RUBY_OPERATORS[verb]
-        instead = new_number_advice(verb, name, rest)
-        return DSL::ChangingWord.refusal(written: "#{verb}#{said}", bang: "#{verb}!#{said}", instead: instead, at: at) unless operator
-
-        fix = [name, operator, rest.first || 1].map { |part| DSL::ChangingWord.as_source_text(part) || "1" }.join(" ")
-        DSL::ChangingWord.plain_ruby_refusal(written: "#{verb}#{said}", fix: fix, instead: instead, at: at)
+        DSL::ChangingWord.refusal(written: "#{verb}#{said}", bang: "#{verb}!#{said}",
+                                  instead: new_number_advice(verb, name), at: at)
       end
 
-      # The words a game used to change a variable with, kept private so that the sentence
-      # reaches a line in a game block, where they need no receiver.
-      %i[set! add! add_var! sub! sub_var! copy!].each do |word|
-        class_eval <<~REFUSAL, __FILE__, __LINE__ + 1
-          def #{word}(*)
-            raise DSL::PlainRuby::Refused, DSL::ChangingWord.old_verb_refusal(:#{word}, at: Messages::AuthorSource.at_author_line)
-          end
-          private :#{word}
-        REFUSAL
-      end
-
-      def new_number_advice(verb, name, rest)
-        return DSL::ChangingWord.operator_advice(name, CHANGING_OPERATOR_WORDS[verb], rest.first, handles: true) unless CHANGING_HANDLE_WORDS.key?(verb)
-
+      def new_number_advice(verb, name)
         handle = name.is_a?(Symbol) ? "the handle that `var :#{name}` gives you" : "the variable's handle"
         " To get a new number and keep the variable as it is, use " \
           "`.#{CHANGING_HANDLE_WORDS.fetch(verb)}` on #{handle}."
@@ -507,7 +430,7 @@ module VBlank
 
       # A handle for a variable, carrying a fraction if that is what it holds. Every
       # route to a variable goes through here, so `var :px, 3.5` and a later
-      # `set :px, ...` hand back handles that agree about what the variable is.
+      # `px = ...` hand back handles that agree about what the variable is.
       def value_handle_for(name)
         DSL::Value.new(self, Build.var_ref(name), name: name, fraction_bits: @fraction_vars[name],
                                              names: @name_vars[name])

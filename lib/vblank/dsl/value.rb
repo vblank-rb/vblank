@@ -575,35 +575,6 @@ module VBlank
         mutate { @builder.decrease!(@name, align!(amount, "subtract")) }
       end
 
-      # The same three without the `!`. These three have no new-number meaning of their own —
-      # `set` answers no question at all, and a new number from adding is what `+` already is —
-      # so each says which word to write instead (see {ChangingWord}).
-      # Written out as source rather than made from a block, so another Ractor can call them —
-      # see {IR::Node.operands} for why a block-backed method cannot be.
-      { set: [nil, "="], add: [:+, "+="], sub: [:-, "-="] }.each do |word, (operator, written)|
-        class_eval <<~REFUSAL, __FILE__, __LINE__ + 1
-          def #{word}(amount = nil)
-            raise ArgumentError, NOT_A_VARIABLE + at_dsl_line unless handle?
-
-            fix = "\#{name_as_written} #{written} \#{ChangingWord.as_source_text(amount) || '1'}"
-            raise ArgumentError,
-                  ChangingWord.plain_ruby_refusal(written: "\#{name_as_written}.#{word}", fix: fix,
-                                                  instead: ChangingWord.operator_advice(name_as_written, #{operator.inspect}, amount),
-                                                  at: at_dsl_line)
-          end
-        REFUSAL
-      end
-
-      # The words a game used to change a variable with, which plain Ruby expresses better. The library
-      # has #store!, #increase! and #decrease!.
-      %i[set! add! sub!].each do |word|
-        class_eval <<~REFUSAL, __FILE__, __LINE__ + 1
-          def #{word}(*)
-            raise PlainRuby::Refused, ChangingWord.old_verb_refusal(:#{word}, at: Messages::AuthorSource.at_author_line)
-          end
-        REFUSAL
-      end
-
       # Keep the variable within [lo, hi].
       def clamp!(lo, hi)
         mutate { @builder.clamp!(@name, operand_matching(lo, "compare"), operand_matching(hi, "compare")) }

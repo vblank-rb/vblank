@@ -14,11 +14,10 @@ require "prism"
 class TestExamplesUseEveryVerb < Minitest::Test
   include DslVerbs
 
-  # The flat spellings of what a variable's own handle does (`set :x, 5`, `flip :dx`, `add :x, 1`):
+  # The flat spellings of what a variable's own handle does (`flip :dx`, `abs :x`):
   # each exists only to refuse with a friendly error naming the word to write instead, so an
-  # example calling one would not build. Builder::Variables makes them, from these lists.
-  FLAT_REFUSALS = (VBlank::Builder::Variables::CHANGING_HANDLE_WORDS.keys +
-                   VBlank::Builder::Variables::CHANGING_OPERATOR_WORDS.keys + %i[set copy]).freeze
+  # example calling one would not build. Builder::Variables makes them, from this list.
+  FLAT_REFUSALS = VBlank::Builder::Variables::CHANGING_HANDLE_WORDS.keys.freeze
 
   # What a game has no reason to show, besides those: tools for finding a fault.
   # `entry` is raw ARM for the Advance's processor, refused by every other console's build; a game
