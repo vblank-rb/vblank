@@ -146,7 +146,7 @@ module VBlank
             instructions.pack("V*")
           end
 
-          # Build a full 32-bit value into reg with a FIXED four-instruction sequence
+          # Build a full 32-bit value into reg with a fixed four-instruction sequence
           # (MOV + three ORRs, no zero-byte skipping), so the encoding is always 16
           # bytes whatever the value. That fixed size is what lets a two-pass fixup
           # reserve the slot up front and patch in the value — e.g. a resolved data
@@ -295,7 +295,7 @@ module VBlank
             [0xE0800000 | (rn << 16) | (rd << 12) | (shift_val << 7) | 0x40 | rm].pack("V")
           end
 
-          # SUBS rd, rn, #imm — subtract and SET THE FLAGS, so a count run down to zero needs no
+          # SUBS rd, rn, #imm — subtract and set the flags, so a count run down to zero needs no
           # compare of its own: the branch after it reads the zero flag this leaves.
           def subs_imm(rd, rn, imm)
             encoding = encode_rotated_immediate(imm)
@@ -322,7 +322,7 @@ module VBlank
             [0xE1100000 | (rn << 16) | rm].pack("V")
           end
 
-          # MVN rd, rm — move NOT register (bitwise complement)
+          # MVN rd, rm — move not register (bitwise complement)
           def mvn_reg(rd, rm)
             [0xE1E00000 | (rd << 12) | rm].pack("V")
           end
@@ -350,7 +350,7 @@ module VBlank
             [0xE0000090 | (rd << 16) | (rs << 8) | rm].pack("V")
           end
 
-          # SMULL rd_lo, rd_hi, rm, rs — the SIGNED LONG multiply: rm * rs as a full
+          # SMULL rd_lo, rd_hi, rm, rs — the signed long multiply: rm * rs as a full
           # 64-bit answer, low half in rd_lo and high half in rd_hi. Plain MUL keeps only
           # the low half, so a product that needs more than 32 bits comes out wrong there;
           # this is the instruction that gives the whole thing.
@@ -479,7 +479,7 @@ module VBlank
             [0xE5C00000 | (rn << 16) | (rd << 12) | (offset & 0xFFF)].pack("V")
           end
 
-          # STRB rd, [rn], #offset — store the byte, THEN move rn on by +offset+ (post-indexed). A
+          # STRB rd, [rn], #offset — store the byte, then move rn on by +offset+ (post-indexed). A
           # run of bytes written one after another costs no separate add to step along it.
           def strb_post(rd, rn, offset)
             raise ArgumentError, "byte store offset #{offset} is outside 0..4095" unless (0..0xFFF).cover?(offset)
@@ -573,7 +573,7 @@ module VBlank
             [0xE1C000B0 | (addr_reg << 16) | (src << 12) | ((offset & 0xF0) << 4) | (offset & 0x0F)].pack("V")
           end
 
-          # STRH src, [rn], #offset — store the halfword, THEN move rn on by +offset+ (post-indexed),
+          # STRH src, [rn], #offset — store the halfword, then move rn on by +offset+ (post-indexed),
           # the halfword counterpart of {strb_post}. Same split offset as {store_halfword_offset}.
           def store_halfword_post(src, rn, offset)
             raise ArgumentError, "halfword store offset #{offset} is outside 0..255" unless (0..255).cover?(offset)
@@ -693,14 +693,14 @@ module VBlank
             [0xE1500000 | (rn << 16) | (shift_val << 7) | 0x20 | rm].pack("V")
           end
 
-          # ADDS rd, rn, rm — add and SET THE FLAGS. `adds rd, rd, rd` doubles a register and
+          # ADDS rd, rn, rm — add and set the flags. `adds rd, rd, rd` doubles a register and
           # leaves the bit that fell off the top in the carry flag, which is how a value wider
           # than one register is shifted along.
           def adds_reg(rd, rn, rm)
             [0xE0900000 | (rn << 16) | (rd << 12) | rm].pack("V")
           end
 
-          # SUBS rd, rn, rm — subtract and SET THE FLAGS, so a count taken down to nothing is
+          # SUBS rd, rn, rm — subtract and set the flags, so a count taken down to nothing is
           # tested by the branch after it with no compare.
           def subs_reg(rd, rn, rm)
             [0xE0500000 | (rn << 16) | (rd << 12) | rm].pack("V")
@@ -715,7 +715,7 @@ module VBlank
             [(resolve_cond(cond) << 28) | 0x01500000 | (rn << 16) | (shift << 7) | rm].pack("V")
           end
 
-          # ADCS rd, rn, rm — add with carry, setting the flags. Paired with ADDS above, this
+          # ADCS rd, rn, rm — add with carry, setting the flags. Paired with adds above, this
           # is the top half of a double-width shift: it takes in the bit that fell out of the
           # bottom half and passes its own out.
           def adcs_reg(rd, rn, rm)
@@ -748,7 +748,7 @@ module VBlank
             [(resolve_cond(cond) << 28) | 0x01800000 | (rn << 16) | (rd << 12) | (shift << 7) | 0x20 | rm].pack("V")
           end
 
-          # MOV rd, rm, LSL rs / LSR rs — shift by an amount held in a REGISTER rather than
+          # MOV rd, rm, LSL rs / LSR rs — shift by an amount held in a register rather than
           # written into the instruction. Unlike the written-down form, this one accepts a
           # shift of 32 (giving zero), which is what makes a shift the program works out safe
           # at both ends of its range.
@@ -806,7 +806,7 @@ module VBlank
 
           # --- Reading an instruction back ---
 
-          # COULD RUNNING THIS INSTRUCTION CHANGE WHAT +reg+ HOLDS?
+          # Could running this instruction change what +reg+ HOLDS?
           #
           # Everything above turns a description into bytes; this one instruction reads
           # bytes back, and it exists so that a value already sitting in a register can be
@@ -818,7 +818,7 @@ module VBlank
           # was not needed; saying "no, it can't" about one that does write the register
           # sends a load or a store to whatever address happens to be there. So the shape
           # here is: recognise the encodings that provably leave the register alone, and
-          # answer YES for everything else, including anything unrecognised.
+          # answer yes for everything else, including anything unrecognised.
           #
           # Two things count as changing the register even though no instruction here writes
           # it. Writing the program counter sends control somewhere this can't follow, and a

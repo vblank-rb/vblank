@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # WHAT AN ADDRESS REGISTER IS KNOWN TO STILL BE HOLDING, as instructions go past.
+        # What an address register is known to still be holding, as instructions go past.
         #
         # Reaching a variable takes two instructions: put the base of the console's quick
         # memory into a register, then load from that register plus the variable's distance
@@ -14,7 +14,7 @@ module VBlank
         # on one step of a first-person game's ray walk: eighty-three instructions, of which
         # twenty-one were that one constant being made again.
         #
-        # THERE ARE TWO OF THESE, one per register (see {GBA}'s register conventions): the
+        # There are two of these, one per register (see {GBA}'s register conventions): the
         # variables' base in r12, and a collection's own base in r9. The second is the same
         # idea applied to a list, whose base is just as fixed and was being rebuilt at every
         # touch. They are separate registers because a pool walk touches a collection and a
@@ -24,7 +24,7 @@ module VBlank
         #
         # So: remember what was put there, and let the next access skip its half of the
         # pair when the value is still sitting in the register. Which is why this is a
-        # class rather than a flag — being WRONG about what a register holds does not fail,
+        # class rather than a flag — being wrong about what a register holds does not fail,
         # it sends a load or a store to the wrong address, so the rule for forgetting has
         # to be somewhere it can be read and tested on its own.
         #
@@ -32,10 +32,10 @@ module VBlank
         #
         #   * Any instruction that could write the register (ASM.may_write_register?, which answers
         #     yes whenever it cannot tell).
-        #   * A LABEL, because a label is somewhere other code jumps to, and what a
+        #   * A label, because a label is somewhere other code jumps to, and what a
         #     register held on the way here shows nothing about what it holds on the way in.
         #     Every jump in this backend goes to a label, so this one rule covers the lot.
-        #   * A CALL, because the routine it reaches uses the register for its own work.
+        #   * A call, because the routine it reaches uses the register for its own work.
         #     A call is emitted as a placeholder and only becomes a call in the second
         #     pass, so it is {Emit} that marks it rather than anything read out of the bytes.
         #
@@ -55,7 +55,7 @@ module VBlank
           end
 
           # What the register holds, or nil when that is not known. Read by whoever is
-          # about to want a DIFFERENT address in it: getting from one address to another
+          # about to want a different address in it: getting from one address to another
           # can be cheaper than naming the second one outright (see Primitives#emit_load_address_register).
           attr_reader :value
 

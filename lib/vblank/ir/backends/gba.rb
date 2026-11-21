@@ -167,7 +167,7 @@ module VBlank
           tiled:  MODE_0 | BG0_ENABLE, # one regular tiled background layer
         }.freeze
 
-        # Double-buffered (Mode 4) hardware layout. Mode 4 gives the program TWO
+        # Double-buffered (Mode 4) hardware layout. Mode 4 gives the program two
         # full screens — "pages" — in video memory, 0xA000 bytes apart. One is shown
         # on the TV while the program draws into the other, then a flip swaps them at
         # a frame boundary; because the TV never reads a half-drawn page, the picture
@@ -235,7 +235,7 @@ module VBlank
         LIST_ADDR = 9 # Where a collection's own base waits between two touches of it
         STACK = 13 # The stack pointer, for the rare value with nowhere else to wait
 
-        # WHAT THIS BACKEND DECIDED ABOUT AN ASSET, as against what the asset IS (that is
+        # What this backend decided about an asset, as against what the asset is (that is
         # IR::Assets, shared with every backend). These are facts about the cartridge and
         # the console, so they mean nothing anywhere else and belong here.
 
@@ -283,8 +283,8 @@ module VBlank
         SWI_VBLANK_INTR_WAIT = 0x05
         IRQ_HANDLER_LABEL = :__irq_vblank # The interrupt routine, addressed by the vector
 
-        # Comparison operator → the ARM condition that is TRUE for it and the
-        # condition under which it is FALSE (used to skip setting the result to 1).
+        # Comparison operator → the ARM condition that is true for it and the
+        # condition under which it is false (used to skip setting the result to 1).
         COMPARISONS = Ractor.make_shareable({
           :>  => %i[gt le], :<  => %i[lt ge],
           :>= => %i[ge lt], :<= => %i[le gt],
@@ -339,7 +339,7 @@ module VBlank
         # Reached via `drawing: self` by Audio (still, until Drawing exists a few lines
         # into #initialize) and by PaletteTint/LayerBlend (Drawing isn't their own
         # object's collaborator name — this instance stands in), so these have to be
-        # public: an explicit-receiver call ignores privacy on the DEFINING class, not
+        # public: an explicit-receiver call ignores privacy on the defining class, not
         # on whatever the receiver happens to evaluate to.
         def emit_flip_if_buffered = @drawing.emit_flip_if_buffered
         def emit_skip_wait_for_late_page(shown) = @drawing.emit_skip_wait_for_late_page(shown)
@@ -397,7 +397,7 @@ module VBlank
           @fast_code = fast_code
           @stack_room = stack_room
           @progress = progress
-          # What a previous run of this game was MEASURED to spend its frames on, when there is
+          # What a previous run of this game was measured to spend its frames on, when there is
           # such a measurement. It decides what goes in the quick memory; without it the choice
           # is made from the shape of the program instead (see Placement#ranked_by_frame_cost).
           @routine_profile = routine_profile
@@ -643,7 +643,7 @@ module VBlank
           end
         end
 
-        # WHERE A KEPT-TO-ONE-FRAME SPRITE RECORDS WHICH POSE IT IS SHOWING: the address of the
+        # Where a kept-to-one-frame sprite records which pose it is showing: the address of the
         # variable the cartridge writes as it copies a frame into the sprite's room. Keyed by
         # the place in the console's table, the same as ScreenLayout#sprite_offsets, and a slot in here is
         # what marks that the offsets for that slot are counted by pose rather than looked up by
@@ -665,7 +665,7 @@ module VBlank
                                  "bytes that say #{what}. To fix this, make a list or a pool smaller."
         end
 
-        # WHAT WENT IN THE OTHER MEMORY, and how much of it is left.
+        # What went in the other memory, and how much of it is left.
         #
         # The console has 256K of it, eight times the quick memory and about six times the
         # wait on a read, and it used to hold nothing but the audio mixer's two buffers.
@@ -687,7 +687,7 @@ module VBlank
         # How many bytes a slot of each list is, by name.
         def list_widths = @lists.list_widths
 
-        # WHERE EACH ROUTINE ENDED UP, as the span of addresses it really occupies while the
+        # Where each routine ended up, as the span of addresses it really occupies while the
         # console runs. This is what turns a profile's raw addresses back into the author's own
         # names, and nothing can recover it from the finished bytes afterwards.
         #
@@ -698,8 +698,8 @@ module VBlank
         # different address entirely — {Placement#fast_func_address} is the one that knows,
         # since it is the same answer a call to that routine had to be given.
         #
-        # Either way the SIZE is its span in the emitted code, because the copy is a copy.
-        # WHERE EACH TIMER'S HANDLER STARTS, as a real runtime address, and the rate its
+        # Either way the size is its span in the emitted code, because the copy is a copy.
+        # Where each timer's handler starts, as a real runtime address, and the rate its
         # program asked for. What reads it counts how many times that one instruction ran and
         # holds it against the rate — see {TickRate}.
         #
@@ -712,7 +712,7 @@ module VBlank
           @timer_handlers.to_h { |name, info| [name, { hz: info[:hz], at: irq.begin + info[:at] }] }
         end
 
-        # WHERE EACH RUN-TIME COPY INTO VIDEO MEMORY STARTS, as the address the console really
+        # Where each run-time copy into video memory starts, as the address the console really
         # runs it from, with what it is and how many bytes it moves (see Emit::VideoCopy). The
         # instruction's position in the emitted code is turned into an address the way a
         # routine's is: by the routine it sits in, which may have been copied into the quick
@@ -725,7 +725,7 @@ module VBlank
           end
         end
 
-        # WHERE EACH PAGE SHOWN AT ONCE ALTHOUGH IT WAS LATE IS SHOWN FROM, the same way (see
+        # Where each page shown at once although it was late is shown from, the same way (see
         # Drawing#emit_skip_wait_for_late_page): the instruction there runs once for each, and
         # +tears+ marks whether it shows the page part way down the picture.
         def late_page_addresses
@@ -734,7 +734,7 @@ module VBlank
           end
         end
 
-        # WHERE THE GAP AFTER A GAME LOOP'S WAIT ENDS, the same way (see Emit#note_gap_end): the
+        # Where the gap after a game loop's wait ends, the same way (see Emit#note_gap_end): the
         # first instruction after it, which a pass reaches once.
         def gap_end_addresses
           @emit.gap_ends.flat_map { |at| runtime_sites(at) }
@@ -752,7 +752,7 @@ module VBlank
           [{ at: address }, { at: swapped_address(name) + (at - span.begin), set: set }]
         end
 
-        # WHERE EACH STATEMENT OF A ROUTINE THAT MISSED THE QUICK MEMORY IS, by the routine: the
+        # Where each statement of a routine that missed the quick memory is, by the routine: the
         # line of the game that wrote it and the addresses its code runs at, from the cartridge.
         # A measured run adds up the time inside each, to say which part of such a routine is
         # worth making a `func` of (see Diagnostics::SplitHints). Only the routines that missed:
@@ -766,7 +766,7 @@ module VBlank
           end.reject { |_, parts| parts.empty? }
         end
 
-        # WHERE EACH STATEMENT OF EVERY ROUTINE IS, by the routine: the line of the game that wrote
+        # Where each statement of every routine is, by the routine: the line of the game that wrote
         # it and the bytes its code takes, counted from the routine's first instruction. A measured
         # run adds up the time inside each, to say which lines of a routine its time went to (see
         # Diagnostics::RoutineLines). Counted from the routine's start rather than given as
@@ -792,7 +792,7 @@ module VBlank
             base = runtime_base(name, span)
             [name, base...(base + span.size)]
           end
-          # The two that are COPIED into the quick memory go on last: they are also emitted in
+          # The two that are copied into the quick memory go on last: they are also emitted in
           # the cartridge, so the generic pass above finds them there, and it is the copy that
           # actually runs.
           written.merge(lowered_routine_addresses)
@@ -802,7 +802,7 @@ module VBlank
                  .merge(setting_up_addresses)
         end
 
-        # THE SETTING UP, AND THE LOOPS IN IT THAT FILL A LIST, as routines a profile can name.
+        # The setting up, and the loops in it that fill a list, as routines a profile can name.
         # Neither is a routine: the setting up is everything the console runs from power-on to the
         # top of the game loop, and runs once. But it can be most of the first frame, and a game
         # that declares more grows it until the first picture is a whole picture late, so a profile
@@ -850,7 +850,7 @@ module VBlank
           ROM_START + VBlank::Cartridge::ROM::ENTRY_OFFSET + span.begin
         end
 
-        # ROUTINES THE LOWERING MAKES, which an author never wrote and cannot be found in
+        # Routines the lowering makes, which an author never wrote and cannot be found in
         # func_ranges — the shared glyph walker each font gets so that a run-time digit is
         # called rather than emitted again at every call site, and its tear-free twin.
         #
@@ -903,7 +903,7 @@ module VBlank
           program = cut
           allocate_where_words # where each scene's own routines are, side by side, before any other variable
           # The throwaway measuring pass keeps the phase its caller named, since from the
-          # outside it IS that phase — it is not lowering the program, it is finding out how
+          # outside it is that phase — it is not lowering the program, it is finding out how
           # big the routines come out.
           @progress.step("Compiling") if fast_funcs.nil?
           # Nothing counted so far belongs to this pass. A backend lowered twice reports what
@@ -943,7 +943,7 @@ module VBlank
           @tiled = Modes.draws_with_tiles?(program)
           # Where every background and sprite goes, and the cartridge data that records it.
           #
-          # PLANNED ONCE A BUILD. The plan is worked out from the program's pictures and screens
+          # Planned once a build. The plan is worked out from the program's pictures and screens
           # alone, so it comes out the same however many times the routines are measured and
           # whichever of them go to the quick memory. It is also most of the build's work on
           # pictures, so the measuring passes and the build itself all read the first one's.
@@ -1076,7 +1076,7 @@ module VBlank
           @mixer.emit_no_gap_writes_running if mix_waits_for_gap? # so the first line mixes
           emit_copy_hot_code_to_iwram unless @fast_funcs.empty?
           emit_call_power_on_swap # the scenes' own routines that fit side by side, the ones the game loop runs first
-          # THE MIXER IS BROUGHT UP BEFORE THE INTERRUPTS ARE ARMED, and the order is load-bearing
+          # The mixer is brought up before the interrupts are armed, and the order is load-bearing
           # rather than tidy. The screen's interrupt builds the next slice of sound (see
           # #emit_irq_handler), and it does that by jumping into a routine that boot copies into
           # the console's quick memory. Armed first, the very first frame can arrive while that
@@ -1206,7 +1206,7 @@ module VBlank
 
         # Work out which screen mode each scene draws in. A program that never uses
         # double buffering is left entirely alone (the direct-color path below is
-        # unchanged). When some scene IS buffered, each func's mode comes from
+        # unchanged). When some scene is buffered, each func's mode comes from
         # IR::Modes — the shared, target-agnostic resolution that follows the call
         # graph from the game's entry points. A drawing helper reached in two
         # different modes can't be lowered both ways; Modes flags that, and we
@@ -1226,7 +1226,7 @@ module VBlank
           raise LoweringError, e.message
         end
 
-        # THE STATEMENTS THE LOWERING WRITES ITSELF (Lowering#statements_written_by): each needs
+        # The statements the lowering writes itself (Lowering#statements_written_by): each needs
         # what more than one part holds — a table's place, the save chip, the count of passes.
         STATEMENT_KINDS = %i[halt list_copy load_sprite_tiles].freeze
 
@@ -1286,7 +1286,7 @@ module VBlank
         def emit_add_const(rd, rn, imm, scratch) = @primitives.emit_add_const(rd, rn, imm, scratch)
         def emit_and_const(rd, rn, imm, scratch) = @primitives.emit_and_const(rd, rn, imm, scratch)
 
-        # THE VARIABLES GROW UP FROM THE BASE and the lists and buffers grow down from the
+        # The variables grow up from the base and the lists and buffers grow down from the
         # routines held at the top (TopOfQuickMemory), so a program with a great many of either
         # has to be told rather than quietly overwriting the other. Asked once the game's own code
         # is written and before the routines kept in the quick memory are, where only a game
@@ -1360,7 +1360,7 @@ module VBlank
         end
 
         # The registers the dispatcher saves around a handler body: r4-r11 (callee-saved,
-        # which the BIOS does NOT preserve on interrupt entry) plus lr (a handler body may
+        # which the BIOS does not preserve on interrupt entry) plus lr (a handler body may
         # call a func, which overwrites it — we need it intact for the final return). The
         # BIOS already saved r0-r3 and r12, so a body may clobber those freely.
         IRQ_SAVED_REGS = [4, 5, 6, 7, 8, 9, 10, 11, 14].freeze
@@ -1380,7 +1380,7 @@ module VBlank
         # Measured on the emulator's timing model, per frame of real game code: the
         # raycaster's 224 scanlines of CPU become 133, breakout's 113 become 71, snake's
         # 108 become 62. Call it a third off, and more on ROM-heavy code. That is why it
-        # is on by default. It's a timing SETTING, not a guarantee — it is what real
+        # is on by default. It's a timing setting, not a guarantee — it is what real
         # cartridges and mainstream flash carts are specified for, but a cartridge that
         # can't keep up would misbehave, so `fast_cartridge: false` leaves the cautious
         # power-on timing alone. (This is a hardware-timing concern, so it lives only in
@@ -1431,7 +1431,7 @@ module VBlank
           write_io_halfword(REG_IME, 1)                          # interrupts on
         end
 
-        # THE FRAMES SHOWN WHILE THE GAME SETS UP ARE COUNTED, for a game that reads frames since
+        # The frames shown while the game sets up are counted, for a game that reads frames since
         # power-on. The screen's own interrupt (#emit_irq_setup) is armed late in setting up, after
         # what it reaches has been put in place: the sound mixer started, the routines it runs
         # copied to the quick memory. That setting up can outlast the first frame. A cartridge
@@ -1475,15 +1475,15 @@ module VBlank
           start = pos
           place_label(IRQ_HANDLER_LABEL)
           emit(ASM.push(*IRQ_SAVED_REGS))
-          # A bending background is checked FIRST because it fires by far the most often —
+          # A bending background is checked first because it fires by far the most often —
           # once for every line the display draws, against once a frame for everything
           # else. Every check ahead of it would be paid 228 times a frame.
           emit_irq_source(IRQ_HBLANK) { emit_row_bend_handler } if interrupts_rows?
-          # VBlank must ack in TWO places — the hardware flag (REG_IF) and the BIOS's own
+          # VBlank must ack in two places — the hardware flag (REG_IF) and the BIOS's own
           # copy (REG_IFBIOS) that VBlankIntrWait polls — or the CPU would never wake.
           # ...and the screen's own frame, whose handler used to be nothing but the ack. Three
-          # things ride on it now, all for the same reason: THE SCREEN KEEPS TIME WHATEVER THE
-          # GAME IS DOING. It counts frames, which is what lets a pass of the game loop know how
+          # things ride on it now, all for the same reason: the screen keeps time whatever the
+          # game is doing. It counts frames, which is what lets a pass of the game loop know how
           # many of them it took; it hands the sound hardware its next slice of sound, because a
           # sixtieth of a second of sound is a fact about the display and not about how long the
           # game took to think; and it moves the tune on a frame, because a tempo is too. A game
@@ -1509,7 +1509,7 @@ module VBlank
             @mixer.emit_envelope_step if @mixer.shapes_notes?
             emit_mixer_fill if @mixer.plays_samples? && !mixes_at_first_line?
           end if @uses_vblank
-          # BUILDING THE SOUND WAITS FOR THE PICTURE. The gap between frames is the only time
+          # Building the sound waits for the picture. The gap between frames is the only time
           # the sprite table and the scroll registers can be written without the screen catching
           # them half done, and the game only wakes to write them once this handler returns.
           # Mixing a heavy song can take longer than the whole gap, so mixing here pushed those
@@ -1525,13 +1525,13 @@ module VBlank
           end
           irq_timers.each do |name, info|
             emit_irq_source(timer_irq_bit(info[:rate])) do
-              # WHERE THIS HANDLER'S FIRST INSTRUCTION SITS, kept so a profile can count how
+              # Where this handler's first instruction sits, kept so a profile can count how
               # many ticks really arrived. A handler's body is emitted inline here rather than
               # as a routine of its own, so there is no name in the profile to count — but its
               # first instruction runs exactly once per tick answered, and the source's own
               # test above has already branched past it when this timer did not fire.
               #
-              # It is kept as an offset INSIDE this routine, not as an address. This routine is
+              # It is kept as an offset inside this routine, not as an address. This routine is
               # one of the two the build may copy into the console's quick memory, where it runs
               # nowhere near where it sits in the cartridge — and the offset is the same either
               # way, because a copy is a copy. Whoever reads it adds the routine's own runtime
@@ -1584,7 +1584,7 @@ module VBlank
         # so mixing at the top of the picture would freeze the bend for every line the mixing
         # lasts, where mixing in the gap reaches only the lines it runs past the gap's end.
         #
-        # WHAT IT COSTS is room for the mix. Started in the gap, it had until the next gap, a
+        # What it costs is room for the mix. Started in the gap, it had until the next gap, a
         # whole frame. Started at the first line, it has to be done by the time the display
         # reaches the gap again, two thirds of a frame, because the next hand-over cannot run
         # until it has finished. A song that takes longer than that to mix leaves the game a
@@ -1642,8 +1642,8 @@ module VBlank
         # code, never inline, so the main flow doesn't run into them; sounds and
         # songs are pure data with nothing to emit on their own.
         def collect_definitions(program)
-          # WHICH LISTS ARE RINGS, asked before anything is allocated. A list is a ring only if
-          # the program drops from its FRONT, which is what moves its head; every other one is
+          # Which lists are rings, asked before anything is allocated. A list is a ring only if
+          # the program drops from its front, which is what moves its head; every other one is
           # a plain array and is allocated at the size it asked for rather than rounded up to
           # the next power of two. Nearly all of them are — a pool's fields, a board, anything
           # filled once and then read by number — and on a cartridge with a lot of them the
@@ -1686,7 +1686,7 @@ module VBlank
             when :list_new
               # Storage is reserved once, up front, so every op that touches it (anywhere
               # in the tree, including funcs emitted later) already knows its base address
-              # and capacity — but NOT here, where the order would be declaration order and
+              # and capacity — but not here, where the order would be declaration order and
               # so decide by accident which collections get the quick memory. Gathered now,
               # registered after the walk, coldest last (see #register_lists_hot_first).
               declarations << [node, shifted.include?(node.name)]
@@ -1705,7 +1705,7 @@ module VBlank
           register_lists_hot_first(program, declarations)
         end
 
-        # HAND THE QUICK MEMORY TO THE COLLECTIONS A FRAME TOUCHES, and let the rest fall
+        # Hand the quick memory to the collections a frame touches, and let the rest fall
         # into the roomy one.
         #
         # Nothing is moved once it is placed — a collection simply takes whichever memory
@@ -1766,7 +1766,7 @@ module VBlank
           prepare_indexed_bitmaps(program)
         end
 
-        # The indexed screen holds a NUMBER per pixel where a picture holds a whole color, so a
+        # The indexed screen holds a number per pixel where a picture holds a whole color, so a
         # picture needs a second form before anything can draw it there. Built here, once, and
         # shipped beside the picture's colors. A picture a stretched column draws gets a third:
         # the same numbers column by column, which is the order that walk reads them in (see
@@ -1817,7 +1817,7 @@ module VBlank
 
         # BGxCNT bit 7 (8bpp): this layer's pixels are whole bytes, so it reads across the
         # console's whole 256-color background table. Left clear (4bpp) a pixel is half a
-        # byte and each TILE names which bank of sixteen it draws from — half the memory for
+        # byte and each tile names which bank of sixteen it draws from — half the memory for
         # the same picture, and twice as many tiles in the block. Which a layer gets is
         # worked out from the colors in its tiles; nothing in the DSL sets it. See
         # {PaletteBanks}, whose comment maps the framework's words onto this console's.
@@ -1865,7 +1865,7 @@ module VBlank
         # set it on that layer.
         FIXED_ONE = 0x0100
 
-        # BG2CNT bits 14-15 on a rotate/scale layer mean a SQUARE grid — 16, 32, 64 or 128
+        # BG2CNT bits 14-15 on a rotate/scale layer mean a square grid — 16, 32, 64 or 128
         # tiles a side — rather than the four rectangles a regular layer picks between. So
         # this layer's map has to be square, which every other kind of background does not.
         AFFINE_MAP_SIZES = { 16 => 0, 32 => 1, 64 => 2, 128 => 3 }.freeze
@@ -1893,7 +1893,7 @@ module VBlank
         OBJ_BANK_SHIFT = 12
 
         # attr2 bits 10-11: how deep this sprite sits, on the console's own scale where 0
-        # is the front. A sprite is drawn over a background holding the SAME number, which
+        # is the front. A sprite is drawn over a background holding the same number, which
         # is what lets a picture put scenery in front of one sprite and behind another
         # without spending a number on each.
         OBJ_PRIORITY_SHIFT = 10
@@ -1905,7 +1905,7 @@ module VBlank
         OBJ_SINE_BLOB = :__obj_sine
         OBJ_SINE_ENTRIES = 450
 
-        # WHICH SPRITES A FRAME NEED NOT WRITE AT ALL.
+        # Which sprites a frame need not write at all.
         #
         # The console composes its picture from a table it re-reads every frame, so a sprite
         # stays exactly where the last write to that table put it. A sprite nothing in the
@@ -1920,12 +1920,12 @@ module VBlank
           prepare_scene_sprites(program, still)
         end
 
-        # WHICH SPRITES ARE WRITTEN BY THEIR SCENE'S OWN ROUTINE rather than by the frame's.
+        # Which sprites are written by their scene's own routine rather than by the frame's.
         #
         # A sprite declared inside a scene is on screen only while that scene is, so the rows
         # of the ones that move need writing only on that scene's frames. Written from the
         # frame's own body they were code in the routine the framework keeps in the quick
-        # memory FIRST, for every scene the game has — so a file-select screen shown once took
+        # memory first, for every scene the game has — so a file-select screen shown once took
         # that memory from the scene the player spends the game in. Written by a routine per
         # scene, each is placed like any other routine: by what a frame spends in it.
         #
@@ -1957,7 +1957,7 @@ module VBlank
           end
         end
 
-        # THE ROUTINE EACH BIG MAP'S VIEW IS BROUGHT ALONG BY, one for each background whose map
+        # The routine each big map's view is brought along by, one for each background whose map
         # is bigger than the console's grid (see MapStreaming).
         #
         # It is the frame's own work, whichever scene owns the background: the scroll write
@@ -1989,18 +1989,18 @@ module VBlank
         #
         #   * The blend register names each background layer with a bit of its own, so
         #     scenery on the kept side simply stays out of the mask. Free.
-        #   * It names every sprite on screen with ONE bit. So a line drawn between two
+        #   * It names every sprite on screen with one bit. So a line drawn between two
         #     sprites cannot be set there at all — and a HUD is sprites, which makes
         #     that the case the whole feature exists for.
         #
-        # The way through is the OBJECT WINDOW. A sprite can be drawn as a window instead
+        # The way through is the object window. A sprite can be drawn as a window instead
         # of a picture: it paints nothing, and where its pixels would have been the color
         # effect is turned off. The region is the shape of the pixels it paints and not
         # its box, which is what makes it usable for a letter. So each kept sprite gets a
         # twin drawn that way, and the fade goes around the sprite.
         #
         # A twin costs one sprite slot and one table write a frame, so they are made only
-        # where they are the only answer: a fade that keeps EVERY sprite leaves the OBJ
+        # where they are the only answer: a fade that keeps every sprite leaves the OBJ
         # bit out of the mask instead, and costs nothing at all. See PlacedFade, which owns
         # all of it; these are the numbers the hardware reads.
         EFFECT_LINE = :__effect_line # Where in the stack the fade now in force is sitting

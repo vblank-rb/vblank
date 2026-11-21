@@ -40,7 +40,7 @@ module VBlank
 
           include Console::Hardware
 
-          # EVERY TUNE THE PLAYER CAN PLAY, by name, in the order it numbers them from 1 (MUSIC_PLAYING
+          # Every tune the player can play, by name, in the order it numbers them from 1 (MUSIC_PLAYING
           # holds that number, nought for none): the songs named on their own first, then each list's
           # songs together and in the list's order. Together is what makes picking from a list one
           # addition: song +which+ of a list is the list's first number plus +which+. A reader of the
@@ -168,7 +168,7 @@ module VBlank
           # parts, not channels — this mapping is the console's business and lives here.
           MUSIC_CHANNELS = [1, 2].freeze
 
-          # THE MUSIC PLAYER'S STATE, in the console's quick memory. The game writes the first
+          # The music player's state, in the console's quick memory. The game writes the first
           # and nothing else; the rest belong to the player, which runs in the screen's
           # interrupt. That split is what makes sharing them safe — see #emit_music_tick.
           MUSIC_WANTED = :__music_wanted   # The tune the game named, by number (0 = none)
@@ -180,7 +180,7 @@ module VBlank
           MUSIC_STOPS = :__music_stops
           MUSIC_STOPS_SEEN = :__music_stops_seen
           # A tune that played once and reached its end, by number (0 = none). Belongs to the
-          # player alone, like everything here but WANTED (see #emit_keep_ended_tune_silent).
+          # player alone, like everything here but wanted (see #emit_keep_ended_tune_silent).
           MUSIC_ENDED = :__music_ended
           # 1 while the game holds the tune where it is (Reference::Player#hold). The game writes it
           # and so does the player, which lets go of a hold as the tune changes: one whole word
@@ -204,7 +204,7 @@ module VBlank
           # Every tune the game plays, in one piece of cartridge data. See #score_blob.
           MUSIC_SCORE = :__music_score
 
-          # THE LANES A TUNE IS PLAYED ON: the hardware the player drives, fixed for the whole
+          # The lanes a tune is played on: the hardware the player drives, fixed for the whole
           # game. The two square-wave channels, then one voice of the mixer for each part that
           # plays a recording — as many as the most any one tune has — and then the wave voice
           # and the noise voice, one each, for the games that use them. A song's parts are handed
@@ -212,7 +212,7 @@ module VBlank
           # only ever does one kind of thing, and the player never has to ask, as it runs, what
           # kind of part it is playing.
           #
-          # The two console voices go LAST on purpose: a game that uses neither emits not one
+          # The two console voices go last on purpose: a game that uses neither emits not one
           # instruction for them, and adding them moved no lane a game already had.
           Lane = Data.define(:kind, :index) # :square/:wave/:noise and its channel, or :recorded and its mixer lane
 
@@ -278,7 +278,7 @@ module VBlank
           # four numbers that shape a note on it (0 for a note that starts and stops dead), and
           # how far back a held note goes when it reaches the end (0 for one that runs out).
           #
-          # THE SHAPE IS HERE AND NOT ON THE NOTE, which is what makes it free: a note already
+          # The shape is here and not on the note, which is what makes it free: a note already
           # carries the number of the recording it plays, so two notes on the same recording
           # shaped differently are simply two entries and the note's own number picks between
           # them. Putting the four numbers on every note instead would have grown every recorded
@@ -308,7 +308,7 @@ module VBlank
           WAVE_HALFWORDS = 8
           WAVE_BYTES = WAVE_HALFWORDS * 2
 
-          # SOUND EFFECTS, played once over the tune.
+          # Sound effects, played once over the tune.
           #
           # Each has a place in a table in memory: whether it is waiting to start (written by the
           # game), sounding, or neither; how far into it the player is; and each of its lanes' next
@@ -328,7 +328,7 @@ module VBlank
           # is the mixer's to decide, by the rank each voice's mark carries (Mixer.ranked_owner).
           #
           # In a game with groups (IR::Tunes.priority_of) two more states record what the game decided
-          # when it asked: an effect stopped by another of its group is STOPPING, and one of a group
+          # when it asked: an effect stopped by another of its group is stopping, and one of a group
           # asked for again while it sounds is RESTARTING — its voices are let go before it starts.
           EFFECT_STATE = 0    # 0, EFFECT_ASKED, EFFECT_SOUNDING, EFFECT_STOPPING or EFFECT_RESTARTING
           EFFECT_FRAME = 4    # How far into the effect, in frames
@@ -338,7 +338,7 @@ module VBlank
           EFFECT_STOPPING = 3
           EFFECT_RESTARTING = 4
 
-          # WHO EACH EFFECT STOPS, for a game with groups: one entry a table place, in table order
+          # Who each effect stops, for a game with groups: one entry a table place, in table order
           # — where its group's list starts in this same data, how many are in it, and its priority,
           # each a halfword, and a fourth left empty so an entry is a shift of its place — and then
           # each group's list of table places, a halfword each.
@@ -356,7 +356,7 @@ module VBlank
           EFFECT_RANK = 4
           EFFECT_STARTS = 8
 
-          # WHICH WAVEFORM IS IN WAVE RAM, for a game whose effects play the wave voice: where it is
+          # Which waveform is in wave RAM, for a game whose effects play the wave voice: where it is
           # in the score, or 0 before any. There is room there for one waveform, and the tune and
           # an effect can each want theirs, so a note on the wave voice — not a rest — loads its own
           # first if this shows another is there (UPLOAD_WAVE), which is on the frames it changes
@@ -381,7 +381,7 @@ module VBlank
           # The tune's rank, kept when it starts, for its parts to compare with a voice's holder.
           MUSIC_RANK = :__music_rank
 
-          # WHETHER ANY EFFECT HAS SOMETHING TO DO: not 0 from the moment the game asks for one
+          # Whether any effect has something to do: not 0 from the moment the game asks for one
           # until a frame's walk finds every effect quiet again. Most frames of most games sound
           # no effect at all, and on those the walk is skipped, rather than reading every
           # effect's place in the table to find each one quiet. The game writes it, with an
@@ -448,7 +448,7 @@ module VBlank
             IR::Tunes.effects(program).map { |name| songs.fetch(name) }
           end
 
-          # HOW MUCH OF THE ROOMY MEMORY THE SOUND EFFECTS' TABLE WILL TAKE, read off the program
+          # How much of the roomy memory the sound effects' table will take, read off the program
           # before it is lowered, for the build's memory check (Roomy.reserved_by_build): an entry for
           # each effect, as #prepare_sound_effects claims it, or nought for a game with none.
           def self.effect_table_bytes(program)
@@ -467,7 +467,7 @@ module VBlank
           # the mixer instead, whose voices mark for themselves who holds them.
           def shared_lane?(lane) = plays_sound_effects? && lane.kind != :recorded && @effect_lanes.include?(lane)
 
-          # A PART WITH NOTHING IN IT, for a lane being silenced when a tune changes. Silence is
+          # A part with nothing in it, for a lane being silenced when a tune changes. Silence is
           # a rest, and a rest names no pitch — so a part's tone, its fade and its rattle are all
           # unread, and a part that sets nothing answers every one of them.
           SILENCE = Ractor.make_shareable(VBlank::Audio::Music::Part.new(events: []))
@@ -477,7 +477,7 @@ module VBlank
           # nothing. The score itself waits for #register_audio_blobs, because a recorded note's step
           # depends on the rate the mixer settles on.
           #
-          # THE PROGRAM IS WALKED ONCE for what this asks of it, and the songs it plays are worked
+          # The program is walked once for what this asks of it, and the songs it plays are worked
           # out once (IR::Tunes.played_songs and .playable_songs each walk it again, and the
           # questions below ask them a dozen times). A program that declares no song, and names
           # no list of songs or of effects, plays nothing: then neither is asked at all, and what
@@ -635,7 +635,7 @@ module VBlank
 
           def plays_sound_effects? = !@effects.empty?
 
-          # START SOUND EFFECT +which+ OF A LIST: one number stored in the effect's place in the
+          # Start sound effect +which+ of a list: one number stored in the effect's place in the
           # table, which the player in the screen's interrupt reads on the next frame. A single
           # store is all the game ever writes there, so the interrupt can land before it or after
           # it and never in the middle. Asked for while it sounds, the player starts it again.
@@ -715,7 +715,7 @@ module VBlank
             @recorded_note_routines.each { |routine| emit_start_recorded_note_routine(routine) }
           end
 
-          # START AN EFFECT WHERE THE GAME ASKS FOR IT, rather than in the next frame's interrupt:
+          # Start an effect where the game asks for it, rather than in the next frame's interrupt:
           # the table walked as a frame walks it, in rank order, playing only the effect asked for
           # — from its first frame, so the next frame's interrupt plays its second — and every
           # effect a group is cutting off, which lets go of its voices before an effect it outranks
@@ -723,7 +723,7 @@ module VBlank
           # the tune is not touched. Each of those effects is a run of the table one place long
           # (#emit_sound_effects_routine), which hands back the next place.
           #
-          # NOTHING AT ALL unless the effect is still waiting to start. One a group decided not to
+          # Nothing at all unless the effect is still waiting to start. One a group decided not to
           # play is not, and neither is one the screen's interrupt started in the moment between
           # the game asking and this holding it off — which has had its first frame already, and
           # would otherwise have its second here.
@@ -775,7 +775,7 @@ module VBlank
           # call.
           GAME_CALL_KEEPS = [4, 5, 6, 7, 8, 9, 10, 11, 14].freeze
 
-          # A ROUTINE BESIDE THE PLAYER THAT THE GAME CALLS, at +label+, whose body the block emits:
+          # A routine beside the player that the game calls, at +label+, whose body the block emits:
           # the game's registers kept, and the screen's interrupt held off throughout so it never
           # sees the player half changed. The interrupts' master switch is kept on the stack rather
           # than in a register, since every low register is the player's in the body. ACC still
@@ -797,7 +797,7 @@ module VBlank
             e.emit(ASM.return)
           end
 
-          # THE REGISTERS THE ASK IN A GROUP WORKS IN. The place asked for is handed over in
+          # The registers the ask in a group works in. The place asked for is handed over in
           # ASK_PLACE; the rest are kept on the stack and given back, except ACC and TMP, which
           # every statement may use, and r3, where the interrupts' master switch waits.
           ASK_LIST = 0     # The group's list, walked
@@ -810,7 +810,7 @@ module VBlank
           ASK_STATE = 8    # That one's state
           ASK_KEEPS = [ASK_BLOB, ASK_PRIORITY, ASK_TABLE, ASK_MEMBER, ASK_STATE].freeze
 
-          # ASK FOR THE EFFECT AT A TABLE PLACE — +place+, or with none given, the place in ACC —
+          # Ask for the effect at a table place — +place+, or with none given, the place in ACC —
           # deciding its group as it is asked (IR::Tunes.priority_of).
           #
           # The game reads the table and writes two places in it, where asking in a list with no
@@ -818,10 +818,10 @@ module VBlank
           # off while it does, and sees the decision whole. Each of the group is looked at in turn:
           #
           #   * none of them sounding or asked for: this one is asked for;
-          #   * this one itself: asked for again while it sounds, it is RESTARTING; already asked
+          #   * this one itself: asked for again while it sounds, it is restarting; already asked
           #     for, it stays so;
           #   * another: of higher priority than this one, this one is not played; otherwise that one
-          #     is STOPPING and this one is asked for — RESTARTING, if it was itself STOPPING, since
+          #     is stopping and this one is asked for — RESTARTING, if it was itself stopping, since
           #     then it still holds voices to let go of.
           #
           # A group has one sounding or asked for at most, which is what lets the walk stop at the
@@ -896,7 +896,7 @@ module VBlank
           end
 
           # The group's one is found. Itself, it restarts if it is sounding and is left as it is
-          # otherwise; another, it is STOPPING unless it outranks the one asked for, and then this
+          # otherwise; another, it is stopping unless it outranks the one asked for, and then this
           # one is not played. Both of those go on to +done+; stopping the other falls through, to
           # ask for this one.
           def emit_resolve_group_conflict(done)
@@ -928,7 +928,7 @@ module VBlank
             @emitter.emit(ASM.add_reg(reg, table || ASK_TABLE, reg))
           end
 
-          # NAME THE TUNE PLAYING NOW. One number into one variable, and the player in the
+          # Name the tune playing now. One number into one variable, and the player in the
           # screen's interrupt does the rest. Written every frame or once, from a branch or from
           # two, it is the same number and so the same tune.
           def emit_play_song(node)
@@ -943,7 +943,7 @@ module VBlank
           # `this_frame: true`: the tune just named starts here (see #emit_start_song_here_routine).
           def emit_call_start_song_here = @drawing.emit_call_irq_routine(START_SONG_HERE)
 
-          # NAME SONG +which+ OF A LIST as the tune playing now: the list's first number plus
+          # Name song +which+ of a list as the tune playing now: the list's first number plus
           # +which+, into the same one variable `play_song` writes. A number the game works out is
           # checked first, and one naming no song in the list leaves the music as it is — the
           # same as `show_map` given a number naming no map.
@@ -993,9 +993,9 @@ module VBlank
             @primitives.store_var(ACC, MUSIC_HELD)
           end
 
-          # ONE FRAME OF THE MUSIC PLAYER, emitted inside the screen's own interrupt.
+          # One frame of the music player, emitted inside the screen's own interrupt.
           #
-          # THAT IS WHERE IT HAS TO BE, for the reason the mixer's refill is there too. A tempo
+          # That is where it has to be, for the reason the mixer's refill is there too. A tempo
           # is a fact about the clock on the wall. Stepped once per pass of the game loop, a tune
           # played at half speed in a game whose pass took two frames, and a branch that skipped
           # the step stopped it dead. The interrupt comes once for every frame the display
@@ -1005,7 +1005,7 @@ module VBlank
           # the parts of the old one and starts the new one from its first frame; no tune at all
           # just silences. The same tune changes nothing.
           #
-          # Then each lane looks at the ONE event its cursor points at: due on this frame, the note
+          # Then each lane looks at the one event its cursor points at: due on this frame, the note
           # is played and the cursor steps on; otherwise nothing. So a frame costs one check per
           # lane, and a long tune costs what a short one does. A square lane's note is two
           # register values copied out; a recorded lane's is a voice of the mixer filled in —
@@ -1015,7 +1015,7 @@ module VBlank
           # A tune that plays once does neither: it is noted as ended, and the next frame's
           # catching-up silences it (#emit_keep_ended_tune_silent).
           #
-          # SAFE TO SHARE WITH THE GAME because the game only ever writes WANTED, with a single
+          # Safe to share with the game because the game only ever writes wanted, with a single
           # store, and this only ever reads it. Everything else here belongs to the player alone
           # — except the mixer's voices, which the game's sounds share, and which the game only
           # touches with interrupts held off (see Mixer#emit_take_music_voice_routine).
@@ -1035,7 +1035,7 @@ module VBlank
           # The routine a tune named `this_frame: true` calls, emitted beside the screen's interrupt.
           START_SONG_HERE = :__start_song_here
 
-          # START A TUNE WHERE THE GAME NAMES IT, rather than in the next frame's interrupt: the
+          # Start a tune where the game names it, rather than in the next frame's interrupt: the
           # interrupt's own catching up and its first frame of the tune, with the screen's
           # interrupt held off so it never sees the tune half started. The next frame's interrupt
           # then finds the tune it is on already named, and plays its second frame — so a tune is
@@ -1048,7 +1048,7 @@ module VBlank
             emit_routine_called_by_game(START_SONG_HERE) { emit_music_frame(in_interrupt: false) }
           end
 
-          # ONE FRAME OF THE PLAYER (see #emit_music_tick). Out of the interrupt — starting a tune
+          # One frame of the player (see #emit_music_tick). Out of the interrupt — starting a tune
           # where the game names it — it plays a frame of the tune only when it changed the tune,
           # and plays no sound effect.
           def emit_music_frame(in_interrupt:)
@@ -1125,7 +1125,7 @@ module VBlank
           # tune asked for (and then a cursor), how far into the tune, and the tune playing.
           TUNE_REGS = [2, 3, 4, 5, 6].freeze
 
-          # THE PLAYER'S BIG STEPS AS ROUTINES, for a game that starts a tune where it names it
+          # The player's big steps as routines, for a game that starts a tune where it names it
           # (START_SONG_HERE) as well as in the interrupt. Both places take the same steps, and
           # written out in each they were the player twice over: a tune on many lanes is well over
           # a kilobyte of them, and the routine the interrupt runs is weighed for the quick memory
@@ -1160,7 +1160,7 @@ module VBlank
             @starts_songs_here ? @emitter.emit_branch(:bl, label) : yield
           end
 
-          # A DIFFERENT TUNE, OR NONE, OR A STOP: silence the one playing and start the new one from
+          # A different tune, or none, or a stop: silence the one playing and start the new one from
           # its first frame, with the score in the first of TUNE_REGS and the new tune in the last.
           # On to +no_tune+ when there is no tune now; falls through with the frame at 0 otherwise.
           def emit_tune_start(no_tune:)
@@ -1196,7 +1196,7 @@ module VBlank
             @primitives.store_var(ACC, MUSIC_RANK)
           end
 
-          # ONE FRAME OF THE TUNE PLAYING: each lane plays its next event if it is due, and the
+          # One frame of the tune playing: each lane plays its next event if it is due, and the
           # frame moves on — round to the loop frame or the top at the tune's end, or no further
           # for a tune that plays once.
           def emit_tune_frame
@@ -1228,7 +1228,7 @@ module VBlank
             @emitter.emit_branch(:bcond, label, cond: :ne)
           end
 
-          # A VOICE HOLDING THE HELD TUNE'S NOTE moves no further: on to +still+ while the tune is held,
+          # A voice holding the held tune's note moves no further: on to +still+ while the tune is held,
           # unless a sound effect holds this voice, whose note keeps moving (Reference::Player#held_still?).
           def emit_skip_voice_held_still(lane, still)
             return unless @holds_music
@@ -1248,7 +1248,7 @@ module VBlank
             @emitter.place_label(moves)
           end
 
-          # THE REGISTERS THE EFFECTS ROUTINE TAKES AND GIVES BACK: where in the table it starts and
+          # The registers the effects routine takes and gives back: where in the table it starts and
           # the effect's entry in the score, both handed back where it stopped, and a rank — it
           # plays the effects that outrank that one, and stops at the first that does not.
           EFFECT_SLOT = 7
@@ -1282,12 +1282,12 @@ module VBlank
 
           def effect_table_end = @effect_table + (@effects.size * @effect_slot_bytes)
 
-          # PLAY A RUN OF THE SOUND EFFECTS TABLE, from EFFECT_SLOT until an effect that does not
+          # Play a run of the sound effects table, from EFFECT_SLOT until an effect that does not
           # outrank EFFECT_OUTRANKS or the end of the table; r2 holds the score. Emitted once, inside
           # the screen's interrupt, and called from it. Entered at SOUND_EFFECTS_TO instead, the run
           # stops before the place in EFFECTS_END — which is how START_EFFECT_HERE plays one effect.
           #
-          # THIS IS ONLY THE WALK: a load and a compare for an effect that is not sounding, which is
+          # This is only the walk: a load and a compare for an effect that is not sounding, which is
           # nearly every effect on nearly every frame. One that has something to do this frame is
           # handed to SOUND_EFFECT_STEP (#emit_sound_effect_step_routine), which is kept in the
           # cartridge. That routine is written out again for every voice the effects use between
@@ -1350,7 +1350,7 @@ module VBlank
             emit_upload_wave_routine if @note_waves && @waves && !plays_sound_effects?
           end
 
-          # THE FRAME OF ONE EFFECT that has something to do, handed over by the walk above with
+          # The frame of one effect that has something to do, handed over by the walk above with
           # its place in the table in EFFECT_SLOT, its entry in EFFECT_ENTRY and its rank in r9.
           # Always in the cartridge, so the code for every voice the effects use costs the quick
           # memory nothing. Bracketed by its name and the same name with _end, so a profile names
@@ -1484,7 +1484,7 @@ module VBlank
           # its wave notes name waveforms, when each wave row names its own (#row_waveform).
           def effect_names_waveform? = @effect_waves && !@note_waves
 
-          # THE ROW AT +row+ IS ABOUT TO BE WRITTEN TO THE WAVE VOICE, with its waveform in ACC: a
+          # The row at +row+ is about to be written to the wave voice, with its waveform in ACC: a
           # note loads that waveform first if it is not the one there, and a rest loads nothing. A
           # note starts the voice and a rest does not, so the bit that starts it marks which.
           def emit_load_waveform(row)
@@ -1496,7 +1496,7 @@ module VBlank
             @emitter.place_label(rest)
           end
 
-          # LOAD THE WAVEFORM AT OFFSET ACC IN THE SCORE (r2) INTO WAVE RAM, unless it is there
+          # Load the waveform at offset ACC in the score (r2) into wave RAM, unless it is there
           # already (WAVE_LOADED). Keeps every register but r0, r1 and r12.
           def emit_upload_wave_routine
             e = @emitter
@@ -1514,7 +1514,7 @@ module VBlank
             e.emit(ASM.return)
           end
 
-          # EVERY VOICE THE EFFECT OF RANK +rank+ STILL HOLDS goes quiet and is free: a console voice
+          # Every voice the effect of rank +rank+ still holds goes quiet and is free: a console voice
           # whose holder is still that rank, and its recorded lanes' mixer voices.
           def emit_release_effect_voices(rank)
             @effect_lanes.each do |lane|
@@ -1529,7 +1529,7 @@ module VBlank
             end
           end
 
-          # THE REGISTERS AN EFFECT'S STEP KEEPS across a call into the mixer, which uses most
+          # The registers an effect's step keeps across a call into the mixer, which uses most
           # of them: the score, the table's end, the cursor, the frame, the slot, the entry, the
           # rank, the row and the rank it plays down to — the numbers #emit_sound_effects_routine
           # and #emit_sound_effect_step_body name at their tops.
@@ -1539,7 +1539,7 @@ module VBlank
           # straight into it to return.
           PC = 15
 
-          # AN EFFECT'S NOTE ON A RECORDED LANE, in the row at +row+: played the way a song's is
+          # An effect's note on a recorded lane, in the row at +row+: played the way a song's is
           # (#emit_recorded_note), on a voice whose mark carries the effect's rank in +rank+.
           def emit_effect_recorded_note(lane, rank, row)
             mark, at = 8, 3
@@ -1565,7 +1565,7 @@ module VBlank
           # voice routines: its own number, and in a game whose sound effects play recordings,
           # the lane alone, with no rank.
           #
-          # THE RANK IS PUT ON IN THE ROUTINE, NOT HERE. A mark there is the tune's rank above
+          # The rank is put on in the routine, not here. A mark there is the tune's rank above
           # the lane, and the rank is a variable, so working it out took a read and three
           # instructions — at every place a recorded part starts a note, rests or goes quiet,
           # written out again for every recorded part of every tune, so the routine that answers
@@ -1576,7 +1576,7 @@ module VBlank
             @emitter.emit(ASM.load_immediate(reg, @mixer.ranks_song_marks? ? lane : Mixer.music_owner(lane)))
           end
 
-          # MAY THE NOTE IN +row+, OF RANK +rank+, SOUND ON +lane+'s VOICE? When whoever holds the
+          # May the note in +row+, of rank +rank+, sound on +lane+'s VOICE? When whoever holds the
           # voice outranks it, on to +dropped+. Otherwise it holds the voice while it sounds
           # (IR::Tunes.note_sounds?), and a rest — a row whose volume is 0 — lets it go. On a square
           # or the noise voice a note at volume 0 that swells up sounds too: its control sets the
@@ -1658,7 +1658,7 @@ module VBlank
             # The next slice of mixed sound, and the tune's next frame, were both done by the
             # screen's own interrupt, which is what just woke us — not here. See the vblank
             # handler in #emit_irq_handler: sound is played by a clock the game does not own, so
-            # it cannot be moved on once per PASS of a loop whose length the game decides.
+            # it cannot be moved on once per pass of a loop whose length the game decides.
 
             # A new pass begins now, so it takes the button presses the screen's interrupt
             # collected since the last one (see Expressions#emit_latch_presses).
@@ -1699,7 +1699,7 @@ module VBlank
 
           private
 
-          # THE NUMBER EACH TUNE IS KNOWN BY — its place in .tunes_in_order, from 1.
+          # The number each tune is known by — its place in .tunes_in_order, from 1.
           def assign_song_numbers!(program)
             lists = IR::Tunes.lists_played(program).reject { |_, songs| songs.empty? }
             listed = lists.values.flatten
@@ -1729,7 +1729,7 @@ module VBlank
             end
           end
 
-          # A TUNE THAT PLAYED ONCE AND ENDED, looked at before the player catches up with the game
+          # A tune that played once and ended, looked at before the player catches up with the game
           # (IR::Tunes.plays_once? has the rule every backend keeps).
           #
           # While the game still names that tune and has not asked to stop, nothing plays. The first
@@ -1778,7 +1778,7 @@ module VBlank
             @emitter.emit_branch(:bcond, label, cond: :ne)
           end
 
-          # AT THE END OF A TUNE THAT PLAYS ONCE: note which tune ended and go no further. Its
+          # At the end of a tune that plays once: note which tune ended and go no further. Its
           # last frame's notes are left sounding for that frame, as a tune that comes round
           # leaves them. +at+ holds the tune's directory entry.
           def emit_store_ended_tune(at, playing, onward)
@@ -1791,7 +1791,7 @@ module VBlank
             @emitter.place_label(round)
           end
 
-          # AT THE END OF A TUNE THAT LOOPS FROM A POINT: back to its loop frame, with each lane
+          # At the end of a tune that loops from a point: back to its loop frame, with each lane
           # at the event it carries on from (see IR::Tunes#loop_passes). Both come out of the tune's
           # loop table, so the player does nothing here that it does not do going back to the top
           # — and a tune that loops from its start has no table, and falls through to that.
@@ -1811,16 +1811,16 @@ module VBlank
             @emitter.place_label(top)
           end
 
-          # PUT THE NEW TUNE'S WAVEFORM IN WAVE RAM, on the frame the tune changes and nowhere
+          # Put the new tune's waveform in wave RAM, on the frame the tune changes and nowhere
           # else.
           #
           # The wave voice loops a short waveform — that is what makes it rounder than a square
-          # wave — and the waveform belongs to the PART, so it changes only when the tune does.
+          # wave — and the waveform belongs to the part, so it changes only when the tune does.
           # Uploaded here, a note on that voice costs the same two register writes a square note
           # does; uploaded per note it would cost this every frame the part played one. A tune
           # with no part on the wave voice has no waveform, and nothing is written.
           #
-          # BOTH BANKS GET IT, which is the console's own trap: wave RAM is two banks, the voice
+          # Both banks get it, which is the console's own trap: wave RAM is two banks, the voice
           # loops one and the CPU can reach the other, so a table written to the bank being
           # played is not heard. Writing both means whichever it loops, it loops this one.
           # +at+ holds the tune's directory entry. Uses r7-r10 and ACC/TMP, all free here.
@@ -1865,7 +1865,7 @@ module VBlank
           WAVE_ON = 0x0080
 
           # Silence every lane tune number +playing+ uses, and nothing when no tune is playing.
-          # Only its OWN lanes: the second square channel is also the one sound effects play on,
+          # Only its own lanes: the second square channel is also the one sound effects play on,
           # and a one-part tune ending must not cut a beep off.
           def emit_silence_tune(base, at, lanes_used, playing)
             quiet = @emitter.gensym
@@ -1912,7 +1912,7 @@ module VBlank
             end
           end
 
-          # THE REGISTERS THE MUSIC VOLUME IS WORKED OUT IN, all free in the player's interrupt:
+          # The registers the music volume is worked out in, all free in the player's interrupt:
           # the level, a lane's held note, and two to work its register values out in.
           LEVEL_REG = 11
           NOTE_REG = 7
@@ -1927,7 +1927,7 @@ module VBlank
           # values, and 0 for a rest.
           def holds_notes?(lane) = @scales && %i[square wave recorded].include?(lane.kind)
 
-          # THE WAVE VOICE'S VOLUMES, looked up by a volume of 0..15: it has five, and a note sets
+          # The wave voice's volumes, looked up by a volume of 0..15: it has five, and a note sets
           # the one nearest (Sound.wave_level). A table rather than arithmetic, since
           # nearest-of-five is a divide.
           MUSIC_WAVE_LEVELS = :__music_wave_levels
@@ -1937,7 +1937,7 @@ module VBlank
                    .pack("v*")
           end
 
-          # WHERE A WAVE ROW KEEPS ITS WRITTEN VOLUME, in a game that moves the music volume. The
+          # Where a wave row keeps its written volume, in a game that moves the music volume. The
           # register value names one of five volumes, and sixteen do not come back out of five —
           # so the 0..15 rides along in four bits of the same value that the voice does not read.
           WAVE_VOLUME_SHIFT = 8
@@ -1971,7 +1971,7 @@ module VBlank
             @primitives.store_var(ACC, self.class.music_note(number))
           end
 
-          # THE GAME HAS MOVED THE MUSIC VOLUME since the player last looked: every lane holding a
+          # The game has moved the music volume since the player last looked: every lane holding a
           # note sets it to the new level — a square lane by starting it again, the wave voice
           # and a recorded part's mixer voice while they play — before any lane plays this
           # frame's notes, which is the order the interpreter does it in. A drum hit is left to
@@ -2010,7 +2010,7 @@ module VBlank
           # at once without that, so nothing there can tell the difference — the start is here
           # for the console.
           #
-          # THE WAVE VOICE is the other shape of the same thing. Its written volume is the four
+          # The wave voice is the other shape of the same thing. Its written volume is the four
           # bits WAVE_VOLUME_SHIFT keeps it in, the level scales it the same way, and what goes to
           # the register is the nearest of the voice's five volumes, out of a table — with the
           # bits below them kept, so the written volume is still there next time. It takes a new
@@ -2038,7 +2038,7 @@ module VBlank
             @emitter.emit(ASM.store_halfword(WRITE_REG, TMP))
           end
 
-          # A RECORDED PART'S NOTE AT THE NEW LEVEL: the mixer voice sounding it, if it still has
+          # A recorded part's note at the new level: the mixer voice sounding it, if it still has
           # one, gets the note's loudness times the level. The mixer reads a voice's loudness as
           # it mixes, so nothing is started again.
           #
@@ -2174,7 +2174,7 @@ module VBlank
           # Whether this lane's notes can slide: the first square voice, in a game where one does.
           def slides_on?(lane) = @slides && lane.kind == :square && lane.index == 1
 
-          # A WOBBLING NOTE, as the player keeps it between frames, by the voice it is on: its
+          # A wobbling note, as the player keeps it between frames, by the voice it is on: its
           # vibrato (Audio::Vibrato#bits, nought when the voice holds still), its own pitch value,
           # and where its wobble is (IR::Tunes::Wobble — the frames still to wait, the frames the
           # swing it is in has left, whether that swing is the one above, and the steps it moves).
@@ -2214,7 +2214,7 @@ module VBlank
             @emitter.place_label(kept)
           end
 
-          # A SQUARE NOTE'S SHAPES, as the player keeps them between frames, by the voice it is on: its
+          # A square note's shapes, as the player keeps them between frames, by the voice it is on: its
           # shapes with SHAPES_STEP beside them (nothing when the note has one shape), and the frame
           # of the note it is on.
           def self.shapes_var(channel, what) = :"__shapes_#{what}_#{channel}"
@@ -2244,7 +2244,7 @@ module VBlank
             @primitives.store_var(ACC, self.class.shapes_var(lane.index, :bits))
           end
 
-          # EVERY SQUARE NOTE THAT STEPS ITS SHAPES given the shape of the frame it is on, at the end
+          # Every square note that steps its shapes given the shape of the frame it is on, at the end
           # of the interrupt's frame after the wobbles, the voices in order (Reference::Player#step_shapes).
           # A voice's tone is the two duty bits of its control register's low byte, which is written
           # alone, so neither the voice's loudness nor its note is touched, and the note is not started
@@ -2273,7 +2273,7 @@ module VBlank
             end
           end
 
-          # A SONG'S SWELLING NOTE HELD UNDER THE MUSIC VOLUME, as the player keeps it between frames,
+          # A song's swelling note held under the music volume, as the player keeps it between frames,
           # by the voice it is on (IR::Tunes::Swell says how it is counted): the 64ths of a
           # second each step lasts (nothing when the voice holds none), how loud the voice has it
           # now, the 256ths of a 64th counted toward its next step, whether it is still swelling, and
@@ -2321,7 +2321,7 @@ module VBlank
             @primitives.store_var(ACC, self.class.swell_var(lane.index, :step))
           end
 
-          # EVERY SWELLING NOTE HELD UNDER THE MUSIC VOLUME, at the end of the interrupt's frame before
+          # Every swelling note held under the music volume, at the end of the interrupt's frame before
           # the wobbles and the shapes, which put a note struck again back at its frame's pitch and
           # shape, the voices in order (Reference::Player#step_swells). The loudest the music
           # volume lets a note be is 15 times the level the held notes were set at, over sixteen. A
@@ -2416,7 +2416,7 @@ module VBlank
             @emitter.emit(ASM.store_halfword(WRITE_REG, TMP))
           end
 
-          # WHICH SPEAKERS A VOICE PLAYS FROM is a pair of switches for each voice in SOUNDCNT_L: the
+          # Which speakers a voice plays from is a pair of switches for each voice in SOUNDCNT_L: the
           # four voices' right switches in bits 8 to 11 and their left ones in bits 12 to 15, all on
           # since sound was switched on. Two switches per voice, for the left and the right.
           def speaker_bits(channel) = 0x1100 << (channel - 1)
@@ -2475,7 +2475,7 @@ module VBlank
             @primitives.store_var(ACC, self.class.wobble_var(lane.index, :vibrato))
           end
 
-          # EVERY WOBBLING VOICE MOVED ON, at the end of the interrupt's frame, once every note due on
+          # Every wobbling voice moved on, at the end of the interrupt's frame, once every note due on
           # it has been written — the voices in order, as IR::Tunes::Wobble steps them. Once its wait
           # is over a voice's pitch is written every frame, its own pitch and the steps it is moved
           # by, never past the voice's ends, and without starting the note again: so a held note the
@@ -2552,7 +2552,7 @@ module VBlank
           # Start the row's note on a mixer voice — from the top of the recording the row names, at
           # the row's step and loudness — or switch the part's voice off for a rest. Which voice is
           # the mixer's to decide (Mixer#emit_take_music_voice_routine): the part's own, a free one, or
-          # one of the game's. The voice's SOUNDING word goes last, and it is the part's mark. In a
+          # one of the game's. The voice's sounding word goes last, and it is the part's mark. In a
           # game whose sound effects play recordings there may be no voice to have, and then the
           # note is written to a slot nothing mixes (Mixer#unmixed_slot_address), so it is not played
           # and nothing here has to test for it.
@@ -2562,7 +2562,7 @@ module VBlank
           # level. With no +number+ the note is a sound effect's, whose mark is already in r8 and
           # whose volume is its own.
           #
-          # THE NOTE ITSELF IS ONE ROUTINE, called from here (#emit_start_recorded_note_routine): it
+          # The note itself is one routine, called from here (#emit_start_recorded_note_routine): it
           # is the same three dozen instructions for every recorded part of every song and for the
           # sound effects, and written out at each it was most of what a recorded part cost the
           # routine that answers the display. The score is in r2 and the row in r3 for both callers.
@@ -2597,7 +2597,7 @@ module VBlank
             @emitter.place_label(sounded)
           end
 
-          # A NOTE THAT GLIDES BENDS THE ONE SOUNDING: the voice the part's note sounds on (its mark
+          # A note that glides bends the one sounding: the voice the part's note sounds on (its mark
           # in r8), if it still has one, reads on from where it has got to at the row's step, and
           # plays at the row's loudness. Its place in the recording and its shape go on as they
           # were, so the mix hears the new pitch and loudness from its next sample. A part whose
@@ -2627,7 +2627,7 @@ module VBlank
           START_RECORDED_NOTE = :__start_recorded_note
           START_RECORDED_NOTE_SCALED = :__start_recorded_note_scaled
 
-          # START THE ROW'S NOTE ON A MIXER VOICE: the score in r2, the row in r3, the part's mark
+          # Start the row's note on a mixer voice: the score in r2, the row in r3, the part's mark
           # in r8. Changes r0, r1, r7, r9, r10, r11 and r12, and hands r8 back with the part's rank
           # put on it (Mixer#emit_take_music_voice); keeps its return address on the stack, since
           # finding the note a voice is a call of its own.
@@ -2649,7 +2649,7 @@ module VBlank
             @emitter.emit(ASM.str_offset(ACC, voice, Mixer::SLOT_SRC))
             @emitter.emit(ASM.ldr_offset(ACC, recording, INSTRUMENT_LENGTH))  # how long it is
             @emitter.emit(ASM.str_offset(ACC, voice, Mixer::SLOT_LEN))
-            # A NOTE CAN OUTLAST ITS RECORDING, and this is what stops it ending there: a
+            # A note can outlast its recording, and this is what stops it ending there: a
             # recording that holds gives how far back to read when it reaches the end, so the body
             # of the note goes round for as long as the note lasts. One that does not hold gives 0
             # here, and runs out as it always did.
@@ -2664,7 +2664,7 @@ module VBlank
             @emitter.emit(ASM.pop(PC))
           end
 
-          # WHERE THE NOTE STARTS IN ITS OWN SHAPE, read off the recording's table entry.
+          # Where the note starts in its own shape, read off the recording's table entry.
           #
           # The four numbers are a fact about the entry, which the note names by a number it
           # already carries — so which shape this note has is not known until the row is read,
@@ -2692,7 +2692,7 @@ module VBlank
             @emitter.emit(ASM.str_offset(ACC, voice, Mixer::SLOT_RAMP)) # and it does not slide
           end
 
-          # EVERY TUNE THE PROGRAM PLAYS, as one piece of data:
+          # Every tune the program plays, as one piece of data:
           #
           #   * a directory, one entry per tune (entry 0 is the "no tune" number and is never read):
           #     its length in frames, one bit for each lane it uses, where its loop table is, and
@@ -2707,7 +2707,7 @@ module VBlank
           # Where things start is a byte offset into this same data, so nothing in it needs to know
           # where the cartridge puts it — except the recordings, which are data of their own, and
           # whose addresses are filled in once everything has a place (Emit#link_data). A lane a
-          # tune does not use points at a row that waits for NEVER.
+          # tune does not use points at a row that waits for never.
           def score_blob
             entry_bytes = 1 << @entry_shift
             soundings = (@song_numbers.keys + @effects).flat_map { |name| IR::Tunes.soundings(@songs.fetch(name)) }.uniq
@@ -2766,7 +2766,7 @@ module VBlank
             score + effects_blob(at: score.bytesize, never: events_at, wave_at: wave_at)
           end
 
-          # EVERY SOUND EFFECT, after the tunes: an entry for each, in rank order — its length, its
+          # Every sound effect, after the tunes: an entry for each, in rank order — its length, its
           # rank, where each lane's events start and, in a game whose effects play the wave voice,
           # where its waveform is in +wave_at+ (0 for one that plays none) — and then the events
           # themselves. A lane an effect does not use waits on the row at +never+. Sets where the
@@ -2845,7 +2845,7 @@ module VBlank
           end
 
           # A part's events on its lane, each worked out here so the player only copies it, and
-          # a row after the last that waits for NEVER. An event may name its own instrument and
+          # a row after the last that waits for never. An event may name its own instrument and
           # loudness; one that does not plays the part's.
           def lane_rows(lane, part, events)
             if lane.kind == :recorded
@@ -2897,7 +2897,7 @@ module VBlank
           end
 
           # A wave row's last word, in a game where a wave note names a waveform of its own: where
-          # the note's waveform is in the score (#wave_row_at), and nothing on a row waiting for NEVER.
+          # the note's waveform is in the score (#wave_row_at), and nothing on a row waiting for never.
           # Nothing on any other lane's rows, or in any other game.
           def row_waveform(lane, part, event)
             return "".b unless @note_waves && lane.kind == :wave
@@ -2905,7 +2905,7 @@ module VBlank
             [part ? @wave_at.fetch(IR::Tunes.said_wave(part, event)) : 0].pack("V")
           end
 
-          # WHERE A ROW KEEPS ITS NOTE'S SLIDE: the slide register's seven bits ride in bits of the
+          # Where a row keeps its note's slide: the slide register's seven bits ride in bits of the
           # row's two values that their own registers never read, so a row stays eight bytes and a
           # song with no slide is the bytes it always was. The control's low six bits are a note
           # length, read only by a voice told to stop at it, which a song's never are; they keep the
@@ -2926,7 +2926,7 @@ module VBlank
           # music volume. Every other game's rows are exactly what they were.
           def keeps_wave_volume?(lane, frequency) = @scales && lane.kind == :wave && frequency.positive?
 
-          # ONE NOTE ON A VOICE THE CONSOLE PLAYS ITSELF, as its two register values. Each kind
+          # One note on a voice the console plays itself, as its two register values. Each kind
           # answers the pair its own way — a square voice by pitch and tone, the wave voice by a
           # sample rate, the noise voice by which rung of its clock ladder sits nearest the note
           # — and the player copies whichever pair it finds, knowing none of that. A square or noise

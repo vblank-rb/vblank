@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # WHAT EACH NODE OF THE PROGRAM TURNED INTO — counted while the code is emitted,
+        # What each Node of the program turned into — counted while the code is emitted,
         # which is the only moment anybody knows.
         #
         # The cost model's weights are measured on the emulator, one operation at a time, and
@@ -14,7 +14,7 @@ module VBlank
         # written twice — once here, where it is executed, and once there, where it is
         # guessed at. Written once, by the side that knows, there is no pair left to drift.
         #
-        # INSTRUCTIONS ARE ATTRIBUTED EXCLUSIVELY. A statement is charged for what it emitted
+        # Instructions are attributed exclusively. A statement is charged for what it emitted
         # on its own, never for what its nested statements and its operands emitted, so the
         # counts down a tree add up instead of counting the same instruction at every level
         # of it. That matches how the estimate prices: a `set` and the variable read inside
@@ -22,7 +22,7 @@ module VBlank
         # measured with an operand in front of it and then has that operand taken back out —
         # and here it falls out of where the code came from.
         #
-        # JUMPS ARE COUNTED BESIDE THE INSTRUCTIONS, because a count on its own is not a
+        # Jumps are counted beside the instructions, because a count on its own is not a
         # price. A count is static and a frame is dynamic: where a node's own code holds a
         # loop, the count sees the body once and the frame runs it many times; where it holds
         # a call, the count sees the handful of instructions that set the call up and none of
@@ -30,12 +30,12 @@ module VBlank
         # and the count has both. Straight-line code is exactly the case where what was
         # emitted is what runs, and a node that emitted no jump is marked so.
         #
-        # KEYED BY IDENTITY, not by value. Two `add :score, 1` statements written in
+        # Keyed by identity, not by value. Two `add :score, 1` statements written in
         # different places are equal as trees — {IR::Node} compares by shape — and they are
         # not the same statement. A Hash comparing them by value would merge the two and
         # report one statement that cost twice as much.
         #
-        # AND COUNTED PER USE, because the tree SHARES nodes. A `Value` handle held in a Ruby
+        # And counted per use, because the tree shares nodes. A `Value` handle held in a Ruby
         # variable and written into sixty-nine places is one node object in sixty-nine
         # positions of the tree — measured on examples/breakout.rb, which really does that
         # with one variable read. The lowering emits it at each of them and anything reading
@@ -86,7 +86,7 @@ module VBlank
           # difference between "it emitted nothing" and "this build never saw it".
           attr_reader :emitted
 
-          # WHERE EACH STATEMENT'S CODE IS: the line of the game that wrote it, and the stretch
+          # Where each statement's code is: the line of the game that wrote it, and the stretch
           # of the emitted code it came to, nested statements included. A statement's code is
           # one stretch because it is emitted in one go. This is what lets a measured run say
           # which part of a routine its time went to, by the line an author would open.
@@ -125,7 +125,7 @@ module VBlank
             result
           end
 
-          # How many bytes ONE use of statement +node+ came to, nested statements included, or nil
+          # How many bytes one use of statement +node+ came to, nested statements included, or nil
           # for one this pass never lowered. What RoutinePieces cuts a routine by.
           def statement_bytes(node) = @statement_bytes[node]&.per_use
 
