@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A PLAYSTATION PROGRAM'S READER HAS NO SAMPLES TO GIVE YET: its emulator gem counts the samples
+# A PlayStation program's reader has no samples to give yet: its emulator gem counts the samples
 # Beetle PSX makes and keeps none. Asked what the program put out, it says so, where an empty
 # frame would read as a program that makes no sound.
 class TestPS1HeardSound < Minitest::Test

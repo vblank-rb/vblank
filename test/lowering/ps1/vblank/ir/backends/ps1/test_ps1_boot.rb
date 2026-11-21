@@ -81,8 +81,8 @@ class TestPS1Boot < Minitest::Test
     skip_on_this_machine "this machine names no PlayStation BIOS: set VBLANK_PS1_BIOS to a BIOS file dumped from your own console"
   end
 
-  # +exe+ with a few instructions in front of it that stand for a console whose processor has ALREADY
-  # RUN what stood at the exception vector, as one that has taken an interrupt under its BIOS has: the
+  # +exe+ with a few instructions in front of it that stand for a console whose processor has already
+  # run what stood at the exception vector, as one that has taken an interrupt under its BIOS has: the
   # instruction cache is turned on as the BIOS leaves it, a routine that only returns is written at
   # the vector and called once, so the processor holds its instructions in the cache, and then the
   # program is started as usual.
@@ -132,7 +132,7 @@ class TestPS1Boot < Minitest::Test
     end
   end
 
-  # THE PROCESSOR RUNS CODE FROM A CACHE INSIDE ITSELF, and a word written to RAM does not change the
+  # The processor runs code from a cache inside itself, and a word written to RAM does not change the
   # copy the cache holds. So a handler written over one the processor has already run is not the one
   # an interrupt runs, until the cache is emptied: the old one runs, and here it only returns, so no
   # frame is ever counted. The runtime empties the cache once its handler is in place.
@@ -149,7 +149,7 @@ class TestPS1Boot < Minitest::Test
     end
   end
 
-  # UNDER A PLAYER'S OWN SONY BIOS the console is not as power-on leaves it: the BIOS has set its
+  # Under a player's own Sony BIOS the console is not as power-on leaves it: the BIOS has set its
   # kernel up in the low part of RAM, with a handler of its own at the exception vector, interrupts it
   # has asked for, and the pads' port as it left it. The runtime takes all of that over, and the game
   # runs as it does with no BIOS run at all.

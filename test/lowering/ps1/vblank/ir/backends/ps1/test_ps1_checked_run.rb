@@ -163,7 +163,7 @@ class TestPS1CheckedRun < Minitest::Test
     assert_equal 0, run[:n]
   end
 
-  # A STAND-IN FOR A RUNTIME THAT LETS THE DISPLAY COME ON WHILE IT SETS UP: the graphics chip reads
+  # A stand-in for a runtime that lets the display come on while it sets up: the graphics chip reads
   # with its display on, where the real program still has it off. The run reports the picture
   # Beetle PSX holds where the chip shows it, not the interpreter's switched-off white, so a check
   # against the interpreter would fail.

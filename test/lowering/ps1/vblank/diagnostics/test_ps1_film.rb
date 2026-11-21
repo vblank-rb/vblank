@@ -7,7 +7,7 @@ require "stringio"
 require "tmpdir"
 require "vblank/diagnostics/film_tasks"
 
-# A FILM OF A PLAYSTATION PROGRAM: a side naming a PS-X EXE opens in Beetle PSX, the PlayStation's
+# A film of a PlayStation program: a side naming a PS-X EXE opens in Beetle PSX, the PlayStation's
 # emulator, and not in the Advance's, and plays and shows frames as any console's side does. The game
 # is a small one of this repository's own: a red square on blue that walks right while right is down.
 class TestPS1Film < Minitest::Test
