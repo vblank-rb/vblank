@@ -41,7 +41,7 @@ module StillFrameGames
   BLUE_FIELD = Ractor.make_shareable(Array.new(32) { "o" * 32 })
 
   # A map of columns, alternately red and blue, and a pixel that is in a red one with the map at
-  # its corner and in a blue one scrolled by scroll.
+  # its corner and in a blue one scrolled by SCROLL.
   COLUMNS = Ractor.make_shareable(Array.new(32) { "#o" * 16 })
   COLUMN_PIXEL = [6, 3].freeze
 

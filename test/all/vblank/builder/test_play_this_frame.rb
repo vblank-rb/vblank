@@ -19,7 +19,7 @@ module PlayThisFrameGames
                                                                               Note.new(at: 20, key: :E5)])]))
   ASKED_ON = 3
 
-  # A game that asks for song on pass ASKED_ON, saying +options+ as it does.
+  # A game that asks for SONG on pass ASKED_ON, saying +options+ as it does.
   private def game(**options)
     b = Builder.new
     b.instance_eval do

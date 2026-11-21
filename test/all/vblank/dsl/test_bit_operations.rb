@@ -173,7 +173,7 @@ module BitOperationsCases
   EDGES = [0, 1, -1, 0x7F, 0x80, 0x7FFF, 0x8000, -0x8000, 0xFFFF, -0x10000, 0x12345678, -0x12345678,
            0x7FFFFFFF, -0x80000000].freeze
 
-  # Every count from 0 to 31 written down, both ways, on each of edges: the count of numbers that
+  # Every count from 0 to 31 written down, both ways, on each of EDGES: the count of numbers that
   # come out other than Ruby's, which must be none.
   private def every_written_count_case
     wrong_left = 0

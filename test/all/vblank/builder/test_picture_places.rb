@@ -89,7 +89,7 @@ class TestPicturePlaces < Minitest::Test
   end
 
   # A pose whose pixels are an earlier pose's pixels backwards is stored once and drawn
-  # reversed — which is only the same picture if its places are that pose's places backwards
+  # reversed — which is only the same picture if its PLACES are that pose's places backwards
   # too. Here they are not: both poses draw red beside green, out of different places of the
   # list, so drawing the second as the first reversed would show the wrong colour.
   private def two_ways_round_program
