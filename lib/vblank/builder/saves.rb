@@ -150,6 +150,19 @@ module VBlank
       # more later. `files[n]` is one copy, and a copy saves, loads, erases and reports whether it
       # is good.
       #
+      # ```ruby
+      # files = save_data :files, copies: 3 do
+      #   keep hearts, score, level
+      # end
+      #
+      # if pressed(:start)
+      #   files[1].save
+      # end
+      # if pressed(:select) && files[1].good?
+      #   files[1].load
+      # end
+      # ```
+      #
       # * `name` - the record's name, as a symbol.
       # * `copies:` - how many numbered copies the record holds.
       # * `when_busy:` - what happens when a save of this record is asked for while another is

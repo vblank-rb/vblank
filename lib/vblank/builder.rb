@@ -660,7 +660,15 @@ module VBlank
     #
     # The block collects the instructions you emit, and they are placed in the cartridge exactly as
     # written. They are the Game Boy Advance's own (ARM) instructions, so it is for people who know
-    # that processor.
+    # that processor. The block offers `nop`, an instruction that does nothing, and
+    # `loop_forever`, one that branches to itself.
+    #
+    # ```ruby
+    # entry do
+    #   nop
+    #   loop_forever      # the processor stays here
+    # end
+    # ```
     #--
     # The block runs in an EntryContext that collects the emitted bytes into a raw IR node, which
     # the backend appends to the code verbatim.

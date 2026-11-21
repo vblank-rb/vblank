@@ -98,6 +98,13 @@ module VBlank
       # again while nothing plays does nothing. Called in the same frame as naming a song, it
       # starts that song over from its first note, so `stop_music; play_song :title` restarts a
       # tune.
+      #
+      # ```ruby
+      # if lives == 0
+      #   stop_music
+      #   beep 220
+      # end
+      # ```
       def stop_music
         record(Build.stop_music)
       end
@@ -109,6 +116,15 @@ module VBlank
       # calling `stop_music` lets it go too. Naming the song held changes nothing, so a game that
       # calls `play_song` every frame can hold its music like any other. Sound effects play on, and
       # the music volume still reaches the notes held. Holding when no song plays does nothing.
+      #
+      # ```ruby
+      # if pressed(:start)
+      #   hold_music             # the menu opens, and the tune waits
+      # end
+      # if pressed(:b)
+      #   release_music          # back to the game, from the note it stopped before
+      # end
+      # ```
       def hold_music
         record(Build.hold_music(true))
       end

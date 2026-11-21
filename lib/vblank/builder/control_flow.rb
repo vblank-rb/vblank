@@ -69,6 +69,17 @@ module VBlank
       # one, in a program that shows a picture on its own. Inside a `game_loop` it does nothing,
       # because two waits in a pass would run the game at half speed; the build tells you once
       # that it was left out.
+      #
+      # A game built with `frame_sync: :manual` has no wait of its own, so it writes the wait out:
+      #
+      # ```ruby
+      # game_loop do
+      #   wait_vblank        # one picture a frame, the line the game loop would have added
+      #   clear_screen :black
+      #   draw_text "HELLO", x, 70
+      #   x += 1
+      # end
+      # ```
       #--
       # Inside a game loop the wait records nothing: it is counted instead, and
       # Checks::DroppedFrameSync reports the count once. Outside a game loop nothing is pacing the

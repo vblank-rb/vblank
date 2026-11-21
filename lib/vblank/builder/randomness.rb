@@ -132,6 +132,11 @@ module VBlank
       # Assign it (`dx = rand(1..2)`) or build a calculation from it (`rand(0..9) * 10`). Each call
       # draws into a variable of its own, so two draws in one calculation are independent.
       #
+      # ```ruby
+      # dx = rand(1..2)              # a speed of 1 or 2
+      # star_x = rand(0..23) * 10    # a column ten pixels apart
+      # ```
+      #
       # * `range` - an ordinary Ruby range to draw from.
       def rand(range)
         roll(next_rng_var, range)

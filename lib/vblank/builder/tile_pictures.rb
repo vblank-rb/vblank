@@ -34,6 +34,16 @@ module VBlank
       # tile of the backgrounds drawn from that slot, its pictures are tiles of the pack too, and
       # the colours are the bank each cell names, so there is no `colors:`.
       #
+      # ```ruby
+      # field = tile_pictures :field, colors: :meadow, tiles: { flower: %i[upright left upright right] }
+      # tiles :meadow_tiles, "f" => field[:flower], "." => :grass
+      #
+      # game_loop do
+      #   passes += 1
+      #   field.show((passes / 15) % 4)   # a new picture every quarter second
+      # end
+      # ```
+      #
       # * `name` - the group's name, as a symbol.
       # * `tiles:` - a hash from each tile's key to the list of its pictures.
       # * `colors:` - the `colors` list every picture is drawn from.
