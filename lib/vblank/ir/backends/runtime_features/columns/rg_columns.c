@@ -1,5 +1,5 @@
 /*
- * A STRETCHED COLUMN (Reference#exec_draw_column_at): one column of a picture painted at a height
+ * A stretched column (Reference#exec_draw_column_at): one column of a picture painted at a height
  * the game works out as it runs, the way a game that draws a view down a corridor fills its screen.
  * A runtime feature (backends/runtime_features.rb): this file is included at the end of rg_screen.c,
  * for a game that draws a column, so it reads the screen's own state and painters as if it were
@@ -10,7 +10,7 @@
 #include "rg_columns.h"
 
 /* Reference#exec_draw_column_at: one column of a picture, stretched to +height+ rows. The walk
- * goes DOWN THE SCREEN and asks which row of the picture belongs at each screen row, the step
+ * goes down the screen and asks which row of the picture belongs at each screen row, the step
  * held in 65536ths of a picture row and cut off at each step — the console's own rule, so every
  * pixel lands where the other backends put it. Only the rows on the screen are walked. */
 void rg_screen_column(int32_t image, int32_t slice, int32_t x, int32_t top, int32_t height, int32_t width) {

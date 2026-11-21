@@ -1,5 +1,5 @@
 /*
- * THE FACES OF A PLACE (Reference#exec_fill_face): one flat face of a 3D shape, already on the
+ * The faces of a place (Reference#exec_fill_face): one flat face of a 3D shape, already on the
  * screen, filled row by row with a picture, in perspective and lit. A runtime feature
  * (backends/runtime_features.rb): this file is included at the end of rg_screen.c, for a game that
  * draws a place, so it reads the screen's own state and painters as if it were written there. A game
