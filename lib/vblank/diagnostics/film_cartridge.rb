@@ -5,7 +5,7 @@ require "tmpdir"
 
 module VBlank
   module Diagnostics
-    # ONE SIDE OF A FILM, OPENED: a game running, brought to the moment before the film's first frame,
+    # One side of a film, opened: a game running, brought to the moment before the film's first frame,
     # with a save folder of its own. What Film asks of a side, it answers (`step`, `screenshot`,
     # `close`).
     #
@@ -15,7 +15,7 @@ module VBlank
     #   FilmCartridge.open(GAME, console: :ps1)                   # a game built for the PlayStation
     #   FilmCartridge.open(GAME, lowering: "ruby")                # the game built as Ruby
     #
-    # THE GAME is a path to a cartridge file (one this framework built, or one it did not), a built
+    # The game is a path to a cartridge file (one this framework built, or one it did not), a built
     # cartridge, or a game to build (what `VBlank.game` hands back). A game to build is built once and
     # not measured; a side that wants the measured cartridge builds it itself (`-> { GAME.build_rom }`).
     #
@@ -31,17 +31,17 @@ module VBlank
     # only in the emulator. They play the game the cartridge holds — `built_for_computer?` answers
     # false, as it does in the cartridge — so the two sides of one game show one game.
     #
-    # WHERE IT STARTS. From power-on, the film's frame 1 is the first frame the console plays. After
+    # Where it starts. From power-on, the film's frame 1 is the first frame the console plays. After
     # a tape, it is the frame after the tape's last; from a saved state, the frame after the state
     # was saved. Either way the parts of a film count from that moment. A saved state is the
     # emulator's own, so only a cartridge in the emulator starts from one.
     #
-    # A SAVE FOLDER OF ITS OWN. The emulator keeps a cartridge's save memory in a file named for the
+    # A save folder of its own. The emulator keeps a cartridge's save memory in a file named for the
     # cartridge. Two runs sharing a folder would find each other's saves, and a retail cartridge's
     # save next to it would change the game the film shows. So every cartridge opened here gets an
     # empty folder, and closing it takes the folder away.
     class FilmCartridge
-      # HOW LONG THE GAME'S CARTRIDGE TAKES TO SHOW ITS FIRST PASS, found for each game as its lowering
+      # How long the game's cartridge takes to show its first pass, found for each game as its lowering
       # side opens. A cartridge powers on, sets up (copying the game's tiles and maps first, so a bigger
       # game takes longer) and only then reaches the game loop, and a console that copies a pass's
       # picture to the screen in the blank after it (the Color, the Super Nintendo) shows a pass a frame
@@ -49,7 +49,7 @@ module VBlank
       # first frame. So a lowering's side is held back the frames the cartridge plays before it shows
       # the picture of its first pass, and the two sides show the same pass on the same frame.
       #
-      # LINED UP BY THE PICTURES, not by a count of frames per console: the game's cartridge is played in
+      # Lined up by the pictures, not by a count of frames per console: the game's cartridge is played in
       # the emulator beside the interpreter, and the frames held back are the first offset at which the
       # cartridge's pictures are the interpreter's, from the interpreter's first, for PICTURES_MATCHED
       # pictures that are not all one picture (so a still start cannot match early). A game whose first

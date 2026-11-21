@@ -5,7 +5,7 @@ require "tmpdir"
 
 module VBlank
   module Diagnostics
-    # A FILM OF A RUNNING CARTRIDGE, or of two side by side, as an MP4 a person can watch without
+    # A film of a running cartridge, or of two side by side, as an MP4 a person can watch without
     # running anything: the same moment played on each, a frame at a time with the same buttons,
     # and every frame of the parts asked for put next to each other. What a test holds frame by
     # frame, shown. Two builds of one game, or a game beside the cartridge it is a copy of, are
@@ -16,8 +16,8 @@ module VBlank
     #     parts: [1..90, 200..240],
     #     keys: ->(frame) { :left if frame < 60 })
     #
-    # A SIDE IS OPENED BY A CALLABLE, the side's label its key, and the callable answers a running
-    # cartridge whose NEXT frame is the film's first: a Verifier told to play no frames, one a
+    # A side is opened by a callable, the side's label its key, and the callable answers a running
+    # cartridge whose next frame is the film's first: a Verifier told to play no frames, one a
     # playthrough left standing at the moment worth filming, or a Playthroughs::Probe a game drove
     # there (closing it takes its save folder away too). Film asks two things of it, and any
     # object that answers them can be filmed (an emulator of a game's own, say):
@@ -91,7 +91,7 @@ module VBlank
       class MissingTool < StandardError; end
 
       # Make the film and write it to +path+, which is handed back. +search_path+ is where the
-      # programs are looked for, the folders of a PATH; left out, it is this process's.
+      # programs are looked for, the folders of a path; left out, it is this process's.
       # +scale+ is how many times the console's size each picture is shown at. +sound+ is which side
       # is heard (FilmSound), none unless given.
       def self.make(path, sides:, parts:, keys: ->(_frame) {}, scale: PICTURE_SCALE, sound: nil,
@@ -147,7 +147,7 @@ module VBlank
 
       private
 
-      # THE SIDES PLAY AT THE SAME TIME, each in a process of its own (#play_sides_at_once), and each
+      # The sides play at the same time, each in a process of its own (#play_sides_at_once), and each
       # frame is handed to +reel+ as soon as every side has its picture. Where Ruby cannot start a
       # process that way (fork), or there is one side, they play one after another in this one, each
       # opened as the one before it closes. Answers each side's sound by frame (#arrived), in the
@@ -196,7 +196,7 @@ module VBlank
         end
       end
 
-      # EACH SIDE IN A PROCESS OF ITS OWN. The sides are opened here, in order, as one after another
+      # Each side in a process of its own. The sides are opened here, in order, as one after another
       # would open them; then each is played in a copy of this process (fork), which tells this one,
       # down a pipe, each shown frame's picture, made ready for the reel there (Widened), and its
       # sound. A side that answers `played_in_another_process` is told once every side's process has
@@ -367,7 +367,7 @@ module VBlank
                              "`last_frame_samples`. To fix this, hear another side with `sound:`, or leave out `sound:`."
       end
 
-      # A CONSOLE THAT HAS SHOWN NOTHING YET MAY BE ANOTHER SIZE. Genesis Plus GX gives a Genesis
+      # A console that has shown nothing yet may be another size. Genesis Plus GX gives a Genesis
       # cartridge's first frame from power-on at the Master System's 256 x 192, the size its video chip
       # starts in, until the game sets it to its own; the picture is one colour, as nothing is shown yet.
       # While every picture taken of a side so far is one colour, they are the console before the

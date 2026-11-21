@@ -6,7 +6,7 @@ require "zlib"
 module VBlank
   module Diagnostics
     class Film
-      # ONE PICTURE OF A SIDE, as Film keeps it between the side and the reel, a row at a time from
+      # One picture of a side, as Film keeps it between the side and the reel, a row at a time from
       # the top: +colours+, the console's 15-bit colours, where the side answered `screen_picture`;
       # else +rgb+, three bytes a pixel (red, green, blue, eight bits a channel), as ImageMagick read
       # the side's PNG.
@@ -35,7 +35,7 @@ module VBlank
         end
       end
 
-      # A SIDE'S PICTURE AS THE REEL WANTS IT: each pixel +scale+ times across (the rows are repeated
+      # A side's picture as the reel wants it: each pixel +scale+ times across (the rows are repeated
       # +scale+ times down as the reel writes them), squeezed for the trip to the reel, which is
       # cheap where most of a picture is runs of one colour. Made where the side plays, so a side in
       # a process of its own does this work there.
@@ -48,14 +48,14 @@ module VBlank
         def rows = Zlib::Inflate.inflate(squeezed)
       end
 
-      # THE FILM'S PICTURES, PUT TOGETHER IN RUBY AND HANDED TO FFMPEG AS THEY ARRIVE. Film adds each
+      # The film's pictures, put together in Ruby and handed to ffmpeg as they arrive. Film adds each
       # shown frame once every side has its picture (#add); the reel lays the pictures side by side,
       # each +scale+ times its size under a strip with its label, writes the frame's number at the
       # right of the strip, and hands the frame's pixels to one ffmpeg as they stand (raw video, three
       # bytes a pixel), repeated for as long as the frame is held. ffmpeg writes the MP4's pictures to
       # +out+. No picture is written to the disk on the way.
       #
-      # THE WORDS ARE DRAWN ONCE. ImageMagick draws each side's strip with its label, and the letters
+      # The words are drawn once. ImageMagick draws each side's strip with its label, and the letters
       # of "frame " and each digit, when the first frame arrives (sizes are known then); every frame
       # after is those pieces put in place. A frame's number is its digits side by side, each as
       # ImageMagick draws it alone, so it can stand a pixel or so from where the whole number drawn at

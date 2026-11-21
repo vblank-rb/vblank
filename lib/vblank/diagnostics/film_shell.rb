@@ -5,7 +5,7 @@ require "tmpdir"
 
 module VBlank
   module Diagnostics
-    # A PORT'S SHELL FILMED AS A PLAYER FIRST MEETS IT: one side of a film (Film), the shell started
+    # A port's shell filmed as a player first meets it: one side of a film (Film), the shell started
     # for the first time with no pack kept. The menu comes up, LOAD ROM is chosen, the shell is handed
     # this machine's copy of the original, the progress bar fills while the copy is unpacked, and the
     # game plays on with the film's buttons. Beside it, #all_in_one is the same game built all-in-one,
@@ -25,11 +25,11 @@ module VBlank
     # a folder of the side's own, taken away when the side closes: nothing of the copy reaches the
     # film's folder but its pictures.
     #
-    # THE SHELL PLAYS ITSELF, so a film side here plays it in a Fiber on a device that hands each
+    # The shell plays itself, so a film side here plays it in a Fiber on a device that hands each
     # picture back as it is shown, one film frame at a time. The menu's buttons are the shell check's
     # (Live::ShellCheck::MENU_PRESSES: A on LOAD ROM); the film's own buttons reach the game alone.
     #
-    # THE UNPACKING KEEPS REAL TIME. It plays in a Ractor of its own (Live::BackgroundUnpacking), and
+    # The unpacking keeps real time. It plays in a Ractor of its own (Live::BackgroundUnpacking), and
     # the window shows its newest picture each frame, a frame's time apart at most: the film shows
     # the bar as a player's window would, so how many frames it fills over is this machine's speed.
     # A side opened with `from: :game` plays the menu and the unpacking before the film's first frame,
@@ -109,7 +109,7 @@ module VBlank
                        "has not shown the game yet. To fix this, put the shell's side first in `sides:`, " \
                        "and give parts that reach past the end of the unpacking."
 
-      # THE FRAME THE SHELL'S GAME BEGAN ON, PASSED BETWEEN PROCESSES. Where Film plays its sides at
+      # The frame the shell's game began on, passed between processes. Where Film plays its sides at
       # once, each in a copy of the film's process, the shell's side and the all-in-one side are
       # opened first and then played apart, so the all-in-one side cannot read the frame from this
       # object. The shell's side writes it down a pipe opened before the copies are made; the
@@ -153,12 +153,12 @@ module VBlank
         copy.files.each { |file| FileUtils.cp(file.path, handed) }
       end
 
-      # WHERE A FILMED PLAY SHOWS ITS PICTURES: a device for Live::Session (its comment lists what a
+      # Where a filmed play shows its pictures: a device for Live::Session (its comment lists what a
       # device answers) whose clock moves only when the play waits, as Live::Headless's does, and
       # which hands each picture back out of the Fiber the play runs in. It seats players as a window
       # does. +buttons+ answers the buttons held for a pass, by the pass's number.
       #
-      # KEEPING SOUND (+keeps_sound+). A session shows a pass's picture and then hands over the pass's
+      # Keeping sound (+keeps_sound+). A session shows a pass's picture and then hands over the pass's
       # sound (Session#play_at_console_speed), so a picture handed out as it is shown would leave its
       # sound for the next step. A device that keeps sound holds each picture back until the session's
       # next call to it, the sound being the one that comes first, and hands the picture out then with
@@ -231,7 +231,7 @@ module VBlank
         def stop! = (@stopping = true)
       end
 
-      # A PLAY THE FILM STEPS A PICTURE AT A TIME: +play+, called with the device, runs in a Fiber,
+      # A play the film steps a picture at a time: +play+, called with the device, runs in a Fiber,
       # and each step resumes it until it shows its next picture. A play that has ended keeps its
       # last picture, as a console does.
       class SteppedPlay
@@ -303,7 +303,7 @@ module VBlank
       # play its first pass: a side counted from the game stops its lead-in there.
       GAME_BEGINS = :game_begins
 
-      # THE SHELL'S SIDE. +copy+ is the copy handed to LOAD ROM, and +game_began+ is told the film
+      # The shell's side. +copy+ is the copy handed to LOAD ROM, and +game_began+ is told the film
       # frame the game's first picture is on. +from_game+ plays the menu and the unpacking before the
       # film's first frame (#play_lead_in), so that frame is the game's first pass, played with the
       # film's buttons for it. +game_start+ is the GameStart +game_began+ writes to, closed here once
@@ -381,7 +381,7 @@ module VBlank
         end
       end
 
-      # THE ALL-IN-ONE BUILD'S SIDE: +held_back+ frames of a display switched off, then +session+
+      # The all-in-one build's side: +held_back+ frames of a display switched off, then +session+
       # played from its first pass with the film's buttons. +held_back+ is a number, or a GameStart
       # whose frame is waited for before the first step.
       class AllInOneSide

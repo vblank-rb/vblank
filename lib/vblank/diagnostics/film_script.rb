@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # A FILM WRITTEN AS A SMALL FILE: which frames to show, the buttons held on each, and how each
+    # A film written as a small file: which frames to show, the buttons held on each, and how each
     # side reaches the moment before the first. FilmTasks reads one by name and makes the film, and
     # the sides it opens are the ones the Rakefile names, unless the file names its own.
     #
@@ -18,7 +18,7 @@ module VBlank
     #   parts 1..90, 200..240           the ranges of frames shown, counted from one
     #   hold :a, on: 4..5               buttons down on a frame or a range of them; as many as needed
     #   keys { |frame| ... }            the buttons down on a frame: a name, a list, or nil. A Hash
-    #                                   of frame to buttons works too (`keys LAUNCH`), as does a lambda.
+    #                                   of frame to buttons works too (`keys launch`), as does a lambda.
     #                                   What `hold` and `keys` give for one frame are held together.
     #   start_from tape: "walk.tape"    every side plays a tape's presses first (from power-on)
     #   start_from state: { "ours" => "ours.ss1", "retail" => "retail.ss1" }
@@ -28,7 +28,7 @@ module VBlank
     #   side "old", "builds/old.gba"    a side of this film's own: a cartridge's path, a built one, a
     #   side("ours") { ... }            game to build, or a block answering any of them, or a running
     #                                   cartridge (see Film)
-    #   side "ps1", GAME, console: :ps1, lowering: "ruby"
+    #   side "ps1", game, console: :ps1, lowering: "ruby"
     #                                   ...built for that console, played that way (FilmCartridge);
     #                                   unsaid, the Rakefile's or the command line's
     #   scale 3                         each picture at three times the console's size (two if unsaid)
