@@ -20,7 +20,7 @@ module VBlank
           BINARIES = %w[magick convert].freeze
 
           # @param binary [String, nil] force a specific command (mainly for tests);
-          #   nil resolves one from PATH on first use.
+          #   nil resolves one from path on first use.
           def initialize(binary: nil)
             @binary = binary
           end
@@ -69,7 +69,7 @@ module VBlank
           #
           # -background BG   the color the crop composites over (see the callers:
           #                  white to flatten transparency, none to keep it),
-          # -resize BOX^     scales the image to COVER the box (fill it, keeping the
+          # -resize BOX^     scales the image to cover the box (fill it, keeping the
           #                  aspect ratio, so nothing is squashed),
           # -gravity center -extent BOX  then crops the overflow to an exact
           #                  rectangle centered on the picture,

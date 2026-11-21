@@ -5,7 +5,7 @@ require "zlib"
 
 module VBlank
   module Graphics
-    # THE LETTERS THE WINDOW MENU IS WRITTEN IN (Live::WindowMenu): Inter at 15 points, drawn once
+    # The letters the window menu is written in (Live::WindowMenu): Inter at 15 points, drawn once
     # into pictures by tools/make_menu_font.rb and kept in lib/vblank/data/menu_font/, so no frontend
     # needs a font library or a font file. A frontend puts a density's picture of every letter
     # (#atlas) on the screen's card once, then writes a word by copying each letter out of it to
@@ -28,7 +28,7 @@ module VBlank
       # height) and the rectangle of the screen it is copied to (+to+), both in pixels.
       Letter = Data.define(:from, :to)
 
-      # The library's letters, read once for each Ractor: from PATH, or from CARRIED in a game
+      # The library's letters, read once for each Ractor: from path, or from carried in a game
       # written out as one Ruby file.
       def self.load
         Ractor.current[:vblank_menu_font] ||= new(defined?(CARRIED) ? CARRIED : File.read(PATH, encoding: Encoding::UTF_8))

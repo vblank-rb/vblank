@@ -13,7 +13,7 @@ module VBlank
     # Because the question is asked backwards, the four numbers that answer it are the
     # INVERSE of the transform the author asked for. Turning is its own inverse at the
     # opposite angle, which is why rotation alone looks symmetric. Size is not: drawing
-    # something at twice its size means stepping through the picture at HALF a pixel per
+    # something at twice its size means stepping through the picture at half a pixel per
     # screen pixel, so the matrix carries 1/size, not size. That reciprocal is the one
     # piece of real arithmetic here, and it is a division.
     #
@@ -68,7 +68,7 @@ module VBlank
         [cos, sin, -sin, cos]
       end
 
-      # How many rows, or columns, a picture that ONLY TURNS can cover, whatever the angle.
+      # How many rows, or columns, a picture that only turns can cover, whatever the angle.
       # No pixel of it is ever further from its middle than half its own diagonal, so a
       # square this wide about the middle holds all of it, with a pixel to spare each side
       # for the rounding.
@@ -76,7 +76,7 @@ module VBlank
         Integer.sqrt((width * width) + (height * height)) + 2
       end
 
-      # THE ROWS OF ITS BOX A TURNED PICTURE CAN REACH, as a range counted from the box's
+      # The rows of its box a turned picture can reach, as a range counted from the box's
       # first row.
       #
       # A display draws such a picture in a box twice its size each way, so a corner has
