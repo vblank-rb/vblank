@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "shell_tests"
 
-# THE PAC-MAN PORT BUILT AS A SHELL, PLAYED AS THE DESKTOP PROGRAM (test_pacman_port_shell.rb has
+# The Pac-Man port built as a shell, played as the desktop program (test_pacman_port_shell.rb has
 # what the port and its answer keys are; test_native_shell.rb how the program is driven). It takes a
 # copy of pacman.gba in place of the file dialog, keeps the pack in the folder it is told, and plays
 # Pac-Man on the tape as the example built for the desktop does. Loaded only under SDL=1, like
