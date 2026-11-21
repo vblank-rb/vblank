@@ -232,11 +232,19 @@ class TestNativeWindowMenu < Minitest::Test
   end
 
   # The menu's description and letters as C, where the compiler can read it: in a folder named for
-  # what it holds, so a build is kept and found again by what is in it.
+  # what it holds, so a build is kept and found again by what is in it. The folder is touched when it
+  # is found again, as a build touches what it uses: the folder is shared with the kept programs,
+  # whose pruning removes one nothing has touched for hours (Zig.prune_compiled_programs), and a
+  # folder made by an earlier run was once removed between being found here and being compiled.
   def menu_data
     text = Native::MenuData.source
     path = File.join(Dir.tmpdir, "vblank-native", "menu-#{Digest::SHA256.hexdigest(text)[0, 24]}", Native::MenuData::FILE)
-    return path if File.exist?(path)
+    begin
+      File.utime(Time.now, Time.now, File.dirname(path))
+      return path if File.exist?(path)
+    rescue Errno::ENOENT
+      nil # not made yet, or pruned: made below
+    end
 
     FileUtils.mkdir_p(File.dirname(path))
     writing = "#{path}.#{Process.pid}.#{rand(1 << 30)}"
