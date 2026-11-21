@@ -5,7 +5,7 @@ require "stringio"
 require "tmpdir"
 require "slow_pass_games"
 
-# TWO GAME BOY COLOR CARTRIDGES COMPARED on their own screen, 160 by 144 pixels: a part of the screen
+# Two Game Boy Color cartridges compared on their own screen, 160 by 144 pixels: a part of the screen
 # is left out by the Color's own corners, and one off it is refused naming the Color's size. The
 # cartridges are small games built here: a white box on a blue field that walks two pixels a frame
 # while RIGHT is down, from column +from+.

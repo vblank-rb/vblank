@@ -5,7 +5,7 @@ require "stringio"
 require "draw_order_cost_games"
 require "sprite_count_cost_games"
 
-# WHAT AN ORDER THAT TAKES TURNS COSTS ON THE GENESIS, measured in the emulator. A console's own
+# What an order that takes turns costs on the Genesis, measured in the emulator. A console's own
 # games turn their sprite table round every frame by walking their sprites from one end or the
 # other, so the work grows with how many sprites there are and fits in a frame with plenty to
 # spare. The same must be true here: a pass a frame, and twice the things about twice the work.
@@ -73,7 +73,7 @@ class TestDrawInOrderCost < Minitest::Test
     assert_operator work[32], :<, work[16] * 2.5, "twice the things, about twice the work: #{work.inspect}"
   end
 
-  # AN ORDER WORKED OUT FROM WHERE EVERYTHING STANDS: seven things sorted by height every pass, as
+  # An order worked out from where everything stands: seven things sorted by height every pass, as
   # a console's own games sort their sprites, cost the tightest frame a few of its 262 lines, and
   # thirty under a thirteenth of them. The cost is each thing's number worked out, the sort, and
   # each sprite's placing picked by the order (Lowering::Picture#emit_ordered_run).
@@ -92,7 +92,7 @@ class TestDrawInOrderCost < Minitest::Test
     assert_operator cost, :<=, BOUND_THIRTY, "an order of thirty costs #{cost.round(2)} lines"
   end
 
-  # A PLACE OF AN ORDER IS WRITTEN SHORT. The Genesis runs its code straight from the cartridge, so
+  # A place of an order is written short. The Genesis runs its code straight from the cartridge, so
   # code costs room in the cartridge rather than in a quick memory, but the sort is written out a
   # place at a time, and a game of a few dozen places pays every byte of a place many times over.
   # A place is its number, its step of the sort and of the walk, the test of whether it shows, and
