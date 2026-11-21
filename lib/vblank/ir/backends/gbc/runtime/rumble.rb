@@ -19,7 +19,7 @@ module VBlank
           # once, for a game that halts or goes wrong (Runtime::Frame's stopping).
           #
           # The register also picks the save memory's bank, and a write sets both. So the bank the
-          # save code puts in view is noted (bank, rt_ram_bank) and every write of the motor keeps
+          # save code puts in view is noted (BANK, rt_ram_bank) and every write of the motor keeps
           # it, and every write of the save code keeps the motor as it stands (MOTOR). The two never
           # come between each other: the motor moves on only at a frame boundary (as the game waits,
           # or with the interrupt held off), and the save code and rt_rumble run in a pass.

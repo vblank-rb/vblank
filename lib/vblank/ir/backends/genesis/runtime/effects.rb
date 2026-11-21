@@ -238,7 +238,7 @@ module VBlank
 
             # rt_sfx_above and rt_sfx_below: a frame's effects that outrank the tune, played before its parts,
             # and the rest, after (Reference::Player#advance). rt_sfx_above takes up first what was asked for
-            # since the last frame. rt_sfx_select_ranked: the effect at place walk of the rank order, selected,
+            # since the last frame. rt_sfx_select_ranked: the effect at place WALK of the rank order, selected,
             # its number in D0.
             def emit_passes(asm, at, count)
               m = Genesis::Music
@@ -384,7 +384,7 @@ module VBlank
               asm.addq(:w, 1, state.call(FRAME))
               asm.rts
 
-              # rt_sfx_entry: ENTRY and A0 = where part part of the effect selected is.
+              # rt_sfx_entry: ENTRY and A0 = where part PART of the effect selected is.
               asm.label("rt_sfx_entry")
               asm.move(:w, at.call(PART), asm.d(0))
               asm.mulu(asm.imm(m::PART_BYTES), asm.d(0))
@@ -448,7 +448,7 @@ module VBlank
               asm.rts unless recorded
             end
 
-            # rt_sfx_recorded_note: the note at note of the selected effect's part that plays a recording, D0 its
+            # rt_sfx_recorded_note: the note at NOTE of the selected effect's part that plays a recording, D0 its
             # channel, in a place the effect owns (Recordings::EFFECT_OWNER): a note takes the place at the
             # effect's rank and logs itself if it found it; a note that sounds nothing gives the part's place
             # back, and logs itself only if the part had it (Reference::Player#play_effect_frame).
@@ -556,7 +556,7 @@ module VBlank
               asm.rts
             end
 
-            # rt_sfx_select: the effect numbered D0 selected: effect, record and A0 where its record is, state
+            # rt_sfx_select: the effect numbered D0 selected: effect, record and A0 where its record is, STATE
             # and A1 where its state is.
             def emit_select(asm, at)
               asm.label("rt_sfx_select")

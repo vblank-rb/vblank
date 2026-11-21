@@ -125,7 +125,7 @@ module VBlank
             end
 
             # The interrupt on, counting only: A5 set, the CountingBlock +counting+ at the start of work RAM
-            # cleared, counting set in it, and the screen's interrupt switched on (Runtime#emit_interrupt_on).
+            # cleared, COUNTING set in it, and the screen's interrupt switched on (Runtime#emit_interrupt_on).
             # The interrupt then counts frames and nothing else until setting up ends (Runtime#emit_start).
             def emit_counting_on(asm, counting)
               asm.movea(:l, asm.imm(Memory::BASE), asm.a(5))

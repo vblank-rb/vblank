@@ -19,7 +19,7 @@ module VBlank
         # its own.
         #
         # Loudness. A game's volume runs up in even steps, and the PSG's loudness down in steps of 2
-        # decibels each, so a volume is written as the step nearest it (attenuation).
+        # decibels each, so a volume is written as the step nearest it (ATTENUATION).
         #
         # NOISE. The PSG's fourth voice hisses, or for a metallic hit rattles, and either can be stepped by
         # its third square voice, whose own sound stays off, so a hit can be at any pitch and not only the
