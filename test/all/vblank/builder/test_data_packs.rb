@@ -6,7 +6,7 @@ require "tmpdir"
 require "genesis_packing_answers"
 require "made_up_original"
 
-# A PORT READS THE ORIGINAL'S DATA THROUGH A DATA PACK (`data_pack`). The game says which slots
+# A port reads the original's data through a data pack (`data_pack`). The game says which slots
 # the pack holds, each a known shape and size, and where in the player's copy each comes from; the
 # build makes the pack from the copy, and the game's pictures and tables read the pack. The game
 # holds handles on the slots, never what they hold: `image` and `table` read a slot given one.
@@ -105,7 +105,7 @@ class TestDataPacks < Minitest::Test
     end
   end
 
-  # A RELEASE-BY-RELEASE PLACE. The same data sits at different places in two releases; a slot's at:
+  # A release-by-release place. The same data sits at different places in two releases; a slot's at:
   # names each, and the routine is handed the release's name. Each release's pack holds the same
   # slots, so the game is built once against it.
   def two_release_pack_from(copy)
@@ -393,7 +393,7 @@ class TestDataPacks < Minitest::Test
     end
   end
 
-  # A PICTURE OF UP TO 256 COLOURS FROM THE PACK, one byte a pixel, as a computer game keeps its art:
+  # A picture of up to 256 COLOURS FROM THE PACK, one byte a pixel, as a computer game keeps its art:
   # the unpacking routine writes the pixels row by row, the game gives the colours, and the place it
   # names see-through is not drawn. Place 0 is a colour like any other.
   PIXEL_PLACES = [0, 1, 2, 255, 1, 0, 255, 2].freeze
@@ -438,7 +438,7 @@ class TestDataPacks < Minitest::Test
     end
   end
 
-  # A FONT WHOSE LETTERS ARE PIXELS OF THE PACK, as a computer game keeps its alphabet: each letter
+  # A font whose letters are pixels of the pack, as a computer game keeps its alphabet: each letter
   # its own run of bytes in a slot of pixels, row by row, lit where the byte is not nought, and drawn
   # in the colour draw_text asks. "A" is three pixels by two, "B" two by two; between them the
   # font's one pixel of spacing.
@@ -507,7 +507,7 @@ class TestDataPacks < Minitest::Test
     end
   end
 
-  # AN ALL-IN-ONE BUILD'S UNPACKING READS THE COPY AS A FILE, as a shell's does, so the program holds
+  # An all-in-one build's unpacking reads the copy as a file, as a shell's does, so the program holds
   # none of the copy, and nor does the text the pack cache's key is made from: a copy of a megabyte
   # leaves the program's text far below its size. Held as a table, the text was several times the
   # copy, so a sixteenth of it is a bound only a program without the copy can keep. The pack is
@@ -530,12 +530,12 @@ class TestDataPacks < Minitest::Test
     end
   end
 
-  # AN ALL-IN-ONE BUILD UNPACKS AT A SPEED A BIG PORT CAN WAIT FOR: as C
+  # An all-in-one build unpacks at a speed a big port can wait for: as C
   # (Original::Unpacking#write_pack_fastest), many times faster than the same routine played as Ruby,
   # and far faster than on the interpreter. A routine copies 16 MB a byte at a time in a loop of its
   # own, as a port's decoder works, and its pack is written as C.
   #
-  # HELD TO WHICH WAY PLAYED IT, NOT THE CLOCK. A bound in seconds failed whenever other runs shared
+  # Held to which way played it, not the clock. A bound in seconds failed whenever other runs shared
   # the cores, and so did a bound against the same routine timed as Ruby beside it. What made a build
   # slow was its unpacking falling back to Ruby or the interpreter, where the C build refused the
   # routine or failed on it, and that is asked of the run: which runner played it.

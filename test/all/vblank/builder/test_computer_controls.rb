@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A GAME'S OWN KEYS ON A COMPUTER: what `computer_keys` and `computer_gamepad` refuse. What each
+# A game's own keys on a computer: what `computer_keys` and `computer_gamepad` refuse. What each
 # window does with the keys is tested with that window (test_native_window.rb, test_settings.rb,
 # test_js_page_menu.rb), and that a cartridge is built as without them in
 # test/lowering/gba/vblank/builder/test_computer_controls_cartridge.rb.

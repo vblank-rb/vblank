@@ -3,8 +3,8 @@
 require "test_helper"
 require "made_up_vblank_layout_originals"
 
-# A PLAYSTATION, COMPUTER OR ARCADE ORIGINAL'S UNPACKING WRITES ITS COLOURS, TILES AND NUMBERS IN
-# VBLANK'S OWN LAYOUT, with no layout: line, and the game shows them as the same screen drawn by the
+# A PlayStation, computer or arcade original's unpacking writes its colours, tiles and numbers in
+# VBLANK's own layout, with no layout: line, and the game shows them as the same screen drawn by the
 # game (MadeUpVBlankLayoutOriginals).
 class TestDataPackVBlankLayout < Minitest::Test
   include MadeUpVBlankLayoutOriginals
