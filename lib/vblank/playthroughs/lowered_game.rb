@@ -2,7 +2,7 @@
 
 module VBlank
   module Playthroughs
-    # A PLAYTHROUGH ON ANOTHER WAY OF RUNNING A GAME than the emulator: the interpreter, or the game
+    # A playthrough on another way of running a game than the emulator: the interpreter, or the game
     # built as C, as JavaScript played by node, or as Ruby, or its rules alone (Native::RulesRun).
     # It answers what a playthrough asks of a running game (a frame played, a number read) the way
     # the emulator's reader does, so a script and its steering blocks need no change. Each of these

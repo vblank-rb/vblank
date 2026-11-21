@@ -2,7 +2,7 @@
 
 module VBlank
   module Playthroughs
-    # HOW LOUD ONE CARTRIDGE WAS ON EACH FRAME OF A PLAYING, and what that says of when it was heard.
+    # How loud one cartridge was on each frame of a playing, and what that says of when it was heard.
     #
     # +loudest_by_frame+ is the loudest sample the cartridge put out on each frame
     # (Diagnostics::FrameSound#loudest), frame 1 first. +heard_above+ is the level a frame's loudest

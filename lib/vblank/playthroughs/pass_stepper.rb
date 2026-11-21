@@ -2,7 +2,7 @@
 
 module VBlank
   module Playthroughs
-    # A PLAYING COUNTED IN PASSES AND NOT FRAMES: a running game stepped a pass of the game loop at a
+    # A playing counted in passes and not frames: a running game stepped a pass of the game loop at a
     # time, keeping the buttons down for however many frames each one takes. A game too heavy for a
     # frame takes two or three over a pass, so a frame is a different moment of the game on each way
     # of running it, and one setting that changes the speed moves every press. The game reads its
@@ -52,7 +52,7 @@ module VBlank
       def count_now = @counted == true ? @game.passes : @game.var(@counted)
     end
 
-    # A COUNT THAT STOPPED MOVING. The playing wanted one more pass, and a minute of frames went by
+    # A count that stopped moving. The playing wanted one more pass, and a minute of frames went by
     # with none. A game that has ended does this, and so does a variable that only counts on some
     # stretches of the game.
     class PassesStopped < StandardError
