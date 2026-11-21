@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class PS1
         module Runtime
-          # THE PAD, read by hand through the serial port the pads and memory cards share (SIO0), with no
+          # The pad, read by hand through the serial port the pads and memory cards share (SIO0), with no
           # help from the BIOS (psx-spx, "Controllers and Memory Cards").
           #
           # A read is a short conversation, a byte each way at a time: the console selects the first port,
@@ -134,7 +134,7 @@ module VBlank
               asm.jr(:ra) { asm.move(:v1, :zero) }
             end
 
-            # EVERY FRAME, THE PAD IS ASKED WITHOUT WAITING FOR IT. A byte takes the port about a thousand of
+            # Every frame, the pad is asked without waiting for it. A byte takes the port about a thousand of
             # the processor's cycles to send, and the conversation is five: read by sending each and going
             # round a loop until its answer came (rt_buttons_now, which power-on still does, once), the
             # frame's interrupt held the game for a hundredth of every frame. The pad says when it has
@@ -209,7 +209,7 @@ module VBlank
               asm.bne(:t2, :t0, "rt_pad_acknowledged_next")
               asm.sw(:t3, at.call(Frame::PAD_BYTE), :gp)
               asm.label("rt_pad_acknowledged_next")
-              # The second byte asks for the buttons, and the rest are noughts (SENT).
+              # The second byte asks for the buttons, and the rest are noughts (sent).
               asm.li(:t0, 1)
               asm.bne(:t2, :t0, "rt_pad_acknowledged_send") { asm.move(:t3, :zero) }
               asm.li(:t3, SENT[1])

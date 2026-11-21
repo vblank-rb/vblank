@@ -5,12 +5,12 @@ module VBlank
     module Backends
       class PS1
         module Runtime
-          # THE MUSIC PLAYER, the Genesis's (Genesis::Runtime::Music and Effects) written again for the R3000.
+          # The music player, the Genesis's (Genesis::Runtime::Music and Effects) written again for the R3000.
           # The game only names a tune (rt_music_play) or stops it (rt_music_stop), and asks for a sound effect
           # (rt_sfx_play); the player walks each part's notes (PS1::Music, SongTable's table) a frame at a
           # time, handing each note's group of commands to the sound chip (rt_sound_group) as its frame comes.
           #
-          # WHERE IT RUNS. Where a pass's wait ends (Sound's rt_sound_frame), once for every frame the pass
+          # Where it runs. Where a pass's wait ends (Sound's rt_sound_frame), once for every frame the pass
           # took, which is where the interpreter moves its music on too (Reference#advance_frame), after the
           # pass and by every frame it took.
           #
@@ -20,15 +20,15 @@ module VBlank
           # of the tune's parts' next note if its frame has come, the frame on (round to the tune's loop frame
           # at its end), and the other effects.
           #
-          # WHO SOUNDS ON A VOICE. The tune and the effects share the four game voices, settled by rank
+          # Who sounds on a voice. The tune and the effects share the four game voices, settled by rank
           # (SongTable, "who sounds on a voice"): a note takes a voice whose holder's rank is no higher than
           # its own, and holds it while it makes a sound (rt_sfx_claim).
           #
-          # THE MUSIC VOLUME, in a game that sets it: every note's loudness is its group for its volume at the
+          # The music volume, in a game that sets it: every note's loudness is its group for its volume at the
           # level, and when the level moves, every part whose voice holds a note is struck again at the new one,
           # in the order the parts first took their voices (rt_music_relevel).
           #
-          # WHAT IS IN THE REGISTERS. A group sent to the chip calls the sound routines, which change every
+          # What is in the registers. A group sent to the chip calls the sound routines, which change every
           # t register, so where the player has got to is in RAM, a word for each number: the tune, the part
           # and the note as addresses, and the rest as counts. Nothing is kept in a register across a call
           # but in s0 to s2, which a routine that uses them keeps on the stack.
@@ -47,7 +47,7 @@ module VBlank
             PARTS_IN = "rt music parts in" # How many parts there are
             ENTRY = "rt music entry" # Where the part being played's entry is, an address
             NOTE = "rt music note" # Its note being played, an address
-            # THE MUSIC VOLUME, in a game that sets it: the level the notes sounding were set at, with its
+            # The music volume, in a game that sets it: the level the notes sounding were set at, with its
             # FULL_LEVEL bit turned over so the nought memory starts at means full; each part's note's volume
             # as written, while its voice holds it (nought for a rest, or none); and which parts' voices hold
             # one, in the order they first took one since the tune started (Reference::Player's @sounding, a
@@ -60,7 +60,7 @@ module VBlank
             HELD_WALK = "rt music held walk"
             CHANNEL_FOUND = "rt music channel found"
 
-            # THE SOUND EFFECTS (Genesis::Runtime::Effects says each): which voice each holder holds, by
+            # The sound effects (Genesis::Runtime::Effects says each): which voice each holder holds, by
             # channel (1..4, a word each from channel 1), as the holder's rank's place; the channels in the
             # order each was first held; a claim on a voice; the tune's rank's place plus one as a frame
             # starts; the effect being played and its part and note; where in the effects' rank order a frame
@@ -99,7 +99,7 @@ module VBlank
             SFX_CURSORS = 20
             STATE_BYTES = SFX_CURSORS + (PS1::Music::PARTS * 4)
 
-            # EACH GAME VOICE'S NOTE THAT CHANGES AS IT PLAYS, VOICE_BYTES a voice, in a game with one: a
+            # Each game voice's note that changes as it plays, VOICE_BYTES a voice, in a game with one: a
             # wobble's record (PS1::Music, SongTable#wobble_record), nought for a voice holding still, the frames
             # still to wait, the frames its swing has left, and whether it is above the note's pitch...
             WOBBLES = "rt music wobbles"
@@ -181,7 +181,7 @@ module VBlank
             def swells?(memory) = memory.reserved?(SWELLS)
             def slides?(memory) = memory.reserved?(SLIDE_CURSOR)
 
-            # The note at ENTRY and NOTE taken up by what changes as it plays, a tune's or an effect's.
+            # The note at ENTRY and note taken up by what changes as it plays, a tune's or an effect's.
             def emit_note_changes(asm, memory)
               asm.jal("rt_music_note_wobble") if wobbles?(memory)
               asm.jal("rt_music_note_shapes") if steps_shapes?(memory)
@@ -244,7 +244,7 @@ module VBlank
               asm.bne(:t0, :zero, done)
             end
 
-            # A HELD TUNE'S NOTES HOLD STILL, and an effect's move on (Reference::Player#held_still?). With effects
+            # A held tune's notes hold still, and an effect's move on (Reference::Player#held_still?). With effects
             # each voice is asked: on to +next_voice+ when it holds still.
             def emit_skip_voice_held_still(asm, at, holds, sharing, next_voice, label)
               return unless holds && sharing
@@ -260,7 +260,7 @@ module VBlank
 
             # rt_music_wobbles: every wobbling voice moved on a frame, the voices in order, once everything due
             # on the frame has played (Reference::Player#step_wobbles), as IR::Tunes::Wobble#stepped counts it.
-            # rt_music_note_wobble: the voice of the part at ENTRY wobbling as the note at NOTE sets, or holding
+            # rt_music_note_wobble: the voice of the part at ENTRY wobbling as the note at note sets, or holding
             # still (Reference::Player#set_voice). A note that slides does not wobble: the word is its slide's
             # record. A vibrato that carries takes the swing up where the voice's last wobble left it.
             def emit_wobbles(asm, at, memory, holds, sharing)
@@ -326,7 +326,7 @@ module VBlank
             # rt_music_shapes: every square note that steps its shapes given the shape of the frame it is on, the
             # voices in order, after the wobbles (Reference::Player#step_shapes). The record holds a group for
             # each of a note's four frames, nought where the shape stays.
-            # rt_music_note_shapes: the voice of the part at ENTRY stepping as the note at NOTE sets, or holding
+            # rt_music_note_shapes: the voice of the part at ENTRY stepping as the note at note sets, or holding
             # its shape.
             def emit_shapes(asm, at, memory, holds, sharing)
               m = PS1::Music
@@ -373,7 +373,7 @@ module VBlank
             # wobbles (Reference::Player#step_swells): struck where IR::Tunes::Swell#held_under returns, then
             # counted on a frame as Swell#stepped does. Runtime::Sound does the climbing; this only knows how far
             # it has got.
-            # rt_music_note_swell: the voice of the part at ENTRY counting as the note at NOTE sets, from its
+            # rt_music_note_swell: the voice of the part at ENTRY counting as the note at note sets, from its
             # loudness at the level, or holding no swell (Reference::Player#hold_swell_under_level). A note that
             # slides is left to climb: striking it again would start its slide over.
             def emit_swells(asm, at)
@@ -474,7 +474,7 @@ module VBlank
 
             # rt_music_slides: the sliding note's frame played from its record, every frame the player runs,
             # since on the Advance the voice moves by itself even under `hold_music`.
-            # rt_music_note_slide: the record of the note at NOTE taken up, or nothing, when the part at ENTRY
+            # rt_music_note_slide: the record of the note at note taken up, or nothing, when the part at ENTRY
             # plays on the one voice that slides.
             def emit_slides(asm, at)
               m = PS1::Music
@@ -744,7 +744,7 @@ module VBlank
               PARTS.times { |part| asm.sw(:zero, at.call(CURSORS) + (part * 4), :gp) }
               asm.jr(:ra)
 
-              # THE PLAYING TUNE STOPS (Reference::Player#silence_song; SONG is still the tune's): the voices
+              # The playing tune stops (Reference::Player#silence_song; SONG is still the tune's): the voices
               # its parts play on let go, but one a sound effect holds, which stays the effect's; every voice the
               # tune held free, no note held, and the tune's own stop logged (Music.stop_entry).
               asm.label("rt_music_quiet")
@@ -883,7 +883,7 @@ module VBlank
               emit_recorded_note(asm, at, level_at, glides: memory.reserved?(Recordings::GLIDES)) if recorded?(memory)
             end
 
-            # rt_music_recorded_note: the note at NOTE of a song's part that plays a recording: a note takes a
+            # rt_music_recorded_note: the note at note of a song's part that plays a recording: a note takes a
             # place for the part (rt_recordings_note), and logs itself if it found one; a rest gives the part's
             # place back and logs itself whether the part had one or not (Reference::Player#play_song_frame).
             # The part's own number among the song's recorded parts, one up, is whose the place is.
@@ -927,7 +927,7 @@ module VBlank
               asm.label("#{label}_struck")
             end
 
-            # The recorded note at NOTE under the music volume (Reference::Player#record_note_volume): the part's
+            # The recorded note at note under the music volume (Reference::Player#record_note_volume): the part's
             # level record held for a new level to reach (nought for a rest), the part in HELD_ORDER, its
             # loudness at the level logged, and the place the note struck given that loudness, or glided on with a
             # volume of its own (Reference::Mixer#glide_music_note). A glide naming none strikes nothing, so the
@@ -967,7 +967,7 @@ module VBlank
               asm.jal("rt_music_recorded_loudness")
             end
 
-            # THE MUSIC VOLUME (Genesis::Runtime::Music#emit_level says each, in the same order).
+            # The music volume (Genesis::Runtime::Music#emit_level says each, in the same order).
             #
             # rt_music_note_loudness: the note at NOTE's loudness, between its head and its tail: its volume as
             # written held for a new level to reach, if its voice holds one, and its loudness at the level
@@ -1030,7 +1030,7 @@ module VBlank
 
               if recorded?(memory)
                 # rt_music_recorded_loudness(a0 = a recorded note's level record, t3 not nought when it took a
-                # place): the group logging its loudness at the level, and the place it took (TAKEN) given that
+                # place): the group logging its loudness at the level, and the place it took (taken) given that
                 # loudness (SongTable#recorded_level_record: the logs, then the voices' volumes).
                 asm.label("rt_music_recorded_loudness")
                 enter(asm, %i[s0 s1])
@@ -1175,7 +1175,7 @@ module VBlank
               asm.jr(:ra) { asm.srl(:v0, :v0, IR::Tunes::LEVEL_SHIFT) }
             end
 
-            # The part at PART put at the end of HELD_ORDER, if it is not there; t2 is gp plus its place.
+            # The part at part put at the end of HELD_ORDER, if it is not there; t2 is gp plus its place.
             def emit_part_listed(asm, at, label)
               asm.lw(:t1, at.call(HELD_IN), :t2)
               asm.bne(:t1, :zero, label)
@@ -1203,7 +1203,7 @@ module VBlank
               asm.jal("rt_sfx_claim")
             end
 
-            # THE SOUND EFFECTS (Genesis::Runtime::Effects says each routine, in the same order).
+            # The sound effects (Genesis::Runtime::Effects says each routine, in the same order).
             def emit_effects(asm, at, count, level_at, memory)
               emit_effect_holds(asm, at)
               emit_sfx_game_side(asm, at, count)
@@ -1324,7 +1324,7 @@ module VBlank
 
             # rt_sfx_above and rt_sfx_below: a frame's effects that outrank the tune, played before its parts,
             # and the rest, after (Reference::Player#advance). rt_sfx_above takes up first what was asked for
-            # since the last frame. rt_sfx_select_ranked: the effect at place WALK of the rank order, selected,
+            # since the last frame. rt_sfx_select_ranked: the effect at place walk of the rank order, selected,
             # its number in v0.
             def emit_sfx_passes(asm, at, count)
               m = PS1::Music
@@ -1647,8 +1647,8 @@ module VBlank
               asm.jr(:ra) { asm.move(:v0, :zero) }
             end
 
-            # rt_sfx_select(a0 = an effect's number): that effect selected: EFFECT; RECORD and v0 where its
-            # record is; STATE and v1 where its state is.
+            # rt_sfx_select(a0 = an effect's number): that effect selected: effect; record and v0 where its
+            # record is; state and v1 where its state is.
             def emit_select(asm, at)
               asm.label("rt_sfx_select")
               asm.sw(:a0, at.call(EFFECT), :gp)

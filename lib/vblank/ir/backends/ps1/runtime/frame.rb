@@ -5,10 +5,10 @@ module VBlank
     module Backends
       class PS1
         module Runtime
-          # THE FRAME: waiting for the screen, the interrupt, stopping, and going wrong.
+          # The frame: waiting for the screen, the interrupt, stopping, and going wrong.
           #
           # The television draws the picture a line at a time, 240 of them, and then rests for the
-          # remaining lines of the 263 a frame has — the VERTICAL BLANK — before it starts again. The
+          # remaining lines of the 263 a frame has — the vertical blank — before it starts again. The
           # graphics chip raises an interrupt as the rest begins, and the runtime's handler (rt_interrupt)
           # counts the frame and reads the pad, every frame, whatever the game is doing. A pass of the
           # game loop ends by waiting for that interrupt (rt_wait_vblank), then takes the buttons for the
@@ -24,7 +24,7 @@ module VBlank
           # names and their meanings are every cartridge console's, so a reader of any of them asks the
           # same questions. Each is a word.
           module Frame
-            # How the game stands, in STATE.
+            # How the game stands, in state.
             RUNNING = 0
             HALTED = 1
             WENT_WRONG = 2
@@ -57,7 +57,7 @@ module VBlank
             # (LoweringPlan#keeps_last_pass_number?), nought until it is written: a boundary ending a later pass
             # moves nothing on. Such a game can end two passes in one frame, the reader seeing neither.
             LAST_PASS = "rt last pass"
-            # HOW MANY FRAMES A PASS TOOK (IR::Frames): the interrupt counts every frame (FRAMES); where a
+            # How many frames a pass took (IR::Frames): the interrupt counts every frame (frames); where a
             # pass's wait ends, the frames since the last wait ended are what that pass answers for
             # (FRAMES_TAKEN), and held between one and IR::Frames::MOST (STEP_TAKEN).
             FRAMES = "rt frames"
@@ -68,10 +68,10 @@ module VBlank
             # number less its multiples of STEPS_KEPT, for a reader of the run.
             STEPS = "rt steps"
             STEPS_KEPT = 16
-            # HOW LATE A PASS WAS. The console's line timer (PS1Hardware::TIMER1_COUNT) as the last blank
+            # How late a pass was. The console's line timer (PS1Hardware::TIMER1_COUNT) as the last blank
             # began, kept by the interrupt (BLANK_LINE); and for each of the last STEPS_KEPT passes, a half
             # each, how many lines the screen had drawn since then as the pass went to sleep (END_LINES),
-            # by the same number as STEPS. A pass that took several frames went to sleep after a blank began
+            # by the same number as steps. A pass that took several frames went to sleep after a blank began
             # while it ran, and those lines are how much sooner it had to end to take a frame fewer. Only a
             # reader of the run asks (Diagnostics::PS1Profiler); the game never does.
             BLANK_LINE = "rt blank line"
@@ -94,7 +94,7 @@ module VBlank
             # handlers paint ahead (#emit_show_owed). Asked for late, beside the draw list's state.
             SHOW_OWED = "rt show owed"
 
-            # THE FRAMES SPENT SETTING UP, in a game that reads how many frames it has shown since power-on:
+            # The frames spent setting up, in a game that reads how many frames it has shown since power-on:
             # from the interrupt being switched on (Boot#emit) to the frame the first pass is shown in, kept
             # one more, for a reader of the run, so nought means not counted yet. They move nothing on but
             # that count, as the interpreter is told (Reference#frames_setting_up).
@@ -152,7 +152,7 @@ module VBlank
               emit_stopping(asm, at, tiles, shown_by)
             end
 
-            # THE INTERRUPT. Every register the handler or the routines it calls may change is kept first,
+            # The interrupt. Every register the handler or the routines it calls may change is kept first,
             # and HI and LO with them, since the code it stopped may be between a multiply and the read of
             # its answer. Only a vertical blank is let through (I_MASK), and it is acknowledged by writing
             # a nought to its bit of I_STAT. Then back where the processor was stopped (EPC), with RFE in
@@ -298,7 +298,7 @@ module VBlank
               asm.jr(:ra)
             end
 
-            # A HANDLER PAINTS ON THE PAGE AFTER THE PASS'S, on a tear-free painted screen. The interpreter trades
+            # A handler paints on the page after the pass's, on a tear-free painted screen. The interpreter trades
             # the pages at the frame boundary before the timers move on (Reference#advance_frame), so what a
             # handler paints goes on the page the next pass draws, and that pass's clear can cover it before
             # it is ever shown. So here the pass's own commands are sent and drawn first, its page is done, and
@@ -354,7 +354,7 @@ module VBlank
               asm.jr(:ra) { asm.and(:v0, :v0, :t0) }
             end
 
-            # A WAIT INSIDE THE TIMERS SHOWS THE PASS'S PAGE FIRST. The interpreter shows a tear-free screen's page
+            # A wait inside the timers shows the pass's page first. The interpreter shows a tear-free screen's page
             # at the frame boundary before the timers run (Reference#advance_frame), so a handler that waits ends a
             # frame of its own after that one: the pass's page is shown, then the handler's. Here the timers run
             # before the blank that shows the pass's page, so a wait inside them (SHOW_OWED, set while they run)
@@ -402,7 +402,7 @@ module VBlank
               asm.sw(:t0, at.call(Paint::PAGE_Y), :gp)
             end
 
-            # THE MOMENT THE PASS ENDS: END_LINES for it, the lines since the last blank began, and VBLANK
+            # The moment the pass ends: END_LINES for it, the lines since the last blank began, and VBLANK
             # cleared, so the wait (rt_show_pass) catches the first blank that begins from here on. Both
             # with the interrupt held off, so no blank can come between reading the timer and clearing
             # VBLANK: one that did would be missed by the wait and counted from the blank before. The
@@ -424,10 +424,10 @@ module VBlank
               asm.mtc0(:t0, R3000::COP0_STATUS)
             end
 
-            # rt_show_pass: the pass on the screen, and SHOWN saying so. The first time, the picture is
+            # rt_show_pass: the pass on the screen, and shown saying so. The first time, the picture is
             # still off, and it comes on in the blank after.
             #
-            # THE FRAMES ARE COUNTED FROM THE PICTURE COMING ON. Setting up takes frames of the console's
+            # The frames are counted from the picture coming on. Setting up takes frames of the console's
             # time with nothing to see, and the interpreter's first pass takes one: the count starts again
             # as the picture first shows, with that frame as the first, so a game counting frames counts
             # the same ones. +count+ is where a game that reads how many frames it has shown since power-on
@@ -452,7 +452,7 @@ module VBlank
               asm.label("rt_show_pass_on")
               asm.jal("rt_sleep_until_vblank_wait")
               asm.label("rt_show_pass_shown")
-              # A tear-free screen's pages trade places in the blank, before SHOWN marks the pass as up.
+              # A tear-free screen's pages trade places in the blank, before shown marks the pass as up.
               asm.jal("rt_paint_flip")
               asm.lw(:t0, at.call(Paint::SHOWN_PAGE_Y), :gp)
               asm.sw(:t0, at.call(Paint::PASS_SHOWN_PAGE_Y), :gp)
@@ -470,7 +470,7 @@ module VBlank
               asm.jr(:ra)
             end
 
-            # THE FRAMES SETTING UP TOOK, COUNTED ALL THE SAME, in a game that reads how many frames it has
+            # The frames setting up took, counted all the same, in a game that reads how many frames it has
             # shown since power-on. Such a game counts blanks from near the top of setting up (Boot#emit), so
             # FRAMES holds every blank since, and two of them are not setting up's: the one the boot waits for
             # so the game starts as a frame starts, which ends the frame the program was loaded in, and the one
@@ -538,10 +538,10 @@ module VBlank
               asm.jr(:ra) { asm.sw(:t1, at.call(STEP_TAKEN), :gp) }
             end
 
-            # STOPPING. rt_halt stops the game where it is: SHOWN marks that the end is on the screen once the
+            # STOPPING. rt_halt stops the game where it is: shown marks that the end is on the screen once the
             # blank after it has come, and the processor goes round a loop from then on, the interrupt still
             # counting frames. Going wrong is the same, with what went wrong written down first (rt_fault,
-            # a0 = what went wrong, the list and the numbers already in FAULT).
+            # a0 = what went wrong, the list and the numbers already in fault).
             #
             # A screen drawn from tiles (+tiles+) is drawn whole as the halting pass's picture first, and
             # shown, as the interpreter places the halting pass's sprites (Reference#place_pass_end_before_halt).

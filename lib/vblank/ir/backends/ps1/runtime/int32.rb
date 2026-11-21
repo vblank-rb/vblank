@@ -5,11 +5,11 @@ module VBlank
     module Backends
       class PS1
         module Runtime
-          # THE ARITHMETIC TOO LONG TO WRITE IN PLACE, as IR::Int32 has it: dividing, the remainder, and
+          # The arithmetic too long to write in place, as IR::Int32 has it: dividing, the remainder, and
           # shifting by a count the game works out. Adding, subtracting and multiplying are one or two
           # instructions and are written in place by the lowering (ADDU, SUBU, MULT and MFLO).
           #
-          # THE R3000'S DIVIDE does most of the work: DIV leaves the quotient, truncated toward nought, in
+          # The R3000's divide does most of the work: DIV leaves the quotient, truncated toward nought, in
           # LO and the remainder, with the dividend's sign, in HI. It never stops the processor, and it
           # takes 36 cycles. Two of its answers are not the game's:
           #
@@ -28,7 +28,7 @@ module VBlank
           # Int32.shift_right), so the count is tested first. A count compared as a number
           # that cannot be negative is 32 or more for every count out of range, so one test does both.
           #
-          # A NUMBER WITH A FRACTION DIVIDED BY ANOTHER (Int32.div_fix). The numerator is first brought up
+          # A number with a fraction divided by another (Int32.div_fix). The numerator is first brought up
           # by the fraction's bits, which takes it past 32 bits — 3.0 with sixteen bits of fraction, brought
           # up sixteen more, is 48 bits — and DIV divides only 32 bits by 32. So rt_div_fix divides the two
           # sizes, the numerator's as a 64-bit number in two registers, and puts the sign on afterwards:
@@ -197,7 +197,7 @@ module VBlank
               asm.label("rt_div_fix_split")
             end
 
-            # t1:t2 over a1, t1 below a1, into t2 (see A NUMBER WITH A FRACTION above). The divisor moved
+            # t1:t2 over a1, t1 below a1, into t2 (see a number with a fraction above). The divisor moved
             # up is t3, by t4 places; its top digit t5 and its bottom one t6. What is left on top is t1,
             # the numerator's two bottom digits t8 and t2. The answer's top digit is a0, its bottom one a3;
             # a2 is what each guess leaves over.
