@@ -2,7 +2,7 @@
 
 module VBlank
   module Cartridge
-    # WHAT A CONSOLE'S BUILD IS HANDED, once the game has been read and checked: everything
+    # What a console's build is handed, once the game has been read and checked: everything
     # VBlank.build knows by then, in one value, for the build its console's kit names
     # (Console::Kit#builder) to make the cartridge from.
     #
@@ -14,7 +14,7 @@ module VBlank
     # built (Cartridge::Options), +profile+ a measured routine profile or false, and +progress+,
     # +out+ and +err+ where the build says what it is doing.
     #
-    # NOT FROZEN, for that one field: the findings are the build's to add to as it goes.
+    # Not frozen, for that one field: the findings are the build's to add to as it goes.
     BuildRequest = Struct.new(:program, :evaluated, :findings, :title, :code, :maker, :validate, :options,
                               :profile, :progress, :out, :err, keyword_init: true)
   end

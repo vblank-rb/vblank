@@ -2,12 +2,12 @@
 
 module VBlank
   module Cartridge
-    # THE GAME BOY ADVANCE'S CARTRIDGE, from a checked program (see Console::AdvanceKit): lowered
+    # The Game Boy Advance's cartridge, from a checked program (see Console::AdvanceKit): lowered
     # to ARM by IR::Backends::GBA, checked again for what the lowering decided, and assembled.
     module AdvanceBuild
       module_function
 
-      # THE SETTINGS ONLY THE ADVANCE HAS (its console settings, Console::AdvanceKit::CONSOLE_SETTINGS),
+      # The settings only the Advance has (its console settings, Console::AdvanceKit::CONSOLE_SETTINGS),
       # by the name each is set with. A game for the Advance and the Color sets them once, and its
       # Color cartridge is built without them; a build for the Color alone that sets one is refused
       # (Console.refuse_unusable_console_settings!).
@@ -107,7 +107,7 @@ module VBlank
                                              built: backend.build_record(program))
       end
 
-      # A PROFILE THAT HAS DRIFTED FROM ITS GAME still decides what goes in the quick memory, and
+      # A profile that has drifted from its game still decides what goes in the quick memory, and
       # would go on doing it, quietly and increasingly wrongly, as the game moved on. So a routine
       # the profile names that the program no longer has is said out loud.
       #

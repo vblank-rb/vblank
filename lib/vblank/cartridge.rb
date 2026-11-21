@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# WHAT A CHECKED PROGRAM BECOMES: the bytes on the card, and everything about the card itself —
+# What a checked program becomes: the bytes on the card, and everything about the card itself —
 # the header, the four characters an emulator tells one cartridge from another by, the checks a
 # finished one has to pass. The machine code inside it is the lowering's business, not this
 # module's (see IR::Backends::GBA).

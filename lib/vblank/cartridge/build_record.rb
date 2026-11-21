@@ -4,7 +4,7 @@ require VBlank.root.join("lib/vblank/ir/backends/gba/placement").to_s # FRAME_RO
 
 module VBlank
   module Cartridge
-    # WHAT THE BUILD WORKED OUT about a cartridge: everything a finished ROM needs to report
+    # What the build worked out about a cartridge: everything a finished ROM needs to report
     # on itself, and nothing it needs to run.
     #
     # A cartridge is finished the moment its header, checksum and padding are written, and it
@@ -14,12 +14,12 @@ module VBlank
     # in a register — and where every routine ended up. So `rom.profile` cannot report on a
     # cartridge without it, and the build is the only thing that knows.
     #
-    # IT ARRIVES IN ONE PIECE, which is most of why it exists. These were six fields a caller
+    # It arrives in one piece, which is most of why it exists. These were six fields a caller
     # set on a ROM one at a time after assembling it, so between the assemble and the sixth
     # line there was a ROM that was a valid cartridge and half a report — and nothing showed
     # which of the two you were holding. Now a ROM either has a record or has none, and having
     # none is exactly what "assembled straight from machine code" means.
-    # +build_options+ is what the build was TOLD rather than what it worked out — the cartridge
+    # +build_options+ is what the build was told rather than what it worked out — the cartridge
     # timing it asks for at boot, and whether it chose what to keep in quick memory — and it is
     # here because measuring a cartridge means building it again, the same way: a ROM measured
     # with different settings is not the ROM that ships, and the difference between code in the
@@ -52,7 +52,7 @@ module VBlank
     # +voices+ is where the console keeps the sounds it is playing and where each sample landed
     # in the cartridge (see IR::Backends::GBA::Mixer::VoiceTable), or nil for a program that
     # plays no samples. It is what lets a finished cartridge be asked what it is playing.
-    # +sound_drops+ is where it counts the sounds it could NOT play, for the same reason and with
+    # +sound_drops+ is where it counts the sounds it could not play, for the same reason and with
     # the same catch: they are hidden variables, so only the build knows their addresses (see
     # IR::Backends::GBA::Mixer::DropTable). nil where nothing plays and nothing can be lost.
     # +video_copies+ is every copy into video memory the game makes while it runs — tiles it
@@ -73,7 +73,7 @@ module VBlank
     # table shows which place a sprite is in and nothing more, so without this nothing can get
     # from a place back to the name the game wrote. Empty for a game with no sprites.
     # +sprite_offsets+ is how far along the build moved each of a sprite's stored poses, and it
-    # is what keeps +sprite_slots+ honest about WHERE. A pose is stored trimmed to the part of
+    # is what keeps +sprite_slots+ honest about where. A pose is stored trimmed to the part of
     # the canvas it actually draws on, and the sprite is then told to stand that much further
     # along so the picture lands where the author put it — and a pose drawn backwards is trimmed
     # from the other side, so it stands a different amount further along. Both are the build's
@@ -82,7 +82,7 @@ module VBlank
     # in that table, then by the two things a row of it holds about which pose it is holding: its
     # first tile, and whether it is being drawn backwards.
     # +streamed_sprite_pose_vars+ is the exception to that keying, and it exists because a sprite with
-    # more pictures than sprite memory holds keeps ONE of them there at a time — so every pose of
+    # more pictures than sprite memory holds keeps one of them there at a time — so every pose of
     # it goes into the same place, and the place stops telling the poses apart. Such a sprite's
     # +sprite_offsets+ are counted by pose number instead, and this gives where to read the pose
     # number from: the address of the variable the cartridge writes as it copies a frame in. A
@@ -152,7 +152,7 @@ module VBlank
         def row_in_copy(slot) = yield(came_from + (slot * 2))
       end
 
-      # WHERE EACH SCENE'S OWN ROUTINES RUN, for a game whose quick memory is swapped as a scene
+      # Where each scene's own routines run, for a game whose quick memory is swapped as a scene
       # takes over (see IR::Backends::GBA::SceneQuickMemory). Scenes' sets share one room, so an
       # address there is a different routine depending on which sets are in — and +routines+,
       # which can hold one place per routine, gives such a routine the place it sits in the
