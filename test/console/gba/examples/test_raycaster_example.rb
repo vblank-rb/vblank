@@ -75,7 +75,7 @@ class TestRaycasterExample < Minitest::Test
 
   # Walking is what makes it a room you are inside rather than a picture you spin in.
   # Positions are read back in cells, and each is kept to a sixty-five-thousand-and-
-  # thirty-sixth of one, so a step of WALK cells is kept as the nearest such part.
+  # thirty-sixth of one, so a step of walk cells is kept as the nearest such part.
   CELL = 1 << 16
 
   # Facing east at the start, six frames of walking move exactly six steps along x and not
