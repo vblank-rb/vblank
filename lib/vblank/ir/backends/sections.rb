@@ -3,8 +3,8 @@
 module VBlank
   module IR
     module Backends
-      # THE PIECES A CARTRIDGE IS PUT TOGETHER FROM, the same for every console whose cartridge is
-      # seen a bank at a time. An assembler (GBC::SM83, SNES::W65816) makes SECTIONS: named runs of
+      # The pieces a cartridge is put together from, the same for every console whose cartridge is
+      # seen a bank at a time. An assembler (GBC::SM83, SNES::W65816) makes sections: named runs of
       # bytes, with the labels they define and the holes they leave for places not known yet (a
       # Fixup). A linker (GBC::Linker, SNES::Linker) puts each section in a bank of the cartridge
       # (Banks), then fills the holes in. Which instructions a section holds, how big a bank is and
@@ -29,7 +29,7 @@ module VBlank
         # author can do to make it smaller ("make its songs shorter, or use fewer of them").
         Holding = Data.define(:what, :fix)
 
-        # THE BANKS, FILLED FIRST FIT. Each section goes in the first bank, counting from +first+,
+        # The banks, filled first fit. Each section goes in the first bank, counting from +first+,
         # with room for it after what is already there; a bank holds what +room+ gives it (a
         # bank's last bytes can be the cartridge's own, as the Super Nintendo's first bank's header
         # is). A section that must start at a multiple of +align+ skips the bytes up to the next one.

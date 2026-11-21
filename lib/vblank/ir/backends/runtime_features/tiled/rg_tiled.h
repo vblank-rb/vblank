@@ -46,7 +46,7 @@ void rg_background_follow(const int32_t *rules, int32_t set);
 /* +pivot_x+, +pivot_y+: the point on screen it turns around, which the statement names. */
 void rg_background_turn(int32_t background, int32_t angle, int32_t size, int32_t pivot_x, int32_t pivot_y);
 
-/* A BENT BACKGROUND has every line of the screen at its own distance across, on top of where the
+/* A bent background has every line of the screen at its own distance across, on top of where the
  * background is scrolled to (RG_BG_BENT, below). How far is the game's to work out, once a pass
  * for every line, in the gap between frames (Reference#work_out_bends): rg_screen_work_out_bends
  * calls rg_game_work_out_bends there, which hands each bend's lines to rg_bend_work_out in the
@@ -130,7 +130,7 @@ void rg_game_work_out_bends(void);
  * for a tile in front (Nodes::Background#in_front), which the view's rebuild paints again over every
  * sprite once every level is painted (Reference#paint_cells_in_front).
  *
- * A BACKGROUND READ FROM THE START FILE IS KEPT AS THE CONSOLE KEEPS IT (rg_start_file_fill_background):
+ * A background read from the start file is kept as the console keeps it (rg_start_file_fill_background):
  * RG_BG_PLACES is where the tiles of its slots start in rg_game_tile_pixels, each once as its places
  * and not in colours, and RG_BG_TABLES which of its tiles is the first of its tables of colours, a
  * bank's colours a table, written again in each set of colours as its other tiles are. A cell of its

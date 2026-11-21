@@ -3,17 +3,17 @@
 module VBlank
   module IR
     module Backends
-      # THE WRITES TO A BACKGROUND THAT EVERY CARTRIDGE LOWERING WRITES ALIKE (the Color's, the Super Nintendo's,
+      # The writes to a background that every cartridge lowering writes alike (the Color's, the Super Nintendo's,
       # the Genesis's and the PlayStation's): which declaration a change to a background goes to, and a
       # background put up in a pass held at its corner through that pass. Where the labels go and what is
       # tested is the program's; how a label, a jump and a store are written is each processor's. Written
       # out in each lowering, the copies were the same but for the console's name for a fresh label.
       #
-      # WHAT THE LOWERING SUPPLIES: the ControlFlow hooks fresh_label, place_label, jump, jump_unless, keep_local,
+      # What the lowering supplies: the ControlFlow hooks fresh_label, place_label, jump, jump_unless, keep_local,
       # statement and emit_store_zero, its plan (@plan, LoweringPlan), and, for #for_background, @scene, the
       # variable the scene up is kept in, and @lowering_scene, the scene whose routine is being written, or nil.
       module SceneryWrites
-        # THE DECLARED BACKGROUND a scroll, a changed cell or a map handed over names, as the routine being written
+        # The declared background a scroll, a changed cell or a map handed over names, as the routine being written
         # sees it (LoweringPlan#background_named); nil where that cannot be told while the game is built.
         def background_declared_for(node) = @plan.background_named(node, scene: @lowering_scene)
 
@@ -35,7 +35,7 @@ module VBlank
           end
         end
 
-        # A BACKGROUND WHOSE LINE CAN RUN MORE THAN ONCE (one in a routine, or in the game loop) is up already the
+        # A background whose line can run more than once (one in a routine, or in the game loop) is up already the
         # second time, and the interpreter puts it up as it now is: the cells the game changed, and the map it
         # chose, stay (Reference#put_up_background keeps its copy of the map). So its declared map is copied onto
         # its layer the first time alone, noted in a number of the lowering's own for +layer+; every time after,
@@ -59,7 +59,7 @@ module VBlank
           place_label(done)
         end
 
-        # A STATUS BAR SHOWN BEFORE ITS OWN LINE RUNS (IR::SceneHandover#bar_shown_early) goes up beside every
+        # A status bar shown before its own line runs (IR::SceneHandover#bar_shown_early) goes up beside every
         # background put up until it has gone up once, as the interpreter's picture shows it from the first. The
         # lowering calls this after it puts +node+ up, by a line or as a scene takes over (nil there): the bar's
         # own line notes that the bar is up (#keep_corner_notes keeps the note), and any other background puts
@@ -107,7 +107,7 @@ module VBlank
         # the build places no bar's top.
         BAR_NOTES = [:own_note, :layer_note, nil].freeze
 
-        # A BACKGROUND PUT UP IN A PASS SHOWS FROM ITS CORNER ON THAT PASS'S FRAME (Reference#put_up_background),
+        # A background put up in a pass shows from its corner on that pass's frame (Reference#put_up_background),
         # and the place the game keeps for its view, or the top it keeps for a status bar, is written at the
         # end of the pass (IR::Frames.loop_in_console_order), after the put-up. So a put-up notes itself for the
         # rest of its pass, a note for each of +layers+ (the numbers of the layers a background goes up on), and
