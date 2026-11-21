@@ -195,7 +195,7 @@ module VBlank
             @emitter.emit(ASM.sub_reg(ACC, left, right))
           end
 
-          # WHAT A SIDE COSTS IS MOSTLY WHERE THE OTHER ONE WAITS. A side that is a variable or a
+          # What a side costs is mostly where the other one waits. A side that is a variable or a
           # number is one load, which touches nothing but the register it loads, so the other side
           # can stay in r0 while it happens. Only two sides that each have to be worked out need
           # the stack, since working one out can use every scratch register. The stack keeps
@@ -247,14 +247,14 @@ module VBlank
           # A value that can be left unread, or read later, with no difference to the game.
           def self.changes_nothing?(node) = IR::Unchanging.value?(node) { |part| Primitives.const_int(part) }
 
-          # BRANCH TO +label+ WHEN +cond+ COMES OUT AS +holds+, with no 0 or 1 made on the way. A
+          # Branch to +label+ when +cond+ comes out as +holds+, with no 0 or 1 made on the way. A
           # compare leaves its answer in the chip's flags, and a branch reads them, so working the
           # answer into a register to test it again costs five instructions and tells the branch
           # nothing it did not know.
           #
-          # A TEST TURNED ROUND is the same test branching the other way.
+          # A test turned round is the same test branching the other way.
           #
-          # A JOIN OF TWO TESTS IS TWO TESTS, when the second can go unread. One side alone settles
+          # A join of two tests is two tests, when the second can go unread. One side alone settles
           # a join: a false one settles `and`, a true one `or`. If that is the answer branched on,
           # either side may take the branch. If not, the first side settling it jumps past the
           # second, and only the second can take the branch.
@@ -470,7 +470,7 @@ module VBlank
             true
           end
 
-          # x << n for an n written into the program: ONE instruction, and none at all
+          # x << n for an n written into the program: one instruction, and none at all
           # for a shift of nothing. A count that empties the number is settled here
           # rather than emitted — going up there is nothing left, so nothing is what
           # gets loaded.
@@ -531,7 +531,7 @@ module VBlank
             emit_multiply_by_power_of_two(lhs, bits)
           end
 
-          # x / 2**bits, TRUNCATING TOWARD ZERO — the meaning `/` has everywhere else
+          # x / 2**bits, truncating toward zero — the meaning `/` has everywhere else
           # here, and what the console's BIOS divide would have given.
           #
           # A plain arithmetic shift is not that. It rounds toward minus infinity, so
@@ -587,7 +587,7 @@ module VBlank
           end
 
           # x % 2**bits, with Ruby's meaning. Keeping the low bits of a two's-complement
-          # number IS that answer for a positive power of two, sign and all: -1 keeps all
+          # number is that answer for a positive power of two, sign and all: -1 keeps all
           # its low bits and comes out as the range's top value.
           def emit_wrap_to_power_of_two(lhs, bits)
             @lowering.value(lhs)
@@ -599,7 +599,7 @@ module VBlank
           #
           # There is no leftover to collect here — the reciprocal divide never computes
           # one — so it is worked back out: the quotient times the size, taken off the
-          # numerator that r2 still holds. That answer carries the sign of the NUMERATOR
+          # numerator that r2 still holds. That answer carries the sign of the numerator
           # and Ruby's carries the sign of the divisor, so one size is added back when the
           # numerator was negative. The number's own top bit shows whether it was, which
           # makes the correction three instructions and no branch.
@@ -704,7 +704,7 @@ module VBlank
           # This is where that operation earns its own node. The chip has no divide
           # instruction at all — an ordinary `/` traps into a BIOS routine — but
           # dropping the low bits of a register is a shift, and ARM does a shift as part
-          # of moving the register. So the whole thing is ONE instruction, against a
+          # of moving the register. So the whole thing is one instruction, against a
           # call for the division that would otherwise be written here.
           def eval_shift_right(node)
             return if emit_divide_fix_made_whole(node)
@@ -774,10 +774,10 @@ module VBlank
           #
           # The routine hands the leftover back in r1 alongside the quotient, so the
           # division itself costs nothing extra here. But it gives that leftover the sign
-          # of the NUMERATOR, and Ruby's answer takes the sign of the divisor (see
+          # of the numerator, and Ruby's answer takes the sign of the divisor (see
           # IR::Int32.mod). When the two disagree — and only then — one divisor has to be
           # added back. Nothing here knows which sign the divisor has, so the two are
-          # compared; where the size IS written into the program that is settled at build
+          # compared; where the size is written into the program that is settled at build
           # time instead. The divisor waits on the stack, since the routine is free to
           # use every scratch register.
           def emit_modulo
@@ -840,7 +840,7 @@ module VBlank
             emit_one_unless_zero
           end
 
-          # ANY BUTTON HELD: one test against all ten, not ten tests. The key register reads 0
+          # Any button held: one test against all ten, not ten tests. The key register reads 0
           # for a button that is down, so it is turned over first, and the shift then throws
           # away everything but the ten button bits (the register's other bits turn into ones
           # when it is turned over). Whatever is left is a button that is down.
@@ -852,7 +852,7 @@ module VBlank
             emit_one_unless_zero
           end
 
-          # ANY BUTTON PRESSED: the collected presses are kept the right way up and hold only
+          # Any button pressed: the collected presses are kept the right way up and hold only
           # button bits, so any bit at all is a button that went down since the last pass.
           def eval_any_pressed
             @primitives.load_var(ACC, KEYS_PRESSED)
@@ -878,13 +878,13 @@ module VBlank
             @primitives.store_var(ACC, KEYS_PRESSED)
           end
 
-          # WHERE THE GAME LOOP BEGINS: forget whatever was collected while the game set up. The
+          # Where the game loop begins: forget whatever was collected while the game set up. The
           # screen was off then, so nothing a player did had anything to answer. What was down
           # is forgotten as well, so a button held since the power came on is still one press,
           # on the first frame of the loop — the same as a game with nothing to set up.
           #
           # The screen's interrupt can arrive between these writes, and the order makes that
-          # harmless: what has been seen is forgotten LAST, so whatever the interrupt does in
+          # harmless: what has been seen is forgotten last, so whatever the interrupt does in
           # between, the next frame finds every button that is down as newly down.
           def emit_forget_presses
             @emitter.emit_number(ACC, 0)
@@ -893,7 +893,7 @@ module VBlank
             @primitives.store_var(ACC, KEYS_SEEN)
           end
 
-          # IN THE SCREEN'S INTERRUPT, ON EVERY FRAME IT SHOWS: read the pad and add any button
+          # In the screen's interrupt, on every frame it shows: read the pad and add any button
           # that went down since the last frame to the collection. The interrupt keeps real
           # time whatever the game is doing, so a game that takes two frames a pass still has
           # the pad read sixty times a second, and a press made between two of its passes is
@@ -918,7 +918,7 @@ module VBlank
             @primitives.store_var(ACC, KEYS_COLLECTED)
           end
 
-          # AT THE TOP OF EACH PASS: take what was collected as this pass's presses, and start
+          # At the top of each pass: take what was collected as this pass's presses, and start
           # collecting again.
           #
           # This runs straight after the wait for the screen, which is to say straight after the

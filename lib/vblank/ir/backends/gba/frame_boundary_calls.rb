@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # CODE THE GAME DID NOT CALL, WHICH CAN CALL A ROUTINE THE GAME IS PART WAY THROUGH, and the
+        # Code the game did not call, which can call a routine the game is part way through, and the
         # state each call of that routine keeps to itself.
         #
         # Three kinds of code run where the game wrote no call:
@@ -24,7 +24,7 @@ module VBlank
         # and restores them after. The interrupt saves the registers already (GBA::IRQ_SAVED_REGS),
         # so there it is the memory alone. A game with none of this has no code here.
         #
-        # A HANDLER THAT WAITS CANNOT RUN IN THE INTERRUPT. While the console runs an interrupt's
+        # A handler that waits cannot run in the interrupt. While the console runs an interrupt's
         # routine it holds every other interrupt off, the screen's included, so a wait there never
         # ends and the game stops. So such a handler is a routine of its own, run where the
         # interpreter runs every handler: as the game wakes from a wait, once for each tick since the
@@ -145,7 +145,7 @@ module VBlank
           # Whether any timer's handler waits.
           def handlers_wait? = @plan.waiting.any?
 
-          # WHAT A HANDLER THAT WAITS READS IS WHAT THE GAME'S LAST PASS READ. The interpreter runs
+          # What a handler that waits reads is what the game's last pass read. The interpreter runs
           # the handlers as a frame ends, before it counts that frame and reads the buttons
           # (Reference#advance_frame), so a handler reads the frames since power-on, the frames the
           # last pass took and the buttons pressed as the pass that just ended read them. The
@@ -226,7 +226,7 @@ module VBlank
           # How far below the mark, at the top, the last pass's +name+ is on the stack.
           def last_pass_offset(name) = 4 * (last_pass_pushed.size - 1 - last_pass_pushed.index(name))
 
-          # The frames in SPARE taken off (+op+ :sub) or put back on (:add) the frames since power-on,
+          # The frames in spare taken off (+op+ :sub) or put back on (:add) the frames since power-on,
           # with the interrupts held off so the screen's cannot count a frame between the read and
           # the write and have it lost. One held off meanwhile runs as they are let back on.
           def emit_frame_count_change(op)

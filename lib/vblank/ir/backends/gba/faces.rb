@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # FILLING A FACE WITH ITS PICTURE (Nodes::FillFace), the part of drawing a place that is
+        # Filling a face with its picture (Nodes::FillFace), the part of drawing a place that is
         # a pixel at a time. Everything before it — turning each point to the viewer, cutting the
         # face at the near limit and finding where each corner lands — is ordinary statements the
         # lowering makes as it makes any (IR::PlaceDrawing); this is the one routine written by
@@ -24,7 +24,7 @@ module VBlank
         #   - SPANS: the place on the picture stepped by one amount a pixel (two divisions a row,
         #     for across and for down), each pixel read from the picture.
         #
-        # THE TEAR-FREE SCREEN TAKES TWO PIXELS AT A TIME. There a pixel is one byte, and video
+        # The tear-free screen takes two pixels at a time. There a pixel is one byte, and video
         # memory refuses a lone byte. So a picture with no see-through pixel is drawn a pair at a
         # time, both worked out and the pair written whole (#emit_pixel_pairs); only a pixel left
         # over at either end of a row reads its pair, puts its own half in and writes the pair back.
@@ -32,7 +32,7 @@ module VBlank
         # where one of its two pixels is see-through (#emit_see_through_pixel_pairs, and in
         # perspective #emit_run_pair).
         #
-        # THE DIRECT SCREEN IS FILLED TOO, two bytes of colour a pixel. A game draws a place only
+        # The direct screen is filled too, two bytes of colour a pixel. A game draws a place only
         # on the tear-free screen (Builder#draw_place), but a program can hold a fill without a
         # place, and the conformance fixture does, on the direct screen every kind there is is
         # played on: refusing it there would leave the kind unplayed on the cartridge.
@@ -98,7 +98,7 @@ module VBlank
                              _face_moved_w _face_over_u _face_over_v _face_over_w _face_stretch_u
                              _face_stretch_v _face_stretch_w _face_entry].freeze
 
-          # EVERY WORD THE ROUTINE READS OR WRITES, which the lowering names before any of the game's
+          # Every word the routine reads or writes, which the lowering names before any of the game's
           # own variables (GBA#lower), so each is in reach of one instruction. A word past that reach
           # takes four, and the routine reads a word in some hundred places: left to the game's order
           # of naming, a game with many variables would make the routine too big for its room. The
@@ -143,7 +143,7 @@ module VBlank
             @cuts_stretches = spans.nil? || spans.any? { |span| span > SPLIT_PIXELS }
           end
 
-          # WHICH RUNS OF WHOLE STRETCHES THE ROUTINE HAS: 8 for :every_8_pixels
+          # Which runs of whole stretches the routine has: 8 for :every_8_pixels
           # (#emit_whole_stretches), 16 for :every_16_pixels (#emit_long_stretches), each only for
           # a game that draws a place with it. A run is a thousand bytes and more of quick memory,
           # and one run that served both would cost every turn the test of which it is. Without its
@@ -177,7 +177,7 @@ module VBlank
           # loops, and is that much bigger; a game that lights none carries none of them.
           def self.lights_faces?(program) = program.walk.any? { |node| node.kind == :fill_face && node.shading }
 
-          # WHICH RUNS OF WHOLE STRETCHES HAVE A TWIN for pictures with see-through pixels, a grate
+          # Which runs of whole stretches have a twin for pictures with see-through pixels, a grate
           # or a door with gaps (#emit_run_pair): of Faces.stretch_runs, those the game fills a face
           # with such a picture in. Each twin is a thousand bytes and more of quick memory, so a
           # game that draws none carries none, and a grate drawn only without perspective, or
@@ -246,7 +246,7 @@ module VBlank
             node.children.each { |statement| @lowering.statement(statement) }
           end
 
-          # A PLACE'S CORNER LIST IS KEPT IN THE ROUTINE'S OWN CORNER WORDS, so a fill hands its
+          # A place's corner list is kept in the routine's own corner words, so a fill hands its
           # corners over by writing nothing at all. The list and the words hold the same numbers in
           # the same order (a corner's CORNER_NUMBERS, LISTED_FIELDS), and a place's drawing writes
           # every number the fill reads into the list before each fill, then reads none of them after
@@ -351,7 +351,7 @@ module VBlank
             { ROUTINE => @routine_iwram...(@routine_iwram + @emitter.routine_bytes(ROUTINE)) }
           end
 
-          # THE ROUTINE, made once for a game that fills a face, after the game's own code, and
+          # The routine, made once for a game that fills a face, after the game's own code, and
           # copied into the quick memory at power-on. It reads nothing beside itself: its jumps are
           # all within it, and every number and address it uses is built an instruction at a time.
           def emit_fill_face_routine
@@ -423,7 +423,7 @@ module VBlank
                                  "#{room} for it. This is a fault in VBlank, not in the game."
           end
 
-          # A WORD THE ROUTINE NAMES THAT FACES.WORDS DOES NOT is given its place where the routine
+          # A word the routine names that FACES.WORDS DOES NOT is given its place where the routine
           # first names it, after the game's own variables: in a game of a thousand variables that
           # is past one instruction's reach, and each of its reads takes four instructions where it
           # took one. So the routine's size would grow with the game, and only a big game would find
@@ -442,7 +442,7 @@ module VBlank
 
           def corner_word(field, k) = self.class.corner_word(field, k)
 
-          # THE PICTURE'S ENTRY, from a table of the fill's pictures in the cartridge: its number,
+          # The picture's entry, from a table of the fill's pictures in the cartridge: its number,
           # worked out as the game runs, held to the ends of the table, and the entry's words
           # copied to the routine's. Nothing else writes those words, so where the entry copied
           # last is kept, and an entry already there is not copied again: a place's faces are
@@ -506,7 +506,7 @@ module VBlank
             [0, bmp.width.bit_length - 1, bmp.width - 1, bmp.height - 1, clear || NO_CLEAR, bmp.height.bit_length - 1]
           end
 
-          # A LIT FILL (Nodes::Shading) hands the routine its shading's table and how many levels it
+          # A lit fill (Nodes::Shading) hands the routine its shading's table and how many levels it
           # has; an unlit one hands it nought for the table, which is how the routine tells.
           def emit_shading_words(node)
             if node.shading
@@ -520,7 +520,7 @@ module VBlank
             end
           end
 
-          # THE SHADING AS A TABLE, made once for each shading and screen.
+          # The shading as a table, made once for each shading and screen.
           #
           # On the tear-free screen a pixel is a palette number, so the table is one row of 256
           # bytes for each level, darkest first: for each palette number, the number of the colour
@@ -568,7 +568,7 @@ module VBlank
             [shading.colors.length].pack("l<") + (shading.colors + shaded).pack("v*")
           end
 
-          # A PICTURE IN PERSPECTIVE walks u and v over the distance down the edges, not u and v
+          # A picture in perspective walks u and v over the distance down the edges, not u and v
           # (Reference::FaceEdges.in_perspective): each corner's u and v times its w, down 28 bits.
           #
           # The corners are side by side in memory (see #emit_edges), so this is a loop over them.
@@ -599,11 +599,11 @@ module VBlank
             store_var(1, :_face_moved_w)
           end
 
-          # A LIT FILL's corners, each light held to 0..LIGHTEST and made its shade, times the
+          # A lit FILL's corners, each light held to 0..LIGHTEST and made its shade, times the
           # levels (Reference::Shade#shaded_corner), so a shade's top sixteen bits are its level.
           #
           #   r0 corners left, r3 a corner's words, r4 the levels, r5 the shade, r6 a corner's
-          #   light, r1 LIGHTEST
+          #   light, r1 lightest
           def emit_corners_lit
             unlit = gensym
             load_var(4, :_face_shading)
@@ -788,7 +788,7 @@ module VBlank
             place_label(done)
           end
 
-          # A FACE WHOLLY PAST ONE EDGE OF WHAT MAY BE DRAWN draws nothing, and is left at once,
+          # A face wholly past one edge of what may be drawn draws nothing, and is left at once,
           # before its edges are worked out: a division each. A face beside the view, or behind a
           # doorway's window, is most of the faces of a place seen from inside.
           #
@@ -825,7 +825,7 @@ module VBlank
             emit_branch(:bcond, each, cond: :ne)
             [4, 5, 6, 7].each { |reg| emit_row_of(reg, reg) } # each as the pixel its middle reaches
 
-            # A FACE CROSSING NO ROW'S MIDDLE draws nothing either. An edge's rows run from the row of
+            # A face crossing no row's middle draws nothing either. An edge's rows run from the row of
             # its upper end to the row of its lower one (#emit_edge_body), so every row of the face is
             # at or below the row of its highest corner and above the row of its lowest: where those
             # are the same row, no edge has a row at all. The shared drawing passes over such a face
@@ -1060,7 +1060,7 @@ module VBlank
             emit_span_in_perspective(next_row)
           end
 
-          # A LIT ROW's shade: each end's held to the levels there are (Reference::Shade#held_row_end),
+          # A lit ROW's shade: each end's held to the levels there are (Reference::Shade#held_row_end),
           # its step a pixel, and the shade at the first pixel drawn. The shade steps evenly across
           # the row whatever the perspective, so a stretch in perspective starts from these too.
           #
@@ -1132,7 +1132,7 @@ module VBlank
             emit(ASM.add_reg(into, into, 8))
           end
 
-          # A ROW IN PERSPECTIVE (Reference#fill_face_row): the place on the picture worked out
+          # A row in perspective (Reference#fill_face_row): the place on the picture worked out
           # exactly every so many pixels from the row's start (the perspective word: eight, or one)
           # and at its end, and stepped evenly between, one stretch at a time. Each stretch is drawn
           # by the routine that draws pixels stepping evenly, the same as a row without perspective,
@@ -1314,7 +1314,7 @@ module VBlank
             place_label(known)
           end
 
-          # THE FAST RUNS ARE NAMED FROM +fast+, the label of the unlit run of whole stretches: its
+          # The fast runs are named from +fast+, the label of the unlit run of whole stretches: its
           # lit twin, and beside each the run that works out every pixel, which
           # #emit_branch_by_perspective reaches by this name.
           def lit_label(fast) = DerivedNames.sub_label(fast, :lit)
@@ -1414,7 +1414,7 @@ module VBlank
             emit_branch(:bcond, long_label(fast), cond: :eq)
           end
 
-          # EVERY PIXEL IN PERSPECTIVE, the whole drawn part of the row in one loop: each pixel's
+          # Every pixel in perspective, the whole drawn part of the row in one loop: each pixel's
           # place worked out exactly from u, v and w over the distance, which step a pixel at a time
           # in r0-r2, and the pixels written a pair at a time, a pixel at either end on its own.
           # Then on to +next_row+.
@@ -1525,14 +1525,14 @@ module VBlank
             emit(ASM.bx(14))
           end
 
-          # A ROW FROM A STRETCH'S START TO ITS END, in registers: the run of whole stretches, and
+          # A row from a stretch's start to its end, in registers: the run of whole stretches, and
           # then the row's last stretch, the pixels left over. Entered with the stretch's start,
           # along, in r0, where the drawn part of the row ends in r2 and the perspective word in r3.
           # There is a run for :every_8_pixels (#emit_whole_stretches) and one for :every_16_pixels
           # (#emit_long_stretches), each only in a game that draws with it (Faces.stretch_runs), so
           # neither pays for telling the two apart.
           #
-          # THE RUN GOES ROUND ONCE FOR EVERY EIGHT PIXELS, all drawn: a turn. A turn's far end is
+          # The run goes round once for every eight pixels, all drawn: a turn. A turn's far end is
           # worked out exactly and its eight pixels stepped evenly from the near end, two at a time,
           # as #emit_pixel_pairs does, the pairs written whole. The far end is then the next turn's
           # near end. The first near end is found by the same instructions, written once more ahead
@@ -1546,7 +1546,7 @@ module VBlank
           # pair, so each half's pixels end with a jump back to the loop's top of their own, and no
           # branch is taken past the other half's.
           #
-          # THE ROW'S LAST STRETCH is under eight pixels, or under sixteen for :every_16_pixels, to
+          # The row's last stretch is under eight pixels, or under sixteen for :every_16_pixels, to
           # the row's end (#emit_last_stretch). A row held in at its right end has pixels past the
           # drawn part that set its last stretch's length, so that one goes back to +slow+, a
           # stretch at a time, with the near end in its words.
@@ -1608,7 +1608,7 @@ module VBlank
             emit_last_stretch(slow, next_row, lit: lit, see_through: see_through)
           end
 
-          # THE RUN FOR :every_16_pixels. A stretch of sixteen is two turns. The first works the far
+          # The run for :every_16_pixels. A stretch of sixteen is two turns. The first works the far
           # end out sixteen pixels on and steps a sixteenth of the way a pixel; the second goes on
           # stepping from where the first stopped and works nothing out, which is what the longer
           # stretch saves: the end of the first's pixels goes straight back to them. Where one over
@@ -1724,7 +1724,7 @@ module VBlank
             emit(ASM.orr_imm(7, 7, KEPT_BACK))
           end
 
-          # THE TURNS OF AN :every_16_pixels RUN, COUNTED IN r5, with what kind of turn comes next
+          # The turns of an :every_16_pixels run, counted in r5, with what kind of turn comes next
           # in its low bits: the turns left less one, times TURN_COUNTED, and the TURN_ marks. So a
           # run with no turn left is below nought, and taking a turn off is one subtract whose flags
           # say whether one is left. r1 is where the turns end, along, which is kept in its word.
@@ -1768,7 +1768,7 @@ module VBlank
           TURN_STEPPED_ON = 2
           TURN_AFTER_CUT = 4
 
-          # THE FIRST TURN OF A STRETCH OF SIXTEEN, at the loop's top (the second of an uncut one
+          # The first turn of a stretch of sixteen, at the loop's top (the second of an uncut one
           # never comes back there: #emit_next_long_turn). It loads the stretch's words and asks
           # whether the stretch is cut in two (#emit_branch_unless_fast_change, from its step and
           # one over the distance at its start). Cut, it is a turn of eight, from +loaded+ in
@@ -1789,7 +1789,7 @@ module VBlank
             emit_whole_stretch_steps(lit: lit, shift: 4)
           end
 
-          # A TURN OF EIGHT in an :every_16_pixels run, at +cut_turn+: the mark cleared, the far end
+          # A turn of eight in an :every_16_pixels run, at +cut_turn+: the mark cleared, the far end
           # a turn on, an eighth of the way a pixel, and on to +draw+. A lit run's first turn goes to
           # +near_end+ instead.
           def emit_cut_turn(cut_turn, loaded, near_end, draw, lit:)
@@ -1835,7 +1835,7 @@ module VBlank
             emit_branch(:bcond, top, cond: :ge)
           end
 
-          # A LIT RUN'S FIRST TURN, marked NEAR_END_UNKNOWN, at +near_end+: the far end just worked
+          # A lit run's first turn, marked NEAR_END_UNKNOWN, at +near_end+: the far end just worked
           # out is the first turn's near end, so it is kept, the mark cleared, and on to +top+
           # for the first turn, or to +last+ for a row with none. +cond+ is when r5 says a turn
           # is left: above nought counting turns, at least nought counting them less one.
@@ -1957,7 +1957,7 @@ module VBlank
             load_var(10, :_face_shading)
           end
 
-          # THE ROW'S LAST STRETCH, after its whole ones: the pixels from where those ended to the
+          # The row's last stretch, after its whole ones: the pixels from where those ended to the
           # row's end, under a stretch. Its far end is the row's end, worked out exactly
           # (SAMPLE_ROUTINE), and its step the way there divided by its length, so one pixel alone
           # needs neither: it is the near end's. Then on to +next_row+.
@@ -1965,7 +1965,7 @@ module VBlank
           # A pixel at a time, each making up a pair with the one kept back or kept back itself,
           # and the last one kept back written with the half beside it.
           #
-          # A ROW HELD IN AT ITS RIGHT END has a last stretch longer than its drawn part, so its
+          # A row held in at its right end has a last stretch longer than its drawn part, so its
           # step is not found from the pixels left. With drawn pixels left it goes to +slow+, the
           # kept-back pixel written first and the near end in its words.
           #
@@ -2138,7 +2138,7 @@ module VBlank
           # a search leaves no less), so a number under the least there is never passes the try,
           # and is held to the least by the search as it must be.
           #
-          # HELD IN +moved+ for a whole run (+held+ given, a WordsBase), the word is read before
+          # Held in +moved+ for a whole run (+held+ given, a WordsBase), the word is read before
           # the run and written only when a search changes it, and +moved+ is left as it was. The
           # table's address is then read through the WordsBase rather than built.
           def emit_distance_near_last(reg, moved, spare, held: nil)
@@ -2173,7 +2173,7 @@ module VBlank
           SAMPLE_ROUTINE = DerivedNames.sub_label(ROUTINE, :place_in_perspective)
           DIVIDE_ROUTINE = DerivedNames.sub_label(ROUTINE, :divide_by_count)
 
-          # THE PIXELS OF A STRETCH OF A ROW, stepping evenly: r0 u, r1 v, r2 the step across, r3
+          # The pixels of a stretch of a row, stepping evenly: r0 u, r1 v, r2 the step across, r3
           # the step down, r4 where the first is in the screen's memory, r5 how many (one or more).
           # Called with its return in lr; uses every register but the stack.
           def emit_span_pixels_routine
@@ -2193,7 +2193,7 @@ module VBlank
             emit(ASM.pop(15))
           end
 
-          # WHERE ON THE PICTURE, IN PERSPECTIVE, +along+ (r0) pixels into the row
+          # Where on the picture, in perspective, +along+ (r0) pixels into the row
           # (Reference#place_in_perspective): u over the distance, v over it and one over it, each
           # stepped from the row's left end, and the distance found from the last in the table of
           # IR::Reciprocals (its leading eleven bits, found by halving the shift five times), which
@@ -2248,7 +2248,7 @@ module VBlank
           # r0 = r1 divided by the count in r0 (one or more), truncated toward nought as Int32.div
           # does: how far a row, or a stretch of one, steps a pixel.
           #
-          # A ROW IS SELDOM WIDE, so most counts are under RECIPROCALS, and for those the divide is
+          # A row is seldom wide, so most counts are under reciprocals, and for those the divide is
           # a multiply: the number's size times 2**32 / count rounded up, top half kept. Rounding up
           # makes that the true quotient or one more (the excess is the number times under one
           # 2**32th of the count, so under one), and one more is seen by multiplying back. A count
@@ -2339,7 +2339,7 @@ module VBlank
           # The pair loop for a picture with no see-through pixel and the one for a picture with
           # some, each pixel shaded when +lit+.
           #
-          # THE TWO LOOPS SHARE THEIR ENDS, since the routine has only so much room in the quick
+          # The two loops share their ends, since the routine has only so much room in the quick
           # memory: what both start from, the pixel a span starts with on the right half of a pair,
           # and the one it ends with on the left half (+last+). Each of those pixels is held against
           # the see-through number, which for a picture with none is a number no pixel is.
@@ -2365,7 +2365,7 @@ module VBlank
             emit_see_through_pixel_pairs(last, lit: lit)
           end
 
-          # A PICTURE WITH SEE-THROUGH PIXELS, A PAIR AT A TIME TOO. A grate or a door with gaps is
+          # A picture with see-through pixels, a pair at a time too. A grate or a door with gaps is
           # mostly runs: bars that are all drawn and gaps that are all see-through. So the two
           # pixels of a pair are worked out as #emit_pixel_pairs works them out, and then:
           #
@@ -2481,7 +2481,7 @@ module VBlank
           # smaller than a pair, so a pixel written alone has to read its pair, put its half in and
           # write it back: three trips to video memory for every pixel, against one for two.
           #
-          # WHERE ON THE PICTURE, IN FEWER STEPS. The picture repeats, so of u only its whole part
+          # Where on the picture, in fewer steps. The picture repeats, so of u only its whole part
           # held to the picture's width matters ((u >> 16) & (width - 1)), and that is bits 16 up to
           # 16 + log2(width) of u. Moved up to the top of the word (u << (16 - log2 width)) they are
           # the word's top bits: one shift down reads them, held to the width for nothing, because
@@ -2490,7 +2490,7 @@ module VBlank
           # then two instructions and a load: add the pixel across to the picture's start, take the
           # row from v, and load from the start plus the row moved up a row's width.
           #
-          # THOSE SHIFTS ARE THE PICTURE'S, AND THIS CODE RUNS IN WORK MEMORY. An instruction's shift
+          # Those shifts are the picture's, and this code runs in work memory. An instruction's shift
           # is a number inside it, and the picture is only known as the game runs, so before the
           # rows the routine writes the picture's three shifts into the loop's own instructions
           # (#emit_patch_routine). That is what the routine being copied into the quick memory
@@ -2586,7 +2586,7 @@ module VBlank
             emit(ASM.add_reg(8, 8, 9))
           end
 
-          # A PAIR IN A RUN OF WHOLE STRETCHES (#emit_whole_stretches, #emit_long_stretches): for a
+          # A pair in a run of whole stretches (#emit_whole_stretches, #emit_long_stretches): for a
           # picture with no see-through pixel written whole (#emit_pair); for one with some
           # (+see_through+) tested as #emit_see_through_pixel_pairs tests its pairs, with no
           # register to spare. The run holds every register, so the see-through number is written
@@ -2652,7 +2652,7 @@ module VBlank
 
           def see_through_pair_label(lit) = lit ? LIT_SEE_THROUGH_PAIR_ROUTINE : SEE_THROUGH_PAIR_ROUTINE
 
-          # A PAIR WITH A SEE-THROUGH PIXEL, from a run of whole stretches: r11 its left pixel and
+          # A pair with a see-through pixel, from a run of whole stretches: r11 its left pixel and
           # r12 its right, r4 where it is in the screen's memory, which is left a pair on. Both
           # see-through, nothing is written; one, the pair is read from video memory, the drawn
           # half put in, and written back, the see-through one's own register taking what was
@@ -2731,7 +2731,7 @@ module VBlank
           # Where a shift sits in an instruction: five bits from bit 7.
           SHIFT_FIELD = 0x1F << 7
 
-          # WRITE THE PICTURE'S SHIFTS INTO THE PAIR LOOP (see #emit_pixel_pairs), called once a face
+          # Write the picture's shifts into the pair loop (see #emit_pixel_pairs), called once a face
           # before its rows. Across, the pixel is the top log2(width) bits of u, a shift down of
           # 32 - log2 width (32 written as nought); down, the same of v; and a row starts the row's
           # number moved up log2 width. Each pixel's three instructions are side by side, and where
@@ -2805,7 +2805,7 @@ module VBlank
             emit(ASM.bx(14))
           end
 
-          # THE SHIFTS THAT MOVE u AND v UP for the picture's repeat (#emit_moved_up): 16 less
+          # The shifts that move u AND v UP for the picture's repeat (#emit_moved_up): 16 less
           # log2 of the picture's width or height, into each instruction that takes one, from the
           # entries after the pixels' (r7 the first). They follow from the same two numbers as the
           # pixels' shifts, so they need writing exactly when those do.
@@ -2838,7 +2838,7 @@ module VBlank
             emit_branch(:bcond, each, cond: :ne)
           end
 
-          # THE SEE-THROUGH NUMBER, written into each compare that takes it (#emit_cmp_clear): the
+          # The see-through number, written into each compare that takes it (#emit_cmp_clear): the
           # low eight bits of the instruction, its first byte, from the entries +at+ bytes into the
           # table on. Nothing to do when the first already holds it, as it does for every face
           # after the first that shows the same picture, nor in a game with no such compare. A

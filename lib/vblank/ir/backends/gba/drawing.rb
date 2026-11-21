@@ -8,7 +8,7 @@ module VBlank
         # which kind of screen is up, what a scene does to it as it takes over, the shapes
         # and pictures a game paints itself, and text.
         #
-        # What the console draws FOR the game lives beside this, one file each: the sprites
+        # What the console draws for the game lives beside this, one file each: the sprites
         # ({SpriteDrawing}), the background layers ({BackgroundDrawing}), and what happens to
         # the whole picture — camera, fade, tint ({ScreenEffects}). Copying data into video
         # memory, which all of them do, is {BlobUpload}. A change of screen sets the sprites
@@ -214,7 +214,7 @@ module VBlank
             emit_display_control_keeping(value & ~late, late)
           end
 
-          # A GAME THAT NEVER CALLS `screen` DRAWS ON A BITMAP SCREEN, as if its first line were
+          # A game that never calls `screen` DRAWS ON A BITMAP SCREEN, as if its first line were
           # `screen :bitmap` — the interpreter and the native build have always drawn it there.
           # The console needs telling: at power-on its display-control register holds "mode 0,
           # every layer off", so a pixel written to video memory sits there unseen and the
@@ -229,7 +229,7 @@ module VBlank
             emit_screen(Build.screen(:bitmap))
           end
 
-          # A SCREEN THE GAME PAINTS IS ONE BACKGROUND TO THE CONSOLE — its third — and that
+          # A screen the game paints is one background to the console — its third — and that
           # background's own settings set whether it is drawn in blocks, as any background's
           # do. Nothing else on such a screen reads those settings, so in a game that
           # pixelates they are written whole, as the screen is set up. With the size of a
@@ -247,8 +247,8 @@ module VBlank
             emit_bigger_pixels
           end
 
-          # A GAME OF BIG PIXELS (`screen :bitmap, pixel_size: 2`) DRAWS A SMALL PICTURE IN THE TOP
-          # LEFT OF THE PAINTED SCREEN'S MEMORY, AND THE DISPLAY SHOWS IT BIGGER, copying nothing.
+          # A game of big pixels (`screen :bitmap, pixel_size: 2`) draws a small picture in the top
+          # left of the painted screen's memory, and the display shows it bigger, copying nothing.
           #
           # The painted screen is the console's third background, the one that can turn and resize:
           # for each pixel of the screen it shows, the display steps through the picture by the
@@ -261,7 +261,7 @@ module VBlank
           # as every painted screen does, so every drawing verb writes where it always did; it only
           # draws in fewer of them.
           #
-          # This is the hardware's way and not mosaic. Mosaic shows blocks of the WHOLE picture
+          # This is the hardware's way and not mosaic. Mosaic shows blocks of the whole picture
           # — the top left pixel of each square shown for all four — so the game would still draw
           # a picture of the screen's size, and only a quarter of what it drew would be seen.
           #
@@ -278,12 +278,12 @@ module VBlank
             @emitter.write_reg16(REG_BG2PD, step)
           end
 
-          # A LAYER OF A PROGRAM SHOWN AS IT IS DECLARED WAITS FOR ITS OWN BACKGROUND.
+          # A layer of a program shown as it is declared waits for its own background.
           #
           # The screen is declared before the backgrounds on it, and a background's own
           # statement is what copies its map in and tells its layer where that map is. A layer
           # switched on before then is not blank: its map is taken to be at the very start of
-          # video memory, which is where the tile PICTURES are, so the console draws the art as
+          # video memory, which is where the tile pictures are, so the console draws the art as
           # though it were a grid for however many rows setting the background up takes.
           #
           # A program with a game loop never shows that, because its picture is held off until
@@ -327,7 +327,7 @@ module VBlank
             end
           end
 
-          # KEEP THE PICTURE SWITCHED OFF UNTIL THE FIRST FRAME HAS BEEN SET UP.
+          # Keep the picture switched off until the first frame has been set up.
           #
           # Everything a game sets up before its loop — a screen painted, a flash it opens on — is
           # carried onto the screen by work done between frames: the effect a routine writes
@@ -360,20 +360,20 @@ module VBlank
             emit(ASM.store_halfword(ACC, TMP))
           end
 
-          # WHICH OF THE CONSOLE'S TILE ARRANGEMENTS THIS PROGRAM NEEDS, and which layers
+          # Which of the console's tile arrangements this program needs, and which layers
           # to turn on — the whole display-control value for a tiled screen.
           #
           # The console arranges its tile layers two ways, and the difference is what the
-          # layers ARE rather than how many: mode 0 is four layers that scroll and nothing
+          # layers are rather than how many: mode 0 is four layers that scroll and nothing
           # that turns; mode 1 is two that scroll plus one that turns and resizes. A game
           # needs the second exactly when it turns a background — a title where something
           # flies at the player over a backdrop, a map that spins inside a fixed frame, a
           # road that banks under a sky — and nothing in a program asks for it, because
-          # turning a background IS asking for it. (The third arrangement, mode 2, is `screen
+          # turning a background is asking for it. (The third arrangement, mode 2, is `screen
           # :rotozoom`: two turning layers and nothing else, and it keeps its own path.)
-          # +on+ names the layers to switch on, +turning+ which arrangement THIS screen
+          # +on+ names the layers to switch on, +turning+ which arrangement this screen
           # wants, and +bar+ whether it shows a status bar's window. Given none of them, this is the
-          # value for the screen the console is set up for BEFORE any scene has run — see
+          # value for the screen the console is set up for before any scene has run — see
           # #first_scene_layers. The sprite layer is added by the
           # callers, which all do it the same way for every screen.
           def tiled_dispcnt(on = nil, turning: nil, bar: nil)
@@ -392,15 +392,15 @@ module VBlank
             bar || @layout.screen.boxes_backgrounds? ? WIN1_ENABLE : 0
           end
 
-          # THE SCREEN THE CONSOLE IS SET UP FOR BEFORE ANY SCENE HAS RUN, or nothing at all
-          # for a game whose scenes all want the same one — there the whole program IS the
+          # The screen the console is set up for before any scene has run, or nothing at all
+          # for a game whose scenes all want the same one — there the whole program is the
           # screen and every layer in it belongs on.
           #
-          # Where the scenes differ, boot names the FIRST scene's layers rather than the
+          # Where the scenes differ, boot names the first scene's layers rather than the
           # union of every background in the game. A layer switched on before its own scene
           # has told it where its map is does not draw blank: nought points at the start of
-          # video memory, which is where the tile PICTURES are, so it draws the art as
-          # though it were a grid, in front of everything. Naming too FEW layers instead is
+          # video memory, which is where the tile pictures are, so it draws the art as
+          # though it were a grid, in front of everything. Naming too few layers instead is
           # a black frame, which is the safe way to be wrong for the one frame it lasts.
           def first_scene_layers = (@layout.screen.first_scene_screen if @layout.screen.layers_differ_by_scene?)
 
@@ -426,7 +426,7 @@ module VBlank
             bits | display_window_bits
           end
 
-          # THE FIRST WINDOW, ON EVERY SCREEN OF A GAME THAT HOLDS A FADE TO A RECTANGLE (see
+          # The first window, on every screen of a game that holds a fade to a rectangle (see
           # ScreenEffects#emit_fade_window). The window is switched on here, in the display's
           # settings, and those are written whole each time the screen changes kind, so every
           # one of them carries it — the bitmap screens' too, where the picture is the console's
@@ -446,7 +446,7 @@ module VBlank
           # backgrounds landed on, and the first layer for a program with none, so a tiled
           # screen always has one on.
           #
-          # A SCENE that names none of them is a different thing and keeps its empty list:
+          # A scene that names none of them is a different thing and keeps its empty list:
           # it draws no scenery, so it wants no layer, and handing it one anyway leaves that
           # layer on with nobody to point it anywhere. A title screen of sprites and words
           # showed the game's tile pictures as a grid behind them for exactly that reason.
@@ -553,7 +553,7 @@ module VBlank
             @palette_tint.emit_changed_obj_lists_again(up: nil)
           end
 
-          # A PAINTED SCREEN WITH SPRITES SHOWN OVER IT (`sprite ..., over_picture: true`) keeps
+          # A painted screen with sprites shown over it (`sprite ..., over_picture: true`) keeps
           # the sprite layer on, as a tiled screen does: the display draws those sprites over
           # the picture as it sends it to the screen. Their pictures are in the half of sprite
           # memory no painted picture reaches (ScreenLayout#first_sprite_tile), so they are only
@@ -590,11 +590,11 @@ module VBlank
           # scene: switch into this scene's mode, but only if it isn't already there (a
           # transition). Steady frames — the same scene running again — cost just the
           # compare, and a buffered scene's DISPCNT is left to the page flip.
-          # WHAT A SCENE TELLS THE DISPLAY AS IT TAKES OVER. Both halves are skipped by the
+          # What a scene tells the display as it takes over. Both halves are skipped by the
           # programs that do not need them, so a game with one screen and one set of layers
           # emits nothing here at all.
           #
-          # SET UP, THEN SWITCH ON — the order matters and cannot be seen by reading the
+          # Set up, then switch on — the order matters and cannot be seen by reading the
           # registers once a frame. Pointing a layer at its map is the long part (a map per
           # layer, sent in one go) and the console draws the picture while it happens, so a
           # layer switched on first draws the tile pictures as a grid for whatever is left of
@@ -621,7 +621,7 @@ module VBlank
             emit_scene_art_upload(name) unless sends_scenery
           end
 
-          # THE COLOUR THIS SCENE SHOWS WHEREVER NOTHING IS DRAWN, in a game where a screen sets one
+          # The colour this scene shows wherever nothing is drawn, in a game where a screen sets one
           # (IR::SceneHandover::Arrival#backdrop). The console keeps it in the first place of its
           # background colours, which every tile's see-through pixels and every empty cell show;
           # it is written as the scene takes over, after the scene's own colours, whose table
@@ -636,7 +636,7 @@ module VBlank
             @scene_entry.emit_once_on_arrival(:backdrop, name) { emit_backdrop_color(arrival.backdrop) }
           end
 
-          # A PAINTED SCENE TAKING OVER, in a build that puts a screen's backdrop back after a walk
+          # A painted scene taking over, in a build that puts a screen's backdrop back after a walk
           # of the colours (PaletteTint#prepare_screen_backdrops): it has no backdrop to put back,
           # and says so before its screen and colours go up, since a tint kept across the change
           # walks them as they do. A scene drawn from tiles writes its own after (#emit_scene_backdrop).
@@ -656,9 +656,9 @@ module VBlank
             @emitter.emit(ASM.store_halfword(ACC, TMP))
           end
 
-          # WHICH LAYERS THIS SCENE BLENDS, for a game whose scenes want different answers.
+          # Which layers this scene blends, for a game whose scenes want different answers.
           #
-          # The blend unit is told which layers to mix by NUMBER, and scenes take turns with
+          # The blend unit is told which layers to mix by number, and scenes take turns with
           # the console's layers — so the number the see-through layer sits on belongs to
           # the scene rather than to the game. A scene that sees through nothing sets that
           # here too, which is what stops whichever background inherited that number being
@@ -675,7 +675,7 @@ module VBlank
           # write replaces, and an interrupt landing between the two would leave rows of the
           # picture drawn from it: the light's window right, and nothing outside it darkened.
           #
-          # A FADE PLACED IN THE STACK IS LEFT IN THE REGISTER by a scene that takes over, since it
+          # A fade placed in the stack is left in the register by a scene that takes over, since it
           # is the game's and stays until the game lifts it. The one scene that takes it off is a
           # scene the light is on in, which the fade takes turns with. A scene whose light shows
           # nothing outside it therefore mixes nothing unless it has an answer of its own: that
@@ -691,7 +691,7 @@ module VBlank
             @layer_blend.emit_screen_marker(name)
           end
 
-          # SET WHERE EACH PAINTED RUN SITS ON THIS SCENE'S SCREEN, for a run shown in several
+          # Set where each painted run sits on this scene's screen, for a run shown in several
           # scenes that each lay it out somewhere else (see ScreenLayout::PaintedRun). The copy
           # that paints it reads this, both the one as the scene takes over and the one the
           # game asks for with `changed`; a scene that does not show the run sets 0, so a copy
@@ -710,7 +710,7 @@ module VBlank
             end
           end
 
-          # PUT THIS SCENE'S BACKGROUNDS UP, ONCE, AS IT TAKES OVER.
+          # Put this scene's backgrounds up, once, as it takes over.
           #
           # Pointing a layer at a background sends the whole map into video memory and puts
           # the layer's scroll back to the top-left corner. That is right the first time and
@@ -723,7 +723,7 @@ module VBlank
           # A game whose scenery belongs to no scene emits none of this.
           def emit_scene_scenery(name)
             arrival = scene_handover.arrival(name)
-            # A SCENE WITH NO SCENERY OF ITS OWN STILL TAKES THE LAST ONE'S DOWN, so it marks
+            # A scene with no scenery of its own still takes the last one's down, so it marks
             # nobody's as up. Without this, a scene that comes back after one with no
             # scenery found its own marked as still up and skipped putting it up again —
             # keeping the cells and painted tiles of the last visit, where the scene rules
@@ -756,7 +756,7 @@ module VBlank
             end
           end
 
-          # SWITCH THE LAYERS OFF WHILE A SCENE'S SCENERY IS SENT, AND ON AGAIN AFTER.
+          # Switch the layers off while a scene's scenery is sent, and on again after.
           #
           # Scenes that take turns put their pictures and maps in the same room (see
           # ScreenLayout#place_each_scene), so sending this scene's writes over what the last
@@ -856,7 +856,7 @@ module VBlank
             end
           end
 
-          # A PAINTED SCREEN REACHED FROM ONE DRAWN FROM TILES STARTS AS THE BACKDROP. The picture
+          # A painted screen reached from one drawn from tiles starts as the backdrop. The picture
           # of the painted screen and the tiled screen's tiles and maps are the same video memory,
           # so what was tiles would show as coloured noise wherever the scene does not paint, on
           # both of a tear-free screen's pages. One painted screen reached from the other keeps the
@@ -873,7 +873,7 @@ module VBlank
             end
           end
 
-          # PUT UP AGAIN WHAT EVERY SCREEN DRAWN FROM TILES SHOWS, on the way back from a screen
+          # Put up again what every screen drawn from tiles shows, on the way back from a screen
           # of another kind (see IR::SceneHandover#always_up). Entering the mode sends the
           # pictures again; the maps of the scenery declared in no scene, and what the game
           # paints from lists, were sent once at power-on and nothing else sends them. The maps
@@ -889,7 +889,7 @@ module VBlank
             end
           end
 
-          # SWITCH ON THE LAYERS THIS SCENE USES, AND ONLY THOSE.
+          # Switch on the layers this scene uses, and only those.
           #
           # Scenes take turns, so they share the console's four layers rather than each
           # having some of their own (see ScreenLayout#layer_slots). A scene that uses fewer than
@@ -928,7 +928,7 @@ module VBlank
             emit_game_window_without_bar unless wanted.bar
           end
 
-          # A SCREEN WITH NO STATUS BAR, IN A BORDER, shows every layer in the game's screen again: a
+          # A screen with no status bar, in a border, shows every layer in the game's screen again: a
           # screen with a bar left its layer out there (BorderSprites#emit_bar_registers), and the
           # layer may be another background's on this screen, or the painted picture's. A game with no
           # bar, or none in a border, emits nothing.
@@ -1008,7 +1008,7 @@ module VBlank
             sends && IR::SceneHandover.tiles?(IR::Modes::SCREEN_OF_MODE.fetch(arrival.mode)) && @background_drawing.holds_layers?
           end
 
-          # A SCENE'S SPRITE PICTURES SENT AS ITS SCENERY IS, with the layers and the sprites off,
+          # A scene's sprite pictures sent as its scenery is, with the layers and the sprites off,
           # and back on in the gap or held for the picture the copy ran into (see
           # BackgroundDrawing::LAYERS_HELD). The sprites' rows were written in the gap before
           # this, so a picture the copy reaches part way down would show them torn at a row set by
@@ -1017,7 +1017,7 @@ module VBlank
           # as the interpreter does. A scene with no scenery of its own is held the same way: the
           # pair keeps the display's settings as they were and puts them back.
           #
-          # ONE HOLD FOR THE SCENERY AND THE PICTURES. Where the scene's scenery was sent just
+          # One hold for the scenery and the pictures. Where the scene's scenery was sent just
           # before, with the layers off, they are still off (SCENE_ART_FOLLOWS): switched on between
           # the two, a line drawn in that moment would show the scene with the last scene's sprite
           # pictures, at a row set by timing.
@@ -1043,7 +1043,7 @@ module VBlank
             emit_game_rows_back_in_gap if @layout.border && !first_picture_held?(name)
           end
 
-          # A SCENE WHOSE SENDING CAN RUN PAST THE GAP HOLDS ITS FIRST PICTURE WHATEVER THE TIMING.
+          # A scene whose sending can run past the gap holds its first picture whatever the timing.
           #
           # Where a sending ends decides whether the picture after it shows the scene (in the gap)
           # or the backdrop (past it), and two builds of one game move their pictures from different
@@ -1157,7 +1157,7 @@ module VBlank
           def placed_fade = @layout.screen.placed_fade
           def emit_call_cold_routine(label) = @placement.emit_call_cold_routine(label)
 
-          # WHAT THE SCREEN UP NOW DOES WITH A PAGE FINISHED TOO LATE (see IR::LatePages), kept
+          # What the screen up now does with a page finished too late (see IR::LatePages), kept
           # where the end of a pass can read it: nothing to wait, else one more than the row a
           # late page is still shown at once above — so a row of nothing, which shows a late
           # page only when it is finished during the break, is not mistaken for waiting.
@@ -1195,21 +1195,21 @@ module VBlank
             @frames.emit_pace_at_power_on
           end
 
-          # JUMP TO +shown+ INSTEAD OF WAITING, when the screen up asks to show a late page at once
-          # and the page just finished may be shown now. Waiting means sleeping until the NEXT
+          # Jump to +shown+ instead of waiting, when the screen up asks to show a late page at once
+          # and the page just finished may be shown now. Waiting means sleeping until the next
           # break between pictures, which for a page that missed its break is a whole picture.
           #
           # A page is late when the pass missed the break the game's pace aims at (see
           # Frames#emit_branch_if_on_pace) — so a game aiming at thirty does not show its page at
           # once on every pass, only on the ones that ran over thirty. A page on time waits.
           #
-          # WHERE THE SCREEN HAS GOT TO is the console's own count of the line it is sending, 0 to
+          # Where the screen has got to is the console's own count of the line it is sending, 0 to
           # 159 down the picture and 160 to 227 through the break after it, and it decides the
           # rest:
           #
-          #   - IN THE BREAK, nothing is being sent, so showing the page cannot tear, and a late
+          #   - In the break, nothing is being sent, so showing the page cannot tear, and a late
           #     page is shown.
-          #   - PART WAY DOWN THE PICTURE, showing it tears there, so a late page is shown only
+          #   - Part way down the picture, showing it tears there, so a late page is shown only
           #     above the row the game named — and, just after a page was shown part way down,
           #     only if it is late counting from the break after the coming one, so one tear does
           #     not set off another.
@@ -1392,12 +1392,12 @@ module VBlank
           # One column of a picture, stretched to a height worked out as the game runs. The
           # whole of a first-person view is this, once per strip across the screen.
           #
-          # It walks DOWN THE SCREEN, asking which row of the picture belongs at each screen
+          # It walks down the screen, asking which row of the picture belongs at each screen
           # row. The other way round — walking the picture and working out where each of its
           # rows lands — leaves gaps when stretching and writes some rows twice when squashing.
           # The interpreter walks the same way, which is what makes the two agree pixel for
           # pixel.
-          # ONE WALK FILLS THE WHOLE STRIP. Every pixel across a strip shows the same picture
+          # One walk fills the whole strip. Every pixel across a strip shows the same picture
           # column at the same height, so working the walk out once and writing its answer
           # across is not an optimisation — calling this once per pixel instead asks for the
           # same answer that many times over.
@@ -1417,7 +1417,7 @@ module VBlank
             @framebuffer.emit_column_runs(node.name, bmp, done) do |leave|
               @framebuffer.emit_clip_column_rows(leave)
 
-              # The left and right edges are settled ONCE here, because a strip has one x for
+              # The left and right edges are settled once here, because a strip has one x for
               # its whole height. A strip wholly inside them then writes with nothing to test;
               # one hanging over an edge takes a second copy of the rows that tests each pixel,
               # which is the rare case and pays for itself only there. A strip one pixel wide
@@ -1470,7 +1470,7 @@ module VBlank
           # colour = picture[(pos >> 16) * width + slice], the slice already folded into
           # COLUMN_SRC. Leaves it in ACC, or jumps to +skip+ when the pixel is see-through.
           #
-          # THE ROW CANNOT RUN PAST THE PICTURE, so nothing holds it back. The step is the
+          # The row cannot run past the picture, so nothing holds it back. The step is the
           # picture's height shifted up over the row count, rounded down, and the last row
           # reaches at most one less than that count times it — which is strictly less than
           # the picture's height however the rounding falls.
@@ -1525,7 +1525,7 @@ module VBlank
             emit_draw_rect_at_computed(node, width, height)
           end
 
-          # A rect whose x, y, width and height are ALL known while building.
+          # A rect whose x, y, width and height are all known while building.
           def emit_draw_rect_at_fixed(x, y, width, height, color)
             left = [x, @framebuffer.clip_left].max
             right = [x + width, @framebuffer.clip_right].min
@@ -1548,7 +1548,7 @@ module VBlank
           #
           # x and width settle to one on-screen span before any row fires — a rect has
           # one x for its whole height, the same reason draw_column_at settles its
-          # column once instead of testing it every row. Every row THEN checks its own
+          # column once instead of testing it every row. Every row then checks its own
           # y against the area, because a run-time y or height means a run-time set of
           # rows survives: an unclipped row is what wrapped a rect onto its neighbor.
           def emit_draw_rect_at_computed(node, width, height)
@@ -1609,7 +1609,7 @@ module VBlank
           CONTROL_REG = 7
 
           # One row of a run-time-positioned rect: skip it outright if its y falls
-          # outside the area (a row above or below it draws NOTHING, not a row wrapped
+          # outside the area (a row above or below it draws nothing, not a row wrapped
           # onto its neighbor), else work out where it lands in video memory and fire
           # the fill. +dy+ is how far below the rect's y this row is; the fill's control
           # word always lives in CONTROL_REG by the time this runs.
@@ -1682,7 +1682,7 @@ module VBlank
 
           BAR_SHOWN_EARLY = :__bar_shown_early # Note that the bar shown early is up
 
-          # A STATUS BAR SHOWN BEFORE ITS OWN LINE RUNS (IR::SceneHandover#bar_shown_early) goes up beside every
+          # A status bar shown before its own line runs (IR::SceneHandover#bar_shown_early) goes up beside every
           # background put up until it has gone up once, as Backends::SceneryWrites#emit_bar_beside puts it up on
           # the other cartridges, which the Advance's lowering does not mix in: the bar's own line notes it is up
           # (BAR_SHOWN_EARLY, cleared as the backgrounds' pictures go in, BackgroundDrawing#emit_boot_backgrounds,
@@ -1763,9 +1763,9 @@ module VBlank
           # clipping each row to the screen. This is the shared engine under blitting
           # an image and under a sprite's save/restore of what it covers.
           #
-          # +vram:+ picks the direction. `:dest` streams the buffer ONTO the screen —
+          # +vram:+ picks the direction. `:dest` streams the buffer onto the screen —
           # a blit, or a sprite putting back the pixels it had covered. `:src` reads
-          # the screen INTO the buffer — a sprite capturing what it is about to cover.
+          # the screen into the buffer — a sprite capturing what it is about to cover.
           # Everything else about a row is identical either way, which is the whole
           # reason this is one method.
           #
@@ -1943,7 +1943,7 @@ module VBlank
 
           TEXT_POINTS = Messages::MadeNames.make(:text_points_routine)
 
-          # THE ROUTINE THAT STAMPS A TABLE OF PIXELS: r0 the colour, r1 the table, r2 how many.
+          # The routine that stamps a table of pixels: r0 the colour, r1 the table, r2 how many.
           # Only ever entered by a call, and made only for a game with such a line.
           def emit_text_points_routine
             return unless @text_points_used
@@ -2068,7 +2068,7 @@ module VBlank
               end
               emit(ASM.pop(15))
               # Where it ends, so a profile of the finished game can say how much of a frame
-              # went into drawing digits. A routine the LOWERING makes has no other record of
+              # went into drawing digits. A routine the lowering makes has no other record of
               # its span — func_ranges only knows routines somebody wrote.
               place_label(DerivedNames.routine_end(Messages::MadeNames.make(:digit_routine, font: font_name)))
             end
