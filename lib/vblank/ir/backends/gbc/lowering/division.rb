@@ -14,7 +14,7 @@ module VBlank
           # is known before the game runs:
           #
           # - A power of two is a shift and an AND, written where the sum is.
-          # - A byte, 3 to 255, is the same long division with what is over held in one register and
+          # - A BYTE, 3 to 255, is the same long division with what is over held in one register and
           #   the divisor in another (Runtime::Int32#emit_divide_by_byte), which a game carries only
           #   when it divides so. That is the divisor of most of a game's divides: ten for each digit of
           #   a score, sixty for a minute.

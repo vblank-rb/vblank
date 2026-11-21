@@ -491,7 +491,7 @@ module VBlank
 
           # The numbers a note's voice is tuned by, as its registers take them: the period of a
           # square or wave note, and the hiss's clock (and whether it is the metallic one) for a
-          # noise note. Rest for a rest.
+          # noise note. REST for a rest.
           def tuning(voice, pitch, clock = nil)
             return REST if pitch.zero?
 

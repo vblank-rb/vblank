@@ -471,7 +471,7 @@ module VBlank
               asm.ret
             end
 
-            # rt_big_cells: A cells from cell, along a row (B = 0) or down a column (B = 1), each its
+            # rt_big_cells: A cells from CELL, along a row (B = 0) or down a column (B = 1), each its
             # tile and colours into the copy of the grid — and into the list for the blank while
             # STAGING asks for it.
             def emit_cells(asm, at, buffer, staged, repeats)
@@ -590,7 +590,7 @@ module VBlank
               asm.ret
             end
 
-            # The cell at cell brought round into the grid, for a map that comes round past its edges:
+            # The cell at CELL brought round into the grid, for a map that comes round past its edges:
             # its column and row each kept to the grid's size (COL_WRAP, ROW_WRAP), the high bytes
             # nought. Its place in the grid, the bottom five bits of each, stays the same, and the next
             # cell along counts on from it. B is used.
@@ -716,7 +716,7 @@ module VBlank
 
             # rt_big_whole_round, A the grid's columns less one (COL_WRAP): the view's columns round
             # the grid. They start at the view's column round the grid (START) and run to the grid's
-            # last column or the view's, those below the map's size on it (run) and the rest not
+            # last column or the view's, those below the map's size on it (RUN) and the rest not
             # (TRAIL); the view's 21 columns are fewer than the grid's, so they come round once at most,
             # and go on from the grid's first column, on the map (RUN2) and past it (TRAIL2). B, H and
             # L are used.

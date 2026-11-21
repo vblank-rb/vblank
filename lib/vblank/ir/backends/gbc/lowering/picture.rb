@@ -564,7 +564,7 @@ module VBlank
             end
 
             # The groups up now, as the sprites about to be placed need them: each slot's, or NONE
-            # for a number naming no group — or, for a set of a scene not up yet, follow, the group
+            # for a number naming no group — or, for a set of a scene not up yet, FOLLOW, the group
             # the game sets by the blank.
             def emit_groups_wanted
               @group_slots.each do |name, slots|
