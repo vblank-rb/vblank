@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# SPRITES OVER A PAINTED SCREEN ON THE SUPER NINTENDO (Runtime::Paint, "SPRITES OVER THE PICTURE"):
+# Sprites over a painted screen on the Super Nintendo (Runtime::Paint, "sprites over the picture"):
 # their tiles go in the last of video memory, which the painted screen leaves, their colours in
 # places of the colour memory the painting keeps clear of, and the blank sends the sprite table
 # with the map. What the sprite does on the screen is test/all/vblank/builder/test_sprite_over_picture.rb
@@ -50,7 +50,7 @@ class TestSNESPaintSprites < Minitest::Test
     1 - rom.profile(out: StringIO.new, frames: FRAMES).idle_share
   end
 
-  # THE BUDGET for a sprite over the picture is what a tiled screen spends on the same sprite, and
+  # The budget for a sprite over the picture is what a tiled screen spends on the same sprite, and
   # the sprite table sent in the blank, which a tiled screen sends whether it shows a sprite or not.
   # The sprite: placed in the table each pass and the row the last pass wrote hidden again, as on a
   # tiled screen (Runtime::Picture's rt_sprite_place), measured there as the same game on a tiled

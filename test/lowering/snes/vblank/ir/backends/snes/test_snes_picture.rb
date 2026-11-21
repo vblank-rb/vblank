@@ -170,7 +170,7 @@ class TestSNESPicture < Minitest::Test
     assert_empty run.black_frames
   end
 
-  # CELLS GO BEFORE THEIR COLOURS. Two hundred cells take more than a blank, so they arrive over two
+  # Cells go before their colours. Two hundred cells take more than a blank, so they arrive over two
   # frames, and a fade of the same pass must wait for the last of them: a frame showing the new
   # colours over a cell still to change is a picture no pass made.
   def test_cells_changed_with_a_fade_show_no_new_colours_over_old_cells
@@ -205,7 +205,7 @@ class TestSNESPicture < Minitest::Test
     assert_empty pictures.select { |shown, last_cell| shown != wall && shown.positive? && last_cell == shown }
   end
 
-  # A STATUS BAR shows from its top row to the bottom of the screen, over a field that scrolls under
+  # A status bar shows from its top row to the bottom of the screen, over a field that scrolls under
   # it and is hidden there: the bar's see-through pixels, and its rows past its two, show the
   # backdrop. A sprite goes over it. The bar is moved each pass, to rows either side of 127 (the
   # most one step of the console's line table counts), to the top, past the bottom and above it,
@@ -237,7 +237,7 @@ class TestSNESPicture < Minitest::Test
     assert_equal 14, run[:t]
   end
 
-  # A SCENE WITH A BAR beside its field, then one with no bar and two backgrounds: the bar's lines
+  # A scene with a bar beside its field, then one with no bar and two backgrounds: the bar's lines
   # stop, and the second scene's front background shows on every row, the bar's old rows among them.
   # The bar's cell changes every pass, as a clock's digit does.
   def test_a_bar_a_scene_puts_up_leaves_with_the_scene
@@ -276,7 +276,7 @@ class TestSNESPicture < Minitest::Test
     assert_equal blue, run.screen.pixel(8, 8)
   end
 
-  # BACKGROUNDS IN LAYERS are stacked as the layers say, not as they were declared: the near one is
+  # Backgrounds in layers are stacked as the layers say, not as they were declared: the near one is
   # declared first and still drawn in front, its see-through cells showing the far one behind, both
   # scrolling at their own speeds, and a sprite that names no layer in front of both.
   def test_backgrounds_in_layers_are_stacked_as_the_layers_say
@@ -310,7 +310,7 @@ class TestSNESPicture < Minitest::Test
     assert_equal 10, run[:t]
   end
 
-  # SPRITES IN LAYERS, between the backgrounds: a walker in front of the floor and behind a fence
+  # Sprites in layers, between the backgrounds: a walker in front of the floor and behind a fence
   # of bars with gaps, a bird in front of everything, and a mole behind both backgrounds, seen
   # only through a hole in the floor where the fence has a gap too. Each crosses the others.
   def test_sprites_in_layers_go_behind_the_backgrounds_in_front_of_them
@@ -361,7 +361,7 @@ class TestSNESPicture < Minitest::Test
     assert_match(/behind a background that every screen shows/, error.message)
   end
 
-  # A BACKGROUND BENT ROW BY ROW: each of the screen's rows shown at its own sideways offset, worked
+  # A background bent row by row: each of the screen's rows shown at its own sideways offset, worked
   # out by the game at every frame boundary for the frame after, on top of the layer's own scroll.
   # The block counts its rows too, which the checked run holds to the interpreter's count: 224 at
   # each boundary. The other layer stays flat.
@@ -729,7 +729,7 @@ class TestSNESPicture < Minitest::Test
     assert_operator run[:shown], :<, 30, "twenty passes, and a few frames of setting up"
   end
 
-  # TILES PAINTED FROM A LIST: each byte two pixels, the left one in the low four bits, each four
+  # Tiles painted from a list: each byte two pixels, the left one in the low four bits, each four
   # bits a place in the run's colours. The bytes are written so every place shows at every pixel of
   # a row over the passes, and the copy is owed, so it arrives in the gap after the pass that said
   # `changed`. A second run's list holds fewer bytes than its tiles, so the rest is see-through; it
@@ -841,7 +841,7 @@ class TestSNESPicture < Minitest::Test
     assert_match(/100x16.*multiple of 8/, error.message)
   end
 
-  # A SPRITE DRAWN WITH OTHER COLOURS (`draw_with`), as pacman flashes when caught: each place of
+  # A sprite drawn with other colours (`draw_with`), as pacman flashes when caught: each place of
   # the picture's own list shows the colour at the same place of the list it is drawn with, one
   # of two lists picked by a number the game works out, and its own colours again with `:own`. A
   # second sprite shows the same picture in its own colours throughout, and the reader of the
@@ -871,7 +871,7 @@ class TestSNESPicture < Minitest::Test
     assert_equal %i[face face], run.sprites.map(&:picture)
   end
 
-  # A LAYER HALF SEE-THROUGH: colour math adds what is behind it to it and halves the sum, on every
+  # A layer half see-through: colour math adds what is behind it to it and halves the sum, on every
   # pixel where its own is drawn; where its tiles are see-through, what is behind shows plain, and a
   # sprite in front is solid. 55 is half on the interpreter too: what is behind takes its share
   # rounded down to sixteenths, 8. The console halves the channels' sum; the interpreter mixes them
@@ -903,7 +903,7 @@ class TestSNESPicture < Minitest::Test
     assert_equal 8, run[:t]
   end
 
-  # A LAYER OF SPRITES HALF SEE-THROUGH, as lake's jellyfish are: each is mixed with the scenery
+  # A layer of sprites half see-through, as lake's jellyfish are: each is mixed with the scenery
   # behind it, never with another sprite — a ghost passing over the hero hides the hero and shows
   # the floor through itself — and its see-through pixels show what is behind plain. The ghosts
   # take the console's last four sprite palettes, the only ones its colour math reaches.

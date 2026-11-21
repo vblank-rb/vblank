@@ -225,7 +225,7 @@ class TestSNESPaint < Minitest::Test
     assert_equal [1] * 7, (4..10).map { |pass| run.frames_took(pass) }
   end
 
-  # A BIG NEW PICTURE IS LOADED WITH THE SCREEN OFF, as the console's own games load a screen: half
+  # A big new picture is loaded with the screen off, as the console's own games load a screen: half
   # the screen of tiles no pass painted before, 448 tiles, is 28672 bytes, more than five blanks
   # hold. With the screen off video RAM takes writes on every line, so it goes in one go and the
   # screen comes back on in the blank after: one black frame, and then the new picture whole. The
@@ -293,7 +293,7 @@ class TestSNESPaint < Minitest::Test
     assert_equal [1] * 19, (2..20).map { |pass| run.frames_took(pass) }
   end
 
-  # A TILE ON THE SCREEN PAINTED AGAIN goes into the slot of video RAM its cell shows, so it is
+  # A tile on the screen painted again goes into the slot of video RAM its cell shows, so it is
   # seen the moment it arrives. In a big change those tiles go last, with the map, in one blank:
   # here a word at the top changes colour each pass while a band of the screen the last pass left
   # clear is filled — more than one blank's worth, of tiles not on the screen yet — and the word
@@ -370,7 +370,7 @@ class TestSNESPaint < Minitest::Test
     assert_equal Color.resolve(:blue), run.screen.pixel(5, 5)
   end
 
-  # THE CAMERA moves the view over the painted picture: screen (0, 0) shows what was painted at the
+  # The camera moves the view over the painted picture: screen (0, 0) shows what was painted at the
   # camera's place, and past the picture's edges the backdrop shows, black, faded with the rest. The
   # picture has a different colour along each edge, so a view that wraps round shows one edge's
   # colour where the backdrop should be. The view goes past every edge, and past the picture
@@ -426,7 +426,7 @@ class TestSNESPaint < Minitest::Test
     assert_match(/screen :tiled/, error.message)
   end
 
-  # A PAINTED SPRITE moving every pass costs the patch under it put back, the patch at its new place
+  # A painted sprite moving every pass costs the patch under it put back, the patch at its new place
   # kept, and its picture painted there: a 16×16 picture at a place off the tile edges touches nine
   # tiles. That all fits one frame, as on the interpreter.
   def test_a_painted_sprite_moving_every_pass_keeps_up_with_the_screen
@@ -468,7 +468,7 @@ class TestSNESPaint < Minitest::Test
     assert_equal Color.resolve(:cyan), run.screen.pixel(1, 7)
   end
 
-  # A PASS THAT PAINTS WHAT THE LAST ONE DID costs almost nothing: a clear and the same paintings
+  # A pass that paints what the last one did costs almost nothing: a clear and the same paintings
   # at the same places leave every tile as it was, so none is painted again or sent. The menu
   # tests' game clears and draws four rows and a cursor every pass, and a tap moves the cursor,
   # which paints two rows and the cursor again: each pass takes one frame, the first included,
@@ -526,7 +526,7 @@ class TestSNESPaint < Minitest::Test
     assert_equal 12, run[:n]
   end
 
-  # TWO PAINTINGS THAT SHARE A TILE, one changing and one not: the tile is painted again with
+  # Two paintings that share a tile, one changing and one not: the tile is painted again with
   # both, in the order the game painted them. A bar under a picture whose colour changes, a
   # picture over a bar that moves a pixel at a time, and a rectangle over both, each across tile
   # edges, so a tile painted with only the paintings that changed, or in the wrong order, shows.
@@ -598,7 +598,7 @@ class TestSNESPaint < Minitest::Test
     assert_equal 16, run[:n]
   end
 
-  # A TILE'S KEY TAKES IN EVERY PAINTING OVER IT IN ORDER, however many. Here one tile has 36
+  # A tile's key takes in every painting over it in order, however many. Here one tile has 36
   # paintings: two of them, the 4th and the 36th, colour the same pixel, and they change places
   # every pass. A key that let paintings 32 apart trade places unseen would keep the last
   # pass's colour on the screen.
@@ -626,7 +626,7 @@ class TestSNESPaint < Minitest::Test
     assert_equal 8, run[:n]
   end
 
-  # TEXT WHOSE COLOUR CHANGES EVERY PASS is painted in an ink of its own, whose colour is all that
+  # Text whose colour changes every pass is painted in an ink of its own, whose colour is all that
   # changes: four rows of 21 letters, white and yellow by turns, take one frame a pass, as on the
   # Advance, and never show a frame of some rows in one colour and some in the other. Painting and
   # sending their tiles again took five frames a pass.
@@ -670,7 +670,7 @@ class TestSNESPaint < Minitest::Test
     assert_equal Color.resolve(:blue), run.screen.pixel(2, 2)
   end
 
-  # A PASS THAT DRAWS WHAT THE LAST ONE DREW: 160 small rectangles after a clear, the same every
+  # A pass that draws what the last one drew: 160 small rectangles after a clear, the same every
   # pass, each compared with the one the last pass wrote down at its place and passed over, take
   # one frame a pass. Writing each down and taking it into its tile's key took eight.
   def test_a_pass_of_160_paintings_the_same_as_the_last_takes_one_frame
@@ -768,7 +768,7 @@ class TestSNESPaint < Minitest::Test
     assert_equal Color.resolve(:white), run.screen.pixel(60, 31)
   end
 
-  # A BLANK CARRIES WHAT THE CONSOLE CAN COPY IN IT: 165 bytes a line, from where the copying
+  # A blank carries what the console can copy in it: 165 bytes a line, from where the copying
   # starts to the blank's last line, and a run of tiles that goes on into the next row copied as
   # one. The whole screen in a new colour every other pass sends all 896 tiles, which took 14
   # blanks at 146 bytes a line with two lines kept back and a copy for every row.
@@ -788,7 +788,7 @@ class TestSNESPaint < Minitest::Test
     assert_operator run.frames_took(3), :<=, 33
   end
 
-  # MORE PAINTINGS THAN THE LOG HOLDS: the pass paints what it has written down when the log is
+  # More paintings than the log holds: the pass paints what it has written down when the log is
   # full, and goes on. Every tile here is painted before that and after it, half of them the
   # same every pass and half changing.
   def test_a_pass_of_more_paintings_than_the_log_holds

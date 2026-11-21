@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A PAINTED SCREEN OF BIG PIXELS ON THE SUPER NINTENDO'S CARTRIDGE (`screen :bitmap, pixel_size: 2`,
+# A painted screen of big pixels on the Super Nintendo's cartridge (`screen :bitmap, pixel_size: 2`,
 # Runtime::PaintDoubled): Mode 7's layer shows each of the game's pixels as a square of four, and a
 # pass's change is copied a byte a pixel. What a game sees of it, held to the interpreter, is
 # test/console/snes/vblank/builder/test_screen_pixel_size_on_the_super_nintendo.rb.
