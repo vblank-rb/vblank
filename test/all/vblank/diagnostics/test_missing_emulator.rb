@@ -2,10 +2,10 @@
 
 require "test_helper"
 
-# WHAT A PERSON IS TOLD WHEN THE EMULATOR WILL NOT LOAD: each of the four cases, with the facts it
+# What a person is told when the emulator will not load: each of the four cases, with the facts it
 # turns on handed in, so none needs a machine where the emulator is missing in that way.
 class TestMissingEmulator < Minitest::Test
-  # THE ERROR SETTLES IT, NOT THE BUNDLE. A tool run as a plain `ruby` subprocess has no bundle
+  # The error settles it, not the bundle. A tool run as a plain `ruby` subprocess has no bundle
   # at all, so "is the gem in your bundle" answers no however the load really failed — and the
   # advice that follows tells somebody to add a Gemfile block they already have. What the loader
   # said is the thing that knows.

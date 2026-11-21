@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A CARTRIDGE LAID OUT THE HIROM WAY, made from one VBlank built the LoROM way, standing in for
+# A cartridge laid out the HIROM way, made from one VBlank built the LoROM way, standing in for
 # the retail cartridges (about half the console's library) that a game rebuilding one plays
 # beside itself.
 #
@@ -91,7 +91,7 @@ class TestSNESROM < Minitest::Test
     assert_equal "Pong".upcase, rom.title
   end
 
-  # A CARTRIDGE FILE LAID OUT THE HIROM WAY is one too, its header found at $FFC0 of the file,
+  # A cartridge file laid out the HIROM way is one too, its header found at $FFC0 of the file,
   # and its title read from there. Its map mode keeps the fast bit the LoROM one had.
   def test_a_hirom_file_is_a_cartridge_and_its_title_is_read_where_it_is
     hirom = hirom_layout_of(rom)

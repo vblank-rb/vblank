@@ -5,7 +5,7 @@ require "test_helper"
 require "stringio"
 require "tmpdir"
 
-# WHICH PARTS OF THE LIBRARY SERVE EACH CONSOLE, asked of one place (Console::Kit): a game for a
+# Which parts of the library serve each console, asked of one place (Console::Kit): a game for a
 # console is built by that console's build into its own kind of cartridge, and nothing outside a
 # console's own code asks which console it is by comparing names.
 class TestKit < Minitest::Test

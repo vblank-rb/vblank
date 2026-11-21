@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# WHAT A PROGRAM'S OWN SETTINGS ASK OF A CONSOLE (Console::Questions#program_question), asked of
+# What a program's own settings ask of a console (Console::Questions#program_question), asked of
 # every console's build at once, as test_refused_verbs.rb asks each refused verb.
 class TestQuestions < Minitest::Test
   # Every console's build but the Genesis's writes the main volume to its sound chip
