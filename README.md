@@ -1,12 +1,12 @@
 # VBlank
 
-**Write a 2D retro game in plain Ruby, and build it for the consoles it was made for.**
+**Write a retro game in plain Ruby, and build it for the consoles it was made for.**
 
 ![Six games built with VBlank, running at once in an emulator: Pac-Man, a first-person maze, a walk through a scrolling world, Breakout, a shooter, and a lantern-lit cave](assets/examples.gif)
 
 > Six of the [examples](examples/), each a real Game Boy Advance cartridge running in an emulator.
 
-You write Ruby. VBlank turns it into a cartridge that boots on the real console or in any emulator, and the same game can also be a program for a computer or a page in a browser. The framework manages the machine: no video memory, no registers, no assembly. The language is about 2D games today: tiles, sprites, layers and a painted screen.
+You write Ruby. VBlank turns it into a cartridge that boots on the real console or in any emulator, and the same game can also be a program for a computer or a page in a browser. The framework manages the machine: no video memory, no registers, no assembly. It draws with tiles, sprites, layers and a painted screen, and shows places in 3D.
 
 It is made for somebody who knows Ruby and has never touched an old console. You name colours, not palettes; you say `sprite` and `blit`, not OAM and DMA. A verb is plain to call, and takes settings that make it cheaper when a game on a small machine needs them.
 
