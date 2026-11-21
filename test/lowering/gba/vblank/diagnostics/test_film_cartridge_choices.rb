@@ -4,7 +4,7 @@ require "test_helper"
 require "stringio"
 require "tmpdir"
 
-# WHAT A FILM SIDE IS TOLD, and what it refuses: the lowering that shows the game, and the console a
+# What a film side is told, and what it refuses: the lowering that shows the game, and the console a
 # game to build is built for. A lowering side plays the game's cartridge in the emulator for its first
 # frames, to find how long the cartridge takes to start (FilmCartridge#cartridge_start_frames), so this
 # is the Advance's run's.

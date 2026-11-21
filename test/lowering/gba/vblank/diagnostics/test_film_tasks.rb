@@ -8,7 +8,7 @@ require "tmpdir"
 require "vblank/diagnostics/film_tasks"
 require "heard_film"
 
-# A GAME'S `rake film NAME=...`: the film files in its folder, each a few lines naming frames and
+# A game's `rake film NAME=...`: the film files in its folder, each a few lines naming frames and
 # buttons, made into MP4s of the sides its Rakefile names. The games here are small ones of this
 # repository's own, filmed beside themselves.
 class TestFilmTasks < Minitest::Test
@@ -158,7 +158,7 @@ class TestFilmTasks < Minitest::Test
     assert_match(/parts 1\.\.90/, error.message)
   end
 
-  # SOUND. A film file's `sound` hears that side alone: the other side's tone is not in the film.
+  # Sound. A film file's `sound` hears that side alone: the other side's tone is not in the film.
   def test_a_film_files_sound_hears_the_side_it_names
     film_file("heard", "parts 1..30\nsound \"ours\"\n")
     rakefile = tasks(sides: { "ours" => -> { beeping(beep_on: 6) }, "theirs" => -> { beeping(beep_on: 20) } })

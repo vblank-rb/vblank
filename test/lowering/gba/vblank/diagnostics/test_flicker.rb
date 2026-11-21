@@ -23,7 +23,7 @@ class TestFlickerRule < Minitest::Test
 
   private def read(before, after) = Flicker.read(before, after, width: W)
 
-  # THE BUG. Two pictures that disagree, and neither of them moves: a dissolve
+  # The bug. Two pictures that disagree, and neither of them moves: a dissolve
   # whose dots went half to each. Nothing is coming to fix those pixels.
   def test_two_pictures_stuck_apart_are_reported
     a = marked(40)
@@ -50,7 +50,7 @@ class TestFlickerRule < Minitest::Test
     refute_predicate read([same, same.dup], [same.dup, same.dup]), :losing?
   end
 
-  # THE ONE A BUILD-TIME CHECK CANNOT DO. A change painted into BOTH pictures —
+  # The one a build-time check cannot do. A change painted into both pictures —
   # what `keep_showing` does, and what wolf3d's fizzle does with two walkers —
   # converges. The second snapshot has them agreeing, so nothing is reported.
   def test_a_change_painted_into_both_pictures_is_not_reported
@@ -60,7 +60,7 @@ class TestFlickerRule < Minitest::Test
     refute_predicate read([behind, ahead], [behind.dup, marked(40)]), :losing?
   end
 
-  # A TRAIL. The drawing moved on and only one picture followed it, so the pixels
+  # A trail. The drawing moved on and only one picture followed it, so the pixels
   # it left behind are stuck in the other one. Over a two-frame window both
   # pictures have had their turn, so a picture that did not follow has declined
   # to — which is the whole reason the window is two frames and not one.
@@ -97,7 +97,7 @@ class TestFlickerRule < Minitest::Test
     refute_predicate Flicker::Reading.none, :losing?
   end
 
-  # ...and a reading that WAS taken and found nothing says that instead.
+  # ...and a reading that was taken and found nothing says that instead.
   def test_a_clean_reading_is_measured_and_not_losing
     same = marked(40)
     reading = read([same, same.dup], [same.dup, same.dup])
@@ -135,7 +135,7 @@ class TestFlickerMeasurable < Minitest::Test
     end
   end
 
-  # On a screen with pixels of its own, exactly one of them IS asked — so a bitmap
+  # On a screen with pixels of its own, exactly one of them is asked — so a bitmap
   # game is never left with no question answered about its picture. A tiled screen
   # has no framebuffer, so neither applies and both say "not measured".
   def test_a_bitmap_screen_always_gets_one_of_the_two

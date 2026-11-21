@@ -135,7 +135,7 @@ class TestFilm < Minitest::Test
     refute_equal shown[1], shown[3]
   end
 
-  # A PROBE A GAME HAS DRIVEN TO THE MOMENT WORTH FILMING is a side as it stands: the film's frame 1
+  # A probe a game has driven to the moment worth filming is a side as it stands: the film's frame 1
   # is the frame after the probe's last, and closing the side closes the probe, its save folder too.
   def test_a_probe_driven_first_is_filmed_from_where_it_stands
     probe = VBlank::Playthroughs::Probe.open(game(CYCLE))
@@ -403,7 +403,7 @@ class TestFilm < Minitest::Test
     assert_match(/brew install ffmpeg/, error.message)
   end
 
-  # SOUND. A film asked for none has no sound in it, and is the same bytes each time it is made.
+  # Sound. A film asked for none has no sound in it, and is the same bytes each time it is made.
   def test_a_film_with_no_sound_asked_for_has_none
     one = make_film(parts: [1..3])
     first = File.binread(one)

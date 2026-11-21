@@ -4,7 +4,7 @@ require "test_helper"
 require "stringio"
 require "tmpdir"
 
-# ONE SIDE OF A FILM, OPENED: a cartridge brought to the moment before the film's first frame,
+# One side of a film, opened: a cartridge brought to the moment before the film's first frame,
 # from power-on, after a tape, or from a saved state, in a save folder of its own. Each start is
 # checked by the picture it leads to: the same picture as playing there from power-on.
 class TestFilmCartridge < Minitest::Test
