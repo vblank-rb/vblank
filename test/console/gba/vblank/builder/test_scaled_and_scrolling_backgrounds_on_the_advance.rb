@@ -2,10 +2,10 @@
 
 require "test_helper"
 
-# THE TESTS OF vblank/builder/test_scaled_and_scrolling_backgrounds.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY, kept apart so that the
+# The tests of vblank/builder/test_scaled_and_scrolling_backgrounds.rb that only the Game Boy Advance can play, kept apart so that the
 # Game Boy Color's run never loads them (test/console/gba); the rest are in that file.
 #
-# A background that turns or resizes, BESIDE ordinary scrolling ones, on one screen.
+# A background that turns or resizes, beside ordinary scrolling ones, on one screen.
 #
 # The console has three tile arrangements and the framework offered the two extremes:
 # `screen :tiled` gives four scrolling layers and none of them can turn, `screen
@@ -31,7 +31,7 @@ class TestScaledAndScrollingBackgroundsOnTheAdvance < Minitest::Test
     grid.map(&:join)
   end
 
-  # THE ARRANGEMENT ITSELF: two ordinary scrolling layers and one that resizes, all on
+  # The arrangement itself: two ordinary scrolling layers and one that resizes, all on
   # one screen, all three showing. Built at the size it was drawn (1.0) so the picture
   # reads exactly as authored and each layer is judged by one pixel.
   private def three_layer_program(scale: 1.0)
@@ -75,7 +75,7 @@ class TestScaledAndScrollingBackgroundsOnTheAdvance < Minitest::Test
 
   # A scrolling layer keeps everything screen :tiled gives it while a resizing layer
   # shares the screen — the scroll is the one worth asserting, because it is the hardware
-  # the resizing layer does NOT have.
+  # the resizing layer does not have.
   def test_a_scrolling_layer_still_scrolls_beside_a_resizing_one
     b = Builder.new
     b.instance_eval { screen :tiled }
@@ -94,14 +94,14 @@ class TestScaledAndScrollingBackgroundsOnTheAdvance < Minitest::Test
       end
     end
     b.finalize_program
-    # The scroll is applied at the frame boundary, so the moved picture is the SECOND
+    # The scroll is applied at the frame boundary, so the moved picture is the second
     # frame's — the same one frame of lag a scroll has with no resizing layer present.
     s = game_player.run(b.program, frames: 2).screen
     assert_equal Color.resolve(:red), s.pixel(4, 12), "the mark moved one cell left as the layer scrolled"
     refute_equal Color.resolve(:red), s.pixel(12, 12), "...and is no longer where it was drawn"
   end
 
-  # THE WHOLE POINT IS THAT THE PLAIN LAYERS LOSE NOTHING, and swapping a map and
+  # The whole point is that the plain layers lose nothing, and swapping a map and
   # changing one cell are the two that touch a layer's cells rather than its registers —
   # the ones a different hardware arrangement could plausibly have broken. A game with a
   # turning title over rooms it walks between needs both.
@@ -131,7 +131,7 @@ class TestScaledAndScrollingBackgroundsOnTheAdvance < Minitest::Test
     assert_equal Color.resolve(:red),   s.pixel(4, 4),   "...and set_tile put one of its cells back"
   end
 
-  # THE STACK DECIDES WHERE THE TURNING LAYER SITS, like anything else the console
+  # The stack decides where the turning layer sits, like anything else the console
   # redraws — it is not pinned in front just because of the hardware it uses. A layer
   # declared behind a solid one is covered by it.
   def test_the_stack_can_put_the_resizing_layer_behind_a_scrolling_one
@@ -156,7 +156,7 @@ class TestScaledAndScrollingBackgroundsOnTheAdvance < Minitest::Test
                  "the scrolling layer in front covers the resizing one behind it"
   end
 
-  # A SEE-THROUGH LAYER IS THE OTHER THING screen :tiled gives that this must not cost,
+  # A see-through layer is the other thing screen :tiled gives that this must not cost,
   # because it is the half of a title screen that the turning piece flies over: rays or
   # mist blended over a backdrop while something zooms in front of them.
   def test_a_see_through_layer_still_shows_through_beside_a_resizing_one

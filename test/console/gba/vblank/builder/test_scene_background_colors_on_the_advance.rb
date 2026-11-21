@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# EACH SCENE'S BACKGROUND COLOURS ARE ITS OWN. The console holds one table of background
+# Each scene's background colours are its own. The console holds one table of background
 # colours, in sixteen groups of sixteen, and two scenes are never on screen together — so a
 # title screen and a room each get the whole table beside what every scene shows, the way a
 # scene's tile pictures already take turns with the other scenes'.

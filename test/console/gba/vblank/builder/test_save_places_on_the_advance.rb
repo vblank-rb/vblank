@@ -57,10 +57,10 @@ module SavePlacesGames
   end
 end
 
-# THE TESTS OF vblank/builder/test_save_places.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY, kept apart so that the
+# The tests of vblank/builder/test_save_places.rb that only the Game Boy Advance can play, kept apart so that the
 # Game Boy Color's run never loads them (test/console/gba); the rest are in that file.
 #
-# WHERE EACH `save_data` RECORD GOES AT POWER-ON, asked one rule at a time.
+# Where each `save_data` RECORD GOES AT POWER-ON, asked one rule at a time.
 #
 # Each test starts a game from a table of places it wrote itself — the save memory an
 # earlier build of the game would have left — powers it on, and reads back where every
