@@ -4,10 +4,10 @@ module VBlank
   module IR
     module Backends
       class Genesis
-        # WHAT A PAINTED SCREEN'S GAME PAINTS WITH, worked out while the game is built: its colours,
+        # What a painted screen's game paints with, worked out while the game is built: its colours,
         # and its pictures and text in the form Runtime::Paint copies them onto the screen.
         #
-        # THE COLOURS. A painted screen is tiles whose pixels are four bits each (Runtime::Paint), so
+        # The colours. A painted screen is tiles whose pixels are four bits each (Runtime::Paint), so
         # every pixel is one of sixteen colours from one list of the console's colour memory. Every
         # colour the game can paint is known before it runs — each drawing names its colours — so the
         # list is made here, and the game paints a colour's place in it. Place 0 is black: a pixel of
@@ -15,7 +15,7 @@ module VBlank
         # too, the colour the screen starts in. A Genesis keeps three bits of each colour channel, so two
         # colours of the game that differ only below those are one colour here, and share a place.
         #
-        # A PICTURE is kept as a byte for each of its pixels, row by row: the place of the pixel's
+        # A picture is kept as a byte for each of its pixels, row by row: the place of the pixel's
         # colour, or Runtime::Paint::NOT_DRAWN for one the picture leaves see-through.
         class PaintedArt
           COLORS = 16

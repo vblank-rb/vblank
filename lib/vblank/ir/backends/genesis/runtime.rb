@@ -18,11 +18,11 @@ module VBlank
   module IR
     module Backends
       class Genesis
-        # THE RUNTIME every Genesis cartridge carries: from power-on to the game's first line (Boot),
+        # The runtime every Genesis cartridge carries: from power-on to the game's first line (Boot),
         # the arithmetic (Int32), the frame and the buttons (Frame), the lists (Lists), and the
         # picture (Picture).
         #
-        # HOW ITS ROUTINES ARE CALLED. With JSR (and they return with RTS), from anywhere in the
+        # How its routines are called. With JSR (and they return with RTS), from anywhere in the
         # cartridge, with A5 at the middle of work RAM (Memory::BASE, which Boot sets and nothing
         # changes); with their numbers in D0, D1, D2... and their answer in D0. A routine may use every
         # data register, A0 to A4 and A6 as it likes, but never A5.
