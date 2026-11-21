@@ -2,7 +2,7 @@
 
 require "test_helper"
 require "dsl_verbs"
-require "shouting_paragraphs"
+require "author_text_checks"
 
 # Every verb has a doc comment written for the game author, because the website's reference is
 # generated from those comments (with RDoc). The comment opens with text for the author; what is
@@ -11,7 +11,7 @@ require "shouting_paragraphs"
 # verb and where it is written.
 class TestVerbDocComments < Minitest::Test
   include DslVerbs
-  include ShoutingParagraphs
+  include AuthorTextChecks
 
   # The verbs whose comment is still to be written for an author. Each is taken off this list in the
   # commit that documents it, and a verb on the list that is documented fails the test until it is.
@@ -41,7 +41,29 @@ class TestVerbDocComments < Minitest::Test
     assert_empty VERBS_AWAITING_DOCS - dsl_verbs, "These are not DSL verbs (any more): #{(VERBS_AWAITING_DOCS - dsl_verbs).join(', ')}"
   end
 
-  # See ShoutingParagraphs for the rule and the three ways to meet it.
+  # See AuthorTextChecks for the rules and the ways to meet them.
+  def test_no_author_paragraph_opens_with_an_ellipsis
+    fragments = all_author_comments.flat_map { |where, lines| fragment_paragraphs(where, lines) }
+
+    assert_empty fragments, <<~MSG
+      These paragraphs of author text open with an ellipsis and read as a fragment. Put the sentence
+      in the code block it carries on from, or write it whole.
+        #{fragments.join("\n  ")}
+    MSG
+  end
+
+  def test_no_author_line_is_a_heading_above_the_third_level
+    headings = all_author_comments.flat_map { |where, lines| big_heading_lines(where, lines) }
+
+    assert_empty headings, <<~MSG
+      These lines of author text render as a first- or second-level heading, above the verb's own.
+      Fence an example in ```ruby so its comments stay code, and write a heading as ### or lower.
+        #{headings.join("\n  ")}
+    MSG
+  end
+
+  private def all_author_comments = verb_comments + container_comments_of_builder
+
   def test_no_author_paragraph_opens_in_capitals
     shouted = verb_comments.flat_map { |where, lines| shouting_paragraphs(where, lines) } +
               container_comments_of_builder.flat_map { |where, lines| shouting_paragraphs(where, lines) }
