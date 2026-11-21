@@ -10,11 +10,11 @@ module VBlank
           # shows is tiles, so a painted screen is a screen of tiles that happens to have a different
           # one in every place: 40 across and 28 down, 1120 tiles, each 8×8 pixels of four bits.
           #
-          # The picture is kept in work RAM, in the form the video chip keeps a tile in (screen): a
+          # The picture is kept in work RAM, in the form the video chip keeps a tile in (SCREEN): a
           # tile is 32 bytes, a row of eight pixels is four of them, and a byte is two pixels, the left
           # one in the top four bits. The tiles follow each other across the screen and then down, so the
           # picture is one run of 35,840 bytes that is copied to the same bytes in video RAM. Painting is
-          # work done on that copy, and what it changes is noted a tile at a time (dirty), so a pass
+          # work done on that copy, and what it changes is noted a tile at a time (DIRTY), so a pass
           # that changed two tiles copies two tiles in the blank after it, by DMA (rt_upload). A pass
           # that changed more than a blank holds is several blanks' copying, and the game waits for it.
           #
@@ -25,7 +25,7 @@ module VBlank
           # game can paint is known as it is built, and the code paints a place.
           #
           # The routines take their numbers in D0, D1, D2... and are reached with JSR. Every one holds
-          # painting to the area the game has opened (`inside`, area: a left, a top, a right and a
+          # painting to the area the game has opened (`inside`, AREA: a left, a top, a right and a
           # bottom, each a word, the screen's own to begin with).
           module Paint
             ACROSS = 40 # Tiles across

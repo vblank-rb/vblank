@@ -178,7 +178,7 @@ module VBlank
 
             # rt_list_copy(list, table, kept, length, at, count): the list made to hold the run of the
             # table's +count+ entries from +at+, held so the run is inside the table (Reference
-            # #exec_list_copy). +table+ is the table's address, +kept+ how it keeps an entry (kept),
+            # #exec_list_copy). +table+ is the table's address, +kept+ how it keeps an entry (KEPT),
             # +length+ how many entries it has.
             def emit_copy(asm)
               asm.label("rt_list_copy")
@@ -234,7 +234,7 @@ module VBlank
             # not fit its size): an entry is moved as it lies, a byte, a half or a long word. Any
             # other pair goes on to the loop below, an entry at a time through the slot routines.
             #
-            # A0 is the list, A2 the table, D2 how the table keeps an entry (kept, two to a size),
+            # A0 is the list, A2 the table, D2 how the table keeps an entry (KEPT, two to a size),
             # D4 the entry to start at and D5 how many, which the loop below needs kept as they are.
             def emit_copy_of_whole_run(asm)
               asm.tst(:l, asm.d(5))
@@ -354,7 +354,7 @@ module VBlank
             end
 
             # The game stopped: what went wrong, the list's address, and the numbers that give how,
-            # into fault for the reader (Frame), then rt_fault (D0 = what went wrong).
+            # into FAULT for the reader (Frame), then rt_fault (D0 = what went wrong).
             def emit_faults(asm, memory)
               at = ->(plus) { asm.abs_l(memory[Frame::FAULT], plus) }
               asm.label("rt_list_full")

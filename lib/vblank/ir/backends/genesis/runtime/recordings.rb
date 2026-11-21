@@ -16,7 +16,7 @@ module VBlank
           #
           # How the two talk. The 68000 can write into the Z80's memory only after asking for its bus, which
           # stops the Z80 for that moment. It leaves what to play in the mailbox at the top of that memory
-          # (MAILBOX), and puts an entry in the queue beside it (queue) saying so, which the Z80 looks at
+          # (MAILBOX), and puts an entry in the queue beside it (QUEUE) saying so, which the Z80 looks at
           # between samples. The FM chip is the Z80's alone in a game that plays recordings: the 68000's
           # writes to it are entries in the same queue (Sound's rt_fm_write), and the Z80 makes one a
           # sample, between the DAC's writes. The console's own sound drivers do the same, so the 68000
@@ -42,7 +42,7 @@ module VBlank
             NAME = 20
             STEP = 22 # Samples of the recording a sample of the Z80's, in 256ths
             ROW_BYTES = 24
-            # ...and in a game with a recorded note off the middle (sides), the speakers it plays from, as the
+            # ...and in a game with a recorded note off the middle (SIDES), the speakers it plays from, as the
             # FM chip's register $B6 of its second part keeps them for the sixth voice, which the DAC is.
             SIDE = 24
             # ...nought in a glide's row where the glide names no side and keeps the note's.
@@ -59,7 +59,7 @@ module VBlank
             PLACE_ADVANCE = 16
             PLACE_ADVANCE_FRACTION = 20
             PLACE_LOGGED = 22
-            # ...and whose it is: nought for the game's own, a part's owner number for a song's (its place among
+            # ...and whose it is: nought for the game's own, a part's OWNER number for a song's (its place among
             # the song's recorded parts, one up), and for a sound effect's the same in the low byte under the
             # effect's number, one up (EFFECT_OWNER and over); and the rank it holds the place at, nought for
             # the game's own, which rank below every song.
@@ -68,7 +68,7 @@ module VBlank
             PLACE_BYTES = 28
             EFFECT_OWNER = 0x100
 
-            # A row's logged for a note of a song: nothing is logged as it comes round again.
+            # A row's LOGGED for a note of a song: nothing is logged as it comes round again.
             NOT_LOGGED = 0xFFFF
             # Each of the last Frame::STEPS_KEPT passes' recording as its wait ended, a word each, by the
             # pass's number less its multiples of STEPS_KEPT.
@@ -81,7 +81,7 @@ module VBlank
 
             ALL = 0xFFFF
 
-            # The Z80's side. Everything it reads is in its own memory, at queue and mailbox on.
+            # The Z80's side. Everything it reads is in its own memory, at QUEUE and MAILBOX on.
             MAILBOX = 0x1F00
             QUEUE_WRITTEN = 0 # How far the 68000 has written the queue, a byte that goes round
             PLAYS = 1 # Nought to go quiet
@@ -171,7 +171,7 @@ module VBlank
             # +glides+ for a game with a recorded note that glides (`glides: true`), whose runtime then
             # carries what bends one (#emit_glide) and its sound processor takes a new step mid-play.
             # +sides+ for a game with a recorded note off the middle of the speakers, whose rows then name
-            # the speakers each play is heard from (side), and whose places set them.
+            # the speakers each play is heard from (SIDE), and whose places set them.
             def reserve(memory, glides: false, sides: false)
               memory.reserve(GLIDES, 2) if glides
               memory.reserve(SIDES, 2) if sides
@@ -181,7 +181,7 @@ module VBlank
               memory.reserve(FM_KEPT, FM_REGISTERS * 2)
             end
 
-            # A play's row, for "recording_plays": +start+ a label. +side+, in a game with sides, is the
+            # A play's row, for "recording_plays": +start+ a label. +side+, in a game with SIDES, is the
             # speakers' bits it plays from (ChipWrites::BOTH_SPEAKERS and its two), and nil in any other.
             def emit_row(asm, start:, length:, back:, advance:, logged:, name:, step:, side: nil)
               asm.data_longs(start)
@@ -190,7 +190,7 @@ module VBlank
               asm.data_words(side) if side
             end
 
-            # How long a row is in a game with or without sides.
+            # How long a row is in a game with or without SIDES.
             def row_bytes(memory) = memory.reserved?(SIDES) ? ROW_BYTES_WITH_SIDE : ROW_BYTES
 
             def emit(asm, memory)
@@ -545,7 +545,7 @@ module VBlank
               asm.rts
             end
 
-            # The row A4 points at's step into the mailbox's Z80_STEP, A2 pointing at it, low byte first and A2
+            # The row A4 points at's STEP into the mailbox's Z80_STEP, A2 pointing at it, low byte first and A2
             # moved past it: on a PAL console made PAL_STEP_EXTRA longer, and no more than $FFFF. +done+ names
             # the label it reaches once the step is known. Uses D1 and D2.
             def emit_step_mailed(asm, done)
@@ -565,10 +565,10 @@ module VBlank
               asm.move(:b, asm.d(1), asm.post(2))
             end
 
-            # The speakers the row A4 points at plays from (side) told to the FM chip's register $B6 of its second
+            # The speakers the row A4 points at plays from (SIDE) told to the FM chip's register $B6 of its second
             # part, the sixth voice's, which the DAC plays through: queued for the Z80 as any FM write is, and
             # dropped when it is what the register holds already (Sound#emit_fm_write_queued). Uses D0 to D3 and A1.
-            # With +unless_kept+, a label, a side of SIDE_KEPT writes nothing.
+            # With +unless_kept+, a label, a SIDE of SIDE_KEPT writes nothing.
             def emit_side_queued(asm, unless_kept: nil)
               asm.move(:w, asm.imm(0x100 | (ChipWrites::SPEAKERS + 2)), asm.d(0))
               asm.move(:w, asm.disp(4, SIDE), asm.d(1))
@@ -580,7 +580,7 @@ module VBlank
             # rt_recordings_glide(row, owner): the note +owner+'s part sounds, if it has the place, reads on at
             # the row's pitch (Reference::Mixer#glide_music_note): how far a frame takes it, and the Z80 told
             # its new step (GLIDE_ENTRY), which it takes from where it has got to, so nothing starts again; and
-            # in a game with sides, the speakers the row names. A Genesis plays a recording at the one loudness,
+            # in a game with SIDES, the speakers the row names. A Genesis plays a recording at the one loudness,
             # so the glide's loudness reaches only the log, as the music volume's does. D0 = 1 when the part had
             # a note, nought when not.
             def emit_glide(asm, at, rows, sides: false)
@@ -952,7 +952,7 @@ module VBlank
               def call_bank = jump(0xCD, :set_bank)
 
               # The jumps filled in. The program must end below the queue, which is the Z80's memory
-              # from queue on.
+              # from QUEUE on.
               def assembled
                 @jumps.each do |at, target|
                   place = @labels.fetch(target)

@@ -24,7 +24,7 @@ module VBlank
           # wrong and why. The names and their meanings are the Color's and the Super Nintendo's, so a
           # reader of any of them asks the same questions.
           module Frame
-            # How the game stands, in state.
+            # How the game stands, in STATE.
             RUNNING = 0
             HALTED = 1
             WENT_WRONG = 2
@@ -87,7 +87,7 @@ module VBlank
             DISPLAY_ON = "rt display on"
 
             # In a game that reads how many frames it has shown since power-on, the frames setting up takes
-            # are counted too. Counting is 1 while setting up runs and the interrupt only counts frames
+            # are counted too. COUNTING is 1 while setting up runs and the interrupt only counts FRAMES
             # (Boot#emit, #emit_interrupt); SETTING_UP is the frames setting up took, kept one more for a
             # reader of the run, so nought means not counted yet (#emit_setting_up_counted).
             COUNTING = "rt counting"
@@ -95,7 +95,7 @@ module VBlank
 
             # The part of work RAM the interrupt touches while it only counts, which the boot clears
             # first (Boot#emit): +bytes+ from the start of work RAM, a whole number of long words, and the
-            # distance of counting from A5.
+            # distance of COUNTING from A5.
             CountingBlock = Data.define(:bytes, :flag_at)
 
             # What SHOWN holds once a stopped game's last picture is on the screen.
@@ -122,7 +122,7 @@ module VBlank
               end
             end
 
-            # +counted+ for a game that reads how many frames it has shown since power-on (counting,
+            # +counted+ for a game that reads how many frames it has shown since power-on (COUNTING,
             # SETTING_UP). Must be the first places reserved, so the interrupt's are at the start of
             # work RAM (#counting_block). +second_pad+ for a game that reads it (#reads_second_pad?).
             def reserve(memory, counted: false, second_pad: false)
@@ -159,7 +159,7 @@ module VBlank
             # Whether the game whose places are in +memory+ reads the second pad (#reserve).
             def second_pad?(memory) = memory.reserved?(SECOND_HELD)
 
-            # The CountingBlock of a game that counts the frames setting up takes: counting to frames.
+            # The CountingBlock of a game that counts the frames setting up takes: COUNTING to FRAMES.
             def counting_block(memory)
               raise LoweringError, "the frame counter's places must be reserved first" unless memory[COUNTING] == Memory::FIRST
 
@@ -190,7 +190,7 @@ module VBlank
             # them, as the interpreter's does. A5 is the game's own and is never changed. In a game that
             # plays recordings the buttons are read with the Z80 stopped.
             #
-            # +counting+ for a game that counts the frames setting up takes: while counting is set the
+            # +counting+ for a game that counts the frames setting up takes: while COUNTING is set the
             # interrupt only counts the frame, since the buttons' reading would let the Z80 go before
             # its program is in, and work RAM past the counting block is still being cleared.
             def emit_interrupt(asm, at, samples, counting: false)
@@ -259,7 +259,7 @@ module VBlank
               asm.label("rt_frame_begins_not_past")
             end
 
-            # rt_show_pass: what the pass drew, on the screen, and shown saying so. The first time, the
+            # rt_show_pass: what the pass drew, on the screen, and SHOWN saying so. The first time, the
             # screen is still off, so everything set up so far is copied while nothing is drawn, and
             # the screen comes on in the blank after, showing it; after that, the pass's changes are
             # copied in the blank.
@@ -309,7 +309,7 @@ module VBlank
 
             # The frames setting up took, counted all the same, in a game that reads how many frames it
             # has shown since power-on. Such a game counts blanks from near the top of setting up
-            # (Boot#emit), so frames holds every blank since, the one just waited for included, which ends
+            # (Boot#emit), so FRAMES holds every blank since, the one just waited for included, which ends
             # the first pass's frame; the rest are setting up's. They go into the game's count at +count+
             # now, which the first pass reads only once its wait is over, the frames of the pass itself
             # added after (Lowering#emit_wait_vblank): where the interpreter adds them
@@ -433,9 +433,9 @@ module VBlank
 
             # STOPPING. rt_halt stops the game where it is: what it drew since its last frame is
             # copied to the console in the next blank (or with the screen switched on, for a game
-            # that never got as far as a frame), shown marks that the end is on the screen, and the
+            # that never got as far as a frame), SHOWN marks that the end is on the screen, and the
             # processor sleeps from then on. Going wrong is the same, with what went wrong written
-            # down first (rt_fault, D0 = what went wrong, the list and the numbers already in fault).
+            # down first (rt_fault, D0 = what went wrong, the list and the numbers already in FAULT).
             def emit_stopping(asm, at)
               asm.label("rt_halt")
               asm.moveq(HALTED, asm.d(0))
