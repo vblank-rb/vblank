@@ -2,33 +2,33 @@
 
 module VBlank
   module DSL
-    # A handle to a hardware sprite: a moving picture the console composites over the
-    # background for you. You get one from `sprite :hero, at: [x, y]` when the screen
-    # is a `screen :tiled` — and it behaves, from the game's side, exactly like the
-    # software {Sprite} you get in `screen :bitmap`. Same handle, same code:
+    # Sprites the console draws
     #
-    #   screen :tiled
-    #   background :room, tiles: :dungeon, map: ...   # the scene behind the sprite
-    #   hero = sprite :hero, at: [100, 60]
-    #   game_loop do
-    #     wait_vblank
-    #     hero.x += 2 if held(:right)                  # steer the way any number is changed
-    #     # no draw call — the framework draws the sprite for you each frame
-    #   end
+    # On `screen :tiled`, `sprite :hero, at: [x, y]` hands back one of these: a moving picture
+    # the console draws over the backgrounds itself. From the game's side it works as a Sprite
+    # on a painted screen does, so the same code steers either.
     #
-    # The difference from a software sprite is under the hood and in your favor. A
-    # software sprite has to remember and repaint the pixels underneath itself so it
-    # leaves no trail; a hardware sprite doesn't, because the console redraws the
-    # whole picture — background and sprites — every frame from scratch. That means it
-    # costs no per-pixel work to move, and (in a later slice) sprites can stack over
-    # each other with a set order, which software save-under can't do. The trade is
-    # that it only exists on a `screen :tiled`, drawn from tiles — or over a `screen :bitmap`
-    # where the game asked for one with `sprite ..., over_picture: true`, in front of all of
-    # the painted picture.
+    # ```ruby
+    # screen :tiled
+    # background :room, tiles: :dungeon, map: ROOM
+    # hero = sprite :hero, at: [100, 60]
+    # game_loop do
+    #   wait_vblank
+    #   hero.x += 2 if held(:right)   # steer it the way any number is changed
+    # end
+    # ```
     #
-    # You don't call a draw verb. Builder#wait_vblank draws every hardware sprite once
-    # per frame, during the vertical blank — the brief safe window to change the
-    # screen — so moving one is just changing `x`/`y`, and it shows on the next frame.
+    # There is no draw call to write: once a frame, in the short gap between frames, the
+    # framework tells the console where each sprite is, and it shows on the next frame. The
+    # console draws the whole picture again every frame, so a sprite costs nothing to move and
+    # leaves no trail. It can also turn to any angle (#face_angle), change size (#scale), be
+    # drawn with other colours (#draw_with) and move between layers (#put_in_layer).
+    #
+    # On `screen :bitmap` a game gets one of these with `sprite ..., over_picture: true`. It is
+    # then in front of all of the painted picture.
+    #--
+    # Builder#wait_vblank lists every hardware sprite's object for the per-frame draw.
+    #++
     class HardwareSprite
       include Bounds       # gains overlaps? from left / top / right / bottom (its collision box)
       include PixelBounds  # ...and makes that overlaps? shape-accurate (per-pixel) by default
@@ -75,16 +75,16 @@ module VBlank
         @walls = nil               # solid-tile Boxes this sprite is blocked by (nil until blocked_by)
       end
 
-      # What per-pixel collision (see {PixelBounds}) reads off this sprite: the build to
+      # What per-pixel collision (see PixelBounds) reads off this sprite: the build to
       # record into, its picture set, the pose it's showing now, and whether it collides
       # on its drawn pixels at all.
-      def pixel_perfect? = @pixel_perfect
-      def collision_builder = @builder
-      def collision_poses = @poses
-      def collision_pose = pose_index_node
+      def pixel_perfect? = @pixel_perfect # :nodoc:
+      def collision_builder = @builder # :nodoc:
+      def collision_poses = @poses # :nodoc:
+      def collision_pose = pose_index_node # :nodoc:
 
       # Where this sprite keeps its state, for reading it back under +name+ (IR::SpriteReading).
-      def reading_named(name)
+      def reading_named(name) # :nodoc:
         IR::SpriteReading.new(name: name, x: @x_var, y: @y_var, shown: @active, poses: @poses,
                               facing: @facing_var, frame: @frame_var, frames_per_facing: @frames_per_dir,
                               clip_start: @clip_off_var, angle: @angle_var, scale: @scale_var)
@@ -94,7 +94,7 @@ module VBlank
       # pose selector uses, so per-pixel collision reads the frame the console is drawing. A
       # plain sprite is pose 0, a facing/frames sprite is its selector, and a directional
       # animation is facing * frames_per_direction + frame.
-      def pose_index_node
+      def pose_index_node # :nodoc:
         return Build.binop(:+, Build.var_ref(@clip_off_var), Build.var_ref(@frame_var)) if @clip_off_var
         return Build.int(0) unless @facing_var
         return Build.var_ref(@facing_var) unless @frame_var
@@ -105,54 +105,78 @@ module VBlank
 
       # The object this handle drives — Builder#wait_vblank lists it for the per-frame
       # draw.
-      attr_reader :object_name
+      attr_reader :object_name # :nodoc:
 
       # The object node itself, for the build to read where the sprite sits — its layer, its
       # scene — when it puts sprites in an order (see Builder#draw_in_order).
-      attr_reader :object_node
+      attr_reader :object_node # :nodoc:
 
       # Where this sprite sits in the stack — the layer it was declared in, or nil in a
       # game that names no layers. It's read off the object itself rather than kept here
       # as well, so the handle and the program can never disagree about it.
-      def layer = @object_node.layer
+      def layer = @object_node.layer # :nodoc:
 
-      # The sprite's position, as {Value} handles — steer them with the expression DSL
-      # (`hero.x += 2`, `hero.y.clamp! 0, 150`). The framework reads them each frame to
-      # know where to draw.
+      # The sprite's x, the left of its picture in pixels from the left of the screen, as a
+      # number the game changes like any other.
+      #
+      # ```ruby
+      # hero.x += 2 if held(:right)
+      # ```
+      #
+      # The framework reads it every frame to know where the console draws the sprite.
       def x
         Value.new(@builder, Build.var_ref(@x_var), name: @x_var)
       end
 
+      # The sprite's y, the top of its picture in pixels from the top of the screen, as a
+      # number the game changes like any other.
+      #
+      # ```ruby
+      # hero.y -= 2 if held(:up)
+      # ```
       def y
         Value.new(@builder, Build.var_ref(@y_var), name: @y_var)
       end
 
-      # The sprite's collision-box edges, as {Value}s — its position plus its hitbox
-      # (by default the box hugging its visible pixels). These are what make `overlaps?`
-      # work on a sprite with no box of its own: `hero.overlaps?(coin)`.
+      # The left edge of the sprite's collision box, in pixels from the left of the screen.
+      #
+      # The collision box is the rectangle round the sprite's visible pixels, or the `hitbox:`
+      # the sprite was given. Its four edges are what Bounds#overlaps? and the screen-edge tests
+      # read, so a sprite needs no box of its own.
       def left
         x + @hit_x
       end
 
+      # The top edge of the sprite's collision box, in pixels from the top of the screen.
       def top
         y + @hit_y
       end
 
+      # The right edge of the sprite's collision box: one pixel past its last column.
       def right
         x + @hit_x + @hit_w
       end
 
+      # The bottom edge of the sprite's collision box: one pixel past its last row.
       def bottom
         y + @hit_y + @hit_h
       end
 
-      # Move the sprite, the same two ways a software {Sprite} moves: a named direction
-      # (turned into x/y arithmetic for you, with `by:` the speed), or a raw (dx, dy)
-      # nudge for velocity/physics.
+      # Moves the sprite a step in a direction, or by a number of pixels across and down, and
+      # returns the sprite.
       #
-      #   hero.move :left            # a step left
-      #   hero.move :up_right, by: 3 # diagonals, three pixels at a time
-      #   hero.move 2, -1            # or a raw (dx, dy)
+      # A direction is one of `:up`, `:down`, `:left`, `:right`, `:up_left`, `:up_right`,
+      # `:down_left` and `:down_right`. A sprite given `facing:` poses also turns to face the
+      # way it moves, when it has a pose for that way. After #blocked_by, a step that would
+      # put the sprite into a wall does not happen.
+      #
+      # ```ruby
+      # hero.move :left              # one pixel left
+      # hero.move :up_right, by: 3   # diagonals, three pixels at a time
+      # hero.move 2, -1              # two right and one up, for a speed the game keeps
+      # ```
+      #
+      # * `by:` - how many pixels a step in a direction is. It is 1 when left out.
       def move(direction_or_dx, dy = nil, by: 1)
         if direction_or_dx.is_a?(Symbol)
           step_x, step_y = Direction.unit(direction_or_dx)
@@ -168,34 +192,44 @@ module VBlank
         self
       end
 
-      # Stop this sprite from moving through +background+'s wall tiles — the ones its
-      # tileset marked `solid:`. After this, `move` is checked automatically: a step that
-      # would put the sprite into a wall simply doesn't happen, so it slides along walls
-      # and stops at them with no collision code of your own.
+      # Stops the sprite moving into a background's walls, the tiles its tileset marked
+      # `solid:`, and returns the sprite.
       #
-      #   world = background :maze, tiles: :bricks, map: MAZE   # bricks marked solid:
-      #   hero  = sprite :hero, at: [24, 24]
-      #   hero.blocked_by world
-      #   game_loop do
-      #     wait_vblank
-      #     hero.move :right if held(:right)   # walks until a wall, then stops
-      #   end
+      # From then on #move is checked: a step that would put the sprite into a wall does not
+      # happen, so it slides along walls and stops at them with no collision code of the
+      # game's own. #can_move? asks before a move, to do something else when the way is
+      # blocked. Setting `x` and `y` or calling #move_to is never checked, so a game can still
+      # put the sprite anywhere.
       #
-      # You keep full manual control too: `can_move?` asks before moving so you can do
-      # your own thing when blocked, and the raw position ops (`move_to`, `x`/`y`) are
-      # never checked — an escape hatch for teleports and scripted moves.
+      # ```ruby
+      # world = background :maze, tiles: :bricks, map: MAZE   # bricks marked solid:
+      # hero  = sprite :hero, at: [24, 24]
+      # hero.blocked_by world
+      # game_loop do
+      #   wait_vblank
+      #   hero.move :right if held(:right)   # walks until a wall, then stops
+      # end
+      # ```
       def blocked_by(background)
         @solid_cells = background.solid_lookup
         @walls = @solid_cells ? [] : background.solid_boxes
         self
       end
 
-      # Whether this sprite could step +by+ pixels in +direction+ without hitting a wall
-      # — a {Condition} to branch on, for taking collision into your own hands:
+      # Tests whether the sprite could take a step in a direction without going into a wall.
       #
-      #   hero.move :left if hero.can_move?(:left)   # or do something else if not
+      # The walls are the ones #blocked_by named, so call that first. The answer is a test, as
+      # a comparison is, so write it after `if`.
       #
-      # Needs `blocked_by` to have named the walls first.
+      # ```ruby
+      # if hero.can_move?(:left)
+      #   hero.move :left
+      # else
+      #   bump
+      # end
+      # ```
+      #
+      # * `by:` - how many pixels the step is. It is 1 when left out.
       def can_move?(direction, by: 1)
         if @walls.nil? && @solid_cells.nil?
           raise ArgumentError, "call blocked_by(background) before can_move? — it needs to know the walls"
@@ -205,19 +239,29 @@ module VBlank
         clear_of_walls(x + (step_x * by), y + (step_y * by))
       end
 
-      # Jump the sprite to an exact spot: its `x` and `y` set in one call.
+      # Puts the sprite at an exact place, setting its `x` and `y` in one call, and returns the
+      # sprite.
+      #
+      # ```ruby
+      # hero.move_to 24, 24
+      # ```
       def move_to(px, py)
         self.x = px
         self.y = py
         self
       end
 
-      # Keep the sprite fully on the screen: pin its position so its box never crosses
-      # an edge, worked out from the sprite's own size — no coordinate literals. The
-      # counterpart to the off-screen tests ({Bounds#off_screen?} and friends): call it
-      # after a move to pen a player inside the play field. Clamps x/y in place, returns
-      # self. (It keeps the sprite's collision box on screen; a transparent margin around
-      # the art may still slide off, which is what you want.)
+      # Keeps the sprite wholly on the screen, and returns the sprite.
+      #
+      # It holds the sprite's place so that its collision box never crosses an edge, worked
+      # out from the sprite's own size, so the game needs no numbers for the edges. Call it
+      # after a move to keep a player inside the screen. A see-through margin round the picture
+      # can still slide off. `stay_on_screen` is the same.
+      #
+      # ```ruby
+      # hero.move :left if held(:left)
+      # hero.clamp_to_screen
+      # ```
       def clamp_to_screen
         width, height = @builder.console.screen_size
         x.clamp!(-@hit_x, width - @hit_x - @hit_w)
@@ -226,34 +270,40 @@ module VBlank
       end
       alias stay_on_screen clamp_to_screen
 
-      # Put the sprite in the middle of the screen, worked out from its own size — the
-      # sibling of {#clamp_to_screen}, and for the same reason: no coordinate literals.
-      # Where a hero stands in a game whose world scrolls under them, where a logo sits
-      # on a title screen, where a cursor starts on a menu.
+      # Puts the sprite in the middle of the screen, worked out from its own size, and returns
+      # the sprite.
       #
-      #   hero = sprite :guy, at: [0, 0]
-      #   hero.center_on_screen
+      # It is where a hero stands in a game whose world scrolls under them, or where a logo
+      # sits on a title screen. It centres the sprite's collision box, which is the box round
+      # its visible pixels unless it was given a `hitbox:`, so a picture with a see-through
+      # margin still looks centred.
       #
-      # It centres the sprite's collision box, which is the box that hugs its visible
-      # pixels unless you gave it one — so a picture with a transparent margin still
-      # LOOKS centred, which a naive half-the-width would not manage.
+      # ```ruby
+      # hero = sprite :guy, at: [0, 0]
+      # hero.center_on_screen
+      # ```
       def center_on_screen
         width, height = @builder.console.screen_size
         move_to(((width - @hit_w) / 2) - @hit_x, ((height - @hit_h) / 2) - @hit_y)
       end
 
-      # Turn the sprite to face a direction, swapping to that pose in place (no move).
-      # Only for a sprite given `facing:` poses, and only a direction it has a pose for
-      # — anything else is a friendly error. On hardware this swaps which uploaded
-      # picture the console draws; the change shows on the next frame.
+      # Turns the sprite to the pose for a direction, where it stands, and returns the sprite.
       #
-      # One of several, picked by a number the game works out — an animation step, a state:
+      # It is for a sprite given `facing:` poses, and for a direction it has a pose for. The
+      # pose shows on the next frame. Given a list of poses and `showing:`, it shows the pose
+      # a number the game works out picks, such as an animation step or a state, counting from
+      # 0. That costs the same whatever the number of poses, and a number outside the list
+      # leaves the pose as it was.
       #
-      #   hero.face [:walk0, :walk1, :walk2], showing: step
+      # ```ruby
+      # hero.face :left
+      # hero.face [:walk0, :walk1, :walk2], showing: step
+      # ```
       #
-      # The same `showing:` a `blit` and `draw_with` take. It costs the same whatever the number
-      # of poses, and a number outside the list leaves the pose as it was (see
-      # Builder#write_picked_pose).
+      # * `showing:` - a number that picks one pose of the list given.
+      #--
+      # See Builder#write_picked_pose.
+      #++
       def face(direction, showing: nil)
         unless faceted?
           raise ArgumentError,
@@ -273,19 +323,23 @@ module VBlank
         self
       end
 
-      # Turn the sprite to point at an exact angle: +degrees+ clockwise from upright,
-      # pivoting on its own center. Where `face` swaps between a few fixed poses, this
-      # rotates the picture itself to any angle — a ship that points wherever it aims, a
-      # key that turns. +degrees+ can be a whole number or a {Value} (an aim you work out
-      # at run time).
+      # Turns the sprite to point at an exact angle, in degrees clockwise from upright, about
+      # its own middle, and returns the sprite.
       #
-      #   ship.face_angle 90        # point to the right
-      #   ship.face_angle aim       # point the way `aim` holds
+      # Where #face swaps between a few fixed poses, this turns the picture itself to any
+      # angle: a ship that points wherever it aims, a key that turns. The angle can be a number
+      # written in the game or one it works out as it runs. It wraps, so 370 is the same as 10
+      # and -90 the same as 270. A sprite that never turns is drawn upright and costs nothing
+      # more.
       #
-      # The first turn makes this a rotating sprite; one that never turns draws upright and
-      # costs nothing extra. The angle wraps, so 370 is the same as 10, and -90 the same as
-      # 270. Only a sprite the console draws can turn (the console rotates it in hardware): one
-      # on `screen :tiled`, or one with `over_picture: true`.
+      # ```ruby
+      # ship.face_angle 90    # point to the right
+      # ship.face_angle aim   # point the way `aim` holds
+      # ```
+      #--
+      # The first turn makes this a rotating sprite (see #ensure_rotatable); the console
+      # rotates it in hardware.
+      #++
       def face_angle(degrees)
         ensure_rotatable
         fixed = Value.fixed_number(degrees)
@@ -298,10 +352,17 @@ module VBlank
         self
       end
 
-      # Turn the sprite by +degrees+ from the way it points now: a positive number turns it
-      # clockwise, a negative one counter-clockwise. Call it each frame to spin steadily or
-      # to steer — `ship.turn(-3) if held(:left)`. The angle wraps, so it can keep
-      # turning either way. Makes this a rotating sprite (see #face_angle).
+      # Turns the sprite by a number of degrees from the way it points now, and returns the
+      # sprite.
+      #
+      # A positive number turns it clockwise and a negative one the other way. Call it every
+      # frame to spin steadily or to steer. The angle wraps, so it can keep turning either way
+      # (see #face_angle).
+      #
+      # ```ruby
+      # ship.turn(-3) if held(:left)
+      # ship.turn 3 if held(:right)
+      # ```
       def turn(degrees)
         ensure_rotatable
         self.angle += degrees
@@ -309,31 +370,34 @@ module VBlank
         self
       end
 
-      # The sprite's heading as a {Value} you can read and compare — degrees clockwise from
-      # upright, always 0..359. Reading it makes this a rotating sprite.
+      # The way the sprite points, in degrees clockwise from upright, from 0 to 359, as a
+      # number to read and compare.
       #
-      #   if ship.angle == 0 ...   # pointing straight up?
+      # ```ruby
+      # ship.x += 1 if ship.angle == 90   # pointing right
+      # ```
+      #
+      # Reading it makes the sprite one that can turn, as #face_angle does.
       def angle
         ensure_rotatable
         Value.new(@builder, Build.var_ref(@angle_var), name: @angle_var)
       end
 
-      # Draw the sprite bigger or smaller, about its own center. 1.0 is the size it was
-      # drawn at, 2.0 is twice as big, 0.5 half — a boss that swells, a coin that pops
-      # when you collect it, an enemy that shrinks into the distance.
+      # Draws the sprite bigger or smaller about its own middle, and returns the sprite; with
+      # no size, returns the size as a number to read and change.
       #
-      #   coin.scale 1.6                 # half again as big
-      #   coin.scale size                # whatever `size` holds this frame
-      #   coin.scale.approach! 1.0, 0.05  # ease it back down to normal
+      # 1.0 is the size it was drawn at, 2.0 twice as big and 0.5 half: a boss that swells, a
+      # coin that pops when it is picked up, an enemy that shrinks into the distance. The size
+      # can hold a fraction, and a sprite can turn (#face_angle) and change size at once for
+      # the cost of either. Twice the drawn size is the most: the console gives a turned sprite
+      # a box twice as wide and tall to swing its corners through, and past that the picture's
+      # edges are cut off.
       #
-      # With no argument it hands back the size as a {Value} you can read, compare and
-      # ease, so growing over time is the expression DSL and nothing new. The size can be
-      # a fraction (that is the point) and composes with #face_angle — a sprite can turn
-      # and resize at once for the same price as either.
-      #
-      # Twice the drawn size is the ceiling: the console gives a turned sprite a box twice
-      # as wide and tall to swing its corners through, and past that the picture runs out
-      # of box and its edges are cut off. Only a sprite the console draws can resize, as above.
+      # ```ruby
+      # coin.scale 1.6                    # half again as big
+      # coin.scale size                   # whatever `size` holds this frame
+      # coin.scale.approach! 1.0, 0.05    # ease it back to its own size
+      # ```
       def scale(size = nil)
         ensure_scalable
         return scale_value if size.nil?
@@ -349,15 +413,21 @@ module VBlank
 
       # The size variable as a handle. It carries a fraction, so `scale.approach! 2.0, 0.1`
       # and `scale * 2` mean what they read as.
-      def scale_value
+      def scale_value # :nodoc:
         Value.new(@builder, Build.var_ref(@scale_var), name: @scale_var,
                             fraction_bits: Fraction::DEFAULT_BITS)
       end
 
-      # Play a named animation from the sprite's Aseprite sheet (a frameTag). It runs from
-      # its first frame and loops until you play another one. Only for a sprite made with
-      # `from_aseprite:`, and only a name the sheet defines — anything else is a friendly
-      # error. Switching is instant; the console shows the new animation next frame.
+      # Plays a named animation from the sprite's Aseprite sheet, and returns the sprite.
+      #
+      # The animation is one of the sheet's tags. It runs from its first frame and loops until
+      # the game plays another, showing from the next frame. It is for a sprite made with
+      # `from_aseprite:`, and for a name the sheet has.
+      #
+      # ```ruby
+      # bird = sprite :bird, at: [40, 80], from_aseprite: "bird.aseprite"
+      # bird.play :flap if pressed(:a)
+      # ```
       def play(clip)
         raise ArgumentError, "this sprite has no named animations to play — make it with `sprite ..., from_aseprite: \"file.json\"`" unless @clips
 
@@ -370,44 +440,63 @@ module VBlank
         self
       end
 
-      # Hide the sprite: it stops being drawn (its table slot is marked unused) and
-      # vanishes on the next frame, its spot in the layering held for when it returns.
-      # `show` brings it back at its current position. Setting the flag is all it takes
-      # — the per-frame draw reads it — so hiding an already-hidden sprite is harmless.
+      # Takes the sprite off the screen from the next frame, and returns the sprite.
+      #
+      # It keeps its place and its place in the layers, and #show brings it back there. Hiding
+      # a hidden sprite does nothing.
+      #
+      # ```ruby
+      # coin.hide if hero.overlaps?(coin)
+      # ```
+      #--
+      # Setting the flag is all it takes: the per-frame draw reads it and marks the object's
+      # table slot unused.
+      #++
       def hide
         record(Build.set(@active, Build.int(0)))
         self
       end
 
+      # Brings a hidden sprite back where it is from the next frame, and returns the sprite.
+      #
+      # Showing a sprite that is showing does nothing.
+      #
+      # ```ruby
+      # coin.show if respawn_timer == 0
+      # ```
       def show
         record(Build.set(@active, Build.int(1)))
         self
       end
 
-      # Draw the sprite with a different list of colours, from now until it is told otherwise.
+      # Draws the sprite with a different list of colours from now on, and returns the sprite.
+      #
       # The lists are declared with `colors`, see-through first, and matched to the sprite's
-      # own `colors:` list by place — so the shape and shading stay as drawn and only the
-      # colours change.
+      # own `colors:` list by place, so the shape and shading stay as drawn and only the
+      # colours change. Given a list of lists and `showing:`, it draws with the one a number
+      # picks, counting from 0; a number outside the list draws the sprite in its own colours.
+      # `:own` goes back to its own colours. The change shows on the frame the sprite's place
+      # and pose next do, never before or after them.
       #
-      #   ship.draw_with :hurt                                   # one list
-      #   ship.draw_with [:warm1, :warm2, :warm3], showing: step # one of several, by a number
-      #   ship.draw_with :own                                    # back to its own colours
+      # ```ruby
+      # ship.draw_with :hurt                                     # one list
+      # ship.draw_with [:warm1, :warm2, :warm3], showing: step   # one of several, by a number
+      # ship.draw_with :own                                      # back to its own colours
+      # ```
       #
-      # A number outside the set draws it in its own colours. The change shows on the frame
-      # the sprite's position and pose next do, never before or after them.
+      # A sprite whose poses are drawn from several lists shows each pose in its own list's
+      # colours, and no one other list lines up with them all. Given a hash, it can follow its
+      # lists: name each list it follows, drawn with itself, and a pose drawn from that list
+      # shows what the list holds now, whatever the game sets it to hold with `recolor`. A list
+      # left out stays as drawn. Or the hash can draw every one of its lists with one other
+      # list, place for place: a flash of white for an enemy whatever its kind's colours.
       #
-      # A sprite whose poses are drawn from several lists shows each pose in its own list's colours,
-      # and no one other list lines up with them all. It can follow its lists: name each list it is
-      # to follow, drawn with itself, and a pose drawn from that list shows what the list holds now,
-      # whatever the game sets it to hold with `recolor`. A list left out stays as drawn.
+      # ```ruby
+      # part.draw_with({ title_1: :title_1, title_2: :title_2 })   # follow both lists
+      # enemy.draw_with({ crawler: :white, flyer: :white })        # every list drawn white
+      # ```
       #
-      #   part.draw_with({ title_1: :title_1, title_2: :title_2 })
-      #   part.draw_with(poses.map { |pose| colors_name_of(pose) }.uniq.to_h { |list| [list, list] })
-      #
-      # Or it can draw every one of its lists with one other list, place for place, as `draw_with :hurt`
-      # draws a sprite of one list: a flash of white for an enemy whatever its kind's colours.
-      #
-      #   enemy.draw_with({ propene: :white, denkyun: :white })
+      # * `showing:` - a number that picks one list of the list given.
       def draw_with(which, showing: nil)
         subject = "The sprite :#{@object_node.declared || @poses.first}"
         # A list a pose's frame picks as the game starts (Builder#list_chosen_at_start?) is
@@ -433,15 +522,21 @@ module VBlank
         self
       end
 
-      # Put the sprite in another of the declared layers, from now until it is told otherwise:
-      # behind a room's top layer on its ground floor, in front of it upstairs, behind every
-      # layer on a flight of stairs.
+      # Puts the sprite in another of the declared layers from now on, and returns the sprite.
       #
-      #   hero.put_in_layer :walking                                 # one layer
-      #   hero.put_in_layer [:upper, :walking, :stairs], showing: d  # one of several, by a number
+      # It is for a sprite that goes behind a room's top layer on its ground floor, in front of
+      # it upstairs, and behind every layer on a flight of stairs. Given a list of layers and
+      # `showing:`, it puts the sprite in the one a number picks, counting from 0; a number
+      # outside the list leaves it in the layer it was declared in. The change shows on the
+      # frame the sprite's place and pose next do, never before or after them. A sprite shown
+      # `over_picture: true` is in front of all of the painted picture, and is refused.
       #
-      # A number outside the list leaves it in the layer it was declared in. The change shows
-      # on the frame the sprite's position and pose next do, never before or after them.
+      # ```ruby
+      # hero.put_in_layer :walking                                   # one layer
+      # hero.put_in_layer [:upper, :walking, :stairs], showing: floor # one of several, by a number
+      # ```
+      #
+      # * `showing:` - a number that picks one layer of the list given.
       def put_in_layer(which, showing: nil)
         if @object_node.over_picture
           raise ArgumentError,
