@@ -37,7 +37,7 @@ class TestListCopyFromCartridge < Minitest::Test
     end
   end
 
-  # WHAT IT IS FOR: a file screen letters three names of six 64-byte pictures from a table of
+  # What it is for: a file screen letters three names of six 64-byte pictures from a table of
   # letter pictures, eighteen runs, on the frame it opens. Copied a byte at a time that was
   # most of a frame; as a block it is a small part of one.
   def test_eighteen_runs_of_64_bytes_take_a_small_part_of_a_frame
