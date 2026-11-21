@@ -70,10 +70,10 @@ module VBlank
       UNDERLINE_OFF = "\e[24m"
       RED = "\e[31m"
 
-      # WHAT A LINE'S MEANING LOOKS LIKE. There is one meaning today, and red is the right
+      # What a line's meaning looks like. There is one meaning today, and red is the right
       # answer for it: `bad` is a report's picture verdicts — the game tore, half its
       # drawing never arrived, sounds it asked for did not play — and each of those lines
-      # is printed ONLY when it really happened. A run that came out right prints none of
+      # is printed only when it really happened. A run that came out right prints none of
       # them and so shows no colour at all.
       #
       # That is the whole rule for red here, and it is worth keeping: red is an alarm a
@@ -85,7 +85,7 @@ module VBlank
       # The unpriced banner is bold red on its own (no per-line severity).
       EMPHASIS = Ractor.make_shareable({ banner: "#{BOLD}#{RED}" })
 
-      # A MEANING NOBODY GAVE A COLOUR LEAVES THE LINE ALONE, and that is deliberate rather
+      # A meaning nobody gave a colour leaves the line alone, and that is deliberate rather
       # than lax. Asking for a colour that is not there used to raise, and the lines that
       # carry a meaning are exactly the ones printed when something has already gone wrong —
       # so a name that did not match killed the report at the moment it had bad news, and

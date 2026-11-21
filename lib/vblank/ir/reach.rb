@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # WHAT A RUN OF A PROGRAM CAN REACH: the statements under the program, the routines it calls
+    # What a run of a program can reach: the statements under the program, the routines it calls
     # however deep, and the variables it keeps. Every lowering asks the same questions of the
     # same tree, so the answers live here and each lowering makes the same routines and keeps the
     # same variables. A routine nothing calls is made by none of them: it never runs, and the

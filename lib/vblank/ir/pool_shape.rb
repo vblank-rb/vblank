@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # WHAT A POOL IS, FOR A LOWERING THAT KEEPS ONE ITS OWN WAY. A pool reaches the tree as plain
+    # What a pool is, for a lowering that keeps one its own way. A pool reaches the tree as plain
     # lists, variables and loops (DSL::Pool): one list for each field and for its own bookkeeping,
     # variables for its chain's two ends and its count, and a repeat for each walk. The interpreter
     # and every lowering that keeps a pool as those lists run that tree and never read this. A
@@ -26,7 +26,7 @@ module VBlank
     # One field of a pool: its name, the list it is kept in, and the width the game declared.
     PoolField = Data.define(:name, :list, :width)
 
-    # WHAT A WALK OF A POOL IS, on the repeat the walk makes (Nodes::Repeat#pool_walk). The walk's
+    # What a walk of a pool is, on the repeat the walk makes (Nodes::Repeat#pool_walk). The walk's
     # first +step_statements+ statements step it: the thing it is on (+at+) is the one it was going
     # to next (+ahead+), and +ahead+ becomes the thing after it along +links+, or NONE once +at+ is
     # +last+. The repeat's index counts its turns. Each names a variable or list of today's tree,
