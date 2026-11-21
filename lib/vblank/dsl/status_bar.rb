@@ -81,7 +81,7 @@ module VBlank
         self
       end
 
-      # A bar is not held to a box. It is already held to the rows from its top down, and the
+      # A bar is not held to a BOX. It is already held to the rows from its top down, and the
       # console uses the part of its display that would hold the box for that.
       def show_only_inside(*) = refuse_box!("show_only_inside")
       def show_everywhere = refuse_box!("show_everywhere")

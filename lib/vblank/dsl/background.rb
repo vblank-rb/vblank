@@ -653,7 +653,7 @@ module VBlank
         record_scroll_write
       end
 
-      # Show the background only inside a box on the screen, from the frame after, the way a
+      # Show the background only inside a BOX on the screen, from the frame after, the way a
       # scroll shows:
       #
       #   tall = var :tall, 0

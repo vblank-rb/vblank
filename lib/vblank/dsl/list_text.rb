@@ -12,7 +12,7 @@ module VBlank
     # proportional font stays proportional. Every step is one a game could write itself, which is
     # why it works the same on every console and in the interpreter.
     #
-    # One routine for a list, a font and a colour, however many places draw it, since a high score
+    # One routine for a list, a font and a COLOUR, however many places draw it, since a high score
     # table draws the same list ten times over and each place only sets four numbers.
     class ListText
       def initialize(builder, number:, list:, font:, color:)

@@ -20,7 +20,7 @@ module VBlank
       # The answers it keeps, each in a variable of its own.
       ANSWERS = %i[x y behind].freeze
 
-      # +answers+ is a Value for each of answers.
+      # +answers+ is a Value for each of ANSWERS.
       def initialize(answers)
         @answers = answers
       end

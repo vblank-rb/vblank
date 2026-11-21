@@ -167,11 +167,11 @@ module VBlank
       # blank, and a pass whose work ends in the last few lines of a frame can run that past the
       # blank: its wait ends a frame after its count rose, and the frame between belongs to it.
       # Frame::SHOWN takes the pass's number in the blank its wait ends at, which an emulated frame
-      # starts with, so the wait ended on the frame before the first one after which shown reads
+      # starts with, so the wait ended on the frame before the first one after which SHOWN reads
       # +pass+ or more.
       #
-      # +shown+ is shown as read after each frame from +first+ on; while it is short of +pass+, the
-      # core plays on a frame at a time, the block reading shown after each, as far as +most_frames+.
+      # +shown+ is SHOWN as read after each frame from +first+ on; while it is short of +pass+, the
+      # core plays on a frame at a time, the block reading SHOWN after each, as far as +most_frames+.
       # If SHOWN never gets there, the answer is the frame the count rose on, the one before +first+.
       def self.wait_ended_on(core, pass:, first:, shown:, most_frames:)
         until shown.any? { |each| each >= pass } || shown.size >= most_frames
