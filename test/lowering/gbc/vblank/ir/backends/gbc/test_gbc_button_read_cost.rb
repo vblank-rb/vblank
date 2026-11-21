@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# A BUTTON NAMED IN THE PROGRAM, asked whether it is held or was pressed, is a byte read and a bit
+# A button named in the program, asked whether it is held or was pressed, is a byte read and a bit
 # tested where the game asks, as the console's own games test their joypad byte (Pan Docs, "Joypad
 # Input": the buttons are read once a frame into a byte, a bit each). The frame's one read of the
 # buttons stays where it is; what is measured is each test of a button after it.

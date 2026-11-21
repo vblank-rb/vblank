@@ -6,7 +6,7 @@ require "tmpdir"
 require "digest"
 require "made_up_original_layouts"
 
-# A SCENE WHOSE BACKGROUND MAP IS 64 BY 64 CELLS ARRIVES ON ITS FIRST FRAME, as the interpreter shows
+# A scene whose background map is 64 by 64 cells arrives on its first frame, as the interpreter shows
 # it. The Color's grid is 32 by 32 cells, so a bigger map is kept in the cartridge and the cells the
 # view is over are put in the grid (Runtime::BigMaps): for a map just put up, the whole view of 21 by
 # 19 cells. The console's own games put a screen up in a blank without losing a frame, so the pass the
@@ -63,7 +63,7 @@ class TestGBCBigMapArrival < Minitest::Test
     pass
   end
 
-  # THE VIEW JUMPED ABOUT THE MAP, a whole view worked out each time, coming round the grid's rows and
+  # The view jumped about the map, a whole view worked out each time, coming round the grid's rows and
   # columns, as the interpreter shows it.
   def test_a_view_jumping_about_a_big_map_agrees_with_the_interpreter
     GBC::CheckedRun.new.run(jumping_game, frames: VIEW_SPOTS.length + 2)

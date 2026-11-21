@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A SHORT QUEUE OF BYTES costs a few dozen cycles an operation, as a hand-written one on the console
+# A short queue of bytes costs a few dozen cycles an operation, as a hand-written one on the console
 # does. Each pass here makes three hundred operations, which at several hundred cycles each would
 # take two frames.
 class TestGBCByteLists < Minitest::Test
