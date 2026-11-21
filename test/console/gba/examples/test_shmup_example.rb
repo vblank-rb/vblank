@@ -18,7 +18,7 @@ end
 
 # The Shmup example: a whole game split across files — examples/shmup/player.rb,
 # enemies.rb, hud.rb — each a plain Ruby object that takes the build and calls the DSL
-# verbs on it, wired into two scenes (PLAYING and a GAME OVER screen). This proves the
+# verbs on it, wired into two scenes (playing and a game over screen). This proves the
 # multi-file pattern and real scenes end to end: the parts declare their own sprites and
 # HUD inside the playing scene (so they vanish on the game-over screen), collaborate (an
 # enemy touching the ship calls the HUD's hit), and losing the last ship switches scenes —
@@ -52,7 +52,7 @@ class TestShmupExample < Minitest::Test
 
   # How far the boss's hull reaches across the screen, or nil while there is no boss. It is
   # read off the picture rather than out of a variable on purpose: what is under test is
-  # that the WHOLE cruiser is on screen and moves together, and the sprite's own x says
+  # that the whole cruiser is on screen and moves together, and the sprite's own x says
   # nothing about the pieces the console was given.
   private def magenta_span(screen)
     xs = (0...160).step(2).flat_map do |y|
@@ -159,7 +159,7 @@ class TestShmupExample < Minitest::Test
   end
 
   # Losing the last ship switches to the game-over scene: the gameplay sprites and HUD
-  # stop being presented (they belong to the playing scene) and the GAME OVER banner —
+  # stop being presented (they belong to the playing scene) and the game over banner —
   # which belongs to the game-over scene — appears. No per-draw visibility flag anywhere.
   def test_losing_every_ship_shows_the_game_over_screen
     i = game_player.run(Shmup.program, frames: TO_GAME_OVER)
@@ -228,7 +228,7 @@ class TestShmupExample < Minitest::Test
     assert_operator late[0], :<, early[0], "and all of it slid left together"
   end
 
-  # Facing the other way is the same picture mirrored about the WHOLE canvas, not about
+  # Facing the other way is the same picture mirrored about the whole canvas, not about
   # each piece: the gun arm swaps ends instead of every piece turning inside out.
   def test_the_boss_turns_round_as_one_picture
     seen = {}

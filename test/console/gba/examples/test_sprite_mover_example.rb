@@ -59,7 +59,7 @@ class TestSpriteMoverExample < Minitest::Test
 
   # --- the two posts, which is what the stack is here to show ---
   #
-  # Both posts are written AFTER the heart, so declaration order alone would put both in
+  # Both posts are written after the heart, so declaration order alone would put both in
   # front of it. The stack overrules that for one of them. ON_A_POST frames of holding a
   # direction is where the heart sits on a post.
 
