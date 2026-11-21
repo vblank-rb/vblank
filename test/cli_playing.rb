@@ -3,7 +3,7 @@
 require "open3"
 require "rbconfig"
 
-# WHAT THE TESTS OF `vblank run` WITH A SCRIPT OR A TAPE, AND `vblank compare`, SHARE: the command run the way a
+# What the tests of `vblank run` with a script or a tape, and `vblank compare`, share: the command run the way a
 # person runs it, in a process of its own, and the files it is pointed at — a game, and
 # scripts that play it.
 #

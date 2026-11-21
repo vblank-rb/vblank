@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# A ROUTINE CALLED FROM INSIDE AN AREA has its drawing held to that area, on a console whose build
+# A routine called from inside an area has its drawing held to that area, on a console whose build
 # keeps the area in memory as the game runs (Console::Description#area_clips_called_routines). The
 # interpreter clips it there, and each such console's cartridge is checked against it. Played by
 # test/console/gbc/vblank/builder/test_called_routine_area_on_the_color.rb,

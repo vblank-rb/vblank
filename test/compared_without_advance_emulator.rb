@@ -3,8 +3,8 @@
 require "open3"
 require "tmpdir"
 
-# TWO CARTRIDGES OF A CONSOLE THAT IS NOT THE ADVANCE, COMPARED IN A PROCESS WHERE THE ADVANCE'S
-# EMULATOR CANNOT BE LOADED. A game for the Genesis or the Super Nintendo has its own console's
+# Two cartridges of a console that is not the Advance, compared in a process where the Advance's
+# emulator cannot be loaded. A game for the Genesis or the Super Nintendo has its own console's
 # emulator and has no use for ruby-gba-emulator, whose C extension a `path:` source in its Gemfile
 # never builds. A comparison of its cartridges must play them without asking for that emulator.
 #

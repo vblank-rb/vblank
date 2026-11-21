@@ -2,7 +2,7 @@
 
 require "differential"
 
-# A GAME LAID OUT FOR THE GAME BOY COLOR PLAYS IN THE ADVANCE'S BORDER AS IT DOES ON THE COLOR
+# A game laid out for the Game Boy Color plays in the Advance's border as it does on the color
 # (Console::AdvanceKit::COLOR_SCREEN). The games are for those two consoles alone, so each console's
 # folder has a test file that includes ColorScreenTests, played on every run that plays games as
 # either:
