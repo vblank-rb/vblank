@@ -127,7 +127,7 @@ class TestAffineBackgroundOnTheAdvance < Minitest::Test
   end
 
   # Turn 90 degrees clockwise: a screen point straight right of center now samples
-  # a texture point straight ABOVE center instead (row 0, column 15) — turning the
+  # a texture point straight above center instead (row 0, column 15) — turning the
   # picture, not sliding it.
   def test_rotate_turns_the_picture_around_its_center
     map = marked_map({ [25, 10] => "#", [15, 0] => "$" })
@@ -178,7 +178,7 @@ class TestAffineBackgroundOnTheAdvance < Minitest::Test
     assert_operator at_3x.size, :<, at_1x.size
   end
 
-  # HOW A TURNING LAYER READS ITS COLOURS, which is not a choice: that pair of hardware
+  # How a turning layer reads its colours, which is not a choice: that pair of hardware
   # layers reads a whole byte per pixel whatever the art is drawn from, because its map
   # holds one byte a cell with no room to name a group of sixteen colours. A board drawn
   # from two colours is the case that catches it — few enough colours to be sorted into
@@ -229,7 +229,7 @@ class TestAffineBackgroundOnTheAdvance < Minitest::Test
     assert_equal Color.resolve(:white), picture.call(nil).pixel(*where_it_was_drawn)
   end
 
-  # WHICH POINT OF THE MAP SITS AT THE PIVOT. A turning background hangs from the screen's corner
+  # Which point of the map sits at the pivot. A turning background hangs from the screen's corner
   # unless the game names a point of the map (`map_point:`, in the map's own pixels): then that
   # point is the one at the pivot, at every size and angle. Here the map's middle, the mark at
   # column 16 and row 16, sits at the screen's (60, 40). The mark is found by its colour and by
@@ -298,7 +298,7 @@ class TestAffineBackgroundOnTheAdvance < Minitest::Test
     assert_match(/map_point/, err.message)
   end
 
-  # A pivot named in the MIDDLE of a declaration must not break the line it is in: the
+  # A pivot named in the middle of a declaration must not break the line it is in: the
   # size written after it is still the size the picture starts at, which a scene's body
   # would otherwise put back on every frame it runs. Written as a scene because that is
   # the only place the difference shows — the sword flying at the player is exactly this

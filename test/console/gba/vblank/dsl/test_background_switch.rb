@@ -3,7 +3,7 @@
 require "test_helper"
 require "background_switch_tests"
 
-# A BACKGROUND SWITCHED OFF AND ON AGAIN, on the Advance: the tests every console that can leave a
+# A background switched off and on again, on the Advance: the tests every console that can leave a
 # layer out plays (BackgroundSwitchTests in test/background_switch_tests.rb), and one of the
 # Advance's own. Its display switches each layer on and off with a bit of its display control
 # register, so a hidden background takes none of the display's windows, which a light needs.
