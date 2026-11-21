@@ -3,14 +3,14 @@
 module VBlank
   class Builder
     #--
-    # A BUILD STARTED IN A CHOSEN STATE (Cartridge::Game#starting_with): each variable and list the
+    # A build started in a chosen state (Cartridge::Game#starting_with): each variable and list the
     # build was given a start for starts there in place of where its `var` or `list` starts it. The
-    # chosen start IS the build's start: a variable's is set where every declared start is set, as
+    # chosen start is the build's start: a variable's is set where every declared start is set, as
     # the game starts; a list is made empty where it is declared and then holds the items given, in
     # order. `start_over` and a save_data record put either back there, as they put back a declared
     # start. What the game's own code does after that is the game's, as it is from any start.
     #
-    # A START IS FOR WHAT THE GAME MAKES ONCE, as it starts. A `var` line's start is set once at power-on
+    # A start is for what the game makes once, as it starts. A `var` line's start is set once at power-on
     # wherever it is written (Variables#var), so a variable a scene or routine declares is the game's
     # from power-on like any other, and its chosen start stands in for the declared one the same way:
     # entering the scene does not set it again. What the scene's own code writes into it after that
@@ -18,7 +18,7 @@ module VBlank
     # makes the list where it is written, so one a scene or routine declares is made again each time
     # that body runs; a start for one is refused rather than given again on every entry.
     #
-    # WHY THE PROGRAM IS BUILT WITH OTHER STARTS, rather than a state written into the running game
+    # Why the program is built with other starts, rather than a state written into the running game
     # from outside (a state image on a computer's build, a probe's write on a cartridge): a program
     # is what every lowering plays, so the interpreter, the C, JavaScript and Ruby builds and every
     # console's cartridge start in the same state with nothing written for any one of them, and each

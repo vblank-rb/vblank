@@ -2,7 +2,7 @@
 
 module VBlank
   module Bots
-    # WHAT A BOT CAN SEE: its own copy of the game, read and never written. It is handed to the bot's block
+    # What a bot can see: its own copy of the game, read and never written. It is handed to the bot's block
     # once a pass, and answers the same questions the interpreter answers a test (IR::ReadingByName): a
     # variable, a sprite, a background and the music's loudness by the names the game gave them, and a list
     # by its name. The numbers are those of the pass just ended. There is nothing here that changes the

@@ -340,25 +340,25 @@ module VBlank
     # lays things out on, clamps them to and checks them against.
     attr_reader :console
 
-    # WHAT THIS BUILD SAYS IT IS DOING, for whoever is doing real work while it runs.
+    # What this build says it is doing, for whoever is doing real work while it runs.
     #
     #   progress.step "reading the six episodes"
     #   floors.each_with_index { |floor, n| progress.report_count n + 1, floors.length, floor.name; ... }
     #
     # A build is already a run of named phases saying how far each has got (see
     # {VBlank::Messages::Progress}). Anything a game or an effect pack does while the block runs
-    # happens INSIDE one of those phases, and without this it happens namelessly — the
+    # happens inside one of those phases, and without this it happens namelessly — the
     # build stands there saying "reading the game" for a minute with no clue which minute
     # of it belongs to whom. This is the seam: a pack's verbs are mixed into this class,
     # and a game's block is evaluated on it, so `progress` resolves here for both, with no
     # plumbing to pass round. A game split across plain Ruby objects hands it on like any
     # other dependency.
     #
-    # IT IS A NOUN, NOT A VERB, and that distinction is deliberate. `blit` and `sprite` are
-    # things a GAME does and belong on the teaching-facing verb surface; progress is a thing
-    # the BUILD has, and the surface a person learns should not grow a build-time member.
+    # It is a noun, not a verb, and that distinction is deliberate. `blit` and `sprite` are
+    # things a game does and belong on the teaching-facing verb surface; progress is a thing
+    # the build has, and the surface a person learns should not grow a build-time member.
     #
-    # THE DEFAULT SAYS NOTHING, so nobody has to ask whether anybody is listening, and
+    # The default says nothing, so nobody has to ask whether anybody is listening, and
     # nothing reported here may change what gets built: this is an observation. A pack that
     # behaved differently when somebody was watching would be a bug that only shows up in
     # the mode nobody tests.
@@ -475,7 +475,7 @@ module VBlank
       DSL::Fraction.bits_of(holds)
     end
 
-    # AN `estimate:` DOES NOTHING, whatever it gives, except have its line kept. A list, a pool, a `repeat`, a
+    # An `estimate:` does nothing, whatever it gives, except have its line kept. A list, a pool, a `repeat`, a
     # a test and a stretched rectangle or column once took one — `{ usually: N }`, how big or
     # how often the thing normally was — for a cost estimate that worked a frame's time out from
     # the program. That estimate is gone: the build measures a game by running it. A game
@@ -540,7 +540,7 @@ module VBlank
       DSL::Table.new(self, name, values.length, fraction_bits: bits, width: width)
     end
 
-    # A RUN OF A TABLE COPIED INTO A LIST AT ONCE (see List#copy_from). The loop it replaces —
+    # A run of a table copied into a list at once (see List#copy_from). The loop it replaces —
     # `list[i] = table[start + i]` for each i — works out an address and makes a read and a
     # write for every entry, which is most of a frame for a few hundred of them. This is one
     # statement, so the console copies the run as a block. The list then holds exactly
@@ -555,7 +555,7 @@ module VBlank
       ensure_var(at)
     end
 
-    # A LIST SET TO ONE VALUE IN ONE STEP (see List#fill): the whole list as it is now, or
+    # A list set to one value in one step (see List#fill): the whole list as it is now, or
     # +count+ items from +from+. The loop it replaces sets an item at a time and works out an
     # address for each; the console sets the run a whole word at a time instead, and a byte
     # at a time only at its ends. On the console a run is held to the list's capacity; a run
@@ -574,7 +574,7 @@ module VBlank
       ensure_var(count)
     end
 
-    # A LIST THE GAME SHIFTS CANNOT BE FILLED. Dropping the front item makes the list a ring
+    # A list the game shifts cannot be filled. Dropping the front item makes the list a ring
     # that wraps round its own memory, so a run of its items is not a run of memory to set in
     # one step. Refused once every routine is built, so a `shift` anywhere in the game is seen,
     # and both backends refuse it alike.
@@ -688,7 +688,7 @@ module VBlank
 
       # The program's default display mode — whatever the top-level `screen` left set.
       # Each scene starts from this, so one scene's `screen` (a tiled game) can't leak
-      # into the next (a bitmap title): a scene is bitmap or tiled by what IT declares,
+      # into the next (a bitmap title): a scene is bitmap or tiled by what it declares,
       # or the default, never by which scene happened to be built before it. That's what
       # lets `sprite`/`draw_text`/`draw_number` pick software vs hardware per scene.
       default_screen_mode = @screen_mode
@@ -780,7 +780,7 @@ module VBlank
           # scopes what it presents to when the scene is active.
           @building_scene = name if @scene_gates.key?(name)
           @current_scene_gate = @scene_gates[name]
-          # ...and if this routine was WRITTEN inside a `layer` block, remember which, so
+          # ...and if this routine was written inside a `layer` block, remember which, so
           # anything it declares that wants a depth can be refused rather than quietly
           # getting none (see Layers#refuse_deferred_layer!).
           @deferred_layer = @routine_layer[name]
@@ -840,7 +840,7 @@ module VBlank
       @inline_bar_nodes << node
     end
 
-    # THE VARIABLES A BOX THE BACKGROUND +name+ IS HELD TO IS KEPT IN (Background#show_only_inside),
+    # The variables a box the background +name+ IS HELD TO IS KEPT IN (Background#show_only_inside),
     # made the first time the game sets one: a background nobody holds to a box keeps none, and
     # its game builds as it did. All five start at 0, which is everywhere. +in_part+ is a box of
     # some size (`show_only_inside`), +whole+ one of nothing (`hide`).
@@ -926,7 +926,7 @@ module VBlank
     # program that reaches into the angle/scale {Value}s directly (`bg.scale.approach!`)
     # rather than through those two verbs.
     #
-    # Also captures the CURRENT scene gate (whatever scene this first `rotate`/`scale`/
+    # Also captures the current scene gate (whatever scene this first `rotate`/`scale`/
     # `angle` call happens inside, if any — see #gated_by_scene), so a background declared
     # and turned only inside one scene writes its matrix only while that scene is
     # active. Without this, the write would land at every frame boundary in the whole
@@ -959,7 +959,7 @@ module VBlank
       @inline_affine_nodes << node
     end
 
-    # THE SIZE OR ANGLE A BACKGROUND IS DECLARED AT, which is a different thing from one
+    # The size or angle a background is declared at, which is a different thing from one
     # written each frame and has to run in a different place.
     #
     # `background(:sword, ...).scale(16.0)` sets how big the picture STARTS. At the top of
@@ -985,7 +985,7 @@ module VBlank
     end
 
     # The last statement recorded into the block being built, or nil where nothing has been
-    # recorded into it yet. What it answers is whether a call CONTINUES a declaration or
+    # recorded into it yet. What it answers is whether a call continues a declaration or
     # comes after it — `background(...).scale(16.0)` is one line and one declaration, where
     # a `scale` further down the same scene is a write that frame makes.
     def last_statement
@@ -1123,7 +1123,7 @@ module VBlank
       else_node = Build.else_
       @container_stack.push(else_node)
       # The other side of the same test: what is declared here is shown when the `if`'s
-      # condition is FALSE. A copy of that condition, because a node belongs to one place
+      # condition is false. A copy of that condition, because a node belongs to one place
       # in the tree and this one already belongs to the `if`.
       @shown_while.push(Build.binop(:==, if_node.cond.copy, Build.int(0)))
       begin
@@ -1234,7 +1234,7 @@ module VBlank
       value_handle_for(name)
     end
 
-    # A HIDDEN VARIABLE FOR A NUMBER ONE STEP STORES AND READS BACK BEFORE IT ENDS, one for each
+    # A hidden variable for a number one step stores and reads back before it ends, one for each
     # +why+ in the routine being recorded (outside every routine, the outermost body being recorded,
     # #recorded_routine_body), however many of its steps keep one (DSL::Value#step_copy). A step that
     # stores it reaches no other such step before its last read, so the steps of one routine can
@@ -1300,7 +1300,7 @@ module VBlank
     # #unique_names from now on.
     def reserve_free_variable_name(name) = free_variable_name(name).tap { |free| @unique_names << free }
 
-    # THE VARIABLE NAMES THIS BUILD MADE UNIQUE, by a counter (a `repeat`'s index, a hidden copy, an
+    # The variable names this build made unique, by a counter (a `repeat`'s index, a hidden copy, an
     # approach's step) or by taking a free name (#reserve_free_variable_name: a plain-Ruby local's
     # variable, an object's instance variable's). Another build of other code makes the same names
     # for variables of its own, so two builds that each made a name never mean one variable by it:
@@ -1589,7 +1589,7 @@ module VBlank
     # call, and no per-draw flag in game code. Outside a scene, visibility is unchanged.
     # Which game state a declaration belongs to, or nil where it belongs to none and is
     # always there. The gate above gives the same thing as a run-time test; this gives it
-    # as a NAME, which is what something deciding what has to be in memory at once needs.
+    # as a name, which is what something deciding what has to be in memory at once needs.
     def declaring_scene = @building_scene
 
     def gated_by_scene(active_node)
@@ -1615,7 +1615,7 @@ module VBlank
       Build.if_(gates.map { |gate| scene_up(gate) }.reduce { |either, other| Build.binop(:or, either, other) }, node)
     end
 
-    # Gate a declaration's visibility on the conditions it was WRITTEN under, so a
+    # Gate a declaration's visibility on the conditions it was written under, so a
     # blinking prompt is the plain thing an author would write:
     #
     #   draw_text "PRESS START", 76, 100, :gray if blink == 1
@@ -1697,8 +1697,8 @@ module VBlank
     # were called — nothing is pacing it, so there is no gap to move them to.
     #
     # Each write is gated to its owning scene, the same as a scene-owned sprite, HUD glyph
-    # or turning background (see #finalize_background_affine). WHERE A BACKGROUND SITS IS A
-    # PROPERTY OF THE LAYER rather than of the background, and scenes take turns with the
+    # or turning background (see #finalize_background_affine). Where a background sits is a
+    # property of the layer rather than of the background, and scenes take turns with the
     # layers — so two backgrounds that share one both write its position every frame, and
     # the one declared later wins wherever they disagree. A title screen of drifting
     # scenery handing over to a game that starts at the top of its map was pinned still by
@@ -1761,7 +1761,7 @@ module VBlank
       @backgrounds.select { |_name, background| yield(background) }
     end
 
-    # PUT A WRITE PER THING IN THE GAP BETWEEN FRAMES, at every frame boundary there is — the
+    # Put a write per thing in the gap between frames, at every frame boundary there is — the
     # shared half of the passes above and below, which differ only in what they are about
     # (the backgrounds that scroll, the ones handed a map, the lists of colours that change)
     # and what each one writes. +things+ is those, by name; the block is handed each
@@ -1792,7 +1792,7 @@ module VBlank
       end
     end
 
-    # A WRITE MADE ONLY ON A FRAME WHERE THE ANSWER CHANGED. +requested+ is the variable
+    # A write made only on a frame where the answer changed. +requested+ is the variable
     # holding what the game last set, and +in_force+ the one holding what the write last put
     # in place; they differ exactly on the frame to write on, and the write then makes them
     # agree. See #finalize_background_maps for why it is two variables and not a write
@@ -1804,7 +1804,7 @@ module VBlank
                 Build.set(in_force, Build.var_ref(requested)))
     end
 
-    # COPY A WHOLE MAP INTO A BACKGROUND'S CELLS, in the gap between frames, and only on a
+    # Copy a whole map into a background's cells, in the gap between frames, and only on a
     # frame where the answer changed.
     #
     # A cell of a map is one half-word, so `set_tile` can write it wherever the game
@@ -1813,11 +1813,11 @@ module VBlank
     # and there the same write really would show half of the old room and half of the new.
     # So the copy waits for the gap, which is the one moment the display is not reading.
     #
-    # WHY TWO VARIABLES rather than a copy where `show_map` was called. `show_map` sets
+    # Why two variables rather than a copy where `show_map` was called. `show_map` sets
     # which map is showing — a statement about the world, the same shape as a scroll
     # position — so a game may call it every frame, from inside a branch, from a scene. What
     # the console must not do is copy thousands of cells every frame. Holding what the game
-    # SET apart from what is really IN the cells turns that into one comparison: they
+    # SET apart from what is really in the cells turns that into one comparison: they
     # differ exactly on the frame the answer changed, which is the frame to copy on.
     def finalize_background_maps
       write_between_frames(@inline_map_nodes, backgrounds_that(&:swaps_maps?)) do |name, background|
@@ -1828,7 +1828,7 @@ module VBlank
       end
     end
 
-    # SHOW THE CELLS A HELD BACKGROUND'S PASS CHANGED, all at once, at each frame boundary.
+    # Show the cells a held background's pass changed, all at once, at each frame boundary.
     #
     # One write for the whole program, however many backgrounds are held: the changes wait in
     # one queue, in the order they were made (see IR::Nodes::ShowHeldTiles). It goes in the gap
@@ -1844,7 +1844,7 @@ module VBlank
       write_between_frames([], { held: true }) { Build.show_held_tiles }
     end
 
-    # WRITE A LAYER'S COLOURS INTO THE DISPLAY'S TABLE, in the gap between frames, and only
+    # Write a layer's colours into the display's table, in the gap between frames, and only
     # on a frame where the answer changed — the colour twin of the map copy above, and held
     # apart the same way and for the same reasons.
     #
@@ -1889,7 +1889,7 @@ module VBlank
       end
     end
 
-    # WRITE THE TURN ONLY ON A FRAME WHERE IT CHANGED — the same two-variables trick
+    # Write the turn only on a frame where it changed — the same two-variables trick
     # {#finalize_background_maps} plays on a map, and here it buys something the map's
     # version does not.
     #
@@ -1897,14 +1897,14 @@ module VBlank
     # the display holds it: the numbers that set how the layer is turned and where it is
     # pinned stay where they were put. So writing them again every frame is not only work
     # nobody asked for — a divide and two table lookups before the write itself — it is
-    # A RISK THE STILL PICTURE HAS NO REASON TO RUN. The display reads where the layer is
+    # a risk the still picture has no reason to run. The display reads where the layer is
     # pinned as it draws, so a write landing after the drawing has started moves the layer
     # for the rest of that picture: one frame showing the layer somewhere else, and then it
     # snaps back. Every game has frames that start late, and on those frames this write
     # lands there. A scroll written late is invisible, which is why the scroll registers
     # beside it have never needed this.
     #
-    # Holding what the display was TOLD apart from what the program has SINCE SET turns
+    # Holding what the display was told apart from what the program has SINCE SET turns
     # all of that into two comparisons: they differ exactly on the frame the answer moved,
     # which is the frame worth writing on.
     def affine_write_if_changed(name, background)
@@ -1952,7 +1952,7 @@ module VBlank
     #
     # It goes at the frame boundary for the reason the scroll writes do: that gap is the
     # one moment the display is not reading, so the whole picture is drawn at one amount
-    # rather than half at each. And it goes FIRST, before the sprites are put where they
+    # rather than half at each. And it goes first, before the sprites are put where they
     # go, so the frame that is about to be drawn is drawn at the amount this frame has.
     def finalize_layer_blend
       return if @frame_boundaries.empty? || @layers_node.nil?
@@ -1983,13 +1983,13 @@ module VBlank
       [layer.shows, layer.behind].all? { |amount| DSL::Value.fixed_number(amount) }
     end
 
-    # Run every per-frame routine at each frame boundary — ONCE PER FRAME THAT REALLY
-    # PASSED, which on a program keeping up is once, and on one that overran its frame
+    # Run every per-frame routine at each frame boundary — once per frame that really
+    # passed, which on a program keeping up is once, and on one that overran its frame
     # is twice or three times.
     #
-    # THAT REPEAT IS THE WHOLE OF THE PROMISE. A pass of the game loop is not a frame;
+    # That repeat is the whole of the promise. A pass of the game loop is not a frame;
     # it is a frame on a program that fits and two frames on one that does not. So a
-    # body called once per PASS and described as running every frame quietly runs at
+    # body called once per pass and described as running every frame quietly runs at
     # half speed on a heavy game, and a fade told to take half a second takes a second
     # and a half. Counting the frames instead is what makes the word mean what it says.
     #
@@ -2002,7 +2002,7 @@ module VBlank
     # change takes effect on the whole picture rather than half of it. And they go in
     # here rather than where `once_a_frame` was called because such a routine is
     # normally set off by an event — a brick breaking, a life lost — while what it
-    # produces has to be applied on EVERY frame after that, including the frames the
+    # produces has to be applied on every frame after that, including the frames the
     # triggering code does not run on.
     #
     # A program with no frame boundary (no game loop) never calls them at all. That
@@ -2026,8 +2026,8 @@ module VBlank
       end
     end
 
-    # ROUTINES CALLED ONCE A PASS, straight after each frame boundary: work the framework spreads
-    # over a game's passes, such as writing a save a piece at a time. Once a PASS and not once a
+    # Routines called once a pass, straight after each frame boundary: work the framework spreads
+    # over a game's passes, such as writing a save a piece at a time. Once a pass and not once a
     # frame like the ones above, because what they leave for the game to read — a save that has
     # just finished — has to hold for one whole pass of the game's own code, and a late pass
     # that replayed them would clear it again before the game got to look.
@@ -2050,7 +2050,7 @@ module VBlank
     # Give every "call the routine this variable names" its list of routines: the names that
     # variable can hold, in the order they were numbered.
     #
-    # IT HAS TO BE NOW rather than where the call was written, and the reason is ordinary
+    # It has to be now rather than where the call was written, and the reason is ordinary
     # program order: a name is one of the set from the first time anything uses it, and a
     # routine's body is built at finalize — so a state set only inside another routine was not
     # known yet. By here every body has been built and the set cannot grow again.
@@ -2058,14 +2058,14 @@ module VBlank
       @name_dispatches.each { |node, held| node.targets = held.names }
     end
 
-    # A NAME THAT PICKS A SCENE. `call mode` runs the routine its variable names, and when
+    # A name that picks a scene. `call mode` runs the routine its variable names, and when
     # those names are scenes it is exactly a `case_var` over them — so it is made one, here,
     # before any scene's body is built. Everything that asks which scene a thing belongs to
     # reads case dispatches (a scene's text, sprites and scenery are shown only while it
     # runs; the display is told its layers as it takes over), and it all then works for
     # scenes picked by name with nothing else knowing the difference.
     #
-    # EVERY SCENE THE GAME DECLARES IS GIVEN A NUMBER NOW. A name normally gets one the first
+    # Every scene the game declares is given a number now. A name normally gets one the first
     # time it is used, and a scene first named deep inside another scene's body — the walk
     # a menu hands over to — would get one only as that body is built, after this dispatch
     # was fixed. Numbering them all first costs nothing: a number the variable never holds
@@ -2217,7 +2217,7 @@ module VBlank
       end
     end
 
-    # A TABLE GIVEN A SLOT OF THE DATA PACK takes the slot's width and sign. A width or sign the
+    # A table given a slot of the data pack takes the slot's width and sign. A width or sign the
     # line gives as well must be the slot's, since two answers to one question are a mistake.
     def refuse_table_unlike_slot!(name, handle, width, signed)
       layout = handle.layout
@@ -2304,7 +2304,7 @@ module VBlank
     def push_container(node)
       record(node)
       @container_stack.push(node)
-      # A test the block is written under is also a test anything DECLARED in the block is
+      # A test the block is written under is also a test anything declared in the block is
       # only shown under (see #gated_by_open_conditions) — the same statement reads both ways, and a
       # thing the framework redraws for you every frame has no other way to hear about it.
       @shown_while.push(node.cond) if node.kind == :if
@@ -2315,7 +2315,7 @@ module VBlank
     end
 
     # Run a DSL block (a game loop body, a func body…) at the current build
-    # point. It runs in the block's OWN context, not instance_eval'd onto the builder,
+    # point. It runs in the block's own context, not instance_eval'd onto the builder,
     # so its `self` stays wherever the block was written: this builder at the top level
     # (where these blocks live inside VBlank.build's instance_eval, so `self` already
     # is the builder), or a plain Ruby object when a game is split across files — there

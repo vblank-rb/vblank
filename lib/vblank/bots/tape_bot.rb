@@ -2,7 +2,7 @@
 
 module VBlank
   module Bots
-    # A BOT THAT PLAYS ONE PLAYER'S PRESSES FROM A TAPE of passes (Playthroughs::Tape), such as the tape a
+    # A bot that plays one player's presses from a tape of passes (Playthroughs::Tape), such as the tape a
     # match kept (Network::Lockstep#tape). Played by one bot for each player, in one match, it gives the match
     # the tape was made of: the same buttons on the same passes, and so the same game.
     #
