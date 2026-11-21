@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A PAINTED SCREEN WHOSE PIXELS ARE SHOWN TWICE AS BIG (`screen :bitmap, pixel_size: 2`): the game
+# A painted screen whose pixels are shown twice as big (`screen :bitmap, pixel_size: 2`): the game
 # draws a 120×80 picture and the Advance shows each of its pixels as a square of four. The
 # interpreter plays the small picture; the cartridge, the game as C, as JavaScript and as Ruby are
 # each held to it. The Advance alone shows it this way, so these play on the runs that play games as

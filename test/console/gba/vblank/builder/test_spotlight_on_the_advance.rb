@@ -103,7 +103,7 @@ class TestSpotlightOnTheAdvance < Minitest::Test
     assert_backends_agree(lit_room(radius: 0), frames: 2, name: "NOSIZE")
   end
 
-  # A LIGHT BESIDE THREE BENDING LAYERS is one more thing fed a row at a time than the
+  # A light beside three bending layers is one more thing fed a row at a time than the
   # console has engines to feed with, so every one of them is fed by the interrupt at the
   # end of each line instead — the same picture, the CPU carrying the numbers.
   def test_a_light_fed_by_the_line_interrupt_draws_the_same_picture
@@ -125,7 +125,7 @@ class TestSpotlightOnTheAdvance < Minitest::Test
 
   # --- the circle's edge, row by row ---
 
-  # THE CIRCLE A LIGHT LIGHTS IS THE MIDPOINT CIRCLE, the one games of this console draw their
+  # The circle a light lights is the midpoint circle, the one games of this console draw their
   # window circles with, so a game copying one lands on every pixel of it. The game's own circle
   # is in test/midpoint_circle.rb, written from its code; a shape of the game's own is in
   # test/all/vblank/dsl/test_spotlight_shape.rb.
@@ -170,7 +170,7 @@ class TestSpotlightOnTheAdvance < Minitest::Test
 
   # --- a light beside the other things that darken a picture ---
 
-  # A FADE AND A LIGHT ARE BOTH IN FORCE. The display has one darkening, and the light holds
+  # A fade and a light are both in force. The display has one darkening, and the light holds
   # it, so a game with a light fades by walking its colours — the whole picture goes half
   # way to black, and outside the light it is then darkened again on top.
   def test_a_fade_darkens_the_whole_picture_and_the_light_still_shows
@@ -218,7 +218,7 @@ class TestSpotlightOnTheAdvance < Minitest::Test
   # The frames compared: either side of the change of scene on frame 6, and well after it.
   TURN_FRAMES = [3, 6, 7, 8, 12].freeze
 
-  # THE LIGHT IS OFF IN A SCENE THAT SEES THROUGH A LAYER, and on in the rest: the display's
+  # The light is off in a scene that sees through a layer, and on in the rest: the display's
   # mixing is told afresh every frame, so the title's water is mixed and the next scene is lit.
   def test_a_light_is_off_in_a_scene_that_sees_through_a_layer
     title = shown(title_then_light, frames: 3)
@@ -248,7 +248,7 @@ class TestSpotlightOnTheAdvance < Minitest::Test
     assert_backends_agree(fading, frames: TURN_FRAMES, name: "FADES")
   end
 
-  # THE LIT SCENE TAKES THAT FADE OFF, though a fade placed in the stack otherwise stays across
+  # The lit scene takes that fade off, though a fade placed in the stack otherwise stays across
   # a change of scene: the light's darkening asks the display for the mixing the fade holds. So
   # the room and a sprite in its layer are as drawn inside the light, from the pass the lit
   # scene takes over.
@@ -279,7 +279,7 @@ class TestSpotlightOnTheAdvance < Minitest::Test
     assert_backends_agree(back, frames: TURN_FRAMES, name: "BACK")
   end
 
-  # THE CONSOLE KEEPS A LIGHT'S ROWS while it shows nothing new — off in the title, standing still
+  # The console keeps a light's rows while it shows nothing new — off in the title, standing still
   # in the lit scene — and feeds the kept ones again. Lit, off and lit again every four turns with
   # nothing moved, the picture is the interpreter's on every turn compared.
   def test_the_console_keeps_a_lights_rows_across_turns_and_still_frames
