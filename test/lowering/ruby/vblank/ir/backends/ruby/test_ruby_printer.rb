@@ -118,7 +118,7 @@ class TestRubyPrinter < Minitest::Test
     refute_nil wrapped, "a sum past 32 bits should come round through rg_i32, and only when it is"
   end
 
-  # A LIST OF BYTES THAT IS ALWAYS FULL is read and written as its String's own byte, not through the
+  # A list of bytes that is always full is read and written as its String's own byte, not through the
   # list's methods: an unpacking writes its whole pack into one. A byte keeps the low bits and reads
   # back signed, as the list's own methods keep it. Checked against the interpreter on every frame.
   def test_an_always_full_list_of_bytes_is_read_and_written_in_place
@@ -171,7 +171,7 @@ class TestRubyPrinter < Minitest::Test
     end
   end
 
-  # A LOOP CUT INTO STEPS, as one that waits every few turns is, turns as a loop of its own: its body's
+  # A loop cut into steps, as one that waits every few turns is, turns as a loop of its own: its body's
   # step goes back to itself through the steps that count it on and test it, written in place, and
   # the step it is on is a Ruby local. The routine's counter is written only where it leaves, just
   # before a `return`. Checked against the interpreter on every frame, waits and all.
@@ -204,7 +204,7 @@ class TestRubyPrinter < Minitest::Test
     assert_operator run[:total], :>, 0
   end
 
-  # A ROUTINE LONGER THAN A METHOD HOLDS is printed in parts, each a method no longer than that,
+  # A routine longer than a method holds is printed in parts, each a method no longer than that,
   # since Ruby's compiler needs stack for every branch in a method and a Ractor has little. The
   # parts play as the routine did: a loop whose body is in parts still stops when it is told, its
   # count and index (locals of the routine) are read in every part, and the game loop it is called
@@ -240,7 +240,7 @@ class TestRubyPrinter < Minitest::Test
     assert_equal (0...passes).sum { |pass| (0..(2 + pass)).sum { |round| ((round & 3) * SUMS_IN_A_LONG_LOOP) + (SUMS_IN_A_LONG_LOOP / 2) } }, v[:total]
   end
 
-  # A ROUTINE OF MANY SUMS keeps each sum in a local of its own while it checks it for coming
+  # A routine of many sums keeps each sum in a local of its own while it checks it for coming
   # round, and YJIT on arm64 stops Ruby itself (a panic in its assembler) on a method of more than
   # about 490 locals once that method is called often enough to compile. So no printed method has
   # more than MOST_LOCALS_A_METHOD, and the routine, called every frame, plays as it does on the

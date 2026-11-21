@@ -3,7 +3,7 @@
 require "test_helper"
 require "runtime_sounds"
 
-# THE SOUND THE GAME AS RUBY MAKES, sample for sample against the native runtime's (see
+# The sound the game as Ruby makes, sample for sample against the native runtime's (see
 # RuntimeSounds for what is played and why).
 class TestRubySound < Minitest::Test
   include RuntimeSounds
