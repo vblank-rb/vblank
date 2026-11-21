@@ -12,7 +12,7 @@ module VBlank
     #
     # ```ruby
     # drawing_for_local_player do |me|
-    #   draw_text "YOU", hero.x, hero.y - 8, :white if me == 1
+    #   draw_text "you", hero.x, hero.y - 8, :white if me == 1
     # end
     # ```
     #
@@ -38,7 +38,7 @@ module VBlank
       #
       # ```ruby
       # drawing_for_local_player do |me|
-      #   draw_text "YOU", hero.x, hero.y - 8, :white if me == 1
+      #   draw_text "you", hero.x, hero.y - 8, :white if me == 1
       # end
       # ```
       def drawing_for_local_player
@@ -75,7 +75,7 @@ module VBlank
       # * `with:` - the name of the picture to show.
       # * `offset:` - `[dx, dy]`, how far to move it from just above the sprite's centre.
       #--
-      # WHY A MARK HAS NO VARIABLES. A tiled screen shows only sprites and backgrounds, so the "you"
+      # Why a mark has no variables. A tiled screen shows only sprites and backgrounds, so the "you"
       # arrow over a walker must be a sprite. But an ordinary sprite's place and its shown flag are
       # game variables, and in a match the variables are what every machine checks against every
       # other: an arrow moved or shown from `me` would differ from machine to machine, and the match

@@ -13,7 +13,7 @@ module VBlank
     # layers :sky, :world, :actors, :ui     # the stack, back to front
     #
     # scene :playing do
-    #   layer :world  do background :level, tiles: :world_tiles, map: LEVEL end
+    #   layer :world  do background :level, tiles: :world_tiles, map: level end
     #   layer :actors do hero = sprite :hero, at: [100, 60] end
     #   layer :ui     do draw_number :score, 8, 8, :white end
     # end
@@ -38,7 +38,7 @@ module VBlank
     # which costs more than twice the time a frame has and eats the memory besides.
     #++
     module Layers
-      # WHAT A LAYER CAN HOLD, by the kind of node a verb records. Held things are the
+      # What a layer can hold, by the kind of node a verb records. Held things are the
       # ones the framework draws again every frame, so an order over them means
       # something. Painted ones happen where the call happens — by the time the next
       # frame is drawn they are already part of the picture, and no ordering can reach
@@ -48,7 +48,7 @@ module VBlank
       # to be classified here on purpose rather than falling into whichever answer the
       # lookup happens to default to.
       #
-      # Painting is refused on EITHER screen, and that is a decision rather than an
+      # Painting is refused on either screen, and that is a decision rather than an
       # oversight. On a bitmap screen a layer block full of straight-line drawing could
       # be read as paint order and quietly allowed — but only while the same layer is
       # written in one place. Write it in two, with a branch between them, and honoring
@@ -192,7 +192,7 @@ module VBlank
       #
       # ```ruby
       # layer :water, transparency: 40 do
-      #   background :surface, tiles: :ripples, map: WATER
+      #   background :surface, tiles: :ripples, map: water
       # end
       # ```
       #
@@ -203,7 +203,7 @@ module VBlank
       # ```ruby
       # mist = var :mist, 0
       # layer :air, transparency: 100 - mist do
-      #   background :fog, tiles: :weather, map: SKY
+      #   background :fog, tiles: :weather, map: sky
       # end
       # ```
       #
@@ -266,7 +266,7 @@ module VBlank
 
       # A picture is normally scenery at the back and everything that moves in front of
       # it, and something that named no layer is left in that arrangement. Put a
-      # background IN FRONT of a sprite and the arrangement is gone, and with it the
+      # background in front of a sprite and the arrangement is gone, and with it the
       # answer for anything that named no layer — there is no longer a "where it always
       # was" to leave it in. So that picture has to place everything.
       def refuse_unlayered_when_scenery_in_front!
@@ -289,9 +289,9 @@ module VBlank
               "The stack is #{list_of(@layer_stack)}, back to front."
       end
 
-      # An effect can be PLACED in the stack instead of covering the whole screen —
+      # An effect can be placed in the stack instead of covering the whole screen —
       # `fade :black, 100, under: :ui` fades the game and leaves the score showing. What
-      # it names has to be a layer, and the screen has to be one that HAS a stack.
+      # it names has to be a layer, and the screen has to be one that has a stack.
       #
       # A bitmap screen does not. Everything on it — the scenery, the software sprites,
       # the text — is painted into one picture before the display ever sees it, so by
@@ -412,7 +412,7 @@ module VBlank
 
       def as_written(amount) = (DSL::Value.fixed_number(amount) || Messages::PlainWords.words_for_given(amount)).to_s
 
-      # A bitmap screen paints its scenery, its sprites and its text into ONE picture
+      # A bitmap screen paints its scenery, its sprites and its text into one picture
       # before the display ever sees it. By the time an effect could apply there is
       # nothing left to tell apart, so there is nothing to see through. Same shape of
       # answer as `fade ... under:` already gives.
@@ -529,7 +529,7 @@ module VBlank
               "to front. To fix this, use one of those names, or add :#{name} to the `layers` line."
       end
 
-      # A scene cannot go inside a layer, and the reason is about what the two ARE rather
+      # A scene cannot go inside a layer, and the reason is about what the two are rather
       # than about when a body is built. A scene is a state of the game and a state holds
       # things at many depths; a layer is one depth. So this is refused where it is
       # written, whatever the scene turns out to declare.
@@ -542,16 +542,16 @@ module VBlank
               "put the `layer :#{@current_layer}` block inside the scene."
       end
 
-      # A ROUTINE'S BODY IS BUILT LATER, when the `layer` block it was written inside has
+      # A routine's body is built later, when the `layer` block it was written inside has
       # closed, so anything in it that wants a depth would quietly get none. That is the
       # silent wrong picture this whole feature exists to remove.
       #
-      # THE REFUSAL IS ON WHAT ACTUALLY HAPPENED, not on where the routine was written,
+      # The refusal is on what actually happened, not on where the routine was written,
       # and that distinction is the whole design. Refusing every routine declared inside
       # a layer would refuse `pulse coin` on the line after the coin — which is exactly
       # where a game writes it — because `pulse`, `camera_follows`, `fade_out` and
       # `shake_screen` are all built on the public `once_a_frame` and a pack cannot be told
-      # from an author by the verb it calls. Asking instead whether the body DECLARED
+      # from an author by the verb it calls. Asking instead whether the body declared
       # something with a depth lets every one of them through, since a per-frame body is
       # behavior and declares nothing that sits in the picture. It also lets a plain
       # `func` that declares nothing drawable live beside the sprite it moves.
@@ -586,7 +586,7 @@ module VBlank
       end
 
       def refuse_painting_in_layer!(node)
-        # A verb drawing its own text names ITSELF here: a `menu`'s rows really cannot
+        # A verb drawing its own text names itself here: a `menu`'s rows really cannot
         # belong to a layer on a bitmap screen, and the author wrote `menu`, not the
         # `draw_text` underneath it (see Text#with_text_owned_by).
         verb = @verb_owns_text || Messages::PlainWords.verb_written(node)
@@ -598,14 +598,14 @@ module VBlank
       end
 
       # Text is the one verb whose nature changes with the screen. On a tiled screen the
-      # console draws each character for you every frame, so it IS layerable and records
+      # console draws each character for you every frame, so it is layerable and records
       # objects; on a bitmap screen it paints into the framebuffer and reaches here. Say
       # which of the two the author is in, or the rule looks arbitrary.
       def bitmap_screen_suffix(node)
         %i[draw_text draw_digit].include?(node.kind) ? " on a `screen :bitmap`" : ""
       end
 
-      # An effect is PLACED, not contained — which is a different thing from belonging to
+      # An effect is placed, not contained — which is a different thing from belonging to
       # a layer, and the difference is worth teaching here rather than leaving somebody to
       # find it. A layer holds things; a fade is not a thing in the picture, it is
       # something done to the picture from a place in the stack.

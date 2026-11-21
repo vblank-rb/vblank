@@ -14,7 +14,7 @@ module VBlank
     # draw_in_order hero, guard, guards        # whoever stands lower is in front
     # ```
     #--
-    # HOW IT WORKS, which is the same on every backend because it is written in the program
+    # How it works, which is the same on every backend because it is written in the program
     # itself. Before each frame is drawn a routine works out every thing's number and puts
     # the things in order in a list the program keeps — one sort, which each console writes in
     # its own code, starting from the order they were in last frame, so a frame where nobody
@@ -22,7 +22,7 @@ module VBlank
     # in the list's order. Things whose numbers are equal keep the order they were already
     # in, so two characters standing level do not flicker in front of each other.
     #
-    # TAKING TURNS IN FRONT. Many console games draw their sprites in one order on one frame
+    # Taking turns in front. Many console games draw their sprites in one order on one frame
     # and the other way round on the next, so where two overlap each shows half the time and
     # neither hides the other for good — a falling piece over the pile, two characters
     # standing on one spot. The console keeps one picture per pixel, and the sprite earlier in
@@ -114,7 +114,7 @@ module VBlank
 
       def draw_orders = @draw_orders ||= []
 
-      # EVERY THING'S NUMBER MUST BE OF ONE KIND. The numbers are sorted as plain whole numbers,
+      # Every thing's number must be of one kind. The numbers are sorted as plain whole numbers,
       # and a number holding a fraction is kept multiplied up (2.5 with 16 bits of fraction is
       # 163840; see DSL::Fraction). So when the block gives one thing a fraction and another a
       # whole number, 2.5 sorts as 163840 against a 3, and the order is wrong with nothing said.
@@ -205,7 +205,7 @@ module VBlank
       # list counts into — and not, in general, the order the game named them in.
       def run_objects(order) = (@draw_order_runs ||= {}).fetch(order.number) { object_names_in(order) }
 
-      # PUT EACH ORDER'S OBJECTS SIDE BY SIDE IN THE FRAME'S DRAW LIST, where the backmost of
+      # Put each order's objects side by side in the frame's draw list, where the backmost of
       # them was, and tell every frame which run is ordered and where its order is kept. The
       # run has to be unbroken: what is put in order is a run of the draw list, and anything
       # standing between two of its objects would be passed by them as they swap.
@@ -231,7 +231,7 @@ module VBlank
         end
       end
 
-      # BUILD EACH ORDER'S ROUTINE AND RUN IT BEFORE EVERY FRAME IS DRAWN — after the pools
+      # Build each order's routine and run it before every frame is drawn — after the pools
       # have copied their things into place, since a pool's numbers are copied with them, and
       # just before the objects are drawn, so the order is the one the positions now give.
       def finalize_draw_orders
@@ -270,7 +270,7 @@ module VBlank
         at_boot(Build.list_new(order.keys_list, count, full_of: 0))
       end
 
-      # AN ORDER THAT TAKES TURNS HAS ONLY TWO ORDERS, so both are written into the cartridge
+      # An order that takes turns has only two orders, so both are written into the cartridge
       # when it is built, one after the other in one table, and each frame copies one of them
       # into the order list whole. The list holds the run back to front, each object by its
       # place in the run (which is not, in general, the order the game named them in): the
@@ -291,14 +291,14 @@ module VBlank
         at_boot(Build.set(order.turn_var, Build.int(order.turns == :first ? 0 : count)))
       end
 
-      # WORK OUT EVERY NUMBER, THEN SORT. The list holds the objects back to front, so the
+      # Work out every number, then sort. The list holds the objects back to front, so the
       # one in front is last: for :highest the numbers rise along it. The sort is one statement
       # (IR list_sort), which each backend writes as a routine in its own machine's code, and
       # it is stable: it starts from last frame's order and moves a thing back only past a
       # number strictly beyond its own, so two level things keep their order, and a frame where
       # nobody passed anybody moves nothing.
       #
-      # A THING NOT SHOWING IS PUT BEHIND EVERYTHING by the sort itself (IR ListSort's +shown+),
+      # A thing not showing is put behind everything by the sort itself (IR ListSort's +shown+),
       # handed whether each thing shows, the value it is drawn by (its `active`,
       # Reference#objects_on_screen). Things not showing then stand at the back of the list, and one
       # that shows again comes in from there, behind any thing level with it, as if newly added: the
@@ -348,7 +348,7 @@ module VBlank
         end
       end
 
-      # THE SAME NUMBER ADDED TO EVERY THING'S NUMBER CHANGES NO ORDER, so it is left out. A box's
+      # The same number added to every thing's number changes no order, so it is left out. A box's
       # bottom is the thing's place, plus where the box starts in it, plus its height, and things of
       # one size have the same two: the order of their bottoms is the order of their places, and
       # each thing's number is then a copy of its place, where it was a sum worked out every frame.
@@ -441,7 +441,7 @@ module VBlank
               "#{thing.inspect} is not one. Give it the handle that `sprite` or `pool` gave back."
       end
 
-      # SPRITES IN FRONT ARE ORDERED AMONG THEMSELVES ONLY. A sprite in front (`in_front: true`) is
+      # Sprites in front are ordered among themselves only. A sprite in front (`in_front: true`) is
       # drawn after every sprite not in front (Builder#move_front_sprites_last), because a console
       # that keeps a priority bit in each sprite — the Genesis: the sprite attribute's priority bit,
       # which puts it over the plane cells whose own bit is set (Sega's Genesis Software Manual, the

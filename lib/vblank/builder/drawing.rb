@@ -53,7 +53,7 @@ module VBlank
       # is 160 on a Game Boy Advance and 144 on a Game Boy Color. See `screen_width`.
       def screen_height = read_screen_size(:screen_height)[1]
 
-      # THE SCREEN'S SIZE, [width, height], as a verb named +verb+ lays itself out by it: noted, so
+      # The screen's size, [width, height], as a verb named +verb+ lays itself out by it: noted, so
       # a later line that changes the size (`screen :bitmap, size:` or `pixel_size:`) is refused
       # rather than leave this verb laid out for another screen. `screen_width` reads it this way,
       # and so does every verb that centres, clips or checks against the screen as it is built.
@@ -210,18 +210,18 @@ module VBlank
       # far past any screen a game draws, and a pixel's place stays well inside a 32-bit index.
       MOST_SCREEN_SIDE = 2048  # :nodoc:
 
-      # THE SCREEN SIZE THE GAME ASKS FOR (`screen :bitmap, size: [320, 200]`), checked on every
+      # The screen size the game asks for (`screen :bitmap, size: [320, 200]`), checked on every
       # build and given where the build gives one: a computer's build that makes no cartridge
       # (Builder#initialize's +screen_as_asked+). There the program carries it (Program#screen_size)
       # and the builder lays the game out on it from this line on, which is why nothing may have
       # read the screen's size before it. A console's build keeps its own screen and refuses
       # nothing more, so one game file builds for both.
       #
-      # WHY PER GAME AND NOT PER SCENE: the runtime's picture, the window and the interpreter's
+      # Why per game and not per scene: the runtime's picture, the window and the interpreter's
       # screen are made once, as the game starts, and a game reads its size as a number while it is
       # built. A size per scene would need both to change as a scene arrives.
       #
-      # WHY ONLY A PAINTED SCREEN: a computer's painted screen is a picture of any size, and every
+      # Why only a painted screen: a computer's painted screen is a picture of any size, and every
       # verb on it clips to the screen it was given. A tiled screen's layers, its status bar and its
       # sprites have only been made for a console's screen so far.
       private def apply_screen_size!(size, mode)
@@ -255,18 +255,18 @@ module VBlank
         @console = @program.described_console
       end
 
-      # A SCENE'S OWN SIZE (`screen :bitmap, size: [240, 160]` on the scene's screen line), in a game
+      # A scene's own size (`screen :bitmap, size: [240, 160]` on the scene's screen line), in a game
       # whose first screen line asked the size of the whole picture. A computer's build lays the
       # scene out on it and shows that much of the top left of the picture, in the middle of the
       # window (#record_shown_screen); a console keeps its own screen. Every scene's size fits inside
       # the game's, which is the picture's and the window's.
       #
-      # WHY THE PICTURE STAYS THE GAME'S SIZE: the runtimes, the window, the interpreter's screen and a
+      # Why the picture stays the game's size: the runtimes, the window, the interpreter's screen and a
       # saved state each hold one picture made as the game starts. A scene of a smaller size draws
       # into the top left of it and is shown on its own, so nothing is made again as a scene arrives,
       # and every build draws the same pixels.
       #
-      # WHY ON THE SCENE'S FIRST SCREEN LINE: `screen_width` is a number while the game is built, and
+      # Why on the scene's first screen line: `screen_width` is a number while the game is built, and
       # inside a scene's block it answers the scene's size from this line on (Builder#emit_bodies puts
       # the game's back after each routine). A routine built outside every scene answers the game's.
       private def apply_scene_screen_size!(size)
@@ -295,7 +295,7 @@ module VBlank
         @console = @program.described_console_at(size) if @screen_as_asked
       end
 
-      # IN A GAME WHOSE SCENES HAVE SIZES OF THEIR OWN, a scene with no screen line is refused, on
+      # In a game whose scenes have sizes of their own, a scene with no screen line is refused, on
       # every build. Such a scene shows the screen whichever scene ran before it left, so no size it
       # could be laid out on is the one it shows. Checked once every routine is built.
       private def refuse_scene_without_screen_line!
@@ -309,7 +309,7 @@ module VBlank
                              "the scene has a size of its own."
       end
 
-      # ON A COMPUTER'S BUILD OF A GAME THAT ASKS A SIZE, what +node+ (a screen line) shows: the size
+      # On a computer's build of a game that asks a size, what +node+ (a screen line) shows: the size
       # the builder now lays out on (the scene's own, or the game's), on the node for the runtime to
       # show, and in a variable the framework keeps (Program::SHOWN_SCREEN_VARIABLE) for every reader
       # of the running game to read and the checked runs to hold to the interpreter.
@@ -340,7 +340,7 @@ module VBlank
                              "`screen :bitmap`. To fix this, use `screen :bitmap` here, or remove size:."
       end
 
-      # SETS THE GAME'S PIXEL SIZE on the program and the builder's console, and returns it as the
+      # Sets the game's pixel size on the program and the builder's console, and returns it as the
       # screen node keeps it: nil for one. It is the whole game's, so it is set once, on the game's
       # first screen line, and the program carries it (Program#pixel_size). From that line on the
       # builder lays the game out on the small screen the console description then answers, which
@@ -375,11 +375,11 @@ module VBlank
         size
       end
 
-      # SETS THE ROWS THE GAME'S PICTURE SHOWS on the program, and returns them as the screen node
+      # Sets the rows the game's picture shows on the program, and returns them as the screen node
       # keeps them: [first, past], or nil for every row. Like the pixel size it is the whole game's,
       # set once on the game's first screen line (Program#shown_rows).
       #
-      # IN A GAME THAT ASKS A SIZE OF SCREEN the rows are counted on the screen asked for, so the
+      # In a game that asks a size of screen the rows are counted on the screen asked for, so the
       # range is checked the same way on every build, and each build keeps the rows of its own
       # screen: a console whose screen is shorter shows those of the range it has, every row where
       # the range reaches past its last. The game cannot read the height before this line, since
@@ -442,7 +442,7 @@ module VBlank
                              "`screen :bitmap`. To fix this, use `screen :bitmap` here, or remove pixel_size:."
       end
 
-      # THE COLOUR A SCREEN SHOWS WHEREVER NOTHING IS DRAWN, as the IR keeps it: nil for a screen
+      # The colour a screen shows wherever nothing is drawn, as the IR keeps it: nil for a screen
       # that names none, which shows the game's (black, the colour every screen has shown there
       # before, unless the game's own `screen` names another). A painted screen draws every pixel, so
       # it has nowhere to show one.
@@ -495,7 +495,7 @@ module VBlank
                              "row from 0 to #{console.screen_height - 1}."
       end
 
-      # HOW MANY PICTURES THIS SCREEN KEEPS. A tear-free screen keeps two and shows
+      # How many pictures this screen keeps. A tear-free screen keeps two and shows
       # them in turn, so a change drawn once reaches only one of them; a plain screen
       # keeps one, so a change drawn once is done. This is the number of times a
       # picture that is drawn and then left alone has to be painted (Packs::KeepShowing).
@@ -641,7 +641,7 @@ module VBlank
 
       private
 
-      # MOVE EVERYTHING ON A TILED SCREEN BY THE CAMERA, once the whole program is built (see
+      # Move everything on a tiled screen by the camera, once the whole program is built (see
       # #camera), in a game whose every screen is tiled. Each `camera` becomes the two
       # variables the camera is kept in. Every sprite the console places is placed the
       # camera's distance the other way. Each background's scroll write then adds the camera
@@ -729,7 +729,7 @@ module VBlank
         node.kind == :object && !node.over_picture && !@hud_objects.include?(node.name)
       end
 
-      # THE SCROLL WRITE OF BACKGROUND +name+ (a DeclaredBackground's), gated to its scenes: the
+      # The scroll write of background +name+ (a DeclaredBackground's), gated to its scenes: the
       # game's own scroll, plus the tiled camera where the game moves one and it moves this
       # background. Fresh nodes each call, so no node is in two places in the tree.
       def scroll_write_node(name, background)
@@ -1020,7 +1020,7 @@ module VBlank
       end
 
 
-      # THE HOOK BEHIND Spotlight#shape: the block's statements become the ones the light runs
+      # The hook behind Spotlight#shape: the block's statements become the ones the light runs
       # once a row, and what it gives back the row's two edges, held to the screen. The circle
       # the light had is put aside.
       # Hook behind `shape` on the light, documented on `spotlight`.
@@ -1047,7 +1047,7 @@ module VBlank
         @light_shaped = true
       end
 
-      # THE HOOK BEHIND Spotlight#circle: the statements that work out the light's circle on
+      # The hook behind Spotlight#circle: the statements that work out the light's circle on
       # +row+, into a variable of the shape's own, which is handed back.
       # Hook behind `circle` on the light, documented on `spotlight`.
       def light_circle(light, row)  # :nodoc:
@@ -1060,7 +1060,7 @@ module VBlank
         Spotlights.work_out_half_width(self, light, @spotlight_tables, row: row, into: :"__spotlight_circle_#{@light_circles}")
       end
 
-      # THE HOOK BEHIND Spotlight#show_now: the light worked out again here, for the picture
+      # The hook behind Spotlight#show_now: the light worked out again here, for the picture
       # being drawn.
       # Hook behind `show_now` on the light, documented on `spotlight`.
       def show_light_now  # :nodoc:
@@ -1220,7 +1220,7 @@ module VBlank
               "You gave #{fixed}. A size of 1 is the picture as drawn."
       end
 
-      # WHICH THINGS ARE DRAWN IN BLOCKS IS SETTLED AS THE CARTRIDGE IS BUILT. The console
+      # Which things are drawn in blocks is settled as the cartridge is built. The console
       # keeps that as a switch on each background and each sprite, and the switches are
       # set once: all that changes while the game runs is the size of a block. So a game
       # has one answer to "what is left as drawn", and two different ones is a friendly
@@ -1268,7 +1268,7 @@ module VBlank
               "To fix this, give every `pixelate` the same `status_bar:`."
       end
 
-      # SWITCH THE LIGHT OFF IN THE SCENES IT IS OFF IN: those that see through a layer, or
+      # Switch the light off in the scenes it is off in: those that see through a layer, or
       # fade under one (see IR::LightScenes). Each scene sets, as it starts its pass, whether
       # the light is on, and the light's darkness is that much of what the game sets — so
       # every backend works out the same picture from the program alone. A game whose light
@@ -1305,7 +1305,7 @@ module VBlank
                              "To fix this, keep one `light.shape`, and work the difference out inside it."
       end
 
-      # A ROW'S TWO EDGES, held to the screen, from what a shape gave back: a half width either
+      # A row's two edges, held to the screen, from what a shape gave back: a half width either
       # side of the light's middle (never less than nothing), or [left, right] as they are.
       def light_edges(light, edges)
         screen = read_screen_size(:spotlight)[0]
@@ -1327,7 +1327,7 @@ module VBlank
                              "or a row's two edges, [left, right]. This one gave back #{edges.inspect}."
       end
 
-      # WHAT A SHAPE MAY DO, and why it is a short list: the rows are worked out in the gap before
+      # What a shape may do, and why it is a short list: the rows are worked out in the gap before
       # a frame, and the console skips them on a frame where nothing they read has changed. So a
       # row has to come out of the row and the game's numbers alone. A shape works numbers out —
       # from variables, tables and arithmetic — keeps them in variables of its own, branches and
@@ -1369,7 +1369,7 @@ module VBlank
         end
       end
 
-      # A SHAPE'S OWN VARIABLES START EVERY ROW AS THEY WERE DECLARED. Nothing then carries from
+      # A shape's own variables start every row as they were declared. Nothing then carries from
       # one row to the next, or from one frame to the next, so a row is the row and the game's
       # numbers and nothing else — which is what lets the console keep rows it worked out before.
       def start_own_variables_every_row(shade, own)
@@ -1400,7 +1400,7 @@ module VBlank
         end
       end
 
-      # A GAME HAS ONE LIGHT. The console has one window shaped row by row, and a light is
+      # A game has one light. The console has one window shaped row by row, and a light is
       # that window, so a second `spotlight` would quietly take the first one's place.
       def refuse_second_spotlight!
         return unless @spotlight
@@ -1430,7 +1430,7 @@ module VBlank
               "You gave #{outside.inspect}."
       end
 
-      # WHAT IS OUTSIDE THE LIGHT IS SETTLED AS THE CARTRIDGE IS BUILT, since it decides what
+      # What is outside the light is settled as the cartridge is built, since it decides what
       # the display is told at power-on and which scenes the light can share. So it is set where
       # the game's one light is declared, and asking for the light again with the other answer
       # is refused rather than quietly ignored.
@@ -1471,7 +1471,7 @@ module VBlank
               "with nothing after it."
       end
 
-      # Where a light STARTS is a number, applied once at power-on like a variable's; where
+      # Where a light starts is a number, applied once at power-on like a variable's; where
       # it goes after that is the handle's.
       def refuse_spotlight_start!(at, radius, dark)
         unless at.is_a?(Array) && at.length == 2 && at.all?(Integer)

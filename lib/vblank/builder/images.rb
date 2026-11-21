@@ -239,7 +239,7 @@ module VBlank
       #
       # WALK = [:walk_r1, :walk_r2, :walk_r3]
       # sprite :hero, at: [100, 60], rate: 6,
-      #        facing: { right: WALK, left: mirror(WALK) }
+      #        facing: { right: walk, left: mirror(WALK) }
       # ```
       #
       # On `screen :tiled` a mirrored picture costs no sprite memory, because the console can draw
@@ -414,7 +414,7 @@ module VBlank
         lists.is_a?(Hash) && !lists.empty? && lists.values.uniq.one? && lists.any? { |own, with| own != with }
       end
 
-      # A SPRITE OR POOL TOLD TO DRAW EVERY LIST ITS POSES ARE DRAWN FROM WITH ONE OTHER LIST, given
+      # A sprite or pool told to draw every list its poses are drawn from with one other list, given
       # as a hash (`draw_with({ warm: :white, cold: :white })`): hands back the name of that list.
       #
       # A swap goes by place, so one list lines up with poses of any list: a pose's pixel at place 3
@@ -472,7 +472,7 @@ module VBlank
         with
       end
 
-      # A SPRITE TOLD TO FOLLOW THE LISTS ITS POSES ARE DRAWN FROM (HardwareSprite#draw_with given a
+      # A sprite told to follow the lists its poses are drawn from (HardwareSprite#draw_with given a
       # hash): +lists+ names each list to follow, drawn with itself. The object +node+ then names
       # them (IR::Nodes::Object#follows_each), and a pose drawn from one shows what that list holds.
       #
@@ -610,7 +610,7 @@ module VBlank
         @reading_picture_aside = false
       end
 
-      # A LIST THAT HOLDS ONE COLOUR TWICE, SWAPPED ONTO ART THAT RECORDED NO PLACES.
+      # A list that holds one colour twice, swapped onto art that recorded no places.
       #
       # Swapping colours goes by place: a pixel at place 1 shows the other list's colour at
       # place 1. A picture given as colours holds no places, so where its own list has the
@@ -625,7 +625,7 @@ module VBlank
       # +through+ names the list the sprite really draws with, where +name+ is a set that
       # list is told to hold (see ColorLists#recolor) rather than a list the sprite named.
       #
-      # WHERE THE OTHER LIST IS READ FROM THE DATA PACK AS THE GAME STARTS, its colours at those
+      # Where the other list is read from the data pack as the game starts, its colours at those
       # places are markers (IR::StartFile), and two markers differ whatever colours the file
       # holds there. The build cannot tell, and nothing in the player's file may stop the game,
       # so the swap is made by the first place, as the all-in-one build makes it wherever it
@@ -870,7 +870,7 @@ module VBlank
         record_visible_bounds(name: name, width: width, height: height, cells: drawn, transparent: marker)
       end
 
-      # A LIT PICTURE GIVEN AS NUMBERS INTO ITS SHADING'S COLOURS (see Places#shading): each pixel
+      # A lit picture given as numbers into its shading's colours (see Places#shading): each pixel
       # the place in the shading's `colors:` of its colour, as a game's own art counts into the
       # palette its fade tables are made for. Every place is a colour; none is see-through.
       #
@@ -913,7 +913,7 @@ module VBlank
         record_visible_bounds(name: name, width: width, height: height, cells: drawn, transparent: nil)
       end
 
-      # A PICTURE MADE OF 8x8 PIECES, each where the game puts it, as a cartridge's own sprites are
+      # A picture made of 8x8 PIECES, each where the game puts it, as a cartridge's own sprites are
       # kept: a list of pieces, each [dx, dy, places] — where its top left sits in the picture, and
       # its 64 pixels row by row as places in the `colors:` list, nought see-through. Pieces may
       # overlap; where they do, the one earlier in the list is in front, as a console draws its
@@ -1002,7 +1002,7 @@ module VBlank
         end
       end
 
-      # A picture gives what its pixels are ONE way. Art in characters, colors and places are
+      # A picture gives what its pixels are one way. Art in characters, colors and places are
       # three ways of giving it, and two of them would have to agree with nothing able to
       # check that they did.
       def one_source_of_pixels!(name, opts, block)
@@ -1127,7 +1127,7 @@ module VBlank
         # (IR::StartFile), so no pixel can be held to it here. The picture's pixels are the
         # game's own colours, and it is drawn in them.
         #
-        # NOR IS IT CHECKED AS THE GAME STARTS, against the colours the file then holds. Nothing in
+        # Nor is it checked as the game starts, against the colours the file then holds. Nothing in
         # the player's file may stop the game, so a check there could only fall back, and the one
         # fallback is to draw the picture in its own colours, which is what is done anyway: the
         # list is used only to swap the pixels onto another, and that is refused while building
@@ -1155,7 +1155,7 @@ module VBlank
         table.map { |value| value || 0x0000 }
       end
 
-      # A PICTURE GIVEN AS COLOURS, IN A LIST READ AS THE GAME STARTS, DRAWN WITH ANOTHER LIST. Such
+      # A picture given as colours, in a list read as the game starts, drawn with another list. Such
       # a picture is drawn as it is: its pixels are the game's own colours. Drawn with another
       # list it is swapped by finding each pixel's colour in its own list, and the build does not
       # hold that list's colours (it holds markers, IR::StartFile), so it cannot say which place
