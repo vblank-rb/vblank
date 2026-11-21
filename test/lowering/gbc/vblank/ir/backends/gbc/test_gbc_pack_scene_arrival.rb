@@ -4,7 +4,7 @@ require "test_helper"
 require "made_up_original_layouts"
 require "stringio"
 
-# A SCENE WHOSE BACKGROUND COMES FROM THE DATA PACK ARRIVES IN ONE FRAME, however many other scenes
+# A scene whose background comes from the data pack arrives in one frame, however many other scenes
 # draw theirs from the pack, as the same screens drawn by hand do. A Color original's screen is a map
 # of 20 by 18 cells over a few hundred tiles of its own, and its game brings a screen in within the
 # frame it takes over. Two such screens whose tiles fit in the Color together are put up with the
@@ -64,7 +64,7 @@ class TestGBCPackSceneArrival < Minitest::Test
     end
   end
 
-  # POWER-ON DOES NOT GROW WITH WHAT LATER SCENES DRAW. The tiles of every scene's background are
+  # Power-on does not grow with what later scenes draw. The tiles of every scene's background are
   # copied in while the screen is off at power-on, so a second screen's tiles in the pack must not
   # hold the game's first picture later than the game with one. Not later, rather than on the same
   # frame: how long setting up takes moves where the first picture lands, and the game whose first

@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# WHAT CHANGING ONE LIST OF COLOURS COSTS A GAME BOY COLOR, measured in the emulator. The cartridge
+# What changing one list of colours costs a Game Boy Color, measured in the emulator. The cartridge
 # keeps a copy of the console's 16 palettes, works out the ones a pass changed as it ends, through the
 # fade in force (Runtime::Picture#emit_tint), and sends them in the blank (#emit_palettes_sent). A
 # background told other colours for one of its four palettes changes that palette, so it must work out

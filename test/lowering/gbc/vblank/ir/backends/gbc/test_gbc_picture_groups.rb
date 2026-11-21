@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# PICTURES GROUPED BY ROOM ON THE COLOR, which draws its sprites from 256 tiles. A game of six
+# Pictures grouped by room on the color, which draws its sprites from 256 tiles. A game of six
 # rooms in a row, each with three pictures of 32x32 of its own — 48 tiles a room, 288 in all — fits,
 # since a room is up only beside the next one along: the next room is up as well for the passes the
 # screen moves to it. A room's 48 tiles are more than one blank copies, so each room coming up takes
