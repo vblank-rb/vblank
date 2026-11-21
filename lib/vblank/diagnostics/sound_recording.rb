@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # WHAT A GAME SOUNDS LIKE, RECORDED, so the same moment can be heard and read on each thing
+    # What a game sounds like, recorded, so the same moment can be heard and read on each thing
     # that plays it: the cartridge in the emulator, the desktop build (the native runtime) and the
     # game as Ruby. A recording is one speaker's samples, how many a second, and how long one of
     # the console's frames is, so it can be read a frame at a time:
@@ -18,7 +18,7 @@ module VBlank
     # +only:+ records one of the console's voices alone (:square1, :square2, :wave, :noise), which is
     # how a wave is read: two voices added together have no one wave to follow.
     #
-    # WHAT THE EAR HEARS THAT THE OTHER COMPARISONS DO NOT. A square voice is a wave going high and
+    # What the ear hears that the other comparisons do not. A square voice is a wave going high and
     # low, the same length every time while it holds a note. The chip keeps its place in that wave
     # when a note is started again; a voice that goes back to the wave's start instead breaks one
     # wave each time, a little short or a little long. Once is nothing. Every frame — a voice whose
@@ -211,7 +211,7 @@ module VBlank
       class << self
         private
 
-        # A RIFF file's chunks by their four-letter names: "fmt " says how the samples are kept and
+        # A riff file's chunks by their four-letter names: "fmt " says how the samples are kept and
         # "data" holds them. Other chunks (a list of words about the file) are passed over.
         def wav_chunks(bytes, path)
           unless bytes.byteslice(0, 4) == "RIFF" && bytes.byteslice(8, 4) == "WAVE"

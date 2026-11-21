@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # WHICH PART OF A ROUTINE TOO BIG FOR THE QUICK MEMORY TO MAKE A `func` OF.
+    # Which part of a routine too big for the quick memory to make a `func` of.
     #
     # The console's quick memory runs code about two and a third times faster than the
     # cartridge, and a routine goes in whole or not at all. One that grows past the room runs
@@ -17,7 +17,7 @@ module VBlank
     # the routine's time and a size. The part worth a `func` is the one holding the most time
     # that still fits.
     #
-    # WHAT FITS is the room the quick memory has spare, and the room of every routine kept there
+    # What fits is the room the quick memory has spare, and the room of every routine kept there
     # that the frame spent less time in than this part: the build chooses by time, so a `func`
     # busier than those would take their place.
     module SplitHints
@@ -84,7 +84,7 @@ module VBlank
         end
       end
 
-      # THE CYCLES A RUN SPENT AT EACH ADDRESS, kept so that the time in any span is two lookups
+      # The cycles a run spent at each address, kept so that the time in any span is two lookups
       # instead of a walk of every address the run touched. A report asks about every part of
       # every routine that missed, and about every routine kept in the quick memory for each of
       # those parts, so the walks add up to most of a measured build of a big game.

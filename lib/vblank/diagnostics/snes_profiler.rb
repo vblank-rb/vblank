@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # WHERE A SUPER NINTENDO CARTRIDGE'S FRAMES WENT, measured by running it.
+    # Where a Super Nintendo cartridge's frames went, measured by running it.
     #
     # A pass of the game loop is meant to fit in one frame. One that does not shows the same
     # picture twice and the game runs at half speed for that pass, with nothing on screen to show
@@ -11,7 +11,7 @@ module VBlank
     #
     # Which routines took the time comes from the emulator (TimeByRoutine): bsnes adds up the clocks
     # each instruction took, DMA included. The game waits for the screen by sending its sound queue,
-    # so WAITS are the runtime's routines that are only waiting, or doing what can wait.
+    # so waits are the runtime's routines that are only waiting, or doing what can wait.
     class SNESProfiler
       SETTLE = 20
       FRAMES = 60

@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # WHAT A READER OVER A RUNNING SUPER NINTENDO CARTRIDGE CAN BE ASKED that only the Super
+    # What a reader over a running Super Nintendo cartridge can be asked that only the Super
     # Nintendo's way of keeping things answers — the same questions an Advance reader answers its own
     # way (AdvanceReading).
     #
@@ -14,7 +14,7 @@ module VBlank
 
       private def list_layout = IR::Backends::SNES::Runtime::Lists
 
-      # A VARIABLE KEPT IN TWO BYTES (IR::Backends::SNES::HalfVariables), with the next variable
+      # A variable kept in two bytes (IR::Backends::SNES::HalfVariables), with the next variable
       # straight after it, so only its own bytes are read, and its sign is put back from the top one.
       private def variable_kept_at(name, address)
         return super unless @rom.built&.variable_bytes(name) == 2
@@ -26,7 +26,7 @@ module VBlank
       # Eight lists of sixteen colours for the backgrounds, then eight for the sprites.
       PALETTE = Verifier::PaletteLayout.new(half: 128, group: 16)
 
-      # WHAT THE CONSOLE MAKES ITS PICTURE FROM, other than the tiles' pictures, as
+      # What the console makes its picture from, other than the tiles' pictures, as
       # AdvanceReading#video_memories gives it: the 256 colours, and the sprite table by its
       # bytes. The Super Nintendo's scroll and video registers cannot be read back on the
       # console, and bsnes does not hand them over here, so they are not among them.
@@ -36,7 +36,7 @@ module VBlank
           sprite_table: @probe.sprite_table.bytes.each_with_index.to_h { |byte, at| [at, byte] } }
       end
 
-      # THE SPRITE TABLE AS BOXES (SpriteBox), one for each of the 128 entries that reaches the screen,
+      # The sprite table as boxes (SpriteBox), one for each of the 128 entries that reaches the screen,
       # in the table's order. Nothing here needs a build record, so it is how a cartridge with none
       # shows where its sprites are.
       #
@@ -94,7 +94,7 @@ module VBlank
       # The layout of the save file of the cartridge whose bytes are +bytes+, read from its header.
       def self.save_file_of(bytes) = Cartridge::SNESROM.save_offset_of(bytes).zero? ? SAVE_FILE : SUPER_FX_SAVE_FILE
 
-      # THE SPRITES THE GAME PLACED IN ITS LAST PASS, as the interpreter gives them (Reference#sprites),
+      # The sprites the game placed in its last pass, as the interpreter gives them (Reference#sprites),
       # from the list the runtime keeps of what it placed, which the checked run compares with the
       # interpreter after every pass. See ColorReading#sprites.
       #
@@ -108,7 +108,7 @@ module VBlank
         name ? @drawn.rows_named(rows, name) : rows
       end
 
-      # WHICH SONG IS PLAYING NOW, by its name, or nil for none (Reference#music_playing): the two
+      # Which song is playing now, by its name, or nil for none (Reference#music_playing): the two
       # bytes the player keeps the song it is on in (SNES::Runtime::Music::PLAYING), its place in the
       # order declared (IR::Tunes.song_numbered), as the frames played so far left it. See
       # ColorReading#music_playing.
