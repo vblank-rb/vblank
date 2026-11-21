@@ -2,20 +2,29 @@
 
 module VBlank
   class Builder
-    # THE ORIGINAL'S DATA, READ THROUGH A DATA PACK. A port of a retail game may not ship that
-    # game's data, so it reads the player's own copy (Original::Game). It does not read the copy
-    # directly: it names which pieces of the copy it needs, each a slot of a known shape and size,
-    # and reads them from a data pack made from the copy (Original::Pack).
+    # Data from the player's own copy of a game
     #
-    #   pack = data_pack from: ORIGINAL, version: "1.0" do |slots|
-    #     slots.colors  :palette, at: 0x1000, count: 16
-    #     slots.tiles   :walls,   at: 0x1020, count: 2
-    #     slots.numbers :speeds,  at: 0x2000, count: 8, width: :byte, signed: false
-    #   end
-    #   image :wall, width: 8, height: 8, colors: pack[:palette], places: pack[:walls].tile(0)
-    #   speeds = table :speeds, pack[:speeds]
+    # A port of a retail game may not ship that game's data, so it reads the player's own copy. It
+    # does not read the copy directly. It names which pieces of the copy it needs, each a slot of
+    # a known shape and size, and reads them from a data pack made from the copy. The game holds
+    # handles to the slots, never their bytes, so a game cannot branch on the original's data
+    # while it is built.
     #
-    # Why a pack rather than the copy: the same port is built two ways. Built all-in-one, the pack
+    # ```ruby
+    # pack = data_pack from: ORIGINAL, version: "1.0" do |slots|
+    #   slots.colors  :palette, at: 0x1000, count: 16
+    #   slots.tiles   :walls,   at: 0x1020, count: 2
+    #   slots.numbers :speeds,  at: 0x2000, count: 8, width: :byte, signed: false
+    # end
+    # image :wall, width: 8, height: 8, colors: pack[:palette], places: pack[:walls].tile(0)
+    # speeds = table :speeds, pack[:speeds]
+    # ```
+    #
+    # A slot the original keeps packed has no `at:`, and the game's own unpacking routine fills
+    # it with `slots.fill_from_copy`. A game with no `data_pack` builds the same bytes as it did
+    # before there was one.
+    #--
+    # See Original::Game, Original::Pack. Why a pack rather than the copy: the same port is built two ways. Built all-in-one, the pack
     # is made here as the game is built, and the game is built holding what it read from it. Built
     # as a shell, the player's machine makes the same pack from the player's copy and the game
     # reads it there. A slot's shape and size are the game's own words in either build, never
@@ -71,16 +80,27 @@ module VBlank
     # game holds handles and reads the pack, as above.
     #
     # A game with no `data_pack` has no pack, and builds the same bytes as it did before there was one.
+    #++
     module DataPacks
-      # Make the game's data pack from the player's copy: +from+ is the Original::Game the port
-      # names (or an Original::Copy already accepted), the block names the slots (DSL::PackSlots),
-      # and +version+ names this build of the game in the pack's header, so a pack a player keeps is
-      # made again when the game changes. Hands back a DSL::DataPack. A machine with no copy stops
-      # here with Original::NotSet, saying what to set, unless the build leaves the pack out.
-      # +formats+ are packed formats of the port's own (Original::Packing::Format) its unpacking
-      # routine reads, besides those of the original's platform. +cache+ names a folder, which git
-      # must ignore, to keep what the unpacking routine writes in, so a later build with the same
-      # copy and routine reads it back instead of running the routine again (Original::PackCache).
+      # Makes the game's data pack from the player's copy of the original, and returns it.
+      #
+      # The block names the slots, each by its kind, its name and its place in the copy. A machine
+      # with no copy stops here and says what to set, unless the build leaves the pack out.
+      #
+      # ```ruby
+      # pack = data_pack from: ORIGINAL, version: "1.0" do |slots|
+      #   slots.colors :palette, at: 0x1000, count: 16
+      # end
+      # ```
+      #
+      # * `from:` - the original the port names, or a copy of it that was already accepted.
+      # * `version:` - names this build of the game in the pack's header, so a pack a player keeps
+      #   is made again when the game changes.
+      # * `formats:` - packed formats of the port's own that its unpacking routine reads, besides
+      #   those of the original's platform.
+      # * `cache:` - a folder, which git must ignore, to keep what the unpacking routine writes in,
+      #   so a later build with the same copy and routine reads it back instead of running the
+      #   routine again.
       def data_pack(from:, version: nil, formats: [], cache: nil, &declare)
         refuse_second_data_pack!
         refuse_missing_pack_version!(version)

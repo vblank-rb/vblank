@@ -126,38 +126,72 @@ module VBlank
       def pool_refill(pool) = @port.pool_refill.call(pool)
     end
 
+    # Saving a game
+    #
+    # `save_data` declares a record of the game's state that is kept in the cartridge's save
+    # memory, so that a player can save in the middle of play and load it later. A record can hold
+    # several numbered copies, the way a game has three save files. `save_var` is the simpler way
+    # to keep one number, such as a high score.
+    #
+    # ```ruby
+    # files = save_data :slot, copies: 3 do
+    #   keep hearts, score
+    # end
+    # files[1].save
+    # files[1].load
+    # ```
+    #--
     # The verb: `save_data`. Everything behind it is the Saves object this Builder holds.
+    #++
     module SaveData
-      # Declare a record of the game's state, kept in save memory in +copies+ numbered copies.
-      # The block, if given, names what it keeps with `keep`, and the handle's `keep` adds more
-      # later. Returns a handle: `files[n]` is one copy, and a copy saves, loads, erases and
-      # reports whether it is good. See Saves.
+      # Declares a record of the game's state, kept in save memory, and returns a handle to it.
       #
-      # `fast:` sets where the record's save routines should be kept, the word `func` takes:
-      # `fast: true` insists on the console's quick memory, `fast: false` keeps them in the
-      # cartridge, and left out the framework decides. A build that measures its game measures
-      # each screen that saves with a save running (Diagnostics::SaveStarts), so it weighs the
-      # routines by what a save costs there, behind what every screen runs every frame; `true`
-      # puts them ahead of all of that, the routine that plays the music included.
+      # The block, if given, names what the record keeps with `keep`, and the handle's `keep` adds
+      # more later. `files[n]` is one copy, and a copy saves, loads, erases and reports whether it
+      # is good.
+      #
+      # * `name` - the record's name, as a symbol.
+      # * `copies:` - how many numbered copies the record holds.
+      # * `when_busy:` - what happens when a save of this record is asked for while another is
+      #   still in hand. `:wait` (the default) goes in line behind it. `:refuse` does nothing and
+      #   reports it through `failed?`. `:replace` takes the place of a save of the same copy that
+      #   is still waiting, or abandons one of the same copy that is being written, which is safe
+      #   because the copy's last save is still there until the new one is complete.
+      # * `fast:` - where the record's save routines are kept, as for `func`. `true` insists on
+      #   the console's quick memory, `false` keeps them in the cartridge, and left out the
+      #   framework decides.
+      #--
+      # See Saves. A build that measures its game measures each screen that saves with a save
+      # running (Diagnostics::SaveStarts), so it weighs the routines by what a save costs there,
+      # behind what every screen runs every frame; `true` puts them ahead of all of that, the
+      # routine that plays the music included.
+      #++
       def save_data(name, copies: 1, when_busy: :wait, fast: nil, &block)
         saves.declare(name, copies: copies, when_busy: when_busy, fast: fast, &block)
       end
 
-      # Refuse to build unless the records keep, between them, all of the game's own state:
-      # every variable, list and pool it declared, and the random numbers if it rolls any.
-      # +except+ names what a load must leave alone — which screen the game is on, say.
+      # Makes the build fail unless the records keep all of the game's own state between them.
       #
-      # It is for a game that saves in the middle of play. Such a save is only right while it
-      # keeps everything the play depends on, and a thing added to the game later and never
-      # added to a record breaks it silently: the load puts back everything else, and the
-      # player finds the one thing wrong. Checked here, at the end of the build, it is a
-      # friendly error the day the thing is added.
+      # That is every variable, list and pool the game declared, and the random numbers if it
+      # rolls any. It is for a game that saves in the middle of play. Such a save is right only
+      # while it keeps everything the play depends on. A thing added to the game later and never
+      # added to a record breaks it silently: the load puts back everything else, and the player
+      # finds the one thing wrong. Checked as the game is built, it is a plain error the day the
+      # thing is added.
       #
-      # A name that starts with _ is scratch and never needed, and so is an instance variable a
-      # part marks with `game_variables ..., saved: false`. A `save_var` saves itself, and
-      # what the framework keeps for itself (named with two underscores) is its own business.
-      # A pool counts only when it is kept whole, since one field on its own leaves which
-      # slots are live behind.
+      # A name that starts with `_` is scratch and is never needed, and so is an instance variable
+      # a part marks with `game_variables ..., saved: false`. A `save_var` saves itself. A pool
+      # counts only when it is kept whole, since one field on its own leaves which slots are live
+      # behind.
+      #
+      # ```ruby
+      # saves_keep_everything except: [:mode]
+      # ```
+      #
+      # * `except:` - the names a load must leave alone, such as which screen the game is on.
+      #--
+      # What the framework keeps for itself (named with two underscores) is its own business.
+      #++
       def saves_keep_everything(except: [])
         if @saves_keep_everything
           raise ArgumentError, "saves_keep_everything is written two times. Write it one time, " \
