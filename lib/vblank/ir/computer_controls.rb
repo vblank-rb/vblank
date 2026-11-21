@@ -2,13 +2,13 @@
 
 module VBlank
   module IR
-    # THE KEYS AND GAMEPAD BUTTONS A GAME ADDS FOR A COMPUTER (Builder::Input#computer_keys and
+    # The keys and gamepad buttons a game adds for a computer (Builder::Input#computer_keys and
     # #computer_gamepad). A build that plays on a computer (the desktop window, `vblank run`, the
     # web page) starts with VBlank's own layout — the arrows, X for A, Z for B, and the rest — and
     # these are added to it: more keys for a button, never a key moved. So a pinball game can have
     # D press A as well as X, while the right arrow stays Right for its menus.
     #
-    # NO KEY PRESSES TWO BUTTONS. A key the layout already gives a button, or that the window keeps
+    # No key presses two buttons. A key the layout already gives a button, or that the window keeps
     # for itself (pause, the menu, fast forward), is refused when the game is built, in plain words.
     # A key pressing two buttons would make a game's menus misread it, and a player who changes one
     # of the two in Controls could not tell which one they changed.
@@ -109,7 +109,7 @@ module VBlank
       end
 
       # The list of numbers each runtime reads, for a program's entries (nil for none): how many,
-      # then a button, KEY or PAD, and the key's or gamepad button's number for each.
+      # then a button, KEY or pad, and the key's or gamepad button's number for each.
       def self.runtime_numbers(entries)
         list = Array(entries)
         [list.length, *list.flat_map do |button, kind, name|

@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # WHICH PART OF THE DISPLAY A FADE TO BLACK OR WHITE USES.
+    # Which part of the display a fade to black or white uses.
     #
     # There are two ways to darken a whole picture on this console, and a picture can
     # only be having one of them done to it at a time.
@@ -18,43 +18,43 @@ module VBlank
     # frames. It costs a blend per color the game declared, on each frame the fade
     # actually moves — never per pixel, and nothing at all while it holds still.
     #
-    # WHICH ONE A GAME GETS MATTERS because the display has ONE blend unit, and seeing
+    # Which one a game gets matters because the display has one blend unit, and seeing
     # through a layer is the other thing that unit does. A fade that takes it leaves the
     # water solid until the fade lifts, and pops it back when it does. Walking the colors
     # leaves the unit alone, so the water goes on showing the floor underneath it and the
     # whole picture — water, floor and the mix of the two — darkens together.
     #
-    # SO THE RULE IS: a fade walks the colors exactly when the game has a see-through
+    # So the rule is: a fade walks the colors exactly when the game has a see-through
     # layer to keep, and takes the free blend otherwise. A game with nothing to see
     # through draws the same picture either way, so it pays nothing for a choice it
     # cannot observe.
     #
-    # A LIGHT IS THE OTHER THING THAT HOLDS THE UNIT. A spotlight is the display's
+    # A light is the other thing that holds the unit. A spotlight is the display's
     # darkening, told to stop at a window, so a game with one fades by walking its colors
     # too: the whole picture darkens, and the light's own darkening goes on outside it.
     #
-    # TWO CASES ARE DELIBERATELY NOT THIS, and both are about what a shared table of
+    # Two cases are deliberately not this, and both are about what a shared table of
     # colors cannot express.
     #
-    #   A FADE PLACED IN THE STACK — `fade :black, 100, under: :ui` — keeps the blend
-    #   unit. Being placed IS a blend-unit feature: the console can hide a brightness
+    #   A fade placed in the stack — `fade :black, 100, under: :ui` — keeps the blend
+    #   unit. Being placed is a blend-unit feature: the console can hide a brightness
     #   change from the layers in front of a line, where a table of colors is read by
     #   everything that draws and has no notion of who is reading it. So a game that
     #   places its fade and also sees through a layer still trades one for the other.
     #
-    #   NEITHER BITMAP SCREEN CHANGES AT ALL. Seeing through a layer needs a tiled
+    #   Neither bitmap screen changes at all. Seeing through a layer needs a tiled
     #   screen, so there is never anything on a bitmap one for a fade to protect. That
     #   is the whole reason for the tear-free one, which does draw through a table and
     #   could walk it; the plain one holds a whole color in every pixel and has no table
     #   to walk in the first place. The screen is asked anyway rather than assumed, because
     #   one game can put a bitmap scene and a tiled scene side by side.
     #
-    # HOW FINE A FADE GOES is the third thing this settles, and it is the other reason to
+    # How fine a fade goes is the third thing this settles, and it is the other reason to
     # walk the colors. A display's own blend may count in coarser steps than the colors it
     # blends can show, and a fade walked over more frames than it has steps shows some of
     # them twice. Walking the colors can step as finely as a color can.
     #
-    # So a fade whose amount holds a FRACTION asks for the finer steps, and a fade that asks
+    # So a fade whose amount holds a fraction asks for the finer steps, and a fade that asks
     # for them walks the colors wherever there is a table to walk: on a screen drawn through
     # one, and not placed in the stack. A whole-number amount keeps the steps it always had,
     # on every route, so asking for nothing changes nothing. How many steps each way has is
@@ -63,17 +63,17 @@ module VBlank
     #
     # A placed fade cannot have them, for the reason above: only the display can place one.
     #
-    # A FADE HELD TO A RECTANGLE (`fade :black, 75, inside: [...]`) is the display's too, and
+    # A fade held to a rectangle (`fade :black, 75, inside: [...]`) is the display's too, and
     # for the same reason: the display decides, pixel by pixel, whether its darkening applies,
     # and a table of colors has no notion of where on the screen it is read. So in a game that
-    # holds a fade anywhere, EVERY fade is the display's. A fade that walked the colors beside
+    # holds a fade anywhere, every fade is the display's. A fade that walked the colors beside
     # one the display holds would leave the display's darkening on under it, and the two would
     # add up. Such a fade with a fraction keeps the display's steps, as a placed one does.
     module Fading
       def self.resolve(program) = Answer.new(program)
 
-      # IS THERE ANYTHING FOR A FADE TO KEEP in this see-through layer (a SeeThroughLayer)?
-      # A layer NAMED as see-through is not enough — one fixed to show all of itself and
+      # Is there anything for a fade to keep in this see-through layer (a SeeThroughLayer)?
+      # A layer named as see-through is not enough — one fixed to show all of itself and
       # none of what is behind is solid already, so walking the colors for it would buy a
       # picture nobody can tell from the free fade. An amount the game works out is
       # counted, since it is not solid for long if it was worth writing.
@@ -180,7 +180,7 @@ module VBlank
           @fine = false
         end
 
-        # A CONSOLE WHOSE DISPLAY CANNOT BLEND (Console::Description#blends) fades only by
+        # A console whose display cannot blend (Console::Description#blends) fades only by
         # changing the colours in its lists, so every fade there walks them, in 256ths,
         # whatever screen it falls on. One placed in the stack or held to a rectangle needs the
         # blend, and is refused by the build for that console; it keeps the display's here.

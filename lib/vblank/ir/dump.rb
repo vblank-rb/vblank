@@ -7,7 +7,7 @@ module VBlank
     # self-contained Ruby file holding a game's IR, for inspecting or bisecting the
     # compiler without a ROM in the way.
     #
-    # GENERIC OVER EVERY KIND, on purpose: it reads whatever operands and children a
+    # Generic over every kind, on purpose: it reads whatever operands and children a
     # node actually carries (Node#attrs, Node#children) rather than knowing kind by
     # kind what those are, so a new IR feature needs nothing added here to be dumped
     # — the same reason {Node#to_h} and {Node#walk} need nothing either.
@@ -16,7 +16,7 @@ module VBlank
     # hash" constructor) rather than {Build}'s terser sugar (`Build.set`, `Build.if_`,
     # ...): the sugar methods wrap bare literals into value nodes, choose which
     # arguments become children versus operands, and generally don't map onto a
-    # node's STORED shape one-for-one. `Nodes.build` does — an operand hash is
+    # node's stored shape one-for-one. `Nodes.build` does — an operand hash is
     # exactly what {Node#attrs} hands back — so it round-trips exactly, for any kind,
     # with one method.
     module Dump
@@ -71,11 +71,11 @@ module VBlank
         end
       end
 
-      # A RECORD AN OPERAND CARRIES, written back as the call that builds one. A record
-      # inspects as `#<data ...>`, which DESCRIBES it rather than rebuilding it, so the
+      # A record an operand carries, written back as the call that builds one. A record
+      # inspects as `#<data ...>`, which describes it rather than rebuilding it, so the
       # fields are written out as keyword arguments instead.
       #
-      # Only the ones the author actually set: a record that publishes a DEFAULTS table
+      # Only the ones the author actually set: a record that publishes a defaults table
       # has the fields still at their defaults left out, so a song part that sets nothing
       # but its notes reads that way in the dump too. One with no such table writes out
       # everything, which is right — nothing there is implied.
@@ -86,16 +86,16 @@ module VBlank
         "#{record.class.name}.new(#{args.join(', ')})"
       end
 
-      # WHAT #record_source LEAVES OUT, for a key that must change with what a tree means: the
+      # WHAT #record_source leaves out, for a key that must change with what a tree means: the
       # DEFAULTS of every record class +node+'s tree holds, one class a line, sorted by name. The
       # dump alone keys how a tree is written, and a field at its default is not written, so a
-      # change to a class's DEFAULTS can change what the tree means and leave its dump as it was.
+      # change to a class's defaults can change what the tree means and leave its dump as it was.
       def record_defaults_source(node)
         classes = record_classes_in(node, Set.new)
         classes.sort_by(&:name).map { |record_class| "#{record_class.name} #{record_class::DEFAULTS.inspect}\n" }.join
       end
 
-      # Every record class with a DEFAULTS table that +value+ holds, however deep, added to +found+.
+      # Every record class with a defaults table that +value+ holds, however deep, added to +found+.
       def record_classes_in(value, found)
         case value
         when Node
@@ -115,7 +115,7 @@ module VBlank
       # shorthand for that, e.g. in test/conformance_fixture.rb) restores it, so a
       # dumped `data`/`sample` round-trips byte-for-byte AND tag-for-tag.
       #
-      # A GAME WHOSE DATA PACK IS LEFT OUT holds its pictures and recordings as zeros until the
+      # A game whose data pack is left out holds its pictures and recordings as zeros until the
       # pack fills them, tens of millions of bytes, and a build's fingerprint (Network::Fingerprint)
       # is a digest of this dump. So a binary String of zeros alone is written as its size, `("\x00"
       # * 27904).b`, which builds the same String: the dump is a few lines where it was hundreds of
