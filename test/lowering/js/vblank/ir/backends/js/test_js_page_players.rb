@@ -3,7 +3,7 @@
 require "test_helper"
 require "web_page"
 
-# MORE THAN ONE PLAYER ON A WEB PAGE: the keyboard is player 1 and its right hand player 2 (I J K
+# More than one player on a web page: the keyboard is player 1 and its right hand player 2 (I J K
 # L, O, U, 7 to 0), and each controller is the player it took when it was connected, the lowest
 # no controller has. The desktop window and vblank run keep the same rule (test_native_seats.rb,
 # test_seats.rb). Each picture is held to the interpreter's with the same players' buttons held.

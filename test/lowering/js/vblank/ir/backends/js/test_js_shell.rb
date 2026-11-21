@@ -5,7 +5,7 @@ require "web_page"
 require "shell_tests"
 require "json"
 
-# A PORT BUILT AS A SHELL, PLAYED AS A WEB PAGE (runtime/rg_shell.js). The page holds none of the
+# A port built as a shell, played as a web page (runtime/rg_shell.js). The page holds none of the
 # made-up original's data (ShellTests). Opened with no pack kept, it shows its menu; LOAD ROM opens
 # the browser's file picker, the page checks the file, unpacks it with the game's own routine, keeps
 # the pack in the browser's storage (IndexedDB) and plays the game. Opened again, it plays from the
@@ -28,7 +28,7 @@ class TestJSShell < Minitest::Test
   # before the menu ends.
   CHOOSE_LOAD_ROM = ["settle", "play 3", "down KeyX", "play 3", "up KeyX", "play 12", "settle"].freeze
 
-  # The rows of the picture LOAD ROM and SETTINGS are drawn on, and the colours a line is drawn in:
+  # The rows of the picture LOAD ROM and settings are drawn on, and the colours a line is drawn in:
   # gray, white under the cursor, yellow once chosen (Original::Shell.menu_program).
   WIDTH = 240
   LOAD_ROM_ROWS = (80...88)
@@ -155,7 +155,7 @@ class TestJSShell < Minitest::Test
     end
   end
 
-  # A PACK AN OLDER BUILD KEPT IS ROUTINE (a port grows a part at a time): a new build does not
+  # A pack an older build kept is routine (a port grows a part at a time): a new build does not
   # read it, tells the player of no refusal, says on its menu that the data must be read again,
   # asks for the copy as on a first visit, and keeps a pack of its own over the old one.
   READ_AGAIN_ROWS = (104...160)
@@ -213,7 +213,7 @@ class TestJSShell < Minitest::Test
     end
   end
 
-  # AN UNPACKING THAT WORKS A LONG TIME BETWEEN WRITES plays in a worker, so the page keeps getting
+  # An unpacking that works a long time between writes plays in a worker, so the page keeps getting
   # its frames the whole time, and the pack it keeps is still the all-in-one build's. Played in the
   # page, as it was, the page could do nothing else until the routine waited for a frame, and this
   # one waits for none as it works.
@@ -244,7 +244,7 @@ class TestJSShell < Minitest::Test
     end
   end
 
-  # A LONG UNPACKING ROUTINE (ShellTests#long_routine_port), thousands of statements in one
+  # A long unpacking routine (ShellTests#long_routine_port), thousands of statements in one
   # routine, unpacks in the page's worker to the all-in-one build's pack, and the game plays.
   def test_a_long_unpacking_routine_unpacks_to_the_all_in_one_builds_pack
     Dir.mktmpdir do |folder|
