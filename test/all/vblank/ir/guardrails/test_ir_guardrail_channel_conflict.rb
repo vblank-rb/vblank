@@ -53,8 +53,8 @@ class TestChannelConflictGuardrail < Minitest::Test
 
   # --- the other two voices the console plays itself ---
   #
-  # There is ONE wave voice and ONE noise voice, so a single part on either already shares it
-  # with the matching sound effect — where a beep only collides with a song's SECOND square
+  # There is one wave voice and one noise voice, so a single part on either already shares it
+  # with the matching sound effect — where a beep only collides with a song's second square
   # part. Same warning, same reason, and the build still produces a ROM.
 
   private def pad
