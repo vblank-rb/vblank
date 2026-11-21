@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A CELL OF THE SCENERY CHANGES WHILE THE GAME RUNS.
+# A cell of the scenery changes while the game runs.
 #
 # A background used to be stamped once and never change again. For anything with a world in it
 # that is not a small limitation, it is a design tax: a door that opens, a pot that breaks, a
@@ -123,7 +123,7 @@ class TestSetTile < Minitest::Test
   end
 
   # The console has to write the same cells. A coordinate the game works out is bounds-checked
-  # on the way in, and the check has to SKIP the write only when the cell really is off the
+  # on the way in, and the check has to skip the write only when the cell really is off the
   # map — a check that always skipped would leave the console's picture untouched while the
   # oracle's changed.
   def test_both_backends_agree_on_coordinates_worked_out_at_run_time
@@ -153,7 +153,7 @@ class TestSetTile < Minitest::Test
     assert_equal Color.resolve(:red), pixel_at(0, 1, screen), "nothing else was written over"
   end
 
-  # A BACKGROUND WHOSE LINE RUNS AGAIN keeps the cells the game changed: it was up already, and
+  # A background whose line runs again keeps the cells the game changed: it was up already, and
   # putting it up again shows it from its corner, as it now is (Reference#put_up_background). The
   # background is declared in a routine the game loop calls, so its line runs every pass; the door
   # opens on the third pass and must stay open on every pass after.
@@ -339,7 +339,7 @@ class TestSetTile < Minitest::Test
     builder.finalize_program
     error = assert_raises(GBA::LoweringError) { GBA.new.lower(builder.program) }
     assert_match(/:room/, error.message)
-    # Named by what the background DOES, not by the screen it sits on: a `screen :tiled`
+    # Named by what the background does, not by the screen it sits on: a `screen :tiled`
     # background that turns reaches this too, and it has no rotozoom to be told about.
     assert_match(/turns and resizes/, error.message)
   end

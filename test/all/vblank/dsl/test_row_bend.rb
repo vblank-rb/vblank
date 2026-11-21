@@ -7,7 +7,7 @@ require "differential"
 # games on the Advance's cartridge (test/lowering/gba/vblank/dsl/test_row_bend_cartridge.rb).
 module RowBendGames
   # A background of narrow vertical bars. Vertical edges are what a sideways shift moves,
-  # so where a row's bars land IS its offset, read straight off the screen.
+  # so where a row's bars land is its offset, read straight off the screen.
   private def bars_program(frames: true, &bend)
     b = VBlank::Builder.new
     b.instance_eval do
@@ -89,7 +89,7 @@ end
 # The console builds the screen one line at a time and re-reads where each layer sits for
 # every line, so a program can give each row its own sideways offset and the picture bends.
 # The interpreter has no lines and no interrupts: it paints the window row by row and reads
-# the same offset per row. These assert the two produce the SAME picture, because the whole
+# the same offset per row. These assert the two produce the same picture, because the whole
 # point of the feature is that the effect is a property of the program and not of the
 # machine.
 #
@@ -156,7 +156,7 @@ class TestRowBend < Minitest::Test
     assert_equal ["RR......RR.."] * 16, pictures
   end
 
-  # A bend on top of a scroll: the row offset is measured FROM wherever the background is
+  # A bend on top of a scroll: the row offset is measured from wherever the background is
   # scrolled to, so a background can travel and ripple at once. Scrolled 3 and bent by 2,
   # a row sits at 5 — not at 2, which is what replacing the scroll rather than adding to
   # it would give.
@@ -203,7 +203,7 @@ class TestRowBend < Minitest::Test
 
   # Every one of the 38,400 pixels, for a bend that varies down the screen. This is the
   # assertion that settles the hardware detail the feature turns on: the console writes a
-  # row's offset in the gap after the PREVIOUS line, so the framework has to write row
+  # row's offset in the gap after the previous line, so the framework has to write row
   # N+1's offset while line N is finishing, and wrap that round at the bottom of the frame
   # so the very top row is bent like the rest. Get either wrong and rows shift by one here.
   def test_the_console_and_the_interpreter_bend_the_same_rows
@@ -215,7 +215,7 @@ class TestRowBend < Minitest::Test
   # real shape of the effect, and the one an animated bend has to get right, since a still
   # bend looks the same whichever frame you read it on.
   #
-  # It is compared with the console run ONE FRAME LONGER, which is what a tiled program
+  # It is compared with the console run one frame longer, which is what a tiled program
   # needs anyway (Differential::BOOT_FRAMES). The sweep below is what establishes the
   # pairing rather than assuming it, which is the point: this is measured, like BOOT_FRAMES
   # itself, and not worked out from first principles.
@@ -258,13 +258,13 @@ class TestRowBend < Minitest::Test
     (2..5).each { |f| assert_backends_agree(ripple_program, frames: f, name: "RIP#{f}") }
   end
 
-  # A BEND AND A MOVING SPRITE, which is the pairing a game actually writes — a boat on
+  # A bend and a moving sprite, which is the pairing a game actually writes — a boat on
   # rippling water, a jellyfish drifting over a lake. Both halves agreed on their own long
-  # before this test: what it watches is that they agree AT THE SAME MOMENT.
+  # before this test: what it watches is that they agree at the same moment.
   #
   # They did not. A sprite is placed in the gap between frames, so it shows what the last
   # body did; the rows used to be worked out while the picture was being drawn, so they
-  # showed what THIS body had just done — one frame further on. No frame count lined both
+  # showed what this body had just done — one frame further on. No frame count lined both
   # up, so the strongest test in the project could not be pointed at the combination at all.
   # Working the rows out in the gap, beside the sprites, is what put them in step.
   private def ripple_and_sprite_program(layers: 1)
@@ -301,7 +301,7 @@ class TestRowBend < Minitest::Test
     b.program
   end
 
-  # A BLOCK THAT COUNTS is asked once for every row, once a frame, on both: the console works
+  # A block that counts is asked once for every row, once a frame, on both: the console works
   # the rows out in the gap between frames and nowhere else, so a block that changes the game
   # (counts, rolls a random number) has to be asked as often on the interpreter or the two
   # play different games. The background scrolls and a sprite moves, which are the things that
@@ -331,7 +331,7 @@ class TestRowBend < Minitest::Test
     assert_backends_agree(program, frames: 4, name: "BSCR")
   end
 
-  # A SCROLL AND A BEND CHANGED ON ONE PASS SHOW ON ONE FRAME, as a logo split in two slides as one
+  # A scroll and a bend changed on one pass show on one frame, as a logo split in two slides as one
   # picture: the bent rows stay where they are, frame after frame, while the rest move.
   private def assert_bent_rows_stand_still(program)
     red = VBlank::Graphics::Color.resolve(:red)
@@ -359,7 +359,7 @@ class TestRowBend < Minitest::Test
 
   # --- bends in scenes ---
 
-  # A SCENE WHOSE BACKGROUND BENDS, away to a scene with a background of its own and back. Each
+  # A scene whose background bends, away to a scene with a background of its own and back. Each
   # background is drawn with its own bend or with none, so the second scene's sits flat, and the
   # first comes back bent as it was. A scene's background goes up as the scene arrives, with the
   # screen on and the bend running, which a background declared outside any scene never does.
@@ -470,7 +470,7 @@ class TestRowBend < Minitest::Test
     assert_backends_agree(program, frames: 4, name: "BUSY")
   end
 
-  # A BLOCK THAT CALLS A ROUTINE WHICH IS ITSELF WAITING. The rows are worked out at the frame
+  # A block that calls a routine which is itself waiting. The rows are worked out at the frame
   # boundary, which here comes inside :walk's own loop, and the block calls :walk again. Each call
   # counts its own turns, as the interpreter's does, so the walk that waited goes on from its own
   # turn and finishes its four steps before the game counts a walk.
