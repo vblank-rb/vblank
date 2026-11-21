@@ -5,7 +5,7 @@ require "differential"
 require "tmpdir"
 require "all/vblank/builder/test_scene_backgrounds"
 
-# A SCENE'S BACKGROUNDS ON THE ADVANCE'S CARTRIDGE: what its picture, its display registers
+# A scene's backgrounds on the Advance's cartridge: what its picture, its display registers
 # and the order it writes them in come out as, read in the emulator. What a scene's
 # backgrounds do, asked of every run, is in test/all/vblank/builder/test_scene_backgrounds.rb.
 class TestSceneBackgroundsCartridge < Minitest::Test
@@ -35,10 +35,10 @@ class TestSceneBackgroundsCartridge < Minitest::Test
     assert_equal GREEN, v.pixel_gba(8, 0), "the always-there backdrop shows through its holes"
   end
 
-  # SCENES OF DIFFERENT SIZES, which is where an always-there backdrop can go wrong and
-  # evenly-sized scenes cannot show it. The backdrop is drawn once and carries ONE paint
+  # Scenes of different sizes, which is where an always-there backdrop can go wrong and
+  # evenly-sized scenes cannot show it. The backdrop is drawn once and carries one paint
   # order, while the scenes it appears over hold different numbers of layers — so an order
-  # read off the quiet scene puts the backdrop in FRONT of the busy scene's back layer.
+  # read off the quiet scene puts the backdrop in front of the busy scene's back layer.
   # Read where only the busy scene's backmost layer draws.
   private def uneven_over_a_backdrop(first, second)
     tile = SOLID_TILE
@@ -51,7 +51,7 @@ class TestSceneBackgroundsCartridge < Minitest::Test
       tiles :red_set, "#" => :red_art
       tiles :blue_set, "#" => :blue_art
       full = Array.new(20) { "#" * 30 }
-      # The busy scene's layers are stacked so that only its BACKMOST one draws at the far
+      # The busy scene's layers are stacked so that only its backmost one draws at the far
       # left: each later one starts a column further in.
       column = ->(n) { Array.new(20) { |_r| (0...30).map { |c| c == n ? "#" : " " }.join } }
       background :backdrop, tiles: :green_set, map: full
@@ -77,7 +77,7 @@ class TestSceneBackgroundsCartridge < Minitest::Test
     assert_equal BLUE, v.pixel_gba(0, 0), "the backdrop was drawn over the scene's back layer"
   end
 
-  # A SCENE THAT USES FEWER LAYERS THAN THE LAST ONE. This is the case scene-by-scene
+  # A scene that uses fewer layers than the last one. This is the case scene-by-scene
   # numbering introduces and a game cannot see coming: the layers the busy scene filled are
   # still switched on when the quiet one takes over, still pointed at the busy scene's
   # maps. A game walking from a parallax field into a plain room would show the field's
@@ -90,7 +90,7 @@ class TestSceneBackgroundsCartridge < Minitest::Test
       image(:blue_art, "#" => :blue) { tile }
       tiles :red_set, "#" => :red_art
       tiles :blue_set, "#" => :blue_art
-      # The quiet scene's background has HOLES in it, so anything still being drawn behind
+      # The quiet scene's background has holes in it, so anything still being drawn behind
       # shows through. A full-screen one would cover a leak rather than reveal it.
       spotty = Array.new(20) { |r| (0...30).map { |c| (r + c).even? ? "#" : " " }.join }
       full = Array.new(20) { "#" * 30 }
@@ -110,7 +110,7 @@ class TestSceneBackgroundsCartridge < Minitest::Test
   end
 
   # Through the holes there is nothing left to draw, so the backdrop shows — never the
-  # scene before's scenery. The map alternates by CELL and a cell is 8 pixels, so these are
+  # scene before's scenery. The map alternates by cell and a cell is 8 pixels, so these are
   # a filled cell and the hole beside it.
   BACKDROP = 0
   FILLED_CELL = [0, 0].freeze
@@ -177,7 +177,7 @@ class TestSceneBackgroundsCartridge < Minitest::Test
     assert_equal RED, v.pixel_gba(0, 0), "the console never brought the scenery back"
   end
 
-  # ONE SCENE THAT TURNS A BACKGROUND, BESIDE ONE THAT STACKS FOUR SCROLLING ONES.
+  # One scene that turns a background, beside one that stacks four scrolling ones.
   #
   # The console arranges its tile layers one of two ways — four that scroll, or two that
   # scroll beside one that turns and resizes — and it is told which in one register, so it
@@ -186,7 +186,7 @@ class TestSceneBackgroundsCartridge < Minitest::Test
   # turning at all.
   #
   # So the arrangement belongs to the scene, not to the cartridge. Counted for the whole
-  # program, one turning background anywhere caps EVERY screen at two scrolling layers —
+  # program, one turning background anywhere caps every screen at two scrolling layers —
   # which a game cannot trade away, because the four in its play screen are four different
   # things at four different depths.
   private def a_turning_title_and_a_scrolling_game
@@ -282,7 +282,7 @@ class TestSceneBackgroundsCartridge < Minitest::Test
                     "the title's scenery is pinned still by a scene that is not on screen"
   end
 
-  # A SCENE THAT DECLARES NOTHING IS STILL A SCREEN.
+  # A scene that declares nothing is still a screen.
   #
   # A layer is switched on at boot for every background in the program, and a layer
   # belonging to a scene that has not run yet has never been told where its map is. Nought
@@ -333,7 +333,7 @@ class TestSceneBackgroundsCartridge < Minitest::Test
     end
   end
 
-  # From the VERY FIRST frame, not from the frame the scene's own setup catches up. A
+  # From the very first frame, not from the frame the scene's own setup catches up. A
   # layer left on for one frame with no map of its own still draws the art as a grid, and
   # one frame of that is what a player sees as the game flickering on.
   def test_a_layer_of_a_scene_that_has_not_run_draws_nothing
@@ -349,7 +349,7 @@ class TestSceneBackgroundsCartridge < Minitest::Test
     end
   end
 
-  # A SCENE WITH NO SCENERY OF ITS OWN HAS NO LAYER SWITCHED ON.
+  # A scene with no scenery of its own has no layer switched on.
   #
   # The one above is a scene that declares nothing while the game's scenery belongs to the
   # program, so every screen shows that scenery and every screen has a layer. This is the
@@ -409,7 +409,7 @@ class TestSceneBackgroundsCartridge < Minitest::Test
     end
   end
 
-  # A LAYER IS POINTED AT ITS MAP BEFORE IT IS SWITCHED ON, NOT AFTER.
+  # A layer is pointed at its map before it is switched on, not after.
   #
   # Reading the registers once a frame cannot see this: both writes land in the same frame,
   # so by the time anybody looks the layer is on AND pointed. What the display does in
@@ -498,7 +498,7 @@ class TestSceneBackgroundsCartridge < Minitest::Test
                  "and both are on once they have been"
   end
 
-  # A background written ABOVE its `screen` has switched its layer on by the time the screen
+  # A background written above its `screen` has switched its layer on by the time the screen
   # is declared, and declaring the screen must not switch it off again.
   # It shows two backgrounds at once, which only the Advance has, and asks the Advance's own
   # display switches.
@@ -520,7 +520,7 @@ class TestSceneBackgroundsCartridge < Minitest::Test
                  "a layer was showing with no map of its own yet"
   end
 
-  # THE SIZE A SCENE'S BACKGROUND IS DECLARED AT IS PART OF DECLARING IT.
+  # The size a scene's background is declared at is part of declaring it.
   #
   # A turning background is what asks the console for the arrangement that holds one, and
   # only the screen that wants that arrangement should be in it — so a title whose picture
@@ -577,7 +577,7 @@ class TestSceneBackgroundsCartridge < Minitest::Test
                  "the console was never told the eased size — the picture is still magnified"
   end
 
-  # THE SCENERY'S MEMORY TAKES TURNS TOO, the way its layers do. The console keeps every
+  # The scenery's memory takes turns too, the way its layers do. The console keeps every
   # tile picture and every map a screen shows in 64K, and scenes that take turns never
   # need theirs there at the same time — so what has to fit is the busiest scene, not the
   # whole game. Four of the largest maps are 32K; two scenes of them are all 64K, which no
@@ -616,7 +616,7 @@ class TestSceneBackgroundsCartridge < Minitest::Test
     end
   end
 
-  # A SCENE'S LOGIC RUNS ON EVERY FRAME, THE ONE IT ARRIVES ON INCLUDED, however much art it
+  # A scene's logic runs on every frame, the one it arrives on included, however much art it
   # brings. Sending that art is the console's work and the interpreter's is instant, so a copy
   # that ran long would take frames of game logic away on the console alone — a cursor that
   # waits a measured number of frames would wait longer, and the two backends would stop

@@ -3,7 +3,7 @@
 require "test_helper"
 require "console/gba/vblank/builder/test_scene_backgrounds_on_the_advance"
 
-# A SCENE WITH NO SCENERY OF ITS OWN, ON THE ADVANCE'S CARTRIDGE, read in the emulator. What it
+# A scene with no scenery of its own, on the Advance's cartridge, read in the emulator. What it
 # shows, asked of every run that plays the Advance, is in
 # test/console/gba/vblank/builder/test_scene_backgrounds_on_the_advance.rb.
 class TestSceneBackgroundsOnTheAdvanceCartridge < Minitest::Test
