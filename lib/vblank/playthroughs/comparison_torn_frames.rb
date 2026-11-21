@@ -3,28 +3,28 @@
 module VBlank
   module Playthroughs
     class Comparison
-      # THE STRICT RULE FOR A FRAME SHOWN TORN, asked for with `forgiving_torn_frames_of:`.
+      # The strict rule for a frame shown torn, asked for with `forgiving_torn_frames_of:`.
       #
-      # WHAT A TORN FRAME IS. A game that copies a change into the picture while the console is
+      # What a torn frame is. A game that copies a change into the picture while the console is
       # drawing it shows that frame part old and part new: the top of the screen from after the
       # change and the bottom from before, say. The next frame shows the change whole. An
       # original game does this now and then, and a port that draws the change at the right
       # moment never shows the torn frame at all — so the two differ on that one frame though
       # the port is right.
       #
-      # A TEAR CAN LAST MORE THAN A FRAME: a copy that takes longer than one frame shows two
+      # A tear can last more than a frame: a copy that takes longer than one frame shows two
       # pictures part way through the change, each unlike the frame before and the frame after,
       # before the picture settles (an original's billboard does this). So torn frames come in
       # runs, of one or more.
       #
-      # WHY NOT `frames_in_a_row: 2`. That forgives any one frame, so a port that shows a change
+      # Why not `frames_in_a_row: 2`. That forgives any one frame, so a port that shows a change
       # a frame late passes as readily as the original's tearing. This forgives exactly one
       # thing. On every frame of a run where the torn side shows a picture unlike the frame before
       # it and unlike the frame after it, the other side must show the picture the run settles on:
       # that of the first frame after it that is not torn. Anything else is a difference as it
       # always was.
       #
-      # WHAT IT COSTS is waiting: whether a frame is torn is not known until the frame after it
+      # What it costs is waiting: whether a frame is torn is not known until the frame after it
       # has been played, and what a run settles on not until it ends, so a frame is decided a
       # frame late, and the frames of a run once it ends, each with what was kept from it
       # (Observation). The picture of the torn side is kept on every frame, which the emulator
@@ -60,7 +60,7 @@ module VBlank
           @before = nil
         end
 
-        # HAND OVER THE FRAME JUST PLAYED and get back the frames now decided, oldest first: each
+        # Hand over the frame just played and get back the frames now decided, oldest first: each
         # an Observation, with the picture taken out of what differed where that frame was torn
         # and forgiven. Empty while a run of torn frames goes on, and on the first frame, which
         # has none before it. +consoles+ is the two running cartridges, on the frame just played.

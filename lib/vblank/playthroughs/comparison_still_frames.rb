@@ -3,16 +3,16 @@
 module VBlank
   module Playthroughs
     class Comparison
-      # EACH CARTRIDGE'S OWN STILL FRAMES SKIPPED, asked for with `skipping_still_frames_of:`.
+      # Each cartridge's own still frames skipped, asked for with `skipping_still_frames_of:`.
       #
-      # WHAT A STILL FRAME IS. A frame whose picture is the same as the frame before it. A game
+      # What a still frame is. A frame whose picture is the same as the frame before it. A game
       # shows a run of them while it loads a room, holds a fade, or waits: the picture stands
       # while the console works. An original takes as long as each room takes; a port takes
       # another length, or none. Frame by frame the two are out of step after the first load,
       # and `ignoring_frames:` cannot help: it leaves out the same frame numbers on both, and
       # the stretch is a different length on each.
       #
-      # SO A SIDE'S STILL FRAMES ARE SKIPPED, the first cartridge's, the second's or both: the
+      # So a side's still frames are skipped, the first cartridge's, the second's or both: the
       # frames whose picture changed are counted on that side, and the two are lined up by that
       # count (see LinedUp), each compared on the frame it showed its next change. A side whose
       # still frames are not skipped counts every frame. The picture is the one compared, in the
@@ -20,7 +20,7 @@ module VBlank
       # sprites (or backgrounds) stood still, and a clock left out with `ignoring_rectangles:`
       # does not make a frame move.
       #
-      # ONE SIDE OR BOTH. Skipping one side's still frames is for a side that alone holds still:
+      # One side or both. Skipping one side's still frames is for a side that alone holds still:
       # an original's room load the port does not have. Where both hold still together (a hero
       # standing in a still room, a pause), the side that is not skipped counts those frames and
       # the skipped side does not, so the two part; skip both.
@@ -61,7 +61,7 @@ module VBlank
         # The setting's name, for an error about settings it cannot be used with.
         def setting_name = "`skipping_still_frames_of:`"
 
-        # ONE CARTRIDGE'S COUNT OF ITS FRAMES, with its still frames left out of it when
+        # One cartridge's count of its frames, with its still frames left out of it when
         # +skipping+, as it plays.
         class Count
           def current_step = @current
@@ -102,7 +102,7 @@ module VBlank
       end
       private_constant :StillFrames
 
-      # THE SECOND CARTRIDGE'S PICTURE STOOD STILL FOR A MINUTE OF FRAMES, where its still frames
+      # The second cartridge's picture stood still for a minute of frames, where its still frames
       # are skipped and the first cartridge's picture had changed. The message says how to go on.
       class PictureStoodStill < StandardError; end
     end

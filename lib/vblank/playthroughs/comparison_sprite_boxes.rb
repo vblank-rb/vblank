@@ -3,22 +3,22 @@
 module VBlank
   module Playthroughs
     class Comparison
-      # EVERY SPRITE'S BOX, LEFT OUT OF THE PICTURE COMPARED (`ignoring_sprites: true`): on each frame
+      # Every sprite's box, left out of the picture compared (`ignoring_sprites: true`): on each frame
       # looked at, the box of every entry of the console's own sprite table on either cartridge, on
       # that frame and on the frame before it.
       #
-      # WHAT IT IS FOR. A port's scenery is ready before its characters are, and the original shows
+      # What it is for. A port's scenery is ready before its characters are, and the original shows
       # its characters on top of the scenery anyway. `layers: :backgrounds` draws both pictures with
       # the sprites switched off, and so holds the port to the scenery under every character too; and
       # not every console's emulator can switch a layer off (Genesis Plus GX draws them together).
       # This leaves the pixels under the sprites out of both pictures instead.
       #
-      # WHY THE FRAME BEFORE TOO. A console draws a frame from a sprite table the game wrote a frame
+      # Why the frame before too. A console draws a frame from a sprite table the game wrote a frame
       # or so earlier, so the table read after a frame and the sprites in its picture can be a frame
       # apart. Both are left out. Where the two cartridges are lined up step by step, the frame
       # before is each cartridge's own: the frame it played before the one it showed the step on.
       #
-      # THE TABLE IS READ RAW (Verifier#sprite_boxes), as the console holds it, so a cartridge with no
+      # The table is read raw (Verifier#sprite_boxes), as the console holds it, so a cartridge with no
       # build record, the original, is read the same as ours. A Super Nintendo cartridge's sprites
       # come in two sizes the game sets in OBSEL, which the emulator hands over; the setting can
       # instead be two sizes, small then large, used over those: `ignoring_sprites: [[8, 8], [16, 16]]`.
@@ -64,7 +64,7 @@ module VBlank
            "was not looked at."]
         end
 
-        # THE BOXES OF TWO RUNNING CARTRIDGES, read after each frame either one plays. Each is read as
+        # The boxes of two running cartridges, read after each frame either one plays. Each is read as
         # it stands when the watch begins, so the first frame played has a frame before it, the
         # lead-in's last.
         class Watch

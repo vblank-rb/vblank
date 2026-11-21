@@ -2,7 +2,7 @@
 
 module VBlank
   module Playthroughs
-    # HOW FAR APART TWO CARTRIDGES' HEARD SOUND MAY BE and still be alike. A game gives all three,
+    # How far apart two cartridges' heard sound may be and still be alike. A game gives all three,
     # each with its reason beside it in the game's test: none has a value a comparison assumes.
     #
     #   first_heard_frames_apart  how many frames apart the two may first be heard
@@ -33,7 +33,7 @@ module VBlank
       end
     end
 
-    # WHERE TWO CARTRIDGES' HEARD SOUND DIFFERS BY MORE THAN THE GAME ALLOWS, for one measure.
+    # Where two cartridges' heard sound differs by more than the game allows, for one measure.
     #
     # +what+ is which measure was out: +:never_heard+ (one cartridge or both made no sound),
     # +:first_heard+, +:level+, +:last_heard+ or +:fall+. +frame+ is the first frame the two differ
@@ -49,7 +49,7 @@ module VBlank
       def initialize(what:, frame:, loudest:, measured:, frames: nil, stretches_over: nil, speaker: nil) = super
     end
 
-    # TWO CARTRIDGES' HEARD SOUND ON THE SAME PRESSES, IN THE SAME EMULATOR: a port's cartridge beside
+    # Two cartridges' heard sound on the same presses, in the same emulator: a port's cartridge beside
     # the original it is made from. The same mixer makes both sounds, so the two can be held close:
     # heard from the same frame, at the same level, and falling silent over the same time.
     #
@@ -60,7 +60,7 @@ module VBlank
     #   compared.difference.what   # => :level
     #   compared.first.level       # each side is a HeardSound
     #
-    # WHAT IS COMPARED, in this order: whether each is heard at all; the frame each is first heard on;
+    # What is compared, in this order: whether each is heard at all; the frame each is first heard on;
     # each one's level over the frames it is heard, or a stretch of them at a time; the frame each is
     # last heard on; and how many frames each one's last sound takes to fall silent. Every measure out
     # is a HeardDifference in +differences+, so one run shows them all; #difference is the first. (One
@@ -71,12 +71,12 @@ module VBlank
     # +recordings+ is what each cartridge put out, as Diagnostics::SoundRecordings, for #write_wav; nil
     # for a comparison of HeardSounds made elsewhere (#between).
     #
-    # EACH SPEAKER. The measures are taken of the two speakers mixed, and again of each speaker
+    # Each speaker. The measures are taken of the two speakers mixed, and again of each speaker
     # alone (+speakers+, :left and :right to the two HeardSounds on it): a measure out on one speaker
     # and not in the mix is a difference of its own, naming the speaker, so a sound on the wrong
     # speaker fails.
     #
-    # EACH VOICE. Where the two are not alike and the console's emulator can play one voice alone
+    # Each voice. Where the two are not alike and the console's emulator can play one voice alone
     # (the Advance's and the Color's four, the Genesis's six FM voices and four square and noise
     # voices; not the Super Nintendo's eight), the tape is played again on both once for each voice,
     # that voice alone, and compared the same way: +voices+ is each voice's name to its own
@@ -187,7 +187,7 @@ module VBlank
       end
       private_class_method :presses_led_in, :refuse_lead_ins_not_pair!, :refuse_unusable_presses!
 
-      # ONE CARTRIDGE'S TAPE PLAYED AGAIN WITH ONE VOICE ALONE: switched on, told which voice to hear
+      # One cartridge's tape played again with one voice alone: switched on, told which voice to hear
       # (Verifier#hearing) before its first frame, led in, and pressed through +tape+ a stretch of
       # frames at a time, as a playthrough presses it.
       class VoiceReplay
