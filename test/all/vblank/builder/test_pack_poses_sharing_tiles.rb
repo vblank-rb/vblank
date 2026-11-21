@@ -5,7 +5,7 @@ require "digest"
 require "tmpdir"
 require "made_up_original_layouts"
 
-# A SCREEN DRAWN FROM ONE SLOT OF AN ORIGINAL'S TILES: a background of the slot and three poses read
+# A screen drawn from one slot of an original's tiles: a background of the slot and three poses read
 # from the original's frames, every one drawn from the same ten tiles. The made-up original keeps
 # them as a Genesis game does: a frame is a word that counts its pieces, then eight bytes a piece,
 # and a piece is up to four tiles each way, its tiles one after another in the slot, down each

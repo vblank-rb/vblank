@@ -37,7 +37,7 @@ module PackPoseOfSplitTileGames
   REACH = [16, 16].freeze
 
   # A Super Nintendo's sprite entry with the object's place taken off: x, y, the low eight bits of
-  # the tile, and a byte of flags whose bit 0 is the tile's NINTH bit, with mirrored in bit 6 and
+  # the tile, and a byte of flags whose bit 0 is the tile's ninth bit, with mirrored in bit 6 and
   # upside down in bit 7. The bits between (the colours and the priority) are set on every piece.
   FRAME = VBlank::Original::FrameLayout.new(piece_bytes: 4, counted: true, x_at: 0, y_at: 1, tile_at: 2, flags_at: 3,
                                             mirrored_bit: 6, upside_down_bit: 7, tile_high_bit: 0, tile_high_bits: 1)
@@ -92,13 +92,13 @@ module PackPoseOfSplitTileGames
   end
 end
 
-# A POSE READ FROM AN ORIGINAL THAT KEEPS A TILE'S NUMBER IN TWO PLACES (Original::FrameLayout's
+# A pose read from an original that keeps a tile's number in two places (Original::FrameLayout's
 # `tile_high_bit:`): its low eight bits in a byte of their own and its ninth among the flags, as a
 # Super Nintendo's sprite entry keeps it. The answer key is the same pieces painted by hand.
 class TestPackPosesOfSplitTiles < Minitest::Test
   include PackPoseOfSplitTileGames
 
-  # THE SAME PIECES PAINTED BY HAND, each the tile +tile_of+ gives for it, turned as it says.
+  # The same pieces painted by hand, each the tile +tile_of+ gives for it, turned as it says.
   private def pose_painted_by_hand
     painted = PIECES.map do |piece|
       rows = VIDEO.fetch(yield(piece)).each_slice(8).to_a
