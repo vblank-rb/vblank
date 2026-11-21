@@ -3,11 +3,11 @@
 require "test_helper"
 require "differential"
 
-# A POSE MAY BE ANOTHER POSE TURNED TOP TO BOTTOM, storing no pixels of its own — `mirror`'s
+# A pose may be another pose turned top to bottom, storing no pixels of its own — `mirror`'s
 # other way. A reflection in water, a stalactite drawn from a stalagmite, an arrow that points
 # up or down: the console draws an object upside down for nothing, as it draws one reversed.
 #
-# As with `mirror`, what can go wrong is the PLACE: art near the top of its canvas must land
+# As with `mirror`, what can go wrong is the place: art near the top of its canvas must land
 # the same distance from the bottom turned over. So the tests compare the two backends on
 # frames showing each turned pose, where the interpreter draws the turned picture's own pixels.
 class TestSpriteUpsideDown < Minitest::Test
@@ -60,7 +60,7 @@ class TestSpriteUpsideDown < Minitest::Test
     assert_backends_agree(program([lopsided(6, CANVAS - 12)]) { |names| [upside_down(names[0])] }, frames: 12)
   end
 
-  # IT COMPOSES WITH `mirror`: a picture turned both ways is one more bit, not a special case.
+  # It composes with `mirror`: a picture turned both ways is one more bit, not a special case.
   # The cycle is four poses three frames each, so four runs three frames apart end on each of
   # them once.
   def test_a_pose_turned_both_ways_draws_the_same_on_both_backends

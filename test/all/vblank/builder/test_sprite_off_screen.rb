@@ -32,7 +32,7 @@ module SpriteOffScreenGames
   private def screen_played = VBlank::Console.described(game_console).screen_size
 end
 
-# A SPRITE THE GAME PUTS OFF THE SCREEN IS NOT ON IT, however far off that is.
+# A sprite the game puts off the screen is not on it, however far off that is.
 #
 # The console keeps a sprite's row as one of 256 and its column as one of 512, and a place
 # outside those comes round: a sprite parked at row 300 is drawn at row 44. Nobody means

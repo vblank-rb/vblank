@@ -3,8 +3,8 @@
 require "test_helper"
 require "differential"
 
-# A bitmap sprite remembers the pixels it covers and puts them back as it moves. CLEARING THE
-# SCREEN UNDER IT — a new round, a change of scene — replaces those pixels, so what the sprite
+# A bitmap sprite remembers the pixels it covers and puts them back as it moves. Clearing the
+# screen under it — a new round, a change of scene — replaces those pixels, so what the sprite
 # remembers is a square of a picture that is gone, and it must not be put back.
 #
 # Each test starts on a white field, clears it to blue part way through, and counts what is
