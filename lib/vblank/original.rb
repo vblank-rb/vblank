@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# THE ORIGINAL A GAME IS MADE FROM. A port of a retail game reads the player's own copy of it, which
+# The original a game is made from. A port of a retail game reads the player's own copy of it, which
 # no game may ship, and is checked against it:
 #
 #   ORIGINAL = VBlank::Original::Game.new(title: "Space Pinball", setting: "SPACE_PINBALL_ROM",

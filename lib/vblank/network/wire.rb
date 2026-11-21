@@ -4,7 +4,7 @@ require "json"
 
 module VBlank
   module Network
-    # THE MESSAGES AS TEXT, the one format a direct connection and the relay both speak. A message is
+    # The messages as text, the one format a direct connection and the relay both speak. A message is
     # one JSON object, sent as one WebSocket text message or as one line on a socket. Every message
     # carries +"v"+, the version of this format (WIRE_VERSION), and +"type"+, then its own fields:
     #
@@ -16,7 +16,7 @@ module VBlank
     # docs/network/protocol.md says all of it in words, and docs/network/exchanges.json is the same
     # thing as examples that every implementation's tests read.
     #
-    # A MESSAGE FROM ANOTHER VERSION IS SAID SO. A relay or a game that reads a version it does not
+    # A message from another version is said so. A relay or a game that reads a version it does not
     # know refuses it with the versions it does know, in plain words (VersionMismatch), and does not guess.
     module Wire
       # The version of the format this code speaks. A change that an older reader would misunderstand
@@ -85,7 +85,7 @@ module VBlank
     # Text that is not a message of the format.
     class BadMessage < StandardError; end
 
-    # A MESSAGE FROM A VERSION OF THE FORMAT THIS PROGRAM DOES NOT SPEAK, or a relay that does not speak
+    # A message from a version of the format this program does not speak, or a relay that does not speak
     # this program's. The words say which versions each side knows, so a person can tell whether the game
     # or the relay is the one to update. +seen+ is the version of the message, and +supported+ the
     # versions the reader knows.

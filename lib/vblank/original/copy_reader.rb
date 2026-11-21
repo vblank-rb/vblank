@@ -2,7 +2,7 @@
 
 module VBlank
   module Original
-    # THE PLAYER'S COPY OF THE ORIGINAL, AS AN UNPACKING ROUTINE READS IT: the `copy` a
+    # The player's copy of the original, as an unpacking routine reads it: the `copy` a
     # `slots.fill_from_copy do |copy, pack| ... end` block is handed (Unpacking says where that
     # block runs, and why). Everything here is game code, so it plays the same on every backend.
     #
@@ -14,7 +14,7 @@ module VBlank
     #   copy.unpack_lz77 at: 0x300, into: pack[:sprites]   # a packed format the copy offers
     #   copy.file("MAPHEAD.WL6").word(2)          # one file of a copy that is several (FileReader)
     #
-    # THE PACKED FORMATS the copy offers are those of the platform its original is for
+    # The packed formats the copy offers are those of the platform its original is for
     # (Packing.formats_for: an Advance original's are LZ77, RLE and the songs of its common sound
     # driver, MusicPlayer2000 (Packing::M4A), a Genesis original's Nemesis and
     # Enigma), and any the port names in
@@ -122,7 +122,7 @@ module VBlank
         nil
       end
 
-      # ONE FILE OF A COPY THAT IS SEVERAL FILES (Release#files), as a FileReader: the same verbs,
+      # One file of a copy that is several files (Release#files), as a FileReader: the same verbs,
       # each place counted from the start of that file. +name+ is the file's name in the release, in
       # any case. The release is known as the routine is built (each release's unpacking is built for
       # it), so where each file starts is a number in the program.
@@ -299,7 +299,7 @@ module VBlank
       end
     end
 
-    # ONE FILE OF A COPY THAT IS SEVERAL FILES, as an unpacking routine reads it (CopyReader#file):
+    # One file of a copy that is several files, as an unpacking routine reads it (CopyReader#file):
     # each verb of the copy's, with its places counted from the start of the file. A place written in
     # the program that is outside the file is refused as the routine is built. One worked out as the
     # routine runs is held to the file as it runs: a read outside it is the fault
@@ -368,7 +368,7 @@ module VBlank
       end
     end
 
-    # WHAT WENT WRONG IN AN UNPACKING ROUTINE: the first fault (Unpacking::Fault), kept in the
+    # What went wrong in an unpacking routine: the first fault (Unpacking::Fault), kept in the
     # program's FAULT_ variables, and the routine halted there. Nothing after a fault is worth
     # running, since the build stops on it (Builder::DataPacks#refuse_faulted_or_unfinished_unpacking!),
     # and running on is what lets a loop whose only way out was the byte it could not read go
@@ -390,7 +390,7 @@ module VBlank
       end
     end
 
-    # ONE SLOT OF THE PACK, AS AN UNPACKING ROUTINE WRITES IT: `pack[:walls]` inside
+    # One slot of the pack, as an unpacking routine writes it: `pack[:walls]` inside
     # `slots.fill_from_copy`. Its bytes are a run of the pack's one list of bytes
     # (Unpacking).
     #
@@ -463,7 +463,7 @@ module VBlank
         write_or_emit_fault(index, byte_size, index) { store_byte(index, value) }
       end
 
-      # CELL +index+ OF A SLOT OF MAP CELLS written as a MapCell record: its +tile+, counted from the
+      # Cell +index+ of a slot of map cells written as a MapCell record: its +tile+, counted from the
       # first tile of the background's `tiles:`, its +bank+ of colours, whether it is +mirrored+ and
       # +upside_down+, and whether it is +in_front+ of the sprites (each true or false, or a number
       # whose lowest bit says; the last read only by a background that asks, `cells_in_front: true`).
@@ -639,7 +639,7 @@ module VBlank
         store_byte(index, value)
       end
 
-      # EVERY BYTE OF THE SLOT IS READ AND WRITTEN HERE, so the read or the write is recorded where
+      # Every byte of the slot is read and written here, so the read or the write is recorded where
       # it is built (#record_read, #record_write, which the pack cache's parts read), and a way of
       # writing added later cannot leave it out. A copy's formats write through the routine their
       # block calls, which records its slot (CopyReader#emit_block_call). +at+ is a byte of the
@@ -656,13 +656,13 @@ module VBlank
       end
     end
 
-    # A SLOT IN PIECES, AS AN UNPACKING ROUTINE WRITES IT: `pack[:music]` inside
+    # A slot in pieces, as an unpacking routine writes it: `pack[:music]` inside
     # `slots.fill_from_copy :music, pieces: 27 do ... end`, which is written a piece at a time,
     # `pack[:music].piece(song)[i] = sample`, the piece a SlotBytes of its own (PieceBytes) whose
     # items count from the piece's first. The slot itself is never read or written whole: a part in
     # pieces writes the pieces, and no other part reads them (PiecedUnpacking says why).
     #
-    # THE PIECE IS ONE THE ROUTINE WORKS OUT AS IT RUNS: the part's block is built once, handed the
+    # The piece is one the routine works out as it runs: the part's block is built once, handed the
     # piece's number as a game value, so its code is in the program once however many pieces it
     # has. Where each piece starts in the program's list, and how many items it holds, are two
     # tables the piece's number reads (+piece_places+, a place for every piece, by its number; a
@@ -676,7 +676,7 @@ module VBlank
         @pieces = {}.compare_by_identity
       end
 
-      # THE PIECE the part's block is handed (+number+, the game value it is given), a PieceBytes.
+      # The piece the part's block is handed (+number+, the game value it is given), a PieceBytes.
       def piece(number)
         @building.refuse_piece_not_its_own!(@slot, number)
         @pieces[number] ||= PieceBytes.new(@builder, @list, @slot.piece_shape, read_by(:at, @piece_places, number),
@@ -704,7 +704,7 @@ module VBlank
       end
     end
 
-    # ONE PIECE OF A SLOT IN PIECES (PiecedSlotBytes#piece): a SlotBytes over the piece's bytes,
+    # One piece of a slot in pieces (PiecedSlotBytes#piece): a SlotBytes over the piece's bytes,
     # numbered as its slot, so a fault or a count of bytes done names the slot. +slot+ is the
     # piece's shape (Slot#piece_shape), +start+ where it starts in the list and +items+ how many
     # it holds, each a number or a value the routine works out. +whole+ is the PiecedSlotBytes whose
@@ -742,7 +742,7 @@ module VBlank
       def as_value(index) = index.is_a?(Integer) ? DSL::Value.new(@builder, DSL::Value.node_for(index)) : index
     end
 
-    # WHICH PART OF THE ROUTINE IS BEING BUILT, and for a part in pieces which piece: what a slot's
+    # Which part of the routine is being built, and for a part in pieces which piece: what a slot's
     # writer asks before it is read or written, so a part in pieces that reaches past its own
     # piece is refused as the routine is built, in plain words (PiecedUnpacking says why each is).
     class UnpackingPartBuilding
@@ -764,7 +764,7 @@ module VBlank
 
       private def routine_entered = @entered&.routine
 
-      # THE COUNT OF BYTES DONE (CopyReader#bytes_done) READ IN A PART AFTER THE FIRST, or in a part
+      # The count of bytes done (CopyReader#bytes_done) read in a part after the first, or in a part
       # in pieces. The count runs on from one part to the next, and from one piece to the next, so
       # there it holds what the parts or pieces before wrote. The pack cache plays a part with only
       # the parts it reads slots from (UnpackingParts), and a piece is made on its own, so the
@@ -823,7 +823,7 @@ module VBlank
       end
     end
 
-    # THE PACK'S SLOTS, AS AN UNPACKING ROUTINE WRITES THEM: `pack` inside `slots.fill_from_copy`,
+    # The pack's slots, as an unpacking routine writes them: `pack` inside `slots.fill_from_copy`,
     # a SlotBytes for each slot, by name.
     class UnpackingSlots
       def initialize(writers) = @writers = writers

@@ -9,7 +9,7 @@ require_relative "data_guard"
 
 module VBlank
   module Original
-    # A PORT'S RAKE TASKS FOR ITS PRE-COMMIT DATA GUARD (DataGuard). In the game's Rakefile:
+    # A port's rake tasks for its pre-commit data guard (DataGuard). In the game's Rakefile:
     #
     #   require "vblank/original/data_guard_tasks"
     #
