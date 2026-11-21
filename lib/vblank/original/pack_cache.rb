@@ -6,15 +6,15 @@ require "json"
 
 module VBlank
   module Original
-    # WHAT A PORT'S UNPACKING ROUTINE WROTE, CACHED BETWEEN BUILDS. Built all-in-one, the routine
+    # What a port's unpacking routine wrote, cached between builds. Built all-in-one, the routine
     # runs as the game is built (Builder::DataPacks#play_unpacking), which for a big port is a long
     # wait every build, though neither the player's copy nor the routine changed. A game that names
     # a folder caches the pack file there and a later build hits:
     #
-    #   pack = data_pack(from: ORIGINAL, version: "1", cache: ".cache/packs") { |slots| ... }
+    #   pack = data_pack(from: original, version: "1", cache: ".cache/packs") { |slots| ... }
     #
-    # THE KEY is everything the bytes are made from: the unpacking program, which holds the routine,
-    # the slots and the copy's size, written out as IR::Dump writes a program, with the DEFAULTS of
+    # The key is everything the bytes are made from: the unpacking program, which holds the routine,
+    # the slots and the copy's size, written out as IR::Dump writes a program, with the defaults of
     # the record classes it holds, which the dump leaves out (#program_source), and digested
     # (#program_digest), so a change to any of them misses; a digest of the copy's bytes
     # themselves, worked out here rather than taken from what the copy says its SHA-1 is (the program reads the copy from a file, Original::Unpacking,
@@ -24,7 +24,7 @@ module VBlank
     # SHA-1 and build version the pack's header names. The folder must be one git ignores, since
     # what is cached is the original's data.
     #
-    # AN ENTRY IS THE PACK FILE ITSELF (Original::Pack), which the routine's run writes straight
+    # An entry is the pack file itself (Original::Pack), which the routine's run writes straight
     # into the folder (Unpacking#write_pack_fastest), so a pack of hundreds of megabytes is never
     # held twice to be kept.
     #
@@ -68,10 +68,10 @@ module VBlank
         pack_of_program(unpacking, PackCache.program_digest(unpacking.program), sha1, build_version, &write)
       end
 
-      # THE PACK OF A ROUTINE NOT BUILT YET, +routine+ (a RoutineBuild): as #pack makes it, but
+      # The pack of a routine not built yet, +routine+ (a RoutineBuild): as #pack makes it, but
       # without building the routine where the pack is kept already. Working out #pack's key builds
       # the routine, which for a big port takes longer than reading the pack back, so the routine's
-      # INDEX ENTRY is kept beside the pack. It is keyed on what the routine is declared from
+      # index entry is kept beside the pack. It is keyed on what the routine is declared from
       # (RoutineBuild#source) and on the key's other parts (#key_digest), and holds the files the
       # routine was built from with their digests (RoutineFiles) and the digest of the program it
       # built. A later build whose index entry's files all hash the same reads the pack under that
@@ -99,7 +99,7 @@ module VBlank
       SLOTS_ONLY_SHA1 = ("0" * 40).freeze
       SLOTS_ONLY_VERSION = "slots"
 
-      # What a key holds of +program+: the program as IR::Dump writes it, and the DEFAULTS of the
+      # What a key holds of +program+: the program as IR::Dump writes it, and the defaults of the
       # record classes it holds, which the dump leaves out (IR::Dump.record_defaults_source), so the
       # key changes with what the program means. UnpackingParts keys a part's program the same way.
       def self.program_source(program) = "#{IR::Dump.source(program)}\0#{IR::Dump.record_defaults_source(program)}"
@@ -124,7 +124,7 @@ module VBlank
 
       private
 
-      # A ROUTINE IN PARTS (UnpackingParts) is cached a part at a time. A part's entry is a pack
+      # A routine in parts (UnpackingParts) is cached a part at a time. A part's entry is a pack
       # holding the slots it is the last part to write (UnpackingParts#slots_of). Its key is the
       # whole routine's, with the programs of that part and every part it needs
       # (UnpackingParts#inputs_of), each built alone (UnpackingParts#key_source), in place of the
@@ -220,7 +220,7 @@ module VBlank
         digest << sha1.to_s << "\0" << build_version.to_s << "\0"
       end
 
-      # WHAT A ROUTINE'S INDEX ENTRY HOLDS (#pack_of_routine): the digest of the program the routine
+      # What a routine's index entry holds (#pack_of_routine): the digest of the program the routine
       # built (#program_digest), and the files it was built from (RoutineFiles). Kept as JSON, so a
       # person can read which files a routine was built from.
       RoutineIndexEntry = Data.define(:program_digest, :files) do
