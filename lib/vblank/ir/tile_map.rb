@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # HOW BIG THE GRID A BACKGROUND SCROLLS OVER IS, which is not the same as how many
+    # How big the grid a background scrolls over is, which is not the same as how many
     # rows the author wrote.
     #
     # A tiled background scrolls over a grid that comes in fixed sizes, and the picture
@@ -48,13 +48,13 @@ module VBlank
       # The biggest map there is, for a message.
       def max_grid_size = SIZES.last
 
-      # WHETHER A BACKGROUND'S MAPS ARE BROUGHT INTO VIEW A STRIP AT A TIME, rather than
+      # Whether a background's maps are brought into view a strip at a time, rather than
       # held whole in the grid. That is so for a background with a map too big for any
       # grid, and for one whose maps are of different sizes, since they cannot all fill
       # one grid. Such a background keeps every map whole in the cartridge and the grid
       # holds only the cells around the view.
       #
-      # IT DOES NOT COME ROUND AGAIN. Past the edge of such a map there are no cells, so
+      # It does not come round again. Past the edge of such a map there are no cells, so
       # the view shows nothing there — the backdrop, or the layers behind. A room has
       # edges; coming round to the far side of it is what a small repeating backdrop
       # wants, and that one is held whole and still does.

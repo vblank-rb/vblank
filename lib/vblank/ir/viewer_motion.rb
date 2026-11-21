@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # HOW A VIEWER MOVES AND TURNS, as statements every target runs (see DSL::Viewer). A viewer is
+    # How a viewer moves and turns, as statements every target runs (see DSL::Viewer). A viewer is
     # a spot and three arrows of length one, square to each other: right, up and ahead. Every
     # number is a fraction with sixteen bits, and every product goes through Int32.mul_fix.
     #
@@ -14,7 +14,7 @@ module VBlank
     # where right pointed away from. An angle written in the game is settled while the game is
     # built, so its cosine and sine are numbers written into the program and no table is needed.
     #
-    # An angle the game works out as it runs (#turned_by_value) is looked up instead, in SINES, the
+    # An angle the game works out as it runs (#turned_by_value) is looked up instead, in sines, the
     # sine of each whole degree. It is first brought into one whole turn, nought up to just under
     # 360, so an angle below nought or past a whole turn reads the same entries as the turn it
     # comes to. A fraction of a degree is stepped to between the sines of the whole degrees
@@ -22,7 +22,7 @@ module VBlank
     # reads exactly the number a written angle is turned by. The cosine of an angle is the sine
     # of the angle a quarter turn on, so the one table serves both.
     #
-    # SQUARING UP. Each turn rounds its products down, so after many turns the arrows would drift
+    # Squaring up. Each turn rounds its products down, so after many turns the arrows would drift
     # a little longer or shorter and a little out of square, and the place would be drawn
     # stretched or skewed. So every turn ends by making them square and of length one again:
     # ahead is made length one, up has whatever part of it lies along ahead taken away and is made
@@ -81,7 +81,7 @@ module VBlank
       end
 
       # The arrows turned (+:turn+ or +:roll+) +direction+ by +degrees+, a value the game works
-      # out as it runs, its sine and cosine read from table +sines+ (which holds SINES), then
+      # out as it runs, its sine and cosine read from table +sines+ (which holds sines), then
       # squared up. +degrees+ is a whole number when +whole+, and a fraction with sixteen bits
       # otherwise. A whole number is brought into one turn before it is made a fraction, so any
       # whole number turns as it should; a fraction holds no more than 32767 degrees either way.

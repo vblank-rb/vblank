@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # WHICH VALUES CHANGE NOTHING BY BEING WORKED OUT. `and` and `or` work both sides out, always, in
+    # Which values change nothing by being worked out. `and` and `or` work both sides out, always, in
     # the interpreter. A console skips the right side when the left has decided, and that is the
     # same thing only where nobody could tell. A list read past its end stops the game, so it counts
     # as a change. A chance's number was drawn before the test, so asking it changes nothing.

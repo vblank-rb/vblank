@@ -2,14 +2,14 @@
 
 module VBlank
   module IR
-    # WHICH TUNES A PROGRAM PLAYS, and how each part of one plays — worked out here, once, for
+    # Which tunes a program plays, and how each part of one plays — worked out here, once, for
     # every backend.
     #
     # It lives in one place because the answer is a promise the backends make to each other.
     # Counted two ways, the interpreter would play a note the console does not, and only in the
     # one moment that decides it — the end of a song, a part with no room to sound.
     module Tunes
-      # HOW LOUD THE MUSIC PLAYS RIGHT NOW, as a variable the game writes and the player reads
+      # How loud the music plays right now, as a variable the game writes and the player reads
       # at the start of each frame — the same arrangement as the tune it names. It runs 0 to
       # FULL_LEVEL, and a part sounds at its written volume times that, over FULL_LEVEL. A
       # program that never writes `music_volume` has no such variable, and plays every part at
@@ -75,7 +75,7 @@ module VBlank
         soundings(song).map(&:name).uniq
       end
 
-      # WHAT ONE NOTE SOUNDS: the recording it plays, and the envelope that shapes how it starts
+      # What one note sounds: the recording it plays, and the envelope that shapes how it starts
       # and ends. The two travel together because they are one thing to a sounding voice, and
       # keeping them together is what makes an envelope free per note: two notes on the same
       # recording shaped differently are two of these, each gets its own entry in the score's
@@ -102,16 +102,16 @@ module VBlank
         end.uniq
       end
 
-      # WHICH OF THE CONSOLE'S VOICES A PART PLAYS ON, read off the part itself. One reader, so
+      # Which of the console's voices a part plays on, read off the part itself. One reader, so
       # no backend and no check can decide it differently — that is the same reason this whole
       # module exists.
       #
-      # A part names its voice by what it SOUNDS LIKE: an instrument it plays, a waveform, or
+      # A part names its voice by what it sounds like: an instrument it plays, a waveform, or
       # the hiss. Naming none of those is the square wave, which is what a part was before any
       # of the others existed and is still what most parts are.
       def part_kind(part) = Audio::Music.kind_played({ instrument: part.instrument, wave: part.wave, noise: part.noise })
 
-      # HOW A NOTE FADES OR SWELLS, as a part or the note itself SET it (an Audio::NoteFade), or
+      # How a note fades or swells, as a part or the note itself SET it (an Audio::NoteFade), or
       # nil when neither did. A note's own comes first. What was set is what the log names, so
       # a song that sets nothing about fading logs what it always did.
       #
@@ -120,7 +120,7 @@ module VBlank
       # this and the part.
       def said_fade(part, event) = event[Audio::Music::Part::FADE_SLOT] || part.fade
 
-      # WHETHER A NOTE SOUNDS, and so holds its voice against a sound effect of a lower rank, where
+      # Whether a note sounds, and so holds its voice against a sound effect of a lower rank, where
       # one that does not lets the voice go as a rest does: a note with a pitch, at a volume above
       # nought — or one written at nought that a square or noise voice swells up by itself
       # (+fade+, an Audio::NoteFade, going up a step at a time), which is heard from its first
@@ -135,32 +135,32 @@ module VBlank
         kind != :wave || Audio::Sound.wave_level(volume) != :mute
       end
 
-      # HOW A NOTE SLIDES ITS PITCH (an Audio::PitchSlide), as the note or its part set it, or nil
+      # How a note slides its pitch (an Audio::PitchSlide), as the note or its part set it, or nil
       # when neither did. Only the first square voice slides, and a part elsewhere saying one was
       # refused before it got here.
       def said_slide(part, event) = event[Audio::Music::Part::SLIDE_SLOT] || part.slide
 
-      # HOW A NOTE WOBBLES ITS PITCH (an Audio::Vibrato), as the note or its part set it, or nil.
+      # How a note wobbles its pitch (an Audio::Vibrato), as the note or its part set it, or nil.
       def said_vibrato(part, event) = event[Audio::Music::Part::VIBRATO_SLOT] || part.vibrato
 
-      # WHERE A NOTE SITS BETWEEN THE SPEAKERS (an Audio::Pan), as the note or its part set it, or
+      # Where a note sits between the speakers (an Audio::Pan), as the note or its part set it, or
       # nil for both whole — which a note that names :center is, in a part that pans.
       def note_pan(part, event) = event[Audio::Music::Part::PAN_SLOT] || part.pan
 
-      # THE SPEAKER A NOTE PLAYS FROM on a voice that only switches between them: :left or :right,
+      # The speaker a note plays from on a voice that only switches between them: :left or :right,
       # or nil for both (Audio::Pan.side_of), a shade taken to the nearest of the three.
       def note_side(part, event) = Audio::Pan.side_of(note_pan(part, event))
 
-      # A SQUARE NOTE'S SHAPE, or the shapes it steps through (an Audio::Duty), as the note or its
+      # A square note's shape, or the shapes it steps through (an Audio::Duty), as the note or its
       # part named a Duty, or nil when neither did — a part that names one shape plays it, as it
       # always did, and sets nothing here.
       def said_duty(part, event) = event[Audio::Music::Part::DUTY_SLOT] || part.duties
 
-      # A DRUM'S OWN NOISE SETTING, [divider, halvings], when its note set one, or nil. Only a
+      # A drum's own noise setting, [divider, halvings], when its note set one, or nil. Only a
       # console told the setting itself reads it: the rate it makes is the note's pitch already.
       def said_noise_clock(event) = event[Audio::Music::Part::NOISE_CLOCK_SLOT]
 
-      # A RECORDED NOTE'S ENVELOPE AS A SOUND CHIP KEEPS IT (an Audio::SNESEnvelope), where the
+      # A recorded note's envelope as a sound chip keeps it (an Audio::SNESEnvelope), where the
       # note or its part was given one, or nil. It goes with the envelope that shapes the note: a
       # note that set its own envelope has its own bytes or none, whatever its part was given,
       # and a note that set none has its part's. Nil for a note and a part that set no envelope
@@ -174,7 +174,7 @@ module VBlank
       # Whether +event+ carries on the note sounding at a new pitch, rather than striking one.
       def glides?(event) = event[Audio::Music::Part::GLIDE_SLOT] == true
 
-      # THE RECORDING A GLIDE READS ON, as a build that works a glide's speed out ahead must name it:
+      # The recording a glide reads on, as a build that works a glide's speed out ahead must name it:
       # the one the note before it in +part+ struck, the last that sounds and does not glide (its own
       # instrument, or its part's), which is the note sounding when the glide comes, first time round
       # and every time after (a song coming round puts every part as it was then). The interpreter
@@ -192,7 +192,7 @@ module VBlank
         struck&.at(2) || part.instrument
       end
 
-      # WHETHER A DRUM HIT RATTLES (the noise voice's short, metallic hiss): its note's own setting
+      # Whether a drum hit rattles (the noise voice's short, metallic hiss): its note's own setting
       # where it was given one (Score::Note#metallic), else its part's.
       def said_metallic(part, event)
         own = event[Audio::Music::Part::METALLIC_SLOT]
@@ -203,7 +203,7 @@ module VBlank
       # rattle once, with what the part sounds like, then keeps each note's instead.
       def notes_say_metallic?(part) = part.events.any? { |event| !event[Audio::Music::Part::METALLIC_SLOT].nil? }
 
-      # THE WAVEFORM A WAVE NOTE PLAYS: its own when it named one (Score::Note#own_wave), else its
+      # The waveform a wave note plays: its own when it named one (Score::Note#own_wave), else its
       # part's. +own_wave+ is the note's alone, nil for its part's.
       def said_wave(part, event) = own_wave(event) || part.wave
       def own_wave(event) = event[Audio::Music::Part::WAVE_SLOT]
@@ -215,7 +215,7 @@ module VBlank
       # tune's waveform in once as it starts then puts each note's in as it starts.
       def notes_name_waves?(songs) = songs.any? { |song| song.voices.any? { |part| part.events.any? { |event| own_wave(event) } } }
 
-      # A NOTE SETTING ITS VOICE, as every backend's log says it: [:voice, channel, who, frequency,
+      # A note setting its voice, as every backend's log says it: [:voice, channel, who, frequency,
       # volume], then the note's fade, its slide and its wobble when it set them (#said_fade,
       # #said_slide, #said_vibrato), its side when it is one speaker (#note_side), and its shape
       # when it set one (#said_duty), with a nil before one set after it. A rest sets none of
@@ -225,7 +225,7 @@ module VBlank
         [:voice, channel, who, frequency, volume, *said]
       end
 
-      # THE WOBBLE OF A NOTE A VOICE HOLDS, a frame at a time — the same steps on every backend
+      # The wobble of a note a voice holds, a frame at a time — the same steps on every backend
       # (Audio::Vibrato says what they mean). +wait+ is the frames still to go before it starts,
       # +left+ the frames the swing it is in has still to hold, +rising+ whether that swing is the
       # one above, and +steps+ how far from the note's own pitch it has the voice now.
@@ -250,7 +250,7 @@ module VBlank
         end
       end
 
-      # A SWELLING NOTE HELD UNDER THE MUSIC VOLUME, counted a frame at a time — the same count on
+      # A swelling note held under the music volume, counted a frame at a time — the same count on
       # every backend.
       #
       # A square voice counts a swelling note's loudness up by itself, a step every +step+ 64ths of
@@ -279,7 +279,7 @@ module VBlank
           with(volume: volume, counted: counted)
         end
 
-        # WHAT THE PLAYER STRIKES under +ceiling+, and the swell after: nil for nothing, :hold
+        # What the player strikes under +ceiling+, and the swell after: nil for nothing, :hold
         # for the note struck at the ceiling holding, :swell for it struck where it is, swelling
         # on. At full there is nothing to hold: the voice stops there by itself.
         def held_under(ceiling)
@@ -306,7 +306,7 @@ module VBlank
       # The loudest a note can be at music volume +level+.
       def ceiling(level) = scaled_volume(LOUDEST, level)
 
-      # WHICH KINDS OF VOICE HAVE A NOTE THAT SWELLS BY ITSELF in a song the program plays — a song,
+      # Which kinds of voice have a note that swells by itself in a song the program plays — a song,
       # not a sound effect, which keeps its own volume? Only those have a swell for a player to hold
       # under the music volume (Swell). A drum hit is held the same way, struck again on the noise
       # voice, which starts its hiss over: that is heard as one more hit under the swell, and the
@@ -320,7 +320,7 @@ module VBlank
         swelling.map { |part| part_kind(part) }.uniq & %i[square noise]
       end
 
-      # DOES THE VOICE CHANGE THIS NOTE ITSELF — a square note that set a fade or a swell with a
+      # Does the voice change this note itself — a square note that set a fade or a swell with a
       # step to count, or a slide? Such a note is not held for the music volume: the volume reaches
       # a held note by striking it again, which would start its counting over, so a plucked note
       # would never die away while the music fades, and a swoop would start again from the top. It
@@ -356,7 +356,7 @@ module VBlank
       # The frame a song goes back to at its end: 0, unless it has a loop point.
       def loop_frame(song) = song.loop_frame || 0
 
-      # DOES THE SONG PLAY ONCE, and end rather than come round? One that does lasts exactly its
+      # Does the song play once, and end rather than come round? One that does lasts exactly its
       # length, and a song node that is marked so and names a loop frame as well still ends. On the
       # frame after its last, its parts go quiet the way they do when the program stops the
       # music, and from then on no tune is playing — though the program may go on naming this
@@ -367,7 +367,7 @@ module VBlank
       # is one a player can hear.
       def plays_once?(song) = song.plays_once ? true : false
 
-      # WHO SOUNDS ON A VOICE TWO PLAYERS WANT AT ONCE — the song and a sound effect, or two
+      # Who sounds on a voice two players want at once — the song and a sound effect, or two
       # effects — as one number each, so a single comparison settles it on every backend.
       #
       # The higher priority takes the voice. A tie goes to a sound effect over the song, and
@@ -388,7 +388,7 @@ module VBlank
       # +order+ counts the program's sound effects from 0, in the order they were declared.
       def effect_rank(song, order) = song_rank(song) | (ORDER_MASK - order)
 
-      # EVERY RANK A GAME'S SONGS AND SOUND EFFECTS CAN HAVE, the lowest first, nobody's (0) the
+      # Every rank a game's songs and sound effects can have, the lowest first, nobody's (0) the
       # first of all — given the songs the game plays and its sound effects' songs in the order they
       # were declared. A cartridge that keeps each rank as its place in this list rather than the
       # number itself keeps a byte where it would keep four, and places compare as ranks do.
@@ -397,8 +397,8 @@ module VBlank
          effect_songs.each_with_index.map { |song, order| effect_rank(song, order) }).uniq.sort
       end
 
-      # THE PRIORITY A RANK CARRIES, without the order under it — what decides between two sound
-      # effects of one GROUP (a song node's +group+), which play one at a time. Asked for while
+      # The priority a rank carries, without the order under it — what decides between two sound
+      # effects of one group (a song node's +group+), which play one at a time. Asked for while
       # another of its group is sounding or already asked for, an effect of at least that one's
       # priority stops it and starts in its place, a tie going to the one asked for; one of lower
       # priority is not played at all. An effect with no group plays alongside any other.
@@ -415,7 +415,7 @@ module VBlank
         played_songs(program) + program.walk.select { |node| node.kind == :song && names.include?(node.name) }
       end
 
-      # THE ORDER A FRAME PLAYS THE SOUND EFFECTS IN: highest rank first, as [name, rank] — given
+      # The order a frame plays the sound effects in: highest rank first, as [name, rank] — given
       # the effects' song nodes in the order they were declared. Played in this order, with the
       # song's parts at their own rank's place among them, whoever writes a voice first on a
       # frame is whoever keeps it.
@@ -424,11 +424,11 @@ module VBlank
              .sort_by { |_, rank| -rank }
       end
 
-      # EACH PART'S NOTES THE FIRST TIME ROUND, AND EVERY TIME AFTER.
+      # Each part's notes the first time round, and every time after.
       #
       # A song that loops from a point plays what comes before it once: at its end the song
       # goes back to the loop frame and every part carries on from there. What makes that more
-      # than moving a place in each list is what a part is DOING at the loop frame. The first
+      # than moving a place in each list is what a part is doing at the loop frame. The first
       # time round it gets there from the notes before; every time after, it gets there from
       # the end of the song, still sounding whatever it ended on. So each part is put into the
       # state the loop frame wants:
@@ -438,9 +438,9 @@ module VBlank
       #   * a part silent there but still sounding at the end gets a rest there — which, the
       #     first time round, silences a part that is already silent, and so changes nothing;
       #   * a part holding a note across the loop frame sounds that note again there, every
-      #     time AFTER the first. Not the first time: the note is already sounding then, and
+      #     time after the first. Not the first time: the note is already sounding then, and
       #     striking it again would be heard. So those parts alone get a list of their own for
-      #     the later passes, starting with the held note. Unless the song ENDS on that same
+      #     the later passes, starting with the held note. Unless the song ends on that same
       #     note — then it is still sounding when the song comes round, and simply carries on.
       #
       # A song that loops from its start is the same rule with nothing before the loop frame, so
