@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A GAME'S TESTS STOP WHERE ITS BUILD STOPS. Every run's player checks a test's program the way
+# A game's tests stop where its build stops. Every run's player checks a test's program the way
 # VBlank.build checks a game before it makes anything (Testing::BuildChecks), so a slip the build
 # refuses in plain words is refused in the same words here, naming the verb and the line, rather
 # than reaching a lowering and failing far from the line.

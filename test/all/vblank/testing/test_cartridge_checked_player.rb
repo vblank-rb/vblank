@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A PART A CONSOLE'S BUILD DOES NOT MAKE YET is a skip naming the part, on every console whose
+# A part a console's build does not make yet is a skip naming the part, on every console whose
 # cartridge a run plays (Testing::CartridgeCheckedPlayer), so a run's count of skips by reason says
 # what is left to make: the Color's the same as the Super Nintendo's. A refusal of anything else is
 # a fault, and fails.

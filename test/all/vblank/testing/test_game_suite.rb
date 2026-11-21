@@ -4,7 +4,7 @@ require "test_helper"
 require "open3"
 require "tmpdir"
 
-# A GAME IN A REPOSITORY OF ITS OWN runs its tests on any lowering, or all of them, with nothing
+# A game in a repository of its own runs its tests on any lowering, or all of them, with nothing
 # but the library and the emulator gem: test/fixtures/game_suite is such a game's Rakefile and
 # its test files, and each case here runs its rake from that folder. Its load path is the two
 # gems' folders and nothing else (RUBYLIB, so the test processes rake starts have it too, as a
@@ -28,7 +28,7 @@ class TestGameSuite < Minitest::Test
   # printed, whether it passed, which lowerings played the game's tests, and what each test that
   # leaves one left behind ("lowering-test name").
   #
-  # Leaving the bundle puts back the settings this process STARTED with, and on a native run
+  # Leaving the bundle puts back the settings this process started with, and on a native run
   # that includes the mark a test process of the native run is started with
   # (TEST_PROCESS_CHILD), which it took away as it began. Handed down, the game's own run would
   # take itself for one of those, and wait for tests from a parent it does not have. A run of
