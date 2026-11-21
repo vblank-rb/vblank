@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE MAIN VOLUME (`enable_sound main_volume:`) AS THE ADVANCE'S CARTRIDGE WRITES IT, read from its
+# The main volume (`enable_sound main_volume:`) as the Advance's cartridge writes it, read from its
 # sound registers in the emulator and heard from its speaker. The Game Boy voices are scaled twice:
 # by SOUNDCNT_L's level for each speaker, an eighth to eight eighths, and by SOUNDCNT_H's share for
 # them all, a quarter, a half or the whole; the recordings by SOUNDCNT_H's bit for channel A, half

@@ -3,7 +3,7 @@
 require "test_helper"
 require "loop_cost_games"
 
-# A TURN OF A LOOP ON THE ADVANCE, measured in the emulator: a `repeat`, and a game's `while i < n`
+# A turn of a loop on the Advance, measured in the emulator: a `repeat`, and a game's `while i < n`
 # with `i += 1` last, which the build lowers as a counted loop (Backends::LoopForm#counted_while,
 # Statements#emit_counted_while). The ARM's own way is a count in a register, ADD and CMP and a B
 # back, or a SUBS that is its own test (GBATEK, "ARM CPU Instruction Cycle Times"). A loop here keeps

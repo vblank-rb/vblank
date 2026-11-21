@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/ir/test_list_packing"
 
-# A LIST'S ITEMS WRITTEN INTO A LIST OF BYTES ON THE ADVANCE'S CARTRIDGE, which copies the run as
+# A list's items written into a list of bytes on the Advance's cartridge, which copies the run as
 # one block where both lists are plain arrays (GBA::Lists#emit_list_pack) and writes a ring's items
 # out as the loops the step stands for. Read off the running cartridge, the bytes list holds what
 # the interpreter's does.
