@@ -37,7 +37,7 @@ class TestVariables < Minitest::Test
     assert_equal [:ball_x], builder.variables
   end
 
-  # Two parts of a game that each declare a scratch `_seen` share ONE variable, and
+  # Two parts of a game that each declare a scratch `_seen` share one variable, and
   # nothing about the program says so. One holding a fraction and the other a whole
   # number is the case that gave a wrong picture rather than a build error.
   def test_one_name_declared_as_a_fraction_and_a_whole_number_names_both_lines
@@ -149,7 +149,7 @@ class TestVariables < Minitest::Test
     assert_includes builder.variables, :step
   end
 
-  # A declaration initializes ONCE, at program start — not every time the declaration
+  # A declaration initializes once, at program start — not every time the declaration
   # runs. Declared inside a loop, `var :ticks, 0` doesn't re-zero the counter each frame,
   # so it accumulates; if the initializer ran every frame it would be stuck at 1. This is
   # what lets a game object declare its own state in setup that lives inside a scene.

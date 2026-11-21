@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE ADVANCE'S OWN SETTINGS (Cartridge::AdvanceBuild::SETTINGS): a value its build cannot use is
+# The Advance's own settings (Cartridge::AdvanceBuild::SETTINGS): a value its build cannot use is
 # refused where the game is named, before anything is read or built.
 class TestAdvanceBuild < Minitest::Test
   # How much of the quick memory the game's stack is given: a number of bytes the stack can hold

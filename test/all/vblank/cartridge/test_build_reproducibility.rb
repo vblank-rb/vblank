@@ -9,17 +9,17 @@ require VBlank.root.join("examples/snake_buffered").to_s
 # Building one program twice must give the same bytes.
 #
 # Every comparison `rake emitted` makes rests on this, and so does anything that
-# would ever cache or bisect a build. It matters most that it fails LOUDLY, because
+# would ever cache or bisect a build. It matters most that it fails loudly, because
 # the alternative is a tool that quietly reports differences that were never there.
 #
-# WHAT ONE PROCESS CAN PIN, which is what this file does: a name derived from
+# What one process can pin, which is what this file does: a name derived from
 # object identity, a counter that should reset per build and doesn't, and — the one
 # this project actually owns — global state left over from an earlier build. The
 # effect-pack registry and the guardrail registry are global and mutable, so a
 # program that uses no pack has to lower to the same bytes before and after some
 # other pack registers itself.
 #
-# WHAT IT CANNOT PIN, deliberately: anything that varies between processes rather
+# What it cannot pin, deliberately: anything that varies between processes rather
 # than within one — filesystem order from a glob, per-process string hashing. Two
 # builds in one process would agree on those however wrong they were. That half is
 # covered by `rake emitted`, which builds every example in a separate process
@@ -103,7 +103,7 @@ class TestBuildReproducibility < Minitest::Test
     TEST
   end
 
-  # Lowering the SAME tree twice, rather than rebuilding it — so a failure here says
+  # Lowering the same tree twice, rather than rebuilding it — so a failure here says
   # the backend is what carries state between builds, and a failure only in the
   # tests above says it is the DSL.
   def test_lowering_one_tree_twice_gives_the_same_bytes
