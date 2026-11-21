@@ -2,7 +2,7 @@
 
 module VBlank
   module Live
-    # THE MENU OVER THE WINDOW A GAME IS PLAYED IN, written down once: what it holds, the keys and
+    # The menu over the window a game is played in, written down once: what it holds, the keys and
     # gamepad buttons that work it, and how it looks. vblank run draws it (Menu says how it
     # behaves, SDL draws it), and so does the desktop build, which is handed all of this as C data
     # (IR::Backends::Native::MenuData); the web page is to draw it too. A line added here becomes a
@@ -106,7 +106,7 @@ module VBlank
         Heading.new(DEVELOPER, [Line.action("Game variables", :variables), Line.check("Show frame time", :frame_time)])
       ])
 
-      # THE WINDOW OF THE GAME'S VARIABLES, which Developer, Game variables opens over the game as it
+      # The window of the game's variables, which Developer, Game variables opens over the game as it
       # plays: a line for each variable and its value, VARIABLE_ROWS at a time under a heading that
       # stays put, scrolled with up and down. Letters typed find the variables whose names have them
       # (Backspace takes the last one off), up to FILTER_MOST of them. While it is open the keys that
@@ -135,7 +135,7 @@ module VBlank
       # the consoles; test_menu.rb holds the two alike.
       ADVANCE_BUTTONS = IR::Buttons::NAMES.first(10).freeze
 
-      # THE HEADINGS A WINDOW SHOWS: Keys has a line for each of the console's +buttons+ (by their
+      # The headings a window shows: Keys has a line for each of the console's +buttons+ (by their
       # names in IR::Buttons::NAMES), so a Genesis game's window lists C and no Select, and +states+
       # false leaves out Save and Load. +developer+ false leaves out Developer, for a frontend that
       # has no window of the game's variables yet. A line keeps its +place+ among every button's.
@@ -148,7 +148,7 @@ module VBlank
         end
       end
 
-      # THE KEYS, by name; each frontend knows which of its own keys and buttons each name is. F1
+      # The keys, by name; each frontend knows which of its own keys and buttons each name is. F1
       # opens and closes the menu, as in the desktop build, and so does the key above Tab, which a
       # Mac keyboard can press without holding fn. On a gamepad, the guide button in the middle
       # does, or Back and Start pressed together (a Mac may keep the guide button for its own use).
@@ -160,7 +160,7 @@ module VBlank
       MOVE_KEYS = { up: :up, down: :down, left: :left, right: :right, enter: :enter }.freeze
       MOVE_PAD = { dpad_up: :up, dpad_down: :down, dpad_left: :left, dpad_right: :right, a: :enter, b: :close }.freeze
 
-      # THE LOOK: sizes in points, which a frontend makes pixels by the screen's density, and colours
+      # The look: sizes in points, which a frontend makes pixels by the screen's density, and colours
       # as red, green, blue and opacity, 0 to 255 each.
       SIZES = Ractor.make_shareable(
         { bar: 22, row: 22, pad: 8, heading_gap: 14, heading_pad: 4, least_width: 200, label_gap: 30, slider: 140,
@@ -174,7 +174,7 @@ module VBlank
           paused: [255, 204, 77, 255], fast: [128, 230, 255, 255] }
       )
 
-      # WHAT A FRONTEND DRAWS, in the window's own pixels, from the top left: boxes with round
+      # What a frontend draws, in the window's own pixels, from the top left: boxes with round
       # corners of +radius+, and words, each letter copied from the font's picture
       # (Graphics::MenuFont) as +letters+ gives, in +color+.
       Box = Data.define(:x, :y, :width, :height, :radius, :color)

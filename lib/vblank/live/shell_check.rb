@@ -5,7 +5,7 @@ require "tmpdir"
 
 module VBlank
   module Live
-    # THE CHECK A PORT RUNS ON ITS SHELL, the same for every port (Original::ShellCheckTasks is its
+    # The check a port runs on its shell, the same for every port (Original::ShellCheckTasks is its
     # rake task). It does what a player does, with nobody at the controls, and holds each step to
     # the all-in-one build of the same game:
     #
@@ -20,14 +20,14 @@ module VBlank
     # 5. plays a short stretch of the game on both starts and on the all-in-one build, and compares
     #    every picture and every sample of sound.
     #
-    # THE STRETCH STAYS SHORT, whatever the tape. What the check holds is the shell's own workings,
+    # The stretch stays short, whatever the tape. What the check holds is the shell's own workings,
     # and step 3 already holds every byte of the pack, whatever a tape reaches; the play only shows
     # that the game reads its pack. A port's tape grows with the game, so playing all of it three
     # times as Ruby would grow towards playing the whole game on every commit. The check plays the
     # tape's first +passes+ passes (STRETCH_PASSES unless the port names more, to reach past its
     # title into the game proper), and Original::WholeGameCheck plays the whole tape, as C.
     #
-    # THE ALL-IN-ONE SIDE PLAYS ALONGSIDE THE SHELL. Its build, its pack and its play need nothing
+    # The all-in-one side plays alongside the shell. Its build, its pack and its play need nothing
     # from the shell's starts, so where this process can start another (on the main Ractor) they are
     # made in a child process of their own while the shell is built and started here, and the check
     # takes as long as the longer of the two. Inside any other Ractor a process cannot be started,
@@ -235,7 +235,7 @@ module VBlank
         end
       end
 
-      # WORK DONE IN A CHILD PROCESS WHILE THIS ONE GOES ON (#value gives its answer, or raises the
+      # Work done in a child process while this one goes on (#value gives its answer, or raises the
       # error it raised), or, where this process cannot start one, done here when its answer is
       # asked for. Ruby runs one thread at a time within a Ractor, so a thread would not go any
       # faster; a process has a core of its own.

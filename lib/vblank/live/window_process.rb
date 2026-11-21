@@ -5,7 +5,7 @@ require "rbconfig"
 
 module VBlank
   module Live
-    # THE PROCESS vblank run BECOMES TO PLAY A GAME A HELPER BUILDS (runtime/rg_window_main.rb). The
+    # The process vblank run becomes to play a game a helper builds (runtime/rg_window_main.rb). The
     # command replaces itself with a fresh Ruby (exec), so its own heap, the library and the game
     # file it loaded, is gone, and the helper it started stays this process's child. The fresh Ruby
     # loads only what a game written out as one Ruby file carries, from the library's own files, and
