@@ -9,7 +9,7 @@ require "all/vblank/builder/test_save_data"
 class TestSaveDataInterpreter < Minitest::Test
   include SaveDataGames
 
-  # THE POWER GOING OFF IN THE MIDDLE OF A SAVE. The copy that was being written keeps its last
+  # The power going off in the middle of a save. The copy that was being written keeps its last
   # good save, and a copy that had none is damaged; the other copies are not touched.
   # RIGHT saves 99 over copy 0, which holds 10. The power goes off after each number of bytes
   # that save can write, in turn: at every one, copy 0 is either the old save or the new one —
@@ -44,7 +44,7 @@ class TestSaveDataInterpreter < Minitest::Test
     assert_equal [3, 0, 2], (0..2).map { |n| back[:"state#{n}"] }
   end
 
-  # THE POWER GOING OFF BETWEEN TWO PASSES OF A SAVE. A big save of 99 over a good save of 12
+  # The power going off between two passes of a save. A big save of 99 over a good save of 12
   # is cut after every so many bytes, across the passes it is written over: each time, the next
   # power-on finds the copy either as it was or as it was saved — never damaged, never a mix.
   def test_a_save_cut_off_between_passes_keeps_the_last_good_one
@@ -87,7 +87,7 @@ class TestSaveDataInterpreter < Minitest::Test
     end
   end
 
-  # THE ORDER, read off a power cut at each step: the marker and the shape first, then the body,
+  # The order, read off a power cut at each step: the marker and the shape first, then the body,
   # then the sequence and the kind, and the checksum last of all — so until that last word is
   # in, the half cannot pass for good.
   def test_a_save_is_written_marker_first_and_checksum_last
