@@ -3,7 +3,7 @@
 require "test_helper"
 require "comparison_games"
 
-# WHICH PART OF THE SCREEN A COMPARISON LOOKS AT, said four ways: a part to look within
+# Which part of the screen a comparison looks at, said four ways: a part to look within
 # (`looking_at:`), a part on some stretches of frames only (a rectangle list for each stretch),
 # a part a block works out on every frame from the two running cartridges (a part that moves with
 # the scenery), and only every few pixels each way (`pixels_apart:`). The cartridges are the walker
@@ -47,7 +47,7 @@ class TestComparisonScreenParts < Minitest::Test
     end
   end
 
-  # A BLOCK CHOOSES THE PART ON EVERY FRAME, handed both running cartridges: here each box, which
+  # A block chooses the part on every frame, handed both running cartridges: here each box, which
   # the two walkers move at different speeds, is left out where its own game says it is. A part
   # that runs off the screen is cut to it rather than refused, since a part that moves with the
   # scenery slides off the edge.

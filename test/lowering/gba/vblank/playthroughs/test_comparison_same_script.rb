@@ -5,8 +5,8 @@ require "tmpdir"
 require "comparison_games"
 require "png_reading"
 
-# THE SAME SCRIPT ON EACH CARTRIDGE, in place of the same tape on both. Each cartridge is
-# played by the script on its own, so each stops walking when ITS box is where the script
+# The same script on each cartridge, in place of the same tape on both. Each cartridge is
+# played by the script on its own, so each stops walking when its box is where the script
 # is waiting for it. That forgives timing: it finds a game that looks different, where the
 # same tape finds one that is a frame late.
 #
@@ -39,7 +39,7 @@ class TestComparisonSameScript < Minitest::Test
     (11..).find { game.step(1, keys: right).var(:x) >= 60 }
   end
 
-  # A CARTRIDGE THAT GETS THERE SOONER HAS NOT DRIFTED ON THE SAME SCRIPT, where it drifts
+  # A cartridge that gets there sooner has not drifted on the same script, where it drifts
   # on the same tape: handed the slow one's walk, the quick one is past the place by the
   # time the slow one arrives. And the result says the frame each reached each moment on.
   def test_a_cartridge_that_takes_fewer_frames_has_no_drift_on_the_same_script
@@ -81,7 +81,7 @@ class TestComparisonSameScript < Minitest::Test
     assert_equal({ standing: [10, 10], walked: [turns_on, turns_on] }, result.moments)
   end
 
-  # A PICTURE THAT DIFFERS AT A NAMED MOMENT IS DRIFT AT THAT MOMENT. This quick walker's
+  # A picture that differs at a named moment is drift at that moment. This quick walker's
   # ground turns red after it has stood and before it arrives, so the two are alike at the
   # first moment and not at the second. The drift names the moment, and its frame is the
   # frame the first cartridge reached it on.
@@ -108,7 +108,7 @@ class TestComparisonSameScript < Minitest::Test
 
   # --- how many frames apart ---
 
-  # HOW LONG EACH TOOK IS ONLY DRIFT WHEN A LIMIT IS GIVEN. The quick walker arrives ten
+  # How long each took is only drift when a limit is given. The quick walker arrives ten
   # frames sooner: with no limit that is said and is not drift, with a limit of ten it is
   # within it, and with a limit of nine it is drift at the moment it arrived, though the
   # two screens there are the same.
@@ -184,7 +184,7 @@ class TestComparisonSameScript < Minitest::Test
 
   # --- a report of a drift at a moment ---
 
-  # A DRIFT AT A MOMENT GETS A FOLDER NAMED FOR THE MOMENT, with a tape for each cartridge:
+  # A drift at a moment gets a folder named for the moment, with a tape for each cartridge:
   # each made its own presses, and its own tape is the one that plays it back to that
   # moment. The text says the frame each reached it on and what was compared.
   def test_a_drift_at_a_moment_gets_a_folder_with_a_tape_for_each_cartridge
@@ -215,7 +215,7 @@ class TestComparisonSameScript < Minitest::Test
     end
   end
 
-  # THE FOLDER'S ONE PICTURE OF IT ALL HOLDS THE TWO SCREENS AT THE MOMENT, each as its own
+  # The folder's one picture of it all holds the two screens at the moment, each as its own
   # cartridge reached it: its left panel is first.png and its middle one second.png, at
   # twice the size. A panel starts 488 pixels after the one before, 480 of screen and a
   # strip of 8.
@@ -270,7 +270,7 @@ class TestComparisonSameScript < Minitest::Test
 
   # --- a script that gives up ---
 
-  # EITHER CARTRIDGE CAN FAIL TO GET WHERE THE SCRIPT IS WAITING FOR IT, and the error says
+  # Either cartridge can fail to get where the script is waiting for it, and the error says
   # which: a script's own error has no way to know there were two. This wait gives the box
   # thirty frames to get to 60, which the walker makes and a walker half as quick does not.
   def test_a_script_that_gives_up_says_which_cartridge_it_gave_up_on
@@ -300,7 +300,7 @@ class TestComparisonSameScript < Minitest::Test
 
   # --- what makes no sense on the same script, refused before anything is played ---
 
-  # WITH NO NAMED MOMENT THERE IS NOWHERE TO COMPARE, so a script that names none is refused.
+  # With no named moment there is nowhere to compare, so a script that names none is refused.
   def test_a_script_with_no_moment_cannot_be_compared_on_the_same_script
     no_moments = VBlank.playthrough("a walk") { hold :right, frames: 10 }
 

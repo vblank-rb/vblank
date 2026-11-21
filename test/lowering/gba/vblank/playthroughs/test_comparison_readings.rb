@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "comparison_games"
 
-# NAMED READINGS: a comparison can compare numbers read off the two running cartridges as
+# Named readings: a comparison can compare numbers read off the two running cartridges as
 # well as their pictures. Two games can show the same screen and be a long way apart
 # underneath, and a number a pixel out is far easier to chase than a picture that looks wrong.
 #
@@ -20,7 +20,7 @@ class TestComparisonReadings < Minitest::Test
   # of paces first leaves nought.
   private def first_pace_on(cartridge, tape) = first_frame(cartridge, tape) { |game| game.var(:paces).positive? }
 
-  # A READING THAT DIFFERS IS DRIFT ON THE FIRST FRAME IT DIFFERS, though the two pictures
+  # A reading that differs is drift on the first frame it differs, though the two pictures
   # are the same on every frame. The reading here is a variable's name, which is all a
   # reading needs to be on two cartridges the framework built.
   def test_a_reading_that_differs_is_drift_though_the_pictures_agree
@@ -36,7 +36,7 @@ class TestComparisonReadings < Minitest::Test
     assert_equal :standing, result.drift.moment
   end
 
-  # A READING CAN BE READ ITS OWN WAY FROM EACH CARTRIDGE, which is what lets two games that
+  # A reading can be read its own way from each cartridge, which is what lets two games that
   # keep the same thing differently be compared at all. The second cartridge here counts
   # two for every pace, so halving its count is how far it has walked — and read that way
   # the two agree on every frame, where the bare counts part at the first pace.
@@ -52,7 +52,7 @@ class TestComparisonReadings < Minitest::Test
     assert_equal walks_on, as_counted.drift.frame
   end
 
-  # THE SAME THING KEPT IN TWO DIFFERENT PLACES. The second cartridge here is the same game
+  # The same thing kept in two different places. The second cartridge here is the same game
   # with two more variables declared ahead of its own, so its count of paces is kept
   # somewhere else in memory. Read from each cartridge's own place, the two agree on every
   # frame; read from the first cartridge's place on both, the second gives back something
@@ -68,7 +68,7 @@ class TestComparisonReadings < Minitest::Test
     assert_predicate walk_right.compare(first, second, readings: { paces: at[ours] }), :drift?
   end
 
-  # ONE WAY TO READ, USED FOR BOTH: a block handed each running cartridge in turn. What it
+  # One way to read, used for both: a block handed each running cartridge in turn. What it
   # gives back can be anything two of which can be the same, a pair of numbers included.
   def test_a_reading_given_one_way_is_read_that_way_from_both
     first = walker
@@ -85,7 +85,7 @@ class TestComparisonReadings < Minitest::Test
 
   # --- choosing what is compared ---
 
-  # WHAT IS COMPARED IS A LIST, and it is the picture and the readings unless said. A
+  # What is compared is a list, and it is the picture and the readings unless said. A
   # comparison told to compare the readings only does not look at the picture: this ground
   # turns red before the walk begins, and the drift is the count parting on the first pace.
   def test_comparing_the_readings_only_does_not_report_the_picture
@@ -158,7 +158,7 @@ class TestComparisonReadings < Minitest::Test
     assert_equal({ red: [false, true] }, long_enough.drift.readings)
   end
 
-  # EACH THING COUNTS ITS OWN FRAMES IN A ROW. The ground here is red for one frame, and on
+  # Each thing counts its own frames in a row. The ground here is red for one frame, and on
   # the two frames after it a reading differs that agreed while the ground was red. That is
   # three frames running on which something differed and no three on which one thing did,
   # so with three asked for it is not drift. With two asked for it is the reading's, on the
@@ -198,7 +198,7 @@ class TestComparisonReadings < Minitest::Test
     each_frame_of(cartridge, tape) { |game, played| return game.var(name) if played == frame }
   end
 
-  # A DRIFT SAYS EVERY READING ON BOTH CARTRIDGES on the frame it began: the ones that
+  # A drift says every reading on both cartridges on the frame it began: the ones that
   # differed and the ones that did not, each name with the first cartridge's value and the
   # second's.
   def test_a_drift_says_every_reading_on_both_cartridges
@@ -242,7 +242,7 @@ class TestComparisonReadings < Minitest::Test
     refute walk_right.compare(walker, walker, readings: ratio).drift?
   end
 
-  # A READING'S BLOCK THAT STOPS WITH AN ERROR IS SAID BY ITS NAME AND ITS CARTRIDGE, which
+  # A reading's block that stops with an error is said by its name and its cartridge, which
   # the block's own error has no way to know. It is found on the first frame that is looked
   # at, whether or not readings are compared, and not on the frame of a drift.
   def test_a_reading_that_cannot_be_read_says_which_and_from_which_cartridge
@@ -265,7 +265,7 @@ class TestComparisonReadings < Minitest::Test
     assert_empty drift.readings
   end
 
-  # THE REPORT LISTS EVERY READING ON BOTH SIDES, says which differed, and says what was
+  # The report lists every reading on both sides, says which differed, and says what was
   # compared: here the readings only, on two cartridges whose pictures differ as well.
   def test_the_report_lists_each_reading_on_both_sides
     first = walker
@@ -284,7 +284,7 @@ class TestComparisonReadings < Minitest::Test
     end
   end
 
-  # A DRIFT IN A READING ALONE SAYS THE TWO SCREENS WERE THE SAME, rather than that they
+  # A drift in a reading alone says the two screens were the same, rather than that they
   # differed in no pixels: these two cartridges show the same picture on every frame and
   # count their paces differently.
   def test_the_report_of_a_drift_in_a_reading_alone_says_the_screens_were_the_same
@@ -298,7 +298,7 @@ class TestComparisonReadings < Minitest::Test
     end
   end
 
-  # ...AND WHERE THEY DIFFERED ONLY IN A PART LEFT OUT, IT SAYS THAT, since its two pictures
+  # ...AND where they differed only in a part left out, it says that, since its two pictures
   # show the whole screens. One of these two draws three specks from tick 30 and the other
   # does not; the specks are left out, and a reading says which of them has drawn them.
   def test_the_report_of_a_drift_in_a_reading_alone_says_where_the_screens_differed_unseen
@@ -351,7 +351,7 @@ class TestComparisonReadings < Minitest::Test
     end
   end
 
-  # A SPRITE NAMED IS READ WHOLE: its place, whether it is shown, its picture. The two heroes
+  # A sprite named is read whole: its place, whether it is shown, its picture. The two heroes
   # here walk at different speeds, so the readings part on the first frame of the walk, and the
   # drift says each side's sprite as it stood.
   def test_a_sprite_named_is_compared_whole
@@ -367,7 +367,7 @@ class TestComparisonReadings < Minitest::Test
     assert_equal [22, 23, :guy], [ours.x, theirs.x, ours.pose]
   end
 
-  # A BACKGROUND NAMED is read whole too, its scroll and its map, and the music's loudness is a
+  # A background named is read whole too, its scroll and its map, and the music's loudness is a
   # block on the question every reader answers, music_volume.
   def test_a_background_named_and_the_music_volume_are_compared
     first = hero_game(2)
@@ -400,7 +400,7 @@ class TestComparisonReadings < Minitest::Test
 
   # --- a cartridge the framework did not build ---
 
-  # A VARIABLE'S NAME MEANS NOTHING ON A CARTRIDGE THAT WAS NOT BUILT HERE: which variable is
+  # A variable's name means nothing on a cartridge that was not built here: which variable is
   # where is kept beside a cartridge and never in it, and a file has only what is in it. So
   # it is refused before a frame is played, saying which reading, which cartridge and what
   # to give in its place. Given a block for that side, the same reading is compared.
