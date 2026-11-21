@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A SCENE'S PICTURES IN GROUPS, ON THE CONSOLE: only the groups up are in sprite memory.
+# A scene's pictures in groups, on the console: only the groups up are in sprite memory.
 #
 # Each grouped picture has one place there, shared with pictures whose groups are never up with
 # its own, and it is copied in between frames as one of its groups comes up. So the pictures have
@@ -37,7 +37,7 @@ class TestPictureGroupsOnTheConsole < Minitest::Test
     b.program
   end
 
-  # FOUR ROOMS IN A ROW, a picture each, walked through a room every four passes, with the next
+  # Four rooms in a row, a picture each, walked through a room every four passes, with the next
   # one up beside it for the two passes before the screen gets there. One sprite shows the room
   # the game is in and the other the room beside, and the hero shows in every room.
   private def walk_through_four_rooms
@@ -74,7 +74,7 @@ class TestPictureGroupsOnTheConsole < Minitest::Test
     (2..15).each { |frames| assert_backends_agree(prog, frames: frames, name: "ROOMS") }
   end
 
-  # FORTY ROOMS, a 64x64 picture each: two kilobytes a room, eighty for all forty, which is more
+  # Forty rooms, a 64x64 picture each: two kilobytes a room, eighty for all forty, which is more
   # than the console's sprite memory holds. A pool of twenty things can show any room's picture,
   # so keeping each thing to one frame at a time would not fit either: forty kilobytes. One room
   # is up at a time, so the scene needs one room's room. The game opens on another scene, whose
@@ -113,7 +113,7 @@ class TestPictureGroupsOnTheConsole < Minitest::Test
     end
   end
 
-  # GROUPS OF EVERY SCREEN, KEPT ACROSS A CHANGE OF SCENE. The game says which room is up from
+  # Groups of every screen, kept across a change of scene. The game says which room is up from
   # its own loop, outside any scene, so the groups are the game's and stay up while another
   # scene's pictures fill the memory above them; coming back, nothing has to be copied again. The
   # walker shows its room's picture both ways round, the turned one drawn from the same tiles.
@@ -148,7 +148,7 @@ class TestPictureGroupsOnTheConsole < Minitest::Test
     end
   end
 
-  # A SCENE THAT LOADS FIRST, GIVEN THE SCREEN BACK. Its room is up as it leaves, and the scene
+  # A scene that loads first, given the screen back. Its room is up as it leaves, and the scene
   # away fills sprite memory with pictures of its own. Back again, none of the harbor's code runs
   # on the pass it takes over on, and its things are drawn after that pass showing the room they
   # showed as it was left: its pictures have to be back in their places by then.
@@ -199,7 +199,7 @@ class TestPictureGroupsOnTheConsole < Minitest::Test
     [5, 7, 12, 13].each { |frames| assert_backends_agree(prog, frames: frames, name: "MAZE") }
   end
 
-  # THE SPRITE TABLE GOES IN BEFORE A GROUP'S PICTURES. The table must be written while nothing is
+  # The sprite table goes in before a group's pictures. The table must be written while nothing is
   # drawn (GBATEK, OAM: the display reads it as it draws each row), and a group's pictures are a big
   # copy. Copied first, they push the table's writes down the gap, and a copy longer than what is
   # left of the gap pushes them into the picture, where a row of sprites tears. So the table lands

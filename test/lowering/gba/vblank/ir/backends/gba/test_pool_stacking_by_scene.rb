@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A POOL DECLARED IN A SCENE IS PUT IN ITS DRAWING ORDER ONLY WHILE THAT SCENE IS UP.
+# A pool declared in a scene is put in its drawing order only while that scene is up.
 #
 # Before every frame each pool that draws has its live things copied into the order they are
 # drawn in (oldest in front). A pool declared in a scene shows only while that scene is up, so
