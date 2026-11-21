@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE LOOPS AND TESTS EVERY CARTRIDGE LOWERING SHARES (Backends::ControlFlow), walked over a chip that
+# The loops and tests every cartridge lowering shares (Backends::ControlFlow), walked over a chip that
 # writes no machine code: it keeps a list of the labels, jumps, loads and stores it was asked for, in
 # order. So where a loop's labels go and which way each jump points is read straight off the list, with
 # no cartridge built and no console played, and a mistake in the walk shows here for all four consoles

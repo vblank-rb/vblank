@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHAT A CHECKED RUN SAYS WHEN TWO SIDES DISAGREE, with no emulator: a stand-in for a console's run that
+# What a checked run says when two sides disagree, with no emulator: a stand-in for a console's run that
 # plays the program on the interpreter too, and changes what the test tells it to.
 class TestCartridgeCheck < Minitest::Test
   Comparison = VBlank::IR::Backends::RunComparison

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# EVERY CARTRIDGE LOWERING WRITES list_pack AS THE LOOP IT STANDS FOR OR IS LISTED WITH ITS REASON: it
+# Every cartridge lowering writes list_pack as the loop it stands for or is listed with its reason: it
 # takes IR::ListPacking::Loops, or it is in Backends::ListPackBlocks::OWN_WAYS saying why its own way
 # is cheaper there, never both.
 class TestListPackBlocks < Minitest::Test

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A GAME WITH MORE THAN ONE FAULT IS REFUSED FOR THE SAME ONE ON EVERY CONSOLE: every cartridge
+# A game with more than one fault is refused for the same one on every console: every cartridge
 # lowering makes the shared refusals in the plan's one order (LoweringPlan#refuse_unbuildable!)
 # before any of its own. Each console's build is asked here directly, since no run's player plays a
 # refused game.
