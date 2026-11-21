@@ -22,7 +22,7 @@ module VBlank
       # logic *and* its visible behavior can be checked in-process, with no ROM and
       # no emulator.
       #
-      # WHY THIS EXISTS WHEN WE HAVE A REAL EMULATOR
+      # Why this exists when we have a real emulator
       #
       # The emulator tells you what the ROM *does*. On its own it cannot tell you
       # whether that is what the program *meant* — there is nothing to check the ROM
@@ -40,7 +40,7 @@ module VBlank
       # doesn't assume ARM" is a hope, because nothing would notice if it did.
       #
       # One caveat worth knowing before you trust it. This is an oracle for what a
-      # program MEANS, not a model of every rounding decision real hardware makes.
+      # program means, not a model of every rounding decision real hardware makes.
       # It can be the wrong one: where it and the console disagree, the bug is
       # sometimes here. Read a disagreement as "these two disagree", not as "the
       # console is wrong".
@@ -57,14 +57,14 @@ module VBlank
         ProgramError = IR::ProgramError
 
         # A table as this backend needs it: the numbers themselves, because it reads them
-        # to run the program. What the asset IS lives in IR::Assets, shared with every
+        # to run the program. What the asset is lives in IR::Assets, shared with every
         # backend; a table has no shared shape, since the one that lowers to a cartridge
         # keeps where the numbers were packed instead of the numbers.
         TableValues = Data.define(:values, :signed)
 
         # A generous cap so an accidental infinite loop can't hang a test forever.
         # It's the runaway guard, not the usual stop — see DEFAULT_FRAMES. A run counting
-        # frames spends it per FRAME, and a frame that draws a whole view is a few thousand
+        # frames spends it per frame, and a frame that draws a whole view is a few thousand
         # steps, so there's room to spare in one and none of it can be taken from the frames
         # that come after.
         DEFAULT_MAX_STEPS = 1_000_000
@@ -83,7 +83,7 @@ module VBlank
 
         # A background's map is a fixed grid of cells on the console — 32 or 64 a side —
         # however few the author actually filled in. That matters as soon as the
-        # background scrolls: the visible window moves over the WHOLE grid, so past the
+        # background scrolls: the visible window moves over the whole grid, so past the
         # filled-in part you see empty cells (the backdrop), and the picture only comes
         # round again at the grid's edge. Wrapping at the author's own map size instead
         # would repeat a small map across the screen forever, which the console never
@@ -96,7 +96,7 @@ module VBlank
         # hands the game. A test sets another to see what that machine would draw.
         attr_writer :local_player
 
-        # WHAT THE RUN MADE A NOISE ABOUT, read back through the mixer that kept it. The
+        # What the run made a noise about, read back through the mixer that kept it. The
         # interpreter holds no audio state of its own: {Mixer} keeps the voices and {Player}
         # keeps the tune, and these stay here because a test asks the interpreter what happened
         # rather than asking its parts.
@@ -105,7 +105,7 @@ module VBlank
         # The names of the samples sounding right now — see {Mixer#sounding}.
         def active_samples = @mixer.sounding
 
-        # EVERY FRAME'S SLICE OF SOUND, oldest first, each the signed samples the cartridge's
+        # Every frame's slice of sound, oldest first, each the signed samples the cartridge's
         # mixer writes for that frame (see Mixer#mix). Empty for a program with no recording.
         def mixed_sound = @mixer.slices
 
@@ -131,7 +131,7 @@ module VBlank
         # (PS1::CheckedRun), which holds its voices' loudness to these after every pass.
         def loudness_by_voice = @mixer.loudness_by_voice
 
-        # THE SPRITES THIS RUN IS DRAWING, each knowing which one the game declared it for.
+        # The sprites this run is drawing, each knowing which one the game declared it for.
         #
         # One Hash per sprite on screen as the last frame left it — +:name+, +:x+, +:y+ and
         # +:picture+, which is the one of its pictures the pose selector picked. Name a sprite
@@ -142,7 +142,7 @@ module VBlank
         # one behind a background, or from one a pixel off the edge. A sprite that is not being
         # drawn is left out, which is the answer a test wants.
         #
-        # THE SAME QUESTION THE CONSOLE ANSWERS, so a test reads the same way against either
+        # The same question the console answers, so a test reads the same way against either
         # (see {Verifier#sprites}) — with one thing deliberately missing. The console has 128
         # places to put a sprite in and its table holds which place each row is in; there are no
         # places here, and naming one was the thing worth removing. So a row gives whose it is
@@ -174,16 +174,16 @@ module VBlank
           sprites.each_with_index.sort_by { |_, at| [@obj_layer[at][:level], at] }.map(&:first)
         end
 
-        # WHETHER THE CARTRIDGE'S MOTOR IS RUNNING on the frame the screen shows now (`rumble`,
+        # Whether the cartridge's motor is running on the frame the screen shows now (`rumble`,
         # #exec_rumble): never on a console whose cartridge has no motor.
         def motor_on? = @motor_on
 
-        # WHICH SONG IS PLAYING, by its name, or nil for none (Player#playing). A song the pass
+        # Which song is playing, by its name, or nil for none (Player#playing). A song the pass
         # named is playing from the next frame boundary, as the player takes it up there.
         def music_playing = @player.playing
 
         # +save+ is the cartridge's save memory (an IR::SaveImage) — it outlives the
-        # interpreter, so passing the SAME one to two Reference.new(...).run calls models
+        # interpreter, so passing the same one to two Reference.new(...).run calls models
         # a power cycle (the second boot sees what the first one saved). Defaults to a
         # fresh one: a brand-new cartridge, and untouched by programs that persist nothing.
         def initialize(save: SaveImage.new)
@@ -271,7 +271,7 @@ module VBlank
           @timers = {}            # name -> { hz:, running:, parts: } (a hardware timer; see #accrue_timer)
           @timer_handlers = {}    # name -> on_timer node whose body runs on each overflow
           @audio = []             # observable audio: [:enabled], [:beep, ..], [:note, ..]
-          # SOUND IS NOT KEPT HERE. The voices several recorded sounds share are {Mixer}'s, and
+          # Sound is not kept here. The voices several recorded sounds share are {Mixer}'s, and
           # the tune walking its parts is {Player}'s — which holds the mixer, because a recorded
           # part's note sounds on one of its voices. Both write what happened into the one audio
           # log above, so everything a run made a noise about stays in order.
@@ -289,7 +289,7 @@ module VBlank
         # Nth frame fully drawn (a settled screen, never a torn mid-frame) — the
         # natural way to say "play this far in", and how the emulator tests express it
         # too. It's the stop condition when given, and every one of those frames is
-        # played however much work each takes: `max_steps` is then the budget for ONE
+        # played however much work each takes: `max_steps` is then the budget for one
         # frame (it starts again at each vblank), guarding the runaway case of a frame
         # that never reaches one. A frame that spends the whole budget raises, since
         # there's no boundary ahead to stop cleanly on. The exception is a program that
@@ -335,7 +335,7 @@ module VBlank
           refuse_poses_with_different_colors!(node, as_built)
           refuse_two_see_through_layers!(node)
           # How the picture stacks: what scenery and objects there are, in what order,
-          # and how deep each sits. Scenery in FRONT of an object means the save-under
+          # and how deep each sits. Scenery in front of an object means the save-under
           # trick cannot hold — what was saved from under an object is no longer what
           # ends up over it — so the whole view is rebuilt each frame instead, the same
           # way a scrolling scene is.
@@ -463,7 +463,7 @@ module VBlank
           self
         end
 
-        # SET THAT A PASS RAN LATE. The block is called at each pass with the pass number
+        # Set that a pass ran late. The block is called at each pass with the pass number
         # (1, 2, 3, …) and gives back how many frames that pass took — one on a program
         # that keeps up, more on one that does not. Every one of them moves the music, the mix
         # and the buttons on, as the console's interrupt does; what the game reads of it (the
@@ -473,25 +473,25 @@ module VBlank
         # This is here because being late is the one thing this interpreter cannot find out
         # for itself: it has no clock, a frame is over when the program asks for it, and a pass
         # can never overrun one. That is the right answer for an oracle — but it leaves
-        # everything a program does ABOUT being late untestable here, and what a program
+        # everything a program does about being late untestable here, and what a program
         # does about being late is exactly the interesting part. So a test sets it instead,
         # the way it sets which buttons are held.
         #
-        # WHAT IT MOVES, and it is only this: how many frames the pass just ended answers
+        # What it moves, and it is only this: how many frames the pass just ended answers
         # for. A `once_a_frame` body runs that many times, a beat in frames counts that
         # many, a one-shot's counter jumps that far, a song moves on that many frames, a
         # recording the game plays is that many frames further through, and the buttons are
         # read that many times (the input script is called once for each).
-        # It does NOT make the interpreter slow — a timer still accrues a pass's worth, and
+        # It does not make the interpreter slow — a timer still accrues a pass's worth, and
         # `frames:` still counts passes.
-        # Nothing here pretends to be a clock; it pins what a program MEANS when the console
+        # Nothing here pretends to be a clock; it pins what a program means when the console
         # tells it the truth. Returns self.
         def frames_each_pass(&block)
           @frames_script = block
           self
         end
 
-        # FILL EACH FACE OF A PLACE THE WAY A CONSOLE'S CHIP DOES, not by #exec_fill_face's own rule:
+        # Fill each face of a place the way a console's chip does, not by #exec_fill_face's own rule:
         # +filler+ is handed what the face is (#exec_fill_face works out the picture, the corners, the
         # edges and the perspective as it always does) and paints it on the screen. A console whose
         # graphics chip fills faces by rules of its own has its checked run tell the interpreter so,
@@ -502,7 +502,7 @@ module VBlank
           self
         end
 
-        # MIX EACH SEE-THROUGH LAYER THE WAY A CONSOLE'S CHIP DOES, not by Framebuffer#mix_see_through's
+        # Mix each see-through layer the way a console's chip does, not by Framebuffer#mix_see_through's
         # own rule: +mixer+'s mix(color, under, near, far) gives the colour a pixel of the layer shows over
         # what is under it, at its two shares in sixteenths. Which pixels are mixed, with what and at what
         # shares, is still the interpreter's; only the arithmetic is the chip's (PS1::CheckedRun). Returns
@@ -513,7 +513,7 @@ module VBlank
           self
         end
 
-        # SET THAT SETTING UP TOOK +count+ FRAMES WITH THE SCREEN OFF, before the first frame it
+        # Set that setting up took +count+ frames with the screen off, before the first frame it
         # shows. A console whose screen draws nothing while it is off — the Color's — reads its
         # buttons and plays its music from the screen's interrupt, which those frames never raise,
         # so they move nothing on but `frames_since_power_on`, which counts them at the first
@@ -524,7 +524,7 @@ module VBlank
           self
         end
 
-        # GIVE THE CARTRIDGE A CLOCK, reading +time+ at power-on, the way #hold gives it buttons.
+        # Give the cartridge a clock, reading +time+ at power-on, the way #hold gives it buttons.
         # It moves on one of the console's frames for every frame the screen shows — a little more
         # than a sixtieth of a second (Console::Description#frame_seconds), so a run of sixty frames sees a
         # second go by — however many passes of the game loop those took. With
@@ -557,7 +557,7 @@ module VBlank
           self
         end
 
-        # PLAY THE GAME AS ONE MACHINE OF A MATCH (Network::Lockstep) of +players+ players and the seed
+        # Play the game as one machine of a match (Network::Lockstep) of +players+ players and the seed
         # +seed+, so a tape of the match replays it. Two things make a match's game another game than
         # the same presses played alone, and both happen at the end of the first pass, the one the game
         # sets itself up in (the computer builds' first wait):
@@ -576,7 +576,7 @@ module VBlank
           self
         end
 
-        # ADD +seed+ TO THE GAME'S RANDOM NUMBERS once it has set itself up, at the end of its first pass,
+        # Add +seed+ to the game's random numbers once it has set itself up, at the end of its first pass,
         # as a match adds its seed (#play_as_match) but with no other player: so one build plays as many
         # runs of the random numbers as there are seeds, and a game that chose `seed 7` keeps its
         # choice. The computer builds do the same at their first wait (Computer::Lowering#mix_seed,
@@ -588,7 +588,7 @@ module VBlank
 
         private
 
-        # CAN WHAT IS SEEN THROUGH A LAYER CHANGE WHILE NOTHING MOVES? Then the picture is one
+        # Can what is seen through a layer change while nothing moves? Then the picture is one
         # that is built again from the scenery, like a scrolled one, and the sprites have to
         # be kept for that build rather than painted once onto a picture that stays.
         #
@@ -598,7 +598,7 @@ module VBlank
         # layers or fades the picture, never both, so the layer is solid while the fade is on
         # and see-through again when it lifts (see #exec_fade).
         #
-        # A PICTURE THAT STAYS CANNOT HOLD EITHER. Its sprites are painted onto it once and
+        # A picture that stays cannot hold either. Its sprites are painted onto it once and
         # are not kept to paint again, and the copy of the scenery it keeps to put back where
         # a sprite was (see #scene_framebuffer) is painted into a buffer of its own, which
         # knows of no fade and holds the layer as it was seen through when the copy was made.
@@ -615,7 +615,7 @@ module VBlank
           !@see_through.nil? && @objects.each_value.any? { |obj| @see_through.key?(obj.layer) }
         end
 
-        # REFUSE A PROGRAM THE CONSOLE COULD NOT SHOW, before drawing a frame of it.
+        # Refuse a program the console could not show, before drawing a frame of it.
         #
         # This interpreter is the answer key: a game's own tests run here because it is
         # fast and needs no emulator, and what it shows has to be what the console would
@@ -763,7 +763,7 @@ module VBlank
               @repaints = true
             when :shade_outside
               # A light stands from its declaration, like a bend, and is read again before
-              # every frame (see #work_out_shade). It darkens the picture as it is SHOWN, so
+              # every frame (see #work_out_shade). It darkens the picture as it is shown, so
               # nothing painted has to be painted again for it.
               @shade = n
             when :affine_background
@@ -790,13 +790,13 @@ module VBlank
           @steps += 1
           return if @steps <= @max_steps
 
-          # A run counting frames has spent the whole budget inside ONE frame, since the
+          # A run counting frames has spent the whole budget inside one frame, since the
           # count starts again at every vblank (advance_frame). So this frame is never
           # going to reach one, and there's no settled boundary ahead to stop on. Say so
           # rather than hand back a part-played run: a run that stopped early looks exactly
           # like one that finished, and a test then reads a world frozen mid-frame.
           #
-          # A program that has never reached a vblank AT ALL is a different thing and not an
+          # A program that has never reached a vblank at all is a different thing and not an
           # error: it has no frames to count, so `frames:` was moot and the budget is its only
           # stop — an unpaced loop (frame_sync: :manual with no wait) is meant to be run that
           # way. That one falls through to the whole-run stop below, which is what it always got.
@@ -812,7 +812,7 @@ module VBlank
           throw :halt unless @uses_frames && @steps <= @hard_cap
         end
 
-        # Which frame is in flight: @frame is bumped at the vblank that STARTS a frame, so the
+        # Which frame is in flight: @frame is bumped at the vblank that starts a frame, so the
         # work running now belongs to frame @frame. (A program stuck before its first vblank
         # never gets here — see count_step!.)
         def frame_never_ended_message
@@ -823,7 +823,7 @@ module VBlank
             "one frame."
         end
 
-        # WHAT EACH KIND OF STATEMENT DOES, one method per kind, called by name in #exec_by_kind —
+        # What each kind of statement does, one method per kind, called by name in #exec_by_kind —
         # read by the coverage test that holds the interpreter to every kind. A declaration is
         # gathered before the program runs, so it does nothing where it is written
         # (#exec_declaration).
@@ -1078,7 +1078,7 @@ module VBlank
         end
 
         def exec_every(node)
-          # A repeating timer, counted in FRAMES rather than in times this code ran: a pass of
+          # A repeating timer, counted in frames rather than in times this code ran: a pass of
           # the game loop is one frame on a program that keeps up and more on one that does
           # not, and a beat given in seconds has to be that many seconds either way. Taking
           # the period off rather than clearing to nought keeps the remainder, so a beat that
@@ -1091,7 +1091,7 @@ module VBlank
         end
 
         def exec_after(node)
-          # A one-shot timer, likewise — and the test is REACHED rather than LANDED ON,
+          # A one-shot timer, likewise — and the test is reached rather than LANDED ON,
           # because a pass worth two frames can step over the frame it was waiting for.
           if @vars[node.counter] < node.frames
             @vars[node.counter] = Int32.add(@vars[node.counter], last_pass_frames)
@@ -1130,7 +1130,7 @@ module VBlank
           # lands on one of the two, so a program that adds to what is already there
           # puts half its additions on each page. See Framebuffer#paged=.
           #
-          # Handing over to another KIND of screen replaces the whole display (see
+          # Handing over to another kind of screen replaces the whole display (see
           # IR::SceneHandover), so the old picture is wiped and nothing is up any more: a
           # scene's scenery is put up again when it comes back rather than taken as still
           # there. A switch between single- and double-buffered bitmap keeps the same
@@ -1154,7 +1154,7 @@ module VBlank
           put_up_always_up if crossing && IR::SceneHandover.tiles?(node.mode)
         end
 
-        # THE COLOUR WHEREVER NOTHING IS DRAWN BECOMES +color+: the picture is painted again over it
+        # The colour wherever nothing is drawn becomes +color+: the picture is painted again over it
         # where anything is up, so every empty place shows it at once, as the console shows its
         # backdrop colour the moment it is given another. Nil leaves it as it is
         # (IR::SceneHandover#backdrop_follows_list?).
@@ -1176,7 +1176,7 @@ module VBlank
           exec_screen(Build.screen(screen, buffered: arrival.mode == IR::Modes::BUFFERED), backdrop: arrival.backdrop)
         end
 
-        # PUT UP AGAIN WHAT EVERY SCREEN DRAWN FROM TILES SHOWS, once a screen of another kind
+        # Put up again what every screen drawn from tiles shows, once a screen of another kind
         # has replaced the display (see IR::SceneHandover#always_up): nothing else would, since
         # its statements ran once, at power-on. As declared — every changed cell and the map
         # chosen were left behind with the display.
@@ -1235,7 +1235,7 @@ module VBlank
         # console's display reads rows handed to it while it draws.
         def exec_show_light_now(_node) = work_out_shade
 
-        # WHERE THE LIGHT IS ON EACH ROW, worked out in the gap before a frame, the moment the
+        # Where the light is on each row, worked out in the gap before a frame, the moment the
         # console works its table out: every row's span from the program's own expressions,
         # and how far the rest of the row is darkened, in the display's sixteenths. A light that
         # shows nothing outside it is on while that is more than none.
@@ -1261,7 +1261,7 @@ module VBlank
           @audio << [:enabled, *@read_program&.main_volume]
         end
 
-        # SHAKE THE PLAYER'S HANDS (Nodes::Rumble): the motor runs on the frames the screen shows
+        # Shake the player's hands (Nodes::Rumble): the motor runs on the frames the screen shows
         # from the next on (#step_motor), as the console's interrupt runs it as each frame starts.
         # Nothing on a console whose cartridge has no motor.
         def exec_rumble(node)
@@ -1313,7 +1313,7 @@ module VBlank
         end
 
         def exec_play_from_list(node)
-          # The number is worked out HERE and handed over: which song a game picks can be an
+          # The number is worked out here and handed over: which song a game picks can be an
           # expression, and evaluating one is the interpreter's business, not the player's.
           named = @player.request_song_at(node.name, eval_value(node.which))
           start_song_here if named && node.this_frame
@@ -1355,7 +1355,7 @@ module VBlank
         # #collect_definitions), and advance_frame runs its body on each overflow.
         def exec_on_timer(_node); end
 
-        # THE MIX RUNS AT THE CARTRIDGE'S CLOCK: the nearest the console's sample clock can keep
+        # The mix runs at the cartridge's clock: the nearest the console's sample clock can keep
         # to the rate the program's recordings ask for (Console::SampleClock). How many samples
         # a frame holds is a fact about the hardware the sound plays on, not about the program,
         # and this mix exists to make the very bytes that hardware is handed. A program that
@@ -1393,7 +1393,7 @@ module VBlank
           # already, so the bends go out beside it (#work_out_bends).
           work_out_bends if @console.sprites_placed_before_wait
 
-          # A LIGHT THAT TAKES TURNS GOES OFF WITH THE PASS that switched it off: the scene it is
+          # A light that takes turns goes off with the pass that switched it off: the scene it is
           # off in takes the display's mixing for its own as it starts. It comes back on only
           # from the light worked out at this gap, a frame later (see IR::LightScenes and
           # GBA::Raster#emit_light_leaving). A game whose light never takes turns has no switch.
@@ -1432,7 +1432,7 @@ module VBlank
           throw :halt if @frames_limit && @frame >= @frames_limit
 
           # A new frame starts here, so the step budget starts again with it: when a run is
-          # counting frames, the budget guards ONE frame rather than the whole run. Counting
+          # counting frames, the budget guards one frame rather than the whole run. Counting
           # the run instead makes the budget the real stop condition on any program whose
           # frames cost more than a few thousand steps — it cuts the run short wherever it
           # has got to, and `frames:` silently means nothing.
@@ -1451,7 +1451,7 @@ module VBlank
           # screen's own interrupts, which keep real time. So a recording a game plays ends after
           # as many frames as it lasts, however long the game takes a pass.
           #
-          # IN THE CONSOLE'S ORDER, which is not the order of a frame's own parts. The tune and
+          # In the console's order, which is not the order of a frame's own parts. The tune and
           # the shapes are moved on as the screen finishes a picture, just before the game's pass
           # starts; the mix is made as the next picture starts, after the pass. So what the game
           # plays or stops in its pass is in the very next slice, and a note the tune starts has
@@ -1473,7 +1473,7 @@ module VBlank
           work_out_shade
         end
 
-        # THE BUTTONS ARE READ ON EVERY FRAME THE SCREEN SHOWED, not once a pass — the console
+        # The buttons are read on every frame the screen showed, not once a pass — the console
         # reads them from the screen's own interrupt, which keeps real time whatever the game
         # is doing. A pass that took +took+ frames reads them that many times, asking the
         # input script for each frame by its number on the screen, and every button that went
@@ -1491,13 +1491,13 @@ module VBlank
           end
         end
 
-        # HOW MANY FRAMES THIS PASS TOOK, kept where the other backend keeps it so that a
+        # How many frames this pass took, kept where the other backend keeps it so that a
         # program can read the same two names on either.
         #
-        # ONE UNLESS A TEST SETS OTHERWISE, and it is worth saying why rather than leaving it to
+        # One unless a test sets otherwise, and it is worth saying why rather than leaving it to
         # be discovered. This interpreter has no clock. A frame is over when the program ends
         # it, so a pass can never overrun one and there is nothing for it to find out. That is
-        # the right answer for what it is — an oracle for what a program MEANS, not for how long
+        # the right answer for what it is — an oracle for what a program means, not for how long
         # a console takes over it — so being late is SET for it, by #frames_each_pass, rather
         # than measured. How long a pass really takes is still the console's question alone.
         # How many frames the pass that just ended took, for whatever reads it. A program with no
@@ -1527,7 +1527,7 @@ module VBlank
           @vars[IR::Frames::STEP] = took.clamp(1, IR::Frames::MOST)
         end
 
-        # EVERY ROW OF EVERY BEND, WORKED OUT ONCE A PASS, in the gap between frames the game
+        # Every row of every bend, worked out once a pass, in the gap between frames the game
         # waits at, where the console works them out into the table its display is fed from
         # (GBA::Raster). A pass the console took several frames over is still one gap, so it is
         # one here too however many frames #frames_each_pass sets the pass as answering for. The
@@ -1585,7 +1585,7 @@ module VBlank
         # Advance one timer by a frame's worth of overflows, and run its on_tick handler
         # once for each whole overflow it crosses this frame.
         #
-        # COUNTED IN WHOLE NUMBERS, as FRAME_RATE-ths of an overflow: a frame adds +hz+ of them,
+        # Counted in whole numbers, as FRAME_RATE-ths of an overflow: a frame adds +hz+ of them,
         # and the overflows are how many whole FRAME_RATEs that comes to. Adding hz / FRAME_RATE
         # as a fraction instead lands a hair under a whole overflow on exactly the frames one
         # falls due — a tenth added ten times is not quite one — so the count read one short
@@ -1646,7 +1646,7 @@ module VBlank
         # Multi-way dispatch: call the scene/func for the clause whose value equals
         # the variable. Values are distinct, so this runs at most one scene.
         #
-        # THE READ IS OUTSIDE THE LOOP AND HAS TO BE. A scene's usual last act is to set
+        # The read is outside the loop and has to be. A scene's usual last act is to set
         # the variable to the next scene, and re-reading it per clause would then run that
         # one too, in the same pass. Every clause answers the state as it was when the
         # dispatch was reached.
@@ -1665,7 +1665,7 @@ module VBlank
           end
         end
 
-        # A SCENE TAKES THE SCREEN AS IT STARTS, by carrying out its plan (see
+        # A scene takes the screen as it starts, by carrying out its plan (see
         # IR::SceneHandover): its screen first, since changing the kind of screen wipes what
         # was up; then the last scene's scenery down, whether or not this one has scenery of
         # its own (waiting for its first background to mark it left a file screen's backdrop up
@@ -1699,7 +1699,7 @@ module VBlank
           true
         end
 
-        # THE SPRITES OF THIS FRAME STAY IN FRONT OF SCENERY THAT ARRIVED AFTER THEM. They were
+        # The sprites of this frame stay in front of scenery that arrived after them. They were
         # drawn as the frame began, from the pass before — the leaving scene's among them, which
         # is still on screen for this one frame on the console too, since its row of the table is
         # written in the gap after the frame. Stamping the new scene's scenery covered them here,
@@ -1760,14 +1760,14 @@ module VBlank
             # ...and a background its scene puts up shows everywhere, whatever box it had before.
             @bg_box.delete(node.name)
           end
-          # A layer can put this background BEHIND one that is already on screen, and a
+          # A layer can put this background behind one that is already on screen, and a
           # stamp only covers where it has solid pixels — so painting it now would leave
           # it in front. Painting the ones it belongs behind back over it settles the
           # stack again. Nothing is repainted in a program whose backgrounds sit in the
           # order they were declared, which is every program that names no layers.
           over = @bg_shown.select { |bg| behind?(node, bg) }
           @bg_shown << node
-          # PUT UP, IT SHOWS FROM ITS TOP-LEFT CORNER until the pass ends, wherever the game has
+          # Put up, it shows from its top-left corner until the pass ends, wherever the game has
           # scrolled it. The place on the map the console's display starts reading a layer
           # from is set to the map's corner as the layer is switched on, and the game's own
           # place for the view is written there only at the frame boundary. So everything
@@ -1794,12 +1794,12 @@ module VBlank
           in_stack_order(over).each { |bg| stamp_background(bg) }
         end
 
-        # A SCENE'S SCENERY REPLACES THE SCENE BEFORE'S, rather than being drawn over it (see
+        # A scene's scenery replaces the scene before's, rather than being drawn over it (see
         # IR::SceneHandover). A painted screen has no layers to switch off, so the picture
         # goes back to the backdrop and the scenery every screen shows, and the next scene's
         # own is stamped from there.
         #
-        # A FADE PLACED IN THE STACK IS THE GAME'S, NOT THE SCENE'S, and stays until the game lifts
+        # A fade placed in the stack is the game's, not the scene's, and stays until the game lifts
         # it: the display's blend is left as it was when a scene takes over. The backdrop and the
         # stamps here are as drawn, so while such a fade is in the picture the picture is owed
         # again, built with the fade on what it reaches (#repaint_view).
@@ -1816,7 +1816,7 @@ module VBlank
           true
         end
 
-        # NOTHING IS UP ANY MORE. Set when the display is wiped under everything — the one
+        # Nothing is up any more. Set when the display is wiped under everything — the one
         # crossing between the two kinds of screen — so whatever comes back is put up again
         # rather than taken as still standing.
         def reset_scenery_state
@@ -1834,17 +1834,17 @@ module VBlank
           @handover.showing(@scene)
         end
 
-        # PUT A DIFFERENT TILE IN ONE CELL. The map a background was declared with is the
+        # Put a different tile in one cell. The map a background was declared with is the
         # program and never changes; what changes is this run's own copy of it, made the
         # first time a cell of that background is written and read by everything that
         # paints from then on. A coordinate outside the map is left alone rather than
         # growing the map or writing over a neighbour.
         #
-        # A HELD CHANGE (Nodes::SetTile#held) waits instead, with its cell worked out now, until
+        # A held change (Nodes::SetTile#held) waits instead, with its cell worked out now, until
         # the frame boundary's show_held_tiles. With the queue full, everything waiting goes in
         # first, there and then.
         #
-        # A TILE PICKED AS THE PROGRAM RUNS (Nodes::SetTile#picked_by) is worked out here, a held
+        # A tile picked as the program runs (Nodes::SetTile#picked_by) is worked out here, a held
         # one too, and a number that stands for no tile changes nothing.
         def exec_set_tile(node)
           tile = node.tile
@@ -1872,7 +1872,7 @@ module VBlank
         # scene, changes nothing here.
         def tile_of_declaration_up?(node, tile) = tile.nil? || tile < background_up(node.name).tiles.length
 
-        # A BLOCK OF CELLS is what its children do, a cell at a time (Nodes::SetTileBlock). A block
+        # A block of cells is what its children do, a cell at a time (Nodes::SetTileBlock). A block
         # put back takes each cell from the map of the declaration up, as declared, or as read from
         # the file the program was handed (StartFile.filled); a cell off the map is left alone.
         def exec_set_tile_block(node)
@@ -1893,7 +1893,7 @@ module VBlank
           request_repaint if changed
         end
 
-        # EVERY HELD CHANGE, in the order the game made them.
+        # Every held change, in the order the game made them.
         def exec_show_held_tiles(_node) = show_held_tiles
 
         def show_held_tiles
@@ -1915,7 +1915,7 @@ module VBlank
           request_repaint
         end
 
-        # HAND A BACKGROUND A WHOLE DIFFERENT MAP. Its cells become that map exactly as it
+        # Hand a background a whole different map. Its cells become that map exactly as it
         # was declared — so a cell this run had changed with set_tile is back to how it was
         # drawn, which is what the console does too (the whole map is copied in over
         # whatever was there). A number naming no map leaves the cells alone, the same
@@ -1929,7 +1929,7 @@ module VBlank
           request_repaint
         end
 
-        # A RUN OF TILES TAKES WHAT ITS LIST HOLDS NOW (see Nodes::TileRun): tile k is the 32
+        # A run of tiles takes what its list holds now (see Nodes::TileRun): tile k is the 32
         # bytes from k × 32, each byte two pixels with the left one in the low four bits, each
         # four bits a place in the run's colours, and place 0 see-through. A slot the game
         # never filled reads as 0, which is what the console's memory under it would be
@@ -2026,7 +2026,7 @@ module VBlank
           forget_colors_worked_out_from([run.picture])
         end
 
-        # A LOAD OF SPRITE TILES (see Nodes::LoadSpriteTiles): tiles +to+ onwards of the set take
+        # A load of sprite tiles (see Nodes::LoadSpriteTiles): tiles +to+ onwards of the set take
         # tiles +at+ onwards of the table, unless either run reaches past its end; then every pose
         # of the set is drawn again from its tiles. It is in the picture of the pass that asked for it,
         # as a painted picture's `changed now: true` is, since a console that copies it between
@@ -2099,7 +2099,7 @@ module VBlank
         # on the screen up now, for a name declared in several scenes, each with maps of its own.
         def background_up(name) = showing_scenery.find { |bg| bg.name == name } || @bg_by_name.fetch(name)
 
-        # What a background's cells hold NOW: this run's own copy where any of them have
+        # What a background's cells hold now: this run's own copy where any of them have
         # been changed, and the declared map where they have not.
         def map_of(node) = @bg_maps[node.name] || node.map
 
@@ -2135,7 +2135,7 @@ module VBlank
           @screen.set_paint_see_through(nil)
         end
 
-        # HOW MANY TIMES THE GRID IS SEEN ACROSS THE SCREEN AND DOWN IT, as [across, down]. A background
+        # How many times the grid is seen across the screen and down it, as [across, down]. A background
         # is a torus (see #paint_background_window): its grid of 32 or 64 cells comes round, so on a
         # screen wider or taller than the grid — a Genesis's 320 across is wider than 32 cells of 8
         # pixels — the map is seen again past the grid's edge, whether it is stamped as it is put up or
@@ -2191,7 +2191,7 @@ module VBlank
           request_repaint
         end
 
-        # PUT A STATUS BAR'S TOP AT A ROW: kept between 0 and the bottom of the screen, where it is
+        # Put a status bar's top at a row: kept between 0 and the bottom of the screen, where it is
         # out of view, since a bar always reaches the bottom and a row past it shows no more of it.
         def exec_place_bar(node)
           bar = @bg_by_name.fetch(node.name) { raise ProgramError, "place of undeclared status bar #{node.name.inspect}" }
@@ -2223,7 +2223,7 @@ module VBlank
           bar ? bar_top_shown(bar) : @screen.height
         end
 
-        # A STATUS BAR, painted from its top row to the bottom of the screen. Its map starts at its
+        # A status bar, painted from its top row to the bottom of the screen. Its map starts at its
         # top-left corner and never scrolls; its see-through pixels, and the rows past the end of
         # its map, leave the backdrop, since the backgrounds under it are not painted there (see
         # #scenery_rows).
@@ -2260,7 +2260,7 @@ module VBlank
           end
         end
 
-        # HOW A BACKGROUND IS BEING TURNED RIGHT NOW: the angle in degrees, the size in
+        # How a background is being turned right now: the angle in degrees, the size in
         # SCALE_ONE-ths, and the point on screen it turns around — which stays still while
         # the rest of the picture swings or grows about it, and is the middle of the screen
         # unless the program named one (see Background#turns_around).
@@ -2289,7 +2289,7 @@ module VBlank
         # hardware does, done here by sampling the map (with wrapping). A background
         # that has never scrolled sits at offset (0, 0).
         #
-        # This walks the screen one TILE at a time, not one pixel at a time: pixels
+        # This walks the screen one tile at a time, not one pixel at a time: pixels
         # side by side in a screen row come from the same tile until the next cell
         # begins, so the map lookup is done once per cell and the pixels in between are
         # painted as a run. A scrolling scene is repainted in full every frame, so this
@@ -2390,7 +2390,7 @@ module VBlank
         # the point it all happens around) — the affine sibling of #paint_background_window,
         # which can only slide the window straight.
         #
-        # A plain scroll walks the screen a TILE at a time because every pixel in a run
+        # A plain scroll walks the screen a tile at a time because every pixel in a run
         # comes from the same tile; a turn breaks that — two screen pixels side by side
         # can land on opposite sides of the map — so this asks the question PIXEL by
         # pixel instead, working backwards through the same matrix a turned sprite reads
@@ -2451,7 +2451,7 @@ module VBlank
         # few million. Tiles the game paints are the exception, and a copy of their list
         # throws their kept colors away (see #copy_run_tiles).
         # +swapped+ is another list of colours the tile is being drawn with this frame (see
-        # #background_swap), and nil for the colours it was drawn in. A swap goes by PLACE,
+        # #background_swap), and nil for the colours it was drawn in. A swap goes by place,
         # so a see-through pixel stays see-through however the list is written: place 0
         # means see-through in every list there is.
         #
@@ -2474,14 +2474,14 @@ module VBlank
         end
 
         # The same map from a picture's own colours to another list's that an object uses
-        # (see #object_recolor), kept in the same place: a tile IS a picture, and the two
+        # (see #object_recolor), kept in the same place: a tile is a picture, and the two
         # ways of reading one — by the place each pixel was drawn at, or by its colour where
         # the art recorded no places — are the picture's business rather than the layer's.
         def tile_recolor(name, bmp, swapped)
           @recolor_maps[[name, swapped]] ||= Assets::Recolor.of(bmp, swapped)
         end
 
-        # THE COLOURS A BACKGROUND'S TILES ARE DRAWN FROM THIS FRAME: the step the game last
+        # The colours a background's tiles are drawn from this frame: the step the game last
         # named, as each of the layer's own lists to the list it is drawn with instead — or nil
         # for the ones they were drawn in, which is also what a number naming no step means, so
         # a counter that has run off the end looks right.
@@ -2500,7 +2500,7 @@ module VBlank
           @bg_swaps[[bg.name, bg.scene, which]] ||= bg.list_swaps(which)
         end
 
-        # A BACKGROUND THAT FOLLOWS SEVERAL LISTS THE GAME CHANGES (Background#follows_each): each
+        # A background that follows several lists the game changes (Background#follows_each): each
         # of its own lists to what the list it follows holds now, each list by its own number.
         # Kept by those numbers, so a screen walking its lists makes each picture's swap once.
         def followed_background_swap(bg)
@@ -2527,7 +2527,7 @@ module VBlank
         # sprites vanish with it — no save-under needed. Both scroll_background and
         # present_objects call this, so whichever runs last in a frame leaves the
         # settled, correct image regardless of their order.
-        # A REPAINT IS OWED RATHER THAN DONE, where it can be. Repainting the whole view is most
+        # A repaint is owed rather than done, where it can be. Repainting the whole view is most
         # of what a frame costs here, it is asked for several times a frame (every scroll, and
         # again as the frame is presented), and a test that only reads variables never looks at
         # any of it. So asking marks it owed, and it is painted when something needs it: the
@@ -2537,13 +2537,13 @@ module VBlank
         # The picture that comes out is the one painting at once would have made, because
         # nothing it is built from can change while it is owed: a statement that does settles
         # it first, and a statement that repaints anyway simply takes its place. The one input
-        # a statement cannot be seen changing is a VARIABLE. A see-through amount the game works
+        # a statement cannot be seen changing is a variable. A see-through amount the game works
         # out reads them, so the amounts are read when the repaint is owed and the later paint
         # uses those — the numbers painting then would have used. A bending background's rows
         # are worked out once a pass and kept (#work_out_bends), so painting one reads no
         # variable at all.
         #
-        # A PAINTED SCREEN IS NEVER BUILT AGAIN, in a game that also has screens drawn from
+        # A painted screen is never built again, in a game that also has screens drawn from
         # tiles. Its picture is whatever the program painted there, a title painted once
         # among them, and building the view from scenery would wipe that — the display such a
         # screen is shown on reads the painted picture and nothing else. What asks while one
@@ -2665,7 +2665,7 @@ module VBlank
           @screen.set_paint_see_through(nil)
         end
 
-        # CELLS IN FRONT OF THE SPRITES (Nodes::Background#in_front): once every level is painted,
+        # Cells in front of the sprites (Nodes::Background#in_front): once every level is painted,
         # each background's cells whose tiles are in front are painted again, back to front, so
         # their drawn pixels are over every sprite and over the other cells of every background,
         # and their see-through pixels leave what is there. It is what a console that keeps a
@@ -2688,7 +2688,7 @@ module VBlank
           end
         end
 
-        # SPRITES IN FRONT (Nodes::Object#in_front): once everything else is painted, each sprite
+        # Sprites in front (Nodes::Object#in_front): once everything else is painted, each sprite
         # marked in front is painted again, in draw order, so its drawn pixels are over the cells in
         # front as well (#paint_cells_in_front). The frame's draw list puts them after every other
         # sprite already (Builder#move_front_sprites_last), so nothing else they are drawn over moves.
@@ -2705,7 +2705,7 @@ module VBlank
         # only those in front while the cells in front are painted again (#paint_cells_in_front)?
         def tile_painted_now?(index) = !index.nil? && (@tiles_painted_only.nil? || @tiles_painted_only.include?(index))
 
-        # A STATUS BAR THAT COVERS SPRITES (StatusBar#covers_sprites=): its rows painted again over
+        # A status bar that covers sprites (StatusBar#covers_sprites=): its rows painted again over
         # everything, from the backdrop up, so a sprite under it is gone and its see-through pixels
         # show the backdrop as they always do.
         def paint_bar_over_sprites(bar, kept)
@@ -2716,7 +2716,7 @@ module VBlank
           paint_status_bar(bar)
         end
 
-        # A BACKGROUND SHOWN ALONE WITHOUT SPRITES (`alone: :without_sprites`): its rows above its row
+        # A background shown alone without sprites (`alone: :without_sprites`): its rows above its row
         # painted again over everything, from the backdrop up, so a sprite there is gone and its
         # see-through pixels show the backdrop, as on a display told to show that one layer on those
         # lines. No other background is painted there anyway (#box_shown_of).
@@ -2735,7 +2735,7 @@ module VBlank
         #
         # Placed under a layer it cannot be that, because the things in front of the line
         # have to come through unblended. So the blend is applied to each thing as the
-        # picture is BUILT, and the picture is owed again right here — a fade is usually
+        # picture is built, and the picture is owed again right here — a fade is usually
         # written after the frame has already been composited, and the frame that asked
         # for it is the frame that has to show it. The same goes for the fade that takes a
         # placed one's place, which has to take it back out of the picture.
@@ -2761,14 +2761,14 @@ module VBlank
           request_repaint if was_placed || @fade_placed || (@see_through && fading? != was_fading)
         end
 
-        # A fade that moves the COLORS instead of asking the display to blend (see
+        # A fade that moves the colors instead of asking the display to blend (see
         # IR::Fading for which fades those are and why).
         #
         # Moving every color toward black by a fraction and moving the finished picture
         # there come to the same picture, so this is a tint toward black or white, counted
         # in 256ths.
         #
-        # ROUNDED THE WAY THE CONSOLE'S DOCUMENTED FADE IS, not the way a mix is. A mix keeps
+        # Rounded the way the console's documented fade is, not the way a mix is. A mix keeps
         # a share of each channel and rounds that down; the documented fade takes a share
         # AWAY and rounds the share down, which leaves the channel rounded up. On a dark
         # picture that is a whole frame at the end of a fade in, flat black on one and the
@@ -2783,7 +2783,7 @@ module VBlank
         # display's blend unit is never told anything, so the see-through layer goes on
         # blending and the mix darkens along with both sides of it.
         #
-        # THE PLAIN BITMAP SCREEN HAS NO COLORS TO WALK — it holds a whole color in every
+        # The plain bitmap screen has no colors to walk — it holds a whole color in every
         # pixel — so while one is up the display fades it, in its own sixteenths, the way a
         # tint is mixed there. The fade is the same one either way, and a screen that takes
         # over while it is in force does it that screen's way (see #exec_screen).
@@ -2791,7 +2791,7 @@ module VBlank
           @screen.tint_steps_to(node.toward, steps, by_display: tint_by_display?)
         end
 
-        # SHOW THE PICTURE IN FLAT BLOCKS of this many pixels each way, from now on. Nothing
+        # Show the picture in flat blocks of this many pixels each way, from now on. Nothing
         # painted so far changes: the size is read as the picture is next built, so the
         # picture is owed again on the occasions the size is a different one.
         #
@@ -2807,7 +2807,7 @@ module VBlank
           request_repaint
         end
 
-        # WHERE THIS PROGRAM'S BLOCKS STOP: the names of everything in the layer its
+        # Where this program's blocks stop: the names of everything in the layer its
         # `pixelate` statements are placed under, and in front of it, which stay as drawn
         # whatever the size. Nothing, for a program that pixelates the whole picture.
         #
@@ -2873,7 +2873,7 @@ module VBlank
           [left, [top, row].max, right, bottom]
         end
 
-        # A BACKGROUND SHOWN ALONE ABOVE ITS ROW (`above_row: 32, alone: true`) is what a console's
+        # A background shown alone above its row (`above_row: 32, alone: true`) is what a console's
         # own status bar often is: the display is told to draw that one layer and the sprites on the
         # lines above the row, so no other background is drawn there and the bar's see-through pixels
         # show the backdrop. So every other background is held to the rows from that row down, as if
@@ -2883,7 +2883,7 @@ module VBlank
           showing_scenery.find { |held| held.alone && !held.equal?(bg) }&.above_row
         end
 
-        # A BACKGROUND HELD TO A BOX, and the rule is the display's window: a switch for each pixel
+        # A background held to a box, and the rule is the display's window: a switch for each pixel
         # the display draws, which leaves this layer out of every pixel outside the box. So it is
         # painted onto a sheet of its own as it would be anywhere, scrolled, bent and in blocks as
         # it is, and only the pixels inside the box are laid onto the picture. Outside, nothing of
@@ -2929,15 +2929,15 @@ module VBlank
           right <= left || bottom <= top ? [0, 0, 0, 0] : [left, top, right, bottom]
         end
 
-        # ONE BACKGROUND IN BLOCKS, and the rule is the display's own.
+        # One background in blocks, and the rule is the display's own.
         #
-        # THE BLOCKS ARE FIXED TO THE SCREEN. A block starts at every column and every row
+        # The blocks are fixed to the screen. A block starts at every column and every row
         # that is a multiple of its size, and shows the colour the background has at the
         # block's top left corner — so a background that scrolls slides under a grid that
         # stays where it is. A corner that is see-through leaves the whole block
         # see-through, and what is behind shows there.
         #
-        # A SCREEN SPLIT IN TWO KEEPS THE ONE GRID. Where a status bar starts, or a background
+        # A screen split in two keeps the one grid. Where a status bar starts, or a background
         # held above a row stops, the display switches layers between two lines and its count
         # of a block's lines goes on: Super Nintendo games split a screen that way, and their
         # blocks run through the split (bsnes, sfc/ppu/mosaic.cpp, PPU::Mosaic::scanline,
@@ -2945,9 +2945,9 @@ module VBlank
         # that starts above it shows the layers shown on that row, each read at the block's
         # first row with its own scroll, which is what the painters do.
         #
-        # DOWN AND ACROSS ARE DONE APART, because a display draws a row at a time. Down:
+        # Down and across are done apart, because a display draws a row at a time. Down:
         # every row of a block is drawn from the picture row its top row shows (the
-        # painters take how tall a block is) — but placed where the row ITSELF sits, so a
+        # painters take how tall a block is) — but placed where the row itself sits, so a
         # background whose rows are each bent a different way keeps each row's own bend,
         # and a block of it is a sheared one. Across: each pixel of a row then takes the
         # one at the start of its block in that same row.
@@ -2985,10 +2985,10 @@ module VBlank
         # in every pixel. Every other screen draws through a color table, and there the game
         # writes the tinted colors into the table itself, so they round the way the game's
         # own arithmetic does rather than the display's. Which one a tint is follows the
-        # screen up NOW, and a tint left on while the game changes kind of screen is mixed
+        # screen up now, and a tint left on while the game changes kind of screen is mixed
         # the new screen's way from then on (see #exec_screen), as the console puts it back.
         #
-        # A TINT TAKES THE PLACE OF WHATEVER FADE WAS IN FORCE, a fade placed in the stack
+        # A tint takes the place of whatever fade was in force, a fade placed in the stack
         # included: a picture has one such effect at a time, and the last one set is it.
         # A fade that goes may have been holding a see-through layer solid, or have been
         # painted into the picture, so the picture is owed again when one does.
@@ -3072,7 +3072,7 @@ module VBlank
         # solid and darkens with everything else, and it comes back untouched when the
         # fade lifts.
         #
-        # A fade that WALKS THE COLORS never gets here: it leaves the blend unit alone,
+        # A fade that walks the colors never gets here: it leaves the blend unit alone,
         # so it sets no fade amount and there is nothing for this to find (see
         # #fade_by_tint). What is left is a fade placed in the stack, which cannot take
         # that route and does take the layer's blend.
@@ -3082,7 +3082,7 @@ module VBlank
           @screen.fade_steps.positive?
         end
 
-        # A LIGHT THAT TAKES TURNS LIFTS A FADE PLACED IN THE STACK, on the pass of a scene the
+        # A light that takes turns lifts a fade placed in the stack, on the pass of a scene the
         # light is on in. The two take turns scene by scene (IR::LightScenes): a light that darkens
         # asks the display for the mixing the fade holds, and any light's shape takes the place of
         # the shape that keeps a sprite out of such a fade. So a scene the light is on in has the
@@ -3126,7 +3126,7 @@ module VBlank
           blit_image(obj[:image], obj[:x], obj[:y], recolor: recolor, left_out: obj[:left_out])
         end
 
-        # ONE SPRITE IN BLOCKS, while the picture is shown in them (see SpriteBlocks, which
+        # One sprite in blocks, while the picture is shown in them (see SpriteBlocks, which
         # holds the rule).
         def paint_object_in_blocks(obj)
           blocks = SpriteBlocks.new(@screen, @block)
@@ -3170,7 +3170,7 @@ module VBlank
           end
         end
 
-        # THE BOXES EACH POSE OF A SPRITE IS DRAWN AS, for the one thing here that has to
+        # The boxes each pose of a sprite is drawn as, for the one thing here that has to
         # know: a sprite in blocks is put into them a box at a time (see SpriteBlocks).
         #
         # Nothing else about this picture depends on them. A sprite is its canvas at a
@@ -3245,9 +3245,9 @@ module VBlank
           end
         end
 
-        # THE SLICES OF THIS FRAME'S SPRITES A CROWDED LINE LEAVES OUT, on a console that draws only
-        # so many pieces of sprites on a line of the screen, and THE PIECES ITS SPRITE TABLE HAS NO
-        # ROOM FOR, on one whose table holds only so many (Backends::SpriteLines, which says how
+        # The slices of this frame's sprites a crowded line leaves out, on a console that draws only
+        # so many pieces of sprites on a line of the screen, and the pieces its sprite table has no
+        # room for, on one whose table holds only so many (Backends::SpriteLines, which says how
         # the console picks). Its table lists them front-most first: the deepest layer last, and
         # inside a layer the one drawn last first. Each sprite that loses a slice has it kept as
         # its +:left_out+, which drawing it reads.
@@ -3286,7 +3286,7 @@ module VBlank
             end
         end
 
-        # SPRITES OVER A PICTURE THE GAME PAINTS (`sprite ..., over_picture: true`). The console
+        # Sprites over a picture the game paints (`sprite ..., over_picture: true`). The console
         # draws them over the painted picture as the picture goes to the screen, and never
         # into it: the picture the game paints stays as it painted it, on both pages of a
         # tear-free screen, and a sprite that moves leaves nothing behind. So they are drawn
@@ -3306,7 +3306,7 @@ module VBlank
           @screen.over_picture = layer.to_a
         end
 
-        # NO SPRITE ON THE NEXT FRAME. The sprites are drawn as the next pass begins, from the
+        # No sprite on the next frame. The sprites are drawn as the next pass begins, from the
         # pass that just ran, and that drawing draws none and forgets this was asked: every
         # sprite is where it was, so the drawing after puts each one back where it would have
         # been. On the console the sprite layer is switched off for that frame, which hides the
@@ -3331,7 +3331,7 @@ module VBlank
           end
         end
 
-        # WHAT IS ON SCREEN THIS FRAME: one entry per object being drawn, saying which of its
+        # What is on screen this frame: one entry per object being drawn, saying which of its
         # pictures the pose selector picked and where it went. An object the game has switched
         # off, or one whose selector points outside its set of pictures, is simply not here —
         # which is what "not being drawn" means, and is the answer both the drawing below and a
@@ -3368,7 +3368,7 @@ module VBlank
           @screen.set_paint_see_through(nil)
         end
 
-        # THE COLOURS AN OBJECT IS DRAWN IN THIS FRAME, when it is told to draw with another
+        # The colours an object is drawn in this frame, when it is told to draw with another
         # list: each place of the picture's own list shows the colour at the same place of
         # that list. nil draws the picture as it is stored.
         def object_recolor(obj, image) = recolor_of_picture(image, object_color_list(obj, image))
@@ -3403,7 +3403,7 @@ module VBlank
           @recolor_maps[[image, swapped]] ||= Assets::Recolor.of(@bitmaps.fetch(image), swapped)
         end
 
-        # THE COLOURS A NAMED LIST HOLDS NOW: the set the program last chose, or the ones it was
+        # The colours a named list holds now: the set the program last chose, or the ones it was
         # declared with — which is also what a number naming no set means.
         def colors_held_by(name)
           list = @color_lists.fetch(name) { raise ProgramError, "drawn with undeclared list of colors #{name.inspect}" }
@@ -3429,7 +3429,7 @@ module VBlank
           @groups_up.fetch(node.name)[node.slot] = eval_value(node.which)
         end
 
-        # GROUPED PICTURES ARE UP ONLY WHILE ONE OF THEIR GROUPS IS. This backend has every
+        # Grouped pictures are up only while one of their groups is. This backend has every
         # picture in reach whatever is up, so it would draw a sprite showing a picture whose
         # group is not up exactly as the game meant — and the console, which keeps only the
         # groups up in its sprite memory, would draw it from tiles holding some other room's
@@ -3477,7 +3477,7 @@ module VBlank
                                 groups: groups.name, holding: holding, up: up_numbers(groups))
         end
 
-        # Does this object turn or resize? It does unless BOTH its angle and its size are
+        # Does this object turn or resize? It does unless both its angle and its size are
         # still the constants they default to — an object that never calls
         # turn/face_angle/scale keeps them and draws straight, so we take the cheaper
         # blit path for it.
@@ -3572,7 +3572,7 @@ module VBlank
         # both backends share.
         #
         # The hardware does not turn the picture and stamp it down. It walks the patch
-        # of screen the sprite covers and, for each screen pixel, turns the OTHER way to
+        # of screen the sprite covers and, for each screen pixel, turns the other way to
         # ask "which pixel of the picture lands here?" — a pixel whose answer falls
         # outside the picture simply isn't drawn. That is what gives a turned sprite its
         # stepped edge, and it's why this reads as an inverse rotation.
@@ -3586,14 +3586,14 @@ module VBlank
         #     box exactly, and past that its edges are cut off — here and on the console.
         #   * The turn uses whole numbers in 256ths, from the same table of sines the
         #     ROM carries — not exact trigonometry.
-        #   * A screen pixel is taken at its whole coordinate, NOT at its center, and
+        #   * A screen pixel is taken at its whole coordinate, not at its center, and
         #     the answer is rounded down. Sampling at pixel centers instead moves the
         #     whole shape half a pixel, which shows up as a one-pixel-thick disagreement
         #     all along one side.
         # One column of a picture, stretched to a height the program worked out.
         #
-        # The stepping rule here IS the specification, because both backends have to land every
-        # pixel in the same place: walk DOWN THE SCREEN and ask which row of the picture belongs
+        # The stepping rule here is the specification, because both backends have to land every
+        # pixel in the same place: walk down the screen and ask which row of the picture belongs
         # at each screen row. Walking the picture instead and asking where each of its rows
         # lands would leave gaps when stretching and would draw some rows twice when squashing.
         #
@@ -3641,22 +3641,22 @@ module VBlank
           node.children.each { |child| exec(child) }
         end
 
-        # ONE FACE ALREADY ON THE SCREEN, FILLED WITH ITS PICTURE. What is written here IS the
+        # One face already on the screen, filled with its picture. What is written here is the
         # specification: every target lands every pixel where this puts it, so every step is a sum
         # IR::Int32 does, and nothing else rounds. (Nodes::FillFace says what the numbers are.)
         #
-        # Walk DOWN THE SCREEN, a row at a time, and ask each of the face's edges whether it
+        # Walk down the screen, a row at a time, and ask each of the face's edges whether it
         # crosses the middle of that row. Two of them do, for a face that is not bent; the one
         # further left is where the row's pixels start and the other is where they stop. Along each
         # edge, where it crosses a row and where on the picture that is are worked out once at its
         # first row, and then stepped down a row at a time by adding. Across the row, the place on
         # the picture is stepped a pixel at a time the same way.
         #
-        # WHICH ROWS AND PIXELS: a pixel is filled when its middle is inside the face, counting the
+        # Which rows and pixels: a pixel is filled when its middle is inside the face, counting the
         # top and left edges in and the bottom and right ones out, so two faces sharing an edge
         # neither leave a gap nor fill a pixel twice.
         #
-        # WHICH PICTURE, WHICH CORNERS: the picture's number is held to the ends of the list of
+        # Which picture, which corners: the picture's number is held to the ends of the list of
         # pictures, and a count past MOST_CORNERS is held to it; a count under three draws nothing.
         def exec_fill_face(node)
           name = node.pictures[eval_value(node.picture).clamp(0, node.pictures.length - 1)]
@@ -3704,7 +3704,7 @@ module VBlank
           end
         end
 
-        # A GAME'S SHADING, ready to look colours up in (Nodes::Shading). A corner's light (0 to
+        # A game's shading, ready to look colours up in (Nodes::Shading). A corner's light (0 to
         # FillFace::LIGHTEST) times how many levels there are is what steps across the face, and its
         # whole part is the level a pixel is drawn at.
         class Shade
@@ -3817,7 +3817,7 @@ module VBlank
         # [near, far] along the row, the ends of the stretch +along+ is in: the last multiple of
         # +spans+ at or before it and the next (or the row's end, +count+ along).
         #
-        # A STRETCH LONGER THAN Nodes::FillFace::SPLIT_PIXELS IS CUT IN TWO, the first part that
+        # A stretch longer than Nodes::FillFace::SPLIT_PIXELS is cut in two, the first part that
         # many pixels long, where one over the distance changes fast across it: by more than a
         # sixteenth of its value at the stretch's start over SPLIT_PIXELS pixels, either way. Stepping
         # straight across a stretch strays from the exact place most where that change is big, on a
@@ -3851,7 +3851,7 @@ module VBlank
           [Int32.mul_fix(over[0], distance, 14), Int32.mul_fix(over[1], distance, 14)]
         end
 
-        # ONE EDGE OF A FACE, as the fill walks down it: the first row whose middle it crosses and
+        # One edge of a face, as the fill walks down it: the first row whose middle it crosses and
         # the row past its last, and at its first row where it crosses (+x+, in pixels with sixteen
         # fraction bits) and where on the picture that is (+u+, +v+), with how far each moves a row
         # (+step_x+, +step_u+, +step_v+).
@@ -4334,7 +4334,7 @@ module VBlank
           raise ProgramError, Faults.index_out_of_range(name, index, list.length)
         end
 
-        # WHAT EACH KIND OF VALUE COMES TO, one method per kind, called by name in #value_by_kind —
+        # What each kind of value comes to, one method per kind, called by name in #value_by_kind —
         # the value half of STATEMENT_KINDS.
         VALUE_KINDS = %i[
           int var_ref neg bit_not absolute clamped binop mul_fix div_fix shift_right held pressed
@@ -4486,7 +4486,7 @@ module VBlank
         # shown. That count moves only between passes, so every reading in one pass is of the same
         # moment, and a minute cannot turn over between reading the minute and the second.
         #
-        # A FRAME IS THE CONSOLE'S, a little more than a sixtieth of a second, since a clock keeps
+        # A frame is the console's, a little more than a sixtieth of a second, since a clock keeps
         # real seconds and the console's frames are what this counts in; an emulator's clock pinned
         # to a moment moves on the same way, so the two read each second turn over on one frame.
         #
@@ -4520,7 +4520,7 @@ module VBlank
           @console.clock_keeps_date
         end
 
-        # SETTING THE CLOCK keeps how far the time set is from the clock's own, to the whole
+        # Setting the clock keeps how far the time set is from the clock's own, to the whole
         # second, in days and the seconds left over — so the readings are the time set straight
         # away, and the part of a second the clock was into carries on as it was, as it does on
         # the console. Worked out with the calendar rather than with the formula the other

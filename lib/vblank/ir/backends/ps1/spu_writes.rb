@@ -4,23 +4,23 @@ module VBlank
   module IR
     module Backends
       class PS1
-        # WHAT A SOUND IS, ON A PLAYSTATION'S SOUND CHIP. This module gives which writes each of the
+        # What a sound is, on a PlayStation's sound chip. This module gives which writes each of the
         # interpreter's sound-log entries means; the lowering makes them (Lowering::Sound), the song player
         # sends them (Runtime::Music, from the table PS1::Music makes with them), and the checked run reads the
         # chip's registers after every pass and holds them to what the log up to then says (#after), so a
         # write that never arrived, or arrived wrong, shows up in the chip itself.
         #
-        # THE GAME'S VOICES are four of the chip's 24, one for each of the Advance's: its two squares, its
+        # The game's voices are four of the chip's 24, one for each of the Advance's: its two squares, its
         # wave voice and its noise voice (VOICES). Each plays a loop from sound memory (SoundMemory): which
         # one is its start register, and how fast it is read is its pitch register (1000h is 44100 samples
         # a second, and the chip reads no faster than 3FFFh, Beetle PSX spu.c).
         #
-        # ITS ENVELOPE is set once, at power-on (Runtime::Sound::ADSR_LOW/HIGH): up to full at once, held
+        # Its envelope is set once, at power-on (Runtime::Sound::ADSR_LOW/HIGH): up to full at once, held
         # there, and gone at once when let go. A note's loudness is its volume register, and a note that
         # fades or swells is the runtime's work, moved a step at a time as the Advance's voice moves its
         # own (Runtime::Sound), so the fade keeps the interpreter's pace.
         #
-        # A VOICE STARTS (key on) and STOPS (key off) at the frame boundary: the runtime gathers which ones
+        # A voice starts (key on) and stops (key off) at the frame boundary: the runtime gathers which ones
         # the pass asked for and writes them once (Runtime::Sound#emit_keys). The chip takes key on and
         # key off once a sample, and a second write in the same 44100th of a second takes the place of the
         # first (Beetle PSX spu.c SPU_Write: `VoiceOn &= 0xFFFF0000; VoiceOn |= V`), so two beeps in one
@@ -47,7 +47,7 @@ module VBlank
           VOICES = 4
           CHANNEL_VOICES = SQUARE_VOICES.merge(3 => WAVE_VOICE, 4 => NOISE_VOICE).freeze
 
-          # THE LOUDNESS OF A VOICE AT FULL, as its volume register holds it: a quarter of the chip's
+          # The loudness of a voice at full, as its volume register holds it: a quarter of the chip's
           # loudest, so the four voices together cannot go past what the speaker takes. A volume of 0 to
           # 15 is that many fifteenths of it.
           LOUDEST = 0x1000
@@ -57,7 +57,7 @@ module VBlank
           PITCH_TOP = 0x3FFF
           SAMPLE_RATE = 44_100
 
-          # WHAT A LOG ENTRY DOES NOT SAY, and the writes need: +memory+, where each loop is in sound memory
+          # What a log entry does not say, and the writes need: +memory+, where each loop is in sound memory
           # (SoundMemory); and for a song's note, as on the Genesis (Genesis::ChipWrites::Voicing), +parts+,
           # each song's parts by [the song's name, its channel] (a sound effect's among them), and +effects+,
           # the names of the songs that are sound effects.
@@ -92,7 +92,7 @@ module VBlank
             end
           end
 
-          # THE MAIN VOLUME, left and right (psx-spx, "SPU Volume and ADSR Generator": bit 15 clear is a
+          # The main volume, left and right (psx-spx, "SPU Volume and ADSR Generator": bit 15 clear is a
           # fixed volume, its loudest 3FFFh), which scales the chip's whole mix after each voice's own
           # volume. rt_sound_on sets both to the loudest; a game that names a main volume (in 127ths,
           # Program#main_volume) has it written after. 3FFFh is 127 times 129, so a number of 127ths is
@@ -131,7 +131,7 @@ module VBlank
              [:loud, NOISE_VOICE, hit[:volume], -step], [:key_on, NOISE_VOICE]]
           end
 
-          # THE WAVE VOICE PLAYING +params+ ({shape:, frequency:, volume:}, as the interpreter logs a wave):
+          # The wave voice playing +params+ ({shape:, frequency:, volume:}, as the interpreter logs a wave):
           # its waveform's loop at its pitch, and its loudness, which on the Advance is one of five
           # (Audio::Sound.wave_level), as so many quarters of a voice's loudest.
           def wave(params, memory)
@@ -151,7 +151,7 @@ module VBlank
 
           def volume_writes(voice, value) = [[:spu, register(voice, H::SPU_VOLUME_LEFT), value], [:spu, register(voice, H::SPU_VOLUME_RIGHT), value]]
 
-          # THE PITCH REGISTER for a loop of +samples+ samples a wave played at +frequency+ waves a second.
+          # The pitch register for a loop of +samples+ samples a wave played at +frequency+ waves a second.
           def pitch_for(frequency, samples) = ((frequency * samples * PITCH_44100) / SAMPLE_RATE).round.clamp(1, PITCH_TOP)
 
           # A square of +frequency+ Hz plays at the pitch the Advance's square voice really plays it at, a
@@ -192,11 +192,11 @@ module VBlank
           SIDE_OF_VOICE_ENTRY = 8
           DUTY_OF_VOICE_ENTRY = 9
 
-          # WHICH SPEAKERS A VOICE IS HEARD FROM, as the runtime keeps it beside its loudness: both, or one.
+          # Which speakers a voice is heard from, as the runtime keeps it beside its loudness: both, or one.
           BOTH_SIDES = 0
           SIDES = { left: 1, right: 2 }.freeze
 
-          # A SONG'S NOTE on a square voice, or the voice silenced for a rest; on the wave or noise voice
+          # A song's note on a square voice, or the voice silenced for a rest; on the wave or noise voice
           # nothing, since the entry after it is the note. The square of the note's width, or its part's.
           def song_note(entry, voicing)
             _, channel, who, frequency, volume = entry
@@ -215,7 +215,7 @@ module VBlank
             fade.swells? ? fade.step : -fade.step
           end
 
-          # THE MUSIC VOLUME reaching a note on +channel+, now at +volume+: a square or noise voice's
+          # The music volume reaching a note on +channel+, now at +volume+: a square or noise voice's
           # loudness, going on as it was, or the wave voice's two volume registers.
           def loudness_at(channel, volume, _voicing, _song)
             voice = CHANNEL_VOICES.fetch(channel)
@@ -224,7 +224,7 @@ module VBlank
             [[:level, voice, volume]]
           end
 
-          # A NOTE FROM ONE SPEAKER (+side+ :left or :right): its loudness kept to that side, which the runtime
+          # A note from one speaker (+side+ :left or :right): its loudness kept to that side, which the runtime
           # holds beside the voice's volume so a fade keeps to it too, and the wave voice's other volume
           # register nought.
           def heard_from_one_side(writes, side)
@@ -240,7 +240,7 @@ module VBlank
             end
           end
 
-          # A SWELLING NOTE STRUCK AT THE MUSIC VOLUME, where the player's count puts it
+          # A swelling note struck at the music volume, where the player's count puts it
           # (Reference::Player#step_swells): an +entry+ of [:loudness, channel, volume], with the swell after
           # it if it climbs on, which the runtime's fade does from there.
           def swell_strike(entry, _voicing, _song)
@@ -248,7 +248,7 @@ module VBlank
             [[:loud, CHANNEL_VOICES.fetch(channel), volume, swelling ? swelling.step : 0]]
           end
 
-          # A NOTE WOBBLING: the voice on +channel+ playing a +frequency+ Hz note +steps+ of the Advance's pitch
+          # A note wobbling: the voice on +channel+ playing a +frequency+ Hz note +steps+ of the Advance's pitch
           # number from it (Audio::Vibrato). The note is not started again.
           def wobble(channel, frequency, steps)
             voice = CHANNEL_VOICES.fetch(channel)
@@ -259,7 +259,7 @@ module VBlank
             [[:spu, register(voice, H::SPU_PITCH), voice == WAVE_VOICE ? wave_pitch(moved) : square_pitch(moved)]]
           end
 
-          # A SQUARE NOTE STEPPING ITS SHAPE: the square of the new width as the voice's loop, which the chip
+          # A square note stepping its shape: the square of the new width as the voice's loop, which the chip
           # takes up as the one playing comes round (its repeat address; Beetle PSX spu.c: a write there holds
           # until the next key on, IgnoreSampLA).
           def shape(channel, _frequency, shape)
@@ -267,7 +267,7 @@ module VBlank
             [[:spu, register(voice, H::SPU_REPEAT), SoundMemory.square_start(shape)]]
           end
 
-          # A NOTE SLIDING: the voice on +channel+ taken to the pitch of +count+ (Audio::PitchSlide).
+          # A note sliding: the voice on +channel+ taken to the pitch of +count+ (Audio::PitchSlide).
           def slide_step(channel, count, _was, _shape, from:)
             _ = from
             [[:spu, register(CHANNEL_VOICES.fetch(channel), H::SPU_PITCH), square_pitch(slide_frequency(count))]]
@@ -280,7 +280,7 @@ module VBlank
           # A slide run off the top: the voice silent at once.
           def slide_stop(channel) = silence(1 << CHANNEL_VOICES.fetch(channel))
 
-          # THE WRITES A RUN OF THE LOG MEANS, in order, with what one entry says of the next, as
+          # The writes a run of the log means, in order, with what one entry says of the next, as
           # Genesis::ChipWrites works them out: the tune a held note's [:loudness ...] reaches is the one
           # whose note was logged last; a song's note on the wave or noise voice plays at the note's own
           # volume, which its [:voice ...] entry carries; and that note's [:loudness ...], logged before the
@@ -382,7 +382,7 @@ module VBlank
           # The wave or noise voice's own entry, which a song's note there logs after its loudness.
           def voice_own_entry?(entry) = !entry.nil? && %i[wave stop_wave noise].include?(entry.first)
 
-          # WHICH TUNE A STOP STOPPED, the program's to name and held to the log where the log says it too
+          # Which tune a stop stopped, the program's to name and held to the log where the log says it too
           # (Genesis::ChipWrites.misnamed_stop): the index in +entries+ of the first stop that names another tune.
           def misnamed_stop(entries, voicing)
             heard = nil
@@ -398,7 +398,7 @@ module VBlank
             nil
           end
 
-          # WHAT THE CHIP'S REGISTERS HOLD AFTER THE SOUND LOG +entries+, by their distance from 1F801C00h.
+          # What the chip's registers hold after the sound log +entries+, by their distance from 1F801C00h.
           # Nothing reaches the chip until the game calls `enable_sound` (Runtime::Sound). A voice that is
           # moving its own loudness has none to answer for: the log does not say where it has got to; nor a
           # note that slides its pitch. Key on and key off are gathered and written at the frame boundary, so
@@ -438,7 +438,7 @@ module VBlank
             end
           end
 
-          # WHAT THE LOG CANNOT ANSWER FOR. A slide logs nothing as it moves, so while the last note of a
+          # What the log cannot answer for. A slide logs nothing as it moves, so while the last note of a
           # channel slides, its voice's pitch and loudness have no expected value.
           def slide_registers(entries)
             entries.select { |entry| entry.first == :voice && entry[3].positive? }.group_by { |entry| entry[1] }.flat_map do |channel, notes|
