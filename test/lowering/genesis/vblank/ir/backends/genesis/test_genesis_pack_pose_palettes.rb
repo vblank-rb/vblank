@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "all/vblank/builder/test_pack_pose_bank_colors"
 
-# THE PALETTES OF POSES READ FROM A DATA PACK, each drawn in the bank its frame names, in the Genesis's
+# The palettes of poses read from a data pack, each drawn in the bank its frame names, in the Genesis's
 # own colour memory. A sprite facing frames of two banks follows both banks' lists; the game changes
 # one and never the other. The pose of the bank never changed is cut in its list's order, as a sprite
 # told `draw_with` that one list is, so the two share one of the console's four palettes.
