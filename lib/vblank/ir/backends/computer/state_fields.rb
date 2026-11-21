@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       module Computer
-        # THE RUNTIME'S FIELDS IN THE STATE IMAGE, in the order each runtime visits them
+        # The runtime's fields in the state image, in the order each runtime visits them
         # (runtime/rg_state.h). The game's own fields — every global the build wrote, every list —
         # the build finds for itself (Lowering#visit_state); these are what each runtime keeps in
         # its own variables, which the C, JavaScript and Ruby runtimes each name by hand. So they

@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       module Computer
-        # THE C THE BACKEND WRITES, as data rather than text.
+        # The C the backend writes, as data rather than text.
         #
         # The lowering builds these and the Printer alone turns them into text, so the things
         # that are easy to get wrong by hand — how a number is spelt, which names are legal,

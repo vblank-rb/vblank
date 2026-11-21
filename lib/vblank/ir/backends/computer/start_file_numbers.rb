@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       module Computer
-        # HOW MANY NUMBERS, AND WHERE, a picture read from the start file is handed to the runtimes
+        # How many numbers, and where, a picture read from the start file is handed to the runtimes
         # in (StartFileFills#start_file_fill_rules): the layout its tiles are kept in, then the
         # layout its colours are kept in. Written ahead of each runtime with the console's numbers
         # (ConsoleNumbers#values), so the C, JavaScript and Ruby runtimes read the same names and
@@ -67,7 +67,7 @@ module VBlank
           # lists there are, and the first place filled.
           CHOSEN_COLORS_HEADER_NUMBERS = 6
 
-          # THE LAYOUT OF A FRAME'S RECORD, as each runtime reads it: how many bytes a directory
+          # The layout of a frame's record, as each runtime reads it: how many bytes a directory
           # entry, a frame's header and a piece are, and where each part of a piece is. They are
           # Original::FrameRecord's own numbers, the one place the layout is written down, handed on
           # under the names the runtimes know them by. That module loads after this one, so they are
@@ -83,7 +83,7 @@ module VBlank
               "RG_PIECE_MIRRORED" => record::MIRRORED, "RG_PIECE_UPSIDE_DOWN" => record::UPSIDE_DOWN }
           end
 
-          # Every number written ahead of a runtime: NAMES, and the layout of a frame's record.
+          # Every number written ahead of a runtime: names, and the layout of a frame's record.
           def self.names = NAMES.merge(frame_record_names)
 
           NAMES = Ractor.make_shareable({

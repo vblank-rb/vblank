@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       module Computer
-        # THE SAVE-STATE FILE: the state image (runtime/rg_state.h) behind two lines that say what it
+        # The save-state file: the state image (runtime/rg_state.h) behind two lines that say what it
         # is. The first is the format's version, so a later release can tell an old file and convert
         # it; the second names the game and build that wrote it, as the console and the digest of the
         # program (Network::Fingerprint), which is the same for the C, JavaScript and Ruby builds of
