@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         module Runtime
-          # THE PICTURE: what the game sets for its sprites and its background while a pass runs,
+          # The picture: what the game sets for its sprites and its background while a pass runs,
           # kept in work memory, and copied to the console in the blank after the pass.
           #
           # The console's own picture memory can only be written while it is not drawing, so
@@ -40,7 +40,7 @@ module VBlank
             LCDC_WANTED = "rt picture lcdc"
             OVERLAP = "rt picture overlap" # Two sprites' masks and where they meet, while they are tested
             GRID_UP = "rt picture grid up" # The number of the grid up, or being put up
-            # IN A GAME THAT PUTS A BACKGROUND UP AGAIN (Lowering::Picture#reserves_grid_kept?): the number of
+            # In a game that puts a background up again (Lowering::Picture#reserves_grid_kept?): the number of
             # the grid whose cells the background holds, and the window's for a status bar, which a changed cell
             # leaves as they are (GRID_UP and BAR_UP do not). A put-up that keeps the cells it holds
             # (rt_background_put_up_kept, rt_bar_put_up_kept) copies nothing while its grid is the one there.
@@ -74,7 +74,7 @@ module VBlank
             CELL_SHOWN_NOW_BYTES = 4
             CELLS_SHOWN_WITH_THE_PASS = 0x80
             CELL_BYTES = 4
-            # THE CELLS A PASS CHANGES PAST CELLS_KEPT go on in a list of their own in a bank of work
+            # The cells a pass changes past CELLS_KEPT go on in a list of their own in a bank of work
             # memory nothing else uses (Memory: the banked half, 0xD000, holds bank 1 but while a
             # routine switches another in), so a whole screen changed in one pass is kept for the
             # blanks after it rather than written while the display draws, which held the pass on the
@@ -86,9 +86,9 @@ module VBlank
             FAR_CELLS_BANK = 5
             FAR_CELLS_AT = Memory::HIGH_START
             FAR_CELLS_END = Memory::HIGH_END
-            # A BACKGROUND BENT ROW BY ROW (`scroll_each_row`): how far each of the screen's rows
+            # A background bent row by row (`scroll_each_row`): how far each of the screen's rows
             # sits along, worked out once a pass into a table of the bend's own (the lowering keeps
-            # one for each bend) and shown from BENDS in the frame after, as the scroll is.
+            # one for each bend) and shown from bends in the frame after, as the scroll is.
             # BENDS_FROM is the table of the background up, BENDING 1 while that background has a
             # bend (rt_bends_on, rt_bends_off), and BEND_BASE the scroll the shown rows are along
             # from.
@@ -96,7 +96,7 @@ module VBlank
             BENDS_FROM = "rt picture bends from"
             BEND_BASE = "rt picture bend base"
             BENDING = "rt picture bending"
-            # A FADE OR TINT (#emit_tint): what the colours are moved toward (TOWARD_*), the colour, and how
+            # A fade or tint (#emit_tint): what the colours are moved toward (TOWARD_*), the colour, and how
             # far (two bytes); then the palettes whose colours are owed to the copy the blank sends, a bit
             # for each (the backgrounds' byte, then the sprites'), and 1 while the walk's tables are owed.
             TINT = "rt picture tint"
@@ -115,7 +115,7 @@ module VBlank
             DRAWN = "rt picture drawn"
             DRAWN_BYTES = 7
             MOST_DRAWN = 40
-            # A GAME WHOSE SPRITES' LISTS BORROW THE EIGHT (Art#lends?, #emit_lend_colors): which
+            # A game whose sprites' lists borrow the eight (Art#lends?, #emit_lend_colors): which
             # list each of the eight holds, one up so that nought is none; then a bit for each of the
             # eight a sprite was placed in this pass, the same for the pass before, and a bit for each
             # of the eight lent this pass, whose colours are owed to the copy the blank sends; and how
@@ -139,8 +139,8 @@ module VBlank
             # here after.
             PIECES_BANK = "rt picture pieces bank"
 
-            # A STATUS BAR (`status_bar`), in a game that has one: the console's window, read from
-            # the second grid. BAR is the row its top is at, the number of the grid in the window's
+            # A status bar (`status_bar`), in a game that has one: the console's window, read from
+            # the second grid. Bar is the row its top is at, the number of the grid in the window's
             # grid (0xFF for none, or one with a cell changed), and 0xFF while the grid's rows are
             # still being copied in; BAR_JOB is that copy, kept as MAP_JOB keeps the background's.
             BAR = "rt picture bar"
@@ -154,7 +154,7 @@ module VBlank
             # The window's left edge, which the console counts from seven pixels left of the screen.
             WINDOW_LEFT = 7
 
-            # A GAME WHOSE SCREENS BRING THEIR OWN TILES IN (GBC::Art::Room): the number of the room
+            # A game whose screens bring their own tiles in (GBC::Art::Room): the number of the room
             # asked for last (nought for none), which is in picture memory once the blank after the
             # asking has brought it in; the one waiting for that blank (nought for none); and 1 while
             # the display is held off for it. rt_upload is then rt_tiles_bring_in around the plain
@@ -170,7 +170,7 @@ module VBlank
             STAT_MODE = 0x03 # STAT's low two bits: nought between the lines' drawing
             STAT_MODE_BLANK = 0x01 # ...and one in the blank, its last line too
 
-            # A GRID IS PUT UP AS FAST AS THE BLANK ALLOWS (#emit_map_rows). A row is its tiles and
+            # A grid is put up as fast as the blank allows (#emit_map_rows). A row is its tiles and
             # its cells' colours, 64 bytes, which the console's own copy does in under a third of a
             # line of the display; so each go copies ROWS_A_LINE rows for every line left before
             # LAST_COPY_LINE, and the blank's last line is spare for what a go costs besides.
@@ -349,7 +349,7 @@ module VBlank
               asm.jump("rt_gbc_place_piece")
             end
 
-            # LENDING THE EIGHT SPRITE LISTS. A Color draws a sprite's piece in one of eight lists of
+            # Lending the eight sprite lists. A Color draws a sprite's piece in one of eight lists of
             # four colours. A game whose sprites wear more lists than that between them lends the
             # eight out, the way the console's own games do: rt_lend_list, with C the game's list
             # number (art_lent_palettes) one up, answers E, which of the eight a sprite wearing it is
@@ -534,7 +534,7 @@ module VBlank
               asm.ret
             end
 
-            # THE LISTS A SCENE NUMBERS OF ITS OWN (Art::TooManyLentLists). A scene's sprites wear
+            # The lists a scene numbers of its own (Art::TooManyLentLists). A scene's sprites wear
             # lists by numbers that mean other lists in another scene, so rt_lend_scene, called as a
             # scene arrives with HL at its record (Art#lent_scene_label: where its colours and its
             # families are, and their bank), notes that record (LENT_TABLE) and forgets each of the
@@ -955,7 +955,7 @@ module VBlank
               asm.ret
             end
 
-            # TILES THE GAME PAINTS FROM A LIST (Lowering::TileRuns).
+            # Tiles the game paints from a list (Lowering::TileRuns).
             #
             # rt_repack_tiles: BC tiles from the Advance's way of keeping one — 32 bytes, eight rows
             # of four, each byte two pixels with the left one in its low four bits — at HL, into the
@@ -1038,7 +1038,7 @@ module VBlank
             # memory, where it goes, where it comes from and how many blocks of 16 bytes less one,
             # then RUN_ENDS. An address of nought ends the table.
             #
-            # A GROUP OF TILE PICTURES IS COPIED STRAIGHT FROM THE CARTRIDGE, so a game with one has
+            # A group of tile pictures is copied straight from the cartridge, so a game with one has
             # a little more here (+source_now+ is where it keeps this, see Lowering::TileRuns). The
             # flag is the bank to put in view for the copy and the two bytes after it what the
             # run's places are counted from: the picture shown for a group, and nought for a list's
@@ -1155,7 +1155,7 @@ module VBlank
               end
             end
 
-            # THE SPRITE TABLE'S COPY WITH INTERRUPTS HELD OFF. While the copy runs the processor can
+            # The sprite table's copy with interrupts held off. While the copy runs the processor can
             # read nothing but its quick memory, and every interrupt's routine is in the cartridge:
             # taken then, the processor would read nonsense and run it, until the console started
             # again. The copy starts as the blank does (rt_sleep_until_vblank), when the display
@@ -1172,7 +1172,7 @@ module VBlank
               asm.ret
             end
 
-            # IN THE BLANK: the sprite table, the colours if they changed, the scroll and the
+            # In the blank: the sprite table, the colours if they changed, the scroll and the
             # screen's switches; and the rows of a grid being put up. Carry set when a grid is still
             # being put up, so the frame waits for another blank before it counts as shown.
             #
@@ -1299,7 +1299,7 @@ module VBlank
               asm.pop(:af)
               asm.ret
 
-              # THE ROWS' BENDS FOR THE FRAME ABOUT TO BE DRAWN, from the scroll just set: the first
+              # The rows' bends for the frame about to be drawn, from the scroll just set: the first
               # row's set now, and each row after it as the line before it ends
               # (rt_hblank_interrupt), which is switched on here while the background up bends and
               # off while it does not. Switched in the blank, not where the game asks, so the frame
@@ -1337,7 +1337,7 @@ module VBlank
               asm.load_high(h::IE, :a)
               asm.ret
 
-              # The rest of the rows into BENDS, for the line interrupt to read, after the blank's
+              # The rest of the rows into bends, for the line interrupt to read, after the blank's
               # video memory (rt_upload). It keeps ahead of the display: a row is copied many times
               # over in the time the display draws one line. Flags as they were, for rt_upload.
               asm.label("rt_bends_copy")
@@ -1400,7 +1400,7 @@ module VBlank
               %i[hl de af].each { |pair| asm.pop(pair) }
               asm.reti
 
-              # The cells changed during the pass (CELLS), each its tile into the first bank of video
+              # The cells changed during the pass (cells), each its tile into the first bank of video
               # memory and its colours into the second.
               asm.label("rt_picture_cells")
               asm.load(:hl, memory[CELLS])
@@ -1417,7 +1417,7 @@ module VBlank
               # lines, cell by cell for as long as each is on lines the display has not reached yet
               # (rt_picture_cells_late), so the frame shows it whole. From the first cell it has
               # reached, which would show the top of the screen without the pass's changes and the
-              # rest with them, that cell and every one after it, in order, are kept in CELLS for the
+              # rest with them, that cell and every one after it, in order, are kept in cells for the
               # next blank (rt_picture_cells_kept), and rt_upload says there is more to copy: the
               # wait copies them in the blanks after, and the pass is shown once all of it is in, as
               # a pass that runs late is.
@@ -1457,7 +1457,7 @@ module VBlank
               asm.call("rt_picture_cells_next")
               asm.jump("rt_picture_cells_far")
 
-              # The B cells from HL on, moved to the front of CELLS for the next blank, in order.
+              # The B cells from HL on, moved to the front of cells for the next blank, in order.
               asm.label("rt_picture_cells_kept")
               asm.xor_a(:a)
               asm.load_high(h::VBK, :a)
@@ -1485,7 +1485,7 @@ module VBlank
               asm.jump_relative("rt_upload_whole")
             end
 
-            # SPRITES. A pass's sprites are written into the copy of the table front-most first,
+            # Sprites. A pass's sprites are written into the copy of the table front-most first,
             # which is the order the console draws them in (an earlier entry in front), from
             # rt_sprites_begin to rt_sprites_end, which switches off every entry after the last one
             # written that the pass before left on, and turns the sprite layer on when the screen up
@@ -1723,22 +1723,22 @@ module VBlank
               asm.ret
             end
 
-            # ONE CELL OF THE BACKGROUND CHANGED (Reference#exec_set_tile): rt_background_cell(col,
+            # One cell of the background changed (Reference#exec_set_tile): rt_background_cell(col,
             # row, size, cell) — +size+ the map's columns and, in its second byte, its rows; +cell+
             # the tile and, in its second byte, the cell's colours — changes the cell in the
             # console's grid, its tile in the first bank of video memory and its colours in the
             # second, and a cell off the map changes nothing.
             #
-            # IN THE BLANK AFTER THE PASS, with the rest of the pass's picture: the cell waits in
+            # In the blank after the pass, with the rest of the pass's picture: the cell waits in
             # CELLS, so the frame being drawn still shows the pass before, as the interpreter shows
-            # it. A pass that fills CELLS goes on in the far list (FAR_CELLS), which the blanks write
-            # after CELLS, so the cells stay in the order the game changed them and the last change
+            # it. A pass that fills cells goes on in the far list (FAR_CELLS), which the blanks write
+            # after cells, so the cells stay in the order the game changed them and the last change
             # of a cell is the one that stands, with nothing to search. Only a pass that fills both,
             # more cells than a whole grid has, has them written where it asks (rt_cells_write_now).
             #
-            # ON THE FRAME BEING DRAWN, for a cell the game asks to see there (CELL_SHOWN_NOW): it is
+            # On the frame being drawn, for a cell the game asks to see there (CELL_SHOWN_NOW): it is
             # written where the game asks, so the rows the display has not reached show it, and it
-            # goes into CELLS as well, so a change of the same cell waiting there cannot put the
+            # goes into cells as well, so a change of the same cell waiting there cannot put the
             # older tile back in the blank.
             #
             # A grid with a cell changed is no longer the one declared, so the next put up of it puts
@@ -1869,7 +1869,7 @@ module VBlank
             # reached any line the cell shows on, so it can be written and show this frame; clear when
             # it has. A cell is on screen where the background shows its map, from the background's
             # scroll down (SCY), the top rows' cells cut off above the first line counting as reached;
-            # and where the window shows its map, from the window's top (WY). A cell of a map neither
+            # and where the window shows its map, from the window's top (wy). A cell of a map neither
             # shows is never reached. Two lines ahead of the display, for the wait before its write.
             # Keeps B, DE and HL.
             def emit_cell_ahead(asm)
@@ -1938,7 +1938,7 @@ module VBlank
               asm.ret
             end
 
-            # A cell into CELLS, which has room for it: A how many it holds, HL where the cell goes,
+            # A cell into cells, which has room for it: A how many it holds, HL where the cell goes,
             # BC the cell. The last thing rt_background_cell does.
             def emit_cell_push_near(asm, memory)
               asm.inc(:a)
@@ -1961,12 +1961,12 @@ module VBlank
               asm.ret
             end
 
-            # THE FAR LIST (FAR_CELLS). rt_cells_push_far: a cell into it, CELLS being full; HL where
+            # The far list (FAR_CELLS). rt_cells_push_far: a cell into it, cells being full; HL where
             # the cell goes, BC the cell. Bank 1 is put back in view after, as the game left it: an
             # interrupt reads only the always-there half of work memory, so it can come while another
             # bank is in view (as it does while a painting is worked on, Runtime::Paint). Once the far
             # list is full too, both lists are written while the display draws (rt_cells_write_now)
-            # and the cell starts CELLS again.
+            # and the cell starts cells again.
             def emit_cells_far(asm, memory)
               h = Console::GBCHardware
               far = memory[FAR_CELLS]
@@ -2054,7 +2054,7 @@ module VBlank
             end
 
             # rt_cells_far_to_near: the far list's first cells moved to CELLS's end while it has room,
-            # for a pass that took cells out of CELLS (rt_bar_show, its one caller), so the cells after
+            # for a pass that took cells out of cells (rt_bar_show, its one caller), so the cells after
             # go after them; and the far list emptied once nothing is left in it.
             def emit_cells_far_to_near(asm, memory)
               h = Console::GBCHardware
@@ -2107,7 +2107,7 @@ module VBlank
             # The far list written: in the blank, and while the display draws once it is full.
             def emit_cells_far_written(asm)
               h = Console::GBCHardware
-              # rt_picture_cells_far: the far list in the blank, after CELLS, as many as the blank
+              # rt_picture_cells_far: the far list in the blank, after cells, as many as the blank
               # holds, or all of them with the display off. Unlike CELLS, a cell the blank does not
               # reach waits for the next blank: the far list is a big change, one the display would
               # reach long before it was written between its lines.
@@ -2147,7 +2147,7 @@ module VBlank
               asm.jump("rt_cells_far_kept")
 
               # rt_cells_write_far_now: the far list written while the display draws, as
-              # rt_cells_write_rest writes CELLS, and emptied.
+              # rt_cells_write_rest writes cells, and emptied.
               asm.label("rt_cells_write_far_now")
               asm.call("rt_cells_far_span")
               asm.ret(:z)
@@ -2193,11 +2193,11 @@ module VBlank
               asm.load_high(h::SVBK, :a)
             end
 
-            # CELLS WRITTEN WHILE THE DISPLAY IS DRAWING, to make room once both lists are full. Video
+            # Cells written while the display is drawing, to make room once both lists are full. Video
             # memory can be written between the lines the display reads but not while it reads one
             # (STAT's low two bits, 3 while it reads video memory), so each write waits for a moment
             # it is not reading, with the interrupt held off from the wait to the write and open
-            # between cells. rt_cells_write_now(A, how many CELLS holds) writes CELLS and then the far
+            # between cells. rt_cells_write_now(A, how many cells holds) writes cells and then the far
             # list, keeps HL and BC (the cell being changed), and comes back with A nought, CELLS's new
             # length. rt_cells_write_rest is its loop over CELLS: HL the next cell, B how many are left.
             def emit_cells_write_now(asm, memory)
@@ -2241,12 +2241,12 @@ module VBlank
               asm.ret
             end
 
-            # THE BACKGROUND. rt_background_put_up(grid) starts putting a grid up — its tiles
+            # The background. rt_background_put_up(grid) starts putting a grid up — its tiles
             # and then its cells' colours, 32 rows of 32 each, kept by GBC::Art — and the blanks
             # copy it in (rt_upload); rt_background_scroll(x, y) sets where the view sits.
             #
             # rt_background_put_up_unscrolled(grid) is the same with the view put back at the
-            # top-left corner first, even when the grid is up already: the blank copies SCROLL into
+            # top-left corner first, even when the grid is up already: the blank copies scroll into
             # the console's two scroll registers, so the background is shown from its corner until
             # the game sets where the view sits again. That is what a background's statement and a
             # scene's arrival put up with, as the Advance does (GBA::BackgroundDrawing
@@ -2254,7 +2254,7 @@ module VBlank
             # handing a background another of its maps keeps the view where it is (rt_big_show
             # likewise, beside rt_big_put_up).
             #
-            # A GRID PUT UP COPIES THE ROWS THAT CAN DIFFER, not all 32. A screen's map is 18 rows,
+            # A grid put up copies the rows that can differ, not all 32. A screen's map is 18 rows,
             # and the rows of the grid past it are empty, so a grid's put up copies the rows its maps
             # reach and the rows the grid it replaces could have cells in (GRID_ROWS), and leaves the
             # rest, empty in both. The 1152 bytes of a screen's 18 rows fit in a blank beside the
@@ -2374,7 +2374,7 @@ module VBlank
               asm.jump("rt_big_prepare")
             end
 
-            # A SCREEN'S OWN TILES (GBC::Art::Room), brought in as it comes up.
+            # A screen's own tiles (GBC::Art::Room), brought in as it comes up.
             #
             # rt_tiles_put_up(room) marks the room numbered +room+ is the one wanted, and does nothing
             # when it is in picture memory already. Its tiles are thousands of bytes — more than one
@@ -2541,7 +2541,7 @@ module VBlank
               asm.select_rom_bank
             end
 
-            # A GRID BEING PUT UP, as many rows a blank as it holds: +job+ is where it is kept — the
+            # A grid being put up, as many rows a blank as it holds: +job+ is where it is kept — the
             # rows left, where the next comes from, where it goes and the bank it is in (MAP_JOB,
             # BAR_JOB). +label+ copies more rows, or all of them while the screen is off; +rows+ is
             # that copy alone.
@@ -2564,7 +2564,7 @@ module VBlank
             # the lines of the blank left hold them (ROWS_A_LINE, LAST_COPY_LINE), whatever else the
             # blank did first: a row written once the display draws again would be lost.
             #
-            # ROWS THE BLANK HAS NO TIME FOR GO IN WITH THE DISPLAY OFF. Where they are more than
+            # Rows the blank has no time for go in with the display off. Where they are more than
             # the lines left hold, the display is switched off at once, with more than a line of
             # the blank still to come, the rows copied, and the display left off until the
             # blank's copies are all done (MAP_DISPLAY_OFF, rt_picture_display_back_on): so the
@@ -2674,11 +2674,11 @@ module VBlank
               asm.jump("rt_bank_back")
             end
 
-            # THE STATUS BAR (Reference#paint_status_bar): the console's window, which the display
+            # The status bar (Reference#paint_status_bar): the console's window, which the display
             # draws from its top row, WY, to the bottom of the screen, over the background and under
             # the sprites, reading its cells from the second grid. The bar's grid goes there; the
             # window is switched on in the display's switches the blank writes (LCDC_WANTED), and WY
-            # is written from BAR in the blank (rt_upload).
+            # is written from bar in the blank (rt_upload).
             #
             # rt_bar_put_up(grid, top): the bar's grid into the window's — +rows+ of it, the most any
             # bar of the game fills, so a shorter bar after a taller one leaves none of it behind —
@@ -2784,7 +2784,7 @@ module VBlank
               emit_map_rows(asm, memory[BAR_JOB], "rt_bar_map_rows", memory[MAP_DISPLAY_OFF])
             end
 
-            # A BAR THAT COVERS SPRITES (StatusBar#covers_sprites=). The Color's window has no say over
+            # A bar that covers sprites (StatusBar#covers_sprites=). The Color's window has no say over
             # the sprites: they are drawn over it, or under the background's own tiles, and that is
             # all. But the display reads its switches as it goes, so the switch for the whole sprite
             # layer can be turned off partway down a frame, which is what the console's own games
@@ -2903,7 +2903,7 @@ module VBlank
             # rt_bar_show(grid), for a bar with several maps (Reference#exec_show_map): the whole bar
             # is another map, its top left where it is. The copy waits for the blank, as a bar's
             # always does, and the cells kept for that blank go in after it (rt_upload), so a cell
-            # changed AFTER this shows over the new map. A cell changed BEFORE this in the same pass
+            # changed after this shows over the new map. A cell changed before this in the same pass
             # is one the new map replaces, and it is still in that list: it is taken out here, or it
             # would land on the new map.
             def emit_bar_show(asm, memory)
@@ -2940,7 +2940,7 @@ module VBlank
               asm.jump_relative(:nz, "rt_bar_show_cell")
               asm.load(:a, :c)
               asm.load([memory[CELLS]], :a)
-              # The far list's the same way, and then as many of its cells as CELLS has room for
+              # The far list's the same way, and then as many of its cells as cells has room for
               # again moved to CELLS's end, so a cell changed after this goes after them.
               asm.label("rt_bar_show_far")
               asm.call("rt_cells_far_span")
@@ -2983,7 +2983,7 @@ module VBlank
               emit_cells_far_to_near(asm, memory)
             end
 
-            # CHOOSING BY NUMBER. rt_place_of_choice(which, others) is which list of colours a
+            # Choosing by number. rt_place_of_choice(which, others) is which list of colours a
             # sprite is drawn with: 1 + which for one of its +others+, and 0 — its own — for any
             # number naming none of them (Reference#object_recolor). rt_pose_place(pose, count)
             # is which of its pictures a sprite is showing, counted back from the last for a number
@@ -3118,7 +3118,7 @@ module VBlank
               asm.jump("rt_fault")
             end
 
-            # A SPRITE PICTURE'S ENTRY IN +table+ (art_pictures, art_masks): three bytes for each
+            # A sprite picture's entry in +table+ (art_pictures, art_masks): three bytes for each
             # picture, where its data is and the bank of the cartridge it is in (GBC::Art). With the
             # picture's number in HL, this leaves DE where its data is, that bank in view, and the
             # bank's number in A. With +in_bank+ the table itself is in a bank of the cartridge
@@ -3148,7 +3148,7 @@ module VBlank
             MASK_RECORD_BYTES = 6
             OVERLAP_BYTES = (2 * MASK_RECORD_BYTES) + 7
 
-            # PIXELS TOUCHING. rt_pixels_overlap(a, b, dx, dy): 1 when sprite picture +a+ and
+            # Pixels touching. rt_pixels_overlap(a, b, dx, dy): 1 when sprite picture +a+ and
             # sprite picture +b+, b standing dx across and dy down from a, draw a pixel in the same
             # place (Reference#pixels_overlap?). Each picture's MASK (GBC::Art) is a bit for every
             # pixel, set where it draws; only the rectangle where the two pictures meet is walked,
@@ -3348,7 +3348,7 @@ module VBlank
               asm.ret
             end
 
-            # FADES AND TINTS. A Game Boy Color's display cannot mix colours as it draws, so a fade
+            # Fades and tints. A Game Boy Color's display cannot mix colours as it draws, so a fade
             # is the colours in its lists moved — every palette's every colour, from the colours the
             # pictures are drawn in now (art_palettes, or +drawn_palettes+ for a game that draws a
             # background in others) into the copy the blank sends (SHADOW_PALETTES) — by +steps+
@@ -3370,7 +3370,7 @@ module VBlank
             # longer than a frame over a screen of colours. The tables are worked out again only when
             # the walk changes, not when a list changes its colours.
             #
-            # NOTHING IS WALKED AT ONCE. rt_tint(toward, color, steps) notes a change and does nothing
+            # Nothing is walked at once. rt_tint(toward, color, steps) notes a change and does nothing
             # when nothing changed, which is most frames of a game that sets its fade every frame; a
             # list that changes its colours (rt_background_colors, a sprite's list lent) notes the
             # palettes it wrote owed, a bit each (TINT_COLORS_OWED), and a change of the walk notes

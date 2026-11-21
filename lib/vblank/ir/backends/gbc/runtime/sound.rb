@@ -5,13 +5,13 @@ module VBlank
     module Backends
       class GBC
         module Runtime
-          # THE SOUND: the console's own voices, told what to play by writing their registers.
+          # The sound: the console's own voices, told what to play by writing their registers.
           #
           # rt_sound_writes(table) writes a table the build made (GBC::Sound): each entry a
           # register's place among the console's registers at 0xFF00 and the byte to write there,
           # nought after the last.
           #
-          # THE WAVE VOICE BESIDE A RECORDING. In a game that plays one (Runtime::Clips) the
+          # The wave voice beside a recording. In a game that plays one (Runtime::Clips) the
           # recording has the wave voice while it plays, so a table for the wave voice — a `wave` or
           # a `stop_wave`, whose first write is to NR30 — is kept rather than written then, and the
           # recording's end writes it (Clips#emit_game_wave_back). The last such table is kept

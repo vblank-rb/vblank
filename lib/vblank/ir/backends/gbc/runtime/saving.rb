@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         module Runtime
-          # SAVE MEMORY: 32K of memory on the cartridge kept by a battery while the console is off,
+          # Save memory: 32K of memory on the cartridge kept by a battery while the console is off,
           # which is what a Game Boy Color game saves in. The interpreter's save memory is the
           # Advance's battery-backed one, also 32K and also written a byte at a time
           # (IR::SaveLayout), so the same bytes land in the same places on both.
