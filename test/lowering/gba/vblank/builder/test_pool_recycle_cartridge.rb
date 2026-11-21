@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/builder/test_pool_recycle"
 
-# A RECYCLING SPRITE POOL ON THE ADVANCE'S CARTRIDGE, read in the emulator. The pool's `on_full:`
+# A recycling sprite pool on the Advance's cartridge, read in the emulator. The pool's `on_full:`
 # policy as every run plays it is in test/all/vblank/builder/test_pool_recycle.rb.
 class TestPoolRecycleCartridge < Minitest::Test
   include PoolRecycleGames

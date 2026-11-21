@@ -7,7 +7,7 @@ require "stringio"
 # it in, and its instances drawn by the cartridge in the emulator. What a pool does, and the
 # friendly errors for one too big, are in test/all/vblank/builder/test_pool.rb.
 #
-# A POOL TOO BIG TO SHARE THE QUICK MEMORY. The console has 32K of quick memory, which the
+# A pool too big to share the quick memory. The console has 32K of quick memory, which the
 # game's hot code lives in too, and 256K of roomier memory. A pool over the ceiling is kept
 # in the roomier one, where it fits.
 class TestPoolCartridge < Minitest::Test

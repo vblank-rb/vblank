@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/builder/test_room_walls"
 
-# A MOVER IS STOPPED BY THE WALLS OF THE ROOM IT IS STANDING IN, on the Advance's own cartridge:
+# A mover is stopped by the walls of the room it is standing in, on the Advance's own cartridge:
 # what its wall check costs in bytes however many rooms there are, and where the console shows
 # the mover come to rest. What every run plays is in test/all/vblank/builder/test_room_walls.rb,
 # which keeps the rooms both files play in RoomWallsGames.
@@ -44,7 +44,7 @@ class TestRoomWallsCartridge < Minitest::Test
     rom.built.placement.sizes.select { |name, _| name.to_s.include?("tile_collision") }.values.sum
   end
 
-  # THE ONE THAT MATTERS. The map to read is worked out once for the whole check, not once
+  # The one that matters. The map to read is worked out once for the whole check, not once
   # per cell, so a game with sixty-four rooms asks its walls exactly what a game with two
   # asks. Without that the offset would ride on every one of the nine reads a check makes.
   def test_what_a_wall_check_costs_does_not_depend_on_how_many_rooms_there_are

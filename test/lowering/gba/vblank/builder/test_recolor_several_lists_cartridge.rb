@@ -4,7 +4,7 @@ require "test_helper"
 require "differential"
 require "all/vblank/builder/test_recolor_several_lists"
 
-# A BACKGROUND DRAWN WITH SEVERAL LISTS THE GAME CHANGES, ON THE ADVANCE'S CARTRIDGE, read in the
+# A background drawn with several lists the game changes, on the Advance's cartridge, read in the
 # emulator. The console keeps a background's colours and a sprite's in two tables, so a list's
 # colours are copied into the group of sixteen the background's tiles read whenever the list is
 # told what to hold, and again after anything that sends the background colours afresh. What the
@@ -92,7 +92,7 @@ class TestRecolorSeveralListsCartridge < Minitest::Test
     assert_backends_agree(lifted, frames: EVERY_PASS)
   end
 
-  # TWO LISTS THE GAME CHANGES, :sign and :words, a tile and a sprite drawn from each, the tiles
+  # Two lists the game changes, :sign and :words, a tile and a sprite drawn from each, the tiles
   # in the set :title_set under "s" and "w", and two plain lists with a tile each in :plain_set,
   # under "m" and "o". The block declares the backgrounds and the loop, handed each list's sets.
   private def two_lists_game(&rest)
@@ -122,7 +122,7 @@ class TestRecolorSeveralListsCartridge < Minitest::Test
     builder.program
   end
 
-  # A GROUND THAT WALKS BETWEEN TWO AREAS IN FRONT OF THE BACKGROUND, below its row of tiles.
+  # A ground that walks between two areas in front of the background, below its row of tiles.
   # Walking into an area sends that area's whole table of background colours, over the groups the
   # background's lists were written into. With +tinted+ a tint is in force from the third pass.
   private def walking_game(tinted: false)
@@ -174,7 +174,7 @@ class TestRecolorSeveralListsCartridge < Minitest::Test
     assert_match(/does not make that yet/, message)
   end
 
-  # TWO SCENES WITH A BACKGROUND EACH. The title's follows two lists, and the menu's own tiles
+  # Two scenes with a background each. The title's follows two lists, and the menu's own tiles
   # read the same groups of colours while the menu is up. The lists change while the menu is up,
   # where nothing of the title's may be written; the title then arrives showing what they hold, and
   # arrives again after the menu showing what they were told meanwhile. With +tinted+ a tint is in
