@@ -75,7 +75,7 @@ class TestGBCLinker < Minitest::Test
     assert_match(/A cartridge with a clock chip holds 128 banks/, error.message)
   end
 
-  # A TABLE OF ADDRESSES THE CODE JUMPS THROUGH (a draw order's placings, GBC::Lowering::Picture#emit_ordered_dispatch)
+  # A table of addresses the code jumps through (a draw order's placings, GBC::Lowering::Picture#emit_ordered_dispatch)
   # reaches what a jump reaches: the part always in view and its own bank. One naming code in another
   # bank is refused as the cartridge is built, where it would have jumped into whatever that bank holds.
   # Each section is over half a bank, so two banked ones are never put in one bank by chance.

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# TWO TESTS JOINED BY `||` OR `&&` are a compare and a jump each, as on the console's own games, so
+# Two tests joined by `||` OR `&&` are a compare and a jump each, as on the console's own games, so
 # a game can ask them many times a frame. What they mean does not change: the right side is left
 # unasked only where the interpreter could not tell.
 class TestGBCJoinedTests < Minitest::Test

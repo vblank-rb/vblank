@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A LIST PUT IN ORDER ON THE COLOR, for every width its slots and its numbers' slots can be: the
+# A list put in order on the color, for every width its slots and its numbers' slots can be: the
 # Color's sort reads an item as wide as its list's slots, finds the item's number as wide as the
 # other list's, and compares whole signed numbers, so each pair of widths is a different walk.
 # Numbers below nothing and level numbers are in each, since those are where a sort goes wrong.

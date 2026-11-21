@@ -3,7 +3,7 @@
 require "test_helper"
 require "list_read_cost_games"
 
-# A LIST READ AT A WORKED-OUT INDEX ON THE GAME BOY COLOR, `x = row[i]`, measured in the emulator: the
+# A list read at a worked-out index on the Game Boy Color, `x = row[i]`, measured in the emulator: the
 # index tested against the list's length, HL pointed at the slot, the slot read and its sign spread
 # (KeptVariables#emit_list_slot_of_index, Lowering#emit_slot_widened_at_hl). The console's own code
 # reads a byte with HL on it, LD A,[HL], two machine cycles (Pan Docs, "CPU Instruction Set"); a list
