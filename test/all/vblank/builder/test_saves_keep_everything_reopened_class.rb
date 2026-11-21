@@ -4,7 +4,7 @@ require "test_helper"
 
 VBlank.require_game_file "../../../fixtures/game_with_working_variables/screen_flash"
 
-# A `saved: false` MARK IN A CLASS REOPENED WHILE THE GAME BUILDS. Too late once the variable has
+# A `saved: false` mark in a class reopened while the game builds. Too late once the variable has
 # its first number, since the variable is made already as one a save keeps: the build stops at the
 # mark. In time before that, and kept. The tests beside test_saves_keep_everything.rb's.
 class TestSavesKeepEverythingReopenedClass < Minitest::Test

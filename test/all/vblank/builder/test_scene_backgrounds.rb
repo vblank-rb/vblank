@@ -50,7 +50,7 @@ module SceneBackgroundGames
     end
   end
 
-  # A SCENE THAT COMES BACK AFTER A BARE ONE PUTS ITS SCENERY UP AS DECLARED. A cell it had
+  # A scene that comes back after a bare one puts its scenery up as declared. A cell it had
   # changed is back as drawn. The console used to keep the scene marked as still up across a
   # scene with no scenery of its own, so it skipped putting it up and kept the changed cell.
   private def a_door_opened_then_a_bare_scene_then_back
@@ -78,7 +78,7 @@ module SceneBackgroundGames
     end
   end
 
-  # SCENERY EVERY SCREEN SHOWS IS IN EVERY SCREENFUL, so it is what each scene has left
+  # Scenery every screen shows is in every screenful, so it is what each scene has left
   # that the scene's own has to fit in. A game with a backdrop up throughout and three
   # backgrounds in each of two scenes is four layers at a time, and fits exactly.
   private def a_backdrop_and_two_scenes(per_scene)
@@ -111,7 +111,7 @@ module SceneBackgroundGames
 
   GREEN = VBlank::Graphics::Color.resolve(:green)
 
-  # A SCENE'S BACKGROUND MOVES LIKE ANY OTHER. Scrolling one is what a room IS — a world
+  # A scene's background moves like any other. Scrolling one is what a room is — a world
   # bigger than the screen with a window over it — so scenery declared in the scene it
   # belongs to has to scroll there, or declaring it where it belongs costs the game its
   # movement.
@@ -151,12 +151,12 @@ module SceneBackgroundGames
 
   SCROLLED_FOR = 9
 
-  # A CELL CHANGED IN A SCENE'S BACKGROUND STAYS CHANGED. The other half of the same
+  # A cell changed in a scene's background stays changed. The other half of the same
   # cause: putting a layer up sends its whole map again, so doing it every frame put back
   # every cell the game had changed since. A door that opens, a pot that breaks, a heart
   # that empties — each is one cell, and each was undone on the next frame.
   #
-  # THE TWO BACKENDS DISAGREED ABOUT THIS ONE, which is the reason both halves are asserted
+  # The two backends disagreed about this one, which is the reason both halves are asserted
   # rather than just the console's. The interpreter paints from its own copy of the map, so
   # a changed cell was always painted back changed and this was already true there; the
   # console re-sent the map and lost it. Measured before the fix: the interpreter kept the
@@ -184,7 +184,7 @@ module SceneBackgroundGames
     end
   end
 
-  # ...BUT ONLY WHILE THE SCENE STAYS UP. Leave it and come back and the scene is put up as
+  # ...BUT only while the scene stays up. Leave it and come back and the scene is put up as
   # it was declared, the changed cell with it, the same promise show_map makes about a map
   # chosen again. A game that remembers an opened door opens it again on the way in. The
   # console did that already, because putting a scene up sends its map; the interpreter
@@ -217,7 +217,7 @@ module SceneBackgroundGames
     end
   end
 
-  # THE SAME FOR A MAP CHOSEN WITH show_map: coming back shows the first map declared, and
+  # The same for a map chosen with show_map: coming back shows the first map declared, and
   # the background says so. The half that went wrong on the console was the second one —
   # it put the first map up but still remembered choosing the other, so choosing that one
   # again was taken as already done and the picture never changed.
@@ -251,7 +251,7 @@ module SceneBackgroundGames
     end
   end
 
-  # A TILED SCENE, AWAY TO A BITMAP SCREEN, AND BACK. The two kinds of screen share the
+  # A tiled scene, away to a bitmap screen, and back. The two kinds of screen share the
   # console's video memory in ways that cannot both be live, so crossing between them wipes
   # what was there — and the scenery has to be put up again on the way back rather than
   # taken as still standing.
@@ -281,9 +281,9 @@ module SceneBackgroundGames
     end
   end
 
-  # A SCENE'S BACKGROUND MUST NOT MOVE ANOTHER SCENE'S LAYER.
+  # A scene's background must not move another scene's layer.
   #
-  # Where a background SITS is a property of the console's layer, not of the background —
+  # Where a background sits is a property of the console's layer, not of the background —
   # and scenes take turns with the layers. So a background belonging to a scene that is
   # not on screen must leave the scroll registers alone: two backgrounds sharing a layer
   # both write it every frame otherwise, and the second one declared wins. A title screen
@@ -324,13 +324,13 @@ module SceneBackgroundGames
   end
 end
 
-# A SCENE OWNS THE BACKGROUNDS DECLARED INSIDE IT, the way it already owns the sprites
+# A scene owns the backgrounds declared inside it, the way it already owns the sprites
 # and the HUD text declared there: they are on screen while that scene is the active
 # state and not otherwise.
 #
 # That is what makes a game with many rooms writable — each room's scenery declared where
 # it belongs — and it is what decides how many background layers a game may have at all.
-# The console holds four scrolling layers AT ONCE, so what has to fit is one scene's
+# The console holds four scrolling layers at once, so what has to fit is one scene's
 # worth, not the whole game's, exactly as the 32K of sprite pictures already works.
 #
 # What the Advance's cartridge does with each of these, read in the emulator, is in
@@ -355,7 +355,7 @@ class TestSceneBackgrounds < Minitest::Test
     assert_includes error.message, ":one", "the message does not say which scene ran out"
   end
 
-  # A DECLARED STACK IS COUNTED PER SCREEN TOO. The console keeps four depths as well as
+  # A declared stack is counted per screen too. The console keeps four depths as well as
   # four layers, and both are spent while something is being drawn — so a game that names
   # its stack and puts three backgrounds in each of two scenes must not be refused at six.
   def test_a_named_stack_is_counted_per_screen_as_well
@@ -377,7 +377,7 @@ class TestSceneBackgrounds < Minitest::Test
     GBA.new.lower(prog) # six layers over two scenes is three at a time, and fits
   end
 
-  # A SCENE'S BACKGROUND GOES AWAY WITH THE SCENE. Asserted on its own and at one
+  # A scene's background goes away with the scene. Asserted on its own and at one
   # background per scene, because it is the plainest statement of the rule the count above
   # depends on: if the first scene's scenery were still being drawn, its layers would
   # still be spoken for and the count could never be per scene.
@@ -386,7 +386,7 @@ class TestSceneBackgrounds < Minitest::Test
     assert_equal BLUE, shown(two_scenes(1), SWITCH_AT + 4)
   end
 
-  # EACH SCREEN OWNS ITS OWN BENT BACKGROUND. The scene that bends sits its rows from 40 down four
+  # Each screen owns its own bent background. The scene that bends sits its rows from 40 down four
   # pixels along, onto the blue half of each stripe. The next scene's background shares nothing
   # with it, and its rows stay straight until the first scene comes back.
   def test_a_scene_bends_only_its_own_background
@@ -520,7 +520,7 @@ class TestSceneBackgrounds < Minitest::Test
     assert_equal BLUE, again.screen.pixel(0, 0), "choosing the map again after coming back did nothing"
   end
 
-  # A BACKGROUND THAT BELONGS TO NO SCENE IS NOT COVERED BY ANY OF THIS, and the two
+  # A background that belongs to no scene is not covered by any of this, and the two
   # backends have to say so together. One declared in a plain routine that the frame calls
   # is re-reached every pass exactly as a scene's was, and it is put up again every time —
   # the cartridge has no way to know it is already up, so the interpreter must not pretend
@@ -552,7 +552,7 @@ class TestSceneBackgrounds < Minitest::Test
                  "the scenery never came back after the other kind of screen wiped it"
   end
 
-  # ...and the same for a scene's background that MOVES and one whose cells CHANGE. Both
+  # ...and the same for a scene's background that moves and one whose cells CHANGE. Both
   # halves above compare a backend against itself — the scene's picture against the top
   # level's on the same backend — which a wrong-but-consistent answer would satisfy. This
   # is the half that cannot: the two backends reached the changed cell by different routes
@@ -569,7 +569,7 @@ class TestSceneBackgrounds < Minitest::Test
     assert_backends_agree(a_drifting_title_and_a_still_game, frames: 6)
   end
 
-  # EACH SCENE'S TILES ARE ITS OWN TO COUNT: two scenes of 300 different tiles each, with a status
+  # Each scene's tiles are its own to count: two scenes of 300 different tiles each, with a status
   # bar every screen shows, are more tiles than the Color holds at once, and each screen
   # alone is fewer. The scenes take turns twice, so the first comes back after the second's tiles
   # went in where its own had been.
@@ -608,7 +608,7 @@ class TestSceneBackgrounds < Minitest::Test
     assert_backends_agree(prog, frames: [2, TILES_SWITCH_AT + 3, (TILES_SWITCH_AT * 2) + 3], name: "SCNTILES")
   end
 
-  # EACH SCENE'S COLOURS ARE ITS OWN TO COUNT too: two scenes each drawing from six lists of four
+  # Each scene's colours are its own to count too: two scenes each drawing from six lists of four
   # colours of their own, twelve between them, which is more than the eight a Game Boy Color holds
   # at once. A fade is in force from before the second scene arrives until after, so its colours
   # arrive faded, and the first scene comes back after the second's colours went in where its own
@@ -730,7 +730,7 @@ class TestSceneBackgrounds < Minitest::Test
     [turned_first, turned_last].each { |message| assert_match(/two scenes and turns or resizes/, message) }
   end
 
-  # ONE NAME, A DECLARATION IN EACH SCENE, the way a game writes its levels: each level is a
+  # One name, a declaration in each scene, the way a game writes its levels: each level is a
   # scene with a :world of its own, drawn from the same tiles in a different map, the second
   # with a tile of its own as well. Each scene shows its own declaration, the game changes a
   # cell of the second level's from the game loop, and the first level comes back as declared.
@@ -777,7 +777,7 @@ class TestSceneBackgrounds < Minitest::Test
                           name: "SCNLEVEL")
   end
 
-  # ...and the same from the FIRST scene to declare the name, which every line naming the
+  # ...and the same from the first scene to declare the name, which every line naming the
   # background must reach while it is up, not the last declaration: the first level has two
   # maps of its own and the second one, and the game hands the first level its second map and
   # then changes a cell of it. Neither may read the second level's maps.
@@ -814,7 +814,7 @@ class TestSceneBackgrounds < Minitest::Test
     end
   end
 
-  # A ROUTINE BOTH LEVELS CALL opens the second level's door, a tile only the second level's
+  # A routine both levels call opens the second level's door, a tile only the second level's
   # :world has. Called while the first level is up, there is no such tile to put in its cells,
   # and nothing changes; called while the second is up, the door opens.
   private def a_door_only_one_level_has
@@ -868,7 +868,7 @@ class TestSceneBackgrounds < Minitest::Test
     assert_backends_agree(prog, frames: [3, 5, (NAME_SWITCH_AT * 2) + 2], name: "SCNFIRST")
   end
 
-  # A SPRITE EVERY SCREEN SHOWS, OVER A SCENE WITH NO BACKGROUND OF ITS OWN: the hall takes the
+  # A sprite every screen shows, over a scene with no background of its own: the hall takes the
   # scenery down as it goes, and the sprite stays where it is over the backdrop, then over the
   # hall again as it comes back.
   private def a_sprite_over_a_scene_with_no_scenery
