@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE SUPER NINTENDO SOUND CHIP'S OWN ENVELOPE SETTINGS (Audio::SNESEnvelope), and the ordinary
+# The Super Nintendo sound chip's own envelope settings (Audio::SNESEnvelope), and the ordinary
 # Audio::Envelope nearest each, which is what the interpreter and every other console play. The
 # answer key is the chip's documented arithmetic: its steps and the samples each rate waits
 # (fullsnes, "SNES APU DSP ADSR/Gain Envelope"), worked out by hand in each test's comment.

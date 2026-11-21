@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A SONG WITH AN INTRODUCTION. Game music plays a fanfare once and then loops a later stretch
+# A song with an introduction. Game music plays a fanfare once and then loops a later stretch
 # for as long as the scene lasts, so a song can say where its loop starts — `loop_from:` on a
 # Score, `loop_from_here` in a song block. At its end it goes back there, not to its first note.
 #
