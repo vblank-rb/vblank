@@ -4,8 +4,22 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # What a game of big pixels (`screen :bitmap, pixel_size: 2`) cannot have yet.
+        # An error about a part of a game of big pixels (`screen :bitmap, pixel_size: 2`) that is not
+        # made yet for big pixels:
         #
+        # > This game says `pixel_size: <size>`, and <what> is not made yet for big pixels. To fix
+        # > this, remove it from the game, or remove pixel_size:.
+        #
+        # The game draws a small picture and the console shows it bigger. Everything the game
+        # paints into that picture is shown right, but these are counted in the console's own
+        # pixels, not the game's, and would come out the wrong size or in the wrong place: the
+        # camera (`camera` or `shake_screen`), `pixelate`, a light (`spotlight`, `iris_out` or
+        # `iris_in`), a fade held to a rectangle (`inside:` or `outside:`), a sprite over the
+        # picture (`over_picture: true`), `read_scanline`, and a border round the screen. Each is
+        # refused on every console. Remove it from the game, or remove `pixel_size:` and draw at the
+        # console's own size.
+        #
+        #--
         # The game draws a small picture and the console shows it bigger. On the Advance the painted
         # screen is drawn through a background that can resize, told to read half a pixel for each
         # pixel it shows (Backends::GBA::Drawing#emit_bigger_pixels), so everything drawn into the
@@ -24,6 +38,7 @@ module VBlank
         # - a game shown in a border is already moved inside the console's screen.
         #
         # So each is refused by name, on every console, rather than drawn at the wrong size.
+        #++
         class BiggerPixelsNotMadeYet
           NAME = :bigger_pixels_not_made_yet
           PLAIN_NAME = "a part of a game that big pixels do not make yet"
