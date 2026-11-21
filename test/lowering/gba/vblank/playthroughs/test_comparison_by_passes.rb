@@ -5,7 +5,7 @@ require "stringio"
 require "comparison_games"
 require "slow_pass_games"
 
-# TWO CARTRIDGES LINED UP BY THE GAME'S OWN PASSES (`by_passes:`), not by frames. A pass is one
+# Two cartridges lined up by the game's own passes (`by_passes:`), not by frames. A pass is one
 # run of the game's loop, and on either cartridge one may take a frame or several: an original
 # too busy for a frame now and then, a port that is quicker. Frame by frame such a pair drifts
 # at the first slow pass and never comes back; pass by pass it is compared like with like, on
@@ -157,7 +157,7 @@ class TestComparisonByPasses < Minitest::Test
     end
   end
 
-  # A GAME THAT READS ITS BUTTONS EVERY FRAME, as one reading them in its frame interrupt does: a
+  # A game that reads its buttons every frame, as one reading them in its frame interrupt does: a
   # tap on a slow pass's later frame is caught, and counted on the pass. +late+ as `passing`.
   private def tapping(late: false)
     VBlank.build("TAPPING", console: :gba, frame_sync: :manual, out: StringIO.new, err: StringIO.new) do
@@ -207,7 +207,7 @@ class TestComparisonByPasses < Minitest::Test
     end
   end
 
-  # AFTER A LEAD-IN a pass can be under way on either cartridge, and its first frame is behind
+  # After a lead-in a pass can be under way on either cartridge, and its first frame is behind
   # it, so it is not compared: comparing starts at the first cartridge's next pass, each on its
   # first frame, the second played on to it.
   def test_a_pass_under_way_when_the_lead_ins_end_is_not_compared
@@ -248,7 +248,7 @@ class TestComparisonByPasses < Minitest::Test
     assert_match "from power-on", error.message
   end
 
-  # A COUNT THAT WRAPS: which cartridge is ahead after the lead-ins is the nearer way round. Here
+  # A count that wraps: which cartridge is ahead after the lead-ins is the nearer way round. Here
   # the quick build's count has come round and the slow first one's has not, so the quick one reads
   # lower and is ahead.
   def test_a_second_ahead_past_a_wrap_is_refused
@@ -287,7 +287,7 @@ class TestComparisonByPasses < Minitest::Test
     assert_equal 2, drift.pass
   end
 
-  # A PASS THAT FINISHES ON ITS SECOND FRAME (SlowPassGames): read on its first frame its work is
+  # A pass that finishes on its second frame (SlowPassGames): read on its first frame its work is
   # half done, so the two are compared at each pass's end, the readings on its last frame and the
   # picture on the frame after it.
   def test_a_slow_pass_is_compared_at_its_end

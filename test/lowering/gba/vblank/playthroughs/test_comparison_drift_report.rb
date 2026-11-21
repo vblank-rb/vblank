@@ -5,7 +5,7 @@ require "tmpdir"
 require "comparison_games"
 require "png_reading"
 
-# A DRIFT REPORT: the folder a comparison writes for a drift, when it is given a place to
+# A drift report: the folder a comparison writes for a drift, when it is given a place to
 # write one. It holds what somebody needs to see what went wrong and to get back to it: the
 # two screens at the drifting frame, a picture marking where they differ, a few plain
 # sentences about it, and a tape that plays either cartridge to that exact frame.
@@ -37,7 +37,7 @@ class TestComparisonDriftReport < Minitest::Test
     end
   end
 
-  # A COMPARISON THAT FINDS A DRIFT WRITES ONE FOLDER FOR IT, named for the frame, and says
+  # A comparison that finds a drift writes one folder for it, named for the frame, and says
   # where: the two pictures, the difference picture, the text file and the tape.
   def test_a_drift_gets_a_folder_holding_its_pictures_its_words_and_its_tape
     first = plain
@@ -54,7 +54,7 @@ class TestComparisonDriftReport < Minitest::Test
     end
   end
 
-  # THE FOLDER HOLDS ONE PICTURE OF IT ALL, the two screens and the difference side by side,
+  # The folder holds one picture of it all, the two screens and the difference side by side,
   # and it is the picture anybody gets who asks for that frame by itself — with a part of
   # the screen left out too, where the two have to agree about what is marked.
   def test_the_side_by_side_picture_is_the_one_asked_for_by_itself
@@ -86,7 +86,7 @@ class TestComparisonDriftReport < Minitest::Test
 
   private def png_in(folder, name) = png_pixels(File.binread(File.join(folder, name)))
 
-  # THE TWO PICTURES ARE THE TWO SCREENS ON THE DRIFTING FRAME, and the difference picture
+  # The two pictures are the two screens on the drifting frame, and the difference picture
   # marks exactly the pixels that differ between them: here every pixel of the ground, and
   # none of the box, which is white on both.
   def test_the_pictures_are_the_two_screens_and_the_difference_marks_what_differs
@@ -107,7 +107,7 @@ class TestComparisonDriftReport < Minitest::Test
     end
   end
 
-  # THE TAPE IN THE FOLDER PLAYS EITHER CARTRIDGE TO THE DRIFTING FRAME, where it shows the
+  # The tape in the folder plays either cartridge to the drifting frame, where it shows the
   # picture of it that is in the folder.
   def test_the_tape_plays_either_cartridge_to_the_drifting_frame
     first = plain
@@ -124,7 +124,7 @@ class TestComparisonDriftReport < Minitest::Test
     end
   end
 
-  # THE TEXT FILE SAYS IT IN SHORT PLAIN SENTENCES: the frame, the moment before it, what was
+  # The text file says it in short plain sentences: the frame, the moment before it, what was
   # down for the last second, which cartridges were played and how alike they had to be.
   def test_the_text_file_names_the_frame_the_moment_the_presses_and_the_settings
     first = plain
@@ -158,7 +158,7 @@ class TestComparisonDriftReport < Minitest::Test
     end
   end
 
-  # THE LAST SECOND IS THE LAST SIXTY FRAMES, the drifting frame the last of them. This walk
+  # The last second is the last sixty frames, the drifting frame the last of them. This walk
   # is longer than a second and names no moment: the hold the second begins inside is said
   # from where the second begins, what came before it is not said at all, and the text says
   # that no moment came before.
@@ -208,7 +208,7 @@ class TestComparisonDriftReport < Minitest::Test
     end
   end
 
-  # WITH SEVERAL FRAMES IN A ROW ASKED FOR, THE REPORT IS OF THE FRAME THE DRIFT BEGAN, which
+  # With several frames in a row asked for, the report is of the frame the drift began, which
   # by the time it is known to be drift both consoles have played past. This ground is red
   # for three frames while the box is walking, so each of the three is a different picture:
   # the folder is named for the first of them, its pictures are of that frame and not of
@@ -243,7 +243,7 @@ class TestComparisonDriftReport < Minitest::Test
     end
   end
 
-  # NO DRIFT, OR NOWHERE TO WRITE, AND NOTHING IS WRITTEN — not even the folder that was named.
+  # No drift, or nowhere to write, and nothing is written — not even the folder that was named.
   def test_no_drift_or_no_place_writes_nothing
     cartridge = plain
     Dir.mktmpdir("drift") do |somewhere|
