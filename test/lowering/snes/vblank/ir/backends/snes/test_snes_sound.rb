@@ -73,7 +73,7 @@ class TestSNESSound < Minitest::Test
 
   # A cartridge whose reset sets the console up as the runtime's boot does, sends the sound unit its
   # program (or, without +send_program+, says it did, so every write waits on a sound unit that never
-  # answers), makes each of +writes+ ([register, value]) and marks done.
+  # answers), makes each of +writes+ ([register, value]) and marks DONE.
   private def cartridge(memory, writes, send_program: true)
     runtime = SNES::W65816.new("runtime")
     Sound.emit(runtime, memory, [])

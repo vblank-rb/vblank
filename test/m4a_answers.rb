@@ -22,7 +22,7 @@ module M4AAnswers
             voice: 0xBD, vol: 0xBE, pan: 0xBF, bend: 0xC0, bendr: 0xC1, lfos: 0xC2, lfodl: 0xC3, mod: 0xC4, modt: 0xC5,
             tune: 0xC8, port: 0xCC, xcmd: 0xCD, eot: 0xCE, tie: 0xCF }.freeze
 
-  # A note or wait of +ticks+, which must be one of clocks.
+  # A note or wait of +ticks+, which must be one of CLOCKS.
   def self.note_code(ticks) = 0xCF + CLOCKS.index(ticks)
   def self.wait_code(ticks) = 0x80 + CLOCKS.index(ticks)
 
@@ -795,6 +795,6 @@ module M4AAnswers
   def self.voice_settings_bytes(rate, hold, length, shape) = [rate, hold, length].pack("V3") + shape.pack("C4")
 
   # Must be InRactors.share_constants, not Ractor.make_shareable alone: tests in several Ractors
-  # write copy to a file at once (InRactors.shareable says what that does to a plain frozen String).
+  # write COPY to a file at once (InRactors.shareable says what that does to a plain frozen String).
   VBlank::Testing::InRactors.share_constants(self)
 end

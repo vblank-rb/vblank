@@ -38,7 +38,7 @@ class TestPlaythroughHiROMFile < Minitest::Test
     end
   end
 
-  # The game a script leaves standing, after walked frames of RIGHT.
+  # The game a script leaves standing, after WALKED frames of RIGHT.
   private def walked(path)
     game = VBlank.playthrough("x") {}.play(path).game
     WALKED.times { game.step(1, keys: VBlank::IR::Buttons.mask(:right)) }

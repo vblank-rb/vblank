@@ -36,7 +36,7 @@ class TestSNESWrittenNumberPaths < Minitest::Test
 
   Build = VBlank::IR::Build
 
-  # Each of edges in turn, one a pass, and every answer above for it kept in a variable of its own.
+  # Each of EDGES in turn, one a pass, and every answer above for it kept in a variable of its own.
   def self.game_of_edges
     b = Builder.new(options: VBlank::Cartridge::Options.new(console: :snes))
     b.instance_eval do
