@@ -12,7 +12,7 @@ module VBlank
       end
     end
 
-    # A GAME ITS CONSOLE'S BUILD REFUSES IS NOT PLAYED on a run that plays games built for another
+    # A game its console's build refuses is not played on a run that plays games built for another
     # machine. A build checks a game before it makes anything (VBlank.build, through
     # IR::ProgramChecks): a game number handed to a verb that takes only a written one, a sprite too
     # many on a row, more colour lists than the console holds, a recording looped on a console that
@@ -29,7 +29,7 @@ module VBlank
     # answer key for a game a console plays, and a game its console refuses is not one, so there is
     # nothing to compare.
     #
-    # A PORT'S UNPACKING IS NOT CHECKED either (IR::Nodes::Program#for_unpacking). It runs only on a
+    # A port's unpacking is not checked either (IR::Nodes::Program#for_unpacking). It runs only on a
     # computer, in a shell or as a build makes its pack, and no build checks it against the console's
     # limits: a shell builds it for the game's console, so its screen and clock are that console's,
     # but its pack can be bigger than a cartridge's work memory. Every shell plays it unchecked
@@ -78,7 +78,7 @@ module VBlank
     end
 
     # A runtime's player plays a program that names no console as one for the run's console
-    # (Testing.console): the Advance, or whichever CONSOLE names. The runtime is built for that
+    # (Testing.console): the Advance, or whichever console names. The runtime is built for that
     # console's screen and clock, and the interpreter it is checked against reads the same one.
     # What the computer builds do not make yet (Computer::NotMadeYet) is a skip naming the part.
     module PlaysRunConsole
@@ -113,7 +113,7 @@ module VBlank
       end
     end
 
-    # A PORT'S UNPACKING PLAYED AS C IS ALSO PLAYED AS A BUILD PLAYS IT: optimised, to its end, with
+    # A port's unpacking played as C is also played as a build plays it: optimised, to its end, with
     # nobody watching (Original::Unpacking#run_as_c, IR::Backends::Native::FinalStateRun), and what it
     # left is held to what the checked run ended on, every variable and every list, byte for byte. The
     # checked run holds the C to the interpreter frame by frame, so every unpacking a test plays on the

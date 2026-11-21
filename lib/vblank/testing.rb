@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# A GAME'S OWN TESTS, PLAYED ON EITHER LOWERING. The one require a game's test suite needs:
+# A game's own tests, played on either lowering. The one require a game's test suite needs:
 #
 #   require "vblank/testing"
 #
@@ -19,7 +19,7 @@
 # (Lowering::SETTING), which the rake tasks set (vblank/testing/rake_tasks); a plain run is the
 # GBA lowering's.
 #
-# A test that asks whether the CARTRIDGE draws what the interpreter draws includes Pictures as
+# A test that asks whether the cartridge draws what the interpreter draws includes Pictures as
 # well (`include VBlank::Testing::Pictures`, for `assert_backends_agree`). That one plays the
 # cartridge in the emulator, so it needs the ruby-gba-emulator gem in the game's test group.
 #
@@ -58,7 +58,7 @@ module VBlank
     def self.console = CONSOLE
     def game_console = Testing.console
 
-    # A TEST'S PROGRAM THAT NAMES NO CONSOLE is laid out as the Advance while its block runs, which
+    # A test's program that names no console is laid out as the Advance while its block runs, which
     # is the screen those tests were written for, and is played as its run's console
     # (PlaysRunConsole). The library assumes none, so a game's build that names none stops and says
     # so; only a test suite has this. Laying such a test out as its run's console is the better
@@ -68,26 +68,26 @@ module VBlank
     end
     IR::Nodes::Program.prepend(LaidOutForTheAdvance)
 
-    # THE COLOUR +color+ (a name, a hex string or a 15-bit number) LOOKS LIKE on this run's console,
+    # The colour +color+ (a name, a hex string or a 15-bit number) looks like on this run's console,
     # which keeps fewer bits of each channel than a game names a colour in on some (the Genesis keeps
     # three of five): what a test compares a pixel of the picture to.
     def self.shown(color) = Console.described(CONSOLE).shown(Graphics::Color.resolve(color))
     def shown(color) = Testing.shown(color)
 
-    # HOW MANY PASSES BEHIND THE GAME'S NUMBERS what the framework draws for it is — its sprites,
+    # How many passes behind the game's numbers what the framework draws for it is — its sprites,
     # its tiled text, its scroll — read at a frame boundary on this run's console. One on the
     # Advance, which places them in the gap after the boundary from the pass before; none on the
     # Color, which places them before it from the pass just ended
     # (Console::Description#sprites_placed_before_wait). What the game draws itself is never behind.
     def framework_drawing_lag = Console.described(game_console).sprites_placed_before_wait ? 0 : 1
 
-    # THE EMULATOR, IF THE GAME HAS IT, LOADED NOW rather than by the first test that wants it.
+    # The emulator, if the game has it, loaded now rather than by the first test that wants it.
     # A suite may play its tests in Ractors, and loading it writes globals only the main Ractor
     # may touch (see Diagnostics::Emulator.load!). A game without it in its test group loses
     # only the tests that play the cartridge, which say so when they run.
     Diagnostics::Emulator.available?
 
-    # STANDARD OUTPUT UNBUFFERED, so a test in a Ractor can start a program. In Ruby 4.0, before
+    # Standard output unbuffered, so a test in a Ractor can start a program. In Ruby 4.0, before
     # it starts one it flushes the process's standard output, and if words are waiting it takes the
     # lock of an object the main Ractor owns. When the main Ractor is writing the run's progress
     # at that moment, the test waits on a lock no thread of its own can release, and Ruby stops
@@ -129,7 +129,7 @@ module VBlank
     # The class game_player makes one of, for this run (Lowering::Run#player).
     def self.player_class = RUN.player_class
 
-    # EVERY CARTRIDGE THE RUN BUILDS IS UNMEASURED, unless a test asks: a game's test helper calls
+    # Every cartridge the run builds is unmeasured, unless a test asks: a game's test helper calls
     # this once, before the tests start, so a helper calling `game.build_rom` skips the measuring
     # build (Cartridge::Game.unmeasured_builds). Given the run's +cache+ (a CartridgeCache), such a
     # build is read from it and kept there between runs. A call passing `profile: true` measures.
@@ -157,7 +157,7 @@ module VBlank
       raise MissingFeature, "#{run.title} cannot play this yet: #{why}" if Testing.lowering == lowering
     end
 
-    # A test of something a console's HARDWARE cannot do has no skip: it lives in the folders of the
+    # A test of something a console's hardware cannot do has no skip: it lives in the folders of the
     # consoles that can (test/console/<console>/), and every run playing as a console refuses a game
     # that console's build refuses, before playing it (BuildChecks), so a game it cannot play never
     # passes there unseen.
@@ -167,7 +167,7 @@ module VBlank
     # about a lowering, so it is no test in the wrong place (see SkipsByReason).
     def skip_on_this_machine(why) = raise(NotOnThisMachine, why)
 
-    # THE PLAYER'S COPY OF THE ORIGINAL +game+ (an Original::Game) IS MADE FROM, for a test that reads
+    # The player's copy of the original +game+ (an Original::Game) is made from, for a test that reads
     # it. A machine where nothing sets where one is stops the test (Original::NotSet), saying what to
     # set, and a copy that is named and wrong stops it too (Original::WrongCopy). Nothing skips: the
     # games' shared rule is that a suite without the copy stops, because a suite that skipped would
@@ -176,7 +176,7 @@ module VBlank
     # It is the one choice for every game, so no game makes its own.
     def original_copy(game) = game.copy
 
-    # EVERY FILE OF +facts+ (an Original::Facts) KEPT TO ITS THREE RULES: it is laid out as its tool
+    # Every file of +facts+ (an Original::Facts) kept to its three rules: it is laid out as its tool
     # writes it, so nobody edited a value by hand; every key has a comment written above it; and
     # every measured fact has a value, a source and a test, a file under +root+ (the folder the
     # game's tests are named from) that is there.
@@ -242,7 +242,7 @@ module VBlank
       raise MissingFeature, "#{Console.for(Testing.console).title} cannot play this yet: #{game.title} is not written for it"
     end
 
-    # THE TWO KINDS OF SKIP A RUN TAKES. The first: its lowering lacks the feature the test plays —
+    # The two kinds of skip a run takes. The first: its lowering lacks the feature the test plays —
     # its build does not make it yet, or its hardware cannot. A checked player raises it for what
     # its lowering does not make or answer, and skip_on_<run> for what a test declares it cannot play.
     # The second is NotOnThisMachine, below. Any other skip is a test in the wrong place, and fails
