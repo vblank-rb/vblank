@@ -6,7 +6,7 @@ module VBlank
     # the piece sits, which tile it shows, and whether it is turned or big. A retail game copies a
     # frame's pieces into the console's sprite table each time a pose changes, adding the object's
     # place. The record is the game's own, so the port describes it here, by where each part is,
-    # and a pose is read from it (`image ..., frame: pack[:frames].frame(at, layout: frame)`).
+    # and a pose is read from it (`image ..., frame: pack[:frames].frame(at, layout: FRAME)`).
     #
     # Only the pack's unpacking reads a frame this way. It writes each frame a game names again as
     # a record of VBlank's own (FrameRecord), one layout whatever the original's, and the build,
@@ -94,7 +94,7 @@ module VBlank
     # piece's bytes and the values the pose gives, and gives back a Piece (below):
     #
     #   FRAME = VBlank::Original::FrameLayout.new(piece_bytes: 5, counted: true, piece: reader)
-    #   image :craft, tiles: pack[:sprites], frame: pack[:frames].frame(0, layout: frame, with: { block: 5 }), ...
+    #   image :craft, tiles: pack[:sprites], frame: pack[:frames].frame(0, layout: FRAME, with: { block: 5 }), ...
     #
     # A value from the pose, not the frame: an original may add to what a piece's bytes say
     # something the object holds (the block of sprite memory its tiles were loaded to), and the

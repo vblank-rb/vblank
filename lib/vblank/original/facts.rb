@@ -28,7 +28,7 @@ module VBlank
     # refused, since a fact must be written once. Testing#assert_facts_kept holds every file to the
     # three rules above.
     #
-    # Facts a person writes. A port made from a decompilation has no tool: a person reads each number
+    # FACTS a person writes. A port made from a decompilation has no tool: a person reads each number
     # in the original's source and writes it down. Such a game sets that:
     #
     #   FACTS = VBlank::Original::Facts.new("data/facts", written_by: :hand)

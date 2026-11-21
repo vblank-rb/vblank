@@ -11,7 +11,7 @@ module VBlank
       attr_reader :reason
 
       # Why +mine+, the fingerprint of this machine's game, was not let into a match that is
-      # +theirs+. +reason+ is one of reasons.
+      # +theirs+. +reason+ is one of REASONS.
       def self.because(reason, mine:, theirs:)
         new(reason, words(reason, mine, theirs))
       end

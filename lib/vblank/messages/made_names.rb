@@ -224,7 +224,7 @@ module VBlank
 
       def self.kinds = KINDS.keys
 
-      # The name of the +kind+ made from +parts+ (see kinds for each kind's parts).
+      # The name of the +kind+ made from +parts+ (see KINDS for each kind's parts).
       def self.make(kind, **parts)
         KINDS.fetch(kind).make(parts)
       end
