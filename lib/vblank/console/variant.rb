@@ -2,7 +2,7 @@
 
 module VBlank
   module Console
-    # A VARIANT OF A CONSOLE: hardware some copies of a console have and others do not. A game names
+    # A variant of a console: hardware some copies of a console have and others do not. A game names
     # it where it names its consoles (`variants: { snes: :superfx }`, see Cartridge::Game), since a
     # chip is part of what the cartridge is, and `vblank build --variant` can override it for one
     # build. A Super Nintendo cartridge can carry a chip

@@ -2,7 +2,7 @@
 
 module VBlank
   module Console
-    # THE SUPER NINTENDO'S HARDWARE, NAMED: where its memory is, and the addresses and flags of the
+    # The Super Nintendo's hardware, named: where its memory is, and the addresses and flags of the
     # registers that drive its picture, its buttons, its copying engine and its arithmetic units.
     # Names follow the ones every Super Nintendo document uses (fullsnes, the SNESdev wiki), so
     # anyone who has read one recognises them.
@@ -233,7 +233,7 @@ module VBlank
       # LoROM read at the slow speed: a board whose ROM cannot keep up with the faster one.
       LOROM_SLOW = 0x20
 
-      # THE OTHER USUAL LAYOUT, HiROM, which VBlank never builds but about half the console's
+      # The other usual layout, HiROM, which VBlank never builds but about half the console's
       # retail cartridges use. Its banks are 64K: the processor sees the top half of each, $8000-
       # $FFFF of banks $00-$3F, as the file from bank * $10000 + $8000. So $00:FFC0, where the
       # header always is, is offset $FFC0 of the file, $8000 further in than a LoROM file's. Its

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# READING A BUILT OR RUNNING CARTRIDGE BACK: taking a finished ROM apart, running one and
+# Reading a built or running cartridge back: taking a finished ROM apart, running one and
 # looking at the pixels and the sound it really produced, and measuring where its frames went.
 # All of it needs a cartridge to exist first — what a build says while there is not one yet is
 # Messages.

@@ -8,23 +8,23 @@ module VBlank
     # the cost tooling, opposite the static estimate in {IR::CostModel}. It runs the ROM
     # and reads how many of a frame's ~228 scanlines a frame actually burns, which is the
     # measured number the static estimate can only guess at. The reading is the frame's
-    # wall-clock work — the CPU executing PLUS the stall while a DMA engine copies — so a
+    # wall-clock work — the CPU executing plus the stall while a DMA engine copies — so a
     # DMA-heavy frame reads its true cost, not just the CPU part.
     #
-    # A GAME COSTS WHAT THE PLAYER MAKES IT COST, and that is what shapes this file. A game
+    # A game costs what the player makes it cost, and that is what shapes this file. A game
     # standing still can be the cheapest frame it ever draws — examples/raycaster.rb read
     # 225 of 228 doing nothing and 228 the moment the view turned, because turning brings
     # nearer walls and taller columns into view. So the profiler does not read one frame
     # doing nothing. It holds each button the game reads, in turn, and then all of them at
-    # once, reads EVERY frame over a window, and reports the worst frame it found and what
+    # once, reads every frame over a window, and reports the worst frame it found and what
     # was held to find it.
     #
-    # ALL AT ONCE IS THE ONE THAT FINDS THE WORST FRAME. A game tests its buttons one after
+    # All at once is the one that finds the worst frame. A game tests its buttons one after
     # another, and each test guards work of its own, so a frame with two buttons down runs
     # both bodies. Holding them singly finds the dearest single body, which is not the worst
     # frame — see #key_combinations for what that was costing.
     #
-    # AN ADVANCE CARTRIDGE'S ALONE. It reads what the Advance's build and hardware keep, and only
+    # An Advance cartridge's alone. It reads what the Advance's build and hardware keep, and only
     # Cartridge::ROM and the Advance's Profiler reach it; a Color cartridge's profile is GBCProfiler's.
     module Analyzer
       module_function
@@ -51,11 +51,11 @@ module VBlank
       # what the reading cannot: 60 means every pass met its frame. +keys+ is what was held
       # to find that frame — empty when the game is at its worst doing nothing.
       #
-      # +per_pass+ is what a whole PASS of the game loop cost, and it is the only reading that
+      # +per_pass+ is what a whole pass of the game loop cost, and it is the only reading that
       # keeps meaning something once a game is over budget. A video frame holds 228 scanlines and
       # no more, so a pass that overruns spreads itself across two of them and each reads a full
       # frame: the per-frame number stops at the ceiling and stays there however far past it the
-      # game goes. Counting the work over a window and dividing by the PASSES in that window has
+      # game goes. Counting the work over a window and dividing by the passes in that window has
       # no ceiling — a game taking two frames a pass reads about 456, one taking four reads about
       # 912. Measured only when the per-frame reading saturates, since below that a pass is a
       # frame and the two numbers are the same. See #measure_passes.
@@ -63,7 +63,7 @@ module VBlank
       # asked: how many rows went up before the game had finished them (see {Tearing}). It is
       # the one verdict the report could never check, only estimate.
       #
-      # +typical+ is the MIDDLE frame of the same window, and it answers a different question
+      # +typical+ is the middle frame of the same window, and it answers a different question
       # from +scanlines+. A game whose frame is the same every time has one answer and both
       # numbers give it. A game with work that only happens sometimes — a per-pixel collision
       # that walks only when two sprites really touch — has two, and they are far apart:
@@ -104,7 +104,7 @@ module VBlank
       SCENE_CAP = 10
 
       # Measure +rom_path+ on the emulator with +keys+ held throughout. Settles the game
-      # into steady state, then reads EVERY frame over a window and keeps the worst.
+      # into steady state, then reads every frame over a window and keeps the worst.
       #
       # The worst is the honest one twice over. A frame that fits reads the same each time,
       # so the peak is simply its steady cost. A frame that overruns splits across two video
@@ -113,7 +113,7 @@ module VBlank
       # game whose work follows the player, or grows on its own, is only expensive some of
       # the time. Returns a {Result} with no fps (that needs the counter run).
       #
-      # The same window's MIDDLE frame comes back beside it, for the other question — what a
+      # The same window's middle frame comes back beside it, for the other question — what a
       # frame usually costs rather than what the worst one did. See {Result}.
       def measure(rom_path, keys: [])
         measure_holding(rom_path, Array(keys), {}, nil)
@@ -173,15 +173,15 @@ module VBlank
       # measuring.
       #
       # The whole game is present and every variable starts at its declared default, but
-      # state a scene would normally get from the transition INTO it (a level loaded, a
-      # score set, enemies spawned by another scene) is NOT set — the scene runs on its
+      # state a scene would normally get from the transition into it (a level loaded, a
+      # score set, enemies spawned by another scene) is not set — the scene runs on its
       # boot defaults. So this measures a scene's baseline cost; a scene whose cost depends
       # on that state needs a setup step (a future feature). Top-level boot setup, done
       # before the game loop rather than inside a scene, does run.
       #
-      # Overrides the LAST boot-time set of the selector, so a game that sets it more than
+      # Overrides the last boot-time set of the selector, so a game that sets it more than
       # once at start still ends up in the chosen scene.
-      # Answers a COPY: this rewrites where the game starts, and measuring one scene must not
+      # Answers a copy: this rewrites where the game starts, and measuring one scene must not
       # leave the caller's program booting into it — least of all when the next scene is about
       # to be measured from the same tree.
       def boot_into(program, selector, value)
@@ -196,7 +196,7 @@ module VBlank
         booted
       end
 
-      # Measure a program and report its WORST frame — the reading a player would actually
+      # Measure a program and report its worst frame — the reading a player would actually
       # meet. Each attempt (nothing held, then each button the game reads) gets its own
       # windowed reading; the dearest one wins and carries the buttons that produced it.
       #
@@ -236,16 +236,16 @@ module VBlank
       # found while holding LEFT" about a button that costs nothing — which is worse than saying
       # nothing, because it points a reader at the wrong thing.
       #
-      # SET FROM THE WOBBLE, which is what it has to clear, and not from what a player could
+      # Set from the wobble, which is what it has to clear, and not from what a player could
       # feel. Measured on programs that read a button and do nothing with it, over frames from a
       # fraction of a scanline to several: the difference is three cycles, it is the same three
-      # however much the frame costs, and it goes the SAFE way — holding the button reads
+      # however much the frame costs, and it goes the safe way — holding the button reads
       # slightly cheaper, never dearer. So the floor sits a few times above three cycles, which
       # is still far below the smallest real difference anything in the corpus shows.
       #
       # It used to be a quarter of a scanline, chosen as "far below anything a player could
       # feel" — a hundred times the wobble, and a hundred times too big. A quarter of a scanline
-      # is more than the WHOLE FRAME of a game that hands its drawing to the console, so for
+      # is more than the whole frame of a game that hands its drawing to the console, so for
       # those the dearer reading was always discarded and the game was scored standing still,
       # against an estimate pricing a frame with its buttons down. What a player can feel is the
       # wrong question here anyway: this picks which of two measurements to keep, and keeping a
@@ -314,7 +314,7 @@ module VBlank
       # the stall while a DMA engine copies, which the CPU-executing count cannot see. But it
       # is measured by summing the sleeps, and a program the hardware wakes over and over —
       # one bending a background is woken 228 times a frame — has its waking time counted
-      # into a sleep and comes out BELOW the cycles it demonstrably executed. Bending
+      # into a sleep and comes out below the cycles it demonstrably executed. Bending
       # examples/lake.rb reads 29 that way against 38 executed.
       #
       # So take whichever is higher. A DMA-heavy frame reads its stall; an interrupt-heavy one
@@ -333,24 +333,24 @@ module VBlank
       end
 
       # What to hold, one attempt at a time: nothing, then each button the program reads,
-      # then ALL of them together. The game decides which buttons matter — a game that reads
+      # then all of them together. The game decides which buttons matter — a game that reads
       # none is measured at rest, and no attempt holds a button the game would ignore.
       #
-      # THE LAST ATTEMPT IS THE WORST FRAME, and without it this could not reach one. A game
+      # The last attempt is the worst frame, and without it this could not reach one. A game
       # tests its buttons one after another and each test guards its own work, so a frame
-      # with two buttons down does BOTH of their bodies. Holding them one at a time finds the
+      # with two buttons down does both of their bodies. Holding them one at a time finds the
       # dearest single body and stops there — which is not the worst frame, and is not the
       # frame the estimate prices either, since a static count cannot know that a player
       # will not hold two directions at once and charges every guarded body.
       #
-      # examples/maze.rb is the plainest case: its frame IS four held-direction tests, so
+      # examples/maze.rb is the plainest case: its frame is four held-direction tests, so
       # holding all four costs about four times holding one, and standing still costs almost
       # nothing at all. Scored against the one-button reading the estimate looked three times
       # too dear and was the worst thing in the corpus; scored against the frame it is
       # actually pricing it is within a tenth, and so are examples/sheet.rb, examples/level.rb
       # and the four tiled ones this was found on.
       #
-      # ALL OF THEM TOGETHER AND NOT EVERY COMBINATION: the guards are independent, so the
+      # All of them together and not every combination: the guards are independent, so the
       # dearest frame holds everything at once, and that is one more run rather than two to
       # the power of however many buttons the game reads.
       def key_combinations(program)
@@ -364,28 +364,28 @@ module VBlank
         program.walk.filter_map { |node| node.button if INPUT_KINDS.include?(node.kind) }.uniq
       end
 
-      # WHAT A GAME COSTS ONCE IT IS TOO BIG FOR ITS FRAME, with +keys+ held throughout — the
+      # What a game costs once it is too big for its frame, with +keys+ held throughout — the
       # same buttons the winning reading was taken under, or the count would answer about a
       # different game. Two numbers out of one run, and the second is the one that matters.
       #
       # A hidden counter ticks once per game-loop iteration. Over a window of emulated frames its
-      # rise is how many PASSES the game made, so the frame rate is passes * 60 / window.
+      # rise is how many passes the game made, so the frame rate is passes * 60 / window.
       #
-      # THAT RATE IS COARSE BY CONSTRUCTION, and it is worth being plain about why. A loop waits
+      # That rate is coarse by construction, and it is worth being plain about why. A loop waits
       # for the screen, so a pass takes a whole number of frames and the rate can only land on
       # 60, 30, 20, 15. "30" therefore covers everything from one frame of work to two — a game
       # that got a third faster reads exactly the same as one that did not move at all, which is
       # no use to anybody trying to make it faster.
       #
-      # SO THE WORK IS ADDED UP TOO. Each video frame holds 228 scanlines and no more, so a frame
+      # So the work is added up too. Each video frame holds 228 scanlines and no more, so a frame
       # reading is capped; the sum over a window is not, and dividing it by the passes in that
       # window gives what one pass really cost. A game taking two frames a pass comes out about
       # 456, one taking four about 912, and the number keeps its meaning however far over budget
-      # the game is. Below saturation a pass IS a frame and this agrees with the per-frame
+      # the game is. Below saturation a pass is a frame and this agrees with the per-frame
       # reading, so it is measured only where it shows something new.
       #
       # Empty when there is no game loop to count.
-      # THE CARTRIDGE MEASURED IS THE CARTRIDGE THAT SHIPS. The passes used to be counted by
+      # The cartridge measured is the cartridge that ships. The passes used to be counted by
       # adding a variable and an instruction to the loop, which is the worst place to do it: one
       # extra instruction can tip a routine out of the console's quick memory, and what got kept
       # there is half of what this report is for. The emulator counts arrivals at the loop's own
@@ -399,7 +399,7 @@ module VBlank
           probe.watch_arrivals(loop_span.begin)
           probe.step(SETTLE, keys: keys)
           before = probe.arrivals
-          # Step the window a frame at a time rather than in one go, so the SAME run that counts
+          # Step the window a frame at a time rather than in one go, so the same run that counts
           # the passes also adds up the work — one emulator run answers both questions, and both
           # answers are then about the same frames rather than about two different runs.
           work = FPS_WINDOW.times.sum { frame_scanlines(probe.frame_cost(keys: keys)) }
