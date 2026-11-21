@@ -37,7 +37,7 @@ end
 # The follow camera — `camera_follows`, which keeps a character where it stands on the
 # screen and moves the world under it instead.
 #
-# The claim to test is a swap: the game moves the SPRITE, and what actually moves is the
+# The claim to test is a swap: the game moves the sprite, and what actually moves is the
 # WORLD. So every test here looks at two things at once — that the character's picture
 # has not moved on screen, and that the scenery has. Reading only one of them would pass
 # for a game where nothing happens at all.
@@ -65,7 +65,7 @@ class TestFollowCamera < Minitest::Test
 
   # --- where the character starts in the world ---
 
-  # The sprite's own position says where it sits on the SCREEN, which under a follow
+  # The sprite's own position says where it sits on the screen, which under a follow
   # camera is a different question from where it stands in the world. `at:` answers the
   # second one, and this is the test that they really are different: two games whose
   # sprites sit in the same place show different parts of the world.
@@ -78,7 +78,7 @@ class TestFollowCamera < Minitest::Test
                  "but starting twenty pixels into the world shows the scenery twenty pixels along"
   end
 
-  # --- what the swap is FOR: the character is an ordinary sprite ---
+  # --- what the swap is for: the character is an ordinary sprite ---
 
   # The point of following is that the hero can be moved with the same verbs as any other
   # sprite, rather than being a pair of world-position variables the game keeps by hand.

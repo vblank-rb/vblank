@@ -14,7 +14,7 @@ class TestKeepShowing < Minitest::Test
   include EmulatorSupport
 
   # A counter shown as a bar, repainted only when it changes. `bump` says when.
-  # The bar is drawn over a field that is NOT repainted, which is what makes a
+  # The bar is drawn over a field that is not repainted, which is what makes a
   # missed page visible: the old bar stays there.
   private def counter_program(tear_free:, bump_on_frame: 2)
     b = Builder.new
@@ -46,7 +46,7 @@ class TestKeepShowing < Minitest::Test
     [b.program, b]
   end
 
-  # THE ONE THAT MATTERS. On a tear-free screen a change has to reach both pages,
+  # The one that matters. On a tear-free screen a change has to reach both pages,
   # so it is painted twice — and the proof is that the picture is there whichever
   # page you stop on. Stopping on an odd frame and an even frame both show it.
   def test_a_change_reaches_both_pages_of_a_tear_free_screen

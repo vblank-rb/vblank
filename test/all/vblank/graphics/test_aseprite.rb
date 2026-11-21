@@ -187,7 +187,7 @@ class TestAseprite < Minitest::Test
   end
 
   # Frame 0 (red) is held 200ms = 12 game frames; frame 1 (green) 100ms = 6. So the clip
-  # runs red for 12, green for 6, then loops. A uniform rate would take the SLOWEST frame
+  # runs red for 12, green for 6, then loops. A uniform rate would take the slowest frame
   # (12) for both, keeping green up through frame 23 — so green gone by frame 20 proves each
   # frame keeps its own hold.
   def test_a_frame_held_longer_plays_longer
