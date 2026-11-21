@@ -4,7 +4,7 @@ require "tmpdir"
 require "all/vblank/dsl/test_pack_background_set_cell"
 require "pack_at_start_tests"
 
-# A CELL OF A BACKGROUND FROM THE PACK WRITTEN WITH `set_cell`, ITS PACK LEFT OUT: the slot's size
+# A cell of a background from the pack written with `set_cell`, its pack left out: the slot's size
 # and its banks are the game's own words, so a told cell past either is refused as the game is
 # built, whichever way it is built. That the games of PackBackgroundSetCellGames
 # (test/all/vblank/dsl/test_pack_background_set_cell.rb) play as their all-in-one builds is the
@@ -45,7 +45,7 @@ module PackBackgroundSetCellAtStartTests
     end
   end
 
-  # WHAT A SLOT OF TOLD CELLS HOLDS IS THE PLAYER'S FILE'S, so nothing in it stops the game: a told
+  # What a slot of told cells holds is the player's file's, so nothing in it stops the game: a told
   # cell naming a tile past the slot of tiles draws nothing, as the font's space does, and the
   # other told cells draw as they would.
   def test_a_told_slot_cell_of_the_file_naming_a_tile_past_the_slot_draws_nothing
@@ -79,7 +79,7 @@ module PackBackgroundSetCellAtStartTests
     end
   end
 
-  # A BLOCK OF CELLS PUT BACK WITH THE PACK LEFT OUT (`restore_cells`): the map is the file's, read
+  # A block of cells put back with the pack left out (`restore_cells`): the map is the file's, read
   # as the game starts, so the cells go back to what the all-in-one build puts back, the map's
   # empty cell (2, 1) emptied again. A block of told cells covers part of the map on pass 2, part
   # of it, and some of the map past its edge, is put back on pass 4, and the rest on pass 6.

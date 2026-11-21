@@ -5,7 +5,7 @@ require "tmpdir"
 require "all/vblank/builder/test_pack_backdrops"
 require "pack_at_start_tests"
 
-# A SCREEN'S BACKDROP FROM THE PACK, ITS PACK LEFT OUT: what the games of PackBackdropGames
+# A screen's backdrop from the pack, its pack left out: what the games of PackBackdropGames
 # (test/all/vblank/builder/test_pack_backdrops.rb) built with `pack_at_start: true` refuse as the
 # all-in-one build does, and what they hold when written out. That each plays as its all-in-one
 # build is the registry's (PackGames::Backdrops, test/pack_games.rb).
