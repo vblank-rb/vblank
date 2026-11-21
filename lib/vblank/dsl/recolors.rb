@@ -2,7 +2,7 @@
 
 module VBlank
   module DSL
-    # THE OTHER COLOURS ONE SPRITE CAN BE DRAWN WITH, and the writes that pick between them.
+    # The other colours one sprite can be drawn with, and the writes that pick between them.
     #
     # A sprite and a pool both have this, and they differ only in where the choice is kept:
     # a variable of the sprite's own, or a slot per instance, read by one object each. So
@@ -21,7 +21,7 @@ module VBlank
       # What `draw_with` is told for a sprite's own colours.
       OWN = :own
 
-      # HOW THE OWNER'S WORD READS IN AN ERROR: the word itself, what the owner was told to do
+      # How the owner's word reads in an error: the word itself, what the owner was told to do
       # as a sentence says it ("was told to draw_with 3 lists", "was told to hold 3 lists"),
       # and how an example call starts.
       Words = Data.define(:verb, :told, :call)
@@ -126,7 +126,7 @@ module VBlank
       # The scenes the objects drawn with these lists belong to, nil standing for none.
       def scenes = @objects.map(&:scene).uniq
 
-      # DRAWN WITH THE CHANGING LIST +name+ FOR GOOD, when that is what the game wrote: a single
+      # Drawn with the changing list +name+ for good, when that is what the game wrote: a single
       # sprite only ever told `draw_with name`, never `:own` or another list, and its pictures
       # drawn in +name+'s own colours (+drawn_in_list+ asks that of a picture). Its colours are
       # then the list's whatever the game sets when, so it is told so from power-on (its choice
@@ -142,7 +142,7 @@ module VBlank
         IR::Build.set(@choice_var, IR::Build.int(0))
       end
 
-      # From now on the objects hold a NAME where they held the colours of a list in +held+,
+      # From now on the objects hold a name where they held the colours of a list in +held+,
       # which maps a list's name to the changing list it is drawn through: itself, for a list
       # told to `recolor`, or the shared list it takes turns in (see
       # Builder::ColorLists#colors_in_use). What such a list holds is settled as the game runs,
@@ -155,7 +155,7 @@ module VBlank
 
       private
 
-      # A HASH NAMING ONE LIST FOR EVERY LIST THE POSES ARE DRAWN FROM (`{ warm: :white, cold: :white }`),
+      # A hash naming one list for every list the poses are drawn from (`{ warm: :white, cold: :white }`),
       # checked by the builder (Builder::Images#list_for_every_pose_list!): that list, which is then
       # checked against each pose's own list rather than one list all the poses share.
       def list_for_every_pose_list!(lists, showing)

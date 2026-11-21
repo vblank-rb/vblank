@@ -102,7 +102,7 @@ module VBlank
       # game's own state left alone. A file-select screen shows each file's hearts this way.
       # A copy that is not good reads as 0.
       #
-      # A kept LIST reads the same way, item by item: `files[n].peek(name)[i]` and
+      # A kept list reads the same way, item by item: `files[n].peek(name)[i]` and
       # `files[n].peek(name).length`. An item past what the copy holds reads as 0.
       #
       # The thing can be named before the record keeps it — `peek(:hearts)` on a file screen

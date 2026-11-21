@@ -2,7 +2,7 @@
 
 module VBlank
   module DSL
-    # WHAT A LIST OF SCORES PICKED BY NAME OR NUMBER HAS IN COMMON — the songs `songs` gives back and
+    # What a list of scores picked by name or number has in common — the songs `songs` gives back and
     # the sound effects `sound_effects` does: how many there are, and a name or a written number
     # turned into a place in the list, with a friendly error for one the list does not have. A
     # number the game works out passes through untouched, for the player to check as it runs.

@@ -17,7 +17,7 @@ module VBlank
     # touch one without the others. It all desugars onto list ops + a `repeat`, so every
     # backend runs it and the cost model sees straight through it.
     #
-    # WHICH SLOT A THING LANDS IN SHOWS NOTHING ABOUT WHEN IT CAME, so the slots are not the
+    # Which slot a thing lands in shows nothing about when it came, so the slots are not the
     # order a walk goes in. Every slot also holds which slot came next and which came before
     # it, and the pool keeps the first and the last: a chain through the live things in the
     # order they were spawned, which is how a console game keeps the things in a room. A
@@ -100,7 +100,7 @@ module VBlank
       # live at once, and +place+ counts them back to front.
       def object_name(place) = part_name("obj_#{place}")
 
-      # WHAT EACH OF THE POOL'S SPRITES SHOWS IS WORKED OUT EVERY FRAME, from the chain.
+      # What each of the pool's sprites shows is worked out every frame, from the chain.
       #
       # A pool that draws has one sprite for each thing that can be live at once, and where
       # two sprites overlap the one declared later is in front. If each sprite always showed
@@ -109,14 +109,14 @@ module VBlank
       # one handed out, so the newest thing would sometimes cover an older one and sometimes
       # not.
       #
-      # So a sprite shows a PLACE IN THE ORDER rather than a slot. Before each frame is
+      # So a sprite shows a place in the order rather than a slot. Before each frame is
       # drawn the chain is walked once, oldest first, and what each live thing looks like —
       # where it is, which picture, which colours — is copied into lists kept in that order.
       # The frontmost sprite then shows the first entry, the next one back the second, and a
       # sprite with no entry left to show is hidden. The oldest thing is in front of every
       # thing spawned after it, whatever slots they are in.
       #
-      # THE COPY IS ONE LOOP FOR THE WHOLE POOL, and that is why it is a copy. Each sprite
+      # The copy is one loop for the whole pool, and that is why it is a copy. Each sprite
       # could instead look up which slot stands at its place and read that slot's fields, but
       # a sprite's code is written out once per sprite, so every read through a second list
       # is paid in code for every slot the pool has, in the memory the frame's own code has
@@ -140,7 +140,7 @@ module VBlank
         parts
       end
 
-      # PUT THIS POOL'S THINGS IN AN ORDER THE GAME WORKS OUT (see Builder#draw_in_order).
+      # Put this pool's things in an order the game works out (see Builder#draw_in_order).
       # +key+ is handed an instance and gives back the number that thing is ordered by, so
       # the number is worked out per thing as the copy above walks them and copied for its
       # place beside where it is — unless it can be read from the copy (#order_key_read_from_copy?).
@@ -151,7 +151,7 @@ module VBlank
       # Whether this pool is in a draw order.
       def ordered? = !@order_key.nil?
 
-      # A KEY READ FROM THE COPY. The copy above already holds where each thing is, by its rank,
+      # A key read from the copy. The copy above already holds where each thing is, by its rank,
       # so a key that reads nothing of a thing but its x and y — `bottom`, the default, is y and
       # the box — is the same number worked out from the copy, in the order's own routine, which
       # runs after the copy is made. The copy then neither works the key out nor keeps it, and
@@ -296,7 +296,7 @@ module VBlank
       # the pool's storage up. They are not part of the pool authoring interface — a
       # game reaches an instance's data through `each`/`spawn`/`field_ref`, never these.
       #
-      # A FIELD'S LIST AND THE POOL'S OWN ARE SPELLED APART (see Messages::MadeNames), so a
+      # A field's list and the pool's own are spelled apart (see Messages::MadeNames), so a
       # field can be called what the pool calls one of its own — `frame`, `active`, `count` —
       # and still be a list of its own. +part_name+ is every name of the pool's own: a list,
       # a variable or a routine.
@@ -340,7 +340,7 @@ module VBlank
       def self.head_var(name) = part_name(name, :head)
       def self.tail_var(name) = part_name(name, :tail)
 
-      # A THING REMOVED WHILE THE POOL IS BEING WALKED STAYS IN THE CHAIN until the walk is
+      # A thing removed while the pool is being walked stays in the chain until the walk is
       # over, and its slot is not free until then either. A walk is following the chain, and
       # if a removal closed the gap at once — or a spawn reused the slot — the walk could step
       # off the end early or onto a thing spawned during the walk. So a removal during a walk
@@ -376,12 +376,12 @@ module VBlank
         lists
       end
 
-      # WHICH PICTURE THE THING WITH +rank+ OLDER THINGS BEFORE IT SHOWS, as a value node. A
+      # Which picture the thing with +rank+ older things before it shows, as a value node. A
       # pool given one picture always shows it; any other reads the picture copied for that
       # place in the order.
       def pose_node(rank) = posed? ? stacked_at(:pose, rank) : Build.int(0)
 
-      # WHICH PICTURE THE THING IN ONE SLOT SHOWS, as a value node. A pool that faces reads
+      # Which picture the thing in one slot shows, as a value node. A pool that faces reads
       # the slot's direction; one that animates reads its frame; one that does both composes
       # them — direction * frames-per-direction + frame, which is the order the pictures were
       # flattened in. +at+ gives the slot, called for a fresh node at each use.
@@ -393,7 +393,7 @@ module VBlank
         Build.binop(:+, Build.binop(:*, facing, Build.int(@art.per_dir)), frame)
       end
 
-      # STOP EVERY INSTANCE OF THIS POOL FROM MOVING THROUGH +background+'s SOLID TILES —
+      # Stop every instance of this pool from moving through +background+'s solid tiles —
       # the same verb a `sprite` takes, written once for the whole pool.
       #
       # It belongs to the pool rather than to an instance because an instance handle lives
@@ -410,7 +410,7 @@ module VBlank
       # The background's grid of solid cells, or nil if this pool was never blocked by one.
       attr_reader :solid_cells
 
-      # PUT EVERY THING OF THIS POOL IN ANOTHER OF THE DECLARED LAYERS, from now until it is told
+      # Put every thing of this pool in another of the declared layers, from now until it is told
       # otherwise — the word a sprite has (HardwareSprite#put_in_layer), written once for all of
       # them. A room whose things walk under its arches and a room whose things stand in front
       # of its furniture can then share one pool, moved as each room takes over.
@@ -484,7 +484,7 @@ module VBlank
         self
       end
 
-      # A POOL TOLD TO DRAW WITH THE LIST A POSE'S FRAME PICKS, in a build that reads its pack as
+      # A pool told to draw with the list a pose's frame picks, in a build that reads its pack as
       # the game starts: which list that is is in the player's file, so the build cannot write it
       # into the instance's choice as the build that holds the pack does. Each sprite the pool's
       # things are drawn as follows the lists instead (Builder::PackPoses
@@ -530,7 +530,7 @@ module VBlank
       # colours column (see #colors_list).
       def recolorable? = !@recolors.nil?
 
-      # ONE FIELD OF THE POOL, every slot's, as a thing a save_data record can keep on its
+      # One field of the pool, every slot's, as a thing a save_data record can keep on its
       # own: `keep guards.field(:hp)` keeps how hurt each guard is and nothing else about it.
       # A field the pool does not have is a friendly error.
       Column = Data.define(:pool, :field) do
@@ -544,7 +544,7 @@ module VBlank
                              "#{field_names.map { |one| ":#{one}" }.join(', ')}. To fix this, use one of those."
       end
 
-      # EVERYTHING THAT MAKES THIS POOL WHAT IT IS, for a save_data record to keep the whole of
+      # Everything that makes this pool what it is, for a save_data record to keep the whole of
       # it: the lists — every field, which slots are live, the free slots, and each slot's
       # facing, place in its cycle and colours where the pool keeps them, and the chain that
       # holds what order they came in, with the removals a walk has not yet taken out of it —
@@ -588,7 +588,7 @@ module VBlank
         self
       end
 
-      # Run the block once per LIVE instance, oldest first, handing it a row handle whose
+      # Run the block once per live instance, oldest first, handing it a row handle whose
       # fields are mutable (`b.x += 1`, `b.y = 0`, read `b.x`) and which can retire itself
       # (`b.remove`).
       #
@@ -655,13 +655,13 @@ module VBlank
       end
       private :refuse_unknown_walk_order!
 
-      # A ROUTINE THAT WORKS ON ONE INSTANCE — the body of `each` moved into a routine of its
+      # A routine that works on one instance — the body of `each` moved into a routine of its
       # own, which is where a game of any size puts it:
       #
       #   guards.func(:chase) { |g| g.x.approach! hero.x, 1 }
       #   guards.each { |g| call g.state }
       #
-      # A routine is built ONCE, wherever it is called from, so it cannot close over the
+      # A routine is built once, wherever it is called from, so it cannot close over the
       # instance the way the block above does — which is why a plain `func` has no way to name
       # which guard is chasing. This pool hands the routine the instance being walked right
       # now, and the walk itself is what sets which that is (see #record_current_slot).
@@ -688,7 +688,7 @@ module VBlank
       # Build the body of routine +name+ into the routine being built, yielding the instance
       # it runs for.
       #
-      # A ROUTINE THAT WALKS ITS OWN POOL — the stepper checked against every other thing —
+      # A routine that walks its own pool — the stepper checked against every other thing —
       # needs its instance in a variable of its own. The instance reads current_var, and a walk
       # of the pool moves that on to each thing it visits, so inside the walk `e` would read
       # the walk's thing. That holds for a read written inside the walk and for one made before
@@ -697,7 +697,7 @@ module VBlank
       #
       # Every walk already keeps the instance it began on, to put current_var back as it ends
       # (#preserving_current_slot). In a routine that instance is the routine's own, so the
-      # routine's variable IS that kept copy: each outermost walk of the pool in the body keeps
+      # routine's variable is that kept copy: each outermost walk of the pool in the body keeps
       # current_var in the routine's variable, and the reads of current_var inside the walk read
       # it there. Outside the walks current_var is the routine's own thing anyway, and those
       # reads stay as they were. So the routine does no more work than one reading current_var
@@ -815,7 +815,7 @@ module VBlank
         self
       end
 
-      # THE CHAIN IS KEPT BY FOUR ROUTINES OF THE POOL'S, each declared the first time it is
+      # The chain is kept by four routines of the pool's, each declared the first time it is
       # needed and called from every place that needs it: removing a thing, putting a spawn at
       # the end, taking a slot out of the middle, and freeing what a walk removed. Each is a
       # handful of statements a game would otherwise carry once per `spawn` and `remove` it
@@ -1024,7 +1024,7 @@ module VBlank
         %i[at ahead last].map { |part| part_name("walk#{@walks}_#{part}") }
       end
 
-      # THE VARIABLES A POOL'S OWN WALKS HOLD A SLOT IN: the slot a walk is on (#walk_vars), the
+      # The variables a pool's own walks hold a slot in: the slot a walk is on (#walk_vars), the
       # one a routine of the pool runs for (#record_current_slot) and that routine's own copy of
       # it (#build_routine_body), and the one the copy for its
       # sprites is on (#stacking_nodes). Each starts at nought, and is read for the pool's lists
@@ -1033,7 +1033,7 @@ module VBlank
       # there without testing the index first.
       SLOT_PARTS = /\A(?:current|stacking_at|walk\d+_at|routine\d+_at)\z/
 
-      # THE ONES OF THOSE THAT NEVER HOLD NONE: each is written only with a slot the walk has seen
+      # The ones of those that never hold none: each is written only with a slot the walk has seen
       # is not NONE, or put back from a copy of itself. The copy for the sprites steps its slot
       # along the chain, NONE at the end included (#stacking_nodes), so it is not one of these. A
       # number in one of these is always below the pool's capacity, so a lowering that keeps
@@ -1052,14 +1052,14 @@ module VBlank
         kind == :pool_part && SLOT_ONLY_PARTS.match?(parts[:part])
       end
 
-      # THE SLOT A WALK GOES TO NEXT (#walk_vars), a slot or NONE. It is set from the chain's links
+      # The slot a walk goes to next (#walk_vars), a slot or NONE. It is set from the chain's links
       # on one line only, on a turn the walk began because it held a slot, and that slot is the one
       # whose link is read (`at = ahead`, then `ahead = links[at]`). So as that line runs it holds a
       # slot, with a high half of nought, and a lowering that keeps numbers in halves need only write
       # the high half when the link read is NONE.
       NEXT_SLOT_PARTS = /\Awalk\d+_ahead\z/
 
-      # THE SLOT A WALK IS ON (#walk_vars), set at the top of every turn and read straight after:
+      # The slot a walk is on (#walk_vars), set at the top of every turn and read straight after:
       # the thing's link to the next, and whether it is live, are each a list read at that slot.
       WALK_SLOT_PARTS = /\Awalk\d+_at\z/
 
@@ -1081,7 +1081,7 @@ module VBlank
         parts[:pool] if %i[pool_field pool_part].include?(kind)
       end
 
-      # WHICH INSTANCE A ROUTINE OF THIS POOL IS RUNNING FOR, written at the top of every live
+      # Which instance a routine of this pool is running for, written at the top of every live
       # pass of a walk. A routine is built once and called from wherever, so the one thing it
       # cannot be handed in its own code is which instance — this variable is how the walk tells
       # it, and `current_instance` is how the routine reads it.
@@ -1099,7 +1099,7 @@ module VBlank
       # The writes #record_current_slot made, one for each walk.
       private def current_writes = @current_writes ||= []
 
-      # A WALK WHOSE BODY NEVER ASKS WHICH THING IT IS ON writes it down for nobody. Only a call
+      # A walk whose body never asks which thing it is on writes it down for nobody. Only a call
       # can reach a routine of the pool, which reads it, and a routine's own reads inside its walks
       # read its own variable (#build_routine_body); a walk inside reads it to keep it. So a walk
       # whose body has no call and no read of it, the inner walk of a thing checked against each
@@ -1116,7 +1116,7 @@ module VBlank
         end
       end
 
-      # ...and a walk PUTS IT BACK as it leaves, because the walks nest. Two walks over one pool
+      # ...and a walk puts it back as it leaves, because the walks nest. Two walks over one pool
       # — a pairwise test, or a routine that walks the pool it was called from — would otherwise
       # leave the outer one running on whatever instance the inner one finished at, for the rest
       # of that pass. A save and a restore per walk, not per instance, settles it whichever way

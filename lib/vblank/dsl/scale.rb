@@ -2,7 +2,7 @@
 
 module VBlank
   module DSL
-    # WHAT A PLACE KEEPS — plain whole numbers, numbers carrying a fraction, or one of a set of
+    # What a place keeps — plain whole numbers, numbers carrying a fraction, or one of a set of
     # names — and the rules for bringing another value onto the same footing before the two meet.
     #
     # The names are the odd one out and belong here for the same reason: a place that keeps one
@@ -15,7 +15,7 @@ module VBlank
     # sentence for each. So the rules live here once, and each place brings its own two
     # sentences (+declaring+ and +mixing+).
     #
-    # WHY THIS IS NOT A METHOD ON Value. It used to be, and the three places that are not
+    # Why this is not a method on Value. It used to be, and the three places that are not
     # Values had to build a throwaway one to borrow it — `list.push x` constructed a Value
     # out of nothing just to reach these rules, then dropped it. That is wasteful in a
     # small way and misleading in a large one: an expression built and never used is
@@ -28,7 +28,7 @@ module VBlank
       # @param bits [Integer, nil] how many fraction bits this place keeps; nil for plain
       #   whole numbers (see {Fraction} for what carrying a fraction means)
       # @param declaring [Proc, nil] given the number somebody wrote, how to tell them to
-      #   declare THIS kind of place with a fraction
+      #   declare this kind of place with a fraction
       # @param mixing [Proc, nil] given whether this place holds a fraction, how to say
       #   that it and the other number are two different kinds
       # @param names [NameSet, nil] the names this place holds, for a place that keeps one of
@@ -53,7 +53,7 @@ module VBlank
       # The IR node for +other+, brought to this scale where that can be done for free, or
       # a friendly error saying why it cannot be.
       #
-      # A whole number WRITTEN IN THE PROGRAM is converted, because `speed + 1` plainly
+      # A whole number written in the program is converted, because `speed + 1` plainly
       # means one faster. A number the game works out cannot be: there is no way to tell
       # whether a counter holding 3 means three, or three sixty-fourths.
       def node_matching(other, verb)
@@ -102,7 +102,7 @@ module VBlank
       # number at +bits+ fraction bits. This is the one place a Float becomes a number.
       #
       # On the class because the bits wanted are not always this scale's own: multiplying
-      # asks at the OTHER side's scale, which is the whole reason that operation works.
+      # asks at the other side's scale, which is the whole reason that operation works.
       def self.node_at(other, bits)
         return Build.int(Fraction.scale(other, bits)) if other.is_a?(Float) && bits
 
