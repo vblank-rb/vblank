@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE SOUND OF A RUN, KEPT WITHOUT KEEPING IT ALL IN MEMORY. A run of a few seconds holds its
+# The sound of a run, kept without keeping it all in memory. A run of a few seconds holds its
 # sound in memory and that is the end of it. A playthrough of several minutes would hold
 # hundreds of megabytes, so past a set number of frames the sound goes to a scratch file, and
 # what is read back is the file and the memory put together.
@@ -68,7 +68,7 @@ class TestRecordedSound < Minitest::Test
   SIGNED_FRAMES = [[-3, 4], [0], [-32_768, 32_767, -1], [], [5, 5]].map { |samples| samples.pack("s<*") }.freeze
   LOUDNESS = [7, 0, 65_536, 0, 10].freeze
 
-  # The loudness of FRAMES, whose frame n is the samples n * 100 up to n * 100 + n.
+  # The loudness of frames, whose frame n is the samples n * 100 up to n * 100 + n.
   LOUDNESS_OF_FRAMES = [0, 201, 603, 1206, 2010, 3015, 4221, 5628, 7236, 9045].freeze
 
   def test_how_loud_each_frame_was_is_its_samples_added_up_with_their_signs_dropped
@@ -116,7 +116,7 @@ class TestRecordedSound < Minitest::Test
     end
   end
 
-  # THE RECORDING IS NOT READ AGAIN FOR A FRAME ALREADY ASKED ABOUT. With the scratch file
+  # The recording is not read again for a frame already asked about. With the scratch file
   # taken away, the frames in it could not be read a second time: the answer has to be what
   # was kept from the first asking, and frames played since are added to it.
   def test_asking_again_does_not_read_the_recording_again
@@ -132,7 +132,7 @@ class TestRecordedSound < Minitest::Test
     end
   end
 
-  # ...NOR IS A FRAME STILL IN MEMORY GONE THROUGH AGAIN, which is every frame of a run of a
+  # ...NOR is a frame still in memory gone through again, which is every frame of a run of a
   # minute or less. Each of these frames notes when its samples are read.
   def test_asking_again_does_not_go_through_a_frame_in_memory_again
     read = Hash.new(0)

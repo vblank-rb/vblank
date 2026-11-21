@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHERE THE TIME WENT INSIDE ANY ROUTINE, line by line.
+# Where the time went inside any routine, line by line.
 #
 # The split hints name a part only of a routine the quick memory passed over. A routine that is
 # kept there, or that the author put in the cartridge, has a cost too, and an author whose pass is
@@ -91,7 +91,7 @@ class TestRoutineLines < Minitest::Test
     assert_match(/spin/, error.message)
   end
 
-  # A PIECE CUT FROM A ROUTINE is the routine's own code, so its lines are the routine's: asked
+  # A piece cut from a routine is the routine's own code, so its lines are the routine's: asked
   # for by the routine's name, the piece's statements are among its lines, and the piece is
   # never a routine of its own in the answer.
   def test_a_piece_cut_from_a_routine_counts_in_its_routine

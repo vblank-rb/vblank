@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# TWO RECORDINGS HELD TO EACH OTHER AS A PERSON HEARS THEM (Diagnostics::RecordingComparison), on
+# Two recordings held to each other as a person hears them (Diagnostics::RecordingComparison), on
 # recordings made here whose differences are known: a reference of sixteen bits at 44,100 a second,
 # and ours made from the same notes at 22,050 a second and eight bits, as a port's cartridge plays a
 # rendered song, then changed one way at a time.

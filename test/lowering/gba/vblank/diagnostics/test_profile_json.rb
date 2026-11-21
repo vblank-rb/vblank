@@ -10,7 +10,7 @@ require "stringio"
 #
 # So every assertion here reads a field and never matches a word of the report.
 #
-# WHAT IS NO LONGER HERE, and it is the point of the change: a frame priced in scanlines, the
+# What is no longer here, and it is the point of the change: a frame priced in scanlines, the
 # budget it was judged against, and a verdict of over or under. Those were the estimate's, and
 # the estimate is gone. What is left is two kinds of fact — what the build made, and what the
 # run counted.
@@ -32,7 +32,7 @@ class TestProfileJson < Minitest::Test
     end
   end
 
-  # Draws far more than fits in the gap between frames, AND draws something DIFFERENT each
+  # Draws far more than fits in the gap between frames, AND draws something different each
   # frame — a tear is the display showing a row before the game finished it, so a picture that
   # repaints itself the same colour every frame has no seam to see even when it overruns.
   private def heavy
@@ -53,7 +53,7 @@ class TestProfileJson < Minitest::Test
     JSON.parse(io.string)
   end
 
-  # THE ACCEPTANCE: two builds compared without matching any prose. What separates them now
+  # The acceptance: two builds compared without matching any prose. What separates them now
   # is what the console really did, not what a model said it would do.
   def test_two_builds_compare_on_their_numbers_alone
     a = json_of(light)
