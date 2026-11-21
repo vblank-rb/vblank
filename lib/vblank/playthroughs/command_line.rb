@@ -27,7 +27,7 @@ module VBlank
                "interpreter" => "interpreter" }.freeze
 
       # The ways a game can be shown, as a film shows it: the cartridge in its console's emulator, the
-      # first and the one meant when none is given, then every word of ways but logic, which plays the
+      # first and the one meant when none is given, then every word of WAYS but logic, which plays the
       # game's rules alone and has no picture.
       SHOWN_WAYS = [LoweredGame::EMULATOR, *(WAYS.keys - [LoweredGame::LOGIC])].freeze
 
@@ -51,7 +51,7 @@ module VBlank
       end
 
       # Play the script or the tape on the game the block gives (an UnbuiltGame) the way +on+ names
-      # (a word of ways), in a window if +window+ asks for one, say the frames and the moments, and write
+      # (a word of WAYS), in a window if +window+ asks for one, say the frames and the moments, and write
       # what was asked for. The block is called once what was written has been found good, since
       # it builds the game, and that takes a while. +export_cartridge+ makes the Advance's
       # cartridge, which only a tape written out for another emulator needs. +progress+ is told

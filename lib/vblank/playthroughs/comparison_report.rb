@@ -16,7 +16,7 @@ module VBlank
       #                           presses, what was compared and how alike it had to be
       #   a tape, or two          every press up to there
       #
-      # Why a tape and not only a picture. A picture shows what the two screens were. A tape
+      # Why a tape and not only a PICTURE. A picture shows what the two screens were. A tape
       # plays a cartridge to that exact place again, with a debugger on it or a script that
       # asks it things — which is where finding out why starts.
       #

@@ -40,7 +40,7 @@ module VBlank
         end
 
         # Write one picture of it all at +path+, a PNG: the first screen, the second, and the
-        # difference, left to right, each at scale times the console's size with a strip
+        # difference, left to right, each at SCALE times the console's size with a strip
         # between. +with_difference+ chooses whether the last is there, for somebody who wants
         # the two screens alone. The path is handed back.
         def write_side_by_side(path, with_difference: true)

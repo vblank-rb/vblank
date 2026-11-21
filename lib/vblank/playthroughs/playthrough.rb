@@ -687,7 +687,7 @@ module VBlank
       end
 
       # Buttons chosen a frame at a time from the running game. +words+ say what the step is for,
-      # +chooser+ answers each frame's buttons or done, and +within+ is how many frames it can take.
+      # +chooser+ answers each frame's buttons or DONE, and +within+ is how many frames it can take.
       Steer = Data.define(:words, :within, :chooser) do
         def play(playing) = playing.steer(words, within, &chooser)
         def names = []

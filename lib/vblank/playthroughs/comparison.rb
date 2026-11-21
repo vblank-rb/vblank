@@ -45,7 +45,7 @@ module VBlank
     # `skipping_still_frames_of:`, so a room that loads for longer on one is in step again after
     # (see StillFrames).
     #
-    # And one frame of the two as a picture, for a person to look at: the two screens side by
+    # And one frame of the two as a PICTURE, for a person to look at: the two screens side by
     # side with what differs marked (see ScreenPair). A report of a drift holds one, and one
     # can be asked for by itself, of any frame (see PictureRequest).
     #
