@@ -738,6 +738,7 @@ module VBlank
       finalize_per_frame_routines
       finalize_per_pass_routines
       refuse_non_scenes_in_scene_dispatch!
+      refuse_func_named_like_case_scene!
       finalize_name_dispatches
       finalize_pool_walks
       finalize_pool_colors

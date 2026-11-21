@@ -269,8 +269,27 @@ module VBlank
         refuse_scene_picked_twice!(clauses)
         variable = subject.node.name
         ensure_var(variable)
-        record(Build.case_(variable, clauses.map { |value, name| [value, :"_scene_#{name}"] }))
+        node = Build.case_(variable, clauses.map { |value, name| [value, :"_scene_#{name}"] })
+        (@scene_case_sources ||= {}.compare_by_identity)[node] = Messages::AuthorSource.author_source
+        record(node)
         nil
+      end
+
+      #--
+      # A plain `case` is made a scene dispatch when its line runs, if every name it calls is a
+      # scene with no func of that name then (#scene_case?). A func of one of those names declared
+      # later would have been what `call` ran, so it is refused here, once every routine is declared.
+      #++
+      def refuse_func_named_like_case_scene!
+        (@scene_case_sources || {}).each do |node, source|
+          name = node.clauses.map { |_, target| target.to_s.delete_prefix("_scene_").to_sym }.find { |each| @functions.key?(each) }
+          next unless name
+
+          where = source ? " at #{source}" : ""
+          raise ArgumentError, "The `case`#{where} calls :#{name}, and :#{name} is both a scene and a func. " \
+                               "The `case` runs the scene, because the func is declared after it. To fix this, " \
+                               "rename the func or the scene."
+        end
       end
 
       #--

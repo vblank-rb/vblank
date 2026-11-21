@@ -495,7 +495,7 @@ explanation, and leads with what went wrong and where.
 - `flip` (not `negate`) for reversing direction — reads naturally in game code
 - Plain Ruby assignment (`x = y`, `x += n`) changes a variable
 - Underscore prefix (`_cpu_center`) for scratch/temp variables
-- `func` for subroutines, `scene` for game states, `case_var` for dispatch
+- `func` for subroutines, `scene` for game states, a plain `case` that calls scenes (or `call mode`) for dispatch
 
 ## Examples
 

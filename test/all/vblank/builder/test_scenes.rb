@@ -224,6 +224,47 @@ class TestScenes < Minitest::Test
     assert_match(/:title with more than one number/, error.message)
   end
 
+  # A func declared below the `case`, named as a scene it picks, would have been what `call`
+  # ran: the build stops rather than run the scene in its place.
+  def test_a_func_declared_after_a_plain_case_with_a_scenes_name_is_a_friendly_error
+    builder = Builder.new
+    builder.instance_eval do
+      state = 0
+      ran = 0
+      scene(:title) { ran += 1 }
+      game_loop do
+        case state
+        when 0 then call :title
+        end
+      end
+      func(:title) do
+        ran += 1000
+        state = 0
+      end
+    end
+    error = assert_raises(ArgumentError) { builder.finalize_program }
+
+    assert_match(/both a scene and a func/, error.message)
+  end
+
+  # A `case` whose value is read is the chain of tests, so a scene called there is refused, not
+  # made the dispatch with no value to give.
+  def test_a_plain_case_whose_value_is_read_does_not_pick_a_scene
+    builder = Builder.new
+    builder.instance_eval do
+      state = 0
+      scene(:title) { state = 0 }
+      game_loop do
+        picked = (case state
+                  when 0 then call :title
+                  end)
+      end
+    end
+    error = assert_raises(ArgumentError) { builder.finalize_program }
+
+    assert_match(/names a scene/, error.message)
+  end
+
   # A scene is picked by a game variable. A `case` on a working-out is a chain of tests, and a
   # scene named there is a friendly error saying what to write.
   def test_a_scene_called_from_a_case_on_a_working_out_is_a_friendly_error

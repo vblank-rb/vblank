@@ -247,6 +247,7 @@ module VBlank
           @open_tests = []
           @lone_joins = {}.compare_by_identity
           @tail_ternaries = {}.compare_by_identity
+          @answer_tails = {}.compare_by_identity # Last lines whose value is an answer: a method's, an answering block's
           @block_tests = []
           # The patterns of a `case ... in` left to Ruby, which are Ruby's own syntax and not
           # expressions to rewrite, and the subjects such a `case` asks about.
@@ -336,6 +337,7 @@ module VBlank
           when Prism::CallOperatorWriteNode then place_change_text(node, "#{rewritten_text(node.receiver)}.#{node.read_name}")
           when Prism::ReturnNode, Prism::BreakNode, Prism::NextNode then jump_text(node)
           when *OWN_SCOPES then own_scope_text(node)
+          when Prism::ParenthesesNode, Prism::BeginNode then grouped_text(node)
           when Prism::StatementsNode then statements_text(node)
           else copied_text(node)
           end
@@ -350,6 +352,17 @@ module VBlank
           copied_text(node)
         ensure
           @open_statements.pop
+        end
+
+        # `( ... )` and `begin ... end` give back their last line, so it is an answer.
+        def grouped_text(node)
+          note_answer_tail(node.is_a?(Prism::BeginNode) ? node.statements : node.body)
+          copied_text(node)
+        end
+
+        # +statements+' last line is what they give back, read by whatever holds them.
+        def note_answer_tail(statements)
+          @answer_tails[statements.body.last] = true if statements.is_a?(Prism::StatementsNode)
         end
 
         # How many of the open tests, counted from the outermost, opened before +write+'s name was
@@ -416,6 +429,7 @@ module VBlank
           @in_initialize = node.is_a?(Prism::DefNode) && node.name == :initialize && node.receiver.nil?
           @in_method ||= node.is_a?(Prism::DefNode)
           @tail_ternaries[node.body.body.last] = true if method_body?(node)
+          note_answer_tail(node.body) if node.is_a?(Prism::DefNode)
           copied_text(node)
         ensure
           @open_tests = outer
@@ -560,6 +574,7 @@ module VBlank
           return unless ANSWERING_BLOCK_VERBS.include?(node.name) && node.block.is_a?(Prism::BlockNode)
 
           body = node.block.body
+          note_answer_tail(body)
           note_tail_ternaries(body.body.last) if body.is_a?(Prism::StatementsNode)
         end
 
@@ -1133,6 +1148,10 @@ module VBlank
           kept = :tail if @tail_ternaries.key?(node) && node.is_a?(Prism::IfNode) && node.if_keyword_loc.nil?
           return nested_conditional_text(node) if nestable?(node, kept)
 
+          if kept
+            note_answer_tail(node.statements)
+            note_answer_tail(other_side(node).statements) if other_side(node).is_a?(Prism::ElseNode)
+          end
           answer = "__plain_ruby_#{@answers += 1}"
           shut_at = node.end_keyword_loc&.start_offset || node.location.end_offset
           promotions = promotions_text(node, [node.statements, other_side(node)], answer)
@@ -1194,10 +1213,16 @@ module VBlank
           opened = (node.predicate || node).location
           given = node.predicate ? "#{subject} = #{rewritten_text(node.predicate)}; " : ""
           breaks = line_ends_between(node.predicate ? opened.end_offset : opened.start_offset, node.conditions.first.location.start_offset)
+          [*node.conditions, node.else_clause].compact.each { |arm| note_answer_tail(arm.statements) } if kept
           chain = arm_text(node, 0, subject, kept)
-          chain = scene_dispatch_text(node, subject, chain) if !kept && scene_dispatch_shape?(node)
+          chain = scene_dispatch_text(node, subject, chain) if !kept && value_unused?(node) && scene_dispatch_shape?(node)
           "(#{given}#{breaks}#{chain})"
         end
+
+        # Does nothing read what +node+ gives back? It stands as a statement of its own, and not as
+        # the last line of a method or of a block whose verb reads its last line. `x = (case ...)`
+        # is no statement: the parentheses are.
+        def value_unused?(node) = @whole_statements.key?(node) && !@answer_tails.key?(node)
 
         # A `case` that picks a scene by a number: a subject, `when`s of whole numbers or
         # constants, each arm one `call :name` and nothing else, and no `else` or an empty one.

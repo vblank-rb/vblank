@@ -101,4 +101,36 @@ class TestPlainRubyRewrite < Minitest::Test
 
     assert_equal 16, source.count("\n"), source
   end
+
+  # A `case` standing alone whose arms each call a scene may be the scene dispatch, asked as its
+  # line runs (Builder::Scenes#scene_case?).
+  def test_a_case_standing_alone_that_calls_scenes_may_be_the_scene_dispatch
+    source = rewritten do
+      game_loop do
+        case state
+        when 0 then call :title
+        end
+      end
+    end
+
+    assert_includes source, "scene_case?"
+  end
+
+  # A `case` whose value is read stays the chain of tests, which hands back the value Ruby would.
+  def test_a_case_whose_value_is_read_is_never_the_scene_dispatch
+    picks = [
+      rewritten { game_loop { picked = (case state; when 0 then call :title; end) } },
+      rewritten { game_loop { picked = begin; case state; when 0 then call :title; end; end } },
+      rewritten { game_loop { picked = state > 1 ? (case state; when 0 then call :title; end) : 0 } },
+      rewritten do
+        def pick
+          case state
+          when 0 then call :title
+          end
+        end
+      end,
+    ]
+
+    picks.each { |source| refute_includes source, "scene_case?" }
+  end
 end
