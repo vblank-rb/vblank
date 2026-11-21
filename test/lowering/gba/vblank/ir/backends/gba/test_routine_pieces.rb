@@ -3,7 +3,7 @@
 require "test_helper"
 require "screen_backdrop_games"
 
-# A ROUTINE TOO BIG FOR THE QUICK MEMORY, CUT INTO PIECES THAT FIT (GBA::RoutinePieces).
+# A routine too big for the quick memory, cut into pieces that fit (GBA::RoutinePieces).
 #
 # Code in the cartridge runs at well under half the speed of the same code in the console's quick
 # memory, and a routine goes there whole or not at all. So a routine that grew past the room ran
@@ -50,7 +50,7 @@ class TestRoutinePieces < Minitest::Test
     (1.0 - result.idle_share) * VBlank::Console::ADVANCE.cycles_a_frame
   end
 
-  # THE COST: the frame of the game with the big routine is as busy as the frame of the same work
+  # The cost: the frame of the game with the big routine is as busy as the frame of the same work
   # in a routine that fits, since the parts that never run are the only difference. Before the
   # routine was cut, its busy additions ran from the cartridge and the frame was about twice as
   # busy (measured in the emulator: the cartridge's ARM code against the same code in the quick
@@ -131,7 +131,7 @@ class TestRoutinePieces < Minitest::Test
     assert_backends_agree(program, frames: [3, 12], name: "CUTDROPS")
   end
 
-  # A BUILD WHOSE CUT PLAN CANNOT HOLD WHAT THE AUTHOR INSISTED ON lowers the program whole, and
+  # A build whose cut plan cannot hold what the author insisted on lowers the program whole, and
   # then builds exactly as a build that never cut. These two stand in for those builds: one whose
   # cut plan is refused as such a plan is, once it is made, and one that cuts nothing.
   class RefusingCutPlan < GBA
@@ -195,7 +195,7 @@ class TestRoutinePieces < Minitest::Test
                                  "(#{fallen_back.bytesize} bytes against #{uncut.bytesize})"
   end
 
-  # A MEASUREMENT OF A CUT BUILD gives the routine only what was not cut, and each piece its own
+  # A measurement of a cut build gives the routine only what was not cut, and each piece its own
   # count. Built from it, the next build weighs the program whole with the pieces counted back in
   # the routine, so it cuts the same pieces again: a routine whose remainder alone is not worth the
   # room is not left whole one build and cut the next. Two parts that never run, so the remainder is

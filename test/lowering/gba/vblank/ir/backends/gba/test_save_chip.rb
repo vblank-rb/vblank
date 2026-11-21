@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHICH SAVE CHIP A CARTRIDGE WRITES TO, picked from the save memory the program says it has:
+# Which save chip a cartridge writes to, picked from the save memory the program says it has:
 # the battery-backed 32K, or a flash chip of 64K or 128K.
 #
 # The flash tests turn the power off by taking the chip's bytes out of one run and starting a
@@ -245,7 +245,7 @@ class TestSaveChip < Minitest::Test
     assert_equal 7, assert_emulator_loads_rom(rom, frames: 30, save: chip, vars: rom.var_addresses).var(:best)
   end
 
-  # A SECOND SAVE costs what the first did. It goes into the other half, with the first save's
+  # A second save costs what the first did. It goes into the other half, with the first save's
   # half beside it, and a block of the EEPROM is written for each eight bytes of either — not
   # for each byte, which is what a save that read the other half as it went would cost.
   def test_a_second_save_on_the_eeprom_costs_what_the_first_did
