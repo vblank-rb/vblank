@@ -118,7 +118,7 @@ class TestNativePicture < Minitest::Test
     assert_native_matches_reference program, frames: 6
   end
 
-  # Two sprites cross: a hit is only where their DRAWN pixels meet, so the dot passes through the
+  # Two sprites cross: a hit is only where their drawn pixels meet, so the dot passes through the
   # hollow ring's middle untouched for a few frames.
   def test_sprites_collide_only_where_their_drawn_pixels_meet
     program = program_of do
@@ -198,7 +198,7 @@ class TestNativePicture < Minitest::Test
     %i[red blue green].each { |name| assert_includes seen, Color.resolve(name), "#{name} should have been drawn" }
   end
 
-  # A stack of named layers on a picture that stays: the background declared second sits BEHIND
+  # A stack of named layers on a picture that stays: the background declared second sits behind
   # the first, and the sprite declared first is drawn over the one declared after it.
   def test_named_layers_decide_what_is_in_front
     program = program_of do
@@ -227,7 +227,7 @@ class TestNativePicture < Minitest::Test
     assert_equal Color.resolve(:cyan), top_row[3], "and the sky should show between its slats"
   end
 
-  # Scenery a named layer puts in FRONT of a sprite: the whole view is rebuilt from its layers,
+  # Scenery a named layer puts in front of a sprite: the whole view is rebuilt from its layers,
   # and the sprite shows only between the slats.
   def test_scenery_in_front_of_a_sprite
     program = program_of do
@@ -483,7 +483,7 @@ class TestNativePicture < Minitest::Test
   end
 
   # Art given as numbers into its list of colors, the list holding one color at two places: drawn
-  # with another list, each pixel takes the color at ITS place, which its color alone cannot say.
+  # with another list, each pixel takes the color at its place, which its color alone cannot say.
   def test_a_sprite_given_as_places_is_recolored_by_place
     program = program_of do
       screen :tiled
@@ -1466,7 +1466,7 @@ class TestNativePicture < Minitest::Test
                  "under solid mist the hero shows only in its gaps, two columns of him; with none, all of him"
   end
 
-  # Mist over a picture that STAYS, with a sprite in front of it drawn straight onto the picture:
+  # Mist over a picture that stays, with a sprite in front of it drawn straight onto the picture:
   # nothing scrolls and no scenery is in front of a sprite, so only the amount changing, on some
   # frames and not on others, has the picture built again.
   def test_a_see_through_amount_changes_over_a_picture_that_stays
@@ -1782,7 +1782,7 @@ class TestNativePicture < Minitest::Test
     assert_equal Color.resolve(:blue), at.(moments.last, 104, 24), "and the front one still does not"
   end
 
-  # What a placed fade leaves as drawn, the interpreter knows by NAME, and a background can be
+  # What a placed fade leaves as drawn, the interpreter knows by name, and a background can be
   # given the name the build made for a sprite. The two then stand or fall together: here the
   # floor is behind the line, and is left as drawn because the score sharing its name is in front.
   def test_a_placed_fade_leaves_a_background_that_shares_a_kept_sprites_name
@@ -2202,7 +2202,7 @@ class TestNativePicture < Minitest::Test
     assert_operator rows_unlike_the_one_above.max, :>=, 150, "each row should sit further across than the one above: #{rows_unlike_the_one_above.inspect}"
   end
 
-  # TILES THE GAME PAINTS AS IT RUNS, in a scene's own background that scrolls. Nothing shows
+  # Tiles the game paints as it runs, in a scene's own background that scrolls. Nothing shows
   # until the game says its list changed; what it paints shows the frame after; a write it never
   # says does not; drawn with another list the same pixels change color by place; and the scene
   # coming back shows the list as it is by then, the unsaid write included.
@@ -2249,7 +2249,7 @@ class TestNativePicture < Minitest::Test
     refute_equal moments[5].picture, moments[14].picture, "the scene came back with the write the game never said"
   end
 
-  # A SPRITE'S PICTURE THE GAME PAINTS, and a canvas drawn into with its words. The picture is
+  # A sprite's picture the game paints, and a canvas drawn into with its words. The picture is
   # shown by two sprites, one of them drawn with another list of colors, and is see-through all
   # over until its first copy. The canvas is cleared, filled, lettered and dotted on different
   # frames, a sprite's picture too.
@@ -2296,7 +2296,7 @@ class TestNativePicture < Minitest::Test
     assert_operator moments[10].picture.count(Color.resolve(:blue)), :>=, 32 * 16, "and the canvas cleared to one color"
   end
 
-  # A LIST OF COLORS THAT HOLDS OTHER COLORS AS THE GAME RUNS. Two sprites are drawn with the
+  # A list of colors that holds other colors as the game runs. Two sprites are drawn with the
   # slot and a third with a plain list beside it; the slot is told each of its sets by number,
   # then a number that names none, which is the colors it was declared with.
   def test_a_list_of_colors_told_to_hold_others_recolors_what_is_drawn_with_it

@@ -4,7 +4,7 @@ require "test_helper"
 require "open3"
 require "tmpdir"
 
-# A PICTURE SHOWN FOR SEVERAL REFRESHES IS DRAWN AS FEW TIMES AS THE DISPLAY ALLOWS. On a monitor of
+# A picture shown for several refreshes is drawn as few times as the display allows. On a monitor of
 # a hundred and twenty a second each of the console's pictures is up for two refreshes. SDL's vsync
 # takes a number of refreshes to wait for, so the window asks for the picture's own and draws it once;
 # a display that refuses that number is asked for one refresh, and the picture is drawn once for each
