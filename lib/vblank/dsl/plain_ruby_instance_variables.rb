@@ -2,7 +2,7 @@
 
 module VBlank
   module DSL
-    module PlainRuby
+    module PlainRuby # :nodoc: all
       # Instance variables in game code. A part of a game is a plain class, and it keeps what it
       # knows in instance variables: `@busy = 0` in `initialize`, `if @busy == 1` and `@busy = 1` in
       # the method its routine calls. Ruby runs that method once, while the game is built, so on

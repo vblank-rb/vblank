@@ -2,7 +2,7 @@
 
 module VBlank
   module DSL
-    module PlainRuby
+    module PlainRuby # :nodoc: all
       # Whether a name in a game block becomes a game variable, and why. A game is plain Ruby, and a
       # Ruby local, instance variable, slot or attribute holds what its line worked out while the
       # game is built. Where game code changes it, or a test the game makes as it plays changes it,

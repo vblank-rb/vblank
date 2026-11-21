@@ -2,7 +2,7 @@
 
 module VBlank
   module DSL
-    module PlainRuby
+    module PlainRuby # :nodoc: all
       # What each local name in a game block is written and read by, and where: found by reading
       # the whole block first, since `hp = 5` can only be understood from what the lines after it
       # do to `hp`. These are the facts; whether a name becomes a game variable is Promotion's to

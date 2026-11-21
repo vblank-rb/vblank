@@ -2,7 +2,7 @@
 
 module VBlank
   module DSL
-    module PlainRuby
+    module PlainRuby # :nodoc: all
       # What a call of game code can change, for Promotion#kept_copy, as a second file of
       # LocalNames: it reads the names LocalNames found. A local set from a game value keeps its
       # number in a copy unless nothing can change it before it is read. Each copy costs a

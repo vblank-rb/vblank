@@ -2,7 +2,7 @@
 
 module VBlank
   module DSL
-    module PlainRuby
+    module PlainRuby # :nodoc: all
       # Refuses what a game block cannot use, before any of it runs.
       #
       # Nothing here lists what is banned, except a few calls that have no constant to look at.

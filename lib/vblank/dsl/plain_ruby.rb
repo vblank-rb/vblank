@@ -19,7 +19,7 @@ module VBlank
     # A branch's code stays where it was written, inside parentheses in a real Ruby `if`, and is
     # never moved into a block. So the locals it sets outlive it and every line keeps its
     # number, which is what makes an error name the author's own line.
-    module PlainRuby
+    module PlainRuby # :nodoc: all
       # Something a game block cannot do, said in plain words before the game is built.
       class Refused < BuildError; end
 

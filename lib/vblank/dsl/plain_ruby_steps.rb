@@ -2,7 +2,7 @@
 
 module VBlank
   module DSL
-    module PlainRuby
+    module PlainRuby # :nodoc: all
       # What a rewritten game block calls as it runs (see PlainRuby). Each step looks at the value
       # it is handed: a test the game makes as it plays records game code, and anything else does
       # just what Ruby would.

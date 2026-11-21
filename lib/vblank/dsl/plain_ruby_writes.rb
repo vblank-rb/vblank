@@ -2,7 +2,7 @@
 
 module VBlank
   module DSL
-    module PlainRuby
+    module PlainRuby # :nodoc: all
       # What a write does, whatever its spelling: `x = 1`, `x += 1`, `@x = 1`, `h[:x] = 1`,
       # `o.x = 1`. The rewrite gives which place and which value, and this decides.
       module Writes
