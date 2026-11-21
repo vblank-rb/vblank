@@ -14,7 +14,7 @@ module VBlank
         # input, a beat counted in passes — races at absurd speed. The classic report
         # is "my game runs way too fast / it flickers."
         #
-        # This is a SOFT, advisory warning, not an error: there are legitimate
+        # This is a soft, advisory warning, not an error: there are legitimate
         # reasons to have no wait_vblank (a raw block hand-rolling its own sync, a
         # deliberate benchmark loop, or — later — VBlank-IRQ / IntrWait timing), so
         # we point it out and let the build proceed rather than block it.

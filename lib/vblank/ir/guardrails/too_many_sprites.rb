@@ -10,7 +10,7 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # MORE SPRITES THAN A GAME CAN KEEP PLACES FOR.
+        # More sprites than a game can keep places for.
         #
         # The console composes its sprites from one table of 128 rows, and every sprite a
         # game declares is given a row while the cartridge is built. Sprites of two scenes
@@ -18,7 +18,7 @@ module VBlank
         # what has to fit is the busiest screen: one scene's sprites with the ones every
         # scene shows.
         #
-        # A GAME CAN KEEP MORE ROWS THAN ITS CONSOLE DRAWS ON ONE FRAME: a pool keeps a row for
+        # A game can keep more rows than its console draws on one frame: a pool keeps a row for
         # every thing it can hold, and a room shows a handful of them, so what has to fit the
         # console's table is one frame's sprites, and how a backend keeps the rest is its own
         # business. How many places a game can keep is the console's to set
@@ -40,7 +40,7 @@ module VBlank
           PLAIN_NAME = "more sprites than a game can keep places for"
 
           #
-          # WHETHER A SPRITE KEEPS ITS ROWS ON EVERY SCREEN is the console's: one whose build settles each
+          # Whether a sprite keeps its rows on every screen is the console's: one whose build settles each
           # sprite's rows as the game is built keeps a sprite drawn in an order the game works out in rows
           # of its own (SpriteRows.plan), and one whose runtime hands rows out on every pass gives them to
           # the sprites that show, so two scenes never up together share the places whatever their order

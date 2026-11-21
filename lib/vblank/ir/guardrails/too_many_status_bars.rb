@@ -7,7 +7,7 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # MORE THAN ONE STATUS BAR ON ONE SCREEN.
+        # More than one status bar on one screen.
         #
         # A status bar covers the screen from its top row down to the bottom, so two at once
         # would each be hiding the other's rows — and on the Color it is the console's one

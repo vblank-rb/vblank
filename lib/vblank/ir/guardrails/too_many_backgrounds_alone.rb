@@ -7,7 +7,7 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # MORE THAN ONE BACKGROUND SHOWN ALONE ABOVE A ROW ON ONE SCREEN (`above_row:` with
+        # More than one background shown alone above a row on one screen (`above_row:` with
         # `alone: true` or `alone: :without_sprites`).
         #
         # Alone means no other background shows on the rows above that one, so two at once ask for
