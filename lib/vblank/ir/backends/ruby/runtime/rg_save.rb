@@ -1,4 +1,4 @@
-# THE GAME'S SAVE MEMORY: the bytes a cartridge's chip keeps while the console is off, laid out
+# The game's save memory: the bytes a cartridge's chip keeps while the console is off, laid out
 # byte for byte the way the chip is (lib/vblank/ir/save_layout.rb says how), with IR::SaveImage's
 # rules. Memory with a battery takes any byte anywhere. Flash can only turn bits off in a write,
 # and gets them back by wiping a whole block, which then reads as never written. What the
@@ -24,7 +24,7 @@ def rg_save_setup
   @rg_save_frames_unwritten = 0 # frame ends since the first thing no file holds was saved
 end
 
-# WHEN A FILE IS WRITTEN (rg_save.c's rg_save_file_is_due says the same). A game saves a piece a frame over
+# When a file is written (rg_save.c's rg_save_file_is_due says the same). A game saves a piece a frame over
 # several frames, and a file written after every piece would be written several times for one save, so
 # the file is due once QUIET_FRAMES frames have gone by with nothing saved. A game that never stops saving
 # gets its file about once a second all the same, so a crash never costs more than that.
@@ -196,7 +196,7 @@ def rg_save_erase(at, wait)
   @rg_save_wiping = start if wait == 0
 end
 
-# THE SAVE MEMORY IN THE STATE IMAGE (rg_state.rb): every byte, and where a block is still being
+# The save memory in the state image (rg_state.rb): every byte, and where a block is still being
 # wiped. A game with no save memory keeps none.
 def rg_save_visit_state
   return if rg_save_size == 0
@@ -210,7 +210,7 @@ def rg_save_visit_state
   rg_save_changed if rg_state_reading
 end
 
-# TURN THE POWER OFF part way through a save, for a test: once +steps+ more steps are taken the
+# Turn the power off part way through a save, for a test: once +steps+ more steps are taken the
 # next one stops the game as a `halt` does (IR::SaveImage#cut_power_after).
 def rg_save_cut_power_after(steps)
   @rg_save_power_left = steps

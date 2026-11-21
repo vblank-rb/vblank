@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# THE LAST PART OF A GAME WRITTEN OUT AS ONE RUBY FILE (Ruby#script): what runs when somebody
+# The last part of a game written out as one Ruby file (Ruby#script): what runs when somebody
 # plays it with `ruby game-ruby.rb`. Everything above it in that file — the game as Ruby in
 # VBlankScript::SOURCE, its title and whether it has a menu, and the window, the menu and the
 # session it plays in — was copied in when it was built, so it needs no vblank gem. The library
@@ -64,7 +64,7 @@ module VBlankScript
   # +network+ is the match it plays in (a Network::Lockstep, begun), nil for none: only vblank run's
   # window plays one (Live::MatchPlay), a written-out script never does.
   #
-  # A SHELL'S WINDOW offers save states only while its game plays, never its menu or its unpacking
+  # A shell's window offers save states only while its game plays, never its menu or its unpacking
   # (Original::Shell::Part#keeps_states?), so a window opened for one is opened with none.
   def self.play(written, options, window: nil, network: nil)
     game = written.live_game

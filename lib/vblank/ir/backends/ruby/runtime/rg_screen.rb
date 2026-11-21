@@ -1,4 +1,4 @@
-# THE GAME'S PICTURE, drawn in software: the console's screen as an array of colors, and
+# The game's picture, drawn in software: the console's screen as an array of colors, and
 # everything the game does to it — drawing, the window over the picture, see-through layers and
 # bends. What only some games use (backgrounds, sprites, fades and tints, a picture in blocks, the
 # light, stretched columns, the faces of a place) is a runtime feature of its own, under runtime_features/.
@@ -96,7 +96,7 @@ class RgMixes
   end
 end
 
-# A FILTER for reading the picture back, which a feature hands over once a read (rg_hook_fade_filter,
+# A filter for reading the picture back, which a feature hands over once a read (rg_hook_fade_filter,
 # rg_hook_dim_filter) and the loop in rg_screen_shown reads: +table+ is the colour shown for each colour a
 # cell holds, looked up with table[color]; +everywhere+ is whether it applies to every pixel; +rows+, when
 # it does not, is [from, to, inverted] for each screen row, a pixel being changed when +inverted+ differs
@@ -120,7 +120,7 @@ def rg_screen_read_image_pieces(image, pieces)
 end
 
 def rg_screen_setup
-  # TWO PAGES, OR ONE (Framebuffer#paged=). A tear-free screen is two pictures: the display shows
+  # Two pages, or one (Framebuffer#paged=). A tear-free screen is two pictures: the display shows
   # one while the game draws into the other, and they trade places between frames, so nobody ever
   # sees a half-drawn picture. Drawing always lands on @rg_pixels and the viewer always reads
   # @rg_viewed; with one page those are the same picture. Which page is which is told by identity
@@ -145,7 +145,7 @@ def rg_screen_setup
   @rg_shown_height = RG_SCREEN_HEIGHT
   # The patches of picture saved under bitmap sprites, by buffer number (Reference @backing).
   @rg_saved_patches = []
-  # THE SCENERY WITH NOTHING ON IT (Reference @scene_fb): the backdrop and every background up,
+  # The scenery with nothing on it (Reference @scene_fb): the backdrop and every background up,
   # painted once and kept, to put back under a sprite drawn straight onto a picture that is not
   # rebuilt every frame.
   @rg_scenery = Array.new(RG_SCREEN_CELLS, 0)
@@ -176,14 +176,14 @@ def rg_screen_setup
   # The colour table what is painted goes through (Framebuffer @paint_toward), or nil to paint it as
   # drawn. Set only while the view is rebuilt, for the things a placed fade reaches.
   @rg_paint_fade = nil
-  # WHAT IS PAINTED FROM HERE ON IS MIXED with what is already in the cell (Framebuffer @through):
+  # What is painted from here on is mixed with what is already in the cell (Framebuffer @through):
   # [sixteenths of what is painted, sixteenths of what is under it].
   @rg_mixing = false
   @rg_mixed_by = [16, 0]
   @rg_picture_mixes = RgMixes.new
   @rg_scenery_mixes = RgMixes.new
   @rg_mixed_cells_by = [16, 0]
-  # THE PICTURE WITH NO SPRITES ON IT (Framebuffer @scenery), in a game with a sprite in a
+  # The picture with no sprites on it (Framebuffer @scenery), in a game with a sprite in a
   # see-through layer: a see-through sprite is mixed with this and never with a sprite behind it.
   @rg_picture_without_sprites = Array.new(RG_SCREEN_CELLS, 0)
   @rg_painting_sprite = false
@@ -197,7 +197,7 @@ def rg_screen_setup
   @rg_answered = [0, 0]
   @rg_pending_shares = Array.new(RG_MAX_SEE_THROUGH)
   @rg_told_shares = Array.new(RG_MAX_SEE_THROUGH)
-  # WHAT THE GAME HAS PAINTED (Reference @bitmaps, for a run's tiles and pictures): every run's
+  # What the game has painted (Reference @bitmaps, for a run's tiles and pictures): every run's
   # pixels as places in its colors, place 0 see-through; and the images painted from them.
   @rg_painted_places = nil
   @rg_painted_images = nil
@@ -231,7 +231,7 @@ end
 # see-through layer, and a loop over them costs a block call each and a shift worked out each
 # time, on top of the sums.
 #
-# A channel is WIDENED from five bits to eight by repeating its top bits underneath ((c << 3) |
+# A channel is widened from five bits to eight by repeating its top bits underneath ((c << 3) |
 # (c >> 2), Framebuffer#widen_channel), so the brightest five-bit value, 31, becomes the brightest
 # eight-bit one, 255, rather than 248; every channel helper here widens that way.
 def rg_mixed_with_under(color, under, by)
@@ -344,7 +344,7 @@ def rg_paint_onto_plain_layer(layer)
   @rg_plain_layer = layer
 end
 
-# PAINTING PLAIN. What rg_set_pixel asks of every pixel — a plain layer handed over, a see-through
+# Painting plain. What rg_set_pixel asks of every pixel — a plain layer handed over, a see-through
 # mix, a placed fade, the picture without sprites kept beside — is the same for every pixel of one
 # blit or fill, and for nearly every one of them the answer is "none". When it is, the whole shape
 # is painted here a row at a time: the part of it inside the screen and the area worked out once,
@@ -992,7 +992,7 @@ def rg_screen_two_pages = @rg_pixels.equal?(@rg_viewed) ? 0 : 1
 def rg_screen_repaints_painted = @rg_repaints_painted
 def rg_screen_drawn_tiles_set_up = @rg_drawn_tiles_set_up
 
-# Framebuffer#to_a: the page a viewer is looking at as it is STORED, with no window moved over it
+# Framebuffer#to_a: the page a viewer is looking at as it is stored, with no window moved over it
 # and no fade or tint mixed in.
 def rg_screen_stored
   rg_screen_paint_owed_rebuild
@@ -1162,7 +1162,7 @@ end
 # How many colours a cell can hold: sixteen bits.
 RG_CELL_COLORS = 0x10000
 
-# NO SLICES OF THE SCREEN'S ARRAYS. A slice of a long Array (viewed[from, RG_SCREEN_WIDTH]) is not a
+# No slices of the screen's arrays. A slice of a long Array (viewed[from, RG_SCREEN_WIDTH]) is not a
 # copy: it shares the Array's storage, and the next write to the Array then copies the whole screen's
 # worth of storage first, since the slice still looks at the old one. Reading the picture a row at a
 # time that way copied each page several times a pass, and the memory those copies took made Ruby

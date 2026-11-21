@@ -1,4 +1,4 @@
-# THE GAME'S SOUND: the four voices the game's own sounds play on (and a song's notes, when the game
+# The game's sound: the four voices the game's own sounds play on (and a song's notes, when the game
 # has the music feature), and the log of what was played. The rules are native/runtime/rg_sound.c's,
 # rule for rule, and that file says every one of them and the layout of every table the lowering
 # writes (@rg_game_beeps, ...); this one reads them the same way. Where the C keeps a pointer into
@@ -6,7 +6,7 @@
 # features (runtime_features/music, runtime_features/mix): a game takes them
 # in only when its steps need them, and this file calls them through the sound hooks.
 #
-# THE VOICES ARE A SOUND CHIP'S, not one console's: two square waves, a voice that loops a
+# The voices are a sound chip's, not one console's: two square waves, a voice that loops a
 # waveform of 32 steps, and a hiss from a row of bits. The Game Boy Advance and the Game Boy Color
 # carry the same chip, and nothing here knows which of them the game was built for. Every number
 # that belongs to a console comes in the game's own tables: how fast each voice's clock ticks
@@ -338,7 +338,7 @@ end
 # and the right's: that frame's share of a second's, by the console's own clock, with the part of a
 # sample left over carried to the next frame so no time is lost or made up.
 #
-# WHAT IS THE SAME FOR THE WHOLE FRAME is worked out once, before its samples: which speakers each
+# What is the same for the whole frame is worked out once, before its samples: which speakers each
 # voice is heard from (the voices heard and the pan are the game's to set, between frames), and
 # which voices can sound at all. A voice silent as the frame starts stays silent through it, since
 # only the game starts a note, and a pitch slide can stop a voice but never start one; so a silent
