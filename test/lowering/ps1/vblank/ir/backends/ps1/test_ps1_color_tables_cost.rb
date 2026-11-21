@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# What changing one list of colours costs a PlayStation, read from where Beetle PSX says the time went. A
+# What changing one list of colours costs a PLAYSTATION, read from where Beetle PSX says the time went. A
 # screen drawn from tiles shows everything through colour tables in video RAM, which the runtime works out
 # from the game's colours through the fade in force and copies there as the pass's picture is drawn
 # (Runtime::Colors). A list told another set changes its own table, so it must work out and copy that table,

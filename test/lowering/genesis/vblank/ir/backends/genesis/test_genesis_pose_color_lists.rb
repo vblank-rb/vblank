@@ -184,7 +184,7 @@ class TestGenesisPoseColorLists < Minitest::Test
     genesis(builder.program)
   end
 
-  # +sprites+ sprites that each face the same poses poses, of four lists in turn, each showing one.
+  # +sprites+ sprites that each face the same POSES poses, of four lists in turn, each showing one.
   def shared_poses_game(sprites)
     poses = POSES
     builder = Builder.new

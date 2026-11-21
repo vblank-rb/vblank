@@ -215,7 +215,7 @@ class TestNativeShell < Minitest::Test
     end
   end
 
-  # A pack an older build kept is routine, and never a box. A port grows a part at a time and each
+  # A pack an older build kept is routine, and never a BOX. A port grows a part at a time and each
   # part changes its pack, so a player who takes a new build starts it over the old build's pack: one
   # of another version, or of another size. The shell was started over one by a person, put up a box
   # of the system's as it started, and the box could not be answered: the program never came back.

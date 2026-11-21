@@ -73,7 +73,7 @@
  *                       and how many key presses the page kept from the browser
  *
  * The page's IndexedDB is a stand-in too: a database of byte strings. Started with "idb:FILE" it
- * is read from file when the page opens and written to it as the page puts something in, so a
+ * is read from FILE when the page opens and written to it as the page puts something in, so a
  * second run of the page finds what the first kept.
  *
  * Started with "unfocused" after the page, the window starts without the keyboard, as a page in
