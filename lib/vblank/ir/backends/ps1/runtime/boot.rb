@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class PS1
         module Runtime
-          # FROM THE PROGRAM'S FIRST INSTRUCTION TO THE GAME'S FIRST LINE.
+          # From the program's first instruction to the game's first line.
           #
           # Whatever loaded the program (the BIOS from a disc, an emulator, a loader over a serial cable)
           # jumps to its entry point with the stack pointer set and nothing else promised. So the
@@ -14,7 +14,7 @@ module VBlank
           # It makes no call into the BIOS, then or later, so the program behaves the same whichever BIOS
           # is in the console, or none.
           #
-          # THE INTERRUPT HANDLER. On an interrupt the R3000 jumps to 80000080h, in the part of RAM the
+          # The interrupt handler. On an interrupt the R3000 jumps to 80000080h, in the part of RAM the
           # BIOS's kernel keeps for itself. The runtime writes four instructions there that jump to its own
           # handler (Frame#emit_interrupt): a LUI and an ORI to put the handler's address in k0, a JR k0,
           # and a NOP for its delay slot. k0 is the one register the handler may change before it has
@@ -22,7 +22,7 @@ module VBlank
           # words an interrupt runs and not the BIOS's, which it may still hold
           # (#emit_instruction_cache_emptied).
           #
-          # THE BUTTONS HELD FROM POWER-ON are read before anything that takes a frame: a player's hand is
+          # The buttons held from power-on are read before anything that takes a frame: a player's hand is
           # on the pad before the console is on. They are the first pass's (Frame::HELD), kept in s0 until
           # the game's region of RAM is cleared.
           module Boot
@@ -78,7 +78,7 @@ module VBlank
             # pictures into video RAM at power-on (Paint's rt_paint_upload), and the faces of a place
             # (Faces#emit_port_command says why). Everything else drawn goes in that list.
             #
-            # A COMMAND OF SEVERAL WORDS is sent whole: its first word through rt_gp0_port_word, and the
+            # A command of several words is sent whole: its first word through rt_gp0_port_word, and the
             # rest stored to GP0 straight after, through t1, which it leaves holding the ports' base. The
             # chip signals it has no room for a command's last word until it holds the whole command
             # (Beetle PSX measured: a copy into video RAM, asked for between its words, waited for ever).
@@ -94,7 +94,7 @@ module VBlank
               asm.jr(:ra)
             end
 
-            # THE INSTRUCTION CACHE ON. The processor keeps the last 4K of code it ran in a cache inside
+            # The instruction cache on. The processor keeps the last 4K of code it ran in a cache inside
             # itself, and runs code from there without going out to RAM for each instruction, but only
             # once the cache control register (FFFE0130h) allows it. Sony's BIOS sets it to 0001E988h
             # before it starts a program (psx-spx, "Cache Control"), so a program loaded from a disc or by
@@ -133,7 +133,7 @@ module VBlank
               asm.sw(:zero, 12, :t3)
             end
 
-            # THE INSTRUCTION CACHE EMPTIED, so the handler just written is the one an interrupt runs.
+            # The instruction cache emptied, so the handler just written is the one an interrupt runs.
             #
             # The cache holds copies of the instructions the processor ran last, and a word stored to RAM
             # does not reach the copy. A console that took an interrupt under its BIOS has the BIOS's
@@ -147,7 +147,7 @@ module VBlank
             # nothing; then, in its ordinary mode (800h), a nought is stored over every word. That is the
             # BIOS's own FlushCache, step for step (psx-spx, "CPU Specifications", cache isolation).
             #
-            # THREE THINGS IT MUST MIND. It runs from the uncached mirror of RAM (the same bytes at
+            # Three things it must mind. It runs from the uncached mirror of RAM (the same bytes at
             # A0000000h as at 80000000h, never fetched through the cache), since a processor with its
             # cache isolated runs whatever the cache holds and asks RAM for nothing; so it is written with
             # no jump that names an address, only branches, which count from where they are. It touches
@@ -255,7 +255,7 @@ module VBlank
               end
             end
 
-            # THE FRAMES SETTING UP TAKES, COUNTED IN k1. The region the interrupt keeps FRAMES in is not
+            # The frames setting up takes, counted in k1. The region the interrupt keeps frames in is not
             # cleared yet, and is cleared later, so while setting up the count is kept in k1, a register that
             # is the interrupt's alone (R3000::REGISTERS): nought means the interrupt does all its work, and
             # anything else that it only counts blanks, k1 being one more than the blanks counted
@@ -269,7 +269,7 @@ module VBlank
               asm.mtc0(:t0, R3000::COP0_STATUS)
             end
 
-            # The blanks counted in k1 become FRAMES, and k1 nought hands the interrupt its whole work, with
+            # The blanks counted in k1 become frames, and k1 nought hands the interrupt its whole work, with
             # every interrupt held off meanwhile; #emit_interrupts_on lets them in again, a blank that began
             # meanwhile still waiting.
             def emit_counting_handed_over(asm, memory)

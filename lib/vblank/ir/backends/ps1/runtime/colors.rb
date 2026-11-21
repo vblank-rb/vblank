@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class PS1
         module Runtime
-          # THE COLOURS A SCREEN DRAWN FROM TILES CHANGES AS IT RUNS: a list of colours told to hold another
+          # The colours a screen drawn from tiles changes as it runs: a list of colours told to hold another
           # set (`recolor`, Nodes::ColorListHolds), a background drawn with another list (`draw_with`,
           # Nodes::BackgroundColors), and a fade or a tint. Everything such a screen shows is read through a
           # colour table in video RAM, its backgrounds (PS1::PlaneColors) and its sprites alike, and the
@@ -31,7 +31,7 @@ module VBlank
           # (WALK_TABLES, rt_colors_walk_tables), and a colour is then three halfwords read and put together
           # (rt_colors_walk), with no multiply and no call for each.
           #
-          # A change only marks what it changed (DIRTY): a list or a background told another set marks the
+          # A change only marks what it changed (dirty): a list or a background told another set marks the
           # colour tables its entries are in (each table's record in "colors tables") and the backdrop if it is
           # one, a fade or tint every one. They are worked out once, as the pass's picture is drawn
           # (rt_colors_shown, the first thing rt_tiles_draw does), and only the tables marked are walked and
@@ -45,7 +45,7 @@ module VBlank
           #   rt_colors_hold(source, which)     a0 = a source's table, a1 = the set the game names
           #   rt_colors_shown                   as the picture is drawn: the tables marked worked out and copied
           #
-          # A SOURCE is one thing whose number picks a set: a list of colours, or a background's own lists. Its
+          # A source is one thing whose number picks a set: a list of colours, or a background's own lists. Its
           # table, made while the game is built (Lowering::Picture#color_sections), is the set it holds now (a
           # word, 0 for the colours it was declared with), how many sets it has besides those, how many entries
           # it changes (m), how many colour tables those are in (k); then k words, each a table's record in

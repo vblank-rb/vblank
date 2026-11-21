@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class PS1
         module Runtime
-          # THE LIST OF DRAWING COMMANDS. The graphics chip draws whatever reaches its GP0 port, and the
+          # The list of drawing commands. The graphics chip draws whatever reaches its GP0 port, and the
           # port's queue holds sixteen words. Fed by the processor a word at a time, the processor waits
           # whenever the queue is full, which is whenever the chip has more to draw than the processor has
           # to work out: four backgrounds the size of the screen kept it waiting most of every frame.
@@ -18,7 +18,7 @@ module VBlank
           # loop of the processor's own ran no slower while a list of fills was being sent, and the wait for
           # the DMA came after it).
           #
-          # A LINKED LIST, A NODE A COMMAND, as the console's games built theirs: each command is a header
+          # A linked list, a Node a command, as the console's games built theirs: each command is a header
           # word, how many words follow in its top byte and where the next node is in its low 24 bits, then
           # the command. The DMA asks the chip for room before each node and then hands it the whole node,
           # so the chip always has a whole command to draw. (A list sent a word at a time stops for good
@@ -26,19 +26,19 @@ module VBlank
           # whole command.) The addresses are RAM's own, below 2 megabytes, where the processor reaches the
           # same bytes as at 80000000h, so a node's next address is the cursor itself, with no masking.
           #
-          # TWO LISTS, one sent while the other is filled. When the one being filled has no room for another
+          # Two lists, one sent while the other is filled. When the one being filled has no room for another
           # command, it is ended and sent (rt_draw_list_send): the processor first waits for the other to be
           # gone, then starts this one and goes on filling the other. A pass's last commands are sent where
           # the pass ends (rt_draw_list_finish), which waits for the chip to have taken all of them, so the
           # pass's picture is whole before it is shown or read back (Frame).
           #
-          # EVERYTHING ELSE THAT REACHES THE CHIP waits for the list first, so it comes after every command
+          # Everything else that reaches the chip waits for the list first, so it comes after every command
           # sent before it: the copies of the pictures into video RAM at power-on (Paint's rt_paint_upload,
           # which sends their pixels by the same DMA), a place's faces, which go to the port
           # (Faces#emit_port_command says why), a change of the page shown (Paint's rt_paint_screen, Frame's
           # rt_show_pass) and the end of the game (Frame's rt_stop_with_state).
           #
-          # A COMMAND IS SENT as its first word in a0 and a jump to the routine for its length, which
+          # A command is sent as its first word in a0 and a jump to the routine for its length, which
           # leaves t1 holding where that word went; its other words are stored after it, at
           # #word_offset_bytes(1), (2) and on. The routine changes only t1 to t3, so the words after the
           # first can be worked out before it is called.
@@ -70,7 +70,7 @@ module VBlank
             # segment's top bits.
             PHYSICAL_MASK = 0x1FFF_FFFF
 
-            # THE LIST'S STATE, a word each in one block of the region: where the next node goes in the list
+            # The list's state, a word each in one block of the region: where the next node goes in the list
             # being filled, the last place a node may start in it (room for the longest, and for the node that
             # ends it), where it starts, and where the other one starts; then where a full list, and
             # rt_draw_list_finish, keep their return addresses while they send, so neither needs the stack,
@@ -100,7 +100,7 @@ module VBlank
             PARKED_HELD_BACK_OFFSET_BYTES = STATE_BYTES + 16
             HELD_BACK_STATE_BYTES = 20
 
-            # A LIST HELD BACK UNTIL THE BLANK. On a tear-free screen the game's timers run after the pass's page is
+            # A list held back until the blank. On a tear-free screen the game's timers run after the pass's page is
             # drawn and before the blank shows it, and what a handler draws goes on the page still on the screen
             # (Frame#emit_ticks_on_next_page): drawn now, it would show for the rest of the frame. So its commands
             # stay in the list until the next pass ends. A handler that draws more than a list holds would have the
@@ -155,7 +155,7 @@ module VBlank
               asm.sw(:zero, state.at(HELD_BACK_OFFSET_BYTES), :t1)
             end
 
-            # WHERE A COMMAND IN THE LIST TELLS THE FACES OF A PLACE TO WAIT FOR IT. A face's commands go to
+            # Where a command in the list tells the faces of a place to wait for it. A face's commands go to
             # the port (Faces#emit_port_command), so before its first the list must be sent and drawn. A face
             # sends the chip's texture window first, unless the last face sent the same one (Faces'
             # CHIP_OFFSET_BYTES keeps it); so every command put in the list sets that kept window to nought,
@@ -267,7 +267,7 @@ module VBlank
               asm.jr(:ra) { asm.sw(:t2, state.at(LIMIT_OFFSET_BYTES), :t3) }
             end
 
-            # A LIST HELD BACK, PARKED. A handler that waits ends a pass while its commands are held back for the page
+            # A list held back, parked. A handler that waits ends a pass while its commands are held back for the page
             # still on the screen, and that page can be drawn on only once the blank has shown the page before it
             # (Frame#emit_show_owed). Showing that page can draw too (a copy onto the page shown, Paint's
             # rt_paint_sprites_shown), so the held list is parked meanwhile, as it stands, and the drawing goes into
