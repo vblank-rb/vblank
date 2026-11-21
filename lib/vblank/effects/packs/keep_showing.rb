@@ -158,17 +158,25 @@ module VBlank
         # The guardrails this pack brings with it.
         def self.checks = CHECKS
 
-        # A picture that is declared and told when it changes, but never drawn.
+        # A warning about a picture declared with `keep_showing` that the game never draws:
         #
-        # The two halves sit in different places on purpose — a change is noticed
-        # wherever it happens, and the painting belongs in the drawing order — so it
-        # is an easy one to half-write. Left like that the picture never appears at
-        # all: the counter goes up on every change and nothing ever reads it. No
-        # crash, no blank where something should be, just a game missing its score.
+        # > This game declares `keep_showing(:<picture>)`, but it never draws that picture. The
+        # > block says what to draw. A call to `draw` on the handle is what puts it on screen.
+        # > With no such call the picture never appears. To fix this, call `<picture>.draw` in the
+        # > frame, where the picture belongs in the drawing order.
+        #
+        # The two halves sit in different places on purpose: a change is noticed wherever it
+        # happens, and the drawing belongs in the frame, in the order things are drawn. So it is
+        # easy to write one half and not the other, and then the picture, such as a score, never
+        # appears at all. Call `draw` on the handle in the frame.
+        #
+        #--
+        # Left like that the counter goes up on every change and nothing ever reads it.
         #
         # Read structurally, the same way the shake's own check is: the routine is
         # declared as soon as a picture is, and #draw is the only thing that ever
         # places a call to it. A declared routine with no call is exactly this bug.
+        #++
         class NeverDrawn
           NAME = :keep_showing_never_drawn  # :nodoc:
           PLAIN_NAME = "a picture that is never drawn"  # :nodoc:

@@ -199,7 +199,15 @@ module VBlank
 
         def self.checks = CHECKS
 
-        # A screen irised out and never back in. The game runs on behind a black screen.
+        # A warning about a game that closes the iris and never opens it again:
+        #
+        # > This game calls `iris_out` and never calls `iris_in`. The circle closes and the screen
+        # > stays black. The game is still running behind it. To fix this, call `iris_in` when the
+        # > picture must come back.
+        #
+        # The game runs on behind a black screen, so nothing looks broken but the picture. Call
+        # `iris_in` where the picture must come back, for example after the scene changes while
+        # `iris_shut?` is true.
         class IrisOutNeverIn
           NAME = :iris_out_never_in  # :nodoc:
           PLAIN_NAME = "an iris out with no iris in"  # :nodoc:

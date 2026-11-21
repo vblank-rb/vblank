@@ -263,11 +263,20 @@ module VBlank
         # have, for the same reason, so it reads the same way.
         def self.checks = CHECKS
 
-        # A menu with no frames to happen on.
+        # A warning about a game that declares a menu and has no `game_loop`:
         #
+        # > This game declares a menu, but it has no `game_loop`. A menu reads the buttons and
+        # > draws itself again on every frame, so it needs frames to run on. With no game loop
+        # > there are none: the rows are drawn one time, and the cursor never moves. To fix this,
+        # > put the game in a `game_loop`.
+        #
+        # Without a game loop the menu's rows show, the cursor never moves, and no button does
+        # anything. Put the game's frames in a `game_loop`, with the menu inside it.
+        #
+        #--
         # A menu is a button read and a redraw made on every frame, so it only exists
-        # over time. With no game loop there are no frames: the rows are drawn once, the
-        # cursor never moves, and no button does anything.
+        # over time.
+        #++
         class NeedsGameLoop
           NAME = :menu_needs_game_loop  # :nodoc:
           PLAIN_NAME = "a menu with no frames to run on"  # :nodoc:

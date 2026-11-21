@@ -134,9 +134,22 @@ module VBlank
 
         def self.checks = CHECKS
 
+        # A warning about a game that pixelates the screen over time and has no `game_loop`:
+        #
+        # > This game pixelates the screen with `pixelate_out` or `pixelate_in`, but it has no
+        # > `game_loop`. The size of a block changes a little on every frame, so it needs frames to
+        # > run on. With no game loop there are none, and the screen never changes. To fix this,
+        # > put the game in a `game_loop`. To set one size with no loop, use `pixelate`.
+        #
+        # The blocks grow or shrink a little each frame, as each turn of the `game_loop` ends.
+        # Without a game loop the call looks right and the screen never changes. Put the game's
+        # frames in a `game_loop`, or use `pixelate` to set one size at once.
+        #
+        #--
         # A walk with no frames to happen on. The size is moved a little every frame, at
         # the frame boundary a `game_loop` gives it; with no game loop the call sets its
         # target and nothing ever reads it.
+        #++
         class NeedsGameLoop
           NAME = :pixelate_needs_game_loop  # :nodoc:
           PLAIN_NAME = "a pixelate with no frames to run on"  # :nodoc:
@@ -158,10 +171,21 @@ module VBlank
           end
         end
 
+        # A warning about a game that pixelates the screen out and never brings it back:
+        #
+        # > This game calls `pixelate_out` and never calls `pixelate_in`. The picture stays in the
+        # > biggest blocks, which are too big to read. The game is still running behind them. To
+        # > fix this, call `pixelate_in` when the picture must come back.
+        #
+        # The game runs and draws everything it meant to, in blocks too big to read, which makes
+        # this hard to spot. The usual cause is a `pixelate_out` for a change of scene with no
+        # `pixelate_in` after it. Call `pixelate_in` where the picture must come back.
+        #
+        #--
         # A screen pixelated out and never brought back. The picture is all still there,
-        # which is what makes this hard to spot: the game runs and draws everything it
-        # meant to, in blocks too big to read. The usual way in is to pixelate out for a
+        # which is what makes this hard to spot. The usual way in is to pixelate out for a
         # scene change and forget the other half.
+        #++
         class PixelatedOutNeverIn
           NAME = :pixelated_out_never_in  # :nodoc:
           PLAIN_NAME = "a pixelate out with no pixelate in"  # :nodoc:

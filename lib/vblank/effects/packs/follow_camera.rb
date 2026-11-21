@@ -106,12 +106,21 @@ module VBlank
         # for the same reason, so it reads the same way.
         def self.checks = CHECKS
 
-        # A follow camera with no frames to happen on.
+        # A warning about a game that follows a character with the camera and has no `game_loop`:
         #
+        # > This game follows a character with `camera_follows`, but it has no `game_loop`. A
+        # > camera moves the world a little on every frame, so it needs frames to run on. With no
+        # > game loop there are none: the world never moves, and the character walks off the
+        # > screen. To fix this, put the game in a `game_loop`.
+        #
+        # Following is a small move of the camera made once a frame, as each turn of the
+        # `game_loop` ends. Without a game loop the world never scrolls and the character walks
+        # off the edge of the screen. Put the game's frames in a `game_loop`.
+        #
+        #--
         # Following is a small correction made once per frame, so it only exists over time.
-        # The framework runs it at the frame boundary a `game_loop` gives it. With no game
-        # loop there is no boundary: the world never scrolls, and the hero walks off the
-        # edge of the screen and keeps going.
+        # The framework runs it at the frame boundary a `game_loop` gives it.
+        #++
         class NeedsGameLoop
           NAME = :follow_camera_needs_game_loop  # :nodoc:
           PLAIN_NAME = "a follow camera with no frames to run on"  # :nodoc:

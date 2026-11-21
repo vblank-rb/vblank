@@ -82,13 +82,21 @@ module VBlank
         # the same reason, so it reads the same way.
         def self.checks = CHECKS
 
-        # A pulse that has no frames to happen on.
+        # A warning about a game that pulses a sprite and has no `game_loop`:
         #
+        # > This game pulses a sprite with `pulse`, but it has no `game_loop`. A pulse changes the
+        # > sprite's size a little on every frame, so it needs frames to run on. With no game loop
+        # > there are none, and the sprite never moves. To fix this, put the game in a `game_loop`.
+        #
+        # A pulse takes the sprite's size a little further each frame, as each turn of the
+        # `game_loop` ends. Without a game loop the sprite stays at its resting size, so nothing
+        # looks broken and nothing moves. Put the game's frames in a `game_loop`.
+        #
+        #--
         # A pulse is a size walked a little further every frame, so it only exists over
         # time. The framework runs that walk at the frame boundary a `game_loop` gives
-        # it. With no game loop there is no boundary and the walk never runs: the sprite
-        # sits at the size the pulse started it at, which is usually its resting size, so
-        # nothing looks broken and nothing moves.
+        # it. With no game loop there is no boundary and the walk never runs.
+        #++
         class NeedsGameLoop
           NAME = :pulse_needs_game_loop  # :nodoc:
           PLAIN_NAME = "a pulse with no frames to run on"  # :nodoc:

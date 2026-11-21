@@ -200,13 +200,23 @@ module VBlank
         # Effects.register_pack — so they only ever report on a build that has these verbs.
         def self.checks = CHECKS
 
-        # A fade with no frames to happen on.
+        # A warning about a game that fades the screen and has no `game_loop`:
         #
+        # > This game fades the screen with `fade_out`, `fade_in` or `flash_screen`, but it has
+        # > no `game_loop`. A fade changes the screen a little on every frame, so it needs frames
+        # > to run on. With no game loop there are none, and the screen never changes. To fix
+        # > this, put the game in a `game_loop`.
+        #
+        # A fade takes the screen a little further toward its colour each frame, as each turn of
+        # the `game_loop` ends. Without a game loop the call looks right and the screen never
+        # changes. Put the game's frames in a `game_loop`.
+        #
+        #--
         # A fade is an amount walked a little further every frame, so it only exists over
         # time. The framework runs that walk at the frame boundary a `game_loop` gives it.
         # With no game loop there is no boundary and the walk never runs: the call sets its
-        # target, nothing ever reads it, and the screen never changes. No crash, no
-        # warning, and the call looks right where it is written.
+        # target, nothing ever reads it, and the screen never changes.
+        #++
         class NeedsGameLoop
           NAME = :fade_needs_game_loop  # :nodoc:
           PLAIN_NAME = "a fade with no frames to run on"  # :nodoc:
@@ -248,20 +258,24 @@ module VBlank
           end
         end
 
-        # A screen faded out and never brought back.
+        # A warning about a game that fades the screen out and never fades it back in:
         #
-        # A full fade blends every layer completely into one color, so nothing shows
-        # through it — not the game, not a sprite, not text drawn afterwards. The picture
-        # is all still there underneath, which is what makes this hard to spot: the
-        # program runs correctly and draws everything it meant to, and the screen is a
-        # flat color. The usual way in is to fade out for a scene change and forget the
-        # fade back in.
+        # > This game calls `fade_out` and never calls `fade_in`. A full fade blends the whole
+        # > picture into one color, so nothing shows through it. The game is still running behind
+        # > a flat screen. To fix this, call `fade_in` when the screen must come back.
         #
+        # A full fade hides everything: the game, its sprites, and any text drawn afterwards. The
+        # game runs and draws all it meant to, and the screen is one flat colour, which makes this
+        # hard to spot. The usual cause is a fade out for a change of scene with no fade back in.
+        # Call `fade_in` (or `flash_screen`) where the screen must come back.
+        #
+        #--
         # The library's own FadeNeverLifted check cannot see this one. It reads the amount
         # off a `fade` written by the author, and deliberately says nothing when that
         # amount is a variable — which is exactly what a fade over time is. So this reads
         # the pack's own target instead: `fade_out` writes the full amount, `fade_in` and
         # `flash_screen` write zero, and nothing else writes that variable at all.
+        #++
         class FadedOutNeverIn
           NAME = :faded_out_never_in  # :nodoc:
           PLAIN_NAME = "a fade out with no fade in"  # :nodoc:

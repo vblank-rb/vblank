@@ -92,18 +92,24 @@ module VBlank
         # (Guardrails::Checks::SongNeedsFrames). Saying it twice would be noise.
         def self.checks = CHECKS
 
-        # Music faded out and never brought back.
+        # A warning about a game that fades its music out and never brings it back:
         #
-        # A faded-out song goes on playing at no volume, and the volume stays at nothing for every
-        # song after it — so the game plays on in silence, which is exactly what a game with its
-        # sound switched off sounds like, and nothing says why. It is the screen fade's footgun
-        # heard rather than seen.
+        # > This game calls `fade_music_out` and never calls `fade_music_in`. A song that fades out
+        # > keeps playing, but it makes no sound. Every song after it makes no sound too. To fix
+        # > this, call `fade_music_in` at the place where the music must come back.
         #
+        # The volume stays at nothing for every song after the fade, so the game plays on in
+        # silence, which sounds the same as a game with its sound switched off. Call
+        # `fade_music_in` where the music must come back. Setting `music_volume` back up yourself
+        # counts too, and the warning is not given.
+        #
+        #--
         # `fade_music_out` writes the target 0 and `fade_music_in` writes the full amount, and
         # nothing else writes the target at all. Turning the volume back up by hand counts too,
         # anywhere in the game: the volume is declared with one write of the full level, and the
         # fade's own routine writes it as it walks, so any other write that is not a plain 0 is
         # the game's own `music_volume` — a number, or one the game works out.
+        #++
         class FadedOutNeverIn
           NAME = :music_faded_out_never_in  # :nodoc:
           PLAIN_NAME = "music faded out and never brought back"  # :nodoc:

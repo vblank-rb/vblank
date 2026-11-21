@@ -78,19 +78,30 @@ module VBlank
         # build that loaded this pack.
         def self.checks = CHECKS
 
-        # A screen shake that has no frames to happen on.
+        # A warning about a game that shakes the screen and has no `game_loop`:
         #
+        # > This game shakes the screen with `shake_screen`, but it has no `game_loop`. A shake
+        # > moves the picture a small amount on every frame, so it needs frames to run on. With no
+        # > game loop there are none, and the screen never moves. To fix this, put the game in a
+        # > `game_loop`.
+        #
+        # A shake moves the picture a little, a different way each frame, then puts it back. The
+        # framework does that once a frame, as each turn of the `game_loop` ends. Without a game
+        # loop the call to `shake_screen` looks right and the screen stays still. Put the game's
+        # frames in a `game_loop`.
+        #
+        #--
         # A shake works by moving the picture a small amount, a different way each
         # frame, and then putting it back — so it is spread over time by definition.
         # The framework runs that for you once per frame, at the frame boundary a
         # `game_loop` provides. A program with no game loop has no boundary, so the
         # routine is never reached: `shake_screen` sets its counter, nothing ever
-        # reads it, and the screen sits perfectly still. No crash, no warning, and the
-        # call looks right where it is written.
+        # reads it, and the screen sits perfectly still.
         #
         # Read structurally rather than from build-time bookkeeping: the shake routine
         # is declared as soon as anything shakes, and a call to it is placed at each
         # frame boundary. A declared routine with no call to it is exactly this bug.
+        #++
         class NeedsGameLoop
           NAME = :shake_needs_game_loop  # :nodoc:
           PLAIN_NAME = "a shake with no frames to run on"  # :nodoc:
