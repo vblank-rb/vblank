@@ -6,7 +6,7 @@ require "tmpdir"
 
 module VBlank
   module Original
-    # THE FILES A PORT'S UNPACKING ROUTINE WAS BUILT FROM, each by its full path and the digest of
+    # The files a port's unpacking routine was built from, each by its full path and the digest of
     # its contents as they were (nil for a file that was not there). Recorded as the routine is
     # built (RoutineBuild), so a later build can tell whether building it again would build the
     # same program without building it: it hashes the same files again (#unchanged?).
@@ -78,7 +78,7 @@ module VBlank
       # The digest of the file at +path+ as it is now, or nil where there is no such file.
       def self.digest_of(path) = File.file?(path) ? Digest::SHA256.file(path).hexdigest : nil
 
-      # EVERY RUBY FILE THAT DEFINES SOMETHING THIS PROCESS CAN REACH: a method of a module, or a
+      # Every Ruby file that defines something this process can reach: a method of a module, or a
       # constant, found from Object down through every constant that is a module. It is read from
       # the modules rather than from $LOADED_FEATURES, which a Ractor may not read, and it finds a
       # file loaded by `load` too. A constant a Ractor may not read is a value, never a module (a

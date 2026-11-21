@@ -2,14 +2,14 @@
 
 module VBlank
   module Original
-    # WHAT A PORT'S UNPACKING ROUTINE IS DECLARED FROM, short of the files (RoutineFiles): the
+    # What a port's unpacking routine is declared from, short of the files (RoutineFiles): the
     # slots, each part's name and pieces, the blocks the game wrote and where, the formats the copy
     # offers, the release it unpacks, and the console and screen the routine is built for. Written
     # out as text (#source), it is half of what the pack cache keys a routine it built before on
     # (PackCache#pack_of_routine), and what a routine built before in this process is found by
     # (RoutineBuild).
     #
-    # A BLOCK IS NAMED BY WHERE IT IS WRITTEN AND THE PLAIN VALUES IT CAN SEE. One line of a game can
+    # A block is named by where it is written and the plain values it can see. One line of a game can
     # make many routines: a method that declares the pack with a number it is given, say. So each
     # block is written out with the local variables of the code around it, the ones whose values
     # are plain data (numbers, text, symbols, and lists, tables and Data records of them), and the

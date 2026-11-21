@@ -5,7 +5,7 @@ require "rake/tasklib"
 
 module VBlank
   module Original
-    # A PORT'S RAKE TASKS FOR CHECKING ITS SHELL (Live::ShellCheck and WholeGameCheck). In the game's
+    # A port's rake tasks for checking its shell (Live::ShellCheck and WholeGameCheck). In the game's
     # Rakefile:
     #
     #   require "vblank/original/shell_check_tasks"

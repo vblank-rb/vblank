@@ -4,7 +4,7 @@ require "digest"
 
 module VBlank
   module Original
-    # A PORT BUILT AS A SHELL: the game's code with none of the original's data in it, and what a
+    # A port built as a shell: the game's code with none of the original's data in it, and what a
     # player's machine needs to make the data pack from the player's own copy on the first run.
     #
     # Prior art is Ship of Harkinian: the program ships with no assets, and on its first run checks
@@ -26,12 +26,12 @@ module VBlank
     # +original+ the Original::Game the data pack reads, named so a check on this machine can find
     # the copy a player would pick (Live::ShellCheck). No runtime is handed it.
     #
-    # WHAT A RUNTIME DOES WITH IT (Live::Shell is the Ruby one). At start it reads the pack from the
+    # What a runtime does with it (Live::Shell is the Ruby one). At start it reads the pack from the
     # game's folder; a pack that passes the check is handed to the game, and the copy is never read.
     # Otherwise the menu plays. LOAD ROM asks for a file, and the file is refused unless it is a
     # release the game reads; the release's unpacking plays handed the bytes that were checked, and
     # what it wrote, after the header for the file's SHA-1, is the pack, written to the folder and
-    # handed to the game. SETTINGS opens the window's settings, and the menu plays again. A pack for
+    # handed to the game. Settings opens the window's settings, and the menu plays again. A pack for
     # another build of the game, or in a format this build does not read, fails the check, so the
     # menu asks for the copy again.
     #
@@ -183,7 +183,7 @@ module VBlank
         )
       end
 
-      # THE FOLDER THE PACK IS KEPT IN, beside the game's saves. Two VBlank games can have one title,
+      # The folder the pack is kept in, beside the game's saves. Two VBlank games can have one title,
       # so the folder is named from the title and from the releases of the original it reads, which
       # tell one port from another; a new build of the same port keeps the same folder, finds the
       # pack an older build made there, and asks for the copy again because the pack names the
@@ -219,9 +219,9 @@ module VBlank
       # (+first_line+), and the +step+ from one line down to the next.
       Rows = Data.define(:title, :needs, :first_line, :step)
 
-      # THE LINES OF A FIRST SCREEN, top to bottom, for what a game +given+ (a DSL::ShellScreen):
-      # LOAD ROM, the game's lines that go under it, SETTINGS, and the game's lines under that.
-      # LOAD ROM and SETTINGS keep their numbers whatever is added, since three runtimes read them.
+      # The lines of a first screen, top to bottom, for what a game +given+ (a DSL::ShellScreen):
+      # LOAD ROM, the game's lines that go under it, settings, and the game's lines under that.
+      # LOAD ROM and settings keep their numbers whatever is added, since three runtimes read them.
       def self.menu_lines(given)
         own = given.lines.each_with_index.map do |line, at|
           [line.under, MenuLine.new(words: line.words, number: SETTINGS + 1 + at, scene: line.shows, source: line.source)]
@@ -234,30 +234,30 @@ module VBlank
         end
       end
 
-      # THE MENU, a small game of the library's own built for the console +game+ (the game's
+      # The menu, a small game of the library's own built for the console +game+ (the game's
       # program) is built for: the title, a line naming what the game needs, and lines picked with
       # up and down and chosen with A or Start. Game code, so each runtime plays it as it plays any game.
       #
-      # A GAME MAKES IT ITS OWN with `shell_screen` (+first_screen+, what the game gave, or nil):
+      # A game makes it its own with `shell_screen` (+first_screen+, what the game gave, or nil):
       # its font, colours, a picture, its words, and lines of its own (Builder::ShellScreens, whose
       # block is run on this menu's builder). A game that gives nothing gets the screen as it
-      # always was. A LINE OF THE GAME'S OWN SHOWS A SCENE AND COMES BACK, all inside this
+      # always was. A line of the game's own shows a scene and comes back, all inside this
       # program: chosen, it shows as chosen as any line does, then its scene is called every pass
       # over the ground's colour until A, B or Start is pressed, and the menu is back with the
       # cursor where it was. The menu does not halt for it, so no runtime hears of such a line.
       #
-      # THE LINE CHOSEN SHOWS AS CHOSEN, in yellow, for CHOSEN_FRAMES frames in which no button
+      # The line chosen shows as chosen, in yellow, for CHOSEN_FRAMES frames in which no button
       # does anything. Then the menu sets MENU_CHOICE and halts, and the runtime does what was
       # chosen with that picture still up, so a file chooser opens over a menu that shows what
       # the player did.
       #
-      # THE CURSOR STARTS WHERE THE RUNTIME PUTS IT. The menu ends each time a line is chosen, and
+      # The cursor starts where the runtime puts it. The menu ends each time a line is chosen, and
       # plays again from its start when a chooser is closed with nothing picked, a file is refused or
       # the settings are shut. So the line under the cursor (MENU_LINE) is read as it halts and
       # handed back as its start file, one byte, and the menu comes back as it was left. A game
       # is handed its data pack the same way (IR::StartFile), so every runtime has the means already.
       #
-      # A PACK KEPT BY AN OLDER BUILD IS SAID HERE, AND NOWHERE ELSE. A port grows a part at a time,
+      # A pack kept by an older build is said here, and nowhere else. A port grows a part at a time,
       # and each part changes its pack, so a player who takes a new build finds the pack the old
       # one kept. Nothing went wrong and the player did nothing: the copy is read again, as on the
       # first start. So the runtime says only that such a pack is there (the start file's second
