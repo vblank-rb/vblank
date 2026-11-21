@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# WHAT A WHOLE-SCREEN FADE COSTS A GENESIS, measured in the emulator. A busy screen fading has its
+# What a whole-screen fade costs a Genesis, measured in the emulator. A busy screen fading has its
 # amount change every pass, so every colour the game uses is worked out again every pass
 # (Runtime::Tint). A Genesis game of its own time that fades a frame at a time moves each of its
 # colours a step with a compare and an add a channel and writes the palette back, about a hundred

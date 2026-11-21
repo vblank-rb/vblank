@@ -3,7 +3,7 @@
 require "test_helper"
 require "tmpdir"
 
-# A RECORDED NOTE THAT GLIDES, HEARD FROM THE GENESIS'S CARTRIDGE in Genesis Plus GX. The checked run
+# A recorded note that glides, heard from the Genesis's cartridge in Genesis Plus GX. The checked run
 # holds the 68000's count of where the recording has got to against the interpreter's; this hears that
 # the sound processor took the new step too (Runtime::Recordings, GLIDE_ENTRY). A recording that lasts
 # 40 frames at its own pitch is struck, and either goes on as it is or, 18 frames in, glides an octave

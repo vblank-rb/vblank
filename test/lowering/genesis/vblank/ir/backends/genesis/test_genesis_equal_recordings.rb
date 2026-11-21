@@ -3,7 +3,7 @@
 require "test_helper"
 require "equal_recording_games"
 
-# RECORDINGS WITH THE SAME SAMPLES ARE KEPT ONCE IN A GENESIS CARTRIDGE. A play's row of the table
+# Recordings with the same samples are kept once in a Genesis cartridge. A play's row of the table
 # carries how fast it is read, where it goes back to and which recording it is to the game, so
 # the bytes the DAC takes are needed once however many names play them.
 class TestGenesisEqualRecordings < Minitest::Test

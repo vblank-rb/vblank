@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# AN INDEX CHECKED ONCE on the Genesis (Lowering#index_checked_below?): a read or write of a list
+# An index checked once on the Genesis (Lowering#index_checked_below?): a read or write of a list
 # that always holds its capacity leaves out the check of an index already checked against a list no
 # longer than it, while nothing can have changed the index. Each game here changes the index, or
 # takes a way past the first check, between a check of a list of four and a read of a list of five
