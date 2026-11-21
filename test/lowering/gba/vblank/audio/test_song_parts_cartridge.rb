@@ -24,12 +24,12 @@ class TestSongPartsCartridge < Minitest::Test
     assert console.sound?
   end
 
-  # --- a recorded part on its own, with NOTHING sounding beside it ---
+  # --- a recorded part on its own, with nothing sounding beside it ---
 
-  # THE TEST THAT WAS MISSING, and the reason a real bug lived here unnoticed: every hardware
-  # test above has something ELSE making a noise at the same time — two square-wave parts and a
+  # The test that was missing, and the reason a real bug lived here unnoticed: every hardware
+  # test above has something else making a noise at the same time — two square-wave parts and a
   # looping hum — so `sound?` was satisfied by the square wave while the recorded parts put out
-  # nothing at all, and the twelve voices were read off the voice TABLE, which is bookkeeping
+  # nothing at all, and the twelve voices were read off the voice table, which is bookkeeping
   # rather than audio. A tune whose melody is silent passes every one of them.
   #
   # So this is four parts on one instrument, no square part, no sound of the game's: if the

@@ -8,7 +8,7 @@ require "all/vblank/audio/test_song_note_fades"
 class TestSongNoteFadesCartridge < Minitest::Test
   include SongNoteFadesGames
 
-  # THE CONSOLE IS TOLD, in each voice's control register: its tone in bits 6 and 7, the step in
+  # The console is told, in each voice's control register: its tone in bits 6 and 7, the step in
   # bits 8 to 10, 8 more when it swells, and the volume it starts at on top. The register's low six
   # bits are a note length the voice never shows back, so they are left out of what is read.
   def test_the_console_is_told_how_each_note_fades

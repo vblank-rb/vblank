@@ -4,14 +4,14 @@ require "test_helper"
 require "speakers"
 require "all/vblank/audio/test_song_pan"
 
-# A SONG'S SIDES ON THE ADVANCE'S CARTRIDGE, heard in the emulator: which speaker each voice
+# A song's sides on the Advance's cartridge, heard in the emulator: which speaker each voice
 # plays from. The sides every run plays, read from the log, are in
 # test/all/vblank/audio/test_song_pan.rb.
 class TestSongPanCartridge < Minitest::Test
   include SongPanGames
   include Speakers
 
-  # THE CARTRIDGE, heard in the emulator: each voice from its own speaker alone, the drums and the
+  # The cartridge, heard in the emulator: each voice from its own speaker alone, the drums and the
   # wave voice included, and a part that says nothing from both.
   def test_the_cartridge_plays_each_part_from_its_own_speaker
     require_emulator!
@@ -26,7 +26,7 @@ class TestSongPanCartridge < Minitest::Test
     end
   end
 
-  # A SHADE on a voice that only switches between the speakers plays from the nearest side.
+  # A shade on a voice that only switches between the speakers plays from the nearest side.
   def test_the_cartridge_plays_a_shade_from_the_nearest_side
     require_emulator!
     game = song_game do
@@ -38,7 +38,7 @@ class TestSongPanCartridge < Minitest::Test
     end
   end
 
-  # A RECORDED PART plays from both speakers on the Advance, wherever it sits: every recording is
+  # A recorded part plays from both speakers on the Advance, wherever it sits: every recording is
   # mixed into the one stream the console plays from both.
   def test_the_cartridge_plays_a_recorded_part_from_both_speakers_wherever_it_sits
     require_emulator!
@@ -60,7 +60,7 @@ class TestSongPanCartridge < Minitest::Test
     assert_heard_from :both, loudest_on_each_side(b.program, nil, frames: 40, from: 10), "the recorded part"
   end
 
-  # THE GAME'S OWN SOUND — a beep, a hit on the noise voice, a tone on the wave voice — plays from
+  # The game's own sound — a beep, a hit on the noise voice, a tone on the wave voice — plays from
   # both speakers, on the voice a song's note left at the right.
   def test_the_games_own_sound_after_a_panned_note_plays_from_both_speakers
     require_emulator!

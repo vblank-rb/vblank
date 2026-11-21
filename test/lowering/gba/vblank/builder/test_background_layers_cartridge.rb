@@ -3,7 +3,7 @@
 require "test_helper"
 require "console/gba/vblank/builder/test_background_layers_on_the_advance"
 
-# STACKED BACKGROUNDS ON THE ADVANCE'S CARTRIDGE, read in the emulator: the layers really
+# Stacked backgrounds on the Advance's cartridge, read in the emulator: the layers really
 # composite and parallax-scroll, and black covers where the picture says it does. What every run
 # of an Advance game shows is in test/console/gba/vblank/builder/test_background_layers_on_the_advance.rb.
 class TestBackgroundLayersCartridge < Minitest::Test
