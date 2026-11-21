@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHAT A PLAYER DOES TO THE WINDOW, tested with no window (runtime/rg_window.c): pause and step,
+# What a player does to the window, tested with no window (runtime/rg_window.c): pause and step,
 # fast forward, window size and fullscreen, volume and mute, which key and gamepad button is each
 # console button, the hotkeys, and the settings file's text. The menu draws these and calls these,
 # and a hotkey calls the same function its menu item does, so this is where they are proved.

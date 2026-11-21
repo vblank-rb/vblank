@@ -3,7 +3,7 @@
 require "test_helper"
 require "vblank/live"
 
-# THE WINDOW MENU, AS THE DESKTOP BUILD HAS IT (runtime/rg_window_menu.c), held to the Ruby copy
+# The window menu, as the desktop build has it (runtime/rg_window_menu.c), held to the Ruby copy
 # vblank run draws (Live::Menu): the same keys are played through both, and what each draws after
 # every key is compared, box by box and letter by letter, at the densities of an ordinary screen,
 # a Retina one and two in between. The C is driven through a small program (menu_harness.c), at
@@ -130,7 +130,7 @@ class TestNativeWindowMenu < Minitest::Test
     assert_same_drawing([fault, "answer", told, fault], most_scale: 6)
   end
 
-  # IN THE SMALLEST WINDOW, a Color game's 160 by 144, a file's path wider than the box is cut into
+  # In the smallest window, a Color game's 160 by 144, a file's path wider than the box is cut into
   # pieces that fit, and what answers the box goes under its OK. Whether the boxes fit a window is
   # the same answer in both copies, which is what makes a frontend grow its window.
   def test_a_box_in_a_small_window_cuts_long_words_and_says_whether_it_fits

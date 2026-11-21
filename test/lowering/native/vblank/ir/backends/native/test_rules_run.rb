@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A GAME'S RULES AS FAST AS THE MACHINE CAN PLAY THEM. Every pass ends with the numbers the whole game
+# A game's rules as fast as the machine can play them. Every pass ends with the numbers the whole game
 # ends it with on the interpreter, read a question at a time from a program that says nothing else.
 class TestRulesRun < Minitest::Test
   RulesRun = VBlank::IR::Backends::Native::RulesRun

@@ -59,7 +59,7 @@ class TestNativeZig < Minitest::Test
     assert_match(/^frame 1$/, Computer::ProgramRun.run(exe, args: [1], input: "0\n", seconds: 15))
   end
 
-  # A PROGRAM'S RUN DOES NOT WAIT ON RUBY. Ruby runs one thread at a time, and a thread reading
+  # A program's run does not wait on Ruby. Ruby runs one thread at a time, and a thread reading
   # what a program prints as it prints it takes its turn again for every piece, behind every
   # thread that is busy. A native run puts tests side by side, so a program that ends in a
   # second took minutes that way, with its output backed up behind a reader waiting its turn,

@@ -282,7 +282,7 @@ class TestNativeTones < Minitest::Test
     assert_native_sounds_like_the_console program, frames: 100, voices: [:square1]
   end
 
-  # A SONG'S PARTS MOVED FROM WHERE THEY ARE WRITTEN: the melody a few pitch steps sharp, and the
+  # A song's parts moved from where they are written: the melody a few pitch steps sharp, and the
   # pad transposed down a fifth and a step flat, each held long enough to read its pitch.
   def test_a_songs_shifted_parts_sound_as_the_consoles_do
     program = program_of do
@@ -299,7 +299,7 @@ class TestNativeTones < Minitest::Test
     assert_native_sounds_like_the_console program, frames: 130, voices: %i[square1 wave]
   end
 
-  # A SONG'S NOTES IN SHAPES OF THEIR OWN: the melody's second note thin where its first is
+  # A song's notes in shapes of their own: the melody's second note thin where its first is
   # hollow, and the harmony stepping through four shapes, one a frame, while the music is turned
   # down under it (which strikes its held note again, in its first shape). A beep then takes the
   # harmony's voice, in the beep's own shape.
@@ -323,7 +323,7 @@ class TestNativeTones < Minitest::Test
     assert_native_sounds_like_the_console program, frames: 130
   end
 
-  # A SONG'S PARTS ON ONE SPEAKER EACH: the melody on the left moving to the right for its second
+  # A song's parts on one speaker each: the melody on the left moving to the right for its second
   # note, the bass on the right, the pad on the left and the drums on both. Each speaker sounds as
   # the console's does, and a voice is never heard from the speaker it is not on. A beep then takes
   # the bass's voice, and plays from both.
@@ -374,7 +374,7 @@ class TestNativeTones < Minitest::Test
   end
 
   # A beep borrows the second voice from a song's second part, and the music is then turned
-  # down while the part's note is still being held: the voice sounds the PART'S note again at the
+  # down while the part's note is still being held: the voice sounds the part's note again at the
   # new volume, not the beep's.
   def test_a_volume_change_sounds_the_songs_note_again_and_not_a_beeps
     program = program_of do
@@ -578,7 +578,7 @@ class TestNativeTones < Minitest::Test
     assert_native_sounds_like_the_console program, frames: 140, voices: [:wave]
   end
 
-  # A SOUND EFFECT ON THE WAVE VOICE, over a tune there: the effect's notes are in its own thin
+  # A sound effect on the wave voice, over a tune there: the effect's notes are in its own thin
   # pulse and the tune's next note after it in the tune's triangle, since each note puts its own
   # waveform in — and the game's own `wave` in between is overwritten by the tune's note after it.
   def test_an_effect_and_the_tune_each_play_the_wave_voice_in_their_own_waveform
