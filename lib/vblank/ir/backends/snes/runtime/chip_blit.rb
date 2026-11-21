@@ -13,7 +13,7 @@ module VBlank
           #
           # The picture is in the cartridge, where SNES::PaintedArt keeps it: a table of where each
           # of its rows is (four bytes a row, its address and bank), and each row its runs, one for
-          # each place across modulo eight it can be painted at, of a column of ten bytes for each tile across:
+          # each place across modulo eight it can be painted at, of a COLUMN of ten bytes for each tile across:
           # the mask of the pixels it draws in both bytes of a word, then its four pairs of planes,
           # each pair a word: ready to write into a tile's row. The chip reads
           # the cartridge a byte at a time: R14 holds where, ROMB which bank, and GETB takes the byte
@@ -85,9 +85,9 @@ module VBlank
 
             # --- the chip's side ---
 
-            # Registers of the band's code: sixteen (sixteen), the tile across (column), the tile's
-            # number (tile), where a pair of planes is written (at), the column's mask (MASK) and its
-            # opposite (kept), the start of the tile's row in the picture (TILE_AT), and 64, from a
+            # Registers of the band's code: sixteen (SIXTEEN), the tile across (COLUMN), the tile's
+            # number (TILE), where a pair of planes is written (AT), the column's mask (MASK) and its
+            # opposite (KEPT), the start of the tile's row in the picture (TILE_AT), and 64, from a
             # tile to the next (TILE_STEP). ChipFill#emit_tile_ready_if_old uses R0, R1, AT, HELD,
             # PAIRS, R12 and R13 besides TILE. R14 is where the cartridge is read.
             AT = ChipFill::AT

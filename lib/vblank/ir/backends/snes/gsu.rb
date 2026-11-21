@@ -108,7 +108,7 @@ module VBlank
             define_method(name) { |operand| sum(name, operand) }
           end
 
-          # The sum +name+ (one of sums) on the source and +operand+: for a sum the code works out
+          # The sum +name+ (one of SUMS) on the source and +operand+: for a sum the code works out
           # rather than writes.
           def sum(name, operand)
             base, register_prefix, number_prefix = SUMS.fetch(name)

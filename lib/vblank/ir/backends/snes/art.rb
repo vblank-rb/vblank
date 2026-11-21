@@ -13,7 +13,7 @@ module VBlank
         # 3 — 32 bytes a tile. A background is a grid of cells (a map), each naming a tile and one of
         # eight palettes for it; a sprite is a tile placed anywhere, drawn from one of eight palettes
         # of its own. Place 0 of every palette is see-through, and where nothing is drawn the screen
-        # shows colour 0 of the first palette, the backdrop, black as the interpreter's empty
+        # shows colour 0 of the first palette, the BACKDROP, black as the interpreter's empty
         # screen is.
         #
         # So a picture the game declared is cut into 8×8 pieces, each piece's pixels written as

@@ -651,7 +651,7 @@ module VBlank
           # The register the fill counts its items down in.
           ITEMS_LEFT = 6
 
-          # The number in LOW and HIGH into the slot at slot, as many bytes as the slot takes: a
+          # The number in LOW and HIGH into the slot at SLOT, as many bytes as the slot takes: a
           # narrow slot keeps the low bits (Reference::ListValue#wrap_to_width). SLOT is left two
           # bytes on for a whole word.
           def emit_write_slot(list)

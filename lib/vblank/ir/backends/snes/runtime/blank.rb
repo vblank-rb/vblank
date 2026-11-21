@@ -184,10 +184,10 @@ module VBlank
             end
 
             # The same routines where the screen is off above and below the picture (Letterbox). The
-            # time for copying is then the window: from the line after the last one shown (last),
+            # time for copying is then the window: from the line after the last one shown (LAST),
             # round through the blank, to the line before the first one shown (FIRST). With the
-            # whole screen on, first is 1 and LAST 224, and every count here comes to what the
-            # routines above count. The line just before first is never counted: the screen comes
+            # whole screen on, FIRST is 1 and LAST 224, and every count here comes to what the
+            # routines above count. The line just before FIRST is never counted: the screen comes
             # back on at its end.
             def emit_for_window(asm, memory, s)
               first = asm.abs(memory[Letterbox::FIRST])
@@ -238,7 +238,7 @@ module VBlank
 
               # rt_blank_lines (JSR): A = the whole lines of the window after the line the picture is
               # on, nought or less when there are none. Below the band they are the rest of the frame
-              # and the lines above the band; above it, the lines to the one before first.
+              # and the lines above the band; above it, the lines to the one before FIRST.
               asm.label("rt_blank_lines")
               emit_line_now(asm)
               asm.cmp(last)
