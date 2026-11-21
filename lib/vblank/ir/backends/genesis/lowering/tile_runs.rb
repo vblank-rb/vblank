@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class Genesis
         class Lowering
-          # TILES THE GAME PAINTS FROM A LIST (`tiles :box, from: list, count: n`, and every group of
+          # Tiles the game paints from a list (`tiles :box, from: list, count: n`, and every group of
           # `tile_pictures`), lowered for a Genesis. Mixed into Lowering.
           #
           # The list holds each tile as the Advance's picture memory does: 32 bytes, two pixels a byte,
@@ -126,7 +126,7 @@ module VBlank
             # nor following a list the game changes.
             def drawn_in_own_colors?(bg, run) = bg.recolors.empty? && bg.list_followed_by(run.list_drawn_from).nil?
 
-            # A RUN OF `tile_pictures` WHOSE PICTURES ARE ALL KNOWN AS THE GAME IS BUILT draws only the
+            # A run of `tile_pictures` whose pictures are all known as the game is built draws only the
             # places of its list those pictures draw, since its list is only ever copied from them
             # (Nodes::TileRun#held_in). A run of a data pack's tiles (Builder::PackTilePictures) is
             # drawn from a bank of sixteen colours of which its pictures draw a few, and the still
@@ -192,7 +192,7 @@ module VBlank
 
             def run_place_table_label(run) = "art run places #{run.name}"
 
-            # THE TABLE A COPY OF A RUN DRAWN FROM KNOWN PLACES READS (#run_places_drawn), one for each
+            # The table a copy of a run drawn from known places reads (#run_places_drawn), one for each
             # such run. Entry N is what the list's byte N becomes in the Genesis's tile: its two halves
             # swapped, since the list keeps the left pixel in the low four bits and the Genesis in the
             # high four, and each half's place changed to that colour's place in the palette. One read

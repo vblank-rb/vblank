@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class Genesis
-        # WHERE EVERYTHING THE GAME KEEPS LIVES WHILE IT RUNS.
+        # Where everything the game keeps lives while it runs.
         #
         # A Genesis has 64K of work RAM, at $FF0000 to $FFFFFF, and nothing else the 68000 can keep a
         # number in. Everything is there: the runtime's own state, the game's variables and lists, a
@@ -15,13 +15,13 @@ module VBlank
         #   ...-$FFF7FF   what wants a big place of its own (a painted screen's picture), downward
         #   $FFFC00-$FFFFFF  the stack, 1K of it
         #
-        # THE GAME'S CODE REACHES ALL OF IT WITH ONE REGISTER. A5 holds $FF8000, the middle of work
+        # The game's code reaches all of it with one register. A5 holds $FF8000, the middle of work
         # RAM, and an instruction names a place as a distance from A5 that is held in 16 bits and
         # signed (`8(A5)`): the whole 64K is within ±32K of the middle. That is two words long
         # where a long address is three, and a cycle or two quicker, which is why every
         # variable is read and written this way. A5 is never changed after power-on.
         #
-        # EVERY PLACE IS AT AN EVEN ADDRESS, since the 68000 stops with an address error when it
+        # Every place is at an even address, since the 68000 stops with an address error when it
         # reads a word or a long word from an odd one. A place a byte long still takes two.
         #
         # Nothing here is placed by the linker: work RAM is the same addresses on every console, so

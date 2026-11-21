@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class Genesis
         class Lowering
-          # A SORT THAT LEAVES OUT WHAT IS NOT SHOWING (IR ListSort's +shown+). Mixed into Lowering.
+          # A sort that leaves out what is not showing (IR ListSort's +shown+). Mixed into Lowering.
           #
           # A draw order of many things declared and a few showing is what a game with actors waiting
           # in the wings looks like, and a console's own games draw it by building their sprite list
@@ -113,7 +113,7 @@ module VBlank
             # not asked: its flag stays as it started. Where the sort makes the numbers, each is worked
             # out where its place shows.
             #
-            # WHAT A PLACE DOES WHEN ITS FLAG TURNS OVER IS WRITTEN ONCE (#emit_flag_turned), and a place
+            # What a place does when its flag turns over is written once (#emit_flag_turned), and a place
             # calls it with its answer in D0. A place still tests its own flag where it stands, so a pass
             # where it neither came nor went costs what it did with all of it written out; but a place
             # is half the bytes of that it was, and an order of a few dozen places a kilobyte smaller.
@@ -161,7 +161,7 @@ module VBlank
               @asm.move(:w, @asm.imm(answer), @asm.d(0))
             end
 
-            # THE CODE A PLACE CALLS WHEN ITS FLAG TURNS OVER, at +label+, with D0 the place twice over,
+            # The code a place calls when its flag turns over, at +label+, with D0 the place twice over,
             # plus 1 where it shows: the flag written, the count of places not showing moved by one, and
             # +changed+ set. D1 and A0 are worked with.
             def emit_flag_turned(kept, label)
@@ -204,7 +204,7 @@ module VBlank
               @setting_sort_keys = false
             end
 
-            # THE ORDER MOVED ROUND, on a pass where a place came or went: the entries not showing to the
+            # The order moved round, on a pass where a place came or went: the entries not showing to the
             # front, in the order they stood, then the entries showing, in theirs. +entries+ is the
             # operand of the first entry, each +size+ (:b, :w or :l) and its place shifted left by +shift+.
             # A0 reads every entry; one not showing is written at A1, one showing at A2 in the spare
