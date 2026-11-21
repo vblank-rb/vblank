@@ -81,8 +81,6 @@ module VBlank
       # How many `wait_vblank` calls the game loop already covered.
       def dropped_syncs = @builder.dropped_syncs
 
-      # Where the game gave an `estimate:`, which nothing reads.
-      def estimate_lines = @builder.estimate_lines
       def handed_name_writes = @builder.handed_name_writes
 
       # The lines outside game code that keep a button for game code to read.

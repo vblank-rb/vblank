@@ -1108,10 +1108,7 @@ module VBlank
       #   is 1. A view that draws strips wider than a pixel wants this and not a loop of its own,
       #   since the whole strip shows the same picture column at the same height, and one walk down
       #   the screen fills all of it.
-      # * `estimate:` - is not used any more. It changes nothing, and the build warns and names each
-      #   line that still gives one.
-      def draw_column_at(name, slice:, x:, top:, height:, width: 1, estimate: nil)
-        record_estimate_line(estimate)
+      def draw_column_at(name, slice:, x:, top:, height:, width: 1)
         unless @images.key?(name)
           raise ArgumentError,
                 "draw_column_at needs a picture. There is no image :#{name}. " \
@@ -1145,10 +1142,7 @@ module VBlank
       # * `w` - the width in pixels. It must be even.
       # * `h` - the height in pixels.
       # * `c` - the fill colour.
-      # * `estimate:` - is not used any more. It changes nothing, and the build warns and names each
-      #   line that still gives one.
-      def draw_rect_at(x_pos, y_pos, w, h, c, estimate: nil)
-        record_estimate_line(estimate)
+      def draw_rect_at(x_pos, y_pos, w, h, c)
         record_runtime_rect(x_pos, y_pos, w, h, c)
       end
 

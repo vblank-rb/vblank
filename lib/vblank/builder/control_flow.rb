@@ -197,15 +197,8 @@ module VBlank
       # * `count` - how many times to run the block: a number, a variable or a calculation.
       # * `stop_when:` - a test that ends the loop as soon as it holds, so `count` is the most
       #   turns it can take.
-      # * `estimate:` - is not used any more. It changes nothing, and the build warns and names
-      #   each line that still gives one.
-      #--
-      # `estimate:` is read by Builder#record_estimate_line.
-      #++
-      def repeat(count, stop_when: nil, estimate: nil, &block)
+      def repeat(count, stop_when: nil, &block)
         raise ArgumentError, "repeat needs a block: repeat(n) { |i| ... }" unless block
-
-        record_estimate_line(estimate)
 
         index = declare_loop_counter
         ensure_var(count)

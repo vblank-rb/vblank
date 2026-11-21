@@ -101,8 +101,6 @@ module VBlank
       #   A game names none to get the build's choice. A console has only the layouts its build
       #   makes, and naming one it lacks is an error that names the console and its layouts. The
       #   layout never changes what the game does or what a field holds.
-      # * `estimate:` - is not used any more. It changes nothing, and the build warns and names each
-      #   line that still gives one.
       #--
       # Which of the console's two work memories a pool is kept in is the build's to decide, as it is
       # for a list: the quick one for what a frame touches while there is room, the roomier one for
@@ -112,7 +110,7 @@ module VBlank
       # fields.
       #++
       def pool(name, capacity:, image: nil, facing: nil, frames: nil, rate: nil,
-               on_full: :drop, estimate: nil, widths: {}, fast: nil, layout: nil, **fields)
+               on_full: :drop, widths: {}, fast: nil, layout: nil, **fields)
         validate_pool!(name, capacity, fields)
         validate_on_full!(name, on_full)
         validate_pool_widths!(name, fields, widths)
@@ -121,7 +119,6 @@ module VBlank
         refuse_pool_layout_not_kept!(name, layout)
         refuse_field_spelled_as_pool_word!(name, facing: facing, frames: frames, rate: rate, fast: fast)
         art = pool_art!(name, image: image, facing: facing, frames: frames, rate: rate, fields: fields)
-        record_estimate_line(estimate)
         handle = DSL::Pool.new(self, name, fields, capacity, image: image, hitbox: art&.hitbox, on_full: on_full,
                                                         art: art)
         # A pool too big to share the quick memory is kept out of it, as though the game had

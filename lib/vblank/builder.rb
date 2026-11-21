@@ -197,7 +197,6 @@ module VBlank
       @progress = progress
       @has_paced_loop = false  # set once a game_loop is pacing the program
       @dropped_syncs = 0       # `wait_vblank` calls the game loop already covers
-      @estimate_lines = []     # where an `estimate:` was given, which nothing reads (see #record_estimate_line)
       @variables = Set.new     # every variable's name, in the order the game first named it
       @fraction_vars = {}      # name → fraction bits, for variables that hold a fraction (see Fraction)
       @fraction_lists = {}     # ...and the same for lists, from what `holds:` showed
@@ -416,8 +415,6 @@ module VBlank
     #   same word `func` uses for the same question about code.
     # * `full_of:` - start holding `capacity` items of this value, rather than none. It is one fill,
     #   done the moment the declaration runs, in place of a loop that pushes each item.
-    # * `estimate:` - is not used any more. It changes nothing, and the build warns and names each
-    #   line that still gives one.
     #--
     # The build measures each scene with the list held at its capacity instead
     # (VBlank.warn_of_collections_that_fill). A narrow slot always goes below nothing because there
@@ -426,8 +423,7 @@ module VBlank
     # as 252 and the test would never fire. Nothing at build time can see that coming, since the
     # value is worked out as the game runs. `rom.profile` says where everything went.
     #++
-    def list(name, capacity:, estimate: nil, holds: nil, width: :word, fast: nil, full_of: nil)
-      record_estimate_line(estimate)
+    def list(name, capacity:, holds: nil, width: :word, fast: nil, full_of: nil)
       width = kept_unsigned_halves({ name => width }) { name }.fetch(name)
       # A fraction given as what the list starts full of marks it as holding fractions, as `holds:` would.
       example = holds
@@ -474,20 +470,6 @@ module VBlank
 
       DSL::Fraction.bits_of(holds)
     end
-
-    # An `estimate:` does nothing, whatever it gives, except have its line kept. A list, a pool, a `repeat`, a
-    # a test and a stretched rectangle or column once took one — `{ usually: N }`, how big or
-    # how often the thing normally was — for a cost estimate that worked a frame's time out from
-    # the program. That estimate is gone: the build measures a game by running it. A game
-    # written while the hint meant something still writes it, so it is not refused; the line is
-    # kept, and one warning names every such line (Guardrails::Checks::EstimateDoesNothing).
-    # Nothing about it reaches the program.
-    def record_estimate_line(estimate)
-      @estimate_lines << caller_source_location unless estimate.nil?
-    end
-
-    # The lines that gave an `estimate:`, for the warning.
-    attr_reader :estimate_lines
 
     # Ship a build-time array as a read-only ROM table, read at run time by a Value
     # index. The array is plain Ruby, evaluated as the program is built, so work the

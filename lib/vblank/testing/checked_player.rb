@@ -22,7 +22,7 @@ module VBlank
     # place (IR::ProgramChecks, with Guardrails.default_checks), on the program as the run plays it,
     # so they ask the run's console, and a refusal is the build's own Guardrails::ValidationError in
     # the build's own words. What a build learns from running the game's block (a test that is never
-    # used, an `estimate:`) is not in a program, so it is not asked.
+    # used) is not in a program, so it is not asked.
     #
     # The interpreter's own run (InterpreterPlayer) asks only the first half, that the program is
     # one any build can be made from (::refuse_malformed!). The guardrails it does not ask: it is the

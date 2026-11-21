@@ -214,8 +214,7 @@ module VBlank
     # effect pack's own guardrails) — walk the IR. The rest are appended per build
     # because they report from what the run learned rather than from the tree:
     # leftover Conditions (a native-`if` slip leaves no trace there), covered
-    # `wait_vblank` calls, the lines that gave an `estimate:`, and the software sprites,
-    # whose layer lives on the handle.
+    # `wait_vblank` calls, and the software sprites, whose layer lives on the handle.
     # All are just checks in the list, so the Validator treats them alike.
     if evaluated.debug_halted?
       IR::ProgramChecks.refuse_malformed!(program, progress: progress)
@@ -226,7 +225,6 @@ module VBlank
                [IR::Guardrails::Checks::OrphanedCondition.new(evaluated.unused_conditions),
                 IR::Guardrails::Checks::OrphanedExpression.new(evaluated.expressions),
                 IR::Guardrails::Checks::DroppedFrameSync.new(evaluated.dropped_syncs),
-                IR::Guardrails::Checks::EstimateDoesNothing.new(evaluated.estimate_lines),
                 IR::Guardrails::Checks::HandedNameWritten.new(evaluated.handed_name_writes),
                 IR::Guardrails::Checks::PressKeptFromSettingUp.new(evaluated.kept_buttons),
                 IR::Guardrails::Checks::LayerHoldsNothing.new(evaluated.sprites),
