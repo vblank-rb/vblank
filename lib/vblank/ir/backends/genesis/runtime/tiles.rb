@@ -419,7 +419,7 @@ module VBlank
             # their objects:
             #
             #   A2  where the next row of the sprite table is noted, which is just under the last one
-            #   A3  where the next sprite's row for a reader goes (drawn)
+            #   A3  where the next sprite's row for a reader goes (DRAWN)
             #   D4  the link the next row takes, which is also how many rows the table has left
             #
             # rt_sprites_begin forgets the sprites of the last pass and starts the walk, and

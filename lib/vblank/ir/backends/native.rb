@@ -104,7 +104,7 @@ module VBlank
         # cartridge build checks it, written as C, and compiled with SDL3 by zig into an
         # executable that needs nothing installed beside it. The first build fetches SDL's source
         # and compiles it, which takes a while once; every build after that reuses it. +target+
-        # names another computer to build for (see targets), and left out it is this one. +console+
+        # names another computer to build for (see TARGETS), and left out it is this one. +console+
         # is the one it plays the game as (#checked_program). +strip+ leaves the program's debugging
         # data out: a far smaller file, and far poorer crash reports. +progress+ (a Messages::Progress)
         # is told each step as it begins: the build's, then writing the C and compiling it.
