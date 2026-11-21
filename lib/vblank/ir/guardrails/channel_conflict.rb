@@ -4,6 +4,28 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # A warning about a sound effect and a song part that play on the same voice of the
+        # console. With `beep`:
+        #
+        # > <The song> plays in two parts. Its second part uses the same sound voice as your
+        # > beeps. The console has only a few voices. While the song plays, a beep and its
+        # > lower part interrupt each other. To use beeps and this music together, make it a
+        # > one-part song, just the melody. Or play the beeps only while the song does not play.
+        #
+        # With `wave` or `noise` (<voice> is "the wave voice" or "the noise voice", <effects> is
+        # "wave tones" or "noise hits"):
+        #
+        # > <The song> has a part that plays <voice>. Your <effects> play <voice> too, and the
+        # > console has one of it. While the song plays, a `<verb>` and this part interrupt each
+        # > other. To use both together, remove this part from the song. Or play the <effects>
+        # > only while the song does not play.
+        #
+        # The console has a few voices, and each plays one sound at a time. When a sound effect
+        # and a song part share one, each cuts the other off: the effect breaks into the tune,
+        # and the tune's next note stops the effect. The build goes on, since a game can accept
+        # that. A song part that plays a recorded instrument does not share these voices.
+        #
+        #--
         # A sound effect and a song part that share one of the console's voices.
         #
         # The console has a small, fixed set of voices, and a sound effect plays on one of them
@@ -22,6 +44,7 @@ module VBlank
         # Advisory — the build still produces a ROM, and the two really can share a voice if you
         # do not mind them interrupting each other. A part that plays a recorded instrument
         # sounds through the mixer instead, so it never reaches any of these.
+        #++
         class ChannelConflict
           NAME = :channel_conflict
           PLAIN_NAME = "a sound effect and a song that share a voice"
