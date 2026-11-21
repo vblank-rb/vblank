@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       module Computer
-        # THE GAME'S SAVE MEMORY, written as calls into runtime/rg_save.h — mixed into Lowering
+        # The game's save memory, written as calls into runtime/rg_save.h — mixed into Lowering
         # the way Picture and Sound are.
         #
         # Nearly all of saving is the game's own: the routines that lay a record out, write it a

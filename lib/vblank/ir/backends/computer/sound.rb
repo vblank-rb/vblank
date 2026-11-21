@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       module Computer
-        # THE GAME'S SOUND, written as calls into runtime/rg_sound.h — mixed into Lowering the way
+        # The game's sound, written as calls into runtime/rg_sound.h — mixed into Lowering the way
         # Picture is.
         #
         # What is played is a song's parts — on the console's two square-wave voices, its wave
@@ -15,7 +15,7 @@ module VBlank
         # itself. Each goes into the sound log a test reads, in the interpreter's words (see
         # SoundLog).
         #
-        # THE RULES OF THE VOICES are written into the game from Audio::Sound and IR::Tunes, as
+        # The rules of the voices are written into the game from Audio::Sound and IR::Tunes, as
         # numbers the runtime reads, rather than copied into the C: how fast each voice's clock
         # ticks, how many ticks a note lasts, how loud the wave voice is at each volume. So the
         # desktop build and the cartridge can never drift apart on what a note is.
@@ -230,7 +230,7 @@ module VBlank
             end
           end
 
-          # A RECORDING'S LENGTH FROM THE FILE: the length its entry in the table of recordings holds
+          # A recording's length from the file: the length its entry in the table of recordings holds
           # (rg_mix_fill_length), and how far back each play and each note's row reads at its end,
           # which is the length less the sample it holds from, whether that sample is in the file or
           # the game's (rg_mix_fill_backs). A looping play that holds from no sample reads it all again;
@@ -250,7 +250,7 @@ module VBlank
              end]
           end
 
-          # A RECORDING IN THE SUPER NINTENDO CHIP'S FORMAT IN THE FILE (IR::StartFile::BRR). Its samples,
+          # A recording in the Super Nintendo chip's format in the file (IR::StartFile::BRR). Its samples,
           # how many there are and the sample it holds from are all what the chip decodes from the
           # file's bytes, so the routine decodes each such recording once, into its place in the array
           # of every recording's samples (rg_mix_fill_brr, #build_start_file_recording_fills), and
@@ -307,7 +307,7 @@ module VBlank
             [where.at, Build::ELEMENT_BYTES.fetch(where.width), where.format.high_byte_first ? 1 : 0, where.signed ? 1 : 0]
           end
 
-          # THE STEPS READ AT A RATE FROM THE FILE. A step is the rate against the mix's, times the
+          # The steps read at a rate from the file. A step is the rate against the mix's, times the
           # note against the one the recording was made at (IR::Mixing.step). The second part is
           # known here, so each step is handed over as that ratio, and the runtime does the rest of
           # the same sum once it has the rate.
@@ -320,7 +320,7 @@ module VBlank
             start_file_sound_fill("rg_mix_fill_steps", "start_file_steps", head, in_plays, in_rows)
           end
 
-          # HOW FAR BACK A HELD NOTE READS, from the sample it holds from in the file: the
+          # How far back a held note reads, from the sample it holds from in the file: the
           # recording's length less that sample (Assets::Sample#loop_length). A hold with every
           # bit set is none (IR::StartFile.no_hold?): then a looping play reads it all again, and a
           # note's row reads nothing again, so each list is handed 1 or 0 for which it is.
@@ -335,7 +335,7 @@ module VBlank
             end
           end
 
-          # THE SHAPE FROM THE FILE: the recording's own, and each row of a note that set none and
+          # The shape from the file: the recording's own, and each row of a note that set none and
           # whose part set none, which takes the recording's (#note_sound_row).
           def start_file_shape_fills(sample, rows)
             where = sample.settings_from_file.envelope
@@ -450,7 +450,7 @@ module VBlank
             [levels.map { |level| level >> shift }, levels.map { |level| level & ((1 << shift) - 1) }]
           end
 
-          # WHERE EACH RECORDING'S SAMPLES START in the array of them all, by its name. A recording's
+          # Where each recording's samples start in the array of them all, by its name. A recording's
           # seven numbers carry where its samples are and everything else about it (its length and
           # its shape), so recordings declared under several names with the same samples, as one
           # instrument's recording shaped several ways is, start at the same place and the array
@@ -579,7 +579,7 @@ module VBlank
                                *spu_tables]
           end
 
-          # WHERE THE CONSOLE'S VOICES READ SOUND MEMORY (the PlayStation), what its sound chip plays them
+          # Where the console's voices read sound memory (the PlayStation), what its sound chip plays them
           # from (runtime/rg_spu.c): the chip's numbers, where each loop starts, and the loops, the same
           # sound memory the console's own build makes (PS1::SPUTables). None for any other console.
           #
@@ -600,7 +600,7 @@ module VBlank
                          writable: laid_out.any? { |node| PS1::SoundMemory.back_read_at_start?(node) })]
           end
 
-          # A RECORDING LAID OUT AS THE GAME STARTS (PS1::SoundMemory.laid_out_at_start), on a console
+          # A recording laid out as the game starts (PS1::SoundMemory.laid_out_at_start), on a console
           # whose voices read sound memory: its samples, hold or length are in the start file. Where its
           # hold or length is, its way back in the table of where each recording is, a looping play's
           # way (reading it all again where it holds from none), worked out as the mixer's is
@@ -700,7 +700,7 @@ module VBlank
 
           def waveform_table = sound_table("waveforms", [waveforms.size, *waveforms.flatten], writable: !waves_from_start_file.empty?)
 
-          # A WAVE A PART READS FROM THE START FILE, written into its place in the table of waveforms
+          # A wave a part reads from the start file, written into its place in the table of waveforms
           # (rg_music_fill_wave), and on a console whose voices read sound memory into its loop there
           # too (rg_spu_fill_wave). None for a game with no music feature, which never plays the part.
           def build_start_file_wave_fills
@@ -777,7 +777,7 @@ module VBlank
             sound_table("music", [entries.size, *starts, *entries.flatten], writable: !@start_file_note_fills.empty?)
           end
 
-          # A SOUND EFFECT'S NOTES, written again after every song. It plays once and never comes
+          # A sound effect's notes, written again after every song. It plays once and never comes
           # round, so each part is its notes as written, as the interpreter's player walks them —
           # where the same Score played as a tune (a game may name it in `play_song`) is put right
           # for coming round (Tunes.loop_passes), which can add a rest the effect does not have.
@@ -820,7 +820,7 @@ module VBlank
           # --- a part's notes read from the start file (IR::StartFile::Notes) ---
           #
           # The player walks a part's notes in the music table, so a part whose notes are in the
-          # file is written as ROOM for them: as many notes as its records can make, each on frame
+          # file is written as room for them: as many notes as its records can make, each on frame
           # -1, a frame no song is ever on, so the player passes none of them. The routine that
           # reads the file then writes the notes the records make over the first of that room
           # (rg_music_fill_notes), and what is left over stays unplayed.
@@ -867,7 +867,7 @@ module VBlank
              *([NEVER_PLAYED, 0, 0, 0, 0, 0] * (first + again))]
           end
 
-          # WHAT A RECORD COMES TO ON THIS PART, as the numbers of a note (#encoded_note): what a
+          # What a record comes to on this part, as the numbers of a note (#encoded_note): what a
           # rest's fourth number is; the fifth and sixth of a note that sounds, which are the
           # part's; how many instruments the part names; 1 for a part that plays a recording, whose
           # third number for a record's loudness is the loudness itself (Tunes.mix_loudness of
@@ -903,7 +903,7 @@ module VBlank
              *voiced_note_rules(where, kind, part)]
           end
 
-          # WHAT A VOICED RECORD'S SETTINGS COME TO ON THIS PART (IR::StartFile::Notes#takes), after the
+          # What a voiced record's settings come to on this part (IR::StartFile::Notes#takes), after the
           # rest, for a part whose records are voiced: the bits of Original::PackNote::NAMES the part
           # takes, how many pitch numbers it takes (all of them on a square or the wave, else none), and
           # the second and the fourth number of a note for each (Notes#pitch_number_events). How each
@@ -925,7 +925,7 @@ module VBlank
              *hz_note_rules(where, kind, part)]
           end
 
-          # WHAT A PITCH BETWEEN KEYS COMES TO ON THIS PART (`hz:`, Original::PackNote's hz), which no
+          # What a pitch between keys comes to on this part (`hz:`, Original::PackNote's hz), which no
           # list made here can hold, so the runtime works it out by the sums the build uses: the
           # kind of sum (HZ_NONE, HZ_NOISE or HZ_RECORDED), then for the noise voice each rung of its
           # ladder in Audio::Sound.noise_rung's order, its hz as two halves (#double_halves) and the
@@ -980,7 +980,7 @@ module VBlank
           # The most ticks a record can name: where a note starts, and how long it lasts.
           MOST_TICKS = 2 * 0xFFFF # Original::PackNote keeps each in two bytes
 
-          # THE FRAME EACH TICK FALLS ON, for every tick before the song's end, as an array of the
+          # The frame each tick falls on, for every tick before the song's end, as an array of the
           # game's: one for each different timing and length among the game's Scores.
           def tick_frames_array(where, total_frames)
             timing = where.timing
@@ -1081,7 +1081,7 @@ module VBlank
             end
           end
 
-          # EVERYTHING A RECORDED NOTE IS BUT HOW LOUD, the interpreter's way
+          # Everything a recorded note is but how loud, the interpreter's way
           # (Reference::Player#play_song_frame and Mixer#start_music_note): the recording — the
           # note's own, else its part's — read at the note's pitch, going back as far as it holds,
           # and shaped by the note's own shape, else its part's, else its recording's. Notes alike

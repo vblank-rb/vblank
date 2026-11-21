@@ -13,7 +13,7 @@ module VBlank
           # What a run gave back: what the program printed and what it wrote to its error stream.
           Output = Data.define(:printed, :complaints)
 
-          # The code a built program ends with when the GAME went wrong (rg_fault in the runtime,
+          # The code a built program ends with when the game went wrong (rg_fault in the runtime,
           # RG_GAME_WENT_WRONG there): pushed onto a full list, played a recording nobody
           # declared. Any other way of stopping is the program's own failure.
           GAME_WENT_WRONG = 3
@@ -31,7 +31,7 @@ module VBlank
           # without ever waiting for the screen never ends on its own, where the interpreter
           # stops it at its step budget.
           #
-          # WHAT IT READS AND PRINTS ARE FILES, read back once it has ended, and not pipes read
+          # What it reads and prints are files, read back once it has ended, and not pipes read
           # while it runs. A pipe holds a little and then makes the program wait for its reader,
           # and a reader in Ruby takes its turn again for every piece, behind every other thread
           # that is busy, since Ruby runs one thread at a time. Beside a few busy threads a

@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       module Computer
-        # A ROUTINE THAT STOPS FOR A FRAME AND CARRIES ON, written so that where it stopped is data.
+        # A routine that stops for a frame and carries on, written so that where it stopped is data.
         #
         # A game waits for the next frame wherever it likes: in its game loop, in a scene's own
         # loop, two routines deep. Kept on the machine's stack, or in a language's own paused calls,
@@ -24,22 +24,22 @@ module VBlank
         # So between frames the whole place a game has reached is in its globals, and a game whose
         # globals are written out and read back into a fresh run plays on as the first would have.
         #
-        # ONLY WHAT HOLDS A WAIT IS CUT. A loop, a branch or a block with no wait in it, however
+        # Only what holds a wait is cut. A loop, a branch or a block with no wait in it, however
         # deep, stays as it was inside the step it is in, so a game's inner loops cost what they did.
         # A routine that never waits is not touched at all.
         #
-        # A ROUTINE RUN FOR AN ANSWER. The runtime asks the game for answers between frames (a timer's
+        # A routine run for an answer. The runtime asks the game for answers between frames (a timer's
         # tick, a bend's lines), and such a routine cannot wait; one of the game's resumable routines
         # it calls runs from its start to its end, as the interpreter runs it. The game may be stopped
         # inside that very routine, so the call keeps the counters and locals of every resumable
         # routine it can reach, runs from step 0, and puts them back (Statements::RunToEnd).
         #
-        # A TIMER'S HANDLER THAT WAITS is the one answer that can stop for a frame, as the interpreter
+        # A timer's handler that waits is the one answer that can stop for a frame, as the interpreter
         # lets it (Reference#accrue_timer runs it inside the frame boundary, and its wait is a boundary
         # of its own). Where the routine answering a tick (TIMER_TICKS) can reach a wait, its body
         # becomes a resumable routine of its own (TIMER_STEPS), and the answer calls that: carrying on
         # from its step and telling the runtime whether it stopped (TIMER_HANDLER_WAITED), which then
-        # finishes that boundary on a later frame (runtime/rg_runtime.c, "A HANDLER THAT WAITS"). A
+        # finishes that boundary on a later frame (runtime/rg_runtime.c, "a handler that waits"). A
         # tick at a boundary inside that wait (TIMER_HANDLER_PAUSED) runs the handlers from their
         # start to their end, as any answer does. A game whose handlers never wait is not touched.
         #
@@ -213,7 +213,7 @@ module VBlank
           # (+name+), of a routine it calls, held at +place+ from the handler's start to its end.
           KeptNumber = Data.define(:name, :type, :counter, :place)
 
-          # THE GAME'S PLACE IN THE ROUTINES A WAITING HANDLER CALLS. The game can be stopped inside one
+          # The game's place in the routines a waiting handler calls. The game can be stopped inside one
           # of them when the handler calls it, which runs it from its start (Reference#call_func). Each
           # routine keeps one counter, so the handler's run, which spans frames, keeps the game's counters
           # and locals of every routine it can reach in globals of their own from its start, and puts
@@ -290,7 +290,7 @@ module VBlank
             Statements::RunToEnd.new(call: call, counters: cuts.map(&:counter), locals: cuts.flat_map(&:locals))
           end
 
-          # ONE ROUTINE CUT INTO STEPS. Steps are numbered as they are made, from 0, and each is a
+          # One routine cut into steps. Steps are numbered as they are made, from 0, and each is a
           # list of statements ending in a Goto, a Pause or a Finish.
           class Cut
             # The routine's locals (Statements::Local), each kept in a global of its own now.
