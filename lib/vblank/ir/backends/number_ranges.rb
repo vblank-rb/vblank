@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      # WHAT RANGE A NUMBER STAYS IN, worked out from the program before anything is lowered.
+      # What range a number stays in, worked out from the program before anything is lowered.
       #
       # Every number is 32 bits (IR::Int32), and every backend gives Int32's answers. But most of
       # what a game keeps is small: a place on a screen of 240 pixels, a slot of a list of bytes, a
@@ -19,7 +19,7 @@ module VBlank
       # table never changes), a comparison (1 or 0), a mask, a remainder, a shift, and sums,
       # differences and products of those, each only where Int32's answer cannot wrap.
       #
-      # A VARIABLE'S AND A LIST'S RANGE are worked out together, as the lowest and highest numbers
+      # A variable's and a list's range are worked out together, as the lowest and highest numbers
       # it can hold through the whole run. Each starts with what it holds as the game starts (a
       # variable nought, a list what each of its declarations fills it with as its slot keeps it, or
       # nought), and is widened by what each of its writes can put there, given the ranges so far
@@ -100,7 +100,7 @@ module VBlank
           @ranges = @declared.merge(@ranges.reject { |_name, range| range == WHOLE })
         end
 
-        # The variables proven to stay in +range+ (BYTE or HALF), in the order the program first
+        # The variables proven to stay in +range+ (BYTE or half), in the order the program first
         # writes them. A variable in a byte is in two as well.
         def variables_within(range)
           return @bytes if range == BYTE
@@ -117,7 +117,7 @@ module VBlank
         # there, or its slot's for a list written some other way.
         def list(name) = @list_ranges[name] || slot_range(name)
 
-        # THE LISTS PROVEN TO HOLD ONLY NUMBERS NARROWER THAN THEIR SLOTS, each with the narrowest
+        # The lists proven to hold only numbers narrower than their slots, each with the narrowest
         # slot that holds every item exactly (:byte or :half), so a lowering can keep it in that slot:
         # a pool's fields are lists of whole words, though a thing's place on the screen or its speed
         # never needs more than two bytes. Each read is the number the wider slot would have given.
@@ -133,7 +133,7 @@ module VBlank
         # screen, kept with `& 0xFFFF`, reaches past 32767 but never below nought.
         UNSIGNED_HALF = (0..0xFFFF)
 
-        # THE LISTS OF WHOLE WORDS PROVEN TO HOLD ONLY 0..65535 that no signed slot holds (a number
+        # The lists of whole words proven to hold only 0..65535 that no signed slot holds (a number
         # past 32767), so a lowering can keep each in two bytes read back with no sign. Not one a
         # sort orders or orders by, since a sort compares its numbers with their signs.
         def unsigned_half_lists
@@ -245,7 +245,7 @@ module VBlank
 
         def var_named?(node, name) = node.is_a?(Node) && node.kind == :var_ref && node.name == name
 
-        # THE ROUNDS (see the class comment): each of +variables+ in @ranges and each of +lists+ in
+        # The rounds (see the class comment): each of +variables+ in @ranges and each of +lists+ in
         # @list_ranges, widened by their writes until none widens.
         def widen_to_fixed_point(variables, lists)
           @ranges = variables.to_h { |name| [name, 0..0] }

@@ -42,17 +42,17 @@ require_relative "ps1/checked_run"
 module VBlank
   module IR
     module Backends
-      # The game as a PLAYSTATION program: the same program every other backend runs, lowered to the
+      # The game as a PlayStation program: the same program every other backend runs, lowered to the
       # R3000A, the console's processor, and written as a PS-X EXE, the file a PlayStation's BIOS loads
       # from a disc and an emulator or a loader on a real console takes as it is.
       #
-      # HOW IT IS MADE. PS1::Lowering walks the IR and emits MIPS machine code through the Ruby assembler
+      # How it is made. PS1::Lowering walks the IR and emits MIPS machine code through the Ruby assembler
       # (PS1::R3000), as the Genesis's lowering emits 68000, and shares with the other cartridge lowerings
       # what they all work out before writing an instruction (LoweringPlan, Sections). The runtime the code
       # calls is written in MIPS here, in Ruby, and calls nothing in the BIOS. The program is checked in
       # Beetle PSX through ruby-ps1-emulator, which `rake compile_ps1_core` builds.
       #
-      # WHAT IT MAKES SO FAR: a game's numbers, lists, tables, routines, scenes, timers and pad, and a
+      # What it makes so far: a game's numbers, lists, tables, routines, scenes, timers and pad, and a
       # painted screen of one page or two, with its rectangles, pictures and text (Runtime::Paint), faded and
       # tinted by number (PaintedNumbers), a
       # screen drawn from tiles, its backgrounds and its sprites drawn whole by the graphics chip every
@@ -63,7 +63,7 @@ module VBlank
       # Everything else a game draws or plays is refused by name until it is made
       # (Lowering::NOT_LOWERED_YET).
       class PS1
-        # WHERE A RUNNING PROGRAM KEEPS WHAT A READER WANTS, which nothing in its bytes shows: every variable
+        # Where a running program keeps what a reader wants, which nothing in its bytes shows: every variable
         # by the game's name (its address in RAM), every list ([its address, its capacity, the bytes a
         # slot, its name]), where the runtime keeps how the run stands (Runtime::Frame's names), where
         # every label of the code went, and the program it was built from. +bytes+ gives what the program's
