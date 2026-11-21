@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# SETTING THE CLOCK, on the Advance alone. Its chip keeps the date, so what a game reads before its
+# Setting the clock, on the Advance alone. Its chip keeps the date, so what a game reads before its
 # saved offset comes back is the chip's own date and time; the Color's keeps none, and a game there
 # reads nothing then (test/lowering/gbc/vblank/ir/backends/gbc/test_gbc_clock.rb). And it sets the clock in a
 # pass of one frame, so which frame the second turns over on can be said. The rest of setting the

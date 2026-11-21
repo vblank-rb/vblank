@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/dsl/test_instrument"
 
-# THE TESTS OF test_instrument.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY, kept apart so that the
+# The tests of test_instrument.rb that only the Game Boy Advance can play, kept apart so that the
 # Game Boy Color's run never loads them; the rest are in test/all/vblank/dsl/test_instrument.rb.
 #
 # An instrument plays its one recording at the pitch of each note, and a Game Boy Color plays a

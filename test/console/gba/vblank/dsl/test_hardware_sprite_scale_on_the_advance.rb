@@ -8,7 +8,7 @@ require "differential"
 class TestHardwareSpriteScaleOnTheAdvance < Minitest::Test
   include Differential
 
-  # A solid 16x16 red square. Solid on purpose: how many pixels it covers IS its drawn
+  # A solid 16x16 red square. Solid on purpose: how many pixels it covers is its drawn
   # size, with no transparent gaps to make the count depend on the shape.
   BLOCK = (["#" * 16] * 16).join("\n")
   SIDE = 16
