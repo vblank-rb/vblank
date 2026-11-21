@@ -2,18 +2,21 @@
 
 module VBlank
   module DSL
-    # A handle to the game's light: a circle the picture is drawn as it is inside, with
-    # everything outside it darkened. `spotlight at: [120, 80], radius: 40` hands one back.
-    # See Builder#spotlight.
+    # The game's light
     #
-    #   light = spotlight at: [120, 80], radius: 40, dark: 75
-    #   light.move_to hero.x + 8, hero.y + 8   # the lantern goes where the hero does
-    #   light.radius.approach! 24, 1           # ...and it shrinks
-    #   light.dark = 0                         # nothing darkened: the light is out
+    # A circle the picture is drawn as it is inside, with everything outside it darkened.
+    # Builder#spotlight hands one back.
     #
-    # Each of the four is a {Value} the game reads and changes like any variable, and the
-    # picture shows what they hold at the end of the frame — it is worked out again in the
-    # gap before every frame, so moving the light costs a write and nothing else.
+    # ```ruby
+    # light = spotlight at: [120, 80], radius: 40, dark: 75
+    # light.move_to hero.x + 8, hero.y + 8   # the lantern goes where the hero does
+    # light.radius.approach! 24, 1           # and it shrinks
+    # light.dark = 0                         # nothing darkened: the light is out
+    # ```
+    #
+    # Its middle, its reach and its darkness are each a Value the game reads and changes like
+    # any variable. The picture shows what they hold at the end of the frame. The light is worked
+    # out again in the gap before every frame, so moving it costs a write and nothing else.
     class Spotlight
       # Built by Builder#spotlight, which declares the four and what the picture makes of them.
       def initialize(x:, y:, radius:, dark:, builder:)
@@ -36,20 +39,30 @@ module VBlank
       # shows nothing outside it (`spotlight outside: :nothing`) it is a switch: 0 is off, 100 on.
       attr_reader :dark
 
-      # Put the middle of the light at (+x+, +y+). Either may be worked out as the game runs.
+      # Puts the middle of the light at a place on the screen.
+      #
+      # Either number may be one the game works out as it runs.
+      #
+      # ```ruby
+      # light.move_to hero.x + 8, hero.y + 8
+      # ```
       def move_to(x, y)
         @x.store! x
         @y.store! y
         self
       end
 
-      # Give the light a shape of the game's own, a row of the screen at a time. The block is
-      # handed the row, 0 at the top, and gives back how far the light reaches either side of
-      # its middle on that row — or the row's two edges, `[left, right]`, the columns from left
-      # up to (not including) right. The circle is the shape a light has until it is given one.
+      # Gives the light a shape of the game's own, a row of the screen at a time.
       #
-      #   light.shape { |row| 40 - (row - light.y).abs }               # a diamond
-      #   light.shape { |row| light.circle((row - 1).clamp(0, 159)) }  # each row the circle of the row above
+      # The block is handed the row, 0 at the top. It gives back how far the light reaches either
+      # side of its middle on that row, or the row's two edges, `[left, right]`: the columns from
+      # left up to, and not including, right. The circle is the shape a light has until it is
+      # given one.
+      #
+      # ```ruby
+      # light.shape { |row| 40 - (row - light.y).abs }               # a diamond
+      # light.shape { |row| light.circle((row - 1).clamp(0, 159)) }  # each row the circle of the row above
+      # ```
       #
       # The rows are worked out in the gap before each frame, from what the game's numbers hold
       # then. A shape works its rows out and does nothing else: it may declare variables of its
@@ -61,19 +74,27 @@ module VBlank
         self
       end
 
-      # How far this light's circle reaches either side of its middle on +row+ — the shape the
-      # light has until it is given one, for a shape to build on. Up to a radius of 150 it is
-      # the midpoint circle the console's own games draw.
+      # How far this light's circle reaches either side of its middle on a row of the screen.
+      #
+      # The circle is the shape the light has until it is given one, so a Spotlight#shape can
+      # build on it. Up to a radius of 150 it is the midpoint circle the console's own games draw.
+      #
+      # ```ruby
+      # light.shape { |row| light.circle(row) - 4 }   # the circle, four pixels narrower each side
+      # ```
       def circle(row) = @builder.light_circle(self, row)
 
-      # Show the light as it stands on the picture being drawn, not the next one. A change to the
-      # light otherwise shows a picture later, like a sprite's place, because its rows are
-      # worked out in the gap before a frame. A game whose own light is handed to the display
-      # while the picture is drawn shows a change at once — an iris that opens on the frame it
-      # is asked for — and this is how a game copying one asks for it.
+      # Shows the light as it stands on the picture being drawn, not the next one.
       #
-      #   light.radius = 4
-      #   light.show_now
+      # A change to the light otherwise shows a picture later, like a sprite's place, because its
+      # rows are worked out in the gap before a frame. Some games hand their light to the display
+      # while the picture is drawn, so a change shows at once: an iris that opens on the frame it
+      # is asked for. This is how a game that works the same way asks for it.
+      #
+      # ```ruby
+      # light.radius = 4
+      # light.show_now
+      # ```
       #
       # On the console the rows are worked out where this is reached. Early in a pass that is
       # still the gap before the picture, and the whole picture shows them; once the display has

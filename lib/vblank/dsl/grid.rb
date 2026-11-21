@@ -2,28 +2,28 @@
 
 module VBlank
   module DSL
-    # A board of equal-sized cells you paint one at a time — a game field measured in
-    # cells, not pixels. `grid :board, cols:, rows:, cell:, over:` hands one back; from
-    # then on the game talks in cell coordinates (0, 1, 2 …) and never multiplies by
-    # the cell size. That "* cell" and the erase-to-background trick — the fiddly
-    # arithmetic a tile game like Snake otherwise hand-rolls — live here instead.
+    # A board of cells
     #
-    #   board = grid :board, cols: 30, rows: 20, cell: 8, over: :black
-    #   board.set_cell   head_x, head_y, :white   # paint one cell (cell coords)
-    #   board.set_cell   old_x,  old_y,  :green    # the old head becomes a body cell
-    #   board.clear_cell tail_x, tail_y            # a vacated cell goes back to `over`
+    # A board of equal-sized cells you paint one at a time: a game field measured in cells, not
+    # pixels. Builder#grid hands one back. From then on the game names cells by column and row
+    # (0, 1, 2 and on) and never multiplies by the cell size.
     #
-    # Painting a single cell (rather than clearing and redrawing the whole board every
-    # frame) is what keeps the picture from tearing once the board fills up: only a
-    # handful of cells change each step, and a handful always fits in the brief safe
-    # window the display gives you to draw in.
+    # ```ruby
+    # board = grid :board, cols: 30, rows: 20, cell: 8, over: :black
+    # board.set_cell   head_x, head_y, :white   # paint one cell
+    # board.set_cell   old_x,  old_y,  :green   # the old head becomes a body cell
+    # board.clear_cell tail_x, tail_y           # an empty cell goes back to the `over` colour
+    # ```
     #
-    # `over:` is the background color a cell returns to — a grid is a flat field, so
-    # `clear_cell` simply fills the cell with it. (A moving object over *scenery*
-    # wants the sprite helper instead, which remembers and restores the pixels it
-    # covers; a grid's cells never overlap, so a plain fill is all it needs.)
+    # Painting a single cell, rather than clearing and drawing the whole board again every frame,
+    # keeps the picture from tearing once the board fills up: only a few cells change each step,
+    # and a few always fit in the short time the display gives you to draw in.
+    #
+    # The `over:` colour is the one a cleared cell shows. A grid is a flat field, so Grid#clear_cell
+    # fills the cell with it. A thing that moves over scenery is a Sprite instead, which puts back
+    # the pixels it covers.
     class Grid
-      Build = IR::Build
+      Build = IR::Build # :nodoc:
 
       # @param builder [Builder] the build these cell paints record into
       # @param name [Symbol] the board's name (for messages)
@@ -41,15 +41,29 @@ module VBlank
         fits_on_screen!
       end
 
+      # The board's name, its columns across and rows down, and a cell's size in pixels, as the
+      # game gave them to Builder#grid.
       attr_reader :name, :cols, :rows, :cell
 
-      # Paint one cell in a color. Coordinates are in cells; a coordinate may be a
-      # constant or a run-time variable/expression (a moving piece).
+      # Paints one cell in a colour.
+      #
+      # The column and row count in cells, from 0 at the top left. Each may be a number or a
+      # variable the game works out, such as a moving piece's place. A number off the board is
+      # refused when the game is built.
+      #
+      # ```ruby
+      # board.set_cell 3, 4, :white
+      # board.set_cell head_x, head_y, :yellow
+      # ```
       def set_cell(col, row, color)
         paint(col, row, color)
       end
 
-      # Return one cell to the background — fill it with the grid's `over` color.
+      # Paints one cell in the board's `over` colour, so it shows as empty again.
+      #
+      # ```ruby
+      # board.clear_cell tail_x, tail_y
+      # ```
       def clear_cell(col, row)
         paint(col, row, @over)
       end
