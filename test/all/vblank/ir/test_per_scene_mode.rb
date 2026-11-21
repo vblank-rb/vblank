@@ -68,7 +68,7 @@ class TestPerSceneMode < Minitest::Test
   # mode the way a case_var scene does — if it were, its own mode-switch preamble
   # would fight whatever scene is actually live, forcing the hardware back to its
   # mode every frame. Concretely: in a program that also switches screen modes per
-  # scene, that fight makes the active scene re-run ITS OWN mode-entry preamble
+  # scene, that fight makes the active scene re-run its own mode-entry preamble
   # every frame too — which, for a tiled/affine scene, means the OAM sprite table
   # gets cleared again right after this frame's sprites were written, so nothing
   # composited ever reaches the screen. See IR::Modes#scene_targets /

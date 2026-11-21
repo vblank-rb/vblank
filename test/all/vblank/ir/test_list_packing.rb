@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A LIST'S ITEMS WRITTEN INTO A LIST OF BYTES IN ONE STEP (IR list_pack), lowest byte first, from a
+# A list's items written into a list of bytes in one step (IR list_pack), lowest byte first, from a
 # slot the game works out: what a save's snapshot is made of. The cases are the ones a block copy
 # can get wrong where a byte at a time could not: slots of each width, a start on an odd slot, a
 # list whose oldest item is not in its first slot (it is a ring), a list with nothing in it, and
@@ -53,7 +53,7 @@ class TestListPacking < Minitest::Test
     end
   end
 
-  # A RUN REACHING PAST THE LIST IT WRITES INTO is what a list_set of each byte in turn would be:
+  # A run reaching past the list it writes into is what a list_set of each byte in turn would be:
   # the bytes inside it are written and the game stops at the first slot outside it. Two words from
   # slot 12 of 14 stop at slot 14, not at the run's last byte.
   def test_a_run_past_the_end_stops_the_game_at_the_first_slot_outside
