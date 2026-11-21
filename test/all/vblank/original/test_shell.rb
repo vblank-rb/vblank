@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "shell_tests"
 
-# BUILDING A SHELL (Original::Shell.build): what a port must be for its shell to be made at all.
+# Building a shell (Original::Shell.build): what a port must be for its shell to be made at all.
 # How each runtime plays a shell is tested in that runtime's folder (test_shell.rb under
 # test/lowering/ruby/vblank/live/, and the web page's and the desktop program's).
 class TestOriginalShell < Minitest::Test

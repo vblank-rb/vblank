@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "made_up_original"
 
-# A BUILD WHOSE PACK IS KEPT BUILDS NO UNPACKING ROUTINE. Building a port's routine takes a big
+# A build whose pack is kept builds no unpacking routine. Building a port's routine takes a big
 # port many seconds, and a build drawn from a kept pack used to build it all the same, only to work
 # out the pack's key. The pack cache now keeps, beside each pack, what the routine was built from:
 # the files read while it was built, each with its digest. A later build whose files are unchanged
