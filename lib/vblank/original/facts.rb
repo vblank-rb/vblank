@@ -6,7 +6,7 @@ require "yaml"
 
 module VBlank
   module Original
-    # WHAT A PORT KNOWS ABOUT ITS ORIGINAL, each fact written once in a YAML file and read from there:
+    # What a port knows about its original, each fact written once in a YAML file and read from there:
     # a file for each part of the game, in the folders the game names.
     #
     #   FACTS = VBlank::Original::Facts.new("data/facts", "data/stages")
@@ -23,12 +23,12 @@ module VBlank
     # - every key has a comment written by hand directly above it, saying what it is and where it
     #   comes from.
     #
-    # WHAT THE GAME SUPPLIES: the folders, and the tool that reads its values off the copy. Every .yml
+    # What the game supplies: the folders, and the tool that reads its values off the copy. Every .yml
     # file in a folder is a facts file, named by its name without .yml; a name in two folders is
     # refused, since a fact must be written once. Testing#assert_facts_kept holds every file to the
     # three rules above.
     #
-    # FACTS A PERSON WRITES. A port made from a decompilation has no tool: a person reads each number
+    # Facts a person writes. A port made from a decompilation has no tool: a person reads each number
     # in the original's source and writes it down. Such a game sets that:
     #
     #   FACTS = VBlank::Original::Facts.new("data/facts", written_by: :hand)

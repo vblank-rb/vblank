@@ -2,13 +2,13 @@
 
 module VBlank
   module Original
-    # HOW AN ORIGINAL KEEPS ONE FRAME OF A SPRITE: a list of pieces, each a few bytes saying where
+    # How an original keeps one frame of a sprite: a list of pieces, each a few bytes saying where
     # the piece sits, which tile it shows, and whether it is turned or big. A retail game copies a
     # frame's pieces into the console's sprite table each time a pose changes, adding the object's
     # place. The record is the game's own, so the port describes it here, by where each part is,
-    # and a pose is read from it (`image ..., frame: pack[:frames].frame(at, layout: FRAME)`).
+    # and a pose is read from it (`image ..., frame: pack[:frames].frame(at, layout: frame)`).
     #
-    # ONLY THE PACK'S UNPACKING READS A FRAME THIS WAY. It writes each frame a game names again as
+    # Only the pack's unpacking reads a frame this way. It writes each frame a game names again as
     # a record of VBlank's own (FrameRecord), one layout whatever the original's, and the build,
     # the interpreter and every runtime read that. So a way of keeping a frame that no original
     # here has had before is taught to this class alone (#piece_from), and to nothing that draws.
@@ -30,7 +30,7 @@ module VBlank
     # Other bits are not read, and a piece's colours are the pose's `colors:` list, as a retail
     # game takes its sprite's colours from the object, unless the layout names a bank (below).
     #
-    # A PIECE THAT NAMES ITS BANK OF COLOURS. A console's sprite entry says which of its banks of
+    # A piece that names its bank of colours. A console's sprite entry says which of its banks of
     # colours the piece is drawn from, and an original that keeps the entry keeps that too (a
     # Genesis game in bits 13 and 14 of the tile word, its four lines of colours). +bank_bit+ is
     # the lowest bit of that number at +flags_at+ and +bank_bits+ how many bits it is:
@@ -38,7 +38,7 @@ module VBlank
     # from the bank its pieces name (Builder::PackPoses); one given a list is drawn in that list,
     # and the bank is not read.
     #
-    # A PART THAT IS TWO BYTES. Many originals keep a frame as the console's own sprite table
+    # A part that is two bytes. Many originals keep a frame as the console's own sprite table
     # entries, with the object's place taken off, and those entries hold words:
     #
     #   FRAME = VBlank::Original::FrameLayout.new(
@@ -57,23 +57,23 @@ module VBlank
     # one word: the flags are then read from the same place (+flags_at+ the same as +tile_at+), and
     # a +_bit+ may be up to 15.
     #
-    # A TILE'S NUMBER KEPT IN TWO PLACES. A Super Nintendo's sprite entry keeps a tile's low eight
+    # A tile's number kept in two places. A Super Nintendo's sprite entry keeps a tile's low eight
     # bits in a byte of their own and its ninth among the flags, and an original that keeps the
     # entry keeps that too. +tile_high_bit+ is the lowest of those high bits at +flags_at+ and
     # +tile_high_bits+ how many there are: `tile_at: 2, flags_at: 3, tile_high_bit: 0,
     # tile_high_bits: 1`. They go above the bits read at +tile_at+ (above +tile_bits+ of them,
     # where the layout names that).
     #
-    # A PIECE OF SEVERAL TILES EACH WAY. The byte at +size_at+ holds two numbers of +size_bits+
+    # A piece of several tiles each way. The byte at +size_at+ holds two numbers of +size_bits+
     # bits each: how many tiles the piece is across, less one, from bit +columns_bit+ up, and how
     # many down, less one, from bit +rows_bit+ up. +tile_order+ says how the piece's tiles follow
     # its first in sprite memory, which is the console's choice and not the game's:
-    # +:down_columns+ where t + 1 is BELOW t and the next column starts at t + rows, and
+    # +:down_columns+ where t + 1 is below t and the next column starts at t + rows, and
     # +:across_rows+ where t + 1 is right of t and the next row starts at t + columns. A piece
     # that is mirrored or upside down is turned whole, so its columns or rows change places too,
     # as the console turns a sprite.
     #
-    # A PIECE WHOSE SIZE IS THE GAME BOY ADVANCE'S OWN PAIR. The Advance's sprite entry does not
+    # A piece whose size is the Game Boy Advance's own pair. The Advance's sprite entry does not
     # keep a piece's width and height: it keeps a shape (0 square, 1 wide, 2 tall) and a size of
     # that shape (0 to 3), and the console reads the two through a table of its own, in tiles
     # across by down:
@@ -88,15 +88,15 @@ module VBlank
     # +size_at+ (on the Advance it is :across_rows, its one-dimensional sprite mapping), and they
     # take the place of +big_bit+ and +size_at+.
     #
-    # A PIECE KEPT IN A WAY NO OPTION HERE SAYS. A port reads it with a few lines of its own Ruby,
+    # A piece kept in a way no option here says. A port reads it with a few lines of its own Ruby,
     # +piece+, and the layout then says only where the pieces are: +piece_bytes+, +counted+ and the
     # count's +count_bytes+ (with +high_byte_first+ where that is 2). The reader is handed the
     # piece's bytes and the values the pose gives, and gives back a Piece (below):
     #
-    #   FRAME = VBlank::Original::FrameLayout.new(piece_bytes: 5, counted: true, piece: READER)
-    #   image :craft, tiles: pack[:sprites], frame: pack[:frames].frame(0, layout: FRAME, with: { block: 5 }), ...
+    #   FRAME = VBlank::Original::FrameLayout.new(piece_bytes: 5, counted: true, piece: reader)
+    #   image :craft, tiles: pack[:sprites], frame: pack[:frames].frame(0, layout: frame, with: { block: 5 }), ...
     #
-    # A VALUE FROM THE POSE, NOT THE FRAME: an original may add to what a piece's bytes say
+    # A value from the pose, not the frame: an original may add to what a piece's bytes say
     # something the object holds (the block of sprite memory its tiles were loaded to), and the
     # pose gives it by name, `with: { block: 5 }`, read by the reader as `pose[:block]`. One frame
     # given two such values is two records. What a reader may write, and what is refused, is told
@@ -167,7 +167,7 @@ module VBlank
       # How many bytes of a frame come before its first piece: its count, where it has one.
       def count_bytes_before_pieces = counted ? count_bytes : 0
 
-      # WHAT READS A FRAME'S BYTES. The two methods below are the whole of how a layout is read,
+      # What reads a frame's bytes. The two methods below are the whole of how a layout is read,
       # and they are handed the bytes one at a time by a block: byte +at+ of the frame (#count_from)
       # or of the piece (#piece_from), 0 to 255. The build that holds the pack hands them numbers.
       # The pack's unpacking (FrameRewrite) hands them values of the game's, read from the pack as
@@ -204,7 +204,7 @@ module VBlank
         tile.clamp(0, FrameRecord::MOST)
       end
 
-      # HOW A PIECE'S TILES FOLLOW ITS FIRST, as the two steps a record keeps: how many tiles on
+      # How a piece's tiles follow its first, as the two steps a record keeps: how many tiles on
       # the tile one column to the right is, and the tile one row down.
       def column_step(&byte) = tile_order == :down_columns ? rows(&byte) : 1
 
@@ -233,7 +233,7 @@ module VBlank
 
       def size_number(bit) = ((yield(size_at) >> bit) & ((1 << size_bits) - 1)) + 1
 
-      # THE ADVANCE'S TABLE OF SPRITE SIZES, AS SUMS. Each side of every entry is a power of two,
+      # The Advance's table of sprite sizes, as sums. Each side of every entry is a power of two,
       # 1 to 8 tiles, so the table is read as which power (0 to 3) each side is. A square's sides
       # are both the size's own power, +a+. A wide piece's columns are one power more at sizes 0
       # and 1 and the same at 2 and 3 (a + 1, less 1 where bit 1 of the size is set: 1, 2, 2, 3),
@@ -436,7 +436,7 @@ module VBlank
       end
     end
 
-    # ONE PIECE AS A READER OF THE GAME'S GIVES IT BACK (FrameLayout's +piece+). Each part is a
+    # One piece as a reader of the game's gives it back (FrameLayout's +piece+). Each part is a
     # whole number worked out from the piece's bytes and the pose's values:
     #
     #   x, y          where the piece's top left is, from the object's place

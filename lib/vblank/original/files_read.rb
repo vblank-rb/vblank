@@ -2,7 +2,7 @@
 
 module VBlank
   module Original
-    # THE FILES THIS PROCESS READ, by their full paths. A port's unpacking routine is game code, and
+    # The files this process read, by their full paths. A port's unpacking routine is game code, and
     # the Ruby that builds it may depend on files of the port's own: a layout written as JSON, read
     # as the routine is built, or a table of levels a game file reads as it loads
     # (`LEVELS = JSON.parse(File.read("levels.json"))`), or a manifest read once and kept. What the

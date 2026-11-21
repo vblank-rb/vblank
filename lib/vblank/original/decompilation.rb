@@ -7,11 +7,11 @@ require "tmpdir"
 
 module VBlank
   module Original
-    # THE DECOMPILATION WOULD NOT BUILD, or built something other than the player's copy, or is not at
+    # The decompilation would not build, or built something other than the player's copy, or is not at
     # its pin. Nothing was harvested, and the message says what to do.
     class HarvestRefused < StandardError; end
 
-    # A DECOMPILATION BUILT, PROVEN TO BE THE PLAYER'S COPY, AND ONLY THEN READ.
+    # A decompilation built, proven to be the player's copy, and only then read.
     #
     # A port takes its symbols, its RAM labels and where each asset lies from a decompilation of the
     # original. Those are worth having only if they are the game's, and a decompilation is somebody's
@@ -32,14 +32,14 @@ module VBlank
     #    never written to, and removed afterwards. A commit leaves out what git does not hold (a
     #    submodule, a file kept out by .gitignore); +extra_files+ names files of the checkout's to
     #    copy in beside it, from the checkout as it is.
-    # 3. The game's command builds it there, with +env+ added to the environment (a PATH that reaches
+    # 3. The game's command builds it there, with +env+ added to the environment (a path that reaches
     #    the assembler, say).
     # 4. The file it builds (+output+), after +fix+ if the game gives one (a header field an
     #    assembler cannot know, which the decompilation's own build script fills in), must be the
     #    player's copy byte for byte. Otherwise this stops, saying how many bytes differ and where the
     #    first is, and the block never runs.
     #
-    # WHAT THE GAME SUPPLIES: the checkout, its pin, the command and the file it builds, and the
+    # What the game supplies: the checkout, its pin, the command and the file it builds, and the
     # block that reads the build. The labels in the assembler's symbol file are read by SymbolFile and
     # saved as Labels (`require "vblank/original/symbol_file"`), and the extents it proves are saved as
     # a Manifest (`require "vblank/original/manifest"`), which refuses two assets on the same bytes:
