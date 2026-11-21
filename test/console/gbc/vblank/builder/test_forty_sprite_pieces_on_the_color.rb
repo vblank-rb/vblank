@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# FORTY PIECES OF SPRITES ON THE SCREEN. The Color's sprite table holds forty entries, and each is
+# Forty pieces of sprites on the screen. The Color's sprite table holds forty entries, and each is
 # one 8×8 piece of a sprite, so a 16×16 sprite takes four. The table is filled front-most first, so
 # with more pieces than that on the screen the ones furthest back find it full and are not drawn
 # at all, on any line. The lines here are never crowded (ten pieces a line at most), so only the

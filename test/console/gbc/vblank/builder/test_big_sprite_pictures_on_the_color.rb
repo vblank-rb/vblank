@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A SPRITE PICTURE LONGER THAN ANY THE ADVANCE DRAWS WHOLE. The Color draws every picture as pieces
+# A sprite picture longer than any the Advance draws whole. The Color draws every picture as pieces
 # of 8×8, up to forty at once and ten on a row of the screen, so a picture too tall for the Advance
 # fits where it is few pieces. Its far end has to land where the interpreter puts it, and it has to
 # walk off the edge of the screen. One wider than ten pieces is refused (test_gbc_refusals.rb).
