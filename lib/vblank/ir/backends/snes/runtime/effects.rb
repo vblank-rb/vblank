@@ -5,18 +5,18 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # THE SOUND EFFECTS PLAYER, beside the tune's (Music), the same steps as
+          # The sound effects player, beside the tune's (Music), the same steps as
           # Reference::Player's, in its order.
           #
           # The game asks for an effect (rt_sfx_play); at the next frame it starts from its first
           # note, plays each note once as its frame comes, and at its end lets go of the voices it
           # still holds, quieting them. The tune and the effects share the console's four voices, and
-          # WHO SOUNDS ON ONE is settled by rank (SNES::Music, "who sounds on a voice"): a note takes a
+          # who sounds on one is settled by rank (SNES::Music, "who sounds on a voice"): a note takes a
           # voice whose holder's rank is no higher than its own, and holds it while it makes a sound
           # (rt_sfx_claim). Each frame plays the effects that outrank the tune before the tune's parts
           # and the rest after, so whoever writes a voice first on a frame is whoever keeps it.
           #
-          # AN EFFECT IN A GROUP plays one at a time with the rest of its group: asked for while
+          # An effect in a group plays one at a time with the rest of its group: asked for while
           # another of its group is sounding or already asked for, it is not played if its priority
           # is lower, and otherwise stops that one on the next frame and starts in its place
           # (Reference::Player#request_effect).
@@ -286,7 +286,7 @@ module VBlank
 
             # rt_sfx_above and rt_sfx_below: a frame's effects that outrank the tune, played before its
             # parts, and the rest, after (Reference::Player#advance). rt_sfx_above takes up first what
-            # was asked for since the last frame. rt_sfx_select_ranked: the effect at place WALK of the rank
+            # was asked for since the last frame. rt_sfx_select_ranked: the effect at place walk of the rank
             # order, selected, its number in A.
             def emit_passes(asm, at, memory, count)
               m = SNES::Music
@@ -320,7 +320,7 @@ module VBlank
               emit_pass(asm, at, memory, "rt_sfx_below", above: false)
               asm.rts
 
-              # rt_sfx_live_list: LIVE, the rank order's places of the effects asked for, sounding or
+              # rt_sfx_live_list: live, the rank order's places of the effects asked for, sounding or
               # to be cut off, each one up, and nought after the last.
               asm.label("rt_sfx_live_list")
               asm.stz(at.call(LIVE_CHANGED))
@@ -377,10 +377,10 @@ module VBlank
               end
             end
 
-            # The block, inline, for each effect of LIVE, selected. Going by LIVE is what makes an
+            # The block, inline, for each effect of live, selected. Going by live is what makes an
             # effect nothing has asked for cost a frame nothing: every frame walks both sides of the
             # tune, and selecting an effect is a good many instructions. An effect that ends on the
-            # way stays in LIVE until the next frame, and a turn of the block over it does nothing.
+            # way stays in live until the next frame, and a turn of the block over it does nothing.
             def emit_live_walk(asm, at, memory, name)
               asm.stz(at.call(LIVE_AT))
               asm.label("#{name}_live_next")
@@ -522,7 +522,7 @@ module VBlank
               asm.sta(state.call(FRAME))
               asm.rts
 
-              # rt_sfx_entry: ENTRY and X = where part PART of the effect selected is.
+              # rt_sfx_entry: ENTRY and X = where part part of the effect selected is.
               asm.label("rt_sfx_entry")
               asm.lda(at.call(PART))
               Music.emit_times(asm, m::PART_BYTES)
@@ -594,7 +594,7 @@ module VBlank
               asm.rts
             end
 
-            # rt_sfx_recorded_note: the note at NOTE of the selected effect's part that plays a
+            # rt_sfx_recorded_note: the note at note of the selected effect's part that plays a
             # recording, A its channel (SNES::Music::RECORDED_CHANNEL on), in a place the effect owns
             # (Recordings::EFFECT_OWNER): a note takes a place at the effect's rank and logs itself if
             # it found one; a note that sounds nothing gives the part's place back, and logs itself
@@ -722,7 +722,7 @@ module VBlank
               asm.rts
             end
 
-            # rt_sfx_select: the effect numbered A selected — EFFECT, RECORD and X where its record is,
+            # rt_sfx_select: the effect numbered A selected — effect, record and X where its record is,
             # STATE and Y where its state is.
             def emit_select(asm, at, memory)
               asm.label("rt_sfx_select")

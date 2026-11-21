@@ -5,17 +5,17 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # THE SUMS THE SUPER FX CALLS, in its own instructions. A game's number is 32 bits, signed
+          # The sums the super FX calls, in its own instructions. A game's number is 32 bits, signed
           # and wrapping (IR::Int32), and the chip's registers are 16, so a number is two of them. Adding
           # is two additions with a carry between them and is written where it is used (SNES::ChipCode);
           # what is here takes a loop, or several steps, and is called.
           #
-          # HOW THEY ARE CALLED. With LINK and a jump: the return address in R11, the left number in
+          # How they are called. With LINK and a jump: the return address in R11, the left number in
           # LOW and HIGH, the right one in RIGHT_LOW and RIGHT_HIGH, and the answer back in LOW and HIGH.
           # A sum may use every other register but R14, whose every write starts a read of the ROM,
           # and R15, the program counter. Nothing here is kept in a register from one sum to the next.
           #
-          # THE CHIP HAS ONE-BYTE INSTRUCTIONS, AND A FETCH THAT GOES AHEAD. The byte after a jump or
+          # The chip has one-byte instructions, and a fetch that goes ahead. The byte after a jump or
           # a branch runs whether it is taken or not, and it must be a single byte, since an
           # instruction with a number after it would read that number from where the jump landed.
           # So a NOP goes there.
@@ -43,7 +43,7 @@ module VBlank
             NUMBER_BITS = 32
             HALF_BITS = 16
 
-            # THE FOUR REGISTERS A PRODUCT OF FRACTIONS IS BUILT IN, lowest 16 bits first. Two numbers
+            # The four registers a product of fractions is built in, lowest 16 bits first. Two numbers
             # of 32 bits make one of 64, and IR::Int32.mul_fix wants all of it before it is brought
             # down.
             PRODUCT = [7, 8, 9, 10].freeze
@@ -217,7 +217,7 @@ module VBlank
               gsu.nop
             end
 
-            # LONG DIVISION IN BINARY, two sizes at a time from the top: LOW and HIGH (the number)
+            # Long division in binary, two sizes at a time from the top: LOW and HIGH (the number)
             # shift left a bit at a time into R9 and R10 (what is left), and each time what is left
             # can spare the divisor, it does, and a 1 goes in at the bottom of the number, which is
             # becoming the quotient. What is left is always below the divisor, which is at most
@@ -270,7 +270,7 @@ module VBlank
             # IR::Int32.mul_fix: the whole product, 64 bits, brought down by the count of fraction
             # bits in R12 (0 to 32), and the bottom 32 bits of what is left.
             #
-            # LONG MULTIPLICATION, A HALF AT A TIME. Each number is two halves, so the product is four
+            # Long multiplication, a half at a time. Each number is two halves, so the product is four
             # products of halves, each 32 bits, added in at the place its halves stand: bottom by
             # bottom at the bottom, the two bottom-by-top in the middle, top by top at the top. Each is
             # worked out as if both numbers had no sign, and then the sign is put right once at the
@@ -331,7 +331,7 @@ module VBlank
               end
             end
 
-            # The four halves of PRODUCT moved down by R12 bits, which it uses up.
+            # The four halves of product moved down by R12 bits, which it uses up.
             def emit_product_brought_down(gsu)
               p0, p1, p2, p3 = PRODUCT
               gsu.label("chip product down a half")
@@ -569,7 +569,7 @@ module VBlank
               gsu.nop
             end
 
-            # R12 the count left below sixteen, for LOOP, which must not start at nought: it would
+            # R12 the count left below sixteen, for loop, which must not start at nought: it would
             # go round 65536 times. Goes to +done+ when there is nothing left to do.
             def emit_count_of_steps(gsu, done)
               gsu.from(RIGHT_LOW)
