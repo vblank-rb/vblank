@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# THE THINGS OF A POOL KEPT TO ONE FRAME AT A TIME SHARE THEIR ROOMS BY POSE.
+# The things of a pool kept to one frame at a time share their rooms by pose.
 #
 # When a pool's pictures do not fit in sprite memory, it is given a room of one frame for each
 # thing it can hold, and a pose is copied into a room when a thing shows it. Two things showing
