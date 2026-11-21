@@ -204,8 +204,8 @@ module VBlank
          "  CONSOLE=gbc rake test:all           only the runs that play games as one console"].join("\n")
       end
 
-      # `rake test:all`, which FAIL_FAST and resume turn into a run that keeps a record. Without
-      # either it keeps none. Resume stops at a failure too, so the record stays good for the next.
+      # `rake test:all`, which FAIL_FAST and RESUME turn into a run that keeps a record. Without
+      # either it keeps none. RESUME stops at a failure too, so the record stays good for the next.
       def play_all_runs
         resuming = ENV[Lowering::RESUME_SETTING]
         return play_runs(plays) unless resuming || ENV[Lowering::FAIL_FAST_SETTING]
@@ -220,7 +220,7 @@ module VBlank
         puts RESUMED_NOTE if resumed
       end
 
-      # The runs of +chosen+ that console leaves, one after the other, ending with a line for each.
+      # The runs of +chosen+ that CONSOLE leaves, one after the other, ending with a line for each.
       # With +golden+, a list of files, each run plays those of them it loads. With +progress+, a
       # run plays what that record shows is left of it.
       def play_runs(chosen, golden: nil, progress: nil)
@@ -294,7 +294,7 @@ module VBlank
         ENV.update(before)
       end
 
-      # Of +chosen+, the runs playing games as the console console names; all of them when it names none.
+      # Of +chosen+, the runs playing games as the console CONSOLE names; all of them when it names none.
       def chosen_by_console(chosen)
         console = Lowering.named_console(ENV)
         return chosen if console.nil?
@@ -309,7 +309,7 @@ module VBlank
 
       # One run: whether it passed and how long it took. Every one is played whatever the one
       # before found, unless FAIL_FAST asks otherwise (#play_runs). TEST names a file, or several
-      # with commas between, and the run plays those of them it loads; +listed+ is for a test the
+      # with commas between, and the run plays those of them it loads; +listed+ is for a TEST the
       # caller has narrowed to the run's own files already.
       def play_run(lowering, console, name, listed: false)
         named = ENV["TEST"]&.split(",")&.map { |file| file.delete_prefix("./") }

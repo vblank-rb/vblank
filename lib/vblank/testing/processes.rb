@@ -81,7 +81,7 @@ module VBlank
       def running = RUNNING
 
       # The parent's command, with the seed it settled on put last, where it wins: a run that was
-      # not given one picks its own, after command was taken. One word, `--seed=N`, because
+      # not given one picks its own, after COMMAND was taken. One word, `--seed=N`, because
       # rake's loader takes a word that does not start with a dash for a file to load. Warnings
       # are on in a child when they are on here.
       def child_command

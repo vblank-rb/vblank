@@ -106,7 +106,7 @@ module DrawInOrderGames
   # (Reference#names_in_draw_order): every entry the list holds, a place below nought counting back
   # from the run's last sprite, and a place naming none of its sprites stopping the game. The builder
   # keeps its own list full of the run's places, so only a run written onto the frame's drawing by hand
-  # reaches the rest. Two blocks overlap at overlap: the red one first in the run, the green one second.
+  # reaches the rest. Two blocks overlap at OVERLAP: the red one first in the run, the green one second.
   # The block is handed the list and writes the game.
   private def hand_ordered_program(&game)
     block = BLOCK

@@ -40,7 +40,7 @@ module VBlank
     #
     # What the game supplies: the cartridge (a path, or anything Diagnostics::CartridgeFile takes) and
     # its labels, as its decompilation's RAM map has them: a name to an address on the console's bus,
-    # or to an address and how it is read (widths), one byte unsigned unless set. A read or a write
+    # or to an address and how it is read (WIDTHS), one byte unsigned unless set. A read or a write
     # takes a label or an address. +save+ (an IR::SaveImage) is what the save memory holds as the
     # console is switched on: a save file of the player's, say.
     #
@@ -168,7 +168,7 @@ module VBlank
         raise NeverHappened, never_happened_message(what, "#{within} presses of #{button}", watch)
       end
 
-      # The value at +place+ (a label or an address) now, read +as+ one of widths (as the label gives,
+      # The value at +place+ (a label or an address) now, read +as+ one of WIDTHS (as the label gives,
       # or one byte unsigned), in the console's own byte order, as its processor keeps it. Where a
       # value of two or more bytes can be, and whether three bytes are one value, is the processor's
       # rule too (Console::Kit#words_at_any_address?); a read it would not make is refused. Three
@@ -205,7 +205,7 @@ module VBlank
         Array.new(count) { |offset| @reader.mem8(at + offset) }.pack("C*")
       end
 
-      # Put +value+ at +place+ (a label or an address), written +as+ one of widths, and leave the bytes
+      # Put +value+ at +place+ (a label or an address), written +as+ one of WIDTHS, and leave the bytes
       # beside it as they were. It is for reaching a state no drive reaches cheaply (fewer lives than
       # a new game gives), so say beside anything measured after one that it was reached this way.
       #
