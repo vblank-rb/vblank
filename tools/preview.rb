@@ -5,7 +5,7 @@ require_relative "../lib/vblank"
 # Preview — turn a run of a program into a picture you can watch.
 #
 # The point of this framework is the visible result, but a passing test only proves
-# a feature is correct, it doesn't let you see it — and motion (scrolling, parallax,
+# a feature is correct, it doesn't let you SEE it — and motion (scrolling, parallax,
 # animation) can't be shown in a single screenshot at all. This runs a program on the
 # reference interpreter, captures the screen at each frame, and writes a self-contained
 # HTML page that plays those frames back like a little animation. No emulator, no
@@ -111,7 +111,7 @@ module Preview
     text.gsub("&", "&amp;").gsub("<", "&lt;").gsub(">", "&gt;")
   end
 
-  # --- command line: `ruby tools/preview.rb example [options]` ---
+  # --- command line: `ruby tools/preview.rb EXAMPLE [options]` ---
 
   EXAMPLES_DIR = Ractor.make_shareable(VBlank.root.join("examples").to_s)
 

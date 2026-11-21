@@ -6,10 +6,10 @@
 # hands each message to the others of its room, as the real relay does (docs/network/protocol.md). It never
 # runs the game.
 #
-#   ruby tools/stand_in_relay.rb [port]
+#   ruby tools/stand_in_relay.rb [PORT]
 #
 # It says the address a client connects to on its first line, `listening on ws://127.0.0.1:PORT/`, and
-# serves until it is stopped. Port is 0 (the system chooses) unless given.
+# serves until it is stopped. PORT is 0 (the system chooses) unless given.
 
 require_relative "../lib/vblank"
 

@@ -21,7 +21,7 @@ module SongInstrumentsSharing
   CLIPS = VOICES + 2 # two more of the game's own sounds than there are voices
   private def clip_names(range) = range.map { |n| :"s#{n}" }
 
-  # A game that starts clips sounds of its own at once, a second long each, on pass +at+ — in
+  # A game that starts CLIPS sounds of its own at once, a second long each, on pass +at+ — in
   # its game loop, where the burst lands inside one frame on both backends — beside +tune+. The
   # first sound loops when +loop_first+ says so.
   private def sharing_game(at:, loop_first: false, &tune)
