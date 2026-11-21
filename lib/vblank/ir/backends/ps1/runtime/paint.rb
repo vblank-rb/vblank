@@ -21,7 +21,7 @@ module VBlank
           # textured rectangle for each piece of it (GP0 65h), each texel's colour copied as it is, read
           # from the piece's colour table where it has one (PS1::TextureMemory). Neither is
           # dithered or blended, so the pixels are the colours the game named. The processor works out
-          # what is inside the screen, and inside the area `inside` holds drawing to (area), before
+          # what is inside the screen, and inside the area `inside` holds drawing to (AREA), before
           # anything is sent: the chip is given only the part that lands, so its own clipping is never
           # asked, and a number the game works out far off the screen never reaches the chip's 11-bit
           # corners.
@@ -31,7 +31,7 @@ module VBlank
           # the interpreter keeps every pixel it paints (Reference::Framebuffer#paintable?).
           module Paint
             AREA = "rt paint area"
-            # Where each edge is in area, in bytes from its start.
+            # Where each edge is in AREA, in bytes from its start.
             AREA_LEFT_OFFSET_BYTES = 0
             AREA_TOP_OFFSET_BYTES = 4
             AREA_RIGHT_OFFSET_BYTES = 8

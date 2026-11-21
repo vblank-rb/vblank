@@ -33,7 +33,7 @@ module VBlank
           #
           # A sprite is a picture the painted screen draws too (Runtime::Paint's rt_paint_blit), drawn in
           # front of every background, in the order the pass placed them (rt_sprite_place). The ones a pass
-          # placed are kept in drawn, a row each, which a reader of the run reads back too.
+          # placed are kept in DRAWN, a row each, which a reader of the run reads back too.
           module Tiles
             h = Console::PS1Hardware
 
@@ -140,7 +140,7 @@ module VBlank
               memory.reserve(SCENERY_ROWS, 4)
             end
 
-            # The sprites a pass placed alone (drawn), for a painted screen with sprites over it
+            # The sprites a pass placed alone (DRAWN), for a painted screen with sprites over it
             # (Runtime::Paint's rt_paint_sprites_shown draws them).
             def reserve_sprites(memory) = memory.reserve(DRAWN, 4 + (MOST_SPRITES * DRAWN_BYTES))
 

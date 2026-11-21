@@ -2883,7 +2883,7 @@ module VBlank
           showing_scenery.find { |held| held.alone && !held.equal?(bg) }&.above_row
         end
 
-        # A background held to a box, and the rule is the display's window: a switch for each pixel
+        # A background held to a BOX, and the rule is the display's window: a switch for each pixel
         # the display draws, which leaves this layer out of every pixel outside the box. So it is
         # painted onto a sheet of its own as it would be anywhere, scrolled, bent and in blocks as
         # it is, and only the pixels inside the box are laid onto the picture. Outside, nothing of

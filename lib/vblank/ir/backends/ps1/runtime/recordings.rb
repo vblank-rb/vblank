@@ -85,7 +85,7 @@ module VBlank
             PLACE_BYTES = 60
             LOOPS = 0x8000_0000
             EFFECT_OWNER = 0x100
-            # Which part of its shape a note is in (Audio::Envelope), and done: fallen to nothing, its place
+            # Which part of its shape a note is in (Audio::Envelope), and DONE: fallen to nothing, its place
             # coming free on the frame after (Reference::Mixer::DONE).
             CLIMBING = 0
             HOLDING = 1
@@ -233,7 +233,7 @@ module VBlank
             # the place from its start: at full, at nothing to climb from by its shape
             # (Reference::Mixer#recording_fields), or, for the game's own shaped sound, one step up its
             # shape. Its voice told where the recording starts, its pitch and loudness, and started at
-            # the frame boundary. Taken says which place.
+            # the frame boundary. TAKEN says which place.
             def emit_take(asm, at, place, sides: false)
               h = Console::PS1Hardware
               asm.label("rt_recordings_take")
@@ -423,7 +423,7 @@ module VBlank
               asm.j("rt_sound_key_off")
             end
 
-            # rt_recordings_stop(a0 = a recording's number, or all; a1 = the log entry): every place of the
+            # rt_recordings_stop(a0 = a recording's number, or ALL; a1 = the log entry): every place of the
             # game's own holding that recording, or any, freed and its voice let go (Reference::Mixer#stop);
             # then the stop logged.
             def emit_stop(asm, _at, place)
@@ -498,7 +498,7 @@ module VBlank
 
             # rt_recordings_shapes: one frame of every sounding note's shape (Reference::Mixer#step_envelopes,
             # Audio::Envelope#step): climbing by its attack to full, then down by its decay to its sustain level
-            # and held there, or once ended falling by its release to nothing, where it is done, and its place
+            # and held there, or once ended falling by its release to nothing, where it is DONE, and its place
             # comes free on the frame after. Its voice's loudness follows its level.
             def emit_shapes(asm, _at, place)
               asm.label("rt_recordings_shapes")
@@ -541,7 +541,7 @@ module VBlank
                 asm.sltu(:t2, :t0, :t3)
                 asm.beq(:t2, :zero, "rt_recordings_shapes_set")
                 asm.b("rt_recordings_shapes_set") { asm.move(:t0, :t3) }
-                # Falling: down by its release, done at nothing.
+                # Falling: down by its release, DONE at nothing.
                 asm.label("rt_recordings_shapes_falling")
                 asm.srl(:t2, :t4, 24)
                 asm.multu(:t0, :t2)
@@ -564,7 +564,7 @@ module VBlank
             # (Audio::Envelope.whole_gain, Reference::Mixer#slide_gain: the level's own top bit added back,
             # so full is the whole loudness). Within the frame the mix slides a shaped note there a sample at
             # a time; the chip's voice is set once a frame, to where the slide ends.
-            # rt_recordings_loud(a0 = a loudness, out of the mix's full): the place a note last took (taken)
+            # rt_recordings_loud(a0 = a loudness, out of the mix's full): the place a note last took (TAKEN)
             # sounding at it, as the music volume sets (Reference::Player#song_loudness,
             # Reference::Mixer#rescale_music).
             def emit_loudness(asm, at, place, sides: false)
@@ -603,8 +603,8 @@ module VBlank
               Music.leave(asm, %i[s2])
             end
 
-            # The row at s0's word of "recording_sides" into the place at offset s1's word of sides.
-            # With +unless_kept+, a label, a word of kept leaves the place's sides as they are.
+            # The row at s0's word of "recording_sides" into the place at offset s1's word of SIDES.
+            # With +unless_kept+, a label, a word of KEPT leaves the place's sides as they are.
             def emit_copy_row_sides(asm, at, unless_kept: nil)
               asm.la(:t0, "recording_plays")
               asm.subu(:t0, :s0, :t0)
@@ -624,7 +624,7 @@ module VBlank
               asm.label(unless_kept) if unless_kept
             end
 
-            # +into+ = gp plus the place at offset s1's word of sides, less where sides is.
+            # +into+ = gp plus the place at offset s1's word of SIDES, less where SIDES is.
             def emit_place_sides_at(asm, into)
               asm.li(into, PLACE_BYTES)
               asm.divu(:s1, into)
@@ -634,7 +634,7 @@ module VBlank
             end
 
             # a1 = the loudness in s2 as side +side+ (0 the left, 1 the right) of the place at offset s1
-            # hears it (sides), to the nearest whole step. Leaves a0 as it is.
+            # hears it (SIDES), to the nearest whole step. Leaves a0 as it is.
             def emit_side_loudness(asm, at, side)
               emit_place_sides_at(asm, :t1)
               asm.lw(:t0, at.call(SIDES), :t1)
