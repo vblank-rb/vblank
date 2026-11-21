@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      # WHICH SPRITES A LOWERED GAME DREW, by the numbers it keeps them by.
+      # Which sprites a lowered game drew, by the numbers it keeps them by.
       #
       # The interpreter reports what it drew by name (Reference#sprites): whose each sprite is, under
       # the name the game declared it with, and which of its pictures it is showing, under the name

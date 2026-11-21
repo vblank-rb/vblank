@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      # HOW OFTEN A RUN NAMES EACH VARIABLE, counted from the program before anything is lowered, so
+      # How often a run names each variable, counted from the program before anything is lowered, so
       # a lowering whose console has a little memory that is quicker to reach than the rest can keep
       # the busiest variables there.
       #
