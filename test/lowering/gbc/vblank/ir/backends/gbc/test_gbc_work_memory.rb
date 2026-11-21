@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# WORK MEMORY STARTS AT NOUGHT, ALL OF IT. A console's memory holds no such thing at power-on (the
+# Work memory starts at nought, all of it. A console's memory holds no such thing at power-on (the
 # emulator fills it with stripes of ones and noughts), and what the framework keeps for itself is
 # never told a first value, so a game that fills the low half and spills into the banked one reads
 # its own counters as -1 unless power-on has cleared that half too.

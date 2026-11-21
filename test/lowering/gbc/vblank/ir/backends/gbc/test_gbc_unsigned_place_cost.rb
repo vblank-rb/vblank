@@ -3,7 +3,7 @@
 require "test_helper"
 require "unsigned_place_cost_games"
 
-# A POOL'S PLACES IN 256THS OF A PIXEL ON THE GAME BOY COLOR, measured in the emulator: places from
+# A pool's places in 256THS OF A PIXEL ON THE GAME BOY COLOR, measured in the emulator: places from
 # 0 to 65535 kept with `& 0xFFFF`, which no signed slot holds, kept in two bytes read back with no
 # sign (GBC::Lowering#unsigned_list?) and compared by the borrow out of their two bytes
 # (GBC::Lowering::SmallNumbers). The console's processor works a byte at a time, so a place kept in
