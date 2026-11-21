@@ -4,9 +4,9 @@ require "digest"
 require "tmpdir"
 require "pack_turning_background_games"
 
-# A MADE-UP ORIGINAL THAT KEEPS ONE STRETCH OF VIDEO MEMORY, as a console does: tiles of sixteen
+# A made-up original that keeps one stretch of video memory, as a console does: tiles of sixteen
 # colours, then the map of a layer that turns, one byte a cell, then that layer's tiles, a byte a
-# pixel. A game reads the stretch as ONE slot of sixteen-colour tiles and takes the map and the
+# pixel. A game reads the stretch as one slot of sixteen-colour tiles and takes the map and the
 # byte tiles through views of it (DSL::PackSlot#as_numbers, #as_tiles). The answer key is the
 # same game with a slot of its own for each part, which is how a game read them before a slot had
 # views. The turning layer's data is PackTurningBackgroundGames'.
@@ -83,7 +83,7 @@ module PackSlotViewGames
      video.as_numbers(at: CELLS_IN_VIDEO, count: CELLS.length, width: :byte, signed: false)]
   end
 
-  # A GAME OF TWO BACKGROUNDS FROM THE ONE STRETCH: a layer that turns, behind a ground of
+  # A game of two backgrounds from the one stretch: a layer that turns, behind a ground of
   # sixteen-colour tiles with holes in it. The block is handed the layer. Hands back the program
   # and the pack file the build made (nil for a build that leaves its pack out).
   private def two_shapes_game_and_file(from, views:, options: VBlank::Cartridge::Options.new, &more)
@@ -99,7 +99,7 @@ module PackSlotViewGames
     [b.program, b.made_data_pack_file]
   end
 
-  # A GAME OF ONE PAINTED SCREEN, reading the stretch in two more shapes: a tile of the layer as a
+  # A game of one painted screen, reading the stretch in two more shapes: a tile of the layer as a
   # picture of pixels, and its first bytes as a table of numbers, signed and not, which place a
   # mark each pass. The tile has five colours in one 8x8 square over black, more than a Game Boy
   # Color keeps there, so its tests are PackSlotViewPixelTests', played by the other consoles.

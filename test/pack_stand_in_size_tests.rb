@@ -5,7 +5,7 @@ require "all/vblank/builder/test_pack_pose_bank_colors"
 require "all/vblank/builder/test_pack_tile_pictures"
 require "all/vblank/builder/test_pack_background_areas"
 
-# WHAT A PICTURE THE BUILD DOES NOT HOLD COSTS THE WRITTEN GAME. A build that reads its pack as the
+# What a picture the build does not hold costs the written game. A build that reads its pack as the
 # game starts (a shell) knows a pose of the original's frames, or a background's tiles, only by its
 # size: every pixel is filled from the file as the game starts. So the written game holds none of
 # them, however many sprites, lists of colours, recolourings, banks or turns draw them: a bigger
@@ -81,7 +81,7 @@ module PackStandInSizeTests
     end
   end
 
-  # A TILE AS DRAWN IS SET UP ONCE FOR EACH TILE'S ROW IT DRAWS, never for each pixel: what the tile
+  # A tile as drawn is set up once for each tile's row it draws, never for each pixel: what the tile
   # needs that is the same for all of its pixels (its record, its tile of places, its table in the
   # set of colours drawn now) is worked out once, and a pixel is then a read of its place and a read
   # of its colour. A room scrolling every pass is drawn again every pass; every row of the screen
@@ -102,7 +102,7 @@ module PackStandInSizeTests
   SCREEN_ROWS = 160
   TILES_A_SCREEN_ROW = (240 / 8) + 2
 
-  # A MAP NAMING MORE DIFFERENT TILES AS DRAWN THAN A CELL CAN NUMBER stops the game as it starts, in
+  # A map naming more different tiles as drawn than a cell can number stops the game as it starts, in
   # plain words saying to build all-in-one. Which tiles a map names is in the player's file, which the
   # build never sees, so it cannot refuse the game while it builds (Builder::PackBackgrounds
   # #refuse_oversized_map_at_start!). A room of 200x170 cells over 1024 tiles in 16 banks, every cell
@@ -139,7 +139,7 @@ module PackStandInSizeTests
   # How many bytes of pixels a tile is kept in as the game runs.
   TILE_PIXEL_BYTES = 64 * PIXEL_BYTES
 
-  # A BACKGROUND READ AS THE GAME STARTS HOLDS THE TILES ITS SLOT CAN DRAW, NOT A TILE FOR EVERY CELL:
+  # A background read as the game starts holds the tiles its slot can draw, not a tile for every cell
   # the cells name the tiles, as the console's map does. So rooms over one slot of tiles, however big
   # and however many, take the room of what the slot can draw once.
   def test_a_world_of_rooms_over_one_tile_slot_holds_what_the_slot_can_draw_once
@@ -199,7 +199,7 @@ module PackStandInSizeTests
                     "from #{few} to #{many} bytes, more than the #{their_pixels} bytes of pixels the cells added once"
   end
 
-  # A TILE TAKING TURNS THROUGH PICTURES, ITS SLOT OF COLOURS IN MORE BANKS: each bank has a run of
+  # A tile taking turns through pictures, its slot of colours in more banks: each bank has a run of
   # the tile of its own, and every run copies from one table of the pictures, read from the file
   # as the game starts. So what the game keeps of the file while it runs (#start_file_bytes) grows
   # by the banks' colours, never by the pictures again for each bank.
@@ -215,8 +215,8 @@ module PackStandInSizeTests
                     "from #{few} to #{many} bytes, more than the #{pictures} bytes of the belt's pictures held once"
   end
 
-  # ...and EVERY BANK'S RUN SHOWS FROM ONE LIST, WHICH A SHOW COPIES INTO ONLY WHILE A CELL NAMES THE
-  # TILE: each run shows the same bytes, the belt turned each way, so the belt's picture is in the
+  # ...and every bank's run shows from one list, which a show copies into only while a cell names the
+  # tile: each run shows the same bytes, the belt turned each way, so the belt's picture is in the
   # game's memory once however many banks its slot has. Which cells name the tile is in the file, so
   # the game learns it as it starts: a map that never names it leaves the list as it was at power-on,
   # never copied into. The list is the framework's own, which only the lowered game is asked about:
