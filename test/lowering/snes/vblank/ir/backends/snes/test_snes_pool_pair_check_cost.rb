@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# ONE THING OF A POOL CHECKED AGAINST ANOTHER, as enemies that turn back when they meet do every
+# One thing of a pool checked against another, as enemies that turn back when they meet do every
 # frame: a routine of the pool walks the pool, and for each other thing tests how far apart the two
 # are on each axis, `(other.x - e.x).abs < 16`. What one more thing to check costs is the walk's turn
 # for it and the test of its x: the fields read where they are, at X, the loop's count kept in its

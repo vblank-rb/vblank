@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# THREE POOLED WALKERS BESIDE HEAVY TILE WORK KEEP ROOM IN THE FRAME, as three enemies do in a
+# Three pooled walkers beside heavy tile work keep room in the frame, as three enemies do in a
 # console's own games. Each pass each walker tests the square ahead in a list of walls, steps its
 # place (kept in 256ths of a pixel), walks the pool from inside a routine of the pool's to compare
 # its place with the others' (each place shifted down to pixels, an abs on each axis), faces one of
