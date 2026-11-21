@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A LIST READ OR WRITTEN IN A BUSY LOOP. A game's blast, or any walk across a map held in a list,
+# A list read or written in a busy loop. A game's blast, or any walk across a map held in a list,
 # reads and writes a list many times a pass, so an item has to cost a few instructions rather than
 # a trip through the runtime. Counted by how many fit a frame, read off the console.
 class TestSNESListReads < Minitest::Test

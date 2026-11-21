@@ -3,7 +3,7 @@
 require "test_helper"
 require "list_read_cost_games"
 
-# A LIST READ AT A WORKED-OUT INDEX ON THE SUPER NINTENDO, `x = row[i]`, measured in the emulator: the
+# A list read at a worked-out index on the Super Nintendo, `x = row[i]`, measured in the emulator: the
 # index's two halves tested against the list's length, its low half scaled into X, the slot read
 # with X and its sign spread into the variable (SNES::Lowering#emit_slot_into_x,
 # #emit_slot_into_variable). No routine is called: the call to the runtime's list routine is only

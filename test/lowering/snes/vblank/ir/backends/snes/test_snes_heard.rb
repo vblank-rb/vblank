@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHAT A SUPER NINTENDO GAME SOUNDS LIKE, measured in the sound bsnes plays rather than in the
+# What a Super Nintendo game sounds like, measured in the sound bsnes plays rather than in the
 # registers the game wrote. The checked run holds the S-DSP's registers to the interpreter's sound
 # log at the end of every pass, which cannot see what happens between two passes: the order of
 # writes inside one, a fade's shape, a note's first moment. These listen. The Advance's mix and the
