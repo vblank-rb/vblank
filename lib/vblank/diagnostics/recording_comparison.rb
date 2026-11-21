@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # HOW FAR APART TWO RECORDINGS MAY SOUND and still be heard as the same, each in decibels or hertz.
+    # How far apart two recordings may sound and still be heard as the same, each in decibels or hertz.
     # A game gives every one, each with its reason beside it in its test: none has a value assumed.
     #
     #   quiet_below_db         how far under a recording's loudest moment a moment is quiet: the quiet
@@ -43,7 +43,7 @@ module VBlank
     RecordingMeasures = Data.define(:gain_db, :seconds, :noise_floors_db, :rolloffs_hz, :dynamic_ranges_db, :worst_mel_db,
                                     :moments_compared)
 
-    # TWO RECORDINGS HELD TO EACH OTHER AS A PERSON HEARS THEM: a port's sound beside a recording of the
+    # Two recordings held to each other as a person hears them: a port's sound beside a recording of the
     # original's, which need not be a cartridge (a .wav rendered from a computer game's own music data).
     # Not sample for sample: two recordings a player hears as the same pass, and a difference a player
     # would hear fails, naming which kind.
@@ -56,7 +56,7 @@ module VBlank
     #
     # +first+ and +second+ are SoundRecordings, at any rate and any bit depth they were made at.
     #
-    # HOW THEY ARE LINED UP AND MADE COMPARABLE. Each is heard from its first sound (its first sample
+    # How they are lined up and made comparable. Each is heard from its first sound (its first sample
     # over its quiet level), so a cartridge's silent start-up and a recording's lead-in drop away, and
     # compared for as long as the shorter lasts. Each is cut into moments two of the first recording's
     # frames long, one after another, and each moment's spectrum is taken (a Hann window and a fast
@@ -64,7 +64,7 @@ module VBlank
     # rates, which is what reading both at the lower rate would keep. The first is raised or lowered so
     # its loud moments are as loud as the second's in all, the gain the report gives.
     #
-    # WHAT IS MEASURED, each the standard way:
+    # What is measured, each the standard way:
     #
     # - LOUDNESS: each moment's power in decibels, the envelope a too-quiet or clipped sound shows in.
     # - TONE: the mel-spectrum distance. The band is split into MEL_BANDS bands spaced as the ear hears
@@ -72,7 +72,7 @@ module VBlank
     #   decibels, and the distance is the root mean square of the two recordings' differences over the
     #   bands, in decibels. A band quieter than the moment's loudest band by more than +quiet_below_db+
     #   is held at that level on both sides, so near-silence in one band does not swamp the rest.
-    # - NOISE FLOOR: the power of each over the moments the second is quiet in, in decibels below full
+    # - Noise floor: the power of each over the moments the second is quiet in, in decibels below full
     #   scale; the first's may be louder than the second's by +noise_floor_db_apart+. Digital silence
     #   is read as SILENCE_DB.
     # - MUFFLING: the rolloff, the frequency under which ROLLOFF_SHARE of a moment's power lies; the
@@ -235,7 +235,7 @@ module VBlank
 
       def decibels(power) = power.positive? ? [10 * Math.log10(power), SILENCE_DB].max : SILENCE_DB
 
-      # EACH MOMENT OF ONE RECORDING, heard: its power in all, in each mel band and in decibels, and its
+      # Each moment of one recording, heard: its power in all, in each mel band and in decibels, and its
       # rolloff, over the band both recordings carry (up to +top_hz+). A moment's power is the mean
       # square of its samples as a share of full scale, so a moment of a full-scale wave is near 0 dB
       # whatever the rate it was made at.
@@ -320,7 +320,7 @@ module VBlank
       end
       private_constant :MomentSpectra
 
-      # THE FAST FOURIER TRANSFORM, the radix-2 one: +real+ (a power of two long) as the frequencies it
+      # The fast fourier transform, the radix-2 one: +real+ (a power of two long) as the frequencies it
       # holds, the real and the imaginary part of each. Cooley and Tukey's, done in place over the
       # numbers put in +order+ (FastFourier.order: each place's number with its bits reversed).
       module FastFourier

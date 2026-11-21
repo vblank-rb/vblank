@@ -4,10 +4,10 @@ require "json"
 
 module VBlank
   module Diagnostics
-    # WHAT A GAME'S FRAMES WERE MEASURED TO SPEND, kept as a file so a later build can read it.
+    # What a game's frames were measured to spend, kept as a file so a later build can read it.
     #
     # The build has one decision it cannot measure its way to: which routines go in the console's
-    # quick memory, where code runs about two and a third times faster. The choice is an INPUT to
+    # quick memory, where code runs about two and a third times faster. The choice is an input to
     # the lowering, so it has to be made before the game it would run has ever run.
     #
     # The way out is to measure once and feed it back. Build the game, profile it, save what came
@@ -15,7 +15,7 @@ module VBlank
     # You build twice, and the second build is right by measurement rather than by a model of
     # what the code might cost.
     #
-    # IT IS KEYED BY ROUTINE NAME, which is what makes it survive a rebuild at all. Addresses all
+    # It is keyed by routine name, which is what makes it survive a rebuild at all. Addresses all
     # move when a program changes; a name only changes when somebody renames it, and then the
     # profile says so instead of quietly pointing at nothing.
     class RoutineProfile
@@ -23,17 +23,17 @@ module VBlank
       # every caller falls back to the rule it keeps for that case.
       NONE = nil
 
-      # HOW MANY INSTRUCTIONS A FRAME each routine was measured to run, and the game it was
+      # How many instructions a frame each routine was measured to run, and the game it was
       # measured on (for a message when the two no longer look like each other).
       #
-      # A COUNT AND NOT A SHARE, and the difference decides real placements. A share is measured
+      # A count and not a share, and the difference decides real placements. A share is measured
       # against the other code that ran, so a game asleep nine tenths of every frame still has
       # some routine accounting for most of the little that did — an empty game loop reads as
       # 100 per cent of itself. What decides whether a routine is worth the console's quick
       # memory is how much work it actually does, and that is a count.
       attr_reader :work, :game, :measured_at, :busiest
 
-      # THE SCENE WHOSE FRAMES DO THE MOST WORK, and the part of that work each routine did
+      # The scene whose frames do the most work, and the part of that work each routine did
       # there, in per cent — the figure `rom.profile` prints beside the routine for that scene.
       #
       # Kept beside the counts because the counts cannot answer "how much of a frame is this
@@ -46,14 +46,14 @@ module VBlank
       # One routine's part of the busiest scene's work, in per cent, and which scene that was.
       Share = Data.define(:percent, :scene)
 
-      # EACH SCENE'S OWN COUNTS, by the scene's name: instructions a frame of that scene ran in
+      # Each scene's own counts, by the scene's name: instructions a frame of that scene ran in
       # each routine. Empty for a game with no scenes, and for a profile saved before these
       # were kept. The added-up counts rank a routine by what it is worth over the whole game;
-      # these give what it is worth to any ONE frame, which is what a scene's own share of the
+      # these give what it is worth to any one frame, which is what a scene's own share of the
       # quick memory is chosen by (see GBA::QuickMemoryPlan).
       attr_reader :scenes
 
-      # HOW MANY TIMES A FRAME READ OR WROTE EACH LIST, by the list's name, added up over the
+      # How many times a frame read or wrote each list, by the list's name, added up over the
       # scenes as the counts are. It is what keeping a list in the quick memory is worth, as the
       # counts are for a routine (see #worth_of_list). nil for a profile saved before these were
       # kept, which is different from one that measured every list at nothing. +scene_touches+
@@ -138,7 +138,7 @@ module VBlank
                                          "shares" => busiest.shares.transform_keys(&:to_s) })
       end
 
-      # THE SAME MEASUREMENT WITH EACH PIECE COUNTED IN THE ROUTINE IT WAS CUT FROM, for the plan
+      # The same measurement with each piece counted in the routine it was cut from, for the plan
       # that weighs the program whole (GBA::Placement#choose_fast_funcs). A build that cut a routine
       # measured its pieces as routines of their own and left the routine only what was not cut,
       # so weighed by that alone, the next build could find the whole routine not worth the room,
@@ -157,7 +157,7 @@ module VBlank
       def measured?(name) = work.key?(name)
 
       # What part of the busiest scene's work +name+ did (see Busiest). A share is the wrong
-      # thing to rank by (see #work) and the right thing to SAY, since "a tenth of a frame's
+      # thing to rank by (see #work) and the right thing to say, since "a tenth of a frame's
       # work" means something to an author where a count of instructions does not.
       #
       # Nil when this profile kept no busiest scene, and nil for a routine it never saw — new
@@ -172,7 +172,7 @@ module VBlank
       # a deletion, and worth saying out loud: a profile that has drifted from its game keeps
       # deciding the placement, quietly and increasingly wrongly.
       #
-      # Only routines somebody WROTE are counted. The build makes routines of its own as it goes
+      # Only routines somebody wrote are counted. The build makes routines of its own as it goes
       # — one glyph walker per font, and so on — and those appearing and disappearing is the
       # build doing its job, not the author losing track of a name.
       def stale_routines(known) = work.keys.grep_v(/\A__/) - known.to_a
@@ -188,7 +188,7 @@ module VBlank
       # A routine has to do enough work to be worth the room. The same job WORTH_MOVING did for
       # the estimate, set against a measurement instead of a price.
       #
-      # WHERE THE FLOOR COMES FROM: a call that crosses between the two memories is four
+      # Where the floor comes from: a call that crosses between the two memories is four
       # instructions where a plain one is a single branch, so moving a routine costs about three
       # instructions at every call site, every frame. It gives back a bit over half of what the
       # routine itself runs. So a routine running a couple of dozen instructions a frame is about
@@ -199,7 +199,7 @@ module VBlank
 
       def worth_quick_memory?(name) = work.fetch(name, 0) >= WORTH_MOVING
 
-      # WHAT ONE READ OF A LIST IS WORTH, in instructions of a routine — so a list and a routine
+      # What one read of a list is worth, in instructions of a routine — so a list and a routine
       # can be weighed for the same room by the same count.
       #
       # A read of the quick memory takes one cycle. A read of the roomy memory waits: six cycles
@@ -227,7 +227,7 @@ module VBlank
       # ...and what a frame of each scene was measured to save by keeping them, by the scene's name.
       def worth_of_lists_by_scene(lists) = scene_touches.keys.to_h { |scene| [scene, worth_of_lists(lists, scene: scene)] }
 
-      # HOW MANY TIMES ONE FRAME TOUCHED EACH LIST, by its name: the most any one scene's frame
+      # How many times one frame touched each list, by its name: the most any one scene's frame
       # did, since the counts added up over the scenes are no one frame's. A game with no scenes
       # has only the one count. nil where this profile counted no list.
       def touches_in_one_frame

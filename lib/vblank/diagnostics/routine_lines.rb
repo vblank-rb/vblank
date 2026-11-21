@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # WHICH LINES OF A ROUTINE ITS TIME WENT TO, for any routine, wherever it runs from.
+    # Which lines of a routine its time went to, for any routine, wherever it runs from.
     #
     # A profile says which routines a frame spent its time in. When one of them is most of a slow
     # pass, the next question is which of its lines, and nothing at the routine's level can answer
@@ -14,13 +14,13 @@ module VBlank
     # each address. Nothing is added to the cartridge: the console runs the same bytes whether or
     # not anybody asks.
     #
-    # EACH ADDRESS IS COUNTED ONCE, to the innermost statement round it. A block's line keeps only
+    # Each address is counted once, to the innermost statement round it. A block's line keeps only
     # the code that is its own — the test of an `if`, the count of a `repeat` — and the statements
     # inside it have their own lines, so the lines of a routine add up to the routine. A line that
     # calls a routine holds only the call: the routine called has lines of its own. The code that
     # is no statement's, the routine's entry and return, is said apart.
     #
-    # A PIECE CUT FROM A ROUTINE (IR::Backends::GBA::RoutinePieces) is the routine's own code moved
+    # A piece cut from a routine (IR::Backends::GBA::RoutinePieces) is the routine's own code moved
     # to where it runs faster, so its lines are counted in the routine it was cut from, under the
     # lines the author wrote: a piece is never a routine of its own here.
     module RoutineLines
