@@ -92,7 +92,7 @@ class TestTiledCollision < Minitest::Test
                  "the right step is blocked by the wall, but the down step still slid the hero down"
   end
 
-  # THE WALLS FOLLOW A CHANGED CELL: a door in the wall at (4, 2) opens with set_tile on the
+  # The walls follow a changed cell: a door in the wall at (4, 2) opens with set_tile on the
   # tenth pass, and the hero walking right goes through where it stopped before; a wall put
   # down at (8, 2) on the same pass stops it there instead.
   private def with_dungeon_tiles(&body)
@@ -203,7 +203,7 @@ class TestTiledCollision < Minitest::Test
     assert_equal Color.resolve(:red), shown.pixel(28, 20), "and holds the hero back"
   end
 
-  # ONE NAME IN TWO SCENES, WALLS OF ITS OWN IN EACH: each level declares a :world with a
+  # One name in two scenes, walls of its own in each: each level declares a :world with a
   # wall in a different column, and the hero walking right in each level is stopped by that
   # level's own wall.
   private def two_levels_with_walls_apart

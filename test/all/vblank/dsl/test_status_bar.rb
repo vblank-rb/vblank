@@ -32,7 +32,7 @@ class TestStatusBarHandle < Minitest::Test
     assert_backends_agree(prog, frames: 4, name: "BARTOP")
   end
 
-  # A MENU RAISED OVER THE FIELD HIDES THE SPRITES UNDER IT. A sprite half over the bar shows only
+  # A menu raised over the field hides the sprites under it. A sprite half over the bar shows only
   # its part above the bar while the bar covers sprites, and all of itself again after.
   def test_a_bar_covering_sprites_hides_the_part_of_a_sprite_under_it
     prog = bar_game_under_a_sprite do |bar, step|
@@ -113,7 +113,7 @@ class TestStatusBarHandle < Minitest::Test
     assert_backends_agree(prog, frames: 6, name: "BARNUMS")
   end
 
-  # A BAR WHOSE LINE RUNS EVERY PASS keeps the cell the game changed: put up again, it shows as it
+  # A bar whose line runs every pass keeps the cell the game changed: put up again, it shows as it
   # now is (Reference#put_up_background), as a score's digit stays when the routine that draws the
   # screen runs each frame.
   def test_a_bar_put_up_again_keeps_the_cell_changed
