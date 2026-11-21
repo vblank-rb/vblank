@@ -79,7 +79,7 @@ class TestRoutineProfile < Minitest::Test
     end
   end
 
-  # EACH SCENE'S OWN COUNTS ARE KEPT, and saved: a routine both scenes run is counted once for
+  # Each scene's own counts are kept, and saved: a routine both scenes run is counted once for
   # each in the added-up counts, and only these say what a frame of either spends in it.
   def test_each_scenes_own_counts_are_kept_and_saved
     title = Reading.new(30, 0, [Line.new(name: :shared, label: "", samples: 30 * 100, share: 0, time_share: 0, where: :rom),
@@ -101,7 +101,7 @@ class TestRoutineProfile < Minitest::Test
     end
   end
 
-  # A READ OF A WORD IS WORTH ABOUT FOUR INSTRUCTIONS, and of a byte about one and a half: what
+  # A read of a word is worth about four instructions, and of a byte about one and a half: what
   # keeping each in the quick memory saves against what keeping an instruction there saves.
   def test_a_list_is_worth_its_reads_in_instructions_by_how_wide_a_read_is
     profile = RoutineProfile.new(work: {}, touches: { words: 30, bytes: 30, idle: 0 })

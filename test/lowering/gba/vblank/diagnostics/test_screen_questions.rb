@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE QUESTIONS ASKED OF A WHOLE SCREEN IN RUBY give the Advance's emulator's answers. The C in the
+# The questions asked of a whole screen in Ruby give the Advance's emulator's answers. The C in the
 # Advance's emulator (RubyGBAEmulator::Screen) is the answer key: every question is asked of both,
 # about made-up screens chosen to reach each corner of the answer, and the two must agree. Here, since
 # only the Advance's run has that emulator to hold the Ruby to.

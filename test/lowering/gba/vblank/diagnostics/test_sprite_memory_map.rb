@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHERE EACH SPRITE'S PICTURES WENT IN SPRITE MEMORY, scene by scene. The console keeps the
+# Where each sprite's pictures went in sprite memory, scene by scene. The console keeps the
 # pictures it draws sprites from in 32K of their own, and a game that runs out is told only the
 # three biggest pictures of the fullest scene. This is the whole of it: every sprite of every
 # scene, the tiles it was given, the pictures held there, whether it keeps all its pictures or one

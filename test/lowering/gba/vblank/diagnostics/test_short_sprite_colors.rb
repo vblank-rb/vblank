@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# A SPRITE DRAWN IN ANOTHER LIST'S COLOURS because the console ran out of groups to lend.
+# A sprite drawn in another list's colours because the console ran out of groups to lend.
 #
 # The console lends the groups of sprite colours its sprites' own colours leave over to the
 # lists things on screen wear (see ScreenLayout::LentColors). With more lists on screen at once
