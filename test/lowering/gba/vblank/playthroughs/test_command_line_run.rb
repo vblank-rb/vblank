@@ -60,7 +60,7 @@ class TestCommandLineRun < Minitest::Test
     10 -
   TAPE
 
-  # THE RUN COMMAND ON A GAME FILE AND A SCRIPT says, in its first line, that there is no window,
+  # The run command on a game file and a script says, in its first line, that there is no window,
   # what runs the game and how to get one; then that it builds the game; then what was played. It
   # writes the pictures and the tape where it is told. The picture at :walked shows the box twenty
   # frames of two pixels on from where it began.
@@ -86,7 +86,7 @@ class TestCommandLineRun < Minitest::Test
     end
   end
 
-  # YJIT IS ON IN THE PROCESS THAT PLAYS, with a script as with a person, unless --no-yjit says not.
+  # YJIT is on in the process that plays, with a script as with a person, unless --no-yjit says not.
   def test_a_script_is_played_with_yjit_on_unless_told_not
     with_game_and_scripts do |dir|
       File.write(File.join(dir, "jit.rb"), ASK_THE_JIT)
@@ -101,7 +101,7 @@ class TestCommandLineRun < Minitest::Test
     end
   end
 
-  # A TAPE IN PLACE OF A SCRIPT: the tape the script made plays the same sixty frames and the same
+  # A tape in place of a script: the tape the script made plays the same sixty frames and the same
   # two moments, again as Ruby.
   def test_run_plays_a_tape
     with_game_and_scripts do |dir|
@@ -117,7 +117,7 @@ class TestCommandLineRun < Minitest::Test
     end
   end
 
-  # --on PICKS ANOTHER WAY OF RUNNING THE GAME, and the first line names it: JavaScript played by
+  # --on picks another way of running the game, and the first line names it: JavaScript played by
   # node, and C built by zig. The script plays the same on each.
   def test_on_js_and_on_native_run_the_game_another_way
     with_game_and_scripts do |dir|
@@ -174,7 +174,7 @@ class TestCommandLineRun < Minitest::Test
     end
   end
 
-  # A TAPE COUNTED IN PASSES can be made on the rules alone, and played as Ruby. It says what it
+  # A tape counted in passes can be made on the rules alone, and played as Ruby. It says what it
   # counts, so playing it asks nothing more.
   def test_a_tape_of_passes_made_on_the_rules_plays_as_ruby
     with_game_and_scripts do |dir|
@@ -191,7 +191,7 @@ class TestCommandLineRun < Minitest::Test
     end
   end
 
-  # --seed GOES ON THE TAPE, and the tape plays with it on another way that takes one.
+  # --seed goes on the tape, and the tape plays with it on another way that takes one.
   def test_a_seed_is_kept_on_the_tape_and_played_again
     with_game_and_scripts do |dir|
       out, status = cli("run", "walker.rb", "--script", "walk.rb", "--on", "interpreter", "--seed", "3",
@@ -207,7 +207,7 @@ class TestCommandLineRun < Minitest::Test
     end
   end
 
-  # A TAPE WRITTEN OUT FOR ANOTHER EMULATOR is how a console is reached from here: the game is
+  # A tape written out for another emulator is how a console is reached from here: the game is
   # built as the Advance's cartridge for it, and the script mGBA loads is written.
   def test_write_mgba_script_writes_the_tape_for_mgba
     with_game_and_scripts do |dir|
@@ -219,7 +219,7 @@ class TestCommandLineRun < Minitest::Test
     end
   end
 
-  # THE EXPORT IS IN THE CARTRIDGE'S FRAMES. The run is counted in passes, and the passes are
+  # The export is in the cartridge's frames. The run is counted in passes, and the passes are
   # played on the cartridge in the emulator to find the frame each fell on: the heavy walker takes
   # more frames there than passes, so the movie has more frames than the tape has passes.
   def test_an_export_is_the_cartridges_frames_for_the_passes_played
@@ -236,7 +236,7 @@ class TestCommandLineRun < Minitest::Test
     end
   end
 
-  # AN EXPORTED RUN IS THE CARTRIDGE'S GAME. A cartridge answers `built_for_computer?` with false,
+  # An exported run is the cartridge's game. A cartridge answers `built_for_computer?` with false,
   # so a run written out for an emulator is played as the cartridge is built: the walker takes two
   # pixels a pass, and reaches sixty after twenty passes of RIGHT, where with no export it takes ten.
   def test_an_exported_run_plays_the_game_the_cartridge_holds
@@ -253,7 +253,7 @@ class TestCommandLineRun < Minitest::Test
     end
   end
 
-  # AN EXPORT IS FOR THE ADVANCE'S CARTRIDGE, so another console is refused before anything is built.
+  # An export is for the Advance's cartridge, so another console is refused before anything is built.
   def test_an_export_for_another_console_is_refused_before_the_build
     with_game_and_scripts do |dir|
       File.write(File.join(dir, "heavy.rb"), HEAVY_WALKER)
@@ -274,7 +274,7 @@ class TestCommandLineRun < Minitest::Test
     end
   end
 
-  # A TAPE THAT STARTS FROM A SAVE is not played by this command, which starts every game from
+  # A tape that starts from a save is not played by this command, which starts every game from
   # power-on, and the words say how it is played, with no flag the command does not have.
   def test_a_tape_from_a_save_says_how_it_is_played
     with_game_and_scripts do |dir|
@@ -299,7 +299,7 @@ class TestCommandLineRun < Minitest::Test
     end
   end
 
-  # A GAME FILE PLAYED AS THE COLOR, with --console gbc: its variables have their names, so a
+  # A game file played as the color, with --console gbc: its variables have their names, so a
   # script can wait on one. The box walks from 20 to 60 at two pixels a frame, which is twenty
   # frames of RIGHT after the ten of standing.
   COLOR_WALKER = <<~RUBY
@@ -330,7 +330,7 @@ class TestCommandLineRun < Minitest::Test
     end
   end
 
-  # --set REACHES THE GAME FILE. The walk to sixty is forty pixels: twenty frames of holding RIGHT
+  # --set reaches the game file. The walk to sixty is forty pixels: twenty frames of holding RIGHT
   # at the game's two a frame, and ten at four.
   def test_set_builds_the_game_file_with_a_setting
     with_game_and_scripts do |dir|
@@ -345,7 +345,7 @@ class TestCommandLineRun < Minitest::Test
     end
   end
 
-  # A LEAD-IN, named from the script file, is played first and not counted: five frames of one
+  # A lead-in, named from the script file, is played first and not counted: five frames of one
   # before twelve of standing is still twelve frames played, and the tape says it starts after a
   # lead-in.
   def test_run_plays_a_lead_in_first_and_does_not_count_it
@@ -359,7 +359,7 @@ class TestCommandLineRun < Minitest::Test
     end
   end
 
-  # A TAPE RECORDED AFTER A LEAD-IN needs the lead-in again, and the lead-in is declared in a
+  # A tape recorded after a lead-in needs the lead-in again, and the lead-in is declared in a
   # script file: each thing missing is asked for by its flag, and with both the tape plays its
   # twelve frames.
   def test_a_tape_recorded_after_a_lead_in_asks_for_it_by_its_flag
@@ -383,7 +383,7 @@ class TestCommandLineRun < Minitest::Test
 
   # --- what it needs to be told ---
 
-  # A SCRIPT FILE WITH SEVERAL PLAYTHROUGHS AND NONE PICKED is refused, listing them. So is a name
+  # A script file with several playthroughs and none picked is refused, listing them. So is a name
   # it does not declare.
   def test_several_playthroughs_and_none_picked_lists_them
     with_game_and_scripts do |dir|
@@ -397,7 +397,7 @@ class TestCommandLineRun < Minitest::Test
     end
   end
 
-  # A PLAYTHROUGH NAMED WITH A SYMBOL is picked by the same letters, since a command line can only
+  # A playthrough named with a symbol is picked by the same letters, since a command line can only
   # give text.
   def test_a_playthrough_named_with_a_symbol_is_picked_by_its_letters
     with_game_and_scripts do |dir|
@@ -444,7 +444,7 @@ class TestCommandLineRun < Minitest::Test
     end
   end
 
-  # THE COMMAND DOES NOT PLAY A CARTRIDGE: not a cartridge file, not the emulator, not a save.
+  # The command does not play a cartridge: not a cartridge file, not the emulator, not a save.
   # Each is refused with the way a console is reached from here, a tape written out for an
   # emulator somebody already uses.
   def test_a_cartridge_the_emulator_and_a_save_are_refused_naming_the_export
@@ -466,7 +466,7 @@ class TestCommandLineRun < Minitest::Test
     end
   end
 
-  # `vblank play` IS GONE: the command that plays a game is `vblank run`, and the refusal says the
+  # `vblank play` is gone: the command that plays a game is `vblank run`, and the refusal says the
   # line to write. A cartridge file is pointed at the export.
   def test_play_is_refused_naming_run
     with_game_and_scripts do |dir|
@@ -498,7 +498,7 @@ class TestCommandLineRun < Minitest::Test
     end
   end
 
-  # THE BUILT-IN HELP describes the one command, and the list no longer names play.
+  # The built-in help describes the one command, and the list no longer names play.
   def test_help_describes_run_with_a_script_or_a_tape
     with_game_and_scripts do |dir|
       list, = cli("help", dir: dir)

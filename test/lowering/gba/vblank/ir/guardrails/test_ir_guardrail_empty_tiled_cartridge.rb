@@ -63,7 +63,7 @@ class TestIRGuardrailEmptyTiledCartridge < Minitest::Test
     end
   end
 
-  # The contrast that makes the proof mean something: the SAME screen mode, on the
+  # The contrast that makes the proof mean something: the same screen mode, on the
   # same emulator, with one background declared, is not black. So the black frame
   # above is caused by the missing tile data — not by tiled mode being broken, and
   # not by the emulator defaulting everything to black.

@@ -4,7 +4,7 @@ require "test_helper"
 require "differential"
 require "place_games"
 
-# WHAT A PLACE'S POINTS COST on the console before anything is filled: a grid of small faces far
+# What a place's points cost on the console before anything is filled: a grid of small faces far
 # off, each a few pixels on the screen and sharing its corners with its neighbours, so nearly all
 # of a pass is turning, cutting and projecting (IR::PlaceDrawing) and setting each face up to be
 # filled. Measured by running the cartridge, with the same picture drawn on the interpreter.
@@ -53,7 +53,7 @@ class TestPlaceGeometryCost < Minitest::Test
     assert_backends_agree(program, frames: 3, console_frames: 30, name: "GEOMCOST")
   end
 
-  # A FLOOR OF ABOUT A THOUSAND FACES drawn whole every pass, as a level read from a file is, about
+  # A floor of about a thousand faces drawn whole every pass, as a level read from a file is, about
   # half of them behind the viewer or beside the view and most of the rest far off and under a row
   # high (PlaceGames.big_floor). A face out of view is passed over by its points' codes before any of
   # its corners is read, and one under a row high before it is handed to the fill, so the pass goes
@@ -67,7 +67,7 @@ class TestPlaceGeometryCost < Minitest::Test
     assert_backends_agree(program, frames: 2, console_frames: 30, name: "FLOORCOST")
   end
 
-  # THE SAME FLOOR IN PERSPECTIVE, as a place is drawn unless a game asks otherwise. Its rows are
+  # The same floor in perspective, as a place is drawn unless a game asks otherwise. Its rows are
   # short, two or three stretches of eight pixels and a few pixels over, so what a row costs to
   # start and to end is most of what perspective adds. A row is drawn from its first stretch to its
   # last pixel by one run that keeps its numbers in registers, the pixels left over included.

@@ -86,7 +86,7 @@ class TestPerSceneModeCartridge < Minitest::Test
   end
 
   # The full-size regression: an affine title with text, a once_a_frame effect
-  # declared ANYWHERE in the program (even in code the title scene never calls),
+  # declared anywhere in the program (even in code the title scene never calls),
   # and a plain bitmap play scene after it. Both the title's text and the play
   # scene's undistorted picture must survive — this is the exact shape that broke
   # in examples/pong.rb (a `flash_screen` inside `update_ball`, a func the title

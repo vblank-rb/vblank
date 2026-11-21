@@ -30,7 +30,7 @@ class TestCommandLineCompare < Minitest::Test
     end
   end
 
-  # TWO CARTRIDGES THAT AGREE: it says so, and ends with 0. One is the game file and the
+  # Two cartridges that agree: it says so, and ends with 0. One is the game file and the
   # other the cartridge file built from it.
   def test_two_cartridges_that_agree_end_with_nought
     with_cartridges do |dir|
@@ -41,7 +41,7 @@ class TestCommandLineCompare < Minitest::Test
     end
   end
 
-  # TWO THAT DRIFT: it says the frame, the moment before it and where the report is, and
+  # Two that drift: it says the frame, the moment before it and where the report is, and
   # ends with 1. The ground turns on the forty-fifth trip round the game's loop, which is
   # that many frames in and the frame or two the console spends setting up. The report is
   # the folder for that frame, and the tape in it is that many frames long.
@@ -337,7 +337,7 @@ class TestCommandLineCompare < Minitest::Test
     end
   end
 
-  # A GAME FILE FOR TWO CONSOLES is asked which cartridge to compare, and ends with 2 until
+  # A game file for two consoles is asked which cartridge to compare, and ends with 2 until
   # --console says; then it is compared like any other. Only the game's own consoles are offered.
   def test_a_game_file_for_two_consoles_is_compared_on_the_console_said
     with_cartridges do |dir|
@@ -353,7 +353,7 @@ class TestCommandLineCompare < Minitest::Test
     end
   end
 
-  # THE BUILT-IN HELP describes the command, and has a flag of the same name for every
+  # The built-in help describes the command, and has a flag of the same name for every
   # setting a comparison takes: a setting added to the library with no flag fails here.
   def test_help_has_a_flag_for_every_setting_of_a_comparison
     with_game_and_scripts do |dir|
