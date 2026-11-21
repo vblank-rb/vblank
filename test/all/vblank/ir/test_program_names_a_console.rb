@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A PROGRAM IS LAID OUT FOR THE CONSOLE IT NAMES. The library assumes none, so one that names none
+# A program is laid out for the console it names. The library assumes none, so one that names none
 # stops and says how to name one. Only the test kit stands in front of that
 # (Testing::LaidOutForTheAdvance).
 class TestProgramNamesAConsole < Minitest::Test

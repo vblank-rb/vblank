@@ -6,7 +6,7 @@ require "test_helper"
 #
 # That one is why this file exists. A report captured to a StringIO — which is what every
 # other test in this suite does — gets the plain printer, and the plain printer ignores
-# what a line MEANS entirely. So the whole colour path ran only on a real terminal, where
+# what a line means entirely. So the whole colour path ran only on a real terminal, where
 # nothing checks it, and a report could die there while every test stayed green. It did:
 # the one severity the library actually passes had no colour, and asking for a colour that
 # was not there raised.
@@ -61,7 +61,7 @@ class TestPrinter < Minitest::Test
     assert line.start_with?(RED)
   end
 
-  # RED IS AN ALARM, NOT A LABEL. A game whose picture came out right shows none of it —
+  # Red is an alarm, not a label. A game whose picture came out right shows none of it —
   # which is what keeps it meaning "act on this" rather than becoming something a reader
   # learns to scroll past.
   def test_a_picture_that_came_out_right_shows_no_colour_at_all
