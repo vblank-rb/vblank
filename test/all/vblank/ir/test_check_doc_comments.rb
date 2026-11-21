@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require "dsl_verbs"
+require "published_comments"
 require "author_text_checks"
 
 # Every check a build can run has a class comment written for the game author, because the website
@@ -11,20 +11,13 @@ require "author_text_checks"
 # fills one in), and how to fix it. What is for VBlank's engineers goes between `#--` and `#++`,
 # which RDoc leaves off the page.
 #
-# The checks are read from where a build finds them, never from a list kept here: every class in
-# Guardrails::Checks (the always-on ones, the build checks run after lowering, and those the builder
-# or a backend runs itself) and every check an effect pack brings.
+# The checks are read from where a build finds them (PublishedComments.check_classes), never from a
+# list kept here.
 class TestCheckDocComments < Minitest::Test
   include AuthorTextChecks
+  include PublishedComments
 
-  Guardrails = VBlank::IR::Guardrails
-
-  CHECK_CLASSES = begin
-    in_module = Guardrails::Checks.constants.map { |name| Guardrails::Checks.const_get(name) }
-                                  .select { |value| value.is_a?(Class) && value.method_defined?(:detect) }
-    from_packs = VBlank::Effects::DEFAULT_PACKS.flat_map { |pack| pack.respond_to?(:checks) ? Array(pack.checks) : [] }
-    (in_module + (Guardrails.default_checks + from_packs).map(&:class)).uniq.sort_by(&:name)
-  end
+  CHECK_CLASSES = PublishedComments.check_classes
 
   # Words of the engineers' that mean nothing to a game author, refused in the author's text outside
   # code. A class name is two words run together, each with a capital (`FadeNeverLifted`); the names
@@ -40,7 +33,7 @@ class TestCheckDocComments < Minitest::Test
 
   def test_every_check_has_text_for_a_game_author
     missing = CHECK_CLASSES.filter_map do |klass|
-      where, lines = comment_of(klass)
+      where, lines = check_comment(klass)
       "#{where}): no text for the author before `#--`" if author_lines(lines).empty?
     end
 
@@ -54,7 +47,7 @@ class TestCheckDocComments < Minitest::Test
 
   def test_every_check_quotes_its_message
     unquoted = CHECK_CLASSES.filter_map do |klass|
-      where, lines = comment_of(klass)
+      where, lines = check_comment(klass)
       "#{where})" unless author_lines(lines).any? { |line, _| line.start_with?("> ") }
     end
 
@@ -68,7 +61,7 @@ class TestCheckDocComments < Minitest::Test
 
   def test_no_author_text_names_internals
     named = CHECK_CLASSES.flat_map do |klass|
-      where, lines = comment_of(klass)
+      where, lines = check_comment(klass)
       author_lines(lines).filter_map do |line, _|
         prose = line.gsub(/`[^`]*`/, "")
         word = INTERNAL_WORDS.lazy.filter_map { |pattern| prose[pattern] }.first
@@ -84,28 +77,20 @@ class TestCheckDocComments < Minitest::Test
   end
 
   def test_no_author_paragraph_opens_in_capitals
-    shouted = CHECK_CLASSES.flat_map { |klass| shouting_paragraphs(*comment_of(klass)) }
+    shouted = CHECK_CLASSES.flat_map { |klass| shouting_paragraphs(*check_comment(klass)) }
 
     assert_empty shouted, "These paragraphs of author text open with words in capitals:\n  #{shouted.join("\n  ")}"
   end
 
   def test_no_author_paragraph_opens_with_an_ellipsis
-    fragments = CHECK_CLASSES.flat_map { |klass| fragment_paragraphs(*comment_of(klass)) }
+    fragments = CHECK_CLASSES.flat_map { |klass| fragment_paragraphs(*check_comment(klass)) }
 
     assert_empty fragments, "These paragraphs of author text open with an ellipsis:\n  #{fragments.join("\n  ")}"
   end
 
   def test_no_author_line_is_a_heading_above_the_third_level
-    headings = CHECK_CLASSES.flat_map { |klass| big_heading_lines(*comment_of(klass)) }
+    headings = CHECK_CLASSES.flat_map { |klass| big_heading_lines(*check_comment(klass)) }
 
     assert_empty headings, "These lines of author text are a first- or second-level heading:\n  #{headings.join("\n  ")}"
-  end
-
-  # ["Name (file:line", comment lines] for the class comment of +klass+.
-  private def comment_of(klass)
-    file, line = Object.const_source_location(klass.name)
-    found = DslVerbs.container_comments(file).find { |_, at, _| at == line }
-    where = "#{klass.name.split('::').last} (#{file.delete_prefix("#{VBlank.root}/")}:#{line}"
-    [where, found ? found.last : []]
   end
 end

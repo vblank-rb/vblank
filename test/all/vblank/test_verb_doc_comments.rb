@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require "dsl_verbs"
+require "published_comments"
 require "author_text_checks"
 
 # Every verb has a doc comment written for the game author, because the website's reference is
@@ -12,6 +12,7 @@ require "author_text_checks"
 class TestVerbDocComments < Minitest::Test
   include DslVerbs
   include AuthorTextChecks
+  include PublishedComments
 
   # The verbs whose comment is still to be written for an author. Each is taken off this list in the
   # commit that documents it, and a verb on the list that is documented fails the test until it is.
@@ -62,11 +63,11 @@ class TestVerbDocComments < Minitest::Test
     MSG
   end
 
-  private def all_author_comments = verb_comments + container_comments_of_builder
+  private def all_author_comments = verb_comments + group_comments
 
   def test_no_author_paragraph_opens_in_capitals
     shouted = verb_comments.flat_map { |where, lines| shouting_paragraphs(where, lines) } +
-              container_comments_of_builder.flat_map { |where, lines| shouting_paragraphs(where, lines) }
+              group_comments.flat_map { |where, lines| shouting_paragraphs(where, lines) }
 
     assert_empty shouted, <<~MSG
       These paragraphs of author text open with words in capitals. Make a lead-in to several
@@ -75,25 +76,6 @@ class TestVerbDocComments < Minitest::Test
         #{shouted.join("\n  ")}
     MSG
   end
-
-  # [where, author comment lines starting at the first line] for each verb.
-  private def verb_comments
-    dsl_verb_definitions.filter_map do |verb, definition|
-      next unless definition
-
-      ["#{verb} (#{relative(definition.file)}", definition.comment]
-    end.map { |label, lines| [label, lines] }
-  end
-
-  private def container_comments_of_builder
-    files = Dir.glob(VBlank.root.join("lib/vblank/builder/*.rb").to_s) + [VBlank.root.join("lib/vblank/builder.rb").to_s] +
-            Dir.glob(VBlank.root.join("lib/vblank/effects/packs/*.rb").to_s)
-    files.sort.flat_map do |file|
-      DslVerbs.container_comments(file).map { |name, line, lines| ["#{name} (#{relative(file)}:#{line}", lines] }
-    end
-  end
-
-  private def relative(file) = file.delete_prefix("#{VBlank.root}/")
 
   # Verb => what is wrong, with the file and line to open, for each verb that has a problem.
   private def verb_problems
