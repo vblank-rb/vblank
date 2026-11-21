@@ -4,7 +4,7 @@ require "test_helper"
 require "dsl_verbs"
 require "prism"
 
-# THE GOLDEN PATH SEES WHAT THE EXAMPLES SHOW (test_every_example_plays.rb), so a verb no example
+# The golden path sees what the examples show (test_every_example_plays.rb), so a verb no example
 # calls is a verb a day's testing never builds. Each verb is held to a call in one.
 #
 # A call is what Ruby's own parser (Prism) reads as one, on any receiver: `fade :black, 50`,

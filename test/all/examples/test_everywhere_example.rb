@@ -4,8 +4,8 @@ require "test_helper"
 require VBlank.root.join("examples/everywhere").to_s
 
 # The one-file-for-four-consoles example (examples/everywhere.rb): a ball bouncing round whatever
-# screen the build is for, under a title, to a tune, with the Super Nintendo's build titled SUPER
-# BOUNCE and holding no tune. Played on every lowering, on the console each run plays a game as.
+# screen the build is for, under a title, to a tune, with the Super Nintendo's build titled super
+# bounce and holding no tune. Played on every lowering, on the console each run plays a game as.
 class TestEverywhereExample < Minitest::Test
   YELLOW = Color.resolve(:yellow)
   WHITE = Color.resolve(:white)

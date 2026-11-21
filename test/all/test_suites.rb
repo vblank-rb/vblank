@@ -100,7 +100,7 @@ class TestSuitesSplit < Minitest::Test
     assert_empty lowering.consoles_for(lowering.run_named(:gbc), %i[gba])
   end
 
-  # The interpreter's run answers for the Advance alone, so CONSOLE cannot move it either.
+  # The interpreter's run answers for the Advance alone, so console cannot move it either.
   def test_console_cannot_move_the_interpreters_run_to_another_console
     interpreter = VBlank::Testing::Lowering.run_named(:gba)
 
@@ -136,7 +136,7 @@ class TestSuitesSplit < Minitest::Test
     assert_equal :gba, VBlank::Testing::Lowering.console_from({}, native)
   end
 
-  # A cartridge's run plays its own console's cartridge, so CONSOLE can only name that one.
+  # A cartridge's run plays its own console's cartridge, so console can only name that one.
   def test_console_cannot_move_a_cartridge_run_to_another_console
     color = VBlank::Testing::Lowering.run_named(:gbc)
 
@@ -195,7 +195,7 @@ class TestSuitesSplit < Minitest::Test
     end
   end
 
-  # EVERY TEST FILE SITS IN A FOLDER THAT SAYS WHICH RUNS LOAD IT (test/support/suites.rb): test/all,
+  # Every test file sits in a folder that says which runs load it (test/support/suites.rb): test/all,
   # or the folder of a console or a lowering some run plays. A file anywhere else would be loaded
   # by every run with nobody having said so, and a folder named for no run by none.
   def test_every_test_file_sits_in_a_folder_that_says_which_runs_load_it
@@ -209,7 +209,7 @@ class TestSuitesSplit < Minitest::Test
                         "test/console/<console>/ or test/lowering/<lowering>/"
   end
 
-  # A BUILD IN A TEST SAYS WHERE IT PRINTS. VBlank.build and build_rom print the game's warnings
+  # A build in a test says where it prints. VBlank.build and build_rom print the game's warnings
   # (and a debug_halt's reminder) to the process's own streams unless told otherwise, which is
   # right for a person building a game and wrong in a run of the suite, whose output is a line of
   # dots. So every build in a test passes `err:` — a StringIO to read the words back, or nil.
