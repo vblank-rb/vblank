@@ -69,7 +69,7 @@ class TestBigMapsCartridge < Minitest::Test
     end
   end
 
-  # A SCENE TAKING OVER FILLS ITS BIG ROOM'S VIEW ONCE, in the five takeovers a profile sees,
+  # A scene taking over fills its big room's view once, in the five takeovers a profile sees,
   # and once still when it names the first map on that pass. Naming ANOTHER map there is two
   # pictures, each a whole view: the frame the scene takes over on shows its first map, as
   # declared, on every backend, and the frame after shows the map named.
@@ -79,7 +79,7 @@ class TestBigMapsCartridge < Minitest::Test
     assert_equal 10 * VIEW_CELLS, cells_copied(taking_over_every_fourth_pass("BIGT3") { |ground| ground.show_map :second })
   end
 
-  # A SCENE'S FIRST TAKEOVER, NAMED AT THE END OF THE PASS BEFORE — as a file screen does on START
+  # A scene's first takeover, named at the end of the pass before — as a file screen does on START
   # — fills the view once. The gap between that pass and the takeover already counts the new scene
   # as the one running, so its big room's view used to be filled there too, before the scene had put
   # its scenery up at all, and then again as it did.

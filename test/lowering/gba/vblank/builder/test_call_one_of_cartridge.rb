@@ -4,7 +4,7 @@ require "test_helper"
 require "stringio"
 require "all/vblank/builder/test_call_one_of"
 
-# A CALL PICKED BY NUMBER ON THE ADVANCE'S CARTRIDGE: that the cartridge reaches the routine the
+# A call picked by number on the Advance's cartridge: that the cartridge reaches the routine the
 # number picks wherever it was put, and what picking costs — which does not grow with the length
 # of the list. That it picks the right routine on every run, and what it refuses, is in
 # test/all/vblank/builder/test_call_one_of.rb.
@@ -17,7 +17,7 @@ class TestCallOneOfCartridge < Minitest::Test
   # How many dispatches a frame the measuring programs make.
   DISPATCHES = 16
 
-  # THE TABLE HOLDS WHERE EACH ROUTINE REALLY RUNS, which is not the same place for all of
+  # The table holds where each routine really runs, which is not the same place for all of
   # them: one kept in the console's quick memory was copied there at boot, and one left in the
   # cartridge never moves. Both are reached through the same table, so a build that wrote the
   # cartridge's address for the moved routine would jump into whatever else was there.
@@ -42,7 +42,7 @@ class TestCallOneOfCartridge < Minitest::Test
     assert_operator v.var(:left), :>, 0, "...and so was the one left in the cartridge"
   end
 
-  # A LIST TOO LONG FOR ITS LENGTH TO RIDE INSIDE AN INSTRUCTION. The console can carry a
+  # A list too long for its length to ride inside an instruction. The console can carry a
   # number up to 255 in the compare that holds the call back, and a longer list has to put its
   # length in a register first. 257 is the first length that needs it.
   def test_a_list_longer_than_a_number_can_ride_in_an_instruction
@@ -64,7 +64,7 @@ class TestCallOneOfCartridge < Minitest::Test
     assert_equal 256, v.var(:n), "the last routine of 257 ran, and the number past the end called nothing"
   end
 
-  # ...and the address in the table is where the routine REALLY runs. A routine kept in the
+  # ...and the address in the table is where the routine really runs. A routine kept in the
   # quick memory is also left in the cartridge, where boot copied it from, and that copy runs
   # perfectly well — about two and a half times slower. So calling the wrong one of the two is
   # not a broken game, it is a game that quietly lost the speed it was given the memory for.
@@ -113,7 +113,7 @@ class TestCallOneOfCartridge < Minitest::Test
 
   # --- what it costs ---
 
-  # THE WHOLE POINT: a list of a hundred and thirty-nine costs what a list of two does. A
+  # The whole point: a list of a hundred and thirty-nine costs what a list of two does. A
   # dispatch that asked each name in turn would cost seventy times as much at that length.
   def test_the_cost_does_not_grow_with_the_length_of_the_list
     few = measure(dispatch_rom(2, code: "BPC1"))
@@ -146,7 +146,7 @@ class TestCallOneOfCartridge < Minitest::Test
                     "a second call picking from the same list grew the code by a whole table"
   end
 
-  # +sites+ separate calls, all picking from one list of MANY routines.
+  # +sites+ separate calls, all picking from one list of many routines.
   private def picking_program(sites)
     names = (0...MANY).map { |i| :"op#{i}" }
     program_with do
@@ -159,7 +159,7 @@ class TestCallOneOfCartridge < Minitest::Test
     end
   end
 
-  # A game that dispatches DISPATCHES times a frame, picking from +count+ routines by a number
+  # A game that dispatches dispatches times a frame, picking from +count+ routines by a number
   # read out of a table — so the number is worked out as it runs, as a script's would be.
   private def dispatch_rom(count, code:, dispatches: DISPATCHES)
     names = (0...count).map { |i| :"op#{i}" }

@@ -11,7 +11,7 @@ class TestDrawColumnAtCartridge < Minitest::Test
   include Differential
   include DrawColumnAtTearFreeGames
 
-  # THE POINT OF THE WHOLE BEAD: a game that moves to the tear-free screen to stop the
+  # The point of the whole bead: a game that moves to the tear-free screen to stop the
   # flicker must get the same picture it had before. Every one of the cases column_program
   # draws is compared across the two screens, so an odd column spliced into the wrong half — the
   # mistake this screen invites — shows up as a column of wrong pixels.
