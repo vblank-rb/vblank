@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# THE NATIVE RUN'S TESTS, SPREAD OVER SEVERAL PROCESSES and reported as one run. The native
+# The native run's tests, spread over several processes and reported as one run. The native
 # lowering's rake task (RakeTasks) loads this beside the test files (ruby -r), and it changes one
 # thing about the run: where each test is played.
 #
@@ -11,7 +11,7 @@
 # (lowering the game to C, playing it again on the interpreter, comparing every frame) and
 # threads take turns at Ruby work. Separate processes do not.
 #
-# HOW IT IS ONE RUN. The process rake starts loads every test file and runs minitest as usual:
+# How it is one run. The process rake starts loads every test file and runs minitest as usual:
 # its options, its seed, its reporters and the suite's own (the skips by reason). Only the
 # playing moves. Where minitest would play the tests one after another, this starts
 # TEST_PROCESSES children, each loading the same files, and hands them work a test class at a
@@ -81,7 +81,7 @@ module VBlank
       def running = RUNNING
 
       # The parent's command, with the seed it settled on put last, where it wins: a run that was
-      # not given one picks its own, after COMMAND was taken. One word, `--seed=N`, because
+      # not given one picks its own, after command was taken. One word, `--seed=N`, because
       # rake's loader takes a word that does not start with a dash for a file to load. Warnings
       # are on in a child when they are on here.
       def child_command

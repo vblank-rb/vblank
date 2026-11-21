@@ -2,7 +2,7 @@
 
 module VBlank
   module Testing
-    # ONE GAME HELD TO ANOTHER, FRAME BY FRAME, in a test: a port's cartridge held to the original it
+    # One game held to another, frame by frame, in a test: a port's cartridge held to the original it
     # is made from, the same presses on both from power-on. Matching the original is how a port is
     # accepted, and this is the one assertion for it, over Playthroughs::Comparison:
     #
@@ -37,7 +37,7 @@ module VBlank
     # `pass_count_wraps_at: 256` for a count kept in a byte, and `passes_compared_at: :end` for one
     # whose slow pass counts itself before its work is done (the readings on the last frame that
     # shows each pass, the picture on the frame after; to compare the tape's last pass, play a frame
-    # past it). After `lead_ins:` the two are compared from the FIRST cartridge's pass as its lead-in
+    # past it). After `lead_ins:` the two are compared from the first cartridge's pass as its lead-in
     # left it, the second played on to it, so every pass of the first from there is compared. As it
     # plays on, a second led in by the first's lead-in cut short (or from power-on) is held what the
     # first's lead-in held on each of those frames, so a press after the cut still reaches it. A second

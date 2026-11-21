@@ -2,8 +2,8 @@
 
 module VBlank
   module Testing
-    # TWO SCREENS THAT DISAGREE, as a failed picture check says it (Pictures#assert_backends_agree):
-    # how many pixels differ, the first few with both colours, and WHERE, not just how many. The map
+    # Two screens that disagree, as a failed picture check says it (Pictures#assert_backends_agree):
+    # how many pixels differ, the first few with both colours, and where, not just how many. The map
     # is the whole screen squashed to a grid of about 40 by 20, so a glance says "the sprite is in
     # the wrong place" or "the right edge is torn" or "everything below the map".
     #

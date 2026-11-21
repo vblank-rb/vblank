@@ -2,7 +2,7 @@
 
 module VBlank
   module Testing
-    # ONE GAME BUILT TWO WAYS HELD TO ONE ANSWER, in a test: a port built all-in-one, its data pack
+    # One game built two ways held to one answer, in a test: a port built all-in-one, its data pack
     # read as the game is built, and the same port built with its pack left out
     # (`pack_at_start: true`), handed the pack as a file as it starts. A shell is the second build,
     # so a verb that works in the first and is wrong in the second shows a player a wrong picture
@@ -23,11 +23,11 @@ module VBlank
     # the data, each checked against the interpreter as every game is. +presses+ is the buttons
     # held on each frame that has any, by its number.
     #
-    # WHAT IS COMPARED: the picture after every pass, the sound log, and every frame's slice of
+    # What is compared: the picture after every pass, the sound log, and every frame's slice of
     # mixed recordings. Variables are not enough, since a picture drawn from stand-in data leaves
     # every variable right.
     #
-    # A BUILD THAT REFUSES IS THE OTHER RIGHT ANSWER, where a verb is not made for a pack left out
+    # A build that refuses is the other right answer, where a verb is not made for a pack left out
     # yet: an error in plain words whose fix is to build all-in-one. #pack_at_start_refusal gives
     # that error back, and lets any other raise through, so a test of a refusal cannot pass on a
     # fault.

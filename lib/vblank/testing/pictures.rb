@@ -2,8 +2,8 @@
 
 module VBlank
   module Testing
-    # DOES THE CARTRIDGE DRAW WHAT THE GAME MEANS? Run the same program on the interpreter and as a
-    # cartridge in the emulator, and compare the WHOLE screen, pixel for pixel.
+    # Does the cartridge draw what the game means? Run the same program on the interpreter and as a
+    # cartridge in the emulator, and compare the whole screen, pixel for pixel.
     #
     #   class TitleTest < Minitest::Test
     #     include VBlank::Testing
@@ -28,7 +28,7 @@ module VBlank
     # in the cartridge the console's lowering built (or, now and then, in the interpreter's model
     # of the hardware — either way it is a real disagreement worth a look).
     #
-    # IT NEEDS THE EMULATOR, the ruby-gba-emulator gem, which a game that only builds cartridges
+    # It needs the emulator, the ruby-gba-emulator gem, which a game that only builds cartridges
     # does without; a game's Gemfile names it in its test group. Without it the check stops with
     # what to add to the Gemfile (see Diagnostics::Emulator). On a checked run (Testing.checked?)
     # the same lines ask whether the lowered game — as C, as JavaScript, as a Color cartridge —
@@ -54,7 +54,7 @@ module VBlank
         rotozoom: 1, # the other tile screen, and it boots the same
       }.freeze
 
-      # HOW EACH CONSOLE'S PICTURE LINES UP WITH THE INTERPRETER'S: the frames it takes to reach its
+      # How each console's picture lines up with the interpreter's: the frames it takes to reach its
       # first pass on each kind of screen (BOOT_FRAMES is the Advance's), and whether the picture
       # showing is always the pass before the last one it finished.
       #
@@ -82,7 +82,7 @@ module VBlank
 
       # Run +program+ on both backends and assert they draw exactly the same screen.
       #
-      # +frames+ is how many frames the INTERPRETER plays; the console is run for the matching
+      # +frames+ is how many frames the interpreter plays; the console is run for the matching
       # number (see BOOT_FRAMES). For a program that halts or sits still the count barely matters;
       # for an animated one it selects which frame is compared. Give a list (`frames: [3, 5, 7]`,
       # or `frames: 1..20` for every frame of the first twenty) and each is compared, the first
@@ -90,14 +90,14 @@ module VBlank
       # slow. +keys+ are buttons held for the whole run, on both backends. +name+ is the
       # cartridge's title, which nothing compares.
       #
-      # WITHOUT THE EMULATOR the test fails, saying what to add to the Gemfile, rather than
+      # Without the emulator the test fails, saying what to add to the Gemfile, rather than
       # stopping with an error from inside the library.
       #
       # Every pixel is held to exactly the same color, display effects included. The emulator is
       # built for 32-bit color, so it widens each channel to eight bits and fades, tints and sees
       # through there, and the interpreter works each of those out the same way.
       #
-      # ON A NATIVE RUN THERE IS NO CONSOLE TO ASK, and the question still has an answer worth
+      # On a native run there is no console to ask, and the question still has an answer worth
       # having there: does the game as C draw what the interpreter draws? So the same line plays the
       # program as C with the same buttons held and compares it with the interpreter on every frame,
       # every variable and the sound log with the picture (see CheckedPlayer, which is what comes
@@ -129,13 +129,13 @@ module VBlank
         flunk e.message
       end
 
-      # A MOVING GAME WHOSE PASSES TAKE SEVERAL FRAMES, and not always the same number of them:
+      # A moving game whose passes take several frames, and not always the same number of them:
       # the frame a pass ends on is read between two pictures. So the console's frame +frame+ and
       # the ones after it, +tries+ in all, are read until one agrees with the interpreter played as
       # many passes as the console counted by then. Two passes in a row each a frame long, and
       # then a longer one, still leave one of three frames inside a pass.
       #
-      # ON THE ADVANCE'S TEAR-FREE AND TILED SCREENS each frame is read with the passes counted a
+      # On the Advance's tear-free and tiled screens each frame is read with the passes counted a
       # frame earlier (#passes_beyond_counted_frame_before), as #assert_backends_agree reads it, so
       # every frame has an answer, the one a pass ends on too.
       def assert_backends_agree_by_passes(program, frame:, keys: [], name: "DIFF", tries: 3)
@@ -150,12 +150,12 @@ module VBlank
 
       # Both backends' screens for the same program, as arrays of 15-bit colors a row at a time
       # (read one with `pixel_at`), and how many frames the interpreter played to match. Use this directly to
-      # assert on a KNOWN disagreement — a bug that's filed but not fixed — instead of failing
+      # assert on a known disagreement — a bug that's filed but not fixed — instead of failing
       # the build.
       # @return [Array(Array<Integer>, Array<Integer>, Integer)] the interpreter's, the
       #   console's, the interpreter's frame count
       #
-      # ON A NATIVE RUN the second picture is the game as C's, after the same frames with the same
+      # On a native run the second picture is the game as C's, after the same frames with the same
       # buttons held, so every test written as "the two pictures agree" asks it of the lowering the
       # run is for. The C is checked against the interpreter on every frame on the way there
       # (CheckedPlayer), and the frames the console would have needed mean nothing. On a JavaScript
@@ -176,7 +176,7 @@ module VBlank
               elsif passes then oracle_frames_for(program, frames, passes, played)
               else frames
               end
-        # What the interpreter SHOWS, not what it stored. A fade, a tint and the camera all
+        # What the interpreter shows, not what it stored. A fade, a tint and the camera all
         # change the picture without touching a drawn pixel, so reading the stored cells
         # would compare a picture nobody is looking at against one the console really put out.
         oracle = IR::Backends::Reference.new.hold(*keys).run(program, frames: ran).screen.shown
@@ -210,7 +210,7 @@ module VBlank
 
       private
 
-      # THE ADVANCE SHOWS A FINISHED PASS FROM THE FRAME AFTER IT ENDS. The game finishes a pass
+      # The Advance shows a finished pass from the frame after it ends. The game finishes a pass
       # part-way down a frame, and that is when the pass is counted. What it drew is shown from the
       # next frame: the page it painted, on the tear-free bitmap screen, swapped in as that frame
       # starts; the scroll and the sprites, on a tiled screen, written in the blank before it. So the
@@ -246,7 +246,7 @@ module VBlank
       # frame short of the end and then played on a frame. The counts are nil for a program with no
       # loop to count.
       #
-      # BEFORE THE FIRST PASS ENDS the count a frame earlier is none, whether the game was in its
+      # Before the first pass ends the count a frame earlier is none, whether the game was in its
       # first pass then or still setting up, and only the second has nothing of a pass to show; so
       # #backend_pictures lines that frame up as before, on the count at its end.
       def console_picture_with_earlier_count(program, console_frames, name, keys)
@@ -270,20 +270,20 @@ module VBlank
       # The console's picture after +console_frames+ frames, and how many passes of the game loop it
       # managed in them — nil for a program with no loop to count.
       #
-      # A FRAME MEANS TWO DIFFERENT THINGS ONCE A GAME IS OVER BUDGET. The interpreter runs the
+      # A frame means two different things once a game is over budget. The interpreter runs the
       # game loop once per frame it is asked for, whatever the body costs. The console runs it
-      # once per frame it has TIME for. So a game whose pass takes two display frames plays half
+      # once per frame it has time for. So a game whose pass takes two display frames plays half
       # as much game per frame on the console, and the boot offset stops being the whole story:
       # measured on a first-person view, holding a button for 40 frames walked the player nearly
       # twice as far in the interpreter as on the console.
       #
-      # So the two are lined up on PASSES of the loop, not on frames. The console is run for its
+      # So the two are lined up on passes of the loop, not on frames. The console is run for its
       # frames while the emulator counts how many times the game loop was entered, and the
       # interpreter is then run for exactly that many passes. No ratio, no measurement, no cost
       # model, and it stays right when the game gets faster or slower. For a game that fits, the
       # count agrees with the boot offset and nothing changes.
       #
-      # THE SAME COUNT ANSWERS A SECOND QUESTION, which is where it earns its keep. BOOT_FRAMES
+      # The same count answers a second question, which is where it earns its keep. BOOT_FRAMES
       # is one number per screen mode, measured on a program with almost nothing to set up. A
       # real game has a map to upload and a cast to declare, reaches its loop a frame later, and
       # is then one pass behind for the whole run however fast the game itself is. To the picture
@@ -295,7 +295,7 @@ module VBlank
       # picture that no interpreter frame can match — so that one is refused, with the reason,
       # rather than compared at two different moments and the lowering blamed.
       #
-      # THE CONSOLE RUNS THE SAME BYTES THE INTERPRETER IS GIVEN. Counting passes by adding a
+      # The console runs the same bytes the interpreter is given. Counting passes by adding a
       # variable and an instruction to the game loop would mean the cartridge every pixel was
       # proved identical about was not the cartridge that ships — and one extra instruction can
       # tip a routine out of the console's quick memory, which changes the timing and therefore
@@ -303,7 +303,7 @@ module VBlank
       # emulator counts arrivals at the loop's own instructions, and a Color's runtime keeps a
       # count of its waits for the screen that the reader reads (Verifier#passes).
       #
-      # THE CARTRIDGE IS THE PROGRAM'S CONSOLE'S, built by the part its kit names
+      # The cartridge is the program's console's, built by the part its kit names
       # (Console::Kit#builder) and read back by the one reader: a program built for the Game Boy
       # Color is played as a Color cartridge, and one that names no console as an Advance cartridge.
       #
@@ -322,7 +322,7 @@ module VBlank
       # the frames it played. A program with no loop to count plays the console's set-up frames
       # past +frames+ (LineUp#boot_frames), as #console_picture does.
       #
-      # A CONSOLE'S SET-UP IS NOT A NUMBER TO WRITE DOWN HERE: it moves whenever its runtime's start
+      # A console's set-up is not a number to write down here: it moves whenever its runtime's start
       # gets quicker or slower (a game with more to clear or copy takes longer too), and a fixed
       # count of frames then compares a later pass than the one asked for. The count of passes says
       # where the game is, so the console plays until the count says it is there.
@@ -400,10 +400,10 @@ module VBlank
 
       # How many frames the interpreter plays so its picture is the one the console showed.
       #
-      # THE TWO ARE LINED UP ON PASSES (see #console_picture), and a boot offset that puts the
+      # The two are lined up on passes (see #console_picture), and a boot offset that puts the
       # console a pass behind is the same thing as a slow game: whether the console spent a frame
       # uploading tiles or a frame drawing, it has one pass fewer to show. So a program whose
-      # picture is a FINISHED pass is compared at the passes it finished, and the boot offset is
+      # picture is a finished pass is compared at the passes it finished, and the boot offset is
       # only there to give it enough frames to make them. This is what BOOT_SLACK cannot do: it
       # forgives a missing pass, which is right for a still picture and a frame of drift for a
       # moving one.
@@ -412,19 +412,19 @@ module VBlank
       # asked for, and then the number asked for is the one to play — the surplus is slack in
       # the offset rather than a moment the caller wanted.
       #
-      # A SINGLE-BUFFERED CONSOLE PAST THE FRAME COUNT is compared at the passes it finished. Run
-      # for the bitmap boot offset, every single-buffered program tried finished a pass MORE than
+      # A single-buffered console past the frame count is compared at the passes it finished. Run
+      # for the bitmap boot offset, every single-buffered program tried finished a pass more than
       # was asked for — the offset gives that screen a frame of room to spare — and on a screen the
       # game paints straight into, the picture is the last pass painted, since a game that keeps
       # up stops in the wait between two passes. Played at the frame count instead, the
       # interpreter shows the pass before, and anything that changes every pass — a pose, a
       # position — reads as a frame of drift that is not in either backend. A screen that shows
       # finished passes (tear-free, tiled) shows the one before the last painted, and is left to
-      # the frame count as it always was. BELOW the frame count a single-buffered program keeps
+      # the frame count as it always was. Below the frame count a single-buffered program keeps
       # BOOT_SLACK's tolerance on purpose: a pass short there is either a late boot or a game over
       # budget caught mid-pass, and the count cannot tell the two apart.
       #
-      # A CONSOLE WHOSE PICTURE IS ALWAYS THE PASS BEFORE ITS LAST (LineUp#shows_pass_before_last)
+      # A console whose picture is always the pass before its last (LineUp#shows_pass_before_last)
       # is compared at that pass, however many it made: its picture is never half-drawn, and is
       # never the last pass's either.
       #
@@ -444,7 +444,7 @@ module VBlank
               "screen :bitmap, tear_free: true, or compare a picture that does not change."
       end
 
-      # Is the picture this program shows the state of a pass the console FINISHED, rather than
+      # Is the picture this program shows the state of a pass the console finished, rather than
       # one it is in the middle of?
       #
       # A tiled screen has no framebuffer the game paints into. The game moves variables, and
