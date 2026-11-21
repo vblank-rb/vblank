@@ -5,7 +5,7 @@ require "made_up_original"
 require "prism"
 require "tmpdir"
 
-# THE PACE OF A LONG UNPACKING BUILT AS RUBY, WRITTEN AS LOOPS. A port that renders a sound chip
+# The pace of a long unpacking built as Ruby, written as loops. A port that renders a sound chip
 # into its pack keeps each of the chip's operators as an item of lists, one list a field, and
 # every sample goes round the operators in a `repeat`, reading those lists at the operator's number
 # as it runs. The routine writes a byte a sample and waits for the next frame every few hundred,
@@ -19,7 +19,7 @@ require "tmpdir"
 # (RgList#get is one, and an always-full list's read is its Array's own). This is such a routine,
 # smaller, held to the pack the all-in-one build made, and to the work a turn of its loop does.
 #
-# COUNTED, NOT TIMED. A time fails whenever other work shares the cores, so the work is counted in
+# Counted, not timed. A time fails whenever other work shares the cores, so the work is counted in
 # the routine as it is printed, which no load can change: the most tests of the step counter a turn
 # makes to pick its step (a `case`, which YJIT tests `when` by `when`, counts a test for each `when`),
 # and the list items it reads or writes through the list's own method rather than its Array's.
@@ -82,7 +82,7 @@ class TestRubyUnpackingPace < Minitest::Test
     node.is_a?(Prism::CallNode) && %i[get set].include?(node.name) && node.receiver.is_a?(Prism::InstanceVariableReadNode)
   end
 
-  # The pack: PARTS_BEFORE short loops, then a sample loop round OPERATORS operators kept as lists.
+  # The pack: PARTS_BEFORE short loops, then a sample loop round operators operators kept as lists.
   private def looped_pack(builder, from)
     operators = OPERATORS
     samples = SAMPLES

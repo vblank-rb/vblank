@@ -7,7 +7,7 @@ require "tmpdir"
 require "vblank/live"
 require "shell_tests"
 
-# THE PAC-MAN PORT BUILT AS A SHELL, PLAYED AS RUBY. The port (test/fixtures/pacman_port/pacman_port.rb)
+# The Pac-Man port built as a shell, played as Ruby. The port (test/fixtures/pacman_port/pacman_port.rb)
 # holds none of the data of pacman.gba, the cartridge examples/pacman.rb builds, which stands in for
 # a retail original. The shell takes pacman.gba at Load ROM, unpacks it with the port's own routine
 # (LZ77 and run-length, as the cartridge packs it), keeps the pack, and plays Pac-Man.
@@ -123,7 +123,7 @@ class TestPacmanPortShell < Minitest::Test
     end
   end
 
-  # `vblank run --shell` BUILDS THE SHELL IN A HELPER and the window's own process plays it: here
+  # `vblank run --shell` builds the shell in a helper and the window's own process plays it: here
   # from the pack kept in --pack-folder, for the pictures asked for, in SDL's dummy window. The port
   # is loaded by the command and by its helper, each noting its process.
   def test_run_shell_builds_the_shell_in_a_helper_and_plays_the_kept_pack

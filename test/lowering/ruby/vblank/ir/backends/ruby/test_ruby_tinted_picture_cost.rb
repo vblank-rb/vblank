@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A TINTED PICTURE, READ BY THE RUBY RUNTIME. A tint (or a fade) is over the whole picture on every
+# A tinted picture, read by the Ruby runtime. A tint (or a fade) is over the whole picture on every
 # pass of a game that keeps one in force, as a Super Nintendo game keeps its screen's brightness, and
 # the runtime turns each pixel of the picture through the tint's table as it hands the picture over.
 # The table is a Hash, and the runtime used to look each pixel up in it one at a time, a call

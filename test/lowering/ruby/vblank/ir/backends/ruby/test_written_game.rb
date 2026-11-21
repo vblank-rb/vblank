@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "vblank/live"
 
-# THE GAME WRITTEN OUT AS ONE RUBY FILE, READ BACK (Ruby::WrittenGame): the window vblank run opens
+# The game written out as one Ruby file, read back (Ruby::WrittenGame): the window vblank run opens
 # plays a game a helper process wrote, so what it reads from the file must play as the game built
 # here does. The answer key is the same game built in this process and played on the same device.
 class TestWrittenGame < Minitest::Test
@@ -50,7 +50,7 @@ class TestWrittenGame < Minitest::Test
     end
   end
 
-  # SAVE STATES AND THE SAVE FILE: a written game says where its window keeps them, the folder
+  # Save states and the save file: a written game says where its window keeps them, the folder
   # vblank run's window keeps them in (StateSlots.folder_name, from the title and the game's code),
   # so a state saved in one is in the menu of the other.
   def test_a_written_game_keeps_its_states_where_vblank_run_keeps_them
