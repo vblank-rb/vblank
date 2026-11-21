@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # A MAP BIGGER THAN THE CONSOLE'S GRID, brought into view a strip at a time.
+        # A map bigger than the console's grid, brought into view a strip at a time.
         #
         # The console draws a background from a grid of cells in its video memory, and the
         # biggest grid it has is 64x64 cells — four screens. A room bigger than that cannot be
@@ -21,7 +21,7 @@ module VBlank
         # just left on the left, which is the same place in the grid. Rows the same way. Retail
         # games draw their big rooms exactly like this.
         #
-        # A JUMP — a new map, a scene taking over, or a view that moved more than a few cells at
+        # A jump — a new map, a scene taking over, or a view that moved more than a few cells at
         # once — fills the whole view again instead, row by row, in that same gap. So the frame
         # the view lands on already shows the right picture.
         #
@@ -29,7 +29,7 @@ module VBlank
         # see-through) is copied in there. That is why such a map does not come round again the
         # way a map that fits its grid does (see IR::TileMap.streams?).
         #
-        # WHAT IT COSTS: a frame the view stayed inside the same cell copies nothing, and pays a
+        # What it costs: a frame the view stayed inside the same cell copies nothing, and pays a
         # few dozen instructions to find that out — where the view is, which map, and four
         # comparisons. A frame it crossed one copies a column of 21 cells or a row of 31, a
         # handful of instructions a cell. A jump is the whole view, 21 rows of 31, each row handed
@@ -118,7 +118,7 @@ module VBlank
             Messages::MadeNames.make(:map_cell_write_in_scene, background: name, scene: IR::Modes.strip_scene_prefix(scene))
           end
 
-          # BRING THE CELLS AROUND THE VIEW IN, for a background whose map is brought into view a
+          # Bring the cells around the view in, for a background whose map is brought into view a
           # strip at a time (+stream+, its StreamedMaps), before its scroll registers are
           # written. +x+ and +y+ are the values that hold where the view is now, in the map's own
           # pixels.
@@ -133,7 +133,7 @@ module VBlank
             @lowering.statement(Build.call(stream.routine))
           end
 
-          # THE BODY OF THAT ROUTINE: compare the cell the view is at now with the cell the grid
+          # The body of that routine: compare the cell the view is at now with the cell the grid
           # was last filled for, and copy in the strips between the two, or the whole view.
           #
           # It is a routine the build places like one somebody wrote, by what a frame spends in
@@ -200,7 +200,7 @@ module VBlank
             place_label(after)
           end
 
-          # FILL THE WHOLE VIEW NOW, from the place the background's view is at and the map it
+          # Fill the whole view now, from the place the background's view is at and the map it
           # names, rather than in the scroll write later in the gap. For the moments the layers
           # are switched off — a scene taking over, an area's tiles coming in — so the view is
           # whole by the time they are on again, and no part of the frame shows the last room's
@@ -216,7 +216,7 @@ module VBlank
             emit_stream_view(bg.stream, x, y)
           end
 
-          # HAND THE BACKGROUND ANOTHER MAP: set which map the strips come from now, and mark that the
+          # Hand the background another map: set which map the strips come from now, and mark that the
           # grid does not hold it yet. Nothing is copied here. The scroll write later in the
           # same gap fills the whole view from the new map, at the place the view is at then,
           # so the frame shows the new map wherever the game moved the view to on the way in.
@@ -265,7 +265,7 @@ module VBlank
             emit_number(STREAM_GRID, VRAM_START + (bg.screen_block * SCREENBLOCK_BYTES))
           end
 
-          # A MAP THE GAME CHANGES (`set_tile`) is kept in the roomy memory while it is showing, and
+          # A map the game changes (`set_tile`) is kept in the roomy memory while it is showing, and
           # its strips come from there, so a changed cell scrolled out of view comes back changed. A
           # console's own games keep a big room's cells in work memory the same way and bring each
           # strip into the grid from there. The copy is made the first time it is wanted after
@@ -275,7 +275,7 @@ module VBlank
           # or `set_tile` writes is in it, and no changed cell is ever copied over. A frame that
           # wants no new copy pays a load, an add and a compare to find that out.
           #
-          # A BIG MAP IS COPIED IN PIECES of KEPT_COPY_PIECE_CELLS cells at most, one after another.
+          # A big map is copied in pieces of KEPT_COPY_PIECE_CELLS cells at most, one after another.
           # The engine holds the processor and the screen's interrupt only while one piece moves, and
           # the processor takes an interrupt waiting for it between two pieces, so the sound mixer's
           # hand-over is never held off longer than one piece (#KEPT_COPY_PIECE_CELLS). A map of up
@@ -348,7 +348,7 @@ module VBlank
                                    "of that map. To fix this, use smaller maps."
           end
 
-          # HOW LONG ONE PIECE OF THE COPY HOLDS THE SCREEN'S INTERRUPT OFF. The copying engine holds
+          # How long one piece of the copy holds the screen's interrupt off. The copying engine holds
           # the processor, and the screen's interrupt with it, until a piece is across (GBATEK, "DMA
           # Transfers"). A cell is a halfword read from the cartridge, a sequential access of two
           # cycles at the wait states the game runs with (Console::Hardware::WAITCNT_FAST), and one
@@ -363,7 +363,7 @@ module VBlank
 
           public
 
-          # THE ROUTINE THAT CHANGES ONE CELL OF A MAP THE GAME CHANGES (`set_tile`), called with the
+          # The routine that changes one cell of a map the game changes (`set_tile`), called with the
           # cell's column and row and its new map entry in the background's own variables
           # (#emit_streamed_tile_write). The cell is written in the copy (#emit_kept_map_source), and
           # in the grid too where the grid holds it now, so it shows on the frame being drawn. A cell
@@ -414,7 +414,7 @@ module VBlank
             emit(ASM.pop(LoopForm::COUNTER, LoopForm::LIMIT))
           end
 
-          # ONE CELL OF A MAP BROUGHT IN A STRIP AT A TIME CHANGED (`set_tile`): its column, row and
+          # One cell of a map brought in a strip at a time changed (`set_tile`): its column, row and
           # map entry handed to the background's own routine (#emit_map_cell_write_routine), so the
           # cell stays changed in the copy the strips come from.
           def emit_streamed_tile_write(node, bg, entry)
@@ -489,7 +489,7 @@ module VBlank
             emit_number(STRIP_DOWN, 0)
           end
 
-          # FILL THE WHOLE VIEW, a row at a time, for the place the view is at now, and mark that the
+          # Fill the whole view, a row at a time, for the place the view is at now, and mark that the
           # grid holds it.
           #
           # Each row is handed to the copying engine (GBATEK, "DMA Transfers": DMA3, halfwords)
@@ -578,7 +578,7 @@ module VBlank
             emit(ASM.add_imm(PIECE_SOURCE, STACK_POINTER, FILL_BLANK))
           end
 
-          # COPY ONE RUN OF A ROW INTO THE GRID: PIECE_COUNT cells (one or more) from
+          # Copy one run of a row into the grid: PIECE_COUNT cells (one or more) from
           # PIECE_SOURCE, starting at column PIECE_COL of the grid row at FILL_GRID_ROW, with the
           # engine's control bits in PIECE_CONTROL. Leaves PIECE_COL past the run.
           #
@@ -616,7 +616,7 @@ module VBlank
             emit(ASM.return)
           end
 
-          # COPY ONE STRIP OF CELLS FROM THE MAP INTO THE GRID, as described in the STRIP
+          # Copy one strip of cells from the map into the grid, as described in the strip
           # registers. A cell outside the map gets the blank cell. A cell's place in the grid is
           # its column and row each taken round 32, which is what lets the grid come round again
           # under the view.

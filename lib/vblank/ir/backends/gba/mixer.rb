@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBA
         # The software mixer — several recorded samples sounding at once. The console's
-        # sampled-audio hardware plays ONE stream of bytes out of a small buffer; to get
+        # sampled-audio hardware plays one stream of bytes out of a small buffer; to get
         # background music under a handful of effects (and, later, chords), the CPU adds
         # the samples together itself. Each frame it builds the next little slice of sound
         # by summing every voice that's playing into a buffer, and the sound DMA plays that
@@ -17,12 +17,12 @@ module VBlank
         # has played, its length, whether it loops, and how fast it reads the recording (its
         # pitch). There are a fixed number of voice slots; `play` fills a free one, the mix
         # drains and retires it (or loops it), and `stop` clears a sample's slots. The mix runs
-        # once per DISPLAYED FRAME, from the screen's own interrupt — so playing samples needs a
+        # once per displayed frame, from the screen's own interrupt — so playing samples needs a
         # game loop, which is what arms that interrupt.
         #
-        # THE SLOTS ARE SHARED between the game's sounds and the notes of songs and sound effects,
+        # The slots are shared between the game's sounds and the notes of songs and sound effects,
         # each taking one only while it sounds (see #emit_take_music_voice_routine for who gives way
-        # when they run out). A slot's SOUNDING word marks whose it is: 0 nobody's, OWNER_GAME the
+        # when they run out). A slot's sounding word marks whose it is: 0 nobody's, OWNER_GAME the
         # game's, and a recorded part its own mark (Mixer.music_owner, or Mixer.ranked_owner in a
         # game whose sound effects play recordings).
         #
@@ -53,7 +53,7 @@ module VBlank
           # fetch, so at boot the routine is copied into IWRAM (zero-wait-state internal RAM)
           # and called there. This is the IWRAM budget reserved for the copy; the build
           # fails if the emitted routine ever outgrows it.
-          # KEPT SNUG, because every byte of it is a byte the routines a frame spends its time in
+          # Kept snug, because every byte of it is a byte the routines a frame spends its time in
           # do not get — this reservation and the game's own hot code come out of the same 32K.
           # The routine emits at 344 to 360 bytes (three of its immediates are the samples-per-frame
           # count or that count in words, each one instruction or two depending on the number, and a
@@ -84,13 +84,13 @@ module VBlank
           # how much of the last buffer the DMA has already taken (see #emit_mixer_handover).
           COUNT_TIMER = 1
 
-          # WHILE THE MIXER FINDS ITS FEET at boot the sample clock runs this fast, in cycles a
+          # While the mixer finds its feet at boot the sample clock runs this fast, in cycles a
           # sample, so the few lots it has to watch go by in a moment instead of a fraction of a
           # second (see #emit_find_lot_grid). Changing the clock's speed afterwards moves nothing
           # the watching found out, because that was counted in samples and not in time.
           CALIBRATION_PERIOD = 512
 
-          # HOW LATE A HAND-OVER CAN BE and still play every lot in its place, in cycles. The
+          # How late a hand-over can be and still play every lot in its place, in cycles. The
           # screen's interrupt waits for a DMA the game is in the middle of, and the longest one
           # the framework makes while a game runs is a whole-screen clear, about a fifth of a
           # frame. A third leaves room over. Each buffer carries this much sound past its end
@@ -106,14 +106,14 @@ module VBlank
           MIX_LOT = :__mix_lot
 
           # A voice slot, in EWRAM: the sample's address in ROM, how far it has played (a whole
-          # sample index), its length, HOW FAR BACK it goes at the end (0 for a sound that plays
+          # sample index), its length, how far back it goes at the end (0 for a sound that plays
           # once), whether it's sounding, its loudness (0..512), and — for pitch — a 16.16
-          # fixed-point STEP (how many source samples to advance per output sample: 1.0 = 0x10000
+          # fixed-point step (how many source samples to advance per output sample: 1.0 = 0x10000
           # plays at the recorded pitch, 2.0 an octave up) plus a FRAC accumulator carrying the
           # leftover fraction between frames, kept in its TOP 16 bits so that adding to it
           # overflows exactly when a whole sample is due (see #emit_mix_routine).
           #
-          # LOOP IS A DISTANCE AND NOT A FLAG, which is what lets a note be HELD: a piano
+          # Loop is a distance and not a flag, which is what lets a note be HELD: a piano
           # recorded for half a second and held for two reads round a point part way in rather
           # than starting over, so the attack is heard once and the body of the note goes on for
           # as long as the note does. A sound that loops in the ordinary way goes back by its
@@ -125,24 +125,24 @@ module VBlank
           # sound that loops has the top bit set, which makes it later than every sound that
           # plays once, so it is the last to go.
           #
-          # THEN THE ENVELOPE, for a voice that has one (see {VBlank::Audio::Envelope}): the four
-          # numbers packed into ENV, where the LEVEL has climbed or fallen to, which PHASE of the
+          # Then the envelope, for a voice that has one (see {VBlank::Audio::Envelope}): the four
+          # numbers packed into ENV, where the level has climbed or fallen to, which phase of the
           # note it is in, GAIN — the loudness the mix actually multiplies by, which is VOL
-          # scaled by that level — and RAMP, how far the gain moves with each sample. ENV of 0
+          # scaled by that level — and ramp, how far the gain moves with each sample. ENV of 0
           # means no envelope at all, and then none of the four is ever read and the gain moves
           # only when the music volume does (see #emit_store_gain_unless_shaped).
           #
-          # THE LEVEL IS WORKED OUT ONCE A FRAME, by the pass before the mix. What the pass hands
-          # the mix is not a new gain but a SLIDE to it: how far the gain has to move by the end of
+          # The level is worked out once a frame, by the pass before the mix. What the pass hands
+          # the mix is not a new gain but a slide to it: how far the gain has to move by the end of
           # the frame, shared out over the frame's samples. A fade that took its steps at the frame
           # boundary would be a staircase, and every step of a staircase is a click — a fast
           # release falls most of the way in its first frame, so the first step is most of the
           # wave. Slid, the gain never moves further in one sample than a sixty-fourth of a frame's
           # worth of change, whatever fade was asked for.
           #
-          # SO THE GAIN KEEPS A FRACTION under it (GAIN_FRACTION bits), which a slide needs: a
+          # So the gain keeps a fraction under it (GAIN_FRACTION bits), which a slide needs: a
           # quiet fade moves the gain by far less than one whole step a sample. Each frame aims
-          # at a WHOLE loudness, and the next frame's slide starts from the whole loudness nearest
+          # at a whole loudness, and the next frame's slide starts from the whole loudness nearest
           # where the last one left the gain, so the rounding of one frame never carries into
           # the next (see #emit_envelope_step).
           SLOT_SRC = 0
@@ -178,7 +178,7 @@ module VBlank
 
           # Which part of a note a voice is in. Climbing, then holding (which covers the fall to
           # the sustain level and the hold there — one test tells them apart, the level against
-          # the sustain), then falling away after the note has ended — and then DONE, which is
+          # the sustain), then falling away after the note has ended — and then done, which is
           # the frame the gain spends sliding the last of the way to nothing. The voice is given
           # back at the END of that frame rather than the start of it, because a voice taken away
           # while its gain is still above nothing is the very click this is here to remove.
@@ -187,11 +187,11 @@ module VBlank
           PHASE_FALLING = 2
           PHASE_DONE = 3
 
-          # Whose a sounding slot is, in its SOUNDING word: the game's, or a song's recorded part.
+          # Whose a sounding slot is, in its sounding word: the game's, or a song's recorded part.
           OWNER_GAME = 1
           def self.music_owner(lane) = OWNER_GAME + 1 + lane
 
-          # ...and in a game whose sound effects play recordings, whose it is and how it RANKS
+          # ...and in a game whose sound effects play recordings, whose it is and how it ranks
           # (IR::Tunes.song_rank), since a note of a song or an effect can then take the voice of
           # one ranked below it. The rank, one more so that every such mark sits above the game's,
           # goes above the part's own number. Comparing two marks shifted down by this many bits
@@ -203,7 +203,7 @@ module VBlank
           TICKETS = :__mix_tickets # How many sounds the game has started, for the next ticket
           LOOPS_LAST = 0x8000_0000
 
-          # WHAT DID NOT PLAY, counted on the console so a run can be asked about it.
+          # What did not play, counted on the console so a run can be asked about it.
           #
           # A `play` that finds every voice busy is dropped — deliberately, rather than cutting
           # off a sound already sounding — and the console says nothing about it. Nothing on
@@ -216,8 +216,8 @@ module VBlank
           # runs out of voices pays for none of this beyond the miss branch it already had:
           #
           #   DROPS       — how many plays, and notes of songs and sound effects, found no voice.
-          #   DROPS_MUSIC — the most voices SONGS AND EFFECTS held at one of those moments. The count of
-          #                 voices SOUNDING needs no counting: a drop means every one of them
+          #   DROPS_MUSIC — the most voices songs and effects held at one of those moments. The count of
+          #                 voices sounding needs no counting: a drop means every one of them
           #                 was. What the author cannot know without measuring is how the
           #                 music and the game's own sounds were splitting them, which is the
           #                 half they can do something about.
@@ -228,7 +228,7 @@ module VBlank
           STEP_SHIFT = VBlank::Audio::Sound::STEP_SHIFT
           STEP_ONE = 1 << STEP_SHIFT
 
-          # ONE SOUNDING VOICE, read back off a running console: which sample it is playing,
+          # One sounding voice, read back off a running console: which sample it is playing,
           # how far through it (a whole sample index), how long that sample is, how fast it
           # reads it (16.16 — STEP_ONE is the recorded pitch), whether it loops, its loudness
           # (0..512), and whose it is — :game, [:song, part] or [effect, part], the same answer the
@@ -236,11 +236,11 @@ module VBlank
           # asks what is playing and never learns where in memory it is kept.
           Voice = Data.define(:sample, :position, :length, :step, :loop, :volume, :owner)
 
-          # WHERE THE CONSOLE KEEPS WHAT IT IS PLAYING, published by the build so the finished
+          # Where the console keeps what it is playing, published by the build so the finished
           # cartridge can be asked about its own sound (see BuildRecord#voices).
           #
           # Nothing about the voices is hardware. The mixer is software this backend emits,
-          # and it sums every voice into ONE sound channel before the hardware sees any of it,
+          # and it sums every voice into one sound channel before the hardware sees any of it,
           # so the only place the voices exist separately is this table in memory.
           # Reading it is reading what the lowering really did.
           #
@@ -253,7 +253,7 @@ module VBlank
           # identical bytes may share one address, and then a voice playing either reads back
           # as whichever was declared first.
           # +clock+ is the sample clock the build settled on (Timers.sample_clock), and it
-          # belongs here because a voice's STEP is meaningless without it: a step of 1.0 means
+          # belongs here because a voice's step is meaningless without it: a step of 1.0 means
           # "read the recording at this rate", so what pitch that comes out at depends on the
           # rate. It is also the one thing about the mixer an author might want to see, which
           # is why `rom.profile` reports it.
@@ -307,7 +307,7 @@ module VBlank
             end
           end
 
-          # WHERE THE CONSOLE COUNTS WHAT IT COULD NOT PLAY, published by the build the same
+          # Where the console counts what it could not play, published by the build the same
           # way the voice table is and for the same reason: the two words are hidden variables,
           # so their addresses exist only in the build and cannot be recovered from the
           # cartridge afterwards.
@@ -394,7 +394,7 @@ module VBlank
 
           def ranks_voices? = !@effect_marks.empty?
 
-          # THE SLOT NOTHING MIXES, one past the last voice, kept in a game whose notes can find
+          # The slot nothing mixes, one past the last voice, kept in a game whose notes can find
           # no voice at all (#ranks_voices?): a note handed it is written there and never heard.
           # Every walk over the voices stops before it.
           def unmixed_slot_address = @voice_base + (MAX_VOICES * SLOT_BYTES)
@@ -486,7 +486,7 @@ module VBlank
 
             @uses_envelopes = IR::Mixing.shapes_any_note?(program)
 
-            # The clock and the samples-a-frame are ONE decision, not two: the hardware eats a
+            # The clock and the samples-a-frame are one decision, not two: the hardware eats a
             # sample every time this timer overflows, so how many it eats in a frame is fixed
             # by the clock, and that is exactly how many the mix has to write. Asking for both
             # separately is how they came to disagree. See Timers.sample_clock.
@@ -496,7 +496,7 @@ module VBlank
             refuse_samples_not_whole_passes!
             @mix_buf0 = @memory.alloc_roomy(buffer_bytes)
             @mix_buf1 = @memory.alloc_roomy(buffer_bytes)
-            # WHAT GOES IN THE QUICK MEMORY is decided by how often the mix touches it. The
+            # What goes in the quick memory is decided by how often the mix touches it. The
             # running total of every voice — a halfword per output sample, read and written
             # again for every voice at every sample — goes there. The voice slots do not: the
             # mix reads a sounding voice's slot once a frame and writes it back once, so they
@@ -511,7 +511,7 @@ module VBlank
                                                        "sound, and one to count how much of it has played.")
           end
 
-          # THE LOTS EACH BUFFER CARRIES PAST ITS END: enough of the next buffer's start to cover
+          # The lots each buffer carries past its end: enough of the next buffer's start to cover
           # a hand-over LATE_ROOM late, rounded up to whole lots.
           def guard_lots = Mixer.guard_lots(@sample_clock)
 
@@ -526,7 +526,7 @@ module VBlank
           # The voice slots' bytes, with the slot nothing mixes where notes are +ranked+ (#ranks_voices?).
           def self.voice_slots_bytes(ranked) = (MAX_VOICES + (ranked ? 1 : 0)) * SLOT_BYTES
 
-          # HOW MUCH OF THE ROOMY MEMORY THE MIXER WILL KEEP FOR +program+, read off the program
+          # How much of the roomy memory the mixer will keep for +program+, read off the program
           # before it is lowered, for the build's memory check (Roomy.reserved_by_build): the two
           # output buffers and the voice slots, as #prepare_mixer claims them, or nought for a
           # program that mixes nothing. +ranked+ is whether a sound effect's recorded part ranks
@@ -538,7 +538,7 @@ module VBlank
             (2 * Memory.whole_words(buffer_bytes(clock))) + Memory.whole_words(voice_slots_bytes(ranked))
           end
 
-          # HOW FAR OFF THE NEXT SAMPLE HAS TO BE, in cycles, for the hand-over to read the count
+          # How far off the next sample has to be, in cycles, for the hand-over to read the count
           # and re-arm the DMA before it comes. That is about fifteen instructions, and 512 cycles
           # is several times what they take even from the cartridge at its slowest timing; a
           # clock too fast to leave that much of a sample clear gets three quarters of one
@@ -559,7 +559,7 @@ module VBlank
             emit_zero_region(@mix_buf1, buffer_bytes)
             @emitter.emit(ASM.load_immediate(ACC, 0))
             @primitives.store_var(ACC, MIX_FRONT)                  # ...playing buffer 0 first
-            # NOTHING HAS BEEN LOST YET, and this has to be written rather than assumed: the
+            # Nothing has been lost yet, and this has to be written rather than assumed: the
             # console's memory is not zero at power-on, so a counter left unwritten reads as
             # whatever was there and a game that dropped nothing would report rubbish.
             @primitives.store_var(ACC, DROPS)
@@ -586,7 +586,7 @@ module VBlank
 
             emit_find_lot_grid
 
-            # Now timer 0 = the sample clock, written as the PERIOD the clock was chosen as rather
+            # Now timer 0 = the sample clock, written as the period the clock was chosen as rather
             # than by asking for its rate back: going through a rate would divide and truncate
             # a second time, and land a cycle or two off the period a frame divides. The new
             # period is taken up at the next sample, without restarting anything.
@@ -599,7 +599,7 @@ module VBlank
             emit_copy_mix_routine_to_iwram
           end
 
-          # WHERE THE DMA'S LOTS FALL AGAINST THE SAMPLE COUNT — which of every sixteen samples
+          # Where the DMA's lots fall against the sample count — which of every sixteen samples
           # is the one the sound hardware asks for more on. The hand-over needs it to turn a
           # count of samples into a count of lots, and it is the one fact about the sound
           # hardware that cannot be written down ahead of time: the asking follows how full the
@@ -709,7 +709,7 @@ module VBlank
             end
           end
 
-          # HOW FAR BACK A VOICE GOES when it reaches the end of its recording, or 0 for one that
+          # How far back a voice goes when it reaches the end of its recording, or 0 for one that
           # plays once and stops. A sound asked to loop goes back to where the recording holds
           # from — which for a recording with no hold point is its very start, so the ordinary
           # loop is this same subtraction.
@@ -720,12 +720,12 @@ module VBlank
             held.positive? ? held : sample.length
           end
 
-          # THE FOUR NUMBERS AND WHERE THE SOUND STARTS, written onto a voice the game is about to
+          # The four numbers and where the sound starts, written onto a voice the game is about to
           # sound at +loudness+ (out of 512). A voice with no envelope writes 0 for the four, which
           # is what tells the pass before the mix to leave it alone — its gain is its loudness, and
           # moves only when the music volume does.
           #
-          # A SHAPED SOUND STARTS ITS SHAPE AS IT IS PLAYED (Reference::Mixer#start): the game plays
+          # A shaped sound starts its shape as it is played (Reference::Mixer#start): the game plays
           # in its pass, after the pass that moves the shapes and before the frame's mix, so one
           # started at nothing would be mixed once at nothing — a strike at full silent for a frame,
           # and a recording shorter than a frame never heard. So it starts one step up, at the level
@@ -754,7 +754,7 @@ module VBlank
             @emitter.emit(ASM.str_offset(scratch, slot, SLOT_GAIN))
           end
 
-          # A NOTE'S LOUDNESS HAS MOVED and the voice at +slot+ is to play it at +loudness+: the
+          # A note's loudness has moved and the voice at +slot+ is to play it at +loudness+: the
           # gain the mix reads becomes that loudness moved up into the gain's fraction — unless
           # the voice has a shape, whose pass before the mix works its gain out every frame.
           # Called only in a game that shapes notes; in one that shapes none the mix reads the
@@ -811,7 +811,7 @@ module VBlank
             end
           end
 
-          # THE GAME TOUCHES THE VOICE TABLE WITH INTERRUPTS HELD OFF. The screen's interrupt can
+          # The game touches the voice table with interrupts held off. The screen's interrupt can
           # take a voice for a song's note between any two instructions, so a slot `play` has
           # just seen free, or one `stop` has just seen is the game's, could be the song's by the
           # time the game writes to it — and the game would start its sound over a note, or cut
@@ -828,7 +828,7 @@ module VBlank
             @emitter.emit(ASM.store_halfword(3, TMP))
           end
 
-          # A NOTE OF A SONG'S RECORDED PART NEEDS A VOICE — the call the music player makes, from
+          # A note of a song's recorded part needs a voice — the call the music player makes, from
           # the screen's interrupt, with the part's mark in r8. Leaves the voice in r7.
           def emit_take_music_voice
             emit_call_voice_routine(MUSIC_VOICE)
@@ -845,7 +845,7 @@ module VBlank
             emit_call_voice_routine(MUSIC_VOICE_FIND)
           end
 
-          # THE CALLS ABOVE MADE FROM OUTSIDE THE SCREEN'S INTERRUPT, for the length of the block:
+          # The calls above made from outside the screen's interrupt, for the length of the block:
           # +call+ is handed each routine's label and writes the call. The routines sit inside the
           # interrupt's own routine, which may be in the quick memory while the code calling them
           # is in the cartridge, too far apart for a plain jump (see Audio#emit_sound_effect_step_routine).
@@ -867,7 +867,7 @@ module VBlank
             emit_music_voice_find_routine if @music_follows_level || @music_glides
           end
 
-          # A TUNE'S MARK COMES WITHOUT ITS RANK, and each routine below puts it on as it starts,
+          # A tune's mark comes without its rank, and each routine below puts it on as it starts,
           # in a game whose sound effects play recordings (see Audio#emit_song_mark for why it
           # is here and not at the places that call). A mark with a rank is an effect's, which
           # comes ranked already, and is left alone: every rank, one more than itself, sits
@@ -923,13 +923,13 @@ module VBlank
           # none: its last note ran out, and the mix retired it. Uses r0, r1, r7, and r12 for a
           # tune's mark that comes unranked (#emit_rank_song_mark).
           #
-          # A SHAPED NOTE IS NOT STOPPED HERE, it is only told to start falling. What ends it is
+          # A shaped note is not stopped here, it is only told to start falling. What ends it is
           # the pass before the mix, when its level has fallen away to nothing — which is the
           # whole point, because a note that stops leaves the speaker wherever the wave was and
           # that jump is a click. A voice with no envelope stops the moment it is told to, as it
           # always did.
           #
-          # A voice of the part's that is ALREADY falling is passed over: that is an earlier note
+          # A voice of the part's that is already falling is passed over: that is an earlier note
           # on its way out, and the one to let go of is the note sounding now.
           def emit_music_voice_off_routine
             e = @emitter
@@ -968,7 +968,7 @@ module VBlank
             e.emit(ASM.return)
           end
 
-          # WHICH VOICE A SONG'S NOTE GETS — one routine, placed inside the screen's interrupt
+          # Which voice a song's note gets — one routine, placed inside the screen's interrupt
           # (so it moves with it into the quick memory) and called by every recorded part.
           #
           # In one walk over the slots it looks for, in order of preference:
@@ -976,13 +976,13 @@ module VBlank
           #   1. the part's own voice, still sounding its last note with no shape to it — the new
           #      note takes it over;
           #   2. the first voice nobody is using;
-          #   3. the quietest voice whose note has ended and is falling away (a TAIL, below);
+          #   3. the quietest voice whose note has ended and is falling away (a tail, below);
           #   4. with none of those, the voice of the game's sound that has been playing longest —
           #      one that plays once before one that loops, since a loop never ends by itself.
           #      That is the rule for who gives way: a song keeps playing right, and a sound the
           #      game started a while ago is cut short.
           #
-          # A PART'S NOTE THAT HAS A SHAPE IS NOT TAKEN OVER. It is told its note has ended, and
+          # A part's note that has a shape is not taken over. It is told its note has ended, and
           # falls away on the voice it has while the new note takes another. Taking it over would
           # start the new recording from its top on that voice, and the old wave would stop dead
           # wherever it was — which is the click the shape is there to remove, put back one note
@@ -995,7 +995,7 @@ module VBlank
           # falling has a game sound in it. It runs in the interrupt, where the game cannot be in
           # the table — `play` and `stop` hold interrupts off while they are.
           #
-          # IN A GAME WHOSE SOUND EFFECTS PLAY RECORDINGS, a voice can be full of song and effect
+          # In a game whose sound effects play recordings, a voice can be full of song and effect
           # notes, so the rule goes on (see Mixer.ranked_owner):
           #
           #   5. with no game sound either, the voice of the lowest-ranked note ranked below this
@@ -1142,10 +1142,10 @@ module VBlank
             e.emit_branch(:b, onward)
           end
 
-          # ONE FRAME OF EVERY SOUNDING NOTE'S SHAPE — the pass that moves each voice's envelope
+          # One frame of every sounding note's shape — the pass that moves each voice's envelope
           # level on, emitted in the screen's own interrupt between the tune's frame and the mix.
           #
-          # WHY IT IS HERE AND NOT IN THE MIX. The four numbers move the level once a frame, so
+          # Why it is here and not in the mix. The four numbers move the level once a frame, so
           # working the level out per sample would be the same answer thousands of times over.
           # What the mix does per sample is only the slide toward it — one addition — which this
           # pass works out as the gain the frame should END at, less where the gain is now,
@@ -1153,12 +1153,12 @@ module VBlank
           # built: a frame always has the same number of samples, so sharing out is a multiply by
           # a number worked out ahead of time.
           #
-          # BETWEEN THE TUNE AND THE MIX, in that order, and both halves matter. After the tune,
+          # Between the tune and the mix, in that order, and both halves matter. After the tune,
           # so a note started this frame has climbed before anything is mixed and none of its
           # attack is lost. Before the mix, so the slice about to be built slides to the level
           # this frame is really at.
           #
-          # A NOTE'S FIRST FRAME DOES NOT SLIDE. It starts at the level its attack gives it,
+          # A note's first frame does not slide. It starts at the level its attack gives it,
           # the way it always did: the recording starts from its own beginning, so there is no
           # sound before it to be smooth with, and sliding up from nothing would soften the
           # strike of every drum and every plucked string.
@@ -1195,7 +1195,7 @@ module VBlank
             e.emit(ASM.cmp_imm(6, PHASE_CLIMBING))
             e.emit_branch(:bcond, holding, cond: :ne)
 
-            # Climbing: the attack is ADDED each frame until the note is as loud as it was asked
+            # Climbing: the attack is added each frame until the note is as loud as it was asked
             # to be, and then the note is up and holding. A level of nothing here is a note that
             # has only just started, since an attack adds at least one.
             e.emit(ASM.cmp_imm(2, 0))
@@ -1225,7 +1225,7 @@ module VBlank
             # Falling: the note has ended, so the level is multiplied down until there is none of
             # it left. Reaching nothing does not give the voice back on the same frame, and that
             # is deliberate: this frame is still mixed, now at no loudness at all, so what the
-            # speaker hears last is silence rather than whatever the wave was doing. THEN the
+            # speaker hears last is silence rather than whatever the wave was doing. Then the
             # voice goes back. A voice taken away while its gain is still up is the very click
             # all of this is here to remove.
             e.place_label(falling)
@@ -1238,7 +1238,7 @@ module VBlank
             e.place_label(write)
             e.emit(ASM.str_offset(2, 4, SLOT_LEVEL))
             e.emit(ASM.str_offset(6, 4, SLOT_PHASE))
-            # THE LOUDNESS THE FRAME ENDS AT: what the note asked for, scaled by the level, as a
+            # The loudness the frame ends at: what the note asked for, scaled by the level, as a
             # WHOLE number of 256ths. The level is a byte and the scale is out of 256, so the
             # level's own top bit is added back in: a full 255 counts as 256, exactly the loudness
             # asked for. The fraction of the product is dropped, the loudness's own half a 256th
@@ -1295,10 +1295,10 @@ module VBlank
           # has always read.
           def gain_field = @uses_envelopes ? SLOT_GAIN : SLOT_VOL
 
-          # THE HAND-OVER: point the DMA at the buffer the mix filled last frame, so it plays
+          # The hand-over: point the DMA at the buffer the mix filled last frame, so it plays
           # now. Which buffer is which is held in a hidden variable and flipped each frame.
           #
-          # WHY IT CANNOT SIMPLY POINT AT THE START. The DMA takes sixteen samples at a time,
+          # Why it cannot simply point at the start. The DMA takes sixteen samples at a time,
           # whenever the sound hardware asks, and the asking falls on a grid the sample clock
           # fixes. Its read position only ever moves forward: this re-arm is the one thing that
           # brings it back to a buffer. So between two re-arms it takes as many lots as grid
@@ -1310,7 +1310,7 @@ module VBlank
           # lot later than the last has taken a lot from past the end of the buffer; one that
           # lands a lot earlier has left the buffer's last lot unplayed. Either is a jump.
           #
-          # SO THE HAND-OVER COUNTS instead of trusting its timing. Timer 1 counts every sample
+          # So the hand-over counts instead of trusting its timing. Timer 1 counts every sample
           # the hardware has taken, and the grid of lots sits at a known place in that count
           # (MIX_PHASE), so the count gives exactly how many lots the DMA has taken, and so which
           # lot it takes next. A hand-over two lots late points the DMA two lots into the new
@@ -1324,7 +1324,7 @@ module VBlank
           # So the count is read only with #count_clearance to go before the next sample, and a
           # hand-over that finds the next one closer than that waits for it to pass.
           #
-          # Which lot a buffer is MEANT to start at is kept from one frame to the next and moves
+          # Which lot a buffer is meant to start at is kept from one frame to the next and moves
           # on a frame's worth of lots each time. When the count puts the DMA out of reach of
           # the buffer — the first hand-over of all, one later than the room a buffer carries, or
           # one EARLIER than the hand-over the counting started from — it starts again from where
@@ -1332,7 +1332,7 @@ module VBlank
           # started again by the next prompt one, so a game settles on its prompt hand-overs
           # within its first frames, and after that only a hand-over later than LATE_ROOM jumps.
           #
-          # STILL THE FIRST THING IN THE SCREEN'S INTERRUPT, before the tune and the note shapes
+          # Still the first thing in the screen's interrupt, before the tune and the note shapes
           # (the mix itself comes later still, as the next picture starts), which keeps a game asleep at the end of its frame at the same lot every
           # frame, and a busy one no later than it has to be. The cost is that a sound is heard at
           # the gap after it is mixed — every sound alike, so nothing moves against anything else.
@@ -1391,14 +1391,14 @@ module VBlank
             @primitives.store_var(1, MIX_LOT)
           end
 
-          # The per-frame refill: fill the buffer that is NOT playing with the next slice of
+          # The per-frame refill: fill the buffer that is not playing with the next slice of
           # mixed sound, which the next frame's hand-over plays.
           #
-          # EMITTED INSIDE AN INTERRUPT OF THE SCREEN'S, not in the game loop, and that is the
+          # Emitted inside an interrupt of the screen's, not in the game loop, and that is the
           # whole of what keeps sound whole. Which one is the display starting its first line,
           # not the gap between frames: the gap is where the game writes its sprites, and a
           # heavy mix there pushed those writes into the next picture (see GBA#emit_irq_handler).
-          # A game that bends a background a line at a time still mixes in the gap. This fills ONE FRAME of sound, and the
+          # A game that bends a background a line at a time still mixes in the gap. This fills one frame of sound, and the
           # hardware plays it on the sample clock — in real time, which has nothing to do with
           # how long a pass of the game loop takes. Called once per pass, a game whose pass
           # spans two frames handed the hardware a frame of sound every two:
@@ -1406,7 +1406,7 @@ module VBlank
           # was late. Called from the interrupt it is exactly in step with what plays it,
           # whatever the game is doing, with nothing to predict and no deficit to carry.
           #
-          # SAFE TO RUN FROM AN INTERRUPT, and both halves of that are worth writing down
+          # Safe to run from an interrupt, and both halves of that are worth writing down
           # because neither is obvious. The registers: the mix routine works in r0-r12 and lr,
           # and the dispatcher saves r4-r11 and lr while the BIOS saves r0-r3 and r12, so between
           # them every one is covered. The voice slots: `play` and `stop` hold interrupts off while
@@ -1414,7 +1414,7 @@ module VBlank
           # This can retire a voice but never start one; the music player, in the gap's interrupt
           # before this one, starts voices, and can take one of the game's (#emit_take_music_voice_routine).
           #
-          # THEN THE START OF WHAT IT MIXED is copied past the end of the buffer now playing, as
+          # Then the start of what it mixed is copied past the end of the buffer now playing, as
           # far as a late hand-over can reach (see #emit_mixer_handover): those lots are the ones
           # the DMA takes from there when the next hand-over is late, and they are the lots that
           # come next.
@@ -1433,7 +1433,7 @@ module VBlank
             @emitter.place_label(done)
           end
 
-          # THE MIX WAITS FOR THE GAME'S GAP WRITES. The mix is built in the display's line-match
+          # The mix waits for the game's gap writes. The mix is built in the display's line-match
           # interrupt at the first line of the picture (GBA#emit_irq_handler), so that the gap is
           # the game's. But a gap can run past its last line: a long copy, a long routine run once
           # a frame, a gap that started late. The game is then still writing its sprite table and
@@ -1454,7 +1454,7 @@ module VBlank
           # picture is torn either way, and the mix needs the rest of the picture to be done before
           # the next hand-over.
           #
-          # IT IS A COUNT, NOT A YES OR NO, because one gap can hold another. A timer's handler that
+          # It is a count, not a yes or no, because one gap can hold another. A timer's handler that
           # waits runs as the game wakes (FrameBoundaryCalls#emit_waiting_handlers), and so does a
           # routine run once a frame; when either waits, its own gap starts and ends inside the
           # frame's, and the frame's writes go on after it. Each wake counts one up and each written
@@ -1544,9 +1544,9 @@ module VBlank
           # The main volume the game named, as the Advance's three settings of it (MainVolume).
           attr_reader :main_volume
 
-          # WHICH BITS OF SOUNDCNT_H SEND THE RECORDED SOUND TO THE SPEAKERS: channel A at the
+          # Which bits of SOUNDCNT_H send the recorded sound to the speakers: channel A at the
           # main volume (all, or half), out to both, clocked by timer 0. They are asked for from
-          # outside because SOUNDCNT_H is a SHARED register — its low bits are the PSG's volume —
+          # outside because SOUNDCNT_H is a shared register — its low bits are the PSG's volume —
           # and whoever writes it whole has to put these back or the recordings stop (see
           # Audio#emit_enable_sound). Nothing at all for a program that plays no recording.
           def direct_sound_routing
@@ -1594,9 +1594,9 @@ module VBlank
           # bytes, passed in r0 — with the sum of every sounding voice, clamped to the 8-bit
           # range so loud moments don't wrap.
           #
-          # IN TWO PASSES, and that is most of what it costs. First each sounding voice adds
+          # In two passes, and that is most of what it costs. First each sounding voice adds
           # its next run of samples — scaled by its volume, stepped through the clip by its
-          # fixed-point STEP so a pitched voice reads faster or slower — into a halfword
+          # fixed-point step so a pitched voice reads faster or slower — into a halfword
           # running total per output sample, kept in the quick memory; the voice is advanced,
           # and looped or retired at its end. Then one pass turns each total into the byte the
           # sound hardware plays, clamping it there, and clears the total for next frame.
@@ -1629,7 +1629,7 @@ module VBlank
           # r0/r1 scratch. The last pass: r6 = the byte being written, r7 = its total, r4 =
           # -128 (the clamp floor; 127, the ceiling, rides in the instruction), r5 = 0.
           #
-          # A GAME THAT SHAPES A NOTE slides each voice's gain across the frame (see SLOT_RAMP),
+          # A game that shapes a note slides each voice's gain across the frame (see SLOT_RAMP),
           # which is one more register than there is — so lr carries the slide, and is kept on
           # the stack beside the destination until the routine returns through it. The gain in
           # r12 then keeps its fraction, and the sample is the multiply's second operand: the
@@ -1668,7 +1668,7 @@ module VBlank
             e.emit(ASM.mov_reg(7, 3))                         # r7 = the first total
             e.emit(ASM.load_immediate(2, @mixer_spf))         # r2 = output samples to fill
 
-            # SAMPLES_A_PASS SAMPLES EACH TIME ROUND, not one. Counting down and jumping back is
+            # SAMPLES_A_PASS samples each time round, not one. Counting down and jumping back is
             # two instructions, and the jump is the dearest thing in the loop, so done once for
             # every SAMPLES_A_PASS samples it costs that much less. A frame's samples are always
             # whole lots of the sound engine's, so they divide with nothing over (and the build
@@ -1722,7 +1722,7 @@ module VBlank
             e.emit(ASM.subs_imm(5, 5, 1))
             e.emit_branch(:bcond, voice, cond: :ne)
 
-            # NOTHING SOUNDED: every total is still 0, so the frame is silence — written a word
+            # Nothing sounded: every total is still 0, so the frame is silence — written a word
             # at a time, which is a quarter of the stores the totals pass would make. A game is
             # silent more often than not, so this is the frame it has most. (The buffer is
             # whole words long, so rounding up to one writes nothing that is not its own.)
@@ -1828,7 +1828,7 @@ module VBlank
             @emitter.place_label(miss)
           end
 
-          # WITH EVERY VOICE BUSY, A SONG'S NOTE THAT IS FALLING AWAY GIVES WAY to the game's sound,
+          # With every voice busy, a song's note that is falling away gives way to the game's sound,
           # the quietest of them first — the same rule a song's own note keeps
           # (#emit_take_music_voice_routine). A note falling away is on its way out, and it holds a voice
           # only because a shaped note keeps its voice to fade on; losing the game a sound it
@@ -1869,7 +1869,7 @@ module VBlank
             e.emit_branch(:bcond, taken, cond: :ne)
           end
 
-          # A SOUND WAS JUST LOST: add one to the count, and remember how the voices were being
+          # A sound was just lost: add one to the count, and remember how the voices were being
           # split if this is the worst it has been.
           #
           # Emitted on the miss path only, so a game that never runs out of voices pays nothing
@@ -1877,11 +1877,11 @@ module VBlank
           # which is the cheapest moment there is to spend a few dozen instructions.
           #
           # The music's share is counted in a second walk of its own rather than as the search
-          # above goes, because that search STOPS at the first free slot: on every play that
+          # above goes, because that search stops at the first free slot: on every play that
           # succeeds it would have counted part of the table and called it the whole. Here the
           # table is known to be full, so the walk is complete by construction.
           #
-          # A slot's SOUNDING word is 0 idle, OWNER_GAME the game's, and higher for a part of a
+          # A slot's sounding word is 0 idle, OWNER_GAME the game's, and higher for a part of a
           # song or an effect — so "above OWNER_GAME" is "the music's", in one compare.
           # Uses r0/r1/r2 and r12, the same registers the search already spends.
           def emit_count_dropped_sound
