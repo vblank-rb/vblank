@@ -31,7 +31,7 @@ module VBlank
     # Otherwise the menu plays. LOAD ROM asks for a file, and the file is refused unless it is a
     # release the game reads; the release's unpacking plays handed the bytes that were checked, and
     # what it wrote, after the header for the file's SHA-1, is the pack, written to the folder and
-    # handed to the game. Settings opens the window's settings, and the menu plays again. A pack for
+    # handed to the game. SETTINGS opens the window's settings, and the menu plays again. A pack for
     # another build of the game, or in a format this build does not read, fails the check, so the
     # menu asks for the copy again.
     #
@@ -220,8 +220,8 @@ module VBlank
       Rows = Data.define(:title, :needs, :first_line, :step)
 
       # The lines of a first screen, top to bottom, for what a game +given+ (a DSL::ShellScreen):
-      # LOAD ROM, the game's lines that go under it, settings, and the game's lines under that.
-      # LOAD ROM and settings keep their numbers whatever is added, since three runtimes read them.
+      # LOAD ROM, the game's lines that go under it, SETTINGS, and the game's lines under that.
+      # LOAD ROM and SETTINGS keep their numbers whatever is added, since three runtimes read them.
       def self.menu_lines(given)
         own = given.lines.each_with_index.map do |line, at|
           [line.under, MenuLine.new(words: line.words, number: SETTINGS + 1 + at, scene: line.shows, source: line.source)]

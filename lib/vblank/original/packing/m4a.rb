@@ -13,12 +13,12 @@ module VBlank
       #   copy.unpack_m4a_track at: song, into: pack[:drums], track: 6, kind: 4    # ...on one voice only
       #   copy.unpack_m4a_track at: song, into: pack[:beat], track: 5, kit_from: 8 # ...a kit's keys from 8
       #   copy.unpack_m4a_length at: song, into: pack[:title_length]               # length, loop frame
-      #   copy.unpack_m4a_recording at: voice, into: pack[:piano]                  # a recording's samples
-      #   copy.unpack_m4a_voice at: voice, into: pack[:piano_settings]             # its rate, hold (or none), length, envelope
+      #   copy.unpack_m4a_recording at: VOICE, into: pack[:piano]                  # a recording's samples
+      #   copy.unpack_m4a_voice at: VOICE, into: pack[:piano_settings]             # its rate, hold (or none), length, envelope
       #   copy.unpack_m4a_voice at: WAVE_VOICE, into: pack[:pattern]               # the wave voice's pattern, sixteen bytes
       #   copy.unpack_m4a_voiced_track at: song, into: pack[:lead], track: 1       # notes with their voices' settings
       #
-      # SONG is where the song's header is in the copy, and voice where a voice's twelve bytes are (the
+      # SONG is where the song's header is in the copy, and VOICE where a voice's twelve bytes are (the
       # song's voice group, then 12 bytes a voice, or a voice of a drum kit or key split; a routine
       # works these out with `copy.word`, each a cartridge address, 0x08000000 the copy's first byte).
       # A port that keeps its songs another way writes its own unpacking (original.md), and nothing
@@ -32,7 +32,7 @@ module VBlank
       # Time is in frames. The driver adds the tempo (beats a minute, times 2) to a count each frame
       # and plays a tick of every track each time the count reaches 150, keeping what is left; a song
       # starts at 150, a tick a frame, and its first tick plays on its first frame. So a tick lands on a
-      # frame no fixed tick rate gives, and every track is walked tick by tick, since a tempo in any
+      # frame no fixed tick rate gives, and every track is walked tick by tick, since a TEMPO in any
       # track moves all of them. Each record's tick is that frame, from the song's start, and its
       # length the frames to the tick that lets it go; the song's Score plays a tick a frame
       # (`tempo: 3600, ticks_per_beat: 1`).
@@ -43,7 +43,7 @@ module VBlank
       # in ticks, as the driver's song data does, and plays the song from its start three times:
       #
       # 1. Until every track still playing has jumped back once: where each jumps back to (its
-      #    loop's start) and on which tick (its loop's end). A track that ends (fine) falls silent
+      #    loop's start) and on which tick (its loop's end). A track that ends (FINE) falls silent
       #    when it does, or when its last note ends if that is later.
       # 2. Until every track has played its loop twice: the notes each strikes the first time round,
       #    from the tick it first reaches its loop's start, and the second time, from its first jump,
@@ -62,7 +62,7 @@ module VBlank
       #
       # A track's notes are then walked once more, to the song's length. The notes from the loop
       # frame play over and over as the driver plays them; a MEMACC counting rounds plays each as it
-      # falls. A song no track jumps back in ends when its last track ends (fine), and has no loop
+      # falls. A song no track jumps back in ends when its last track ends (FINE), and has no loop
       # frame (NO_LOOP). A note sounding as the song comes round is let go there, as Score plays one
       # (sound.md).
       #
@@ -74,10 +74,10 @@ module VBlank
       # the slots room: a port sizes a track's slot, and a Score's `longest:`, for the rounds its
       # song comes round in.
       #
-      # Each note, as ply_note strikes it: its voice is the track's (voice), or for a drum kit the
+      # Each note, as ply_note strikes it: its voice is the track's (VOICE), or for a drum kit the
       # kit's voice of the note's key, and for a key split the split's voice its table names for the
       # key; a split or kit inside one plays nothing. Its key is the note's key (a drum kit's: its
-      # voice's own) moved by KEYSH, and by tune and bend times BENDR in whole keys as TrkVolPitSet
+      # voice's own) moved by KEYSH, and by TUNE and BEND times BENDR in whole keys as TrkVolPitSet
       # works them out (what is left of a key is kept only in a voiced record, below). Its
       # loudness is the note's velocity and the track's VOL and PAN, as ChnVolSetAsm works out its
       # two sides:
@@ -96,7 +96,7 @@ module VBlank
       # and on the noise voice at once is two parts, one each.
       #
       # The instrument byte names which of the part's instruments a recorded note plays, so one track
-      # that changes voice must give each voice it plays a number of its own. A voice the track
+      # that changes VOICE must give each voice it plays a number of its own. A voice the track
       # names itself is its number in the song's voice group, VOICE's byte, 0 to 127. A drum kit
       # numbers its voices by key and a key split by its own table's entry, each from 0 as the group
       # does, so each is moved to a range of its own: a kit's voice for key k is `kit_from:` + k, and
@@ -116,7 +116,7 @@ module VBlank
       # - where it sits between the speakers, from its two sides (PAN, and a drum kit voice's own
       #   pan): Original::PackNote's shade, which the Super Nintendo and the PlayStation play where
       #   it sits and the Advance's one mix from both (Walk#emit_recorded_settings);
-      # - a pitch between keys, where tune and bend leave part of a key, as the record's hz, read as
+      # - a pitch between keys, where TUNE and BEND leave part of a key, as the record's hz, read as
       #   MidiKeyToFreq reads it, on a straight line between the two keys (Walk#emit_pitch_hz);
       # - a change while it sounds: a KEYSH, BEND, BENDR, TUNE, VOL or PAN while the part's newest note
       #   sounds moves its pitch or its sides, as the driver moves every sounding note of the track, so
@@ -140,7 +140,7 @@ module VBlank
         # The bits of a cartridge address that are a place in the copy, 0x08000000 its first byte.
         ADDRESS_BITS = 0x01FF_FFFF
         MOST_TRACKS = 16
-        # The count each tick takes from the tempo's, and a song's tempo before its first tempo.
+        # The count each tick takes from the tempo's, and a song's tempo before its first TEMPO.
         TEMPO_COUNT_PER_TICK = 150
         STARTING_TEMPO = 150
         # The most frames a song is walked for: a record's tick and length are two bytes.
@@ -173,7 +173,7 @@ module VBlank
         # The loop frame of a song that ends (unpack_m4a_length).
         NO_LOOP = 0xFFFF
 
-        # The commands (MPlayMain; gMPlayJumpTable as MPlayExtender sets it). Each code from fine
+        # The commands (MPlayMain; gMPlayJumpTable as MPlayExtender sets it). Each code from FINE
         # to EOT is a command; below them a wait, above them a note.
         WAIT = 0x80
         FINE = 0xB1
@@ -203,9 +203,9 @@ module VBlank
         DROPPED_ONE_BYTE = [PRIO, LFOS, LFODL, MOD, MODT].freeze
         # The commands that move the pitch or the sides of a track's notes, those sounding too (TrkVolPitSet).
         SOUNDING_CHANGE_COMMANDS = [KEYSH, BEND, BENDR, TUNE, VOL, PAN].freeze
-        # A byte below this repeats the command before it, from voice on (the running status).
+        # A byte below this repeats the command before it, from VOICE on (the running status).
         RUNNING_STATUS_FROM = VOICE
-        # The middle of PAN, BEND and tune, and BENDR at a track's start.
+        # The middle of PAN, BEND and TUNE, and BENDR at a track's start.
         CENTER = 0x40
         STARTING_BEND_RANGE = 2
         STARTING_VOLUME_X = 64
@@ -225,7 +225,7 @@ module VBlank
         OWN_KEY = 60
         MOST_KEY = 127
         # The instrument number a drum kit's or a key split's first voice is given where the port
-        # sets no kit_from: or split_from:, past the 128 voices a voice names (0 to 127).
+        # sets no kit_from: or split_from:, past the 128 voices a VOICE names (0 to 127).
         KIT_AND_SPLIT_NUMBERS_FROM = 128
 
         # gClockTable: the ticks of each wait and each note length.
@@ -606,7 +606,7 @@ module VBlank
           # Where the tempo in force as a time round starts is folded in: no note's offset.
           TEMPO_IN_FORCE = -0x4_0000
 
-          # REPEATS: a tempo of the first track this tick, folded into the time round it falls in after
+          # REPEATS: a TEMPO of the first track this tick, folded into the time round it falls in after
           # that round's start, as a note apart from every note (a sound under 0).
           def emit_lead_tempo_change
             tick = var(:tick)
@@ -741,7 +741,7 @@ module VBlank
 
           # One tick of every track, in order (MPlayMain), and the song's end once none plays on. A
           # track counts as playing on a tick it starts playing, so the song stops on the tick after
-          # its last track's fine, as the driver stops it. Walking REPEATS, a track's notes still
+          # its last track's FINE, as the driver stops it. Walking REPEATS, a track's notes still
           # sounding as it first jumps back are the first of its second time round, and the first
           # track's tempo as each time round starts is folded in after its reads.
           def emit_tick
@@ -818,7 +818,7 @@ module VBlank
             end
           end
 
-          # A command of fine to EOT: what each does to the track (the ply_ routines).
+          # A command of FINE to EOT: what each does to the track (the ply_ routines).
           def emit_command(t, command)
             place = var(:at)
             arg = var(:arg)
@@ -919,7 +919,7 @@ module VBlank
           end
 
           # PATT (ply_patt): the place after the pattern's address kept on the track's stack and the
-          # pattern played, three deep at most; a fourth is fine.
+          # pattern played, three deep at most; a fourth is FINE.
           def emit_pattern(t)
             level = track_list(:level)
             place = var(:at)
@@ -1006,7 +1006,7 @@ module VBlank
           end
 
           # XCMD (ply_xcmd): a number, then what it changes in the track's voice, none of which the
-          # records hold. One the driver's table sends to fine stops the track.
+          # records hold. One the driver's table sends to FINE stops the track.
           def emit_xcmd(t)
             place = var(:at)
             which = var(:arg)
@@ -1049,7 +1049,7 @@ module VBlank
             emit_release(newest) if newest >= 0
           end
 
-          # A note (ply_note), +length+ the place of its length in clocks: then up to three bytes under
+          # A note (ply_note), +length+ the place of its length in CLOCKS: then up to three bytes under
           # 0x80, its key, its velocity and ticks added to its length, each kept from the note before
           # where it is left out.
           def emit_note(t, length)
@@ -1221,8 +1221,8 @@ module VBlank
           RECORD_HZ = 22
 
           # A recorded note's speakers and pitch, into +shade+, +hz+ and +names+: where it sits
-          # between the speakers (#emit_shade), and a pitch between keys (#emit_pitch_hz) where tune
-          # and bend leave one, or a key past 127, which the key byte cannot name. A recording played
+          # between the speakers (#emit_shade), and a pitch between keys (#emit_pitch_hz) where TUNE
+          # and BEND leave one, or a key past 127, which the key byte cannot name. A recording played
           # at a fixed rate has no pitch to move.
           def emit_recorded_settings(t, shade, hz, names)
             emit_shade(var(:right), var(:left), shade, names)
@@ -1299,7 +1299,7 @@ module VBlank
           end
 
           # A pitch, vol or pan command while the part's note sounds (keysh, bend, bendr, tune, vol,
-          # pan): the driver moves the track's sounding notes too (MPlayMain calls MidiKeyToFreq and
+          # PAN): the driver moves the track's sounding notes too (MPlayMain calls MidiKeyToFreq and
           # ChnVolSetAsm for each of them after TrkVolPitSet), and a part sounds its newest, so that one
           # is changed, with a gliding record (Original::PackNote's GLIDES: `glides: true`) at its pitch,
           # loudness and side now: the key, the hz where it is between keys, the two sides added, and the
@@ -1407,7 +1407,7 @@ module VBlank
           DUTY_EVERY_FRAME = 0x55
           SWELLS = 8
 
-          # TrkVolPitSet's keyM added to +key+, held to 0 and up: KEYSH whole, and tune plus bend
+          # TrkVolPitSet's keyM added to +key+, held to 0 and up: KEYSH whole, and TUNE plus BEND
           # times BENDR in 64ths of a key, taken down to the whole key below.
           def emit_key_moved(t, key)
             moved = var(:moved)

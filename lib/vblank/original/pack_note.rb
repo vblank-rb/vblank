@@ -41,7 +41,7 @@ module VBlank
     #
     # A note with its voice's settings (`slots.voiced_notes`) is thirty-two bytes: the twelve above,
     # then what else a Score::Note can say of its voice, as a sound driver sets them for each note
-    # it strikes. Each is the note's only where bytes 20 and 21 name it (a bit of names), and else
+    # it strikes. Each is the note's only where bytes 20 and 21 name it (a bit of NAMES), and else
     # the part's own:
     #
     #   12-13 pitch number the voice's own tuning, 0 to 2047, in place of the key's pitch (a
@@ -63,7 +63,7 @@ module VBlank
     #                      signed byte from -64 (the left alone) to 64 (the right alone): `pan:`
     #                      of the shade over 64. It is the note's in place of byte 7's speaker,
     #                      on any part: a recorded part too
-    #   20-21 names        which of these the note names, a bit each (names), and carries
+    #   20-21 names        which of these the note names, a bit each (NAMES), and CARRIES
     #   22-24 hz           a pitch between keys, in 16ths of a hertz, on a part that plays a
     #                      recording or the noise voice (a Score::Note's `hz:` of this over 16), in
     #                      place of the key's pitch; more than 0 and 524,288 Hz at most. The key byte
@@ -155,7 +155,7 @@ module VBlank
       end
       private_class_method :read
 
-      # The bytes after a record's first twelve for +settings+, a Hash of what of names a note
+      # The bytes after a record's first twelve for +settings+, a Hash of what of NAMES a note
       # names (each the number its bytes keep, the hz in 16ths), `carries: true` and `glides:
       # true`. For a port's tests, and a routine of Ruby that writes a slot whole.
       def self.voiced_bytes_of(settings)

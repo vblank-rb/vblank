@@ -28,10 +28,10 @@ module VBlank
     # The routine itself does not change for any of that. What a shell must still add is playing it
     # inside the shipped game before the game, and keeping the pack it wrote.
     #
-    # What is in it. The copy is a table of bytes (copy), read from the file. The pack is one list of
+    # What is in it. The copy is a table of bytes (COPY), read from the file. The pack is one list of
     # bytes (BYTES), every slot in it one after another in the pack's order (#places), as the pack
     # file keeps them.
-    # The slots copied as they are (`at:`) are copied first, then the routine runs, then finished is
+    # The slots copied as they are (`at:`) are copied first, then the routine runs, then FINISHED is
     # set and the program halts. The building blocks (CopyReader, Packing::BlockKit) add what they
     # write to BYTES_DONE as they go and wait for the next frame every so often, so a shell can show
     # how far the unpacking has got. The first thing that goes wrong (Fault) is kept in the FAULT_

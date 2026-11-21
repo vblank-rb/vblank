@@ -16,7 +16,7 @@ module VBlank
     # test/interpreter/vblank/original/test_pack_library_left_out.rb holds the list to that: it
     # builds and plays made-up routines every way a build plays one, and fails if a left-out file
     # ran, was read, defined a value or a class the code that ran names, or changes a class the rest
-    # of the library opens. A file it names goes in kept, or its folder comes off the list.
+    # of the library opens. A file it names goes in KEPT, or its folder comes off the list.
     #
     # Why not record which files a build runs and key on those? Ruby says which methods ran but not
     # which constants they read, so a table changed in a file whose methods never ran would hit; the
@@ -54,7 +54,7 @@ module VBlank
       ].freeze
 
       # The library under +root+ (lib, holding vblank.rb and vblank/), leaving out +left_out+ but
-      # +kept+, both as LEFT_OUT and kept are written.
+      # +kept+, both as LEFT_OUT and KEPT are written.
       def initialize(root: VBlank.root.join("lib"), left_out: LEFT_OUT, kept: KEPT)
         @root = root.to_s
         @left_out = left_out
