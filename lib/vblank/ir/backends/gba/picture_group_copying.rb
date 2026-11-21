@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # BRINGING A SET OF PICTURE GROUPS' GROUPS UP, on the console (see GroupedPictures).
+        # Bringing a set of picture groups' groups up, on the console (see GroupedPictures).
         #
         # `show` only writes down which groups the game wants up. Between frames, after the
         # sprites are written, the set's routine copies in the pictures of each group that is
@@ -61,7 +61,7 @@ module VBlank
             @plans.each_value { |plan| @lowering.statement(Build.call(plan.routine)) }
           end
 
-          # THE ROUTINE OF ONE SET. A set of a scene's own does nothing while another scene's
+          # The routine of one set. A set of a scene's own does nothing while another scene's
           # sprite pictures are up, since its room is theirs then.
           def emit_routine(plan)
             return emit_bring_groups_up(plan) unless plan.scene
@@ -69,19 +69,19 @@ module VBlank
             @scene_entry.emit_if_scene_up(:art, plan.scene) { emit_bring_groups_up(plan) }
           end
 
-          # AT POWER-ON no group is wanted and none is up, whatever the memory held: the game names
+          # At power-on no group is wanted and none is up, whatever the memory held: the game names
           # which it wants before its sprites are first drawn.
           def emit_clear_groups_at_power_on
             @plans.each_value { |plan| emit_forget(plan.shown + plan.up) }
           end
 
-          # ON A CHANGE OF SCREEN no group's pictures are in sprite memory, and the groups the game
+          # On a change of screen no group's pictures are in sprite memory, and the groups the game
           # wants are copied in again in the gap the sprites are next written in.
           def emit_forget_every_set_up
             @plans.each_value { |plan| emit_forget(plan.up) }
           end
 
-          # AS A SCENE TAKES OVER none of its own groups is up, since another scene's pictures were
+          # As a scene takes over none of its own groups is up, since another scene's pictures were
           # in their room. The groups it wants are still the ones it wanted as it left, as the
           # interpreter has it, and they are copied in again in the gap its sprites are next written in:
           # a scene given the screen back draws its sprites as they were left, and a scene that

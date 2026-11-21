@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # WHERE A CHECKED BUILD KEEPS HOW THE RUN STANDS, by the names every console's reader asks
+        # Where a checked build keeps how the run stands, by the names every console's reader asks
         # for them by (Backends::CartridgeHeadlessRun): how many passes have ended, which one the
         # screen shows, whether the game waits at the end of one, how it stands and what went wrong.
         # The Color's runtime keeps these in every cartridge (GBC::Runtime::Frame); the Advance's
@@ -15,7 +15,7 @@ module VBlank
             # What went wrong, by the number every console's runtime keeps it by.
             include CartridgeFaults
 
-            # How the game stands, in STATE.
+            # How the game stands, in state.
             RUNNING = 0
             HALTED = 1
             WENT_WRONG = 2
@@ -45,7 +45,7 @@ module VBlank
           end
         end
 
-        # THE BOOKKEEPING A CHECKED BUILD EMITS (Runtime::Frame): at power-on, at the end of each pass,
+        # The bookkeeping a checked build emits (Runtime::Frame): at power-on, at the end of each pass,
         # where the game halts and where a list is read past its end. Each word is a variable of the
         # build's own, placed as every variable is, and the two longer records are kept at the far
         # end of the quick memory.
@@ -114,13 +114,13 @@ module VBlank
             emit_word(Frame::WAITING, 0)
           end
 
-          # THE GAME HALTS: marked so, its last picture shown, and the end marked as on the screen.
+          # The game halts: marked so, its last picture shown, and the end marked as on the screen.
           def emit_halt
             emit_word(Frame::STATE, Frame::HALTED)
             emit_jump_far(stopping_label)
           end
 
-          # A LIST READ OR WRITTEN PAST ITS END stops the game, as the interpreter stops it: r0 holds
+          # A list read or written past its end stops the game, as the interpreter stops it: r0 holds
           # the index, which is checked unsigned so a negative one is caught too, and +length+ is the
           # variable that holds how many items the list has. +place+ is where the list is kept, which
           # names it to the reader. r1 is spent; the read or write after loads what it needs again.
