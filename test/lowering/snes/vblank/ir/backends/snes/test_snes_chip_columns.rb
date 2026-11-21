@@ -98,7 +98,7 @@ class TestSNESChipColumns < Minitest::Test
     assert_operator run[:step], :>=, 5, "five passes or more were checked"
   end
 
-  # A VIEW WITH BLACK ABOVE AND BELOW IT has the screen switched off there (Runtime::Letterbox),
+  # A view with black above and below it has the screen switched off there (Runtime::Letterbox),
   # and what is checked is that nobody can tell: a view 64 high whose top moves every pass, so the
   # lines kept on change with it, cleared to blue on some passes, where no line may go off, and
   # left uncleared on others, where the last pass's walls stay on the screen.

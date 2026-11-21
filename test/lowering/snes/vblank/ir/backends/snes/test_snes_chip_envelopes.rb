@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# AN INSTRUMENT GIVEN THE SOUND CHIP'S OWN ENVELOPE BYTES (Audio::SNESEnvelope) has them written to
+# An instrument given the sound chip's own envelope bytes (Audio::SNESEnvelope) has them written to
 # its voice unchanged. Read on the cartridge's own sound chip in the emulator: the voice's ADSR1,
 # ADSR2 and GAIN registers hold the bytes the instrument was given, its volume registers hold the
 # note's loudness whole while the chip moves the level itself (ENVX, which only the chip writes),
@@ -102,7 +102,7 @@ class TestSNESChipEnvelopes < Minitest::Test
     assert_equal [0x00, 0x00, 0x7F], envelope_bytes(first_voice_registers(song_game(ADSR, tune), frames: 10))
   end
 
-  # ONE INSTRUMENT, EVERY SHAPE: a part or a note given the chip's bytes has them written for its
+  # One instrument, every shape: a part or a note given the chip's bytes has them written for its
   # notes, whatever its instrument was declared with.
   private def tune_of(*parts) = Score.new(tempo: 150, length: 90, plays_once: true, parts: parts)
 

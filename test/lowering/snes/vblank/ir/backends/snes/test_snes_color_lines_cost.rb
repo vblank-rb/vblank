@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# WHAT CHANGING ONE LIST OF COLOURS COSTS A SUPER NINTENDO, measured in the emulator. The cartridge keeps
+# What changing one list of colours costs a Super Nintendo, measured in the emulator. The cartridge keeps
 # the colour memory's 512 bytes in work RAM and sends them in the blank (Runtime::Tint). A list told
 # other colours changes one palette of sixteen, so it must send that palette and not the 512 bytes, and
 # under a fade in force it must move that palette's colours through the fade and not every colour on
