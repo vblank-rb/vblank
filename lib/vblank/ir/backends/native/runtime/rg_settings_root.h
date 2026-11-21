@@ -1,5 +1,5 @@
 /*
- * WHERE A PLAYER'S SETTINGS FOLDERS ARE. Settings are something a person keeps and looks after, so
+ * Where a player's settings folders are. Settings are something a person keeps and looks after, so
  * they go where that person's computer keeps such things, not with a game's saves: the folder the
  * player named with --config-dir, or vblank's folder in $XDG_CONFIG_HOME, or on Linux in ~/.config.
  * The XDG rules say a path that does not start from the root is to be ignored. A Mac or Windows

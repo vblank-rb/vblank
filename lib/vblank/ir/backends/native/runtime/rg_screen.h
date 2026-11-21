@@ -101,7 +101,7 @@ void rg_scene_redraw_sprites(int32_t brings_scenery);
  * of the others is its own. */
 static inline int32_t rg_place_of_choice(int32_t which, int32_t others) { return which >= 0 && which < others ? which + 1 : 0; }
 
-/* TILES AND PICTURES THE GAME PAINTS FROM A LIST (a run: see rg_game_tile_runs). A run takes what
+/* Tiles and pictures the game paints from a list (a run: see rg_game_tile_runs). A run takes what
  * its list holds now: tile k is the 32 bytes from k × 32, each byte two pixels with the left one
  * in the low four bits, each four bits a place in the run's colors, and place 0 see-through. A
  * slot the game never filled reads as 0. Until its first copy a run shows nothing at all.
@@ -111,7 +111,7 @@ void rg_tiles_copy(int32_t run, const rg_list *list);
 void rg_tile_pose_load(int32_t run, const int32_t *pieces, int32_t piece_count, const void *table, int32_t kept,
                        int32_t at, int32_t to, int32_t count);
 
-/* A SEE-THROUGH LAYER is mixed with what is behind it as the picture is painted: so much of the
+/* A see-through layer is mixed with what is behind it as the picture is painted: so much of the
  * layer, so much of what is already there (IR::SeeThrough). How much is two amounts the game
  * may work out as it runs, so the picture asks the game for them when it needs them, by calling
  * rg_game_see_through_amounts with one layer in mind. The game answers for the layer that is
@@ -140,7 +140,7 @@ static inline int32_t rg_pick_color(int32_t showing, int32_t color, int32_t pick
 void rg_screen_frame_ended(void);
 void rg_screen_frame_started(void);
 
-/* The picture as it is SHOWN, rebuilt first if a rebuild is owed: RG_SCREEN_WIDTH times
+/* The picture as it is shown, rebuilt first if a rebuild is owed: RG_SCREEN_WIDTH times
  * RG_SCREEN_HEIGHT colors, row by row, with the fade or tint in force mixed in. */
 const uint16_t *rg_screen_shown(void);
 
@@ -150,7 +150,7 @@ const uint16_t *rg_screen_shown(void);
  * RG_GAME_TOP). The fade and tint are the game's screen's alone, as on the cartridge. */
 const uint16_t *rg_screen_framed(void);
 
-/* The same page as it is STORED: no window moved over it, no fade or tint. What a test counts
+/* The same page as it is stored: no window moved over it, no fade or tint. What a test counts
  * drawn pixels in; a player never sees it. */
 const uint16_t *rg_screen_stored(void);
 
@@ -217,7 +217,7 @@ extern const int32_t rg_game_sprites_in_front[];
 #define RG_NO_NAME (-1)
 extern const int32_t rg_game_sprite_names[];
 extern const int32_t rg_game_image_pictures[];
-/* A SPRITE IN BLOCKS is put into them a box at a time, and the boxes are the ones a console
+/* A sprite in blocks is put into them a box at a time, and the boxes are the ones a console
  * draws it as: a pose trimmed to what it draws, a big picture cut into pieces (Backends::SpriteCut,
  * which the build asks). For each sprite, by its number, rg_game_sprite_blocks is RG_NOT_IN_BLOCKS
  * for one the game leaves as drawn whatever the size, or where its boxes start in
@@ -228,7 +228,7 @@ extern const int32_t rg_game_image_pictures[];
 #define RG_NOT_IN_BLOCKS (-1)
 extern const int32_t rg_game_sprite_blocks[];
 extern const int32_t rg_game_sprite_boxes[];
-/* THE PIECES A CONSOLE'S SPRITE TABLE HOLDS each image as, for a console that draws only so many
+/* The pieces a console's sprite table holds each image as, for a console that draws only so many
  * on a line or on the screen (RG_SPRITE_PIECES_A_LINE, RG_SPRITE_PIECES_A_SCREEN;
  * Backends::SpriteLines). The first number is how many images are listed; the second how far past
  * the screen's left or top edge a piece still takes an entry of the table, 0 for its own width or

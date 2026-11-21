@@ -1,5 +1,5 @@
 /*
- * WHICH PLAYER EACH GAMEPAD AND KEY IS, in the desktop window (rg_sdl.c). A game for more than
+ * Which player each gamepad and key is, in the desktop window (rg_sdl.c). A game for more than
  * one player reads player 2, 3 and 4's buttons (`held(:left, player: 2)`), so the window gives
  * those players something to press. Only a game whose `players:` seats two or more is played this
  * way (rg_seats_several_players); any other plays as it always did, every gamepad and key player 1's,

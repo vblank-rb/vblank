@@ -4,13 +4,13 @@
  *   ./pong                               play it
  *   ./pong --headless FRAMES             the same program with no window (see rg_headless.c)
  *   ./pong --trace 2> buttons.log        play it, and write down what the window made of the buttons
- *   ./pong --scripted-keys FRAMES < keys play FRAMES frames with keys pressed from a script (tests)
+ *   ./pong --scripted-keys FRAMES < keys play frames frames with keys pressed from a script (tests)
  *   ./pong --frame-times                 play it, and say at the end how evenly its pictures were shown
  *   ./pong --refresh-rate 144            choose its pacing as for a monitor of that rate (this one still
  *                                        refreshes at its own, so a rate above it plays the game slow)
  *   ./pong --counted-clock               pace by a clock that counts its waits and never sleeps (tests)
  *   ./pong --save-file my.sav            keep the game's save in that file, in place of the usual one
- *   ./pong --settings-file my.txt        read and write the window's settings (see THE SETTINGS) in that
+ *   ./pong --settings-file my.txt        read and write the window's settings (see the settings) in that
  *                                        file alone, in place of the usual ones
  *   ./pong --config-dir DIR              keep the settings files in that folder, in place of the usual one
  *   ./pong --usual-settings              with --scripted-keys, use the usual settings files as a player's run does
@@ -20,7 +20,7 @@
  *   ./pong --start-up                    with --scripted-keys, play the console's start-up first, as a
  *                                        player's run does where it has the BIOS (tests)
  *
- * A SCRIPT (--scripted-keys) is a line a frame: the console buttons held, as a number (a=1, b=2, select=4,
+ * A script (--scripted-keys) is a line a frame: the console buttons held, as a number (a=1, b=2, select=4,
  * start=8, right=16, left=32, up=64, down=128, r=256, l=512), and then any of these words, each pressed
  * through the window's own loop as a player's fingers would:
  *
@@ -32,7 +32,7 @@
  * While the game is paused a line is read for each time round the pause, and a script that runs out
  * while paused ends there.
  *
- * THE GAME OWNS THE LOOP. A game waits for the next frame wherever it likes — at the top of its
+ * The game owns the loop. A game waits for the next frame wherever it likes — at the top of its
  * game loop, or deep inside a routine that runs before the loop starts — so it cannot hand
  * control back to SDL once a frame and be called again. Instead SDL is driven from inside
  * rg_wait_vblank: show the frame, read the window's events and the buttons, and wait for the
@@ -40,7 +40,7 @@
  * style, and the game runs on the program's first thread, which is where macOS wants a window
  * looked after.
  *
- * THE MONITOR PACES THE FRAMES WHERE IT CAN, AND THE CONSOLE'S CLOCK WHERE IT CANNOT. A game is
+ * The monitor paces the frames where it can, and the console's clock where it cannot. A game is
  * written to the console's pace, a little under sixty frames a second. On a monitor that
  * refreshes at very nearly a whole number of times that rate, each picture is shown for that
  * many refreshes and the game simply runs at the monitor's pace, a shade fast or slow; rg_pacing.h
@@ -57,13 +57,13 @@
  * waits for nothing: the game is held to a pace a shade faster than the monitor's, which a monitor
  * that is doing its job never lets it reach (rg_pacing.h again, and keep_under_fastest).
  *
- * THE PICTURE is the console's 240x160 screen, its 15-bit colors handed to SDL as they are (SDL
+ * The picture is the console's 240x160 screen, its 15-bit colors handed to SDL as they are (SDL
  * has a pixel format for exactly that layout), and scaled up by a whole number with each pixel
  * kept square and sharp — never smoothed — and the window's spare room left black. A game of big
  * pixels (RG_PIXEL_SIZE, rg_console.h) hands over a smaller picture, which is stretched to the
  * console's size first, so its window and its scale are the console's as for any game.
  *
- * THE BUTTONS ARE A GAMEPAD'S, AND THE KEYBOARD IS A GAMEPAD. The game is asked one question —
+ * The buttons are a gamepad's, and the keyboard is a gamepad. The game is asked one question —
  * which of the console's buttons are down on any gamepad — and the keyboard answers it by
  * pressing the buttons of a gamepad SDL makes up for it (a "virtual joystick"), which is then
  * read exactly as a real one plugged in beside it is. One way in means a real controller needs
@@ -81,16 +81,16 @@
  * buttons the game's console has are read (RG_CONSOLE_BUTTONS). A player can choose others (rg_window.h
  * keeps which key is which button and which gamepad button is which; the menu and the settings
  * file change them). The keyboard's own gamepad always has the console's layout: what a player
- * chooses is which button of a REAL gamepad is which.
+ * chooses is which button of a real gamepad is which.
  *
- * THE WINDOW'S OWN KEYS, THE HOTKEYS, are keys no console button is mapped to: pause, step a
+ * The window's own keys, the hotkeys, are keys no console button is mapped to: pause, step a
  * frame, fullscreen, mute, the frame rate, the menu, and fast forward while held. They are looked
  * for before the buttons and never reach the game. A pause holds the game, its sound and its
  * clock where they are and keeps the picture up (hold_while_paused); neither the pacing nor the
  * sound counts the time as the game running late. Fast forward plays several frames for each
  * picture shown and makes no sound meanwhile, rather than a pile of it the speaker plays late.
  *
- * THE MENU is the library's own (rg_window_menu.h, the same menu vblank run draws), opened with
+ * The menu is the library's own (rg_window_menu.h, the same menu vblank run draws), opened with
  * F1 or the key above Tab, or a gamepad's guide button, or its Back and Start together. It is drawn
  * over the picture in the window's own pixels, so its letters are sharp on any screen, and holds
  * the game while it is open. It changes nothing but what the hotkeys and the settings file change,
@@ -103,7 +103,7 @@
  * Everything over the picture is drawn here with SDL's renderer: there is no other library for it,
  * and a box of the system's is only for when nothing can be drawn (show_system_box_without_window).
  *
- * THE SETTINGS are the scale, fullscreen, volume, mute, frame rate, fast forward's speed, the keys,
+ * The settings are the scale, fullscreen, volume, mute, frame rate, fast forward's speed, the keys,
  * the gamepad buttons and the hotkeys, in one small text file a player can edit (rg_window.h says
  * its format). There is one for everyone who plays any game built this way and one for each game,
  * in folders where this computer keeps a person's settings (rg_settings_root.h says where, and
@@ -115,14 +115,14 @@
  * its defaults used: it never stops the window opening. A scripted run (--scripted-keys) uses none
  * unless told one with --settings-file, so a test never depends on the keys of whoever runs it.
  *
- * THE SOUND is made a frame at a time by rg_sound.c and handed to SDL as it is made (at the
+ * The sound is made a frame at a time by rg_sound.c and handed to SDL as it is made (at the
  * player's volume, rg_window_apply_volume), which keeps
  * a little of it waiting so a frame that arrives a moment late is not heard as a gap. Where the
  * monitor paces the game a shade fast or slow, the sound is played that much faster or slower,
  * so as much is played as is made. A computer with nothing to play sound through still plays the
  * game.
  *
- * THE CONSOLE'S OWN START-UP plays before an Advance game on a computer where the player keeps a
+ * The console's own start-up plays before an Advance game on a computer where the player keeps a
  * copy of the console's BIOS (rg_console_bios.h says where it is looked for): the logo and its
  * chime, run by the BIOS itself in a small emulator of the console (rg_bios_boot.h), its pictures and
  * its sound handed to the window as the game's are. Where there is no BIOS the game starts at once
@@ -130,7 +130,7 @@
  * anyway. A scripted run plays it only when told (--start-up), so a test never depends on whether
  * the computer running it has a BIOS; it then prints how many frames it played.
  *
- * THE SAVE is a file, for a game that has save memory (rg_save.h): the bytes a cartridge's chip
+ * The save is a file, for a game that has save memory (rg_save.h): the bytes a cartridge's chip
  * would hold, which is what an emulator calls a .sav file, so one can be carried between the two.
  * It is kept where the operating system keeps a program's own files for the person using the
  * computer, in a folder named for the game, and read once before the game starts. It is written
@@ -257,7 +257,7 @@ static rg_menu_drawing menu_drawing;
 #define PAD_OPENERS_TOGETHER ((1u << SDL_GAMEPAD_BUTTON_BACK) | (1u << SDL_GAMEPAD_BUTTON_START))
 /* The buttons down on each real gamepad (by its place in pads[]), and those pressed for the menu,
  * which are kept from the game until they come up: an A that chose Resume is not then the game's
- * A. A bit for each of SDL's gamepad buttons. */
+ * a. A bit for each of SDL's gamepad buttons. */
 static uint32_t pad_buttons_down[MOST_PADS];
 static uint32_t pad_buttons_kept;
 
@@ -270,7 +270,7 @@ static Uint64 earliest_next_ns;        /* where the monitor paces: the moment be
 /* --refresh-rate: the rate to pace for, whatever the monitor reports its own is. */
 static double pretended_refreshes_a_second;
 
-/* --counted-clock: THE PACING'S CLOCK MOVES ONLY BY THE WAITS IT ASKS FOR, and never sleeps. The
+/* --counted-clock: the pacing's clock moves only by the waits it asks for, and never sleeps. The
  * moments the pacing reads, waits until and keeps for --frame-times are then a count of the frames
  * it waited out, the same on a busy computer as on an idle one, where the real clock also counts
  * however long the computer was busy elsewhere. What a test asks of the pacing's own rules (a pause
@@ -302,7 +302,7 @@ static Uint64 *shown_at_ns;
 static size_t shown_count, shown_room;
 static long frames_held_by_clock; /* frames the monitor was pacing and the window's own clock had to hold */
 
-/* THE PICTURE ALREADY UP. A picture the game finished that is the same as the one the window is
+/* The picture already up. A picture the game finished that is the same as the one the window is
  * showing is not uploaded and not drawn again: the window shows it as it is, and a still title
  * screen costs the computer and its graphics card next to nothing. +texture_holds+ is the picture
  * in the texture; +window_owed_a_drawing+ marks that something other than the picture asks for the
@@ -362,14 +362,14 @@ static uint32_t scripted_keys;
 /* A script's lines are read from here: a shell's menu is played from a file of its own
  * (--shell-menu-keys), everything else from standard input (NULL). */
 static FILE *script_lines;
-/* A PART OF A SHELL (--part RESULT; rg_shell.c): played with no window, its pictures sent down its
+/* A part of a shell (--part RESULT; rg_shell.c): played with no window, its pictures sent down its
  * standard output to the shell that started it (play_part), and where a game would halt it writes
- * where every variable and list stands into the RESULT file, and ends. --part-fast is an
+ * where every variable and list stands into the result file, and ends. --part-fast is an
  * unpacking, played on a thread of its own (play_part_on_thread). */
 static const char *part_result_path;
 static FILE *part_result;
 static int part_fast;
-/* A SHELL'S PARTS SHOWN IN THIS WINDOW (rg_shell.h's rg_shell_window, at the foot of this file):
+/* A shell's parts shown in this window (rg_shell.h's rg_shell_window, at the foot of this file):
  * true from the window opening until the game has its data pack, the part playing now, and the
  * picture a part last sent, which is what the window shows until the game draws its own. */
 static bool showing_shell;
@@ -516,12 +516,12 @@ static void note_told(const char *title, const char *words) {
   fclose(told);
 }
 
-/* A BOX OF THE SYSTEM'S OWN, ONLY WHERE THE WINDOW CANNOT DRAW ONE: everything the window tells the
+/* A box of the system's own, only where the window cannot draw one: everything the window tells the
  * player is a box it draws over its picture (tell_and_end), and this is left for when there is no
  * renderer to draw it with, or drawing failed. A player who started the program from the Finder has
  * no terminal, so the words go somewhere they can be read even then.
  *
- * WHY NOT ALWAYS ONE OF THESE. SDL runs a loop of its own until the box is answered, and a shell
+ * Why not always one of these. SDL runs a loop of its own until the box is answered, and a shell
  * once put such a box up as it started, before it had read one event: on a Mac the box's button did
  * nothing, the program never came back and had to be force-quit. A program that has read no event
  * has not finished starting as the system sees it. So the events waiting are read before the box
@@ -928,7 +928,7 @@ static void apply_window_changes(void) {
  * each frame's sound is handed over (keep_sound_in_step).
  *
  * A picture meant for several refreshes (a monitor of a hundred and twenty a second shows the
- * console's sixty for two each) is drawn ONCE, with the display told to wait for as many refreshes
+ * console's sixty for two each) is drawn once, with the display told to wait for as many refreshes
  * as the picture is shown for: SDL's vsync takes that number. Not every driver takes every number,
  * and it reports a refusal, so a driver that refuses is asked for one refresh and the picture is drawn once
  * for each of its refreshes instead, which every driver can wait for. Worked out again whenever
@@ -984,7 +984,7 @@ static int largest_scale_that_fits(void) {
  * the size the settings set. */
 static int grown_to_scale;
 
-/* A BOX TOO BIG FOR THE WINDOW MAKES THE WINDOW BIGGER. A window can be as small as the console's
+/* A box too big for the window makes the window bigger. A window can be as small as the console's
  * screen, a Color game's 160 by 144, where a long box (a fault, a file's path) would run off the
  * window. So while a box is shown that does not fit (rg_window_menu_messages_fit), the window is
  * made the smallest whole number of times the picture that holds it, and no bigger than the screen
@@ -1108,7 +1108,7 @@ static void draw_words(const rg_menu_part *words) {
 
 static bool game_held(void) { return rg_window_paused() || rg_window_menu_is_open(); }
 
-/* Whether the menu can be opened: the game has one, or a shell's first screen is up, whose SETTINGS
+/* Whether the menu can be opened: the game has one, or a shell's first screen is up, whose settings
  * line opens it whatever the game has. */
 static bool window_has_menu(void) { return rg_game_has_menu || showing_shell; }
 
@@ -1270,7 +1270,7 @@ static void note_window_opened(void) {
   fclose(lines);
 }
 
-/* THE SOUND IS KEPT IN STEP WITH THE GAME by playing it a shade faster or slower. A frame of the
+/* The sound is kept in step with the game by playing it a shade faster or slower. A frame of the
  * game makes a frame of sound, and how many frames there are in a second is the monitor's doing
  * where it paces the game (rg_pacing.h), so the sound is played at the game's pace to begin with.
  * That alone is not enough: neither a monitor nor a sound card runs at exactly the rate it reports,
@@ -1737,7 +1737,7 @@ static void push_key(SDL_Scancode key, bool down) {
   SDL_PushEvent(&event);
 }
 
-/* A part's last word: where every variable and list stands, in its RESULT file. Written beside the
+/* A part's last word: where every variable and list stands, in its result file. Written beside the
  * file and then moved into place, so an answer is never left half written by a window closed as it
  * was being written. Whether it was written.
  *
@@ -1885,13 +1885,13 @@ static bool consume_step_outside_menu(void) {
   return rg_window_consume_step() || rg_window_state_request_pending();
 }
 
-/* A PAUSE, or the menu open: the game, its sound and its clock stop where they are and the picture
+/* A pause, or the menu open: the game, its sound and its clock stop where they are and the picture
  * stays up, while the window goes on answering the menu, the hotkeys and the player's mouse. A step
  * lets the game run one frame and comes straight back here at the end of it.
  *
  * Nothing moves while a game is paused, so the window is drawn only when it has something new to
  * show: after an event, for a few frames while it settles, and every frame while the menu or a
- * window over the picture is open. Between those it SLEEPS until the window has an event
+ * window over the picture is open. Between those it sleeps until the window has an event
  * (rg_pause.h), and does nothing else. A paused game being played from a script is held a frame at
  * a time instead, since each time round it reads a line of the script, and is not drawn at all. */
 static void hold_while_paused(void) {
@@ -1928,7 +1928,7 @@ static void hold_while_paused(void) {
   if (!game_held()) silence_speaker(false);
 }
 
-/* FAST FORWARD plays several frames of the game for each picture shown (a "slot"): everything the
+/* Fast forward plays several frames of the game for each picture shown (a "slot"): everything the
  * game does is done on every frame, and only the showing and the waiting happen once a slot. The
  * speaker is silent, since the game would make several times what it can play. A change of speed
  * starts the clocks afresh. */
@@ -1995,7 +1995,7 @@ static void sdl_halt(void) {
   }
 }
 
-/* A BOX THAT SAYS WHY THE PROGRAM ENDS, drawn by the window over its last picture under +title+, as
+/* A box that says why the program ends, drawn by the window over its last picture under +title+, as
  * the menu draws everything else it tells the player (rg_window_tell): a player who started the
  * program from the Finder has no terminal to read. The game is over, so nothing plays under it:
  * the sound stops, and the window waits on its events, drawing itself again after each so the menu
@@ -2066,7 +2066,7 @@ static void sdl_dump_list(const rg_list *list) {
 
 static const rg_driver sdl = {sdl_wait_vblank, sdl_halt, sdl_fault, sdl_dump_variable, sdl_sound_logged, sdl_dump_list};
 
-/* A PART OF A SHELL PLAYS WITH NO WINDOW (--part RESULT). The shell that started it owns the one
+/* A part of a shell plays with no window (--part RESULT). The shell that started it owns the one
  * window (show_shell_part, below), and the two talk down the part's standard streams:
  *
  *   from the part   each picture it draws: its width and height, two bytes each, then its pixels,
@@ -2074,7 +2074,7 @@ static const rg_driver sdl = {sdl_wait_vblank, sdl_halt, sdl_fault, sdl_dump_var
  *   to the part     after each picture of a menu, a line holding the buttons held for the frame
  *                   that starts, as one number with a bit a button, as --headless reads them
  *
- * The part ending is its last word: its answer is in RESULT by then (write_part_result), or the
+ * The part ending is its last word: its answer is in result by then (write_part_result), or the
  * words of its fault are beside it (write_part_fault). A shell that goes away closes both streams,
  * and the part ends at the next picture it cannot send or line it cannot read, leaving no answer. */
 
@@ -2133,14 +2133,14 @@ static void part_halt(void) {
 
 static const rg_driver part_driver = {part_wait_vblank, part_halt, part_fault, sdl_dump_variable, sdl_sound_logged, sdl_dump_list};
 
-/* AN UNPACKING PLAYS ON A THREAD OF ITS OWN (--part-fast). An unpacking is a game whose routine may
+/* An unpacking plays on a thread of its own (--part-fast). An unpacking is a game whose routine may
  * work for a long time between two waits for a frame (a port rendering its music before it writes a
  * byte). Played on the thread that sends the pictures, a picture could be sent only at those waits,
  * and the shell's window would show a bar that stands still for as long as the routine works. So
  * the game plays on another thread, as fast as that thread goes, and the first thread sends the
  * newest picture a frame at a time.
  *
- * WHAT CROSSES BETWEEN THE TWO is the picture and one number. The unpacking draws its own progress
+ * What crosses between the two is the picture and one number. The unpacking draws its own progress
  * bar, as game code, so at a wait for a frame its thread copies the picture it has drawn into
  * part_picture under a lock, at most once a frame's time, and the sending thread copies it out and
  * sends it. part_state says how the unpacking ended. Everything else of the game (its variables,
@@ -2149,7 +2149,7 @@ static const rg_driver part_driver = {part_wait_vblank, part_halt, part_fault, s
  * SDL's threads, locks and atomic numbers are used, which the program already links on every desktop
  * it is built for, so there is no code here for one system's threads.
  *
- * A SHELL THAT GOES AWAY PART WAY (its window was closed) ends this program from the sending
+ * A shell that goes away part way (its window was closed) ends this program from the sending
  * thread, and the unpacking thread ends with it. Its answer is written beside the file and moved
  * into place (write_part_result), so no half an answer is left. */
 enum { PART_PLAYING, PART_DONE, PART_FAULTED };
@@ -2499,7 +2499,7 @@ static void play_start_up_sound(const int16_t *samples, int count) {
   SDL_PutAudioStreamData(speaker, loud, bytes);
 }
 
-/* THE CONSOLE'S OWN START-UP, before the game's first frame (see the top of this file). Each of its
+/* The console's own start-up, before the game's first frame (see the top of this file). Each of its
  * frames is shown and heard the way the game's are, on the same pacing; its pictures have eight bits
  * a colour (mGBA's way of working out the console's blends), so they go through a texture of their
  * own. Closing the window ends it, and the program, as it ends a game. */
