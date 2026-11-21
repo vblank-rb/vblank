@@ -18,7 +18,7 @@ module VBlank
 
           module_function
 
-          # The installed node's version, refusing one older than OLDEST.
+          # The installed node's version, refusing one older than oldest.
           def version
             out, status = Open3.capture2e("node", "--version")
             raise Error, "node could not tell its version:\n#{out}" unless status.success?

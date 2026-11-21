@@ -7,7 +7,7 @@ module VBlank
   module IR
     module Backends
       class JS
-        # THE WINDOW MENU AS JAVASCRIPT DATA, for the page's copy of it (runtime/rg_page_menu.js),
+        # The window menu as JavaScript data, for the page's copy of it (runtime/rg_page_menu.js),
         # from Live::WindowMenu, as the desktop build's MenuData is. A page has no window
         # size of its own, so that line is left out. +menu+ false is a game that has no menu, and +states+
         # false one with no Save or Load (a shell's parts). +buttons+ are the console's, which the

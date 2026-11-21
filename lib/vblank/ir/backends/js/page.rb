@@ -7,14 +7,14 @@ module VBlank
   module IR
     module Backends
       class JS
-        # THE PAGE A GAME PLAYS IN: one HTML file holding the game and its runtime, with nothing
+        # The page a game plays in: one HTML file holding the game and its runtime, with nothing
         # to fetch unless its data was built separate (JS#build_page), so it opens from a disk as
         # well as from a server. The picture is a <canvas> the
         # size of the console's screen, enlarged without smoothing so a pixel stays a square; the
         # keyboard and any controller are the gamepad (runtime/rg_page.js says which is which).
         #
-        # THE PAGE IS A TEMPLATE, page.html.erb unless the build names another (`vblank build
-        # --format=web --template FILE`). A template is ERB, and it is handed these, each a piece of
+        # The page is a template, page.html.erb unless the build names another (`vblank build
+        # --format=web --template file`). A template is ERB, and it is handed these, each a piece of
         # finished HTML:
         #
         #   game        the canvas and the script: the one piece a page must have
@@ -68,7 +68,7 @@ module VBlank
                                  "play it. Put <%= game %> in the template where the game goes."
           end
 
-          # THE SCREEN AND THE KEYS AS DATA, which a template writes out with `<%= controls.to_json %>`
+          # The screen and the keys as data, which a template writes out with `<%= controls.to_json %>`
           # so a site can show the controls in its own design and size the frame before the game
           # loads. +screen+ is the canvas's size and the pixel size in the console's pixels;
           # +first_player+ and +second_player+ (nil unless the game seats more than one) are each
@@ -166,7 +166,7 @@ module VBlank
               "Each controller is one player, in the order you connect them."
           end
 
-          # THE PAD ON THE SCREEN, for a phone or a tablet, which has no keys: the console's buttons
+          # The pad on the screen, for a phone or a tablet, which has no keys: the console's buttons
           # laid out as a GBA lays them out — L and R along the top, the cross on the left, B and A
           # on the right, Select and Start between. runtime/rg_mount.js finds them by id, "pad-" and
           # the button's name, and the cross, "pad-cross", is one piece a thumb rocks round; its

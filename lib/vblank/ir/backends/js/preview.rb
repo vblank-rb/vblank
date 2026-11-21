@@ -10,7 +10,7 @@ module VBlank
   module IR
     module Backends
       class JS
-        # THE GAME IN A BROWSER TAB, BUILT AGAIN ON EVERY RELOAD: `vblank preview game.rb`. Edit
+        # The game in a browser tab, built again on every reload: `vblank preview game.rb`. Edit
         # the game, reload the page, and the game starts again as the file now has it — no cartridge
         # built, no emulator started.
         #
@@ -42,7 +42,7 @@ module VBlank
           def url = "http://#{@server.addr[3]}:#{@server.addr[1]}/"
 
           # Answers one browser after another until stopped (Ctrl-C, or #stop from another thread).
-          # CTRL-C IS LEFT TO ARRIVE AS RUBY RAISES IT, wherever the program is, and is caught here:
+          # CTRL-C is left to arrive as Ruby raises it, wherever the program is, and is caught here:
           # a signal handler runs on the thread sitting in `accept`, and closing the server from
           # there takes the lock that `accept` holds. What was going cleans up on the way out
           # (see #run_build), and a second Ctrl-C during that lands here too.
@@ -96,7 +96,7 @@ module VBlank
             end
           end
 
-          # WHAT THE BUILD SAYS REACHES THE TERMINAL AS IT SAYS IT, because a big game takes a while
+          # What the build says reaches the terminal as it says it, because a big game takes a while
           # and somebody is watching a browser tab spin. Through a pipe its progress is one finished
           # line for each phase, with nothing redrawn (Messages::Progress::Printed), so every line
           # can go on to the terminal and into the page if the build stops. Gives back all it said
