@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/audio/test_music_keeps_time"
 
-# A TUNE AND A RECORDING KEEP TIME IN A LATE GAME, asked of the interpreter, the one player that
+# A tune and a recording keep time in a late game, asked of the interpreter, the one player that
 # can be told a pass took several frames (`frames_each_pass`). The rest of the music's timing,
 # played on every run, is in test/all/vblank/audio/test_music_keeps_time.rb.
 class TestMusicKeepsTimeInterpreter < Minitest::Test

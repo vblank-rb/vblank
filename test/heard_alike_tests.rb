@@ -2,7 +2,7 @@
 
 require "tmpdir"
 
-# A PORT HOLDS WHAT ITS CARTRIDGE PUTS OUT OF THE SPEAKERS TO ITS ORIGINAL'S with one assertion,
+# A port holds what its cartridge puts out of the speakers to its original's with one assertion,
 # assert_heard_alike, and a probe says what any cartridge put out on a frame. Played by each console
 # whose emulator hands its sound over. Each including test says +console+.
 #

@@ -3,7 +3,7 @@
 require "json"
 require "open3"
 
-# THE SOUND OF A FILM READ BACK (Diagnostics::FilmSound), for the film's, the film tasks' and the
+# The sound of a film read back (Diagnostics::FilmSound), for the film's, the film tasks' and the
 # film shell's tests: each speaker's loudness on each of the film's frames, and where a sound
 # starts. Decoded by ffmpeg, so a test including it runs on the main Ractor.
 module HeardFilm
