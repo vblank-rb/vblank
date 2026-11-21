@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# THE ANSWER KEY FOR THE ADVANCE'S COMMON SOUND DRIVER (Original::Packing::M4A): a made-up song of
+# The answer key for the Advance's common sound driver (Original::Packing::M4A): a made-up song of
 # VBlank's own in MusicPlayer2000's form, written by a small assembler, and a player that plays it
 # as the driver does, written in plain Ruby from the driver's source (tmc's asm/lib/m4a_asm.s:
 # MPlayMain, ply_note, ChnVolSetAsm, ply_goto, ply_patt, ply_pend, ply_rept, ply_endtie and the rest;
@@ -22,7 +22,7 @@ module M4AAnswers
             voice: 0xBD, vol: 0xBE, pan: 0xBF, bend: 0xC0, bendr: 0xC1, lfos: 0xC2, lfodl: 0xC3, mod: 0xC4, modt: 0xC5,
             tune: 0xC8, port: 0xCC, xcmd: 0xCD, eot: 0xCE, tie: 0xCF }.freeze
 
-  # A note or wait of +ticks+, which must be one of CLOCKS.
+  # A note or wait of +ticks+, which must be one of clocks.
   def self.note_code(ticks) = 0xCF + CLOCKS.index(ticks)
   def self.wait_code(ticks) = 0x80 + CLOCKS.index(ticks)
 
@@ -93,7 +93,7 @@ module M4AAnswers
      [:note, 2, 38, 127], [:wait, 2], [:wait, 36], [:wait, 36], [:wait, 2], [:rept, 0, :drums]]
   ].freeze
   # A song that ends: its tracks run to their end, the second later than the first; the first holds
-  # a tie as it ends with an XCMD the driver's table sends to FINE, the second jumps forward past a
+  # a tie as it ends with an XCMD the driver's table sends to fine, the second jumps forward past a
   # note, and the third names no voice, so it plays the first square.
   ENDING_TRACKS = [[[:voice, 1], [:vol, 127], [:note, 8, 70, 100], [:wait, 8], [:tie, 74, 100], [:wait, 4], [:xcmd, 0]],
                    [[:voice, 2], [:vol, 64], [:wait, 6], [:goto, :ahead], [:note, 12, 50, 90], [:label, :ahead],
@@ -146,8 +146,8 @@ module M4AAnswers
                   [[:voice, 2], [:vol, 100], [:wait, 12], [:label, :round], [:note, 4, 67, 90], [:wait, 9],
                    [:goto, :round]]].freeze
   # A song whose recorded notes sit off the middle and are changed while they sound, a tick a frame.
-  # The first track, left of the middle: a long note whose BEND moves it whole keys (BENDR 12 is
-  # three keys a step of 16), then two BENDs on one tick, a TUNE between keys, a KEYSH; then a note
+  # The first track, left of the middle: a long note whose bend moves it whole keys (BENDR 12 is
+  # three keys a step of 16), then two BENDs on one tick, a tune between keys, a KEYSH; then a note
   # bent on the tick it is struck; a recording at a fixed rate, which no bend moves; a note on the
   # right after a PAN, made quieter (VOL) and moved to the left (PAN) as it sounds; and a square
   # note, bent too, which a glide cannot move. The second track is the drum kit, whose voices sit
@@ -161,7 +161,7 @@ module M4AAnswers
                      [:wait, 2], [:bend, 0x48], [:wait, 4], [:fine]],
                     [[:voice, 6], [:vol, 90], [:note, 4, 36, 120], [:wait, 6], [:note, 4, 1, 100], [:wait, 6], [:fine]]].freeze
 
-  # The number a kit's or a split's first voice is given, past the 128 a VOICE names (Packing::M4A).
+  # The number a kit's or a split's first voice is given, past the 128 a voice names (Packing::M4A).
   KIT_AND_SPLIT_NUMBERS_FROM = 128
   # The recorded voices the mixed song plays, each where its twelve bytes are, as a port names them.
   MIXED_VOICES = { looped: GROUP_AT, one_shot: GROUP_AT + (12 * 7), kit_one_shot: KIT_AT, kit_wave: KIT_AT + 12,
@@ -268,7 +268,7 @@ module M4AAnswers
   # kit's or a split's voice is numbered from +kit_from+ or +split_from+; #voices is where the voice
   # each record played is, record by record.
   #
-  # WHERE A SONG COMES ROUND, as the reader works it out (Packing::M4A, "A SONG COMES ROUND"), in
+  # Where a song comes round, as the reader works it out (Packing::M4A, "a song comes round"), in
   # ticks: each track repeats on its own from where it first reaches the place it jumps back to, or
   # from its first jump back where its second time round does not start as its first did; the song
   # repeats from the latest of those (and of where a track that stops falls silent), every time
@@ -281,8 +281,8 @@ module M4AAnswers
   class Player
     attr_reader :records, :voices, :end_frame, :loop_frame, :loops, :silent_from, :frame, :marks
 
-    # +voiced+ gives each recording's record its settings, as a voiced record keeps them (VOICED
-    # RECORDINGS, below), and writes a gliding record where the part's note is bent as it sounds.
+    # +voiced+ gives each recording's record its settings, as a voiced record keeps them (voiced
+    # recordings, below), and writes a gliding record where the part's note is bent as it sounds.
     def initialize(copy, song_at, walked: nil, kind: 255, frames: nil, kit_from: KIT_AND_SPLIT_NUMBERS_FROM,
                    split_from: KIT_AND_SPLIT_NUMBERS_FROM, voiced: false)
       @source = copy
@@ -470,7 +470,7 @@ module M4AAnswers
         track.wait -= 1 if track.active
       end
       # MPlayMain counts a track that starts the tick playing, so the song stops a tick after its
-      # last track's FINE.
+      # last track's fine.
       @ended = true unless playing
     end
 
@@ -729,7 +729,7 @@ module M4AAnswers
     VBlank::Original::PackNote.bytes_of(records(song_at, walked, kind: kind, numbering: numbering), count: count)
   end
 
-  # THE SAME RECORDS VOICED, each with its console voice's settings as the driver sets the voice up
+  # The same records voiced, each with its console voice's settings as the driver sets the voice up
   # for the note (ply_note: the sweep, 8 where bits 4 to 6 are clear or bit 7 set; CgbSound: NRx1's
   # duty from the voice's wave word, the envelope from its attack, decay and sustain; CgbModVol:
   # the sustain level), matched to a note's own words as Packing::M4A::Walk#emit_voice_settings says.
@@ -795,6 +795,6 @@ module M4AAnswers
   def self.voice_settings_bytes(rate, hold, length, shape) = [rate, hold, length].pack("V3") + shape.pack("C4")
 
   # Must be InRactors.share_constants, not Ractor.make_shareable alone: tests in several Ractors
-  # write COPY to a file at once (InRactors.shareable says what that does to a plain frozen String).
+  # write copy to a file at once (InRactors.shareable says what that does to a plain frozen String).
   VBlank::Testing::InRactors.share_constants(self)
 end

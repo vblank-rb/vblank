@@ -3,7 +3,7 @@
 require "digest"
 require "tmpdir"
 
-# THE MADE-UP ORIGINAL AND THE GAME READING IT, shared by the data pack, copy reader, packing, shell and pack-at-start tests:
+# The made-up original and the game reading it, shared by the data pack, copy reader, packing, shell and pack-at-start tests:
 # the same game built with its data left out, handed its pack as it starts.
 module MadeUpOriginal
   # Sixteen colours: place 0 see-through, then red, green, blue, white and a run of greys.
@@ -76,8 +76,8 @@ end.each_slice(2).map { |left, right| left | (right << 4) }.pack("C*").freeze
 
   # Shareable, as a test class's own constants are made (test_helper.rb), since a test may run in
   # a Ractor and these are a module's. Must go through InRactors.share_constants, not
-  # Ractor.make_shareable alone: tests in several Ractors write COPY to a file at once, and a plain
-  # frozen COPY loses its bytes to that (InRactors.shareable says how).
+  # Ractor.make_shareable alone: tests in several Ractors write copy to a file at once, and a plain
+  # frozen copy loses its bytes to that (InRactors.shareable says how).
   VBlank::Testing::InRactors.share_constants(self)
 
   private def original(folder)
@@ -164,7 +164,7 @@ end.each_slice(2).map { |left, right| left | (right << 4) }.pack("C*").freeze
     end
   end
 
-  # A PORT'S OWN UNPACKING ROUTINE. The tiles and the heights are packed in the made-up original,
+  # A port's own unpacking routine. The tiles and the heights are packed in the made-up original,
   # so their slots say no place in the copy, and the routine fills them: the same routine the
   # build runs on the interpreter, and a player's machine runs as the shell starts.
   private def unpacked_pack(builder, folder)

@@ -3,7 +3,7 @@
 require "test_helper"
 require "tmpdir"
 
-# A PORT OF A SUPER NINTENDO GAME READS ITS ORIGINAL'S NUMBERS WHERE ITS CODE KEEPS THEM. The 65816
+# A port of a Super Nintendo game reads its original's numbers where its code keeps them. The 65816
 # reads two bytes at any address, odd ones included, and keeps a routine's address in three, so a
 # game's own code keeps a word at an odd address and a three-byte pointer, and the probe reads them
 # as that code does: low byte first.
