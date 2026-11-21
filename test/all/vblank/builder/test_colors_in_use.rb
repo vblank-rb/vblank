@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# WHICH LISTS OF SPRITE COLOURS A ROOM USES. A game whose things between them wear more
+# Which lists of sprite colours a room uses. A game whose things between them wear more
 # lists than the console has groups for sprites still fits, so long as no one room uses
 # more at once: the game says which lists are in use as it enters a room, and the build
 # works out the rest.
@@ -42,7 +42,7 @@ class TestColorsInUse < Minitest::Test
   # The lists room +r+ uses: the next four.
   private def rooms = list_names.each_slice(PER_ROOM).to_a
 
-  # THE SHAPE THIS IS FOR: a pool whose things are of many kinds, each kind drawn with a list
+  # The shape this is for: a pool whose things are of many kinds, each kind drawn with a list
   # of its own, and a room holding things of a few kinds. Room 0 holds kinds 0 to 3, and from
   # the third pass the game is in room 1, which holds kinds 4 to 7.
   private def entering_next_room(say_which: true)

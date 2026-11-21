@@ -12,7 +12,7 @@ module ComputedTilemapGames
     builder.image(name, "#" => color) { "####\n####\n####\n####" }
   end
 
-  # A tileset keyed by NUMBERS rather than characters — what a decoder hands over,
+  # A tileset keyed by numbers rather than characters — what a decoder hands over,
   # since the tile it read is a number and was never a character at all.
   private def numbered_tileset(builder)
     solid_tile(builder, :tile_red, :red)
@@ -46,7 +46,7 @@ module ComputedTilemapGames
   end
 end
 
-# A map the BUILD computes rather than a person types. There are three ways a game
+# A map the build computes rather than a person types. There are three ways a game
 # gets a level — somebody types it as characters, an editor exports it as a CSV of
 # numbers, or the build works it out — and only the first two had a spelling. A
 # generated map had to be squeezed through one of them: written as characters, which
@@ -136,7 +136,7 @@ class TestComputedTilemap < Minitest::Test
     assert_equal Color.resolve(:red), i.screen.pixel(0, 0), "the first map is the one showing at boot"
   end
 
-  # ART IMPORTED FROM A SHEET, LEVEL WORKED OUT BY THE BUILD — the combination that
+  # Art imported from a sheet, level worked out by the build — the combination that
   # had no spelling at all. A tileset imported whole is keyed by the tile numbers the
   # sheet was sliced into, so a grid of those numbers selects its tiles with no CSV
   # file in between.
@@ -164,7 +164,7 @@ class TestComputedTilemap < Minitest::Test
     assert_match(/rows of its tile numbers/, err.message)
   end
 
-  # The same mistake written the NEW way. Somebody who has just learned a row may be an
+  # The same mistake written the new way. Somebody who has just learned a row may be an
   # Array reaches for one of characters first, and that is the same map — so it earns
   # the same targeted answer rather than falling through to "#" is not in tileset,
   # which says nothing about why none of them ever could be.
@@ -199,7 +199,7 @@ class TestComputedTilemap < Minitest::Test
     end
   end
 
-  # `solid:` says which TILES block, and it never said how they were named — so it
+  # `solid:` says which tiles block, and it never said how they were named — so it
   # takes the tileset's keys whatever they are, with nothing new to write. Worth
   # asserting rather than assuming: a wall that quietly stops blocking is a game you
   # can walk out of, and nothing on screen says so.

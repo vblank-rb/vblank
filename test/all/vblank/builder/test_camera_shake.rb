@@ -54,9 +54,9 @@ end
 # shake built on top of it.
 #
 # The camera does not redraw anything. The picture stays exactly where it was drawn
-# and the WINDOW moves, which is what makes a shake cost almost nothing: a game
+# and the window moves, which is what makes a shake cost almost nothing: a game
 # under a shake draws precisely what it drew before. So the thing to assert is that
-# the same drawing SHOWS somewhere else while the shake runs, and shows back in its
+# the same drawing shows somewhere else while the shake runs, and shows back in its
 # original place once it ends.
 class TestCameraShake < Minitest::Test
   include CameraShakeGames

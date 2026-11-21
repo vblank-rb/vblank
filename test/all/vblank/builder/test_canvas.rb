@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A CANVAS: a picture the game draws into with words while it runs — a pixel, a rectangle, a
+# A canvas: a picture the game draws into with words while it runs — a pixel, a rectangle, a
 # picture stamped on, a letter, a line of text, a number — in colour names.
 #
 # It is built from what a game could write itself, so what is worth testing is what it draws,
