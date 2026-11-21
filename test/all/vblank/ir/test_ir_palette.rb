@@ -247,7 +247,7 @@ class TestIRPalette < Minitest::Test
     assert_match(/300/, err.message)
   end
 
-  # The indexed screen holds a NUMBER per pixel where a picture holds a whole color, so a
+  # The indexed screen holds a number per pixel where a picture holds a whole color, so a
   # picture needs a second form before anything can draw it there.
   def test_a_picture_converts_to_the_numbers_its_colors_sit_at
     prog = program do

@@ -164,11 +164,11 @@ class TestIRVerifier < Minitest::Test
     assert_match(/every\.period must be an author-time int/, err.message)
   end
 
-  # A SONG'S PARTS ARE RECORDS, and the slot says so. A part used to be a plain Hash, which
+  # A song's parts are records, and the slot says so. A part used to be a plain Hash, which
   # nothing could check past "it is an Array" — so a misspelt key sat there unread and came out
   # layers away as a part playing the wrong voice. A shape-compatible Hash is now refused here,
   # which is what stops one being written again by hand.
-  # THE SAME FOR A SAVED VARIABLE, and this one has a trap of its own worth pinning: Hash has a
+  # The same for a saved variable, and this one has a trap of its own worth pinning: Hash has a
   # #default method already — it answers the hash's own fallback, not the key called :default —
   # so a hand-built hash sailed straight past `var.default` and handed a backend nonsense
   # instead of raising. The slot says it must be a record, so it cannot happen again.
