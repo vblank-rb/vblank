@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # QUICK MEMORY CHOSEN PER SCENE, AND SWAPPED AS A SCENE TAKES OVER.
+        # Quick memory chosen per scene, and swapped as a scene takes over.
         #
         # {Placement} fills the console's quick memory once, for the whole game, and boot copies
         # it in. That is right while everything a game wants there fits. When it does not, the
@@ -18,14 +18,14 @@ module VBlank
         # the routines only that scene reaches, chosen in the order a frame spends time in them.
         # Every set is copied to the same place, so the room is paid for once, by the biggest.
         #
-        # THE SWAP happens at the game's scene dispatch, just before the arriving scene's
+        # The swap happens at the game's scene dispatch, just before the arriving scene's
         # routine is called: a copy of that scene's set out of the cartridge, by the copying
         # engine. The dispatch is in the game loop's own body, which is never in a set, so no
         # routine that could be copied over is part way through running at that moment. A
         # routine an interrupt can reach is never in a set either, since an interrupt can land
         # in the middle of the copy.
         #
-        # A ROUTINE IN A SET RUNS FROM THE CARTRIDGE TOO, where it is written: everything in it
+        # A routine in a set runs from the cartridge too, where it is written: everything in it
         # that names another place names it by its whole address, and everything inside it is
         # counted from where it is. So a call to it from outside its own set reads a word that
         # holds where it is NOW — the quick memory while its scene's set is in, the cartridge
@@ -45,7 +45,7 @@ module VBlank
           # One word of the quick memory for each routine a set holds: where it is now.
           WHERE_WORD_BYTES = 4
 
-          # WHAT THE DISPATCH GROWS BY, charged to the game loop: once, the few instructions that
+          # What the dispatch grows by, charged to the game loop: once, the few instructions that
           # ask which set is in and call the swap (see #emit_scene_set_entry); and for each
           # clause, the call to them, and a call to the scene that reads where it is rather than
           # jumping straight there. Counted at their dearest, with the words they read far from
@@ -91,7 +91,7 @@ module VBlank
           # The number of the set +name+ is copied in with, or nil for a routine in no set.
           def set_holding(name) = (@set_of_routine || {})[name]
 
-          # WHAT THE GAME LOOP DOES FOR ONE SCENE IS MADE A ROUTINE OF THAT SCENE'S. The loop's
+          # What the game loop does for one scene is made a routine of that scene's. The loop's
           # body holds the scene dispatch, so it is kept for the whole game, in every scene's room
           # — and a block in it that runs only while one scene is up (a scene's map scrolled, its
           # pool put in order, a game's own `if where == :play`) held that room on
@@ -99,7 +99,7 @@ module VBlank
           # was, it is that scene's: it goes in the scene's set, and the loop keeps only the test
           # and the call.
           #
-          # ONLY A BLOCK WRITTEN STRAIGHT IN THE LOOP is made one. Inside a counted loop the count
+          # Only a block written straight in the loop is made one. Inside a counted loop the count
           # is kept in a register the routine would not see, and inside an `inside`, an `every` or
           # an `after` the block is lowered with what those set up around it; a routine lowered
           # on its own has none of that. A block holding the dispatch itself stays, since the swap
@@ -137,7 +137,7 @@ module VBlank
 
           private
 
-          # THE GAME'S SCENE DISPATCH, if it has one this can swap at: a `case_var` written in
+          # The game's scene dispatch, if it has one this can swap at: a `case_var` written in
           # the game loop's own body whose every clause names a scene. A dispatch anywhere else
           # could be inside a routine a set holds, and copying over it there would copy over
           # the code doing the copying.
@@ -149,7 +149,7 @@ module VBlank
             end
           end
 
-          # WHO RUNS EACH ROUTINE: the scene routines whose frames reach it, and :frame and :irq
+          # Who runs each routine: the scene routines whose frames reach it, and :frame and :irq
           # for the game loop outside its scenes and the console's interrupt. Only a routine
           # exactly one scene reaches can go in a set. A routine nothing here reaches — one the
           # build calls for itself from places the tree does not show — is counted as the
@@ -192,7 +192,7 @@ module VBlank
             owners
           end
 
-          # WHAT THE GAME LOOP'S OWN BODY CALLS, BY WHO IT CALLS IT FOR: :frame for a call it
+          # What the game loop's own body calls, by who it calls it for: :frame for a call it
           # makes whatever is up, and a scene routine for a call it makes only while that scene
           # is up — under a test of the variable the dispatch picks scenes with, asking for that
           # scene's value. The gap after each frame tends each scene's things that way (its
@@ -242,7 +242,7 @@ module VBlank
             routines_placed_with_frame.to_h { |routine| [routine, declared[routine]] }
           end
 
-          # TAKE ON THE SETS {QuickMemoryPlan} SPLIT THE ROOM INTO, one for each scene +dispatch+
+          # Take on the sets {QuickMemoryPlan} split the room into, one for each scene +dispatch+
           # names, in its order, an empty one for a scene that keeps nothing of its own — or none,
           # for a plan that keeps one set, whatever an earlier choice of this build split.
           def adopt_scene_sets(plan, dispatch, scenes, owners)
@@ -265,7 +265,7 @@ module VBlank
             end
           end
 
-          # THE ONE SCENE THAT ASKS FOR A SAVE OF THE RECORD +name+ BELONGS TO, for a routine of a
+          # The one scene that asks for a save of the record +name+ belongs to, for a routine of a
           # save record; nil for any other routine, or for a record more than one scene saves.
           # A scene asks when it reaches any routine of that record: the job a save starts is
           # one, and the routines that write the save are run afterwards by the game loop.
@@ -291,7 +291,7 @@ module VBlank
             @emitting_interrupt = false
           end
 
-          # AN INTERRUPT CAN LAND WHILE THE SWAP IS COPYING, so a routine it reaches can never be
+          # An interrupt can land while the swap is copying, so a routine it reaches can never be
           # in a set: it would run half of one scene's code and half of another's. The chooser
           # keeps out every routine the program shows an interrupt reaching; this is what stops
           # one it cannot see — a routine the build calls for itself — rather than guessing.
@@ -303,7 +303,7 @@ module VBlank
                                  "in the game. To build the game now, build with `fast_code: false`."
           end
 
-          # WHERE A ROUTINE IN A SET IS NOW, as a variable of the quick memory: written by the
+          # Where a routine in a set is now, as a variable of the quick memory: written by the
           # swap, read by every call to it from outside its set.
           def where_word(name) = :"__where_#{name}"
 
@@ -353,7 +353,7 @@ module VBlank
           # The room the sets are copied into: as big as the biggest of them.
           def biggest_set_bytes = set_numbers.map { |number| set_bytes(number) }.max.to_i
 
-          # WHERE IN THAT ROOM EACH SET GOES. Sets small enough to sit side by side are given
+          # Where in that room each set goes. Sets small enough to sit side by side are given
           # places that do not overlap, so copying one in leaves the other in: a game's logos and
           # title, with a routine or two of their own, then leave the file screen's routines in
           # quick memory through the opening, where the file screen's saves are checked. Only a
@@ -399,7 +399,7 @@ module VBlank
               (@emit.label_offset(@functions.func_label(name)) - @emit.label_offset(set_start_label(number)))
           end
 
-          # THE TABLES THE SWAP READS. For no set and for each set, a list of what to do, kept in
+          # The tables the swap reads. For no set and for each set, a list of what to do, kept in
           # the cartridge: which sets stay in, this set's bit, and then each copy to make — the
           # set's code to its place, its routines' words saying the quick memory, and the words of
           # each set it puts out saying the cartridge again. Each copy is the copying engine's
@@ -445,7 +445,7 @@ module VBlank
              -> { names.size | DMA_32BIT | DMA_ENABLE }]
           end
 
-          # THE WORDS EACH COPY READS: every routine at its place in the cartridge, each set's
+          # The words each copy reads: every routine at its place in the cartridge, each set's
           # routines at their place in the quick memory, and each set's at the cartridge.
           def register_where_word_tables
             cartridge = ->(name) { -> { @emit.label_address(@functions.func_label(name)) } }
@@ -468,7 +468,7 @@ module VBlank
             @emit.patch_word(fix.blob, fix.offset, fix.target.call)
           end
 
-          # AT POWER-ON every word points at the cartridge, and then each set that has routines goes
+          # At power-on every word points at the cartridge, and then each set that has routines goes
           # in — those the game loop runs first, then the rest in the order the dispatch names
           # their scenes — unless it would put out one already in, so the opening runs with as
           # many sets in as sit side by side. Which those are is known only once every set's code
@@ -498,7 +498,7 @@ module VBlank
             end
           end
 
-          # BEFORE THE DISPATCH CALLS A SCENE, its set is copied in unless it is in already. That
+          # Before the dispatch calls a scene, its set is copied in unless it is in already. That
           # is asked by a few instructions written once, at the top of the dispatch and jumped
           # over, which each clause calls with its set's number in r0 — so a clause grows by two
           # instructions however many scenes there are, where asking in each clause cost the
@@ -531,7 +531,7 @@ module VBlank
           SWAP_LIST = 2
           SWAP_LEFT = 3
 
-          # THE SWAP, with the set's number in r0: record which sets are in now, then make the
+          # The swap, with the set's number in r0: record which sets are in now, then make the
           # copies its list holds (see #register_quick_tables). Uses r0 to r3 and r12, and
           # returns to where it was called from.
           #

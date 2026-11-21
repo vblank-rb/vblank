@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # WHAT HAPPENS TO THE WHOLE PICTURE rather than to anything in it: moving the window
+        # What happens to the whole picture rather than to anything in it: moving the window
         # onto it (the camera), fading it toward black or white, and tinting it toward a
         # colour. None of these redraws anything. Each tells the display to show what is
         # already there differently — slid, darkened, mixed — or, where the display cannot,
@@ -120,7 +120,7 @@ module VBlank
             emit_fade_registers(node)
           end
 
-          # A fade that moves the COLORS rather than asking the display to blend — which
+          # A fade that moves the colors rather than asking the display to blend — which
           # is how the games on this console fade, and the only way a see-through layer
           # survives one (IR::Fading says which fades those are and why).
           #
@@ -132,7 +132,7 @@ module VBlank
           # layer keeps the setup it was given at boot and there is nothing to hand back when
           # it lifts.
           #
-          # WHAT IT MAY HAVE TO HAND BACK IS ANOTHER FADE'S. The display holds one fade at a
+          # What it may have to hand back is another fade's. The display holds one fade at a
           # time, so this one takes the place of whatever fade was in force — and in a game
           # with a see-through layer that can be a fade the display itself was doing: one
           # placed in the stack, or one left on from a painted screen that has no colors to
@@ -147,8 +147,8 @@ module VBlank
                                             mode: mode)
           end
 
-          # A FADE THAT WALKS THE COLORS, IN A GAME WITH MORE THAN ONE SCREEN, is done the way
-          # the screen up NOW does it, as a tint is (see #emit_tint_by_screen_up): a flash runs
+          # A fade that walks the colors, in a game with more than one screen, is done the way
+          # the screen up now does it, as a tint is (see #emit_tint_by_screen_up): a flash runs
           # from a routine of its own every frame, whichever scene is up. The plain bitmap
           # screen has no colors to walk, so there the display fades it, in sixteenths; every
           # other screen walks its tables. And it is kept, like a tint, so the next screen to
@@ -176,7 +176,7 @@ module VBlank
             emit_display_fade_from_kept
           end
 
-          # KEPT holds a kept fade (its color is DARKEN or carries BRIGHTEN): tell the display.
+          # KEPT holds a kept fade (its color is darken or carries brighten): tell the display.
           def emit_display_fade_from_kept
             off = gensym
             brighten = gensym
@@ -212,7 +212,7 @@ module VBlank
             end
           end
 
-          # A FADE HELD TO A RECTANGLE is the display's own fade with its first window switched
+          # A fade held to a rectangle is the display's own fade with its first window switched
           # on. The window is a rectangle the display is told about, and two registers set what
           # happens inside it and outside: which layers show (all of them, both sides, always
           # here) and whether the color effect — the darkening a fade is — applies. So holding a
@@ -276,14 +276,14 @@ module VBlank
           # a statement, like the other scratch registers.
           FADE_HELD = 2
 
-          # A FADE AND A SEE-THROUGH LAYER ARE THE SAME PIECE OF DISPLAY, so only one of
+          # A fade and a see-through layer are the same piece of display, so only one of
           # them can be in force. The blend unit is told which effect it is running in one
           # field of one register: mixing two layers together, or moving the whole picture
           # toward black. A fade writes that field, and the layer's blend is gone while it
           # holds it — the layer draws solid, and darkens with everything else, which is
           # what a fade out is supposed to look like.
           #
-          # What must not happen is that it stays gone. A fade ends AT ZERO — invisible,
+          # What must not happen is that it stays gone. A fade ends at zero — invisible,
           # but still a fade as far as the register is concerned — so without this a single
           # hit flash would leave the water solid for the rest of the game, with nothing on
           # screen or in the build to say why.
@@ -331,7 +331,7 @@ module VBlank
             FadeSteps.steps_value(node.amount, fraction_bits: node.fraction_bits, walked: false)
           end
 
-          # Mix a color INTO the whole picture, which is a different piece of the display
+          # Mix a color into the whole picture, which is a different piece of the display
           # from the fade above and not a fade with a color argument.
           #
           # Two mechanisms, chosen by the screen — see PaletteTint for the other one, and
@@ -386,7 +386,7 @@ module VBlank
           # tints.
           TINT_BLEND = BLD_ALPHA | BLD_BG2 | (BLD_BACKDROP << BLD_SECOND_SHIFT)
 
-          # A TINT IN A GAME WITH MORE THAN ONE SCREEN is done the way the screen up NOW does
+          # A tint in a game with more than one screen is done the way the screen up now does
           # it, which a statement cannot know from where it is written: a flash runs from a
           # routine of its own every frame, whichever scene is up. So the tint is kept for the
           # next change of screen (see PaletteTint::TINT_ASKED), and then done one way or the
@@ -412,7 +412,7 @@ module VBlank
             place_label(done)
           end
 
-          # PUT THE TINT KEPT IN TINT_ASKED BACK as the display changes to +mode+'s screen.
+          # Put the tint kept in TINT_ASKED BACK as the display changes to +mode+'s screen.
           # What the last screen left would be wrong here either way round: a walked table is
           # sent again as drawn, and the blend the plain bitmap screen tints with reads the
           # first color of a table, which a tiled screen has just filled with its own. With no
@@ -492,7 +492,7 @@ module VBlank
           # One register holds the size, and nothing else is written: which things are
           # drawn in blocks was settled as the cartridge was built (see Pixelation). The
           # register keeps four sizes — across and down for backgrounds, then across and
-          # down for sprites — each in four bits and each one LESS than the pixels, so the
+          # down for sprites — each in four bits and each one less than the pixels, so the
           # same number goes into all four places.
           #
           # A size written in the program is worked out here and stored as a plain number.

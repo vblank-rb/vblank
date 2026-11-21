@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # WHAT HAS TO HAPPEN ONCE AS A SCENE TAKES OVER, AND NOT ON EVERY FRAME IT RUNS.
+        # What has to happen once as a scene takes over, and not on every frame it runs.
         #
         # A scene's own routine is reached on every frame it is the active state, so anything
         # in it that sets the console UP rather than moving what is already there has to be
@@ -99,7 +99,7 @@ module VBlank
             emit_clear_marker(:pass) if handover.any_loads_first?
           end
 
-          # END THE PASS A SCENE THAT LOADS FIRST IS HANDED OVER ON, once its pictures are up, by
+          # End the pass a scene that loads first is handed over on, once its pictures are up, by
           # returning from its routine before its own work: the copy has that pass to itself (see
           # IR::SceneHandover::Arrival#loads_first?). The note records which scene ran last, so the
           # next pass finds its own number and goes on into the scene's work. A note of nobody's
@@ -126,7 +126,7 @@ module VBlank
             end
           end
 
-          # RUN THE BLOCK'S CODE UNLESS THE PASS ABOUT TO START IS A SCENE'S COPY. The game chose a scene
+          # Run the block's code unless the pass about to start is a scene's copy. The game chose a scene
           # that loads first, and it has not run yet: it was not the last to, and a note of
           # nobody's is power-on, where its work starts on the first pass. That pass shows nothing
           # new and the pictures are not in video memory yet, so the frame's sprite work is left for
