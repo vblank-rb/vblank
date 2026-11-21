@@ -2,7 +2,7 @@
 
 module VBlank
   module Messages
-    # WHAT A PERSON CALLS THIS.
+    # What a person calls this.
     #
     # A build talks: a progress line while it works, a guardrail's warning, a build error, and
     # `rom.profile` at the end. Those four come from corners of the framework that never meet,
@@ -12,35 +12,35 @@ module VBlank
     # Done where it is needed, that job gets done again in each corner, and the answers drift
     # apart. The console's 32K of fast memory is what that looks like: one name for it in the
     # report, a second in a guardrail's error, a third in the progress line — minutes apart, in
-    # one build, read by somebody who is trying to work out what the thing IS. A learner cannot
+    # one build, read by somebody who is trying to work out what the thing is. A learner cannot
     # tell three names for one thing from three different things.
     #
     # So the English lives here and the corners read it. Two things follow that cannot be had
     # while it is scattered: rewording something is one edit in one place, and a test can fail
     # when a second name for one thing turns up (see test/all/vblank/messages/test_plain_words.rb).
     #
-    # WHAT BELONGS HERE is a name for a thing SEVERAL PLACES have to mention — a piece of
+    # What belongs here is a name for a thing several places have to mention — a piece of
     # hardware, a routine nobody wrote, a verb whose node kind is not what the author typed.
     # What does not belong here is the wording of any one message. A guardrail's sentence is
     # written where the guardrail is, next to the code that knows why it fires; only the shared
     # nouns in it come from here.
     module PlainWords
-      # THE CONSOLE'S 32K OF FAST MEMORY. Code and data kept there are reached without waiting,
+      # The console's 32K of fast memory. Code and data kept there are reached without waiting,
       # where everything in the cartridge is fetched over a narrow connection — the same
       # instructions run about two and a half times faster in one place than the other, which is
       # why the framework brings it up at all. Its hardware name is IWRAM, and a person reading a
       # build has no reason to know that word, so nothing they read says it.
       QUICK_MEMORY = "quick memory"
 
-      # WHAT IT MUST NEVER BE CALLED, so a test can fail when one of these turns up in something a
+      # What it must never be called, so a test can fail when one of these turns up in something a
       # build prints. Comments are exempt and deliberately so — a comment teaches the hardware and
-      # may name IWRAM outright; this is about what a PERSON RUNNING A BUILD reads.
+      # may name IWRAM outright; this is about what a person running a build reads.
       NOT_CALLED = Ractor.make_shareable(
         { QUICK_MEMORY => [/\bfast RAM\b/i, /\bquick RAM\b/i, /\bfast memory\b/i,
                            /\bIWRAM\b/, /\bfast on-chip\b/i] }
       )
 
-      # THE ROUTINES THE AUTHOR NEVER WROTE. A game loop's body is statements rather than a
+      # The routines the author never wrote. A game loop's body is statements rather than a
       # routine, and nobody types the routine the console jumps into when the display or a timer
       # announces something — but the build treats both as routines, because that is what lets
       # the same choosing and the same report cover them (see Backends::GBA::Placement). So both
@@ -78,7 +78,7 @@ module VBlank
         ROUTINES.fetch(name) { MadeNames.words_for_made_name(name) || "func :#{name}" }
       end
 
-      # THE VERB AN AUTHOR TYPED, for the few node kinds whose internal name is not that verb. A
+      # The verb an author typed, for the few node kinds whose internal name is not that verb. A
       # message naming the kind back at somebody names something they never wrote: nobody types
       # `draw_digit`, they type `draw_number`, and a `blit_pose` is what a `sprite` became.
       VERBS = { blit_pose: "sprite", draw_digit: "draw_number", show_light_now: "light.show_now" }.freeze

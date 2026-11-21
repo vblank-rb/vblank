@@ -2,10 +2,10 @@
 
 module VBlank
   module Messages
-    # THE NAMES THE BUILD MAKES UP, for routines and variables nobody wrote: the routines a
+    # The names the build makes up, for routines and variables nobody wrote: the routines a
     # `save_data` record is built into and the save machinery behind them, the routine each
     # font's numbers are drawn by, the routine that writes one scene's sprites. Each kind is
-    # written here ONCE — how its name is spelled from its parts, and what a report calls it —
+    # written here once — how its name is spelled from its parts, and what a report calls it —
     # and the build makes every such name here and reads every one back here.
     #
     # That is what keeps them apart. A name is spelled with the game's own part (a record's
@@ -40,8 +40,8 @@ module VBlank
                     reset: "putting save_data :%s's things back as declared",
                     autosave: "asking for a save of save_data :%s after a change" }.freeze
 
-      # WHAT A RECORD CAN BE CALLED: letters and digits, with one underscore between words —
-      # which `save_data` holds a game to. A record's own names put its name before TWO
+      # What a record can be called: letters and digits, with one underscore between words —
+      # which `save_data` holds a game to. A record's own names put its name before two
       # underscores and the save machinery's start with one, so held to this shape a record's
       # name can never run into the piece after it, into another record's, or into the
       # framework's.
@@ -54,8 +54,8 @@ module VBlank
       PLAIN = "[A-Za-z0-9_]+"
       ANY = ".+"
 
-      # WHAT A POOL CAN BE CALLED: anything that does not hold two underscores in a row or end
-      # in one — which `pool` holds a game to. A pool's own names put its name before TWO
+      # What a pool can be called: anything that does not hold two underscores in a row or end
+      # in one — which `pool` holds a game to. A pool's own names put its name before two
       # underscores, so held to this shape the first pair of them is always where the name
       # ends, whatever comes after: a part of the pool's own, or a field called anything.
       POOL = "(?:_?[^_])+"
@@ -224,7 +224,7 @@ module VBlank
 
       def self.kinds = KINDS.keys
 
-      # The name of the +kind+ made from +parts+ (see KINDS for each kind's parts).
+      # The name of the +kind+ made from +parts+ (see kinds for each kind's parts).
       def self.make(kind, **parts)
         KINDS.fetch(kind).make(parts)
       end
