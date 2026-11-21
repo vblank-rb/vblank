@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         module Runtime
-          # A MAP BIGGER THAN THE COLOR'S GRID. The console draws its background from a grid of
+          # A map bigger than the color's grid. The console draws its background from a grid of
           # 32×32 cells that wraps round, 256 pixels each way, and its screen shows 20×18 of them —
           # 21×19 once the view is part way across a cell. So a bigger map is kept whole in the
           # cartridge (GBC::Art#big_map: each cell's tile and its colours, a row to a section), and
@@ -176,7 +176,7 @@ module VBlank
               asm.label("rt_big_wraps_done")
             end
 
-            # A BIG MAP THE GAME CHANGES (`set_tile`) is kept in work memory while it is up, so a cell
+            # A big map the game changes (`set_tile`) is kept in work memory while it is up, so a cell
             # changed stays changed as the view moves away and back; put up again it is as declared.
             #
             # rt_big_copy_in(map, to): big map +map+ of the table, from the cartridge, a row after
@@ -471,7 +471,7 @@ module VBlank
               asm.ret
             end
 
-            # rt_big_cells: A cells from CELL, along a row (B = 0) or down a column (B = 1), each its
+            # rt_big_cells: A cells from cell, along a row (B = 0) or down a column (B = 1), each its
             # tile and colours into the copy of the grid — and into the list for the blank while
             # STAGING asks for it.
             def emit_cells(asm, at, buffer, staged, repeats)
@@ -590,7 +590,7 @@ module VBlank
               asm.ret
             end
 
-            # The cell at CELL brought round into the grid, for a map that comes round past its edges:
+            # The cell at cell brought round into the grid, for a map that comes round past its edges:
             # its column and row each kept to the grid's size (COL_WRAP, ROW_WRAP), the high bytes
             # nought. Its place in the grid, the bottom five bits of each, stays the same, and the next
             # cell along counts on from it. B is used.
@@ -610,7 +610,7 @@ module VBlank
               asm.label("rt_big_cell_round")
             end
 
-            # rt_big_whole: THE WHOLE VIEW INTO THE COPY OF THE GRID, a row of the map at a time, as a
+            # rt_big_whole: the whole view into the copy of the grid, a row of the map at a time, as a
             # map just put up or a jump of the view wants. Worked out a cell at a time (rt_big_cells),
             # each cell asks whether it is on the map, finds its row in the map's table, puts the
             # row's bank in view and back, and works out its place in the grid: some seventy
@@ -620,7 +620,7 @@ module VBlank
             # cells copied with sixteen instructions each and three more where the grid's row comes round.
             #
             # Which of the view's columns are left of the map, on it and right of it is the same for
-            # every row, so it is worked out first (LEAD, RUN, TRAIL, from START): a cell off the map
+            # every row, so it is worked out first (lead, run, trail, from START): a cell off the map
             # is nothing, the backdrop, as rt_big_cells makes it. A row off the map is all nothing.
             # A map that comes round has its columns worked out round the grid instead
             # (#emit_whole_columns_round), and its rows brought round as each is found.
@@ -716,7 +716,7 @@ module VBlank
 
             # rt_big_whole_round, A the grid's columns less one (COL_WRAP): the view's columns round
             # the grid. They start at the view's column round the grid (START) and run to the grid's
-            # last column or the view's, those below the map's size on it (RUN) and the rest not
+            # last column or the view's, those below the map's size on it (run) and the rest not
             # (TRAIL); the view's 21 columns are fewer than the grid's, so they come round once at most,
             # and go on from the grid's first column, on the map (RUN2) and past it (TRAIL2). B, H and
             # L are used.

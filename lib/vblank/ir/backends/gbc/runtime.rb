@@ -23,7 +23,7 @@ module VBlank
   module IR
     module Backends
       class GBC
-        # THE RUNTIME every Game Boy Color cartridge carries, in bank 0 where every routine of the
+        # The runtime every Game Boy Color cartridge carries, in bank 0 where every routine of the
         # game can reach it: from power-on to the game's first line (Boot), the arithmetic (Int32),
         # calls between banks and the runtime's numbers (Calls), the frame and the buttons (Frame),
         # the lists (Lists), the picture (Picture, and Paint for a painted screen) and the sound

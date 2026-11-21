@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBC
-        # A GAME'S SONGS, AS THE COLOR'S PLAYER READS THEM (Runtime::Music), worked out while the
+        # A game's songs, as the color's player reads them (Runtime::Music), worked out while the
         # program is built.
         #
         # Each part of a song plays on one of the console's own voices: the first two square-wave
@@ -26,7 +26,7 @@ module VBlank
           # What the songs are to the author, for a cartridge too full for them (see Linker::TooBig).
           SONGS = SM83::Holding.new(what: "the game's songs", fix: "make its songs shorter, or use fewer of them")
 
-          # A PART'S ENTRY IN A SONG (#emit_song): its voice, its tone, how many notes each of its two
+          # A part's entry in a song (#emit_song): its voice, its tone, how many notes each of its two
           # lists holds and where each is — and in a game whose songs are kept in banks, at ENTRY_BANK,
           # the bank they are in.
           ENTRY_BANK = 10
@@ -87,7 +87,7 @@ module VBlank
           Note = Data.define(:song, :part, :voice, :pitch, :volume, :fade, :slide, :vibrato, :side, :duty, :wave, :names_wave,
                              :metallic)
 
-          # A NOTE'S FADE RIDES IN ITS TUNING'S TOP FOUR BITS, which a square or noise note never
+          # A note's fade rides in its tuning's top four bits, which a square or noise note never
           # uses: a square voice's period is eleven bits and the hiss's clock eight. The player
           # takes them out and puts them under the note's volume, where the voice's register keeps
           # them. A noise note that names a fade also sets NOISE_HAS_FADE, since a drum that names none
@@ -96,7 +96,7 @@ module VBlank
           FADE_SHIFT = 12
           NOISE_HAS_FADE = 0x0800
 
-          # A SOUND EFFECT as the Color's player reads it (Runtime::Effects): its name, its number
+          # A sound effect as the Color's player reads it (Runtime::Effects): its name, its number
           # among the game's effects in the order declared, its rank as a number of a byte (#rank),
           # its group and priority, how many frames it lasts, its parts, and whether it keeps its
           # voices to its end.
@@ -158,7 +158,7 @@ module VBlank
           # The effects in the order a frame plays them, highest rank first (IR::Tunes.effects_by_rank).
           def effects_by_rank = effects.sort_by { |effect| -effect.rank }
 
-          # WHO HOLDS A VOICE, as one byte. The interpreter settles who sounds on a voice two players
+          # Who holds a voice, as one byte. The interpreter settles who sounds on a voice two players
           # want by a rank of 24 bits (IR::Tunes.song_rank, IR::Tunes.effect_rank); the Color keeps
           # instead each rank's place among every rank the game can have, the lowest first. The
           # order is the same, so every comparison comes out the same, and rank 0 — nobody, or a
@@ -173,14 +173,14 @@ module VBlank
           # song's rank (#rank), and for each rank whether it is a sound effect's; and each sound
           # effect's notes, as it plays them once.
           #
-          # SONGS KEPT IN BANKS. The part of the cartridge always in view holds 16384 bytes, the
+          # Songs kept in banks. The part of the cartridge always in view holds 16384 bytes, the
           # framework's own code among them, so a game with much music cannot keep every note there.
           # One whose songs do not fit (GBC#build) keeps each part's notes in a bank of the cartridge
           # instead, a section a part, and its entry names which bank; the player puts that bank in
           # view while it reads the part (Runtime::Music). What a song is — how long, its parts —
           # and the sound effects' notes stay in view.
           #
-          # SONGS' ENTRIES KEPT IN A BANK TOO (#entries_in_banks?). What a song is still takes a few
+          # Songs' entries kept in a bank too (#entries_in_banks?). What a song is still takes a few
           # dozen bytes a song in view, so a game that keeps adding songs fills that part with them.
           # Such a game keeps the table of where each song is, and every song's entry, in a section of
           # their own in the banks, and the player copies the entry of a song into work memory as the
@@ -212,7 +212,7 @@ module VBlank
             1 + effects.map(&:group).compact.uniq.index(effect.group)
           end
 
-          # EACH EFFECT'S ROW AND NOTES IN A SECTION OF THEIR OWN in the banks, which the row names
+          # Each effect's row and notes in a section of their own in the banks, which the row names
           # the notes from (Runtime::EffectTable says what a row holds).
           def effect_sections
             return [] unless effects_in_banks?
@@ -381,7 +381,7 @@ module VBlank
             tuned | (fade.bits << FADE_SHIFT) | (voice == NOISE_VOICE ? NOISE_HAS_FADE : 0)
           end
 
-          # A DRUM HIT GIVEN ITS OWN RATTLE keeps it in bit 3 of its tuning's low
+          # A drum hit given its own rattle keeps it in bit 3 of its tuning's low
           # byte, which is where the noise voice's register (NR43) keeps it and which the clock's bits
           # leave free: the player writes the byte with the part's rattle ORed in, and a part any of
           # whose notes are given one has none of its own there (#tone_of). Nothing for a rest, any other voice,
@@ -445,7 +445,7 @@ module VBlank
             end
           end
 
-          # A SONG THAT COMES ROUND FROM ITS START plays the same notes every time, so its list for
+          # A song that comes round from its start plays the same notes every time, so its list for
           # the times after the first is the first list, kept once (IR::Tunes.loop_passes).
           def self.again_shared?(pass) = pass.again == pass.first
 
@@ -491,7 +491,7 @@ module VBlank
 
           # The numbers a note's voice is tuned by, as its registers take them: the period of a
           # square or wave note, and the hiss's clock (and whether it is the metallic one) for a
-          # noise note. REST for a rest.
+          # noise note. Rest for a rest.
           def tuning(voice, pitch, clock = nil)
             return REST if pitch.zero?
 
