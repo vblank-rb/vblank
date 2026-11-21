@@ -3,9 +3,9 @@
 module VBlank
   class Builder
     #--
-    # A BACKGROUND DRAWN FROM THE ORIGINAL'S OWN PICTURES, MAP AND COLOURS, read from the data pack.
+    # A background drawn from the original's own pictures, map and colours, read from the data pack.
     #
-    #   pack = data_pack from: ORIGINAL, version: "1.0" do |slots|
+    #   pack = data_pack from: original, version: "1.0" do |slots|
     #     slots.tiles   :title_video,  count: 2048, colors: 16
     #     slots.numbers :city_map,     count: 512, width: :half, signed: false
     #     slots.colors  :title_colors, count: 128
@@ -22,13 +22,13 @@ module VBlank
     #
     #   slots.map_cells :city_map, count: 1024    # written by `pack[:city_map].write_cell(at, tile:, ...)`
     #
-    # A SHORTCUT FOR A CONSOLE VBLANK KNOWS: a map of numbers of two bytes is read as the original's
+    # A shortcut for a console VBLANK knows: a map of numbers of two bytes is read as the original's
     # console keeps a cell (Console::OriginalFormats#map_words, the Advance's, the Super Nintendo's
     # and the Genesis's), as `slots.numbers :city_map, ..., width: :half` in the example at the top
     # is. Both are read by one reader
     # (Console::MapWordFormat), the record being a layout like any console's.
     #
-    # A MAP OF ONE BYTE A CELL OVER TILES OF A BYTE A PIXEL is the other way a console keeps a
+    # A map of one byte a cell over tiles of a byte a pixel is the other way a console keeps a
     # background: the layer it turns and resizes (the Advance's turning layer, the Super
     # Nintendo's Mode 7). The console reads such a layer a pixel at a time, working back from the
     # screen through the turn, so a cell is a tile's number and nothing else (Console::
@@ -49,21 +49,21 @@ module VBlank
     # 256 colours that scrolls, as the Advance keeps a text layer of 256 colours: each cell names
     # its tile and its turns, and its bank is not read (#cell_format_without_banks).
     #
-    # THE COLOURS ARE NAMED LISTS, a bank each. Bank +n+ of the slot is the list `:<slot>_<n>`
+    # The colours are named lists, a bank each. Bank +n+ of the slot is the list `:<slot>_<n>`
     # (`:title_colors_0`), so a game fades the background or draws it with other colours by those
     # names, as it would a background of its own (`city.draw_with color_walk(:title_colors_0, from:
     # :black), showing: step`). Two backgrounds from one slot share its lists. `draw_with` takes any
     # bank of the slot, and one this background's map does not use changes nothing: which banks a
     # map uses is in the player's copy, so a game names every bank its screen fades.
     #
-    # BUILT ALL-IN-ONE, the cells are worked out here from what the slots hold, as a port would
+    # Built all-in-one, the cells are worked out here from what the slots hold, as a port would
     # have worked them out by hand: each different tile as drawn (a tile, its bank and its turn) a
     # picture of 8x8, and the map those pictures, a big cell its tiles. So the console, the
     # interpreter and every build draw it as any background, and a tile that draws nothing is
     # left empty. On a console that draws tiles of 16x16, a cell of 16x16 is one picture of that
     # size instead, as the original's map is (#big_pack_cells?).
     #
-    # WITH THE PACK LEFT OUT nothing of the slots is known here: not which tiles the map names, nor
+    # With the pack left out nothing of the slots is known here: not which tiles the map names, nor
     # which bank each is drawn from, nor one colour. So the background is declared by where its
     # map, tiles and colours are in the file the program is handed as it starts
     # (IR::StartFile::Background), and each backend that plays such a program works the cells out
@@ -140,7 +140,7 @@ module VBlank
         handle
       end
 
-      # A BACKGROUND OF THE PACK THAT WALKS BETWEEN AREAS. A port keeps each level's art as slots of
+      # A background of the pack that walks between areas. A port keeps each level's art as slots of
       # one shape: its video image, its map, its lists of colours. So `tiles:`, `map:` and `colors:`
       # can each be a Hash of slots by area, or one slot every area shares:
       #
@@ -155,7 +155,7 @@ module VBlank
       # walks this one, and `show_map` takes the area's name or its number. Areas over one slot of
       # tiles are one tileset, and walking between them changes only the map.
       #
-      # EACH AREA'S MAP CAN BE A WIDTH OF ITS OWN. A room of an original is a map of the room's own
+      # Each area's map can be a width of its own. A room of an original is a map of the room's own
       # size, so `across:` can be a Hash by area too, as the slots are:
       #
       #   background :rooms, tiles: pack[:house_video], map: { hall: pack[:hall_map], field: pack[:field_map] },
@@ -164,7 +164,7 @@ module VBlank
       # The maps are then of different sizes, which a background keeps whole and brings into view a
       # strip at a time (IR::TileMap.streams?), as it does a game's own maps of different sizes.
       #
-      # A MAP CAN CARRY ITS OWN WIDTH instead (DSL::PackSlot#as_map), so the width goes with the map
+      # A map can carry its own width instead (DSL::PackSlot#as_map), so the width goes with the map
       # and the background needs no across: at all:
       #
       #   background :rooms, tiles: pack[:house_video], colors: pack[:house_colors],
@@ -250,7 +250,7 @@ module VBlank
                              "name the same areas, in the same order."
       end
 
-      # THE CELLS WRITTEN LATER ON AREAS are told for every area or in a Hash by area, each as cell
+      # The cells written later on areas are told for every area or in a Hash by area, each as cell
       # numbers (a list or a range) or as a slot of map cells (`set_cells: pack[:changes]`), and
       # `set_cell` then names a cell by its number or by its place in the slot. One `set_cell` line
       # writes whichever area is showing, so every area must be told the same way: a number given
@@ -322,7 +322,7 @@ module VBlank
         [words, moving]
       end
 
-      # THE ART OF AREAS OVER ONE SLOT OF TILES, made as #declare_pack_background makes a background
+      # The art of areas over one slot of tiles, made as #declare_pack_background makes a background
       # built all-in-one, from each area's map of +maps+ (a slot by area). The pictures are named for
       # the areas, so the pictures of areas over other slots never meet. Areas over one slot, in one
       # slot of colours, draw the same pictures, so they are made once, from every area's map at once,
@@ -387,7 +387,7 @@ module VBlank
         end
       end
 
-      # CELLS IN FRONT OF THE SPRITES (`cells_in_front: true`). A console that keeps a priority bit
+      # Cells in front of the sprites (`cells_in_front: true`). A console that keeps a priority bit
       # in each cell of its map (the Genesis, the Super Nintendo) draws a cell with it set over the
       # sprites, and a retail game sets it on the scenery a character walks behind: the machine in
       # the middle of a room, the top of a doorway. A cell's mark is read with the rest of it
@@ -397,7 +397,7 @@ module VBlank
       # cell `set_cell` writes takes its own. A tile that is in front and behind is held twice;
       # a console that keeps each 8x8 square once (the Genesis) holds the square once all the same.
       #
-      # ONLY A BACKGROUND THAT ASKS READS THE MARK. A port that copies the original's map whole
+      # Only a background that asks reads the mark. A port that copies the original's map whole
       # copies a priority bit on every cell, and a game written before the mark was read draws
       # those cells behind, so it builds the same as it always did.
       def refuse_bad_cells_in_front!(name, cells_in_front)
@@ -438,8 +438,8 @@ module VBlank
         end
       end
 
-      # `set_cells: pack[:changes]`: A SLOT OF MAP CELLS TELLS THE CELLS THE BACKGROUND MAY BE
-      # WRITTEN LATER, as a port's unpacking works out every cell its screen changes to, and
+      # `set_cells: pack[:changes]`: a slot of map cells tells the cells the background may be
+      # written later, as a port's unpacking works out every cell its screen changes to, and
       # `set_cell` names one by its place in the slot. Its cells are records (Original::MapCell),
       # so the map is map cells too, a cell of 8x8 pixels. Hands back the slot.
       def refuse_bad_told_slot!(name, slot, words)
@@ -467,7 +467,7 @@ module VBlank
       # (+told+, a DSL::PackCells, or nil).
       PackMapPictures = Data.define(:rows, :pictures, :told)  # :nodoc:
 
-      # A CELL OF 16x16 IS ONE TILE OF 16x16 where the console draws such tiles. A Super Nintendo
+      # A cell of 16x16 is one tile of 16x16 where the console draws such tiles. A Super Nintendo
       # original keeps such a screen as a map of 32 by 32 cells, and its own game shows it as a layer
       # of 16x16 tiles: a map of 2 KB, which goes to video memory in the blank as the screen comes in.
       # Made of 8x8 pictures the same screen is a map of 64 by 64, four times the bytes, and sending
@@ -579,7 +579,7 @@ module VBlank
         picture
       end
 
-      # TILES OF MORE COLOURS THAN A LIST HOLDS ARE DRAWN FROM THE WHOLE TABLE. A tile of sixteen
+      # Tiles of more colours than a list holds are drawn from the whole table. A tile of sixteen
       # colours picks from a bank, which is a list the game can name, walk and swap. A tile kept
       # a byte a pixel (Console::BYTE_A_PIXEL_TILES) picks from all 256 colours at once, as the
       # layer a console turns and resizes does, and no list is that long. So its pictures hold
@@ -598,7 +598,7 @@ module VBlank
       # themselves: what a tile drawn from the whole table picks from, by bank.
       def pack_color_tables(colors, size, where) = pack_slot_values(colors, :colors, where).each_slice(size).to_a
 
-      # THE CELLS THE BACKGROUND MAY BE WRITTEN LATER (`set_cells:`), each a cell number in the
+      # The cells the background may be written later (`set_cells:`), each a cell number in the
       # map's layout: a list of them, a Range (a run of tiles in one bank, turned one way), or a
       # list of both. On a map of map cells a number is the record's (Original::MapCell.number),
       # and a told cell may be given as the record itself, an Original::MapCell::Cell. The original writes words onto a screen by storing font cells in its map, and no
@@ -693,13 +693,13 @@ module VBlank
       # How many bytes of the file a colour is, in every layout a slot of colours is kept in.
       COLOR_BYTES = 2  # :nodoc:
 
-      # THE SAME BACKGROUND WITH THE PACK LEFT OUT (see the top of this file). It is declared as a
+      # The same background with the pack left out (see the top of this file). It is declared as a
       # background of the right size whose tiles are a picture for each bank of the slot, drawn
       # from that bank's list, so `draw_with` finds every bank by its name; the pictures and the
       # map's cells are stand-ins nothing draws, and the node says where in the file the real ones
       # are. A bank's list holds no colours here, only a marker for each (IR::StartFile, "MARKERS").
       #
-      # THE CELLS IT MAY BE WRITTEN LATER (`set_cells:`) are known here though the map's are not:
+      # The cells it may be written later (`set_cells:`) are known here though the map's are not:
       # a told number names its tile, its turn and its bank, and only the tile's pixels are in the
       # file. So each told tile is a picture of the background's tileset after the banks'
       # stand-ins and the runs of any tiles that take turns, read from the file as any picture of
@@ -724,7 +724,7 @@ module VBlank
         handle.allow_one_list_for_every_bank.allow_set_cells(made.cells)
       end
 
-      # THE SAME BACKGROUND WALKING BETWEEN AREAS, WITH THE PACK LEFT OUT: each area's tiles held
+      # The same background walking between areas, with the pack left out: each area's tiles held
       # as one background's are (#pack_tiles_held_at_start), its pictures named for the area and
       # numbered after the areas' before it, and the areas one background walking between
       # tilesets (Builder::Tiled#background_from_sets), each area's map the size of its own and
@@ -733,7 +733,7 @@ module VBlank
       # record holding its own width. +slots+ are each area's tiles:, map:, colors: and across:, by
       # area.
       #
-      # AREAS OVER ONE SLOT OF TILES, IN ONE SLOT OF COLOURS, TOLD THE SAME CELLS share what is held
+      # Areas over one slot of tiles, in one slot of colours, told the same cells share what is held
       # for them, as built all-in-one they are one tileset: the first such area holds the runs of
       # its tiles that take turns and its told cells' tiles, and each later one names those by
       # number (#pack_tiles_shared_at_start). So what a world of rooms holds grows with its slots of
@@ -857,7 +857,7 @@ module VBlank
         [where, stand_ins]
       end
 
-      # THE CELLS A SLOT TELLS A BACKGROUND READ AS THE GAME STARTS (`set_cells: pack[:changes]`).
+      # The cells a slot tells a background read as the game starts (`set_cells: pack[:changes]`).
       # Which tile, bank and turn each is, is in the file, so the build holds a stand-in tile for
       # each place of the slot, from tile +first+ of the background's own on, and the background's
       # fill paints each from its cell as it paints a cell of the map, in every set of colours the
@@ -883,7 +883,7 @@ module VBlank
         runs.fetch(key.tile_of(tile.bank, tile.mirrored, tile.upside_down) - first)
       end
 
-      # THE ONE TILE THE BUILD HOLDS FOR A BACKGROUND DRAWN FROM THE WHOLE TABLE, read as the game
+      # The one tile the build holds for a background drawn from the whole table, read as the game
       # starts: a background has a tile, and its map names one, until the file is read and each
       # cell names the tile it draws. Nothing draws it. It holds a colour of its own and no list,
       # since tiles of 256 colours have no bank to name (#drawn_from_whole_table?).
@@ -894,7 +894,7 @@ module VBlank
         picture
       end
 
-      # THE PICTURE OF A TOLD TILE (a Console::CellTile) of a background read as the game starts
+      # The picture of a told tile (a Console::CellTile) of a background read as the game starts
       # (+where+, an IR::StartFile::Background): its places are the tile's, read from the file and
       # turned as the tile says once read, and its colours the list of its bank, a marker each. So
       # it is drawn with whatever list the background draws that bank with, as the map's tiles are.
@@ -961,7 +961,7 @@ module VBlank
                              "pack. To fix this, give the game's own list another name."
       end
 
-      # A CELL OF A BACKGROUND READ AS THE GAME STARTS IS CHANGED ONLY TO A TILE IT WAS TOLD
+      # A cell of a background read as the game starts is changed only to a tile it was told
       # (`set_cells:`, written with `set_cell`): the tile a `set_tile` line names is a number among
       # the background's tiles, and which tiles its map draws is in the file. The told cells'
       # tiles are the ones known here, each a picture read from the file; a line that can put any
@@ -1048,7 +1048,7 @@ module VBlank
         picture
       end
 
-      # A TILE DRAWN FROM A BANK KEEPS THE ORIGINAL'S PLACES (Nodes::Bitmap#places_from_pack), as a
+      # A tile drawn from a bank keeps the original's places (Nodes::Bitmap#places_from_pack), as a
       # picture whose places are a slot's own does. A console that keeps one list of colours for
       # each tile, the Color, then draws every tile of a bank from one list holding the bank's
       # colours where the bank holds them, as the original does: however many of the bank's places
@@ -1110,14 +1110,14 @@ module VBlank
                              "like `slots.numbers :map, count: 1024, width: :byte, signed: false`."
       end
 
-      # A CELL OVER TILES OF 256 COLOURS HAS NO BANK. Such a tile picks from the whole table, so
+      # A cell over tiles of 256 COLOURS HAS NO BANK. Such a tile picks from the whole table, so
       # the cell's bank bits pick nothing: the Advance keeps a text layer of 256 colours under its
       # usual cells of two bytes and does not read their bank bits, and a map cell's bank is read
       # the same way. So the cell is read for its tile and its turns alone, by the build here, by
       # the interpreter and by each runtime as the game starts (IR::StartFile::Background).
       def cell_format_without_banks(words) = words.with(bank_at: 0, bank_bits: 0)
 
-      # A MAP CELL the unpacking wrote is VBlank's own record, so a bank other than 0 in it over
+      # A map cell the unpacking wrote is VBlank's own record, so a bank other than 0 in it over
       # tiles of 256 colours is a mistake in the unpacking: it names a bank that is not there.
       # A console's own cells keep bank bits that console does not read under such tiles, so those
       # are not refused. A build that leaves its pack out never reads the map, and draws such a

@@ -3,10 +3,10 @@
 module VBlank
   class Builder
     #--
-    # THE ORIGINAL'S SONGS AND SOUND EFFECTS AS NOTES, read from the data pack, and its instruments'
+    # The original's songs and sound effects as notes, read from the data pack, and its instruments'
     # settings with them.
     #
-    #   pack = data_pack from: ORIGINAL, version: "1.0" do |slots|
+    #   pack = data_pack from: original, version: "1.0" do |slots|
     #     slots.samples :horn,     count: 4096
     #     slots.numbers :tuning,   count: 9, width: :word, signed: false
     #     slots.numbers :shapes,   count: 36, width: :byte, signed: false
@@ -24,10 +24,10 @@ module VBlank
     # slot (`rate: pack[:tuning].number(3)`), read where the game is built. An envelope kept as a
     # Super Nintendo's sound chip keeps it is three bytes of a slot (`pack[:adsr].snes_envelope(0)`).
     #
-    # BUILT ALL-IN-ONE, the notes and the numbers are read here, and the song is the Score a port
+    # Built all-in-one, the notes and the numbers are read here, and the song is the Score a port
     # would have written by hand, so every console and build plays it as any Score.
     #
-    # WITH THE PACK LEFT OUT nothing here can be known. An instrument's rate, the sample it holds
+    # With the pack left out nothing here can be known. An instrument's rate, the sample it holds
     # from and its envelope of four bytes are then read as the game starts: the recording keeps
     # where each is in the start file (#recording_settings_in_start_file) and a stand-in for the
     # number. A part's notes are read then too: the part keeps where its records are and what
@@ -98,7 +98,7 @@ module VBlank
       # Whether +score+ reads its length or the tick it comes round to from the pack.
       def pack_timing?(score) = [score.length, score.loop_from].any?(DSL::PackNumber)
 
-      # WITH THE PACK LEFT OUT a part keeps its handle (a DSL::PackNotes) until the song is
+      # With the pack left out a part keeps its handle (a DSL::PackNotes) until the song is
       # recorded (#song_reading_notes_at_start), and the Score is held to what such a build needs:
       # its length, since where the last note ends is in the pack. A length read from the pack
       # comes with the most it can be (`longest:`). A part that plays a wave of the pack plays it
@@ -148,7 +148,7 @@ module VBlank
                              "and the loop as numbers."
       end
 
-      # THE SONG A SCORE MAKES (Audio::Score#to_song), where some of its parts read their notes
+      # The song a score makes (Audio::Score#to_song), where some of its parts read their notes
       # from the pack as the game starts. Such a part is made with no notes, so everything else
       # about it is worked out as for any part, and then keeps where its notes are in the start
       # file and what turns them into events (an IR::StartFile::Notes). Every backend that plays
@@ -339,7 +339,7 @@ module VBlank
         end
       end
 
-      # WHERE A RECORDING'S SETTINGS ARE IN THE START FILE (an IR::StartFile::RecordingSettings),
+      # Where a recording's settings are in the start file (an IR::StartFile::RecordingSettings),
       # for those of +rate+, +holds_from+ and +envelope+ that are numbers of the pack, with the pack
       # left out; nil for a recording that reads none of them from there. A slot's place and the
       # width of its numbers are the game's own words, so the build knows where each number will

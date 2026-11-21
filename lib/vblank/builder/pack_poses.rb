@@ -3,18 +3,18 @@
 module VBlank
   class Builder
     #--
-    # A POSE THAT IS ONE OF THE ORIGINAL'S OWN FRAMES, read from the data pack: its pieces from a
+    # A pose that is one of the original's own frames, read from the data pack: its pieces from a
     # slot of bytes, kept as the port's Original::FrameLayout says, over tiles from a slot of tiles.
     #
-    #   pack = data_pack from: ORIGINAL, version: "1.0" do |slots|
+    #   pack = data_pack from: original, version: "1.0" do |slots|
     #     slots.tiles   :title_sprites, count: 512, colors: 16
     #     slots.numbers :balloon,       count: 600, width: :byte, signed: false
     #   end
     #   colors :balloon, [...]
-    #   image :balloon_0, tiles: pack[:title_sprites], frame: pack[:balloon].frame(0, layout: FRAME),
+    #   image :balloon_0, tiles: pack[:title_sprites], frame: pack[:balloon].frame(0, layout: frame),
     #                     origin: [32, 48], colors: :balloon
     #
-    # THE LAYOUT IS READ BY THE PACK'S UNPACKING AND BY NOTHING ELSE. The unpacking writes each
+    # The layout is read by the pack's unpacking and by nothing else. The unpacking writes each
     # frame a game names again as a record of VBlank's own (Original::FrameRecord), one layout
     # whatever the original's, after the pack's last slot; the frames named are counted here
     # (#pack_frame_number). Whatever draws a pose reads that record: this build where it holds the
@@ -24,28 +24,28 @@ module VBlank
     # pixels start at its top left. So the pose names +origin+, where the object's place is in the
     # picture, the same for every pose of one sprite, so the sprite does not jump as it changes pose.
     #
-    # BUILT ALL-IN-ONE, the pieces are read here, and the pose is the picture of pieces a port
+    # Built all-in-one, the pieces are read here, and the pose is the picture of pieces a port
     # would have written by hand (`image ..., pieces:`), drawn from the tiles each piece names,
     # turned as it says: a piece of several tiles is the tiles its record names, turned as one. So every
     # console draws it from those pieces, and every build draws it as any pose. A picture's pieces
     # are 8x8 or 16x16, so a bigger piece of the frame is cut, and the picture keeps which of its
     # pieces were one (IR::Assets::Image#piece_groups) for a console that draws a piece that big.
     #
-    # COLOURS FROM THE FRAME. A console's sprite entry names the bank of colours a piece is drawn
+    # Colours from the frame. A console's sprite entry names the bank of colours a piece is drawn
     # from, and which bank a frame uses is in the player's copy. Where the frame's layout says
     # where that is (`bank_bit:`) and `colors:` is a whole slot of colours, the pose is drawn from
     # the list of its pieces' bank, `:<slot>_<bank>` (#pose_bank_list!):
     #
-    #   image :part_12, tiles: pack[:video], frame: pack[:frames].frame(at, layout: FRAME),
+    #   image :part_12, tiles: pack[:video], frame: pack[:frames].frame(at, layout: frame),
     #                   origin: [32, 48], colors: pack[:title_colors]
     #
     # A frame whose pieces name several banks is one pose told them, `banks: [4, 2]`, each piece
     # drawn from its own bank's list (#refuse_bad_pose_banks!).
     #
-    # THE PICTURE'S SIZE is as far as its pieces reach, or `size: [width, height]` where the game
+    # The picture's size is as far as its pieces reach, or `size: [width, height]` where the game
     # gives one: see-through past the pieces, so every pose of a sprite can be one size.
     #
-    # WITH THE PACK LEFT OUT nothing of the frame is known here: not how many pieces it has, nor
+    # With the pack left out nothing of the frame is known here: not how many pieces it has, nor
     # where one sits, nor one pixel. So the game gives `size:`, and the pose is declared as a
     # picture of that size and by where its frame's record and its tiles are in the file the program
     # is handed as it starts (IR::StartFile::Pose). Each backend that plays such a program paints
@@ -68,7 +68,7 @@ module VBlank
         from_banks = pose_colors_from_banks?(frame, opts[:colors])
         refuse_bank_without_bank_colors!(name, opts.key?(:banks) ? "banks:" : "bank:") if (opts.key?(:bank) || opts.key?(:banks)) && !from_banks
         banks = (refuse_bad_pose_banks!(name, opts) if opts.key?(:banks))
-        # ONE BANK NAMED is a pose of that bank's list, as `bank:` makes one, so it is drawn and
+        # One bank named is a pose of that bank's list, as `bank:` makes one, so it is drawn and
         # followed as any pose of one list, on every console; only a piece of another bank in the
         # pack the build holds is refused, where `bank:` leaves it out.
         told_one_bank = banks&.one?
@@ -124,7 +124,7 @@ module VBlank
         frame.piece_layout.names_bank? && colors.is_a?(DSL::PackSlot) && colors.shape == :colors && !colors.bank?
       end
 
-      # THE LIST A POSE IS DRAWN FROM WHERE ITS FRAME NAMES ITS BANK: the name of the list of the
+      # The list a pose is drawn from where its frame names its bank: the name of the list of the
       # one bank +pieces+ (FramePieces) are in. Each bank of the slot is the list `:<slot>_<bank>`,
       # the same lists a background from the slot is drawn from (PackBackgrounds), sized as the
       # tiles' own colours are counted. So the pose is a picture of one named list, as one a game
@@ -171,7 +171,7 @@ module VBlank
 
       MOST_POSE_BANK = 30 # :nodoc: The runtimes hold a pose's banks as the bits of one number
 
-      # A POSE OF SEVERAL BANKS (`banks: [4, 2]`). A console's sprite entry names the bank of
+      # A pose of several banks (`banks: [4, 2]`). A console's sprite entry names the bank of
       # colours its piece is drawn from (GBATEK, "LCD OBJ - OAM Attributes": attribute 2, bits
       # 12-15), so a frame can be pieces of several banks that move as one thing. The game names the
       # banks its frame uses, since a build that reads its pack as the game starts cannot see them.
@@ -229,7 +229,7 @@ module VBlank
                              "bank #{others.first}. To fix this, add every bank the frame uses to banks:."
       end
 
-      # WITH THE PACK LEFT OUT A POSE OF ONE BANK'S PIECES (`bank:`) is drawn from that bank's list,
+      # With the pack left out a pose of one bank's pieces (`bank:`) is drawn from that bank's list,
       # `:<slot>_<bank>`, known as the game is built, and the routine that paints it as the game
       # starts paints only the pieces whose record names that bank (IR::StartFile::Pose#bank).
       # Which pieces those are is the file's: where none is, the pose is see-through, where the
@@ -241,7 +241,7 @@ module VBlank
                              "#{bank_lists.length - 1}. To fix this, give a bank from 0 to #{bank_lists.length - 1}."
       end
 
-      # WITH THE PACK LEFT OUT THE BUILD CANNOT NAME THE LIST OF A POSE DRAWN IN ITS FRAME'S BANK:
+      # With the pack left out the build cannot name the list of a pose drawn in its frame's bank
       # which bank that is is in the file. So the pose's list is named for the pose's frame (a
       # STAND-IN), and the names of the lists it can be (+bank_lists+, by bank) are kept under it.
       # `colors_name_of` hands back the stand-in, and a sprite told to draw with it, or to follow
@@ -261,8 +261,8 @@ module VBlank
       # Asked for a pose whose list its frame picks in a build that reads its pack as the game starts; documented with the pose.
       def list_chosen_at_start?(name) = !@lists_chosen_at_start.nil? && @lists_chosen_at_start.key?(name)  # :nodoc:
 
-      # A SPRITE TOLD TO FOLLOW ITS POSES' LISTS WHERE A POSE'S LIST IS PICKED BY ITS FRAME AS THE
-      # GAME STARTS (Images#follow_pose_lists, with the pack left out). Each name of +lists+ is a
+      # A sprite told to follow its poses' lists where a pose's list is picked by its frame as the
+      # game starts (Images#follow_pose_lists, with the pack left out). Each name of +lists+ is a
       # stand-in, which the sprite follows as every list it can be, or a list a pose is drawn from;
       # each is followed and never drawn with another list. The object +node+ then names every list
       # it follows (IR::Nodes::Object#follows_each), and a pose shows what the list its frame picks
@@ -291,14 +291,14 @@ module VBlank
 
       private
 
-      # THE SAME POSE WITH THE PACK LEFT OUT (see the top of this file). The picture holds zeros of
+      # The same pose with the pack left out (see the top of this file). The picture holds zeros of
       # the size the game gave, and its places are all 1, so the build treats it as a solid box.
       # Its colours are the game's own list, or a slot or bank of colours read from the file with
       # the frame, named for the slot as a picture's are (DataPacks#pack_colors_name), or, where
       # the pose takes them from the bank its frame names (+from_banks+), a marker for each colour
       # of that bank (#frame_bank_colors_read_at_start).
       #
-      # A POSE OF SEVERAL BANKS (+banks+) holds a marker for each colour of each bank's list, as
+      # A pose of several banks (+banks+) holds a marker for each colour of each bank's list, as
       # built all-in-one, and the routine that paints it paints the pieces of those banks, each
       # place counted into its own bank's part of the list (IR::StartFile::Pose#banks). A piece of
       # another bank, which the build that holds the pack refuses, is not painted.
@@ -351,7 +351,7 @@ module VBlank
         record_visible_bounds(name: name, width: width, height: height, cells: [], transparent: nil)
       end
 
-      # THE COLOURS OF A POSE DRAWN IN THE BANK ITS FRAME NAMES, WITH THE PACK LEFT OUT. Which bank
+      # The colours of a pose drawn in the bank its frame names, with the pack left out. Which bank
       # that is is a number in the file: the bank the frame's front piece keeps in its record
       # (+choice+, an IR::StartFile::FrameBank). So the pose's list holds, for each place, a marker
       # of the colour at that place of whichever bank the file names (IR::StartFile::ChosenColor),
@@ -361,7 +361,7 @@ module VBlank
       # Each bank of the slot is declared as the list `:<slot>_<bank>` too, as built all-in-one
       # (#pose_bank_list!), so a game that recolours or walks one by that name builds.
       #
-      # A FRAME OF TWO BANKS. The file is the player's, so nothing in it stops the game: a frame
+      # A frame of two banks. The file is the player's, so nothing in it stops the game: a frame
       # whose pieces name two banks, which the build that holds the pack refuses, is drawn whole
       # in its front piece's bank, and a sprite following its list follows that bank's.
       def frame_bank_colors_read_at_start(name, opts, choice)
@@ -390,14 +390,14 @@ module VBlank
         end
       end
 
-      # THE FRAME +frame+ (a DSL::PackFrame) AS THE PACK'S UNPACKING IS TOLD OF IT (an
+      # The frame +frame+ (a DSL::PackFrame) as the pack's unpacking is told of it (an
       # Original::FrameRecord::Source): its slot, where it starts, and how it is kept. Where the
       # frame starts and, for one whose count the game gives, where it ends are the game's own
       # words, so they are held to the slot's size here, whichever way the game is built. A frame
       # that says its own count is in the player's copy: the build that holds the pack refuses one
       # that runs past its slot (#frame_pieces), and a build that does not draws the pieces that fit.
       #
-      # A FRAME READ THROUGH A VIEW (DSL::PackSlot#as_numbers) is told of as the frame at the same
+      # A frame read through a view (DSL::PackSlot#as_numbers) is told of as the frame at the same
       # bytes of the slot the view reads: the unpacking finds a frame's bytes by a slot the pack
       # names. Its start is held to the view; a frame that says its own count may run on past the
       # view's end into the rest of that slot, as it would in the original.
@@ -416,13 +416,13 @@ module VBlank
                                           count: (frame.count unless layout.counted), layout: layout, pose: frame.pose)
       end
 
-      # THE FRAMES THE GAME HAS NAMED SO FAR, each once, in the order it named them: the frames
+      # The frames the game has named so far, each once, in the order it named them: the frames
       # the pack keeps a record of after its last slot (Original::FrameRecord::Section). The number
       # of +source+ among them is its place in that section's directory. Both builds of one game
       # name the same frames in the same order, so the pack one makes is the file the other reads.
       # +picture+ is the image the frame is first read for, which an error gives.
       #
-      # AN UNPACKING MADE ALREADY WRITES NO RECORD OF A FRAME NAMED AFTER IT (DSL::DataPack#unpacking
+      # An unpacking made already writes no record of a frame named after it (DSL::DataPack#unpacking
       # makes it from the frames named so far), so a new frame named then is refused rather than
       # left out of the pack in silence.
       def pack_frame_number(source, picture)
@@ -445,7 +445,7 @@ module VBlank
         pack_frame_section
       end
 
-      # ONCE THE WHOLE PROGRAM IS DECLARED: a program that reads its pack as it starts is told the
+      # Once the whole program is declared: a program that reads its pack as it starts is told the
       # file's whole size, its frames' records after its slots. The size follows from the frames
       # the game named and never from what a frame holds (Original::FrameRecord::Section#size).
       # The build that holds the pack refuses frames that overlap past the room that size keeps.
@@ -526,7 +526,7 @@ module VBlank
       end
 
 
-      # THE ORIGIN NEED NOT BE INSIDE THE PICTURE. A frame whose pieces all sit below the object's
+      # The origin need not be inside the picture. A frame whose pieces all sit below the object's
       # place (the Minish Cap's anvil stars sit a row under theirs) puts the place above the
       # picture: origin [32, -1]. What must be inside is each piece, origin plus its offset, and
       # that is held where the pieces are known: here when the build holds the pack

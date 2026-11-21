@@ -172,7 +172,7 @@ module VBlank
       # music.play 2            # the forest
       # music.play track        # or whichever one a number the game holds names
       #
-      # music = songs :music, { title: TITLE, forest: FOREST }
+      # music = songs :music, { title: title, forest: FOREST }
       # music.play :forest
       # ```
       #
@@ -209,7 +209,7 @@ module VBlank
       # Each effect is a `VBlank::Audio::Score`.
       #
       # ```ruby
-      # sfx = sound_effects :sfx, { hit: HIT, spark: SPARK }
+      # sfx = sound_effects :sfx, { hit: hit, spark: SPARK }
       # sfx.play :hit
       # sfx.play which          # or whichever one a number the game holds names
       # ```
