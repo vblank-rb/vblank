@@ -2,22 +2,31 @@
 
 module VBlank
   class Builder
-    # Make rectangles to collision-test. The overlap test itself lives on the shape
-    # (`box_a.overlaps?(box_b)`, from {Bounds}), so a sprite — which knows its own
-    # bounds — needs no box at all; `box` is the manual escape hatch for a thing that
-    # isn't a sprite. A concern of {Builder}, mixed in flat.
+    # Collisions
+    #
+    # Two things collide when their rectangles overlap. A sprite knows its own rectangle, so
+    # `hero.overlaps?(coin)` needs no more. For a thing that is not a sprite, `box` makes a
+    # rectangle to test.
+    #--
+    # The overlap test itself lives on the shape (`box_a.overlaps?(box_b)`, from Bounds). A concern
+    # of Builder, mixed in flat.
+    #++
     module Collision
-      # Make a rectangle from a top-left corner and a size, for collision tests. Each
-      # of x, y, w, h can be a fixed number, a :variable, or an expression, so a box
-      # can track a moving thing (a ball at its live x/y) or pin a fixed one (a wall).
-      # It draws nothing — it's a shape to test — so build one wherever it reads best
-      # and reuse it. Test two with `overlaps?`:
+      # Makes a rectangle from a top-left corner and a size, to test for collisions.
       #
-      #   ball   = box(ball_x, ball_y, 4, 4)   # follows the ball's variables
-      #   paddle = box(8, paddle_y, 4, 24)
-      #   ball_dx.abs! if ball.overlaps?(paddle)   # bounce on contact
+      # Each of the four numbers can be fixed, a variable or a calculation, so a box can follow a
+      # moving thing, such as a ball at its live position, or pin a fixed one, such as a wall. A
+      # box draws nothing. It is only a shape to test, so make one wherever it reads best and
+      # reuse it. Test two with `overlaps?`.
       #
-      # A sprite already knows its bounds, so `hero.overlaps?(coin)` needs no box.
+      # ```ruby
+      # ball   = box(ball_x, ball_y, 4, 4)   # follows the ball's variables
+      # paddle = box(8, paddle_y, 4, 24)
+      # ball_dx.abs! if ball.overlaps?(paddle)   # bounce on contact
+      # ```
+      #
+      # * `x` and `y` - the top-left corner, in pixels from the top left of the screen.
+      # * `w` and `h` - the width and height in pixels.
       def box(x, y, w, h)
         DSL::Box.new(self, x, y, w, h)
       end
