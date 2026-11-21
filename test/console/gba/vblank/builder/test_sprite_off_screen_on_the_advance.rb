@@ -80,7 +80,7 @@ class TestSpriteOffScreenOnTheAdvance < Minitest::Test
     end
   end
 
-  # THE ONE THAT COMES ROUND. Its box is 128 rows, so with its top between row 129 and row
+  # The one that comes round. Its box is 128 rows, so with its top between row 129 and row
   # 159 it runs past the last row the console counts, and the end of it shows at the top
   # of the screen; and with its top from 127 to 97 rows above the screen, the start of it
   # is counted as rows 129 to 159 and shows at the bottom.
@@ -134,7 +134,7 @@ class TestSpriteOffScreenOnTheAdvance < Minitest::Test
     end
   end
 
-  # A SPRITE THAT ONLY TURNS NEVER COMES ROUND, tall box or not. Its picture stays within
+  # A sprite that only turns never comes round, tall box or not. Its picture stays within
   # half its own diagonal of its middle at every angle, so the rows of the box that come
   # round are rows it never reaches while any of it is on the screen — and with none of it
   # on the screen it is not drawn, though its box still is.

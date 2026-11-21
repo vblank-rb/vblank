@@ -13,7 +13,7 @@ class TestSpriteMirrorOnTheAdvance < Minitest::Test
   EDGE = VBlank::Graphics::Color.rgb(0, 31, 10)
   CLEAR = VBlank::Graphics::Color.rgb(0, 0, 1)
 
-  # A pose that is deliberately NOT symmetric and NOT centred: a block at (+ox+, +oy+)
+  # A pose that is deliberately not symmetric and not centred: a block at (+ox+, +oy+)
   # with its left column a different colour, so a mirror that is drawn in the wrong
   # place — or the right place but the wrong way round — shows up as different pixels.
   private def lopsided(ox, oy, w = 10, h = 12)
@@ -26,7 +26,7 @@ class TestSpriteMirrorOnTheAdvance < Minitest::Test
     end
   end
 
-  # A SPRITE THAT TURNS IS NOT MIRRORED. The two attribute bits that reverse an object
+  # A sprite that turns is not mirrored. The two attribute bits that reverse an object
   # are the ones that name its rotation group once it is turning, so a turning sprite
   # keeps both sets of pixels — and, more to the point, still draws the right picture.
   def test_a_turning_sprite_with_mirrored_poses_still_draws_correctly

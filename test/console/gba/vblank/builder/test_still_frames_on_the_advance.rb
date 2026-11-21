@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/builder/test_still_frames"
 
-# THE TESTS OF all/vblank/builder/test_still_frames.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY, kept
+# The tests of all/vblank/builder/test_still_frames.rb that only the Game Boy Advance can play, kept
 # apart so that the Color's run never loads them (test/console/gba): a tint of the picture
 # the display mixes in, a fade placed in the stack, a layer the display sees through, a
 # background that turns, and a picture shown in blocks. Each holds the scroll and the sprite still

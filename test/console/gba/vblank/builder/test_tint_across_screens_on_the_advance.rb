@@ -4,7 +4,7 @@ require "test_helper"
 require "differential"
 require "tinted_handover"
 
-# THE TEST OF vblank/builder/test_tint_across_screens.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY,
+# The test of vblank/builder/test_tint_across_screens.rb that only the Game Boy Advance can play,
 # kept apart so that the Game Boy Color's run never loads it (test/console/gba); the rest
 # are in that file.
 #

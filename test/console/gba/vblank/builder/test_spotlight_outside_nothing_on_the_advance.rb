@@ -46,7 +46,7 @@ module SpotlightOutsideNothingGames
   end
 end
 
-# A LIGHT THAT SHOWS NOTHING OUTSIDE IT, where a light otherwise darkens what is there.
+# A light that shows nothing outside it, where a light otherwise darkens what is there.
 #
 # The console's circle is its first window and nothing more: inside it every layer is drawn and
 # mixed as the game set them, and outside it no layer is drawn at all, so the screen's backdrop
@@ -111,7 +111,7 @@ class TestSpotlightOutsideNothingOnTheAdvance < Minitest::Test
     assert_backends_agree(clouds_under_a_closing_circle, frames: [BEFORE, CLOSING, SHUT, OPENING, OPEN], name: "SHUTOUT")
   end
 
-  # NOTHING IS THE SCREEN'S BACKDROP COLOUR, which is black unless the game set one: the colour
+  # Nothing is the screen's backdrop colour, which is black unless the game set one: the colour
   # the screen shows wherever no layer draws.
   def test_outside_the_circle_is_the_backdrop_the_screen_was_given
     sky = clouds_under_a_closing_circle(backdrop: :blue)
@@ -182,7 +182,7 @@ class TestSpotlightOutsideNothingOnTheAdvance < Minitest::Test
     builder.program
   end
 
-  # A FADE PLACED IN THE STACK STILL TAKES TURNS WITH THE LIGHT, scene by scene: the light is off
+  # A fade placed in the stack still takes turns with the light, scene by scene: the light is off
   # while the title fades under its layer, and on in the next scene.
   def test_the_light_is_off_in_a_scene_that_fades_under_a_layer
     title = shown(faded_title_then_light, frames: 3)
@@ -195,7 +195,7 @@ class TestSpotlightOutsideNothingOnTheAdvance < Minitest::Test
     assert_backends_agree(faded_title_then_light, frames: [3, 6, 7, 8, 12], name: "FADETURN")
   end
 
-  # THE LIT SCENE TAKES THE FADE OFF. A fade placed in the stack stays across a change of scene
+  # The lit scene takes the fade off. A fade placed in the stack stays across a change of scene
   # until the game lifts it, but not into a scene the light is on in: the two take turns, since
   # the light's shape takes the place of the one that keeps a sprite out of such a fade. So the
   # room and a sprite in its layer, faded in the title, are as drawn inside the light, on the
