@@ -2,7 +2,7 @@
 
 module VBlank
   module DSL
-    # A STEP AN EFFECT TAKES ONCE A PASS, from when the game starts it until it stops. Builder
+    # A step an effect takes once a pass, from when the game starts it until it stops. Builder
     # #each_pass makes one.
     #
     #   walk = each_pass(:iris_walk) do |job|
@@ -14,7 +14,7 @@ module VBlank
     #   end
     #   walk.start     # the first step now, on this pass, then one every pass after
     #
-    # Once a PASS of the game loop, not once a frame: a pass that takes three frames takes one
+    # Once a pass of the game loop, not once a frame: a pass that takes three frames takes one
     # step, the way a game counting its own passes steps its effects. `once_a_frame` is the
     # other one, for an effect timed in real time.
     class PassJob

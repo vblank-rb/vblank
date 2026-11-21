@@ -2,7 +2,7 @@
 
 module VBlank
   module DSL
-    # WORDS NOBODY KNEW WHEN THE CARTRIDGE WAS BUILT, on a painted screen: `draw_text name_list, x, y,
+    # Words nobody knew when the cartridge was built, on a painted screen: `draw_text name_list, x, y,
     # :white`, the list holding character codes. A name the player typed, a line of a high score
     # table.
     #
@@ -12,7 +12,7 @@ module VBlank
     # proportional font stays proportional. Every step is one a game could write itself, which is
     # why it works the same on every console and in the interpreter.
     #
-    # ONE ROUTINE FOR A LIST, A FONT AND A COLOUR, however many places draw it, since a high score
+    # One routine for a list, a font and a colour, however many places draw it, since a high score
     # table draws the same list ten times over and each place only sets four numbers.
     class ListText
       def initialize(builder, number:, list:, font:, color:)

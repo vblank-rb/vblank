@@ -2,7 +2,7 @@
 
 module VBlank
   module DSL
-    # A GROUP OF A DATA PACK'S TILES TAKING TURNS THROUGH PICTURES OF THE PACK, handed back by
+    # A group of a data pack's tiles taking turns through pictures of the pack, handed back by
     # `tile_pictures` given tiles of the pack (Builder::PackTilePictures). The backgrounds drawn
     # from the tiles' slot show them wherever their maps name them, so a group has no tile names
     # to hand out; `show` sets which picture every one of its tiles shows.

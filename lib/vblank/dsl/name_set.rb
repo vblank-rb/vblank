@@ -2,7 +2,7 @@
 
 module VBlank
   module DSL
-    # THE NAMES ONE PLACE CAN HOLD, and the number each of them turns out to be.
+    # The names one place can hold, and the number each of them turns out to be.
     #
     # A game's states are names — :idle, :chase, :attack; :title, :playing, :over — and what
     # keeps them is a variable, which holds a number. Written out, that means the author picks a
