@@ -70,7 +70,7 @@ class TestNativePacing < Minitest::Test
     end
   end
 
-  # ...and a game the monitor IS holding, a frame every sixtieth of a second, is never held by it.
+  # ...and a game the monitor is holding, a frame every sixtieth of a second, is never held by it.
   def test_a_game_the_monitor_is_holding_is_left_alone
     held, took = frames_played(60, [16_666_667, 600])
 
