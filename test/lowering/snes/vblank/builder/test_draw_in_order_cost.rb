@@ -4,7 +4,7 @@ require "test_helper"
 require "draw_order_cost_games"
 require "sprite_count_cost_games"
 
-# WHAT AN ORDER COSTS ON THE SUPER NINTENDO, measured in the emulator. The console's own games sort
+# What an order costs on the Super Nintendo, measured in the emulator. The console's own games sort
 # every sprite on the screen by height each frame, about ten instructions a sprite, so an order of
 # seven must cost its tightest frame, where two things pass each other and the sort moves one, a
 # few of the frame's 262 lines, not the thirty it cost written as list reads and writes, and an
@@ -49,7 +49,7 @@ class TestSNESDrawInOrderCost < Minitest::Test
     assert_includes [[8, 8], [8, 135]].map { |at| shown.pixel(*at) }, VBlank::Graphics::Color.resolve(:red)
   end
 
-  # A THING OF AN ORDER IS WRITTEN SHORT. The sort is written out a thing at a time in the bank its
+  # A thing of an order is written short. The sort is written out a thing at a time in the bank its
   # code runs from, a bank of 32 KB in the cartridge's LoROM map (fullsnes, "SNES Cartridge LoROM
   # Mapping"), so every byte a thing takes is a byte that code cannot have. A thing is its number,
   # its steps of the sort and of the walk, the test of whether it shows, and the test of its flag with

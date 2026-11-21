@@ -3,7 +3,7 @@
 require "test_helper"
 require "vblank/live"
 
-# THINGS A GAME CAN ASK THAT COULD BE DIFFERENT ON EACH MACHINE: how many frames have gone by, what
+# Things a game can ask that could be different on each machine: how many frames have gone by, what
 # the clock says, and what the random numbers hold. In a match every machine runs the whole game, so
 # one number that differs sends the machines different ways. Each is settled here, and each has a
 # test that shows the trouble is real where the game is not held to it, and that a match is not
@@ -12,9 +12,9 @@ require "vblank/live"
 # - FRAMES. The interpreter counts the frames a pass took, so a slow machine counts more. The game
 #   as Ruby (and as C and JavaScript) counts passes: one for each pass, however long it took, so
 #   `frames_since_power_on` and a `once_a_frame` body are the same on every machine.
-# - THE CLOCK. A match has none: `clock.present?` is false on every machine, so no machine's own
+# - The clock. A match has none: `clock.present?` is false on every machine, so no machine's own
 #   time reaches the game. The Ruby window never gave the game the computer's clock anyway.
-# - THE RANDOM NUMBERS. `randomize` stirs the game's stream one step and uses nothing of the
+# - The random numbers. `randomize` stirs the game's stream one step and uses nothing of the
 #   machine's, so every machine stirs the same way; the match's seed is the one number that is
 #   shared at the start (Network::Lockstep).
 class TestWhatDiffersBetweenMachines < Minitest::Test

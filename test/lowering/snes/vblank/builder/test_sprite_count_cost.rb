@@ -3,7 +3,7 @@
 require "test_helper"
 require "sprite_count_cost_games"
 
-# WHAT SPRITES NOT SHOWING COST IN A DRAW ORDER ON THE SUPER NINTENDO, measured in the emulator. A
+# What sprites not showing cost in a draw order on the Super Nintendo, measured in the emulator. A
 # thing not showing is left out of the sort and of the walk that places the sprites
 # (Lowering::ShownSort): it costs the test of whether it shows and one of whether it showed last pass,
 # a load and a branch each besides the test itself, so forty-four are under eight of the frame's 262

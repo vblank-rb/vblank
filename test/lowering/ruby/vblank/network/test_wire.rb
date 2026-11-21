@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE MESSAGES AS TEXT: each turns into one JSON object and back, and text that is not a message, or
+# The messages as text: each turns into one JSON object and back, and text that is not a message, or
 # is one of another version, is refused in plain words.
 class TestWire < Minitest::Test
   Network = VBlank::Network
