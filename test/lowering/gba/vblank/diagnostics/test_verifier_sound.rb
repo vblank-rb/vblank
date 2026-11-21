@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE SOUND OF A LONG RUN IS THE SOUND OF A SHORT ONE, wherever it was kept. A reader holds
+# The sound of a long run is the sound of a short one, wherever it was kept. A reader holds
 # so many frames of sound in memory and writes the sound before that to a scratch file (see
 # RecordedSound), and nothing that asks about the sound can tell which a frame was in. So a
 # test here runs one cartridge twice, once with everything in memory and once with room for
@@ -75,7 +75,7 @@ class TestVerifierSound < Minitest::Test
     assert_equal in_memory.audio_energy_by_frame, in_file.audio_energy_by_frame
   end
 
-  # HOW LOUD THE LAST FRAME WAS, ASKED AFTER EVERY FRAME, is what asking once at the end
+  # How loud the last frame was, asked after every frame, is what asking once at the end
   # gives, frame for frame — with the sound all in memory, and with most of it in the file.
   def test_asked_after_every_frame_is_what_asking_once_at_the_end_gives
     cartridge = tune

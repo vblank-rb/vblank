@@ -4,7 +4,7 @@ require "test_helper"
 
 require "stringio"
 
-# ONE READER PLAYS EVERY CONSOLE'S CARTRIDGE BACK (Verifier), asking that console's part of it
+# One reader plays every console's cartridge back (Verifier), asking that console's part of it
 # (Console::Kit#reading) for what only its way of keeping things can answer: the same test reads
 # an Advance cartridge and a Color one, and a question only one console's cartridges answer is
 # refused by name on the other's.
