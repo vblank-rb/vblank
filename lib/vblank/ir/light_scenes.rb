@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # WHICH SCENES A GAME'S LIGHT IS OFF IN.
+    # Which scenes a game's light is off in.
     #
     # A light is a darkening outside a shape, and on a display that mixes the picture as it
     # draws it, the darkening and a see-through layer — or a darkening of its own placed in the
@@ -13,14 +13,14 @@ module VBlank
     # a layer and moves the light — is the one thing that cannot be, and a guardrail says so
     # (see Guardrails::Checks::LightCannotShare).
     #
-    # A LIGHT THAT SHOWS NOTHING OUTSIDE IT (Nodes::ShadeOutside#shuts_out) darkens nothing, so
+    # A light that shows nothing outside it (Nodes::ShadeOutside#shuts_out) darkens nothing, so
     # it stays on in a scene that sees through a layer, and the layer goes on mixing inside it.
     # It still takes turns with a fade placed in the stack: such a fade keeps the things in front
     # of it out with a second shape of its own, which a light's shape would take the place of.
     #
     # A game with no scenes is one screen, which is dark here only if the light is refused.
     #
-    # WHEN IT SWITCHES, on every backend: off on the picture of the pass whose scene has it off,
+    # When it switches, on every backend: off on the picture of the pass whose scene has it off,
     # since that scene's own mixing takes the part there and then; on again only from the light
     # worked out in the gap after a lit scene's pass, a picture later, as a moved light is.
     #
@@ -94,7 +94,7 @@ module VBlank
       # the edges, and the switch the build gives it are the light's own, not the game's.
       def light_vars(light) = (vars_read(light, [light.left, light.right, light.amount, *light.children]) - [ON]).uniq
 
-      # The variables the light's ROWS are worked out from — where it is and how big, but not how
+      # The variables the light's rows are worked out from — where it is and how big, but not how
       # dark, which is the same on every row. Rows worked out from the same numbers come out the
       # same, which is what lets a backend keep them from one frame to the next.
       def span_vars(light) = vars_read(light, [light.left, light.right, *light.children]).uniq

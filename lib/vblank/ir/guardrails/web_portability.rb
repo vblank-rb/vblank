@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # A GAME BUILT FOR A BROWSER TOO, told which of its lines keep it on the console.
+        # A game built for a browser too, told which of its lines keep it on the console.
         #
         # Nearly everything a game writes — move, draw, play a note — means the same on the
         # console, on a desktop and in a browser, and the JavaScript lowering plays it the same.
@@ -28,7 +28,7 @@ module VBlank
 
           # What each console-only kind is, said for a person, and what to write instead. A kind
           # with no words here is still found (Portability decides that), and is said in the
-          # words of OTHERWISE.
+          # words of otherwise.
           SAID = Ractor.make_shareable({
                                          raw: ["raw instructions for the console's processor (`entry`)",
                                                "Do the same with plain Ruby and the framework's own words, " \
