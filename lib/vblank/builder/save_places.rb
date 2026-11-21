@@ -48,10 +48,10 @@ module VBlank
     class SavePlaces
       include SaveProgram
 
-      ROWS = IR::SaveLayout::TABLE_ROWS
+      ROWS = IR::SaveLayout::TABLE_ROWS  # :nodoc:
 
       SCRATCH = %i[changed key half copies need room found row fits probe skip cursor pick
-                   low limit from to length up extra place first].freeze
+                   low limit from to length up extra place first].freeze  # :nodoc:
 
       # +memory+ is the IR::SaveLayout::Memory the records are laid out in, +records+ their
       # SaveRecords::Layouts by name, in declaration order (as SaveJobs is given them), and +table_record+ is called with the

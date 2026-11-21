@@ -26,7 +26,7 @@ module VBlank
       # the console's Console::Description, named where the records fit none of them.
       # +chosen_list_start+ asks whether a build started in a chosen state gave a list its items, and
       # +emit_list_start+ makes such a list again holding them (Builder::ChosenStarts).
-      Port = Data.define(:handle, :record, :repeat, :at_boot, :ensure_var, :declare_func, :run_each_pass,
+      Port = Data.define(:handle, :record, :repeat, :at_boot, :ensure_var, :declare_func, :run_each_pass,  # :nodoc:
                          :start_value, :list_new_node, :save_var, :saved_vars, :pool_refill, :save_memory,
                          :save_memories, :console, :fraction_bits, :loop_counter, :chosen_list_start,
                          :emit_list_start)

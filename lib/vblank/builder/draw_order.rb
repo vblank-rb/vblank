@@ -38,15 +38,15 @@ module VBlank
     # frame on some consoles; the copy is a step for each thing.
     #++
     module DrawOrder
-      FRONTS = %i[highest lowest].freeze
+      FRONTS = %i[highest lowest].freeze  # :nodoc:
 
       # What `take_turns:` takes, and which one named is in front on the first frame shown.
-      TURN_STARTS = { true => :first, first: :first, last: :last }.freeze
+      TURN_STARTS = { true => :first, first: :first, last: :last }.freeze  # :nodoc:
 
       # One order the game declared: its number, counting from 1; the sprites and pools in
       # it; which end of the number is in front; how a thing's number is worked out; and,
       # for an order that takes turns, which one named starts in front (:first or :last).
-      Order = Data.define(:number, :things, :front, :key, :turns) do
+      Order = Data.define(:number, :things, :front, :key, :turns) do  # :nodoc:
         def part(name) = Messages::MadeNames.make(:draw_order, number: number, part: name)
         def routine = part(:sort)
         def keys_list = part(:keys)

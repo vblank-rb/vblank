@@ -238,7 +238,7 @@ module VBlank
       # The console refreshes the screen ~59.73 times a second; like every game, we
       # count that as a round 60 frames per second. It's what lets a timer be given
       # in seconds — the unit a person actually thinks in — and turned into frames.
-      FRAMES_PER_SECOND = 60
+      FRAMES_PER_SECOND = 60  # :nodoc:
 
       # Runs the block again and again on a steady beat, such as a blinking prompt, a wave of
       # enemies or a repeating sound.
@@ -412,14 +412,14 @@ module VBlank
       # Maps a comparison's name to the IR operator, for building an `if` node's condition (a
       # binop over the variable and the operand). The library's own code compares this way
       # (#emit_conditional); a game writes `if score > 5`.
-      COND_TO_OP = {
+      COND_TO_OP = {  # :nodoc:
         eq: :==, ne: :!=, gt: :>, lt: :<, ge: :>=, le: :<=,
       }.freeze
 
       # The low-level tests a game once wrote beside `if`, and the operator each stands for. Each
       # is kept private so that the refusal reaches a line in a game block, where it needs no
       # receiver, and says the plain `if` to write instead.
-      LOW_LEVEL_TEST_OPERATORS = { if_eq: :==, if_ne: :!=, if_gt: :>, if_lt: :<, if_ge: :>=, if_le: :<=,
+      LOW_LEVEL_TEST_OPERATORS = { if_eq: :==, if_ne: :!=, if_gt: :>, if_lt: :<, if_ge: :>=, if_le: :<=,  # :nodoc:
                                    if_gte: :>=, if_lte: :<= }.freeze
 
       # Written out as source rather than made from a block: a method made from a block carries

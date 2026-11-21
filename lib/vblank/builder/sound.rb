@@ -26,7 +26,7 @@ module VBlank
     #++
     module Sound
       # The rates `enable_sound mix_rate:` takes, in samples a second.
-      MIX_RATES_HZ = (1000..65_536)
+      MIX_RATES_HZ = (1000..65_536)  # :nodoc:
 
       # Turns the sound on. Write it once, at the top of the game.
       #

@@ -167,7 +167,7 @@ module VBlank
                              "whole slot of colors, like `colors: pack[:palette]`. To fix this, leave out #{option}."
       end
 
-      MOST_POSE_BANK = 30 # The runtimes hold a pose's banks as the bits of one number
+      MOST_POSE_BANK = 30 # :nodoc: The runtimes hold a pose's banks as the bits of one number
 
       # A POSE OF SEVERAL BANKS (`banks: [4, 2]`). A console's sprite entry names the bank of
       # colours its piece is drawn from (GBATEK, "LCD OBJ - OAM Attributes": attribute 2, bits
@@ -194,7 +194,7 @@ module VBlank
 
       # A pose keeps a byte for each pixel's place in its list, so its banks' lists together hold
       # 256 colours at most: 16 banks of sixteen-colour tiles.
-      MOST_POSE_PLACES = 256
+      MOST_POSE_PLACES = 256  # :nodoc:
 
       def refuse_too_many_pose_banks!(name, banks, bank_colors)
         most = MOST_POSE_PLACES / bank_colors
@@ -505,7 +505,7 @@ module VBlank
         end
       end
 
-      POSE_FROM_PACK_OPTIONS = %i[tiles frame origin colors size bank banks].freeze
+      POSE_FROM_PACK_OPTIONS = %i[tiles frame origin colors size bank banks].freeze  # :nodoc:
 
       def refuse_pack_pose_options!(name, opts)
         others = opts.keys - POSE_FROM_PACK_OPTIONS

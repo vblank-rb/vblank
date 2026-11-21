@@ -28,7 +28,7 @@ module VBlank
     module LocalView
       # What a view may hold: everything the game draws, `if` to choose what to draw, and the
       # declarations drawing needs (a picture, a letter), which do nothing where they are written.
-      DECLARATIONS = %i[declaration part].freeze
+      DECLARATIONS = %i[declaration part].freeze  # :nodoc:
 
       # Draws what the block asks for, for the player number the block is given.
       #

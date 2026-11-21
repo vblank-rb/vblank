@@ -30,18 +30,18 @@ module VBlank
       # the frame after it stopped.
       #++
       module MusicFade
-        LEVEL = :__music_fade_level   # How loud, 0.0 to 100.0
-        TARGET = :__music_fade_target # Where the ramp is heading
-        STEP = :__music_fade_step     # How far it moves each frame
-        ACTIVE = :__music_fade_active # 1 while the ramp is running
-        ROUTINE = :__music_fade_tick
+        LEVEL = :__music_fade_level   # :nodoc: How loud, 0.0 to 100.0
+        TARGET = :__music_fade_target # :nodoc: Where the ramp is heading
+        STEP = :__music_fade_step     # :nodoc: How far it moves each frame
+        ACTIVE = :__music_fade_active # :nodoc: 1 while the ramp is running
+        ROUTINE = :__music_fade_tick  # :nodoc:
 
-        FULL = 100.0
-        DEFAULT_FRAMES = 30 # Half a second, the same as a screen fade — they are usually called together
+        FULL = 100.0  # :nodoc:
+        DEFAULT_FRAMES = 30 # :nodoc: Half a second, the same as a screen fade — they are usually called together
 
         # TARGET starts below nothing, so the guardrail can tell a fade in (which writes FULL) from
         # the declaration. The value is never used: the routine runs only once a fade has set both.
-        NEVER_FADED = -1.0
+        NEVER_FADED = -1.0  # :nodoc:
 
         # Fades the music out, over half a second unless told otherwise.
         #
@@ -105,10 +105,10 @@ module VBlank
         # fade's own routine writes it as it walks, so any other write that is not a plain 0 is
         # the game's own `music_volume` — a number, or one the game works out.
         class FadedOutNeverIn
-          NAME = :music_faded_out_never_in
-          PLAIN_NAME = "music faded out and never brought back"
+          NAME = :music_faded_out_never_in  # :nodoc:
+          PLAIN_NAME = "music faded out and never brought back"  # :nodoc:
 
-          MESSAGE =
+          MESSAGE =  # :nodoc:
             "This game calls `fade_music_out` and never calls `fade_music_in`. A song that " \
             "fades out keeps playing, but it makes no sound. Every song after it makes no sound " \
             "too. To fix this, call `fade_music_in` at the place where the music must come back."
@@ -210,7 +210,7 @@ module VBlank
         end
 
         # Down here because the check classes it names are declared above it.
-        CHECKS = Ractor.make_shareable([FadedOutNeverIn.new])
+        CHECKS = Ractor.make_shareable([FadedOutNeverIn.new])  # :nodoc:
       end
     end
   end

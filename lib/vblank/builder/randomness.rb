@@ -23,7 +23,7 @@ module VBlank
     module Randomness
       # The hidden variable holding the stream's state. Every draw churns it; the
       # game never sees it (underscore-prefixed, like the other machinery vars).
-      RNG_STATE = :__rng
+      RNG_STATE = :__rng  # :nodoc:
 
       # How the stream churns: state = state * MULT + INC, which overflows past a
       # 32-bit number and wraps around — and that wraparound *is* the trick that
@@ -31,26 +31,26 @@ module VBlank
       # wrap is pinned so every backend churns the number identically). These
       # particular constants (from Numerical Recipes) make it cycle through every
       # possible 32-bit value before repeating, so the stream never gets stuck.
-      RNG_MULT = 1_664_525
-      RNG_INC  = 1_013_904_223
+      RNG_MULT = 1_664_525  # :nodoc:
+      RNG_INC  = 1_013_904_223  # :nodoc:
 
       # A draw reads the *top* of the state, not the bottom: churned this way, the
       # low bits fall into a short, obvious rhythm (a coin flip off the last bit
       # would just go 0,1,0,1…), while the high bits look random. Dividing by 2**16
       # brings the top 16 bits down to where we can use them.
-      RNG_HIGH_DIV = 65_536
+      RNG_HIGH_DIV = 65_536  # :nodoc:
 
       # The most values a single draw can span. Because a draw comes from the top 16
       # bits, it only distinguishes about this many outcomes — ask for a wider spread
       # and the top of the range would never come up. It comfortably covers the whole
       # screen (240x160) and every 15-bit color, so real game ranges never hit it.
-      MAX_ROLL_SPAN = RNG_HIGH_DIV / 2
+      MAX_ROLL_SPAN = RNG_HIGH_DIV / 2  # :nodoc:
 
       # Where the stream starts when a game never calls +seed+. Any fixed value keeps
       # an unseeded game reproducible; it has to be written explicitly at boot because
       # console memory isn't reliably zero when the machine powers on (the same reason
       # the input snapshots are cleared up front).
-      DEFAULT_SEED = 0x2545_F491
+      DEFAULT_SEED = 0x2545_F491  # :nodoc:
 
       # Sets the starting point of the random numbers.
       #

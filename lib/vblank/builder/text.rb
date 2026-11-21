@@ -19,18 +19,18 @@ module VBlank
     #++
     module Text
       # The font advances this many pixels per character (a 5px glyph + a 1px gap).
-      GLYPH_WIDTH = 6
+      GLYPH_WIDTH = 6  # :nodoc:
 
       # How many digit columns draw_number reserves when you don't give one. A live
       # number's width isn't known until the game runs, so it draws in a fixed field.
-      DEFAULT_DIGITS = 4
+      DEFAULT_DIGITS = 4  # :nodoc:
 
       # The screen modes with no framebuffer to paint into — text on either of these
       # is drawn as little hardware-sprite glyphs (see #draw_text_tiled), not written
       # into pixels. `screen :rotozoom` is tile hardware too (see IR::Modes::AFFINE):
       # a different pair of background layers from `screen :tiled`'s four, but the
       # same sprite hardware composites glyphs over it exactly the same way.
-      TILE_HARDWARE_MODES = %i[tiled rotozoom].freeze
+      TILE_HARDWARE_MODES = %i[tiled rotozoom].freeze  # :nodoc:
 
       # WHERE A LINE OF TEXT SITS, named instead of counted. These go where the left
       # edge goes, so `draw_text "PONG", :center, 40, :white` centres it.
@@ -39,7 +39,7 @@ module VBlank
       # be is CENTRED: a proportional font has no per-character width to multiply by,
       # so the only thing that knows how wide "PRESS START" comes out is the font
       # itself. Ask it, and a label can be reworded without a stale number left behind.
-      ALIGNMENTS = %i[left center right].freeze
+      ALIGNMENTS = %i[left center right].freeze  # :nodoc:
 
       # Defines a font, so that `draw_text` can pick it with `font:`, and returns its name.
       #
@@ -556,7 +556,7 @@ module VBlank
       # each frame, so it updates itself with nothing to call in the loop.
 
       # A glyph fits in one 8x8 sprite tile.
-      HUD_GLYPH_PX = 8
+      HUD_GLYPH_PX = 8  # :nodoc:
 
       # Draw a fixed string as a row of glyph sprites at (x, y), each advancing by its
       # own width the way the bitmap pen does, so a proportional font stays proportional.
@@ -743,7 +743,7 @@ module VBlank
       # The containers that are a test rather than a per-frame body — an `if` and its
       # `else`. Text declared under one of these is declared once, like text at the top
       # level, and shown while the test holds.
-      CONDITION_CONTAINERS = %i[if else].freeze
+      CONDITION_CONTAINERS = %i[if else].freeze  # :nodoc:
 
       # Tiled text is declared once and redrawn for you every frame, so it belongs at
       # the top level (before game_loop), not inside the loop — declared inside, it

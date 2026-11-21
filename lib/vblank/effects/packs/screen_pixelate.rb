@@ -43,21 +43,21 @@ module VBlank
       module ScreenPixelate
         # The hidden state, named with the framework's underscore prefix so a game's own
         # variables can never collide with it.
-        BROKEN = :__pixelate_broken   # How far the picture has broken up, 0.0 to FULL
-        TARGET = :__pixelate_target   # Where the walk is heading
-        STEP = :__pixelate_step       # How far it moves each frame
-        ACTIVE = :__pixelate_active   # 1 while the walk is running
-        SHOWN = :__pixelate_shown     # The size of block on screen now, 1 to the biggest
-        ROUTINE = :__pixelate_tick
+        BROKEN = :__pixelate_broken   # :nodoc: How far the picture has broken up, 0.0 to FULL
+        TARGET = :__pixelate_target   # :nodoc: Where the walk is heading
+        STEP = :__pixelate_step       # :nodoc: How far it moves each frame
+        ACTIVE = :__pixelate_active   # :nodoc: 1 while the walk is running
+        SHOWN = :__pixelate_shown     # :nodoc: The size of block on screen now, 1 to the biggest
+        ROUTINE = :__pixelate_tick  # :nodoc:
 
         # As far as a picture breaks up: every size of block past the first.
-        FULL = (IR::Backends::Blocks::LARGEST - 1).to_f
+        FULL = (IR::Backends::Blocks::LARGEST - 1).to_f  # :nodoc:
 
         # TARGET starts here, which is what lets the guardrail below tell a real
         # `pixelate_in` from the declaration: nothing else writes this variable.
-        NEVER_WALKED = -1.0
+        NEVER_WALKED = -1.0  # :nodoc:
 
-        DEFAULT_FRAMES = 30 # Half a second — a scene change, not a blink
+        DEFAULT_FRAMES = 30 # :nodoc: Half a second — a scene change, not a blink
 
         # Breaks the picture up into bigger and bigger blocks, until they are the biggest the
         # console draws.
@@ -138,10 +138,10 @@ module VBlank
         # the frame boundary a `game_loop` gives it; with no game loop the call sets its
         # target and nothing ever reads it.
         class NeedsGameLoop
-          NAME = :pixelate_needs_game_loop
-          PLAIN_NAME = "a pixelate with no frames to run on"
+          NAME = :pixelate_needs_game_loop  # :nodoc:
+          PLAIN_NAME = "a pixelate with no frames to run on"  # :nodoc:
 
-          MESSAGE =
+          MESSAGE =  # :nodoc:
             "This game pixelates the screen with `pixelate_out` or `pixelate_in`, but it has " \
             "no `game_loop`. The size of a block changes a little on every frame, so it needs " \
             "frames to run on. With no game loop there are none, and the screen never changes. " \
@@ -163,10 +163,10 @@ module VBlank
         # meant to, in blocks too big to read. The usual way in is to pixelate out for a
         # scene change and forget the other half.
         class PixelatedOutNeverIn
-          NAME = :pixelated_out_never_in
-          PLAIN_NAME = "a pixelate out with no pixelate in"
+          NAME = :pixelated_out_never_in  # :nodoc:
+          PLAIN_NAME = "a pixelate out with no pixelate in"  # :nodoc:
 
-          MESSAGE =
+          MESSAGE =  # :nodoc:
             "This game calls `pixelate_out` and never calls `pixelate_in`. The picture stays " \
             "in the biggest blocks, which are too big to read. The game is still running " \
             "behind them. To fix this, call `pixelate_in` when the picture must come back."
@@ -266,7 +266,7 @@ module VBlank
         end
 
         # Down here because the check classes it names are declared above it.
-        CHECKS = Ractor.make_shareable([NeedsGameLoop.new, PixelatedOutNeverIn.new])
+        CHECKS = Ractor.make_shareable([NeedsGameLoop.new, PixelatedOutNeverIn.new])  # :nodoc:
       end
     end
   end

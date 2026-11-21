@@ -34,12 +34,12 @@ module VBlank
     module PackTilePictures
       # The four ways a tile of such a background is turned, in the order a run read at start
       # holds them; a tile's place in it is IR::StartFile::MovingTile#turn_of.
-      TURNS = IR::StartFile::MovingTile::TURNS
+      TURNS = IR::StartFile::MovingTile::TURNS  # :nodoc:
 
       # A group as the builder keeps it: +keys+ the tiles (each [slot name, tile in the slot]),
       # +pictures+ each key's picture handles, +shown+ the number showing, and +parts+ every run
       # made for it so far (TilePictures::TilePictureRun), which grows as backgrounds are declared.
-      PackTileGroup = Data.define(:name, :keys, :pictures, :shown, :parts, :fast)
+      PackTileGroup = Data.define(:name, :keys, :pictures, :shown, :parts, :fast)  # :nodoc:
 
       private
 

@@ -60,7 +60,7 @@ module VBlank
       # the NAME of a hidden variable the build allocated, and is nil until the program does the
       # thing that needs it. So a background that is never scrolled has no +scroll_x+, and asking
       # #scrolls? is the same question as asking whether the game ever scrolled it.
-      DeclaredBackground = Struct.new(:node, :scroll_x, :scroll_y, :shown_map, :live_map,
+      DeclaredBackground = Struct.new(:node, :scroll_x, :scroll_y, :shown_map, :live_map,  # :nodoc:
                                       :angle, :scale, :scene_gates, :bends_rows, :pivot, :pivot_map_point,
                                       :shown_colors, :live_colors, :box, :held, :boxed_in_part, :hidden_whole,
                                       keyword_init: true) do
@@ -497,7 +497,7 @@ module VBlank
       end
 
       # What `alone:` takes: alone with the sprites, not alone, or alone without the sprites too.
-      ALONE_SETTINGS = [true, false, :without_sprites].freeze
+      ALONE_SETTINGS = [true, false, :without_sprites].freeze  # :nodoc:
 
       # `alone:` is one of ALONE_SETTINGS, and set only beside `above_row:`, whose rows it is about.
       def refuse_bad_alone!(name, alone, above_row)
@@ -1082,10 +1082,10 @@ module VBlank
       # listing those buries the single fact the reader came for under a wall of numbers.
       # So past a size nobody would read, say how many there are and where they start and
       # end, which is what tells somebody whether their key was even in the right range.
-      TILE_KEYS_TO_NAME = 24
+      TILE_KEYS_TO_NAME = 24  # :nodoc:
 
       # What a tileset can set about black drawn by colour (#tiles).
-      BLACK_ANSWERS = %i[see_through solid].freeze
+      BLACK_ANSWERS = %i[see_through solid].freeze  # :nodoc:
 
       def tileset_tiles_in_words(keys)
         return "Its tiles are #{keys.map(&:inspect).join(', ')}." if keys.length <= TILE_KEYS_TO_NAME
@@ -1230,7 +1230,7 @@ module VBlank
       # blank is a space, a `.`, a `0` or nothing — so a grid drawn by hand and a collision
       # layer decoded out of somewhere else are both read the same way, with no list of
       # which values mean which to keep in step with the data.
-      BLANK_WALL_CELLS = [nil, 0, "0", ".", " ", ""].freeze
+      BLANK_WALL_CELLS = [nil, 0, "0", ".", " ", ""].freeze  # :nodoc:
 
       def wall_grid(rows)
         return nil if rows.nil?

@@ -274,12 +274,12 @@ module VBlank
       # A number is what `abs` and its four neighbours give back, on the variable's own handle;
       # for adding and subtracting it is what `+` and `-` already are; and `set` and `copy`
       # have no such form, since neither answers a question about a number.
-      CHANGING_HANDLE_WORDS = { abs: :abs, negate_abs: :negate_abs, negate: :flip, flip: :flip,
+      CHANGING_HANDLE_WORDS = { abs: :abs, negate_abs: :negate_abs, negate: :flip, flip: :flip,  # :nodoc:
                                 clamp: :clamp, approach: :approach }.freeze
-      CHANGING_OPERATOR_WORDS = { add: :+, sub: :-, add_var: :+, sub_var: :- }.freeze
+      CHANGING_OPERATOR_WORDS = { add: :+, sub: :-, add_var: :+, sub_var: :- }.freeze  # :nodoc:
 
       # The words plain Ruby has an operator for, which is what a game writes.
-      PLAIN_RUBY_OPERATORS = { set: "=", copy: "=", add: "+=", add_var: "+=", sub: "-=", sub_var: "-=" }.freeze
+      PLAIN_RUBY_OPERATORS = { set: "=", copy: "=", add: "+=", add_var: "+=", sub: "-=", sub_var: "-=" }.freeze  # :nodoc:
 
       # :method: set
       #
@@ -537,7 +537,7 @@ module VBlank
 
       # One `var` or `save_var`: what it started the variable at, whether it is kept across
       # power-off, and the line of the game that wrote it.
-      Declaration = Data.define(:start, :saved, :width, :at) do
+      Declaration = Data.define(:start, :saved, :width, :at) do  # :nodoc:
         # Ruby says 0.0 == 0, and a fraction and a whole number are exactly the two kinds
         # that must not pass as the same, so the class has to match as well as the value.
         def agrees_with?(other)

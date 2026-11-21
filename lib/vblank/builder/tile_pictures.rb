@@ -19,10 +19,10 @@ module VBlank
     #++
     module TilePictures
       # The tiles in a group, and a group's picture bytes, are kept to what a game can use.
-      TILE_BYTES = TileRuns::TILE_BYTES
+      TILE_BYTES = TileRuns::TILE_BYTES  # :nodoc:
 
       # One run of a group (#declare_tile_picture_run).
-      TilePictureRun = Data.define(:list, :held, :run, :bytes_shown)
+      TilePictureRun = Data.define(:list, :held, :run, :bytes_shown)  # :nodoc:
 
       # Declares a group of tiles that take turns through pictures, and returns the group.
       #

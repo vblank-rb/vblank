@@ -205,7 +205,7 @@ module VBlank
 
       # WHERE A VIEWER STARTS, FROM THE PACK: +at+ a handle on three numbers, +facing+ a handle on
       # nine, each nil where the game writes it.
-      ViewerStart = Data.define(:at, :facing)
+      ViewerStart = Data.define(:at, :facing)  # :nodoc:
 
       def viewer_start_in_pack(name, at, facing)
         ViewerStart.new(at: (viewer_start_handle(name, at, "at:", 3) if at.is_a?(DSL::PackSlot)),

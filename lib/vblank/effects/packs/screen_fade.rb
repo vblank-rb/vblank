@@ -52,19 +52,19 @@ module VBlank
       module ScreenFade
         # The hidden state, named with the framework's underscore prefix so a game's own
         # variables can never collide with it.
-        LEVEL = :__fade_level     # How far toward the color, 0.0 to 100.0
-        TARGET = :__fade_target   # Where the ramp is heading
-        STEP = :__fade_step       # How far it moves each frame
-        COLOR = :__fade_color     # Which color owns the screen right now
-        ACTIVE = :__fade_active   # 1 while the ramp is running
-        ROUTINE = :__fade_tick
+        LEVEL = :__fade_level     # :nodoc: How far toward the color, 0.0 to 100.0
+        TARGET = :__fade_target   # :nodoc: Where the ramp is heading
+        STEP = :__fade_step       # :nodoc: How far it moves each frame
+        COLOR = :__fade_color     # :nodoc: Which color owns the screen right now
+        ACTIVE = :__fade_active   # :nodoc: 1 while the ramp is running
+        ROUTINE = :__fade_tick  # :nodoc:
 
-        BLACK = 0
-        WHITE = 1
-        COLORS = { black: BLACK, white: WHITE }.freeze
-        FIRST_TINT = 2 # Every other color takes the next code after these two
+        BLACK = 0  # :nodoc:
+        WHITE = 1  # :nodoc:
+        COLORS = { black: BLACK, white: WHITE }.freeze  # :nodoc:
+        FIRST_TINT = 2 # :nodoc: Every other color takes the next code after these two
 
-        FULL = 100.0 # The amount at which nothing of the picture shows through
+        FULL = 100.0 # :nodoc: The amount at which nothing of the picture shows through
 
         # TARGET starts here rather than at 0, and that is not arbitrary: it is what lets
         # the guardrail below tell a real `fade_in` from the declaration. A fade_in writes
@@ -72,15 +72,15 @@ module VBlank
         # variable — so a program with no 0 written anywhere faded out and stayed there.
         # The value itself is never used: the routine only runs once a fade has set both a
         # target and its step.
-        NEVER_FADED = -1.0
+        NEVER_FADED = -1.0  # :nodoc:
 
-        DEFAULT_FRAMES = 30 # Half a second — a scene change, not a blink
-        FLASH_FRAMES = 6    # A hit, which wants to be over before it is read as a fade
+        DEFAULT_FRAMES = 30 # :nodoc: Half a second — a scene change, not a blink
+        FLASH_FRAMES = 6    # :nodoc: A hit, which wants to be over before it is read as a fade
 
         # How many frames the display's own fade can step through without showing a level
         # twice: one for each of its levels. A game with a fade longer than this walks the
         # colors instead (see #fade_amount).
-        DISPLAY_LEVELS = IR::Backends::FadeSteps::DISPLAY + 1
+        DISPLAY_LEVELS = IR::Backends::FadeSteps::DISPLAY + 1  # :nodoc:
 
         # Fades the screen out, toward black for a scene change or toward white for a whiteout.
         #
@@ -208,10 +208,10 @@ module VBlank
         # target, nothing ever reads it, and the screen never changes. No crash, no
         # warning, and the call looks right where it is written.
         class NeedsGameLoop
-          NAME = :fade_needs_game_loop
-          PLAIN_NAME = "a fade with no frames to run on"
+          NAME = :fade_needs_game_loop  # :nodoc:
+          PLAIN_NAME = "a fade with no frames to run on"  # :nodoc:
 
-          MESSAGE =
+          MESSAGE =  # :nodoc:
             "This game fades the screen with `fade_out`, `fade_in` or `flash_screen`, " \
             "but it has no `game_loop`. A fade changes the screen a little on every " \
             "frame, so it needs frames to run on. With no game loop there are none, and " \
@@ -263,10 +263,10 @@ module VBlank
         # the pack's own target instead: `fade_out` writes the full amount, `fade_in` and
         # `flash_screen` write zero, and nothing else writes that variable at all.
         class FadedOutNeverIn
-          NAME = :faded_out_never_in
-          PLAIN_NAME = "a fade out with no fade in"
+          NAME = :faded_out_never_in  # :nodoc:
+          PLAIN_NAME = "a fade out with no fade in"  # :nodoc:
 
-          MESSAGE =
+          MESSAGE =  # :nodoc:
             "This game calls `fade_out` and never calls `fade_in`. A full fade blends " \
             "the whole picture into one color, so nothing shows through it. The game is " \
             "still running behind a flat screen. To fix this, call `fade_in` when the " \
@@ -395,7 +395,7 @@ module VBlank
         # so a level the ramp reaches exactly reads as the one below it. Going down that holds a level
         # a frame too long, and going up it skips one. This is a little more than the most those two
         # can lose, and less than any fade of a frame or more moves between two levels.
-        BRIGHTNESS_NUDGE = 0.4
+        BRIGHTNESS_NUDGE = 0.4  # :nodoc:
 
         def amount_toward_black(amount) = console.fades_by_brightness ? amount + BRIGHTNESS_NUDGE : amount
 
@@ -550,7 +550,7 @@ module VBlank
         end
 
         # Down here because the check classes it names are declared above it.
-        CHECKS = Ractor.make_shareable([NeedsGameLoop.new, FadedOutNeverIn.new])
+        CHECKS = Ractor.make_shareable([NeedsGameLoop.new, FadedOutNeverIn.new])  # :nodoc:
       end
     end
   end

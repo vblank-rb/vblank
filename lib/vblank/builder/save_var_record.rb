@@ -38,17 +38,17 @@ module VBlank
     # save_var writes through as it always did.
     module SaveVarRecord
       # The record's name. One underscore in front, which no `save_data` name can have.
-      SAVE_VAR_RECORD = IR::SaveLayout::SAVE_VAR_RECORD
+      SAVE_VAR_RECORD = IR::SaveLayout::SAVE_VAR_RECORD  # :nodoc:
 
       # How many passes go between two saves the saved variables ask for: five seconds, for a
       # game running at full speed.
-      PASSES_BETWEEN_SAVES = 300
+      PASSES_BETWEEN_SAVES = 300  # :nodoc:
 
       # How many words the record holds, the count included, for a game with fewer save_vars.
-      SLOTS = 64
+      SLOTS = 64  # :nodoc:
 
       # What an error calls the record, which the game never named.
-      SAVE_VAR_RECORD_WORDS = "the record that keeps the save_var numbers"
+      SAVE_VAR_RECORD_WORDS = "the record that keeps the save_var numbers"  # :nodoc:
 
       # The statement that notes a saved variable changed, put where the game changed it.
       def save_var_changed_node = Build.set(@save_data.fetch(SAVE_VAR_RECORD).scratch(:changed), sd_int(1))

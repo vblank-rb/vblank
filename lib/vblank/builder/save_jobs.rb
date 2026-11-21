@@ -44,31 +44,31 @@ module VBlank
     class SaveJobs
       include SaveProgram
 
-      SAVE = 1
-      ERASE = 2
-      COPY = 3
+      SAVE = 1  # :nodoc:
+      ERASE = 2  # :nodoc:
+      COPY = 3  # :nodoc:
 
       # Where the running job has got: just started, writing the body, closing the half, or —
       # on flash only — waiting for the chip to wipe the half, between starting and writing.
-      STARTING = 0
-      WRITING = 1
-      CLOSING = 2
-      WIPING = 3
+      STARTING = 0  # :nodoc:
+      WRITING = 1  # :nodoc:
+      CLOSING = 2  # :nodoc:
+      WIPING = 3  # :nodoc:
 
       # How many times waiting out a wipe asks the chip before giving up, the same as the
       # console's own wait for one byte (IR::Backends::GBA::FlashChip::ASKS): far longer than any
       # chip takes, so giving up means the chip is not answering at all.
-      WIPE_ASKS = 0x40000
+      WIPE_ASKS = 0x40000  # :nodoc:
 
       # WHAT A JOB IS: whose record, which copy, save / erase / copy, which of the record's two
       # buffers holds its snapshot, and the copy a copy reads from. A job is in one of three
       # places — just asked for, running, or waiting behind the running one — and moves between
       # them whole (see #move_job).
-      JOB = %i[rec copy kind slot src].freeze
-      PLACES = %i[ask run wait].freeze
+      JOB = %i[rec copy kind slot src].freeze  # :nodoc:
+      PLACES = %i[ask run wait].freeze  # :nodoc:
 
       # The rest: how far the running job has got, and the queue's own bookkeeping.
-      SCRATCH = (PLACES.product(JOB).map { |place, field| :"#{place}_#{field}" } +
+      SCRATCH = (PLACES.product(JOB).map { |place, field| :"#{place}_#{field}" } +  # :nodoc:
                  %i[run_phase run_done run_at run_from run_wiped serial hold pieces]).freeze
 
       # THE NUMBER EACH RECORD'S JOBS GO BY, by the record's name, read back off a built program:

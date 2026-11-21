@@ -73,7 +73,7 @@ module VBlank
       # (IR::SceneHandover), and this is one of them — and after another map is shown. The walls
       # are copied in from the map's walls as declared the first time they are asked after that.
       # +background+ is the name of the background they are the walls of.
-      KeptWalls = Data.define(:list, :fresh, :cells, :background)
+      KeptWalls = Data.define(:list, :fresh, :cells, :background)  # :nodoc:
 
       # The kept walls of the background whose walls are +cells+ (a Background::SolidCells),
       # made the first time a cell of it is changed. +declaration+ is the background's node.
@@ -129,15 +129,15 @@ module VBlank
       private
 
       # The cell a wall change is about, held while the change is worked out.
-      WALL_COL = :__wall_change_col
-      WALL_ROW = :__wall_change_row
+      WALL_COL = :__wall_change_col  # :nodoc:
+      WALL_ROW = :__wall_change_row  # :nodoc:
 
       # The shared scratch a tile-collision check reads its question from and writes its
       # answer to. One set for the whole program: a check runs to its end before anything
       # else asks, so nothing can be part-way through another question.
-      TILE_COLLISION_X = :__tile_collision_x
-      TILE_COLLISION_Y = :__tile_collision_y
-      TILE_COLLISION_CLEAR = :__tile_collision_clear
+      TILE_COLLISION_X = :__tile_collision_x  # :nodoc:
+      TILE_COLLISION_Y = :__tile_collision_y  # :nodoc:
+      TILE_COLLISION_CLEAR = :__tile_collision_clear  # :nodoc:
 
       def build_tile_collision(cells, hit_x, hit_y, hit_w, hit_h, index)
         name = :"__tile_collision_#{index}"

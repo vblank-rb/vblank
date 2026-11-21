@@ -181,7 +181,7 @@ module VBlank
 
       # HOW THE COPY IS READ: the original's platform, and the packed formats its copy offers, the
       # platform's (Original::Packing.formats_for) and then the port's own.
-      CopyReading = Data.define(:platform, :formats)
+      CopyReading = Data.define(:platform, :formats)  # :nodoc:
 
       def copy_reading_for(platform, formats)
         refuse_formats_not_formats!(formats)
@@ -272,8 +272,8 @@ module VBlank
 
       # What a player is told the file is (IR::StartFile#called): the one a game is handed, and the
       # one its unpacking is handed.
-      PACK_FILE_TITLE = "data pack"
-      COPY_FILE_TITLE = "copy of the original"
+      PACK_FILE_TITLE = "data pack"  # :nodoc:
+      COPY_FILE_TITLE = "copy of the original"  # :nodoc:
 
       # Whether this build leaves its pack out, so a slot is read from the file handed at start.
       def pack_left_out? = !@pack_slot_starts.nil?
@@ -382,8 +382,8 @@ module VBlank
       # `colors: :writes` names a list declared with `colors` instead. Such a list is see-through at
       # place 0, so the picture must say `see_through: 0`, and it is built as a picture given its
       # places, which another list swaps by place (`draw_with`).
-      PIXELS_PICTURE_OPTIONS = %i[width height colors places see_through].freeze
-      MOST_PIXEL_PLACES = 256
+      PIXELS_PICTURE_OPTIONS = %i[width height colors places see_through].freeze  # :nodoc:
+      MOST_PIXEL_PLACES = 256  # :nodoc:
 
       def define_picture_of_pack_pixels(name, opts)
         refuse_pixels_picture_options!(name, opts)
@@ -709,7 +709,7 @@ module VBlank
 
       # A PART'S PIECES' PROGRAM, to build (#unpacking_program's +piece+): the +count+ pieces of the
       # part, which writes the slots in pieces named +slot_names+.
-      PartPieces = Data.define(:slot_names, :count) do
+      PartPieces = Data.define(:slot_names, :count) do  # :nodoc:
         # The slots the program holds playing piece +number+, of +slots+ (the pack's): that piece of
         # each the part writes, in the pack's order.
         def held_slots(slots, number) = slots.select { |slot| slot_names.include?(slot.name) }.map { |slot| slot.piece_slot(number) }
@@ -822,7 +822,7 @@ module VBlank
       # the +slots+ hold, for a pack whose slots name no cost. Both are shifted down before the count
       # is multiplied by the bar's width, by as little as keeps the product inside 32 bits, so a
       # pack of many megabytes works the same way and a small one is exact to the pixel.
-      UnpackingBytes = Data.define(:slots, :done) do
+      UnpackingBytes = Data.define(:slots, :done) do  # :nodoc:
         def pixels_shown(across)
           total = slots.sum(&:byte_size)
           shift = (0..31).find { |bits| (total >> bits) * across <= IR::Int32::MAX }
@@ -838,7 +838,7 @@ module VBlank
       # slowly moves the bar slowly and a quick copy quickly, and the bar keeps one pace. A slot's
       # bytes are shifted down before they are multiplied, by as little as keeps the product inside
       # 32 bits, so a slot of many megabytes works the same way.
-      UnpackingWork = Data.define(:slots, :slot_bytes_done) do
+      UnpackingWork = Data.define(:slots, :slot_bytes_done) do  # :nodoc:
         def pixels_shown(across)
           work = slots.sum { |slot| slot.byte_size * slot.cost }
           slots.each_with_index.filter_map do |slot, number|
@@ -1213,7 +1213,7 @@ module VBlank
       end
 
       # How the errors of a backdrop from the pack name the line.
-      PACK_BACKDROP_LINE = "`screen ... backdrop:`"
+      PACK_BACKDROP_LINE = "`screen ... backdrop:`"  # :nodoc:
 
       # The place of +slot+ (a DSL::PackSlot on colours) that a backdrop shows: +place+, or the
       # first where it is nil. Refuses a slot that is not this pack's or holds no colours, and a
@@ -1262,7 +1262,7 @@ module VBlank
       end
 
       # What each way of reading a slot needs, in words, for the error.
-      SLOT_READING_WORDS = { colors: "a slot of colors", tile: "one tile, like `pack[:walls].tile(0)`",
+      SLOT_READING_WORDS = { colors: "a slot of colors", tile: "one tile, like `pack[:walls].tile(0)`",  # :nodoc:
                              numbers: "a slot of numbers", samples: "a slot of samples",
                              map_cells: "a slot of map cells" }.freeze
 

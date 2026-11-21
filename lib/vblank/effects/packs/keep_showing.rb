@@ -170,8 +170,8 @@ module VBlank
         # declared as soon as a picture is, and #draw is the only thing that ever
         # places a call to it. A declared routine with no call is exactly this bug.
         class NeverDrawn
-          NAME = :keep_showing_never_drawn
-          PLAIN_NAME = "a picture that is never drawn"
+          NAME = :keep_showing_never_drawn  # :nodoc:
+          PLAIN_NAME = "a picture that is never drawn"  # :nodoc:
 
           def detect(program)
             declared(program).filter_map do |routine|
@@ -184,7 +184,7 @@ module VBlank
 
           private
 
-          PREFIX = "__draw_shown_"
+          PREFIX = "__draw_shown_"  # :nodoc:
 
           def declared(program)
             program.each.filter_map do |node|
@@ -207,7 +207,7 @@ module VBlank
         end
 
         # Down here because the check classes it names are declared above it.
-        CHECKS = Ractor.make_shareable([NeverDrawn.new])
+        CHECKS = Ractor.make_shareable([NeverDrawn.new])  # :nodoc:
       end
     end
   end

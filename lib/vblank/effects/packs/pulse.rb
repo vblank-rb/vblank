@@ -32,10 +32,10 @@ module VBlank
       module Pulse
         # How long one full grow-and-shrink takes, if the caller doesn't give one. Slow enough
         # to read as breathing rather than flashing.
-        DEFAULT_SECONDS = 2.0
+        DEFAULT_SECONDS = 2.0  # :nodoc:
 
         # The size a pulse returns to. 1.0 is the size the sprite was drawn at.
-        RESTING = 1.0
+        RESTING = 1.0  # :nodoc:
 
         # Makes a sprite breathe: it grows, shrinks back, and keeps doing it.
         #
@@ -90,16 +90,16 @@ module VBlank
         # sits at the size the pulse started it at, which is usually its resting size, so
         # nothing looks broken and nothing moves.
         class NeedsGameLoop
-          NAME = :pulse_needs_game_loop
-          PLAIN_NAME = "a pulse with no frames to run on"
+          NAME = :pulse_needs_game_loop  # :nodoc:
+          PLAIN_NAME = "a pulse with no frames to run on"  # :nodoc:
 
-          MESSAGE =
+          MESSAGE =  # :nodoc:
             "This game pulses a sprite with `pulse`, but it has no `game_loop`. A pulse " \
             "changes the sprite's size a little on every frame, so it needs frames to " \
             "run on. With no game loop there are none, and the sprite never moves. To " \
             "fix this, put the game in a `game_loop`."
 
-          ROUTINE_PREFIX = "__pulse_"
+          ROUTINE_PREFIX = "__pulse_"  # :nodoc:
 
           def detect(program)
             routine = pulse_routine(program)
@@ -184,7 +184,7 @@ module VBlank
         end
 
         # Down here because the check classes it names are declared above it.
-        CHECKS = Ractor.make_shareable([NeedsGameLoop.new])
+        CHECKS = Ractor.make_shareable([NeedsGameLoop.new])  # :nodoc:
       end
     end
   end

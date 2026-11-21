@@ -54,7 +54,7 @@ module VBlank
       # written in one place. Write it in two, with a branch between them, and honoring
       # the order would mean moving emitted drawing across that branch, which cannot be
       # done. One answer everywhere beats one that holds until a game grows.
-      IN_A_LAYER = {
+      IN_A_LAYER = {  # :nodoc:
         # held — declared once, drawn again every frame, so a layer can order them
         object: :held,
         background: :held,
@@ -340,7 +340,7 @@ module VBlank
 
       # What the author wrote about how see-through a layer is, as they wrote it: +word+ is
       # the keyword to name in a message, and +split+ is the one-number form.
-      SeeThroughWords = Data.define(:word, :shows, :behind, :split)
+      SeeThroughWords = Data.define(:word, :shows, :behind, :split)  # :nodoc:
 
       # The amounts a `layer` block was given, checked, or nil for a layer that is not
       # see-through. One number, or two that go together, and never both.
@@ -572,7 +572,7 @@ module VBlank
 
       # What a held node is, in the words the message needs. Text on a tiled screen is one
       # little sprite per character, so a glyph really is a sprite here.
-      HELD_THING = { object: "A sprite", background: "A background" }.freeze
+      HELD_THING = { object: "A sprite", background: "A background" }.freeze  # :nodoc:
 
       # The way round that works, which is not the same for the two. A declaration inside
       # a per-frame body runs once wherever it is put, so moving it out is both the fix

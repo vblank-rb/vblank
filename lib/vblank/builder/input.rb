@@ -137,7 +137,7 @@ module VBlank
       end
 
       # The motor on for every frame.
-      STEADY_RUMBLE = 0xFF
+      STEADY_RUMBLE = 0xFF  # :nodoc:
 
       # Adds keys for a button on a computer.
       #

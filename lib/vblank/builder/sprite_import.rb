@@ -8,7 +8,7 @@ module VBlank
       private
 
       # A sprite's `colors:` for its imported pictures: the colours, and the list's name where given one
-      ImportedColors = Data.define(:colors, :colors_name)
+      ImportedColors = Data.define(:colors, :colors_name)  # :nodoc:
 
       # The list of colours every picture a sprite imports is drawn from; its colours are nil where
       # the sprite was given none. A name is a list declared with `colors`, and each picture keeps

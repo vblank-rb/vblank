@@ -24,11 +24,11 @@ module VBlank
     module SpriteTiles
       # Bytes one tile of a load's source takes: 8 rows of 8 pixels, two pixels a byte, as painted
       # tiles keep them (Builder::TileRuns::TILE_BYTES).
-      TILE_BYTES = 32
+      TILE_BYTES = 32  # :nodoc:
 
       # The most tiles one set holds. A Game Boy Color keeps a sprite's tiles in sides of 128,
       # and a set lives in one of them, so its loads are one copy each.
-      MOST_TILES = 128
+      MOST_TILES = 128  # :nodoc:
 
       # Declares a set of 8 by 8 tiles in sprite memory, and returns the set to load tiles through.
       #
@@ -111,7 +111,7 @@ module VBlank
         name
       end
 
-      TILE_POSE_OF_FRAME_OPTIONS = %i[tiles_from frame first_tile origin size].freeze
+      TILE_POSE_OF_FRAME_OPTIONS = %i[tiles_from frame first_tile origin size].freeze  # :nodoc:
 
       # `image :spin0, tiles_from: :ball_tiles, frame: pack[:frames].frame(at, layout: FRAME),
       # first_tile: 0x40, origin: [8, 16]`: A POSE OF THE SET WHOSE PIECES ARE ONE OF THE ORIGINAL'S

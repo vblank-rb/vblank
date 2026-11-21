@@ -24,13 +24,13 @@ module VBlank
     #++
     module ShellScreens
       # What a game gave for its shell's first screen: the block, and the line that wrote it.
-      DeclaredShellScreen = Data.define(:block, :source)
+      DeclaredShellScreen = Data.define(:block, :source)  # :nodoc:
 
       # Rows between one line and the next, and between the words saying what the game needs and
       # the title above them, besides the font's own height. With the built-in font these put
       # every word where the screen had it before a game could change it.
-      LINE_GAP = 5
-      TITLE_GAP = 9
+      LINE_GAP = 5  # :nodoc:
+      TITLE_GAP = 9  # :nodoc:
 
       # Makes the shell's first screen the game's own.
       #

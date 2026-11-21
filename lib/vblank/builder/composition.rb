@@ -20,11 +20,11 @@ module VBlank
     # the handle.
     #++
     module Composition
-      Build = IR::Build
+      Build = IR::Build  # :nodoc:
 
       # What spawn does when the pool is full: :drop ignores it (a safe no-op),
       # :recycle_oldest reuses the longest-lived instance so a new one always appears.
-      POOL_FULL_POLICIES = %i[drop recycle_oldest].freeze
+      POOL_FULL_POLICIES = %i[drop recycle_oldest].freeze  # :nodoc:
 
       # THE MOST OF THE QUICK MEMORY ONE POOL MAY TAKE. The console has 32KB of it, and it is
       # also where the code a frame spends its time in is kept, so a pool that took most of
@@ -35,7 +35,7 @@ module VBlank
       # not fit the two memories together, or whose cold ones (these pools among them) do not
       # fit the roomier one, is refused by the whole-program check
       # (IR::Guardrails::Checks::IwramBudget), which adds up everything it declares.
-      POOL_MAX_QUICK_BYTES = 16 * 1024
+      POOL_MAX_QUICK_BYTES = 16 * 1024  # :nodoc:
 
       # Declares a pool: many of one kind of thing that has state and behaves, such as bullets,
       # enemies or sparks, with room for a fixed number of them.
@@ -204,7 +204,7 @@ module VBlank
       # work of their own, and a console that can keep such a list in two bytes finds it proven to
       # hold 0..65535 (Backends::NumberRanges#unsigned_half_lists) and does (the Super Nintendo,
       # the Color).
-      UNSIGNED_HALF = :unsigned_half
+      UNSIGNED_HALF = :unsigned_half  # :nodoc:
 
       # The lists declared to hold 0..65535, by name.
       def unsigned_half_lists = @unsigned_half_lists ||= Set.new
@@ -363,7 +363,7 @@ module VBlank
       # +per_dir+ is how many frames each direction has (1 for a still pose). Those three
       # are exactly what a `sprite` works out for itself — this is the same answer for
       # many of a thing at once.
-      PoolArt = Data.define(:poses, :dirs, :per_dir, :rate, :hitbox) do
+      PoolArt = Data.define(:poses, :dirs, :per_dir, :rate, :hitbox) do  # :nodoc:
         # A pool faces when it was given a direction per picture, and animates when a slot
         # has more than one picture to run through — the frames of its direction for a
         # directional animation, or the whole flipbook where there are no directions.
@@ -435,7 +435,7 @@ module VBlank
 
       # The ways a console can keep a pool in memory (Console::Description#pool_layouts): as a list
       # for each field, as tables side by side read with one index, or as a record for each thing.
-      POOL_LAYOUTS = %i[lists tables records].freeze
+      POOL_LAYOUTS = %i[lists tables records].freeze  # :nodoc:
 
       # `layout:` names how the console keeps the pool. A game that names none builds as the
       # console's build chooses, so it only needs one to insist; a console that has no such way

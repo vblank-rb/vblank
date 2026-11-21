@@ -72,13 +72,13 @@ module VBlank
       # :pool (the pool) or :shown (a SpriteShown). +framework+ is true for state the framework made
       # and named for itself (a timer's count, a sprite's place), and +saved+ false for state a
       # save_data record keeping the part leaves out (SaveRecords#expand_kept_parts!).
-      Member = Data.define(:kind, :thing, :framework, :saved) do
+      Member = Data.define(:kind, :thing, :framework, :saved) do  # :nodoc:
         def initialize(kind:, thing:, framework: false, saved: true) = super
       end
 
       # A sprite painted into the picture, and whether it was declared shown: put back with its
       # own `show` or `hide`, which paint it or take it off the picture as well as set the flag.
-      SpriteShown = Data.define(:sprite, :shown)
+      SpriteShown = Data.define(:sprite, :shown)  # :nodoc:
 
       # Sets which part the things the game declares belong to: from this line on, or, given a
       # block, inside the block.

@@ -12,14 +12,14 @@ module VBlank
     # showing it. So a picture font needs nothing of its own from any backend.
     module PictureFonts
       # The hidden variables a live number's digit routine reads: which picture, and where.
-      DIGIT_SHOWN = :__picture_digit_shown
-      DIGIT_COLUMN = :__picture_digit_column
-      DIGIT_ROW = :__picture_digit_row
+      DIGIT_SHOWN = :__picture_digit_shown  # :nodoc:
+      DIGIT_COLUMN = :__picture_digit_column  # :nodoc:
+      DIGIT_ROW = :__picture_digit_row  # :nodoc:
 
       # A font of a pack's pixels with the pack left out (#declare_lettering_font): its letters'
       # slices by character, the byte that is not lit, and its widths and spacing as a font of
       # pictures (+metrics+).
-      Lettering = Data.define(:slices, :blank, :metrics)
+      Lettering = Data.define(:slices, :blank, :metrics)  # :nodoc:
 
       private
 

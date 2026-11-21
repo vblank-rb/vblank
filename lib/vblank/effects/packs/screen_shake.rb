@@ -39,11 +39,11 @@ module VBlank
         # The hidden variables the shake runs on, and the routine that drives them.
         # Named with the framework's underscore prefix so they can never collide with
         # a game's own variables.
-        LEFT = :__shake_left       # Frames of shaking still to run (-1 = settled)
-        POWER = :__shake_power     # How far to move, in pixels
-        DIRECTION = :__shake_dir   # +1 / -1, flipped every frame to make the jitter
-        OFFSET = :__shake_offset   # This frame's offset, power * direction
-        ROUTINE = :__shake_tick
+        LEFT = :__shake_left       # :nodoc: Frames of shaking still to run (-1 = settled)
+        POWER = :__shake_power     # :nodoc: How far to move, in pixels
+        DIRECTION = :__shake_dir   # :nodoc: +1 / -1, flipped every frame to make the jitter
+        OFFSET = :__shake_offset   # :nodoc: This frame's offset, power * direction
+        ROUTINE = :__shake_tick  # :nodoc:
 
         # Shakes the screen, as the impact effect for a hit, an explosion or a life lost.
         #
@@ -92,10 +92,10 @@ module VBlank
         # is declared as soon as anything shakes, and a call to it is placed at each
         # frame boundary. A declared routine with no call to it is exactly this bug.
         class NeedsGameLoop
-          NAME = :shake_needs_game_loop
-          PLAIN_NAME = "a shake with no frames to run on"
+          NAME = :shake_needs_game_loop  # :nodoc:
+          PLAIN_NAME = "a shake with no frames to run on"  # :nodoc:
 
-          MESSAGE =
+          MESSAGE =  # :nodoc:
             "This game shakes the screen with `shake_screen`, but it has no " \
             "`game_loop`. A shake moves the picture a small amount on every frame, " \
             "so it needs frames to run on. With no game loop there are none, and the " \
@@ -184,7 +184,7 @@ module VBlank
         end
 
         # Down here because the check classes it names are declared above it.
-        CHECKS = Ractor.make_shareable([NeedsGameLoop.new])
+        CHECKS = Ractor.make_shareable([NeedsGameLoop.new])  # :nodoc:
       end
     end
   end

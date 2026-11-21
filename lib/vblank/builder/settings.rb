@@ -89,7 +89,7 @@ module VBlank
                              "`setting :#{name}, <default>`."
       end
 
-      NO_DEFAULT = Object.new.freeze
+      NO_DEFAULT = Object.new.freeze  # :nodoc:
 
       private
 

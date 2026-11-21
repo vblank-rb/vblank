@@ -27,38 +27,38 @@ module VBlank
     module Spotlights
       # The light's four numbers, and the row the spans are worked out for, named with the
       # framework's underscore prefix so a game's own variables can never collide with them.
-      X = :__spotlight_x
-      Y = :__spotlight_y
-      RADIUS = :__spotlight_radius
-      DARK = :__spotlight_dark
-      ROW = :__spotlight_row
+      X = :__spotlight_x  # :nodoc:
+      Y = :__spotlight_y  # :nodoc:
+      RADIUS = :__spotlight_radius  # :nodoc:
+      DARK = :__spotlight_dark  # :nodoc:
+      ROW = :__spotlight_row  # :nodoc:
 
       # The row's half width, worked out once a row before either edge reads it.
-      HALF = :__spotlight_half
+      HALF = :__spotlight_half  # :nodoc:
 
       # How dark outside a light is when its declaration does not set it: dark enough to read as
       # a light in the dark, light enough that the room is still there.
-      DARK_UNSAID = 75
+      DARK_UNSAID = 75  # :nodoc:
 
-      WIDTHS = :__spotlight_widths
-      SHARES = :__spotlight_shares
+      WIDTHS = :__spotlight_widths  # :nodoc:
+      SHARES = :__spotlight_shares  # :nodoc:
 
       # The biggest radius worked out. A light whose middle is in the far corner of the
       # screen reaches the other corner at 289, so this lights the whole screen from
       # anywhere on it with room to spare, and a power of two keeps the table reads cheap.
-      LARGEST = 511
+      LARGEST = 511  # :nodoc:
 
       # A share of the radius is counted in 256ths, and the multiply that makes one counts
       # in 32768ths so the table entries are whole numbers that fit in half a word.
-      SHARE_STEPS = 256
-      SHARE_SCALE = 32_768
-      SHARE_SHIFT = 7 # SHARE_SCALE / SHARE_STEPS is 2 to this
+      SHARE_STEPS = 256  # :nodoc:
+      SHARE_SCALE = 32_768  # :nodoc:
+      SHARE_SHIFT = 7 # :nodoc: SHARE_SCALE / SHARE_STEPS is 2 to this
 
       # How wide a circle 256 across is, from its middle out, at each 256th of the way from
       # its middle to its edge. The second half of the table is nought: a row that far from
       # the middle is outside the circle, and reading nought there is what keeps it dark
       # with no test on every row.
-      HALF_WIDTHS = Array.new(SHARE_STEPS * 2) do |share|
+      HALF_WIDTHS = Array.new(SHARE_STEPS * 2) do |share|  # :nodoc:
         share < SHARE_STEPS ? (SHARE_STEPS * Math.sqrt(1 - ((share.to_f / SHARE_STEPS)**2))).round : 0
       end.freeze
 
@@ -66,7 +66,7 @@ module VBlank
       # load-bearing: a row exactly a radius from the middle has to come out at the circle's
       # edge or past it, and rounding down would leave it a little inside, lighting a short
       # sliver at the very top and bottom of a big light.
-      SHARES_OF_RADIUS = Array.new(LARGEST + 1) do |radius|
+      SHARES_OF_RADIUS = Array.new(LARGEST + 1) do |radius|  # :nodoc:
         radius.zero? ? 0 : (SHARE_SCALE + radius - 1) / radius
       end.freeze
 
@@ -79,12 +79,12 @@ module VBlank
       # edge. So up to the biggest circle such a game draws, the half widths are that circle's
       # own, worked out here for every size and kept in the cartridge, a row of them a size.
       # Past it the scaled table carries on, since a light that big is most of the screen.
-      MIDPOINT_LARGEST = 150
-      MIDPOINT = :__spotlight_midpoint
+      MIDPOINT_LARGEST = 150  # :nodoc:
+      MIDPOINT = :__spotlight_midpoint  # :nodoc:
 
       # Entries a size: one for each row from the middle out to the largest size, and one more,
       # always nought, that a row beyond the circle reads.
-      MIDPOINT_STRIDE = MIDPOINT_LARGEST + 2
+      MIDPOINT_STRIDE = MIDPOINT_LARGEST + 2  # :nodoc:
 
       # The midpoint circle's half width on each row from its middle out, for a circle of
       # +size+: rows 0 to size - 1 lit, the rest nought. Written the way the console's games
@@ -109,7 +109,7 @@ module VBlank
         Array.new(MIDPOINT_STRIDE) { |row| row < size ? widths[row] : 0 }
       end
 
-      MIDPOINT_HALF_WIDTHS = (0..MIDPOINT_LARGEST).flat_map { |size| midpoint_half_widths(size) }.freeze
+      MIDPOINT_HALF_WIDTHS = (0..MIDPOINT_LARGEST).flat_map { |size| midpoint_half_widths(size) }.freeze  # :nodoc:
 
       # The statement that darkens the picture outside the circle +light+ gives. Its edges read
       # the row's half width, which #work_out_half_width puts in HALF first. With +shuts_out+ it

@@ -14,11 +14,11 @@ module VBlank
     #++
     module Canvases
       # The characters a canvas can draw a letter of: every code a game writes as text.
-      LETTER_CODES = 128
+      LETTER_CODES = 128  # :nodoc:
 
       # FontTables: one font, as the tables a canvas reads a letter out of while the game
       # runs — each character's rows of lit pixels, and its width.
-      FontTables = Data.define(:rows, :widths, :height, :widest, :spacing)
+      FontTables = Data.define(:rows, :widths, :height, :widest, :spacing)  # :nodoc:
 
       # Declares a picture the game draws into while it runs, and returns it to draw with.
       #

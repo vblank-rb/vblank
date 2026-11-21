@@ -48,9 +48,9 @@ module VBlank
       # and turning all do.
       #++
       module FollowCamera
-        HOME_X = :__camera_home_x # Where the followed sprite sits on screen
-        HOME_Y = :__camera_home_y
-        ROUTINE = :__camera_follow
+        HOME_X = :__camera_home_x # :nodoc: Where the followed sprite sits on screen
+        HOME_Y = :__camera_home_y  # :nodoc:
+        ROUTINE = :__camera_follow  # :nodoc:
 
         # Points the camera at a sprite and keeps it there, scrolling a background under it.
         #
@@ -113,10 +113,10 @@ module VBlank
         # loop there is no boundary: the world never scrolls, and the hero walks off the
         # edge of the screen and keeps going.
         class NeedsGameLoop
-          NAME = :follow_camera_needs_game_loop
-          PLAIN_NAME = "a follow camera with no frames to run on"
+          NAME = :follow_camera_needs_game_loop  # :nodoc:
+          PLAIN_NAME = "a follow camera with no frames to run on"  # :nodoc:
 
-          MESSAGE =
+          MESSAGE =  # :nodoc:
             "This game follows a character with `camera_follows`, but it has no " \
             "`game_loop`. A camera moves the world a little on every frame, so it needs " \
             "frames to run on. With no game loop there are none: the world never moves, " \
@@ -185,7 +185,7 @@ module VBlank
         end
 
         # Down here because the check classes it names are declared above it.
-        CHECKS = Ractor.make_shareable([NeedsGameLoop.new])
+        CHECKS = Ractor.make_shareable([NeedsGameLoop.new])  # :nodoc:
       end
     end
   end

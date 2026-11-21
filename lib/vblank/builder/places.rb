@@ -29,17 +29,17 @@ module VBlank
     #++
     module Places
       # How near a point may be before a face is cut there, by default: a quarter of a whole.
-      NEAR = 0.25
+      NEAR = 0.25  # :nodoc:
 
       # How wide an angle the view shows, in degrees across, by default.
-      VIEW_ANGLE = 90
+      VIEW_ANGLE = 90  # :nodoc:
 
       # The settings `perspective:` takes. The default works the picture's place out exactly every
       # sixteen pixels across a row, or every eight where the face leans away steeply close by,
       # and steps straight between; :every_8_pixels works it out every eight, :every_pixel at each
       # pixel, and :none stretches the picture straight between a row's ends.
-      PERSPECTIVES = IR::Nodes::FillFace::PERSPECTIVE_SPANS.keys.freeze
-      PERSPECTIVE = IR::Nodes::FillFace::DEFAULT_PERSPECTIVE
+      PERSPECTIVES = IR::Nodes::FillFace::PERSPECTIVE_SPANS.keys.freeze  # :nodoc:
+      PERSPECTIVE = IR::Nodes::FillFace::DEFAULT_PERSPECTIVE  # :nodoc:
 
       # Declares a place made of flat faces, and returns it.
       #
@@ -183,7 +183,7 @@ module VBlank
       end
 
       # The way a viewer faces where the game gives none: along the place's own arrows.
-      FACING_AS_DECLARED = Ractor.make_shareable({ right: [1, 0, 0], up: [0, 1, 0], ahead: [0, 0, 1] })
+      FACING_AS_DECLARED = Ractor.make_shareable({ right: [1, 0, 0], up: [0, 1, 0], ahead: [0, 0, 1] })  # :nodoc:
 
       # Draws a place as a viewer sees it, on the screen or inside the area that an `inside` holds
       # drawing to.

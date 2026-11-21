@@ -42,26 +42,26 @@ module VBlank
         # Wolfenstein 3D, which waits 20 tics: a tap always moves exactly one row, and
         # holding walks at about three rows a second — fast enough to feel responsive,
         # slow enough that you can stop where you meant to.
-        HELD_REPEAT_FRAMES = 20
+        HELD_REPEAT_FRAMES = 20  # :nodoc:
 
         # What is drawn beside the row the cursor is on.
-        CURSOR = ">"
+        CURSOR = ">"  # :nodoc:
 
         # A row that cannot be picked. Dim enough to read as "not for you now", light
         # enough to still be readable — the point of a greyed row is that you can see
         # what you are missing.
-        DISABLED_COLOR = "#404040"
+        DISABLED_COLOR = "#404040"  # :nodoc:
 
         # The gap between the bottom of one row and the top of the next, when the game
         # does not set one. With the built-in 7px font that puts rows 13 pixels apart, which
         # is what Wolfenstein's menus use.
-        ROW_GAP = 6
+        ROW_GAP = 6  # :nodoc:
 
         # One row of a menu: what it can say, whether it can be picked, the colours it
         # overrides, and what it does when it is chosen. `labels` is always a list,
         # because a settings row says a different thing depending on the setting, and
         # `showing` is the value that picks which of them is on screen.
-        Item = Data.define(:labels, :enabled, :color, :picked, :showing, :action)
+        Item = Data.define(:labels, :enabled, :color, :picked, :showing, :action)  # :nodoc:
 
         # Collects the rows of one menu. Handed to the `menu` block as its argument
         # rather than being the block's `self`, so a bare DSL verb written inside an
@@ -269,17 +269,17 @@ module VBlank
         # over time. With no game loop there are no frames: the rows are drawn once, the
         # cursor never moves, and no button does anything.
         class NeedsGameLoop
-          NAME = :menu_needs_game_loop
-          PLAIN_NAME = "a menu with no frames to run on"
+          NAME = :menu_needs_game_loop  # :nodoc:
+          PLAIN_NAME = "a menu with no frames to run on"  # :nodoc:
 
-          MESSAGE =
+          MESSAGE =  # :nodoc:
             "This game declares a menu, but it has no `game_loop`. A menu reads the " \
             "buttons and draws itself again on every frame, so it needs frames to run " \
             "on. With no game loop there are none: the rows are drawn one time, and the " \
             "cursor never moves. To fix this, put the game in a `game_loop`."
 
           # Every menu's pick variable is named for the menu it belongs to.
-          PICK_PREFIX = "__menu_"
+          PICK_PREFIX = "__menu_"  # :nodoc:
 
           def detect(program)
             pick = menu_pick(program)
@@ -411,7 +411,7 @@ module VBlank
         # How a menu draws: where its column is, the three colours, the cursor and the
         # font. Carried as one thing so the drawing below reads as drawing rather than as
         # an argument list threaded through it.
-        Style = Data.define(:x, :cursor_x, :font, :color, :picked, :disabled, :cursor)
+        Style = Data.define(:x, :cursor_x, :font, :color, :picked, :disabled, :cursor)  # :nodoc:
 
         # Draw the rows. A row that cannot be picked is drawn dim and never any other
         # way, so its test is settled at build time and costs nothing at run time.
@@ -654,7 +654,7 @@ module VBlank
         def menu_site_phrase(at, which) = at ? "At #{at}" : "In the #{which} place"
 
         # Down here because the check classes it names are declared above it.
-        CHECKS = Ractor.make_shareable([NeedsGameLoop.new])
+        CHECKS = Ractor.make_shareable([NeedsGameLoop.new])  # :nodoc:
       end
     end
   end

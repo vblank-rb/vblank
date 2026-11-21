@@ -217,7 +217,7 @@ module VBlank
       # One area's art: the name of its tileset, its map's rows of pictures, the lists of colours
       # the game may name for it, the cells `set_cell` may write in it (a DSL::PackCells, or nil),
       # and every picture made for its group of areas, by what it was made from (#mark_tiles_in_front).
-      PackAreaArt = Data.define(:tileset, :rows, :lists, :told, :pictures)
+      PackAreaArt = Data.define(:tileset, :rows, :lists, :told, :pictures)  # :nodoc:
 
       # What the setting +given+ (a slot, or across:'s width) names for +area+: its own in a Hash by
       # area, or the one every area shares.
@@ -458,12 +458,12 @@ module VBlank
       # What making a background's pictures from the pack reads: the background's +name+, the layout
       # of a cell (+words+, Console::MapWordFormat), how many tiles a cell is across, each tile's
       # places from the slot, and the bank lists by bank.
-      PackMapShape = Data.define(:name, :words, :tiles_a_side, :tile_places, :bank_lists)
+      PackMapShape = Data.define(:name, :words, :tiles_a_side, :tile_places, :bank_lists)  # :nodoc:
 
       # What making them gives back: the map's +rows+ of picture names, every +pictures+ made (nil
       # for what draws nothing) by what it was made from, and the cells `set_cell` may write
       # (+told+, a DSL::PackCells, or nil).
-      PackMapPictures = Data.define(:rows, :pictures, :told)
+      PackMapPictures = Data.define(:rows, :pictures, :told)  # :nodoc:
 
       # A CELL OF 16x16 IS ONE TILE OF 16x16 where the console draws such tiles. A Super Nintendo
       # original keeps such a screen as a map of 32 by 32 cells, and its own game shows it as a layer
@@ -687,9 +687,9 @@ module VBlank
 
       # The most tiles a background read as the game starts can be: each cell's tile is a tile of
       # its own, and a build for a computer keeps a cell's tile in sixteen signed bits.
-      MOST_TILES_READ_AT_START = 0x7FFF
+      MOST_TILES_READ_AT_START = 0x7FFF  # :nodoc:
       # How many bytes of the file a colour is, in every layout a slot of colours is kept in.
-      COLOR_BYTES = 2
+      COLOR_BYTES = 2  # :nodoc:
 
       # THE SAME BACKGROUND WITH THE PACK LEFT OUT (see the top of this file). It is declared as a
       # background of the right size whose tiles are a picture for each bank of the slot, drawn
@@ -781,7 +781,7 @@ module VBlank
       # pictures it holds in order (a stand-in for each bank, the runs of tiles that take turns,
       # the told cells' tiles), the told tiles by tile as drawn, and the cells `set_cell` may write
       # (a DSL::PackCells).
-      HeldAtStart = Data.define(:where, :held, :told, :cells)
+      HeldAtStart = Data.define(:where, :held, :told, :cells)  # :nodoc:
 
       # The pictures and record of #declare_pack_background_read_at_start, for a background or an
       # area +name+ whose held tiles start at tile +first+ of the background's. Hands back a HeldAtStart.
@@ -1020,11 +1020,11 @@ module VBlank
 
       # Room among a background's tiles for the tiles as drawn its maps name, read as the game starts:
       # a few thousand, as a console's video memory holds.
-      TILES_LEFT_FOR_MAPS = 4096
+      TILES_LEFT_FOR_MAPS = 4096  # :nodoc:
       # How many tiles of tables of colours, and of places, a cell read as the game starts can name
       # (each runtime's record of a tile as drawn keeps them in 12 and 16 bits).
-      MOST_TABLE_TILES = 4096
-      MOST_PLACE_TILES = 65_536
+      MOST_TABLE_TILES = 4096  # :nodoc:
+      MOST_PLACE_TILES = 65_536  # :nodoc:
 
       # The picture of +tile+ (a Console::CellTile), drawn from the list of its bank. Nil for a tile
       # that draws nothing, left empty in the map.

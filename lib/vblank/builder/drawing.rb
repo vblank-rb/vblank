@@ -25,7 +25,7 @@ module VBlank
       # games), and one background that turns and resizes with no scrolling ones. How each is
       # set up on a console is its lowering's business. The tear-proof double-buffered screen
       # isn't a separate name here: it's `screen :bitmap, tear_free: true`.
-      SCREEN_NAMES = %i[bitmap tiled rotozoom].freeze
+      SCREEN_NAMES = %i[bitmap tiled rotozoom].freeze  # :nodoc:
 
       # Gives how wide the screen is, in pixels, as a plain Ruby number while the game is built.
       #
@@ -208,7 +208,7 @@ module VBlank
       # The most pixels a side a screen of the game's own can be. Each runtime keeps a whole picture
       # as a number a pixel and the interpreter compares it every pass, so four million pixels is
       # far past any screen a game draws, and a pixel's place stays well inside a 32-bit index.
-      MOST_SCREEN_SIDE = 2048
+      MOST_SCREEN_SIDE = 2048  # :nodoc:
 
       # THE SCREEN SIZE THE GAME ASKS FOR (`screen :bitmap, size: [320, 200]`), checked on every
       # build and given where the build gives one: a computer's build that makes no cartridge
@@ -637,7 +637,7 @@ module VBlank
 
       # The two variables a tiled screen's camera is kept in, across then down. Only a game
       # that moves the camera on a tiled screen has them, so every other builds as it did.
-      TILED_CAMERA_VARS = %i[__camera_x __camera_y].freeze
+      TILED_CAMERA_VARS = %i[__camera_x __camera_y].freeze  # :nodoc:
 
       private
 
@@ -748,7 +748,7 @@ module VBlank
 
       # The colors a fade can go to. Black and white are what the display can blend
       # the whole screen toward without redrawing anything.
-      FADE_COLORS = %i[black white].freeze
+      FADE_COLORS = %i[black white].freeze  # :nodoc:
 
       # Fades the whole screen toward black or white.
       #
@@ -1333,12 +1333,12 @@ module VBlank
       # from variables, tables and arithmetic — keeps them in variables of its own, branches and
       # loops; anything else would read something the console does not watch, or change the game
       # at different times on different machines.
-      LIGHT_SHAPE_STATEMENTS = %i[set add sub copy negate abs negate_abs clamp if else repeat table].freeze
+      LIGHT_SHAPE_STATEMENTS = %i[set add sub copy negate abs negate_abs clamp if else repeat table].freeze  # :nodoc:
       LIGHT_SHAPE_VALUES = %i[int var_ref binop neg bit_not absolute clamped mul_fix div_fix shift_right
-                              table_get data_byte].freeze
+                              table_get data_byte].freeze  # :nodoc:
 
       # What the commonest things a shape cannot do are, said as the game writes them.
-      LIGHT_SHAPE_CANNOT = { list_get: "read a list", list_len: "read a list", held: "read the buttons",
+      LIGHT_SHAPE_CANNOT = { list_get: "read a list", list_len: "read a list", held: "read the buttons",  # :nodoc:
                              pressed: "read the buttons", players_connected: "read the buttons", chance: "pick a number at random",
                              call: "call a routine", call_one_of: "call a routine" }.freeze
 
@@ -1419,7 +1419,7 @@ module VBlank
               "`light.radius` and `light.dark` where the second light was."
       end
 
-      LIGHT_OUTSIDES = %i[darkened nothing].freeze
+      LIGHT_OUTSIDES = %i[darkened nothing].freeze  # :nodoc:
 
       def refuse_unknown_light_outside!(outside)
         return if outside.nil? || LIGHT_OUTSIDES.include?(outside)

@@ -46,21 +46,21 @@ module VBlank
       #++
       module Iris
         # The hidden state, named with the framework's underscore prefix.
-        SIZE = :__iris_size        # How far the circle reaches now, a fraction
-        TARGET = :__iris_target    # Where the walk is heading
-        STEP = :__iris_step        # How far it moves each frame
-        ACTIVE = :__iris_active    # 1 while the walk is running
-        SHUT = :__iris_shut        # 1 once a walk out has arrived
-        RADIUS = :__iris_radius    # The light's own radius, to give back
-        DARK = :__iris_dark        # The light's own darkness, to give back
-        REACH = :__iris_reach      # How far the farthest corner is, which a walk starts and ends at
-        ROUTINE = :__iris_tick
+        SIZE = :__iris_size        # :nodoc: How far the circle reaches now, a fraction
+        TARGET = :__iris_target    # :nodoc: Where the walk is heading
+        STEP = :__iris_step        # :nodoc: How far it moves each frame
+        ACTIVE = :__iris_active    # :nodoc: 1 while the walk is running
+        SHUT = :__iris_shut        # :nodoc: 1 once a walk out has arrived
+        RADIUS = :__iris_radius    # :nodoc: The light's own radius, to give back
+        DARK = :__iris_dark        # :nodoc: The light's own darkness, to give back
+        REACH = :__iris_reach      # :nodoc: How far the farthest corner is, which a walk starts and ends at
+        ROUTINE = :__iris_tick  # :nodoc:
 
         # TARGET starts here, which is what lets the guardrail below tell a real `iris_in`
         # from the declaration: nothing else writes this variable.
-        NEVER_WALKED = -1.0
+        NEVER_WALKED = -1.0  # :nodoc:
 
-        DEFAULT_FRAMES = 30 # Half a second — a scene change, not a blink
+        DEFAULT_FRAMES = 30 # :nodoc: Half a second — a scene change, not a blink
 
         # Closes a circle on a point until the screen is black.
         #
@@ -201,10 +201,10 @@ module VBlank
 
         # A screen irised out and never back in. The game runs on behind a black screen.
         class IrisOutNeverIn
-          NAME = :iris_out_never_in
-          PLAIN_NAME = "an iris out with no iris in"
+          NAME = :iris_out_never_in  # :nodoc:
+          PLAIN_NAME = "an iris out with no iris in"  # :nodoc:
 
-          MESSAGE =
+          MESSAGE =  # :nodoc:
             "This game calls `iris_out` and never calls `iris_in`. The circle closes and the " \
             "screen stays black. The game is still running behind it. To fix this, call " \
             "`iris_in` when the picture must come back."
@@ -321,7 +321,7 @@ module VBlank
         end
 
         # Down here because the check class it names is declared above it.
-        CHECKS = Ractor.make_shareable([IrisOutNeverIn.new])
+        CHECKS = Ractor.make_shareable([IrisOutNeverIn.new])  # :nodoc:
       end
     end
   end

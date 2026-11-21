@@ -150,10 +150,10 @@ module VBlank
       end
 
       # One sprite as it was declared: its name and its handle, for #finalize_sprite_readings.
-      DeclaredSprite = Data.define(:name, :handle)
+      DeclaredSprite = Data.define(:name, :handle)  # :nodoc:
 
       # The settings that give a sprite its pictures, which `image:` would contradict.
-      POSE_SETTINGS = %i[facing frames frames_from facing_from from_aseprite].freeze
+      POSE_SETTINGS = %i[facing frames frames_from facing_from from_aseprite].freeze  # :nodoc:
 
       # The sprites declared so far.
       def declared_sprites = @declared_sprites ||= []
@@ -512,7 +512,7 @@ module VBlank
 
       # Scratch for a step worked out from an expression (see #kept_step): one variable for
       # every pick, since each pick reads it straight after writing it.
-      PICKED_POSE_STEP = :_picked_pose_step
+      PICKED_POSE_STEP = :_picked_pose_step  # :nodoc:
 
       def picked_pose_rows!(names, subject, row_of)
         unless names.is_a?(Array) && !names.empty?
@@ -864,7 +864,7 @@ module VBlank
       end
 
       # The variable every scene writes as its body ends, saying it was the last one to run.
-      SCENE_UP = :__scene_up
+      SCENE_UP = :__scene_up  # :nodoc:
 
       # WHAT A SOFTWARE SPRITE KEEPS TO KNOW WHEN IT MAY BE PAINTED AND WHEN IT HAS PIXELS TO
       # PUT BACK, as the arguments its handle takes.
@@ -950,7 +950,7 @@ module VBlank
 
       # The variable every scene writes as its body ends, marking whether it draws on a screen
       # the game paints into (1) or one drawn from tiles (0).
-      PAINTED_SCREEN_UP = :__painted_screen_up
+      PAINTED_SCREEN_UP = :__painted_screen_up  # :nodoc:
 
       # HAND THE PICTURE FROM ONE SCENE'S SPRITES TO THE NEXT'S, for a game with software
       # sprites declared inside scenes. Two statements go into every scene's routine.

@@ -27,7 +27,7 @@ module VBlank
       #
       # +base+ below is where the body starts, as the program works it out: a half in save
       # memory, or the snapshot a background save copies the kept things into first.
-      Kept = Data.define(:kind, :name, :at, :width, :count) do
+      Kept = Data.define(:kind, :name, :at, :width, :count) do  # :nodoc:
         def bytes = kind == :var ? WORD : WORD + (count * slot_bytes)
         def slot_bytes = SaveRecords::WIDTH_BYTES.fetch(width)
 
@@ -41,9 +41,9 @@ module VBlank
         end
       end
 
-      WORD = 4
+      WORD = 4  # :nodoc:
 
-      WIDTH_BYTES = { byte: 1, half: 2, word: 4 }.freeze
+      WIDTH_BYTES = { byte: 1, half: 2, word: 4 }.freeze  # :nodoc:
 
       # Declare a record of the game's state, kept in save memory in +copies+ numbered
       # copies. The block, if there is one, names what it keeps with `keep`; the handle's own
@@ -89,7 +89,7 @@ module VBlank
       # where it stands in the record, in the order the part declared them. A member added to the part
       # later is kept with no change to the record; it changes the record's shape, so a save made
       # before reads as empty, as a moved keep does.
-      KeptPart = Data.define(:name)
+      KeptPart = Data.define(:name)  # :nodoc:
 
       # Each part a record keeps, as its members, once every routine is built.
       #   - A member this record keeps already, by a `keep` of its own or an earlier part, is kept
@@ -250,7 +250,7 @@ module VBlank
       # Until the program is fully declared a record's +kept+, +body+, +half+, +shape+ and
       # +pools+ are nil (see #declare), so anything that reads them too early fails where it
       # reads.
-      Layout = Data.define(:name, :copies, :kept, :body, :half, :place, :shape, :key, :number, :when_busy,
+      Layout = Data.define(:name, :copies, :kept, :body, :half, :place, :shape, :key, :number, :when_busy,  # :nodoc:
                            :pools, :fast) do
         def routine(job) = Messages::MadeNames.make(:save_record, record: name, piece: job)
         def scratch(what) = Messages::MadeNames.make(:save_record, record: name, piece: what)
@@ -306,7 +306,7 @@ module VBlank
 
       # What a save, erase or copy of this record does when one of the record's is already in
       # hand. Waiting is the default because it is the one that loses nothing.
-      WHEN_BUSY = %i[wait replace refuse].freeze
+      WHEN_BUSY = %i[wait replace refuse].freeze  # :nodoc:
 
       def check_save_data_when_busy!(name, when_busy)
         return if WHEN_BUSY.include?(when_busy)
@@ -327,7 +327,7 @@ module VBlank
 
       # The jobs that write to save memory, and so go through the queue and are written a
       # piece each pass.
-      JOBS_THAT_WRITE = %i[save erase copy].freeze
+      JOBS_THAT_WRITE = %i[save erase copy].freeze  # :nodoc:
 
       # WHERE ONE OF A RECORD'S ROUTINES IS KEPT, from what the game set for the record:
       # true for the quick memory, false for the cartridge, nil for the build to decide.
@@ -751,7 +751,7 @@ module VBlank
       #
       # +shape+ is how the game read it: :number for a variable, :item (with +index+) for one
       # item of a list, :length for how many a list holds.
-      PeekSite = Data.define(:record, :name, :copy, :shape, :index)
+      PeekSite = Data.define(:record, :name, :copy, :shape, :index)  # :nodoc:
 
       def peek_stand_in(layout, copy, name, shape, index: nil)
         @jobs.emit_finish_jobs_of(layout)

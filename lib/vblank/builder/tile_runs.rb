@@ -25,7 +25,7 @@ module VBlank
     # such a list means something different on each console.
     module TileRuns
       # Bytes one tile of a run takes in its list: 8 rows of 8 pixels, two pixels a byte.
-      TILE_BYTES = 32
+      TILE_BYTES = 32  # :nodoc:
 
       # The game marks the list as moved (see DSL::TileRun#changed). Where the program is paced by
       # frames the copy waits for the gap after this frame — see #finalize_tile_copies — and
@@ -50,7 +50,7 @@ module VBlank
       # WHICH RUNS ARE OWED A COPY, as bits of a few variables rather than a flag apiece: a bit
       # per run, thirty to a variable so a mask never reaches the sign bit. That is what lets
       # the gap between frames ask one question of all of them (see #finalize_tile_copies).
-      RUNS_PER_MASK = IR::Nodes::CopyOwedTiles::RUNS_PER_MASK
+      RUNS_PER_MASK = IR::Nodes::CopyOwedTiles::RUNS_PER_MASK  # :nodoc:
 
       def tile_run_pending(name) = Messages::MadeNames.make(:tile_run_pending, number: @tile_runs.index(name) / RUNS_PER_MASK)
       def tile_run_bit(name) = 1 << (@tile_runs.index(name) % RUNS_PER_MASK)
@@ -181,7 +181,7 @@ module VBlank
       end
 
       # The routine the game loop calls on a frame with a run owed a copy.
-      PAINTED_COPIES = Messages::MadeNames.make(:painted_copies)
+      PAINTED_COPIES = Messages::MadeNames.make(:painted_copies)  # :nodoc:
 
       # Built here, once every run is known, rather than handed to `func`: the routines a game
       # wrote are built already. Listed with them so a call to it counts as one to a routine.

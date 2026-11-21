@@ -20,12 +20,12 @@ module VBlank
       # declares it to the backends, the sets it can hold (a {DSL::Recolors}, the list
       # playing the part a sprite plays there), and the writes recorded where the game called
       # `recolor`, which are moved to the gap between frames once the program is whole.
-      ChangingList = Struct.new(:node, :recolors, :shown, :live, :writes, keyword_init: true)
+      ChangingList = Struct.new(:node, :recolors, :shown, :live, :writes, keyword_init: true)  # :nodoc:
 
       # One set of lists `colors_in_use` named, the line that first named it, and which of
       # that line's sets it is, counting from 0 the way showing: does (nil for a line that
       # named one set).
-      ListsInUse = Data.define(:names, :source, :place) do
+      ListsInUse = Data.define(:names, :source, :place) do  # :nodoc:
         # The set in the author's words, for an error about it.
         def described
           names_said = names.map { |name| ":#{name}" }.join(", ")
@@ -36,7 +36,7 @@ module VBlank
 
       # The variable holding which set of lists is in use: a number counting through every
       # set named, in the order the game named them. A number naming none is the first set.
-      LISTS_IN_USE = :__colors_in_use
+      LISTS_IN_USE = :__colors_in_use  # :nodoc:
 
       # Sets which lists of sprite colours are in use now, as the game enters a room.
       #
@@ -222,7 +222,7 @@ module VBlank
       # THE LIST THE GAME'S BACKDROP FOLLOWS: its name, the place of it the backdrop shows, the
       # colour at that place as declared (what the backdrop is at power-on), and the `screen`
       # that named it.
-      BackdropList = Data.define(:name, :place, :color, :screen)
+      BackdropList = Data.define(:name, :place, :color, :screen)  # :nodoc:
 
       # A BACKDROP THAT FADES WITH THE PICTURE. `screen :tiled, backdrop: :screen_colors` names a
       # `colors` list where a colour would go, the way `image ..., colors: :sea` and `draw_with :hurt`

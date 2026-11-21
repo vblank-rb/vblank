@@ -24,7 +24,7 @@ module VBlank
     module Images
       # The unused 16th bit of a BGR555 color, set to mark a pixel transparent — a
       # real color is 0x0000..0x7FFF, so this can never collide with one.
-      TRANSPARENT_PIXEL = 0x8000
+      TRANSPARENT_PIXEL = 0x8000  # :nodoc:
 
       # Defines a picture, and gives it a name for `blit`, `sprite` and the other verbs to draw
       # it by.
@@ -721,7 +721,7 @@ module VBlank
 
       # The two ways a picture can be turned: the verb that asks for each, and the words an
       # error uses for the motion.
-      TURNS = Ractor.make_shareable({ mirrored: ["mirror", "turn it round"],
+      TURNS = Ractor.make_shareable({ mirrored: ["mirror", "turn it round"],  # :nodoc:
                                       upside_down: ["upside_down", "turn it upside down"] })
 
       # Hand back the turned picture for each of +names+ — one name for one, a list for
@@ -950,10 +950,10 @@ module VBlank
                                   bank_places: bank_places)
       end
 
-      PIECE_SIZE = IR::Assets::PIECE_SIZE
-      BIG_PIECE_SIZE = IR::Assets::BIG_PIECE_SIZE
-      PICTURE_REACH = 255 # A pose table holds where a piece sits as a byte each way
-      MOST_PIECED_SIDE = 256 # Pixels a side of a picture of pieces, which a piece at PICTURE_REACH ends at
+      PIECE_SIZE = IR::Assets::PIECE_SIZE  # :nodoc:
+      BIG_PIECE_SIZE = IR::Assets::BIG_PIECE_SIZE  # :nodoc:
+      PICTURE_REACH = 255 # :nodoc: A pose table holds where a piece sits as a byte each way
+      MOST_PIECED_SIDE = 256 # :nodoc: Pixels a side of a picture of pieces, which a piece at PICTURE_REACH ends at
 
       # The size a picture of pieces was given (`size: [width, height]`), or nil where it was given none.
       def refuse_bad_pieced_size!(name, size)
@@ -1112,7 +1112,7 @@ module VBlank
       # (Console::Description#list_colors) takes the colours each tile uses from the longer list, so
       # a list of five on the Color draws, and each tile is held to the console's list as the art is
       # made, which is where a tile that truly does not fit is refused by name.
-      PICTURE_COLORS = 16
+      PICTURE_COLORS = 16  # :nodoc:
 
       # A picture's own table, checked while the author is still looking at the line
       # that wrote it. Three things can be wrong, and each is a plain sentence rather
