@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
-# PARTS OF A GAME THAT NAME THEIR VALUES, brought in by `VBlank.require_game_file` for
+# Parts of a game that name their values, brought in by `VBlank.require_game_file` for
 # test/all/vblank/dsl/test_plain_ruby_parts.rb. Each named shape has a twin keeping the same
 # state in `var`, which is its answer key. Further down, plain Ruby a game runs while it builds,
 # which stays Ruby's: nothing there is named, so nothing there is followed or refused.
 
-# A NAMED VALUE IS THE GAME'S FROM ITS FIRST NUMBER ON, wherever game code reads it.
+# A named value is the game's from its first number on, wherever game code reads it.
 
 # Read in a block handed to another part, which calls it later, and set back by a method the game
 # calls under a test. It counts 1, 2, 3, 4 and is set back to 0 at 4; the waiter counts each 2.
@@ -146,7 +146,7 @@ class BlinkWithVarPart
   end
 end
 
-# A FADE WHOSE PHASE ONLY A HELPER CHANGES. `step` asks the phase in an if/elsif chain, and the one
+# A fade whose phase only a helper changes. `step` asks the phase in an if/elsif chain, and the one
 # line that changes it in play is a private helper handed the new phase. It waits two passes, then
 # fades in, counting a pass of fading each pass after. The twin keeps the phase in a `var`.
 module PhaseStepping
@@ -193,7 +193,7 @@ class PhasedFadeWithVarPart
   end
 end
 
-# THE SAME FADE MADE INSIDE A ROUTINE, as a game makes a screen inside its scene, so `initialize`
+# The same fade made inside a routine, as a game makes a screen inside its scene, so `initialize`
 # runs while game code is recorded. Its `@phase = WAITING` is the phase's start, not a line the
 # game runs on every pass. Each screen changes the phase another way. The routine runs on every
 # pass and makes its screen once, as it is recorded; the answer key is the same screen made while
@@ -308,7 +308,7 @@ class ScreenInPlayPart
   end
 end
 
-# A NAMED HASH OF NUMBERS: a game variable for each key, keyed by a side known while building. The
+# A named hash of numbers: a game variable for each key, keyed by a side known while building. The
 # left counter counts every pass and the right one once the left passes 1; a pass with a counter
 # past 2 counts as over. The twin keeps a `var` for each side, made in a loop.
 module TiltCounting
@@ -343,7 +343,7 @@ class TiltCountersWithVarPart
   end
 end
 
-# STATES ROTATED THROUGH A HELD VALUE, as a row of lights passes each light's state to the next. A
+# States rotated through a held value, as a row of lights passes each light's state to the next. A
 # copy of one named value into another copies the number. Each pass but the second and the fifth
 # rotates the states left, and the held value keeps the one that went round. The twin keeps
 # everything in `var`.
@@ -493,7 +493,7 @@ class CountsByNumberPart
   end
 end
 
-# FIELDS OF A STRUCT. A box a part keeps, its `count` named in the block of `Struct.new` and its
+# Fields of a struct. A box a part keeps, its `count` named in the block of `Struct.new` and its
 # `step` left plain, read only. Counted by two until it passes 5, under a test the game makes,
 # so 6 after three passes; the twin keeps the same count in a `var`.
 CountingBox = Struct.new(:count, :step) do
@@ -591,7 +591,7 @@ module NamedInMethod
   def self.name_them = game_variables(:shown)
 end
 
-# BUILD-TIME RUBY INSIDE CODE RECORDED AS GAME CODE: a part made inside a routine, whose making
+# Build-time Ruby inside code recorded as game code: a part made inside a routine, whose making
 # runs plain Ruby to plan what it builds. None of it is named, so none of it is followed or
 # refused, and it plays as Ruby works it out.
 #

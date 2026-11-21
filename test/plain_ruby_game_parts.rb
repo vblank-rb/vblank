@@ -481,7 +481,7 @@ class HolderPart
   end
 end
 
-# VALUES ONLY THE BUILD USES, NEVER REFUSED.
+# Values only the build uses, never refused.
 #
 # A flag that keeps a part from declaring a routine twice: false from `initialize`, read by Ruby's
 # `unless` and set true by Ruby while game code is recorded. Nothing the game runs reads it.
@@ -565,7 +565,7 @@ class WrittenOncePart
   def write = @written = true
 end
 
-# A DOOR FLAG THE GAME KEEPS, NAMED NOWHERE: one routine opens the door outright, and another
+# A door flag the game keeps, named nowhere: one routine opens the door outright, and another
 # tests it. The game can run them in either order, and Ruby decides the test while building, so
 # the build stops at whichever line comes second. Declared in each order.
 class UnnamedDoorOpenedFirstPart
@@ -666,7 +666,7 @@ class UnsetNamedPart
   end
 end
 
-# VALUES HANDED A VARIABLE. A cursor names its selection. A part handed that variable whole, as an
+# Values handed a variable. A cursor names its selection. A part handed that variable whole, as an
 # argument, as it is made, was given it to change; one that names its own copies the number.
 class HandedCursor
   game_variables :selection

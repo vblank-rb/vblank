@@ -2,7 +2,7 @@
 
 require "zlib"
 
-# READING A PNG BY THE FORMAT'S OWN RULES, for a test that has to look inside one without
+# Reading a PNG by the format's own rules, for a test that has to look inside one without
 # trusting the code that wrote it and without starting an image tool (a child process, which a
 # test running on its own core cannot reliably start).
 #
