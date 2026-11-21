@@ -5,7 +5,7 @@ require "tmpdir"
 
 module VBlank
   module Original
-    # THE WHOLE GAME, PLAYED BY A PORT'S SHELL AND BY ITS ALL-IN-ONE BUILD, AS C. Live::ShellCheck
+    # The whole game, played by a port's shell and by its all-in-one build, as C. Live::ShellCheck
     # holds the shell's own workings on a short stretch of play, played as Ruby, on every commit.
     # This plays a tape the port keeps from power-on to its end, however long, and holds every
     # picture and every sample of sound of the shell's game to the all-in-one build's: a check run
@@ -19,12 +19,12 @@ module VBlank
     #    at once, the shell's game handed that pack, each as fast as the computer goes;
     # 4. compares them pass by pass as they play, and stops at the first pass they differ on.
     #
-    # WHAT IT DOES NOT PLAY is the shell's menu, which is the same small program in every port and
+    # What it does not play is the shell's menu, which is the same small program in every port and
     # the shell check's to hold: the C side of it is the desktop program's, which needs a window.
     # The shell's game is what a player plays once the menu hands over, and the pack it is handed
     # is the one the shell's own unpacking wrote.
     #
-    # BOTH SIDES PLAY AT ONCE, each a program of its own (Native::HeadlessRun) talked to from a
+    # Both sides play at once, each a program of its own (Native::HeadlessRun) talked to from a
     # thread of its own. Each hands its passes over through a queue that holds PASSES_AHEAD at most,
     # so neither runs far ahead of the comparison and nothing of a long tape is kept once compared.
     #

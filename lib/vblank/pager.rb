@@ -7,7 +7,7 @@ module VBlank
   # is the one caller today: the IR it prints can run to hundreds of lines.
   #
   # +runner+ is the part that actually shells out to a pager; it is a plain
-  # dependency, swapped for a test double so a test can assert what WOULD have run
+  # dependency, swapped for a test double so a test can assert what would have run
   # without a real `less` or a real terminal.
   class Pager
     def initialize(out: $stdout, env: ENV, runner: ->(cmd, text) { shell_out(cmd, text) })
