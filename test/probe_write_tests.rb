@@ -2,7 +2,7 @@
 
 require "tmpdir"
 
-# A PROBE PUTS A VALUE INTO A RUNNING CARTRIDGE'S MEMORY, AND SAVES AND RESTORES THE WHOLE CONSOLE,
+# A probe puts a value into a running cartridge's memory, and saves and restores the whole console,
 # on every console whose emulator a probe opens. The game counts its passes, and copies a number
 # (hearts) into another (shown) on every pass, changing hearts itself only when START is pressed,
 # which no test here does. So a value written is seen by the game's own code the next pass, read in

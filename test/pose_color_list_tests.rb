@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# ONE SPRITE WHOSE POSES ARE DRAWN FROM DIFFERENT LISTS OF COLOURS, played by each console whose
+# One sprite whose poses are drawn from different lists of colours, played by each console whose
 # build makes it (Console::Description#pose_lists): a pose is shown in its own list's colours as the
 # pose changes (PoseColorListTests), and, where the build goes that far, a pose drawn from a list
 # the game changes (`recolor`) shows what that list holds once the sprite is told to follow it
@@ -62,7 +62,7 @@ module PoseColorListGames
     end
   end
 
-  # A BACKGROUND AND A SPRITE EACH TOLD TO FOLLOW :warm AND :cold, the game changing :cold to hold
+  # A background and a sprite each told to follow :warm AND :cold, the game changing :cold to hold
   # :dusk from pass 2 and never changing :warm. The background's tiles are a tile of each list at
   # the top left. The sprite faces :orange_first, of :warm, and turns to :right, of :cold, on pass
   # TURN_PASS; :orange_first is drawn with :warm's second colour on its left half, so the colours it
@@ -90,7 +90,7 @@ module PoseColorListGames
   FLASH_PASS = 3
   OWN_PASS = 7
 
-  # Two things of one pool, the first facing :left (of :warm) at AT and the second :right (of :cold)
+  # Two things of one pool, the first facing :left (of :warm) at at and the second :right (of :cold)
   # at [80, 40]. The thing facing +flashed+ is drawn with :glow from FLASH_PASS to OWN_PASS.
   private def flashing_pool_game(flashed:)
     pose_colors_game do
@@ -209,7 +209,7 @@ module PoseColorListTests
   end
 end
 
-# FOLLOWING THE LISTS: told to draw each of its lists with that list, the sprite shows what the list
+# Following the lists: told to draw each of its lists with that list, the sprite shows what the list
 # of the pose showing holds now.
 module PoseColorListFollowTests
   include PoseColorListGames
@@ -261,14 +261,14 @@ module PoseColorListFollowTests
   end
 end
 
-# EVERY LIST DRAWN WITH ONE OTHER LIST: told `draw_with({ warm: :glow, cold: :glow })`, a sprite or
+# Every list drawn with one other list: told `draw_with({ warm: :glow, cold: :glow })`, a sprite or
 # one thing of a pool shows each pose in :glow, place for place, whichever list the pose is drawn
 # from, and `draw_with :own` puts it back. The others keep their colours. This is how a retail game
 # flashes one enemy white: it gives that object's sprite entries a white palette for a few frames.
 module PoseColorListSwapTests
   include PoseColorListGames
 
-  # The colours of the two halves of the thing at AT and the thing at [80, 40].
+  # The colours of the two halves of the thing at at and the thing at [80, 40].
   private def both_shown(program, frames:)
     screen = game_player.run(program, frames: frames + framework_drawing_lag).screen
     [[screen.pixel(*LEFT_HALF), screen.pixel(*RIGHT_HALF)], [screen.pixel(81, 41), screen.pixel(86, 41)]]
@@ -342,7 +342,7 @@ module PoseColorListSwapTests
   end
 end
 
-# A CONSOLE WHOSE BUILD SHOWS EACH POSE IN ITS OWN LIST'S COLOURS AND DOES NOT FOLLOW THE LISTS YET
+# A console whose build shows each pose in its own list's colours and does not follow the lists yet
 # refuses a sprite told to follow them, naming itself, before it plays.
 module PoseColorListFollowRefusedTests
   include PoseColorListGames
@@ -370,7 +370,7 @@ module PoseColorListFollowRefusedTests
   end
 end
 
-# A CONSOLE WHOSE BUILD KEEPS ONE LIST FOR A WHOLE SPRITE refuses a sprite whose poses are drawn from
+# A console whose build keeps one list for a whole sprite refuses a sprite whose poses are drawn from
 # different lists, naming itself and the way round it.
 module PoseColorListRefusedTests
   include PoseColorListGames

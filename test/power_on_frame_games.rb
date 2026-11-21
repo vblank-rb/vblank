@@ -2,7 +2,7 @@
 
 require "all/vblank/builder/test_frames_since_power_on"
 
-# `frames_since_power_on` ON A CARTRIDGE, read back in its console's emulator, for each console's test
+# `frames_since_power_on` on a cartridge, read back in its console's emulator, for each console's test
 # that the cartridge counts the frames it spends setting up: the Advance's, the Super Nintendo's, the
 # Genesis's and the PlayStation's. What every run reads is in
 # test/all/vblank/builder/test_frames_since_power_on.rb.
@@ -23,7 +23,7 @@ module PowerOnFrameGames
     VBlank::Console.for(console).builder.cartridge_for(program, title: "POWERON")
   end
 
-  # THE ONE THAT MATTERS. On the console, setting up takes frames, and the reading counts them: the
+  # The one that matters. On the console, setting up takes frames, and the reading counts them: the
   # first pass's change is first seen on frame F, so it ran after F - 1 frames had been shown, and
   # that is what it read. Spinning before the loop makes setting up take several. Answers that
   # frame and that reading, for +program+ built for +console+.
