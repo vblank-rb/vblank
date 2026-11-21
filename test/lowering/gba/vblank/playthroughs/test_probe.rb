@@ -5,7 +5,7 @@ require "tmpdir"
 require "comparison_games"
 require "probe_by_name_tests"
 
-# A PORT DRIVES ITS ORIGINAL with a Probe: any cartridge file, played a frame at a time until the
+# A port drives its original with a Probe: any cartridge file, played a frame at a time until the
 # game says it has got somewhere, and read by the labels its decompilation gave its memory. The
 # cartridge here is the walker, built in the test and written to a file, its labels taken from what
 # the build recorded: a white box that walks two pixels a frame from column 20 while RIGHT is down.
@@ -178,7 +178,7 @@ class TestProbe < Minitest::Test
     end
   end
 
-  # A NOTE'S START reads back the same whether or not one started, so only the writes say when a
+  # A note's start reads back the same whether or not one started, so only the writes say when a
   # note did. On the Advance a voice starts when the top bit of its last register (SOUND2CNT_H,
   # SOUND3CNT_X) is written, sixteen bits at a time. The Color's is TestProbeOnTheColor's.
   def test_the_writes_an_advance_game_made_to_its_sound_chip_are_listed_by_frame_in_order

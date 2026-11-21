@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/playthroughs/test_tape_until"
 
-# A TAPE OF PASSES WITH `until` LINES ON EVERY WAY A TAPE PLAYS: the cartridge in the emulator and
+# A tape of passes with `until` lines on every way a tape plays: the cartridge in the emulator and
 # each way that runs the game itself. Recorded on the build with the quick fade, it is played on the
 # build with the slow one, which none of its counts know about.
 class TestPlaythroughUntil < Minitest::Test

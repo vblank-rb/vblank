@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# A STEERED PLAYTHROUGH ON EVERY WAY OF RUNNING A GAME. The same script, reading the game through the
+# A steered playthrough on every way of running a game. The same script, reading the game through the
 # same words, plays on the emulator, the interpreter, and the game built as C, as JavaScript and as
 # Ruby, and in a window that shows each frame at the console's rate.
 class TestPlaythroughWays < Minitest::Test

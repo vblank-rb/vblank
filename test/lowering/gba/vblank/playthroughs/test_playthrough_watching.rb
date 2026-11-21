@@ -5,7 +5,7 @@ require "stringio"
 require "fileutils"
 require "png_reading"
 
-# A SCRIPT THAT WATCHES THE GAME. Counting frames is exact, and brittle: the day a screen takes
+# A script that watches the game. Counting frames is exact, and brittle: the day a screen takes
 # a frame longer to come up, every step after it is a frame out. So a script can also wait for
 # something to be true of the game — "until the box is up", "until the hero is at the door" —
 # and carry on from the frame it first is.
@@ -32,7 +32,7 @@ class TestPlaythroughWatching < Minitest::Test
     end
   end
 
-  # THE FIRST FRAME IT IS TRUE, and not one after: the game is asked after every frame, and on
+  # The first frame it is true, and not one after: the game is asked after every frame, and on
   # the frame the answer is first yes the script moves on. The game ticks once a frame, so
   # stopping on the first frame it has ticked 50 times means it reads exactly 50 there.
   def test_a_wait_until_ends_on_the_first_frame_its_condition_holds
@@ -51,7 +51,7 @@ class TestPlaythroughWatching < Minitest::Test
     assert_equal played.moments[:later], played.frames
   end
 
-  # WALK UNTIL YOU ARE THERE. The buttons stay down while the game is watched, and come up
+  # Walk until you are there. The buttons stay down while the game is watched, and come up
   # when the wait ends: RIGHT moves two pixels a frame, so the first frame x is 30 or more it
   # is exactly 30, and it is still 30 five frames after the buttons came up.
   def test_a_hold_until_keeps_the_buttons_down_until_its_condition_holds_and_then_lets_go
@@ -98,7 +98,7 @@ class TestPlaythroughWatching < Minitest::Test
     FileUtils.remove_entry(File.dirname(error.picture)) if error
   end
 
-  # IT STOPS AND SAYS WHICH WAIT, whose script, and on which frame.
+  # It stops and says which wait, whose script, and on which frame.
   def test_a_wait_that_never_ends_stops_with_its_words_and_its_frame
     giving_up_on(7) do |error|
       assert_equal 7, error.frame, "two frames of waiting, then the five it would wait"
@@ -111,7 +111,7 @@ class TestPlaythroughWatching < Minitest::Test
     end
   end
 
-  # ...AND LEAVES A PICTURE OF THE SCREEN AT THAT FRAME, not the one before. The game turns
+  # ...AND leaves a picture of the screen at that frame, not the one before. The game turns
   # from blue to red as it plays, so the frames either side of the turn tell a picture taken
   # a frame early from one taken on time. What the screen showed on each frame is asked of a
   # second playing that simply counts to it.
@@ -146,7 +146,7 @@ class TestPlaythroughWatching < Minitest::Test
     errors&.each { |error| FileUtils.remove_entry(File.dirname(error.picture)) }
   end
 
-  # A BLOCK THAT ANSWERS A NUMBER IS A SLIP, and a quiet one: in Ruby nought counts as yes, so
+  # A block that answers a number is a slip, and a quiet one: in Ruby nought counts as yes, so
   # `flags & 4` would end the wait on its first frame whatever the flags were. The block has
   # to answer yes or no.
   def test_a_block_that_answers_a_number_is_refused_and_told_to_compare
