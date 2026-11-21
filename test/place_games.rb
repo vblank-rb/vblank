@@ -78,7 +78,7 @@ module PlaceGames
   # The angles turning_square turns by, whole or not.
   def self.spins(whole) = whole ? WHOLE_SPINS : SPINS
 
-  # The square face, seen by a viewer that turns left by the next of SPINS (or of WHOLE_SPINS,
+  # The square face, seen by a viewer that turns left by the next of spins (or of WHOLE_SPINS,
   # when +whole+) on every +passes+-th pass, the angle put in a variable the game reads from a
   # table as it runs. Each pass the square's top left corner is asked where it lands, the answer
   # kept in x0 and y0. The first turn swings the corner from the left quarter of the screen
@@ -619,7 +619,7 @@ module PlaceGames
     builder.program
   end
 
-  # +count+ PLACES, EACH ONE SQUARE FACE showing the tile, laid out ten to a row ten wholes ahead,
+  # +count+ places, each one square face showing the tile, laid out ten to a row ten wholes ahead,
   # drawn without perspective. Each place is its own drawing routine with its own words, so a game
   # of many places names many variables before the routine that fills a face.
   def self.many_places(count)
@@ -646,7 +646,7 @@ module PlaceGames
     builder.program
   end
 
-  # THE ANSWER KEY FOR A MOVED SHAPE: the same square drawn two ways, which must be the same picture.
+  # The answer key for a moved shape: the same square drawn two ways, which must be the same picture.
   # The viewer looks along x (its right is -z), and the square stands at STANCE_SPOT turned a
   # quarter round so its right points up and its up points along z. With +moved+ the square is
   # declared round its own middle and drawn with at: and facing:; without, it is declared with its
@@ -656,7 +656,7 @@ module PlaceGames
   STANCE_SPOT = Ractor.make_shareable([4.0, 0.5, 0.25])
   STANCE_ARROWS = Ractor.make_shareable({ right: [0, 1, 0], up: [0, 0, 1], ahead: [1, 0, 0] })
 
-  # Which of SHADES each quarter of the stance's picture is, top row first.
+  # Which of shades each quarter of the stance's picture is, top row first.
   QUARTER_SHADES = Ractor.make_shareable([[0, 1], [2, 0]])
 
   def self.stance_against_declared(moved:)
@@ -690,7 +690,7 @@ module PlaceGames
     builder.program
   end
 
-  # THE ANSWER KEY FOR A SHAPE AT THE EDGE OF THE VIEW. A shape drawn at a spot (`at:`) is first
+  # The answer key for a shape at the edge of the view. A shape drawn at a spot (`at:`) is first
   # tested as a ball round its points and passed over when wholly out of view; the test must never
   # pass over a shape that shows a pixel. So eight-sided shapes, a point SHAPE_REACH from the middle
   # along each arrow either way, stand at EDGE_SPOTS, each just inside, at or just past an edge of
@@ -908,7 +908,7 @@ module PlaceGames
     builder.program
   end
 
-  # A FLOOR OF ABOUT A THOUSAND FACES, as a level file gives a mine: BIG_FLOOR_SIDE points each way,
+  # A floor of about a thousand faces, as a level file gives a mine: BIG_FLOOR_SIDE points each way,
   # one whole apart, a whole below a viewer standing over its middle a quarter of the way in, so
   # about half its faces are behind the viewer or beside the view. Each face shows the tile.
   BIG_FLOOR_SIDE = 32
