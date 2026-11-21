@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# HOW AN ORIGINAL KEEPS ONE FRAME OF A SPRITE (Original::FrameLayout), read for a piece whose size
+# How an original keeps one frame of a sprite (Original::FrameLayout), read for a piece whose size
 # is the Game Boy Advance's own pair of numbers: a shape (square, wide or tall) and a size of that
 # shape. The answer key is the console's table of sprite sizes, written out here in tiles of 8x8.
 class TestFrameLayout < Minitest::Test
@@ -85,7 +85,7 @@ class TestFrameLayout < Minitest::Test
     assert_includes error.message, "shape_bit:"
   end
 
-  # A PIECE READ BY A READER THE GAME WRITES (piece:), here an original whose piece names a block of
+  # A piece read by a reader the game writes (piece:), here an original whose piece names a block of
   # sprite memory counted from the object's own block, the object's block given by the pose. The
   # blocks are 8 tiles across and 4 down, two across a row of 16 tiles: the answer key is that table
   # written out, block by block.
@@ -144,7 +144,7 @@ class TestFrameLayout < Minitest::Test
     refute_predicate READ, :names_bank?
   end
 
-  # A READER EVERY RACTOR CAN SHARE. A game's tests build in Ractors, and a layout in a constant is
+  # A reader every Ractor can share. A game's tests build in Ractors, and a layout in a constant is
   # read by all of them, so a reader that cannot cross from one Ractor to another is refused at the
   # layout's line, not where a test first reads it in a Ractor of its own.
   def test_a_reader_that_uses_a_local_variable_is_refused

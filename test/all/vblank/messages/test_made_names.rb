@@ -3,7 +3,7 @@
 require "test_helper"
 require "ractor_workers"
 
-# THE NAMES THE BUILD MAKES UP for routines and variables nobody wrote — a save record's
+# The names the build makes up for routines and variables nobody wrote — a save record's
 # routines, the save machinery's own, a font's digit routine, a scene's sprite routine — and
 # what a report calls each one. Made and read back through one table, so these ask the table
 # itself: no build is needed to find out whether two names can meet.
