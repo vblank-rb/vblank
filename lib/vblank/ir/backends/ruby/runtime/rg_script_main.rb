@@ -140,7 +140,7 @@ module VBlankScript
     shell.play(window, folder_path: folder, choose_copy: shell.copy_chooser(window), open_settings: -> { window.open_menu },
                        refused: lambda { |words|
                          warn words
-                         window.notice(words)
+                         window.tell_in_box(words)
                        }, kept_pack_refused: ->(words) { warn words }, play_game: play_game,
                        stop_after_passes: options[:pictures])
   end

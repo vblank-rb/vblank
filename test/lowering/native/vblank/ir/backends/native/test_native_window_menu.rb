@@ -115,6 +115,19 @@ class TestNativeWindowMenu < Minitest::Test
                          "toggle", "press left", "press down", "press down", "press enter", "press enter"], most_scale: 6)
   end
 
+  # What the window says until a button answers it: the settings file's problems in the middle, a
+  # word too wide for the box on a line of its own, an empty line and line breaks at the end; what a
+  # shell tells at the foot; both at once, with the menu and the window of variables under them; and
+  # a narrow window, where the box is as wide as the window has room for.
+  def test_what_the_window_says_until_a_button_answers_draws_the_same
+    problems = "problems /home/player/.config/vblank/(all games)/settings.txt:|Line 2: volume is a whole number from 0 " \
+               "to 100.||Line 3: \"Nonesuch\" is not a key's name. #{'Averyveryverylongwordwithnospaces' * 3} ends it.||"
+    told = "tell That file is not a copy of the game. It is 4 bytes, and a copy is 16777216 bytes. Choose another file."
+    assert_same_drawing([problems, "answer", told, "toggle", problems, "press left", "press down", "press enter", "answer",
+                         problems, "answer"], most_scale: 6)
+    assert_same_drawing([problems, told], most_scale: 2, draws: [[300, 200, 1.0, false, nil, nil, nil], [500, 300, 2.0, false, nil, nil, nil]])
+  end
+
   # A shell's parts keep no states, so their window has no Save or Load, and no F5 or F9.
   def test_a_window_with_no_states_has_no_save_or_load_heading
     with, without = [true, false].map { |states| Native::MenuData.source(states: states) }
@@ -143,7 +156,7 @@ class TestNativeWindowMenu < Minitest::Test
 
   # Plays +walk+ through both copies, drawing after each step, and fails at the first line that
   # differs, saying which key it came after.
-  def assert_same_drawing(walk, most_scale:, picture: [240, 160])
+  def assert_same_drawing(walk, most_scale:, picture: [240, 160], draws: DRAWS)
     menu = Menu.new(picture: picture, scales: 1..most_scale, states: slots = Slots.new)
     commands = ["picture #{picture.join(' ')}", "most_scale #{most_scale}"]
     expected = []
@@ -151,7 +164,7 @@ class TestNativeWindowMenu < Minitest::Test
     (["start"] + walk).each_with_index do |step, index|
       play_in_ruby(menu, step, slots, watched) unless step == "start"
       commands << step unless step == "start"
-      width, height, density, held, fast, rate, work = DRAWS[index % DRAWS.size]
+      width, height, density, held, fast, rate, work = draws[index % draws.size]
       commands << "draw #{width} #{height} #{density} #{held ? 1 : 0} #{fast || 0} #{rate || '-'} #{work || '-'}"
       expected << [step, drawing_lines(menu.drawing(width: width, height: height, density: density, held: held,
                                                     fast_forward: fast, frame_rate: rate, frame_work: work,
@@ -175,6 +188,9 @@ class TestNativeWindowMenu < Minitest::Test
     when "watch_begin" then watched.clear
     when "watch" then watched << [name, value.to_i]
     when "type_key" then menu.type_key(name.to_i)
+    when "problems" then menu.problems = step.split(" ", 2).last.tr("|", "\n")
+    when "tell" then menu.tell(step.split(" ", 2).last.tr("|", "\n"))
+    when "answer" then menu.answer_messages
     when "variables" then menu.press_on_variables(name.to_sym)
     when "toggle" then menu.toggle
     when "press" then menu.press(name.to_sym)

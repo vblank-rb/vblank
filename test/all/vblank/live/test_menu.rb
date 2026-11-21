@@ -472,6 +472,36 @@ class TestMenu < Minitest::Test
     assert_includes drawn_words(menu).map(&:text), "✓"
   end
 
+  # --- what the window says over the picture until a button is pressed ---
+
+  # What could not be used in the settings file is said over the picture, in the middle, with an OK
+  # that the next button pressed answers.
+  def test_settings_file_problems_are_said_until_a_button_answers
+    menu = Menu.new
+    menu.problems = "settings.txt:\nLine 2: volume is a whole number from 0 to 100."
+    words = drawn_words(menu).map(&:text)
+
+    assert_equal ["The settings file", "The window cannot use some of the settings file. It uses the rest, and",
+                  "the game plays as usual.", "settings.txt:", "Line 2: volume is a whole number from 0 to 100.", "OK",
+                  "Press a button to close this."], words
+    assert menu.messages_shown?
+    menu.answer_messages
+    assert_empty drawn_words(menu)
+  end
+
+  # What a shell tells the player is said at the foot of the window, until a button answers it.
+  def test_what_a_shell_tells_is_said_at_the_foot_until_a_button_answers
+    menu = Menu.new
+    menu.tell("That file is not a copy of the game.")
+    words = menu.drawing(width: 720, height: 480, density: 1)
+
+    assert_equal ["Load ROM", "That file is not a copy of the game.", "OK", "Press a button to close this."],
+                 words.grep(WindowMenu::Words).map(&:text)
+    assert_operator words.grep(WindowMenu::Box).first.y, :>, 300, "at the foot of the window"
+    menu.answer_messages
+    refute menu.messages_shown?
+  end
+
   private
 
   def opened(**options)

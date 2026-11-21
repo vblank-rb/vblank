@@ -378,7 +378,7 @@ static void slider_text(const rg_menu_line *line, int value, char *text, size_t 
   }
 }
 
-/* A slider as Dear ImGui draws one: a frame, a grab as far along it as the number is, and the
+/* A slider: a frame, a grab as far along it as the number is, and the
  * number written in the middle. */
 static void draw_slider(const rg_menu_line *line, int x, int y, int wide, int high) {
   add_box(x, y, wide, high, pixels(rg_menu_size.frame_corner), rg_menu_color.frame);
@@ -575,15 +575,122 @@ static void draw_variables(int top) {
   add_words_in_row(footer, left, y + pad + (rows + 3) * row_height, row_height, rg_menu_color.dim);
 }
 
+void rg_window_menu_answer_messages(void) {
+  rg_window_mark_problems_seen();
+  rg_window_clear_told();
+}
+
+int rg_window_menu_message_shown(void) { return rg_window_problems_unseen() || rg_window_told()[0]; }
+
+/* What the box about the settings file says above the problems, and what the OK of a box says
+ * beside it (Live::Menu::SETTINGS_PROBLEMS_INTRO and CLOSE_CAPTION). */
+static const char settings_problems_intro[] = "The window cannot use some of the settings file. It uses the rest, and the game plays as usual.";
+static const char close_caption[] = "Press a button to close this.";
+
+/* Room for one line of a box, as long as the longest text a box is given (rg_window.c keeps the
+ * problems and what a shell tells in 1024 bytes each), so a wide window's line is never cut. */
+#define WRAPPED_ROOM 1024
+
+/* One part of +text+ (from +start+, +length+ bytes, with no line break in it) broken between words
+ * into lines no wider than +room+ pixels, a word wider than that on a line of its own (Live::Menu's
+ * break_to_width), each line drawn at +x+ from *+line+ down, a row each, where +draw+; gives how
+ * many lines. */
+static int wrap_part(const char *start, size_t length, int room, int x, int *line, int row_height, int draw) {
+  char current[WRAPPED_ROOM] = "";
+  int lines = 0;
+  size_t at = 0;
+  for (;;) {
+    while (at < length && (start[at] == ' ' || start[at] == '\t' || start[at] == '\r')) at++;
+    if (at == length) break;
+    size_t word_start = at;
+    while (at < length && start[at] != ' ' && start[at] != '\t' && start[at] != '\r') at++;
+    int word_length = (int)(at - word_start);
+    char longer[2 * WRAPPED_ROOM + 1];
+    snprintf(longer, sizeof longer, "%s %.*s", current, word_length, start + word_start);
+    if (lines == 0 || width_of(longer) > room) {
+      if (lines > 0 && draw) add_words_in_row(current, x, *line, row_height, rg_menu_color.text);
+      if (lines > 0) *line += row_height;
+      snprintf(current, sizeof current, "%.*s", word_length, start + word_start);
+      lines++;
+    } else {
+      snprintf(current, sizeof current, "%s", longer);
+    }
+  }
+  if (lines == 0) lines = 1; /* a line with no words in it is kept as an empty one */
+  else if (draw) add_words_in_row(current, x, *line, row_height, rg_menu_color.text);
+  *line += row_height;
+  return lines;
+}
+
+/* +text+ as lines no wider than +room+ pixels (Live::Menu#wrap_lines): each of its own lines broken
+ * between words, the empty ones after its last words left out as Ruby's split leaves them. Drawn
+ * from *+line+ down where +draw+; gives how many lines. */
+static int wrap_text(const char *text, int room, int x, int *line, int row_height, int draw) {
+  size_t end = strlen(text);
+  while (end > 0 && text[end - 1] == '\n') end--;
+  int lines = 0;
+  size_t at = 0;
+  while (at < end) {
+    const char *stop = memchr(text + at, '\n', end - at);
+    size_t length = stop ? (size_t)(stop - (text + at)) : end - at;
+    lines += wrap_part(text + at, length, room, x, line, row_height, draw);
+    at += length + 1;
+  }
+  return lines;
+}
+
+/* A BOX OF WORDS over the picture, +wide+ pixels across the middle of a window +width+ wide, its
+ * top +from_bottom+ above the window's +height+, or in the middle of it for -1: its +title+, then
+ * each of +texts+ broken to fit, a line across between one and the next, and an OK with what
+ * answers it beside it (Live::Menu#draw_message). */
+static void draw_message(const char *title, const char *const *texts, int text_count, int width, int height, int wide,
+                         int from_bottom) {
+  int pad = pixels(rg_menu_size.pad);
+  int row_height = pixels(rg_menu_size.row);
+  int inner = wide - 2 * pad;
+  int lines = 0, ignored = 0;
+  for (int i = 0; i < text_count; i++) lines += wrap_text(texts[i], inner, 0, &ignored, row_height, 0);
+  int high = (lines + 2) * row_height + (text_count - 1) * pixels(rg_menu_size.line_before) + 2 * pad;
+  int x = halved(width - wide);
+  int y = from_bottom >= 0 ? height - from_bottom - high : halved(height - high);
+  int border = pixels(1);
+  add_box(x, y, wide, high, pixels(rg_menu_size.corner), rg_menu_color.border);
+  add_box(x + border, y + border, wide - 2 * border, high - 2 * border, pixels(rg_menu_size.corner) - border, rg_menu_color.box);
+  int left = x + pad;
+  int line = y + pad;
+  add_words_in_row(title, left, line, row_height, rg_menu_color.text);
+  line += row_height;
+  for (int i = 0; i < text_count; i++) {
+    if (i > 0) {
+      add_box(left, line + halved(pixels(rg_menu_size.line_before)), inner, border, 0, rg_menu_color.border);
+      line += pixels(rg_menu_size.line_before);
+    }
+    wrap_text(texts[i], inner, left, &line, row_height, 1);
+  }
+  int ok = width_of("OK") + 2 * pad;
+  add_box(left, line + pixels(2), ok, row_height - pixels(4), pixels(rg_menu_size.frame_corner), rg_menu_color.chosen);
+  add_words_in_row("OK", left + halved(ok - width_of("OK")), line, row_height, rg_menu_color.text);
+  add_words_in_row(close_caption, left + ok + pad, line, row_height, rg_menu_color.dim);
+}
+
 void rg_window_menu_draw(rg_menu_drawing *drawing, int width, int height, double pixels_a_point, int held, int fast_forward,
                          const char *frame_rate, const char *frame_work) {
   out = drawing;
   out->part_count = 0;
   out->letter_count = 0;
   density = pixels_a_point;
-  (void)height;
   int top = menu_open ? pixels(rg_menu_size.bar) : 0;
   if (rg_window_menu_variables_open()) draw_variables(top);
+  if (rg_window_told()[0]) {
+    const char *told[] = {rg_window_told()};
+    draw_message("Load ROM", told, 1, width, height, width * 9 / 10, pixels(rg_menu_size.message_gap));
+  }
+  if (rg_window_problems_unseen()) {
+    const char *texts[] = {settings_problems_intro, rg_window_problems()};
+    int room = width - 2 * pixels(rg_menu_size.status_gap);
+    int wide = pixels(rg_menu_size.message_width) < room ? pixels(rg_menu_size.message_width) : room;
+    draw_message("The settings file", texts, 2, width, height, wide, -1);
+  }
   if (menu_open) {
     draw_bar(width);
     draw_lines(top);

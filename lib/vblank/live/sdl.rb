@@ -28,9 +28,10 @@ module VBlank
     # the console's few pixels made big and square, and the menu over it is as sharp as the screen
     # can show, a Retina screen's two pixels a point included (the window asks SDL for them). Menu
     # gives where each box and word goes; the boxes are drawn here as triangles with their edges
-    # faded over a pixel, as Dear ImGui draws them, and each letter is copied out of the menu
+    # faded over a pixel, so a round corner is not jagged, and each letter is copied out of the menu
     # font's picture (Graphics::MenuFont), which is put on the screen's card when the window
-    # opens.
+    # opens. What could not be used in the settings file is said over the picture as well as on the
+    # terminal, and what a shell tells the player (#tell_in_box) at the foot, until a button is pressed.
     #
     # THE SOUND goes to the computer's speaker through an SDL audio stream, a queue the speaker
     # plays from at its own steady rate while the game puts a frame's samples in at the end of
@@ -486,6 +487,10 @@ module VBlank
       # seen without anything drawn over the picture.
       def notice(words) = @sdl.SDL_SetWindowTitle(@window, "#{@title} - #{words}")
 
+      # What a shell tells the player (a file that is no copy the game reads), in a box at the foot of
+      # the window until a button is pressed, as the desktop build shows it.
+      def tell_in_box(words) = @menu.tell(words)
+
       # The window was closed, or Escape went down and was not taken for a key being chosen
       # (#read_key_down), as SDL last told it (#show reads what SDL has told, and Session shows each
       # picture before it asks). Escape's press is read, not whether it is down now: Escape giving up
@@ -744,6 +749,7 @@ module VBlank
         @menu = Menu.new(settings: @player_settings.window.with(scale: scale), picture: [@shown_width, @shown_height],
                          controls: @player_settings,
                          scales: WindowMenu::SCALES.min..[largest_scale_that_fits, scale].max, states: @states)
+        @menu.problems = @settings_problems.join("\n") # said over the picture too, until a button is pressed
         @settings = @menu.settings # as the window last made them so
       end
 
@@ -859,7 +865,8 @@ module VBlank
       # game's own size (the logical presentation, which scales it by a whole number with bars where
       # the window is the wrong shape), which is put aside while the menu draws and put back after.
       def draw_menu_and_status
-        return unless held? || @fast_forward || @settings.frame_rate || @settings.frame_time || @menu.variables_open?
+        return unless held? || @fast_forward || @settings.frame_rate || @settings.frame_time || @menu.variables_open? ||
+                      @menu.messages_shown?
 
         width, height = output_size
         drawing = @menu.drawing(width: width, height: height, density: pixel_density, held: held?,
@@ -1091,6 +1098,7 @@ module VBlank
           @pad_kept << button
           return write_settings_soon
         end
+        @menu.answer_messages if @player_settings.pad_map.key?(button)
         return unless @has_menu
 
         if PAD_OPENERS.include?(button) || pad_openers_together?(id, button)
@@ -1147,6 +1155,8 @@ module VBlank
           switch = SWITCHED[hotkey]
           @menu.settings = @menu.settings.with(switch => !@menu.settings.setting(switch))
           apply_menu_settings
+        elsif !repeat && @player_settings.button_of_key(scancode)
+          @menu.answer_messages # a console button answers what the window says, as its OK does
         end
       end
 

@@ -3,10 +3,10 @@
  * fullscreen, window size, volume and mute, which key and gamepad button is each console button,
  * the hotkeys, and the settings file that remembers it all.
  *
- * There is no SDL in this file and no Dear ImGui, and no window to open: it keeps the window's
- * settings and answers questions about them. The menu (rg_menu.cpp) is a thin layer that draws
- * these and calls these; a hotkey calls the very function its menu item calls; rg_sdl.c reads the
- * answers and does what they ask for to the real window, the speaker and the clock. Nothing the
+ * There is no SDL in this file, and no window to open: it keeps the window's settings and answers
+ * questions about them. The menu (rg_window_menu.c) is a thin layer that draws these and calls
+ * these; a hotkey calls the very function its menu item calls; rg_sdl.c reads the answers and does
+ * what they ask for to the real window, the speaker and the clock. Nothing the
  * window can do lives only in the menu. That is what lets all of it be tested with no window
  * (test_native_window.rb), as rg_pacing.h and rg_save.c are.
  *
@@ -157,8 +157,9 @@ void rg_window_frame_played(uint64_t now_ns, uint64_t work_ns);
 double rg_window_frames_a_second(uint64_t now_ns);
 double rg_window_frame_work_ms(uint64_t now_ns);
 
-/* Windows over the picture that can be open at once: the controls (keys, gamepad buttons and hotkeys) and the game's variables. */
-typedef enum { RG_PANEL_CONTROLS, RG_PANEL_VARIABLES, RG_PANEL_COUNT } rg_panel;
+/* Windows over the picture that can be open while the game plays: the game's variables
+ * (rg_window_menu.h draws it). */
+typedef enum { RG_PANEL_VARIABLES, RG_PANEL_COUNT } rg_panel;
 void rg_window_show_panel(int panel, int shown);
 int rg_window_panel_shown(int panel);
 /* What a panel is called in a script (--scripted-keys) and in the menu; -1 for no such panel. */
@@ -317,16 +318,16 @@ void rg_window_mark_settings_written(void);
 void rg_window_mark_settings_write_failed(void);
 #define RG_SETTINGS_QUIET_NS 500000000ull
 
-/* The sentences about the settings file as it was read. The controls panel shows them, and the
- * menu shows them over the picture as the window opens until the player has seen them, since a
- * player who opened the game by double-clicking it has no terminal to read. */
+/* The sentences about the settings file as it was read. The menu shows them over the picture as
+ * the window opens until the player has seen them (rg_window_menu_answer_messages), since a player
+ * who opened the game by double-clicking it has no terminal to read. */
 void rg_window_set_problems(const char *text);
 const char *rg_window_problems(void);
 int rg_window_problems_unseen(void);
 void rg_window_mark_problems_seen(void);
 
 /* WHAT A SHELL TELLS THE PLAYER (a file that is no copy the game reads, an unpacking that
- * stopped), shown in a box over the picture until the player closes it or presses a button. The
+ * stopped), shown in a box over the picture until the player presses a button. The
  * box is drawn by the window with everything else it draws, so nothing waits for it: the shell's
  * menu plays on under it, and a box nobody answers holds nothing up. Empty for none. */
 void rg_window_tell(const char *words);

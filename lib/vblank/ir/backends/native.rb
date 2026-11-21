@@ -58,13 +58,12 @@ module VBlank
         # carries the windowless runtime too, so the program a player runs can be driven by a
         # test with --headless. It also carries the window's own settings (rg_window.c, plain C
         # with no SDL, tested on its own), the menu over the picture (rg_window_menu.c and its
-        # letters, rg_menu_font.c, with what the menu holds written out by MenuData), the emulator
-        # the console's own start-up runs in where the player has the BIOS (rg_bios_boot.c, with the
-        # start of the game's cartridge beside it, CartridgeStart), and the windows of keys and of
-        # the game's variables (rg_menu.cpp, Dear ImGui), which
-        # build/build.zig compiles itself since it is C++ and wants flags of its own: a desktop
-        # build always has them, and the builds a test makes of the game do not come through here
-        # at all.
+        # letters, rg_menu_font.c, with what the menu holds written out by MenuData, which also
+        # draws the window of the game's variables and what the window says over the picture),
+        # and the emulator the console's own start-up runs in where the player has the BIOS
+        # (rg_bios_boot.c, with the start of the game's cartridge beside it, CartridgeStart). All of
+        # it is C: a game that has no menu (menu: false) is built from the same files, its menu
+        # never opened.
         SHARED_RUNTIME = %w[rg_headless.c rg_refusal.c rg_runtime.c rg_save.c rg_screen.c rg_sound.c rg_state.c].freeze
         HEADLESS_RUNTIME = (["rg_headless_main.c"] + SHARED_RUNTIME).freeze
         FEATURES_FILE = "rg_runtime_features.h" # What rg_screen.c includes for the game's features (RuntimeFeatures#c_text)

@@ -25,7 +25,7 @@
  *   key:NAME keydown:NAME keyup:NAME            a key by SDL's name for it, "_" for a space (Right_Shift)
  *   hotkey:NAME hotkeydown:NAME hotkeyup:NAME   the key a hotkey is on now: pause, step, frame_rate,
  *                                               fullscreen, mute, menu, fast_forward
- *   panel:NAME                                  open or shut a window of the menu: controls, variables
+ *   panel:NAME                                  open or shut a window of the menu: variables
  *
  * While the game is paused a line is read for each time round the pause, and a script that runs out
  * while paused ends there.
@@ -94,8 +94,10 @@
  * the game while it is open. It changes nothing but what the hotkeys and the settings file change,
  * through the plain functions of rg_window.h. Its Developer heading opens a window of the game's
  * variables over the game as it plays (rg_window_menu.h says how it is worked), which this file
- * reads the variables for each time it is drawn (watch_variables). The window of keys is Dear
- * ImGui's still (rg_menu.cpp).
+ * reads the variables for each time it is drawn (watch_variables). What the window says over the
+ * picture (a settings file it could not use, what a shell tells the player) is the menu's drawing
+ * too, and the next console button pressed answers it (answer_messages). Everything over the
+ * picture is drawn here with SDL's renderer: there is no other library for it.
  *
  * THE SETTINGS are the scale, fullscreen, volume, mute, frame rate, fast forward's speed, the keys,
  * the gamepad buttons and the hotkeys, in one small text file a player can edit (rg_window.h says
@@ -144,7 +146,6 @@
 #include <string.h>
 #include "rg_driver.h"
 #include "rg_list.h"
-#include "rg_menu.h"
 #include "rg_menu_font.h"
 #include "rg_pacing.h"
 #include "rg_pause.h"
@@ -483,7 +484,6 @@ static _Noreturn void quit(int status) {
   if (showing_shell) rg_shell_remove_working_files();
   write_save_file();
   write_settings_file();
-  rg_menu_stop();
   if (timing_frames) report_frame_times();
   SDL_Quit();
   exit(status);
@@ -1083,8 +1083,7 @@ static void draw_menu_and_status(void) {
   SDL_SetRenderLogicalPresentation(renderer, logical_width, logical_height, mode);
 }
 
-/* The picture in the texture, the menu over it, and the windows of keys and variables over that.
- * Not yet shown. */
+/* The picture in the texture, and the menu and all else the window draws over it. Not yet shown. */
 static void draw_window(void) {
   SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
   SDL_RenderClear(renderer);
@@ -1092,7 +1091,6 @@ static void draw_window(void) {
   if (!showing_shell) SDL_RenderTexture(renderer, texture, NULL, NULL);
   else if (part_texture) SDL_RenderTexture(renderer, part_texture, NULL, NULL);
   draw_menu_and_status();
-  rg_menu_draw();
 }
 
 /* Asks the game for its variables while the menu's window of them is open. */
@@ -1104,13 +1102,11 @@ static void watch_variables(void) {
   collecting_variables = 0;
 }
 
-/* Whether the menu or one of the windows over the picture is open: they answer the mouse and the
- * keyboard, and Dear ImGui settles a hover or a click over several frames, so while one is up the
- * window is drawn every frame. Also what was wrong with the settings file, which is a window of its
- * own until it is answered. */
+/* Whether the menu, the window of variables, or what the window says until a button answers it is
+ * over the picture: each answers keys, and the variables change as the game plays, so while one is
+ * up the window is drawn every frame. */
 static bool window_open_over_picture(void) {
-  return rg_window_menu_is_open() || rg_window_panel_shown(RG_PANEL_CONTROLS) || rg_window_panel_shown(RG_PANEL_VARIABLES) ||
-         rg_window_problems_unseen();
+  return rg_window_menu_is_open() || rg_window_menu_variables_open() || rg_window_menu_message_shown();
 }
 
 /* Whether the window draws anything over the picture that moves or changes whether or not the
@@ -1333,7 +1329,9 @@ static bool opens_menu(int code, int hotkey) {
  * A key being chosen for a button or a hotkey is taken for that, and not played. The menu's keys
  * are its own while it is open, and Escape stops the play. A hotkey is the window's own and is not
  * handed on, and pause and step wait for the menu to close; a key a console button has is the
- * button. A text box keeps the keys typed into it from the game, but not their coming up, so a
+ * button, and a player 1 button answers what the window says over the picture as an OK would, as
+ * it reaches the game (Live::SDL answers on the same keys).
+ * The window of variables keeps the keys typed into it from the game, but not their coming up, so a
  * button that went down is never left held. */
 static void key_changed(const SDL_KeyboardEvent *key) {
   int code = (int)key->scancode;
@@ -1349,7 +1347,6 @@ static void key_changed(const SDL_KeyboardEvent *key) {
   int second_up = rg_seats_second_player_button(code);
   if (!key->down && second_up >= 0) second_keys_down &= ~(1u << (uint32_t)second_up);
   if (key->down && rg_window_capture_key(code)) return;
-  if (key->down && rg_menu_wants_keyboard()) return;
   /* The window of the game's variables, open with the menu shut, has the keys that type a name and
    * the arrows that scroll it; the game plays on with the rest. */
   if (key->down && rg_window_menu_type_key(code)) return;
@@ -1389,6 +1386,7 @@ static void key_changed(const SDL_KeyboardEvent *key) {
   if (key->down) {
     keys_down |= bit;
     keys_tapped |= bit;
+    rg_window_menu_answer_messages();
   } else {
     keys_down &= ~bit;
   }
@@ -1415,6 +1413,16 @@ static int menu_pad_key_of(int button) {
   }
 }
 
+/* Whether a real gamepad's +button+ (SDL's number) is one of the console's buttons. */
+static bool console_has_pad_button(int button) {
+  for (int i = 0; i < BUTTONS; i++) {
+    if (!rg_window_console_has(i)) continue;
+    for (int slot = 0; slot < RG_WINDOW_PADS_A_BUTTON; slot++)
+      if (rg_window_pad_button(i, slot) == button) return true;
+  }
+  return false;
+}
+
 /* A gamepad button went down or came up. If a button of the console is waiting to be given one,
  * this is it. Otherwise the guide button, or Back and Start together, opens or closes the menu, and
  * while it is open the D-pad, A and B work it. Back and Start each come as an event of their own,
@@ -1434,7 +1442,9 @@ static void pad_button_changed(const SDL_GamepadButtonEvent *event) {
     return;
   }
   pad_buttons_down[slot] |= bit;
-  if (rg_window_capture_pad(button) || !window_has_menu()) return;
+  if (rg_window_capture_pad(button)) return;
+  if (console_has_pad_button(button)) rg_window_menu_answer_messages();
+  if (!window_has_menu()) return;
 
   uint32_t down = pad_buttons_down[slot];
   bool together = (bit & PAD_OPENERS_TOGETHER) && (down & PAD_OPENERS_TOGETHER) == PAD_OPENERS_TOGETHER &&
@@ -1459,7 +1469,6 @@ static bool read_events(void) {
   SDL_Event event;
   while (SDL_PollEvent(&event)) {
     any = true;
-    rg_menu_event(&event);
     switch (event.type) {
     case SDL_EVENT_QUIT:
       quit(0);
@@ -2229,7 +2238,6 @@ static void send_part_buttons(SDL_IOStream *to, uint32_t held) {
 /* A menu, a frame at a time: its picture shown, then the window's events, the frame's wait and a
  * pause (the window's menu open over it holds it here), and the buttons sent for its next frame. */
 static void show_menu_part(part_output *output, SDL_IOStream *buttons) {
-  uint32_t held_before = buttons_held();
   while (wait_for_part_picture(output)) {
     present_part_picture();
     write_files_due();
@@ -2238,12 +2246,9 @@ static void show_menu_part(part_output *output, SDL_IOStream *buttons) {
     if (scripted) press_scripted_keys();
     read_and_apply_events();
     hold_while_paused();
-    uint32_t held = buttons_held();
-    /* A button pressed answers what the shell told the player, as its OK does, and does what it
-     * does on the menu as well: a player with no mouse is never left under the box. */
-    if (held & ~held_before) rg_window_clear_told();
-    held_before = held;
-    send_part_buttons(buttons, held);
+    /* A button pressed answers what the shell told the player, as its OK does (key_changed), and
+     * does what it does on the menu as well: a player with no mouse is never left under the box. */
+    send_part_buttons(buttons, buttons_held());
   }
 }
 
@@ -2623,18 +2628,6 @@ int main(int argc, char **argv) {
   /* The menu's boxes are see-through, and fade at their edges. */
   SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
   rg_window_menu_reset(RG_SHOWN_WIDTH, RG_SHOWN_HEIGHT);
-  /* If the windows of keys and variables cannot start the window says so, and the menu and the
-   * hotkeys still work. */
-  if (!rg_menu_start(window, renderer)) {
-    fprintf(stderr, "%s: the controls cannot start (%s). The menu and the hotkeys still work.\n", rg_game_title,
-            SDL_GetError());
-    /* With no menu to say it over the picture, what is wrong with the settings file goes in a box. */
-    if (rg_window_problems()[0] && !scripted) {
-      char message[1200];
-      snprintf(message, sizeof message, "The window cannot use some of the settings file. It uses the rest.\n\n%s", rg_window_problems());
-      show_system_box(SDL_MESSAGEBOX_WARNING, message);
-    }
-  }
   attach_keyboard_pad();
   open_speaker();
   choose_pacing();

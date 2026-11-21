@@ -15,6 +15,9 @@
  *   watch NAME VALUE                 ...and one of them, as the window reads it from the game
  *   type_key N                       a key pressed, by SDL's number, for the window of variables
  *   variables up|down|close          a key of the menu's pressed, for the window of variables
+ *   problems WORDS                   what could not be used in the settings file, a | for each line break
+ *   tell WORDS                       what a shell tells the player, the same
+ *   answer                           a button pressed, which answers what the window says
  *   state                            print whether it is open and whether Quit was chosen
  *   slot N WORDS                     what slot N (0 is the quick one) says at its right, as a state's time
  *   request                          print the save or load the menu asked for and use it up:
@@ -62,7 +65,7 @@ static void print_drawing(void) {
 int main(void) {
   rg_window_use_defaults();
   rg_window_menu_reset(240, 160);
-  char line[256];
+  char line[1024];
   while (fgets(line, sizeof line, stdin)) {
     char *command = strtok(line, " \n");
     if (!command) continue;
@@ -104,6 +107,15 @@ int main(void) {
       rg_window_menu_type_key(atoi(strtok(NULL, " \n")));
     } else if (strcmp(command, "variables") == 0) {
       rg_window_menu_press_on_variables(key_named(strtok(NULL, " \n")));
+    } else if (strcmp(command, "problems") == 0 || strcmp(command, "tell") == 0) {
+      int problems = strcmp(command, "problems") == 0;
+      char *words = strtok(NULL, "\n");
+      for (char *c = words; c && *c; c++)
+        if (*c == '|') *c = '\n';
+      if (problems) rg_window_set_problems(words ? words : "");
+      else rg_window_tell(words ? words : "");
+    } else if (strcmp(command, "answer") == 0) {
+      rg_window_menu_answer_messages();
     } else if (strcmp(command, "slot") == 0) {
       int slot = atoi(strtok(NULL, " \n"));
       const char *words = strtok(NULL, "\n");

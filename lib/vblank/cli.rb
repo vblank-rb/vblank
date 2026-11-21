@@ -1329,7 +1329,7 @@ module VBlank
       rate = shell.play(window, folder_path: folder, choose_copy: shell.copy_chooser(window), open_settings: -> { window.open_menu },
                                 refused: lambda { |words|
                                   warn words
-                                  window.notice(words)
+                                  window.tell_in_box(words)
                                 }, kept_pack_refused: ->(words) { warn words }, play_game: ->(playing) { play_shell_game(window, game, playing) },
                                 stop_after_passes: options[:pictures])
       [built.game, rate]

@@ -9,17 +9,18 @@ Code: `lib/vblank/ir/backends/native/runtime/`.
 rg_window.h / rg_window.c   Plain C. Every setting and everything the menu can do, as functions: pause,
                             step, fast forward, size, fullscreen, volume, mute, which key is which
                             button, which gamepad button is which, the hotkeys, the settings text.
-                            No SDL, no Dear ImGui, no file, no window. Tested on its own.
-rg_menu.h / rg_menu.cpp     Dear ImGui over the picture. Only draws, and calls rg_window.h. Keeps nothing
-                            of its own but what drawing needs (whether the mouse moved lately, a filter box).
+                            No SDL, no file, no window. Tested on its own.
+rg_window_menu.h / .c       The menu over the picture, written once in the library (Live::WindowMenu) and
+                            in C line for line from Live::Menu: what it draws, as boxes and letters, and
+                            how its keys move it. The window of the game's variables and what the window
+                            says over the picture are its drawing too. Calls rg_window.h; no SDL.
 rg_sdl.c                    Reads what rg_window.c says and does it to the real window, the speaker and
-                            the clock; reads and writes the settings file; turns SDL's events into calls.
+                            the clock; reads and writes the settings file; turns SDL's events into calls;
+                            draws what rg_window_menu.c gives with SDL's renderer.
 ```
 
 A hotkey, a menu item and a line of the settings file are three ways in to the same function. Nothing
-the window can do lives only in the menu. The menu is in every build a person plays and is left out of
-the tests' builds only because those are built as C with no window (`Zig.compile_without_sdl`), which
-never reach `rg_sdl.c` or `build.zig`.
+the window can do lives only in the menu. Everything is C: there is no other library for the menu.
 
 The game never sees any of it. A hotkey is a key no console button is mapped to: `rg_window_bind_key`
 and `rg_window_bind_hotkey` refuse a key the other has, in a sentence a player can read, and a settings
@@ -28,18 +29,11 @@ a button, so a hotkey is handed on to nothing.
 
 ## Decisions
 
-- **A C++ file the C calls, not cimgui.** `rg_menu.cpp` is one file with a C header. cimgui would add a
-  second repository to pin, a generator for its bindings and a C wrapper for every ImGui call the menu
-  makes; the menu makes few, and the rest of the runtime never touches ImGui at all.
-- **ImGui is its own library in the build.** `build.zig` compiles it into a static library with only
-  ImGui's own folders on its include path. Given the game's folder (a new temporary one every build) zig
-  compiles its six files again for every game; as a library it is compiled once and kept in the cache
-  with SDL. Only `rg_menu.cpp`, which includes the runtime's headers, is compiled per game.
-- **Pinned by commit and checked by hash**, as SDL is: `build.zig.zon` names ImGui v1.93.0 by its commit,
-  `.lazy = true`, and zig refuses a download that differs by a byte. ImGui has no `build.zig`, so the few
-  files wanted are named in ours: `imgui.cpp`, `imgui_draw.cpp`, `imgui_tables.cpp`, `imgui_widgets.cpp`
-  and the SDL3 and SDL renderer backends. The demo and debug windows are compiled out
-  (`IMGUI_DISABLE_DEMO_WINDOWS`, `IMGUI_DISABLE_DEBUG_TOOLS`).
+- **The menu is the library's, not Dear ImGui's.** The desktop build first drew its menu and its windows
+  with Dear ImGui, compiled as C++ beside the C. The menu is now described once (`Live::WindowMenu`) and
+  drawn the same way by `vblank run` and the desktop build, so Dear ImGui, its download and libc++ are
+  gone from the build. A test (`test_native_window_menu.rb`) plays the same keys through the C and the
+  Ruby and fails at the first box or letter they draw differently.
 - **The picture keeps SDL's logical size** and the menu puts it aside while it draws, so the picture is
   still a whole number of times 240x160 with square pixels exactly as before and the menu is laid out in
   the window's own units.
@@ -77,8 +71,8 @@ a button, so a hotkey is handed on to nothing.
   what was changed while the game played. Written whole, it would take in everything the player's file
   said and stop following it, so a key the player changed for every game later would never reach that
   one. The player's file is written whole. A file that cannot be read, or has lines that cannot be used,
-  is said on the error stream, over the picture as the window opens (a player who double-clicked the
-  game has no terminal), and in the controls window, and the rest is used. Written beside the old file
+  is said on the error stream and over the picture as the window opens, until a button is pressed (a
+  player who double-clicked the game has no terminal), and the rest is used. Written beside the old file
   and renamed over it, half a second by the clock after the last change (a slider dragged is one write,
   and fast forward does not shorten the wait).
 - **A scripted run (`--scripted-keys`) reads no settings file** unless given one (`--settings-file`,
@@ -88,29 +82,20 @@ a button, so a hotkey is handed on to nothing.
 
 `--scripted-keys FRAMES` reads a line a frame: the buttons held as a number and then words that press keys
 through the window's own loop: `key:`, `keydown:`, `keyup:` by SDL's name; `hotkey:`, `hotkeydown:`,
-`hotkeyup:` by the hotkey's name (the key it is on now); `panel:controls`, `panel:variables`. While paused
+`hotkeyup:` by the hotkey's name (the key it is on now); `panel:variables`. While paused
 a line is read each time round the pause. `--window-picture FILE` saves the window as it ends, menu and all,
 as a BMP. SDL's `disk` audio driver (`SDL_AUDIO_DRIVER=disk SDL_AUDIO_DISK_OUTPUT_FILE=...`) saves what the
 speaker was given, which is how the volume, mute and fast forward's silence are checked end to end.
 
-SDL's stand-in display has one pixel to a point, and a Mac's Retina screen has two each way. Dear ImGui
-leaves that ratio to the program (`SDL_SetRenderScale` while the menu draws); without it the menu is drawn
-at half size in the top left, away from the mouse, and its text is cut off. Only a real window shows it,
-so on a Mac `test_the_menu_is_drawn_at_the_screens_own_scale` opens one for a few seconds and looks for
-the menu's text where a full-size menu puts it.
+SDL's stand-in display has one pixel to a point, and a Mac's Retina screen has two each way. The menu is
+laid out in the window's own pixels at the screen's density; drawn at the wrong one it lands at half size
+in the top left and its text is cut off. Only a real window shows it, so on a Mac
+`test_the_menu_is_drawn_at_the_screens_own_scale` opens one for a few seconds and looks for the menu's
+text where a full-size menu puts it.
 
-## Cost (x86-64 Linux, zig 0.17.0, SDL 3.4.18, Dear ImGui 1.93.0, pong)
-
-| | without the menu | with it |
-|---|---|---|
-| a build, SDL already compiled | 3.0 s | 3.9 s |
-| the first build that needs it | | once: 77 s, which is ImGui and zig's own libc++ compiled; 20 s when only ImGui is (libc++ already in zig's cache) |
-| program, as built (ReleaseFast, with debug info) | 14.6 MB | 19.7 MB |
-| program, stripped | 3.2 MB | 4.1 MB |
-
-The first build on an empty cache was 182 s for SDL alone. Windows and ARM Linux builds with the menu
-build and are checked to be programs for those systems (`test_native_desktop.rb`); like the rest of those
-builds they have not been run there. A C library (Nuklear, microui) was not needed as the fallback.
+The first build on an empty cache is mostly SDL's, compiled once and kept in zig's cache. Windows and
+ARM Linux builds are checked to be programs for those systems (`test_native_desktop.rb`); like the rest
+of those builds they have not been run there.
 
 ## What Dusklight does, and what was taken
 
@@ -119,15 +104,15 @@ Read in `TwilitRealm/dusklight`, `src/dusk/imgui` (`ImGuiConsole.cpp`, `ImGuiMen
 
 - It draws `BeginMainMenuBar` with the window background made transparent so only the menu bar's own
   colour shows, and opens windows from its items for the larger tools. **Taken**: the bar, and a window
-  for keys and another for the game's variables.
+  for the game's variables (the keys are lines of the menu's own).
 - It hides the whole overlay with a key (Shift+F1) and toggles each view with its own. **Taken**: F1 keeps
   the bar up; otherwise it shows for three seconds after the window opens or the mouse moves, and while a
   menu is open.
 - It saves its configuration at the moment something changes (`config::save()`). **Taken**, with a half
   second's quiet first so a slider is not a write a frame.
-- It reads F11 for fullscreen through ImGui's own key state, and its turbo is a time scale (4x). **Not
-  taken**: here the hotkeys are the window's, read before ImGui and before the game, so one key cannot be
-  both a hotkey and a button, and fast forward is frames per picture since the clock is the console's.
+- It reads F11 for fullscreen through its menu library's own key state, and its turbo is a time scale
+  (4x). **Not taken**: here the hotkeys are the window's, read before the menu and before the game, so
+  one key cannot be both a hotkey and a button, and fast forward is frames per picture since the clock is the console's.
 - It never pauses the game for its menu. Neither does this one: pause is a thing a player chooses.
 
 ## Not done: rewind and save states

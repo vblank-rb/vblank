@@ -114,7 +114,7 @@ static const struct {
   {"d-pad right", "dpad_right"},
 };
 
-static const char *const panel_names[RG_PANEL_COUNT] = {"controls", "variables"};
+static const char *const panel_names[RG_PANEL_COUNT] = {"variables"};
 
 /* What is remembered, and so what is written to the settings file. Every field is an int, which is
  * what lets +owned+ below mark each one in the same place; the assert stops a field of any other

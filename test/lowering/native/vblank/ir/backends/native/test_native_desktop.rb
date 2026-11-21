@@ -365,6 +365,32 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
+  # A GAME WITH NO MENU (menu: false) builds a program that plays with no menu over its picture:
+  # F1 opens nothing, and the game sees every frame. No program has Dear ImGui in it, a game with a
+  # menu or without, and one with no word on it keeps its menu.
+  def test_a_game_with_menu_false_builds_and_opens_no_menu
+    Dir.mktmpdir do |dir|
+      no_menu = VBlank.game("NOMENU", consoles: %i[gba], menu: false) do
+        screen :bitmap
+        frames = 0
+        game_loop do
+          clear_screen :black
+          frames += 1
+        end
+      end
+      exe = Native.new.build_desktop(no_menu, File.join(dir, "nomenu"), err: nil)
+      with_menu = Native.new.build_desktop(game_that_counts, File.join(dir, "windowed"), err: nil)
+      asked, played = picture_of_window(exe, dir, ["0", "0 hotkey:menu", "0 key:F1"], frames: 20)
+      opened, = picture_of_window(with_menu, dir, ["0", "0 hotkey:menu"], frames: 20)
+      bar = [0...(asked.width / 2), 0...20]
+
+      assert_equal 0, asked.lit_in(*bar), "F1 opens no menu in a game that has none"
+      assert_equal 20, played.variables[:frames], "and nothing holds the game"
+      assert_operator opened.lit_in(*bar), :>, opened.width * 5, "a game with no word on it keeps its menu"
+      [exe, with_menu].each { |program| refute_includes File.binread(program), "ImGui", "#{program} has Dear ImGui in it" }
+    end
+  end
+
   # A MAC'S RETINA SCREEN has two pixels to a point each way, and SDL's stand-in display has one, so
   # only a real window can show the menu drawn at the screen's own scale. Drawn at the wrong one it
   # lands at half its size in the top left, away from the mouse, with its text cut off. A real
@@ -727,6 +753,8 @@ class TestNativeDesktop < Minitest::Test
     middle = [40...400, 100...400]
     assert_operator garbage_window.lit_in(*middle), :>, plain_window.lit_in(*middle) + 10_000,
                     "what was wrong is said over the picture, for a player with no terminal"
+    answered, = picture_of_window(exe, dir, ["0", "0 key:X"], frames: 20, options: ["--settings-file", garbage])
+    assert_equal plain_window.lit_in(*middle), answered.lit_in(*middle), "a button pressed answers it, as its OK does"
     assert_equal game_saw(plain_run), game_saw(from_folder)
     assert_match(/The window cannot read .*a-folder\.txt/, from_folder.said)
   end
@@ -799,8 +827,8 @@ class TestNativeDesktop < Minitest::Test
   end
 
   # The menu is drawn over the picture once it is opened (the game's own is black there), its
-  # headings written along the top; the frame rate is in the corner; the pause says so; a window of
-  # keys or of the game's variables draws when it is opened; and none of them is the game's.
+  # headings written along the top; the frame rate is in the corner; the pause says so; the window
+  # of the game's variables draws when it is opened; and none of them is the game's.
   def assert_the_menu_is_drawn_over_the_picture(exe, dir)
     window, = picture_of_window(exe, dir, [], frames: 20)
     opened_menu, = picture_of_window(exe, dir, ["0", "0 hotkey:menu"], frames: 20)
@@ -814,10 +842,7 @@ class TestNativeDesktop < Minitest::Test
     corner = [(window.width - 140)...(window.width - 10), 0...100]
     assert_operator paused.lit_in(*corner), :>, window.lit_in(*corner), "a pause says PAUSED under the frame rate"
 
-    opened, = picture_of_window(exe, dir, ["0 panel:controls"], frames: 20)
     middle = [40...400, 100...400]
-    assert_operator opened.lit_in(*middle), :>, window.lit_in(*middle) + 20_000, "the window of keys opens"
-
     variables, played = picture_of_window(exe, dir, ["0 panel:variables hotkey:pause"], frames: 20)
     assert_operator variables.lit_in(*middle), :>, window.lit_in(*middle) + 10_000
     assert_equal 0, played.variables.values_at(*BUTTONS_HELD).sum, "opening a window of the menu is not a button"

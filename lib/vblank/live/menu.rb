@@ -27,6 +27,11 @@ module VBlank
 
       attr_reader :settings, :controls
 
+      # What the box about the settings file says above the problems themselves.
+      SETTINGS_PROBLEMS_INTRO = "The window cannot use some of the settings file. It uses the rest, and the game plays as usual."
+      # What the OK of a box says beside it.
+      CLOSE_CAPTION = "Press a button to close this."
+
       # +settings+ as the player last left them; +picture+, the game's picture's size, to say how
       # big the window is at each size; +scales+, the sizes the window can be made, in times the
       # picture's, which the frontend may make fewer than WindowMenu::SCALES (what fits the screen);
@@ -118,6 +123,27 @@ module VBlank
         end
       end
 
+      # WHAT THE WINDOW SAYS OVER THE PICTURE until the player presses a button: what could not be used
+      # in the settings file (+problems+, the sentences as text, a file's name over its own), in the
+      # middle as the window opens, since a player who opened the game by double-clicking it has no
+      # terminal to read; and what a shell tells the player (#tell), at the foot of the window, so
+      # the shell's own menu shows above it. Each has an OK, and the next button pressed answers both
+      # (#answer_messages). Nothing waits for them: the game plays on under them.
+      def problems=(text)
+        @problems = (text unless text.nil? || text.empty?)
+      end
+
+      def tell(words)
+        @told = (words unless words.nil? || words.empty?)
+      end
+
+      # A button was pressed: whatever was said over the picture has been seen.
+      def answer_messages
+        @problems = @told = nil
+      end
+
+      def messages_shown? = !(@problems || @told).nil?
+
       # Whether the window of the game's variables is open (WindowMenu::VARIABLE_ROWS).
       def variables_open? = @variables_open
 
@@ -164,9 +190,13 @@ module VBlank
         @out = []
         @density = density
         @font = Graphics::MenuFont.load
-        @window_height = height
         top = @open ? size(:bar) : 0
         draw_variables(top, variables, variables_dropped) if @variables_open
+        draw_message("Load ROM", [@told], width, width * 9 / 10) { |high| height - size(:message_gap) - high } if @told
+        if @problems
+          wide = [size(:message_width), width - (2 * size(:status_gap))].min
+          draw_message("The settings file", [SETTINGS_PROBLEMS_INTRO, @problems], width, wide) { |high| (height - high) / 2 }
+        end
         if @open
           draw_bar(width)
           draw_lines(top)
@@ -182,7 +212,7 @@ module VBlank
         @out = []
         @density = density
         @font = Graphics::MenuFont.load
-        rows = lines.flat_map { |line| broken_to_width(line, width - (2 * size(:pad))) }
+        rows = lines.flat_map { |line| break_to_width(line, width - (2 * size(:pad))) }
         line = size(:status_line)
         top = (height - (rows.size * line)) / 2
         rows.each_with_index { |text, index| add_words(text, (width - width_of(text)) / 2, top + (index * line), :text) }
@@ -193,7 +223,7 @@ module VBlank
 
       # +text+ as lines no wider than +room+ pixels, broken between words; a word wider than that
       # has a line of its own.
-      def broken_to_width(text, room)
+      def break_to_width(text, room)
         text.split.each_with_object([]) do |word, rows|
           if rows.empty? || width_of("#{rows.last} #{word}") > room
             rows << word
@@ -373,6 +403,46 @@ module VBlank
         dropped.positive? ? "#{said}, and #{dropped} more not shown" : said
       end
 
+      # A BOX OF WORDS over the picture, +wide+ pixels across the middle of a window +width+ wide, its
+      # top where the block puts it given how high it is: its +title+, then each of +texts+ broken to
+      # fit, a line across between one and the next, and an OK with what answers it beside it.
+      def draw_message(title, texts, width, wide)
+        pad = size(:pad)
+        row = size(:row)
+        inner = wide - (2 * pad)
+        rows = texts.map { |text| wrap_lines(text, inner) }
+        high = ((rows.sum(&:size) + 2) * row) + ((texts.size - 1) * size(:line_before)) + (2 * pad)
+        x = (width - wide) / 2
+        y = yield(high)
+        border = pixels(1)
+        add_box(x, y, wide, high, size(:corner), :border)
+        add_box(x + border, y + border, wide - (2 * border), high - (2 * border), size(:corner) - border, :box)
+        left = x + pad
+        line = y + pad
+        add_words_in_row(title, left, line, row, :text)
+        line += row
+        rows.each_with_index do |lines, index|
+          if index.positive?
+            add_box(left, line + (size(:line_before) / 2), inner, border, 0, :border)
+            line += size(:line_before)
+          end
+          lines.each do |text|
+            add_words_in_row(text, left, line, row, :text) unless text.empty?
+            line += row
+          end
+        end
+        ok = width_of("OK") + (2 * pad)
+        add_box(left, line + pixels(2), ok, row - pixels(4), size(:frame_corner), :chosen)
+        add_words_in_row("OK", left + ((ok - width_of("OK")) / 2), line, row, :text)
+        add_words_in_row(CLOSE_CAPTION, left + ok + pad, line, row, :dim)
+      end
+
+      # +text+ as lines no wider than +room+ pixels: each of its own lines broken between words, a
+      # line with no words in it kept as an empty one.
+      def wrap_lines(text, room)
+        text.split("\n").flat_map { |part| part.split.empty? ? [""] : break_to_width(part, room) }
+      end
+
       # How much room the right of a line takes: a slider, a shortcut, or a check mark.
       def right_width(line)
         case line.kind
@@ -403,7 +473,7 @@ module VBlank
         end
       end
 
-      # A slider as Dear ImGui draws one: a frame, a grab as far along it as the number is, and the
+      # A slider: a frame, a grab as far along it as the number is, and the
       # number written in the middle.
       def draw_slider(line, x, y, wide, high)
         add_box(x, y, wide, high, size(:frame_corner), :frame)

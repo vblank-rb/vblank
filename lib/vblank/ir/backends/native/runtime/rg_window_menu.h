@@ -81,7 +81,7 @@ typedef struct {
 /* Sizes in points, which are made pixels by the screen's density. */
 typedef struct {
   int bar, row, pad, heading_gap, heading_pad, least_width, label_gap, slider, grab, check, corner, frame_corner, line_before,
-    status_gap, status_pad, status_line, variables_width;
+    status_gap, status_pad, status_line, variables_width, message_width, message_gap;
 } rg_menu_sizes;
 
 /* Colours as red, green, blue and opacity, 0 to 255 each. */
@@ -136,6 +136,13 @@ int rg_window_menu_variables_open(void);
 int rg_window_menu_press_on_variables(rg_menu_key key);
 int rg_window_menu_type_key(int key);
 
+/* WHAT THE WINDOW SAYS OVER THE PICTURE until the player presses a button (Live::Menu#problems=
+ * and #tell): what could not be used in the settings file (rg_window_problems, while it is unseen),
+ * in the middle, and what a shell tells the player (rg_window_told), at the foot of the window. Each
+ * has an OK, and a console button pressed answers both. Nothing waits for them. */
+void rg_window_menu_answer_messages(void);
+int rg_window_menu_message_shown(void);
+
 /* --- drawing it --- */
 
 /* Where a letter of a word goes: the rectangle of the font's picture it is in (+from+, as x, y,
@@ -164,7 +171,8 @@ typedef struct {
 } rg_menu_drawing;
 
 /* WHAT A WINDOW DRAWS over the game, in its own pixels: the window of the game's variables when it
- * is open (as rg_window_watch_* last read them), the menu when it is open, and in the top right
+ * is open (as rg_window_watch_* last read them), what the window says until a button answers it,
+ * the menu when it is open, and in the top right
  * corner what the window is doing — the frame rate when it is asked for (+frame_rate+, its number as
  * words, or NULL), how long the game's own work took a frame (+frame_work+, in milliseconds, or
  * NULL), and PAUSED while the game is +held+ or the speed while it is played +fast_forward+ times as

@@ -8,9 +8,9 @@ module VBlank
     # (IR::Backends::Native::MenuData); the web page is to draw it too. A line added here becomes a
     # line in each. Cartridges have none.
     #
-    # It looks like Dear ImGui's dark menu bar, as the desktop build first had it: a bar along the
-    # top with a heading for each part, the open heading's lines in a box under it, a slider for a
-    # number and a check mark for a setting that is on. It is drawn over the game's picture in the
+    # It is a dark menu bar: a bar along the top with a heading for each part, the open heading's
+    # lines in a box under it, a slider for a number and a check mark for a setting that is on.
+    # It is drawn over the game's picture in the
     # window's own pixels, not the game's, so its letters are sharp on any screen.
     module WindowMenu
       # What the window does, as a player last left it. The starting values are the desktop build's
@@ -161,11 +161,11 @@ module VBlank
       MOVE_PAD = { dpad_up: :up, dpad_down: :down, dpad_left: :left, dpad_right: :right, a: :enter, b: :close }.freeze
 
       # THE LOOK: sizes in points, which a frontend makes pixels by the screen's density, and colours
-      # as red, green, blue and opacity, 0 to 255 each. Dear ImGui's dark colours.
+      # as red, green, blue and opacity, 0 to 255 each.
       SIZES = Ractor.make_shareable(
         { bar: 22, row: 22, pad: 8, heading_gap: 14, heading_pad: 4, least_width: 200, label_gap: 30, slider: 140,
           grab: 10, check: 14, corner: 4, frame_corner: 3, line_before: 9, status_gap: 8, status_pad: 8, status_line: 19,
-          variables_width: 260 }
+          variables_width: 260, message_width: 520, message_gap: 12 }
       )
       COLORS = Ractor.make_shareable(
         { text: [255, 255, 255, 255], dim: [128, 128, 128, 255], bar: [36, 36, 36, 255], box: [20, 20, 20, 240],
