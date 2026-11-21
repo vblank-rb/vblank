@@ -84,7 +84,7 @@ class TestScoresOnTheAdvance < Minitest::Test
               parts: [Part.new(notes: [Note.new(at: 0, key: :C4), Note.new(at: 10, key: :E4)])])
   end
 
-  # A RECORDED NOTE CAN BE GIVEN A VOLUME WITH A FRACTION, for music whose engine works its
+  # A recorded note can be given a volume with a fraction, for music whose engine works its
   # loudness out finer than sixteen steps. A volume of 15 x L / 512 plays the recording at L
   # 512ths of its size. A cartridge's own engine keeps a voice's right and left volumes and
   # mixes by their sum, out of 512, so a note keeps the odd half a sum can have: 51 is 25 and a

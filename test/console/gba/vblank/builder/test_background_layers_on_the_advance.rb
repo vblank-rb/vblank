@@ -8,8 +8,8 @@ module BackgroundLayersGames
   include SharedConstants
   include VBlank::Console::Hardware
 
-  # A FAR layer (backmost): a blue field with a GREEN landmark tile at cell (5,5) ->
-  # px (40,40). A NEAR layer (front): transparent everywhere (spaces) except a RED
+  # A far layer (backmost): a blue field with a green landmark tile at cell (5,5) ->
+  # px (40,40). A NEAR layer (front): transparent everywhere (spaces) except a red
   # landmark tile at cell (10,5) -> px (80,40). Where near is transparent, far shows.
   # Each layer is scrolled to its own offset, so they can move at different speeds.
   private def two_layers(far_x, near_x)
