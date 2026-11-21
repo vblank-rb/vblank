@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# THE ONE VERDICT THAT COULD ONLY EVER BE ESTIMATED, now measured (lib/vblank/diagnostics/tearing.rb).
+# The one verdict that could only ever be estimated, now measured (lib/vblank/diagnostics/tearing.rb).
 #
 # The display draws each row as it reaches it, out of video memory as it stands at that
 # moment — so the picture the emulator hands back is what the screen really showed, seam and
@@ -16,7 +16,7 @@ class TestTearing < Minitest::Test
   include EmulatorSupport
 
   # A program that repaints a band the full width of the screen in a different colour every
-  # frame. The band's HEIGHT is how much drawing there is to do, which is what decides
+  # frame. The band's height is how much drawing there is to do, which is what decides
   # whether it can finish before the display arrives. Two draws under opposite tests, so the
   # colour really changes each frame — a repaint in the same colour tears invisibly.
   private def alternating_band(height)
@@ -85,7 +85,7 @@ class TestTearing < Minitest::Test
     refute_predicate tearing_of(rom), :measured?
   end
 
-  # MORE DRAWING TEARS MORE OF THE PICTURE, which is what says the reading tracks the thing
+  # More drawing tears more of the picture, which is what says the reading tracks the thing
   # it claims to measure rather than answering the same way whatever it is shown.
   def test_more_drawing_shows_more_of_the_picture_stale
     assert_operator tearing_of(alternating_band(120)).rows, :>,
@@ -93,8 +93,8 @@ class TestTearing < Minitest::Test
                     "a bigger overrun has to put more of the screen up stale"
   end
 
-  # THE TWO HALVES OF THE TEAR QUESTION, in the one report that carries both. The build says
-  # a game CAN tear — a fact about the screen it chose — and the run says whether it did.
+  # The two halves of the tear question, in the one report that carries both. The build says
+  # a game can tear — a fact about the screen it chose — and the run says whether it did.
   # Neither is an estimate, which is the whole change: this used to be a frame priced in
   # scanlines against the gap between frames, and it was invented arithmetic for a question a
   # run settles outright.

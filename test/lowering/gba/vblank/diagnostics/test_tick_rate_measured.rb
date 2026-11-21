@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# {TickRate} counted off a REAL RUN, through `rom.profile`.
+# {TickRate} counted off a real run, through `rom.profile`.
 #
 # The half that cannot be faked: finding each timer's handler inside the one routine
 # the console interrupts into, and counting the ticks that really arrived.
@@ -33,7 +33,7 @@ class TestTickRateMeasured < Minitest::Test
 
   private def rate_of(rom) = VBlank::Diagnostics::Profiler.run(rom, frames: 60, picture: false).tick_rates.first
 
-  # THE MECHANISM. A game that draws nothing gets every tick it asked for, which is what
+  # The mechanism. A game that draws nothing gets every tick it asked for, which is what
   # says the handler was found and the ticks counted against real time correctly.
   def test_a_timer_with_nothing_in_its_way_delivers_its_rate
     reading = rate_of(rom_for(rate: 4096, clears: 0))
@@ -58,9 +58,9 @@ class TestTickRateMeasured < Minitest::Test
     refute_predicate rate_of(rom_for(rate: 4, clears: 0)), :measured?
   end
 
-  # WHY THERE IS NO WARNING HERE, pinned as a measurement so nobody rebuilds one.
+  # Why there is no warning here, pinned as a measurement so nobody rebuilds one.
   #
-  # A handler that does ONE ADDITION, in a game whose only other work is ordinary
+  # A handler that does one addition, in a game whose only other work is ordinary
   # full-screen fills. A transfer stalls the console and holds interrupts off while it
   # runs, so the ticks go missing with nothing wrong in the handler at all — and it
   # reaches further down than the halving a genuinely slow handler causes. Any threshold

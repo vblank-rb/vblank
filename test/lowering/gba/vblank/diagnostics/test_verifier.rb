@@ -269,7 +269,7 @@ class TestVerifier < Minitest::Test
     assert_equal PIXELS * 17 * 3, grey(brightened: true).brightness, "the levels a console shows"
   end
 
-  # THE SAME COLOURS ARE THE SAME PICTURE, whatever the emulator holds below the five bits of
+  # The same colours are the same picture, whatever the emulator holds below the five bits of
   # each channel a console shows: it keeps eight, and works a colour the display brightened
   # out at all eight of them.
   def test_two_readers_showing_the_same_colours_show_the_same_picture
@@ -303,7 +303,7 @@ class TestVerifier < Minitest::Test
     assert_nil picture.difference_from(all_red, looked_at: "\x00".b * PIXELS)
   end
 
-  # A PICTURE KEPT FROM EARLIER answers the same two questions a second reader does: has the
+  # A picture kept from earlier answers the same two questions a second reader does: has the
   # screen changed since, and where.
   def test_a_reader_is_compared_with_a_picture_it_kept_earlier
     reader = a_walking_box
@@ -336,7 +336,7 @@ class TestVerifier < Minitest::Test
     assert_raises(FrozenError) { kept.setbyte(0, 9) }
   end
 
-  # ALL BLACK IS ASKED OF WHAT THE EMULATOR HOLDS, eight bits a channel, as it always was.
+  # All black is asked of what the emulator holds, eight bits a channel, as it always was.
   # The darkest grey there is, darkened half way by the display, comes to a number below
   # the lowest of the five bits: black to every reader of colours, and not to this one.
   def test_a_screen_lit_only_below_five_bits_is_not_all_black
