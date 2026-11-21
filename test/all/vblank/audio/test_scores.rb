@@ -71,7 +71,7 @@ module ScoresGames
   end
 end
 
-# MUSIC HANDED OVER AS DATA. A game whose music already exists as numbers — decoded out of
+# Music handed over as data. A game whose music already exists as numbers — decoded out of
 # another cartridge, read from a file — hands the framework Scores, and picks one to play by a
 # number it works out as it runs: `music = songs :music, scores` then `music.play track`.
 # Nothing about the tune is written in the program.

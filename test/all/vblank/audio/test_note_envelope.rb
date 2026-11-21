@@ -11,7 +11,7 @@ module NoteEnvelopeSounds
   SINE = (0...CYCLE).map { |i| (Math.sin(i * 2 * Math::PI / CYCLE) * 100).round }.freeze
 end
 
-# HOW A NOTE STARTS AND HOW IT ENDS — the shape of its loudness over time, and the two things
+# How a note starts and how it ends — the shape of its loudness over time, and the two things
 # that shape buys: a note that ends without a click, and a note that can outlast the recording
 # it is made of. Both of those are heard on the Advance's cartridge, in
 # test/lowering/gba/vblank/audio/test_note_envelope_cartridge.rb; here are the numbers an
