@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBC
-        # THE GAME BOY COLOR'S PROCESSOR, ONE INSTRUCTION AT A TIME: an assembler for the SM83, the
+        # The Game Boy Color's processor, one instruction at a time: an assembler for the SM83, the
         # 8-bit processor every Game Boy runs, written so the lowering reads like the assembly a
         # person would write and never spells out an opcode by hand.
         #
@@ -108,7 +108,7 @@ module VBlank
                         home: @home, holds: @holds)
           end
 
-          # BANK A OF THE CARTRIDGE PUT IN VIEW, in the window at 0x4000 that shows one bank at a time:
+          # Bank a of the cartridge put in view, in the window at 0x4000 that shows one bank at a time:
           # the cartridge's memory bank controller is told it. The controller cannot be asked which
           # bank it shows. So where the music player can interrupt the code to read a song kept in a
           # bank (Runtime::Music), the code notes each bank it puts in view, at +bank_noted_at+, and
@@ -294,7 +294,7 @@ module VBlank
             address_word(target, :near)
           end
 
-          # A CALL OF A ROUTINE IN ANY BANK, whose bank is known only once the linker has placed it:
+          # A call of a routine in any bank, whose bank is known only once the linker has placed it:
           # written as the far call through the runtime (`call rt_far_call / db bank / dw routine`,
           # Runtime::Calls), which puts the routine's bank in view and the caller's back after. Where
           # the routine turns out to be in view from the call — in bank 0, or in the caller's own bank

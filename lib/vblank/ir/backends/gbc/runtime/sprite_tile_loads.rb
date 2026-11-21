@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         module Runtime
-          # LOADS OF SPRITE TILES THE GAME ASKED FOR IN A PASS (Lowering::SpriteTiles), put into sprite
+          # Loads of sprite tiles the game asked for in a pass (Lowering::SpriteTiles), put into sprite
           # memory in the blank after it.
           #
           # The Color's picture memory cannot be written while the display reads it, so a load is
