@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A RECORDING ON THE ADVANCE'S CARTRIDGE: the clip lowered into it, and heard in the emulator. A
+# A recording on the Advance's cartridge: the clip lowered into it, and heard in the emulator. A
 # recording as every run logs it is in test/all/vblank/dsl/test_direct_sound.rb.
 class TestDirectSoundCartridge < Minitest::Test
   LoweringError = VBlank::IR::Backends::GBA::LoweringError
@@ -44,7 +44,7 @@ class TestDirectSoundCartridge < Minitest::Test
     assert v.sound?, "Direct Sound should be audibly playing the sample (energy #{v.audio_energy})"
   end
 
-  # SWITCHING SOUND ON MUST NOT SWITCH THE RECORDINGS OFF. They share one register: its low
+  # Switching sound on must not switch the recordings off. They share one register: its low
   # bits are the volume of the console's own voices, which `enable_sound` sets, and its high
   # bits route the recordings to the speakers, which the mixer sets. Written whole with only
   # the first, a program that says `enable_sound` silences every recording in it — and says

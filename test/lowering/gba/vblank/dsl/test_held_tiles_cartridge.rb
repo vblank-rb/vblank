@@ -55,7 +55,7 @@ class TestHeldTilesCartridge < Minitest::Test
                                                        name: "HELDPAINT")
   end
 
-  # A FRAME THAT WRITES 240 CELLS STILL FITS. The writes are in the gap between frames, which is
+  # A frame that writes 240 cells still fits. The writes are in the gap between frames, which is
   # about a third of the frame; asserting under a tenth of the frame leaves the gap room for the
   # sprites, scroll and maps a game writes there too.
   def test_writing_240_held_cells_fits_well_inside_the_gap
@@ -70,7 +70,7 @@ class TestHeldTilesCartridge < Minitest::Test
 
   private
 
-  # For each of FRAMES frames: the pass number, and how many blue cells each row of the box shows.
+  # For each of frames frames: the pass number, and how many blue cells each row of the box shows.
   def readings(source)
     rom = VBlank.build("HELDTILES", console: :gba, validate: false, out: nil, err: nil, &source)
     verifier = assert_emulator_loads_rom(rom, frames: 3, vars: rom.var_addresses)

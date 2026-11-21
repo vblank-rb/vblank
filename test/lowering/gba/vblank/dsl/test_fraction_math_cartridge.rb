@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/dsl/test_fraction_math"
 
-# MULTIPLYING TWO FRACTIONS ON THE ADVANCE'S CARTRIDGE: the marker read off the screen in the
+# Multiplying two fractions on the Advance's cartridge: the marker read off the screen in the
 # emulator. The same answer on every run is in test/all/vblank/dsl/test_fraction_math.rb.
 class TestFractionMathCartridge < Minitest::Test
   include FractionMathGames
