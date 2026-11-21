@@ -4,15 +4,15 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # WHAT A PROGRAM RESERVES, against the memory there really is.
+        # What a program reserves, against the memory there really is.
         #
         # The console has two work memories: 32K of quick on-chip RAM and 256K of roomier
-        # RAM on a chip of its own. A COLLECTION can live in either — the framework puts
+        # RAM on a chip of its own. A collection can live in either — the framework puts
         # what a frame touches in the quick one and lets the rest fall into the roomy one
         # — so a program with a lot of state is no longer a build failure just because it
         # will not all fit near to hand.
         #
-        # What CANNOT move is a variable. Every variable is reached by naming the base of
+        # What cannot move is a variable. Every variable is reached by naming the base of
         # the quick memory and riding a distance inside the load instruction, which is what
         # makes a variable read two instructions instead of four; a variable in the roomy
         # memory would be neither quick nor near. Nor can a sprite's save-under buffer,
@@ -25,7 +25,7 @@ module VBlank
         # a list can, and only the whole is counted.
         #
         # So this checks three things, and all are real ceilings rather than budgets anybody
-        # chose. What must be in the quick memory has to fit in it. What is kept OUT of it —
+        # chose. What must be in the quick memory has to fit in it. What is kept out of it —
         # a collection marked cold, where the console's build keeps such a one in the roomier
         # memory whatever room the quick one has (Console::Kit#cold_collections_kept_roomier?)
         # — has to fit the roomier one alone. And everything the program declares, together,
@@ -33,14 +33,14 @@ module VBlank
         # plain-language error: how much is needed, how much there is, and the biggest users
         # so the fix is obvious.
         #
-        # THE ROOMIER MEMORY IS NOT ALL THE GAME'S. The build keeps buffers of its own there
+        # The roomier memory is not all the game's. The build keeps buffers of its own there
         # (the sound mixer's, the sound effects table, the save chip's), and the console's kit
         # says which, read off the program before it is lowered (Console::Kit#roomier_memory_reserved).
         # Both of the last two checks count against what is left. What the kit cannot read off
         # the program (the sprite drawing's records, which only laying out the sprites can size)
         # is not counted, and the lowering still refuses a game that runs out over those.
         #
-        # THE NUMBERS ARE THE CONSOLE'S (Console::Description#work_memory_bytes and the two
+        # The numbers are the console's (Console::Description#work_memory_bytes and the two
         # beside it), since a game for the Color is checked against the Color. That console has
         # one 8K work memory and nothing roomier beside it, so there everything the game keeps
         # is counted against the one memory and the second check has nothing to add. The
@@ -82,7 +82,7 @@ module VBlank
           # Ruby once with several Ractors building at once (Validator#plain_name says why).
           def told_of(names, hidden_notes) = IwramBudget.new(made_names: names, hidden_notes: hidden_notes)
 
-          # ONE THING THE PROGRAM KEEPS IN MEMORY, as the messages name it: its +label+ ("pool
+          # One thing the program keeps in memory, as the messages name it: its +label+ ("pool
           # :enemy", "120 variables"), its +bytes+, and the +node+ of the line that declared it
           # (nil for a sum over the whole program). +movable+ marks one that can go in the roomier
           # memory; +saved+ a save_data record's lists, whose fix is different (#save_record_advice);

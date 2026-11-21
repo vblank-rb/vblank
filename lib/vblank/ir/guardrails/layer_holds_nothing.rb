@@ -14,7 +14,7 @@ module VBlank
         # block raises, so this is the half of a typo that survives — the name left
         # over in the stack), and an edit that moved the last thing out of a layer.
         #
-        # A layer used only as the LINE an effect sits at is in use, and the picture
+        # A layer used only as the line an effect sits at is in use, and the picture
         # shows it: `fade :black, 100, under: :cut` keeps everything from :cut
         # forward, so :cut can hold nothing and still decide what the fade reaches.
         #

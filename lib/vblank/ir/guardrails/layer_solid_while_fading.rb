@@ -4,14 +4,14 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # A game that PLACES a fade in the stack AND sees through a layer.
+        # A game that places a fade in the stack AND sees through a layer.
         #
         # A fade over the whole screen used to be here too, and is not any more: that one
         # moves the colors themselves rather than asking the display to blend, so the
         # layer goes on showing what is behind it and the whole picture darkens together
         # (see IR::Fading for both mechanisms and which fade gets which).
         #
-        # A fade PLACED in the stack cannot take that route. Being placed is the one thing
+        # A fade placed in the stack cannot take that route. Being placed is the one thing
         # only the blend unit can do — the console hides a brightness change from the
         # layers in front of a line, where a table of colors is read by everything that
         # draws and has no notion of who is reading it. So this fade does take the layer's

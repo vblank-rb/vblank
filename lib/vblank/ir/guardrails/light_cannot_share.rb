@@ -13,15 +13,15 @@ module VBlank
         # answers from one register. Nothing at either call site shows it — each looks right
         # where it is written — so it is refused here, naming both halves.
         #
-        # A plain fade is NOT among them: a game with a light fades by walking its colours,
+        # A plain fade is not among them: a game with a light fades by walking its colours,
         # so the two are both in force (see IR::Fading).
         #
-        # A SEE-THROUGH LAYER OR A PLACED FADE IN ANOTHER SCENE IS NOT EITHER. The display is
+        # A see-through layer or a placed fade in another scene is not either. The display is
         # told what to mix afresh every frame, and a game is in one scene at a time, so the
         # light is off in such a scene and on in the rest (see IR::LightScenes). What is
         # refused is one scene with both, or a game with no scenes, which is one screen.
         #
-        # A LIGHT THAT SHOWS NOTHING OUTSIDE IT (`spotlight outside: :nothing`) IS NOT ONE EITHER,
+        # A light that shows nothing outside it (`spotlight outside: :nothing`) is not one either,
         # beside a see-through layer. It is the window alone, with no darkening, so the blend is
         # the layer's and both are on in one scene (see IR::LightScenes). Beside a fade placed in
         # the stack it is refused as any light is.
