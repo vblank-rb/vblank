@@ -5,7 +5,7 @@ require "tmpdir"
 require "made_up_original_layouts"
 require "pack_background_tests"
 
-# TWO SCENES, EACH IN COLOURS OF ITS OWN, as a Genesis game's title and the screen after it are: each
+# Two scenes, each in colours of its own, as a Genesis game's title and the screen after it are: each
 # scene's background is read from a made-up Genesis original through a data pack, its cells drawn
 # from two banks of fifteen colours of that scene's own, and two sprites of the scene's own are drawn
 # in seven colours each, fourteen that fill a palette. Beside them a list every scene uses: the
@@ -164,7 +164,7 @@ module SceneColorGames
     b.program
   end
 
-  # A TITLE AND A SCREEN AFTER IT THAT NEEDS ALL FOUR PALETTES, as a Genesis game's story screen does
+  # A title and a screen after it that needs all four palettes, as a Genesis game's story screen does
   # after its title. The title draws a sprite with each of two lists the game changes, and the
   # backdrop follows the first list's second colour. The lair's four sprites are fifteen colours
   # each, none another's. Nothing in the lair draws with either list, so on a Genesis the lair has the
@@ -239,7 +239,7 @@ module SceneColorGames
     b.program
   end
 
-  # A SCENE WHOSE PICTURES ARE DRAWN FROM THREE LISTS OF FIFTEEN COLOURS, as a Genesis game's pieces each
+  # A scene whose pictures are drawn from three lists of fifteen colours, as a Genesis game's pieces each
   # name one of its palette lines. Each picture uses a few of its list's colours, and the pictures are
   # in an order that spreads their colours over four palettes when they are packed by colour: two
   # halves of each list, then pictures of a list's first and last colours, which no palette holds

@@ -3,7 +3,7 @@
 require VBlank.root.join("examples/pong").to_s
 require VBlank.root.join("examples/jukebox").to_s
 
-# THE SOUND A RUNTIME WRITTEN AGAIN MAKES, sample for sample: what would come out of the speaker,
+# The sound a runtime written again makes, sample for sample: what would come out of the speaker,
 # played by a lowering's runtime and by the native one's, which is already held to the cartridge in
 # the emulator (test_native_tones.rb). The sound log and the mix are compared with the interpreter's
 # on every frame by each checked run; what the voices make of them is held here. A lowering whose

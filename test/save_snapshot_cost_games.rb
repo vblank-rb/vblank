@@ -2,9 +2,9 @@
 
 require "stringio"
 
-# WHAT ASKING FOR A SAVE COSTS, for each console's own cost test. Asking copies what the record keeps
-# into a buffer of the record's own there and then (Builder::SaveJobs, "THE SAVE HOLDS THE MOMENT IT
-# WAS ASKED FOR"), so a record keeping a list of a few hundred bytes copies them on the pass the save
+# What asking for a save costs, for each console's own cost test. Asking copies what the record keeps
+# into a buffer of the record's own there and then (Builder::SaveJobs, "the save holds the moment it
+# was asked for"), so a record keeping a list of a few hundred bytes copies them on the pass the save
 # is asked on. Here the game asks once, a little after power-on, and the console is measured over a
 # stretch of frames holding the ask and every pass that writes the save after it. The same game with
 # the list empty does the same work but for copying the list's items: the stage holds nought either
@@ -14,14 +14,14 @@ module SaveSnapshotCostGames
   # The list's words: 256 bytes.
   ITEMS = 64
 
-  # The pass the save is asked on, after the frames settled (SETTLE) in which the game starts.
+  # The pass the save is asked on, after the frames settled (settle) in which the game starts.
   ASK_PASS = 20
   SETTLE = 15
 
   # The frames measured: the ask and every pass of the save after it, on the slowest console.
   FRAMES = 150
 
-  # The game for +console+, the record keeping a number and a list of ITEMS words, full of nought,
+  # The game for +console+, the record keeping a number and a list of items words, full of nought,
   # or with +full+ false empty.
   def self.game(console, full:)
     VBlank.game("SNAPSHOT COST", consoles: [console]) do
@@ -48,7 +48,7 @@ module SaveSnapshotCostGames
     (1 - profile.idle_share) * profile.frames * frame_cycles
   end
 
-  # What the list's ITEMS words cost the ask on +console+, in the console's +frame_cycles+ a frame.
+  # What the list's items words cost the ask on +console+, in the console's +frame_cycles+ a frame.
   def self.cycles_a_snapshot(console, frame_cycles)
     awake(console, game(console, full: true), frame_cycles) - awake(console, game(console, full: false), frame_cycles)
   end

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A WHOLE LIST MOVED BETWEEN SAVE MEMORY AND THE GAME AS A BLOCK, in a console's own routines, held
+# A whole list moved between save memory and the game as a block, in a console's own routines, held
 # to the interpreter: the same list back and the same bytes in save memory. The cases are the ones
 # a block copy can get wrong where an item at a time could not: a list whose oldest item is not in
 # its first slot (it is a ring), slots of each width, a run that crosses 8K of save memory (a bank's
