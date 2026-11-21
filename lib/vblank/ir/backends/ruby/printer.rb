@@ -10,11 +10,11 @@ module VBlank
         # The tree has no operators in it: every number a game keeps goes through a runtime
         # function (runtime/rg_int32.rb). What the printer has to know:
         #
-        # - A CONDITION IS A NUMBER, nought or not. In Ruby only nil and false are false, so a
+        # - A condition is a number, nought or not. In Ruby only nil and false are false, so a
         #   number taken as a condition is written as a comparison with nought (`while x != 0`),
         #   never bare, which would always be taken. A comparison taken as one is Ruby's own
         #   comparison (`if a < b`), which is true or false already.
-        # - THE GAME'S OWN ARITHMETIC IS WRITTEN AS RUBY'S OPERATORS (INLINE_OPERATORS,
+        # - The game's own arithmetic is written as Ruby's operators (INLINE_OPERATORS,
         #   WRAPPED_OPERATORS), each in parentheses, so no precedence is needed. It runs every
         #   frame, and YJIT compiles an operator on small numbers to a few instructions but a
         #   runtime method only as a call: a `+` through rg_add was two calls. A sum, difference or
@@ -22,17 +22,17 @@ module VBlank
         #   rg_i32 to come round only when it has, which a game's numbers nearly never do. A shift
         #   by a count written in the program is an operator too (SHIFTS). The operands are worked
         #   out left to right, as the call worked them out.
-        # - A LIST ITEM IS READ IN ONE STEP (#list_item_call): the list's own method, or for a list
+        # - A list item is read in one step (#list_item_call): the list's own method, or for a list
         #   that is always full its Array's own `[]`, never the runtime's chain of small calls.
-        # - A RESUMABLE ROUTINE PICKS ITS STEP BY HALVING (#print_step_choice), not by a `case`.
-        # - WHERE A NAME LIVES. Everything the game keeps — its variables, lists, tables, the
+        # - A resumable routine picks its step by halving (#print_step_choice), not by a `case`.
+        # - Where a name lives. Everything the game keeps — its variables, lists, tables, the
         #   arrays of routines it calls by number, the art the runtime reads — is an instance
         #   variable of the game, set in rg_game_setup; a routine's own locals are Ruby locals. The
         #   printer writes each as an instance variable, and the build moves every one of them into
         #   a holder object of no more than Ruby keeps at fixed places (FieldHolders).
-        # - A ROUTINE IS A METHOD, called by name, and one picked from an array by number is that
+        # - A routine is a method, called by name, and one picked from an array by number is that
         #   array's block calling it by name.
-        # - A LONG ROUTINE IS SEVERAL METHODS. Ruby's compiler walks a method's branches by
+        # - A long routine is several methods. Ruby's compiler walks a method's branches by
         #   recursion on the machine's stack, one level for each `if`, `while` or `? :` in the whole
         #   method, so the stack a method needs grows with its length. A thread other than the main
         #   one, and so a Ractor, has a small stack: there a method of about 29,000 plain branches,
@@ -43,7 +43,7 @@ module VBlank
         #   printed in parts (#print_part_call), each a method of its own, and no method is longer
         #   than that whatever the routine's length. A routine shorter than that is printed whole,
         #   as before, since a call costs a little each time.
-        # - MANY LOCALS STOP RUBY ITSELF. On an arm64 machine YJIT panics, and Ruby dies ("YJIT has
+        # - Many locals stop Ruby itself. On an arm64 machine YJIT panics, and Ruby dies ("YJIT has
         #   panicked", in yjit::asm::arm64::add), the first time it compiles a method of more than
         #   about 490 locals: an add whose number does not fit the instruction, which holds up to
         #   4095, and 8 bytes a local is about that many. Every sum a routine checks for coming
@@ -113,7 +113,7 @@ module VBlank
                                             "int16_t" => "s<*", "uint16_t" => "S<*", "int32_t" => "l<*" })
 
           # The runtime's tables that grow with a game's art and sound, kept as binary Strings
-          # rather than Arrays where the game never writes them (see "THE GAME'S ART AND SOUND" in
+          # rather than Arrays where the game never writes them (see "the game's art and sound" in
           # runtime/rg_runtime.rb): a full collection reads every slot of an Array, and these are
           # millions. The runtime reads each only by one index at a time (or through the methods
           # its classes add), which a String of that class answers as an Array does. A game's own
@@ -134,8 +134,8 @@ module VBlank
           # a Ractor's stack compiles (see the class's heading).
           MOST_BRANCHES_A_METHOD = 3_000
 
-          # The most locals one printed method has, well inside what YJIT compiles (see "MANY
-          # LOCALS" in the class's heading). A routine whose locals would pass it keeps them as
+          # The most locals one printed method has, well inside what YJIT compiles (see "many
+          # locals" in the class's heading). A routine whose locals would pass it keeps them as
           # instance variables (#print_function), as a routine printed in parts does.
           MOST_LOCALS_A_METHOD = 400
 
@@ -216,7 +216,7 @@ module VBlank
           # a variable starts as the runtime's do.
           def items_name(list) = "@rg_items_#{list}"
 
-          # THE LISTS THAT ARE ALWAYS FULL (runtime/rg_list.rb's RgFullList, or for a list of bytes
+          # The lists that are always full (runtime/rg_list.rb's RgFullList, or for a list of bytes
           # its RgByteList), each with the bytes its slot takes: lists that every declaration fills
           # (rg_list_full), and nothing empties, pushes onto, drops from or copies into. The runtime
           # changes a list's length only through those calls (and a state read in, which puts back
@@ -288,7 +288,7 @@ module VBlank
             text
           end
 
-          # The build stops, rather than Ruby when YJIT compiles the method (see MANY LOCALS in the
+          # The build stops, rather than Ruby when YJIT compiles the method (see many locals in the
           # class's heading), if a method was printed with more locals than MOST_LOCALS_A_METHOD.
           def refuse_too_many_locals!(name)
             return if @method_locals.size <= MOST_LOCALS_A_METHOD
@@ -599,7 +599,7 @@ module VBlank
           # names (#print_step_choice), each step going on to the next with `next`, and leaving the
           # method with 1 or 0.
           #
-          # THE STEP IT IS ON IS A RUBY LOCAL, rg_step, read from the counter as the routine is called
+          # The step it is on is a Ruby local, rg_step, read from the counter as the routine is called
           # and set by each goto, and the counter is written only where the routine leaves: a wait
           # (Pause) and the end (Finish) set it, and a call of a routine that waits (Resume) sets it
           # to the step the call is in before it hands back 1. Nothing reads the counter while the
@@ -624,7 +624,7 @@ module VBlank
             @steps_item = nil
           end
 
-          # Step +number+ of +item+, where the choice picked it. A STEP THAT COMES BACK TO ITSELF
+          # Step +number+ of +item+, where the choice picked it. A step that comes back to itself
           # (#step_comes_back?), as the body of a loop cut into steps does through the steps that
           # count it on and test it, is a loop of its own: going back to it is that loop's `next`,
           # and going to any other step leaves it, rg_step set, for the choice to pick again. A loop
@@ -716,7 +716,7 @@ module VBlank
           end
 
           # A call of a routine that waits, made again when this one carries on: if it hands back 1,
-          # this routine does too, its counter set to the step the call is in (see THE STEP IT IS ON
+          # this routine does too, its counter set to the step the call is in (see the step it is on
           # at #print_steps).
           def print_resume(depth, item)
             return line(depth, "return 1 if #{expression(item.call)} == 1") unless @steps_item
@@ -727,7 +727,7 @@ module VBlank
             line(depth, "end")
           end
 
-          # THE STEP THE COUNTER NAMES, from +first+ up to before +past+, picked by halving: a test
+          # The step the counter names, from +first+ up to before +past+, picked by halving: a test
           # of whether it is below the middle step, then the same again on that half, until a few
           # steps are left, each then tested for in turn. So a routine of a thousand steps picks one in
           # about ten tests.
@@ -873,8 +873,8 @@ module VBlank
             "#{function}(#{item.args.map { |arg| expression(arg) }.join(', ')})"
           end
 
-          # A read or write of one item of a list as the list's own method (see "A READ OR WRITE OF
-          # ONE ITEM" atop runtime/rg_list.rb), which gives nil for an index the list does not have:
+          # A read or write of one item of a list as the list's own method (see "a read or write of
+          # one item" atop runtime/rg_list.rb), which gives nil for an index the list does not have:
           # then rg_list_index_fault stops the game. The list is always an instance variable, so
           # naming it twice reads nothing else.
           #
@@ -936,7 +936,7 @@ module VBlank
             "(#{at} = #{index}; #{kept} = #{value}; #{in_range} ? #{bytes}.setbyte(#{at}, #{kept}) : #{fault})"
           end
 
-          # A temporary of the method being printed (see MANY LOCALS in the class's heading).
+          # A temporary of the method being printed (see many locals in the class's heading).
           def temporary
             kept = method_local("w_#{(@temporaries % MOST_TEMPORARIES_A_METHOD) + 1}")
             @temporaries += 1
@@ -979,7 +979,7 @@ module VBlank
             end
           end
 
-          # THE SMALLEST AND LARGEST +item+ CAN BE, as [low, high], or nil where that is not known
+          # The smallest and largest +item+ can be, as [low, high], or nil where that is not known
           # while printing. A number written in the program is itself; a counted loop's count and
           # variable are known through its body (#counted_loop_ranges); a sum, difference, product
           # or shift of known numbers is worked out from theirs, and is known only when the whole of
@@ -1011,7 +1011,7 @@ module VBlank
             end
           end
 
-          # A COUNTED LOOP, as Computer::Lowering#lower_repeat writes one, and what is known of its
+          # A counted loop, as Computer::Lowering#lower_repeat writes one, and what is known of its
           # numbers through its body: +body+ is a block's statements, its count set to a number
           # written in the program, its index to nought, then a loop while the index is below the
           # count, which hands the index to the game's variable first and adds one to it last. Inside,
@@ -1043,7 +1043,7 @@ module VBlank
             [index_name, variable].compact.to_h { |name| [name, [0, count_value - 1]] }
           end
 
-          # WHAT A TEST SAYS OF ITS NAMES, inside the branch it takes: +condition+'s comparisons of a
+          # What a test says of its names, inside the branch it takes: +condition+'s comparisons of a
           # name with a number written in the program, alone or tested both together (rg_both), each
           # narrowing what was known of the name. So an unpacking's `at >= 0 && at < count`, its test
           # before a write to its list, prints the write knowing the index is nought or more. Nil

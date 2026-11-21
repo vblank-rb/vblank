@@ -30,12 +30,12 @@ module VBlank
       # — is written into the game from the console it is built for (Console::Description), so the
       # runtime plays a game as whichever console that is.
       #
-      # A FRAME CAN END ANYWHERE, deep inside a routine the game called from a routine. Waiting
+      # A frame can end anywhere, deep inside a routine the game called from a routine. Waiting
       # for the next one (rg_wait_vblank) calls the driver, which does the frame's work — prints
       # it, with no window, for the tests — and comes back, so the game carries on from where it
       # was. Nothing has to be turned inside out to stop part way.
       #
-      # THIS LOWERING IS JUDGED BY ITS SPEED once it is right, so rubocop does not look at it
+      # This lowering is judged by its speed once it is right, so rubocop does not look at it
       # (.rubocop.yml): a style fix often reads better and costs the Ruby VM more instructions.
       class Ruby
         RUNTIME_DIR = Ractor.make_shareable(File.expand_path("ruby/runtime", __dir__))
@@ -91,11 +91,11 @@ module VBlank
                          "RgGame.new.rg_headless_main(ARGV)\n"].join)
         end
 
-        # THE GAME AS AN OBJECT IN THIS PROCESS, to be played live (LiveGame). Anything its runtime
+        # The game as an object in this process, to be played live (LiveGame). Anything its runtime
         # lacks is refused, as a test would skip.
         def live_game(program) = LiveGame.new(live_source(program), program: program)
 
-        # THE GAME WRITTEN OUT AS ONE RUBY FILE that plays in a window with Ruby alone — Ruby,
+        # The game written out as one Ruby file that plays in a window with Ruby alone — Ruby,
         # fiddle and SDL3, and no vblank gem, no game source, no art: the game as Ruby, and the
         # library's own window, menu and session (lib/vblank/live/) copied in after the few
         # library files they need, with the menu's letters, then runtime/rg_script_main.rb, which
@@ -146,7 +146,7 @@ module VBlank
            File.read(File.join(RUNTIME_DIR, SCRIPT_MAIN), encoding: Encoding::UTF_8).delete_prefix(MAGIC_COMMENT)].join
         end
 
-        # WHAT A MATCH OVER A NETWORK NEEDS TO KNOW OF +program+, titled +title+, as plain values: its
+        # What a match over a network needs to know of +program+, titled +title+, as plain values: its
         # fingerprint's parts (Network::Fingerprint), whether it is built for several players and the
         # most it seats. Live::MatchPlay::MatchFacts is made from them, in a process with no build.
         def match_facts(program, title:)
@@ -206,7 +206,7 @@ module VBlank
         # its Live::Shell: SHELL_FACTS, the ShellFacts as JSON (ShellFacts#to_plain), and SHELL_MENU
         # and SHELL_UNPACKINGS, the menu and each unpacking as Ruby, in heredocs.
         #
-        # AN UNPACKING SPLIT IN PIECES (ShellFacts#pieces) is written as its split, as Live::Shell.from
+        # An unpacking split in pieces (ShellFacts#pieces) is written as its split, as Live::Shell.from
         # writes it: each piece's program once in SHELL_WORKER_PROGRAMS, in the order the pieces number
         # them, and nil in its place among SHELL_UNPACKINGS, so the script unpacks on several workers
         # (Live::WorkerUnpacking) and never carries the whole routine besides.

@@ -6,7 +6,7 @@ module VBlank
   module IR
     module Backends
       class Ruby
-        # THE GAME'S FIELDS, SPLIT OVER HOLDERS SMALL ENOUGH FOR RUBY TO KEEP IN PLACE. Everything a
+        # The game's fields, split over holders small enough for Ruby to keep in place. Everything a
         # game built as Ruby keeps — its variables and lists, the tables the build writes, and every
         # field of the runtime's — is written as an instance variable of the one game object
         # (`@rg_pixels`, `@v_score`). Ruby keeps an object's instance variables at fixed places only
@@ -86,7 +86,7 @@ module VBlank
 
           private
 
-          # THE FIELDS MOVED INTO HOLDERS; the rest stay on the game object itself. A field in a
+          # The fields moved into holders; the rest stay on the game object itself. A field in a
           # holder costs a JIT one more load and test at each use than one on the game object, and
           # Ruby 4.0, with no cap, pays that for nothing. So the game object keeps as many as it can
           # beside its holders: first FIELDS_READ_EVERY_PIXEL, then those the text names most often.

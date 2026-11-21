@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class Ruby
-        # ONE PROGRAM, WRITTEN OUT AS RUBY. Make one per program and ask for #text_and_gaps.
+        # One program, written out as Ruby. Make one per program and ask for #text_and_gaps.
         #
         # The program is built as a tree of statements — globals, routines, tables of numbers,
         # and calls into a runtime, never an operator on a number — by the lowering this
@@ -22,7 +22,7 @@ module VBlank
             [text, runtime_gaps(items, printer.called, runtime_functions)]
           end
 
-          # THE CONSOLE THE GAME IS PLAYED AS, in the numbers the runtime needs from it, as the
+          # The console the game is played as, in the numbers the runtime needs from it, as the
           # first lines of the game's class, so the runtime keeps none of any one console's and
           # reads each as a constant: the size of its screen, the cycles its clock counts a second,
           # the cycles a frame lasts, and whether its cartridge's clock keeps the date. A frame's
@@ -38,7 +38,7 @@ module VBlank
 
           def build_name = "the Ruby build"
 
-          # WHAT THE RUNTIME CANNOT DO YET, found before the game is played rather than part way
+          # What the runtime cannot do yet, found before the game is played rather than part way
           # through it: every function the printed game calls that is neither the runtime's nor
           # one of the game's own routines (Ruby::HEADLESS_FUNCTIONS and LIVE_FUNCTIONS list what
           # each has). Empty once the runtime is whole. In the order they first appear in the
