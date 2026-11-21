@@ -2,7 +2,7 @@
 
 module VBlank
   module Playthroughs
-    # WHAT `vblank run` WITH A SCRIPT OR A TAPE, AND `vblank compare`, DO once the command line has
+    # WHAT `vblank run` with a script or a tape, and `vblank compare`, DO once the command line has
     # been taken apart into options: find what to press, read the settings a command line can only
     # give as text, play or compare, and say what came of it.
     #
@@ -19,15 +19,15 @@ module VBlank
       # what happened and what to write.
       class Refused < StandardError; end
 
-      # THE WAYS `vblank run --on` RUNS A GAME, by the word the command line takes, and the way of
+      # The ways `vblank run --on` runs a game, by the word the command line takes, and the way of
       # LoweredGame each is. None is the emulator: the command runs the game, and a console is
       # reached by writing a tape out for an emulator a person already has (--write-mgba-script,
       # --write-bk2). Ruby is first, the default, and the one a person plays in a window.
       WAYS = { "ruby" => "ruby", "js" => "web", "native" => "native", LoweredGame::LOGIC => LoweredGame::LOGIC,
                "interpreter" => "interpreter" }.freeze
 
-      # THE WAYS A GAME CAN BE SHOWN, as a film shows it: the cartridge in its console's emulator, the
-      # first and the one meant when none is given, then every word of WAYS but logic, which plays the
+      # The ways a game can be shown, as a film shows it: the cartridge in its console's emulator, the
+      # first and the one meant when none is given, then every word of ways but logic, which plays the
       # game's rules alone and has no picture.
       SHOWN_WAYS = [LoweredGame::EMULATOR, *(WAYS.keys - [LoweredGame::LOGIC])].freeze
 
@@ -51,7 +51,7 @@ module VBlank
       end
 
       # Play the script or the tape on the game the block gives (an UnbuiltGame) the way +on+ names
-      # (a word of WAYS), in a window if +window+ asks for one, say the frames and the moments, and write
+      # (a word of ways), in a window if +window+ asks for one, say the frames and the moments, and write
       # what was asked for. The block is called once what was written has been found good, since
       # it builds the game, and that takes a while. +export_cartridge+ makes the Advance's
       # cartridge, which only a tape written out for another emulator needs. +progress+ is told

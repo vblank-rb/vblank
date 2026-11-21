@@ -2,7 +2,7 @@
 
 module VBlank
   module Playthroughs
-    # TWO CARTRIDGES PLAYED SIDE BY SIDE ON THE SAME PRESSES, and where their pictures stop
+    # Two cartridges played side by side on the same presses, and where their pictures stop
     # being the same.
     #
     #   result = walk.compare(ours, theirs)
@@ -10,42 +10,42 @@ module VBlank
     #   result.drift.frame    # the first frame they did
     #   result.drift.moment   # the named moment before it
     #
-    # WHAT IT IS FOR. Somebody rebuilding an existing game wants to know where their cartridge
+    # What it is for. Somebody rebuilding an existing game wants to know where their cartridge
     # has drifted from the original; a framework change that moves something a frame early
     # wants catching without two people squinting at two screens. Both are the same question:
     # given the same game to play, on which frame do these two first show something different?
     #
-    # THE SAME PRESSES ON THE SAME FRAMES. What is compared is a tape: which buttons were down
+    # The same presses on the same frames. What is compared is a tape: which buttons were down
     # on each frame. A script is played on the first cartridge alone to make one, so where the
     # script watches the game — "walk right until the door" — it is the first cartridge it
     # watched, and the second is handed exactly the walk the first one took. That is the
     # strict comparison: a second cartridge whose door is a frame further off is still walking
     # when the first has stopped, and the two differ from that frame on.
     #
-    # EVERY PIXEL OF EVERY FRAME, unless told how alike is alike enough (see Likeness), and it
+    # Every pixel of every frame, unless told how alike is alike enough (see Likeness), and it
     # stops at the first drift unless it is told to carry on. One frame out is nearly always
     # every frame after it out too, so the first is the one worth having — and where it is
     # not, `carrying_on: true` plays to the end and `result.drifts` lists every stretch of
     # drift, which shows whether the two came back into step.
     #
-    # OR THE SAME SCRIPT ON EACH, asked for with `same: :script`: each cartridge played by
+    # Or the same script on each, asked for with `same: :script`: each cartridge played by
     # the script on its own, and the two compared at each named moment (see AtMoments).
     # That forgives timing, and finds a game that looks different where the same tape finds
     # one that is a frame late.
     #
-    # AND NAMED READINGS, where it is given any: numbers read off both running cartridges
+    # And named readings, where it is given any: numbers read off both running cartridges
     # after every frame, each its own way (see Readings). Which of the two is compared —
     # the picture, the readings, or both — is a list given where the comparison is made (see
     # Compared).
     #
-    # OR LINED UP BY THE GAME'S OWN PASSES, asked for with `by_passes:`: each cartridge gives its
+    # Or lined up by the game's own passes, asked for with `by_passes:`: each cartridge gives its
     # count of passes, and the two are compared on the first frame each shows each pass, so a
     # pass that takes two frames on one and one on the other is still like with like (see
     # Passes). Or with each cartridge's own still frames skipped, asked for with
     # `skipping_still_frames_of:`, so a room that loads for longer on one is in step again after
     # (see StillFrames).
     #
-    # AND ONE FRAME OF THE TWO AS A PICTURE, for a person to look at: the two screens side by
+    # And one frame of the two as a picture, for a person to look at: the two screens side by
     # side with what differs marked (see ScreenPair). A report of a drift holds one, and one
     # can be asked for by itself, of any frame (see PictureRequest).
     #
@@ -118,7 +118,7 @@ module VBlank
       Result = Data.define(:frames, :moments, :drifts) do
         def drift? = drifts.any?
 
-        # Where the two FIRST stopped being alike — nil when they never did.
+        # Where the two first stopped being alike — nil when they never did.
         def drift = drifts.first
       end
 
@@ -128,11 +128,11 @@ module VBlank
       PICTURE = :picture
       FRAMES_APART = :frames_apart
 
-      # A READING'S OWN BLOCK STOPPED WITH AN ERROR, part way through the playing. The
+      # A reading's own block stopped with an error, part way through the playing. The
       # message says which reading and which cartridge; the block's own error is its cause.
       class ReadingFailed < StandardError; end
 
-      # A DRIFT WAS FOUND AND ITS REPORT COULD NOT BE WRITTEN. The place is looked at before
+      # A drift was found and its report could not be written. The place is looked at before
       # a frame is played, so this is the rare case of a disk that filled, or something that
       # changed while the two were playing. The finding is the part that cost the playing,
       # so the error still holds it: +drift+ is where the two stopped being alike, and
@@ -193,7 +193,7 @@ module VBlank
       # nought (see Passes), and +reads_buttons_every_frame+ true for a game that reads its buttons on
       # every frame and not once a pass. +passes_compared_at+ is `:start` to compare each pass on the
       # first frame that shows it (nil is the same), or `:end` for its readings on the last frame that
-      # shows it and its picture on the frame after (Passes, AT THE END OF EACH PASS). +skipping_still_frames_of+ is `:first`, `:second` or `:both`, the
+      # shows it and its picture on the frame after (Passes, at the end of each pass). +skipping_still_frames_of+ is `:first`, `:second` or `:both`, the
       # cartridges whose frames that show the picture of the frame before are skipped (see
       # StillFrames). Nil for a comparison frame by frame.
       def initialize(first, second, moments, ignoring_frames: [], readings: {}, comparing: nil, carrying_on: false,
@@ -232,7 +232,7 @@ module VBlank
         @handed_over = [first, second]
       end
 
-      # WHICH OF THE PICTURE `layers:` KEEPS, as the reader's own words for leaving layers out
+      # Which of the picture `layers:` keeps, as the reader's own words for leaving layers out
       # (Diagnostics::Verifier#showing). Every console the comparison lines up calls its sprites
       # `:sprites`, so the two words mean the same on each.
       LAYERS = Ractor.make_shareable({ backgrounds: { without: :sprites }, sprites: { only: :sprites } })
@@ -249,7 +249,7 @@ module VBlank
         run(starts.first.played_by(playthrough).tape)
       end
 
-      # WHERE ONE OF THE TWO CARTRIDGES STARTS: the cartridge, the save it holds as its
+      # Where one of the two cartridges starts: the cartridge, the save it holds as its
       # console is switched on, and the lead-in played on it first — the save one that
       # fits this cartridge, and a copy of its own. +which+ is `first` or `second`, for an
       # error to say which of the two it was about.
@@ -281,7 +281,7 @@ module VBlank
       end
       private_constant :Start
 
-      # WHERE THE TWO STARTED, AS SENTENCES, for a report a person reads: nothing at all
+      # Where the two started, as sentences, for a report a person reads: nothing at all
       # when both started from power-on with nothing played first.
       private def starting_sentences
         said = []
@@ -294,14 +294,14 @@ module VBlank
         said
       end
 
-      # THE TWO CARTRIDGES, each one the build made or a cartridge file read from its path.
+      # The two cartridges, each one the build made or a cartridge file read from its path.
       def cartridges = starts.map(&:cartridge)
 
       # The first cartridge: the one a script is played on alone, to make the tape both are
       # then played on.
       def first = cartridges.first
 
-      # WHERE EACH OF THE TWO STARTS. The cartridges are looked at together, the first time
+      # Where each of the two starts. The cartridges are looked at together, the first time
       # anything is wanted of either, so a second cartridge that is not there is found
       # before the first is played and not after — and after the settings, which need no
       # cartridge to be wrong. What needs a cartridge to be looked at is looked at here
@@ -321,7 +321,7 @@ module VBlank
         end
       end
 
-      # THE SCREEN THE TWO ARE COMPARED ON, the size their console draws: any console's, so a
+      # The screen the two are compared on, the size their console draws: any console's, so a
       # cartridge of the original is compared with ours whatever it was made for. Two cartridges
       # whose screens differ in size cannot be compared a pixel at a time, and are refused.
       private def sized_for_screens_of(pair)
@@ -455,7 +455,7 @@ module VBlank
         end
       end
 
-      # THE SETTINGS OF A COMPARISON THAT A PICTURE OF ONE FRAME HAS A USE FOR, each meaning
+      # The settings of a comparison that a picture of one frame has a use for, each meaning
       # what it means of a comparison: the parts of the screen that are not looked at,
       # which are never marked, and where the two cartridges start.
       PICTURE_SETTINGS = %i[ignoring_rectangles looking_at pixels_apart save saves lead_ins].freeze
@@ -767,31 +767,31 @@ module VBlank
                              "Its settings are #{Comparison.settings.map { |name| "`#{name}:`" }.join(', ')}."
       end
 
-      # TWO RUNNING CARTRIDGES PLAYED AS ONE. The lines of a tape play themselves on this as
+      # Two running cartridges played as one. The lines of a tape play themselves on this as
       # they do on a single playing: a hold goes to both with the same buttons down, a frame
       # at a time, and the two are compared after each. Unless it is carrying on, it stops
       # playing on the frame that makes a drift of it, part way through a hold if that is
       # where it falls.
       #
-      # EACH THING THAT IS COMPARED COUNTS ITS OWN FRAMES IN A ROW — the picture, and each
+      # Each thing that is compared counts its own frames in a row — the picture, and each
       # reading. Asking for several frames in a row is asking that one frame of flicker is
       # not called drift, and a picture that flickers for one frame followed by a count
       # that is out for the next is two flickers and no drift. Counted together they would
       # be two frames in a row.
       #
-      # CARRYING ON. Unless it is told to carry on, the pair stops at its first drift. Told
+      # Carrying on. Unless it is told to carry on, the pair stops at its first drift. Told
       # to, it plays on, and that drift is under way for as long as something goes on
       # differing that has differed for long enough: the frame on which nothing has is the
       # frame the two are back within the settings, and the drift's last frame is the one
       # before it.
       #
-      # NO FRAME IS IN TWO DRIFTS. A thing that began to differ while a drift was under
+      # No frame is in two drifts. A thing that began to differ while a drift was under
       # way, or on the very frame after it, and goes on long enough to count, is the same
       # drift going on and not a second one that began inside the first. That cannot be
       # known on the frame the first thing stops, so a drift is not ended there: its last
       # frame is noted, and it is ended once nothing that could still join it is differing.
       #
-      # A FRAME IS SEEN, THEN DECIDED. Each frame is looked at as soon as it is played, and
+      # A frame is seen, then decided. Each frame is looked at as soon as it is played, and
       # what can only be asked then is kept (an Observation). With the strict rule for torn
       # frames (TornFrames) a frame is decided a frame later, once the frame after it shows
       # whether it was torn, and a run of torn frames once it settles; without, at once.
@@ -805,7 +805,7 @@ module VBlank
         # cartridges are on the same frame here, and a result gives it for each.
         attr_reader :moments
 
-        # ONE FRAME AS IT WAS SEEN: its number, the moment named before it, what was seen
+        # One frame as it was seen: its number, the moment named before it, what was seen
         # (Compared::Seen, or nil on a frame that is not looked at), and what is kept from it
         # in case something begins to differ on it (Kept, or nil when nothing did). +step+ counts
         # the observations from 1, which is what frames in a row are counted in: one a frame, or
@@ -814,13 +814,13 @@ module VBlank
         # both are nil otherwise.
         Observation = Data.define(:frame, :moment, :seen, :kept, :step, :pass, :second_frame)
 
-        # WHAT IS KEPT FROM A FRAME ON WHICH SOMETHING DIFFERS, because by the time it has
+        # What is kept from a frame on which something differs, because by the time it has
         # differed long enough to be called drift both consoles have played on and the frame
         # cannot be asked for again: the two screens (for a report), how the pictures
         # differed, which video memories differed, and the part of the screen looked at.
         Kept = Data.define(:pictures, :picture_difference, :video_differences, :part)
 
-        # THE FRAME A THING BEGAN TO DIFFER ON, and what was kept from it.
+        # The frame a thing began to differ on, and what was kept from it.
         Beginning = Data.define(:frame, :moment, :readings, :kept, :step, :pass, :second_frame)
 
         # A drift that has not ended, with what was kept from the frame it began.

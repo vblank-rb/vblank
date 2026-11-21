@@ -3,18 +3,18 @@
 module VBlank
   module Playthroughs
     class Comparison
-      # WHAT A COMPARISON COMPARES ON EACH FRAME: the picture, the named readings, or both.
+      # What a comparison compares on each frame: the picture, the named readings, or both.
       #
       # It is a list, given where the comparison is made, and with nothing given it is the
       # picture and whatever readings were given. The picture is compared by how alike it
       # has to be (see Likeness); a reading has to be the same on both.
       #
-      # WHY THE PICTURE CAN BE LEFT OUT. Somebody rebuilding a game gets its numbers right
+      # Why the picture can be left out. Somebody rebuilding a game gets its numbers right
       # long before its pictures: the hero walks at the right speed weeks before the scenery
       # is drawn. Comparing the readings alone shows whether the game underneath has drifted
       # while every frame of the picture still differs.
       #
-      # WHY READINGS CAN BE GIVEN AND NOT COMPARED. They are still read, and a drift says
+      # Why readings can be given and not compared. They are still read, and a drift says
       # what each was on both cartridges — which is often the quickest way to see what a
       # difference in the picture comes from.
       #
@@ -67,7 +67,7 @@ module VBlank
         # Whether +frames+ differing frames, one after another, are drift.
         def drift_after?(frames) = @likeness.drift_after?(frames)
 
-        # WHAT WAS COMPARED AND HOW ALIKE IT HAD TO BE, AS SENTENCES, for a report a person
+        # What was compared and how alike it had to be, as sentences, for a report a person
         # reads. A comparison's numbers mean nothing read against the wrong settings, so it
         # says them every time. +point+ is what the two were compared at: `A frame`, or
         # `A moment` for a comparison on the same script.

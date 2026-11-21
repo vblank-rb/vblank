@@ -3,22 +3,22 @@
 module VBlank
   module Playthroughs
     class Comparison
-      # TWO CARTRIDGES COMPARED AT EACH NAMED MOMENT, after the same script has played each
+      # Two cartridges compared at each named moment, after the same script has played each
       # of them on its own.
       #
-      # THE OTHER WAY TO COMPARE, AND WHAT IT IS FOR. Fed the same tape, a second cartridge
+      # The other way to compare, and what it is for. Fed the same tape, a second cartridge
       # whose door opens a frame late is out of step from that frame on, and every frame
       # after it differs: that is the strict comparison, and the right one for a change
       # that should move nothing. A game being rebuilt to match another is never that
-      # close at first. Played by the same SCRIPT, each cartridge presses A when its own
+      # close at first. Played by the same script, each cartridge presses A when its own
       # text box is up and stops walking at its own door, so each arrives at "the door"
       # however long it took — and the two are compared there. That forgives timing and
-      # finds a game that LOOKS different.
+      # finds a game that looks different.
       #
       # So there is no frame the two share, and nothing is compared frame by frame: only at
       # the moments the script names, which are the places it declares both should be the same.
       #
-      # HOW LONG EACH TOOK IS ALWAYS SAID and is only drift when a limit was given: the
+      # How long each took is always said and is only drift when a limit was given: the
       # frame each cartridge reached each moment on comes back with the result, and
       # +frames_apart+ is how far apart they may be, nil for not checked.
       #
@@ -60,7 +60,7 @@ module VBlank
           end
         end
 
-        # HOW THE TWO WERE COMPARED, AS SENTENCES, for a report a person reads.
+        # How the two were compared, as sentences, for a report a person reads.
         def sentences
           apart = if @frames_apart
                     "The limit on how far apart the two reached a moment was #{frames_in_words(@frames_apart)}."
