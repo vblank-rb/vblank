@@ -4,6 +4,29 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # An error for a game whose screen is `screen :tiled` but which gives that screen nothing to
+        # show. Every frame of such a game is black, with no crash to say why.
+        #
+        # A game that draws with `pixel`, `fill_rect`, `blit` or `clear_screen` is told:
+        #
+        # > This game draws with `<verb>`, but the screen mode is `screen :tiled`. A tiled screen
+        # > shows backgrounds and sprites only. It cannot show `pixel`, `fill_rect`, `blit`, or
+        # > `clear_screen`. So the drawing never appears, and every frame stays black.
+        #
+        # That game was most likely written for the other kind of screen. To keep drawing that
+        # way, change the one line to `screen :bitmap`. To use sprites and scrolling instead, keep
+        # `screen :tiled` and add a `background` or a `sprite`.
+        #
+        # A game that draws nothing at all is told:
+        #
+        # > This game sets `screen :tiled`, but it gives the screen nothing to show. A tiled screen
+        # > shows backgrounds and sprites only. With neither one, every frame stays black.
+        #
+        # The message then shows how to make a background from an `image`, a set of `tiles` and a
+        # `background` with a map. A `sprite` is enough too, and so is a screen given a `backdrop:`
+        # colour.
+        #
+        #--
         # A tiled screen with nothing for the tile hardware to paint — a silent
         # black screen.
         #
@@ -26,6 +49,7 @@ module VBlank
         # the fix that matches: a game already drawing the bitmap way is told to
         # pick the bitmap screen, and a game drawing nothing is shown how to add
         # tiled content.
+        #++
         class EmptyTiledScreen
           NAME = :empty_tiled_screen
           PLAIN_NAME = "a tiled screen with nothing on it"

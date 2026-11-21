@@ -7,6 +7,25 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # An error for a drawing call such as `fill_rect`, `pixel` or `blit` on a screen made of
+        # backgrounds and sprites, in a game that otherwise shows them well:
+        #
+        # > `<verb>` cannot draw on a tiled screen. A tiled screen shows backgrounds and sprites
+        # > only, so this drawing never appears. There is no crash or error to point at it.
+        #
+        # On a turning and zooming screen the words are the same, with `rotozoom` for `tiled`:
+        #
+        # > `<verb>` cannot draw on a rotozoom screen. A rotozoom screen shows backgrounds and
+        # > sprites only, so this drawing never appears.
+        #
+        # The call runs every frame and changes nothing you can see. Because the rest of the screen
+        # looks right, the missing drawing is easy to miss.
+        #
+        # The game is on the right screen for its backgrounds and sprites, so do not change the
+        # screen. To show this drawing, put it in a `background` or draw it with a `sprite`. Or
+        # remove the line.
+        #
+        #--
         # A drawing call the tiled screen can never show, in a game that is
         # otherwise a working tiled game.
         #
@@ -26,6 +45,7 @@ module VBlank
         # other one — put the drawing where the tiled screen can see it, or drop
         # the call. So this check speaks only once the program has committed to
         # tiled by giving it something to paint.
+        #++
         class BitmapDrawOnTiled
           NAME = :bitmap_draw_on_tiled
           PLAIN_NAME = "drawing the tiled screen cannot show"
