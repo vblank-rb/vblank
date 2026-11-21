@@ -44,21 +44,21 @@ require_relative "snes/checked_run"
 module VBlank
   module IR
     module Backends
-      # The game as a SUPER NINTENDO cartridge: the same program every other backend runs, lowered
+      # The game as a Super Nintendo cartridge: the same program every other backend runs, lowered
       # to the 65816, the console's 16-bit processor, and laid out in a LoROM cartridge.
       #
-      # HOW IT IS MADE. SNES::Lowering walks the IR and emits 65816 machine code through the Ruby
+      # How it is made. SNES::Lowering walks the IR and emits 65816 machine code through the Ruby
       # assembler (SNES::W65816), as the Game Boy Color's lowering emits SM83, and shares with
       # that lowering what both work out before writing an instruction (LoweringPlan, RoutineCuts,
       # Sections). The runtime the code calls is written in 65816 here, in Ruby.
       #
-      # THE BOARD. A plain cartridge is ROM alone, with battery-backed RAM when the game saves, and
+      # The board. A plain cartridge is ROM alone, with battery-backed RAM when the game saves, and
       # runs on a plain console. A game that names the Super FX 2 (`variants: { snes: :superfx }`)
       # gets that chip's board instead (Cartridge::SNESROM::SUPER_FX): the same 65816 code, read at
       # the slow speed, with the chip's registers and RAM beside it, and the routines the game marks
       # `on_chip: true` lowered to the chip's own code (ChipCode). The SA-1 and the MSU-1 are not made.
       class SNES
-        # WHERE A RUNNING CARTRIDGE KEEPS WHAT A READER WANTS, which nothing in its bytes shows: every
+        # Where a running cartridge keeps what a reader wants, which nothing in its bytes shows: every
         # variable by the game's name (its address in work RAM), every list ([its 24-bit place, its
         # capacity, the bytes a slot, its name]), where the runtime keeps how the run stands
         # (Runtime::Frame's names), where every label of the code went, the program it was built
@@ -82,7 +82,7 @@ module VBlank
           # How many bytes the variable +name+ is kept in.
           def variable_bytes(name) = half_variables.include?(name) ? 2 : 4
 
-          # THE SPRITES THE GAME PLACED IN ITS LAST PASS, as the interpreter gives them
+          # The sprites the game placed in its last pass, as the interpreter gives them
           # (Reference#sprites): what the runtime keeps of what it placed (Runtime::Picture::DRAWN).
           # +drawn+ is the program's SpriteNames; +read16+ reads a word of the running cartridge's
           # memory, given its address. A picture copied in other colours is named as the picture
@@ -140,7 +140,7 @@ module VBlank
 
         # +program+ as a cartridge (Cartridge::SNESROM), carrying its Places.
         #
-        # A BUILD IS A SERIES OF TRIES (BuildTries), each a whole lowering with one Tried, until one
+        # A build is a series of tries (BuildTries), each a whole lowering with one Tried, until one
         # fits; what each try finds it needs is kept for every try after it (#settings_after says
         # what each thing that does not fit changes).
         #
@@ -194,7 +194,7 @@ module VBlank
         # How many times the last #build lowered the game: one for a game that fits as it first tries.
         def tries = @build_tries&.count || 0
 
-        # THE SPRITE PIECES THE BUILD MAKES OF EACH PICTURE OF +program+ (SpriteLines.pieces_built,
+        # The sprite pieces the build makes of each picture of +program+ (SpriteLines.pieces_built,
         # Lowering::Picture#sprite_pieces_built), which can differ from the console's rule for
         # cutting a picture wherever the build gives up squares: worked out by building the game,
         # or nil where it cannot be built. A build records them on the program as it finishes

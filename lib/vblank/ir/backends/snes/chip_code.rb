@@ -4,33 +4,33 @@ module VBlank
   module IR
     module Backends
       class SNES
-        # A GAME'S ROUTINES AS SUPER FX CODE: the routines marked `on_chip: true`, on a cartridge with
+        # A game's routines as super FX code: the routines marked `on_chip: true`, on a cartridge with
         # that chip. It walks the IR with a table for each kind, as Lowering does, and writes the
         # chip's instructions through SNES::GSU. What the chip is, and how it is handed a program,
         # are in GSU and Runtime::Chip; Lowering::Chip is the part on the 65816's side.
         #
-        # WHERE THE NUMBERS ARE. The chip cannot reach the console's work RAM, so the variables a run
+        # Where the numbers are. The chip cannot reach the console's work RAM, so the variables a run
         # needs are copied into the chip's own RAM before it starts and the ones it changed are
         # copied back after it stops. No game number lives there between runs. The block is in the
         # part of that RAM a painted screen does not use (Runtime::ChipPaint::NUMBERS): variables,
         # then what the code keeps for itself, a loop's count and a routine's way back.
         #
-        # HOW A NUMBER IS WORKED OUT. A game's number is 32 bits and the chip's registers are 16, so
+        # How a number is worked out. A game's number is 32 bits and the chip's registers are 16, so
         # a value leaves its answer in two registers, LOW and HIGH. A sum of two has the right side
         # in RIGHT_LOW and RIGHT_HIGH. A side that is a number or a variable is read straight there;
         # when both sides have to be worked out, the right one goes to a word of RAM while the left
         # one is. Nothing stays in a register from one statement to the next. Other sums are called
         # (Runtime::ChipSums, which says how).
         #
-        # A CALL IS LINK AND A JUMP, and a routine that calls keeps its return address in a word of its
+        # A call is link and a jump, and a routine that calls keeps its return address in a word of its
         # own. So a routine cannot call itself, and a program in which one can is refused before
         # this is reached (LoweringPlan#refuse_routines_that_call_themselves!).
         #
-        # ALL OF IT IS ONE SECTION, so it is all in one bank of the cartridge. The chip jumps with
+        # All of it is one section, so it is all in one bank of the cartridge. The chip jumps with
         # 16-bit addresses inside a bank, and its quick memory takes no notice of which bank a byte
         # is from.
         #
-        # A BRANCH REACHES ONLY 127 BYTES. A jump to anywhere is an IWT into R15. Written out
+        # A branch reaches only 127 BYTES. A jump to anywhere is an IWT into R15. Written out
         # everywhere that would be longer and slower for the many that do not need it, and how far a
         # branch must go is not known until what it jumps over has been written. So everything is
         # written with short branches, those that turn out too short are noted, and it is all
@@ -123,7 +123,7 @@ module VBlank
           IN_PLACE_SUMS = Ractor.make_shareable({ :+ => %i[add adc], :- => %i[sub sbc], :& => %i[and_ and_], :| => %i[or_ or_],
                                                   :^ => %i[xor xor] })
           COMPARISONS = %i[< <= > >= == !=].freeze
-          # Which branch is taken when a comparison does NOT hold, for each comparison.
+          # Which branch is taken when a comparison does not hold, for each comparison.
           FAILS = Ractor.make_shareable({ :== => :bne, :!= => :beq, :< => :bge, :> => :bge, :>= => :blt, :<= => :blt })
           OPPOSITE = Ractor.make_shareable({ bne: :beq, beq: :bne, bge: :blt, blt: :bge, bpl: :bmi, bmi: :bpl, bcc: :bcs,
                                              bcs: :bcc })
@@ -336,7 +336,7 @@ module VBlank
             @gsu.section
           end
 
-          # Where the console starts the chip: the routine, and STOP. A run that paints holds the
+          # Where the console starts the chip: the routine, and stop. A run that paints holds the
           # columns it draws back to paint them together (Runtime::ChipColumns), and paints the last
           # of them before it stops.
           def emit_entry(name)
@@ -361,7 +361,7 @@ module VBlank
             @outside_lists.each { |fault| emit_list_fault(fault) }
           end
 
-          # A LIST THAT STOPS THE GAME — an index outside it, an item added when it is full or taken
+          # A list that stops the game — an index outside it, an item added when it is full or taken
           # when it is empty — and the chip cannot stop it: the console does, in Runtime::Lists's
           # words. So the chip leaves the list's place, the index (or which end an item was taken
           # from), and which kind of fault it was where the console looks after every run, and stops
@@ -481,7 +481,7 @@ module VBlank
           end
 
           # Reference#exec_repeat: the count worked out once, the index counting 0, 1, 2... and stored
-          # in the game's variable at the top of each pass, and +stop_when+ asked BEFORE the body.
+          # in the game's variable at the top of each pass, and +stop_when+ asked before the body.
           #
           # CACHE at the top keeps the first 512 bytes from here in the chip's quick memory, where a
           # byte takes a fifth of the time it takes from the ROM. It is asked again each time round,
@@ -651,7 +651,7 @@ module VBlank
           # The register the fill counts its items down in.
           ITEMS_LEFT = 6
 
-          # The number in LOW and HIGH into the slot at SLOT, as many bytes as the slot takes: a
+          # The number in LOW and HIGH into the slot at slot, as many bytes as the slot takes: a
           # narrow slot keeps the low bits (Reference::ListValue#wrap_to_width). SLOT is left two
           # bytes on for a whole word.
           def emit_write_slot(list)
@@ -899,7 +899,7 @@ module VBlank
           # Reference#value_of_table_get: the index made safe (LoweringPlan.index_kept_in_range), and
           # the entry read from the cartridge.
           #
-          # THE CHIP READS THE CARTRIDGE ITSELF, through a buffer: ROMB names the bank, and writing
+          # The chip reads the cartridge itself, through a buffer: ROMB names the bank, and writing
           # R14 starts the read of the byte at that address, which GETB then takes (waiting for it if
           # it has not come yet). Each GETB gets one byte, and an INC of R14 starts the next. A
           # table is in one bank, as every section is, so its bank is a number the linker knows.
@@ -1055,7 +1055,7 @@ module VBlank
             @gsu.or_(high)
           end
 
-          # The flags left as a comparison sets them, and the branch taken when it does NOT hold. Equal or
+          # The flags left as a comparison sets them, and the branch taken when it does not hold. Equal or
           # not: the two halves' differences together are nought only when both are. Less or more:
           # the left side less the right side, for the sign of the answer.
           def emit_comparison(node)

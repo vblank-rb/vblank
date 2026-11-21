@@ -4,16 +4,16 @@ module VBlank
   module IR
     module Backends
       class SNES
-        # A GAME'S PICTURES, MADE INTO WHAT A SUPER NINTENDO DRAWS FROM, while the program is built.
+        # A game's pictures, made into what a Super Nintendo draws from, while the program is built.
         #
         # The Super Nintendo draws everything from TILES: 8×8 pictures in which each pixel is a
-        # number, here four bits — one of sixteen places in a list of colours (a PALETTE). A tile
+        # number, here four bits — one of sixteen places in a list of colours (a palette). A tile
         # is kept as four BITPLANES: for each row, a byte holding bit 0 of each of its eight
         # pixels, then a byte holding bit 1, and after all eight rows the same again for bits 2 and
-        # 3 — 32 bytes a tile. A background is a grid of cells (a MAP), each naming a tile and one of
+        # 3 — 32 bytes a tile. A background is a grid of cells (a map), each naming a tile and one of
         # eight palettes for it; a sprite is a tile placed anywhere, drawn from one of eight palettes
         # of its own. Place 0 of every palette is see-through, and where nothing is drawn the screen
-        # shows colour 0 of the first palette, the BACKDROP, black as the interpreter's empty
+        # shows colour 0 of the first palette, the backdrop, black as the interpreter's empty
         # screen is.
         #
         # So a picture the game declared is cut into 8×8 pieces, each piece's pixels written as
@@ -39,7 +39,7 @@ module VBlank
 
           TILE_BYTES = 32
 
-          # THE THIRD LAYER'S TILES are four-colour: two bit planes, so each pixel is one of four
+          # The third layer's tiles are four-colour: two bit planes, so each pixel is one of four
           # places (place 0 see-through) and a tile is 16 bytes, the first half of a sixteen-colour
           # tile's 32 (#tile_bytes). The console reads them from video memory address 0, as the
           # other two layers do, counting 16 bytes a tile where those count 32; so one place of the
@@ -73,7 +73,7 @@ module VBlank
           end
           SpritePicture = Data.define(:name, :number, :width, :height, :pieces)
 
-          # THE TABLE OF SPRITES HAS 128 ROWS, and a character is often bigger than one 8×8 tile, so
+          # The table of sprites has 128 ROWS, and a character is often bigger than one 8×8 tile, so
           # a screen of big sprites cut into 8×8 pieces runs out of rows the console's own games do
           # not. The console can be told a row is the larger of its two sprite sizes, 16×16 here.
           # It then draws four tiles from one row: the one the row names, the one beside it, and the
@@ -148,13 +148,13 @@ module VBlank
 
           attr_reader :background_tiles, :sprite_tiles, :grids, :sprite_pictures
 
-          # WHAT A BACKGROUND TILE'S PIXELS COME TO, worked out once a build. A map names the same
+          # What a background tile's pixels come to, worked out once a build. A map names the same
           # tile in many cells, and a build is tried several times over (SNES#build), and each time
           # a cell is made its picture was read pixel by pixel again: which colours it draws, and the
           # 32 bytes of each 8×8 quarter. Those depend on the picture alone, and on where its
           # colours sit in the palette it is drawn from, so they are kept here by exactly that.
           #
-          # Which palette a cell takes, and which tile number, are NOT kept: those are the Art's
+          # Which palette a cell takes, and which tile number, are not kept: those are the Art's
           # choices, made against the palettes and tiles placed so far, and a cell made twice can
           # take an earlier palette the second time (one that has since gained its colours). So
           # every call still makes those choices as it always did, and only reading the pixels is
@@ -197,7 +197,7 @@ module VBlank
           # one row each. A square keeps its four tiles together, so it shares them less often than
           # 8×8 pieces do, and a game that only just fits is built without (SNES#build).
           #
-          # EACH SCREEN'S COLOURS (+screen_colors+). The console draws a background from eight sets
+          # Each screen's colours (+screen_colors+). The console draws a background from eight sets
           # of colours at once, and nothing says they cannot change between two screens, so a game's
           # own screens load theirs as they load their maps: dozens across a game, and never more
           # than eight up. A game that does not fit the eight is built that way (SNES#build). What
@@ -208,16 +208,16 @@ module VBlank
           # pictures only one scene's sprites show drawn from that scene's (#sprite_palettes), so a
           # list of one screen pushes out no list of another screen, which never share a frame.
           #
-          # EACH SCREEN'S SPRITE TILES (+scene_tiles+). Video memory holds 512 sprite tiles at once, and
+          # Each screen's sprite tiles (+scene_tiles+). Video memory holds 512 sprite tiles at once, and
           # nothing says they stay the same ones. Those of what every screen keeps go in at power-on
           # and stay. Each scene starts from a copy of that list and adds its own in the places left
           # (#with_sprite_tiles_of), and those come in as it takes over (#scene_sprite_tiles). The
           # backgrounds' 1024 tiles go the same way (+background_tiles+, #with_background_tiles_of).
           #
-          # A STATUS BAR ON THE THIRD LAYER (+third_layer+, #bar_cell) takes the last 64 tile places
+          # A status bar on the third layer (+third_layer+, #bar_cell) takes the last 64 tile places
           # for its map (Runtime::Picture::THIRD_LAYER_MAP), so the backgrounds keep 960.
           #
-          # SHORT LISTS ONE BACKGROUND CHANGES SHARE A SET (+shared_held_lists+, #held_background_palette).
+          # Short lists one background changes share a set (+shared_held_lists+, #held_background_palette).
           # A list the game changes has a set of colours to itself, and a set holds fifteen. A
           # background from the data pack of four-colour tiles is drawn from banks of three colours and
           # see-through, each a list, so walking its four banks up from black takes four sets where its
@@ -226,10 +226,10 @@ module VBlank
           # otherwise those lists go one after another in one set, each tile's places counted from
           # where its list starts there.
           #
-          # A CROWDED SCREEN'S SPRITES (+lean_square_scenes+, +small_sprite_scenes+). The console takes
+          # A crowded screen's sprites (+lean_square_scenes+, +small_sprite_scenes+). The console takes
           # squares of 16×16 and pieces of 8×8 on one screen, a size bit on each row of its sprite
           # table, so a screen whose pictures do not all fit as squares need not give up every square.
-          # It is built again with +lean_square_scenes+ naming it, and the number of SPARE TILES it may
+          # It is built again with +lean_square_scenes+ naming it, and the number of spare tiles it may
           # spend. A square takes four tiles side by side, where its quarters as pieces of 8×8 take
           # only the new ones that draw something: a blank quarter, two quarters alike, or a quarter
           # some tile already holds is a tile the square wastes (#square_waste). A square that wastes
@@ -240,9 +240,9 @@ module VBlank
           # small alone (+small_sprite_scenes+). What each crowded screen gave up is in #lost_squares,
           # for the build to say.
           #
-          # SPRITES OVER A PAINTED SCREEN (+painted_screen_room+). The painted screen takes video
-          # memory up to $7800 and two of its tiles past it (Runtime::Paint, "SPRITES OVER THE
-          # PICTURE"), so the sprites' tiles are the places left among the last 128: every other place
+          # Sprites over a painted screen (+painted_screen_room+). The painted screen takes video
+          # memory up to $7800 and two of its tiles past it (Runtime::Paint, "sprites over the
+          # picture"), so the sprites' tiles are the places left among the last 128: every other place
           # is taken from the start, and the tiles copied at power-on start at the first of those
           # (#sprite_tile_data). Each screen bringing its own tiles or colours in is not made there,
           # so a game that does not fit is refused in plain words, naming the room.
@@ -333,7 +333,7 @@ module VBlank
             [number, palette]
           end
 
-          # THE CELL A 16×16 TILE MAKES, on a background the console draws from tiles of that size. The
+          # The cell a 16×16 tile makes, on a background the console draws from tiles of that size. The
           # console still keeps 8×8 tiles, and draws a big one as four: the one a cell names, the one
           # after it, and the two sixteen on (the row below, in video memory's rows of sixteen tiles).
           # So the four quarters of +image+ (an Assets::Image of 16×16) go in four places that
@@ -365,7 +365,7 @@ module VBlank
             [number, palette]
           end
 
-          # THE BACKGROUND A THIRD-LAYER CELL IS MADE FOR, as a refusal names it: its name, and whether
+          # The background a third-layer cell is made for, as a refusal names it: its name, and whether
           # it is held above a row (+held_above+) or a status bar.
           ThirdLayerOwner = Data.define(:name, :held_above) do
             def kind = held_above ? "background" : "status bar"
@@ -377,12 +377,12 @@ module VBlank
             end
           end
 
-          # A COLOUR OF THE THIRD LAYER THAT A WALK CHANGES (`draw_with`): kept by the list and place
+          # A colour of the third layer that a walk changes (`draw_with`): kept by the list and place
           # it was drawn at, not by its colour, since two places of one colour can walk apart. Its
           # +color+ is the one it was drawn in.
           BarPlace = Data.define(:list, :place, :color)
 
-          # THE CELL +image+ (8×8) MAKES ON THE THIRD LAYER, for +owner+ (a ThirdLayerOwner): its
+          # The cell +image+ (8×8) makes on the third layer, for +owner+ (a ThirdLayerOwner): its
           # four-colour tile's number and its list, of the layer's eight. A tile of more than three
           # colours, or more colours than the eight lists hold, is refused naming the background and
           # the tile (+tile+). On a background drawn with other colours (+walks+) each colour is a
@@ -404,7 +404,7 @@ module VBlank
             [bar_tile_number(TileBytes.of(places).byteslice(0, BAR_TILE_BYTES)), palette]
           end
 
-          # THE THIRD LAYER'S COLOURS AS A WALK WRITES THEM (Runtime::Tint's rt_colors_hold): for each of
+          # The third layer's colours as a walk writes them (Runtime::Tint's rt_colors_hold): for each of
           # the backgrounds' lists the layer's are in, where it starts in the colour memory and its
           # fifteen colours. +swaps+ (Nodes::Background#list_swaps) gives each list a tile is drawn
           # from the list it is drawn with, and nil leaves every colour as drawn. A BarPlace takes the
@@ -421,7 +421,7 @@ module VBlank
             end
           end
 
-          # THE BACKGROUNDS' LISTS THE BAR'S COLOURS ARE IN, kept from the other backgrounds: one for
+          # The backgrounds' lists the bar's colours are in, kept from the other backgrounds: one for
           # each four lists of the bar's. Called once the bar's cells are made and before any other
           # background's, so those are the first lists and nothing else is in them yet.
           def reserve_bar_palettes
@@ -435,7 +435,7 @@ module VBlank
           # colour a picture can have, so no picture's colours are found in it.
           BAR_LIST_HOLDER = -1
 
-          # A LIST THE GAME CHANGES AS IT RUNS has a palette to itself, its colours in the order of its
+          # A list the game changes as it runs has a palette to itself, its colours in the order of its
           # places: changing it is writing another list over that palette, so every pixel has to
           # be the place it was drawn at, and nothing else's colours can share it. +key+ names whose
           # it is, a background's name and a list or a sprites' list. Its colours are the first ones
@@ -497,7 +497,7 @@ module VBlank
             @scene_palettes[scene] ||= base.map { |list| list&.dup }
           end
 
-          # ONE AREA OF A BACKGROUND THAT WALKS BETWEEN AREAS (`background ..., tiles: { shrine: ..., clearing: ... }`):
+          # One area of a background that walks between areas (`background ..., tiles: { shrine: ..., clearing: ... }`):
           # video memory holds one area's tiles at a time, so each area keeps a copy of the tiles and the
           # sets of colours of its screen, its own added (#with_background_tiles_of, #background_palettes),
           # and walking into it brings in what differs from what every screen keeps (Lowering::Picture's
@@ -642,7 +642,7 @@ module VBlank
           # tiles, in a game of +scene_tiles+. +number+ is its place in the table of pictures, where
           # it is not made in that order.
           #
-          # A SCREEN WHOSE SPRITES DO NOT FIT (ScreenSpritesFull) fails the try, but it is one screen of
+          # A screen whose sprites do not fit (ScreenSpritesFull) fails the try, but it is one screen of
           # many, and each screen keeps its own tiles, so the others can be crowded too and the next
           # try would only find the next. So the screen is noted, its pictures from then on stand in
           # with no pieces, and the try goes on to find every screen that does not fit before it
@@ -1053,8 +1053,8 @@ module VBlank
             tiles.length - new_tiles.length
           end
 
-          # A PICTURE THE GAME MADE OF PIECES (Assets::Image#pieces) is shown from those pieces, each
-          # where the game put it and in its order, the first in front, and each ONE row of the
+          # A picture the game made of pieces (Assets::Image#pieces) is shown from those pieces, each
+          # where the game put it and in its order, the first in front, and each one row of the
           # table: not cut again on a grid, which would turn a letter of 16×16 sitting off the grid
           # into several rows. A cartridge's own pieces overlap and sit anywhere, and a screen lifted
           # from one fits the table only as the rows it was made of. A piece that draws nothing takes

@@ -38,7 +38,7 @@ module VBlank
           # falls a step apart from the interpreter's is found on the pass it happens.
           def sounding_levels(run) = run.active_samples.map { |name| [name, run.level_of(name)] }
 
-          # THE SOUND UNIT ITSELF, held to the sound log: the first time the game was found waiting with
+          # The sound unit itself, held to the sound log: the first time the game was found waiting with
           # a register of the S-DSP holding something other than what the interpreter's log says it
           # must, as far as the entries the cartridge had logged then (each register those entries
           # write, DSPWrites.after), the pass and the registers that differ. The log agreeing is not
@@ -48,7 +48,7 @@ module VBlank
           # the cartridge logged them, where a stop names the tune it stopped (HeadlessRun#audio_as_logged),
           # which the interpreter's [:stop_music] does not.
           #
-          # A RECORDING THE GAME PLAYS takes a voice of the four past the Advance's, chosen by where the
+          # A recording the game plays takes a voice of the four past the Advance's, chosen by where the
           # interpreter's mix puts it (Runtime::Recordings), which the log does not say: those voices'
           # registers are not held to it, nor their bits of the key-on and key-off registers, which
           # they share. Which recordings sound is held instead, at every moment (HeadlessRun#active_samples).

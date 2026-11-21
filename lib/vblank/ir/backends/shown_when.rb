@@ -3,10 +3,10 @@
 module VBlank
   module IR
     module Backends
-      # WHEN A SPRITE SHOWS, as tests: +tests+ are comparisons that must all hold, and +flag+ a value
+      # When a sprite shows, as tests: +tests+ are comparisons that must all hold, and +flag+ a value
       # that must be 1, or nil. For the Genesis's and the Color's placing of a sprite.
       #
-      # A sprite shows while its `active` is 1. The builder makes that a PRODUCT for a sprite that
+      # A sprite shows while its `active` is 1. The builder makes that a product for a sprite that
       # belongs to a scene, or is declared under an `if`, or is a place of a pool: its own flag times
       # "is this the scene that is up", times each condition it was written under
       # (Builder#gated_by_scene), and a pool's place is "the pool holds more things than this place's
