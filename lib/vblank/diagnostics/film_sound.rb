@@ -90,7 +90,7 @@ module VBlank
         @heard[label] = samples_by_frame
       end
 
-      # The film's sound written to +path+ as a WAV file: two speakers of sixteen-bit samples at rate.
+      # The film's sound written to +path+ as a WAV file: two speakers of sixteen-bit samples at RATE.
       def write_wav(path)
         left, right = speakers
         data = left.zip(right).flatten.pack("s<*")

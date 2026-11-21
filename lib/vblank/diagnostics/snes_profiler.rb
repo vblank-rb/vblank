@@ -11,7 +11,7 @@ module VBlank
     #
     # Which routines took the time comes from the emulator (TimeByRoutine): bsnes adds up the clocks
     # each instruction took, DMA included. The game waits for the screen by sending its sound queue,
-    # so waits are the runtime's routines that are only waiting, or doing what can wait.
+    # so WAITS are the runtime's routines that are only waiting, or doing what can wait.
     class SNESProfiler
       SETTLE = 20
       FRAMES = 60

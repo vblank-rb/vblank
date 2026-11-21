@@ -91,7 +91,7 @@ module VBlank
       class MissingTool < StandardError; end
 
       # Make the film and write it to +path+, which is handed back. +search_path+ is where the
-      # programs are looked for, the folders of a path; left out, it is this process's.
+      # programs are looked for, the folders of a PATH; left out, it is this process's.
       # +scale+ is how many times the console's size each picture is shown at. +sound+ is which side
       # is heard (FilmSound), none unless given.
       def self.make(path, sides:, parts:, keys: ->(_frame) {}, scale: PICTURE_SCALE, sound: nil,

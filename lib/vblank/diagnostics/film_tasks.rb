@@ -39,7 +39,7 @@ module VBlank
     # (Playthroughs::CommandLine::SHOWN_WAYS), which play the game itself, so a cartridge file is
     # shown only in the emulator.
     #
-    # Sound. A film is silent unless something asks to hear it: `rake film NAME=door SOUND=ours` hears
+    # SOUND. A film is silent unless something asks to hear it: `rake film NAME=door SOUND=ours` hears
     # that side, `SOUND=side_by_side` two sides one on each speaker, and `SOUND=in_turn` shows the film
     # once for each side, one heard each time (FilmSound). That is over the film file's `sound`, which is
     # over the Rakefile's #sound.
