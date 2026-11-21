@@ -3,7 +3,7 @@
 require "test_helper"
 
 # A game "part" in its own file — a plain object handed the builder, the multi-file
-# pattern the cost-tree-by-source grouping is for. Its draws are recorded from THIS
+# pattern the cost-tree-by-source grouping is for. Its draws are recorded from this
 # file, so every node it builds carries left_wall.rb as its source.
 module CostParts
   class LeftWall
