@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# ONE CELL OF A BACKGROUND'S MAP AS THE DATA PACK KEEPS IT (Original::MapCell). The answer key is
+# One cell of a background's map as the data pack keeps it (Original::MapCell). The answer key is
 # the layout the record's comment and original.md write down: the tile in two bytes, low byte
 # first, then the bank, then the turns, 1 mirrored and 2 upside down.
 class TestMapCell < Minitest::Test

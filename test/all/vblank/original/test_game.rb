@@ -212,7 +212,7 @@ class TestOriginalGame < Minitest::Test
     assert_raises(ArgumentError) { game(Dir.tmpdir, releases: nil) }
   end
 
-  # A GAME THAT ACCEPTS BY SHA-1 AND NAMES BY ITS HEADER: two releases of made-up bytes, each
+  # A game that accepts by SHA-1 and names by its header: two releases of made-up bytes, each
   # starting with a region of its own, and a probe that reads the region as a game reads its
   # cartridge's header. The digest decides what is accepted; the probe only names what is refused.
   US_DUMP = "US:the release this game reads"

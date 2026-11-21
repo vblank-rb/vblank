@@ -5,7 +5,7 @@ require "fileutils"
 require "tmpdir"
 require "made_up_original"
 
-# A PORT'S UNPACKING IS RUN ONCE FOR A COPY AND A ROUTINE. Built all-in-one, a game's unpacking
+# A port's unpacking is run once for a copy and a routine. Built all-in-one, a game's unpacking
 # routine runs on the interpreter as the game is built, which for a big port takes most of a
 # minute; `data_pack(cache:)` keeps what it wrote, so the next build with the same copy and the same
 # routine reads that back. The answer key is the same game built with no cache.

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A FRAME OF A SPRITE AS THE DATA PACK KEEPS IT (Original::FrameRecord): the record a layout's
+# A frame of a sprite as the data pack keeps it (Original::FrameRecord): the record a layout's
 # frame is written as, read back, and the section of a pack that holds every frame a game names.
 # The answer key is the made-up frame's own numbers, written out here.
 class TestFrameRecord < Minitest::Test
