@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # WHERE A GAME BOY COLOR CARTRIDGE'S FRAMES WENT, measured by running it — the Color's own
+    # Where a Game Boy Color cartridge's frames went, measured by running it — the Color's own
     # profiler, beside the Advance's (Profiler), which it shares nothing with but the idea.
     #
     # The emulator plays the cartridge an instruction at a time and counts the cycles each one
@@ -76,7 +76,7 @@ module VBlank
         end
       end
 
-      # WHAT TapeProfile ASKS OF THE CONSOLE IT PLAYS A TAPE ON (see TapeProfile.play): the file
+      # WHAT TapeProfile asks of the console it plays a tape on (see TapeProfile.play): the file
       # name, the buttons put down, the runtime's two words, and one frame played and measured.
       def file_name = FILE_NAME
 

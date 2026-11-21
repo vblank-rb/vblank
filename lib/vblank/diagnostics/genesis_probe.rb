@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # A RUNNING SEGA GENESIS CARTRIDGE, answering what the one reader (Verifier) asks of a running
+    # A running Sega Genesis cartridge, answering what the one reader (Verifier) asks of a running
     # cartridge. The Advance and the Color play in libmgba, whose probe (RubyGBAEmulator::Probe) the
     # reader was written over; this plays in Genesis Plus GX (ruby-genesis-emulator) and takes the same
     # calls, as SNESProbe does for bsnes.
@@ -36,7 +36,7 @@ module VBlank
         @last_audio = []
       end
 
-      # THE VOICES #hearing CAN NAME: the FM chip's six and the square chip's three and its noise.
+      # The voices #hearing can name: the FM chip's six and the square chip's three and its noise.
       # Genesis Plus GX sets each one's loudness from a setting of its own, read as it loads the
       # cartridge, so a voice is left out by opening the core again with that voice's loudness at 0.
       VOICE_SETTINGS = Ractor.make_shareable({
@@ -114,7 +114,7 @@ module VBlank
       def read32(address) = @core.wram_read32(work_ram_offset(address))
       def write32(address, value) = @core.wram_write32(work_ram_offset(address), value)
 
-      # THE CONSOLE'S WHOLE STATE, written to the file +path+ in Genesis Plus GX's own format, and put
+      # The console's whole state, written to the file +path+ in Genesis Plus GX's own format, and put
       # back from one (Verifier#save_state, #load_state).
       def save_state(path) = File.binwrite(path, @core.serialize)
       def load_state(path) = @core.unserialize(File.binread(path))

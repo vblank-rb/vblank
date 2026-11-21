@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # WHERE A SEGA GENESIS CARTRIDGE'S FRAMES WENT, measured by running it.
+    # Where a Sega Genesis cartridge's frames went, measured by running it.
     #
     # A pass of the game loop is meant to fit in one frame. One that does not shows the same
     # picture twice and the game runs at half speed for that pass, with nothing on screen to show
