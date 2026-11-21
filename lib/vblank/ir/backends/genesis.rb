@@ -42,14 +42,14 @@ module VBlank
       # The game as a SEGA GENESIS cartridge: the same program every other backend runs, lowered to
       # the 68000, the console's processor, and laid out flat in a cartridge of up to four megabytes.
       #
-      # HOW IT IS MADE. Genesis::Lowering walks the IR and emits 68000 machine code through the Ruby
+      # How it is made. Genesis::Lowering walks the IR and emits 68000 machine code through the Ruby
       # assembler (Genesis::M68000), as the Super Nintendo's lowering emits 65816, and shares with
       # that lowering what both work out before writing an instruction (LoweringPlan, RoutineCuts,
       # Sections). The runtime the code calls is written in 68000 here, in Ruby. The cartridge is
       # checked in Genesis Plus GX through ruby-genesis-emulator, which `rake compile_genesis_core`
       # builds.
       class Genesis
-        # WHERE A RUNNING CARTRIDGE KEEPS WHAT A READER WANTS, which nothing in its bytes shows: every
+        # Where a running cartridge keeps what a reader wants, which nothing in its bytes shows: every
         # variable by the game's name (its address in work RAM), every list ([its address, its
         # capacity, the bytes a slot, its name]), where the runtime keeps how the run stands
         # (Runtime::Frame's names), where every label of the code went, the program it was built from,
@@ -85,7 +85,7 @@ module VBlank
           end
         end
 
-        # HOW MANY 8×8 TILES THE GAME'S PICTURES PUT IN VIDEO MEMORY, which the build knows and a
+        # How many 8×8 tiles the game's pictures put in video memory, which the build knows and a
         # running cartridge does not show: +room+ is how many fit, +every_screen+ how many the
         # pictures every screen shows take, and +by_scene+ how many are there while each scene is up,
         # its own and those, for a game whose scenes bring their own tiles in (empty for any other).
@@ -126,7 +126,7 @@ module VBlank
         # a game carries that part of the runtime even if it never fades.
         #
         # A game whose tiles still do not fit once its scenes take turns, or that has no scenes to take
-        # turns, is built again with the sprite whose poses give back the most kept to ONE POSE in video
+        # turns, is built again with the sprite whose poses give back the most kept to one pose in video
         # memory at a time, the pose it shows copied in from the cartridge as it changes to it (+streamed+,
         # Lowering::PoseRooms), and again with another such sprite, until the tiles fit or no sprite
         # would give any back. A game that fits without it builds as it did.

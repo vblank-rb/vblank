@@ -4,15 +4,15 @@ module VBlank
   module IR
     module Backends
       class Genesis
-        # A GAME'S PICTURES, MADE INTO WHAT A GENESIS DRAWS FROM, while the program is built.
+        # A game's pictures, made into what a Genesis draws from, while the program is built.
         #
         # The Genesis draws everything from TILES: 8×8 pictures in which each pixel is a number, here
-        # four bits — one of sixteen places in a list of colours (a PALETTE). A tile is 32 bytes: a row of
+        # four bits — one of sixteen places in a list of colours (a palette). A tile is 32 bytes: a row of
         # eight pixels is four bytes, two pixels to a byte, the left one in the top four bits. A
-        # background is a grid of cells (a MAP), each naming a tile and one of four palettes for it; a
+        # background is a grid of cells (a map), each naming a tile and one of four palettes for it; a
         # sprite is a tile placed anywhere, drawn from one of the same four palettes. Place 0 of every
         # palette is see-through, and where nothing is drawn the screen shows colour 0 of the first
-        # palette, the BACKDROP, black as the interpreter's empty screen is.
+        # palette, the backdrop, black as the interpreter's empty screen is.
         #
         # So a picture the game declared is cut into 8×8 pieces, each piece's pixels written as places
         # in a palette of fifteen colours, and the palettes the game's pictures need gathered into the
@@ -134,7 +134,7 @@ module VBlank
           # painted picture keeps the first palette and most of video RAM to itself (Runtime::Paint), so the
           # sprites have the other three palettes and the tiles between the picture's and the scroll table.
           #
-          # EACH SCREEN'S TILES (+scene_tiles+). Video memory holds MOST_TILES tiles at once, and nothing
+          # Each screen's tiles (+scene_tiles+). Video memory holds MOST_TILES tiles at once, and nothing
           # says they stay the same ones: the console's own games load a screen's art as the screen
           # starts. So in a game whose tiles together do not fit (Genesis#build), the tiles every screen
           # shows are numbered first, from 1, and go in at power-on and stay. Each scene then starts
@@ -143,7 +143,7 @@ module VBlank
           # of video memory that the arriving scene fills (#scene_tile_data). What has to fit is one
           # scene's tiles with the shared ones, never two scenes'.
           #
-          # EACH SCREEN'S COLOURS (+scene_colors+) go the same way, for a game whose pictures together
+          # Each screen's colours (+scene_colors+) go the same way, for a game whose pictures together
           # need more than the four palettes (Genesis#build): the console's own games write a screen's
           # palettes as the screen comes up. The palettes every screen keeps are allotted first: a list
           # the game changes, whose palette is written over whichever scene is up, and the colours of
@@ -212,7 +212,7 @@ module VBlank
             [@tiles.word_of(TileBytes.of(places), taker), palette]
           end
 
-          # THE CELL OF A TILE THE GAME PAINTS (Lowering::TileRuns), +name+, from the list +colors+ (see-through
+          # The cell of a tile the game paints (Lowering::TileRuns), +name+, from the list +colors+ (see-through
           # first): a tile of its own in the store being added to, blank until the game's first copy, and
           # the palette whose places are the list's, so the places the game paints are the palette's. One
           # tile for each store that shows it: the tiles every screen shows, or a scene's own.
@@ -226,7 +226,7 @@ module VBlank
           # +places+.
           KnownRunCell = Data.define(:cell, :places)
 
-          # THE CELL OF A PAINTED TILE WHOSE PICTURES ARE ALL KNOWN (Lowering::TileRuns#run_places_drawn),
+          # The cell of a painted tile whose pictures are all known (Lowering::TileRuns#run_places_drawn),
           # +name+, whose pictures draw the colours +drawn+ (15-bit) and no other: drawn from whichever
           # palette holds those colours, adding them to one with room, as a background's drawn tile is,
           # rather than from a palette of the whole list in its order. The copy puts each of the list's
@@ -260,12 +260,12 @@ module VBlank
           # picture drawn in the colours of another list is drawn from place for place; without it the
           # picture is drawn from whatever palette holds its colours.
           #
-          # A PIECE IS UP TO FOUR TILES ACROSS AND FOUR DOWN. One entry of the sprite table draws it from
+          # A piece is up to four tiles across and four down. One entry of the sprite table draws it from
           # tiles that follow one another in video memory, down its first column and then down the next,
           # so a big picture takes few of the table's 80 entries, and few of the 20 a row of the screen
           # shows (SpritePieces.cover). A blank square inside a piece is a blank tile of its own.
           #
-          # A PICTURE MADE OF A CONSOLE'S OWN PIECES (Assets::Image#piece_groups, a pose read from an
+          # A picture made of a console's own pieces (Assets::Image#piece_groups, a pose read from an
           # original's frames) is drawn as those pieces, each an entry of the table wherever it sits in the
           # picture, and not covered again on the picture's grid of 8. A frame's piece names a run of the
           # original's tiles, so cut this way each of its tiles is one of the original's, whole: the tile
@@ -282,7 +282,7 @@ module VBlank
             end
           end
 
-          # THE RUNS OF TILES THE PIECES OF +names+ NAME (pictures cut already, of a console's own pieces),
+          # The runs of tiles the pieces of +names+ NAME (pictures cut already, of a console's own pieces),
           # stored the longest first. A short piece's tiles are often part of a long one's, as an original
           # draws a small piece from the middle of the tiles a big one uses; stored after the long run the
           # short one is found inside it, and stored before it the long run would hold those tiles again.
@@ -313,11 +313,11 @@ module VBlank
           def cut_of(name) = @cuts[name]
 
           # The tiles of the picture +name+, cut already, in the order its pieces name them: each piece's
-          # down its columns, the pieces in the sprite table's order. What a ROOM FOR ONE POSE holds while
+          # down its columns, the pieces in the sprite table's order. What a room for one pose holds while
           # the picture is shown (#room_picture).
           def cut_tiles(name) = @cuts.fetch(name).blocks.flat_map(&:tiles)
 
-          # A ROOM FOR ONE POSE (Lowering::PoseRooms): +count+ tiles in a row among the tiles every screen
+          # A room for one pose (Lowering::PoseRooms): +count+ tiles in a row among the tiles every screen
           # shows, blank at power-on and never shared with a picture however alike, since the game copies
           # the pose a sprite shows into them as it runs. Its first tile's number. Must be made before a
           # scene takes its copy of the tiles (#with_tiles_of), so it is in video memory whatever is up.
@@ -327,7 +327,7 @@ module VBlank
             Array.new(count) { @shared_tiles.own_tile(taker) }.first
           end
 
-          # THE PICTURE +name+, CUT ALREADY, DRAWN FROM A ROOM FOR ONE POSE whose first tile is +first+, kept
+          # The picture +name+, cut already, drawn from a room for one pose whose first tile is +first+, kept
           # under +key+: each piece names its tiles in the room, in the order #cut_tiles lays them there, and
           # none is turned, since the room holds them as the picture shows them.
           def room_picture(key, name, first)
@@ -344,7 +344,7 @@ module VBlank
             end
           end
 
-          # A PALETTE WHOSE PLACES ARE A LIST'S, in the list's order: a picture the game draws in the colours of
+          # A palette whose places are a list's, in the list's order: a picture the game draws in the colours of
           # another list (a sprite's `draw_with`) is made of places in its own list and keeps them whichever
           # list it is drawn with, so each list it can be drawn with is a palette of its own with that list's
           # colours at those places, and the sprite is drawn from the one it is told. +colors+ (15-bit, see-through
@@ -375,7 +375,7 @@ module VBlank
             end
           end
 
-          # A LIST OF COLOURS THE GAME CHANGES AS IT RUNS keeps a palette to itself, its colours in the order
+          # A list of colours the game changes as it runs keeps a palette to itself, its colours in the order
           # of its places: changing it is writing other colours over that palette, so every pixel of a picture
           # drawn from it is the place it was drawn at, and nothing else's colours can share it. +key+ names
           # whose list it is, and +colors+ (15-bit, see-through left out) are the colours it starts with.
@@ -420,7 +420,7 @@ module VBlank
           # The place before the first of the list kept under +key+: 0 but for a list that shares its palette.
           def held_offset_of(key) = @held_offsets.fetch(key, 0)
 
-          # A LIST THE GAME CHANGES THAT ONLY SOME SCENES DRAW WITH keeps a palette in those scenes' copies
+          # A list the game changes that only some scenes draw with keeps a palette in those scenes' copies
           # alone (+scenes+), and every other scene has that palette for its own pictures, as a console game
           # writes all four palettes when it changes screen. The list's palette has one number in every scene
           # that draws with it, since the code that writes it names the number: the first that no palette
@@ -530,7 +530,7 @@ module VBlank
           # How many tiles the art has, the blank one not counted.
           def tile_count = @shared_tiles.length - 1
 
-          # THE BUILD IS REFUSED WHERE ITS TILES DO NOT FIT, once every picture is made: the tiles every
+          # The build is refused where its tiles do not fit, once every picture is made: the tiles every
           # screen shows, and in a game whose scenes each keep their own, each scene's with them. Asked
           # at the end and not as each tile is stored, so the refusal can say how many tiles are wanted
           # and which pictures took the most.
@@ -801,7 +801,7 @@ module VBlank
             @held_names.fetch(key, "a list of colours of a background")
           end
 
-          # A LIST OF A BACKGROUND'S THAT FINDS NO PALETTE FREE shares one with other such lists. A cell
+          # A list of a background's that finds no palette free shares one with other such lists. A cell
           # names a palette, and its tile's pixels name places in it, so a tile drawn from a short list can
           # name places past the start: a list of three colours at places 4 to 6 is as much the tile's as
           # one at places 1 to 3. So the lists of a background walked bank by bank, as a Color or Advance
