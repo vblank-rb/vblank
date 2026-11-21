@@ -55,7 +55,7 @@ module VBlank
             # and a clip played while the game sets up waits for it.
             PLAYING = "rt clip playing"
             # What sounds as the interpreter counts it, beside the samples themselves: the frames the
-            # recording sounding has left (0 for none, always for one that loops) and its number, both
+            # recording sounding has left (0 for none, ALWAYS for one that loops) and its number, both
             # moved only at a frame's music (#emit_frame), as the interpreter's mix moves its voices at
             # the frame boundary; and what the game asked for since — the frames and number of a clip it
             # played, and 1 where it stopped the one sounding — which that frame takes up first. A run
@@ -140,7 +140,7 @@ module VBlank
             # While a recording plays the wave voice is its own: the music player's writes to it are
             # passed over. When the recording is over the music has it back on its next frame: a wave
             # note held across it is put back, waveform and all (Music#emit_wave_back), and a part
-            # that rested is heard at its next note. Playing is what shows one is playing. A and the
+            # that rested is heard at its next note. PLAYING is what shows one is playing. A and the
             # flags are spent.
             def emit_return_while_recording_plays(asm, memory)
               asm.load_high(:a, memory[PLAYING])

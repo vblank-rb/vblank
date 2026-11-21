@@ -144,7 +144,7 @@ module VBlank
             def reserve_last_pass(memory) = memory.reserve(LAST_PASS, 4)
 
             # Returns from rt_frame_begins_unless_last when LAST_PASS is written and the pass that just ended
-            # (PASSES) comes after it: LAST_PASS less passes, a byte at a time from the lowest, borrows out of
+            # (PASSES) comes after it: LAST_PASS less PASSES, a byte at a time from the lowest, borrows out of
             # the top byte. Neither count is ever negative, so the borrow is the answer.
             def emit_return_past_last_pass(asm, memory)
               asm.load(:hl, memory[LAST_PASS])
@@ -534,7 +534,7 @@ module VBlank
 
             # The screen on for the first frame, after the first frame's copy of everything set up
             # (rt_upload_whole): that copy runs with the screen off, and a frame that ends while it
-            # runs is one of the frames spent setting up. Passes is shown as the screen comes on; a
+            # runs is one of the frames spent setting up. PASSES is shown as the screen comes on; a
             # reader reads it with the count of frames set up, at a frame's end, and none comes
             # between the two.
             def emit_display_on_first(asm, memory)
@@ -736,7 +736,7 @@ module VBlank
               asm.call("rt_buttons_now")
               asm.load([memory[HELD]], :a)
               asm.ret
-              # The game tests a bit of HELD or pressed where it asks (Lowering#emit_button_bits).
+              # The game tests a bit of HELD or PRESSED where it asks (Lowering#emit_button_bits).
             end
 
             # What SHOWN holds once a stopped game's last picture is on the screen.
@@ -744,7 +744,7 @@ module VBlank
 
             # STOPPING. rt_halt stops the game where it is: what it drew since its last frame is
             # copied to the console in the next blank (or straight away, with the screen switched on,
-            # for a game that never got as far as a frame), shown marks that the end is on the screen, and
+            # for a game that never got as far as a frame), SHOWN marks that the end is on the screen, and
             # the processor sleeps from then on. Going wrong is the same, with what went wrong written
             # down first.
             def emit_stopping(asm, memory)
@@ -773,7 +773,7 @@ module VBlank
               asm.halt
               asm.jump_relative("rt_stopped")
 
-              # rt_fault: A = what went wrong, and the list and the two numbers already in fault.
+              # rt_fault: A = what went wrong, and the list and the two numbers already in FAULT.
               asm.label("rt_fault")
               asm.load([memory[FAULT]], :a)
               asm.load(:a, WENT_WRONG)

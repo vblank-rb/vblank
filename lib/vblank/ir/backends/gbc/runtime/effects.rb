@@ -411,7 +411,7 @@ module VBlank
               asm.jump("rt_voice_write")
             end
 
-            # ...nor a swell of the song's held under the music volume, on the voice ([part]).
+            # ...nor a swell of the song's held under the music volume, on the voice ([PART]).
             def emit_end_song_swell(asm, memory)
               asm.load(:a, [memory[Music::PART]])
               Music.swell_voices(memory).each do |voice|

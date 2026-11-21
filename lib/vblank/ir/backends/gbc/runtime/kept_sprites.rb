@@ -20,8 +20,8 @@ module VBlank
           # the one there. What each sprite keeps: where its entries began and ended in the table
           # (start, finish), and in the list of what was drawn that a reader of the run takes it from
           # (DRAWN_BEFORE, DRAWN_AFTER); the round of the table they were written in (ROUND_PLACED,
-          # from round: a pass that hides the sprites moves every entry, and starts a new round); two
-          # marks, both set while it is placed as its numbers set (placed): one its place, one the
+          # from ROUND: a pass that hides the sprites moves every entry, and starts a new round); two
+          # marks, both set while it is placed as its numbers set (PLACED): one its place, one the
           # rest, each made nought by a write of a number it is about; in a game whose sprites borrow
           # the eight lists, the list it wears, one up, and which of the eight its entries name
           # (LENT_LIST, LENT_GROUP); and whether it was last drawn from one piece in one place
@@ -724,7 +724,7 @@ module VBlank
               asm.label("rt_sprite_moved_near")
             end
 
-            # Every entry from START to finish asked whether it stays on the screen as
+            # Every entry from START to FINISH asked whether it stays on the screen as
             # rt_gbc_place_piece asks, or back. HL is kept, at the row's x. The stack here: the bank,
             # the block, what it keeps.
             def emit_moved_entries_fit(asm, tall_pieces)
