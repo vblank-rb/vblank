@@ -4,7 +4,7 @@ require "digest"
 require "tmpdir"
 require "all/vblank/builder/test_pack_poses_of_split_tiles"
 
-# A POSE WHOSE TILE NUMBERS ARE KEPT IN TWO PLACES, ITS PACK LEFT OUT: the game of
+# A pose whose tile numbers are kept in two places, its pack left out: the game of
 # PackPoseOfSplitTileGames (test/all/vblank/builder/test_pack_poses_of_split_tiles.rb) built with
 # `pack_at_start: true`. The layout's `tile_high_bit:` is known to Original::FrameLayout alone:
 # the pack's unpacking writes each frame as a record of VBlank's own (Original::FrameRecord), and

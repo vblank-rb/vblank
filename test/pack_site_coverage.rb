@@ -5,7 +5,7 @@ require "open3"
 require "prism"
 require "rbconfig"
 
-# WHICH LINES OF THE BUILDER TAKE A PACK HANDLE, AND WHICH REGISTERED GAME REACHES EACH. Every
+# Which lines of the builder take a pack handle, and which registered game reaches each. Every
 # verb that reads a data pack does it on a line that asks whether the pack is left out
 # (`pack_left_out?`) or whether it was given a handle (`is_a?(DSL::PackSlot)` and its kin), so
 # those lines are read out of the builder's source, never kept as a list. A verb made tomorrow
@@ -17,7 +17,7 @@ require "rbconfig"
 # for a game only when its question was answered yes while that game was built: the `if` taken,
 # the `unless` passed. So a game that calls the verb with data of its own does not count.
 #
-# WHAT THIS CANNOT SEE: a verb that takes a pack picture, list or table by its NAME has no such
+# What this cannot see: a verb that takes a pack picture, list or table by its name has no such
 # line (`sprite_tiles.copy_from :picture`). A game for each of those is registered by hand.
 module PackSiteCoverage
   ROOT = VBlank.root
@@ -35,7 +35,7 @@ module PackSiteCoverage
     def unreachable_reason = UNREACHABLE.fetch([file, method_name], nil)
   end
 
-  # THE SITES NO REGISTERED GAME CAN REACH, by file and method, each with why. Where a pack
+  # The sites no registered game can reach, by file and method, each with why. Where a pack
   # handle is answered with a refusal that every build gives, all-in-one too, there is no build of
   # the game to hold another to, so the registry has no place for it; the refusal's own test is
   # what holds it.
@@ -74,7 +74,7 @@ module PackSiteCoverage
     named
   end
 
-  # HOW MANY TIMES THE QUESTION ON +site+'s LINE WAS ANSWERED YES, in +measured+, Ruby's count of
+  # How many times the question on +site+'s line was answered yes, in +measured+, Ruby's count of
   # one file ({ lines:, branches: }): the count of the branch taken when the test on that line
   # holds (the body of an `if`, the way past an `unless`), the count of the line after for a
   # `when`, and for a line that tests nothing the count of the line itself.

@@ -4,15 +4,15 @@ require "digest"
 require "tmpdir"
 require "made_up_original_layouts"
 
-# A MADE-UP ORIGINAL WHOSE FRAMES NO OPTION OF Original::FrameLayout READS, and a game that reads
+# A made-up original whose frames no option of Original::FrameLayout READS, and a game that reads
 # them with a reader of its own (FrameLayout's piece:), given a value from each pose. Shared by the
 # test that holds the poses to the same pieces painted by hand
 # (test/all/vblank/builder/test_pack_poses_read_by_the_game.rb) and the registry of pack games
 # (test/pack_games.rb), which plays it with the pack left out too.
 #
-# The original keeps a piece as five bytes: x and y (signed, from the object's place), a ROW, a
+# The original keeps a piece as five bytes: x and y (signed, from the object's place), a row, a
 # TILE and flags (bit 5 big, bit 6 mirrored, bit 7 upside down). The row does not count rows of
-# sprite memory: it names a BLOCK of it, counted from the object's own block, which the object
+# sprite memory: it names a block of it, counted from the object's own block, which the object
 # holds and the frame does not. Sprite memory is rows of 16 tiles, and a block is 8 tiles across
 # and 4 down, two blocks across a row of the page; the piece's first tile is the block's first
 # tile with the tile byte ORed in. So one frame shows other tiles for each object that uses it.
@@ -23,7 +23,7 @@ module PackPoseReadByTheGameGames
   # answer key the reader's sums are held to.
   BLOCK_STARTS = [0, 8, 64, 72, 128, 136, 192, 200, 256, 264, 320, 328, 384, 392, 448, 456].freeze
 
-  # THE GAME'S READER. The block's start is worked out with shifts and sums, since the reader runs
+  # The game's reader. The block's start is worked out with shifts and sums, since the reader runs
   # as game code when the pack is read as the game starts, and a game's value cannot index a table.
   BLOCK_START = ->(block) { ((block & 1) << 3) + (((block >> 1) & 3) << 6) + ((block >> 3) << 8) }
   READ_PIECE = lambda do |bytes, pose|

@@ -4,8 +4,8 @@ require "digest"
 require "tmpdir"
 require "made_up_original_layouts"
 
-# A MADE-UP ADVANCE ORIGINAL WHOSE FRAME HAS A PIECE OF EVERY SHAPE AND SIZE THE CONSOLE'S SPRITES
-# COME IN, kept as the console's own sprite entries (Original::FrameLayout's shape_bit: and
+# A made-up Advance original whose frame has a piece of every shape and size the console's sprites
+# come in, kept as the console's own sprite entries (Original::FrameLayout's shape_bit: and
 # shape_size_bit:), and a game that shows it as a pose. Shared by the test that holds it to the
 # same pieces painted by hand (test/console/gba/vblank/builder/test_pack_poses_of_shapes_on_the_advance.rb)
 # and the registry of pack games (test/pack_games.rb), which plays it with the pack left out too.
