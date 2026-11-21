@@ -6,6 +6,21 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # A warning for a game loop that clears the whole screen every frame and then draws a list
+        # that grows as the game plays:
+        #
+        # > This game clears the whole screen every frame. It then draws a list that grows as the
+        # > game plays (a snake's body, a list of shots). While the list is short, this is fine.
+        #
+        # As the list grows, each frame's drawing takes longer. Past a point it no longer fits the
+        # short time the console has to change the screen, and the picture tears: the top of the
+        # screen shows one frame and the bottom another.
+        #
+        # To fix this, draw the board one time when a round starts. Then, each frame, draw only the
+        # cells that change: draw the new cell, and erase the old one. A screen that draws on a
+        # hidden page (`screen :bitmap, tear_free: true`) does not tear and is not warned about.
+        #
+        #--
         # The specific, high-signal shape of the tearing footgun: a game loop that
         # clears the whole screen every frame AND repaints a collection that grows
         # as the game runs (a snake's body, a list of shots) — i.e. it rebuilds the
@@ -21,6 +36,7 @@ module VBlank
         # transition, like repainting the board when a new game starts) is skipped,
         # so a game that paints the board once on START and then draws incrementally
         # is (correctly) left alone. Advisory, like the other soft checks.
+        #++
         class RedrawEverything
           NAME = :redraw_everything
           PLAIN_NAME = "a frame that repaints everything"

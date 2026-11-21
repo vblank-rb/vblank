@@ -10,6 +10,32 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # An error for a game with more sprites than its console can keep places for:
+        #
+        # > This game has <number> sprites. A game can keep places for <number> sprites.
+        #
+        # In a game with scenes, each scene is counted with the sprites every scene shows, since
+        # the sprites of two scenes that are not on the screen together use the same places:
+        #
+        # > The :<scene> scene has <number> sprites. This count includes the sprites that every
+        # > scene shows.
+        #
+        # The message then says how the places were spent: letters of text (on a tiled screen
+        # each character of `draw_text` is a sprite), the places of each pool, and the sprites the
+        # game declared. To fix this, use fewer sprites. For text, use shorter words, or draw the
+        # text on a `screen :bitmap`, where text takes no sprites. A pool takes one place for each
+        # thing it can hold, so give it a smaller `capacity:`.
+        #
+        # A game where each scene fits can still run out when a sprite every scene shows is drawn
+        # in front of one scene's sprites and behind another's:
+        #
+        # > This game needs <number> places for sprites. A game can keep places for <number>
+        # > sprites. Each scene fits.
+        #
+        # To fix that, put the shared sprite in a layer behind the sprites of every scene, or in a
+        # layer in front of all of them.
+        #
+        #--
         # More sprites than a game can keep places for.
         #
         # The console composes its sprites from one table of 128 rows, and every sprite a
@@ -35,6 +61,7 @@ module VBlank
         # and the cartridge lowering refuse the same programs in the same words. A picture
         # too big for one sprite spends several, and that is counted by the lowering,
         # which is the only part that cuts pictures up.
+        #++
         class TooManySprites
           NAME = :too_many_sprites
           PLAIN_NAME = "more sprites than a game can keep places for"

@@ -6,6 +6,21 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # A warning for a game loop that moves a sprite on a painted screen and also clears the
+        # whole screen every frame:
+        #
+        # > This game moves a sprite, but it also clears the whole screen every frame. The two
+        # > work against each other.
+        #
+        # A sprite on a painted screen puts back the pixels under it as it moves, which is how it
+        # leaves no trail. Clearing the screen every frame wipes the field the sprite just put
+        # back, and the sprite with it, so the sprite flickers or disappears.
+        #
+        # To fix this, draw the field one time, before the game loop, and remove the clear from
+        # inside the loop. Let the sprite do the rest. A clear that runs only when a button is
+        # first pressed, such as when a new round starts, is not warned about.
+        #
+        #--
         # The sprite-that-gets-wiped footgun: a game loop that repaints a sprite AND
         # clears the whole screen every frame. The two contradict each other. A
         # sprite is the incremental, tear-safe way to move something — it remembers
@@ -20,6 +35,7 @@ module VBlank
         # match on the steady per-frame path, so it's near-zero false positives; a
         # clear behind a `pressed` edge (wiping the field when a new round starts) is
         # a transition, not steady work, and is correctly left alone. Advisory.
+        #++
         class SpriteClearedEachFrame
           NAME = :sprite_cleared_each_frame
           PLAIN_NAME = "a sprite cleared every frame"

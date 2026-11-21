@@ -6,6 +6,35 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # An error for a sprite or a pool whose pictures were given different `colors:` lists, on a
+        # console whose build draws all of one sprite's pictures from one list:
+        #
+        # > <The sprite :name, or The pool :name> shows pictures that have different `colors:`
+        # > lists (<names>). The <console> build draws all the pictures of one sprite from one list
+        # > of colors.
+        #
+        # A sprite with one picture given a list and one given none is told it "shows a picture that
+        # has a `colors:` list (:<name>) and a picture that has none (:<name>)". Poses from a data
+        # pack that name different banks of colours are told:
+        #
+        # > <The sprite :name, or The pool :name> shows poses that name different banks of colors
+        # > (<names>). The <console> build draws all the pictures of one sprite from the same
+        # > colors.
+        #
+        # Whichever list the console uses, the other pictures would come out in the wrong colours.
+        # To fix this, give all the sprite's pictures the same `colors:` list, or give none of them
+        # one, and the framework makes the list. Or use one sprite for the pictures of each list.
+        # To change the colours of one sprite, tell it to `draw_with` a list that `colors`
+        # declares. For poses of banks, give every pose the same `banks:`.
+        #
+        # A console whose build shows each pose in its own list's colours does not refuse this, but
+        # one that cannot yet follow the lists refuses a sprite told to:
+        #
+        # > <The sprite :name, or The pool :name> shows pictures that have different `colors:`
+        # > lists, and it was told to follow them with `draw_with({ <lists> })`. The <console> build
+        # > does not make that yet.
+        #
+        #--
         # One sprite, pictures given different lists of colors, on a console whose build keeps one
         # list for a whole sprite.
         #
@@ -28,6 +57,7 @@ module VBlank
         # the cartridge lowering refuse the same programs in the same words. The interpreter
         # has no table and no rows — it paints each picture in whatever colors it holds — so
         # without this a game's own tests were green there for a game that could not be built.
+        #++
         class PosesWithDifferentColors
           NAME = :poses_with_different_colors
           PLAIN_NAME = "a sprite whose pictures have different lists of colors"
