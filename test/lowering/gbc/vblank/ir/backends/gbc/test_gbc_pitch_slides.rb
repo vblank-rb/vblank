@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A SONG'S NOTES THAT SLIDE THEIR PITCH, as the Color's cartridge tells its first square voice. The
+# A song's notes that slide their pitch, as the Color's cartridge tells its first square voice. The
 # voice keeps how its note slides in its sweep register (NR10): the 128ths of a second each step
 # waits in bits 4 to 6, 8 when it slides down, and the shift under that. Whether the song plays as
 # the interpreter plays it is test/all/vblank/audio/test_song_pitch_slides.rb's, on every lowering; this
