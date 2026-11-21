@@ -19,14 +19,14 @@ module VBlank
   module IR
     module Backends
       class PS1
-        # THE RUNTIME every PlayStation program carries: from power-on to the game's first line (Boot),
+        # The runtime every PlayStation program carries: from power-on to the game's first line (Boot),
         # the arithmetic too long to write in place (Int32), the frame, the interrupt and the pads
         # (Frame, Pads), the lists (Lists), the list of drawing commands the DMA hands to the graphics chip
         # (DrawList), the painted screen (Paint), the faces of a place (Faces), and
         # the sound chip (Sound).
         #
-        # HOW ITS ROUTINES ARE CALLED. With JAL, from anywhere in the program, and they return with
-        # `jr ra`. Their numbers are in ARGUMENTS (a0, a1, a2, a3, then t4 to t7) and their answer in v0.
+        # How its routines are called. With JAL, from anywhere in the program, and they return with
+        # `jr ra`. Their numbers are in arguments (a0, a1, a2, a3, then t4 to t7) and their answer in v0.
         # A routine may change at, v0, v1, the argument registers and t0 to t9, and keeps s0 to s7, gp
         # and sp as it found them; one that calls another keeps its own return address on the stack.
         # gp points into the region the game keeps its numbers in (Memory::BASE), fp at the scratchpad

@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class PS1
-        # THE PLAYSTATION'S PROCESSOR, ONE INSTRUCTION AT A TIME: an assembler for the MIPS R3000A, written
+        # The PlayStation's processor, one instruction at a time: an assembler for the MIPS R3000A, written
         # so the lowering reads like the assembly a person would write and never spells out an opcode by
         # hand.
         #
@@ -16,21 +16,21 @@ module VBlank
         # A number wider than 16 bits is built in two steps: LUI puts 16 bits in the top half, and ORI
         # (or ADDIU) the low half.
         #
-        # TWO THINGS THIS PROCESSOR DOES THAT SURPRISE A READER, both from its five-stage pipeline, and
+        # Two things this processor does that surprise a reader, both from its five-stage pipeline, and
         # both taken care of here so the lowering never has to think about them:
         #
-        # - THE BRANCH DELAY SLOT. "The instruction following the branch will always be executed" (psx-spx,
+        # - The branch delay slot. "The instruction following the branch will always be executed" (psx-spx,
         #   CPU): by the time the processor knows it must jump, it has already fetched the next
         #   instruction, and it runs it. A caller can hand a branch a block whose one instruction goes in
         #   that slot. Handed none, the branch takes the instruction written just before it, where that
         #   comes to the same thing (#take_slot_filler), and a NOP where it does not.
-        # - THE LOAD DELAY SLOT. "The loaded data is NOT available to the next opcode" (psx-spx, CPU): a
+        # - The load delay slot. "The loaded data is not available to the next opcode" (psx-spx, CPU): a
         #   load's value arrives one instruction late, and the instruction right after it still sees the
         #   register's old value. The assembler remembers the register the last instruction loaded, and
         #   puts a NOP first when the next one reads it. A label after a load gets one too, since a place
         #   other code jumps to cannot know what came before it.
         #
-        # MULTIPLY AND DIVIDE do not write a register: they leave their answer in two registers of their
+        # Multiply and divide do not write a register: they leave their answer in two registers of their
         # own, HI and LO, read with MFHI and MFLO. On MIPS I a multiply or divide started within two
         # instructions of reading HI or LO can change what that read gets, so two instructions stand
         # between (NOPs when nothing else does).
@@ -235,7 +235,7 @@ module VBlank
 
           # --- an instruction the code works out, named by its mnemonic ---
 
-          # A load or a store, +op+ one of LOADS or STORES: for a width the code works out.
+          # A load or a store, +op+ one of loads or stores: for a width the code works out.
           def load(op, rt, distance, base) = emit_load(op, LOADS.fetch(op), rt, distance, base)
           def store(op, rt, distance, base) = emit_store(op, STORES.fetch(op), rt, distance, base)
 
@@ -345,10 +345,10 @@ module VBlank
           # the instruction before it loaded.
           SlotFiller = Data.define(:at, :word, :reads, :writes, :after_load)
 
-          # THE INSTRUCTION BEFORE A BRANCH, FOR ITS SLOT. The slot runs whether the branch is taken or
+          # The instruction before a branch, for its slot. The slot runs whether the branch is taken or
           # not, and before whatever the branch goes to, so the instruction written just before a branch
           # can be moved into the slot instead of a NOP: it still runs once, before everything after.
-          # What changes is that the branch now decides BEFORE that instruction runs, and a few other
+          # What changes is that the branch now decides before that instruction runs, and a few other
           # things stand where they stood, so it is left alone, and the slot is a NOP, when:
           #
           # - it writes a register the branch reads (+reads+): the branch would test the old value;

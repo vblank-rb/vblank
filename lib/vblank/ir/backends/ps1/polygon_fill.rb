@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class PS1
-        # THE PLAYSTATION GRAPHICS CHIP FILLING A TEXTURED TRIANGLE, by its own rules, written in Ruby so
+        # The PlayStation graphics chip filling a textured triangle, by its own rules, written in Ruby so
         # the checked run can work out which pixels the chip draws for the triangles a program sends, and
         # which texel each shows. PS1::CheckedRun draws a place's faces this way on the interpreter's
         # side, and compares that with what the chip drew in the emulator: every pixel, with none let
@@ -18,27 +18,27 @@ module VBlank
         # the same of the hardware. It is a port line for line, so its local names are Beetle's
         # (cvtemp, vo, vp, lc, rc...), to be read beside the C.
         #
-        # - THE CORNERS are whole pixels. They are sorted top to bottom, and the "core" corner (where the
+        # - The corners are whole pixels. They are sorted top to bottom, and the "core" corner (where the
         #   place on the picture is worked out from) is picked from their order before sorting
         #   (DrawTriangle's cvtemp).
-        # - THE PLACE ON THE PICTURE steps across the triangle by two slopes a pixel, each a cross product
+        # - The place on the picture steps across the triangle by two slopes a pixel, each a cross product
         #   over twice the area with 12 bits of fraction, cut toward nought, then moved up 12 more
         #   (CalcIDeltas, gpu_uv_delta). It starts at the core corner's texel plus HALF A TEXEL
         #   (gpu_uv_seed), and a pixel samples at its top-left corner: the place there is the seed stepped
         #   by how far across and down the pixel is from the core corner, in 32 bits that wrap, and its
         #   top eight bits are the texel.
-        # - THE EDGES are walked a row at a time in 32.32 fixed point, from each edge's top corner plus a
+        # - The edges are walked a row at a time in 32.32 fixed point, from each edge's top corner plus a
         #   hair under one pixel (MakePolyXFP), stepping by the edge's slope rounded away from nought
         #   (MakePolyXFPStep). A row runs from the left edge's whole part to the right edge's, the right
         #   one left out.
-        # - THE DRAWING AREA (GP0 E3h, E4h) holds every pixel inside it, its right and bottom included.
-        # - A TEXEL OF 0000h is left undrawn (the caller's to leave out).
-        # - A SHADED TRIANGLE (GP0 34h, a lit face's) carries a colour at each corner. It steps across the
+        # - The drawing area (GP0 E3h, E4h) holds every pixel inside it, its right and bottom included.
+        # - A texel of 0000h is left undrawn (the caller's to leave out).
+        # - A shaded triangle (GP0 34h, a lit face's) carries a colour at each corner. It steps across the
         #   triangle by the same sums as the place on the picture (CalcIDeltas' dr_dx, with the C
         #   division), from the core corner's colour plus half a step (ig.r), and a pixel's colour is the
         #   top eight bits. The chip multiplies each texel's red, green and blue by it, 80h being the texel
         #   as it is (#self.modulated, ModTexel with dithering off).
-        # - ONE OF THE EMULATOR'S OWN CORRECTIONS applies to these triangles too: a triangle one pixel tall
+        # - One of the emulator's own corrections applies to these triangles too: a triangle one pixel tall
         #   whose place down the picture does not change across has its corners' v moved by one
         #   (Calc_UVOffsets_Adjust_Verts, "Wild Arms 2"), so it is modelled.
         #
