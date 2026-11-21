@@ -161,10 +161,10 @@ module Tower
     end
 
     game_loop do
-      case_var(:level) do
-        when_val 0, :ground
-        when_val 1, :upstairs
-        when_val 2, :roof
+      case level
+      when 0 then call :ground
+      when 1 then call :upstairs
+      when 2 then call :roof
       end
     end
   end

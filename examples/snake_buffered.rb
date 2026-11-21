@@ -270,10 +270,10 @@ module BufferedSnake
     end
 
     game_loop do
-      case_var :state do
-        when_val 0, :title
-        when_val 1, :playing
-        when_val 2, :game_over
+      case state
+      when 0 then call :title
+      when 1 then call :playing
+      when 2 then call :game_over
       end
     end
   end

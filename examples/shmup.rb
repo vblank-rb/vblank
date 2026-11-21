@@ -120,9 +120,9 @@ module Shmup
     end
 
     game_loop do
-      case_var :state do
-        when_val PLAYING,   :playing
-        when_val GAME_OVER, :game_over
+      case state
+      when PLAYING then call :playing
+      when GAME_OVER then call :game_over
       end
     end
   end

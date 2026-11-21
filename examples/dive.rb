@@ -200,10 +200,10 @@ module Dive
     end
 
     game_loop do
-      case_var :state do
-        when_val TITLE, :title
-        when_val PLAY, :play
-        when_val OVER, :over
+      case state
+      when TITLE then call :title
+      when PLAY then call :play
+      when OVER then call :over
       end
     end
   end)

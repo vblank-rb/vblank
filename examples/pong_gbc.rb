@@ -397,12 +397,12 @@ module PongGBC
 
     # --- Main loop ---
     game_loop do
-      case_var :state do
-        when_val 0, :title
-        when_val 1, :playing
-        when_val 2, :player_wins
-        when_val 3, :cpu_wins
-        when_val 4, :difficulty
+      case state
+      when 0 then call :title
+      when 1 then call :playing
+      when 2 then call :player_wins
+      when 3 then call :cpu_wins
+      when 4 then call :difficulty
       end
     end
   end

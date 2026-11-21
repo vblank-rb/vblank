@@ -128,7 +128,7 @@ module Snake
     ys = list :ys, capacity: here.body_cap
 
     # --- RAM variables (each `var` hands back a handle we compare and mutate) ---
-    state    = 0    # 0 = title, 1 = playing, 2 = game over (read via case_var)
+    state    = 0    # 0 = title, 1 = playing, 2 = game over (picked by the case below)
     blink    = true # flashes the "PRESS START" prompt on and off
     dx       = 1       # current heading, in cells per step (one axis at a time)
     dy       = 0
@@ -375,10 +375,10 @@ module Snake
 
     # --- Main loop: pick the scene for the current state, every frame ---
     game_loop do
-      case_var :state do
-        when_val 0, :title
-        when_val 1, :playing
-        when_val 2, :game_over
+      case state
+      when 0 then call :title
+      when 1 then call :playing
+      when 2 then call :game_over
       end
     end
   end
