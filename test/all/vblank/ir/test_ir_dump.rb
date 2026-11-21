@@ -76,7 +76,7 @@ class TestIRDump < Minitest::Test
   # class claims to be: something that rebuilds the tree and lowers it, and nothing
   # more. $PROGRAM_NAME never equals the __FILE__ this eval is given, so the
   # trailing `ClassName.new.lower if $PROGRAM_NAME == __FILE__` correctly sits inert
-  # here — proving that guard's OTHER half (it firing when run as a real script) is
+  # here — proving that guard's other half (it firing when run as a real script) is
   # test_cli.rb's job, over an actual `ruby` subprocess.
   def test_emit_class_runs_and_lowers_to_the_same_code_a_real_build_produces
     source = Dump.class_source(ConformanceFixture.program, class_name: "FixtureIR",
@@ -114,7 +114,7 @@ class TestIRDump < Minitest::Test
     assert_equal "VBlank::IR::Nodes.build(:halt)", Dump.source(halt)
   end
 
-  # A SONG'S PART IS A RECORD, and a record inspects as `#<data ...>` — which describes one
+  # A song's part is a record, and a record inspects as `#<data ...>` — which describes one
   # rather than rebuilding it. So a part is written back as the call that makes it, saying only
   # what the author actually said: a plain part is its notes, and nothing else. (The round-trip
   # tests above prove the source rebuilds the tree; this is the half they cannot see, since a

@@ -54,24 +54,24 @@ module FramePairingGames
   end
 end
 
-# WHICH FRAME'S NUMBERS THE PICTURE WAS DRAWN FROM.
+# Which frame's numbers the picture was drawn from.
 #
 # A test that reads a pixel and a variable at the same moment is reading two things that
 # were not necessarily decided at the same moment, and which of the two you are looking at
 # depends on who drew it:
 #
-#   - What the PROGRAM draws (a rectangle, a pixel, a picture blitted somewhere) lands on
+#   - What the program draws (a rectangle, a pixel, a picture blitted somewhere) lands on
 #     the screen in the pass that drew it, so the picture and the variable agree.
-#   - What the FRAMEWORK draws for you every frame — a sprite, a HUD number, a background's
+#   - What the framework draws for you every frame — a sprite, a HUD number, a background's
 #     scroll — is placed at the frame boundary. On the Advance it is painted in the gap before
 #     the next frame, from the variables as they stand then, so the picture shows the value
-#     from the pass BEFORE the one whose variables you are reading. The Color sends it from a
+#     from the pass before the one whose variables you are reading. The Color sends it from a
 #     copy as the gap ends, so each pass places it before its wait, and the picture shows the
 #     pass just ended (Testing#framework_drawing_lag).
 #
 # That is not a cost of any backend: on the Advance a position decided while a frame is being
 # drawn cannot appear in that frame. The interpreter and the console agree, which is what these
-# tests pin — each reads the variable and the picture from the SAME backend at the same moment
+# tests pin — each reads the variable and the picture from the same backend at the same moment
 # and asserts how the two line up, so nothing here depends on two backends counting frames from
 # the same place. The Advance's cartridge is asked the same in
 # test/lowering/gba/vblank/ir/test_frame_pairing_cartridge.rb.
