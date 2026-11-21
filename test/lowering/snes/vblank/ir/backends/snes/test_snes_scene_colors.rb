@@ -4,7 +4,7 @@ require "test_helper"
 require "stringio"
 require "scene_color_lists"
 
-# A SCENE'S COLOURS ARRIVE WITH ITS MAPS, read off the cartridge a frame at a time. A pass is
+# A scene's colours arrive with its maps, read off the cartridge a frame at a time. A pass is
 # checked against the interpreter whatever the screen did between two of them, so what no frame may
 # show has to be asked here: one screen's cells in another's colours, on a screen that stays lit.
 class TestSNESSceneColors < Minitest::Test

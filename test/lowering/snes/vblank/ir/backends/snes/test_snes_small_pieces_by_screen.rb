@@ -3,7 +3,7 @@
 require "test_helper"
 require "tmpdir"
 
-# ONE CROWDED SCREEN CUTS ITS OWN SPRITES SMALL. A picture cut into squares of 16×16 takes four
+# One crowded screen cuts its own sprites small. A picture cut into squares of 16×16 takes four
 # tiles side by side, and one row of the sprite table; cut small it takes only the tiles it draws,
 # and a row for each. A screen whose pictures fit only cut small must not cost another screen its
 # squares, or that screen's words can run out of the table's 128 rows.

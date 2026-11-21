@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "stringio"
 
-# EACH SCENE BRINGS ITS OWN RECORDINGS INTO THE SOUND CHIP. The Super Nintendo's sound chip plays
+# Each scene brings its own recordings into the sound chip. The Super Nintendo's sound chip plays
 # recordings only from its own 64K of memory, which the console fills through four one-byte
 # mailboxes. A game whose recordings come to more than that still builds when no one scene plays
 # more than fits: what every scene can play stays in the chip from power-on, and each scene's own
@@ -141,7 +141,7 @@ class TestSNESSceneRecordings < Minitest::Test
     assert_equal 0, run.dsp_registers.getbyte(VOICE + ENVX)
   end
 
-  # WHAT A SCENE CHANGE COSTS: the cave's 36000 bytes go across in the pass the cave takes over on,
+  # What a scene change costs: the cave's 36000 bytes go across in the pass the cave takes over on,
   # three bytes a turn of the mailboxes (Runtime::Sound::BYTES_A_FRAME); every other pass keeps its frame.
   MOST_FRAMES_TO_LOAD_THE_CAVE = 55
 

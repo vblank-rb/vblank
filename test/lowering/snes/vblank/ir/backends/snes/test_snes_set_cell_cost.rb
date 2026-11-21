@@ -6,8 +6,8 @@ require "json"
 require "made_up_original_layouts"
 require "pack_background_tests"
 
-# A CELL WRITTEN FROM A NUMBER WORKED OUT AS THE GAME PLAYS COSTS WHAT A CELL WRITTEN FROM A NUMBER
-# IN THE PROGRAM DOES. A Super Nintendo game writes its map's words straight into its copy of the
+# A cell written from a number worked out as the game plays costs what a cell written from a number
+# in the program does. A Super Nintendo game writes its map's words straight into its copy of the
 # map: a blast spreading over an arena is a dozen words a frame, each read from a table of the
 # game's. Here the game's arena is a background from the data pack of 16x16 cells, told 80 cells
 # set_cell may write, and every pass writes a dozen of them, the word worked out from the pass.
@@ -92,7 +92,7 @@ class TestSNESSetCellCost < Minitest::Test
                                releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
   end
 
-  # The arena, and each pass WRITES cells written along its top rows: with +worked_out+ each word
+  # The arena, and each pass writes cells written along its top rows: with +worked_out+ each word
   # worked out from the pass, otherwise each the told word written in the program. With +moving+ a
   # tile of the slot takes turns through pictures, and with +showing+ as well the group shows the
   # next picture every other pass.
