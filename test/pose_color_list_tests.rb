@@ -90,7 +90,7 @@ module PoseColorListGames
   FLASH_PASS = 3
   OWN_PASS = 7
 
-  # Two things of one pool, the first facing :left (of :warm) at at and the second :right (of :cold)
+  # Two things of one pool, the first facing :left (of :warm) at AT and the second :right (of :cold)
   # at [80, 40]. The thing facing +flashed+ is drawn with :glow from FLASH_PASS to OWN_PASS.
   private def flashing_pool_game(flashed:)
     pose_colors_game do
@@ -268,7 +268,7 @@ end
 module PoseColorListSwapTests
   include PoseColorListGames
 
-  # The colours of the two halves of the thing at at and the thing at [80, 40].
+  # The colours of the two halves of the thing at AT and the thing at [80, 40].
   private def both_shown(program, frames:)
     screen = game_player.run(program, frames: frames + framework_drawing_lag).screen
     [[screen.pixel(*LEFT_HALF), screen.pixel(*RIGHT_HALF)], [screen.pixel(81, 41), screen.pixel(86, 41)]]

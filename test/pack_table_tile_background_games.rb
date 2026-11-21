@@ -64,7 +64,7 @@ module PackTableTileBackgroundGames
                                releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
   end
 
-  # A game showing the screen from the pack, its map as +map+ (one of maps) says, and whatever the
+  # A game showing the screen from the pack, its map as +map+ (one of MAPS) says, and whatever the
   # block does with its handle. Hands back the program and the pack file the build made (nil for
   # a build that leaves its pack out).
   private def table_tile_pack_game_and_file(from, options: VBlank::Cartridge::Options.new, map: :map_cells, &more)

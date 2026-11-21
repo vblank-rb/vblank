@@ -78,7 +78,7 @@ module PlaceGames
   # The angles turning_square turns by, whole or not.
   def self.spins(whole) = whole ? WHOLE_SPINS : SPINS
 
-  # The square face, seen by a viewer that turns left by the next of spins (or of WHOLE_SPINS,
+  # The square face, seen by a viewer that turns left by the next of SPINS (or of WHOLE_SPINS,
   # when +whole+) on every +passes+-th pass, the angle put in a variable the game reads from a
   # table as it runs. Each pass the square's top left corner is asked where it lands, the answer
   # kept in x0 and y0. The first turn swings the corner from the left quarter of the screen
@@ -656,7 +656,7 @@ module PlaceGames
   STANCE_SPOT = Ractor.make_shareable([4.0, 0.5, 0.25])
   STANCE_ARROWS = Ractor.make_shareable({ right: [0, 1, 0], up: [0, 0, 1], ahead: [1, 0, 0] })
 
-  # Which of shades each quarter of the stance's picture is, top row first.
+  # Which of SHADES each quarter of the stance's picture is, top row first.
   QUARTER_SHADES = Ractor.make_shareable([[0, 1], [2, 0]])
 
   def self.stance_against_declared(moved:)

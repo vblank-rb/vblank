@@ -4,7 +4,7 @@ require "stringio"
 
 # The rules of a walk of the colours (Backends::PaletteWalk) that only a console's own build can
 # show, played by each console that walks its colours for every fade: a test file in that
-# lowering's folder includes this and says its console (console) and the runtime routine that works
+# lowering's folder includes this and says its console (CONSOLE) and the runtime routine that works
 # a colour out (COLOR_ROUTINE). How far a walk goes is held to the interpreter for every console by
 # test/all/vblank/ir/backends/test_palette_walk.rb.
 module PaletteWalkTests
