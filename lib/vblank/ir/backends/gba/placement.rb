@@ -8,14 +8,14 @@ module VBlank
       class GBA
         # Which routines run from the console's quick memory, and how they get there.
         #
-        # THE HARDWARE, briefly. Code lives in the cartridge, which the console reads over a
+        # The hardware, briefly. Code lives in the cartridge, which the console reads over a
         # narrow, slow connection. It also has 32KB of memory of its own that runs at full
         # speed with nothing to wait for. Nothing decides which one a routine runs from
         # except where its bytes happen to be — so a routine can be made faster by copying it
         # into the quick memory at boot and jumping there instead.
         #
-        # HOW MUCH FASTER, since that is the number everything here turns on: about two and a
-        # half times, comparing THE SAME INSTRUCTIONS in the two places they can live. Not an
+        # How much faster, since that is the number everything here turns on: about two and a
+        # half times, comparing the same instructions in the two places they can live. Not an
         # algorithm being improved — identical code, in identical order, fetched over the
         # cartridge connection or out of the console's own memory. It is measured rather than
         # reasoned about, on a body of plain arithmetic steps so that nothing but the fetching
@@ -27,10 +27,10 @@ module VBlank
         # choosing problem, and what it chooses has to be visible and overridable — which
         # is what the rest of this file is about.
         #
-        # HOW THE CHOOSING WORKS. The cost model already knows what a frame spends where,
+        # How the choosing works. The cost model already knows what a frame spends where,
         # so the ranking is simply: the routine a frame spends most time in goes first,
         # then the next, until the room runs out. Sizes are not known until the code is
-        # emitted, so the build lowers the program ONCE with nothing moved, reads off how
+        # emitted, so the build lowers the program once with nothing moved, reads off how
         # big each routine came out and how much memory the variables took, and then
         # lowers it for real. The throwaway pass is why this can be an informed choice
         # rather than a guess.
@@ -39,14 +39,14 @@ module VBlank
         # and `fast_code: false` on the build turns the choosing off entirely without
         # taking the per-routine switch away.
         #
-        # WHAT MOVING A ROUTINE COSTS AT THE CALL SITE. A jump straight to a label reaches
-        # 32MB; the quick memory is 80MB away from the cartridge. So a call that CROSSES
+        # What moving a routine costs at the call site. A jump straight to a label reaches
+        # 32MB; the quick memory is 80MB away from the cartridge. So a call that crosses
         # between the two has to get the address into a register and jump through it —
         # six instructions instead of one from the cartridge, where the address is built,
         # and three and a word of data from the quick memory, where a routine reads its big
         # numbers from a table at its own end (see {NumberTable}). A call that stays on one
         # side is untouched,
-        # and since the moved routines are copied as ONE block their distances from each
+        # and since the moved routines are copied as one block their distances from each
         # other are preserved, so they call each other exactly as they did before.
         module Placement
           include Console::Hardware
@@ -94,12 +94,12 @@ module VBlank
           # with routines that run once.
           WORTH_MOVING = 0.05
 
-          # THE FRAMEWORK KEEPS NOTHING BACK when it is choosing on its own, and the reason
+          # The framework keeps nothing back when it is choosing on its own, and the reason
           # is worth writing down because there used to be a kilobyte held here and its
           # comment said it was for tidiness.
           #
           # It was not for tidiness. It was quietly covering an under-estimate in
-          # #moved_sizes, which counted the crossing calls an author WROTE and missed the
+          # #moved_sizes, which counted the crossing calls an author wrote and missed the
           # ones the lowering invents for run-time digits. With that fixed the size a
           # routine is charged is a true upper bound, so a kilobyte held back is a
           # kilobyte of pure loss — and it was landing on exactly the routine that could
@@ -115,7 +115,7 @@ module VBlank
           # A call from a moved routine to one still in the cartridge grows, so a routine
           # can come out bigger than it measured. This is the most any one call can add.
           #
-          # COUNT IT OFF THE EMITTER RATHER THAN OFF THE SENTENCE "one instruction to
+          # Count it off the emitter rather than off the sentence "one instruction to
           # four", which is what this used to say and what made it wrong. A plain call is
           # a four-byte branch. A crossing one is #emit_call_func's other arm: the target
           # address built by a FIXED-SIZE immediate (four instructions, always, because a
@@ -154,7 +154,7 @@ module VBlank
           # is a value object: a reader asking for a field that is not here says so instead of
           # answering nil and printing a blank number.
           # +sizes+ is how many bytes each routine came to, whether it moved or not, and
-          # +passed_over+ is the routines the chooser WANTED and could not fit, each with what
+          # +passed_over+ is the routines the chooser wanted and could not fit, each with what
           # it would have taken and what was left. That second one is the actionable half: a
           # routine that just missed is where a program lost the whole factor above, and
           # nothing else in the build can say so afterwards.
@@ -201,7 +201,7 @@ module VBlank
           # names — empty when there is nothing worth moving or the author turned it off.
           def choose_fast_funcs(program)
             insisted = @insisted = funcs_marked(program, true)
-            # WITH THE CHOOSING OFF NOTHING IS MEASURED. The measuring pass is a whole lowering, and
+            # With the choosing off nothing is measured. The measuring pass is a whole lowering, and
             # its sizes are only there to choose by; the routines the author insisted on go in
             # without them, as they come out, and #check_fast_code_fits! still stops a build they
             # do not fit. So such a build lowers the program once.
@@ -213,12 +213,12 @@ module VBlank
             uncut_profile = @routine_profile = measured&.with_pieces_counted_in_routines
             probe, chosen = measure_and_choose(program, insisted)
             if @fast_code && (pieces = cut_into_pieces(program, probe))
-              # A ROUTINE THE ROOM COULD NOT HOLD IS CUT, and the rest of the build lowers the
+              # A routine the room could not hold is cut, and the rest of the build lowers the
               # program with its pieces (see RoutinePieces), measured and chosen again: the pieces
               # are routines of their own. Should that plan not hold what the author insisted on,
               # the one before did, so the program is lowered whole.
               #
-              # THE SCREEN IS PLANNED AGAIN for the program cut, which is a copy: the plan knows a
+              # The screen is planned again for the program cut, which is a copy: the plan knows a
               # scene's own `screen` and the rest by the very nodes it was planned from
               # (IR::SceneHandover), and the copy's are other nodes.
               #
@@ -240,7 +240,7 @@ module VBlank
                 probe, chosen = measure_and_choose(program, insisted)
               end
             end
-            # MEASURED AGAIN WITH THE GAME LOOP'S WORK FOR EACH SCENE AS THAT SCENE'S ROUTINE, once
+            # Measured again with the game loop's work for each scene as that scene's routine, once
             # the plan has split the room by scene (see SceneQuickMemory#prepare_scene_loop_work).
             # Only then: in one set for the whole game the routines would buy nothing and cost a
             # call every frame. Should the new layout not hold what the author insisted on, the
@@ -260,7 +260,7 @@ module VBlank
             first = probe
             nearer = variables_kept_routines_want_nearer(probe, chosen + routines_in_sets)
             unless nearer.empty?
-              # MEASURED AGAIN, with those variables where they are going to be. Moving a
+              # Measured again, with those variables where they are going to be. Moving a
               # variable changes the size of every routine that names it, and the choice
               # just made was made from the sizes of the other layout. A second measurement
               # is the only charge that is of the program really built; a game pays for it
@@ -268,7 +268,7 @@ module VBlank
               # routine that uses one past the line.
               @measuring_after = :variables # the second time is said as such (see #measuring_phase_name)
               probe = measure_routines(program, variables_first: nearer)
-              # WHICH VARIABLES MOVED NEARER followed what the build picked, and that follows what
+              # Which variables moved nearer followed what the build picked, and that follows what
               # the measuring run found — so a build that stopped here and not on the measurement
               # before would stop on a measurement, which only what the author insisted on may do
               # (see {QuickMemoryPlan}). And a plan here that gave away the room of one more
@@ -289,7 +289,7 @@ module VBlank
             chosen
           end
 
-          # A SCENE INSISTED ON TAKES THE ROUTINES THE BUILD MADE FOR IT, with the choosing off too.
+          # A scene insisted on takes the routines the build made for it, with the choosing off too.
           # With it on, the measuring pass names them (#insisted_routines); with it off there is
           # none, so they are added here, once this lowering has made them and before anything
           # calls one. A build with the choosing on has chosen them already.
@@ -316,7 +316,7 @@ module VBlank
 
           # Measure the program and choose from what was measured, and answer both.
           #
-          # MEASURED AGAIN FOR EACH COLLECTION THE PLAN GAVE THE ROOM AWAY FROM. A collection in
+          # Measured again for each collection the plan gave the room away from. A collection in
           # the roomy memory is reached by another address, which can change the size of every
           # routine that touches it, so the sizes the plan chose by are of the other layout. The
           # moved ones stay moved, and only those left in the quick memory are weighed again,
@@ -355,7 +355,7 @@ module VBlank
             retry
           end
 
-          # THE VARIABLES RAN INTO THE COLLECTIONS. The collections are placed before the variables
+          # The variables ran into the collections. The collections are placed before the variables
           # are named, the ones a frame touches first, so the quick memory can be full before the
           # last variable has a place. The ones placed last are the coldest, so they go to the roomy
           # memory, as few as give back +bytes+; none when nothing the author left alone is there.
@@ -370,7 +370,7 @@ module VBlank
             bytes.positive? ? [] : freed
           end
 
-          # THE VARIABLES THE KEPT ROUTINES USE, when any of them sits where the base register
+          # The variables the kept routines use, when any of them sits where the base register
           # cannot reach — every one of them, nearest first in the order they were named,
           # ready to be claimed before the rest. Empty when nothing needs to move, which is
           # every game with fewer variables than the register reaches.
@@ -392,7 +392,7 @@ module VBlank
             used.any? { |name| far.key?(name) } ? used : []
           end
 
-          # WHAT THE MEASURING PHASES ARE CALLED, the first time and the times after. A later one is
+          # What the measuring phases are called, the first time and the times after. A later one is
           # a different measurement — of the program with some collections moved out, or some
           # variables moved nearer — so a build that says the same words twice looks as if it ran
           # a phase twice by mistake.
@@ -466,7 +466,7 @@ module VBlank
             plan.resident.reject { |name| list_claim?(name) }.to_set
           end
 
-          # A CALL INTO A SCENE'S SET READS A WORD SAYING WHERE ITS ROUTINE IS NOW (SceneQuickMemory#where_word),
+          # A call into a scene's set reads a word saying where its routine is now (SceneQuickMemory#where_word),
           # and those words are variables. Within reach of the variables' base register the read is
           # the one load the call is charged for; past it (a game of more than a thousand
           # variables' worth), the word's address is read from the number table first, and the
@@ -581,7 +581,7 @@ module VBlank
           # routines that stay in the cartridge?
           def emitted_for_quick_memory?(name) = @fast_funcs.include?(name) || !set_holding(name).nil?
 
-          # WHERE A ROUTINE RUNS: :resident for one kept for the whole game, the number of the
+          # Where a routine runs: :resident for one kept for the whole game, the number of the
           # set that holds it, or :cartridge. A call between two routines in the same place is
           # a plain jump; any other has to name the place it is going.
           def region_of(name)
@@ -614,7 +614,7 @@ module VBlank
             check_fast_code_fits!
           end
 
-          # What each moved routine was CHARGED against what it came out at, for the one
+          # What each moved routine was charged against what it came out at, for the one
           # test that can tell whether the charge (#moved_sizes, less what #table_effects
           # takes off) is still the upper bound it claims to be (a charge that is short does not fail here — it fails much later, in
           # #check_fast_code_fits!, on a game that fits). Valid after #lower.
@@ -647,7 +647,7 @@ module VBlank
             )
           end
 
-          # A PLACEHOLDER ONLY THIS LOWERING KNOWS, filled in once everything has a place: Emit
+          # A placeholder only this lowering knows, filled in once everything has a place: Emit
           # hands every kind it does not own here (Emit#resolve_fixups).
           def resolve_fixup(fix)
             case fix.kind
@@ -727,7 +727,7 @@ module VBlank
           # embedded data uses: a read of the routine's number table where it has one that
           # reaches, the fixed four instructions otherwise.
           #
-          # A CALL FROM A SCENE'S SET TO A ROUTINE KEPT FOR THE WHOLE GAME IS ONE OF THESE, and is
+          # A call from a scene's set to a routine kept for the whole game is one of these, and is
           # charged as a read (CROSS_CALL_GROWTH_WITH_TABLE). Built every time, as it once was, it
           # came out eight bytes over its charge, and a save's routines in a scene's set holding a
           # few such calls took the quick memory past its end.
@@ -745,13 +745,13 @@ module VBlank
           # Where code label +label+, inside the moved block, runs once boot has copied the block.
           def fast_label_address(label) = @hot_base + (@emit.label_offset(label) - @emit.label_offset(HOT_START))
 
-          # A TABLE OF WHERE ROUTINES START, one word each in the order given, for a call that
+          # A table of where routines start, one word each in the order given, for a call that
           # picks one by number (see Functions#emit_call_one_of). It is kept in the cartridge
           # with the pictures and the tunes rather than in the code, because a routine moved to
           # the quick memory takes its code with it — and a table of a hundred and more words
           # would take that much of the 32K along for one load a call.
           #
-          # EACH WORD IS WHERE ITS ROUTINE RUNS: the quick memory for a routine moved there, the
+          # Each word is where its routine runs: the quick memory for a routine moved there, the
           # cartridge for one left behind. Neither is known until every routine has its place, so
           # the words are filled in with the other placeholders, in the second pass. A call
           # through the table jumps through a register either way, so it is the same few
@@ -813,7 +813,7 @@ module VBlank
                   "cartridge, or build with `fast_code: false` to keep them all there."
           end
 
-          # EVERY VARIABLE GOES WHERE THE MEASURING PASS PUT IT, before this pass mentions one.
+          # Every variable goes where the measuring pass put it, before this pass mentions one.
           #
           # A variable is given its address the first time anything names it, and the two
           # passes do not name them in the same order: the measuring pass emits every routine
@@ -850,27 +850,27 @@ module VBlank
           end
 
           # How big each routine will be once moved. A routine measured in the throwaway
-          # pass GROWS in only one way — every call it makes to a routine left behind grows
-          # by CROSS_CALL_GROWTH — so charging it for ALL of its calls is an upper bound
+          # pass grows in only one way — every call it makes to a routine left behind grows
+          # by CROSS_CALL_GROWTH — so charging it for all of its calls is an upper bound
           # (#moved_sizes). It also shrinks in one way, by reading its big numbers from a
           # table, and what is certain of that comes off again (#table_effects). Being a
           # little pessimistic here means the last routine chosen might have fitted after
           # all; being optimistic would mean a build that overruns the memory, so this is
           # the direction to be wrong in.
           #
-          # NOT EVERY CROSSING CALL IS A `call` THE AUTHOR WROTE, and each kind that was
+          # Not every crossing call is a `call` the author wrote, and each kind that was
           # missed made this an under-estimate rather than an upper bound. Some are invented
           # by the lowering, with no `call` node anywhere to show for them. One is counted
           # from the tree here, and the rest where the measuring pass wrote them (see
           # #crossing_call_targets):
           #
-          # A MULTI-WAY DISPATCH calls the scene it lands on, one call per clause, built out
+          # A multi-way dispatch calls the scene it lands on, one call per clause, built out
           # of `call` nodes made while emitting rather than nodes the tree holds (see
           # Functions#emit_case). That is a game's whole scene table — and it lands on the
           # game loop's own body, which is the routine that can least afford to be
           # mismeasured, because it is the first one the chooser takes.
           #
-          # A CALL PICKED BY NUMBER is not among them, because it never grows: it jumps
+          # A call picked by number is not among them, because it never grows: it jumps
           # through an address read out of a table, whichever memory the routine it lands in
           # was given (see #routine_table).
           #
@@ -887,7 +887,7 @@ module VBlank
             end
           end
 
-          # THE CALLS COUNTED WHERE THEY ARE WRITTEN, because no node of the tree records where:
+          # The calls counted where they are written, because no node of the tree records where:
           #
           # Calls to routines the build made for itself — each scene's moving sprites, the
           # sprites nothing moves, a see-through layer's amounts, a big map's view brought
@@ -907,7 +907,7 @@ module VBlank
           # +made_calls+ is both kinds, by routine, the interrupt's included: for each call the
           # routine it names, or nil for one that always stays in the cartridge.
           #
-          # Answers, for each routine, the routine named by every call in it that COULD cross.
+          # Answers, for each routine, the routine named by every call in it that could cross.
           # +loop_blocks+ is each block of the game loop the measuring pass made into a scene's
           # routine, by that routine's name.
           def crossing_call_targets(program, made_calls = {}, loop_blocks = {})
@@ -938,17 +938,17 @@ module VBlank
             end
           end
 
-          # HOW BIG EACH ROUTINE WILL BE ONCE ITS BIG NUMBERS ARE READ FROM A TABLE, which is
+          # How big each routine will be once its big numbers are read from a table, which is
           # how a routine kept in the quick memory is emitted (see {NumberTable}). The throwaway
           # pass built every number, so what it measured is too big by exactly what the table
           # saves — and a routine charged too much is a routine, or the one after it, turned
           # away from room it would have fitted in.
           #
-          # THE CHARGE STILL HAS TO BE AN UPPER BOUND, so the saving taken has to be one the
+          # The charge still has to be an upper bound, so the saving taken has to be one the
           # real pass makes. Which loads become reads is settled here, from the measurement
           # (see #loads_read_from_table), and the emitter is handed the line that was drawn,
           # so it reads those same loads. Each saves every instruction it was built from but
-          # the one that reads. The table then costs a word for each DIFFERENT number among
+          # the one that reads. The table then costs a word for each different number among
           # them, since two loads of one number read the same word — which is most of what a
           # routine that names one register or one list over and over gets back. (Two loads
           # are one number in the real pass because they were one in the measuring pass: see
@@ -965,12 +965,12 @@ module VBlank
             end
           end
 
-          # WHAT A NUMBER TABLE DOES TO ONE ROUTINE, settled before the routine is emitted
+          # What a number table does to one routine, settled before the routine is emitted
           # for real:
           #
           #   +measured_bytes+  its size with every number built, calls that could cross and
           #                     all — the routine the distances below are counted in
-          #   +read_within+     how far from the end of THAT routine a load can be and still
+          #   +read_within+     how far from the end of that routine a load can be and still
           #                     be read from the table rather than built
           #   +saved+           the bytes that come off what it is charged
           #   +call_charge+     what it is still charged for one call that could cross, and
@@ -981,7 +981,7 @@ module VBlank
           # +size+ is the routine with every number built, +loads+ the loads a table could
           # take, and +crossings+ how many calls it holds that could cross.
           #
-          # A CROSSING CALL IS A LOAD TOO: the address it jumps through is read from the table
+          # A crossing call is a load too: the address it jumps through is read from the table
           # like any other (see #emit_call_func), so it grows a call by
           # CROSS_CALL_GROWTH_WITH_TABLE rather than by CROSS_CALL_GROWTH. Nothing records where
           # in the routine such a call is — it is counted off the tree, not off the code — so
@@ -993,7 +993,7 @@ module VBlank
             saved = gone - (4 * read.map(&:word).uniq.size)
             whole_routine_reaches = read.size == loads.size && size - gone + (4 * crossings) <= NumberTable::REACH
             unless whole_routine_reaches
-              # THE LINE, counted from the measured end: as far as a read reaches, plus what
+              # The line, counted from the measured end: as far as a read reaches, plus what
               # the reads below the line save (anything above it has all of them between it
               # and the table), less room for the crossing calls' words. It falls between the
               # topmost load that is read and the one above it — and a crossing call's own
@@ -1007,15 +1007,15 @@ module VBlank
                             saved: saved + (crossings * (CROSS_CALL_GROWTH - CROSS_CALL_GROWTH_WITH_TABLE)))
           end
 
-          # THE LOADS THAT WILL BE READS, worked out from the bottom of the routine up, because
-          # A ROUTINE SHRINKS AS ITS NUMBERS BECOME READS. The last load is nearest the table
+          # The loads that will be reads, worked out from the bottom of the routine up, because
+          # a routine shrinks as its numbers become reads. The last load is nearest the table
           # and reaches if anything does. Each load above it is further from the end by the
           # code in between, but nearer by what the reads below it saved — so each is asked
           # with those taken off, and the first one that still cannot reach ends it, since
           # everything above that one is further again. The reads are always the bottom of
           # the routine.
           #
-          # A WORD IS AS FAR INTO THE TABLE AS THE READS ABOVE IT PUT IT, and that settles
+          # A word is as far into the table as the reads above it put it, and that settles
           # itself for the loads counted here: each read above another is at least one
           # instruction of code between it and the end, and at most one word in the table
           # ahead of the other's, so the topmost read is the one that reaches least. What it
@@ -1039,7 +1039,7 @@ module VBlank
           # with it (see #beside_frame_routine), and the routine the console interrupts into.
           def every_frame_routines = [FRAME_ROUTINE, *routines_placed_with_frame, IRQ_ROUTINE]
 
-          # WHAT WANTS A PLACE IN THE QUICK MEMORY, given as plain numbers for {QuickMemoryPlan}:
+          # What wants a place in the quick memory, given as plain numbers for {QuickMemoryPlan}:
           # what the author insisted on, then what the build would pick, in its order. Each routine
           # one scene alone runs may go in that scene's set (see {SceneQuickMemory}); a save
           # record's routines go with the one scene that asks for its saves, though every pass of
@@ -1094,7 +1094,7 @@ module VBlank
           # The routine that runs the scene a measurement names by the scene's own name.
           def scene_routine_named(scene) = DerivedNames.join(SceneQuickMemory::SCENE_PREFIX, scene)
 
-          # A COLLECTION IN THE QUICK MEMORY IS A CLAIM ON IT TOO, weighed by the same rule as the
+          # A collection in the quick memory is a claim on it too, weighed by the same rule as the
           # code: a read from the roomy memory waits about six times as long, as a routine left in
           # the cartridge runs slower. Each the author set nothing about is one, named apart from
           # every routine (see #list_claim_name). +collections+ is the lists of each, by
@@ -1126,7 +1126,7 @@ module VBlank
             worth if worth.values.all?
           end
 
-          # THE COLLECTION A LIST IS PART OF: a pool for each of its columns and the lists it keeps
+          # The collection a list is part of: a pool for each of its columns and the lists it keeps
           # for itself, since a walk of it reads them side by side and they move together or not
           # at all; the list itself for any other.
           def collection_of(name)
@@ -1134,7 +1134,7 @@ module VBlank
             %i[pool_field pool_part].include?(kind) ? :"pool #{parts[:pool]}" : name
           end
 
-          # WHERE A COLLECTION COMES AMONG THE CLAIMS, after what the author insisted on.
+          # Where a collection comes among the claims, after what the author insisted on.
           #
           # MEASURED, by what keeping it saves a frame (+worth+, by claim name, in instructions a
           # frame — see Diagnostics::RoutineProfile#worth_of_lists), against what each routine
@@ -1142,7 +1142,7 @@ module VBlank
           # The routines keep the order they were ranked in. A routine the measurement never saw
           # counts as worth nothing, as it ranks last among the routines.
           #
-          # NOT MEASURED (+worth+ nil), one a frame touches goes ahead of the routines the build
+          # Not measured (+worth+ nil), one a frame touches goes ahead of the routines the build
           # would pick, and one no frame touches after all of them. What a frame touches is waited
           # on every frame, as the code is, and with nothing to show how often, a busy one keeps the
           # place it always had. One no frame touches is waited on by nobody, and it holds room a
@@ -1212,12 +1212,12 @@ module VBlank
           # actually spends its time in. Measured on examples/breakout.rb, where value for
           # size moved the game-over screen and left the playing scene behind.
           #
-          # FROM A MEASUREMENT WHERE THERE IS ONE, and from the shape of the program where
+          # From a measurement where there is one, and from the shape of the program where
           # there is not. Nothing here estimates what a routine costs.
           #
           # A measured profile is the right answer and the only one that can be checked: the
           # game was run, and this is what its frames were really spent on. It survives a
-          # rebuild because it is keyed by ROUTINE NAME rather than by anything that moves.
+          # rebuild because it is keyed by routine name rather than by anything that moves.
           #
           # With no profile there is no honest number to be had, so this does not invent one.
           # It orders by REACHABILITY instead — the frame's own body, then what the frame calls,
@@ -1255,7 +1255,7 @@ module VBlank
           # the measuring pass has run.
           def routines_placed_with_frame = @routines_placed_with_frame || []
 
-          # THE FRAME'S OWN ROUTINES GO RIGHT AFTER THE FRAME'S, whatever they measured.
+          # The frame's own routines go right after the frame's, whatever they measured.
           #
           # Bringing a big map's view along was written out in the frame's routine, so it was
           # kept in the quick memory whenever the frame was. As a routine of its own it would
@@ -1273,7 +1273,7 @@ module VBlank
             rest.insert(rest.index(FRAME_ROUTINE) + 1, *own)
           end
 
-          # WHAT THE BUILD MADE FOR A SCENE GOES RIGHT AFTER THE SCENE, when nothing has been
+          # What the build made for a scene goes right after the scene, when nothing has been
           # measured. The frame calls such a routine on the frames the scene runs, so it is
           # worth what the scene is worth, and nothing in the tree reaches it for the walk below
           # to find.
@@ -1283,8 +1283,8 @@ module VBlank
             order.flat_map { |name| [name, *of_scene.fetch(name, []).map(&:first)] }
           end
 
-          # THE ORDER TO TRY WHEN NOTHING HAS BEEN MEASURED. The frame's own body first, since
-          # it IS the frame; then out along the calls, nearest first, so a routine the frame
+          # The order to try when nothing has been measured. The frame's own body first, since
+          # it is the frame; then out along the calls, nearest first, so a routine the frame
           # reaches every pass is preferred to one only a menu can get to.
           #
           # The routine the console interrupts into is placed by a fact about the program too,
@@ -1302,7 +1302,7 @@ module VBlank
             with_scene_routines(order + reached, candidates)
           end
 
-          # DOES THE CONSOLE INTERRUPT OFTEN ENOUGH FOR THAT ROUTINE TO BE WORTH THE ROOM? Both
+          # Does the console interrupt often enough for that routine to be worth the room? Both
           # answers are facts about the program rather than guesses about the machine, which is
           # what lets this be decided with nothing measured.
           #
@@ -1312,7 +1312,7 @@ module VBlank
           # frame. Anything else enters it once a frame and leaves again, and then the room is
           # better spent on almost anything else.
           def interrupts_often?(program)
-            # ...and it is a bend the COPIER cannot feed that does it. Where an engine feeds
+            # ...and it is a bend the copier cannot feed that does it. Where an engine feeds
             # the rows the display announces nothing at all, and the block runs in the frame
             # with everything else. BendForm answers this for the report already, so the two
             # cannot disagree about it.
@@ -1325,15 +1325,15 @@ module VBlank
           # console interrupts into is entered for the frame's own sake and hardly ever else.
           TICKS_A_FRAME = 60
 
-          # DOES THE FRAME'S OWN BODY DO ANYTHING? A game loop that only waits for the screen
+          # Does the frame's own body do anything? A game loop that only waits for the screen
           # is the case, and it is worth catching: every frame of it is the console asleep, so
           # moving the body buys nothing and costs the room and a longer call at every site.
           # It is the job WORTH_MOVING did for the estimate, asked of the program rather than
           # of a price.
           #
-          # A BENDING BACKGROUND COUNTS EVEN THOUGH THE LOOP LOOKS EMPTY, and so does a light,
+          # A bending background counts even though the loop looks empty, and so does a light,
           # whose circle is worked out the same way. Where the program
-          # waits for frames, a bend's block is worked out IN the frame, into a table — so the
+          # waits for frames, a bend's block is worked out in the frame, into a table — so the
           # frame is doing 160 rows of the author's own arithmetic that the loop's statements
           # know nothing about. Miss that and the busiest thing in such a program is left in
           # the cartridge.
@@ -1347,10 +1347,10 @@ module VBlank
           end
 
 
-          # Walk out along the calls from the code a frame runs, taking each routine WITH
+          # Walk out along the calls from the code a frame runs, taking each routine with
           # everything it goes on to call before moving to the next.
           #
-          # DEPTH FIRST, AND THAT IS THE WHOLE OF THIS RULE'S JUDGEMENT. Level by level looks
+          # Depth first, and that is the whole of this rule's judgement. Level by level looks
           # more sensible and is worse, because of scenes: a `case_var` puts every scene one
           # call from the frame, so all of them — the title, the game-over screen, the one
           # being played — rank ahead of anything a scene itself calls. The room then goes to
@@ -1359,10 +1359,10 @@ module VBlank
           # dropped `draw_all`, which is what that game spends its frame in.
           #
           # Taken depth first, a scene is followed immediately by what it uses, which matches
-          # the one thing that is certainly true of a dispatch: only ONE of those scenes runs
+          # the one thing that is certainly true of a dispatch: only one of those scenes runs
           # on any frame.
           #
-          # A routine a frame CANNOT reach is left off the list entirely rather than put at the
+          # A routine a frame cannot reach is left off the list entirely rather than put at the
           # end of it. Moving one would cost nothing in speed — the room is empty otherwise —
           # but every call that then crosses between the two memories grows, so a title
           # screen's helpers would be paid for in cartridge size and never earn it back.
@@ -1382,8 +1382,8 @@ module VBlank
           end
 
           # The routines one body reaches: the ones it calls outright, the scenes a dispatch
-          # can land on, and every routine a call picked by number can. A scene IS a routine
-          # and a `case_var` IS how a game reaches the one it is playing, so leaving those out
+          # can land on, and every routine a call picked by number can. A scene is a routine
+          # and a `case_var` is how a game reaches the one it is playing, so leaving those out
           # would miss the most important routine in most games — the playing scene.
           def callees_of(node)
             node.walk.flat_map(&:callees)
@@ -1400,7 +1400,7 @@ module VBlank
             "`scene :#{scene.delete_prefix('_scene_')}, fast: true`"
           end
 
-          # THE RECORD WHOSE WORD PUT A SAVE ROUTINE HERE, by the name the game gave it, or nil
+          # The record whose word put a save routine here, by the name the game gave it, or nil
           # for a routine that is not a save routine: an author writes `fast: true` on a
           # record, never on one of the routines the record is built into, so the record is
           # what a message has to name. A record's own routine names which record it is. A

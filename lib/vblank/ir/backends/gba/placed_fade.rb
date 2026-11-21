@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # AN EFFECT PLACED IN THE STACK.
+        # An effect placed in the stack.
         #
         # `fade :black, 100, under: :ui` blends what is behind :ui and leaves :ui and
         # everything in front of it alone. The console has two ways to set that, and the
@@ -12,21 +12,21 @@ module VBlank
         #
         #   * The blend register names each background layer with a bit of its own, so
         #     scenery on the kept side simply stays out of the mask. Free.
-        #   * It names every sprite on screen with ONE bit. So a line drawn between two
+        #   * It names every sprite on screen with one bit. So a line drawn between two
         #     sprites cannot be set there at all — and a HUD is sprites, which makes
         #     that the case the whole feature exists for.
         #
-        # The way through is the OBJECT WINDOW. A sprite can be drawn as a window instead
+        # The way through is the object window. A sprite can be drawn as a window instead
         # of a picture: it paints nothing, and where its pixels would have been the color
         # effect is turned off. The region is the shape of the pixels it paints and not
         # its box, which is what makes it usable for a letter. So each kept sprite gets a
         # twin drawn that way, and the fade goes around the sprite.
         #
         # A twin costs one sprite slot and one table write a frame, so they are made only
-        # where they are the only answer: a fade that keeps EVERY sprite leaves the OBJ
+        # where they are the only answer: a fade that keeps every sprite leaves the OBJ
         # bit out of the mask instead, and costs nothing at all.
         #
-        # A twin is a RIDER on its sprite rather than a second sprite to work out. Where it
+        # A twin is a rider on its sprite rather than a second sprite to work out. Where it
         # is, which pose it holds and how big it is are all the same numbers, so the frame
         # writes them once and drops a copy into the twin's slot on the way past (see
         # SpriteDrawing#emit_present_object) — which is what keeps a HUD held out of a fade from
@@ -56,7 +56,7 @@ module VBlank
             @twins = {}
           end
 
-          # THE TWINS TAKE THE FRONT PLACES, each one a run as long as the sprite it shadows
+          # The twins take the front places, each one a run as long as the sprite it shadows
           # — a twin has to hold exactly the shape the sprite holds, so a sprite drawn as
           # four objects needs four windows. The block gives how many places a sprite takes.
           # Returns where the real sprites start.
@@ -79,7 +79,7 @@ module VBlank
           # How many of the console's places the twins take between them.
           def places_spent(&pieces) = @gates.keys.sum(&pieces)
 
-          # WHICH LAYERS A FADE BLENDS: everything behind where it sits. A fade that names no
+          # Which layers a fade blends: everything behind where it sits. A fade that names no
           # layer reaches the whole screen.
           def blend_target_bits(under)
             return BLD_ALL_LAYERS if under.nil?

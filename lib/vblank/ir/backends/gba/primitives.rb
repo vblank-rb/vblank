@@ -8,7 +8,7 @@ module VBlank
         class Primitives
           include Console::Hardware
 
-          # THE WORD A FILL READS ITS COLOUR FROM. The console's copying engine fills by
+          # The word a fill reads its colour from. The console's copying engine fills by
           # reading the same word over and over, so a fill stores its colour in this one
           # and hands the engine the word's ADDRESS — as a number, built by instructions.
           FILL_SCRATCH = :_dma_scratch
@@ -21,12 +21,12 @@ module VBlank
             @held_registers = {}
           end
 
-          # THE FILL'S WORD GETS THE FIRST ADDRESS THERE IS, so this is called before the
+          # The fill's word gets the first address there is, so this is called before the
           # program has named anything. How many instructions a number takes depends on its
           # bits, and the first address of this memory is the only one the chip builds in a
           # single instruction; most of the others take two or three. Handed out on first
           # mention like everything else, the word landed wherever the variables named before
-          # the first fill left it, so what EVERY fill in a game cost was settled by something
+          # the first fill left it, so what every fill in a game cost was settled by something
           # nobody chose. A program that never fills spends one word of memory on it.
           def claim_first_address_for_fill_scratch
             var_addr(FILL_SCRATCH)
@@ -43,7 +43,7 @@ module VBlank
             @vars[name] ||= roomy_var?(name) ? claim_roomy_var(name) : @memory.alloc_near_base(4)
           end
 
-          # A VARIABLE A COLLECTION OWNS GOES WHERE THE COLLECTION WENT. A list keeps how many
+          # A variable a collection owns goes where the collection went. A list keeps how many
           # items it holds, and a pool a dozen more of its own (see Lists#roomy_counter?); a
           # collection kept in the roomy memory, because the author marked it as cold or because
           # the quick one ran out, would otherwise leave those behind in the quick memory, where
@@ -74,12 +74,12 @@ module VBlank
             @var_mentions.filter_map { |pos, name| name if span.cover?(pos) }.uniq
           end
 
-          # HOW FAR FROM THE BASE A VARIABLE CAN SIT and still be reached by naming the two
+          # How far from the base a variable can sit and still be reached by naming the two
           # together. The instruction keeps twelve bits for the distance, so a thousand
           # variables. Past that the address is built in full, as everything used to be.
           FURTHEST_FROM_BASE = 0xFFF
 
-          # READING A VARIABLE IS TWO INSTRUCTIONS, AND OFTEN ONE: put the base of the variable
+          # Reading a variable is two instructions, and often one: put the base of the variable
           # memory in a register, then load from that register plus this variable's distance
           # along — and skip the first of those when the base is still sitting there from the
           # last access.
@@ -87,12 +87,12 @@ module VBlank
           # It used to be the whole address and then a load, and the whole address is the
           # expensive part. This console can name a number in one instruction only when the
           # number has eight significant bits in the right places, which an address does not,
-          # except by luck: the FIRST variable sits at the base itself and costs one, the next
+          # except by luck: the first variable sits at the base itself and costs one, the next
           # sixty-three cost two, and everything past that costs three. So the hundredth variable
           # a program declares was read in four instructions and the first in two, for no reason
           # the program could see — it was the order the backend happened to emit things in.
           #
-          # The base is a number this console CAN name in one instruction, and the distance rides
+          # The base is a number this console can name in one instruction, and the distance rides
           # inside the load. So every variable is two, and the hundredth costs what the first
           # does. And since the base never changes for the life of the program, a run of accesses
           # with nothing between them that could disturb the register needs it made only once —
@@ -101,7 +101,7 @@ module VBlank
           # {AddressRegister}, which is careful about it, because being wrong writes to the
           # wrong address rather than failing.
           #
-          # A variable the code around us is already HOLDING in a register is one move instead,
+          # A variable the code around us is already holding in a register is one move instead,
           # and it is the same number either way because whoever holds it is keeping memory and
           # register in step (see Statements#emit_repeat, the only holder today: a loop's index).
           def load_var(reg, name)
@@ -155,7 +155,7 @@ module VBlank
             @emitter.emit(ASM.store_halfword(ACC, TMP))
           end
 
-          # THE BLOCK'S INSTRUCTIONS WITH THE INTERRUPT SWITCH OFF, for a read and a write (or two
+          # The block's instructions with the interrupt switch off, for a read and a write (or two
           # writes) an interrupt handler must not land between (GBATEK, Interrupt Control: IME,
           # 0x4000208, bit 0 off holds every interrupt; one asked for meanwhile waits in IF and is
           # taken as IME comes back on). Kept to the few instructions that need it. The block may
@@ -188,13 +188,13 @@ module VBlank
           COPY_TO_STEP = REG_DMA3DAD - REG_DMA3SAD
           COPY_START_STEP = REG_DMA3CNT - REG_DMA3SAD
 
-          # TELL THE COPYING ENGINE WHAT TO COPY, AND START IT. The console has an engine that
+          # Tell the copying engine what to copy, and start it. The console has an engine that
           # moves a block of memory on its own, far faster than a loop of loads and stores, and
           # it is told what to do through three registers: where to copy +from+, where +to+,
           # and a +control+ word saying how much and in what manner. Writing the control word
           # is what starts it, so that one always goes last.
           #
-          # THE THREE SIT SIDE BY SIDE IN MEMORY, which is why this is one call and not three
+          # The three sit side by side in memory, which is why this is one call and not three
           # stores. An address is the dear part of a store on this chip — two instructions to
           # build, where the store itself is one — and a store can name a small step from the
           # address it is given for nothing. So the first address is built once and the other
@@ -251,11 +251,11 @@ module VBlank
           # runs. +counter+ is the register holding how many rows are left; +body+ emits
           # one row and must leave the counter alone.
           #
-          # The count is tested BEFORE the first row, which is what makes a height of
+          # The count is tested before the first row, which is what makes a height of
           # zero — or a negative one, from a bar that ran past empty — draw nothing
           # instead of wrapping round to four thousand million rows.
           #
-          # ...and after that only at the BOTTOM of each row. Taking one off the count can set
+          # ...and after that only at the bottom of each row. Taking one off the count can set
           # the chip's flags as it goes, so "is there another row?" is the subtract and one
           # branch back. Tested at the top as well, every row would pay a compare, a branch out
           # that is not taken, and a branch back: two instructions a row more for the same walk.
@@ -285,7 +285,7 @@ module VBlank
             end
           end
 
-          # PUT AN ADDRESS IN AN ADDRESS REGISTER, as cheaply as what is already in there
+          # Put an address in an address register, as cheaply as what is already in there
           # allows. Three prices, and the caller writes the same line for all three:
           #
           #   * Nothing at all, when the register already holds it. This is the case that
@@ -349,7 +349,7 @@ module VBlank
             @emitter.emit(ASM.str_offset(ACC, TMP, step))
           end
 
-          # BEING WRONG HERE WRITES TO THE WRONG PLACE AND SAYS NOTHING, so the ways a caller
+          # Being wrong here writes to the wrong place and says nothing, so the ways a caller
           # could lose a number are refused while building. TMP holds the engine's address
           # from the first store to the last, and the accumulator is what every loaded number
           # passes through — so a control word waiting there would be gone by the time it was
@@ -369,7 +369,7 @@ module VBlank
           # The low half of the engine's control word: how many units it moves.
           COPY_COUNT_MASK = 0xFFFF
 
-          # A COUNT OF NOUGHT IS THE ENGINE'S BIGGEST COUNT, not nothing (GBATEK, DMA word count:
+          # A count of nought is the engine's biggest count, not nothing (GBATEK, DMA word count:
           # "0 = 4000h" for the first three engines, "0 = 10000h" for this one). Asked to move
           # nothing it moves 65,536 units, more than all of video memory holds, from wherever its
           # source was over whatever follows its destination. A copy whose count is settled while
