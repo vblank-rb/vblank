@@ -75,7 +75,7 @@ class TestPoolRecycle < Minitest::Test
     assert_equal 2, i[VBlank::DSL::Pool.count_var(:thing)]
   end
 
-  # recycle_oldest: a full spawn replaces the OLDEST instance (tag 1), keeps the rest,
+  # recycle_oldest: a full spawn replaces the oldest instance (tag 1), keeps the rest,
   # and the new one appears — count stays at capacity (reused, not grown).
   def test_recycle_oldest_replaces_the_oldest_when_full
     i = run_tags(:recycle_oldest, 2, [1, 2, 3])
