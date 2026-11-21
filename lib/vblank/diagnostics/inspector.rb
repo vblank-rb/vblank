@@ -134,7 +134,7 @@ module VBlank
           return ["NOP   (mov r0, r0)", regs]
         end
 
-        # PUSH/POP (STM/LDM with sp)
+        # Push/pop (stm/ldm with sp)
         if (inst & 0x0FFF0000) == 0x092D0000  # STMFD sp!, {regs} = PUSH
           mask = inst & 0xFFFF
           rlist = (0..15).select { |r| mask[r] == 1 }.map { |r| reg(r) }

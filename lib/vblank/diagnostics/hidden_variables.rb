@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # THE VARIABLES A GAME NEVER ASKED FOR, listed where somebody looking at what a cartridge costs
+    # The variables a game never asked for, listed where somebody looking at what a cartridge costs
     # will see them. Normal Ruby sometimes needs a number kept that the author gave no `var`: a
     # swap, a name that holds nil, a number kept from a line above. Each takes one word of the
     # console's small working memory and a few instructions, and a game at the limit wants to
