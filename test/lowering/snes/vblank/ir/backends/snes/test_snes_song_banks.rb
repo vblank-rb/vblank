@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A SONG BIGGER THAN A BANK OF THE CARTRIDGE ON A SUPER NINTENDO. The player walks a song's notes
+# A song bigger than a bank of the cartridge on a Super Nintendo. The player walks a song's notes
 # from the cartridge, sixteen bytes a note, and a bank holds 32K, so a song of more than about two
 # thousand notes once stopped the build. Its notes now go in banks of their own (SNES::SongBanks),
 # and the song plays as the interpreter plays it: the checked run holds the sound log and the DSP's

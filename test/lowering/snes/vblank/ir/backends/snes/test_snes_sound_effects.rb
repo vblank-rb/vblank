@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# SOUND EFFECTS ON A SUPER NINTENDO. An effect is a short score played once over the song, on the
+# Sound effects on a Super Nintendo. An effect is a short score played once over the song, on the
 # same voices the Advance plays it on; where the two want one voice, the higher priority sounds on
 # it (IR::Tunes.song_rank), and an effect's end lets its voices go. The checked run holds the sound
 # log and the DSP's registers to the interpreter's (test/all/vblank/dsl/test_sound_effects.rb plays the
