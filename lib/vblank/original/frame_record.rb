@@ -33,7 +33,7 @@ module VBlank
     #     8  2 bytes     row step: how many tiles on the tile one row down is
     #    10  1 byte      columns: how many tiles across it is
     #    11  1 byte      rows: how many tiles down it is
-    #    12  1 byte      turns: mirrored and UPSIDE_DOWN, the whole piece turned as one
+    #    12  1 byte      turns: MIRRORED and UPSIDE_DOWN, the whole piece turned as one
     #    13  1 byte      0
     #    14  2 bytes     bank: which bank of the original's colours it is drawn from, 0 where its
     #                    layout names none

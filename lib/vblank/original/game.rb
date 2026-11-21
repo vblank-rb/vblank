@@ -67,7 +67,7 @@ module VBlank
     # refused.
     #
     # A name close to a known one is refused, unless +new_platform+ says it is meant: one a letter or
-    # two from a console's name or computer, or the same but for case or punctuation (:gbcc, "GBA",
+    # two from a console's name or COMPUTER, or the same but for case or punctuation (:gbcc, "GBA",
     # :p_c). A typo is not a new platform: its slots would be read in VBlank's own layout, and a slot
     # the original keeps in its console's layout would then show a wrong picture with no error.
     def self.platform_named(platform, new_platform: false)
@@ -80,7 +80,7 @@ module VBlank
                            "computer game, or :arcade."
     end
 
-    # The platforms VBlank knows by name: each console's, and computer.
+    # The platforms VBlank knows by name: each console's, and COMPUTER.
     def self.known_platforms = [*Console::KITS.keys, COMPUTER]
 
     def self.refuse_platform_close_to_known!(named)

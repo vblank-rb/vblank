@@ -10,7 +10,7 @@ module VBlank
     #                     a Color tile in bank 1 is tile 384 on, where the slot holds bank 0's 384
     #                     tiles first.
     #   2     bank        which bank of colours of the background's `colors:` slot, 0 first
-    #   3     turns       mirrored (left to right), UPSIDE_DOWN and IN_FRONT; the other bits 0
+    #   3     turns       MIRRORED (left to right), UPSIDE_DOWN and IN_FRONT; the other bits 0
     #
     # Each part is a field of its own and is as wide as the most any console VBlank lowers to
     # needs: the Genesis names 2048 tiles and the Advance sixteen banks, and the PlayStation more of
@@ -57,7 +57,7 @@ module VBlank
         [tile, tile >> 8, bank, turns]
       end
 
-      # The record as one number, as format reads it: `tile | bank << 16 | turns << 24`. It fits a
+      # The record as one number, as FORMAT reads it: `tile | bank << 16 | turns << 24`. It fits a
       # game's number, so a game keeps a cell in a variable or works one out, and a background of
       # map cells takes it in `set_cells:` and `set_cell`. +tile+ may be a value the game works out
       # (a letter read from a table, plus the font's first tile), and the rest are then added to it;

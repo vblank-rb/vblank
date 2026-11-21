@@ -4,7 +4,7 @@ module VBlank
   module Original
     # Each frame a game names, written again as a record of VBLANK's own (FrameRecord), by the
     # pack's unpacking. A frame's slot holds the original's bytes, kept the original's way, and a
-    # game says where a frame is in it and how it is kept (`pack[:frames].frame(at, layout: frame)`).
+    # game says where a frame is in it and how it is kept (`pack[:frames].frame(at, layout: FRAME)`).
     # Once every slot is filled, copied as it is or by the game's routine, this reads each such
     # frame from the pack's own bytes and writes its record after the last slot
     # (FrameRecord::Section). Nothing that draws a pose then reads an original's layout.

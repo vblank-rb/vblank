@@ -2,7 +2,7 @@
 
 module VBlank
   module Original
-    # A piece read by a few lines of the game's own Ruby (`FrameLayout.new(..., piece: reader)`), for
+    # A piece read by a few lines of the game's own Ruby (`FrameLayout.new(..., piece: READER)`), for
     # an original that keeps a frame in a way no option of FrameLayout says. The reader is handed
     # the piece's bytes and the values the pose gives (`frame(at, layout:, with: { block: 5 })`), and
     # gives back a FrameLayout::Piece:
