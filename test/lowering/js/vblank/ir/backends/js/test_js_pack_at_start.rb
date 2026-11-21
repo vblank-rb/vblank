@@ -4,7 +4,7 @@ require "test_helper"
 require "pack_at_start_tests"
 require "pack_sound_tests"
 
-# A GAME HANDED ITS DATA PACK AS IT STARTS, played as JavaScript and checked against the
+# A game handed its data pack as it starts, played as JavaScript and checked against the
 # interpreter on every frame (PackAtStartTests in test/pack_at_start_tests.rb, which says why these
 # are not in test/all/). The JavaScript runtime fills the tables and the tiles from the file it is
 # handed, as the C runtime does.

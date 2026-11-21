@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A LIST KEEPS EACH ITEM IN THE ROOM ITS WIDTH SAYS in the web build, as in the game as C: a list
+# A list keeps each item in the room its width says in the web build, as in the game as C: a list
 # of bytes is an Int8Array, a byte an item, so a port's pack of hundreds of megabytes, one list of
 # bytes, costs its own size in the browser that unpacks it and not four times it. A narrow slot
 # still keeps the low bits and reads them back as the interpreter does
