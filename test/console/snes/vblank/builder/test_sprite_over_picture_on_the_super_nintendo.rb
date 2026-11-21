@@ -2,11 +2,11 @@
 
 require "test_helper"
 
-# A SPRITE OVER A PAINTED PICTURE ON THE SUPER NINTENDO (`sprite ..., over_picture: true`): the
+# A sprite over a painted picture on the Super Nintendo (`sprite ..., over_picture: true`): the
 # console's own sprite, drawn over the painted layer and never into it. The painted screen takes
 # nearly all of video memory and the colour memory, so the sprite's tiles go in what it leaves and
 # its colours in places of the colour memory the painting does not use (Runtime::Paint, "SPRITES
-# OVER THE PICTURE"). Every run that plays games as the Super Nintendo plays these, so the cartridge
+# over the picture"). Every run that plays games as the Super Nintendo plays these, so the cartridge
 # and the game as C, JavaScript and Ruby are each held to the interpreter pass by pass. What every
 # console does with such a sprite is test/all/vblank/builder/test_sprite_over_picture.rb; what the
 # cartridge refuses and what it costs is

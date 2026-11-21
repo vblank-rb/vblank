@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A PAINTED SCREEN WHOSE PIXELS ARE SHOWN TWICE AS BIG on the Super Nintendo (`screen :bitmap,
+# A painted screen whose pixels are shown twice as big on the Super Nintendo (`screen :bitmap,
 # pixel_size: 2`): the game paints a 128×112 picture and the console shows each of its pixels as a
 # square of four, filling its 256×224 screen. Every run that plays games as the Super Nintendo plays
 # these, so the cartridge, and the game as C, JavaScript and Ruby, are each held to the interpreter

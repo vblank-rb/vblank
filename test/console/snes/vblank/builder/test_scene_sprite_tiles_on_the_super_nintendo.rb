@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# EACH SCREEN'S SPRITE TILES ARE ITS OWN TO COUNT. Video memory holds 512 sprite tiles at once, and a
+# Each screen's sprite tiles are its own to count. Video memory holds 512 sprite tiles at once, and a
 # Super Nintendo's own games load a screen's with the screen, so two screens of 300 each never meet.
 class TestSceneSpriteTilesOnTheSuperNintendo < Minitest::Test
   SWITCH_AT = 4
@@ -60,7 +60,7 @@ class TestSceneSpriteTilesOnTheSuperNintendo < Minitest::Test
     b.program
   end
 
-  # A DISPATCH INSIDE A TEST notes the scene number as the pass starts (IR::Frames), so the frame
+  # A dispatch inside a test notes the scene number as the pass starts (IR::Frames), so the frame
   # that hands over shows the arriving scene's background with the leaving scene's sprite, in the
   # leaving scene's own tiles.
   def test_a_dispatch_inside_a_test_shows_the_leaving_sprite_in_its_own_tiles

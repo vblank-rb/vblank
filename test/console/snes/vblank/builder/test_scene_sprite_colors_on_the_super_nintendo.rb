@@ -3,7 +3,7 @@
 require "test_helper"
 require "scene_color_lists"
 
-# EACH SCREEN'S SPRITE COLOURS ARE ITS OWN TO COUNT. A Super Nintendo holds eight sets of fifteen
+# Each screen's sprite colours are its own to count. A Super Nintendo holds eight sets of fifteen
 # colours for its sprites, and its own games load a screen's sets with the screen, so two screens
 # of eight sets each never meet, the ones the display mixes included.
 class TestSceneSpriteColorsOnTheSuperNintendo < Minitest::Test
