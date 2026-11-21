@@ -28,7 +28,7 @@ module VBlank
       # height) and the rectangle of the screen it is copied to (+to+), both in pixels.
       Letter = Data.define(:from, :to)
 
-      # The library's letters, read once for each Ractor: from path, or from carried in a game
+      # The library's letters, read once for each Ractor: from PATH, or from carried in a game
       # written out as one Ruby file.
       def self.load
         Ractor.current[:vblank_menu_font] ||= new(defined?(CARRIED) ? CARRIED : File.read(PATH, encoding: Encoding::UTF_8))

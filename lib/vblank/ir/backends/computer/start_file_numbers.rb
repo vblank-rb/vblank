@@ -83,7 +83,7 @@ module VBlank
               "RG_PIECE_MIRRORED" => record::MIRRORED, "RG_PIECE_UPSIDE_DOWN" => record::UPSIDE_DOWN }
           end
 
-          # Every number written ahead of a runtime: names, and the layout of a frame's record.
+          # Every number written ahead of a runtime: NAMES, and the layout of a frame's record.
           def self.names = NAMES.merge(frame_record_names)
 
           NAMES = Ractor.make_shareable({

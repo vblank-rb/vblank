@@ -61,7 +61,7 @@ module VBlank
         # is an error and not two cameras fighting over one world.
         #
         # ```ruby
-        # world = background :world, tiles: :terrain, map: map
+        # world = background :world, tiles: :terrain, map: MAP
         # hero  = sprite :guy, at: [0, 0]
         # hero.center_on_screen
         # camera_follows hero, across: world

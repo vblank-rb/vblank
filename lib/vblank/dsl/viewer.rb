@@ -40,11 +40,11 @@ module VBlank
 
       attr_reader :name
 
-      # The variable that holds +part+ of this viewer (one of parts, or a scratch part of
+      # The variable that holds +part+ of this viewer (one of PARTS, or a scratch part of
       # IR::ViewerMotion::SCRATCH).
       def variable(part) = Messages::MadeNames.make(:viewer_part, viewer: @name, part: part)
 
-      # Every variable, in parts order.
+      # Every variable, in PARTS order.
       def variables = PARTS.map { |part| variable(part) }
 
       # The scratch variables a turn works in.
@@ -174,7 +174,7 @@ module VBlank
       end
 
       # The twelve starting numbers for +at+ and +facing+ (a Hash of :right, :up and :ahead, each
-      # three numbers), in parts order, refused in plain words when they are not a spot and three
+      # three numbers), in PARTS order, refused in plain words when they are not a spot and three
       # square arrows of length one.
       def self.starting_numbers(name, at, facing)
         refuse_bad_spot!(name, at)

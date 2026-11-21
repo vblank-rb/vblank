@@ -39,7 +39,7 @@ module VBlank
         FULL = 100.0  # :nodoc:
         DEFAULT_FRAMES = 30 # :nodoc: Half a second, the same as a screen fade — they are usually called together
 
-        # TARGET starts below nothing, so the guardrail can tell a fade in (which writes full) from
+        # TARGET starts below nothing, so the guardrail can tell a fade in (which writes FULL) from
         # the declaration. The value is never used: the routine runs only once a fade has set both.
         NEVER_FADED = -1.0  # :nodoc:
 
