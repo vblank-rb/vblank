@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# LOADS OF SPRITE TILES ON THE COLOR (GBC::Lowering::SpriteTiles, Runtime::SpriteTileLoads): a load
+# Loads of sprite tiles on the color (GBC::Lowering::SpriteTiles, Runtime::SpriteTileLoads): a load
 # is noted in the pass and copied from the cartridge in the blank after it, and a blank holds the
 # copies of a few loads.
 class TestGBCSpriteTileLoads < Minitest::Test

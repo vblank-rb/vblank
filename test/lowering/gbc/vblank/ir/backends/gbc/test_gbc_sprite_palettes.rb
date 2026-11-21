@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE COLOR'S EIGHT SPRITE PALETTES, SHARED BETWEEN PICTURES (GBC::SpriteSlots). A sprite palette
+# The color's eight sprite palettes, shared between pictures (GBC::SpriteSlots). A sprite palette
 # holds three colours and see-through, and a sprite's pixels name a slot in it. Two pictures drawn
 # from the same colours in different pixel orders share one palette where that costs no tile, and,
 # where the game's sprites need more than the eight palettes, where it costs a few. A game with
@@ -89,7 +89,7 @@ class TestGBCSpritePalettes < Minitest::Test
     end
   end
 
-  # A pixel of each colour of a HALVES picture, and of a CORNER picture, from its top left.
+  # A pixel of each colour of a halves picture, and of a corner picture, from its top left.
   HALVES_PIXELS = [[1, 1], [6, 1]].freeze
   CORNER_PIXELS = [[0, 0], [6, 1]].freeze
 

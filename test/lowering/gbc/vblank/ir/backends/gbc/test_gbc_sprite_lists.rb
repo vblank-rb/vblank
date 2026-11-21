@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE COLOR'S EIGHT LISTS OF SPRITE COLOURS. A game whose sprites wear more lists than eight
+# The color's eight lists of sprite colours. A game whose sprites wear more lists than eight
 # still builds: each list borrows one of the eight as a sprite wearing it is placed
 # (test/all/vblank/dsl/test_sprite_borrowed_colors.rb and test/all/vblank/builder/test_colors_in_use.rb
 # play that on every lowering). What cannot fit is a set given to `colors_in_use` with more than
@@ -25,7 +25,7 @@ class TestGBCSpriteLists < Minitest::Test
     assert GBC.new.build(one_set_of(8))
   end
 
-  # SCENES THAT EACH FADE THEIR OWN SPRITES, as a game fades every screen in and out: three
+  # Scenes that each fade their own sprites, as a game fades every screen in and out: three
   # scenes, three sprites each, each sprite stepping through 33 lists of its own. That is 297
   # lists in all, more than the 254 a build numbers for the whole game, and 99 for any one
   # scene, since a scene never shows another's sprites. +size+ is the ships' width and height, so
