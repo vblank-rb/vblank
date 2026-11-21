@@ -5,14 +5,14 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # A BACKGROUND SHOWN ONLY INSIDE A BOX THE GAME MOVES AND SIZES (`show_only_inside`), held
+          # A background shown only inside a box the game moves and sizes (`show_only_inside`), held
           # there by the display's windows (fullsnes, "SNES PPU Window").
           #
           # A window is a span of each line, from a left edge to a right edge, both inclusive
           # (WH0/WH1 for window 1, WH2/WH3 for window 2). For each layer, W12SEL turns a window on
           # and says whether it covers the inside of the span or the outside; TMW then hides the
           # layer, on the main screen, wherever its window covers. So BG1 takes window 1 and BG2
-          # window 2, each set to cover the OUTSIDE of its span: the layer shows only inside it. A
+          # window 2, each set to cover the outside of its span: the layer shows only inside it. A
           # span whose left edge is past its right is empty, so its outside is the whole line, and
           # the layer shows nowhere on that line.
           #

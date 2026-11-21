@@ -35,11 +35,11 @@ module VBlank
   module IR
     module Backends
       class SNES
-        # THE RUNTIME every Super Nintendo cartridge carries: from power-on to the game's first line
+        # The runtime every Super Nintendo cartridge carries: from power-on to the game's first line
         # (Boot), the arithmetic (Int32), the frame and the buttons (Frame), the lists (Lists), the
         # picture (Picture), and save memory (Saving) for a game that saves.
         #
-        # HOW ITS ROUTINES ARE CALLED. With JSL (and they return with RTL), so a routine of the
+        # How its routines are called. With JSL (and they return with RTL), so a routine of the
         # game's in any bank calls them alike; with A, X and Y 16 bits wide, the direct page at
         # $0000 and the data bank at $80 (Boot sets all three, and every routine leaves them so);
         # with their numbers in the working numbers R0, R1, R2... on the direct page
@@ -175,7 +175,7 @@ module VBlank
                         saving: (Saving.scratch(memory) if c.saves))
           end
 
-          # HOW MANY BYTES OF THE DIRECT PAGE #sections TAKES for its scratch, for a cartridge that
+          # How many bytes of the direct page #sections TAKES for its scratch, for a cartridge that
           # carries +carries+, the fractions' part counted where +fractions+. Known before the game is
           # lowered, so the rest of the page can go to the game's busiest variables
           # (Lowering#place_variables) and the scratch still finds its room after them. Scratch that

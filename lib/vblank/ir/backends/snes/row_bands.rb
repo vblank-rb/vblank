@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class SNES
-        # WHERE A ROW-BY-ROW BEND CAN ONLY CHANGE, read off the bend alone.
+        # Where a row-by-row bend can only change, read off the bend alone.
         #
         # A bend's block is asked for all 224 rows every pass. Most of what a row costs there is
         # the 65816 multiplying and dividing a little at a time, so a block with a table read in it
@@ -13,7 +13,7 @@ module VBlank
         # great many rows: the answer can only change where the row crosses a number it is
         # compared with. Asking the first row of each band gives what asking every row would.
         #
-        # THAT IS TRUE ONLY OF A BLOCK THAT DOES NOTHING BUT WORK A NUMBER OUT. Asked less often,
+        # That is true only of a block that does nothing but work a number out. Asked less often,
         # a block that counted something would count less, so anything that is not a plain sum, a
         # read of a table or a pick keeps being asked every row. The only variables it may write
         # are the hidden ones a pick keeps its number in.

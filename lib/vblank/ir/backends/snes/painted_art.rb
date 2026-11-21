@@ -4,28 +4,28 @@ module VBlank
   module IR
     module Backends
       class SNES
-        # WHAT A PAINTED SCREEN'S GAME PAINTS WITH, worked out while the game is built: its colours,
+        # What a painted screen's game paints with, worked out while the game is built: its colours,
         # its pictures and text in the form Runtime::Paint copies them onto the screen, and the
         # rows it clears the screen with.
         #
-        # THE COLOURS. A painted screen is one background of tiles whose pixels are eight bits each
+        # The colours. A painted screen is one background of tiles whose pixels are eight bits each
         # (Runtime::Paint), so every pixel is one of 256 colours from one list, the console's colour
         # memory (CGRAM). Every colour the game can paint is known before it runs — each drawing
         # names its colours — so the list is made here, and the game paints a colour's place in it.
         # Place 0 is black: a pixel of place 0 is see-through on the console, and shows the colour
         # behind every layer, which is set to black too, the colour the screen starts in.
         #
-        # A PICTURE is kept row by row, and each row as the tiles' rows it paints: a COLUMN of ten
+        # A picture is kept row by row, and each row as the tiles' rows it paints: a column of ten
         # bytes for every tile across it reaches — which of the tile's eight pixels the picture
-        # draws (its MASK), twice, then the eight bits of their colours' places (its PLANES) in the
+        # draws (its MASK), twice, then the eight bits of their colours' places (its planes) in the
         # pairs a tile keeps them in (planes 0 and 1, 2 and 3...), leftmost pixel in the top bit, as
         # a tile of the console's keeps its pixels. So Runtime::Paint reads each 16-bit word ready to
         # write into a tile's row: the mask, then each pair of planes. A picture painted at a place
         # across that is not a multiple of eight falls across one tile more than its width, its
         # pixels shifted along; each row is kept already shifted for each place across modulo eight
-        # it can be painted at, one RUN after the other, so the painting never shifts anything.
+        # it can be painted at, one run after the other, so the painting never shifts anything.
         #
-        # THE RUNS KEPT. Eight runs a row is eight times the picture, so a picture keeps only the
+        # The runs kept. Eight runs a row is eight times the picture, so a picture keeps only the
         # runs for the places the game can paint it at (#paint_at, worked out by
         # Lowering::Paint.shifts_reachable): text written at one place keeps one run, a picture
         # whose place is worked out as the game runs keeps all eight. Each picture has a table of
@@ -96,7 +96,7 @@ module VBlank
             end
           end
 
-          # SPRITES OVER THE PICTURE draw from the second half of the colour memory, a list of sixteen
+          # Sprites over the picture draw from the second half of the colour memory, a list of sixteen
           # places for each set of colours a sprite uses (Art#sprite_palette_at), so those places hold
           # the sprites' colours, +colors+ from +first+ on, and the painting never paints in them,
           # even where a colour is the same: a sprite's list can change as the game runs. Kept
