@@ -6,7 +6,7 @@ module VBlank
   module IR
     module Backends
       class Ruby
-        # THE GAME A FILE WRITTEN OUT AS ONE RUBY FILE PLAYS (Ruby#script), read back. Such a file is
+        # The game a file written out as one Ruby file plays (Ruby#script), read back. Such a file is
         # the library's window and session copied in, then the game's part: its title, the console
         # it is for, whether it has a menu, its Ruby, and a shell's parts where it is one. Played with
         # `ruby game-ruby.rb`, the file's own main makes one of these from its constants
@@ -30,7 +30,7 @@ module VBlank
         end
 
         class WrittenGame
-          # A SHELL'S PARTS AS A SCRIPT HOLDS THEM: +facts+, Original::ShellFacts as JSON, and its
+          # A shell's parts as a script holds them: +facts+, Original::ShellFacts as JSON, and its
           # +menu+, each of its +unpackings+ (nil for one split in pieces) and each piece's program
           # (+worker_programs+) as Ruby (Live::Shell.new takes them as they are).
           Shell = Data.define(:facts, :menu, :unpackings, :worker_programs)

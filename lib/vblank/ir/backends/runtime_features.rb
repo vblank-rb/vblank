@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      # THE RUNTIMES' FEATURES. The native, JavaScript and Ruby lowerings each play a game on a runtime
+      # The runtimes' features. The native, JavaScript and Ruby lowerings each play a game on a runtime
       # written by hand in their language (native/runtime/, js/runtime/, ruby/runtime/). A drawing
       # feature only some games use is not part of those runtimes' screen files: it is a folder of its
       # own here, runtime_features/<name>/, holding its C (rg_<name>.c, and rg_<name>.h for what the
@@ -15,13 +15,13 @@ module VBlank
       # there: JavaScript and Ruby join their runtime files into one script, and the C screen includes
       # the file the build writes for the game (#c_text) at its end.
       #
-      # WHICH RUNTIME A FEATURE JOINS (+joins+). Screen features (the default) are joined into the
+      # Which runtime a feature joins (+joins+). Screen features (the default) are joined into the
       # screen; sound features (+joins: :sound+) into the sound runtime. In C each is a translation
       # unit of its own, and so has an include point of its own, at its end, for the file the build
       # writes for it (#c_text); JavaScript and Ruby join every runtime file into one script, so
       # there the only difference is which hooks a feature may take.
       #
-      # THE HOOKS are where a runtime calls whatever features take them, and it names no feature.
+      # The hooks are where a runtime calls whatever features take them, and it names no feature.
       # Each says which runtime calls it (+joins+) and how several takers are combined (+way+):
       # :each runs every taker in order; :claim
       # runs takers in order until one answers that it did the work; :all is true unless a taker
@@ -190,11 +190,11 @@ module VBlank
           def hook_call_text(hook) = "rg_#{name}_#{hook.name}(#{hook.params.join(', ')})"
         end
 
-        # The features declared so far, filled while the feature files load and copied into ALL after.
+        # The features declared so far, filled while the feature files load and copied into all after.
         @declared = []
 
         class << self
-          # Each feature.rb calls this as it is loaded, before ALL is set.
+          # Each feature.rb calls this as it is loaded, before all is set.
           def declare(name:, needed_by:, hooks:, after: [], joins: :screen)
             @declared << Feature.new(name: name, needed_by: needed_by, hooks: hooks, after: after, joins: joins)
           end

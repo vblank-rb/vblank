@@ -5,7 +5,7 @@ require "zlib"
 module VBlank
   module IR
     module Backends
-      # WHAT TELLS A LOWERED GAME FROM THE SAME GAME ON THE INTERPRETER, the one comparison every
+      # What tells a lowered game from the same game on the interpreter, the one comparison every
       # checked run makes: the game as C (Native::CheckedRun), as JavaScript (JS::CheckedRun) and as
       # a Game Boy Color cartridge (GBC::CheckedRun) each play their game, play the same buttons on
       # the interpreter, and hand the two runs' Moments to #first_difference. The rest compare the
@@ -30,7 +30,7 @@ module VBlank
           def read_with(program) = RecordedFrame.new(variables: variables, program: program)
         end
 
-        # A RECORDED FRAME, READ BY THE GAME'S NAMES, as every reader of a running game answers
+        # A recorded frame, read by the game's names, as every reader of a running game answers
         # them (IR::ReadingByName): a variable in the game's units, a sprite, a background, the
         # music's loudness. What a checked run records of a frame (a Moment, or the native run's
         # Differences::Snapshot) keeps only its +variables+, the stored numbers by name, so it is

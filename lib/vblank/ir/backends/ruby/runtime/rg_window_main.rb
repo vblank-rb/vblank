@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# THE WINDOW vblank run OPENS, IN A PROCESS OF ITS OWN. vblank run starts a helper process that
+# The window vblank run opens, in a process of its own. vblank run starts a helper process that
 # builds the game (Live::BuildHelper), then becomes this: a fresh Ruby holding only what a game
 # written out as one Ruby file carries (Ruby::SCRIPT_PARTS and rg_script_main.rb, loaded from the
 # library ahead of this file) and Live::BuildWatch, and for a match over a network the network's
@@ -13,7 +13,7 @@
 # helper and no wait. A game that cannot play is said in the window and on the terminal, and ends
 # the process with 1.
 #
-# A MATCH (--host, --join) is hosted or joined once the game is written, from what the helper
+# A match (--host, --join) is hosted or joined once the game is written, from what the helper
 # wrote of it (WrittenGame#match, Live::MatchPlay), the window saying it waits for the others; a
 # match with no window (--no-window) waits and plays with none, on Live::Headless.
 require "json"
