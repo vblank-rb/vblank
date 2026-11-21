@@ -84,7 +84,7 @@ module VBlank
                              "Give a whole number from 0 to #{MAIN_VOLUME_LOUDEST}, or a share from 0.0 to 1.0."
       end
 
-      # SOUNDS HANDED OVER AS DATA TURN THE SOUND ON THEMSELVES, as a recording does: a game that
+      # Sounds handed over as data turn the sound on themselves, as a recording does: a game that
       # names them plainly means to hear them. At power-on, since a list can be declared in a scene.
       private def turn_sound_on
         return if @sound_enabled

@@ -120,7 +120,7 @@ module VBlank
         handle
       end
 
-      # A SPRITE IN FRONT (`in_front: true`) is drawn over a background's cells marked in front of
+      # A sprite in front (`in_front: true`) is drawn over a background's cells marked in front of
       # the sprites (`cells_in_front: true`) as well as over everything else, as a retail game's
       # cursor or speech box frame sits over scenery its characters walk behind: the console keeps
       # a priority bit in each sprite as it does in each cell. The frame draws it after every sprite
@@ -238,7 +238,7 @@ module VBlank
           at_boot(Build.set(var_name, DSL::Value.node_for(value)))
           ensure_var(var_name)
         end
-        # A directional animation cycles the FRAME (its direction is chosen by `face`);
+        # A directional animation cycles the frame (its direction is chosen by `face`);
         # a plain frames: animation cycles the single pose selector.
         if animated_facing
           register_animation(frame_var, rate, frames_per_dir)
@@ -249,7 +249,7 @@ module VBlank
         # Reserve the backing store (always — its RAM is fixed at build time). A
         # sprite that starts shown is drawn once at its start (capture what's under it
         # and blit it) so it's on screen before the loop; one that starts hidden draws
-        # nothing until `show`. (Declare a sprite AFTER you've drawn its background, so
+        # nothing until `show`. (Declare a sprite after you've drawn its background, so
         # it captures the real scenery. A `clear_screen` after it, or a fill written to
         # cover the whole screen, is the one thing that is safe to draw later — see
         # #finalize_sprite_clears.)
@@ -353,7 +353,7 @@ module VBlank
         object_node.layer_pick = layer_var
       end
 
-      # PUT SPRITES IN ANOTHER OF THE DECLARED LAYERS (see HardwareSprite#put_in_layer): one
+      # Put sprites in another of the declared layers (see HardwareSprite#put_in_layer): one
       # sprite, or every sprite a pool's things are drawn as (Pool#put_in_layer), which share one
       # variable and so move together. +which+ is a layer name, or several picked by +showing+;
       # +subject+ names who was told, for the friendly errors.
@@ -400,7 +400,7 @@ module VBlank
         names.each { |name| refuse_sprite_behind_shared_level!(subject, name) }
       end
 
-      # A POSE PICKED BY A NUMBER THE GAME WORKS OUT (see HardwareSprite#face): +names+ are the
+      # A pose picked by a number the game works out (see HardwareSprite#face): +names+ are the
       # directions it may show, +showing+ counts into them from 0, and the block is handed the
       # row to write — a number, or a Value worked out as the game runs. +row_of+ turns a
       # direction name into its row, nil for one the thing does not have.
@@ -435,7 +435,7 @@ module VBlank
         yield row.node if step >= 0 && step < rows.length
       end
 
-      # ONE OF A RUN OF +count+ CHOICES, PICKED BY A NUMBER THE GAME WORKS OUT: +choice+ (a
+      # One of a run of +count+ choices, picked by a number the game works out: +choice+ (a
       # variable, or a pool's field) is set to +start+ plus +showing+, or to +outside+ when the
       # number names none of them. What a sprite's colours and its layer are both picked by.
       # +subject+ and +verb+ name what was told what, for the friendly errors.
@@ -461,7 +461,7 @@ module VBlank
 
       private
 
-      # IS THIS SPRITE THE CONSOLE'S OWN, SHOWN OVER A PICTURE THE GAME PAINTS? Only when the
+      # Is this sprite the console's own, shown over a picture the game paints? Only when the
       # game asked (`over_picture: true`) on a painted screen. On a tiled screen every sprite is
       # the console's already, so the setting changes nothing there and is taken quietly.
       def over_painted_picture?(asked) = asked && (@screen_mode.nil? || @screen_mode == :bitmap)
@@ -602,7 +602,7 @@ module VBlank
           ensure_var(var_name)
         end
         add_sprite_to_part(boot.keys) # the console draws it from these alone
-        # A directional animation cycles the FRAME (its direction is chosen by `face`);
+        # A directional animation cycles the frame (its direction is chosen by `face`);
         # a plain frames: animation cycles the single pose selector.
         if animated_facing
           register_animation(frame_var, rate, frames_per_dir)
@@ -689,12 +689,12 @@ module VBlank
       # Work out a sprite's poses and size. An animation (+frames+) is a list of
       # same-size images the framework cycles, with no manual facing (empty dirs). A
       # faceted sprite (+facing+) has one image per direction, and facing_dirs maps
-      # each direction to its index. A directional animation gives each direction a LIST
+      # each direction to its index. A directional animation gives each direction a list
       # of frames (facing: { left: [:l1, :l2], ... }): the frames flatten in direction
       # order, so pose = direction * frames_per_direction + frame. A plain sprite is a
       # single named image. Returns [poses, facing_dirs, width, height, frames_per_dir].
       #
-      # +subject+ is what the thing being resolved is CALLED in an error — "sprite" here,
+      # +subject+ is what the thing being resolved is called in an error — "sprite" here,
       # "pool" where a pool asks the same question of the same art (Composition#pool_art!).
       def resolve_sprite_art(name, facing, frames = nil, subject: "sprite")
         if frames
@@ -805,7 +805,7 @@ module VBlank
 
       # Set up the runtime state a named-clip sprite needs and boot it playing the first
       # clip. The frame timer cycles the frame within the current clip's length — a variable
-      # play() rewrites to switch clips — and holds each frame for its OWN duration, read at
+      # play() rewrites to switch clips — and holds each frame for its own duration, read at
       # run time from a hidden list of per-frame holds indexed by the pose showing now. So a
       # frame the artist held longer plays longer. Returns the variables the sprite draws and
       # play() rewrites: [offset, length, frame].
@@ -866,21 +866,21 @@ module VBlank
       # The variable every scene writes as its body ends, saying it was the last one to run.
       SCENE_UP = :__scene_up  # :nodoc:
 
-      # WHAT A SOFTWARE SPRITE KEEPS TO KNOW WHEN IT MAY BE PAINTED AND WHEN IT HAS PIXELS TO
-      # PUT BACK, as the arguments its handle takes.
+      # What a software sprite keeps to know when it may be painted and when it has pixels to
+      # put back, as the arguments its handle takes.
       #
-      # EVERY SPRITE keeps a variable saying whether it is on the picture, which starts at
+      # Every sprite keeps a variable saying whether it is on the picture, which starts at
       # "no". Being shown is not the same thing: a sprite the game cleared the screen under is
       # still shown and is not on the picture, and what it remembers is a square of the
       # picture that went (see #finalize_sprite_clears).
       #
-      # A SPRITE DECLARED INSIDE A ROUTINE is not painted where it is declared. One declared
+      # A sprite declared inside a routine is not painted where it is declared. One declared
       # above the loop is, one time, and the repaint before each frame takes it from there. A
       # routine's body — a scene's, most of all — is built after the loop and runs every pass,
       # so painting there would paint every pass, each time over the last copy with nothing to
       # rub that copy out: a trail. Such a sprite is painted by the repaint alone.
       #
-      # A SCENE'S SPRITE WAITS FOR TWO THINGS besides being shown. Its scene has to be the one
+      # A scene's sprite waits for two things besides being shown. Its scene has to be the one
       # the game is in, which is what makes it the scene's. And its scene's body has to have
       # been the last scene body to run: the frame a scene takes over, the picture is still
       # the last scene's, and a scene on another kind of screen has not even switched the
@@ -920,7 +920,7 @@ module VBlank
         handle
       end
 
-      # PUT THE TWO REPAINT PASSES AT EVERY FRAME BOUNDARY: every sprite rubbed out from where
+      # Put the two repaint passes at every frame boundary: every sprite rubbed out from where
       # it was, front to back, then every sprite drawn where it is, back to front (see
       # ControlFlow#emit_frame_boundary for why two passes and why in opposite orders).
       #
@@ -952,7 +952,7 @@ module VBlank
       # the game paints into (1) or one drawn from tiles (0).
       PAINTED_SCREEN_UP = :__painted_screen_up  # :nodoc:
 
-      # HAND THE PICTURE FROM ONE SCENE'S SPRITES TO THE NEXT'S, for a game with software
+      # Hand the picture from one scene's sprites to the next's, for a game with software
       # sprites declared inside scenes. Two statements go into every scene's routine.
       #
       # LAST, it marks that its body ran (see #sprite_painting_state for what waits on that).
@@ -967,7 +967,7 @@ module VBlank
       # them: the display was replaced as it took over, and what those sprites remember
       # belongs to the picture that went with it.
       #
-      # THE SPRITES EVERY SCENE SHOWS — declared above the loop, or inside a `func` — need
+      # The sprites every scene shows — declared above the loop, or inside a `func` — need
       # the same care in a game where some scene is drawn from tiles. Such a sprite is painted
       # into a picture, and a tiled scene has none: the memory a painted screen keeps its
       # pixels in is where a tiled one keeps its tile pictures, so painting the sprite there
@@ -1018,7 +1018,7 @@ module VBlank
         !IR::SceneHandover.tiles?(@scene_screens[scene] || :bitmap)
       end
 
-      # AFTER THE GAME CLEARS THE WHOLE SCREEN, NO SPRITE IS ON THE PICTURE, and each is told so
+      # After the game clears the whole screen, no sprite is on the picture, and each is told so
       # straight after the clear.
       #
       # A sprite puts back what it covered before it is drawn again. A clear replaces what it
@@ -1035,7 +1035,7 @@ module VBlank
       # numbers the game works out as it runs does not, whatever they come to.
       #
       # A clear inside an `inside` block clears that area and no more. A sprite outside it is
-      # still on the picture, so that clear is left alone. A sprite INSIDE it is the same
+      # still on the picture, so that clear is left alone. A sprite inside it is the same
       # mistake as painting over a sprite by hand, and is not caught here.
       #
       # It costs a store per sprite at each clear, and nothing on a frame without one.

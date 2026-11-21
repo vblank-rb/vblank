@@ -3,7 +3,7 @@
 module VBlank
   class Builder
     #--
-    # THE CIRCLE A SPOTLIGHT LIGHTS, worked out a row at a time.
+    # The circle a spotlight lights, worked out a row at a time.
     #
     # What the picture is told is a span for each row of the screen: the columns from a left
     # edge up to (not including) a right edge are drawn as they are, and the rest of the row
@@ -11,11 +11,11 @@ module VBlank
     # nothing at the top and bottom, so all of this is working out how wide the circle is on
     # a given row.
     #
-    # UP TO A SIZE OF 150 IT IS THE MIDPOINT CIRCLE, looked up row by row from a table of every
+    # Up to a size of 150 IT IS THE MIDPOINT CIRCLE, looked up row by row from a table of every
     # such circle (see MIDPOINT_LARGEST), because that is the circle the console's games draw.
     # Past that it is a square root:
     #
-    # A SQUARE ROOT is something nothing on the console does quickly, so it is looked up.
+    # A square root is something nothing on the console does quickly, so it is looked up.
     # How far a row is from the middle, as a share of the radius, picks an entry of a table
     # of half widths for a circle 256 across, and the radius scales it. Taking the share
     # would be a divide on every row; it is a multiply instead, by a second table holding
@@ -74,7 +74,7 @@ module VBlank
 
       module_function
 
-      # A SMALLER CIRCLE IS THE ONE GAMES DRAW, row for row. The console's own games make their
+      # A smaller circle is the one games draw, row for row. The console's own games make their
       # window circles with the midpoint circle — whole-number steps round an eighth of the
       # circle, mirrored into the rest — and a game copying one has to land on its every pixel,
       # which the scaled table above does not: it comes out a pixel or a few narrower at each
@@ -114,7 +114,7 @@ module VBlank
       MIDPOINT_HALF_WIDTHS = (0..MIDPOINT_LARGEST).flat_map { |size| midpoint_half_widths(size) }.freeze  # :nodoc:
 
       # The statement that darkens the picture outside the circle +light+ gives. Its edges read
-      # the row's half width, which #work_out_half_width puts in HALF first. With +shuts_out+ it
+      # the row's half width, which #work_out_half_width puts in half first. With +shuts_out+ it
       # shows nothing outside the circle, where it would darken (Nodes::ShadeOutside).
       def shade_node(builder, light, shuts_out: false)
         half = builder.var(HALF, 0)
@@ -134,8 +134,8 @@ module VBlank
          builder.table(MIDPOINT, MIDPOINT_HALF_WIDTHS, width: :byte)]
       end
 
-      # The statements that put the row's half width in HALF, recorded where +builder+ is
-      # recording — the light's own statement, which runs them once a row. ONE of the two ways
+      # The statements that put the row's half width in half, recorded where +builder+ is
+      # recording — the light's own statement, which runs them once a row. One of the two ways
       # runs on a row, picked by the light's size: working out both and choosing between them
       # would cost a row both, and the light is worked out for every row of every frame.
       #

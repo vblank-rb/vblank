@@ -113,20 +113,20 @@ module VBlank
 
       TILE_POSE_OF_FRAME_OPTIONS = %i[tiles_from frame first_tile origin size].freeze  # :nodoc:
 
-      # `image :spin0, tiles_from: :ball_tiles, frame: pack[:frames].frame(at, layout: FRAME),
-      # first_tile: 0x40, origin: [8, 16]`: A POSE OF THE SET WHOSE PIECES ARE ONE OF THE ORIGINAL'S
-      # FRAMES. A retail game's frame names tiles of sprite memory, and the set is a run of them:
+      # `image :spin0, tiles_from: :ball_tiles, frame: pack[:frames].frame(at, layout: frame),
+      # first_tile: 0x40, origin: [8, 16]`: a pose of the set whose pieces are one of the original's
+      # frames. A retail game's frame names tiles of sprite memory, and the set is a run of them:
       # +first_tile+ is the number the frames give the set's first tile, so a frame's tile 0x42 is
       # the set's tile 2. A piece sits from the object's place, which is +origin+ in the picture, as
       # a pose of the pack's tiles places its pieces (PackPoses). A piece of several tiles is each
       # of them, on the picture's 8-pixel grid.
       #
-      # BUILT ALL-IN-ONE the frame is read here, and the pose is the pose of pieces a port would have
+      # Built all-in-one the frame is read here, and the pose is the pose of pieces a port would have
       # written by hand: every console draws it as any pose of the set. A frame the set cannot draw
       # is refused: a piece naming a tile outside the set, a piece turned (a pose of the set does
       # not turn its tiles), off the grid, or left of or above the picture.
       #
-      # WITH THE PACK LEFT OUT nothing of the frame is known here, so the game gives `size:`, and
+      # With the pack left out nothing of the frame is known here, so the game gives `size:`, and
       # the pose holds stand-in pieces (IR::StartFile.tile_pose_stand_ins) and where its frame's
       # record is (IR::StartFile::TilePose). Each backend that plays such a program puts the frame's
       # pieces in their place as it starts. The file is the player's: a piece the build that holds
@@ -215,7 +215,7 @@ module VBlank
         table_name
       end
 
-      # WITH THE PACK LEFT OUT the build holds no pixel of a picture whose places are in the pack,
+      # With the pack left out the build holds no pixel of a picture whose places are in the pack,
       # only a stand-in where every place is 1. The tiles of a load are worked out here from the
       # picture's places, so a load from such a picture would show one solid colour. A picture
       # that takes only its colours from the pack holds its places, and loads as any other.
