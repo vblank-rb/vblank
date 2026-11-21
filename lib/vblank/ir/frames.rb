@@ -2,10 +2,10 @@
 
 module VBlank
   module IR
-    # HOW MANY FRAMES A PASS OF THE GAME LOOP TOOK, as a contract every backend keeps.
+    # How many frames a pass of the game loop took, as a contract every backend keeps.
     #
     # A game loop waits for the screen, does its work, and comes round again. While the work fits
-    # in the time between two frames, one pass IS one frame and nothing has to be counted. When
+    # in the time between two frames, one pass is one frame and nothing has to be counted. When
     # the work does not fit, a pass spans two frames or three — and anything that was counting
     # passes and calling them frames is counting the wrong thing.
     #
@@ -21,7 +21,7 @@ module VBlank
       SEEN = :__frames_seen
       STEP = :__frame_step
 
-      # THE MOST A SINGLE PASS MAY ANSWER FOR. A pass that took half a second is a loading
+      # The most a single pass may answer for. A pass that took half a second is a loading
       # screen, a first frame, or a hitch — and whatever reads this would then be asked to do
       # thirty frames of catching up inside one already-late pass, which is how a slow program
       # talks itself into being a stopped one.
@@ -37,7 +37,7 @@ module VBlank
         program.walk.any? { |node| node.kind == :var_ref && [COUNT, SEEN, STEP].include?(node.name) }
       end
 
-      # Does +program+ read how many frames the screen has shown since power-on (COUNT), and wait for
+      # Does +program+ read how many frames the screen has shown since power-on (count), and wait for
       # the screen, so that a cartridge must count the frames it spends setting up as well? A game
       # that never waits shows no frames and reads nought (Builder#frames_since_power_on).
       def self.counts_from_power_on?(program)
@@ -53,7 +53,7 @@ module VBlank
         waits.one? && !loop_node.nil? && loop_node.children.first.equal?(waits.first)
       end
 
-      # WHAT A GAME LOOP PLACES AT THE FRAME BOUNDARY FOR THE DISPLAY, which the builder puts in the
+      # What a game loop places at the frame boundary for the display, which the builder puts in the
       # gap after the loop's wait among the rest it does there: where each background it moves
       # sits, the top of each status bar, the map and the colours each background was handed, the
       # cells changed on a held background, how each turning one is turned, the tiles and sprite
@@ -78,7 +78,7 @@ module VBlank
         end
       end
 
-      # WHERE THE GAP AFTER EACH GAME LOOP'S WAIT ENDS, as the statement it ends after: the last of
+      # Where the gap after each game loop's wait ends, as the statement it ends after: the last of
       # the boundary's writes that follow the loop's own wait one after another
       # (#placed_at_boundary?), or the wait itself where none does. What runs from waking to there
       # belongs to the break the wait woke in, so a measured run can say whether it ran past the
@@ -116,22 +116,22 @@ module VBlank
       # comes before any pass, so it has nothing to place and runs once before the loop. Every
       # backend that runs such a console, the interpreter included, takes the loop in this order.
       #
-      # THE FRAME SHOWS THE SCENE THE PASS RAN. What a scene owns is placed while its scene is up,
+      # The frame shows the scene the pass ran. What a scene owns is placed while its scene is up,
       # which the builder writes as a test of the game's scene number (Builder#scene_up). A scene
       # that hands over sets that number as it runs, and the next scene comes up in the next pass;
       # so at the end of the pass the number already names the next scene, while the frame still
       # shows this one. So each scene dispatch of the loop notes the number it read, and the
       # boundary's writes are placed with the number put back to that for as long as they run.
       #
-      # A SCENE HANDED OVER DEEPER IN THE LOOP, inside an `if`, has its number noted as the pass
+      # A scene handed over deeper in the loop, inside an `if`, has its number noted as the pass
       # starts instead, since nothing can be put in beside it.
       #
-      # A WAIT THE GAME WRITES PARTWAY DOWN ITS LOOP splits the pass there: what comes before it is
+      # A wait the game writes partway down its loop splits the pass there: what comes before it is
       # the pass that shows after it, so the boundary's writes go in just before it. A wait written
       # deeper than the loop's own statements, in a scene or an `if`, stays as written, and what it
       # places shows a frame later (Console::ColorAnswers says so).
       #
-      # A LOOP ENTERED FROM INSIDE ANOTHER PASS (+nested+) places before its first wait, which ends
+      # A loop entered from inside another pass (+nested+) places before its first wait, which ends
       # that pass. A loop at the top of the program has nothing before it to place.
       def self.loop_in_console_order(statements, console, nested: false)
         as_written = ConsoleLoop.new(before: [], each_time: statements, placed: [], variables: [], pass_end: [])
@@ -199,13 +199,13 @@ module VBlank
         [(statement if scene_dispatch?(statement)), *statement.children.flat_map { |child| dispatches_inside(child) }].compact
       end
 
-      # THE STATEMENTS A BEAT MEANS — `every` and `after` (Reference#exec_every, #exec_after) —
+      # The statements a beat means — `every` and `after` (Reference#exec_every, #exec_after) —
       # written as the plain ones every lowering already makes, so none of them writes the rule
       # again. The beat's counter moves on by the frames the pass answers for, and at least one:
       # before the first frame has ended nothing has been counted yet, and that pass is a frame.
       #
       # A repeating beat takes its period off rather than starting again from nought, so one
-      # that overshoots keeps the remainder. A one-shot fires when its count is REACHED rather
+      # that overshoots keeps the remainder. A one-shot fires when its count is reached rather
       # than landed on, because a pass worth two frames can step over the frame it waited for,
       # and stops counting once it has fired, so it never fires twice.
       def self.beat_statements(node)

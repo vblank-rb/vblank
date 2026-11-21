@@ -35,7 +35,7 @@ module VBlank
       #   fix      — an optional Fix the pass may apply; nil if there's no safe one
       Finding = Data.define(:check, :severity, :message, :node, :fix) do
         def initialize(check:, severity:, message:, node:, fix: nil)
-          # `equal?`, not `==`: a Value answers `==` with a COMPARISON to be branched on
+          # `equal?`, not `==`: a Value answers `==` with a comparison to be branched on
           # later, which is truthy, so asking it that question both gets the wrong answer
           # and leaves a stray comparison behind for another guardrail to trip over.
           unless node.equal?(:program) || node.respond_to?(:source)
@@ -202,11 +202,11 @@ module VBlank
 
         # The checks that cannot run until the program has been lowered, built with the
         # cost model that knows how the build turned out.
-        # WHAT NEEDS THE BUILD, rather than just the program. This one reads a decision the
+        # What needs the build, rather than just the program. This one reads a decision the
         # build made after the other guardrails ran — whether the game loop's body got the
         # console's quick memory, where code runs about two and a third times faster.
         #
-        # THREE OTHERS USED TO RUN HERE and are gone: how many scanlines a frame draws, how
+        # Three others used to run here and are gone: how many scanlines a frame draws, how
         # many items a list can hold before the frame stops fitting, and whether a timer's
         # rate really fits its handler. Each put an invented number in front of an author.
         # They were the last readers of a weight table that had to be kept in step with the
@@ -277,22 +277,22 @@ module VBlank
 
         private
 
-        # WHAT THE PROGRESS LINE CALLS A CHECK — and the only place a check's name is ever read
+        # What the progress line calls a check — and the only place a check's name is ever read
         # by a person. A finding says what went wrong in a sentence of its own and never names
         # the check that found it, so this line is the whole of a check's public identity.
         #
-        # Which is why it is a name the check DECLARES rather than its identifier tidied up.
+        # Which is why it is a name the check declares rather than its identifier tidied up.
         # `NAME` is a symbol for the framework's own use, and turning `fade_never_lifted` into
         # "fade never lifted" only spells the identifier out — worse, it hands a learner
         # whatever hardware word happened to be in it ("vblank sync", "iwram budget"). The
-        # declared name says what the check is LOOKING FOR, which is the thing worth reading
+        # declared name says what the check is looking for, which is the thing worth reading
         # while a build works: "a fade never lifted", "a game loop that never waits for the
         # screen".
         #
         # A check from a pack or a game that declares none is named by its class, so every
         # check in the list still has something to show.
         #
-        # THE CHECK'S CLASS IS FOUND THROUGH Kernel#class BOUND TO IT (bind_call), NOT BY
+        # The check's class is found through Kernel#class bound to it (bind_call), NOT BY
         # `check.class`, because the plain call crashes Ruby (4.0.9, and 4.1 as it stands, on
         # Apple's arm64) when several Ractors build at once. This one line sees some sixty classes
         # in turn, in the same order in every Ractor. Ruby keeps what it found for the last class

@@ -4,11 +4,11 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # WHAT A GAME OF BIG PIXELS (`screen :bitmap, pixel_size: 2`) CANNOT HAVE YET.
+        # What a game of big pixels (`screen :bitmap, pixel_size: 2`) cannot have yet.
         #
         # The game draws a small picture and the console shows it bigger. On the Advance the painted
         # screen is drawn through a background that can resize, told to read half a pixel for each
-        # pixel it shows (Backends::GBA::Drawing#emit_bigger_pixels), so everything drawn INTO the
+        # pixel it shows (Backends::GBA::Drawing#emit_bigger_pixels), so everything drawn into the
         # picture is shown right. What is done to the picture as it is shown is counted in the
         # console's own pixels, not the game's, and none of it is made to count in the game's yet:
         #

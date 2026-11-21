@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # READING AN ORIGINAL'S TILES, COLOURS AND NUMBERS in the layout a console keeps them in
+    # Reading an original's tiles, colours and numbers in the layout a console keeps them in
     # (Console::TileFormat, ColorFormat, NumberFormat): a slot of a data pack as the game is built
     # (Original::Slot#decode), and a file the program is handed as it starts on the interpreter
     # (StartFile.filled). The runtimes for a computer read them the same way from the same numbers
