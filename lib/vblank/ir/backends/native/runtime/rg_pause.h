@@ -1,5 +1,5 @@
 /*
- * WHAT A PAUSED GAME'S WINDOW DOES WHILE IT WAITS. Nothing in a paused game moves, so the window
+ * What a paused game's window does while it waits. Nothing in a paused game moves, so the window
  * has nothing new to show until the player does something: it sleeps until the window has an event,
  * and the player's next key, click or mouse movement wakes it at once. A few frames are drawn after
  * each event, one a frame while they last, so a window being resized, uncovered or moved to another

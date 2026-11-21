@@ -4,8 +4,8 @@
  *   ./game --headless FRAMES [options] < buttons   (the program a player runs)
  *   ./game FRAMES [options] < buttons              (a test build, which has no window)
  *
- * plays FRAMES frames and stops at the start of the next one, the way the interpreter's
- * run(program, frames: FRAMES) does. Each line of standard input is the buttons held during one
+ * plays frames frames and stops at the start of the next one, the way the interpreter's
+ * run(program, frames: frames) does. Each line of standard input is the buttons held during one
  * frame, as a number with a bit per button (bit 0 is a, in the order rg_runtime.h lists them);
  * a missing line holds nothing.
  *
@@ -35,32 +35,32 @@
  * and every machine of a match adds the match's. The routine that adds it (rg_game_mix_seed) is in a
  * game built for it (Computer::Lowering, seeded); the seed is not, so one program plays every seed.
  *
- * With --start-file FILE the game is handed FILE as it starts (rg_start_file_read): the data pack
+ * With --start-file FILE the game is handed file as it starts (rg_start_file_read): the data pack
  * of a game built with its pack left out, or the copy of the original its unpacking reads. A game
  * that reads such a file and is handed none stops at its first statement, with a sentence naming
  * the file it lacks.
  *
- * With --clock-at SECONDS TICKS SET the cartridge has a clock, which reads SECONDS from the start
- * of 1970 and TICKS of the console's 2^24 a second more at power-on, and was set when SET is 1
+ * With --clock-at seconds ticks set the cartridge has a clock, which reads seconds from the start
+ * of 1970 and ticks of the console's 2^24 a second more at power-on, and was set when SET is 1
  * (rg_clock_starts_at). Without it the cartridge has no clock.
  *
  * With --held-from-power-on MASK the buttons in MASK (bits as on standard input) are down before
  * the game's first statement, as a button held through the whole run is in the interpreter; the
  * first frame's line still says what is held from then on.
  *
- * With --save FILE the game starts with the save memory FILE holds (rg_save.h: the bytes of a
+ * With --save FILE the game starts with the save memory file holds (rg_save.h: the bytes of a
  * .sav file, as many as the game has save memory), and when the run ends the save memory is
- * written back to FILE, whole, over what was there. No file there yet is a new cartridge. A game
+ * written back to file, whole, over what was there. No file there yet is a new cartridge. A game
  * with no save memory reads and writes nothing. And with --save-cut-after N the power goes off
  * N steps into the game's saving, which ends the run there, as it does in the interpreter.
  *
- * With --sound-out FILE the sound of every frame played is written to FILE as it is made: one
+ * With --sound-out FILE the sound of every frame played is written to file as it is made: one
  * speaker's worth, RG_SOUND_RATE numbers a second, each two bytes with the low byte first. And
  * with --sound-voice N only voice N is in it, by the console's count of its voices (1 and 2 the
  * square voices, 3 the wave voice, 4 the noise voice), which is how a test hears one voice at a
  * time.
  *
- * With --picture-out FILE the picture of every moment is written to FILE, over the one before:
+ * With --picture-out FILE the picture of every moment is written to file, over the one before:
  * every pixel as shown and then every pixel as stored, row by row, each two bytes with the low
  * byte first, and for a game shown in a border then every pixel of the whole screen as the window
  * shows it (rg_screen_framed). It is there before "buttons?" is asked, so whoever is feeding the buttons can read
@@ -69,21 +69,21 @@
  * than a pipe holds at once, and a reader that takes it a pipeful at a time waits its turn for
  * each; a file is read in one go.
  *
- * With --state-out FILE --state-out-after N the whole state (rg_state.h) is written to FILE at the
- * frame boundary after frame N, before the next frame begins. With --state-in FILE the state FILE
+ * With --state-out FILE --state-out-after N the whole state (rg_state.h) is written to file at the
+ * frame boundary after frame N, before the next frame begins. With --state-in FILE the state file
  * holds is read in at the first frame boundary, after the game's first pass and before its second
  * frame begins, so the run goes on from there: its frame 1 is the frame after the one the state was
  * written at.
  *
  * With --final-state FILE nobody watches the run (Native::FinalStateRun): it plays as fast as the
- * computer goes to its halt, or to the end of FRAMES, printing nothing of each frame and reading
- * no buttons, and makes no sound. At the end it writes FILE: every variable as "var name value",
+ * computer goes to its halt, or to the end of frames, printing nothing of each frame and reading
+ * no buttons, and makes no sound. At the end it writes file: every variable as "var name value",
  * a line each, then every list as "list", its name, a tab, its width in bytes and its count, a
  * line's end, and then its items oldest first, each in its width with the low byte first. What a
  * build plays this way is a port's unpacking, whose pack is one list of millions of bytes, which
- * as printed numbers would be several times its size. With --list-file NAME PATH as well, the
- * list called NAME is left out of FILE and its items alone, written the same way, are added to
- * the end of PATH: a build hands the file it wants the pack in, already holding the pack's
+ * as printed numbers would be several times its size. With --list-file name path as well, the
+ * list called name is left out of file and its items alone, written the same way, are added to
+ * the end of path: a build hands the file it wants the pack in, already holding the pack's
  * header, and the pack's bytes go straight there (Original::Unpacking#write_pack_as_c), never
  * through the reader. So that a stuck routine can be told from a
  * long one, it prints one "." on standard output at a frame boundary, at most every

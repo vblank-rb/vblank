@@ -1,5 +1,5 @@
 /*
- * THE LETTERS THE WINDOW MENU IS WRITTEN IN (Graphics::MenuFont in the library, which this is
+ * The letters the window menu is written in (Graphics::MenuFont in the library, which this is
  * written again from): Inter at 15 points, drawn once into pictures by tools/make_menu_font.rb, and
  * handed to this file as C data by the build (rg_window_menu_data.c), so the program needs no font
  * library and no font file. The window puts a density's picture of every letter on the screen's
