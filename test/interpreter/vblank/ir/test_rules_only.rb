@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A GAME WITH NOTHING TO SEE OR HEAR plays by its rules all the same, for a bot that plays one long
+# A game with nothing to see or hear plays by its rules all the same, for a bot that plays one long
 # run many times. Every pass ends with the same numbers as the whole game, and only the steps that
 # touch the screen or the speakers are gone.
 class TestRulesOnly < Minitest::Test

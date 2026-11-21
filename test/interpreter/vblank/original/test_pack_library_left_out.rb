@@ -33,7 +33,7 @@ module ReadPathsRecorded
   end
 end
 
-# THE CONSTANTS A FILE NAMES, each with the scopes it is named in, and whether it is named inside a
+# The constants a file names, each with the scopes it is named in, and whether it is named inside a
 # method or block that ran (one starting on a line of +ran_lines+; with nil, every one counts). The
 # full name of a scope is worked out from the modules loaded, so `module Backends` inside
 # `module IR` is "VBlank::IR::Backends".
@@ -158,7 +158,7 @@ class ConstantsNamed < Prism::Visitor
   end
 end
 
-# WHAT A FILE PUTS IN EACH CLASS AND MODULE IT OPENS, as it loads: the methods it defines there
+# What a file puts in each class and module it opens, as it loads: the methods it defines there
 # ("name", or "self.name" for the module's own), and every other statement (an include, a prepend,
 # a registration), which changes the module whatever calls it. A class, module or constant inside
 # one is a thing of its own, not something put in it. Statements at the top of the file are
@@ -235,7 +235,7 @@ class PutInModules < Prism::Visitor
   end
 end
 
-# WHAT THE PACK CACHE'S KEY LEAVES OUT IS NEVER WHAT A PACK IS MADE WITH. The key digests VBlank's
+# What the pack cache's key leaves out is never what a pack is made with. The key digests VBlank's
 # library but the files PackLibrary::LEFT_OUT names, so a commit to those leaves a port's kept pack
 # hitting. That is right only if no unpacking is built or played with them, and this is the check.
 # Made-up routines are built and played every way a build plays one (the interpreter, the game as C,
@@ -376,14 +376,14 @@ class TestPackLibraryLeftOut < Minitest::Test
     "vblank/testing.rb" => "a game's tests asking whether the emulator is there"
   }.freeze
 
-  # Whether +path+ is inside a LEFT_OUT entry, KEPT or not.
+  # Whether +path+ is inside a LEFT_OUT entry, kept or not.
   private def inside_left_out_entry?(path) = PackLibrary.new(kept: []).left_out?(path)
 
   # Where the code that ran names something left out, each as "what: why it is reached". Every
   # value a file that ran names anywhere in it is followed to where it is set, and what that names in
   # turn. A class or module named in a method or block that ran is checked for left-out code. One
-  # defined in a file KEPT inside a left-out folder that never ran is then read as a file that ran,
-  # since the routine reaches it by name, so what it reaches from its folder must be KEPT too.
+  # defined in a file kept inside a left-out folder that never ran is then read as a file that ran,
+  # since the routine reaches it by name, so what it reaches from its folder must be kept too.
   private def left_out_named(ran)
     code = left_out_code
     found = []

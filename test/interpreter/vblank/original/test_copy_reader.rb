@@ -62,7 +62,7 @@ class TestCopyReaderOnInterpreter < Minitest::Test
     assert_match "formats:", refused.message
   end
 
-  # TWO FORMATS OF ONE ROUTINE NAME A WORKING LIST ALIKE, at two sizes. Formats share a list of one
+  # Two formats of one routine name a working list alike, at two sizes. Formats share a list of one
   # name (Packing::BlockKit#list), which has one size, so the second size is refused naming both
   # formats and the list, whichever runs first: the bigger one's blocks would run off the end of the
   # smaller list, or the smaller one's would pass only in this order. Each keeps its first byte in

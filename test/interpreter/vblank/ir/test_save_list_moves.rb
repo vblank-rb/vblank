@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A WHOLE LIST MOVED TO OR FROM SAVE MEMORY IN ONE STEP (IR save_store_list, save_load_list) means
+# A whole list moved to or from save memory in one step (IR save_store_list, save_load_list) means
 # exactly the loops it stands for (IR::SaveListMoves.loops_for): the same bytes in save memory and
 # the same list. The interpreter runs the step itself, so this holds its own reading of the step to
 # the loops every backend without a routine of its own lowers.
@@ -12,7 +12,7 @@ class TestSaveListMoves < Minitest::Test
   Moves = VBlank::IR::SaveListMoves
   AT = 0x200
 
-  # A list of +width+ holding +items+, stored at AT, emptied, given two other items, and loaded
+  # A list of +width+ holding +items+, stored at at, emptied, given two other items, and loaded
   # back +count+ long. The steps are run as they are, or written out as their loops.
   private def stored_and_loaded(width, items, count:, as_loops:)
     store = save_store_list(:kept, at: AT, width: width, index: :at_item)
