@@ -3,11 +3,11 @@
 module VBlank
   module Network
     module WebSocket
-      # A WEBSOCKET CONNECTION AS A MACHINE USES IT: text goes in as messages and comes out as messages. It
+      # A WebSocket connection as a machine uses it: text goes in as messages and comes out as messages. It
       # answers what a RelayTransport asks of any line: send_text, receive_text, wait_for_text, close, closed?
       # (and pending?).
       #
-      # NOTHING WAITS FOR LONGER THAN IT IS ASKED. Reading never blocks; #wait_for_text sleeps only in IO.select,
+      # Nothing waits for longer than it is asked. Reading never blocks; #wait_for_text sleeps only in IO.select,
       # which wakes when a byte comes or the other end goes. A ping is answered with a pong as it is read, so the
       # relay does not take a machine for gone while it waits on a pass. A close from the relay is answered and
       # ends the connection once the messages before it have been read, as a socket's end does (LineChannel).
@@ -116,7 +116,7 @@ module VBlank
         # Returns true when there is a message to read or the connection is closed, and false when +seconds+
         # (nil for no limit) went by first.
         #
-        # THE SOCKET IS READ ONCE A LOOK, and what decides whether to sleep is what that one read left. Asking
+        # The socket is read once a look, and what decides whether to sleep is what that one read left. Asking
         # pending? and then closed? read it twice: a message that came between the two was kept by the second,
         # and the wait then slept on a socket with nothing more to come.
         def wait_for_text(seconds = nil)

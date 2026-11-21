@@ -2,7 +2,7 @@
 
 module VBlank
   module Network
-    # A WEBSOCKET (RFC 6455) FOR A GAME THAT HAS NO GEMS TO TAKE ONE FROM. Ruby's standard library has
+    # A WebSocket (RFC 6455) for a game that has no gems to take one from. Ruby's standard library has
     # no WebSocket client, and the framework stays pure Ruby, so this is the small part of the protocol a
     # match needs: the opening handshake over HTTP, messages in frames, ping and close. It talks to the relay
     # (a WebSocket server) over a TCP socket, or a TLS one for `wss://`. It is not a general WebSocket: it
@@ -28,7 +28,7 @@ module VBlank
       # A peer that broke the rules of the protocol, said in plain words.
       class ProtocolError < StandardError; end
 
-      # FRAMES AS BYTES AND BACK. A frame is two bytes (whether it is the last of its message, which kind
+      # Frames as bytes and back. A frame is two bytes (whether it is the last of its message, which kind
       # it is, whether its bytes are masked, and how long they are), then the length if it is more than 125
       # bytes, then the four bytes of the mask if there is one, then the bytes. A client masks every frame it
       # sends, with a mask it chooses, and a server never does.
@@ -75,7 +75,7 @@ module VBlank
         def close_payload(code, words = "") = [code].pack("n") + words.b
       end
 
-      # WHAT HAS ARRIVED, A FRAME AT A TIME. Bytes come in whatever pieces the network cuts them into; #feed
+      # What has arrived, a frame at a time. Bytes come in whatever pieces the network cuts them into; #feed
       # takes them and #next_frame gives back a whole frame once there is one, and nil until then.
       class Reader
         def initialize

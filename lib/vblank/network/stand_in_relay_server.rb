@@ -2,7 +2,7 @@
 
 module VBlank
   module Network
-    # THE STAND-IN RELAY WITH A WEBSOCKET FACE: it listens on a TCP port, turns each connection into a
+    # The stand-in relay with a WebSocket face: it listens on a TCP port, turns each connection into a
     # WebSocket (the server's half of the handshake), and gives the messages to a StandInRelay and the relay's
     # messages back, as the real relay does. A test starts one in a thread of its own, and another program (a
     # node copy of a game, a desktop build) connects to it from outside (tools/stand_in_relay.rb runs one on
@@ -51,7 +51,7 @@ module VBlank
       # A connection whose handshake has not all come yet: its socket, the bytes so far, and when it connected.
       Greeting = Struct.new(:io, :bytes, :since)
 
-      # A CLIENT THAT SAYS NOTHING MAKES NOBODY WAIT. A handshake is read a piece at a time as it comes, in the one
+      # A client that says nothing makes nobody wait. A handshake is read a piece at a time as it comes, in the one
       # loop that serves every socket, never with a read that waits; one that has not all come in HANDSHAKE_SECONDS
       # is closed.
       def serve
