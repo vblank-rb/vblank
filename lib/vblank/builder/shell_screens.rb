@@ -2,24 +2,26 @@
 
 module VBlank
   class Builder
-    # A SHELL'S FIRST SCREEN, MADE THE GAME'S OWN. A port built as a shell holds none of the
-    # original's data, and until the player's copy has been read it shows a first screen VBlank
-    # writes: a title, a line saying what the game needs, LOAD ROM and SETTINGS
-    # (Original::Shell.menu_program). `shell_screen` is where a game says how that screen looks
-    # and what other lines it has (DSL::ShellScreen has the words and the worked example).
+    # A shell's first screen
     #
-    # THE BLOCK IS A PROGRAM OF ITS OWN, and that is the whole rule. The first screen plays
-    # before the game exists as far as the player's machine can tell: the game's program cannot
-    # start without its data pack. So the block is not run here, as the game is built. It is
-    # kept (#declared_shell_screen), and a shell build runs it on the builder that makes the
-    # first screen, as game code, the way a data pack's unpacking routine is run on a builder of
-    # its own. A font, a picture or a scene the screen uses is declared INSIDE the block, with the
-    # verbs a game declares them with; one declared outside it belongs to the game's program and
-    # is not there. A cartridge build never runs the block and holds nothing of it.
+    # A game built as a shell holds none of the original's data. Until the player's own copy has
+    # been read, it shows a first screen that VBlank writes: a title, a line saying what the game
+    # needs, LOAD ROM and SETTINGS. `shell_screen` is where a game says how that screen looks and
+    # which other lines it has.
     #
-    # What follows from that: a mistake in the block is told when the game is built as a shell,
-    # not when its cartridge is, and nothing in the block may read the data pack, which is empty
-    # until the copy is read.
+    # The block is a program of its own. The first screen plays before the game's program can
+    # start, because that program cannot start without its data pack. A font, a picture or a
+    # scene that the screen uses is declared inside the block. One declared outside it belongs to
+    # the game's program and is not there. Nothing in the block may read the data pack, which is
+    # empty until the copy is read.
+    #--
+    # See Original::Shell.menu_program and DSL::ShellScreen, which has the words and the worked
+    # example. The block is not run as the game is built: it is kept (#declared_shell_screen), and
+    # a shell build runs it on the builder that makes the first screen, as game code, the way a
+    # data pack's unpacking routine is run on a builder of its own. A cartridge build never runs
+    # the block and holds nothing of it, so a mistake in the block is told when the game is built
+    # as a shell, not when its cartridge is.
+    #++
     module ShellScreens
       # What a game gave for its shell's first screen: the block, and the line that wrote it.
       DeclaredShellScreen = Data.define(:block, :source)
@@ -30,8 +32,16 @@ module VBlank
       LINE_GAP = 5
       TITLE_GAP = 9
 
-      # Make the shell's first screen the game's own. The block is handed a DSL::ShellScreen and
-      # is run only when the game is built as a shell, on that screen's own program.
+      # Makes the shell's first screen the game's own.
+      #
+      # The block is given the screen to describe, and runs only when the game is built as a
+      # shell. A game has one first screen, so `shell_screen` is written once.
+      #
+      # ```ruby
+      # shell_screen do |first|
+      #   first.title "MY PORT"
+      # end
+      # ```
       def shell_screen(&block)
         unless block
           raise ArgumentError, "shell_screen needs a block: `shell_screen do |first| first.title \"...\" end`."

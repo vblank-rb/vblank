@@ -2,31 +2,37 @@
 
 module VBlank
   class Builder
-    # EFFECTS A GAME WRITES FOR ITSELF.
+    # Effects a game writes for itself
     #
-    # A pack is a module of verbs written in the game's own verbs (see {Effects} for the rule a
-    # pack keeps): an iris the way one game draws it, a menu with one game's cursor. The packs
-    # VBlank ships are every game's, registered once for the whole process. A game's own pack
-    # is that game's alone: `uses` gives this build the pack's verbs and nothing else does, so two
-    # games built side by side can each have a verb of the same name, and a game built in a
-    # Ractor can call one — a module's methods are written in the module, not made from a block
-    # at run time, so a Ractor can run them.
+    # A pack is a module of verbs that are written in the game's own verbs: an iris the way one
+    # game draws it, or a menu with one game's cursor. The packs VBlank ships belong to every
+    # game. A game's own pack belongs to that game alone: `uses` gives the build of that game the
+    # pack's verbs and nothing else does, so two games built side by side can each have a verb of
+    # the same name.
     #
-    #   module Dungeon::Torch
-    #     def light_torch(at:) = spotlight(at: at, radius: 30, dark: 80)
-    #   end
+    # ```ruby
+    # module Dungeon::Torch
+    #   def light_torch(at:) = spotlight(at: at, radius: 30, dark: 80)
+    # end
     #
-    #   VBlank.game "DUNGEON" do
-    #     uses Dungeon::Torch
-    #     light_torch at: [40, 40]
-    #   end
+    # VBlank.game "DUNGEON" do
+    #   uses Dungeon::Torch
+    #   light_torch at: [40, 40]
+    # end
+    # ```
     #
-    # The pack's public methods are verbs from that line on, its private ones helpers its verbs
-    # call, and any checks it answers with (`def self.checks`) report on this build alone.
+    # The pack's public methods are verbs from the `uses` line on. Its private methods are helpers
+    # that its verbs call. Any checks it answers with (`def self.checks`) report on this game's
+    # build alone.
+    #--
+    # See Effects for the rule a pack keeps. A module's methods are written in the module, not
+    # made from a block at run time, so a game built in a Ractor can call them.
+    #++
     module GameEffects
-      # Bring in +packs+, each a module of verbs, for this game alone.
+      # Brings in packs, each a module of verbs, for this game alone.
       #
-      # @param packs [Array<Module>] the packs, in the order their names are checked
+      # * `packs` - the modules, in the order their names are checked. A verb name that a pack
+      #   shares with VBlank or with another pack of the game is an error.
       def uses(*packs)
         packs.each do |pack|
           Effects.refuse_non_module_pack!(pack, "uses")

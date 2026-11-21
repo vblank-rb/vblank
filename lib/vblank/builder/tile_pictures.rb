@@ -2,16 +2,21 @@
 
 module VBlank
   class Builder
-    # TILES WITH SEVERAL PICTURES HELD IN THE CARTRIDGE: `tile_pictures :water, colors: :pond,
-    # tiles: { deep: %i[deep0 deep1 deep2], edge: %i[edge0 edge1 edge2] }`.
+    # Tiles that take turns through pictures
     #
-    # Flowers that sway and water that lapses are a handful of tiles taking turns through a short
+    # Flowers that sway and water that laps are a handful of tiles taking turns through a short
     # loop of pictures, over a map that does not change. Every picture is drawn ahead of time, so
-    # the game has only to name which one a group shows, and the whole group changes as one.
+    # the game only names which one a group shows, and the whole group changes as one.
     #
+    # ```ruby
+    # tile_pictures :water, colors: :pond,
+    #                       tiles: { deep: %i[deep0 deep1 deep2], edge: %i[edge0 edge1 edge2] }
+    # ```
+    #--
     # They stand on painted tiles (see TileRuns), which is what makes them work everywhere a
     # background does: a group is a run of tiles, never merged with any other, whose colours come
     # from one list, so a picture is the same place numbers as any drawn from that list.
+    #++
     module TilePictures
       # The tiles in a group, and a group's picture bytes, are kept to what a game can use.
       TILE_BYTES = TileRuns::TILE_BYTES
@@ -19,13 +24,23 @@ module VBlank
       # One run of a group (#declare_tile_picture_run).
       TilePictureRun = Data.define(:list, :held, :run, :bytes_shown)
 
-      # The group +name+: each key of +tiles+ is one tile, and its value the pictures it goes
-      # through, in order, the same number for each. +colors+ is the `colors` list they are all
-      # drawn from. The tiles show their first pictures from the start.
+      # Declares a group of tiles that take turns through pictures, and returns the group.
       #
-      # A key that is a tile of a slot of the data pack (`pack[:video].tile(5)`) is a tile of the
-      # backgrounds drawn from that slot, and its pictures tiles of the pack too
-      # (PackTilePictures): the colours are then the bank each cell names, so there is no +colors+.
+      # Each key of `tiles` is one tile, and its value is the pictures the tile goes through, in
+      # order, with the same number for each tile. The tiles show their first pictures from the
+      # start. Name which picture the group shows with the group the verb returns.
+      #
+      # A key can also be a tile of a data pack slot, such as `pack[:video].tile(5)`. It is then a
+      # tile of the backgrounds drawn from that slot, its pictures are tiles of the pack too, and
+      # the colours are the bank each cell names, so there is no `colors:`.
+      #
+      # * `name` - the group's name, as a symbol.
+      # * `tiles:` - a hash from each tile's key to the list of its pictures.
+      # * `colors:` - the `colors` list every picture is drawn from.
+      # * `fast:` - `true` to keep the pictures in the quick memory.
+      #--
+      # PackTilePictures handles the data pack form.
+      #++
       def tile_pictures(name, tiles:, colors: nil, fast: false)
         return declare_pack_tile_pictures(name, tiles, colors, fast: fast) if pack_tile_pictures?(tiles)
 

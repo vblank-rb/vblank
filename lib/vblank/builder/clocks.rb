@@ -2,17 +2,23 @@
 
 module VBlank
   class Builder
-    # The clock verb: `clock` — the date and time, as the clock a cartridge carries keeps them.
-    # A concern of {Builder}, mixed in so `clock` stays a flat DSL verb.
+    # The date and time
+    #
+    # `clock` gives the date and time, as the clock a cartridge carries keeps them. Its readings
+    # are numbers like any variable's.
+    #--
+    # A concern of Builder, mixed in so `clock` stays a flat DSL verb.
+    #++
     module Clocks
-      # The cartridge's clock, as a {DSL::Clock} whose readings are numbers like any variable's:
-      # `clock.hour`, `.minute`, `.second`, `.year`, `.month`, `.day` and `.weekday`, and the
-      # tests `clock.present?` and `clock.set?`.
+      # Gives the cartridge's clock, to read the date and time from.
       #
-      #   now = clock
-      #   draw_number now.minute, 60, 60, :white, digits: 2
+      # Its readings are `clock.hour`, `.minute`, `.second`, `.year`, `.month`, `.day` and
+      # `.weekday`, and its tests are `clock.present?` and `clock.set?`. `clock.set_to` sets it.
       #
-      # @return [DSL::Clock]
+      # ```ruby
+      # now = clock
+      # draw_number now.minute, 60, 60, :white, digits: 2
+      # ```
       def clock = DSL::Clock.new(self)
 
       # The hook behind `clock.set_to` (see DSL::Clock#set_to), which hands it the statement

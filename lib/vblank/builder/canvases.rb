@@ -2,11 +2,16 @@
 
 module VBlank
   class Builder
-    # A CANVAS: a picture the game draws into with words while it runs (see DSL::Canvas).
+    # Canvases
     #
-    # It is the friendly side of `tiles ..., from: list` and `image ..., from: list`. Those
-    # hand the game a list to pack pixels into itself; this keeps the list and gives the game
-    # words — a pixel, a rectangle, a picture, a letter, text, a number — in colour names.
+    # A canvas is a picture your game draws into while it runs, using colour names: a pixel, a
+    # rectangle, a picture, a letter, some text or a number. Use one for what the game works out as
+    # it goes, such as a name typed a letter at a time, a meter or a map of where the player has
+    # been. A background shows it, or a sprite uses it as its picture.
+    #--
+    # See DSL::Canvas. It is the friendly side of `tiles ..., from: list` and `image ..., from:
+    # list`, which hand the game a list to pack pixels into itself; a canvas keeps that list.
+    #++
     module Canvases
       # The characters a canvas can draw a letter of: every code a game writes as text.
       LETTER_CODES = 128
@@ -15,14 +20,24 @@ module VBlank
       # runs — each character's rows of lit pixels, and its width.
       FontTables = Data.define(:rows, :widths, :height, :widest, :spacing)
 
-      # Declare a canvas +width+ by +height+ pixels (each a whole number of tiles), drawn
-      # from +colors+ (a `colors` list by name, or the colours themselves, see-through
-      # first). By default a background shows it — `background :box, tiles: :name, map:
-      # canvas.cells` — and other keys given here are ordinary tiles beside it in the same
-      # tileset, a box's frame say. `as: :sprite` makes it a sprite's picture instead, and
-      # then it is a size the console draws a sprite at.
+      # Declares a picture the game draws into while it runs, and returns it to draw with.
       #
-      # @return [DSL::Canvas]
+      # By default a background shows the canvas. Other keys given here are ordinary tiles beside
+      # it in the same set, such as a box's frame. With `as: :sprite` it is a sprite's picture
+      # instead, and then its size must be one the console draws a sprite at.
+      #
+      # ```ruby
+      # board = canvas :board, width: 208, height: 32, colors: :ink
+      # background :box, tiles: :board, map: board.cells
+      # board.fill_rect 4, 4, 40, 8, :red
+      # ```
+      #
+      # * `name` - the canvas's name, as a symbol.
+      # * `width:` and `height:` - its size in pixels, each a whole number of tiles (a multiple of 8).
+      # * `colors:` - the colours it draws with: a `colors` list by name, or the colours
+      #   themselves, with the see-through one first.
+      # * `as:` - `:tiles` for a background to show it, or `:sprite` for a sprite's picture.
+      # * `fast:` - `true` or `false` to choose whether its pixels sit in the quick memory.
       def canvas(name, width:, height:, colors:, as: :tiles, fast: nil, **fixed)
         refuse_bad_canvas!(name, width, height, as)
         bytes = width * height / 2

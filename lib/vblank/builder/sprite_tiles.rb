@@ -2,27 +2,25 @@
 
 module VBlank
   class Builder
-    # A SET OF SPRITE TILES THE GAME LOADS AS IT RUNS, and the poses drawn from it.
+    # Sprite tiles that the game loads as it runs
     #
-    #   ball_tiles = sprite_tiles :ball_tiles, count: 32, colors: :ball
-    #   image :spin0, tiles_from: :ball_tiles, pieces: [[0, 0, 0], [8, 0, 1], [0, 8, 2], [8, 8, 3]]
-    #   sprite :ball, at: [80, 60], frames: %i[spin0 spin1], rate: 4
-    #   ball_tiles.copy_from :great_ball, at: 0, count: 3, to: 9
+    # A sprite usually keeps its own tiles for each pose. A set of sprite tiles works the other way
+    # round: the console's sprite memory holds a few tiles that the game rewrites, and every pose
+    # of the sprite is a picture made of some of them. Rewrite the tiles and every pose that draws
+    # them shows the new picture from the next frame on, while the poses take no room of their own.
     #
-    # A sprite usually keeps its own tiles for each pose, and a pose that shares a tile with
-    # another keeps a copy. Retail games often do it the other way round: the console's sprite
-    # memory holds a few tiles the game rewrites, and every pose of the sprite points at some of
-    # them. The ball of a pinball game spins through eight poses drawn from 32 tiles, and turning
-    # it into another kind of ball rewrites those 32 tiles, a few at a time, from the cartridge.
-    # Every pose then shows the new ball with nothing else changed, and the poses take no room of
-    # their own however many kinds of ball the cartridge holds.
-    #
-    # The set is that room, and a pose is a picture made of its tiles. Loading tiles of the set
-    # changes every pose that draws them from the next frame on, as a painted picture's
-    # `changed` does. On a console whose sprites point at tiles, a pose is only which tiles and
-    # where, so showing another pose is what `face` always costs and a load copies the tiles it
-    # names and nothing else. A build that draws each pose as a picture of its own writes the
-    # loaded tiles into each pose that draws them.
+    # ```ruby
+    # ball_tiles = sprite_tiles :ball_tiles, count: 32, colors: :ball
+    # image :spin0, tiles_from: :ball_tiles, pieces: [[0, 0, 0], [8, 0, 1], [0, 8, 2], [8, 8, 3]]
+    # sprite :ball, at: [80, 60], frames: %i[spin0 spin1], rate: 4
+    # ball_tiles.copy_from :great_ball, at: 0, count: 3, to: 9
+    # ```
+    #--
+    # On a console whose sprites point at tiles, a pose is only which tiles and where, so showing
+    # another pose is what `face` always costs and a load copies the tiles it names and nothing
+    # else. A build that draws each pose as a picture of its own writes the loaded tiles into each
+    # pose that draws them.
+    #++
     module SpriteTiles
       # Bytes one tile of a load's source takes: 8 rows of 8 pixels, two pixels a byte, as painted
       # tiles keep them (Builder::TileRuns::TILE_BYTES).
@@ -32,9 +30,18 @@ module VBlank
       # and a set lives in one of them, so its loads are one copy each.
       MOST_TILES = 128
 
-      # A set of +count+ tiles of 8×8 in sprite memory, drawn from +colors+ by place (place 0
-      # see-through), each see-through until the game loads it. Returns the handle the game
-      # loads tiles through (DSL::SpriteTileSet).
+      # Declares a set of 8 by 8 tiles in sprite memory, and returns the set to load tiles through.
+      #
+      # Each tile is see-through until the game loads it. Draw poses from the set with `image
+      # ..., tiles_from:`, and load tiles into it with `copy_from`.
+      #
+      # ```ruby
+      # ball_tiles = sprite_tiles :ball_tiles, count: 32, colors: :ball
+      # ```
+      #
+      # * `name` - the set's name, as a symbol.
+      # * `count:` - how many tiles it holds.
+      # * `colors:` - the `colors` list the tiles are drawn from. The first colour is see-through.
       def sprite_tiles(name, count:, colors:)
         refuse_sprite_tiles_name_taken!(name)
         refuse_bad_sprite_tiles_count!(name, count)
