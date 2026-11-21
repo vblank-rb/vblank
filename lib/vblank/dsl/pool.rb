@@ -2,40 +2,50 @@
 
 module VBlank
   module DSL
-    # A handle to a pool: a fixed-capacity set of instances of a "component" — many of a
-    # thing that has state and behaves (bullets, enemies, particles, coins). `pool
-    # :bullet, x: 0, y: 0, vy: 0, capacity: 64` hands one back. See Builder#pool.
+    # Many of one thing
     #
-    #   bullets = pool :bullet, x: 0, y: 0, vy: 0, capacity: 64
-    #   bullets.spawn x: ship.x, y: ship.y, vy: -4
-    #   bullets.each { |b| b.y += b.vy; b.remove if b.y < 0 }
+    # A pool holds up to a fixed number of things of one kind, each with numbers of its own:
+    # bullets, enemies, particles, coins. Builder#pool hands one back.
     #
-    # Behind the scenes each field is a backing {List}, one slot per instance, alongside
-    # an `active` column (which slots are live) and a `free` stack (open slot indices). So
-    # spawn and remove are O(1) — pop or push a free index — a live instance keeps its
-    # slot (stable identity), and the fields can never desync because there's no way to
-    # touch one without the others. It all desugars onto list ops + a `repeat`, so every
-    # backend runs it and the cost model sees straight through it.
+    # ```ruby
+    # bullets = pool :bullet, x: 0, y: 0, vy: 0, capacity: 64
+    # bullets.spawn x: ship.x, y: ship.y, vy: -4
+    # bullets.each { |b| b.y += b.vy; b.remove if b.y < 0 }
+    # ```
+    #
+    # Pool#spawn adds a thing and Pool#each visits every live one, handing the block a
+    # Pool::Instance whose fields read and change like variables. Spawning and removing cost
+    # the same however full the pool is, and a thing keeps its place until it is removed.
+    #
+    # The things are kept in the order they were spawned, so Pool#each visits the oldest first
+    # and the newest last. That order is what a player can see: things that each roll a random
+    # number roll them one after another, and the first to reach something gets it. A pool that
+    # draws its things draws them in that order too, the oldest in front.
+    #--
+    # Behind the scenes each field is a backing List, one slot per instance, alongside an
+    # `active` column (which slots are live) and a `free` stack (open slot indices). So spawn
+    # and remove are O(1), pop or push a free index; a live instance keeps its slot (stable
+    # identity), and the fields can never desync because there's no way to touch one without
+    # the others. It all desugars onto list ops and a `repeat`, so every backend runs it and the
+    # cost model sees straight through it.
     #
     # Which slot a thing lands in shows nothing about when it came, so the slots are not the
-    # order a walk goes in. Every slot also holds which slot came next and which came before
-    # it, and the pool keeps the first and the last: a chain through the live things in the
-    # order they were spawned, which is how a console game keeps the things in a room. A
-    # spawn joins the end of it and a removal closes the gap, so `each` visits the oldest
-    # first and the newest last, and walks only what is in the chain rather than every slot.
-    # That order is what a player can see: things that each roll a random number roll them
-    # one after another, and the first to reach something gets it. A pool that draws is
-    # drawn in it too, the oldest thing in front (see #stacked_list).
+    # order a walk goes in. Every slot also holds which slot came next and which came before it,
+    # and the pool keeps the first and the last: a chain through the live things in the order
+    # they were spawned, which is how a console game keeps the things in a room. A spawn joins
+    # the end of it and a removal closes the gap, so `each` walks only what is in the chain
+    # rather than every slot. See #stacked_list for the drawing order.
+    #++
     class Pool
-      Build = IR::Build
+      Build = IR::Build # :nodoc:
 
       # The slot number that means "no slot": the end of the chain, and an empty pool's
       # first and last.
-      NONE = -1
+      NONE = -1 # :nodoc:
 
-      # @return [Symbol] the pool's name
+      # The pool's name, as the game gave it to Builder#pool.
       attr_reader :name
-      # @return [Integer] the most instances that can be live at once
+      # The most things that can be live at once, as the game gave it to Builder#pool.
       attr_reader :capacity
 
       # Built by Builder#pool, which allocates the backing lists and boot-fills them.
@@ -76,29 +86,29 @@ module VBlank
 
       # The sprite image live instances draw (nil for a pure-data pool), and the collision
       # box derived from it (nil when there's no size).
-      attr_reader :image, :hitbox, :art
+      attr_reader :image, :hitbox, :art # :nodoc:
 
       # Which of the console's two work memories the pool's lists are kept in, the way a
       # list's `fast:` sets it: false for out of the quick one, true to insist on it, nil
       # for the build to decide. Settled by the build once it knows how big the pool is (see
       # Builder::Composition#pool), and read by the lists a pool only gains later.
-      attr_accessor :fast
+      attr_accessor :fast # :nodoc:
 
       # The scene a pool that draws was declared in, as the variable the game picks its scenes
       # with and the value that picks this one; nil for a pool declared outside every scene.
       # Its things show only while that scene is up, so that is when they are put in order.
-      attr_accessor :scene_gate
+      attr_accessor :scene_gate # :nodoc:
 
       # Whether instances draw themselves as sprites.
-      def spriteful? = !@art.nil?
+      def spriteful? = !@art.nil? # :nodoc:
 
       # Whether a spawn onto a full pool reuses the oldest live instance (rather than
       # dropping the spawn). When true the pool keeps a little extra bookkeeping (below).
-      def recycle_oldest? = @on_full == :recycle_oldest
+      def recycle_oldest? = @on_full == :recycle_oldest # :nodoc:
 
       # The name of one of the pool's sprite objects. There is one for each thing that can be
       # live at once, and +place+ counts them back to front.
-      def object_name(place) = part_name("obj_#{place}")
+      def object_name(place) = part_name("obj_#{place}") # :nodoc:
 
       # What each of the pool's sprites shows is worked out every frame, from the chain.
       #
@@ -125,14 +135,14 @@ module VBlank
       # loop however big it is, and a few bytes of memory a slot.
       #
       # +stacked_list+ names those lists and +stacked_var+ holds how many entries they hold.
-      def stacked_list(part) = part_name("stacked#{part}")
-      def stacked_var = part_name(:stacked)
-      def stacking_cursor_var = part_name(:stacking_at)
-      def stacking_index_var = part_name(:stacking_pass)
+      def stacked_list(part) = part_name("stacked#{part}") # :nodoc:
+      def stacked_var = part_name(:stacked) # :nodoc:
+      def stacking_cursor_var = part_name(:stacking_at) # :nodoc:
+      def stacking_index_var = part_name(:stacking_pass) # :nodoc:
 
       # What a pool copies for each thing: where it is, then its picture when there is more
       # than one to choose from, then its colours when it was ever told to draw with others.
-      def stacked_parts
+      def stacked_parts # :nodoc:
         parts = %i[x y]
         parts << :pose if posed?
         parts << :colors if recolorable?
@@ -144,12 +154,12 @@ module VBlank
       # +key+ is handed an instance and gives back the number that thing is ordered by, so
       # the number is worked out per thing as the copy above walks them and copied for its
       # place beside where it is — unless it can be read from the copy (#order_key_read_from_copy?).
-      def order_by(key)
+      def order_by(key) # :nodoc:
         @order_key = key
       end
 
       # Whether this pool is in a draw order.
-      def ordered? = !@order_key.nil?
+      def ordered? = !@order_key.nil? # :nodoc:
 
       # A key read from the copy. The copy above already holds where each thing is, by its rank,
       # so a key that reads nothing of a thing but its x and y — `bottom`, the default, is y and
@@ -167,7 +177,7 @@ module VBlank
       # place the copy has not filled since, which would then sort by today's number rather
       # than the one it had. The one difference left is a place no thing has filled yet, which
       # reads the copy's noughts through the sum rather than a nought; nothing is drawn there.
-      def order_key_read_from_copy?
+      def order_key_read_from_copy? # :nodoc:
         return @order_key_read_from_copy unless @order_key_read_from_copy.nil?
 
         key = order_key_at_cursor
@@ -178,7 +188,7 @@ module VBlank
 
       # The number the sprite at +place+ is put in order by, as a value node: worked out from the
       # copy, or read from the list the copy keeps it in.
-      def order_key_at_place(place)
+      def order_key_at_place(place) # :nodoc:
         rank = rank_at_place(place)
         order_key_read_from_copy? ? copied_order_key(rank) : stacked_at(:order_key, rank)
       end
@@ -197,10 +207,10 @@ module VBlank
 
       # The kinds a key read from the copy may be made of besides the thing's place: numbers
       # written in the program and sums of them.
-      COPY_KEY_KINDS = %i[int binop bit_not absolute].freeze
+      COPY_KEY_KINDS = %i[int binop bit_not absolute].freeze # :nodoc:
 
       # The fields the copy holds for every pool that draws.
-      COPIED_FIELDS = %i[x y].freeze
+      COPIED_FIELDS = %i[x y].freeze # :nodoc:
 
       # The key the game's block gives for the thing in the slot the copy is on.
       private def order_key_at_cursor = key_at_cursor(@order_key)
@@ -213,7 +223,7 @@ module VBlank
       # How many fraction bits +key+ gives a thing of this pool, or nil for a whole number. The
       # number is worked out and dropped. Public for Builder::DrawOrder#order_key_bits, which asks
       # before the pool is ordered, so an order whose numbers are of two kinds is refused.
-      def order_key_fraction_bits(key)
+      def order_key_fraction_bits(key) # :nodoc:
         answer = key_at_cursor(key)
         answer.discard! if answer.is_a?(Value)
         Fraction.bits_of(answer)
@@ -241,29 +251,29 @@ module VBlank
 
       # Whether a thing's picture is something to read at all: a pool given one picture
       # always shows it.
-      def posed? = @art.faces? || @art.animates?
+      def posed? = @art.faces? || @art.animates? # :nodoc:
 
       # The routine that makes the copy (see #stacking_nodes), called before each frame is
       # drawn.
-      def stacking_routine = Messages::MadeNames.make(:pool_stacking, pool: @name)
+      def stacking_routine = Messages::MadeNames.make(:pool_stacking, pool: @name) # :nodoc:
 
       # How many things are older than the one the sprite at +place+ shows. The sprites are
       # declared back to front, so the last of them shows the oldest thing.
-      def rank_at_place(place) = @capacity - 1 - place
+      def rank_at_place(place) = @capacity - 1 - place # :nodoc:
 
       # One part of the thing with +rank+ older things before it, as a value node.
-      def stacked_at(part, rank) = Build.list_get(stacked_list(part), Build.int(rank))
+      def stacked_at(part, rank) = Build.list_get(stacked_list(part), Build.int(rank)) # :nodoc:
 
       # Whether any live thing has +rank+ older things before it, as a value node. The GBA
       # lowering reads this shape — the count held, greater than the rank — to hide the places
       # past the count a store each (Backends::GBA::SpriteDrawing#live_count_var): change it,
       # and change that.
-      def rank_taken(rank) = Build.binop(:>, Build.var_ref(stacked_var), Build.int(rank))
+      def rank_taken(rank) = Build.binop(:>, Build.var_ref(stacked_var), Build.int(rank)) # :nodoc:
 
       # The statements that make the copy: walk the chain from its first thing and copy each
       # live one into the next entry. A dead thing can still be in the chain — one removed
       # during a walk that a save was made in the middle of — and is passed over.
-      def stacking_nodes
+      def stacking_nodes # :nodoc:
         at = -> { Build.var_ref(stacking_cursor_var) }
         copies = stacked_parts.map do |part|
           Build.list_set(stacked_list(part), Build.var_ref(stacked_var), part_of_slot(part, at))
@@ -279,7 +289,7 @@ module VBlank
 
       # One part of the thing in the slot +at+ gives, read from the pool's own lists. +at+ is
       # called for a fresh node at each use, since a node belongs to one statement.
-      def part_of_slot(part, at)
+      def part_of_slot(part, at) # :nodoc:
         case part
         when :pose then pose_of_slot(at)
         when :colors then Build.list_get(colors_list, at.call)
@@ -301,44 +311,44 @@ module VBlank
       # and still be a list of its own. +part_name+ is every name of the pool's own: a list,
       # a variable or a routine.
 
-      def field_list(field) = Pool.field_list(@name, field)
-      def part_name(part) = Pool.part_name(@name, part)
-      def self.field_list(name, field) = Messages::MadeNames.make(:pool_field, pool: name, field: field)
-      def self.part_name(name, part) = Messages::MadeNames.make(:pool_part, pool: name, part: part)
+      def field_list(field) = Pool.field_list(@name, field) # :nodoc:
+      def part_name(part) = Pool.part_name(@name, part) # :nodoc:
+      def self.field_list(name, field) = Messages::MadeNames.make(:pool_field, pool: name, field: field) # :nodoc:
+      def self.part_name(name, part) = Messages::MadeNames.make(:pool_part, pool: name, part: part) # :nodoc:
 
-      def current_var = part_name(:current)
-      def active_list = Pool.active_list(@name)
-      def free_list = Pool.free_list(@name)
-      def count_var = Pool.count_var(@name)
+      def current_var = part_name(:current) # :nodoc:
+      def active_list = Pool.active_list(@name) # :nodoc:
+      def free_list = Pool.free_list(@name) # :nodoc:
+      def count_var = Pool.count_var(@name) # :nodoc:
 
       # The three that hold how many instances are live, by the pool's name alone: which slots
       # are (a byte each, 1 for live), the stack of slots that are free, and the count. They are
       # what a finished cartridge is written to hold a pool full (see
       # Diagnostics::FullCollections), so they are spelled here once for both.
-      def self.active_list(name) = part_name(name, :active)
-      def self.free_list(name) = part_name(name, :free)
-      def self.count_var(name) = part_name(name, :count)
+      def self.active_list(name) = part_name(name, :active) # :nodoc:
+      def self.free_list(name) = part_name(name, :free) # :nodoc:
+      def self.count_var(name) = part_name(name, :count) # :nodoc:
 
       # The pool whose live-slot column +list+ is, or nil when it is not one.
-      def self.named_by_active_list(list)
+      def self.named_by_active_list(list) # :nodoc:
         kind, parts = Messages::MadeNames.read(list)
         parts[:pool].to_sym if kind == :pool_part && parts[:part] == "active"
       end
 
-      def slot_var = part_name(:slot)
+      def slot_var = part_name(:slot) # :nodoc:
 
       # The chain the walk follows: for each slot, the slot spawned after it and the one
       # spawned before it, and the first and last of the chain.
       # Spelled here by the pool's name alone too, for the same reason as the three above.
-      def next_list = Pool.next_list(@name)
-      def prev_list = Pool.prev_list(@name)
-      def head_var = Pool.head_var(@name)
-      def tail_var = Pool.tail_var(@name)
-      def self.next_list(name) = part_name(name, :next)
-      def self.prev_list(name) = part_name(name, :prev)
-      def self.retired_list(name) = part_name(name, :retired)
-      def self.head_var(name) = part_name(name, :head)
-      def self.tail_var(name) = part_name(name, :tail)
+      def next_list = Pool.next_list(@name) # :nodoc:
+      def prev_list = Pool.prev_list(@name) # :nodoc:
+      def head_var = Pool.head_var(@name) # :nodoc:
+      def tail_var = Pool.tail_var(@name) # :nodoc:
+      def self.next_list(name) = part_name(name, :next) # :nodoc:
+      def self.prev_list(name) = part_name(name, :prev) # :nodoc:
+      def self.retired_list(name) = part_name(name, :retired) # :nodoc:
+      def self.head_var(name) = part_name(name, :head) # :nodoc:
+      def self.tail_var(name) = part_name(name, :tail) # :nodoc:
 
       # A thing removed while the pool is being walked stays in the chain until the walk is
       # over, and its slot is not free until then either. A walk is following the chain, and
@@ -347,29 +357,29 @@ module VBlank
       # only marks the thing dead and puts its slot here, and the outermost walk, as it ends,
       # takes each one out of the chain and frees its slot. +walking_var+ counts the walks of
       # this pool in progress, since one can run inside another.
-      def retired_list = Pool.retired_list(@name)
-      def walking_var = part_name(:walking)
-      def unlink_var = part_name(:unlink)
-      def unlink_before_var = part_name(:before)
-      def unlink_after_var = part_name(:after)
-      def release_index_var = part_name(:release)
+      def retired_list = Pool.retired_list(@name) # :nodoc:
+      def walking_var = part_name(:walking) # :nodoc:
+      def unlink_var = part_name(:unlink) # :nodoc:
+      def unlink_before_var = part_name(:before) # :nodoc:
+      def unlink_after_var = part_name(:after) # :nodoc:
+      def release_index_var = part_name(:release) # :nodoc:
 
       # The variables the chain's routines work in, for the build to set aside.
-      def chain_scratch_vars = [slot_var, unlink_var, unlink_before_var, unlink_after_var, release_index_var]
+      def chain_scratch_vars = [slot_var, unlink_var, unlink_before_var, unlink_after_var, release_index_var] # :nodoc:
 
       # What a variable of the pool holds at power-on: an empty chain has no first or last.
-      def power_on_value(var) = [head_var, tail_var].include?(var) ? NONE : 0
+      def power_on_value(var) = [head_var, tail_var].include?(var) ? NONE : 0 # :nodoc:
 
       # Pose bookkeeping (allocated only for a pool whose instances face or animate): which
       # way each instance faces, where each is in its cycle, and the one counter that
       # decides when the whole pool steps.
-      def facing_list = part_name(:facing)
-      def frame_list = part_name(:frame)
-      def tick_var = part_name(:tick)
+      def facing_list = part_name(:facing) # :nodoc:
+      def frame_list = part_name(:frame) # :nodoc:
+      def tick_var = part_name(:tick) # :nodoc:
 
       # Which of those two this pool actually keeps — so the boot fill gives every slot one
       # of each, the same way it does for a field.
-      def pose_lists
+      def pose_lists # :nodoc:
         lists = []
         lists << facing_list if @art&.faces?
         lists << frame_list if @art&.animates?
@@ -379,13 +389,13 @@ module VBlank
       # Which picture the thing with +rank+ older things before it shows, as a value node. A
       # pool given one picture always shows it; any other reads the picture copied for that
       # place in the order.
-      def pose_node(rank) = posed? ? stacked_at(:pose, rank) : Build.int(0)
+      def pose_node(rank) = posed? ? stacked_at(:pose, rank) : Build.int(0) # :nodoc:
 
       # Which picture the thing in one slot shows, as a value node. A pool that faces reads
       # the slot's direction; one that animates reads its frame; one that does both composes
       # them — direction * frames-per-direction + frame, which is the order the pictures were
       # flattened in. +at+ gives the slot, called for a fresh node at each use.
-      def pose_of_slot(at)
+      def pose_of_slot(at) # :nodoc:
         facing = Build.list_get(facing_list, at.call) if @art.faces?
         frame = Build.list_get(frame_list, at.call) if @art.animates?
         return frame || facing unless facing && frame
@@ -393,34 +403,46 @@ module VBlank
         Build.binop(:+, Build.binop(:*, facing, Build.int(@art.per_dir)), frame)
       end
 
-      # Stop every instance of this pool from moving through +background+'s solid tiles —
-      # the same verb a `sprite` takes, written once for the whole pool.
+      # Stops every thing of this pool from moving through a background's solid tiles.
       #
-      # It belongs to the pool rather than to an instance because an instance handle lives
-      # only for the `each` iteration that yielded it, where the background is the same one
-      # every time round. After this, an instance's `move` is checked and `can_move?` answers
-      # — which is the whole point of the pool being able to have it at all: a game with many
-      # movers is exactly the case that wants tile collision and exactly the case that used
-      # to be unable to afford it.
+      # It is the same verb a sprite takes (HardwareSprite#blocked_by), written once for the whole
+      # pool. After this, Pool::Instance#move stops at the walls, and Pool::Instance#can_move?
+      # answers whether a step is clear.
+      #
+      # ```ruby
+      # guards.blocked_by maze
+      # guards.each { |g| g.move :left, by: 1 }
+      # ```
+      #--
+      # It belongs to the pool rather than to an instance because an instance handle lives only
+      # for the `each` iteration that yielded it, where the background is the same one every time
+      # round. A game with many movers is exactly the case that wants tile collision.
+      #++
       def blocked_by(background)
         @solid_cells = background.solid_lookup
         self
       end
 
       # The background's grid of solid cells, or nil if this pool was never blocked by one.
-      attr_reader :solid_cells
+      attr_reader :solid_cells # :nodoc:
 
-      # Put every thing of this pool in another of the declared layers, from now until it is told
-      # otherwise — the word a sprite has (HardwareSprite#put_in_layer), written once for all of
-      # them. A room whose things walk under its arches and a room whose things stand in front
-      # of its furniture can then share one pool, moved as each room takes over.
+      # Puts every thing of this pool in another of the declared layers, from now until it is
+      # told otherwise.
       #
-      #   guards.put_in_layer :walking
-      #   guards.put_in_layer [:upper, :walking], showing: floor
+      # It is the verb a sprite has (HardwareSprite#put_in_layer), written once for all of them.
+      # A room whose things walk under its arches and a room whose things stand in front of its
+      # furniture can then share one pool, moved as each room takes over.
+      #
+      # ```ruby
+      # guards.put_in_layer :walking
+      # guards.put_in_layer [:upper, :walking], showing: floor
+      # ```
       #
       # A number outside the list leaves them in the layer the pool was declared in. The change
       # shows on the frame their positions and pictures next do. Every thing reads one variable,
       # so moving them costs what moving one sprite does, however many there are.
+      #
+      # * `showing:` - with a list of layers, the number that picks one of them.
       def put_in_layer(which, showing: nil)
         unless spriteful?
           raise ArgumentError,
@@ -435,31 +457,31 @@ module VBlank
 
       # The builder this pool was declared on — an instance reaches it to place the shared
       # tile-collision routine's call.
-      attr_reader :builder
+      attr_reader :builder # :nodoc:
 
       # Which row of the pictures a direction name means, for Instance#face.
-      def facing_row(direction) = @art&.dirs&.[](direction)
-      def facing_names = @art&.dirs&.keys || []
+      def facing_row(direction) = @art&.dirs&.[](direction) # :nodoc:
+      def facing_names = @art&.dirs&.keys || [] # :nodoc:
 
       # Point one instance at a direction (its row among the pictures): a number, or a value node
       # the game works out.
-      def set_facing(index, row)
+      def set_facing(index, row) # :nodoc:
         record(Build.list_set(facing_list, index.node, row.is_a?(Integer) ? Build.int(row) : row))
         self
       end
 
       # Which other list of colours each instance is drawn with (see Instance#draw_with), kept
       # only by a pool that was ever told to draw with one.
-      def colors_list = part_name(:colors)
+      def colors_list = part_name(:colors) # :nodoc:
 
       # The sprites the pool's things are drawn as, back to front, for a pool whose instances
       # draw (see #stacked_list for which thing each one shows).
-      def stacked_objects = @stacked_objects ||= []
+      def stacked_objects = @stacked_objects ||= [] # :nodoc:
 
       # Draw the instance at slot +index+ with other colours — the same verb a sprite has, and
       # the same rules (see HardwareSprite#draw_with). Each instance keeps its own choice, except
       # for the list a pose's frame picks as the game starts, which the whole pool follows.
-      def draw_with(index, which, showing)
+      def draw_with(index, which, showing) # :nodoc:
         # A list a pose's frame picks as the game starts (Builder#list_chosen_at_start?) is
         # followed, as a sprite told it is (Pool#follow_lists_chosen_at_start).
         which = { which => which } if which.is_a?(Symbol) && @builder.list_chosen_at_start?(which)
@@ -520,7 +542,7 @@ module VBlank
       # A pool never told to draw with other colours takes back the writes every spawn made
       # just in case, so it emits nothing for colours at all. Called once the whole program is
       # built, when that is known.
-      def drop_unused_color_resets
+      def drop_unused_color_resets # :nodoc:
         return if @recolors
 
         color_resets.each { |node| node.parent&.children&.delete(node) }
@@ -528,15 +550,28 @@ module VBlank
 
       # Whether any instance was ever told to draw with other colours, so the pool keeps a
       # colours column (see #colors_list).
-      def recolorable? = !@recolors.nil?
+      def recolorable? = !@recolors.nil? # :nodoc:
 
-      # One field of the pool, every slot's, as a thing a save_data record can keep on its
-      # own: `keep guards.field(:hp)` keeps how hurt each guard is and nothing else about it.
-      # A field the pool does not have is a friendly error.
+      # One field of every thing in a pool
+      #
+      # What Pool#field hands back: one field of the pool, every thing's, for a SaveData record
+      # to keep on its own.
+      #
+      # ```ruby
+      # files.keep guards.field(:hp)
+      # ```
       Column = Data.define(:pool, :field) do
-        def inspect = "field :#{field} of pool :#{pool.name}"
+        def inspect = "field :#{field} of pool :#{pool.name}" # :nodoc:
       end
 
+      # One field of every thing in the pool, as a Pool::Column for a SaveData record to keep.
+      #
+      # `keep guards.field(:hp)` keeps how hurt each guard is and nothing else about it. A field
+      # the pool does not have is a friendly error.
+      #
+      # ```ruby
+      # files.keep guards.field(:hp)
+      # ```
       def field(name)
         return Column.new(pool: self, field: name) if field?(name)
 
@@ -552,7 +587,7 @@ module VBlank
       # step counter of one that animates. Asked once the program is built, since a pool keeps
       # its colours column only once something has told it to draw with others. What slot a
       # walk is on is not here: a save keeps what the pool holds, not where a walk stands.
-      def saved_lists_and_vars
+      def saved_lists_and_vars # :nodoc:
         lists = [*field_names.map { |one| field_list(one) }, active_list, free_list, *pose_lists,
                  next_list, prev_list, retired_list]
         lists << colors_list if recolorable?
@@ -561,21 +596,27 @@ module VBlank
         [lists, vars]
       end
 
-      def inspect = "pool :#{@name}"
+      def inspect = "pool :#{@name}" # :nodoc:
 
       # The field names, in declaration order.
-      def field_names = @fields.keys
+      def field_names = @fields.keys # :nodoc:
 
       # Whether +name+ is one of this pool's fields (used by an instance handle).
-      def field?(name) = @fields.key?(name)
+      def field?(name) = @fields.key?(name) # :nodoc:
 
-      # Create a live instance, setting the named fields (any omitted use their declared
-      # default). All fields are set together, so a half-populated instance is impossible.
+      # Adds a live thing to the pool, setting the fields named.
       #
-      # What happens when the pool is full depends on its `on_full:` policy: the default
-      # `:drop` makes this a safe no-op (nothing is created and nothing is corrupted —
-      # check #full? / #count if you need to know), while `:recycle_oldest` reuses the
-      # longest-lived instance so a new one always appears.
+      # A field left out starts at the value it was declared with. All the fields are set
+      # together, so a thing is never half made.
+      #
+      # ```ruby
+      # bullets.spawn x: ship.x, y: ship.y, vy: -4
+      # ```
+      #
+      # What happens when the pool is full depends on the `on_full:` given to Builder#pool. The
+      # default, `:drop`, adds nothing and changes nothing; ask Pool#full? or Pool#count to know.
+      # With `:recycle_oldest`, the oldest thing is taken for the new one, so a new one always
+      # appears.
       def spawn(**values)
         unknown = values.keys - @fields.keys
         unless unknown.empty?
@@ -588,22 +629,33 @@ module VBlank
         self
       end
 
-      # Run the block once per live instance, oldest first, handing it a row handle whose
-      # fields are mutable (`b.x += 1`, `b.y = 0`, read `b.x`) and which can retire itself
-      # (`b.remove`).
+      # Runs the block once for each live thing, oldest first.
       #
-      # The walk follows the chain from its first thing and stops after the thing that was last
-      # when it began, so a thing spawned during the walk is first visited by the next one. It
-      # looks one step ahead before running the block, and nothing the block does can change
-      # that step: a removal during a walk leaves the chain alone until the walk is over (see
-      # #retired_list). A thing removed before its turn is still in the chain, dead, and is
-      # passed over.
+      # The block is handed a Pool::Instance whose fields read and change like variables
+      # (`b.x += 1`, `b.y = 0`) and which can remove itself (`b.remove`).
       #
-      # `newest_first: true` walks the same chain from its other end, following each thing's
-      # link back to the one added before it, for a game where the last thing added has to act
-      # first. Everything above holds the same way round: the walk stops at the thing that was
-      # first when it began, and a thing spawned during it is added after where it started, so
-      # it is first visited by the next walk.
+      # ```ruby
+      # bullets.each do |b|
+      #   b.y += b.vy
+      #   b.remove if b.y < 0
+      # end
+      # ```
+      #
+      # The walk stops after the thing that was newest when it began, so a thing spawned during
+      # the walk is first visited by the next one. A thing removed during the walk is not visited
+      # after that.
+      #
+      # * `newest_first:` - true to walk from the newest thing to the oldest, for a game where
+      #   the last thing added has to act first. A thing spawned during that walk is also first
+      #   visited by the next one.
+      #--
+      # The walk follows the chain from its first thing. It looks one step ahead before running
+      # the block, and nothing the block does can change that step: a removal during a walk
+      # leaves the chain alone until the walk is over (see #retired_list). A thing removed before
+      # its turn is still in the chain, dead, and is passed over. `newest_first: true` follows
+      # each thing's link back to the one added before it, and stops at the thing that was first
+      # when it began.
+      #++
       def each(newest_first: false, &block)
         refuse_unknown_walk_order!(newest_first)
         pool = self
@@ -655,19 +707,25 @@ module VBlank
       end
       private :refuse_unknown_walk_order!
 
-      # A routine that works on one instance — the body of `each` moved into a routine of its
-      # own, which is where a game of any size puts it:
+      # Makes a routine that works on one thing of the pool, called from inside Pool#each.
       #
-      #   guards.func(:chase) { |g| g.x.approach! hero.x, 1 }
-      #   guards.each { |g| call g.state }
+      # It is the body of `each` moved into a routine of its own, which is where a game of any
+      # size puts it. The routine is handed the thing the walk is on.
       #
-      # A routine is built once, wherever it is called from, so it cannot close over the
-      # instance the way the block above does — which is why a plain `func` has no way to name
-      # which guard is chasing. This pool hands the routine the instance being walked right
-      # now, and the walk itself is what sets which that is (see #record_current_slot).
+      # ```ruby
+      # guards.func(:chase) { |g| g.x.approach! hero.x, 1 }
+      # guards.each { |g| call g.state }
+      # ```
       #
-      # Called from anywhere else, such a routine would run on whichever instance was walked
-      # last, so it is refused at build time instead (Builder#verify_instance_routines!).
+      # A plain Builder#func has no way to name which guard is chasing, because a routine is
+      # built once, wherever it is called from. Called anywhere but inside a walk of its pool,
+      # such a routine would run on whichever thing was walked last, so that is refused when
+      # the game is built.
+      #--
+      # This pool hands the routine the instance being walked right now, and the walk itself is
+      # what sets which that is (see #record_current_slot). The refusal is
+      # Builder#verify_instance_routines!.
+      #++
       def func(name, &block)
         raise ArgumentError, "`pool :#{@name}` needs a block to make a routine out of." unless block
 
@@ -676,14 +734,14 @@ module VBlank
       end
 
       # The routines this pool declared for one instance at a time, in declaration order.
-      def instance_routines = @instance_routines ||= []
+      def instance_routines = @instance_routines ||= [] # :nodoc:
 
       # One instance of this pool, as a routine of its own sees it: the one the walk is on.
       #
       # This is built for every such routine before its body runs, and a routine with nothing
       # to do with its instance never reads it. So its slot is a number handed over rather
       # than one worked out: left unused, it is not the game's to be blamed for.
-      def current_instance = Instance.new(self, Value.handed_to_block(@builder, Build.var_ref(current_var)))
+      def current_instance = Instance.new(self, Value.handed_to_block(@builder, Build.var_ref(current_var))) # :nodoc:
 
       # Build the body of routine +name+ into the routine being built, yielding the instance
       # it runs for.
@@ -716,7 +774,7 @@ module VBlank
       # current_var, and builds the bytes it always did.
       #
       # Returns the routine's own variable, for the build to declare, or nil when it has none.
-      def build_routine_body(name)
+      def build_routine_body(name) # :nodoc:
         own_var = part_name("routine#{instance_routines.index(name)}_at")
         walks_before = walk_saves.length
         yield current_instance
@@ -791,13 +849,21 @@ module VBlank
       def current_read?(node) = node.kind == :var_ref && node.name == current_var
       private :walk_statements, :outermost_walks, :retarget_current_reads, :retargeted_operand, :current_read?
 
-      # How many instances are live right now, as a {Value}.
+      # How many things are live right now, as a Value.
+      #
+      # ```ruby
+      # draw_number bullets.count, 8, 8, :white
+      # ```
       def count = Value.new(@builder, Build.var_ref(count_var))
 
-      # Whether the pool is full (no free slot), as a {Condition} — branch with `if`.
-      # That is whether a free slot is left, rather than how many are live: during a walk a
-      # thing removed is no longer counted but its slot is not free until the walk ends, and
-      # `full?` returns what a spawn will find.
+      # Whether the pool has no room for another thing, as a test to branch on with `if`.
+      #
+      # This is whether Pool#spawn will find room, rather than how many are live. During a walk
+      # a thing removed is no longer counted, but its room is not free until the walk ends.
+      #
+      # ```ruby
+      # bullets.spawn x: ship.x, y: ship.y, vy: -4 unless bullets.full?
+      # ```
       def full? = Condition.new(@builder, Build.binop(:==, Build.list_len(free_list), Build.int(0)))
 
       # Retire the instance at slot +index+ (a {Value}): it leaves the order and stops being
@@ -809,7 +875,7 @@ module VBlank
       # The work is one routine of the pool's, called from every place a thing is removed,
       # since closing the gap in the chain is a dozen statements a game would otherwise carry
       # once per `remove` it writes.
-      def remove_at(index)
+      def remove_at(index) # :nodoc:
         record(Build.set(unlink_var, index.node))
         @builder.call(removal_routine)
         self
@@ -910,20 +976,29 @@ module VBlank
       end
       private :removal_routine, :release_routine, :append_routine, :unlink_routine, :pool_routine, :not_walking, :release_when_idle
 
-      # A mutable handle to +field+ of the instance at slot +index+ (a {Value}).
+      # One field of the thing at a slot, as a FieldRef that reads and changes like a variable.
+      #
+      # The slot is the number Pool::Instance#index handed back, kept in a variable, so a game
+      # can act after a walk on the thing it picked during it: the nearest enemy, or the one
+      # just hit.
+      #
+      # ```ruby
+      # enemies.each { |e| nearest = e.index if e.x < best_x }
+      # enemies.field_ref(:hp, nearest).decrease! 1
+      # ```
       def field_ref(field, index)
         field_ref_at_node(field, index.node)
       end
 
       # One field of one slot, with everything it needs to read, write and complain clearly.
-      def field_ref_at_node(field, index_node)
+      def field_ref_at_node(field, index_node) # :nodoc:
         FieldRef.new(builder: @builder, list: field_list(field), index: index_node,
                      pool: @name, field: field, fraction_bits: field_bits(field),
                      names: @field_names[field])
       end
 
       # What a field keeps, without building a handle to ask it (see FieldRef.scale).
-      def field_scale(field)
+      def field_scale(field) # :nodoc:
         FieldRef.scale(pool: @name, field: field, bits: field_bits(field), names: @field_names[field])
       end
 
@@ -931,7 +1006,7 @@ module VBlank
       # is how a pool declares a field carries a fraction, exactly as writing `var :vy, 0.0` does
       # for a variable — so a game with sixty particles drifting at fractional speeds never
       # picks a scale of its own.
-      def field_bits(field) = Fraction.bits_of(@fields[field])
+      def field_bits(field) = Fraction.bits_of(@fields[field]) # :nodoc:
 
       private
 
@@ -1031,23 +1106,23 @@ module VBlank
       # only once the walk has seen that it holds a slot and not NONE. So whenever one is read
       # there it is a slot below the pool's capacity, and a lowering can read the pool's own lists
       # there without testing the index first.
-      SLOT_PARTS = /\A(?:current|stacking_at|walk\d+_at|routine\d+_at)\z/
+      SLOT_PARTS = /\A(?:current|stacking_at|walk\d+_at|routine\d+_at)\z/ # :nodoc:
 
       # The ones of those that never hold none: each is written only with a slot the walk has seen
       # is not NONE, or put back from a copy of itself. The copy for the sprites steps its slot
       # along the chain, NONE at the end included (#stacking_nodes), so it is not one of these. A
       # number in one of these is always below the pool's capacity, so a lowering that keeps
       # numbers in halves knows its high half is nought for good.
-      SLOT_ONLY_PARTS = /\A(?:current|walk\d+_at|routine\d+_at)\z/
+      SLOT_ONLY_PARTS = /\A(?:current|walk\d+_at|routine\d+_at)\z/ # :nodoc:
 
       # The name of the pool whose slot +var+ always holds (see SLOT_PARTS), or nil.
-      def self.walked_by(var)
+      def self.walked_by(var) # :nodoc:
         kind, parts = Messages::MadeNames.read(var)
         parts[:pool] if kind == :pool_part && SLOT_PARTS.match?(parts[:part])
       end
 
       # Whether +var+ only ever holds one of its pool's slots, never NONE (see SLOT_ONLY_PARTS).
-      def self.holds_only_slots?(var)
+      def self.holds_only_slots?(var) # :nodoc:
         kind, parts = Messages::MadeNames.read(var)
         kind == :pool_part && SLOT_ONLY_PARTS.match?(parts[:part])
       end
@@ -1057,26 +1132,26 @@ module VBlank
       # whose link is read (`at = ahead`, then `ahead = links[at]`). So as that line runs it holds a
       # slot, with a high half of nought, and a lowering that keeps numbers in halves need only write
       # the high half when the link read is NONE.
-      NEXT_SLOT_PARTS = /\Awalk\d+_ahead\z/
+      NEXT_SLOT_PARTS = /\Awalk\d+_ahead\z/ # :nodoc:
 
       # The slot a walk is on (#walk_vars), set at the top of every turn and read straight after:
       # the thing's link to the next, and whether it is live, are each a list read at that slot.
-      WALK_SLOT_PARTS = /\Awalk\d+_at\z/
+      WALK_SLOT_PARTS = /\Awalk\d+_at\z/ # :nodoc:
 
       # Whether +var+ is the slot a walk is on (see WALK_SLOT_PARTS).
-      def self.walk_slot?(var)
+      def self.walk_slot?(var) # :nodoc:
         kind, parts = Messages::MadeNames.read(var)
         kind == :pool_part && WALK_SLOT_PARTS.match?(parts[:part])
       end
 
       # Whether +var+ is a walk's next slot (see NEXT_SLOT_PARTS).
-      def self.next_slot_of_walk?(var)
+      def self.next_slot_of_walk?(var) # :nodoc:
         kind, parts = Messages::MadeNames.read(var)
         kind == :pool_part && NEXT_SLOT_PARTS.match?(parts[:part])
       end
 
       # The name of the pool +list+ belongs to, a field's list or one of the pool's own, or nil.
-      def self.owner_of_list(list)
+      def self.owner_of_list(list) # :nodoc:
         kind, parts = Messages::MadeNames.read(list)
         parts[:pool] if %i[pool_field pool_part].include?(kind)
       end
@@ -1107,7 +1182,7 @@ module VBlank
       # it was before the walk is what it is during it, and the walk puts that back as it ends.
       # Called at the end of the build (Builder#finalize_pool_walks), once every routine's body has
       # been read.
-      public def drop_unread_current_writes
+      public def drop_unread_current_writes # :nodoc:
         current_writes.each do |write|
           body = write.parent.children.drop_while { |node| !node.equal?(write) }.drop(1)
           next if body.any? { |statement| statement.walk.any? { |node| node.callees.any? || current_read?(node) } }
@@ -1132,16 +1207,27 @@ module VBlank
         @builder.record_walk_instance_writes(self, saved, restored)
       end
 
-      # One live instance, as the block sees it: a row handle over a pool slot. Its fields
-      # are reached by name (`b.x`, `b.hp`) — each a mutable {FieldRef} at this slot —
-      # `b.remove` retires it, and `b.index` hands back its slot as a Value, to remember
-      # which instance won a comparison and act on it after the loop. The instance is only
-      # valid inside the `each` iteration that yielded it (it's bound to the loop's current
-      # slot), not something to keep around — but `index` is just a number, so keep that.
+      # One thing of a pool
       #
-      # A spriteful pool's instance also has a rectangle (its x/y fields plus the image's
-      # collision box), so it gains `overlaps?`, the screen-edge tests, and
-      # `clamp_to_screen` from {Bounds} — `bullet.overlaps?(enemy)`, `b.off_screen?`.
+      # One live thing of a pool, as the block of Pool#each sees it. Its fields are reached by
+      # name (`b.x`, `b.hp`), each a FieldRef that reads and changes like a variable.
+      # Pool::Instance#remove takes it out of the pool, and Pool::Instance#index hands back its
+      # slot as a Value.
+      #
+      # ```ruby
+      # enemies.each do |e|
+      #   e.x += 1
+      #   e.remove if e.hp <= 0
+      # end
+      # ```
+      #
+      # An instance belongs to the turn of the walk that handed it over, so it is not something
+      # to keep. Its index is a number, so keep that instead, and reach the thing later with
+      # Pool#field_ref.
+      #
+      # A thing of a pool that draws also has a box: its x and y fields and its picture's size.
+      # So it can ask Bounds#overlaps?, the screen-edge tests and Pool::Instance#clamp_to_screen:
+      # `bullet.overlaps?(enemy)`, `b.off_screen?`.
       class Instance
         include Bounds # overlaps? + off_screen?/edge tests, from left/top/right/bottom below
 
@@ -1151,26 +1237,49 @@ module VBlank
         end
 
         # The build this pool belongs to, which {Bounds} asks for the screen.
-        def collision_builder = @pool.builder
+        def collision_builder = @pool.builder # :nodoc:
 
-        # Draw this instance with another list of colours, or one of several picked by a
-        # number, or its own again — what a sprite's `draw_with` does, for one instance.
+        # Draws this thing with another list of colours, or one of several picked by a number,
+        # or its own again.
+        #
+        # It is what HardwareSprite#draw_with does, for one thing of a pool. Each thing keeps its
+        # own choice.
+        #
+        # ```ruby
+        # guards.each { |g| g.draw_with :angry if g.hp < 2 }
+        # ```
+        #
+        # * `showing:` - with several lists, the number that picks one of them.
         def draw_with(which, showing: nil)
           @pool.draw_with(@index, which, showing)
           self
         end
 
-        # Retire this instance: free its slot, stop it next frame.
+        # Takes this thing out of the pool, so it stops being drawn and its room is free for a
+        # new one.
+        #
+        # It is safe inside Pool#each. During a walk, its room is freed as the walk ends.
+        #
+        # ```ruby
+        # bullets.each { |b| b.remove if b.y < 0 }
+        # ```
         def remove
           @pool.remove_at(@index)
         end
 
-        # Turn this instance to face a direction — the same verb, spelled the same way, that
-        # a `sprite` given `facing:` takes. Each instance holds its own direction, so ten
-        # guards in one pool can face ten ways.
+        # Turns this thing to face a direction, among the `facing:` pictures the pool was given.
         #
-        # `g.face [:a, :b], showing: g.step` picks one by a number the game works out, per
-        # instance (see HardwareSprite#face).
+        # It is the same verb, spelled the same way, that a sprite given `facing:` takes
+        # (HardwareSprite#face). Each thing holds its own direction, so ten guards in one pool
+        # can face ten ways.
+        #
+        # ```ruby
+        # guards.each { |g| g.face :left }
+        # guards.each { |g| g.face [:left, :right], showing: g.side }
+        # ```
+        #
+        # * `showing:` - with a list of directions, the number that picks one of them, worked
+        #   out for each thing.
         def face(direction, showing: nil)
           unless showing.nil?
             @pool.builder.write_picked_pose(direction, showing, subject: "pool :#{@pool.name}",
@@ -1190,28 +1299,64 @@ module VBlank
           self
         end
 
-        # This instance's own slot, as a Value. The instance handle itself doesn't survive
-        # past the `each` iteration that yielded it, but a slot number is just a number —
-        # save it in a variable to remember which instance won a comparison (the nearest
-        # enemy, the one just hit) and act on it after the loop ends, with `pool.field_ref`.
+        # This thing's own slot in the pool, as a Value.
+        #
+        # The instance itself does not last past the turn of Pool#each that handed it over, but
+        # a slot is a number. Keep it in a variable to remember which thing won a comparison,
+        # such as the nearest enemy or the one just hit, and act on it after the walk with
+        # Pool#field_ref.
+        #
+        # ```ruby
+        # enemies.each { |e| hit = e.index if e.overlaps?(hero) }
+        # ```
         def index = @index
 
-        # This instance's collision-box edges, as Values — its x/y fields plus the image's
-        # box. These need a spriteful pool (one with an image, hence a size).
+        # The left edge of this thing's box, as a Value: its x field and its picture's box.
+        #
+        # The pool needs a picture, which gives a thing its size.
+        #
+        # ```ruby
+        # e.remove if e.left > 240
+        # ```
         def left = field(:x) + hitbox_part(0)
+
+        # The top edge of this thing's box, as a Value: its y field and its picture's box.
+        #
+        # ```ruby
+        # e.remove if e.top > 160
+        # ```
         def top = field(:y) + hitbox_part(1)
+
+        # The right edge of this thing's box, as a Value, one past its last column.
+        #
+        # ```ruby
+        # e.remove if e.right < 0
+        # ```
         def right = field(:x) + hitbox_part(0) + hitbox_part(2)
+
+        # The bottom edge of this thing's box, as a Value, one past its last row.
+        #
+        # ```ruby
+        # e.remove if e.bottom < 0
+        # ```
         def bottom = field(:y) + hitbox_part(1) + hitbox_part(3)
 
-        # Move this instance, stopping at the scenery's solid tiles if the pool was told
-        # `blocked_by` — the per-instance counterpart to {HardwareSprite#move}, spelled the
-        # same way. Each axis is checked on its own, so an instance slides along a wall it is
-        # pressed against instead of sticking to it.
+        # Moves this thing, stopping at the scenery's solid tiles if the pool was told
+        # Pool#blocked_by.
         #
-        #   guards.each { |g| g.move :left, by: 1 }
+        # It is the counterpart for one thing to HardwareSprite#move, spelled the same way: a
+        # direction name with `by:`, or a step across and down. Each axis is checked on its own,
+        # so a thing slides along a wall it is pressed against instead of sticking to it.
         #
-        # A pool with `facing:` pictures turns the instance to face the way it moved, so one
-        # line leaves ten guards leaning ten ways.
+        # ```ruby
+        # guards.each { |g| g.move :left, by: 1 }
+        # guards.each { |g| g.move 1, -1 }
+        # ```
+        #
+        # A pool with `facing:` pictures turns the thing to face the way it moved, so one line
+        # leaves ten guards leaning ten ways.
+        #
+        # * `by:` - how many pixels a direction name moves it.
         def move(direction_or_dx, dy = nil, by: 1)
           if direction_or_dx.is_a?(Symbol)
             step_x, step_y = Direction.unit(direction_or_dx)
@@ -1225,9 +1370,17 @@ module VBlank
           self
         end
 
-        # Whether this instance could step +by+ pixels in +direction+ without meeting a solid
-        # tile — a {Condition} to branch on, for taking it into your own hands. Needs the pool
-        # to have been told `blocked_by`.
+        # Whether this thing could step in a direction without meeting a solid tile, as a test
+        # to branch on.
+        #
+        # It is for a game that decides for itself what a blocked thing does. The pool must have
+        # been told Pool#blocked_by.
+        #
+        # ```ruby
+        # guards.each { |g| g.face :right unless g.can_move?(:left, by: 2) }
+        # ```
+        #
+        # * `by:` - how many pixels the step is.
         def can_move?(direction, by: 1)
           cells = @pool.solid_cells or raise ArgumentError,
                                             "pool :#{@pool.name} was not told `blocked_by` a background, so an " \
@@ -1237,8 +1390,14 @@ module VBlank
           emit_tile_check(cells, field(:x) + (step_x * by), field(:y) + (step_y * by))
         end
 
-        # Keep this instance fully on the screen, using the sprite's own size — the
-        # per-instance counterpart to {Sprite#clamp_to_screen}. Clamps its x/y in place.
+        # Keeps this thing wholly on the screen, using its picture's own size.
+        #
+        # It is the counterpart for one thing to a sprite's `clamp_to_screen`, and changes the
+        # thing's x and y fields where they stand.
+        #
+        # ```ruby
+        # players.each { |p| p.clamp_to_screen }
+        # ```
         def clamp_to_screen
           hit_x, hit_y, hit_w, hit_h = require_box!
           width, height = collision_builder.console.screen_size
