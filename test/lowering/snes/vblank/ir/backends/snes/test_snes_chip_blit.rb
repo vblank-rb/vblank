@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# PICTURES ON A SUPER FX CARTRIDGE ARE PAINTED BY THE CHIP (Runtime::ChipBlit): blit, and text,
+# Pictures on a super FX cartridge are painted by the chip (Runtime::ChipBlit): blit, and text,
 # which is pictures on a painted screen there. The console works out the rows and tiles the
 # picture covers and the chip paints them; the picture is the interpreter's on every pass, and a
 # picture costs the frame a small part of what the console's own processor took.

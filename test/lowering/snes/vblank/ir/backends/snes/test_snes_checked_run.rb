@@ -204,7 +204,7 @@ class TestSNESCheckedRun < Minitest::Test
     assert_equal 0, run[:n]
   end
 
-  # A STAND-IN FOR A RUNTIME THAT LETS THE SCREEN COME ON WHILE IT SETS UP: bsnes is made to show red
+  # A stand-in for a runtime that lets the screen come on while it sets up: bsnes is made to show red
   # where the real cartridge still has its screen switched off (all colour 0). The run reports the
   # red the console shows, not the interpreter's switched-off white, so a check against the
   # interpreter would fail.

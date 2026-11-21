@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "brr_recordings"
 
-# A RECORDING GIVEN IN THE SOUND CHIP'S OWN FORMAT (Builder#sample's `brr:`) ON A SUPER NINTENDO: the
+# A recording given in the sound chip's own format (Builder#sample's `brr:`) on a Super Nintendo: the
 # sound unit keeps the game's bytes as they are, and its table points the voice at them and at the
 # loop point the game gave (Samples.brr_as_given). What the chip makes of them, heard in bsnes, is held
 # sample for sample to the answer key, fullsnes's decoder (BRRRecordings), which is what every other
@@ -39,7 +39,7 @@ class TestSNESBRRAsGiven < Minitest::Test
     [ram.byteslice(start, size).bytes, loop_point - start]
   end
 
-  # THE SAME SAMPLES AS FILTER NOUGHT AT SHIFT 1, each block's sixteen four-bit numbers being the
+  # The same samples as filter nought at shift 1, each block's sixteen four-bit numbers being the
   # samples themselves: only a recording as quiet as BRRRecordings::QUIET, whose samples are all -8
   # to 7, can be written this way. The answer key's samples, written so the chip has nothing to work out.
   private def written_plainly(samples, last_flags)

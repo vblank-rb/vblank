@@ -3,7 +3,7 @@
 require "test_helper"
 require "tmpdir"
 
-# A CELL AND A SPRITE CHANGED IN ONE PASS SHOW TOGETHER. Both wait for the same blank, however much
+# A cell and a sprite changed in one pass show together. Both wait for the same blank, however much
 # of the frame the pass takes, read here from the console's own picture.
 class TestSNESCellBesideSprite < Minitest::Test
   RED = 0x7C00

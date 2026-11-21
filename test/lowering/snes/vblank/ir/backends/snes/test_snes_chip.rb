@@ -49,7 +49,7 @@ class TestSNESChip < Minitest::Test
     memory
   end
 
-  # The frames played until the console marked DONE, and the frame count the runtime kept.
+  # The frames played until the console marked done, and the frame count the runtime kept.
   private def frames_until_done(rom, memory)
     Dir.mktmpdir do |dir|
       path = File.join(dir, "chip.sfc")
