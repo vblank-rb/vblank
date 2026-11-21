@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/builder/test_sprite_off_screen"
 
-# A SPRITE OFF THE SCREEN, ON THE ADVANCE'S CARTRIDGE: what keeping it off costs in code, and
+# A sprite off the screen, on the Advance's cartridge: what keeping it off costs in code, and
 # what the console's own table of sprites says of it, read in the emulator. What the picture
 # shows, asked of every run, is in test/all/vblank/builder/test_sprite_off_screen.rb.
 class TestSpriteOffScreenCartridge < Minitest::Test

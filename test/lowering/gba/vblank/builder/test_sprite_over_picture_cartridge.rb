@@ -4,7 +4,7 @@ require "test_helper"
 require "differential"
 require "sprite_over_picture_games"
 
-# A SPRITE OVER A PAINTED PICTURE ON THE ADVANCE'S CARTRIDGE: the console's own sprite drawn over
+# A sprite over a painted picture on the Advance's cartridge: the console's own sprite drawn over
 # the bitmap screen, read in the emulator and held to the interpreter pixel for pixel. What the
 # sprite does, asked of every run, is in test/all/vblank/builder/test_sprite_over_picture.rb.
 class TestSpriteOverPictureCartridge < Minitest::Test

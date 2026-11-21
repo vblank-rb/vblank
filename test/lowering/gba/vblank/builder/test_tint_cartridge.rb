@@ -5,7 +5,7 @@ require "stringio"
 require "tempfile"
 require "all/vblank/builder/test_tint"
 
-# A TINT ON THE ADVANCE'S CARTRIDGE: the colours read off the cartridge in the emulator, and what
+# A tint on the Advance's cartridge: the colours read off the cartridge in the emulator, and what
 # a tint costs a frame there. What a tint looks like on every run is in
 # test/all/vblank/builder/test_tint.rb.
 class TestTintCartridge < Minitest::Test
@@ -55,7 +55,7 @@ class TestTintCartridge < Minitest::Test
 
   # A game writes `tint :red, hurt` on every pass of its loop, so the same tint is asked
   # for again and again. It must land in the same place every time — which it does
-  # because each rewrite reads the ORIGINAL colors out of the cartridge rather than the
+  # because each rewrite reads the original colors out of the cartridge rather than the
   # ones already on screen. Blending what is already blended is the bug this rules out,
   # and after twenty frames it would be far past halfway.
   def test_the_same_tint_asked_for_every_frame_lands_in_the_same_place
@@ -207,7 +207,7 @@ class TestTintCartridge < Minitest::Test
                     "#{format('%.2fx', moving / held)} (#{held} -> #{moving})"
   end
 
-  # THE PLAIN BITMAP SCREEN IS THE ONE WHERE A TINT IS FREE. It holds a whole colour in every
+  # The plain bitmap screen is the one where a tint is free. It holds a whole colour in every
   # pixel, so there is no table to walk and the display's own blend does the mixing: moving
   # the tint every frame costs what holding it does. The two bitmap screens are one word apart
   # in a program, and the tear-free one above is the dear one.
@@ -239,7 +239,7 @@ class TestTintCartridge < Minitest::Test
   # A tint tells the display what to show and redraws nothing, so its price must not
   # depend on what is on screen — the same promise `fade` makes.
 
-  # HOW MANY INSTRUCTIONS A FRAME REALLY RUNS, measured on the emulator.
+  # How many instructions a frame really runs, measured on the emulator.
   #
   # This claim is about TIME — a tint tells the display what to show and redraws nothing — and
   # it used to be checked against an estimate of the frame, which is the thing this framework

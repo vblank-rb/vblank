@@ -11,7 +11,7 @@ class TestTimerCartridge < Minitest::Test
   include InterruptedWalks
   include TimerGames
 
-  # A HANDLER IS THE TIMER'S, NOT THE LINE'S. `on_tick` says what a timer does when it
+  # A handler is the timer's, not the line's. `on_tick` says what a timer does when it
   # ticks, the way `once_a_frame` says what happens each frame, so a handler written inside
   # a routine nothing calls still answers every tick once the timer runs.
   def test_a_handler_inside_a_routine_nothing_calls_still_runs
@@ -114,7 +114,7 @@ class TestTimerCartridge < Minitest::Test
 
   # --- a handler that calls a routine the game is part way through ---
 
-  # THE INTERRUPTED WALK CARRIES ON WHERE IT WAS, as on the interpreter (test_timer.rb's
+  # The interrupted walk carries on where it was, as on the interpreter (test_timer.rb's
   # test_a_call_a_handler_interrupted_carries_on_where_it_was). The handler calls :walk, which can
   # wait, so it runs as the game wakes, which here is inside the game's own walk, and walks again
   # from the start without waiting. The game's own walk then finishes its four steps.
@@ -127,7 +127,7 @@ class TestTimerCartridge < Minitest::Test
     assert_finished_like_interpreter(interrupted_walk_program(again_from: :tick, calls_in_body: true), name: "TWALKM")
   end
 
-  # A HANDLER RUN FROM THE INTERRUPT, which comes between any two instructions of the game, calls a
+  # A handler run from the interrupt, which comes between any two instructions of the game, calls a
   # routine the game is part way through: :tally, which never waits. The interpreter runs a handler
   # only as a frame ends, so there every tally the game makes counts all its turns; so it does on
   # the cartridge, whose interrupt saves the loop's count around its own tally.
@@ -135,7 +135,7 @@ class TestTimerCartridge < Minitest::Test
     assert_finished_like_interpreter(interrupted_tally_program, name: "TTALLY")
   end
 
-  # A HANDLER THAT WAITS INSIDE ITS OWN LOOP KEEPS ITS PLACE IN IT (on the PlayStation,
+  # A handler that waits inside its own loop keeps its place in it (on the PlayStation,
   # test_ps1_tick_handlers.rb). Its wait is a frame boundary, so the handler runs again inside it,
   # to its end without waiting, and the first run goes on from the turn it had reached. A run whose
   # loop ended early moves the screen four across; it moves two once three runs are finished.
@@ -148,7 +148,7 @@ class TestTimerCartridge < Minitest::Test
     assert_finished_like_interpreter(waiting_handler_program(calls_in_body: true), name: "TWAITM")
   end
 
-  # A HANDLER THAT WAITS READS WHAT THE PASS BEFORE READ, as the interpreter runs the handlers before
+  # A handler that waits reads what the pass before read, as the interpreter runs the handlers before
   # it counts the frame and reads the buttons (Reference#advance_frame): the frames since power-on
   # and whether A was pressed are the numbers the game's last pass read, at every run of the handler,
   # the ones inside its own wait too. A is tapped two frames in every seven. :late_count and
