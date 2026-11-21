@@ -3,7 +3,7 @@
 module VBlank
   class Builder
     #--
-    # THE STEPS THE SAVE CODE BUILDS PROGRAM WITH, and the few pieces it is written in.
+    # The steps the save code builds program with, and the few pieces it is written in.
     #
     # The records, the table of places and the job queue all build their routines the same
     # way: through a {Saves::Port}, which is the whole of what they know about the Builder, and

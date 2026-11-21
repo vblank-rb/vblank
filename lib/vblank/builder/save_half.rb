@@ -3,9 +3,9 @@
 module VBlank
   class Builder
     #--
-    # WHERE A COPY'S HALVES ARE, AND WRITING ONE in the order that keeps a save safe.
+    # Where a copy's halves are, and writing one in the order that keeps a save safe.
     #
-    # Every copy of a record is kept twice, and a save goes into the OLDER half, which only
+    # Every copy of a record is kept twice, and a save goes into the older half, which only
     # counts once the whole of it is in. What makes that true is the order the half is written
     # in, and this is the one place it is written down:
     #
@@ -14,7 +14,7 @@ module VBlank
     #      rather than as never saved. Neither can make the half pass for good on its own.
     #   2. The body — whatever the caller writes between opening and closing.
     #   3. CLOSE: the sequence number (one past the copy's), the kind (saved or erased), and the
-    #      checksum LAST of all. Until the checksum matches, the half is not good, so the other
+    #      checksum last of all. Until the checksum matches, the half is not good, so the other
     #      half is still the copy. Then the copy is looked over again, which is also the read
     #      back: a half that does not come back as it should means the chip did not keep it.
     #
@@ -64,7 +64,7 @@ module VBlank
         end
       end
 
-      # Step 3: the sequence, the kind and the checksum, then the read back. +kind+ is SAVED or
+      # Step 3: the sequence, the kind and the checksum, then the read back. +kind+ is saved or
       # ERASED, as a number written in the program or one the game works out. The record's
       # `copy` must already name +copy+, since looking it over reads which copy from there.
       def emit_half_commit(layout, here, copy, kind)

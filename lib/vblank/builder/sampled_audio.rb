@@ -198,7 +198,7 @@ module VBlank
                              "To fix this, give the recording as brr:, or use holds_from: for samples given as pcm: or from:."
       end
 
-      # THE RECORDING +brr+ (bytes, or a slot of the data pack's samples) as an Audio::SNESRecording
+      # The recording +brr+ (bytes, or a slot of the data pack's samples) as an Audio::SNESRecording
       # that loops back +brr_loop+ bytes in (a number of the pack, or the game's own). The chip's
       # decoding is worked out here, as the game is built. What the pack gives is the player's, so
       # it is held as a runtime holds it as the game starts (IR::StartFile.brr_held); what the game
@@ -294,7 +294,7 @@ module VBlank
                              "how many of its samples it plays, a whole number from 1 to #{room}."
       end
 
-      # WHERE A HELD NOTE READS BACK TO, as a sample number. A recording is finite and a note can
+      # Where a held note reads back to, as a sample number. A recording is finite and a note can
       # outlast it: a piano recorded for half a second, held for two. Without this the note ends
       # where the recording does, which is both too early and a click — the sound stops at
       # whatever the wave was doing.

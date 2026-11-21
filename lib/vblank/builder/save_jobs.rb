@@ -3,7 +3,7 @@
 module VBlank
   class Builder
     #--
-    # SAVING IN THE BACKGROUND: every save, erase and copy a game asks for is a JOB, and jobs
+    # Saving in the background: every save, erase and copy a game asks for is a job, and jobs
     # are written into save memory a piece at a time, once a pass of the game loop, while the
     # game goes on.
     #
@@ -11,19 +11,19 @@ module VBlank
     # memory is read and written a byte at a time, and slowly. A piece a pass costs a little of
     # several passes instead, so nothing the player is watching stops.
     #
-    # THE SAVE HOLDS THE MOMENT IT WAS ASKED FOR. Asking copies what the record keeps into a
+    # The save holds the moment it was asked for. Asking copies what the record keeps into a
     # buffer of the record's own, there and then, and the buffer is what is written — so the
     # hearts can change on the next pass without the save picking up half of the change. A copy
     # needs no buffer: the copy it reads from changes only through jobs, and jobs run one at a
     # time, in the order they were asked for.
     #
-    # ONE JOB RUNS AND ONE WAITS. A second job asked for while one runs waits its turn, which is
+    # One job runs and one waits. A second job asked for while one runs waits its turn, which is
     # what a game that saves a file and then its settings wants. Each record has room for two
     # snapshots, so the one waiting and the one running never share. A third asked for while
     # two are already in hand finishes the running one on the spot — a pass that stands still,
     # once, rather than anything lost.
     #
-    # READING A RECORD FINISHES ITS JOBS FIRST. A copy's state, a peek at what it holds, and a
+    # Reading a record finishes its jobs first. A copy's state, a peek at what it holds, and a
     # load all read save memory, so each one first finishes any job of that record still in
     # hand: a file screen shown straight after a save shows the save.
     #
@@ -31,13 +31,13 @@ module VBlank
     # then the sequence and kind, the checksum last of all — so the power going off between two
     # passes is the same as the power going off half way through a save, and loses nothing.
     #
-    # ON FLASH a half is wiped before it is written, a block at a time, and the chip takes a good
+    # On flash a half is wiped before it is written, a block at a time, and the chip takes a good
     # part of a frame over each block. So a job on flash starts each block's wipe and goes on to
     # the next pass, and a pass only asks the chip whether it has finished — opening the half
     # once the last block is wiped. Each byte takes the chip a while too, so a pass writes fewer
     # (IR::SaveLayout::Memory#bytes_per_pass).
     #
-    # AN OBJECT OF ITS OWN, in two steps like the records it serves. It is made with the first
+    # An object of its own, in two steps like the records it serves. It is made with the first
     # record, because a line asking whether a record is saving, or finishing its jobs before a
     # read, names the queue's variables before anything is laid out. It is handed the save memory
     # and where the halves are once the records are laid out (#lay_out), and only then builds
@@ -62,7 +62,7 @@ module VBlank
       # chip takes, so giving up means the chip is not answering at all.
       WIPE_ASKS = 0x40000  # :nodoc:
 
-      # WHAT A JOB IS: whose record, which copy, save / erase / copy, which of the record's two
+      # What a job is: whose record, which copy, save / erase / copy, which of the record's two
       # buffers holds its snapshot, and the copy a copy reads from. A job is in one of three
       # places — just asked for, running, or waiting behind the running one — and moves between
       # them whole (see #move_job).
@@ -73,7 +73,7 @@ module VBlank
       SCRATCH = (PLACES.product(JOB).map { |place, field| :"#{place}_#{field}" } +  # :nodoc:
                  %i[run_phase run_done run_at run_from run_wiped serial hold pieces]).freeze
 
-      # THE NUMBER EACH RECORD'S JOBS GO BY, by the record's name, read back off a built program:
+      # The number each record's jobs go by, by the record's name, read back off a built program:
       # the routine that steps the running job (#save_jobs_step_running) asks whose job it is by
       # that number before it calls the record's own step, and that question is the only place a
       # built program holds it. A measured build reads it to start a save of its own, so a game
@@ -89,7 +89,7 @@ module VBlank
         end
       end
 
-      # A SAVE OF COPY 0 OF THE RECORD NUMBERED +number+, RUNNING: each variable of the queue's
+      # A save of copy 0 of the record numbered +number+, running: each variable of the queue's
       # running job by name, with what it holds the pass after the game asks for that save with
       # nothing else in hand (see #save_jobs_queue). Writing these starts the save from outside the
       # game; it writes whatever that record's first buffer holds.
@@ -144,7 +144,7 @@ module VBlank
 
       # --- the three a record's own routines reach the queue through ---
 
-      # ASK FOR A JOB on +layout+'s copy in its copy scratch: room is made, a save is
+      # Ask for a job on +layout+'s copy in its copy scratch: room is made, a save is
       # snapshotted into its buffer there and then, and the job goes in line.
       #
       # What happens when one of this record's jobs is already in hand is the record's to choose
@@ -181,7 +181,7 @@ module VBlank
         end
       end
 
-      # ONE PIECE OF +layout+'s RUNNING JOB. The first piece picks the half to write — the older
+      # One piece of +layout+'s running job. The first piece picks the half to write — the older
       # one — and writes the marker and the shape; each piece after writes up to a pass's bytes of
       # the body; the pass after the last of the body writes the sequence, the kind and the
       # checksum, looks the copy over again, and ends the job. On flash the half is wiped between
@@ -202,7 +202,7 @@ module VBlank
         sd_when(mine.call(WRITING)) { save_job_piece(layout) }
       end
 
-      # EVERY JOB OF +layout+ STILL IN HAND, finished now — before anything reads the record.
+      # Every job of +layout+ still in hand, finished now — before anything reads the record.
       def emit_finish_jobs_of(layout)
         await_save_wipe
         repeat(2, stop_when: DSL::Condition.new(handle, sd_eq(saving(layout), sd_int(0)))) do |_|
@@ -219,7 +219,7 @@ module VBlank
       # Move the whole job in place +from+ into place +to+.
       def move_job(to:, from:) = JOB.each { |field| set_job_var(:"#{to}_#{field}", job_var(:"#{from}_#{field}")) }
 
-      # ONCE A PASS: last pass's "just finished" is over, and the running job moves on a piece.
+      # Once a pass: last pass's "just finished" is over, and the running job moves on a piece.
       def save_jobs_tick
         @records.each_value { |layout| record(Build.set(layout.scratch(:finished), sd_int(0))) }
         record(Build.call(jobs_name(:step_running)))
@@ -234,7 +234,7 @@ module VBlank
         end
       end
 
-      # FINISH THE RUNNING JOB NOW, all of it, however many pieces are left. The one waiting
+      # Finish the running job now, all of it, however many pieces are left. The one waiting
       # behind it then becomes the running one, and is left for the passes to come.
       def save_jobs_finish
         set_job_var(:hold, job_var(:serial))
@@ -244,7 +244,7 @@ module VBlank
         end
       end
 
-      # LET A WIPE THE RUNNING JOB STARTED FINISH, on flash: the chip takes no other command
+      # Let a wipe the running job started finish, on flash: the chip takes no other command
       # while it wipes, and a read anywhere in it can come back as the chip saying it is busy.
       # So anything that reads save memory, or drops the running job, comes here first. Stepping
       # the job is what asks the chip, and the job goes on to write once the half is wiped.
@@ -261,7 +261,7 @@ module VBlank
         end
       end
 
-      # TAKE A JOB, named by the ask scratch: it runs now when nothing does, and waits otherwise.
+      # Take a job, named by the ask scratch: it runs now when nothing does, and waits otherwise.
       # Make room first (see the class comment), and pick which of its record's two buffers a
       # snapshot goes in.
       def save_jobs_pick_slot

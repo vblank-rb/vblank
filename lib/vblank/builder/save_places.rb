@@ -3,7 +3,7 @@
 module VBlank
   class Builder
     #--
-    # WHERE EACH `save_data` RECORD LIVES IN SAVE MEMORY, decided at power-on from the table of
+    # Where each `save_data` record lives in save memory, decided at power-on from the table of
     # places kept at the front of it (see IR::SaveLayout).
     #
     # A cartridge that shipped holds the player's saves, and the next build of the game has to
@@ -30,7 +30,7 @@ module VBlank
     # down together to put all the free room in one piece at the end. The build has already
     # checked that every record fits at once, so the last step always finds it.
     #
-    # THE POWER GOING OFF while this runs loses nothing, with one exception. Moving a record's
+    # The power going off while this runs loses nothing, with one exception. Moving a record's
     # copies writes them into room the table marks as free, and the table is written the moment
     # they are in — so until then the table still points at the old place, which nothing has
     # touched. The exception is the last resort, when save memory is nearly full and the free
@@ -42,7 +42,7 @@ module VBlank
     # All of it is ordinary program built from the three save-memory steps, like the records'
     # own routines, so the interpreter and the console cannot disagree about any of it.
     #
-    # AN OBJECT OF ITS OWN, made once the records are laid out and handed what it needs: the
+    # An object of its own, made once the records are laid out and handed what it needs: the
     # port it builds program through, the save memory, the records to place, and a way to
     # declare the table as a record of its own (whose routines are the records' to build). It
     # keeps nothing in common with them, so what it builds depends on those and nothing else.
@@ -155,7 +155,7 @@ module VBlank
         end
       end
 
-      # PLACE ONE RECORD, named by the key, half and copies scratch; leaves where it starts
+      # Place one record, named by the key, half and copies scratch; leaves where it starts
       # in the place scratch.
       def save_places_place_record
         set_place_var(:need, sd_op(:*, half_room(place_var(:half)), sd_op(:*, place_var(:copies), sd_int(2))))
@@ -207,7 +207,7 @@ module VBlank
         end
       end
 
-      # A RECORD WITH MORE COPIES THAN ITS ROW GIVES keeps the ones it had. It grows where it is
+      # A record with more copies than its row gives keeps the ones it had. It grows where it is
       # when the room after it is free; otherwise its copies move to room big enough for all of
       # them, and the table is written once they are there. With no such room anywhere the
       # records are slid down together, and those above this one are then lifted by as much as
@@ -239,7 +239,7 @@ module VBlank
         set_place_var(:changed, 1)
       end
 
-      # WIPE WHAT A RECORD HAS JUST BEEN GIVEN: the copies from the first scratch up to the
+      # Wipe what a record has just been given: the copies from the first scratch up to the
       # copies scratch, of the record in the found row. Room a record did not own a moment ago
       # can hold anything — a copy a build before this one dropped, or another record's save
       # that keeps the same things — and a half there with the right marker, shape and
@@ -284,7 +284,7 @@ module VBlank
         end
       end
 
-      # ROOM FOR +need+ bytes, in the room scratch, or -1: the start of save data, or the end
+      # Room for +need+ bytes, in the room scratch, or -1: the start of save data, or the end
       # of any record, whichever comes first with nothing in the way.
       def save_places_find_room
         set_place_var(:room, -1)
@@ -332,7 +332,7 @@ module VBlank
         end
       end
 
-      # SLIDE THE RECORDS DOWN TOGETHER, lowest first, so all the free room is one piece from
+      # Slide the records down together, lowest first, so all the free room is one piece from
       # the cursor scratch to the end.
       def save_places_compact
         set_place_var(:cursor, @memory.data_start)
@@ -358,7 +358,7 @@ module VBlank
         end
       end
 
-      # MOVE ONE RECORD'S COPIES — the record in the row scratch, as many as its row holds — to
+      # Move one record's copies — the record in the row scratch, as many as its row holds — to
       # the to scratch, then write the table, so it points at them only once they are there.
       # Moving up, the bytes go last first, so a move by less than the record's size never
       # reads a byte it has already written over.
