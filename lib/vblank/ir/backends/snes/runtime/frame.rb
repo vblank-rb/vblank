@@ -24,7 +24,7 @@ module VBlank
           # wrong and why. The names and their meanings are the Game Boy Color runtime's, so a
           # reader of either asks the same questions.
           module Frame
-            # How the game stands, in state.
+            # How the game stands, in STATE.
             RUNNING = 0
             HALTED = 1
             WENT_WRONG = 2
@@ -153,7 +153,7 @@ module VBlank
             def reserve_last_pass(memory) = memory.reserve(LAST_PASS, 4)
 
             # Branches to rt_frame_begins_skipped when LAST_PASS is written and the pass that just ended
-            # (PASSES) comes after it: LAST_PASS less passes, a half at a time, borrows out of the top half.
+            # (PASSES) comes after it: LAST_PASS less PASSES, a half at a time, borrows out of the top half.
             # Neither count is ever negative, so the borrow is the answer.
             def emit_skip_past_last_pass(asm, at)
               asm.lda(at.call(LAST_PASS))
@@ -251,7 +251,7 @@ module VBlank
               asm.rti
             end
 
-            # A blank counted by hand, while the screen's interrupt is held off: frames one more if a
+            # A blank counted by hand, while the screen's interrupt is held off: FRAMES one more if a
             # blank has begun since RDNMI was last read. A blank sets RDNMI's top bit as it begins,
             # whether the interrupt is on or not, and the bit stays until it is read or the blank ends,
             # so code that looks more often than a blank lasts counts each one once. A 8 bits wide
@@ -287,7 +287,7 @@ module VBlank
               end
             end
 
-            # rt_show_pass: what the pass drew, on the screen, and shown saying so. The first time,
+            # rt_show_pass: what the pass drew, on the screen, and SHOWN saying so. The first time,
             # the screen is still off, so everything set up so far is copied while nothing is drawn,
             # and the screen comes on in the blank after, showing it; after that, the pass's changes
             # are copied in the blank. Then the sleeps it waits for the blank in, and the step that
@@ -338,7 +338,7 @@ module VBlank
               Mosaic.emit_write(asm, memory) if Mosaic.kept?(memory)
               asm.label("rt_show_pass_shown")
               asm.jsr(asm.abs("rt_letterbox_shown")) if Letterbox.kept?(memory)
-              # A picture of big pixels still being sent behind the game has shown set when it is all
+              # A picture of big pixels still being sent behind the game has SHOWN set when it is all
               # there (PaintDoubledSend).
               PaintDoubledSend.emit_branch_if_sending(asm, memory, "rt_show_pass_sending")
               asm.lda(at.call(PASSES))
@@ -592,9 +592,9 @@ module VBlank
 
             # STOPPING. rt_halt stops the game where it is: what it drew since its last frame is
             # copied to the console in the next blank (or with the screen switched on, for a game
-            # that never got as far as a frame), shown marks that the end is on the screen, and the
+            # that never got as far as a frame), SHOWN marks that the end is on the screen, and the
             # processor sleeps from then on. Going wrong is the same, with what went wrong written
-            # down first (rt_fault, A = what went wrong, the list and the numbers already in fault).
+            # down first (rt_fault, A = what went wrong, the list and the numbers already in FAULT).
             def emit_stopping(asm, memory)
               at = ->(name, plus = 0) { asm.abs(memory[name], plus) }
               asm.label("rt_halt")

@@ -18,18 +18,18 @@ module VBlank
           #
           # Holding back. ChipCode writes each column the game draws (its x, top and height, where the
           # picture's column starts in the cartridge, the picture's height, how many columns wide the
-          # strip is and whether the picture has see-through pixels) onto a queue, and calls process
-          # when the queue is full and finish as the run ends. Process works out what the console's
+          # strip is and whether the picture has see-through pixels) onto a queue, and calls PROCESS
+          # when the queue is full and FINISH as the run ends. PROCESS works out what the console's
           # lowering works out for a column (Lowering::Paint#emit_column_walk): the step down the
           # picture, the rows inside the area, and where the walk stands at the first of them. Each
-          # column of the strip inside the area goes into a slot of the batch, the slot of its place
-          # in its tile, and the batch is painted (paint) when a column comes that belongs to another
+          # column of the strip inside the area goes into a SLOT of the batch, the slot of its place
+          # in its tile, and the batch is painted (PAINT) when a column comes that belongs to another
           # tile or to a slot already taken, and as the run ends. Nothing else a run on the chip does
           # reads the screen, so painting later paints the same picture.
           #
           # Painting a batch. First the tiles it covers are made ready, as Paint's rt_paint_mark does
           # (READY, below). Then each slot's column is walked down the picture into a scratch column
-          # of bytes, a byte a pixel, one column of them for each slot (WALK). Then the chip's plot
+          # of bytes, a byte a pixel, one column of them for each slot (WALK). Then the chip's PLOT
           # paints the batch's rows from those bytes, a row of eight at a time (rows): plot keeps the
           # pixels of a tile's row and writes the row's eight bytes once all eight are in, or reads
           # them first and writes back only its own when fewer are.
@@ -41,7 +41,7 @@ module VBlank
           # scratch columns with nought first, so what no column covers is left as it was too.
           #
           # Plot's layout is not paint's, but one of its layouts can be made to land on Paint's. In
-          # its "OBJ" layout plot takes the tile for (x, y) as y's top bit, then x's, then y's next
+          # its "OBJ" layout PLOT takes the tile for (x, y) as y's top bit, then x's, then y's next
           # four bits, then x's next four, 64 bytes a tile from the start of the chip's RAM (fullsnes,
           # "SNES Cart GSU-n Bitmap"; bsnes, SuperFX::flushPixelCache). Paint's tile for a row r and a
           # tile column t is r / 8 * 32 + t. So the screen's (8t + p, r) is plotted at
@@ -50,7 +50,7 @@ module VBlank
           #   y = (r & 128) | (r & 56) * 2 | (t & 16) / 2 | (r & 7)
           #
           # which names the same tile, the same row in it and the same pixel of the row. Within a
-          # tile's row of the screen x counts on by one, as plot moves on by itself, and y is the
+          # tile's row of the screen x counts on by one, as PLOT moves on by itself, and y is the
           # same; a row down inside a tile is y one more.
           #
           # First, the tiles the batch covers are made ready. A tile of an older generation is the
@@ -65,9 +65,9 @@ module VBlank
           # the last blank (Paint's DIRTY), which the console copies in before the run and back after.
           #
           # The chip's quick memory. Code the chip runs from its 512-byte cache takes a cycle a byte,
-          # and from the ROM five. Process starts the cache where it begins, and the code comes in
-          # the order of how often it runs: for every pixel (walk, rows), every row of tiles (plot,
-          # ready), every column (divide, the queue); what runs once a batch comes last, and may be
+          # and from the ROM five. PROCESS starts the cache where it begins, and the code comes in
+          # the order of how often it runs: for every pixel (walk, rows), every row of tiles (PLOT,
+          # READY), every column (DIVIDE, the queue); what runs once a batch comes last, and may be
           # past the cache's end.
           module ChipColumns
             PROCESS = "chip columns process"
@@ -111,7 +111,7 @@ module VBlank
             PLOT_SETTINGS = 0x10
 
             # The 16-bit places in the chip's RAM it uses. +queue+ (QUEUE_ENTRIES of ENTRY bytes),
-            # +queue_end+ where the next goes; +slots+ (SLOTS of slot bytes) and the batch's +mask+ of
+            # +queue_end+ where the next goes; +slots+ (SLOTS of SLOT bytes) and the batch's +mask+ of
             # slots taken, its tile +column+, its +top+ row and +bottom+ (just past), whether it is
             # +ragged+ and whether it has +holes+ (see-through pixels); +record+ (SLOT bytes), +see+,
             # +x+ (32 bits) and +across+ for the column at hand; +memo+, the last picture height,
@@ -131,8 +131,8 @@ module VBlank
               def queue_limit = queue + (QUEUE_ENTRIES * ENTRY)
             end
 
-            # The words of +state+: where process is on the queue, the ways back of process, finish
-            # paint and plot, the row plot is at, the batch's plot x and y for its tile column, what ready
+            # The words of +state+: where PROCESS is on the queue, the ways back of process, finish
+            # PAINT and PLOT, the row PLOT is at, the batch's PLOT x and y for its tile column, what READY
             # makes ready (the tile column, a first row and how many rows), and the rows of tiles it
             # need not fill with the clear colour (from +whole_from+ to just before +whole_to+).
             STATE = %i[at process_back finish_back paint_back plot_back row x_base y_base ready_rows whole_from whole_to].freeze
@@ -598,7 +598,7 @@ module VBlank
               emit_return(gsu)
             end
 
-            # The rows of tiles ready need not fill with the clear colour: those the batch covers
+            # The rows of tiles READY need not fill with the clear colour: those the batch covers
             # from top to bottom, when it paints every pixel of them; none otherwise.
             def emit_whole_rows(gsu, places)
               gsu.ibt(0, 0)
@@ -790,7 +790,7 @@ module VBlank
               emit_return(gsu)
             end
 
-            # The row of tiles' leftmost changed tile made column if it is further right, and its
+            # The row of tiles' leftmost changed tile made COLUMN if it is further right, and its
             # rightmost if it is further left.
             def emit_mark_changed(gsu, places)
               gsu.move(AT, TILE_ROW)

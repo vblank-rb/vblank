@@ -331,7 +331,7 @@ module VBlank
               end
             end
 
-            # The four halves of product moved down by R12 bits, which it uses up.
+            # The four halves of PRODUCT moved down by R12 bits, which it uses up.
             def emit_product_brought_down(gsu)
               p0, p1, p2, p3 = PRODUCT
               gsu.label("chip product down a half")

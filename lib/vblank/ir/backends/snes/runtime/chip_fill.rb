@@ -38,7 +38,7 @@ module VBlank
           # The chip's quick memory. Code the chip runs from its 512-byte cache takes a cycle a byte,
           # and from the ROM five; filling the cache is five a byte too, once. Cache starts it at the
           # entry and the code comes in the order of how often it runs: the band's code, then the
-          # two routines setting up calls more than once, then what runs once a rectangle (setup),
+          # two routines setting up calls more than once, then what runs once a rectangle (SETUP),
           # whose end is past the cache. The cache lasts from one rectangle to the next while
           # nothing else runs on the chip (Chip's rt_chip_run leaves the bank the chip reads its
           # code from alone when it is already this one, since setting it empties the cache).
@@ -189,11 +189,11 @@ module VBlank
 
             # --- the chip's side ---
 
-            # Registers of the band's code: the tile across (column), the band's rows (rows), the
-            # place a pair of planes is written at (at), the tile's mask and then its opposite (MASK),
+            # Registers of the band's code: the tile across (COLUMN), the band's rows (ROWS), the
+            # place a pair of planes is written at (AT), the tile's mask and then its opposite (MASK),
             # the colour's planes held to the mask (HELD), the start of the tile's row in the picture
-            # (TILE_AT), the planes' place in the block (planes), how many pairs are left (pairs),
-            # sixteen (sixteen), and the tile's number (tile).
+            # (TILE_AT), the planes' place in the block (PLANES), how many pairs are left (PAIRS),
+            # sixteen (SIXTEEN), and the tile's number (TILE).
             SIXTEEN = 1
             PAIRS = 3
             PLANES = 4
