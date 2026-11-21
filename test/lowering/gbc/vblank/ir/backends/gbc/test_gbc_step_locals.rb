@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A NUMBER THE COLOR'S CODE KEEPS ONLY WHILE ONE LINE RUNS, such as which routine of a list a line
+# A number the color's code keeps only while one line runs, such as which routine of a list a line
 # calls or which digit or picture it draws, is kept in work memory, four bytes. Every line of a
 # routine that keeps such a number shares the place (GBC::Lowering#keep_step_local), so a routine
 # of a few hundred such lines takes four bytes for them, not a few hundred times four.
@@ -10,11 +10,11 @@ class TestGBCStepLocals < Minitest::Test
   LINES = 200
 
   # Lists that leave a little more work memory than a few numbers need, and less than a number
-  # for each of LINES lines.
+  # for each of lines lines.
   ROOM_BYTES = 4000
   MORE_BYTES = 1900
 
-  # A game whose loop calls one of two routines LINES times, each by a number it works out.
+  # A game whose loop calls one of two routines lines times, each by a number it works out.
   private def many_calls_program
     b = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
     b.instance_eval do

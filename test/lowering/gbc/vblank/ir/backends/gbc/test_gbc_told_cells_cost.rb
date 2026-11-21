@@ -5,7 +5,7 @@ require "stringio"
 require "tmpdir"
 require "all/vblank/dsl/test_pack_background_set_cell"
 
-# A CELL WRITTEN BY A NUMBER THE GAME WORKS OUT, on a background told its cells by a slot of the
+# A cell written by a number the game works out, on a background told its cells by a slot of the
 # pack, on the Color. A port's screen changes to a few hundred told cells, and the frames that
 # write them already run close, so what one `set_cell` costs must not grow with how many cells
 # the background was told: the Color reads the cell from a table by the number, as the original

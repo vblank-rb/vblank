@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A TITLE SCREEN'S PASS, as small as Pokémon Pinball's: two animations stepped from tables by a
+# A title screen's pass, as small as Pokémon Pinball's: two animations stepped from tables by a
 # step number — four sprites of five poses that bounce, three of two that blink — each pass picking
 # every sprite's pose and row from the tables. Every number is a byte, and a Color with its frame to
 # spare sleeps through most of it, as the console's own title does.

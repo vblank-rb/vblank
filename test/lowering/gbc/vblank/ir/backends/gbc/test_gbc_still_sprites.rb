@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A SCREEN OF MANY STILL SPRITES, as a menu draws a blinking border round its choice: 37
+# A screen of many still sprites, as a menu draws a blinking border round its choice: 37
 # pieces of 8×8 round a box, each its own sprite with three poses — three shades of the border —
 # and some of them turned over, changing pose together every eight frames. Nothing moves. A Color
 # with its frame to spare sleeps through most of each one, as the console's own screen does.
@@ -118,7 +118,7 @@ class TestGBCStillSprites < Minitest::Test
     end
   end
 
-  # The same border as ONE sprite whose three poses are each a picture of the 37 pieces
+  # The same border as one sprite whose three poses are each a picture of the 37 pieces
   # (`image ..., pieces:`), as a cartridge keeps the border: one sprite placed in one call.
   def self.pieced_border
     VBlank.game("PIECED BORDER", consoles: %i[gbc]) do
