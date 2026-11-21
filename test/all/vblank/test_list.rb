@@ -179,7 +179,7 @@ class TestList < Minitest::Test
 
   # --- capacity ---
 
-  # A LIST HOLDS WHAT IT WAS ASKED FOR, exactly. It used to hold the next power of two up,
+  # A list holds what it was asked for, exactly. It used to hold the next power of two up,
   # because its storage was a ring whose index was wrapped with a mask — so `capacity: 3` quietly
   # held four, and the slots nobody planned for came out of the console's 32K. How the storage is
   # arranged is the backend's business; how full the list gets is the author's number.
@@ -390,7 +390,7 @@ class TestList < Minitest::Test
     end
 
     # The rounding is still here, and is still the rule every backend shares — but what it
-    # decides now is how much ROOM a backend sets aside for a list it wraps an index into,
+    # decides now is how much room a backend sets aside for a list it wraps an index into,
     # not how many items the list holds.
     def test_round_up_capacity_covers_the_boundaries
       {
@@ -418,7 +418,7 @@ class TestList < Minitest::Test
   #
   # A list slot is a whole 32-bit number unless it is told otherwise, and almost nothing a
   # game keeps in one needs that much: a direction, a state number, a countdown, a flag. The
-  # point of asking for less is the MEMORY, so what these check is that a narrow slot holds
+  # point of asking for less is the memory, so what these check is that a narrow slot holds
   # what it says it holds and hands the same number back that the console would.
 
   def test_a_byte_slot_holds_a_number_that_fits_it
@@ -439,7 +439,7 @@ class TestList < Minitest::Test
     assert_equal [0, 100, 127], [result[:a], result[:b], result[:c]]
   end
 
-  # A NARROW SLOT GOES BELOW NOTHING WITHOUT BEING ASKED, and this is the case it exists for:
+  # A narrow slot goes below nothing without being asked, and this is the case it exists for:
   # a countdown is taken down first and tested second, so it really does hold a negative
   # number while the test runs. A slot that could not hold one would read -4 back as 252 and
   # the test would never fire — which is a game that silently stops working, not an error.
@@ -460,7 +460,7 @@ class TestList < Minitest::Test
   end
 
   # A number too big for its slot keeps the low bits, which is what the console's byte store
-  # does. Silently, because there is nothing else a store CAN do — what stops it being a trap
+  # does. Silently, because there is nothing else a store can do — what stops it being a trap
   # is that both backends drop exactly the same bits.
   def test_a_number_too_big_for_a_byte_slot_keeps_the_low_bits
     result = interpret do
@@ -478,7 +478,7 @@ class TestList < Minitest::Test
     assert_equal 44, result[:b], "300 is 256 and 44, and the 256 does not fit"
   end
 
-  # THERE IS NO WAY TO ASK FOR A SLOT THAT CANNOT GO BELOW NOTHING, on purpose. A `table` can
+  # There is no way to ask for a slot that cannot go below nothing, on purpose. A `table` can
   # be asked, because every value in one is known while the cartridge is built; a list's are
   # written while the game runs, so nothing could check the answer was right — and the wrong
   # answer breaks countdowns silently.
@@ -505,7 +505,7 @@ class TestList < Minitest::Test
     assert_equal(-32_768, result[:b])
   end
 
-  # THE WHOLE POINT, ASSERTED: a narrow list really is smaller in the console's memory. Read
+  # The whole point, asserted: a narrow list really is smaller in the console's memory. Read
   # off the backend's own allocator rather than inferred, so nothing can claim the saving
   # without making it.
   def test_a_narrow_list_takes_less_of_the_consoles_memory

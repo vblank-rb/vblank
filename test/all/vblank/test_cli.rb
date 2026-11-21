@@ -239,7 +239,7 @@ class TestCLI < Minitest::Test
     end
   end
 
-  # EVERY CONSOLE IS OFFERED wherever a command asks which console: its name in the help of each
+  # Every console is offered wherever a command asks which console: its name in the help of each
   # command that takes --console, and a flag named for it that says how to build for it.
   def test_every_console_is_named_where_a_command_takes_a_console
     Dir.mktmpdir do |dir|
@@ -275,7 +275,7 @@ class TestCLI < Minitest::Test
     end
   end
 
-  # A scened game with SCENE, so `build`'s content is the same across the scene tests.
+  # A scened game with scene, so `build`'s content is the same across the scene tests.
   SCENED = <<~RUBY
     require "vblank"
     Scened = VBlank.game "SCENED", consoles: %i[gba], code: "BSCN", maker: "01" do
@@ -739,7 +739,7 @@ class TestCLI < Minitest::Test
     end
   end
 
-  # WITH NO TAPE AND NO SCRIPT, A PERSON IS AT THE CONTROLS: the window takes the keys, and the game
+  # With no tape and no script, a person is at the controls: the window takes the keys, and the game
   # plays as Ruby with YJIT on, the same way a script plays it.
   def test_run_with_no_tape_or_script_is_a_person_playing_as_ruby_with_yjit
     Dir.mktmpdir do |dir|
@@ -753,7 +753,7 @@ class TestCLI < Minitest::Test
     end
   end
 
-  # THE BUILD IS ANOTHER PROCESS'S. The window's process is the one vblank run started (it becomes
+  # The build is another process's. The window's process is the one vblank run started (it becomes
   # the window), and the game is built by a helper it starts, which ends once the game is written:
   # the game file is loaded by the command and again by the helper, each noting its process, and
   # what the window plays is the helper's build. The command says nothing of the build itself.
@@ -783,7 +783,7 @@ class TestCLI < Minitest::Test
     end
   end
 
-  # A GAME WRITTEN OUT IS PLAYED AGAIN WHILE IT IS CURRENT. The second launch starts no helper; a
+  # A game written out is played again while it is current. The second launch starts no helper; a
   # launch after anything the build read has changed builds again: the game file, a file it reads
   # as it is built, the console, a --set. (A change to VBlank itself is held to in
   # test_written_games.rb, since a test cannot change the library it runs.) Each process that loads

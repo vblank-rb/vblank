@@ -58,7 +58,7 @@ class TestUnpacking < Minitest::Test
     end
   end
 
-  # A LONG ROUTINE PLAYS IN A RACTOR, whose stack is small, as the all-in-one build in a test's
+  # A long routine plays in a Ractor, whose stack is small, as the all-in-one build in a test's
   # Ractor and a shell's background unpacking play it. LONG_ROUTINE_COPIES copies written out, each a
   # word read whose answer places a byte read, are thousands of statements; a loop of copy reads at
   # the end writes the tiles over what they wrote, so the slot is the copy's tiles.
@@ -84,7 +84,7 @@ class TestUnpacking < Minitest::Test
     end
   end
 
-  # A READ PLACED BY ANOTHER READ'S ANSWER IS WRITTEN ONCE: a routine of reads, each at the place
+  # A read placed by another read's answer is written once: a routine of reads, each at the place
   # the read before it gave, prints in text that grows by the same amount for each read added, on
   # every computer build. Written out where it was used, each read's place held the whole of the
   # reads before it, three times over with its check (a word's four times), so the text grew with

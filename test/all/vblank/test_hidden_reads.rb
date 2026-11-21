@@ -28,7 +28,7 @@ class TestHiddenReads < Minitest::Test
     "test/all/vblank/test_hidden_reads.rb" => "this file names the pattern it looks for",
   }.freeze
 
-  # Every hidden read under +folders+, as "file:line", leaving out the files ALLOWED.
+  # Every hidden read under +folders+, as "file:line", leaving out the files allowed.
   private def hidden_reads(folders)
     folders.flat_map { |folder| Dir.glob(File.join(ROOT, folder, "**", "*.rb")) }.sort.flat_map do |path|
       file = path.delete_prefix("#{ROOT}/")

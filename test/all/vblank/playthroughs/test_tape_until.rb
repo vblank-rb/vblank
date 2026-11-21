@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# GAMES WITH STRETCHES THE COUNT DOES NOT MOVE ON, for a tape of passes and its `until` steps: a title
+# Games with stretches the count does not move on, for a tape of passes and its `until` steps: a title
 # that waits for a press of start, a fade to black that keeps to the frame and is longer on one build
 # than on the other, a tally that counts down once a frame and is skipped with a press of A, then the
 # play, where the game adds to :steps once a pass. Counted in :steps, the presses before the play
@@ -73,7 +73,7 @@ module TapeUntilGames
   end
 end
 
-# A TAPE OF PASSES PAST STRETCHES ITS COUNT DOES NOT MOVE ON: each `until` step goes on the tape as
+# A tape of passes past stretches its count does not move on: each `until` step goes on the tape as
 # itself, so the tape waits for the game on every build, however long its fade.
 class TestTapeUntil < Minitest::Test
   include TapeUntilGames
