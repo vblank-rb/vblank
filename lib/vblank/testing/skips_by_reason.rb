@@ -2,7 +2,7 @@
 
 module VBlank
   module Testing
-    # WHAT A RUN DID NOT PLAY, said at the end of the run: its skips counted by reason.
+    # What a run did not play, said at the end of the run: its skips counted by reason.
     #
     # A skip means one of two things in a run: the run's lowering lacks a feature the test plays
     # (MissingFeature), which the checked player marks itself or a test marks with skip_on_native and
@@ -12,7 +12,7 @@ module VBlank
     # much like one that skips four. Said as a count per reason on every run, the pile is in plain
     # sight.
     #
-    # ANY OTHER SKIP FAILS THE RUN, named. A test that skips for any other reason is a test in the
+    # Any other skip fails the run, named. A test that skips for any other reason is a test in the
     # wrong place — one only another run has anything to check in — and
     # the place for it is a folder or a block only that run defines (see "Every test plays on
     # every lowering" in .claude/rules/testing.md). Left as a skip, it is an S on every run that

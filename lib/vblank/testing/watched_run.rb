@@ -5,9 +5,9 @@ require "tmpdir"
 
 module VBlank
   module Testing
-    # A TEST RUN WATCHED FOR THE TWO WAYS IT CAN STOP WITHOUT ENDING.
+    # A test run watched for the two ways it can stop without ending.
     #
-    # When Ruby itself crashes it prints a report headed "[BUG]" and exits. In a run played in
+    # When Ruby itself crashes it prints a report headed "[bug]" and exits. In a run played in
     # Ractors it may not: the report's own writing can spin while the garbage collector waits for
     # the Ractor that crashed, and then nothing moves and nothing exits. A whole run holds the
     # machine-wide lock while that happens, so everything waiting behind it waits for ever. A run

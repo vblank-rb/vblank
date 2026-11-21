@@ -4,7 +4,7 @@ require "pathname"
 
 module VBlank
   module Testing
-    # A GAME'S TESTS BY FOLDER, read off the folders they sit in. A folder under the tests' root that
+    # A game's tests by folder, read off the folders they sit in. A folder under the tests' root that
     # holds tests is a group, named by its path with the slashes turned into colons, and it holds
     # every test beneath it: `enemies` is all the enemies and `enemies:bat` is one of them.
     # RakeTasks makes a task for each (`t.groups = "test"`), which lets a person play the part of the
@@ -12,7 +12,7 @@ module VBlank
     #
     # Read rather than listed by hand, so a new folder is a new task and nothing can drift.
     #
-    # A BROAD GROUP is a part of the game whose tests sit in several folders, which no one folder's
+    # A broad group is a part of the game whose tests sit in several folders, which no one folder's
     # group covers: a name and a list of folders and files from the tests' root, a folder bringing
     # every test beneath it and a file allowed to be a pattern. An entry that finds no test is
     # refused, so a test moved or renamed cannot drop out of a broad group while the group goes on

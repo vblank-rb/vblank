@@ -11,7 +11,7 @@ require_relative "watched_run"
 
 module VBlank
   module Testing
-    # ONE TEST TASK, FOR ONE LOWERING, under a name and over files the game chooses — for a game
+    # One test task, for one lowering, under a name and over files the game chooses — for a game
     # whose Rakefile keeps its own rake test and a task for each group of its tests, and wants a
     # native twin of a group without the rest of RakeTasks:
     #
@@ -31,7 +31,7 @@ module VBlank
     # its run is for. RakeTasks makes its two runs out of two of these, so a twin a game makes is
     # the run `rake test:lowering:native` is, and how a native run is started lives here alone.
     #
-    # A NATIVE RUN is played differently, and this is all of how. Every test starts zig and the
+    # A native run is played differently, and this is all of how. Every test starts zig and the
     # program it builds, which Ruby cannot do from inside a Ractor, so it is plain minitest's
     # whatever the game sets for Ractors (no --ractor, no MT_RACTOR); its tests are spread over
     # several processes instead (Processes) — TEST_PROCESSES of them, or as many as the Ractor run
@@ -39,7 +39,7 @@ module VBlank
     # zig is asked for before any test is played, so a missing or wrong one stops the run with
     # one plain line rather than failing every test in turn.
     #
-    # A JAVASCRIPT RUN is played the same way, for the same reason — every test starts node and
+    # A JavaScript run is played the same way, for the same reason — every test starts node and
     # the program it builds — and asks for node in place of zig.
     #
     # None of that is written into the settings of the rake process: it is handed to the run this
@@ -50,7 +50,7 @@ module VBlank
     # one task a game that keeps its own was making this to stay clear of.
     class TestTask < Rake::TestTask
       # The lowering this task's run is for, :gba unless told; and the console it plays games as.
-      # Left untold, that is the one CONSOLE names, or the lowering's own: a runtime's run can play
+      # Left untold, that is the one console names, or the lowering's own: a runtime's run can play
       # as any (Lowering::Run#plays_any_console?), and the rest refuse another.
       attr_reader :lowering
       attr_writer :console
@@ -167,7 +167,7 @@ module VBlank
 
       # What the run is handed. A checked run's own copy of TESTOPTS loses --ractor
       # too, since a test that starts a run of its own hands that copy on. YJIT as #yjit? returns.
-      # The console is always set, as VBLANK_CONSOLE, and CONSOLE is not handed on
+      # The console is always set, as VBLANK_CONSOLE, and console is not handed on
       # (Lowering::PLAYED_AS_SETTING says why).
       def run_settings
         shared = { "RUBY_YJIT_ENABLE" => yjit? ? "1" : nil, Lowering::PLAYED_AS_SETTING => console.to_s,
