@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A POOL DECLARED IN A SCENE, DRAWN AS THE GAME WALKS INTO THAT SCENE AND OUT AGAIN.
+# A pool declared in a scene, drawn as the game walks into that scene and out again.
 #
 # A pool's things are put in the order they are drawn in only while its scene is up, since they
 # show only then. So the first frame back in the scene has to be put in order and drawn from the

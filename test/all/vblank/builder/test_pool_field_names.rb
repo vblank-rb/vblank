@@ -106,7 +106,7 @@ module PoolFieldNamesGames
   end
 end
 
-# WHAT A POOL'S FIELDS CAN BE CALLED. A pool keeps lists and variables of its own beside the
+# What a pool's fields can be called. A pool keeps lists and variables of its own beside the
 # fields — which slots are live, where each instance is in its animation, the order they came
 # in — and a field is a list too. A guard with a field called `frame`, `active` or `count` is
 # an ordinary thing to write, so none of the pool's own names can be a name a field has, and

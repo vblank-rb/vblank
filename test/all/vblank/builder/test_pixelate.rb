@@ -5,7 +5,7 @@ require "test_helper"
 # Drawing the picture in flat blocks, as the display draws it.
 #
 # The rule is the emulator's, read out of its renderer and then measured on it: the blocks
-# are fixed to the SCREEN, and each takes the colour the picture has at the block's top
+# are fixed to the screen, and each takes the colour the picture has at the block's top
 # left corner. What a Game Boy Color, which has no mosaic, cannot build is all in
 # test_pixelate_on_the_advance.rb; these are the friendly errors every console gives.
 class TestPixelate < Minitest::Test

@@ -19,7 +19,7 @@ module PlayThisFrameGames
                                                                               Note.new(at: 20, key: :E5)])]))
   ASKED_ON = 3
 
-  # A game that asks for SONG on pass ASKED_ON, saying +options+ as it does.
+  # A game that asks for song on pass ASKED_ON, saying +options+ as it does.
   private def game(**options)
     b = Builder.new
     b.instance_eval do
@@ -83,7 +83,7 @@ module PlayThisFrameGames
   end
 end
 
-# A SONG ASKED FOR `this_frame: true` IS ON ITS FIRST FRAME THE FRAME IT IS ASKED FOR.
+# A song asked for `this_frame: true` is on its first frame the frame it is asked for.
 #
 # A song the game names is taken up by the player in the screen's interrupt, which comes before
 # the pass that named it, so the song starts on the next frame. A game rebuilt to match another
@@ -145,7 +145,7 @@ class TestPlayThisFrame < Minitest::Test
     assert_equal plain.transform_keys { |frame| frame - 1 }, sooner
   end
 
-  # ONE OF A GROUP, cutting off the other of its group that has sounded since pass 1 — which
+  # One of a group, cutting off the other of its group that has sounded since pass 1 — which
   # outranks it, being declared first at the same priority, so it would keep the voice while it
   # held it. It is stopped where the new one is asked, so the voice is free for the new one's
   # first frame, and what follows is a frame sooner. The stop is read on the vblank after the pass
