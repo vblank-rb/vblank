@@ -4,7 +4,7 @@ require "test_helper"
 require "digest"
 require "tmpdir"
 
-# THE FRAME OF SOUND THE ADVANCE'S MIX WROTE LAST (Verifier#last_frame_mix), read out of the
+# The frame of sound the Advance's mix wrote last (Verifier#last_frame_mix), read out of the
 # cartridge's memory: the cartridge's own sound, which two builds of one tune are held alike by.
 # The emulator's speaker (#last_frame_samples) is that sound resampled at moments the emulator's
 # timing settles, which a game's own transfers into video memory move, so it is not.
@@ -47,7 +47,7 @@ class TestMixedFrames < Minitest::Test
     b.program
   end
 
-  # Each frame's mix of +program+'s cartridge, for FRAMES frames from power-on.
+  # Each frame's mix of +program+'s cartridge, for frames frames from power-on.
   private def mixed_frames(program)
     console = assert_emulator_loads_rom(assemble_rom(program, name: "MIXED"), frames: 1)
     [console.last_frame_mix] + Array.new(FRAMES - 1) do
