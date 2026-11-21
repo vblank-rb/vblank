@@ -2,11 +2,11 @@
 
 module VBlank
   module Console
-    # THE PLAYSTATION'S HARDWARE, NAMED: where its memory is, the addresses of its ports, and the
+    # The PlayStation's hardware, named: where its memory is, the addresses of its ports, and the
     # commands its graphics chip takes. Names and numbers follow psx-spx (nocash's PlayStation
     # specification, psx-spx.consoledev.net), so anyone who has read it recognises them.
     #
-    # THE PROCESSOR IS A MIPS R3000A, AND IT IS LITTLE-ENDIAN like the Advance's: a number's low byte
+    # The processor is a MIPS R3000A, and it is little-endian like the Advance's: a number's low byte
     # is at the lower address. It sees 4 gigabytes of addresses, and the console's memory is in them
     # three times over: from 00000000h, from 80000000h (KSEG0, through the instruction cache, where
     # code runs) and from A0000000h (KSEG1, never cached). The low 29 bits give which byte it is.
@@ -17,13 +17,13 @@ module VBlank
     #   1F801000h-1F802FFFh  the ports: interrupts, DMA, timers, the graphics chip, sound, the pads
     #   BFC00000h-BFC7FFFFh  the BIOS, 512K. The runtime never calls it.
     #
-    # THE GRAPHICS CHIP (the GPU) has a megabyte of video RAM of its own, 1024 by 512 pixels of 16
+    # The graphics chip (the GPU) has a megabyte of video RAM of its own, 1024 by 512 pixels of 16
     # bits, which the processor cannot read or write directly: everything goes through two ports. GP0
     # takes drawing commands (fill this rectangle, draw this triangle, copy this picture in) and GP1
     # takes display commands (show the picture starting at this place in video RAM, this big, now).
     # The picture on the television is a rectangle of video RAM; the rest is free for pictures.
     #
-    # COLOURS ARE 15 BITS in video RAM, red in the low five, then green, then blue (the top bit is a
+    # Colours are 15 BITS in video RAM, red in the low five, then green, then blue (the top bit is a
     # mask bit no game here uses): the Advance's own layout. A command names a colour in 24 bits, a
     # byte each of red, green and blue, and the chip keeps the top five bits of each.
     module PS1Hardware
@@ -180,7 +180,7 @@ module VBlank
       # << 16 | v << 8 | u, then height << 16 | width. A texel of 0000h, or a number into a colour table
       # whose entry is 0000h, is not drawn.
       GP0_TEXTURED_RECTANGLE = 0x65 << 24
-      # SEMI-TRANSPARENCY. A drawing command with this bit set mixes each texel whose top bit is set
+      # Semi-transparency. A drawing command with this bit set mixes each texel whose top bit is set
       # (every drawn texel: TEXEL_DRAWN) with the pixel already in video RAM under it, in the way the
       # draw mode's bits 5-6 name (SEMI_TRANSPARENCY_SHIFT). The chip has four ways, each worked out in
       # five bits a channel (B the pixel under, F the texel): 0 is B/2 + F/2, the sum halved once; 1 is

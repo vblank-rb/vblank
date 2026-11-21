@@ -2,7 +2,7 @@
 
 module VBlank
   module Console
-    # WHAT A LINE OF A GAME ASKS OF THE CONSOLE IT RUNS ON: which verb's answer (Console::Answers)
+    # What a line of a game asks of the console it runs on: which verb's answer (Console::Answers)
     # has the words for it, what the line asks for in words of its own, and — for a verb that works
     # but has a part some consoles lack, the Color's `held` for a shoulder button it does not have —
     # whether this console has that part, read from its description.
@@ -19,7 +19,7 @@ module VBlank
       # console has the part asked for, or nil where the verb's own answer decides.
       Question = Data.define(:verb, :words, :can)
 
-      # A VERB WRITTEN IN OTHER VERBS leaves no step of its own: a `pulse` is a sprite's size walked
+      # A verb written in other verbs leaves no step of its own: a `pulse` is a sprite's size walked
       # every frame, an iris is the game's light closing. The steps alone would have a console
       # answer for the verb underneath, in words about a sprite that resizes or a light, which is
       # not what the author wrote. So the program notes that the verb was written

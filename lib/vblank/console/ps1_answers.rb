@@ -2,7 +2,7 @@
 
 module VBlank
   module Console
-    # WHAT EVERY VERB DOES ON A PLAYSTATION (Console::Answers says what an answer is).
+    # What every verb does on a PlayStation (Console::Answers says what an answer is).
     #
     # The PlayStation is a 32-bit console of 1994 with a MIPS R3000A at its heart and a graphics chip
     # that draws flat, shaded and textured triangles, rectangles and lines into a megabyte of video RAM
@@ -12,7 +12,7 @@ module VBlank
     # sprites on a row. Its colours are 15 bits, as the Advance's are, through lists of 16 or 256
     # colours kept in video RAM. It has no clock chip, and its pad has more buttons than the Advance's.
     #
-    # A GAME NAMES WHICH CONSOLES IT IS FOR (`VBlank.game "PONG", consoles: %i[gba ps1]`), and is laid out
+    # A game names which consoles it is for (`VBlank.game "PONG", consoles: %i[gba ps1]`), and is laid out
     # from `screen_width` and `screen_height` rather than from 240 and 160, so the same game fills each
     # screen.
     #
@@ -26,7 +26,7 @@ module VBlank
 
       PLAIN = "the same as on the Advance."
 
-      # THE AMOUNTS A SEE-THROUGH LAYER CAN BE SEEN THROUGH BY. The graphics chip mixes a texel with the
+      # The amounts a see-through layer can be seen through by. The graphics chip mixes a texel with the
       # pixel under it in a few fixed ways (PS1Hardware::SEMI_TRANSPARENCY_MODES), never by the Advance's
       # sixteenths, so a layer's two shares (IR::SeeThrough.weights) must be one of those, or need no mix
       # (PS1Hardware::SOLID_SHARES, HIDDEN_SHARES). Each amount is a range, as the shares round.
@@ -284,7 +284,7 @@ module VBlank
       # Every see-through layer the layers' declaration in +nodes+ names.
       def self.see_through_layers(nodes) = nodes.select { |node| node.kind == :layers }.flat_map(&:see_through)
 
-      # A SEE-THROUGH LAYER AT AN AMOUNT THE CHIP DOES NOT MIX, one Refusal each of +layers+. Console::Questions
+      # A see-through layer at an amount the chip does not mix, one Refusal each of +layers+. Console::Questions
       # lets a layer through on a console that mixes by halves and leaves the amounts to the console, since
       # which it mixes is the console's own.
       def self.see_through_refusals(layers)
@@ -317,7 +317,7 @@ module VBlank
         "`shows: #{layer.shows.value}, shows_behind: #{layer.behind.value}`"
       end
 
-      # WHAT .claude/dsl/playstation.md SAYS: every answer, in the order ANSWERS gives them, and what the
+      # What .claude/dsl/playstation.md says: every answer, in the order answers gives them, and what the
       # PlayStation's build does not make yet — +not_yet+, the lowering's own list of the program's kinds
       # it refuses for now, by what they are part of (Kit#answers_page).
       def self.reference(not_yet: {})
@@ -347,7 +347,7 @@ module VBlank
         MARKDOWN
       end
 
-      # THE VERBS WHOSE STEPS THE BUILD DOES NOT MAKE YET, by the part of the build they wait on — the
+      # The verbs whose steps the build does not make yet, by the part of the build they wait on — the
       # parts of Backends::PS1::Lowering::NOT_LOWERED_YET, and the other parts it refuses by name
       # (Lowering#refuse_unmade_parts!). A verb is here when a game that uses it reaches a step of the
       # part; test_ps1_kind_coverage.rb holds the parts to the lowering's.

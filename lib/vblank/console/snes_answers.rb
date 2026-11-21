@@ -2,7 +2,7 @@
 
 module VBlank
   module Console
-    # WHAT EVERY VERB DOES ON A SUPER NINTENDO (Console::Answers says what an answer is).
+    # What every verb does on a Super Nintendo (Console::Answers says what an answer is).
     #
     # The Super Nintendo came out a decade before the Advance and is in many ways the bigger machine:
     # a 256×224 screen, 128 sprites, backgrounds of up to sixteen colours a tile from eight lists,
@@ -10,7 +10,7 @@ module VBlank
     # the Advance's painted screen (every picture is tiles), a sprite that turns or resizes, more
     # than one layer that turns, and the Advance's square, wave and noise voices.
     #
-    # A GAME NAMES WHICH CONSOLES IT IS FOR (`VBlank.game "PONG", consoles: %i[gba snes]`), and is
+    # A game names which consoles it is for (`VBlank.game "PONG", consoles: %i[gba snes]`), and is
     # laid out from `screen_width` and `screen_height` rather than from 240 and 160, so the same
     # game fills each screen.
     #
@@ -326,7 +326,7 @@ module VBlank
         instrument: works("see `sample`.")
       })
 
-      # WHAT .claude/dsl/super-nintendo.md SAYS: every answer, in the order ANSWERS gives them, and
+      # What .claude/dsl/super-nintendo.md says: every answer, in the order answers gives them, and
       # what the Super Nintendo's build does not make yet — +not_yet+, the lowering's own list of the
       # program's kinds it refuses for now, by what they are part of (Kit#answers_page).
       def self.reference(not_yet: {})
