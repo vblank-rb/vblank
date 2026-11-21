@@ -281,7 +281,7 @@ module VBlank
         def self.box_vars(name) = %i[x y w h held].map { |part| :"__bg_#{name}_box_#{part}" }
       end
 
-      # A background shown only inside a box on the screen, +x+ and +y+ its top-left corner and
+      # A background shown only inside a BOX on the screen, +x+ and +y+ its top-left corner and
       # +width+ and +height+ its size, in pixels; each may be worked out as the program runs.
       # Outside the box the background is not drawn at all, and what is behind it shows. Sprites
       # are not held to it. A box past the screen's edges is the part of it on the screen, and a
@@ -998,7 +998,7 @@ module VBlank
 
         # How many numbers a corner is in the list: x, y, u, v, one over its distance (w, with
         # 26 bits of fraction), which only a picture in perspective reads, and its light (0 for
-        # dark to lightest, with sixteen bits of fraction), which only a fill with +shading+ reads.
+        # dark to LIGHTEST, with sixteen bits of fraction), which only a fill with +shading+ reads.
         CORNER_NUMBERS = 6
 
         # The most light a corner can have: a hair under one whole, so the brightest level of a
@@ -1406,7 +1406,7 @@ module VBlank
         category :draw
         # +scene+ is the game state this thing belongs to, where it was declared inside
         # one. It is on screen only while that state is active, which the +active+
-        # operand already carries — what the name adds is that a target with somewhere
+        # operand already carries — what the NAME adds is that a target with somewhere
         # finite to keep pictures knows which of them are needed at the same time.
         #
         # +recolors+ is every other list of colours it can be drawn with, and +recolor+ holds

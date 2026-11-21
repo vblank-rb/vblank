@@ -28,7 +28,7 @@ module VBlank
 
           # What each console-only kind is, said for a person, and what to write instead. A kind
           # with no words here is still found (Portability decides that), and is said in the
-          # words of otherwise.
+          # words of OTHERWISE.
           SAID = Ractor.make_shareable({
                                          raw: ["raw instructions for the console's processor (`entry`)",
                                                "Do the same with plain Ruby and the framework's own words, " \

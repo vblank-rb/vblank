@@ -60,7 +60,7 @@ module VBlank
           name
         end
 
-        # Which section of a frame's work this kind belongs to (see categories).
+        # Which section of a frame's work this kind belongs to (see CATEGORIES).
         def category(name = nil)
           name ? @category = name : @category
         end

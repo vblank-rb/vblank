@@ -50,7 +50,7 @@ module VBlank
             Tunes.parts_on(song, verb).positive?
           end
 
-          # The words for +song+ sharing a voice with the effects +verb+ plays (a key of effects).
+          # The words for +song+ sharing a voice with the effects +verb+ plays (a key of EFFECTS).
           def conflict_message(verb, program, song)
             case verb
             when :beep then beep_message(program, song)

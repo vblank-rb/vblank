@@ -33,7 +33,7 @@ module VBlank
     # number is a fraction with sixteen bits, as a game's fractions are, and every product and
     # quotient goes through Int32.mul_fix and Int32.div_fix, where the rounding is settled.
     #
-    # Why nothing overflows. A point and the viewer each stay within furthest of the middle of
+    # Why nothing overflows. A point and the viewer each stay within FURTHEST of the middle of
     # the place, so a point is at most twice that from the viewer along each of the three
     # arrows, and how far it is along any one arrow is never more than its whole distance,
     # under the most a fraction holds. A corner can still land far off the screen, so where one
