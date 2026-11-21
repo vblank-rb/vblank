@@ -16,7 +16,7 @@ class TestRecoloredBanksCost < Minitest::Test
   LISTS = 6
   TILE_KEYS = ("a".."f").to_a.freeze
 
-  # A field and a house of lists lists. With +borrow+ the house is drawn with dark lists on the
+  # A field and a house of LISTS lists. With +borrow+ the house is drawn with dark lists on the
   # third pass and with its own again on the fourth. +each+ runs on every pass, given the pass.
   private def walking_game(borrow:, &each)
     lists = LISTS

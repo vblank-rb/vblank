@@ -403,8 +403,8 @@ class TestLoopForm < Minitest::Test
   # test at the end of the pass is the subtract and a branch. Counting up has to compare against
   # the limit as an instruction of its own.
   #
-  # Measured on the console, as the instructions a loop of passes runs beyond the same body
-  # written out passes times with no loop at all — so what is left is the loop and nothing else.
+  # Measured on the console, as the instructions a loop of PASSES runs beyond the same body
+  # written out PASSES times with no loop at all — so what is left is the loop and nothing else.
   PASSES = 200
 
   # The third instruction is not the counting: the top of a pass can be reached from two places,
@@ -604,7 +604,7 @@ class TestLoopForm < Minitest::Test
     assert_operator read_var(rom, :passes), :>, 0
   end
 
-  # The instructions a pass of the loop runs beyond its body. Each form is measured at passes
+  # The instructions a pass of the loop runs beyond its body. Each form is measured at PASSES
   # and at twice that, so what either spends once — setting the loop up, or the first statement
   # finding the variables — cancels out of the difference. The body is given the builder, a
   # variable to count with, and something to read: the loop's index, or with no loop an

@@ -11,7 +11,7 @@ class TestListFill < Minitest::Test
 
   ITEMS = 13
 
-  # A list of items items of +width+, all 1, with +fill+ (keywords of list_fill) applied, and
+  # A list of ITEMS items of +width+, all 1, with +fill+ (keywords of list_fill) applied, and
   # every item read into a variable :item0, :item1, ... so both backends can be asked.
   private def filled(width, **fill)
     program(

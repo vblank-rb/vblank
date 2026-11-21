@@ -38,7 +38,7 @@ class TestSceneArrivalCopy < Minitest::Test
     end
   end
 
-  # A map showing each of +count+ tiles once, columns to a row, and starting +blank_rows+ down.
+  # A map showing each of +count+ tiles once, COLUMNS to a row, and starting +blank_rows+ down.
   def every_tile(count, blank_rows: 0)
     rows = (0...count).each_slice(COLUMNS).map { |row| row + ([nil] * (COLUMNS - row.length)) }
     ([[nil] * COLUMNS] * blank_rows) + rows

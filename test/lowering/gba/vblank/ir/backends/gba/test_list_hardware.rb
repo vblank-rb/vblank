@@ -23,7 +23,7 @@ class TestListHardware < Minitest::Test
            draw_rect_at(list_get(name, var_ref(:i)), ROW, 4, 4, :green))
   end
 
-  # Run +prog+ on both backends and assert every [x, colour] holds at row row on
+  # Run +prog+ on both backends and assert every [x, colour] holds at row ROW on
   # each. A nil colour means "background here" (black) — nothing drawn.
   private def assert_same_markers(prog, expectations)
     screen = Reference.new.run(prog).screen
