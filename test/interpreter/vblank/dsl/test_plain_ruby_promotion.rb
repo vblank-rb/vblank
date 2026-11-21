@@ -50,7 +50,7 @@ class TestPlainRubyPromotion < Minitest::Test
     promotion_of(block).local(write_of(block, name, index)).reason
   end
 
-  # THE BUILD-TIME HALF: is a local a game variable?
+  # The build-time half: is a local a game variable?
 
   def test_a_local_made_by_var_is_a_game_variable
     assert_equal :made_by_var, local_reason("hp = var(:hp, 0)", :hp)
@@ -109,7 +109,7 @@ class TestPlainRubyPromotion < Minitest::Test
     assert_equal :start, promotion_of(in_game_code).action_for(write_of(in_game_code, :hp))
   end
 
-  # BEFORE A TEST THE GAME MAY MAKE
+  # Before a test the game may make
 
   private def before_if(source)
     block = block_of(source)
@@ -160,7 +160,7 @@ class TestPlainRubyPromotion < Minitest::Test
     assert_predicate promotions, :changes?
   end
 
-  # A COPY OF A PLAIN LOCAL'S NUMBER
+  # A copy of a plain local's number
 
   private def kept_reason(source, name)
     block = block_of(source)
@@ -205,7 +205,7 @@ class TestPlainRubyPromotion < Minitest::Test
     assert names.promotion.plain_number?(names.local_of(write_of(block, :count)))
   end
 
-  # THE RUN-TIME HALF
+  # The run-time half
 
   def test_a_value_under_a_test_decided_while_building_is_not_promoted
     assert_equal :test_decided_while_building, Promotion.value_under_test(3, OpenTest.new(false)).reason

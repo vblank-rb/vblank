@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/ir/test_list_packing"
 
-# A LIST'S ITEMS WRITTEN INTO A LIST OF BYTES IN ONE STEP (IR list_pack) means exactly the loop it
+# A list's items written into a list of bytes in one step (IR list_pack) means exactly the loop it
 # stands for (IR::ListPacking.loops_for): the same bytes, and the count left at nought. The
 # interpreter runs the step itself, so this holds its own reading of the step to the loop every
 # backend without a block copy of its own lowers.

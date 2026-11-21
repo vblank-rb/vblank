@@ -3,10 +3,10 @@
 require "test_helper"
 
 # The reference interpreter carries a step budget so an accidental endless loop can't hang a
-# test forever. What that budget COUNTS depends on how the run was asked for, and the two must
+# test forever. What that budget counts depends on how the run was asked for, and the two must
 # not be confused:
 #
-#   run(program, frames: 300)   the frames are the stop condition. The budget counts ONE frame,
+#   run(program, frames: 300)   the frames are the stop condition. The budget counts one frame,
 #                               so every frame asked for is played however much work it takes,
 #                               and spending the whole budget inside one frame means that frame
 #                               never ends — which raises rather than handing back a part-played
@@ -17,7 +17,7 @@ require "test_helper"
 class TestInterpreterBudget < Minitest::Test
   Build = VBlank::IR::Build
 
-  # A game loop that fills red, does a chunk of per-frame work, then draws a marker LAST.
+  # A game loop that fills red, does a chunk of per-frame work, then draws a marker last.
   # The screen ends every frame showing the marker; a mid-frame cutoff would show red.
   private def marker_program
     b = Builder.new
@@ -57,7 +57,7 @@ class TestInterpreterBudget < Minitest::Test
 
   # A frame that draws costs steps — six hundred passes of a counted loop here, about 1,200
   # steps, which is the size of a frame that draws a whole view in a real game. Counted against
-  # the whole RUN, the million-step default is spent a few hundred frames in, and every frame
+  # the whole run, the million-step default is spent a few hundred frames in, and every frame
   # after that is silently not played: the run comes back looking finished, with the world
   # frozen where it stopped. This asks for twice as many frames as that budget could ever
   # cover, and :n reaches the number asked for only if every one of them really ran.
@@ -119,7 +119,7 @@ class TestInterpreterBudget < Minitest::Test
     assert_match(/never ended/, err.message)
   end
 
-  # THE EXCEPTION, and it's a real program rather than a corner: an unpaced loop
+  # The exception, and it's a real program rather than a corner: an unpaced loop
   # (frame_sync: :manual with no wait in it) never reaches a first frame at all. There are no
   # frames for `frames:` to count, so the budget is its only stop and it says so — the same
   # answer a run given max_steps alone gets.

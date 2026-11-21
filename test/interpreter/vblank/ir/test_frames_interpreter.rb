@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A BEAT — `every` and `after` — is counted in frames, and IR::Frames says it as the plain
+# A beat — `every` and `after` — is counted in frames, and IR::Frames says it as the plain
 # statements every lowering already makes (an add, a comparison, an if), so no lowering writes
 # the rule again. Each test plays the beat on the interpreter, the answer key, beside the same
 # program with the beat replaced by its plain statements, and the two must end the same.
