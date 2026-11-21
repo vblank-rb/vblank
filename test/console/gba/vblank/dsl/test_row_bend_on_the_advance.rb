@@ -10,13 +10,13 @@ class TestRowBendOnTheAdvance < Minitest::Test
 
   BendForm = VBlank::IR::Backends::GBA::BendForm
 
-  # A BEND AND A MOVING SPRITE, which is the pairing a game actually writes — a boat on
+  # A bend and a moving sprite, which is the pairing a game actually writes — a boat on
   # rippling water, a jellyfish drifting over a lake. Both halves agreed on their own long
-  # before this test: what it watches is that they agree AT THE SAME MOMENT.
+  # before this test: what it watches is that they agree at the same moment.
   #
   # They did not. A sprite is placed in the gap between frames, so it shows what the last
   # body did; the rows used to be worked out while the picture was being drawn, so they
-  # showed what THIS body had just done — one frame further on. No frame count lined both
+  # showed what this body had just done — one frame further on. No frame count lined both
   # up, so the strongest test in the project could not be pointed at the combination at all.
   # Working the rows out in the gap, beside the sprites, is what put them in step.
   private def ripple_and_sprite_program(layers: 1)

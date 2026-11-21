@@ -58,11 +58,11 @@ module SoundEffectsOnTheAdvanceGames
   end
 end
 
-# THE TESTS OF vblank/dsl/test_sound_effects.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY, kept apart so that the
+# The tests of vblank/dsl/test_sound_effects.rb that only the Game Boy Advance can play, kept apart so that the
 # Game Boy Color's run never loads them (test/console/gba); the rest are in that file, and those
 # whose effects play a recording are in test/sound_effect_recording_tests.rb.
 #
-# A SCORE PLAYED ONCE, AS A SOUND EFFECT, OVER THE SONG THAT IS PLAYING.
+# A score played once, as a sound effect, over the song that is playing.
 #
 # A sword hit, a door, a chest opening: each is a short run of notes decoded from somewhere the
 # same way a tune is, and each plays over the room's music without stopping it. When the effect

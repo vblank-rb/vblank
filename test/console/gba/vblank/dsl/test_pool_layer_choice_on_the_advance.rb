@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A POOL WHOSE THINGS CHANGE WHICH LAYER THEY ARE IN while the game runs: `put_in_layer` told to
+# A pool whose things change which layer they are in while the game runs: `put_in_layer` told to
 # the pool, which moves every one of its things at once, as a sprite told it moves.
 #
 # The room is test_sprite_layer_choice_on_the_advance.rb's: a white floor at the back and a blue
