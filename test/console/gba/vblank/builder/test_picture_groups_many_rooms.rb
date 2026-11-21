@@ -4,7 +4,7 @@ require "test_helper"
 require "differential"
 require "many_rooms_game"
 
-# A GAME OF MANY ROOMS WITH ITS PICTURES GROUPED BY ROOM, played the way a player plays it:
+# A game of many rooms with its pictures grouped by room, played the way a player plays it:
 # walking across a grid of rooms, the next room's things sliding in while the screen slides, and
 # the last room's going once the slide has ended. Every room's pictures would not fit in sprite
 # memory at once, and the game builds and draws each room's things right on the frame they come

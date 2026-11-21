@@ -3,13 +3,13 @@
 require "test_helper"
 require "differential"
 
-# THE TESTS OF vblank/builder/test_pixelate.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY, kept apart so that the
+# The tests of vblank/builder/test_pixelate.rb that only the Game Boy Advance can play, kept apart so that the
 # Game Boy Color's run never loads them (test/console/gba); the rest are in that file.
 #
 # Drawing the picture in flat blocks, as the display draws it.
 #
 # The rule is the emulator's, read out of its renderer and then measured on it: the blocks
-# are fixed to the SCREEN, and each takes the colour the picture has at the block's top
+# are fixed to the screen, and each takes the colour the picture has at the block's top
 # left corner. So the thing to assert is that rule against the picture as drawn, and then
 # that the console shows the same picture pixel for pixel, which is what keeps the rule
 # honest — every place it bends is a place the two would disagree.

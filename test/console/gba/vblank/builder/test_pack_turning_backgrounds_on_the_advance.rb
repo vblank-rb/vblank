@@ -3,7 +3,7 @@
 require "test_helper"
 require "pack_turning_background_games"
 
-# A BACKGROUND THAT TURNS AND RESIZES, DRAWN FROM THE DATA PACK: a map of one byte a cell over
+# A background that turns and resizes, drawn from the data pack: a map of one byte a cell over
 # tiles of a byte a pixel in a table of 256 colours, as a console keeps the layer it turns
 # (PackTurningBackgroundGames). It is the background a game makes from pictures it draws itself,
 # with its tiles, map and colours from the pack, so the answer key is that game: the same
@@ -130,7 +130,7 @@ class TestPackTurningBackgroundsOnTheAdvance < Minitest::Test
     assert_operator pictures.fetch(9).to_a.flatten.uniq.length, :>, 4, "shown, it is the layer"
   end
 
-  # WITH THE PACK LEFT OUT (`pack_at_start: true`) the program holds none of the map, the tiles or
+  # With the pack left out (`pack_at_start: true`) the program holds none of the map, the tiles or
   # the table, and reads them from the file it is handed as it starts. Only a build for a
   # computer leaves its pack out, so these are played by the interpreter and by the game as C,
   # JavaScript and Ruby built for the Advance. The answer key is still the background the game
