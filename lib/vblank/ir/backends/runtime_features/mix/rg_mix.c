@@ -8,9 +8,9 @@
  * moves on after it), mixed_slice (the newest slice, for the speaker) and moment_printed (what a
  * windowless run prints of the mix).
  *
- * ONE FRAME'S SLICE. Each sounding voice reads its recording from where it got to, one sample for
+ * One frame's slice. Each sounding voice reads its recording from where it got to, one sample for
  * each sample of the slice, and adds the sample times its loudness into a running total for that
- * place in the slice. How fast it reads is its STEP: how many samples of the recording go by for
+ * place in the slice. How fast it reads is its step: how many samples of the recording go by for
  * each sample of the slice, in 65536ths, so a note pitched up reads faster and one recorded at
  * another rate is read at the rate the mix runs at. The part of a sample that does not make a
  * whole one is carried, frame to frame. A voice that reaches the end of its recording reads back
@@ -18,15 +18,15 @@
  * back. When every voice is in, each total is held to what a byte holds, -128 to 127: on the
  * finished sum, so a loud voice and a loud one of the other sign cancel.
  *
- * A NOTE WITH A SHAPE slides its loudness rather than stepping it: once a frame its shape gives
+ * A note with a shape slides its loudness rather than stepping it: once a frame its shape gives
  * where the note should be by the frame's end, and the loudness moves there a little with every
  * sample. That loudness, its GAIN, keeps sixteen bits of fraction, since a slow fade moves it by
  * much less than one a sample. Whether the game shapes any note at all is settled once for the
- * whole game, and it decides what the mix reads for a note WITHOUT a shape: its gain in a game
+ * whole game, and it decides what the mix reads for a note without a shape: its gain in a game
  * that shapes something, set as the note starts and again when the music volume moves, and its
  * loudness in one that shapes nothing. That is the console's arithmetic, kept to the bit.
  *
- * WHAT THE LOWERING WRITES, all whole numbers.
+ * What the lowering writes, all whole numbers.
  *
  * rg_game_mix: 1 if the game mixes anything at all; how many samples a frame's slice holds; 1 if
  * any note in the game has a shape; one sample's share of a frame, out of 65536 (what a shaped
@@ -43,7 +43,7 @@
  *
  * rg_game_recording_samples: every recording's samples, -128 to 127, a byte each.
  *
- * AT SIXTEEN BITS (IR::Mixing.full_depth?), for a game given a recording of sixteen bits:
+ * At sixteen bits (IR::Mixing.full_depth?), for a game given a recording of sixteen bits:
  * rg_game_recording_samples holds each sample's high byte and rg_game_recording_low_bytes, as
  * long, its low byte (an 8-bit recording's are nought), so a sample is the high byte shifted up
  * and the low byte added. The arithmetic is the same, and each total of the slice is held to what
@@ -162,7 +162,7 @@ static int32_t releasing(const mix_voice *voice) {
   return voice->owner != GAME && (voice->phase == FALLING || voice->phase == DONE);
 }
 
-/* THE QUIETEST NOTE FALLING AWAY — the first thing to give way when a voice is wanted and none is
+/* The quietest note falling away — the first thing to give way when a voice is wanted and none is
  * free, since it is on its way out already. The first of them, when two are as quiet. */
 static int32_t quietest_releasing_voice(void) {
   int32_t found = -1;
@@ -173,7 +173,7 @@ static int32_t quietest_releasing_voice(void) {
   return found;
 }
 
-/* THE LOWEST-RANKED SOUND RANKED BELOW +rank+ — the game's own first, since they rank below every
+/* The lowest-ranked sound ranked below +rank+ — the game's own first, since they rank below every
  * song, and of those the one playing longest, a one-shot before a loop. The first of them in the
  * order of the voices, when two are the same. */
 static int32_t lowest_ranked_voice_below(int32_t rank) {
@@ -899,7 +899,7 @@ void rg_mix_fill_shapes(int32_t *into, const int32_t *rules) {
   }
 }
 
-/* --- A RECORDING IN THE SUPER NINTENDO CHIP'S FORMAT, DECODED AS THE GAME STARTS ---
+/* --- a recording in the Super Nintendo chip's format, decoded as the game starts ---
  * Audio::SNESRecording#decoded, held as IR::StartFile::BRR says, step for step. */
 enum { BRR_BLOCK_BYTES = 9, BRR_BLOCK_SAMPLES = 16, BRR_END_BIT = 0x01, BRR_LOOP_BIT = 0x02, BRR_MOST_SHIFT = 12, BRR_MOST_PASSES = 64 };
 
