@@ -4,13 +4,13 @@ module VBlank
   module IR
     module Backends
       class Genesis
-        # ONE PROGRAM, LOWERED STRAIGHT TO 68000 MACHINE CODE: the Genesis's peer of the Super
+        # One program, lowered straight to 68000 machine code: the Genesis's peer of the Super
         # Nintendo's, Color's and Advance's lowerings. It walks the IR with a table naming the method
         # for each kind of statement and each kind of value (the interpreter's own shape, Reference),
         # and emits the instructions through the assembler (M68000), calling the runtime
         # (Genesis::Runtime) for what is too long to write in place.
         #
-        # HOW A NUMBER IS WORKED OUT. Every value leaves its answer in D0, a data register that is
+        # How a number is worked out. Every value leaves its answer in D0, a data register that is
         # 32 bits wide, as a game's numbers are, so there is never a high half or a low one to
         # keep apart. A sum of two works the left-hand side out into D0 and takes the right-hand side
         # from where it already is — a number written in the program is part of the instruction, a
@@ -20,7 +20,7 @@ module VBlank
         # D0, D1, D2... Nothing is kept in a register from one statement to the next, so a statement
         # never has to know what came before it.
         #
-        # WHERE THINGS LIVE. The game's variables, and each routine's own numbers — a loop's count, a
+        # Where things live. The game's variables, and each routine's own numbers — a loop's count, a
         # `case`'s reading — are places in work RAM (Memory) fixed while the program is built, so a
         # routine cannot call itself, and a program in which one can is refused. A5 points at the
         # middle of work RAM, and every place is named as a distance from it. Every routine is called
@@ -52,7 +52,7 @@ module VBlank
           include PoseRooms
           include ShownSort
 
-          # EVERY KIND THIS LOWERING WRITES: its own, each by a method called by name in
+          # Every kind this lowering writes: its own, each by a method called by name in
           # #emit_statement and #value_of_kind, and each part's (Paint, Picture, Sound, Collision, and
           # the loops and tests every cartridge lowering shares, ControlFlow), which each part writes
           # in a case of its own. A declaration writes nothing where it is.
@@ -155,7 +155,7 @@ module VBlank
             end
           end
 
-          # EVERY KIND THIS LOWERING CANNOT MAKE YET, by what it is part of. A kind leaves the list the
+          # Every kind this lowering cannot make yet, by what it is part of. A kind leaves the list the
           # day the Genesis does it; test_genesis_kind_coverage.rb holds the list and the kind lists above
           # to every kind there is.
           NOT_LOWERED_YET = Ractor.make_shareable({
@@ -179,7 +179,7 @@ module VBlank
           IN_PLACE_OPS = %i[+ - & | ^].freeze
           COMPARISONS = %i[< <= > >= == !=].freeze
 
-          # The condition under which a comparison does NOT hold, which is where a branch over what
+          # The condition under which a comparison does not hold, which is where a branch over what
           # follows it goes, and the one under which it does (the flags are those of `cmp right,left`).
           FAILS_WHEN = Ractor.make_shareable({ :== => :ne, :!= => :eq, :< => :ge, :<= => :gt, :> => :le, :>= => :lt })
           HOLDS_WHEN = Ractor.make_shareable({ :== => :eq, :!= => :ne, :< => :lt, :<= => :le, :> => :gt, :>= => :ge })
@@ -716,7 +716,7 @@ module VBlank
           def game_loops = @plan.game_loops
           def loop_form = @plan.loop_form
 
-          # A LOOP'S COUNT KEPT IN A DATA REGISTER (ControlFlow::OWN_WAYS). The 68000 adds one to a
+          # A loop's count kept in a data register (ControlFlow::OWN_WAYS). The 68000 adds one to a
           # register and compares it in a third of the time it takes on a place in work RAM, and a
           # body reading the loop's index, as most do to find a slot of a list, reads a register in
           # a quarter of the time. A console's own game keeps its count there for that reason.
@@ -941,9 +941,9 @@ module VBlank
           def emit_list_drop(node) = list_call("rt_list_drop", node, Build.int(node.from == :front ? 1 : 0))
           def emit_list_fill(node) = list_call("rt_list_fill", node, node.from, node.count, node.value)
 
-          # A LIST THAT ALWAYS HOLDS ITS CAPACITY, read or written at a number written in the program
+          # A list that always holds its capacity, read or written at a number written in the program
           # below that capacity: the slot is at an address known here, and the index can never be
-          # outside the list, so the item is one MOVE to or from that address, where the runtime's
+          # outside the list, so the item is one move to or from that address, where the runtime's
           # routine takes the list's place handed over, a call, the index checked and scaled, and the
           # return. A draw order sets the number of each of its things this way every pass.
           def emit_list_set(node)
@@ -994,7 +994,7 @@ module VBlank
             emit_slot_value_unscaled(node)
           end
 
-          # A FIELD OF THE HELD THING MOVED ON BY A NUMBER WRITTEN IN THE PROGRAM, `t.x += 2`: one
+          # A field of the held thing moved on by a number written in the program, `t.x += 2`: one
           # instruction on the field where it is, ADDQ or SUBQ for 1 to 8 and ADDI or SUBI past that,
           # where reading it out, adding and writing it back is three. Each keeps the field's own
           # width, which is what the slot keeps of the sum the interpreter works out in 32 bits. True
@@ -1021,7 +1021,7 @@ module VBlank
             true
           end
 
-          # A LINK KEPT AS THE SLOT TIMES THE STRIDE (PoolLayout.strided_place), two bytes with NONE
+          # A link kept as the slot times the stride (PoolLayout.strided_place), two bytes with NONE
           # as $FFFF. Read and widened by its sign, NONE is -1 and any other the slot times the stride,
           # which an arithmetic shift right brings back to the slot and leaves -1 as it is.
           def emit_slot_value_unscaled(node)
@@ -1042,17 +1042,17 @@ module VBlank
             @asm.label(kept)
           end
 
-          # A LIST WHOSE FIRST ITEM IS ALWAYS IN ITS FIRST SLOT, READ OR WRITTEN WHERE THE GAME DOES.
+          # A list whose first item is always in its first slot, read or written where the game does
           # Every list is one unless the game takes items from its front (#lists_dropped_from_front),
           # and then the item an index names is in the slot of that number: A0 is pointed at the
-          # list, the index is scaled to the slot's size, and one MOVE reads or writes the slot
+          # list, the index is scaled to the slot's size, and one move reads or writes the slot
           # through the two. A call of a runtime routine for the same spends more on handing over
           # the list's place and the index, the call and the return than on the slot.
           #
           # The index is checked first, as the interpreter checks it (an index outside the list
           # stops the game): against the list's capacity as a number, for a list that always holds
           # that many, or against the length its header keeps. One compare catches an index below
-          # nought too, since as a number that cannot be negative it is past any length. NO CHECK is
+          # nought too, since as a number that cannot be negative it is past any length. No check is
           # written where the index is a loop's variable known to stay below the capacity of a list
           # that is always full (ControlFlow#index_below).
           #
@@ -1072,7 +1072,7 @@ module VBlank
             emit_slot_scaling(node, index)
           end
 
-          # AN INDEX CHECKED ONCE. A variable nothing writes between two reads or writes of lists
+          # An index checked once. A variable nothing writes between two reads or writes of lists
           # that always hold their capacity is the same at both, so once the first has checked it,
           # the second needs no check if its list is at least as long: the first check stops the
           # game, as the interpreter stops it, before anything after it runs. A walk over four lists
@@ -1191,7 +1191,7 @@ module VBlank
 
           # --- pools (Backends::PoolLayout) ---
           #
-          # A POOL IS KEPT IN THE LAYOUT ITS PLACEMENT GIVES: where slot s of each of its lists is, in
+          # A pool is kept in the layout its placement gives: where slot s of each of its lists is, in
           # bytes from the start of the list's area (PoolLayout::SlotPlace), how wide its value is, and
           # the number it is kept multiplied by. Every read and write of a slot below asks #slot_place
           # for that, a pool's list and any other alike, and the headless run reads a pool's lists back
@@ -1230,7 +1230,7 @@ module VBlank
             end
           end
 
-          # A WALK OF A POOL STEPPED AS THE CONSOLE'S OWN GAMES STEP ONE. The tree's walk keeps the
+          # A walk of a pool stepped as the console's own games step one. The tree's walk keeps the
           # thing it goes to next and the last it visits in variables, tests the next against NONE,
           # copies it into the thing it is on, compares that with the last, reads the link out of a
           # list at an index scaled each time, and counts its turns in a variable; and every field the
@@ -1470,7 +1470,7 @@ module VBlank
                       Build.int(table.values.length), node.at, Build.int(node.count))
           end
 
-          # A LIST PUT IN ORDER (Reference#exec_list_sort), written here in place: an insertion sort,
+          # A list put in order (Reference#exec_list_sort), written here in place: an insertion sort,
           # each item in turn taken out and moved back past every item before it whose number is
           # strictly beyond its own, so level items keep their order and a list already in order is
           # one compare an item. Both lists' places are known here, so the items are walked with a
@@ -1600,7 +1600,7 @@ module VBlank
             @asm.branch(:lt, item)
           end
 
-          # A DRAW ORDER'S SORT, KEPT IN A TABLE OF ITS OWN (LoweringPlan#sorts_kept_apart): the order
+          # A draw order's sort, kept in a table of its own (LoweringPlan#sorts_kept_apart): the order
           # list is the framework's, nothing else reads it and nothing compares it with the
           # interpreter's, so the order is kept instead as a table of words in reach of A5, one a place,
           # each its item already four times over — how far into the numbers its number is, and into
@@ -1849,7 +1849,7 @@ module VBlank
           # Reference#timer_ticks: nought for a timer never started, which is what its count starts at.
           def value_of_timer_ticks(node) = value(timer_number(node.name, :ticks))
 
-          # THE ROUTINES THE RUNTIME RUNS AT EACH FRAME BOUNDARY: one that moves every running timer
+          # The routines the runtime runs at each frame boundary: one that moves every running timer
           # on, in the order the timers were first started, and one for each timer, which moves it on
           # and runs its handler. None for a game with no timers.
           def timer_sections
@@ -2174,7 +2174,7 @@ module VBlank
             end
           end
 
-          # D0 HELD FROM NOUGHT TO +most+, a number written in the program: what a table's index is
+          # D0 held from nought to +most+, a number written in the program: what a table's index is
           # held to. Read with no sign, a number below nought is far past +most+, so one compare
           # finds a number already inside, and that is all a number inside costs: the compare and a
           # short branch over the rest. For one outside, D0 is made all ones if it was nought or

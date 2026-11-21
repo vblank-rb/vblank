@@ -4,28 +4,28 @@ module VBlank
   module IR
     module Backends
       class Genesis
-        # WHAT A SOUND IS, ON A GENESIS'S TWO SOUND CHIPS. The console plays a game's sounds on the PSG, a
+        # What a sound is, on a Genesis's two sound chips. The console plays a game's sounds on the PSG, a
         # small chip with three square voices and a noise voice, and on the YM2612, a chip of six FM voices.
         # This module gives which writes each of the interpreter's sound-log entries means; the lowering
         # makes them (Lowering::Sound), the player sends them (Runtime::Music), and the checked run reads
         # the chips after every pass and holds them to what the log up to then says (#after), so a write
         # that never arrived, or arrived wrong, shows up in the chip itself.
         #
-        # THE SQUARE VOICES. The game's two square voices are the PSG's first two. A PSG voice is a length
+        # The square voices. The game's two square voices are the PSG's first two. A PSG voice is a length
         # of wave, ten bits of it counted in 32 ticks of the chip's clock, and a loudness. It has no width of
         # wave (every square is half up and half down), no speaker of its own and no way to fade, so the
         # width and the speaker a game names are not heard. Fades are the runtime's (Runtime::Sound): a
         # voice's loudness is kept in work RAM and moved a step at a time, as the Advance's voice moves
         # its own.
         #
-        # LOUDNESS. A game's volume runs up in even steps, and the PSG's loudness down in steps of 2
-        # decibels each, so a volume is written as the step nearest it (ATTENUATION).
+        # Loudness. A game's volume runs up in even steps, and the PSG's loudness down in steps of 2
+        # decibels each, so a volume is written as the step nearest it (attenuation).
         #
         # NOISE. The PSG's fourth voice hisses, or for a metallic hit rattles, and either can be stepped by
         # its third square voice, whose own sound stays off, so a hit can be at any pitch and not only the
         # noise voice's three.
         #
-        # THE WAVE VOICE. A Genesis has no voice that plays 32 steps of a game's own, so the first FM voice
+        # The wave voice. A Genesis has no voice that plays 32 steps of a game's own, so the first FM voice
         # plays each waveform as a tone: its four operators each make a sine wave, at one, two, three and
         # four times the note's pitch, each as loud as that part of the waveform is (#operator_levels).
         # FM voices read loudness as how far down each operator is.
@@ -64,7 +64,7 @@ module VBlank
             volume.zero? ? SILENT : (-10 * Math.log10(volume / 15.0)).round
           end)
 
-          # THE FM CHIP'S CLOCK, as a note's pitch is worked out from it: a voice counts by its frequency
+          # The FM chip's clock, as a note's pitch is worked out from it: a voice counts by its frequency
           # number, up to eleven bits, at one of eight octaves (#fm_pitch).
           FM_RATE = 53_267.0
           FM_TOP = 2047
@@ -100,7 +100,7 @@ module VBlank
           WAVE_FLOOR = 10
           DECIBELS_A_STEP = 0.75
 
-          # A SONG'S PARTS, as on the Super Nintendo (DSPWrites), give what a log entry does not: +parts+,
+          # A song's parts, as on the Super Nintendo (DSPWrites), give what a log entry does not: +parts+,
           # each song's parts by [the song's name, its channel] (a sound effect's among them), and
           # +effects+, the names of the songs that are sound effects.
           Voicing = Data.define(:parts, :effects) do
@@ -144,7 +144,7 @@ module VBlank
             CHANNEL_VOICES.fetch(channel) != WAVE_VOICE || VBlank::Audio::Sound.wave_level(volume) != :mute
           end
 
-          # THE MUSIC VOLUME reaching +song+'s note on +channel+, now at +volume+: a PSG voice's loudness,
+          # The music volume reaching +song+'s note on +channel+, now at +volume+: a PSG voice's loudness,
           # or how far down the wave voice's four operators are.
           def loudness_at(channel, volume, voicing, song)
             part = voicing.parts.fetch([song, channel]) { raise ArgumentError, "no part of #{song.inspect} on #{channel}" }
@@ -163,7 +163,7 @@ module VBlank
             [[:tone, voice, tone_length(frequency)], [:loud, voice, volume, signed_step(fade)]]
           end
 
-          # A NOTE WOBBLING: the voice on +channel+ playing a +frequency+ Hz note +steps+ of the Advance's
+          # A note wobbling: the voice on +channel+ playing a +frequency+ Hz note +steps+ of the Advance's
           # pitch number from it (Audio::Vibrato). The note is not started again.
           def wobble(channel, frequency, steps)
             voice = CHANNEL_VOICES.fetch(channel)
@@ -178,7 +178,7 @@ module VBlank
           # A square note stepping its shape: nothing to write, since a PSG voice has only the one.
           def shape(_channel, _frequency, _shape) = []
 
-          # A NOTE SLIDING: the voice on +channel+ taken to the pitch of +count+ (Audio::PitchSlide).
+          # A note sliding: the voice on +channel+ taken to the pitch of +count+ (Audio::PitchSlide).
           def slide_step(channel, count, _was, _shape, from:)
             _ = from
             [[:tone, CHANNEL_VOICES.fetch(channel), tone_length(slide_frequency(count))]]
@@ -198,7 +198,7 @@ module VBlank
           SLIDE_OF_VOICE_ENTRY = 6
           SIDE_OF_VOICE_ENTRY = 8
 
-          # A SWELLING NOTE STRUCK AT THE MUSIC VOLUME, where the player's count puts it
+          # A swelling note struck at the music volume, where the player's count puts it
           # (Reference::Player#step_swells): an +entry+ of [:loudness, channel, volume], with the swell
           # after it if it climbs on. Here the climbing is the runtime's already, so it is told where the
           # note is and how it goes on.
@@ -252,7 +252,7 @@ module VBlank
             fade.swells? ? fade.step : -fade.step
           end
 
-          # THE WAVE VOICE PLAYING +params+ ({shape:, frequency:, volume:}, as the interpreter logs a wave):
+          # The wave voice playing +params+ ({shape:, frequency:, volume:}, as the interpreter logs a wave):
           # stopped, set to the waveform's tone, and started.
           def wave(params)
             volume = params[:volume]
@@ -317,7 +317,7 @@ module VBlank
 
           def number_at(frequency, block) = (frequency * (1 << (21 - block)) / FM_RATE).round
 
-          # THE WRITES A RUN OF THE LOG MEANS, in order, with what one entry says of the next, as
+          # The writes a run of the log means, in order, with what one entry says of the next, as
           # DSPWrites works them out: the tune a held note's [:loudness ...] reaches is the one whose
           # note was logged last; a song's note on the wave or noise voice plays at the note's own
           # volume, which its [:voice ...] entry carries; and that note's [:loudness ...], logged before
@@ -418,7 +418,7 @@ module VBlank
           # The wave or noise voice's own entry, which a song's note there logs after its loudness.
           def voice_own_entry?(entry) = !entry.nil? && %i[wave stop_wave noise].include?(entry.first)
 
-          # WHICH TUNE A STOP STOPPED, the cartridge's to name and held to the log where the log says it too
+          # Which tune a stop stopped, the cartridge's to name and held to the log where the log says it too
           # (DSPWrites.misnamed_stop): the index in +entries+ of the first stop that names another tune.
           def misnamed_stop(entries, voicing = NO_VOICING)
             heard = nil
@@ -439,7 +439,7 @@ module VBlank
           def psg_tone_register(voice) = voice * 2
           PSG_NOISE_SETTING_REGISTER = 6
 
-          # WHAT THE CHIPS HOLD AFTER THE SOUND LOG +entries+, as [:psg, register] or [:fm, register] and
+          # What the chips hold after the sound log +entries+, as [:psg, register] or [:fm, register] and
           # the value. Nothing reaches a chip until the game calls `enable_sound` (Runtime::Sound). A voice
           # that is moving its own loudness has none to answer for, nor a note that slides its pitch: the
           # log does not say where they have got to.
@@ -478,7 +478,7 @@ module VBlank
             held[[:fm, KEY]] = KEY_OFF if voices[WAVE_VOICE] == 1
           end
 
-          # WHAT THE LOG CANNOT ANSWER FOR. A slide logs nothing as it moves, so while the last note of a
+          # What the log cannot answer for. A slide logs nothing as it moves, so while the last note of a
           # channel slides, its voice's pitch has no expected value.
           def slide_registers(entries)
             entries.select { |entry| entry.first == :voice && entry[3].positive? }.group_by { |entry| entry[1] }.flat_map do |channel, notes|

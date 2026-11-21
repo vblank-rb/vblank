@@ -9,7 +9,7 @@ module VBlank
         # What is the Genesis's own: its work RAM read by address, high byte first, and a run of no
         # frames ending before the screen is on.
         #
-        # THE EMULATOR'S FRAME STARTS AT THE VERTICAL BLANK, where the cartridge copies a pass's changes
+        # The emulator's frame starts at the vertical blank, where the cartridge copies a pass's changes
         # to the console, and goes on through the lines of the picture, which are drawn after the copy. So
         # a pass's picture is on the frame that shows it, as it is on the Super Nintendo's emulator, and the
         # base run reads it there.
@@ -43,7 +43,7 @@ module VBlank
           # Empty for a game that makes no sound.
           attr_reader :chip_reads
           
-          # WHAT WAS HEARD: the loudest sample in each screen frame from power-on, left or right, as a number
+          # What was heard: the loudest sample in each screen frame from power-on, left or right, as a number
           # from 0 to 32768. A frame is the finest it sees.
           attr_reader :loudest_each_frame
           
@@ -106,7 +106,7 @@ module VBlank
             @core.set_buttons(second & PAD_BUTTONS, port: 1)
           end
 
-          # A RUN OF NO FRAMES ends as the first pass does, before anything is shown
+          # A run of no frames ends as the first pass does, before anything is shown
           # (CartridgeHeadlessRun#end_before_first_picture): the runtime turns the screen on as the
           # first pass is shown.
           def ends_before_first_picture?(frames) = frames.zero?
@@ -180,7 +180,7 @@ module VBlank
             number.zero? ? [] : [@places.recording_names.fetch(number - 1)]
           end
           
-          # THE BUTTONS ARE THE ONES HELD FROM POWER-ON for the first emulated frame, which is where the
+          # The buttons are the ones held from power-on for the first emulated frame, which is where the
           # cartridge reads them (Runtime::Boot), and from the second on each frame's own, decided before
           # the frame is played. The frames the runtime counts (Frame::FRAMES) start as the screen comes
           # on, a few emulated frames in, with the frame whose interrupt switches it on as the first: every
@@ -208,8 +208,8 @@ module VBlank
           end
 
           # The moment of +frame+ — a pass's number, or :end for the moment the run ended on. +sounds+ is how
-          # many entries the sound log held as the game was found waiting (#read_sounds). A PASS'S SOUNDS
-          # INCLUDE ITS FRAME BOUNDARY'S MUSIC, which the cartridge plays where the wait ends, after the game
+          # many entries the sound log held as the game was found waiting (#read_sounds). A pass's sounds
+          # include its frame boundary's music, which the cartridge plays where the wait ends, after the game
           # was found waiting, so a pass's moment takes the count the cartridge kept as that wait ended
           # (Runtime::Sound::LOGGED_BY_PASS). The moment the run ended on has no boundary after it.
           def record_moment(frame, variables, lists, picture, sounds)

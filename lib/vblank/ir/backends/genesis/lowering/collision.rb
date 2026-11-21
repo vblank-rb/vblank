@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class Genesis
         class Lowering
-          # WHETHER TWO SPRITES' DRAWN PIXELS TOUCH (`pixels_overlap`), lowered for a Genesis: a call
+          # Whether two sprites' drawn pixels touch (`pixels_overlap`), lowered for a Genesis: a call
           # into Runtime::Collide, and each picture a sprite can show made into a mask of where it
           # draws while the program is built. Mixed into Lowering.
           module Collision
