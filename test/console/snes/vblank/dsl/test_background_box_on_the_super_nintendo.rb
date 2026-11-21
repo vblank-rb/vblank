@@ -3,7 +3,7 @@
 require "test_helper"
 require "background_box_tests"
 
-# A BACKGROUND SHOWN ONLY INSIDE A BOX THE GAME MOVES AND SIZES, on the Super Nintendo, whose
+# A background shown only inside a box the game moves and sizes, on the Super Nintendo, whose
 # display holds a layer to a window: the tests every console that can hold a layer to a box plays
 # (BackgroundBoxTests in test/background_box_tests.rb). The Advance's twin is
 # test/console/gba/vblank/dsl/test_background_box.rb.

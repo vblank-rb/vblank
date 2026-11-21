@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A STATUS BAR BESIDE TWO BACKGROUNDS: an arena, clouds drifting over it, and a bar along the
+# A status bar beside two backgrounds: an arena, clouds drifting over it, and a bar along the
 # bottom, as a Super Bomberman stage shows them. The Super Nintendo puts the bar on its third
 # layer, of four-colour tiles. Each pass is checked against the interpreter, and the picture says
 # the order: the bar on its rows, the clouds over the arena above them, a sprite the layers put

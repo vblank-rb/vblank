@@ -3,7 +3,7 @@
 require "test_helper"
 require "scene_color_lists"
 
-# ONE SET OF SPRITE PICTURES WORN IN SEVERAL LISTS OF COLOURS. A Super Nintendo sprite says which of
+# One set of sprite pictures worn in several lists of colours. A Super Nintendo sprite says which of
 # eight lists it is drawn from, so a console game draws all its players from one set of pictures. A
 # game whose pictures, made again for each list, would not fit the 512 tiles of sprite memory is built
 # that way too.
