@@ -7,13 +7,13 @@ require "tmpdir"
 require "vblank/live"
 require "shell_screen_tests"
 
-# A SHELL'S FIRST SCREEN MADE THE GAME'S OWN, IN THE DESKTOP PROGRAM (`shell_screen`;
+# A shell's first screen made the game's own, in the desktop program (`shell_screen`;
 # ShellScreenTests has the port and the answer key). Like test_native_shell.rb it builds with SDL,
 # so it is loaded only under SDL=1.
 #
 # The first screen is the shell's menu part, a program of its own with no window, which sends
 # every picture it draws down its standard output and reads the buttons for each frame from its
-# standard input (runtime/rg_sdl.c, "A PART OF A SHELL PLAYS WITH NO WINDOW"). So the first test
+# standard input (runtime/rg_sdl.c, "a part of a shell plays with no window"). So the first test
 # plays that part as the shell's window does and holds every picture it sends to the same screen
 # drawn by a plain game, pixel for pixel. The second plays the whole shell in its window and
 # picks a copy, with the game's own line visited on the way.
@@ -75,7 +75,7 @@ class TestNativeShellScreen < Minitest::Test
     end
   end
 
-  # The whole shell in its window, as a player goes: down to CREDITS, its scene and back, up to
+  # The whole shell in its window, as a player goes: down to credits, its scene and back, up to
   # LOAD ROM, and the copy picked (--shell-picks). One window, the pack kept, and the game plays.
   def test_load_rom_still_starts_the_game_after_a_visit_to_the_games_own_line
     Dir.mktmpdir do |dir|

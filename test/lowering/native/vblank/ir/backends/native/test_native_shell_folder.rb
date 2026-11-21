@@ -5,7 +5,7 @@ require "fileutils"
 require "tmpdir"
 require "folder_original"
 
-# A SHELL OF A PORT WHOSE ORIGINAL IS A FOLDER OF FILES (FolderOriginal's fixture), played as the
+# A shell of a port whose original is a folder of files (FolderOriginal's fixture), played as the
 # desktop program. LOAD ROM takes the folder, finds each file the release names in any case, checks
 # each by its size and SHA-1, joins them in the release's order and unpacks them, leaving the other
 # files in it alone; it refuses a folder or a file in the words the Ruby shell uses

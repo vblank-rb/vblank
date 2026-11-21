@@ -4,7 +4,7 @@ require "test_helper"
 require "open3"
 require "tmpdir"
 
-# A PICTURE THAT IS THE ONE ALREADY UP IS NOT SHOWN AGAIN. A game sitting on a title screen finishes
+# A picture that is the one already up is not shown again. A game sitting on a title screen finishes
 # the same picture sixty times a second, and uploading and drawing it every time costs the computer
 # and its graphics card for nothing. The window compares what the game finished with what it last
 # put up, and shows the same picture again by doing nothing: the report of --frame-times says how
