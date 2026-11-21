@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# BACKGROUNDS DRAWN FROM 16×16 TILES, which a Super Nintendo draws itself: each background says the
+# Backgrounds drawn from 16×16 TILES, which a Super Nintendo draws itself: each background says the
 # size of its tiles, and a cell of its map is one tile of that size. A game brought over from a
 # Super Nintendo cartridge has them (Super Bomberman draws its first two backgrounds from 16×16
 # tiles and its third from 8×8). The Advance and the Color draw 8×8 tiles only.

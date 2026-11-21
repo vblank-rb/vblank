@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A BIG TILE TAKING TURNS THROUGH PICTURES. A Super Nintendo draws a background from tiles of 16×16
+# A big tile taking turns through pictures. A Super Nintendo draws a background from tiles of 16×16
 # as readily as from 8×8, and a stage of blocks that shimmer together is one tile changing its
 # picture, wherever on the map it stands. This is the one console that does, so it is here, and
 # every run playing games as the console plays it.

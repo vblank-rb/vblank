@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A BACKGROUND HELD ABOVE A ROW OF THE SCREEN. A bar in the top rows slides inside them, and what is
+# A background held above a row of the screen. A bar in the top rows slides inside them, and what is
 # under them stays still and is never covered. Each row of the bar is a colour of its own, so a pixel
 # says how far it has slid.
 class TestBackgroundAboveRow < Minitest::Test
@@ -152,7 +152,7 @@ class TestBackgroundAboveRow < Minitest::Test
     b.program
   end
 
-  # A STAGE LAID OUT AS A SUPER NINTENDO GAME LAYS ONE OUT: a bar held above row 32, over an arena of
+  # A stage laid out as a Super Nintendo game lays one out: a bar held above row 32, over an arena of
   # two backgrounds, a floor and walls see-through in places, each scrolled its own way. The bar is
   # of two colours and covers its rows; the walls' steps show the floor's stripes through them.
   STAGE_ROWS = 32
@@ -263,7 +263,7 @@ class TestBackgroundAboveRow < Minitest::Test
     end
   end
 
-  # SHOWN ALONE WITHOUT SPRITES (`alone: :without_sprites`), on the third layer beside two
+  # Shown alone without sprites (`alone: :without_sprites`), on the third layer beside two
   # backgrounds: a sprite climbing across the row is hidden above it, where the bar and the backdrop
   # show, and shown from the row down. With `alone: true` it shows above the row too.
   def test_a_bar_shown_alone_without_sprites_over_two_backgrounds_hides_a_sprite_above_its_row
@@ -282,7 +282,7 @@ class TestBackgroundAboveRow < Minitest::Test
     end
   end
 
-  # SHOWN ALONE (`alone: true`), the bar's see-through pixels and its empty cells show the backdrop
+  # Shown alone (`alone: true`), the bar's see-through pixels and its empty cells show the backdrop
   # above its row, and the arena of two backgrounds shows from the row down as before.
   def test_a_bar_shown_alone_over_two_backgrounds_shows_the_backdrop_through_it
     screen = game_player.run(stage(alone: true), frames: 4).screen
@@ -350,7 +350,7 @@ class TestBackgroundAboveRow < Minitest::Test
     assert_match(/:score and :lives alone above a row/, error.message)
   end
 
-  # A SCENE WITH AN ALONE BAR, THEN ONE WITHOUT, over a field every screen shows: the second scene's
+  # A scene with an alone bar, then one without, over a field every screen shows: the second scene's
   # bar is not alone, so the field shows through its see-through pixels above the row; the third has
   # no bar, so the field covers every row. +after+ is :plain_bar or :no_bar.
   private def alone_bar_followed_by(after)
