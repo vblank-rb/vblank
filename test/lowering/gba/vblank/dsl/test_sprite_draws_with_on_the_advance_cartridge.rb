@@ -10,7 +10,7 @@ require "console/gba/vblank/dsl/test_sprite_draws_with_on_the_advance"
 class TestSpriteDrawsWithOnTheAdvanceCartridge < Minitest::Test
   include SpriteDrawsWithOnTheAdvanceGames
 
-  # SIXTEEN IS EXACTLY ENOUGH: the ship's own colours and fifteen lists, one group each, with
+  # Sixteen is exactly enough: the ship's own colours and fifteen lists, one group each, with
   # nothing left over. The first group of the table is one of the sixteen. Its first entry is
   # never drawn, as in every group, so sprites can have it.
   def test_a_sprite_and_fifteen_lists_take_all_sixteen_groups

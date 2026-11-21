@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/graphics/test_proportional_font"
 
-# A PROPORTIONAL FONT ON THE ADVANCE'S CARTRIDGE, read in the emulator: the pen advances by each
+# A proportional font on the Advance's cartridge, read in the emulator: the pen advances by each
 # glyph's own width, and run-time digits are drawn at the digits' width. The font on every run is
 # in test/all/vblank/graphics/test_proportional_font.rb.
 class TestProportionalFontCartridge < Minitest::Test
@@ -33,7 +33,7 @@ class TestProportionalFontCartridge < Minitest::Test
     assert v.black?(X + 7, Y),      "nothing is drawn past M"
   end
 
-  # ---- run-time digits pick the DIGIT width, not the font's widest glyph ----
+  # ---- run-time digits pick the digit width, not the font's widest glyph ----
 
   # A proportional font whose ten digits are a uniform 3px but whose widest glyph is
   # a 5px "W". The data-driven digit path (a run-time score) must measure the digits'

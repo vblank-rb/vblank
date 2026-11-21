@@ -2,10 +2,10 @@
 
 require "test_helper"
 
-# THE BASE OF THE VARIABLE MEMORY, LEFT IN A REGISTER instead of made again before every
+# The base of the variable memory, left in a register instead of made again before every
 # access. Two things have to hold for that to be safe, and they are tested apart:
 #
-#   * ASM.may_write_register? has to say YES about every instruction that could write the register,
+#   * ASM.may_write_register? has to say yes about every instruction that could write the register,
 #     and it is allowed to say yes about ones that could not. Getting that backwards does
 #     not fail — it sends a load or a store to whatever address happens to be there — so
 #     the encodings are checked one at a time, built by the same ASM methods the backend
@@ -62,7 +62,7 @@ class TestAddressRegister < Minitest::Test
   end
 
   # A predicated instruction may or may not run, which is not a distinction worth making:
-  # what matters is that it COULD write the register.
+  # what matters is that it could write the register.
   def test_an_instruction_that_might_not_run_still_disturbs_what_it_would_write
     assert may_write_register?(A.mov_reg_cond(:gt, ADDR, 0))
     assert may_write_register?(A.add_imm_cond(:ls, ADDR, ADDR, 4))
@@ -204,11 +204,11 @@ class TestAddressRegister < Minitest::Test
   #
   # A collection's base is an address that has not changed since the cartridge was built,
   # and it used to be rebuilt at every single touch. It now waits in a register the same
-  # way the variables' base does — a SECOND register, because one shared between them
+  # way the variables' base does — a second register, because one shared between them
   # would be pushed out by whichever was touched last, and a pool walk touches both
   # constantly. See {LIST_ADDR} and {Primitives#emit_load_address_register}.
 
-  # BOTH REGISTERS ARE WATCHED, not just the first one. Nothing the DSL can express writes
+  # Both registers are watched, not just the first one. Nothing the DSL can express writes
   # the list register between two touches of a list today — the routines that use it for
   # their own work are all reached by a call or a label, and both of those forget anyway.
   # So this is the seam itself under test rather than a program that would go wrong, which
@@ -224,7 +224,7 @@ class TestAddressRegister < Minitest::Test
     refute emitter.list_register.holds?(BASE), "a write to that register ends it"
   end
 
-  # Is this an instruction that PUTS AN ADDRESS in the list register? That is a
+  # Is this an instruction that puts an address in the list register? That is a
   # data-processing instruction whose second operand is a plain number and whose answer
   # lands in that register — the MOV and ORRs an address is built from, and the ADD or SUB
   # that steps from one address to the next — or a read of the address out of the routine's
@@ -240,7 +240,7 @@ class TestAddressRegister < Minitest::Test
     ((word >> 26) & 0b11).zero? && !(word & 0x02000000).zero? && ((word >> 12) & 0xF) == LIST_ADDR
   end
 
-  # Is this the one instruction that STEPS the list register from the address it holds to
+  # Is this the one instruction that steps the list register from the address it holds to
   # another: an ADD or a SUB of a plain number, from that register into itself?
   private def steps_list_base?(word)
     [0xE2800000, 0xE2400000].include?(word & 0xFFF00000) && ((word >> 16) & 0xF) == LIST_ADDR &&
