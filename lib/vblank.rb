@@ -5,7 +5,7 @@ require_relative "vblank/root"
 require_relative "vblank/logger"
 
 module VBlank
-  # A BUILD THAT STOPPED, whichever console or format it was for and whatever stopped it: the
+  # A build that stopped, whichever console or format it was for and whatever stopped it: the
   # checks found a mistake, a lowering cannot make what the game asks for, the cartridge came out
   # wrong. Each says what happened and what to do in its message, so a caller that turns a failed
   # build into words for a person rescues this one class.
@@ -23,23 +23,23 @@ module VBlank
   class StoppedByChecks < ROMError; end
 end
 
-# THE WHOLE LIBRARY, A LINE FOR EACH MODULE, and this is the only place that says so. Each one loads a
+# The whole library, a line for each module, and this is the only place that says so. Each one loads a
 # module through a front door of its own (or, for version and pager, a single file); what is
 # inside a module is that module's business and is listed in its own front door.
 #
-# THE ORDER IS NOT ALPHABETICAL AND CANNOT BE. It is what each piece needs to have been defined
+# The order is not alphabetical and cannot be. It is what each piece needs to have been defined
 # before its own class bodies run, and every step of it is a dependency worth knowing about:
 #
 #   ir needs BUILDERROR (above, before every module), because each lowering's error, the
 #     guardrails' and the colour table's are kinds of it.
-#   cartridge, audio, builder, diagnostics and ir all need CONSOLE first, the table of the
+#   cartridge, audio, builder, diagnostics and ir all need console first, the table of the
 #     hardware's addresses and flags. It needs nothing itself, so it goes at the top.
-#   ir needs AUDIO, because a backend sizes its music player from what a tune is.
+#   ir needs audio, because a backend sizes its music player from what a tune is.
 #   dsl needs IR, because a handle a game holds is a way of building a node.
-#   effects needs BUILDER, because an effect pack adds verbs to it.
-#   dsl, builder and effects need CARTRIDGE first, because each loads files of game code through
+#   effects needs builder, because an effect pack adds verbs to it.
+#   dsl, builder and effects need cartridge first, because each loads files of game code through
 #     VBlank.require_game_file, which cartridge defines.
-#   playthroughs needs CONSOLE and GRAPHICS, because a comparison takes the size of the screen
+#   playthroughs needs console and graphics, because a comparison takes the size of the screen
 #     and the colour it marks a difference in while its classes are being defined.
 #
 # Everything else is free to move. Adding a require here means a new module, not a new file —
@@ -87,25 +87,25 @@ module VBlank
   # @param profile [true, false, String, VBlank::Diagnostics::RoutineProfile] where this game's frames
   #   really go, which decides which routines are kept in the console's quick memory.
   #
-  #   TRUE MEASURES IT: the build builds the game once, runs it, and builds it again knowing
+  #   True measures it: the build builds the game once, runs it, and builds it again knowing
   #   what its frames were really spent on — see {.build_measured}. Nothing has to be run or
   #   saved by hand, and nothing is guessed. It is what {Game#build_rom} asks for, so a
   #   cartridge somebody is going to play gets it.
   #
-  #   FALSE, THE DEFAULT HERE, skips the measuring and chooses from the shape of the program
+  #   False, the default here, skips the measuring and chooses from the shape of the program
   #   instead: the frame's own body first, then out along what it calls. It is the default on
   #   this method because this is the primitive — the suite builds thousands of cartridges
   #   through it to check pixels and guardrails and emitted code, and not one of them cares
   #   where a routine ended up. Measuring them all would double the suite for nothing. It is
   #   also what a reproducible build wants, since it depends on nothing but the source.
   #
-  #   A PATH or a {RoutineProfile} uses a measurement taken earlier, for the case the automatic
-  #   one cannot reach: a game measures each of its scenes, so a moment WITHIN one — a boss with
+  #   A path or a {RoutineProfile} uses a measurement taken earlier, for the case the automatic
+  #   one cannot reach: a game measures each of its scenes, so a moment within one — a boss with
   #   half its health gone, a floor with sixty guards — has to be measured by hand and saved.
   # @return [VBlank::Cartridge::ROM] finalized ROM ready to write
   # +out+/+err+ are where the build prints — the disassembly dump_func was asked for, and the
   # warnings the guardrails found. Each takes an open stream (a StringIO, to capture them in a
-  # test), the NAME of a file (opened and closed for you), or nil for a build that prints
+  # test), the name of a file (opened and closed for you), or nil for a build that prints
   # nothing at all; they default to the process streams. See {Messages::BuildOutput}.
   # +code+ and +maker+ are the four characters an emulator tells one cartridge from another
   # by, and the two that name a publisher. Leave them out: the framework works a free code
@@ -163,7 +163,7 @@ module VBlank
     said = Console.console_settings_said(code: code, maker: maker, **options.to_h,
                                          profile: ([true, false].include?(profile) ? nil : profile))
     Console.refuse_unusable_console_settings!(said, consoles: [options.console], title: title, named_in: "console:")
-    # Settle where this build prints BEFORE anything is read or checked, so a caller
+    # Settle where this build prints before anything is read or checked, so a caller
     # that named somewhere the build cannot write is told on every build rather than on
     # the one build that finally has a warning to give (see {Messages::BuildOutput}).
     output = Messages::BuildOutput.new(out: out, err: err)
@@ -202,7 +202,7 @@ module VBlank
     # is suggested, never applied (an opt-in `--auto-fix` is future work). Skipped
     # for a debug_halt build, whose tree is deliberately truncated.
     #
-    # NOTHING IS PRINTED HERE, and that is the point: the findings are held and
+    # Nothing is printed here, and that is the point: the findings are held and
     # written at the end (see the ensure below). A build is a sequence of phases
     # saying how far they have got, and a paragraph of prose landing in the middle
     # of it breaks the sequence in half — the reader loses the shape of the build,
@@ -250,7 +250,7 @@ module VBlank
       rom.hidden_variables = evaluated.hidden_variable_notes if rom.respond_to?(:hidden_variables=)
     end
   ensure
-    # HOWEVER THE BUILD ENDED: close the line, then say what the guardrails found — with what the
+    # However the build ended: close the line, then say what the guardrails found — with what the
     # console's build added to them, once it was handed them.
     #
     # In that order, and both here rather than where they happen. A live progress line is held
@@ -288,34 +288,34 @@ module VBlank
   end
   private_class_method :refuse_unnamed_console!
 
-  # BUILD IT, RUN IT, BUILD IT AGAIN — which is how the build knows what a game spends its
+  # Build it, run it, build it again — which is how the build knows what a game spends its
   # frames on instead of guessing.
   #
   # The one decision a build cannot measure its way to on its own is which routines to keep in
   # the console's quick memory, where code runs about two and a third times faster. The choice
-  # is an INPUT to the lowering, so it has to be made before the game it would run exists. So
+  # is an input to the lowering, so it has to be made before the game it would run exists. So
   # the game is built once, with the choice made from the shape of the program; that cartridge
   # is run and measured; and then it is built again, this time knowing.
   #
-  # NOBODY HAS TO PLAY IT. A game keeps which screen it is on in a variable and the build knows
+  # Nobody has to play it. A game keeps which screen it is on in a variable and the build knows
   # where that variable lives, so each scene is entered by writing it — see
   # {Profiler.survey_scenes}. Without that the measuring would only ever see a title screen,
   # which is the wrong thing to make a game fast for.
   #
-  # THE FIRST BUILD'S FINDINGS ARE HELD BACK, and only its findings. They are about a cartridge
+  # The first build's findings are held back, and only its findings. They are about a cartridge
   # nobody gets, and they can differ from the real ones in exactly the way that matters: a
   # warning is priced with what the build decided, so the throwaway one can say a frame goes
   # over budget where the measured cartridge comfortably fits. Printing both would be printing
   # a warning that is not true of the game.
   #
-  # BUT A BUILD THAT STOPS HAS TO SAY WHY. A guardrail error stops the first build, and its
+  # But a build that stops has to say why. A guardrail error stops the first build, and its
   # explanation is the whole point of stopping — so what was held back is let out on the way
   # past. Anything else swallows the one message an author needs.
   #
-  # WITH NO EMULATOR THERE IS NOTHING TO RUN, and a build still has to work, so it falls back
+  # With no emulator there is nothing to run, and a build still has to work, so it falls back
   # to choosing from the shape of the program. `rom.profile` says which of the two happened.
   #
-  # WHAT IT SAYS WHILE IT WORKS is one list of phases, the real build's: the first build is one
+  # What it says while it works is one list of phases, the real build's: the first build is one
   # line of it and playing the scenes another, and what the playing found is said after the
   # real build has finished, with its findings, never in the middle of a phase.
   def self.build_measured(title, code:, maker:, out:, err:, progress:, **options, &block)
@@ -342,7 +342,7 @@ module VBlank
     built.call(profile: false, progress: progress)
   end
 
-  # THE FIRST BUILD, said as one line of the real one: its own phases are only ever that line's
+  # The first build, said as one line of the real one: its own phases are only ever that line's
   # detail, since two lists of the same phases read as a build that ran twice by mistake. What it
   # finds and what it would print is about a cartridge nobody gets, so both are held back — and
   # let out if it stops, since then its explanation is the whole point.
@@ -368,17 +368,17 @@ module VBlank
     raise
   end
 
-  # A GAME THAT DOES NOT KEEP UP IS SAID SO AT BUILD TIME, from what the build just measured.
+  # A game that does not keep up is said so at build time, from what the build just measured.
   #
   # This is what the framework used to guess at: a frame priced in scanlines against a budget,
   # with a warning when the total came out over. That was a second statement of what the
-  # hardware costs and every mispricing was a bug. The build now RUNS the game to decide what
+  # hardware costs and every mispricing was a bug. The build now runs the game to decide what
   # goes in the quick memory, so the frame rate is already in its hands and costs nothing to
   # report — and it is a fact rather than an arithmetic.
   #
-  # WHAT IT LOOKS LIKE MATTERS, and it is not choppiness. A game moves what it moves once per
+  # What it looks like matters, and it is not choppiness. A game moves what it moves once per
   # pass of its loop, so fewer passes a second is less movement a second: the whole game runs
-  # in SLOW MOTION, smoothly. Saying "choppy" sends a reader looking for the wrong thing.
+  # in slow motion, smoothly. Saying "choppy" sends a reader looking for the wrong thing.
   def self.warn_of_slow_scenes(survey, err)
     slow = survey.slow_scenes
     return if slow.empty?
@@ -395,7 +395,7 @@ module VBlank
     end
   end
 
-  # A GAME THAT KEEPS UP UNTIL ITS COLLECTIONS FILL is said so at build time too, and the
+  # A game that keeps up until its collections fill is said so at build time too, and the
   # number in it is measured like the one above: the build ran the scene again with every list
   # and pool held at its capacity (see Profiler.growth_in). That is the bug a collection sized
   # for the worst moment of a game and walked item by item every frame causes — fine for the
@@ -430,7 +430,7 @@ module VBlank
     named.one? ? "it" : "them"
   end
 
-  # A SCENE THAT RUNS LATE ON THE FRAME THE GAME HANDS OVER TO IT is said at build time too,
+  # A scene that runs late on the frame the game hands over to it is said at build time too,
   # measured like the two above (see Diagnostics::HandOvers): the build handed over to each
   # scene once and read whether that frame finished. It is the one late frame no frame rate
   # shows, since every frame after it fits.
