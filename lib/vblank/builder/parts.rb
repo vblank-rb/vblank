@@ -43,7 +43,7 @@ module VBlank
     #
     # A game that never calls `start_over` builds the same cartridge it always did.
     #--
-    # A ROUTINE BELONGS WHERE IT IS WRITTEN. A `func`, a scene, a pool's `func` and an
+    # A routine belongs where it is written. A `func`, a scene, a pool's `func` and an
     # `each_pass` job have their bodies built at the end, when every `part` line has long been
     # read, so what a body declares belongs to the parts and the scene in force on the line the
     # routine was written, kept for it then and handed to its body when the body is built.
@@ -55,7 +55,7 @@ module VBlank
     # bitmap screen) is moved there the way `move_to` moves it: the next repaint puts back what it
     # covered where it stood.
     #
-    # WHAT IT COSTS. The putting back is one routine of the game's, built once the whole game is
+    # What it costs. The putting back is one routine of the game's, built once the whole game is
     # read, and `start_over` is a call to it: it all happens on the pass that calls it, however
     # many things the part has. On the console each variable is a store of a number the code
     # carries, a couple of instructions; a list is its length set again (and a full one filled
@@ -230,7 +230,7 @@ module VBlank
         record(Build.set(name, start ? start.copy : Build.int(0)))
       end
 
-      # A PART IS NAMED LIKE A SAVE RECORD — letters and digits, with one underscore between
+      # A part is named like a save record — letters and digits, with one underscore between
       # words — because its routine is named after it the same way (Messages::MadeNames).
       def refuse_bad_part_name!(name)
         return if name.is_a?(Symbol) && Messages::MadeNames::RECORD_NAME.match?(name)

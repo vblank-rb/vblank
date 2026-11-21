@@ -3,7 +3,7 @@
 module VBlank
   class Builder
     #--
-    # A TILE OF A BACKGROUND FROM THE DATA PACK TAKING TURNS THROUGH PICTURES OF THE PACK:
+    # A tile of a background from the data pack taking turns through pictures of the pack:
     #
     #   belt = tile_pictures :belt, tiles: { pack[:video].tile(0xF3) => pack[:belt].tiles(0, across: 16),
     #                                        pack[:video].tile(0xF4) => pack[:belt].tiles(16, across: 16) }
@@ -26,7 +26,7 @@ module VBlank
     # runs are made as a background is declared, so the group is declared before any background
     # drawn from its tiles' slot.
     #
-    # WITH THE PACK LEFT OUT the map is not known as the game is built, nor which banks and turns
+    # With the pack left out the map is not known as the game is built, nor which banks and turns
     # name the tile. So each background has a run for every bank of its colours, each holding the
     # tile turned all four ways, and the cells are pointed at them as the game starts
     # (IR::StartFile::Background#moving); a told cell naming a key is written as the run's tile
@@ -148,7 +148,7 @@ module VBlank
       # A background drawn from +tiles+' slot is noted, so a group declared after it is refused.
       def record_pack_background_slot(tiles) = (@pack_background_slots ||= Set.new) << tiles.layout.name
 
-      # THE RUNS OF A BACKGROUND BUILT ALL-IN-ONE: for each group and each bank +cells+ (the
+      # The runs of a background built all-in-one: for each group and each bank +cells+ (the
       # Console::CellTile each cell names, that +moving+ says take turns) name, a run of each turn
       # of each key they name it in. Hands back the name of the run's tile for each CellTile.
       def declare_moving_pack_tiles(name, cells, moving, bank_lists)
@@ -162,7 +162,7 @@ module VBlank
         end
       end
 
-      # THE RUNS OF A BACKGROUND OF 16x16 CELLS BUILT ALL-IN-ONE (PackBackgrounds#big_pack_cells?):
+      # The runs of a background of 16x16 CELLS BUILT ALL-IN-ONE (PackBackgrounds#big_pack_cells?):
       # each cell of +cells+ (the four quarters of each, Console::CellTile, a quarter or more of
       # which +moving+ says take turns, all in one group) is a 16x16 picture of a run, for each group
       # and each bank: its turning quarters the group's picture, the rest the slot's tile, each
@@ -221,7 +221,7 @@ module VBlank
         drawn.each_with_index.to_h { |cell, at| [cell, Messages::MadeNames.make(:tile_run_tile, run: run, number: at + 1)] }
       end
 
-      # THE RUNS OF A BACKGROUND READ AS THE GAME STARTS (+where+, an IR::StartFile::Background):
+      # The runs of a background read as the game starts (+where+, an IR::StartFile::Background):
       # for each group and each bank of the slot, a run of each key turned each of the four ways,
       # its pictures read from the file. Hands back the run's tiles, in order, and +where+ told
       # which cells to point at them, +first+ being where they start among the background's tiles.
@@ -230,7 +230,7 @@ module VBlank
       # shown in, so every bank's run of a group copies from one table of its pictures
       # (#painted_pictures_read_at_start), however many banks and backgrounds draw the group.
       #
-      # AND EVERY ONE OF THOSE RUNS SHOWS THE SAME BYTES: each key turned the four ways, the
+      # And every one of those runs shows the same bytes: each key turned the four ways, the
       # picture shown. So they show them from one list in memory (#pictures_shown_at_start), a
       # `show` copies into it once, and each run sends it to its own tiles. A list for each run
       # would hold the group's picture again for every bank of every background: a slot of sixteen

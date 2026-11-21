@@ -520,7 +520,7 @@ module VBlank
       end
 
       # +drawn+, the statements drawing a shape at a spot, held behind the test of whether any of
-      # the shape can show (IR::PlaceDrawing, A SHAPE WHOLLY OUT OF VIEW IS PASSED OVER WHOLE), whose
+      # the shape can show (IR::PlaceDrawing, a shape wholly out of view is passed over whole), whose
       # routine is declared the first time the game draws the shape at a spot.
       def place_in_view_test(drawing, shape, drawn)
         unless @place_routines&.key?(drawing.in_view_routine)
@@ -577,7 +577,7 @@ module VBlank
       #
       # The viewer and the view are handed over by a routine of the place's own for each viewer and view
       # the game draws or asks with, which writes only what differs from what the last handover left
-      # (IR::PlaceDrawing, HANDED OVER UNCHANGED): one call where each `draw_place` and `screen_spot` line
+      # (IR::PlaceDrawing, handed over unchanged): one call where each `draw_place` and `screen_spot` line
       # would otherwise copy every number of the viewer and the view.
       def place_handover(drawing, seen_by, view, stance = nil)
         if stance&.turned?

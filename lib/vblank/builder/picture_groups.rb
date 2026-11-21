@@ -81,7 +81,7 @@ module VBlank
         end
       end
 
-      # ONCE EVERY PICTURE IS DECLARED: every picture a group names is one, checked here and not
+      # Once every picture is declared: every picture a group names is one, checked here and not
       # where the groups are written, since a game may group its pictures before it draws them.
       # And a picture turned with `mirror` or `upside_down` goes in every group its own picture
       # is in: the console draws it from that picture's tiles, turned, so it is up exactly when

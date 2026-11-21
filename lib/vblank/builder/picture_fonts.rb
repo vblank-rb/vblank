@@ -154,7 +154,7 @@ module VBlank
         tiles.with(tile_index: tiles.tile_index + (left / side), across: width / side)
       end
 
-      # A FONT OF A DATA PACK'S PIXELS: an alphabet as a computer game keeps it, each letter a run
+      # A font of a data pack's pixels: an alphabet as a computer game keeps it, each letter a run
       # of a slot of pixels, one byte a pixel, row by row, +height+ rows, lit where the byte is not
       # +blank+, and written in the colour draw_text asks, as a font of glyphs is.
       #
@@ -162,7 +162,7 @@ module VBlank
       #
       # Each letter is as wide as its pixels over the height, so the font is proportional. Where the
       # build reads the pack (every cartridge, and a computer build all-in-one), the letters are read
-      # here and the font IS a font of glyphs given as rows, so it draws, measures and places alike on
+      # here and the font is a font of glyphs given as rows, so it draws, measures and places alike on
       # every console. Where the build leaves the pack out, nothing knows which pixels are lit until the
       # game starts, so each letter becomes a picture of the slot's pixels in one colour, a picture for
       # each colour the game writes in (#picture_font_of_lettering), and words are drawn as a font of
