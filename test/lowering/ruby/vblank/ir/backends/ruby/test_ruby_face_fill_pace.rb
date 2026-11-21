@@ -3,7 +3,7 @@
 require "test_helper"
 require "place_games"
 
-# HOW MUCH WORK A GAME BUILT AS RUBY DOES TO FILL THE FACES OF A PLACE. A 3D place is filled a pixel
+# How much work a game built as Ruby does to fill the faces of a place. A 3D place is filled a pixel
 # at a time in Ruby, and a floor of a few hundred faces in view fills most of the lower half of the
 # screen on every pass. What the runtime asks for each pixel of a face (where it lands, whether a fade
 # or a mix or a kept picture changes it, which shade of colour it takes) is the whole cost of a pass,
@@ -11,7 +11,7 @@ require "place_games"
 # the picture (rg_face_row). The picture is held to the interpreter's by the place tests this run
 # plays; this is only the work.
 #
-# COUNTED, NOT TIMED. A time fails whenever other work shares the cores, so a pass of
+# Counted, not timed. A time fails whenever other work shares the cores, so a pass of
 # PlaceGames.big_floor is held to two counts that load cannot change. The objects it makes: each is
 # one Ruby's garbage collector clears away later, and an array made for each pixel, as the fill once
 # did, more than doubles them. And the pixels painted one at a time through rg_set_pixel: none, on a

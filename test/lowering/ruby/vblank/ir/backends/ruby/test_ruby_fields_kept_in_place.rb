@@ -3,7 +3,7 @@
 require "test_helper"
 require "objspace"
 
-# NO OBJECT THE RUBY BUILD MAKES HOLDS MORE INSTANCE VARIABLES THAN RUBY KEEPS AT FIXED PLACES
+# No object the Ruby build makes holds more instance variables than Ruby keeps at fixed places
 # (Ruby::FieldHolders::FIELDS_KEPT_IN_PLACE). Past that, a Ruby newer than 4.0 keeps an object's
 # variables in a hash, and every read and write of them costs about twice what it did under a
 # compiler. A game of several hundred variables is the case: with the runtime's own, one object
