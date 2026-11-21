@@ -633,7 +633,7 @@ class TestSDL < Minitest::Test
     window&.close
   end
 
-  # A WINDOW OPENED BEFORE ITS GAME IS BUILT (vblank run opens it at the console's size while a
+  # A window opened before its game is built (vblank run opens it at the console's size while a
   # helper builds the game) takes the game's picture once it is known: words while it waits, then
   # the game's size, at the scale it was opened at, and a picture of the old size is refused.
   def test_a_window_waits_in_words_then_fits_the_game

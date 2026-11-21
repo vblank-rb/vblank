@@ -6,7 +6,7 @@ require "stringio"
 require "tmpdir"
 require "vblank/live"
 
-# THE WINDOW WAITING WHILE A HELPER PROCESS BUILDS ITS GAME (Live::BuildWatch). The helper here is
+# The window waiting while a helper process builds its game (Live::BuildWatch). The helper here is
 # a small Ruby that says what a build's helper says, a line at a time, so each way a build can end
 # is played without building anything: the window shows the build's progress, then where the game
 # is written; or the refusal, on the terminal and in the window, in plain words. However the watch
@@ -20,7 +20,7 @@ class TestBuildWatch < Minitest::Test
 
   # Says each of its lines as the helper says them, +gap+ seconds apart, then works on for
   # +wait_seconds+, holding its end of the pipe open, and ends with +exit_status+. With +deaf+ it
-  # does not end when asked (TERM). A gap only lets the window draw between two lines: a window
+  # does not end when asked (term). A gap only lets the window draw between two lines: a window
   # that draws sooner passes the same.
   HELPER = <<~RUBY
     lines, wait_seconds, exit_status, deaf, gap = Marshal.load(ARGV[0].unpack1("m0"))
