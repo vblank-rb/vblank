@@ -105,7 +105,7 @@ module PoolDrawingOrderGames
   end
 end
 
-# WHICH OF TWO OVERLAPPING THINGS IN ONE POOL IS IN FRONT: the one spawned first. That is
+# Which of two overlapping things in one pool is in front: the one spawned first. That is
 # the order a walk goes in too, and like the walk it does not depend on which slot a thing
 # landed in — a slot freed and taken again says nothing about when its thing came.
 #

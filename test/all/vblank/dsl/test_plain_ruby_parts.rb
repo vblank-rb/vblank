@@ -29,7 +29,7 @@ class TestPlainRubyParts < Minitest::Test
     player
   end
 
-  # GAME VARIABLES A PART NAMES. Each part keeping its state in instance variables it names with
+  # Game variables a part names. Each part keeping its state in instance variables it names with
   # `game_variables` (test/plain_ruby_game_parts.rb) has a twin keeping the same state in `var`,
   # which is the answer key: both played the same, and the number the twin leaves is given too.
 
@@ -117,7 +117,7 @@ class TestPlainRubyParts < Minitest::Test
     assert_equal 6, played(ScrollPart, :scroll_part_make, :scroll_part_tick)[:scroll_part_shown]
   end
 
-  # A NAMED VALUE IS THE GAME'S FROM ITS FIRST NUMBER ON (test/plain_ruby_named_parts.rb), each
+  # A named value is the game's from its first number on (test/plain_ruby_named_parts.rb), each
   # held to its twin written with `var`.
 
   def test_a_named_value_read_in_a_block_another_part_calls_and_set_back_elsewhere_plays_as_a_var
@@ -243,7 +243,7 @@ class TestPlainRubyParts < Minitest::Test
     assert_match(/belongs to something else.*add `game_variables :held` to HandedHeldPart/, error.message)
   end
 
-  # A HOLDER HANDED A VARIABLE (test/plain_ruby_game_parts.rb). One taken from a slot of a Hash
+  # A holder handed a variable (test/plain_ruby_game_parts.rb). One taken from a slot of a Hash
   # holds it for a while, and in Ruby a line giving the holder a number leaves the slot as it was;
   # the build cannot copy into a variable the holder does not have, so it stops at the line,
   # naming `game_variables`. One handed whole to a part is that part's to change.
@@ -367,7 +367,7 @@ class TestPlainRubyParts < Minitest::Test
     assert_match(/`game_variables`.*body/, error.message)
   end
 
-  # BUILD-TIME RUBY STAYS RUBY'S. Planned: 2 loads that do not fit, 12 by each, 6 by to_h, 6 by
+  # Build-time Ruby stays Ruby's. Planned: 2 loads that do not fit, 12 by each, 6 by to_h, 6 by
   # times, 15 + 3 filled in, 2 by a lambda, 2 in a Struct, 6 of its own, 15 in the buffer; written
   # to the list on every pass.
   def test_build_time_ruby_in_a_part_made_inside_a_routine_stays_ruby
@@ -391,7 +391,7 @@ class TestPlainRubyParts < Minitest::Test
     assert_match(/`@aim` is a game variable, and it holds `nil`/, error.message)
   end
 
-  # A NAMED VALUE ONLY SOME BUILDS HAVE (test/plain_ruby_secret_lift_parts.rb): set only under a
+  # A named value only some builds have (test/plain_ruby_secret_lift_parts.rb): set only under a
   # test decided while building, and skipped with the lines naming it by a build that has no use
   # for it.
 
@@ -476,7 +476,7 @@ class TestPlainRubyParts < Minitest::Test
     assert_equal [4, 2], [player[:ticks], player[:ticks_2]]
   end
 
-  # A METHOD CALLED ON EVERY PASS SETS ITS NAMES ON EVERY PASS. Each of LoopCountPart's methods
+  # A method called on every pass sets its names on every pass. Each of LoopCountPart's methods
   # (test/plain_ruby_loop_parts.rb) starts a count at 0 and counts in a block or a loop. The game
   # keeps the answer of each pass, so a count that carried on from the pass before shows as a
   # bigger number on a later one. +count+ is handed the part and three, a number the game keeps.
@@ -794,7 +794,7 @@ class TestPlainRubyParts < Minitest::Test
     assert_equal [4, 4], [player[:unpacked_first], player[:unpacked_second]]
   end
 
-  # A NAME SET FROM A BYTE READ AT A PLACE HOLDS THAT BYTE once the place moves on, in a game file
+  # A name set from a byte read at a place holds that byte once the place moves on, in a game file
   # (test/plain_ruby_flagged_bytes_part.rb) as in a game block: `flags = packed[at]`, then
   # `at += 1`, then `flags` used. Read again where it is used, it would be the next byte.
   def test_a_name_set_from_a_byte_read_in_a_game_files_routine_holds_that_byte

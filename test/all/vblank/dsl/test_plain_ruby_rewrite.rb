@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A few sanity checks on what a game block is rewritten into. What a game DOES is checked in
+# A few sanity checks on what a game block is rewritten into. What a game does is checked in
 # test_plain_ruby.rb; these look only at the choices a person would want to see made: which
 # names become `var`, which stay plain, and that every line keeps its number.
 class TestPlainRubyRewrite < Minitest::Test

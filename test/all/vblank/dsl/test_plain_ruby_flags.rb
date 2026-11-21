@@ -25,7 +25,7 @@ class TestPlainRubyFlags < Minitest::Test
     builder
   end
 
-  # FLAGS THE BUILD KEEPS FOR ITSELF.
+  # Flags the build keeps for itself.
 
   def test_a_once_guard_read_from_a_second_routine_is_not_refused
     assert_equal 6, played(PlannedTwicePart, :planned_once_tick, :planned_twice_tick)[:planned_once_steps]
@@ -56,7 +56,7 @@ class TestPlainRubyFlags < Minitest::Test
     assert_equal 3, game_player.run(builder.program, frames: 3)[:seen]
   end
 
-  # FLAGS THE GAME KEEPS, NAMED NOWHERE.
+  # Flags the game keeps, named nowhere.
 
   def test_an_unnamed_flag_one_routine_sets_and_another_tests_is_refused
     error = assert_raises(Refused) do
@@ -135,7 +135,7 @@ class TestPlainRubyFlags < Minitest::Test
     assert_includes error.message, "give `@open` `false` where it is first set"
   end
 
-  # THE SAME FLAG NAMED: a game variable, held to its twin written with `var`.
+  # The same flag named: a game variable, held to its twin written with `var`.
 
   def test_a_named_flag_one_routine_sets_and_another_tests_plays_as_a_var
     named = played(NamedDoorPart, :named_door_test, :named_door_open, frames: 5)[:named_door_seen]
