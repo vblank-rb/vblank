@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE COLOR'S LOWERING, the IR straight to SM83 (GBC::Lowering). Each game here is built by it and
+# The color's lowering, the IR straight to SM83 (GBC::Lowering). Each game here is built by it and
 # played as a Color cartridge against the interpreter after every pass (GBC::CheckedRun), so a
 # variable or a pixel that differs anywhere fails the test besides what it asserts.
 class TestGBCLowering < Minitest::Test

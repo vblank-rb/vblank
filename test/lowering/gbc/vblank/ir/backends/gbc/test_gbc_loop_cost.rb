@@ -3,7 +3,7 @@
 require "test_helper"
 require "loop_cost_games"
 
-# A TURN OF A LOOP ON THE GAME BOY COLOR, measured in the emulator: a `repeat`, and a game's
+# A turn of a loop on the Game Boy Color, measured in the emulator: a `repeat`, and a game's
 # `while i < n` with `i += 1` last, which the build lowers as a counted loop (LoopForm#counted_while).
 # The SM83's own way is a count of a byte in a register, DEC and a JR NZ back, four machine cycles a
 # turn taken (Pan Docs, "CPU Instruction Set"). VBlank's numbers are 32 bits in memory, so a count is

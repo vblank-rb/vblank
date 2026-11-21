@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHERE A COLOR GAME KEEPS ITS VARIABLES AND LISTS, against what the build checks are told the
+# Where a color game keeps its variables and lists, against what the build checks are told the
 # Color has. The checks count a game against the console's description before anything is
 # built (Checks::IwramBudget), and the Color's lowering lays the game out here; the two have to
 # be talking about the same room, or a game passes the check and is refused anyway.
