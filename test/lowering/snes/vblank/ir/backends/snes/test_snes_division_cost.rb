@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# A DIVISION COSTS WHAT ITS NUMBERS NEED. The answers are test_snes_int32's and test_dsl_expression's;
+# A division costs what its numbers need. The answers are test_snes_int32's and test_dsl_expression's;
 # these are about the time, read off the running cartridge.
 class TestSNESDivisionCost < Minitest::Test
   # Divides a variable, so nothing can be worked out while building, by a divisor written in the game,

@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# THE GAME'S BUSIEST NUMBERS IN THE DIRECT PAGE. A 65816 instruction naming a byte of the direct
+# The game's busiest numbers in the direct page. A 65816 instruction naming a byte of the direct
 # page takes one byte of address and one cycle less than one naming a 16-bit address (the WDC
 # 65816 data sheet's cycle table; fullsnes, "CPU Timings"), and the console's own games keep the
 # numbers their loops work on there. The build keeps the variables a game names most, counted by
@@ -53,7 +53,7 @@ class TestSNESDirectPageVariablesCost < Minitest::Test
     end
   end
 
-  # THE RUNTIME'S SCRATCH FOR WHETHER DRAWN PIXELS TOUCH (Runtime::Collide) is on the direct page only
+  # The runtime's scratch for whether drawn pixels touch (Runtime::Collide) is on the direct page only
   # in a game that asks: it is two pictures' masks, sizes and the box they share, 52 bytes, room for
   # thirteen of the game's numbers or more.
   COLLIDE_SCRATCH_BYTES = 52
