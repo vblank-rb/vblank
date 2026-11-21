@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # A PAINTED SCREEN on a console that only draws tiles.
+          # A painted screen on a console that only draws tiles.
           #
           # The Advance has screens that are a picture in memory, a colour for every pixel, which a
           # game paints into (`screen :bitmap`). A Super Nintendo has no such thing: everything it
@@ -25,7 +25,7 @@ module VBlank
           # instead (TextLayer), whose map takes the rows of this map past the 32nd and whose tiles
           # the rest of video RAM past the see-through tile; such a game has no camera.
           #
-          # SPRITES OVER THE PICTURE (`sprite ..., over_picture: true`) are the console's own, drawn
+          # Sprites over the picture (`sprite ..., over_picture: true`) are the console's own, drawn
           # over the layer, and their tiles take the rest of video RAM instead, so such a game paints
           # its text. A sprite's tile is four bits a pixel, 16 words, and OBSEL names where they are:
           # 256 from a base at a multiple of $2000 words, and 256 more from $1000 words after it
@@ -42,37 +42,37 @@ module VBlank
           # up past the picture (`camera`) shows the backdrop there, colour 0 of the colour memory,
           # which is black and fades with the picture (Tint) as the interpreter's backdrop does. The
           # map is 32 cells across, as wide as the screen, so a view moved across wraps round; the
-          # console's first WINDOW hides the layer outside the columns where the picture is
+          # console's first window hides the layer outside the columns where the picture is
           # (rt_paint_camera), and the backdrop shows there.
           #
-          # THE GAME PAINTS INTO A COPY in work RAM — $7F:0000 to $7F:DFFF of its upper bank, laid out
+          # The game paints into a copy in work RAM — $7F:0000 to $7F:DFFF of its upper bank, laid out
           # the same way — and the tiles it changed go to video RAM after the pass (rt_paint_upload).
           # On a cartridge with a Super FX the copy is the chip's RAM instead (ChipPaint).
           #
-          # A CLEAR WRITES NOTHING. Copying the whole screen is 57344 bytes, fourteen blanks' worth,
+          # A clear writes nothing. Copying the whole screen is 57344 bytes, fourteen blanks' worth,
           # and a game that clears every pass would pay that every pass. Instead the clear moves the
-          # screen on a GENERATION, and a tile last painted in an older generation is the clear
+          # screen on a generation, and a tile last painted in an older generation is the clear
           # colour throughout, whatever the copy holds there (the Game Boy Color's painted screen does
           # the same). Such a tile is shown by pointing its cell of the map at the clear tile, two
           # bytes instead of 64. The first paint of a tile in a generation fills it with the clear
           # colour first and points its cell back at its own tile (rt_paint_ready). So each tile
-          # keeps the generation it was last made ready in (GENERATIONS, a byte a tile), and work RAM
+          # keeps the generation it was last made ready in (generations, a byte a tile), and work RAM
           # keeps the whole map as it is to be once the pass is shown (MAP_COPY).
           #
-          # WHAT A PASS SENDS. The tiles painted in the pass, where they are in this generation: for
+          # What a pass sends. The tiles painted in the pass, where they are in this generation: for
           # each row of tiles the copy keeps the leftmost and rightmost tile painted since the last
-          # blank (DIRTY), and as the pass ends (rt_paint_prepare) each row's tiles of this generation
-          # between them are put on a list of RUNS, side by side in video RAM and in the copy, a copy
+          # blank (dirty), and as the pass ends (rt_paint_prepare) each row's tiles of this generation
+          # between them are put on a list of runs, side by side in video RAM and in the copy, a copy
           # each. Then, if they changed, the clear tile, the map and the colours of a fade or tint.
           #
-          # ON A PLAIN CARTRIDGE A PASS THAT CLEARS PAINTS ONLY WHAT CHANGED (PaintLog): its paintings
+          # On a plain cartridge a pass that clears paints only what changed (PaintLog): its paintings
           # are written down as it asks for them, and as it ends only the tiles that come out
           # different from what the copy holds are painted and sent, and only the cells of the map
           # that changed. A pass that draws what the last one drew sends nothing. A pass that has
           # not cleared paints at once, as here. On a Super FX cartridge, whose chip paints, only a
           # pass the same as the last is passed over (RepeatLog); any other paints at once.
           #
-          # THE COPY TO VIDEO RAM IS SPREAD OVER BLANKS, WITH THE SCREEN ON (Blank says how): the
+          # The copy to video RAM is spread over blanks, with the screen on (Blank says how): the
           # runs go one at a time, each when the blank has room and time for it. The map, the clear
           # tile and the colours go last, all in one blank: until then a tile that was the clear
           # colour still shows the clear tile, so a tile sent early is not seen early, and the
@@ -81,11 +81,11 @@ module VBlank
           # coming in down the screen. On a plain cartridge a change bigger than a few blanks hold
           # goes with the screen off instead, in one go (LOAD_SCREEN_OFF).
           #
-          # ON A SUPER FX CARTRIDGE THE SCREEN IS OFF WHERE THE PICTURE'S TOP AND BOTTOM ARE BLACK
+          # On a super FX cartridge the screen is off where the picture's top and bottom are black
           # (Letterbox), and the copy has those lines as well as the blank's: a first-person view in
           # the middle of the screen arrives in one frame's worth of them.
           #
-          # A TILE KEEPS ITS PIXELS IN PLANES. A pixel's colour is a place in the colour memory, eight
+          # A tile keeps its pixels in planes. A pixel's colour is a place in the colour memory, eight
           # bits; a tile keeps the first bit of each of its 64 pixels together, a row of eight pixels
           # to a byte, leftmost pixel in the top bit, then the second bit of each, and so on. Its 64
           # bytes are the rows' planes 0 and 1 side by side (row 0's plane 0, row 0's plane 1, row
@@ -118,7 +118,7 @@ module VBlank
             MAP = 0x7000
             MAP_BYTES = TILES * 2
 
-            # THE CLEAR TILE is tile 963, at $7860, past the map, where no tile of the screen is. A
+            # The clear tile is tile 963, at $7860, past the map, where no tile of the screen is. A
             # cell of the map is a word: the tile's number in its low ten bits, and above them its
             # colours' group, its priority and whether it is drawn flipped across or down. The cell
             # that shows the clear tile is drawn flipped both ways, which a tile of one colour does
@@ -129,7 +129,7 @@ module VBlank
             CLEAR_CELL = 0xC3C3
             # The cell that shows the see-through tile, the tile after the clear tile.
             SEE_THROUGH_CELL = CLEAR_TILE + 1
-            # SPRITES OVER THE PICTURE (see the top): where their tiles start in video RAM, the
+            # Sprites over the picture (see the top): where their tiles start in video RAM, the
             # first of them as a sprite numbers its tiles from OBSEL's base, and the ones the clear
             # and see-through tiles take among them. A sprite's tile is 16 words.
             SPRITE_TILE_WORDS = 16
@@ -203,7 +203,7 @@ module VBlank
             RUNS_END = "rt paint runs end"
             IN_PLACE_START = "rt paint in place start"
             MOST_RUNS = TILES
-            # WHICH TILES ARE ON THE SCREEN NOW: for each tile, the generation it was last sent in
+            # Which tiles are on the screen now: for each tile, the generation it was last sent in
             # (written as a pass is prepared), and the generation the screen shows (SHOWN_GENERATION,
             # a word: nothing, past any byte, at power-on). A tile whose two match has its cell
             # pointing at its own slot of video RAM in the map on the screen, so whatever is copied
@@ -226,7 +226,7 @@ module VBlank
             # leaves as it was while the screen still shows the last pass.
             CLEARS = "rt paint clears"
 
-            # A BIG CHANGE IS LOADED WITH THE SCREEN OFF, on a plain cartridge (PaintLog): a pass
+            # A big change is loaded with the screen off, on a plain cartridge (PaintLog): a pass
             # whose tiles to send are more than SCREEN_OFF_BLANKS blanks hold would take a frame for
             # each with the screen on. The console's own games load a screen that size with the
             # screen switched off (INIDISP's forced blank), when video RAM takes writes on every
@@ -1276,7 +1276,7 @@ module VBlank
             end
 
             # In rt_paint_fill, at a row +y+ that is the top of a row of tiles whose eight rows the
-            # rectangle covers: the whole BAND painted a tile at a time, its eight rows together,
+            # rectangle covers: the whole band painted a tile at a time, its eight rows together,
             # and on to the next row of pixels after it. The tiles the rectangle covers whole go to
             # +whole_tiles+ (rt_paint_fill_band_copied or rt_paint_fill_band_stored) together, not
             # eight rows of the loop for a row; a fill of half the screen is mostly such tiles.
@@ -1403,7 +1403,7 @@ module VBlank
 
             # rt_paint_blit_inked(list, showing, x, y, ink): text whose colour is picked as the game
             # runs (Lowering::Paint#emit_draw_text), from the list of its three pictures — in the
-            # colour shown, in the colour picked, and in its INK, a place of the colour list no other
+            # colour shown, in the colour picked, and in its ink, a place of the colour list no other
             # colour is painted in.
             #
             # The ink's picture is painted when the ink can stand for the colour wanted: the ink
@@ -1417,7 +1417,7 @@ module VBlank
             # painted in its own colour's picture, as is any colour when the count of clears comes
             # round to the one the ink was last set at.
             #
-            # INK_GENERATIONS keeps, for each ink, one more than the count of clears (CLEARS) it was
+            # INK_GENERATIONS keeps, for each ink, one more than the count of clears (clears) it was
             # last set at: nought, at power-on, is none. (+temp+ is the colour wanted, +temp+ + 2 its place's byte.)
             def emit_blit_inked(asm, memory, s)
               now = memory[Tint::COLORS_NOW]
@@ -2165,7 +2165,7 @@ module VBlank
             # list. A tile of an older generation between them is not sent: its cell shows the
             # clear tile. The rows are marked unchanged again, and this generation is the one shown.
             #
-            # A PASS THAT FITS IN ONE BLANK, as near as the rows changed show (#emit_measure), is not
+            # A pass that fits in one blank, as near as the rows changed show (#emit_measure), is not
             # split on a Super FX cartridge: every run goes on the list that is sent last, with the
             # map, so the whole pass arrives in one blank, in as few runs as it has. Only a bigger
             # pass is split, its tiles on the screen held back to go with the map. On a plain
@@ -2573,7 +2573,7 @@ module VBlank
               asm.sta(asm.direct(s.not_mask))
             end
 
-            # X at the first row of DIRTY to look at, four bytes a row, or on to +none+ if there is
+            # X at the first row of dirty to look at, four bytes a row, or on to +none+ if there is
             # none: every row on a Super FX cartridge, and on a plain one the rows painted since the
             # last pass (PaintLog keeps which).
             def emit_dirty_rows_from(asm, memory, logged, none)
@@ -2822,7 +2822,7 @@ module VBlank
               asm.label("rt_paint_upload_map_rows_sent")
             end
 
-            # rt_paint_send_runs (JSR): the runs of RUNS from X up to +last+, as many at a time as
+            # rt_paint_send_runs (JSR): the runs of runs from X up to +last+, as many at a time as
             # the blank has time for (Blank's rt_blank_left), each counted RUN_SETTING_UP more; when
             # not even the next fits, as many of its tiles as do, and the rest in the next blank.
             # One check of the blank for each handful of runs rather than for each run, which costs
@@ -2913,7 +2913,7 @@ module VBlank
             # +bank+ to video RAM's two ports, what every run shares, so each run (rt_paint_send_run)
             # sets only its own place and length. Set again after anything else could copy, as
             # after a wait for the next blank.
-            # rt_paint_send_run (JSR): the run at X of RUNS copied to video RAM, its tiles to their
+            # rt_paint_send_run (JSR): the run at X of runs copied to video RAM, its tiles to their
             # own slots. Keeps X.
             def emit_send_run(asm, memory, bank)
               h = Console::SNESHardware
@@ -2953,7 +2953,7 @@ module VBlank
             # way: under a third of a line, for the sixty or so cycles of looking at it.
             RUN_PICKING = 48
 
-            # The run at X of RUNS added to +chunk+, as its bytes and RUN_SETTING_UP; X on to the next.
+            # The run at X of runs added to +chunk+, as its bytes and RUN_SETTING_UP; X on to the next.
             def emit_add_run_bytes(asm, memory, s)
               asm.lda(asm.long_x(memory[RUNS] + 2))
               6.times { asm.asl }

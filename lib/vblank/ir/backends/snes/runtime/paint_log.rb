@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # A PAINTED SCREEN THAT PAINTS AND SENDS ONLY WHAT CHANGED, on a plain cartridge (Paint).
+          # A painted screen that paints and sends only what changed, on a plain cartridge (Paint).
           #
           # A game on a painted screen usually clears it every pass and paints it all again: a menu
           # clears and writes its four rows, a score clears and writes its digits. Painting a tile of
@@ -15,23 +15,23 @@ module VBlank
           # video RAM at all. The console's own games never paint their text again: it is drawn
           # once and stays.
           #
-          # So a painting here is not done when the game asks for it. It is WRITTEN DOWN (the LOG:
+          # So a painting here is not done when the game asks for it. It is WRITTEN DOWN (the log:
           # what it was, its numbers and the area it was held to), and each tile it covers takes
           # it into its KEY, a 32-bit number worked out from every painting that covered the tile
-          # since the screen was last cleared, in order, starting from the clear colour (SEED).
+          # since the screen was last cleared, in order, starting from the clear colour (seed).
           # Two tiles with the same key were painted the same way, so they hold the same pixels.
           # As the pass ends (rt_paint_flush), each tile the pass covered has its key compared with
           # the key of what the copy holds for it (KEYS_COPY):
           #
           #   the same          nothing to do: the copy and video RAM already hold it
-          #   not the same      the tile is made the clear colour and painted again (REPAINT)
+          #   not the same      the tile is made the clear colour and painted again (repaint)
           #   painted already   in this generation, at an earlier flush: painted again on top
           #
           # Then each painting of the log that covers a tile to paint is done again, whole. A
           # painting only ever puts its colours over pixels, never mixes them with what is under, so
           # doing every painting that covers a tile again, in order, over a tile that already shows
           # them changes nothing (rt_paint_replay sees that each such tile has all of its done). A
-          # tile whose copy changed is UNSENT until the blank copies it to video RAM, so only those
+          # tile whose copy changed is unsent until the blank copies it to video RAM, so only those
           # go.
           #
           # A key is a hash, so two different ways of painting a tile could in principle come to the
@@ -39,7 +39,7 @@ module VBlank
           # four thousand million for each tile that changes; the hash is chosen so a small change
           # of a number (a place moved by one) changes the whole key.
           #
-          # THE MAP SENDS ONLY THE CELLS THAT CHANGED. A clear points every cell back at the clear
+          # The map sends only the cells that changed. A clear points every cell back at the clear
           # tile, and a tile painted in the new generation points its cell at itself again, so a
           # pass that paints the same tiles changes no cell. The cells of the tiles readied in a
           # generation (READIED) are looked at again when it ends, with those readied in this pass
@@ -66,7 +66,7 @@ module VBlank
             # For each tile, the generation the copy's tile was last painted in; the same as the
             # screen's means the copy holds this generation's paintings up to the last flush.
             PAINTED_IN = "rt paint painted in"
-            # For each tile, a byte: the flush that is painting it again, its STAMP. A stamp comes
+            # For each tile, a byte: the flush that is painting it again, its stamp. A stamp comes
             # round after 256 flushes, so a tile can be taken for one being painted when it is not;
             # painting it again does no harm (see the top), it only costs the time.
             REPAINT = "rt paint repaint"
@@ -107,12 +107,12 @@ module VBlank
             ENTRY_AGAIN = 38
             # Its hash (OP_HASH), so its tiles can take it in again without working it out.
             ENTRY_HASH = 40
-            # A PASS THAT DRAWS WHAT THE LAST ONE DREW. Most passes that clear the screen go on to
+            # A pass that draws what the last one drew. Most passes that clear the screen go on to
             # paint exactly what the pass before painted, in the same order: a menu standing still,
             # a screen of text. Writing each painting down and taking it into its tiles' keys costs
             # far more than asking whether it is the painting the last pass wrote down at the same
             # place in the log. So the first clear of a pass, to the colour the screen is cleared
-            # to already, is DEFERRED while the log the last pass left is whole (LAST_PASS_END: how
+            # to already, is deferred while the log the last pass left is whole (LAST_PASS_END: how
             # far it goes, or NO_LAST_PASS): the screen still shows the last pass, and each painting
             # the same as the one written down at LOG_END is passed over, LOG_END moved past it. A
             # pass that ends having matched the whole of the last pass's log changes nothing, and
@@ -158,7 +158,7 @@ module VBlank
             # bit alone, so one test finds either.
             KIND_LAYER = 4
             KIND_DEMOTED = 5
-            # A FILL WHOSE NUMBERS ALL HAVE A HIGH HALF OF NOUGHT, as the game knew while it was built
+            # A fill whose numbers all have a high half of nought, as the game knew while it was built
             # (a pixel or a rectangle at places written in the program): rt_paint_fill_small, given
             # only the low halves. Its entry's kind carries this bit, so a pass the same as the last
             # compares five words, not ten, to find it so; the kind is the bits below it.
@@ -750,7 +750,7 @@ module VBlank
             # painting done at once, before it paints: each tile not yet painted in this generation
             # made the clear colour, and the tile unsent if that or the painting changes it. Its key
             # is not worked out: no tile of this generation is compared before the next clear starts
-            # another (LOGGING), so only the copy's key matters, and it is set to none. It
+            # another (logging), so only the copy's key matters, and it is set to none. It
             # reads and writes the tiles by their number (X), as the routines that call it keep their
             # own numbers in the rest of the direct page.
             # (+mask+ marks whether OP_HASH is nought: a routine that only reads the tiles.)
@@ -823,7 +823,7 @@ module VBlank
               asm.lda(1)
               asm.sta(asm.direct(s.column))
               # The copy's tile is this generation's so far, or made so: the clear colour, whose
-              # key is SEED.
+              # key is seed.
               asm.label("rt_paint_mark_now_ready")
               asm.lda(asm.long_x(memory[PAINTED_IN]))
               asm.and_a(0x00FF)
@@ -1064,7 +1064,7 @@ module VBlank
               asm.asl
               asm.tax
               # Sending or not is the same for every tile of the flush, so each has a loop of its own
-              # and SENDING is read once a row, not once a tile.
+              # and sending is read once a row, not once a tile.
               asm.lda(asm.abs(memory[SENDING]))
               asm.branch_long(:bne, "rt_paint_flush_sending_row_tile")
               emit_flush_tiles(asm, memory, s, "rt_paint_flush_row", sending: false)
@@ -1177,7 +1177,7 @@ module VBlank
               asm.lda(generation)
               asm.sta(asm.abs_y(painted_in))
               asm.rep(0x20)
-              # Made the clear colour, unless the copy's tile is so throughout already: its key SEED.
+              # Made the clear colour, unless the copy's tile is so throughout already: its key seed.
               asm.lda(asm.abs_x(copy))
               asm.cmp(asm.abs(memory[SEED]))
               asm.bne("#{tag}_blank")
@@ -1198,7 +1198,7 @@ module VBlank
                 asm.sta(asm.abs_x(copy + 2))
               end
               if sending
-                # A tile not UNSENT has its slot of video RAM holding what the copy held, and
+                # A tile not unsent has its slot of video RAM holding what the copy held, and
                 # KEYS_SHOWN the copy's key: rt_paint_slot_behind sets the one as it sends, and
                 # everything that changes the copy without sending marks the tile unsent. The
                 # copy's key is changing, so the slot is behind, and the keys are not compared.
@@ -1279,7 +1279,7 @@ module VBlank
             end
 
             # rt_paint_flush_send_tile (JSR, Y the tile): a tile whose slot of video RAM is behind the
-            # copy (UNSENT) put on a run to send, one on the screen now (its cell of the map as video
+            # copy (unsent) put on a run to send, one on the screen now (its cell of the map as video
             # RAM has it points at it) on a run of its own kind; any other ends the run. Keeps X
             # and Y. (+chunk+ is the run's first tile, or none, +mask+ its kind, +not_mask+ the
             # tile's, as Paint's rt_paint_prepare keeps them.)
@@ -1406,9 +1406,9 @@ module VBlank
             end
 
             # rt_paint_replay (JSR): the paintings of the log that cover a tile this flush paints (its
-            # REPAINT the STAMP) painted again whole, each held to the area it was held to; the area
+            # REPAINT the stamp) painted again whole, each held to the area it was held to; the area
             # there was put back after. The routines' painting part is entered past where they write
-            # themselves down (rt_paint_fill_now, rt_paint_blit_now), and REPLAYING tells them not to.
+            # themselves down (rt_paint_fill_now, rt_paint_blit_now), and replaying tells them not to.
             #
             # A painting done again whole paints every tile it covers, so each of those tiles must
             # have every painting of the log that covers it done again too, in order: a tile left
@@ -1580,7 +1580,7 @@ module VBlank
             end
 
             # A routine +label+ (JSR, X the log entry) that runs the block for each tile the entry's
-            # painting covers, row by row, with A its REPAINT byte and Y its number; +pointer+ points
+            # painting covers, row by row, with A its repaint byte and Y its number; +pointer+ points
             # at REPAINT. Keeps X.
             def emit_entry_tiles(asm, memory, s, label)
               log = memory[LOG]

@@ -5,11 +5,11 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # THE MUSIC PLAYER. The game only names a tune (rt_music_play) or stops it (rt_music_stop),
+          # The music player. The game only names a tune (rt_music_play) or stops it (rt_music_stop),
           # and the player walks each part's notes (SNES::Music) a frame at a time, handing each note's
           # group of commands to the sound unit as its frame comes.
           #
-          # WHERE IT RUNS. The Advance and the Color play their music from the screen's interrupt.
+          # Where it runs. The Advance and the Color play their music from the screen's interrupt.
           # Here that interrupt would come between any two of the game's own writes to the sound
           # unit, and the mailboxes take one command at a time: a note sent from the interrupt in
           # the middle of a beep's write would spoil both. So the player runs where a pass's wait
@@ -42,7 +42,7 @@ module VBlank
             LIST = "rt music list" # Where those notes are
             ENTRY = "rt music entry" # Where the part being played's entry is in the table
             NOTE = "rt music note" # Its note being played
-            # THE MUSIC VOLUME, in a game that sets it (SNES::Music#follows_level?): the level the
+            # The music volume, in a game that sets it (SNES::Music#follows_level?): the level the
             # notes sounding were set at, kept with its FULL_LEVEL bit turned over so the nought
             # memory starts at means full; each part's note's volume as written, while its voice holds
             # it (nought for a rest, or none); a note's loudness at the level, worked out; the level
@@ -53,7 +53,7 @@ module VBlank
             LOUDNESS = "rt music loudness"
             LEVEL_NOW = "rt music level now"
             LOUDNESS_TABLE = "rt music loudness table"
-            # THE PARTS WHOSE VOICES HOLD A NOTE, in the order they first took one since the tune
+            # The parts whose voices hold a note, in the order they first took one since the tune
             # started (Reference::Player's @sounding, a Hash kept in the order its keys came): each
             # part's number, two bytes apart, and where the list ends, and whether each part is in it.
             # A sound effect taking a part's voice takes the part out, and the part's next note puts
@@ -72,7 +72,7 @@ module VBlank
             HELD_OWNER = "rt music held owner"
             NOTE_OWNER = "rt music note owner"
             LEVEL_TWICE = "rt music level twice"
-            # A NOTE THAT WOBBLES ITS PITCH (SNES::Music#wobble_record), in a game with one. The sound
+            # A note that wobbles its pitch (SNES::Music#wobble_record), in a game with one. The sound
             # chip has no wobble, so the player does it a frame at a time, as the interpreter counts
             # it (IR::Tunes::Wobble): each console voice's record, nought for a voice holding still;
             # the frames still to wait; the frames its swing has left; and whether it is above the
@@ -82,12 +82,12 @@ module VBlank
             WOBBLE_LEFT = "rt music wobble left"
             WOBBLE_RISING = "rt music wobble rising"
             WOBBLE_AT = "rt music wobble at"
-            # A SQUARE NOTE THAT STEPS ITS SHAPES (SNES::Music#shape_record), in a game with one: each
+            # A square note that steps its shapes (SNES::Music#shape_record), in a game with one: each
             # console voice's record, nought for a voice holding its shape, and its note's frame, kept
             # in 0..7 so nought is the note's first frame alone.
             SHAPE_RECORD = "rt music shape record"
             SHAPE_FRAME = "rt music shape frame"
-            # A NOTE THAT SWELLS UNDER THE MUSIC VOLUME (SNES::Music#swell_record), in a game with one:
+            # A note that swells under the music volume (SNES::Music#swell_record), in a game with one:
             # each console voice's record, nought for no such note, and its count as the
             # interpreter keeps it (IR::Tunes::Swell). SWELL_AT is the voice being stepped, and the
             # rest are what stepping it works with.
@@ -99,7 +99,7 @@ module VBlank
             SWELL_CEILING = "rt music swell ceiling"
             SWELL_NEEDS = "rt music swell needs"
             SWELL_GROUPS = "rt music swell groups"
-            # A NOTE THAT SLIDES (SNES::Music#slide_record), in a game with one: where in its record
+            # A note that slides (SNES::Music#slide_record), in a game with one: where in its record
             # the next frame is, nought when no note slides. Only one voice slides, so one word.
             SLIDE_CURSOR = "rt music slide cursor"
             # Which of a part's lists of loudness groups a strike reads, in a game with a note from one
@@ -164,7 +164,7 @@ module VBlank
               emit_group(asm)
             end
 
-            # A SONG'S NOTES APART. A game whose songs do not fit a bank of the cartridge keeps its
+            # A song's notes apart. A game whose songs do not fit a bank of the cartridge keeps its
             # song parts' notes in banks of their own (SongBanks), NOTES_A_PIECE to a bank, and a
             # part's entry names its first note by number. A note's number gives its piece (the high
             # bits) and its place in the piece (the low bits, sixteen bytes a note), and
@@ -188,7 +188,7 @@ module VBlank
             # Whether the song parts' notes are apart from the table (NOTE_COPY).
             def notes_apart?(memory) = memory.reserved?(NOTE_COPY)
 
-            # A = +field+ of the note at NOTE, a tune's or an effect's (SNES::Music's NOTE_ names): read
+            # A = +field+ of the note at note, a tune's or an effect's (SNES::Music's NOTE_ names): read
             # in the table with X = NOTE, which it loads unless +x_holds_note+; or, with the notes
             # apart, from NOTE_COPY, leaving X and Y as they were.
             def emit_note_field(asm, memory, field, x_holds_note: false)
@@ -275,7 +275,7 @@ module VBlank
             # Whether a note changes as it plays in this game, and so #emit_note_changes calls anything.
             def changes_notes?(memory) = wobbles?(memory) || steps_shapes?(memory) || swells?(memory) || slides?(memory)
 
-            # The note at ENTRY and NOTE taken up by what changes as it plays, a tune's or an effect's.
+            # The note at ENTRY and note taken up by what changes as it plays, a tune's or an effect's.
             def emit_note_changes(asm, memory)
               asm.jsr(asm.abs("rt_music_note_wobble")) if wobbles?(memory)
               asm.jsr(asm.abs("rt_music_note_shapes")) if steps_shapes?(memory)
@@ -298,7 +298,7 @@ module VBlank
               asm.label("rt_voice_stops_changing_done")
             end
 
-            # A HELD TUNE'S NOTES HOLD STILL, and an effect's move on (Reference::Player#held_still?).
+            # A held tune's notes hold still, and an effect's move on (Reference::Player#held_still?).
             # With no effects the whole walk stops at the top; with them each voice is asked. Inline,
             # Y the voice: on to +next+ when it holds still. A wide branch, since Y's walk can be long.
             def emit_skip_voice_held_still(asm, at, memory, next_voice, label)
@@ -336,7 +336,7 @@ module VBlank
 
             # rt_music_slides: the sliding note's frame played from its record, every frame the
             # player runs, since on the Advance the voice moves by itself even under `hold_music`.
-            # rt_music_note_slide: the record of the note at NOTE taken up, or nothing, when the
+            # rt_music_note_slide: the record of the note at note taken up, or nothing, when the
             # part at ENTRY plays on the one voice that slides.
             def emit_slides(asm, at, memory)
               m = SNES::Music
@@ -481,7 +481,7 @@ module VBlank
               asm.sta(record)
               asm.rtl
 
-              # rt_music_note_swell: the voice of the part at ENTRY counting as the note at NOTE sets,
+              # rt_music_note_swell: the voice of the part at ENTRY counting as the note at note sets,
               # from its loudness at the level, or holding no swell (Reference::Player#hold_swell_under_level).
               asm.label("rt_music_note_swell")
               asm.ldx(at.call(ENTRY))
@@ -568,7 +568,7 @@ module VBlank
               asm.sta(asm.abs_y(memory[SHAPE_RECORD]))
               asm.rtl
 
-              # rt_music_note_shapes: the voice of the part at ENTRY stepping as the note at NOTE
+              # rt_music_note_shapes: the voice of the part at ENTRY stepping as the note at note
               # sets, or holding its shape (Reference::Player#set_voice).
               asm.label("rt_music_note_shapes")
               asm.ldx(at.call(ENTRY))
@@ -649,7 +649,7 @@ module VBlank
               asm.sta(asm.abs_y(memory[WOBBLE_RECORD]))
               asm.rtl
 
-              # rt_music_note_wobble: the voice of the part at ENTRY wobbling as the note at NOTE
+              # rt_music_note_wobble: the voice of the part at ENTRY wobbling as the note at note
               # sets, or holding still (Reference::Player#set_voice).
               asm.label("rt_music_note_wobble")
               asm.ldx(at.call(ENTRY))
@@ -847,7 +847,7 @@ module VBlank
               asm.sta(at.call(NEXT_NOTE_FRAME))
               asm.rts
 
-              # THE PLAYING TUNE STOPS (Reference::Player#silence_song; SONG is still the tune's): the
+              # The playing tune stops (Reference::Player#silence_song; SONG is still the tune's): the
               # voices its parts play on let go — but one a sound effect holds, which stays the
               # effect's — every voice the tune held free, no note held, and the tune's own stop
               # logged (Music.stop_entry).
@@ -876,7 +876,7 @@ module VBlank
               asm.jmp(asm.abs("rt_sound_group"))
             end
 
-            # rt_music_recorded_note: the note at NOTE of a part that plays a recording, A its channel
+            # rt_music_recorded_note: the note at note of a part that plays a recording, A its channel
             # (SNES::Music::RECORDED_CHANNEL on): a note takes a place for the part (rt_recordings_note),
             # and logs itself if it found one; a rest gives the part's place back and logs itself
             # whether the part had one or not (Reference::Player#play_song_frame).
@@ -923,7 +923,7 @@ module VBlank
               asm.rts
             end
 
-            # The heard recorded note at NOTE under the music volume (Reference::Player#record_note_volume):
+            # The heard recorded note at note under the music volume (Reference::Player#record_note_volume):
             # the part's record held for a new level to reach, nought for a rest, the part in HELD_ORDER,
             # and its loudness at the level given to its place and logged.
             def emit_recorded_note_level(asm, at, memory)
@@ -1136,8 +1136,8 @@ module VBlank
               asm.lda(asm.ind_long_y(memory[NOTE_POINTER]))
             end
 
-            # With a note's frame in A and the carry from comparing it with FRAME: kept in
-            # NEXT_NOTE_FRAME if it is ahead of FRAME and sooner than the one kept.
+            # With a note's frame in A and the carry from comparing it with frame: kept in
+            # NEXT_NOTE_FRAME if it is ahead of frame and sooner than the one kept.
             def emit_next_note_frame_kept(asm, at)
               kept = asm.here
               asm.bcc("rt_music_next_note_kept_#{kept}")
@@ -1147,7 +1147,7 @@ module VBlank
               asm.label("rt_music_next_note_kept_#{kept}")
             end
 
-            # A NOTE'S LOUDNESS, between its head and its tail (SNES::Music#part_layout): its volume as
+            # A note's loudness, between its head and its tail (SNES::Music#part_layout): its volume as
             # written held for a new level to reach, if its voice holds one, and its loudness at the
             # level written and logged.
             def emit_note_loudness(asm, at, memory)
@@ -1211,7 +1211,7 @@ module VBlank
               asm.label("rt_music_note_loud") if swells?(memory)
             end
 
-            # THE MUSIC VOLUME MOVED (Reference::Player#apply_music_volume): at the start of a frame
+            # The music volume moved (Reference::Player#apply_music_volume): at the start of a frame
             # of the tune, before any note, every part whose voice holds a note writes and logs its
             # loudness at the new level, in the order the parts first took their voices (HELD_ORDER) —
             # the order of the parts, since every part's first time round starts with an event at
@@ -1227,7 +1227,7 @@ module VBlank
             # note's place given the new loudness, and logged only if it has one
             # (Reference::Mixer#rescale_music). On to the next part.
             #
-            # EIGHT PARTS TAKE A NEW LEVEL ON ONE FRAME, and that frame may be one a chord starts on,
+            # Eight parts take a new level on one frame, and that frame may be one a chord starts on,
             # which is the longest the music has. So a recorded part's turn here looks nothing up that
             # was known when its note started: the place the note took and the number Recordings knows
             # the part by were kept then (HELD_PLACE, HELD_OWNER), its record is in HELD, and what it
