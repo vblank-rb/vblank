@@ -2,14 +2,14 @@
 
 module VBlank
   module DSL
-    # THE DATE AND TIME, as the clock a cartridge carries keeps them. `clock` hands one back
+    # The date and time, as the clock a cartridge carries keeps them. `clock` hands one back
     # (see Builder#clock), and each reading is a {Value} like any variable's:
     #
     #   now = clock
     #   if now.present? && now.set?
     #     draw_number now.hour, 40, 60, :white, digits: 2
     #   else
-    #     draw_text "SET THE CLOCK", :center, 70, :white
+    #     draw_text "set the clock", :center, 70, :white
     #   end
     #
     # Every reading in one pass of the game loop is of the same moment, so a minute cannot turn
@@ -50,7 +50,7 @@ module VBlank
       # ask the player to set it rather than show a date that is not today.
       def set? = Condition.new(@builder, IR::Build.clock(:set))
 
-      # SET THE CLOCK to a date and time, each a number or a {Value} the game works out — the
+      # Set the clock to a date and time, each a number or a {Value} the game works out — the
       # player's choice on a screen that asks, say. The readings are that moment at once, and
       # move on from it; `set?` is true from then on. On a cartridge with no clock it does
       # nothing, and every reading stays 0.

@@ -2,7 +2,7 @@
 
 module VBlank
   module DSL
-    # A BLOCK OF A BACKGROUND'S CELLS CHANGED IN ONE LINE: filled with one tile (`fill_tiles`), with
+    # A block of a background's cells changed in one line: filled with one tile (`fill_tiles`), with
     # one of the cells a background from the data pack was told (`fill_cells`), or put back to the
     # background's own map (`restore_cells`).
     #
@@ -25,7 +25,7 @@ module VBlank
     #
     # Mixed into Background. Written as plain Ruby, not as game code: what it builds is the game's steps.
     module BackgroundCellBlocks
-      # FILL A BLOCK OF CELLS WITH ONE TILE of the tileset, named as `set_tile` names it: a key the
+      # Fill a block of cells with one tile of the tileset, named as `set_tile` names it: a key the
       # map was written in, or a number the game works out counting through the keys.
       def fill_tiles(col, row, across, down, tile)
         refuse_unblocked_background!("fill_tiles")
@@ -38,7 +38,7 @@ module VBlank
         end
       end
 
-      # FILL A BLOCK OF CELLS WITH ONE OF THE CELLS A BACKGROUND FROM THE DATA PACK WAS TOLD, named as
+      # Fill a block of cells with one of the cells a background from the data pack was told, named as
       # `set_cell` names it: the original's cell number, or its place in the slot that told them.
       def fill_cells(col, row, across, down, word)
         refuse_unblocked_background!("fill_cells")
@@ -59,7 +59,7 @@ module VBlank
         end
       end
 
-      # PUT A BLOCK OF CELLS BACK TO THE BACKGROUND'S OWN MAP, as it was declared: what a box covered
+      # Put a block of cells back to the background's own map, as it was declared: what a box covered
       # shows again. On a background from the data pack, the map is the original's.
       def restore_cells(col, row, across, down)
         refuse_unblocked_background!("restore_cells")
@@ -95,7 +95,7 @@ module VBlank
 
       private
 
-      # THE MAP AS DECLARED, A TABLE IN THE CARTRIDGE that `restore_cells` reads a cell of at a time:
+      # The map as declared, a table in the cartridge that `restore_cells` reads a cell of at a time:
       # for each cell, row by row, its tile's place among the tiles the map uses, or -1 for a cell
       # that names none. So a cell put back picks among the map's own tiles, not every cell of it.
       def restore_table
@@ -106,7 +106,7 @@ module VBlank
         end
       end
 
-      # A BLOCK PUT BACK ON A BACKGROUND READ FROM THE DATA PACK AS THE GAME STARTS has no children:
+      # A block put back on a background read from the data pack as the game starts has no children:
       # its map is the file's, which the build does not hold, so it cannot be written a cell at a
       # time from a table. Only the interpreter and the builds for a computer leave a pack out, and
       # each puts the block back from the map it read (Reference#exec_set_tile_block, the runtimes'
@@ -118,7 +118,7 @@ module VBlank
         self
       end
 
-      # THE BLOCK AS ONE STEP, whose children are the same cells a cell at a time: two counted loops
+      # The block as one step, whose children are the same cells a cell at a time: two counted loops
       # over +across+ and +down+ handing +body+ each cell's column and row, then every variable the
       # loops changed (theirs, and +also_zeroed+) set back to nought, so a console that writes the
       # block its own way, and never runs them, holds the same numbers.
@@ -182,7 +182,7 @@ module VBlank
         refuse_block_on_streamed_map!(verb)
       end
 
-      # RESTORING NEEDS THE MAP AS THE BUILD KNOWS IT. A background of several maps shows whichever
+      # Restoring needs the map as the build knows it. A background of several maps shows whichever
       # the game last handed it; one whose walls go with its tiles would need each cell's wall put
       # back too; and one read from the data pack as the game starts, declared `held: true`, would
       # hold cells the build cannot name, since its map is the file's.

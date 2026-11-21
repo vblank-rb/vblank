@@ -32,7 +32,7 @@ module VBlank
       #   shot.hide if shot.above_top?            # a bullet flew off the top
       #   enemy.respawn if enemy.below_bottom?    # an enemy fell off the bottom
       #
-      # "Off an edge" means FULLY past it — nothing of the rectangle still shows there —
+      # "Off an edge" means fully past it — nothing of the rectangle still shows there —
       # so a thing sliding half off a side isn't off_screen? yet. The screen is the one the
       # game is being built for (see {Builder#console}), asked of +collision_builder+, which
       # everything mixing this in answers; a rectangle's right/bottom read one past its
@@ -58,7 +58,7 @@ module VBlank
         top >= collision_builder.console.screen_height
       end
 
-      # Fully off the screen past ANY edge — nothing of it shows.
+      # Fully off the screen past any edge — nothing of it shows.
       def off_screen?
         off_left? || off_right? || above_top? || below_bottom?
       end

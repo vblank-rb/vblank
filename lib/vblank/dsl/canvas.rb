@@ -2,7 +2,7 @@
 
 module VBlank
   module DSL
-    # A PICTURE THE GAME DRAWS INTO WHILE IT RUNS, handed back by `canvas`.
+    # A picture the game draws into while it runs, handed back by `canvas`.
     #
     # Underneath it is the list a `tiles ..., from: list` run or an `image ..., from: list`
     # picture paints from, and the canvas keeps that list for you: it fills it, packs each
@@ -16,7 +16,7 @@ module VBlank
     # bytes at once (IR list_fill), which `clear` and `fill_rect` use for whole bytes, where a
     # byte at a time cost a clear of a big canvas most of a frame.
     #
-    # A POSITION THE GAME WORKS OUT IS CLIPPED at the canvas edge, so a dot that wandered off
+    # A position the game works out is clipped at the canvas edge, so a dot that wandered off
     # needs no test around it. A position written as a number past the edge is a friendly
     # error, since that one could only be a mistake.
     class Canvas
@@ -73,7 +73,7 @@ module VBlank
       # width or height of 0 or less draws nothing, and what falls outside the canvas is cut
       # off.
       #
-      # A ROW OF IT IS WHOLE BYTES with at most a pixel left over at each end, since a byte
+      # A row of it is whole bytes with at most a pixel left over at each end, since a byte
       # holds two pixels side by side, left one first. So each row paints its odd end pixels
       # one at a time and fills the bytes between — a run per tile it crosses, because a row
       # of one tile is four bytes and the same row of the next tile is a whole tile further on

@@ -2,7 +2,7 @@
 
 module VBlank
   module DSL
-    # A WORD THAT CHANGES A VARIABLE ENDS IN `!`, and this is the sentence that says so when one
+    # A word that changes a variable ends in `!`, and this is the sentence that says so when one
     # is written without it — on a variable's handle, on a pool field, and as a flat verb.
     #
     # It lives in one place because the wording and the advice under it are one promise to the
