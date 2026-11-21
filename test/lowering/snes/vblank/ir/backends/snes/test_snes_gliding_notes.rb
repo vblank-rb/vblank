@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A GLIDING NOTE ON THE SOUND CHIP. The checked run holds where the note has got to against the
+# A gliding note on the sound chip. The checked run holds where the note has got to against the
 # interpreter, but what is heard is the chip's voice, so these read its pitch registers.
 class TestSNESGlidingNotes < Minitest::Test
   SNES = VBlank::IR::Backends::SNES
@@ -60,7 +60,7 @@ class TestSNESGlidingNotes < Minitest::Test
     assert_equal volumes_of(struck), [left, right], "as a note struck there"
   end
 
-  # A SONG FADING OUT while its recorded note glides with no volume or side of its own: the note keeps
+  # A song fading out while its recorded note glides with no volume or side of its own: the note keeps
   # the side it was struck at and falls with the music, as the interpreter's loudness falls.
   private def fading_song
     notes = [Score::Note.new(at: 0, hz: hz_of(0x1000), volume: 9, pan: -0.5, length: 40),

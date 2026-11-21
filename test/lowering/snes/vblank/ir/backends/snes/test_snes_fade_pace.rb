@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# WHAT A FADE TOWARD WHITE OR A COLOUR COSTS A SUPER NINTENDO when its amount changes every pass,
+# What a fade toward white or a colour costs a Super Nintendo when its amount changes every pass,
 # measured in the emulator. A fade to black is the display's own brightness and moves no colour, but
 # toward white or a colour every colour the pictures show is moved again every pass (Runtime::Tint):
 # the walk's tables worked out once, then each colour three table reads put together.
