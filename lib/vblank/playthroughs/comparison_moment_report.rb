@@ -3,7 +3,7 @@
 module VBlank
   module Playthroughs
     class Comparison
-      # THE REPORT OF A DRIFT AT A NAMED MOMENT, for a comparison on the same script, in
+      # The report of a drift at a named moment, for a comparison on the same script, in
       # which each cartridge was played by itself:
       #
       #   - the folder is named for the moment, since the two reached it on different frames;

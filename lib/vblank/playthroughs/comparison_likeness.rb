@@ -3,14 +3,14 @@
 module VBlank
   module Playthroughs
     class Comparison
-      # HOW ALIKE TWO PICTURES HAVE TO BE to count as the same. With nothing set, every pixel
+      # How alike two pictures have to be to count as the same. With nothing set, every pixel
       # has to be the same colour: the strict comparison.
       #
       # That is the right question of a framework change, and the wrong one of a game being
       # rebuilt to match another, where one stray pixel several minutes in would otherwise
       # hide everything after it.
       #
-      # +share_may_differ+ is the share of the pixels that ARE looked at that may be a
+      # +share_may_differ+ is the share of the pixels that are looked at that may be a
       # different colour, from 0 to 1, before a frame counts as differing. +frames_in_a_row+ is
       # how many frames running have to differ before it is drift, so that one frame of flicker
       # is not. Which pixels are looked at is the LookedAt's to decide, a frame at a time, and each
@@ -82,7 +82,7 @@ module VBlank
           (0...first.size).select { |at| part.bytes.getbyte(at) != 0 && first[at] != second[at] }
         end
 
-        # HOW ALIKE THE PICTURES HAD TO BE, AS SENTENCES, for a report a person reads.
+        # How alike the pictures had to be, as sentences, for a report a person reads.
         # +point+ is what the two were compared at, `A frame` or `A moment`.
         def picture_sentences(point)
           looked_at = @looked_at.whole_screen? ? "pixels" : "pixels that were looked at"
