@@ -4,10 +4,10 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # HOW MANY FRAMES A PASS OF THE GAME LOOP REALLY TOOK.
+        # How many frames a pass of the game loop really took.
         #
         # A game loop waits for the screen, does its work, and comes round again. While the work
-        # fits in the time between two frames, one pass IS one frame and nothing has to count.
+        # fits in the time between two frames, one pass is one frame and nothing has to count.
         # When the work does not fit, a pass spans two frames, or three — and anything that was
         # counting passes and calling them frames is now counting the wrong thing.
         #
@@ -16,8 +16,8 @@ module VBlank
         # wait). So the count is free to come by — add one in the handler — and the difference
         # between one pass and the next is how many frames the last pass spanned.
         #
-        # WHY THE COUNTING IS EXACT. The wait does not return "at some point after a frame": it
-        # sleeps until the NEXT frame interrupt after it is asked. So a pass that overran by a
+        # Why the counting is exact. The wait does not return "at some point after a frame": it
+        # sleeps until the next frame interrupt after it is asked. So a pass that overran by a
         # frame wakes two interrupts later than it started, and the difference is two. There is
         # no drift to accumulate and no fraction to carry, because a console is late by whole
         # frames or not at all.
@@ -49,7 +49,7 @@ module VBlank
             @primitives.store_var(ACC, COUNT)
           end
 
-          # THE COUNT STARTS AT NOUGHT, for a game that reads it as frames since power-on — put
+          # The count starts at nought, for a game that reads it as frames since power-on — put
           # at the top of setting up, where the frames start being counted (see
           # GBA#emit_arm_frame_counting), so that every frame from then on is in it.
           # This console's memory is not cleared at power-on, so without this the count starts
@@ -60,7 +60,7 @@ module VBlank
             @primitives.store_var(ACC, COUNT)
           end
 
-          # START COUNTING FROM HERE, which is where the game loop begins. The frames that went by
+          # Start counting from here, which is where the game loop begins. The frames that went by
           # before it were spent setting up — writing video memory, painting the first picture
           # — and they are not frames the game missed. Counted as missed, the first pass ran
           # every routine that keeps real time that many times over before anything was shown,
@@ -73,9 +73,9 @@ module VBlank
           end
 
           # ...and read at the top of each pass: the difference since last time, held between one
-          # and MOST, left where anything that needs it can read it.
+          # and most, left where anything that needs it can read it.
           #
-          # HELD AT BOTH ENDS, and the low end is not tidiness. This console's memory is not zero
+          # Held at both ends, and the low end is not tidiness. This console's memory is not zero
           # at power-on, so on the very first pass both marks are rubbish and their difference
           # can be anything at all — including a negative, which would tell a loop to run no
           # times and a beat to count backwards. One is the floor because a pass is always worth
@@ -104,7 +104,7 @@ module VBlank
             @primitives.store_var(ACC, STEP)
           end
 
-          # IS THE PASS THAT JUST ENDED LATE? — asked by a screen that may show a late page at
+          # Is the pass that just ended late? — asked by a screen that may show a late page at
           # once (see IR::LatePages). Late is not "a break went by": a game aiming at thirty sees
           # one go by on every pass, and on time. It is "more breaks went by than the game aims to
           # take", which the screen sets as its pace — so a game aiming at thirty is late when a
@@ -113,7 +113,7 @@ module VBlank
           # ...plus one, for a page that would tear, after a page shown part way down the picture.
           # The pass after it started part way down too, so the break coming was never one it
           # could make; reaching the break after that is on time for it, and showing it part way
-          # down sooner would tear for nothing. A page that finishes IN that break is shown, since
+          # down sooner would tear for nothing. A page that finishes in that break is shown, since
           # nothing tears there and waiting would cost a whole picture.
           PACE = :__frames_late_pace
           SPENT = :__frames_break_spent
@@ -125,7 +125,7 @@ module VBlank
             @primitives.load_var(TMP, SEEN)
             @emitter.emit(ASM.sub_reg(ACC, ACC, TMP)) # the breaks that went by...
             if spent
-              # ...held to MOST, as a step is, so the count spent at power-on is past it whatever
+              # ...held to most, as a step is, so the count spent at power-on is past it whatever
               # the marks held then and however long the first pass took.
               within = @emitter.gensym
               @emitter.emit(ASM.cmp_imm(ACC, MOST))
@@ -152,7 +152,7 @@ module VBlank
             @primitives.store_var(ACC, PACE)
           end
 
-          # NO PAGE IS SHOWN PART WAY DOWN BEFORE THE FIRST PASS HAS BEEN COUNTED: the marks are
+          # No page is shown part way down before the first pass has been counted: the marks are
           # rubbish at power-on (see #emit_frame_step), and counting more breaks as spent than a
           # pass can take keeps the first page from being shown part way down — which is also
           # what keeps the picture from being switched on part way down the screen. A first page

@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # THE CELL CHANGES OF A HELD BACKGROUND, kept in work memory and written in the gap between
+        # The cell changes of a held background, kept in work memory and written in the gap between
         # frames (see Nodes::ShowHeldTiles).
         #
         # The display reads a background's map while it draws, top to bottom. A cell written while
@@ -29,7 +29,7 @@ module VBlank
         # the frame being drawn, written while the display may be drawing those rows, and only
         # what is left of the pass waits for the gap. Every backend does the same.
         #
-        # WHAT IT COSTS: a held `set_tile` is the plain one's address arithmetic, a compare and a
+        # What it costs: a held `set_tile` is the plain one's address arithmetic, a compare and a
         # store into the queue. The gap pays six instructions a change, in a routine kept in the
         # cartridge, and a load and a compare when nothing changed.
         module HeldTiles
@@ -91,7 +91,7 @@ module VBlank
             store_var(ACC, HELD_COUNT)
           end
 
-          # A BACKGROUND PUT UP FORGETS THE CHANGES WAITING FOR ITS OWN CELLS: they were made to
+          # A background put up forgets the changes waiting for its own cells: they were made to
           # cells it puts back as declared (Reference#put_up_background). The changes waiting for
           # every other background are kept, so a box every screen shows, changed earlier in the
           # pass a scene takes over in, still shows the change on the next frame.
@@ -114,7 +114,7 @@ module VBlank
             end
           end
 
-          # A PAINTED SCREEN TAKING OVER FORGETS EVERY WAITING CHANGE. Its picture is kept in the
+          # A painted screen taking over forgets every waiting change. Its picture is kept in the
           # same video memory the maps were in, so a change written there in the gap would be a
           # stray pixel in the picture. None of them is owed later either: coming back, the tiled
           # screen puts every background up again as declared (Reference#put_up_always_up), and
@@ -215,7 +215,7 @@ module VBlank
             store_var(HELD_LEFT, HELD_COUNT)
           end
 
-          # THE ROUTINE THAT WRITES EVERY WAITING CHANGE, in the order they were made, and empties
+          # The routine that writes every waiting change, in the order they were made, and empties
           # the queue. Emitted once, after the program's own code, if anything calls it.
           def emit_held_tiles_routine
             emit_drop_held_tiles_routine if @held_drop_used
@@ -246,7 +246,7 @@ module VBlank
             place_label(DerivedNames.routine_end(HELD_ROUTINE))
           end
 
-          # THE ROUTINE THAT FORGETS THE WAITING CHANGES TO ONE STRETCH OF VIDEO MEMORY (see
+          # The routine that forgets the waiting changes to one stretch of video memory (see
           # HELD_DROP_ROUTINE), walking the queue once and moving each change it keeps down over
           # the ones it forgets, so the kept ones stay in the order made.
           def emit_drop_held_tiles_routine
