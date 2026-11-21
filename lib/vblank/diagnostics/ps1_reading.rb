@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # WHAT A READER OVER A RUNNING PLAYSTATION PROGRAM CAN BE ASKED that only the PlayStation's way of
+    # What a reader over a running PlayStation program can be asked that only the PlayStation's way of
     # keeping things answers — the same questions an Advance reader answers its own way (AdvanceReading).
     #
     # A PlayStation program plays in Beetle PSX (ruby-ps1-emulator), not in libmgba, and the one reader
@@ -19,7 +19,7 @@ module VBlank
       # Lowering::NOT_LOWERED_YET says).
       SAVE_FILE = Verifier::SaveFileLayout.new(whole: 0x20000, clock_bytes: 0)
 
-      # WHERE THE SPRITES ARE, by name (Reference#sprites): the rows the runtime keeps of the sprites the
+      # Where the sprites are, by name (Reference#sprites): the rows the runtime keeps of the sprites the
       # last pass placed (IR::Backends::PS1::Runtime::Tiles::DRAWN), read off the program's RAM. A painted
       # screen's sprites are drawn into its picture, and none is kept.
       def sprites(name = nil)
@@ -30,7 +30,7 @@ module VBlank
         name ? @drawn.rows_named(rows, name) : rows
       end
 
-      # WHEN THE PROGRAM BEGAN. A PlayStation program is copied into RAM before its first instruction
+      # When the program began. A PlayStation program is copied into RAM before its first instruction
       # runs, by the BIOS from a disc on a console (seconds of it) and by Beetle's loader here, longer
       # for a longer program; so the screen's blanks a program can count are those since it began, and a
       # test of what it counts holds it to those. Asked for before anything is read, since the emulator
@@ -55,7 +55,7 @@ module VBlank
       # Lowering::NOT_LOWERED_YET says (Reference#music_playing).
       def music_playing = nil
 
-      # NO SAMPLES YET. Beetle PSX mixes the sound chip's output and hands it over, and the emulator
+      # No samples yet. Beetle PSX mixes the sound chip's output and hands it over, and the emulator
       # gem counts those samples without keeping them (RubyPS1Emulator::Core#sound_frames). So a
       # reader has none to give, and says so; silence would read as a program that makes no sound.
       def last_frame_sound = refuse_ps1_samples!

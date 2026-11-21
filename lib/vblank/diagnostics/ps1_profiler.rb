@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # WHERE A PLAYSTATION PROGRAM'S FRAMES WENT, measured by running it.
+    # Where a PlayStation program's frames went, measured by running it.
     #
     # A pass of the game loop is meant to fit in one frame. One that does not shows the same picture
     # twice and the game runs at half speed for that pass, with nothing on screen to show why. The
@@ -15,7 +15,7 @@ module VBlank
     # that waited. The build records where each of the game's routines went (PS1::GameRoutine); the
     # runtime's code is named by the label before it.
     #
-    # THE GRAPHICS CHIP DRAWS WHILE THE PROCESSOR GOES ON. The runtime puts its commands in a list the
+    # The graphics chip draws while the processor goes on. The runtime puts its commands in a list the
     # DMA hands to the chip, and waits only where a list must be gone before the next is sent, or where
     # a pass's picture must be whole (rt_draw_list_send_wait, rt_draw_list_finish_wait and
     # rt_draw_list_drawn_wait); a place's faces go straight to the chip's port and wait for room in its
@@ -55,7 +55,7 @@ module VBlank
       # the time measured, 0 to 1; and +measured_frames+, the frames the time was read over, counted
       # from 1 at power-on as a tape counts them.
       #
-      # A pass waits for the NEXT blank, so one that ends a line after a blank began while it ran waits a
+      # A pass waits for the next blank, so one that ends a line after a blank began while it ran waits a
       # whole frame for the one after. +lines_past_blank+ gives, by the frames each took, how many lines
       # past that blank each pass of more than a frame ran: the lines sooner it had to end to take a
       # frame fewer, in the order they ran. +late_passes+ is the same lines for the passes that went to
@@ -186,7 +186,7 @@ module VBlank
         TimeByRoutine.render(result, out: out)
       end
 
-      # Said only of passes that took more than a frame: each waited for the NEXT break between pictures,
+      # Said only of passes that took more than a frame: each waited for the next break between pictures,
       # so the lines it ran past the one that began while it ran are what cost it a whole frame.
       def self.print_lines_past_blank(frames, lines, out)
         passes = lines.one? ? "1 pass" : "#{lines.size} passes"

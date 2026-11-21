@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # A RUNNING PLAYSTATION PROGRAM, answering what the one reader (Verifier) asks of a running
+    # A running PlayStation program, answering what the one reader (Verifier) asks of a running
     # cartridge. The Advance and the Color play in libmgba, whose probe (RubyGBAEmulator::Probe) the
     # reader was written over; this plays a PS-X EXE in Beetle PSX (ruby-ps1-emulator) and takes the
     # same calls, as SNESProbe does for bsnes.
@@ -18,7 +18,7 @@ module VBlank
         @frames = 0
       end
 
-      # THE PICTURE IS THE SIZE THE GRAPHICS CHIP SHOWS NOW, which the program sets: 320 × 240 for every
+      # The picture is the size the graphics chip shows now, which the program sets: 320 × 240 for every
       # screen VBlank's build makes, and whatever another program chose. Before the first frame the chip
       # is still in the mode the BIOS left, 256 wide, so the reader asks again after each step.
       def width = @core.width
@@ -51,7 +51,7 @@ module VBlank
       def read32(address) = PS1Memory.read32(@core, address)
       def write32(address, value) = PS1Memory.write32(@core, address, value)
 
-      # THE CONSOLE'S WHOLE STATE, written to the file +path+ in Beetle PSX's own format, and put back
+      # The console's whole state, written to the file +path+ in Beetle PSX's own format, and put back
       # from one (Verifier#save_state, #load_state).
       def save_state(path) = File.binwrite(path, @core.serialize)
       def load_state(path) = @core.unserialize(File.binread(path))
