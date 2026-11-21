@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # COPYING DATA OUT OF THE CARTRIDGE INTO THE CONSOLE'S MEMORY — the colour tables, the
+        # Copying data out of the cartridge into the console's memory — the colour tables, the
         # tile pictures, the maps, the sprites' pictures. The cartridge holds them and the
         # display can only read them from its own memory, so every one is copied across
         # before it is shown, by the console's copying engine (DMA) or, where packing the

@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # ONE LAYER'S TILES, ONCE THEY ARE STORED: what its map has to hold to name each of
+        # One layer's tiles, once they are stored: what its map has to hold to name each of
         # them, where the layer counts its numbers from, and the number of its blank cell.
         StoredTiles = Data.define(:numbers, :base, :blank) do
           def number(index) = numbers.fetch(index)
@@ -13,7 +13,7 @@ module VBlank
           def char_base = base / CHAR_BLOCK_BYTES
         end
 
-        # WHAT EVERY BACKGROUND LAYER SHARES: one colour table, uploaded whole at boot, and the
+        # What every background layer shares: one colour table, uploaded whole at boot, and the
         # tile pictures of the scenery every screen shows, uploaded with it. +units+ are what a
         # copy moves (halfwords), which is what the upload wants; the rest is for the report.
         #
@@ -23,30 +23,30 @@ module VBlank
         SharedScenery = Data.define(:palette_units, :tile_units, :tile_bytes, :small, :big, :saved, :shared, :mirrored,
                                    :skipped)
 
-        # EVERY TILE OF EVERY BACKGROUND, STORED ONCE EACH, as the one run of bytes the
+        # Every tile of every background, stored once each, as the one run of bytes the
         # console reads them out of. A layer is added to this and gets back the numbers its
         # map must hold; nothing else writes a tile picture.
         #
-        # TWO TILES THAT COME OUT THE SAME ARE STORED ONCE. Nothing about a tileset shows
+        # Two tiles that come out the same are stored once. Nothing about a tileset shows
         # which of its tiles are really the same picture — a wall's interior repeats in
         # every variation of that wall, half a metatile of grass is the same grass in
         # dozens of cells — and on a real tileset that is a large fraction. The author
         # writes the tileset they drew; the build notices. It costs nothing at run time,
         # because a tile number is a tile number.
         #
-        # The sameness is judged on the STORED bytes rather than on the picture, which is
+        # The sameness is judged on the stored bytes rather than on the picture, which is
         # what makes it right rather than nearly right: two tiles drawn from different
         # colors are different pictures, and two identical pictures in layers that ended
         # up with different color banks are stored differently and must stay apart.
         #
         # Where the bytes go is {TileVram}'s (the tiles and the maps share 64K and grow
-        # toward each other); this is what the bytes ARE.
+        # toward each other); this is what the bytes are.
         class BackgroundTiles
           def initialize(vram:)
             @vram = vram
             # Tile 0 is blank — every pixel the see-through number — so an empty map cell
             # points at a see-through tile and layers behind it show through. It has to be
-            # readable BOTH ways, since a small-storage layer and a big-storage one can both
+            # readable both ways, since a small-storage layer and a big-storage one can both
             # point at it: 64 zero bytes are 64 see-through pixels read as bytes and 128 read
             # as halves, so the big form covers the small one and one blank tile serves both.
             @bytes = (+"").b << ("\x00" * BIG_TILE_BYTES).b
@@ -58,7 +58,7 @@ module VBlank
             @skipped = 0
           end
 
-          # A COPY TO GO ON FROM, for scenery that takes turns. Two scenes that are never on
+          # A copy to go on from, for scenery that takes turns. Two scenes that are never on
           # screen together can put their pictures in the same room, so each goes on from
           # what every scene shares and neither sees the other's. The copy has room of its
           # own to hand out as well as pictures, since that is the half that is shared.
@@ -79,7 +79,7 @@ module VBlank
           # The room this run is laid out in, which the maps are handed out of as well.
           attr_reader :vram
 
-          # THE PARTS OF THE RUN FROM +from+ ON THAT HOLD SOMETHING, as [offset, bytes] pairs, for
+          # The parts of the run from +from+ on that hold something, as [offset, bytes] pairs, for
           # a copy that sends only those.
           #
           # Two kinds of stretch in the run hold nothing any map can name, and are zeroes only
@@ -144,10 +144,10 @@ module VBlank
             StoredTiles.new(numbers: numbers, base: base, blank: blank)
           end
 
-          # ONE LAYER DRAWN FROM SEVERAL SETS OF TILES, only one of which is in video memory at a
+          # One layer drawn from several sets of tiles, only one of which is in video memory at a
           # time: an area's tiles, swapped for the next area's as the game walks between them.
           #
-          # Every set goes in the SAME room, starting where this run has got to, so the room
+          # Every set goes in the same room, starting where this run has got to, so the room
           # this layer takes is its biggest set's and not all of them together — which is the
           # whole point, since the sets together need not fit. Each set may share a picture
           # already stored below it, because nothing below ever changes; but nothing stored
@@ -202,7 +202,7 @@ module VBlank
             pending = nil
             (TILE_PX * TILE_PX).times do |i|
               color = bmp.color_at(i)
-              # A tile that got a BANK of sixteen stores the place in the author's own list,
+              # A tile that got a bank of sixteen stores the place in the author's own list,
               # which is the number the console reads. One stored the big way reads the whole
               # shared table, where the same color is one entry however many places the list
               # gave it — so there is nothing to keep apart and the color is looked up.
@@ -224,26 +224,26 @@ module VBlank
 
           private
 
-          # WHERE THIS LAYER COUNTS ITS TILE NUMBERS FROM, which decides how far it can
+          # Where this layer counts its tile numbers from, which decides how far it can
           # reach and is the whole reason a game can have more distinct tiles than one
           # layer's ten bits can name.
           #
           # Three answers, tried in order, and the first one that fits wins:
           #
-          #   FROM THE BOTTOM, which is what every layer did before this existed. Nothing
+          #   From the bottom, which is what every layer did before this existed. Nothing
           #   is skipped and the blank tile at 0 serves the empty cells. Nearly every game
           #   stops here, and gets exactly the layout it always got.
           #
-          #   FROM THE BLOCK IT ALREADY STARTS IN — the highest 16K mark at or below where
+          #   From the block it already starts in — the highest 16K mark at or below where
           #   its tiles will land. Still nothing skipped, and the layer's reach moves up
           #   with it, so a second layer stacked on a big first one can point past the
           #   first layer's ceiling.
           #
-          #   FROM THE NEXT BLOCK UP, which skips the few bytes in between. That is the
+          #   From the next block up, which skips the few bytes in between. That is the
           #   only one that wastes anything, so it is last: it buys the layer a full run to
           #   itself, for at most 16K of memory nobody uses.
           #
-          # Sharing follows the same rule as the reach: a picture already stored BELOW
+          # Sharing follows the same rule as the reach: a picture already stored below
           # where this layer counts from is out of its sight, so it stores its own copy
           # rather than pointing at one it cannot name.
           #
@@ -336,7 +336,7 @@ module VBlank
           end
 
           # A painted tile's bytes, at a place of its own and never offered to anything that
-          # comes after as a picture to share. The one thing it does share is ITSELF: a run
+          # comes after as a picture to share. The one thing it does share is itself: a run
           # this screen already holds — another background showing it, or the scenery every
           # screen shows — is pointed at where it is, since the game paints it in one copy and
           # one screen can only hold it in one place. (A copy too far back for this layer to

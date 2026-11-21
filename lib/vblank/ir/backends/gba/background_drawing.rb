@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # THE CODE THAT PUTS BACKGROUNDS UP ON A TILED SCREEN, and changes them while the game
+        # The code that puts backgrounds up on a tiled screen, and changes them while the game
         # runs. The console draws each background layer itself, every frame, from a map in
         # its memory — a grid saying which tile goes in each cell — and a few registers saying
         # where the layer is scrolled to, or, for the layer that turns, how it is turned and
@@ -68,7 +68,7 @@ module VBlank
           # (see Placement#emit_call_cold_routine).
           def emit_call_cold_routine(label) = @placement.emit_call_cold_routine(label)
 
-          # A LINE THAT CHANGES A BACKGROUND BY NAME, for a name declared in several scenes: each
+          # A line that changes a background by name, for a name declared in several scenes: each
           # scene's declaration sits in a place of its own (see ScreenLayout#declared_background),
           # and the line is reached from the gap between frames, which every scene passes through.
           # So the line's code is written once for each declaration, each part run only while its
@@ -154,7 +154,7 @@ module VBlank
             emit_bar_registers(bg, top: node.bar_top) if node.bar?
           end
 
-          # PUT A STATUS BAR'S TOP AT A ROW (Reference#exec_place_bar), kept between 0 and the
+          # Put a status bar's top at a row (Reference#exec_place_bar), kept between 0 and the
           # bottom of the screen. BAR_ROW holds the layer's scroll while ACC becomes the window's.
           BAR_ROW = 2
 
@@ -181,7 +181,7 @@ module VBlank
           # The rows a status bar's top is kept to: the screen's, or in a border the game's screen's.
           def bar_screen_height = @layout.border ? @layout.border.game_screen_height : SCREEN_HEIGHT
 
-          # A BAR THAT COVERS SPRITES (StatusBar#covers_sprites=): the sprites are left out of the
+          # A bar that covers sprites (StatusBar#covers_sprites=): the sprites are left out of the
           # layers shown inside the bar's window, which the display reads pixel by pixel, so a
           # sprite across the bar's top shows its part above.
           def emit_bar_covers(bg, covers)
@@ -196,7 +196,7 @@ module VBlank
             store_halfword_acc(REG_WININ)
           end
 
-          # A STATUS BAR ON THE ADVANCE is one of its background layers, read from its own map's
+          # A status bar on the Advance is one of its background layers, read from its own map's
           # top-left corner at the bar's top row, and kept to the rows from there down by the
           # display's second window: inside the window the display draws the bar's layer and the
           # sprites and nothing else, so the backgrounds under the bar are not drawn there and its
@@ -237,7 +237,7 @@ module VBlank
             write_reg16(REG_WINOUT, (WIN_ALL_LAYERS & ~bar_layer) | WIN_EFFECT)
           end
 
-          # A BACKGROUND HELD TO A BOX (Reference#exec_box_background) IS THE DISPLAY'S SECOND WINDOW.
+          # A background held to a box (Reference#exec_box_background) is the display's second window.
           #
           # A window is a rectangle of the screen the display is told about, and two switches for
           # each layer: whether it is drawn inside the rectangle, and whether outside every window.
@@ -325,7 +325,7 @@ module VBlank
             write_reg16(REG_WINOUT, WIN_ALL_LAYERS | WIN_EFFECT)
           end
 
-          # A SCENE PUTTING ITS BACKGROUNDS UP SHOWS THEM EVERYWHERE: the last scene's box is set
+          # A scene putting its backgrounds up shows them everywhere: the last scene's box is set
           # aside, and this scene's own, if it sets one, is told in the gap after this pass. The
           # layers of +scenery+ are no longer switched off either (#emit_layer_switch): the scene
           # switches its layers on as its sending ends, and a background every scene shows keeps
@@ -343,7 +343,7 @@ module VBlank
             store_var(ACC, LAYERS_SWITCHED_OFF)
           end
 
-          # A BACKGROUND HIDDEN WHOLE (Nodes::BoxBackground#whole, `hide`) IS ITS LAYER SWITCHED
+          # A background hidden whole (Nodes::BoxBackground#whole, `hide`) is its layer switched
           # OFF. The display's settings have a bit for each of the four background layers, and a
           # layer whose bit is clear is not drawn at all, so what is behind it and the backdrop
           # show (GBATEK, LCD I/O Display Control, DISPCNT bits 8 to 11). No window is used, so
@@ -358,7 +358,7 @@ module VBlank
           # (#emit_without_switched_off_layers). Shown again, the bit is set only where this
           # switched it off, so a layer off for another reason is left alone.
           #
-          # WHAT IT COSTS, in every gap while its scene is up: the value's load and a compare. Shown,
+          # What it costs, in every gap while its scene is up: the value's load and a compare. Shown,
           # a load of the note and a test of the bit, and nothing more unless it was hidden. Hidden,
           # every gap writes the note again and reads, changes and writes the display's settings
           # (with the interrupts held off around the pair in a game that holds its layers), whether
@@ -397,7 +397,7 @@ module VBlank
             store_word_immediate(0, var_addr(LAYERS_SWITCHED_OFF)) if @layout&.screen&.hides_layers?
           end
 
-          # WRITE THE WHOLE OF THE DISPLAY'S SETTINGS, +value+, as a screen drawn from tiles is
+          # Write the whole of the display's settings, +value+, as a screen drawn from tiles is
           # entered, save the layers the game has hidden (#emit_layer_switch). A hidden background
           # every screen shows stays off as the screen comes back from one of another kind, as the
           # interpreter shows it, until it is put back as declared and the gap after shows it again.
@@ -434,19 +434,19 @@ module VBlank
             holds_layers? ? with_interrupts_held_off(&write) : write.call
           end
 
-          # A BLOCK OF CELLS (Nodes::SetTileBlock) is its cells written one by one, as its children
+          # A block of cells (Nodes::SetTileBlock) is its cells written one by one, as its children
           # write them: this lowering writes each cell straight into the map where the line is.
           def emit_set_tile_block(node) = node.children.each { |stmt| @lowering.statement(stmt) }
 
-          # PUT A DIFFERENT TILE IN ONE CELL, while the game runs.
+          # Put a different tile in one cell, while the game runs.
           #
           # A background's map is a grid of half-word cells in video memory, each naming
           # the tile to draw there, so changing one is one half-word written to a place
           # worked out from the cell's column and row.
           #
-          # WHEN THE WRITE HAPPENS, which is the question this raises and which is worth
+          # When the write happens, which is the question this raises and which is worth
           # writing down because the obvious worry turns out not to hold. The display
-          # reads the map WHILE it draws, so a write can land between two scanlines of the
+          # reads the map while it draws, so a write can land between two scanlines of the
           # very cell being drawn — and then that cell shows the old tile on its top rows
           # and the new one on its bottom rows, for one frame.
           #
@@ -460,7 +460,7 @@ module VBlank
           # scarcest memory, a policy for when it fills, and about four times the
           # instructions — to remove an artifact of one frame of one cell, on the things
           # this exists for: a door opening, a pot breaking, a bombable wall. What that
-          # bargain does NOT cover is a BULK change — a whole room swapped in one frame —
+          # bargain does not cover is a bulk change — a whole room swapped in one frame —
           # where half the old room and half the new really would show at once. That wants
           # a verb of its own, handing over a map in one go between frames.
           #
@@ -520,7 +520,7 @@ module VBlank
             write_reg16(map_cell_address(bg, grid, col, row), entry)
           end
 
-          # THE ADDRESS OF ONE CELL, and why it is not simply row times width.
+          # The address of one cell, and why it is not simply row times width.
           #
           # A map wider or taller than 32 cells is stored as several 32x32 SQUARES — left
           # then right, top pair before bottom pair — so a cell's place depends on which
@@ -592,14 +592,14 @@ module VBlank
             emit(ASM.orr_reg(TILE_ADDR, TILE_ADDR, TMP))
           end
 
-          # HAND A BACKGROUND A WHOLE DIFFERENT MAP.
+          # Hand a background a whole different map.
           #
           # A background's maps all live in the cartridge, laid end to end and all the same
           # size, so the map numbered N starts N strides along from the first. Copying one
           # into the layer's cells is then a single DMA — the same copy the boot upload
           # already does, at an address worked out rather than known.
           #
-          # WHY THIS CAN BE ARITHMETIC RATHER THAN A TEST PER MAP, which is what makes a
+          # Why this can be arithmetic rather than a test per map, which is what makes a
           # game with hundreds of rooms affordable: the stride is settled while the program
           # is built, so a room number becomes an address in two instructions however many
           # rooms there are. A chain of comparisons would grow with the game.
@@ -654,12 +654,12 @@ module VBlank
           SET_PICKED = 3
           SET_STRIDE = 2
 
-          # IS THE MAP NUMBERED +which+ OF ANOTHER SET OF TILES THAN THE ONE IN PLACE? Then call
+          # Is the map numbered +which+ of another set of tiles than the one in place? Then call
           # the routine that brings that set in, and the map with it (see
           # #emit_set_swap_routines). A map of the set already in place falls through to the
           # plain map copy, and nothing else.
           #
-          # THIS IS ALL OF IT THAT THE CALLER HOLDS, and the caller is the game loop: the gap
+          # This is all of it that the caller holds, and the caller is the game loop: the gap
           # between frames, which every frame of every screen passes through and which is the
           # first thing kept in the console's quick memory. A game changes area a handful of
           # times an hour. Written out here, bringing a set in was the larger part of the loop
@@ -700,7 +700,7 @@ module VBlank
             bg.sets.routine
           end
 
-          # BRING IN THE SET OF TILES A MAP DRAWS FROM, for a background that walks between
+          # Bring in the set of tiles a map draws from, for a background that walks between
           # areas — and the map with it, while the layers are off. One routine a background,
           # emitted after the program's own code and reached only by the call above, which
           # hands it the map's number.
@@ -767,7 +767,7 @@ module VBlank
             emit_layers_back_on_or_held(ACC)
           end
 
-          # THE LAYERS HELD OFF UNTIL THE NEXT GAP, as their bits of the display's settings: nought
+          # The layers held off until the next gap, as their bits of the display's settings: nought
           # while none is held.
           #
           # Sending a set of tiles or a scene's scenery happens with the layers off, and the
@@ -781,7 +781,7 @@ module VBlank
           # top to bottom, and the next one is whole. A sending that ends inside the gap shows
           # its scenery on the picture after it, as the interpreter does.
           #
-          # THE SPRITES ARE HELD WITH THE BACKGROUNDS, off for the sending and for the picture it
+          # The sprites are held with the backgrounds, off for the sending and for the picture it
           # ran into. The rest of the pass writes to the display too (a blend, a window), and
           # those writes land part way down that picture at a row set by timing; over the bare
           # backdrop they show nowhere, but on a sprite they would, so two builds of one game a
@@ -827,7 +827,7 @@ module VBlank
           # emits none of this.
           def holds_layers? = !@layout.nil? && @layout.holds_layers?
 
-          # BEFORE SENDING: keep the display's settings in +saved+, with any layers held from an
+          # Before sending: keep the display's settings in +saved+, with any layers held from an
           # earlier sending counted as on (they are this sending's now), and switch the layers
           # off: the background layers, and in a game that holds them, the sprites unless it is in
           # a border (#held_layer_bits). Uses ACC, TMP
@@ -854,7 +854,7 @@ module VBlank
             emit(ASM.store_halfword(ACC, TMP))
           end
 
-          # AFTER SENDING: write +reg+, the display's settings with the layers wanted back on: as
+          # After sending: write +reg+, the display's settings with the layers wanted back on: as
           # they are in the gap the pass started in, and with the layers held off anywhere else,
           # for the screen's interrupt to switch on at the start of the next gap
           # (#emit_branch_unless_in_pass_gap). With +held+ they are held wherever the sending ended,
@@ -886,8 +886,8 @@ module VBlank
             end
           end
 
-          # WHEN A SENDING'S LAYERS MAY COME ON AT ONCE: in the gap the pass started in, and only
-          # there. Part way down a picture they would tear it (LAYERS_HELD). In a LATER gap, which
+          # When a sending's layers may come on at once: in the gap the pass started in, and only
+          # there. Part way down a picture they would tear it (LAYERS_HELD). In a later gap, which
           # a pass reaches only after running past the start of one, the picture after is drawn
           # while the pass is still finishing: the pass's own picture is the one after its wait,
           # where the interpreter shows the scene. Switched on there, that late picture showed the
@@ -897,7 +897,7 @@ module VBlank
           # comes up at the start of the gap the pass's wait ends in.
           #
           # A gap has started since the pass began when the screen's interrupt has counted one
-          # (Frames: COUNT moved from SEEN, the mark taken as the pass began) or has one waiting,
+          # (Frames: COUNT moved from seen, the mark taken as the pass began) or has one waiting,
           # which it does when the gap started while interrupts were held off (GBATEK, Interrupt
           # Control: IF bit 0 is set as V-Blank starts, and stays set until the handler clears it).
           # Before the game loop's first mark the marks are not yet a pass's, and the layers are
@@ -919,7 +919,7 @@ module VBlank
             emit_branch(:bcond, held, cond: :ne)
           end
 
-          # THE HOLD AND THE DISPLAY'S SETTINGS ARE WRITTEN AS A PAIR (Primitives
+          # The hold and the display's settings are written as a pair (Primitives
           # #with_interrupts_held_off). The screen's interrupt switches on what is held, so one
           # landing between the two writes would OR the held layers into the settings about to
           # be replaced and clear the hold, and the write after would switch the layers off with
@@ -1003,7 +1003,7 @@ module VBlank
             emit_area_colors(walking.sets, up: up)
           end
 
-          # THE COLOURS OF THE AREA A SET WAS JUST BROUGHT IN FROM, unless they are up already.
+          # The colours of the area a set was just brought in from, unless they are up already.
           # Backgrounds that walk change area together and read one table, so the first of them
           # into an area sends its colours, and the next finds them up (see
           # ScreenLayout::AREA_COLORS_UP). Sent again, the whole table went through the tint
@@ -1033,7 +1033,7 @@ module VBlank
             place_label(sent)
           end
 
-          # A WALKING LAYER TOLD `draw_with` keeps a version of its lists for each area (see
+          # A walking layer told `draw_with` keeps a version of its lists for each area (see
           # ScreenLayout#walking_color_lists), so the version it shows is pointed at the area
           # just brought in — its first with +first+, otherwise the one its set names — before
           # the area's colours go in, which put the version back over the groups it reads (see
@@ -1082,7 +1082,7 @@ module VBlank
             emit(ASM.store_halfword(ACC, TMP))
           end
 
-          # PAINT A RUN OF TILES FROM ITS LIST: one copy, from the list straight into the video
+          # Paint a run of tiles from its list: one copy, from the list straight into the video
           # memory its tiles were given, a word at a time. The list already holds the pixels
           # the way that memory does (two to a byte, the left one in the low half), which is
           # what lets this be a plain copy rather than a loop that packs them.
@@ -1097,7 +1097,7 @@ module VBlank
             emit_copy_painted_run(node.name, run)
           end
 
-          # LOAD TILES OF A SET OF SPRITE TILES FROM THE CARTRIDGE (Nodes::LoadSpriteTiles): one copy,
+          # Load tiles of a set of sprite tiles from the cartridge (Nodes::LoadSpriteTiles): one copy,
           # from the table straight into the set's room in sprite memory, where every pose drawn
           # from the set reads them. The table keeps a tile the way sprite memory does, so the copy
           # is plain. It is made where the game asks for it, as `changed now: true` copies a painted
@@ -1182,7 +1182,7 @@ module VBlank
           # Is +run+ a group of `tile_pictures`, shown from the cartridge?
           def held_tile_run?(run) = !run.held_in.nil?
 
-          # EVERY PAINTED RUN OWED A COPY, AS ONE WALK OVER A TABLE (see Nodes::CopyOwedTiles).
+          # Every painted run owed a copy, as one walk over a table (see Nodes::CopyOwedTiles).
           # Written out run by run, a test and a copy came to about thirty instructions each, so a
           # game with a box of text, a row of name tags and a few portraits carried kilobytes of
           # them. Walked, the code is the same for one run as for twenty: each run is a row of
@@ -1196,8 +1196,8 @@ module VBlank
           # address). That variable holds 0 on a screen that does not show the run, and then the
           # run is skipped, as it was when each had its own copy.
           #
-          # THE TWO INSTRUCTIONS EACH RUN KEEPS are the one that starts its copy and a jump back.
-          # Every run COULD start its copy at one shared instruction, and the profile could then
+          # The two instructions each run keeps are the one that starts its copy and a jump back.
+          # Every run could start its copy at one shared instruction, and the profile could then
           # no longer say which picture the bytes went to: it counts copies by how many times the
           # instruction that starts each one ran, and reads nothing else off the cartridge.
           COPY_ROW_BYTES = 24
@@ -1307,7 +1307,7 @@ module VBlank
             list
           end
 
-          # A RUN SHOWN IN SEVERAL SCENES, IN DIFFERENT PLACES: the scene up now has put where
+          # A run shown in several scenes, in different places: the scene up now has put where
           # the run sits on its screen in a variable (see Drawing#emit_painted_run_places), so
           # the copy goes there. On a screen that does not show the run the variable holds 0,
           # and the copy is skipped — there is nowhere on this screen for it to go, and video
@@ -1358,16 +1358,16 @@ module VBlank
             end
           end
 
-          # DRAW A WHOLE LAYER FROM ANOTHER LIST OF COLOURS: put that list into the group of
+          # Draw a whole layer from another list of colours: put that list into the group of
           # sixteen its tiles read.
           #
           # Nothing about the layer itself is touched — not a cell, not a tile, not a pixel.
-          # Every pixel on this console is a small NUMBER that picks a colour out of a shared
+          # Every pixel on this console is a small number that picks a colour out of a shared
           # table, so changing the sixteen entries the layer's numbers pick from changes
           # every one of its pixels at once, and costs the same whatever is on screen. That
           # is why shafts of light can shimmer for the price of one copy.
           #
-          # WHY THE GROUP IS THE LAYER'S OWN: this write lands in the table, where anything
+          # Why the group is the layer's own: this write lands in the table, where anything
           # else drawing from those sixteen would pick up the change too. The build gives a
           # layer that can be recoloured a group nobody else reads (see
           # PaletteBanks::Picture#keeps_to), so the write reaches this layer and nothing more.
@@ -1395,7 +1395,7 @@ module VBlank
             @lowering.value(node.which)
             emit_version_address(bg, lists)
             # Remembered as well as written, because a tint walks the whole table from the
-            # cartridge and would otherwise put the colours the tiles were DRAWN in back over
+            # cartridge and would otherwise put the colours the tiles were drawn in back over
             # these groups. See PaletteTint#emit_recolored_banks, which reads this.
             store_var(ACC, lists.at)
             if lists.area_bytes
@@ -1406,7 +1406,7 @@ module VBlank
             emit_forget_own_version(node, lists)
           end
 
-          # THE ROUTINE THAT SENDS A WALKING LAYER'S VERSION INTO THE GROUPS OF THE AREA UP, one a
+          # The routine that sends a walking layer's version into the groups of the area up, one a
           # layer, reserved the first time a line sends it and emitted once, later, beside the
           # set swaps (#emit_set_swap_routines). A walking layer's groups are the area's that is
           # up: each area hands its groups out again, and another walking layer can be drawing
@@ -1437,7 +1437,7 @@ module VBlank
             end
           end
 
-          # A LAYER GIVEN ITS OWN COLOURS BACK is as it was before it was told anything: the
+          # A layer given its own colours back is as it was before it was told anything: the
           # table in the console holds them, as the cartridge does. So where its version starts
           # goes back to nought, which every tint, area and scene reads as "nothing to put back"
           # (PaletteTint#emit_recolored_banks, #emit_point_colors_at_area). Kept, the version
@@ -1495,7 +1495,7 @@ module VBlank
           # Where a background's cells live: its own screen block in video memory.
           def map_vram_address(bg) = VRAM_START + (bg.screen_block * SCREENBLOCK_BYTES)
 
-          # Bit 13: the map WRAPS at its edge instead of showing the backdrop past it — the
+          # Bit 13: the map wraps at its edge instead of showing the backdrop past it — the
           # same torus every `screen :tiled` background already is.
           AFFINE_WRAP = 0x2000
 
@@ -1514,7 +1514,7 @@ module VBlank
           end
 
           # The actual identity-matrix write, factored out so it can be called from
-          # three places that each need it exactly ONCE: leaving affine mode (above),
+          # three places that each need it exactly once: leaving affine mode (above),
           # genuinely entering it (Drawing#enter_affine_mode), and the plain single-mode boot
           # path (Drawing#emit_screen) — never from #emit_affine_background_hardware, which
           # runs every frame a scene-owned background's own node re-executes and would
@@ -1544,11 +1544,11 @@ module VBlank
           end
 
           # Point the console's rotate/scale layer (BG2) at an affine background's map
-          # and tiles — its OWN node in the scene body, so it may run every frame the
+          # and tiles — its own node in the scene body, so it may run every frame the
           # owning scene is active (harmless: same map, same control bits, every time).
-          # The matrix itself is NOT reset here — a scene-owned background is turned or
+          # The matrix itself is not reset here — a scene-owned background is turned or
           # resized by a per-frame write inserted at the frame boundary (see
-          # Builder#finalize_background_affine), which runs BEFORE this node in program
+          # Builder#finalize_background_affine), which runs before this node in program
           # order each frame; resetting the matrix here would throw that away before
           # the console ever displayed it. The one-time "upright, undistorted" starting
           # matrix is set at genuine mode entry instead (Drawing#enter_affine_mode, or here at
@@ -1654,7 +1654,7 @@ module VBlank
           # The matrix pivots on the layer's own top-left corner by itself — turn or
           # resize without this and the whole picture swings away from under the point it
           # is meant to turn around instead of turning in place. Moving the pivot to
-          # (+px+, +py+) means telling the console the texture point that SHOULD land
+          # (+px+, +py+) means telling the console the texture point that should land
           # there, worked backwards through the very matrix just written: for a screen
           # point this far from (0, 0), the matrix gives how far that is from the
           # reference point in texture space, so read backwards, the reference point is
@@ -1664,7 +1664,7 @@ module VBlank
           # SpriteDrawing#emit_draw_object_transformed) — a background has no box of its own to offset,
           # so this stands in for it.
           #
-          # The point of the PICTURE that lands there is the same pair of numbers, which is
+          # The point of the picture that lands there is the same pair of numbers, which is
           # what makes a pivot free of side effects: at its drawn size, upright, the matrix
           # is the identity and the reference point comes out at nought wherever the pivot
           # is, so a background that is not turning lands in exactly the same place.
@@ -1728,7 +1728,7 @@ module VBlank
           # border, the corner taken off.
           def unscrolled(way) = @layout.border ? @layout.border.scroll_value(0, way) : 0
 
-          # BRING A BIG MAP'S VIEW ALONG, for the scroll write of +node+ — but for a background a
+          # Bring a big map's view along, for the scroll write of +node+ — but for a background a
           # scene puts up as it takes over, only once it has. The write is gated on the variable
           # that picks the scene, and a game that picks the next scene at the end of a pass (a file
           # screen on START) has that variable naming the new scene in the gap before its first
