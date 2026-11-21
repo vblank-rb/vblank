@@ -21,7 +21,7 @@ module VBlank
     # Cells told by a slot of the pack (`set_cells: pack[:changes]`) are named by their place in it,
     # 0 first: +place_tiles+ holds, for each place, its cell's tiles' keys, and `set_cell`'s number
     # is a place (#write_place). nil for cells told by number.
-    PackCells = Data.define(:format, :side, :tiles_by_word, :place_tiles) do
+    PackCells = Data.define(:format, :side, :tiles_by_word, :place_tiles) do # :nodoc:
       def initialize(place_tiles: nil, **) = super
 
       # The same cells, told by a slot whose places hold +place_tiles+.
@@ -81,7 +81,7 @@ module VBlank
       # keys +picks+ of the numbers from +from+ on, nil where a number stands for none. +cell+ is what
       # `set_cell` takes. Nil for a number worked out as the game runs among told numbers too far
       # apart for one list, which the block then writes a cell at a time.
-      CellBlock = Data.define(:tile, :picked_by, :picks, :from)
+      CellBlock = Data.define(:tile, :picked_by, :picks, :from) # :nodoc:
 
       def cell_block_tiles(name, cell)
         if place_tiles
