@@ -2,6 +2,7 @@
 
 module VBlank
   class Builder
+    #--
     # A 3D PLACE READ FROM THE DATA PACK: a port whose original keeps its levels as data (Descent's
     # mines: corners, rooms' sides, each side's pictures, where each corner falls on them and its
     # light) reads the level from the player's copy, as it reads the copy's pictures and colours.
@@ -73,6 +74,7 @@ module VBlank
     # facing:`), whose test of being in view needs the points while the game is built; and a picture
     # given as numbers into a shading from the pack (`image ..., shading:`), whose colours the build
     # does not hold. Each is refused in plain words.
+    #++
     module PackPlaces
       private
 

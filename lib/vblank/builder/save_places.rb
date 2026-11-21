@@ -2,6 +2,7 @@
 
 module VBlank
   class Builder
+    #--
     # WHERE EACH `save_data` RECORD LIVES IN SAVE MEMORY, decided at power-on from the table of
     # places kept at the front of it (see IR::SaveLayout).
     #
@@ -45,6 +46,7 @@ module VBlank
     # port it builds program through, the save memory, the records to place, and a way to
     # declare the table as a record of its own (whose routines are the records' to build). It
     # keeps nothing in common with them, so what it builds depends on those and nothing else.
+    #++
     class SavePlaces
       include SaveProgram
 

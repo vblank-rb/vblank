@@ -73,7 +73,7 @@ module DslVerbs
     [start, lines]
   end
 
-  ParsedFile = Data.define(:lines, :comments, :defs)
+  ParsedFile = Data.define(:lines, :comments, :defs, :root)
 
   # One parse of a file per Ractor, since a test asks about hundreds of verbs in a few dozen files.
   def self.parsed_file(file)
@@ -82,7 +82,7 @@ module DslVerbs
       result = Prism.parse_file(file)
       defs = []
       collect_defs(result.value, defs)
-      ParsedFile.new(lines: File.readlines(file), comments: result.comments, defs: defs)
+      ParsedFile.new(lines: File.readlines(file), comments: result.comments, defs: defs, root: result.value)
     end
   end
 
@@ -99,6 +99,20 @@ module DslVerbs
       comment.location.start_line.between?(node.location.start_line, signature_end) &&
         comment.slice.match?(/\A#\s*:nodoc:/)
     end
+  end
+
+  # The comment above each `module` and `class` written in +file+, as [name, line of the keyword,
+  # comment lines], for the comments that become a group's page introduction.
+  def self.container_comments(file)
+    parsed = parsed_file(file)
+    found = []
+    collect_containers(parsed.root, found)
+    found.map { |node| [node.constant_path.slice, node.location.start_line, comment_above(parsed, node)] }
+  end
+
+  def self.collect_containers(node, found)
+    found << node if node.is_a?(Prism::ModuleNode) || node.is_a?(Prism::ClassNode)
+    node.compact_child_nodes.each { |child| collect_containers(child, found) }
   end
 
   # The comment lines directly above the `def`: each a whole line of its own and none blank between.

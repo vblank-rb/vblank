@@ -2,6 +2,7 @@
 
 module VBlank
   class Builder
+    #--
     # SAVE DATA: a group of the game's own state — variables and lists — kept in the
     # cartridge's save memory when the game asks for it, and put back when it asks for it.
     #
@@ -20,6 +21,7 @@ module VBlank
     # console cannot disagree about the rules that keep a save safe. Each is written once: two
     # halves per copy and the newer one wins (#save_data_scan), the order a half is written in
     # with its checksum last (SaveHalf), and where each kept thing sits in a body (Kept).
+    #++
     module SaveRecords
       # One thing a record keeps, and where in its body it sits — the one place that sets how a
       # kept thing is laid out. A variable is a word at +at+. A list is its length, a word at

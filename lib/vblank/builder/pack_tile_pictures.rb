@@ -2,6 +2,7 @@
 
 module VBlank
   class Builder
+    #--
     # A TILE OF A BACKGROUND FROM THE DATA PACK TAKING TURNS THROUGH PICTURES OF THE PACK:
     #
     #   belt = tile_pictures :belt, tiles: { pack[:video].tile(0xF3) => pack[:belt].tiles(0, across: 16),
@@ -31,6 +32,7 @@ module VBlank
     # (IR::StartFile::Background#moving); a told cell naming a key is written as the run's tile
     # for its bank and turn (PackBackgrounds#pack_run_tile_read_at_start). The pictures are read
     # from the file as it starts too, in the bytes a run copies (IR::StartFile::PaintedTiles).
+    #++
     module PackTilePictures
       # The four ways a tile of such a background is turned, in the order a run read at start
       # holds them; a tile's place in it is IR::StartFile::MovingTile#turn_of.

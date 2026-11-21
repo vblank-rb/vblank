@@ -2,6 +2,7 @@
 
 module VBlank
   class Builder
+    #--
     # THE ORIGINAL'S SONGS AND SOUND EFFECTS AS NOTES, read from the data pack, and its instruments'
     # settings with them.
     #
@@ -35,6 +36,7 @@ module VBlank
     # read as the game starts too, with the tick it comes round to. So is the wave a part plays
     # from a slot (`plays: pack[:waves].wave(0)`, #pack_wave_in_start_file). So is an envelope of
     # three bytes as a Super Nintendo's sound chip keeps it, as the nearest ordinary envelope.
+    #++
     module PackScores
       private
 

@@ -2,6 +2,7 @@
 
 module VBlank
   class Builder
+    #--
     # A BUILD STARTED IN A CHOSEN STATE (Cartridge::Game#starting_with): each variable and list the
     # build was given a start for starts there in place of where its `var` or `list` starts it. The
     # chosen start IS the build's start: a variable's is set where every declared start is set, as
@@ -25,6 +26,7 @@ module VBlank
     # outside is a different thing on every runtime, and on some (a cartridge's quick memory, laid
     # out per build) has no stable place to write to. The cost is a build for each chosen state,
     # which a CartridgeCache keeps.
+    #++
     module ChosenStarts
       # None of this is a verb: `var`, `list`, `start_over` and the save records ask it, and the
       # build checks what was left.

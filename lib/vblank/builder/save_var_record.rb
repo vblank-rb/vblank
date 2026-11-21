@@ -2,6 +2,7 @@
 
 module VBlank
   class Builder
+    #--
     # `save_var` ON FLASH: the game's saved variables kept as one record of their own, which
     # saves itself.
     #
@@ -36,6 +37,7 @@ module VBlank
     #
     # Nothing in the game sets any of this. On the 32K memory there is no record, and a
     # save_var writes through as it always did.
+    #++
     module SaveVarRecord
       # The record's name. One underscore in front, which no `save_data` name can have.
       SAVE_VAR_RECORD = IR::SaveLayout::SAVE_VAR_RECORD  # :nodoc:

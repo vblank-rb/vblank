@@ -42,6 +42,64 @@ class TestVerbDocComments < Minitest::Test
     assert_empty VERBS_AWAITING_DOCS - dsl_verbs, "These are not DSL verbs (any more): #{(VERBS_AWAITING_DOCS - dsl_verbs).join(', ')}"
   end
 
+  # A paragraph that opens with two or more words in capitals ("THE GAME HOLDS HANDLES. ...") reads as
+  # shouting on the site. A lead-in to several paragraphs is a Markdown subheading (### or lower),
+  # a lead-in to one paragraph is its plain first sentence, and one to engineer material goes
+  # behind `#--` where capitals may stay.
+  SHOUTING_OPENING = /\A(?:[A-Z][A-Z0-9'-]+[ ,]+(?:[A-Z][A-Z0-9'-]+|A|I)|A[ ,]+[A-Z][A-Z0-9'-]{3,})\b/
+
+  def test_no_author_paragraph_opens_in_capitals
+    shouted = verb_comments.flat_map { |where, lines| shouting_paragraphs(where, lines) } +
+              container_comments_of_builder.flat_map { |where, lines| shouting_paragraphs(where, lines) }
+
+    assert_empty shouted, <<~MSG
+      These paragraphs of author text open with words in capitals. Make a lead-in to several
+      paragraphs a `###` subheading, a lead-in to one paragraph its plain first sentence, or move
+      the paragraph behind `#--` where capitals may stay.
+        #{shouted.join("\n  ")}
+    MSG
+  end
+
+  # [where, author comment lines starting at the first line] for each verb.
+  private def verb_comments
+    dsl_verb_definitions.filter_map do |verb, definition|
+      next unless definition
+
+      ["#{verb} (#{relative(definition.file)}", definition.comment]
+    end.map { |label, lines| [label, lines] }
+  end
+
+  private def container_comments_of_builder
+    files = Dir.glob(VBlank.root.join("lib/vblank/builder/*.rb").to_s) + [VBlank.root.join("lib/vblank/builder.rb").to_s] +
+            Dir.glob(VBlank.root.join("lib/vblank/effects/packs/*.rb").to_s)
+    files.sort.flat_map do |file|
+      DslVerbs.container_comments(file).map { |name, line, lines| ["#{name} (#{relative(file)}:#{line}", lines] }
+    end
+  end
+
+  private def relative(file) = file.delete_prefix("#{VBlank.root}/")
+
+  # The paragraphs of the author text (up to `#--`, outside code fences) that shout, each as
+  # "where): the opening words".
+  private def shouting_paragraphs(where, lines)
+    author = lines.take_while { |line| !line.match?(ENGINEER_NOTES_START) }
+    fenced = false
+    paragraph_open = true
+    found = []
+    author.each do |line|
+      fenced = !fenced if line.lstrip.start_with?("```")
+      if line.strip.empty?
+        paragraph_open = true
+      elsif paragraph_open && !fenced && line.match?(SHOUTING_OPENING)
+        found << "#{where}): #{line[0, 50]}"
+        paragraph_open = false
+      else
+        paragraph_open = false
+      end
+    end
+    found
+  end
+
   # Verb => what is wrong, with the file and line to open, for each verb that has a problem.
   private def verb_problems
     dsl_verb_definitions.each_with_object({}) do |(verb, definition), found|

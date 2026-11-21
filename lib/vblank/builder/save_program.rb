@@ -2,6 +2,7 @@
 
 module VBlank
   class Builder
+    #--
     # THE STEPS THE SAVE CODE BUILDS PROGRAM WITH, and the few pieces it is written in.
     #
     # The records, the table of places and the job queue all build their routines the same
@@ -11,6 +12,7 @@ module VBlank
     # table of places and the job queue can each be an object of its own handed the same port.
     #
     # Whatever includes this keeps the port in +@port+.
+    #++
     module SaveProgram
       private
 

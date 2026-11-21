@@ -2,6 +2,7 @@
 
 module VBlank
   class Builder
+    #--
     # WHERE A COPY'S HALVES ARE, AND WRITING ONE in the order that keeps a save safe.
     #
     # Every copy of a record is kept twice, and a save goes into the OLDER half, which only
@@ -24,6 +25,7 @@ module VBlank
     #
     # An object of its own, made once the records are laid out, since where a half is depends
     # on the save memory they were laid out in and nothing else.
+    #++
     class SaveHalf
       include SaveProgram
 

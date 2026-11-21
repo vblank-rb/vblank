@@ -2,6 +2,7 @@
 
 module VBlank
   class Builder
+    #--
     # A BACKGROUND DRAWN FROM THE ORIGINAL'S OWN PICTURES, MAP AND COLOURS, read from the data pack.
     #
     #   pack = data_pack from: ORIGINAL, version: "1.0" do |slots|
@@ -73,6 +74,7 @@ module VBlank
     # `color_walk` among it, is made as the game starts. The cells the game may write later
     # (`set_cells:`) are the one thing of the picture known here, all but their pixels, so each
     # of their tiles is a picture read from the file (#declare_told_tile_read_at_start).
+    #++
     module PackBackgrounds
       private
 

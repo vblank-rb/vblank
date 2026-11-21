@@ -2,6 +2,7 @@
 
 module VBlank
   class Builder
+    #--
     # A POSE THAT IS ONE OF THE ORIGINAL'S OWN FRAMES, read from the data pack: its pieces from a
     # slot of bytes, kept as the port's Original::FrameLayout says, over tiles from a slot of tiles.
     #
@@ -52,6 +53,7 @@ module VBlank
     # still know is true of it: the size, and where the frame starts, which is checked against
     # the slot's size, the game's own word. The build sees a whole box of that size, as it does
     # of any picture read at start (DataPacks#define_picture_from_start_file).
+    #++
     module PackPoses
       private
 

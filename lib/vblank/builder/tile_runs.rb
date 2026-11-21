@@ -2,6 +2,7 @@
 
 module VBlank
   class Builder
+    #--
     # TILES WHOSE PIXELS THE GAME PAINTS AS IT RUNS: `tiles :box, from: list, count: n`.
     #
     # Every other tile is a picture fixed while the cartridge is built, uploaded once and
@@ -23,6 +24,7 @@ module VBlank
     # (Console::Description#tile_planes), which are copied with nothing converted. It changes
     # nothing on the Advance, whose copy is plain already. It is off unless asked for, because
     # such a list means something different on each console.
+    #++
     module TileRuns
       # Bytes one tile of a run takes in its list: 8 rows of 8 pixels, two pixels a byte.
       TILE_BYTES = 32  # :nodoc:

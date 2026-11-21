@@ -2,6 +2,7 @@
 
 module VBlank
   class Builder
+    #--
     # THE CIRCLE A SPOTLIGHT LIGHTS, worked out a row at a time.
     #
     # What the picture is told is a span for each row of the screen: the columns from a left
@@ -24,6 +25,7 @@ module VBlank
     # It is written in the game's own words — a Value, a table read, a clamp — so the
     # console and the interpreter work out the very same numbers: neither has a circle of
     # its own to disagree about.
+    #++
     module Spotlights
       # The light's four numbers, and the row the spans are worked out for, named with the
       # framework's underscore prefix so a game's own variables can never collide with them.

@@ -2,6 +2,7 @@
 
 module VBlank
   class Builder
+    #--
     # SAVING IN THE BACKGROUND: every save, erase and copy a game asks for is a JOB, and jobs
     # are written into save memory a piece at a time, once a pass of the game loop, while the
     # game goes on.
@@ -41,6 +42,7 @@ module VBlank
     # read, names the queue's variables before anything is laid out. It is handed the save memory
     # and where the halves are once the records are laid out (#lay_out), and only then builds
     # its routines, which walk every record.
+    #++
     class SaveJobs
       include SaveProgram
 
