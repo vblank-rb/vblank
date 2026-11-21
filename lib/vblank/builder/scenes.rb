@@ -77,7 +77,7 @@ module VBlank
       # mode = :playing if pressed(:start)
       #
       # HANDLERS = %i[op_end op_wait op_walk op_say]
-      # scripts.each { |s| call HANDLERS, number: s.opcode }
+      # scripts.each { |s| call handlers, number: s.opcode }
       # ```
       #
       # * `name` - a routine's name, a list of names, or a variable that holds a name.
@@ -305,7 +305,7 @@ module VBlank
       # an author's `once_a_frame`, and the ones the framework declares for itself (an
       # effect's per-frame body, a hidden helper).
       #
-      # A body is built LATER, at finalize, when the `layer` block it was written inside
+      # A body is built later, at finalize, when the `layer` block it was written inside
       # has long since closed. So anything in it that wants a depth would quietly get
       # none, and this is where the layer in force is remembered so that can be refused
       # when it actually happens (see Layers#refuse_deferred_layer!). Remembering rather

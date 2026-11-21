@@ -2,7 +2,7 @@
 
 module VBlank
   class Builder
-    # EVERY `save_data` RECORD A GAME DECLARES, and the machinery behind them: the routines each
+    # Every `save_data` record a game declares, and the machinery behind them: the routines each
     # record is built into (SaveRecords, mixed in here), and three objects of their own it makes
     # and hands what they need — the table saying where each record lives (SavePlaces), the
     # queue that writes saves a piece a pass (SaveJobs), and where a copy's halves are and the
@@ -16,7 +16,7 @@ module VBlank
     # handles (DSL::SaveData) talk to it directly, so none of what they need sits among the
     # verbs a game writes.
     class Saves
-      # WHAT THE SAVES ASK OF THE BUILDER, and nothing more: build a statement, a loop, a
+      # What the saves ask of the builder, and nothing more: build a statement, a loop, a
       # routine, something run at power-on or once a pass, a variable; and three questions
       # about what the game declared, and its `save_var`s. +handle+ is the Builder itself, for the numbers and
       # conditions (DSL::Value, DSL::Condition) the saves hand back to a game — those build

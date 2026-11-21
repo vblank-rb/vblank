@@ -24,12 +24,12 @@ module VBlank
     # save is also asked for only while no other save is in hand, so it never queues behind a
     # game's own save and pushes a third into finishing on the spot.
     #
-    # AN UPDATE THAT ADDS A save_var KEEPS THE ONES SAVED. A record whose shape changes reads
+    # An update that adds a save_var keeps the ones saved. A record whose shape changes reads
     # its old saves as empty, and a shape made from the save_vars would change with every one
     # added. So this record's shape is a fixed run of words: how many save_vars the save was
     # made with, then each number in its slot (the order they were declared, as on the 32K
     # memory). One added later starts at its default, since the save records it had no slot then.
-    # The run is SLOTS words, or room for every save_var a game can have once it outgrows that.
+    # The run is slots words, or room for every save_var a game can have once it outgrows that.
     #
     # The 8K EEPROM keeps its save_vars this way too. It needs no wipe, but it is written eight
     # bytes at a time and wears out a little with each write, so a number written in place every

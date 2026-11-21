@@ -6,7 +6,7 @@ module VBlank
     #
     # A game built as a shell holds none of the original's data. Until the player's own copy has
     # been read, it shows a first screen that VBlank writes: a title, a line saying what the game
-    # needs, LOAD ROM and SETTINGS. `shell_screen` is where a game says how that screen looks and
+    # needs, LOAD ROM and settings. `shell_screen` is where a game says how that screen looks and
     # which other lines it has.
     #
     # The block is a program of its own. The first screen plays before the game's program can
@@ -39,7 +39,7 @@ module VBlank
       #
       # ```ruby
       # shell_screen do |first|
-      #   first.title "MY PORT"
+      #   first.title "my port"
       # end
       # ```
       def shell_screen(&block)
@@ -61,7 +61,7 @@ module VBlank
 
       private
 
-      # THE LOOK OF THE FIRST SCREEN THIS BUILDER IS MAKING (an Original::Shell::Look): what
+      # The look of the first screen this builder is making (an Original::Shell::Look): what
       # +declared+ gave, its block run here as game code, and the screen's own for the rest.
       # +title+ is the game's title. With nothing declared it is the screen as it always was.
       def shell_screen_look(title, declared)
