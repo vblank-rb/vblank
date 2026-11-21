@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# THE FACES OF A PLACE (Reference#exec_fill_face): one flat face of a 3D shape, already on the screen,
+# The faces of a place (Reference#exec_fill_face): one flat face of a 3D shape, already on the screen,
 # filled row by row with a picture, in perspective and lit. Joined into the runtime's class after
 # rg_screen.rb for a game that draws a place. rg_faces.c says how, rule for rule; this is that file
 # written again, method for method.
@@ -91,7 +91,7 @@ end
 # +numbers+ is, for a picture given as numbers into the shading's colours, the image of those
 # numbers; nil for any other.
 #
-# NOTHING IS MADE FOR A PIXEL. Every object this makes is one Ruby's garbage collector clears away
+# Nothing is made for a pixel. Every object this makes is one Ruby's garbage collector clears away
 # later, and a place of a few thousand faces fills hundreds of thousands of pixels a picture: with a
 # pair of arrays made for each one, most of a game's time went on clearing them. So each
 # end's numbers and each step are plain variables, and where the C has a routine for a spot in
@@ -99,7 +99,7 @@ end
 # are written out here, at each end of a stretch. A stretch's step across the picture is worked out
 # once for the stretch, which is the same division the C does at every pixel of it.
 #
-# A ROW PAINTED PLAIN. What rg_set_pixel asks of every pixel (a plain layer handed over, a mix, a
+# A row painted plain. What rg_set_pixel asks of every pixel (a plain layer handed over, a mix, a
 # placed fade, the picture without sprites kept beside, the cell on the screen and in the area) is
 # the same for every pixel of a row, and for nearly every row the answer is "none" (rg_painting_plain?).
 # Then the row is held to the screen and the area once, before the loop, and each pixel is stored
@@ -147,7 +147,7 @@ def rg_face_row(row, from, to, left, right, image, numbers, spans, shading)
   step_v = rg_div(rg_sub(to[2], from_v), count)
   step_w = rg_div(rg_sub(to[3], from_w), count)
   step_shade = rg_div(rg_sub(to[4], from_shade), count)
-  # STEPPED, NOT MULTIPLIED. A pixel's u, v and shade are the row's (or the stretch's) start plus a
+  # Stepped, not multiplied. A pixel's u, v and shade are the row's (or the stretch's) start plus a
   # step for every pixel along, wrapped as the game's numbers wrap. Adding the step once a pixel and
   # wrapping the sum gives that same number, since a wrap keeps the low 32 bits of a sum whichever
   # way it was added up; and a stretch of perspective is worked out only as the pixel walk leaves the

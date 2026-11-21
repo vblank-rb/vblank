@@ -7,7 +7,7 @@
 /* A fade toward black (0) or white (1), in sixteenths of the display or, when +walked+, in
  * 256ths of a walk through the colors (see Backends::FadeSteps). */
 void rg_screen_fade(int32_t toward_white, int32_t steps, int32_t walked);
-/* The same fade PLACED IN THE STACK: what is behind the layer it names fades, and that layer and
+/* The same fade placed in the stack: what is behind the layer it names fades, and that layer and
  * everything in front of it are left as drawn. +layer_place+ is how far forward that layer is
  * among the layers the game declared, or RG_NO_LAYER when it is none of them, and then
  * everything fades. Each thing gives how far forward such a layer can be and still leave it as
