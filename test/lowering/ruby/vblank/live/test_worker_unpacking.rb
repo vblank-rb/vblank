@@ -5,7 +5,7 @@ require "tmpdir"
 require "vblank/live"
 require "pieced_original"
 
-# A SHELL'S UNPACKING IN PIECES ON SEVERAL WORKERS (Live::WorkerUnpacking), a Ractor each: the
+# A shell's unpacking in pieces on several workers (Live::WorkerUnpacking), a Ractor each: the
 # pack is byte for byte the one a single worker makes, which plays the whole routine as one
 # program, and the one the all-in-one build makes. The bar the window shows adds up every worker's
 # work, so it is whole at the end.
@@ -45,7 +45,7 @@ class TestWorkerUnpacking < Minitest::Test
     end
   end
 
-  # A SHELL WRITTEN OUT AS ONE RUBY FILE CARRIES ITS SPLIT (Ruby#script): read back
+  # A shell written out as one Ruby file carries its split (Ruby#script): read back
   # (Ruby::WrittenGame.read, as the window vblank run --shell opens reads it), its unpacking plays in
   # pieces on several workers and makes the pack the all-in-one build makes.
   def test_a_shell_written_out_unpacks_in_pieces_on_several_workers

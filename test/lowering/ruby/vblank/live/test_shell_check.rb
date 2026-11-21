@@ -7,7 +7,7 @@ require "shell_tests"
 require "all/vblank/builder/test_pack_tile_poses"
 require "all/vblank/dsl/test_pack_background_set_cell"
 
-# THE CHECK EVERY PORT RUNS ON ITS SHELL (Live::ShellCheck), on the made-up port the shell tests
+# The check every port runs on its shell (Live::ShellCheck), on the made-up port the shell tests
 # share. The answer key is the port's all-in-one build: its pack, and its play over the tape.
 # On the Ruby run alone: the check plays the shell as Ruby whatever run it is in, so another run
 # would play the same thing again.

@@ -8,7 +8,7 @@ require "tmpdir"
 require "vblank/live"
 require "shell_tests"
 
-# A PORT BUILT AS A SHELL, PLAYED AS RUBY. The shell holds none of the made-up original's data
+# A port built as a shell, played as Ruby. The shell holds none of the made-up original's data
 # (MadeUpOriginal, made_up_original.rb's). Started with no pack kept, it shows its menu; LOAD ROM
 # takes the file the player picks, checks it is a release the game reads, unpacks it with the
 # game's own routine, keeps the pack in the game's folder and plays the game. The next start plays
@@ -83,7 +83,7 @@ class TestShell < Minitest::Test
     end
   end
 
-  # A WINDOW SEATS PLAYERS (SDL#seat_players) before each play the shell starts on it, the
+  # A window seats players (SDL#seat_players) before each play the shell starts on it, the
   # unpacking's among them, and Headless is told the same. The first start unpacks the copy and
   # plays the game on the one device, each play told it seats no players.
   def test_the_first_start_tells_the_device_each_play_seats_no_players
@@ -147,7 +147,7 @@ class TestShell < Minitest::Test
     end
   end
 
-  # A PACK AN OLDER BUILD KEPT IS ROUTINE: a port grows a part at a time, and each part changes
+  # A pack an older build kept is routine: a port grows a part at a time, and each part changes
   # its pack. A new build does not read it, tells the player nothing went wrong (no refusal), says
   # on its menu that the data must be read again from the copy of the original, by the original's
   # own title, asks for the copy as on a first start, and writes its pack over the old one.
@@ -219,7 +219,7 @@ class TestShell < Minitest::Test
     end
   end
 
-  # The menu comes back with SETTINGS still under the cursor, so LOAD ROM is one line up from it.
+  # The menu comes back with settings still under the cursor, so LOAD ROM is one line up from it.
   def test_settings_on_the_menu_opens_the_settings_then_shows_the_menu_again
     Dir.mktmpdir do |folder|
       buttons = { 2 => [:down], 4 => [:a] }
@@ -237,8 +237,8 @@ class TestShell < Minitest::Test
     end
   end
 
-  # THE MENU'S TWO LINES, as rows of the picture (Original::Shell.menu_program puts LOAD ROM at the
-  # screen's middle and SETTINGS twelve rows under it), and the colours a line is drawn in: gray,
+  # The menu's two lines, as rows of the picture (Original::Shell.menu_program puts LOAD ROM at the
+  # screen's middle and settings twelve rows under it), and the colours a line is drawn in: gray,
   # white under the cursor, and yellow once it is chosen.
   LOAD_ROM_ROWS = (80...88)
   SETTINGS_ROWS = (92...100)
@@ -305,7 +305,7 @@ class TestShell < Minitest::Test
     end
   end
 
-  # SETTINGS closed again leaves the cursor on SETTINGS: with nothing moved, A opens them again.
+  # SETTINGS closed again leaves the cursor on settings: with nothing moved, A opens them again.
   def test_the_menu_comes_back_from_settings_with_settings_under_the_cursor
     Dir.mktmpdir do |folder|
       buttons = { 2 => [:down], 4 => [:a] }
@@ -351,7 +351,7 @@ class TestShell < Minitest::Test
     end
   end
 
-  # AN UNPACKING THAT WORKS A LONG TIME BETWEEN WRITES (a port rendering music before it writes a
+  # An unpacking that works a long time between writes (a port rendering music before it writes a
   # byte) plays away from the window, so the window keeps showing frames the whole time, and the
   # pack it makes is still the all-in-one build's byte for byte. Played on the window, as it was, the
   # routine showed a frame only when it waited for one, and this one waits for none as it works.
@@ -392,7 +392,7 @@ class TestShell < Minitest::Test
   # The window closed part way: the shell keeps no pack, and gives up at once rather than waiting
   # for the unpacking to finish its work.
   #
-  # HELD TO WHAT HAPPENS, NOT TO THE CLOCK. The unpacking never finishes: it waits for frame after
+  # Held to what happens, not to the clock. The unpacking never finishes: it waits for frame after
   # frame and never gets to its end. So a shell that waited for it would never come back, and one
   # that gives up does, however busy the machine; a bound in seconds on how soon it came back was
   # broken by a busy machine alone. MOST_SECONDS_UNTIL_SHELL_GIVES_UP only catches that hang.

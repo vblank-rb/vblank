@@ -6,7 +6,7 @@ require "tmpdir"
 require "vblank/live"
 require "folder_original"
 
-# A SHELL OF A PORT WHOSE ORIGINAL IS A FOLDER OF FILES (FolderOriginal's fixture), played as Ruby.
+# A shell of a port whose original is a folder of files (FolderOriginal's fixture), played as Ruby.
 # LOAD ROM takes the folder, finds each file the release names in any case, checks each by its size
 # and SHA-1, and leaves the other files in it alone. The answer key is the all-in-one build from the
 # same folder: the check every port runs (Live::ShellCheck) holds the kept pack and the play to it.
