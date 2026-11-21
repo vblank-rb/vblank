@@ -5,29 +5,29 @@ module VBlank
     module Backends
       class PS1
         module Runtime
-          # THE SOUND CHIP, AND HOW THE PROCESSOR TALKS TO IT. The PlayStation's sound chip (the SPU) sits
+          # The sound chip, and how the processor talks to it. The PlayStation's sound chip (the SPU) sits
           # among the ports from 1F801C00h, a register of 16 bits each: for each of its 24 voices a volume
           # for each speaker, a pitch, where in the chip's own 512K of sound memory its sound starts, and its
           # envelope; and for the whole chip which voices to start (key on) and let go (key off), its main
           # volume, and whether it is on at all (psx-spx, "Sound Processing Unit"). What each sound-log entry
           # writes is SPUWrites'.
           #
-          # AT POWER-ON the game's loops (SoundMemory) are copied into sound memory, 32 halfwords at a time
+          # At power-on the game's loops (SoundMemory) are copied into sound memory, 32 halfwords at a time
           # through the chip's queue for them, and the game's voices are given their envelope (#emit_upload).
           # The chip is on from then but its sound is held in (SPU_UNMUTED clear) and its main volume is
           # nought.
           #
-          # NOTHING SOUNDS UNTIL `enable_sound`, as nothing does on the Advance: until then ON is nought and
+          # Nothing sounds until `enable_sound`, as nothing does on the Advance: until then ON is nought and
           # the writes here go nowhere, and a voice's loudness does not move. A sound before it is still in
           # the sound log, as it is in the interpreter's.
           #
-          # A VOICE'S LOUDNESS. A voice's volume register holds a loudness, so a note that fades or swells is
+          # A voice's loudness. A voice's volume register holds a loudness, so a note that fades or swells is
           # the runtime's work, as on the Genesis: each voice's volume is kept here, with the number of 64ths
           # of a second between its steps, and once a frame each is counted on (rt_sound_fades) the way the
           # Advance's voice counts itself. The chip's envelope could fade a voice by itself, but by rates
           # of its own, not the Advance's sixty-fourths.
           #
-          # THE FRAME BOUNDARY, where a pass's wait ends (rt_sound_frame): every voice's fade moved on for
+          # The frame boundary, where a pass's wait ends (rt_sound_frame): every voice's fade moved on for
           # each frame the pass took, the voices the pass started and let go told to the chip at once
           # (SPUWrites says why), and the count of the log kept for the pass.
           module Sound
@@ -40,7 +40,7 @@ module VBlank
             KEYS_OFF = "rt sound keys off" # The voices to let go there
             TICKS_LEFT = "rt sound ticks left" # Frames still to move the fades on by, where a wait ends
 
-            # THE SOUND LOG, for whoever reads a run back: every sound statement the game ran, as the number
+            # The sound log, for whoever reads a run back: every sound statement the game ran, as the number
             # the lowering gave its entry of the interpreter's log (Lowering::Sound), the last LOG_LENGTH of
             # them in a ring (a half each), and how many there have been (a word).
             LOG = "rt sound log"
@@ -52,7 +52,7 @@ module VBlank
             LOGGED_BY_PASS = "rt sound logged by pass"
             LOGGED_SLOT_BYTES = 4
 
-            # THE ENVELOPE every game voice is given (Beetle PSX, spu.c SPU_CacheEnvelope and
+            # The envelope every game voice is given (Beetle PSX, spu.c SPU_CacheEnvelope and
             # SPU_RunEnvelope): attack at rate 0, linear, which climbs 7 << 11 a sample and is at full in
             # three; decay at its slowest rate, Fh, which takes off 8 every 16 samples, so the level is under
             # the sustain level (Fh, which is 8000h) after its first step and stays; sustain at rate 7Fh,
@@ -64,7 +64,7 @@ module VBlank
             # How many halfwords the chip's queue for sound memory holds (psx-spx: "FIFO ... 32 halfwords").
             QUEUE_HALVES = 32
 
-            # THE COMMANDS OF A GROUP of the song table (PS1::Music), one for each kind of write, each sent to
+            # The commands of a group of the song table (PS1::Music), one for each kind of write, each sent to
             # its routine with its first number in a0 and its second in a1. Nought ends a group and 4 logs an
             # entry (SongTable::GROUP_END, GROUP_LOG), so neither is one of these.
             WRITE_SPU = 1

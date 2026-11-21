@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class PS1
-        # THE PLAYSTATION GRAPHICS CHIP MIXING A SEE-THROUGH TEXEL with the pixel under it, by its own rules,
+        # The PlayStation graphics chip mixing a see-through texel with the pixel under it, by its own rules,
         # written in Ruby so the checked run can mix a see-through layer on the interpreter's side the way the
         # chip mixes it in the emulator (Reference#mix_see_through_with). Like PolygonFill it is the answer key
         # for the chip, and no build uses it.
