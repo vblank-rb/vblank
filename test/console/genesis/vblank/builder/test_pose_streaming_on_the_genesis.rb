@@ -19,7 +19,7 @@ class TestPoseStreamingOnTheGenesis < Minitest::Test
   # background, more than video memory holds.
   POSES = 16
 
-  # A screen of GROUND_TILES different tiles behind sprites facing poses big poses: +walkers+ of
+  # A screen of GROUND_TILES different tiles behind sprites facing POSES big poses: +walkers+ of
   # them, each stepping to its next pose every +rate+ frames, the first from its first pose.
   private def walkers_over_a_big_ground(walkers: 1, rate: 1)
     poses = POSES
@@ -67,7 +67,7 @@ class TestPoseStreamingOnTheGenesis < Minitest::Test
   )
 
   # Each frame is PIECES_ACROSS by PIECES_DOWN pieces of four tiles by four, each piece naming tiles
-  # of its own: 96 tiles a frame, and frames frames more than video memory holds.
+  # of its own: 96 tiles a frame, and FRAMES frames more than video memory holds.
   PIECES_ACROSS = 3
   PIECES_DOWN = 2
   PIECE_TILES = 16

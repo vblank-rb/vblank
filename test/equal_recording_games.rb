@@ -16,7 +16,7 @@ module EqualRecordingGames
   RATE = 8000
 
   # A game that declares :first, :second and :third, each with the samples and rate +declared+
-  # gives it ({ pcm:, rate: }; RECORDING at rate for one it leaves out), starts +plays+ going
+  # gives it ({ pcm:, rate: }; RECORDING at RATE for one it leaves out), starts +plays+ going
   # round on its second pass, and on its fourth stops +stops+ (nothing, for nil). Built for
   # +console+, or for whichever console the run plays.
   private def recordings_game(plays:, stops: nil, declared: {}, console: nil)

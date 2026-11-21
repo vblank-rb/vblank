@@ -47,7 +47,7 @@ module MixerGames
   # class's own constants are frozen for its Ractor.
   SOUNDS = Ractor.make_shareable((0...(VBlank::Audio::Sound::MIXER_VOICES + 2)).map { |i| :"s#{i}" })
 
-  # Every one of sounds played on the first pass, each with bytes of its own.
+  # Every one of SOUNDS played on the first pass, each with bytes of its own.
   private def sounds_past_the_mixer
     frames_program(5) do
       SOUNDS.each_with_index.map { |name, i| sample name, pcm: [25 + i, -25 - i] * 2000, rate: 8000 }

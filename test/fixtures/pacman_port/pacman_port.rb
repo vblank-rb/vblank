@@ -10,7 +10,7 @@
 #
 # - all-in-one, as `vblank build` or a test builds it: the data pack is made from the copy as the game
 #   is built. Set PACMAN_ROM to the path of pacman.gba (or a settings file, pacman_port.yml beside
-#   this file, with `rom: path`).
+#   this file, with `rom: PATH`).
 # - as a shell, `vblank run test/fixtures/pacman_port/pacman_port.rb --shell`: the program holds
 #   none of the data, and on the first run Load ROM takes pacman.gba, unpacks it into a data pack kept
 #   on the player's machine, and the next runs never read the cartridge.

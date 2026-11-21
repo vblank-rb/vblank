@@ -55,7 +55,7 @@ class TestSpotlightShowNow < Minitest::Test
   OPENS = 5
 
   # A white room under a light that starts shut and black, whose loop counts its turns and opens
-  # the light to 4 on turn opens, then 4 more each turn; with +now+ it shows the first at once.
+  # the light to 4 on turn OPENS, then 4 more each turn; with +now+ it shows the first at once.
   private def opening_game(now:)
     b = Builder.new
     b.instance_eval do
