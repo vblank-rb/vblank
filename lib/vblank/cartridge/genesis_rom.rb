@@ -4,7 +4,7 @@ require "json"
 
 module VBlank
   module Cartridge
-    # A SEGA GENESIS CARTRIDGE: the code the Genesis lowering linked, with the vectors and the header
+    # A Sega Genesis cartridge: the code the Genesis lowering linked, with the vectors and the header
     # the console reads in front of it.
     #
     # The 68000 reads its first two long words at power-on: the place the stack starts, and the place
@@ -15,7 +15,7 @@ module VBlank
     # cartridge. A vector a game does not name points where reset does, so a fault restarts the game
     # in place of running off into the weeds.
     #
-    # THE HEADER sits at $100, 256 bytes of text and numbers: the console's name (which must start
+    # The header sits at $100, 256 bytes of text and numbers: the console's name (which must start
     # with "SEGA" or a console with the security check will not start the cartridge), the maker, the
     # game's title twice (once as the home market writes it and once as the overseas market does),
     # a serial number, the checksum, which devices the game reads (J is a three-button pad), where the
@@ -80,7 +80,7 @@ module VBlank
 
       def write(path) = ROM.write_bytes(path, @bytes)
 
-      # HOW MANY FRAMES ITS PASSES TOOK: the cartridge run in the emulator
+      # How many frames its passes took: the cartridge run in the emulator
       # (Diagnostics::GenesisProfiler), reported for a person or as JSON. +keys+ are held from
       # power-on, and +settle+ passes run before the +frames+ passes measured.
       #
@@ -111,7 +111,7 @@ module VBlank
 
       private
 
-      # A power of two in size, of at least SMALLEST, with the empty part of the cartridge as the
+      # A power of two in size, of at least smallest, with the empty part of the cartridge as the
       # bytes of an erased chip.
       def padded(bytes)
         size = SMALLEST

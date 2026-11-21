@@ -2,7 +2,7 @@
 
 module VBlank
   module Cartridge
-    # THE CARTRIDGE OF A CONSOLE WHOSE LOWERING IS CHECKED BY A RUN OF ITS OWN — the Game Boy
+    # The cartridge of a console whose lowering is checked by a run of its own — the Game Boy
     # Color's, the Super Nintendo's, the Genesis's and the PlayStation's — made from a checked
     # program by the lowering its kit names (Console::CheckedKit#lowering). One build serves every
     # such console: the lowering is what differs, and the kit names it.

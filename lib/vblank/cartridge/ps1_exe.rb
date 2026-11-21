@@ -2,14 +2,14 @@
 
 module VBlank
   module Cartridge
-    # A PLAYSTATION PROGRAM AS A PS-X EXE: the code the PlayStation lowering linked, with the 2048-byte
+    # A PlayStation program as a PS-X EXE: the code the PlayStation lowering linked, with the 2048-byte
     # header the console's BIOS (or an emulator, or a loader on a real console) reads in front of it.
     #
     # A PlayStation game ships on a disc, and the disc's SYSTEM.CNF names the program the BIOS loads
     # from it: a PS-X EXE. The same file can be handed to an emulator directly, or sent to a real
     # console over a serial cable by a loader, without a disc at all. That is what this is.
     #
-    # THE HEADER (psx-spx, "CDROM File Formats", PS-X EXE), every number four bytes, low byte first:
+    # The header (psx-spx, "CDROM File Formats", PS-X EXE), every number four bytes, low byte first:
     #
     #   000h  "PS-X EXE"
     #   010h  where to start running (the entry point)
@@ -70,7 +70,7 @@ module VBlank
 
       def write(path) = ROM.write_bytes(path, @bytes)
 
-      # HOW MANY FRAMES ITS PASSES TOOK, AND WHERE THE TIME WENT: the program run in the emulator
+      # How many frames its passes took, and where the time went: the program run in the emulator
       # (Diagnostics::PS1Profiler), reported for a person or as JSON. +keys+ are held from power-on, and
       # +settle+ passes run before the +frames+ passes measured.
       #

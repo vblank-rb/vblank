@@ -2,7 +2,7 @@
 
 module VBlank
   module Cartridge
-    # HOW MANY PLAYERS A GAME TAKES, as it is set where the game is named:
+    # How many players a game takes, as it is set where the game is named:
     #
     #   VBlank.game "PARTY", consoles: %i[gba snes], players: 4               # 1 to 4, on every build
     #   VBlank.game "PARTY", consoles: %i[gba snes], players: 2..4            # at least 2, at most 4

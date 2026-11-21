@@ -2,7 +2,7 @@
 
 module VBlank
   module Cartridge
-    # HOW A GAME IS BUILT, as one value: what a game sets for its cartridge beside its name.
+    # How a game is built, as one value: what a game sets for its cartridge beside its name.
     #
     # A game sets these where it is named (`VBlank.game "NAME", consoles: %i[gba], save_memory: 128`) or where it
     # is built (`VBlank.build`), and they are needed a long way from there — the frame pacing and
@@ -22,7 +22,7 @@ module VBlank
     # however it was written. It is nil until something names one: a game names its consoles where it
     # is named and is built for one of them, and VBlank.build refuses a build that names none.
     #
-    # +fast_cartridge+, +fast_code+ and +stack_room+ are SETTINGS ONLY THE ADVANCE HAS, and only its
+    # +fast_cartridge+, +fast_code+ and +stack_room+ are settings only the Advance has, and only its
     # build reads them: what each means, what it is when nothing is set, and which values it can
     # take are Cartridge::AdvanceBuild's, and so is refusing a value it cannot use. Each is nil when
     # the game sets none, so that a build for another console can tell a setting it does not
