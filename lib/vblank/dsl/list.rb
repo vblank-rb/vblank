@@ -2,33 +2,38 @@
 
 module VBlank
   module DSL
-    # A handle to a list in a build block: a bounded, ordered collection whose
-    # length changes as the game runs — a snake's growing body, a queue of shots on
-    # screen. `list :name, capacity: N` hands one back, and its methods read like
-    # working with a Ruby array:
+    # A list of numbers the game changes
     #
-    #   body = list :body, capacity: 256
-    #   body.push head          # grow at the front of the queue
-    #   body.shift              # drop the oldest
-    #   head = body.last        # a Value — the newest cell
-    #   body.each { |cell| draw_rect_at cell, 40, 2, 2, :green }
+    # `list :name, capacity: 256` hands this back: numbers in order, whose length changes as
+    # the game plays, such as a snake's growing body or the shots on screen. It holds at most
+    # `capacity` numbers, and its methods read like a Ruby array's.
     #
-    # A List is the collection peer of {Value}: where a Value stands for one number,
-    # a List stands for a run of them. The two kinds of method mirror that split:
+    # ```ruby
+    # body = list :body, capacity: 256
+    # body.push head          # add the newest at the end
+    # body.shift              # drop the oldest
+    # tail = body.first       # a number, read as the game plays
+    # body.each { |cell| draw_rect_at cell, 40, 2, 2, :green }
+    # ```
     #
-    #   * The ones that *change* the list — push / pop / shift / []= — record a
-    #     statement into the program at the current point (inside a loop, an `if`,
-    #     wherever the call sits), just like the builder's other verbs. They return
-    #     self so calls chain.
+    # The methods that change the list (#push, #pop, #shift, #[]=, #fill, #copy_from) run
+    # where they are written, inside a loop or an `if` as any line does. The ones that read
+    # it (#[], #length, #first, #last) give numbers, which add, compare and draw like any
+    # other.
     #
-    #   * The ones that *read* it — [] / length / first / last — hand back a {Value},
-    #     so an element or the length flows straight into arithmetic, a comparison,
-    #     or another draw. Nothing is committed to the program by a read alone.
+    # An item is a number: nil, `true`, `false` or a test's answer put into a list is a
+    # friendly error. Keep a test's answer as `test ? 1 : 0`.
+    #--
+    # A List is the collection peer of Value: where a Value stands for one number, a List
+    # stands for a run of them. The ones that change it record a statement into the program at
+    # the current point, just like the builder's other verbs, and return self so calls chain.
+    # Nothing is committed to the program by a read alone.
     #
     # Values going in or coming out cross the one coercion boundary (Value.node_for):
     # an index or a pushed value may be a Value, a bare Integer, or a :symbol naming
     # a variable, and a read hands back a Value — so a list composes with the rest of
     # the expression DSL without the caller thinking about IR nodes.
+    #++
     class List
       Build = IR::Build
 
@@ -53,50 +58,88 @@ module VBlank
       attr_reader :name
 
       # How much fraction this list's items carry, or nil if they are whole numbers.
-      attr_reader :fraction_bits
+      attr_reader :fraction_bits # :nodoc:
 
       # --- growing / shrinking: record a statement ---
 
-      # Add a value at the end of the list. Accepts a Value, an Integer, or a
-      # :symbol naming a variable.
+      # Adds a number at the end of the list. `<<` does the same.
+      #
+      # ```ruby
+      # shots << hero_x
+      # ```
       def push(value)
         record(Build.list_push(@name, item_node(value, "hold")))
         self
       end
       alias << push
 
-      # Drop the oldest item (the front of the list).
+      # Drops the oldest item, the one at the front of the list.
+      #
+      # A list the game shifts keeps its items in a ring, whose room is rounded up to a power
+      # of two, so give such a list a power-of-two capacity.
       def shift
         record(Build.list_drop(@name, from: :front))
         self
       end
 
-      # Drop the newest item (the back of the list).
+      # Drops the newest item, the one at the back of the list.
       def pop
         record(Build.list_drop(@name, from: :back))
         self
       end
 
-      # Overwrite the item at `index`. The slot must already hold one (push first).
+      # Puts `value` in the item at `index`, in place of what it held. The item must be there
+      # already: push it first, or start the list full with `full_of:`.
+      #
+      # ```ruby
+      # board[row * 8 + column] = 1
+      # ```
       def []=(index, value)
         record(Build.list_set(@name, Value.node_for(index), item_node(value, "hold")))
         value
       end
 
-      # Make the list hold exactly +count+ entries of +table+, from entry +at+ on: the letter
-      # a name is drawn with, the frame of an animation, a row of a level. +at+ may be worked
-      # out as the game runs; +count+ is a number written in the program. One copy rather
-      # than an entry at a time (see Builder#copy_table_run).
+      # Makes the list hold exactly `count` entries of `table`, from entry `at` on: the letter
+      # a name is drawn with, a frame of an animation, a row of a level.
+      #
+      # It is one copy rather than an entry at a time, so it is much quicker than a loop that
+      # copies each. The table and the list must keep entries of the same width and the same
+      # kind of number.
+      #
+      # ```ruby
+      # name.copy_from letters, at: which * 64, count: 64
+      # ```
+      #
+      # * `at:` - the first entry to copy. The game may work it out as it plays, and it is held
+      #   inside the table.
+      # * `count:` - how many entries, as a number written in the game.
+      #--
+      # See Builder#copy_table_run.
+      #++
       def copy_from(table, at:, count:)
         @builder.copy_table_run(self, table, at: at, count: count)
         self
       end
 
-      # Set every item to +value+, or the +count+ items from +from+: clearing a box a game
-      # letters text into, a row of a board. Each may be worked out as the game runs. One step,
-      # so the console sets the run a whole word at a time (see Builder#fill_list_run). A run
-      # must stay inside the items the list holds: past them the interpreter stops with an
-      # error, where the console only holds the run to the capacity.
+      # Sets every item the list holds to `value`, or the `count` items from `from` on:
+      # clearing a box a game letters text into, or a row of a board.
+      #
+      # It is one step, so it is much quicker than a loop that sets each item. Each number may
+      # be worked out as the game plays. A run must stay inside the items the list holds now. A
+      # list the game also shifts cannot be filled.
+      #
+      # ```ruby
+      # box.fill 0
+      # box.fill 0xFF, from: row * 30, count: 30
+      # ```
+      #
+      # * `from:` - the first item to set.
+      # * `count:` - how many items to set.
+      #--
+      # The console sets the run a whole word at a time (see Builder#fill_list_run). Past the
+      # items the list holds the interpreter stops with an error, where the console only holds
+      # the run to the capacity.
+      #++
       def fill(value, from: nil, count: nil)
         @builder.fill_list_run(self, item_node(value, "hold"), from: from, count: count)
         self
@@ -104,31 +147,46 @@ module VBlank
 
       # --- reading: hand back a Value ---
 
-      # The item at `index`, as a Value. The index may be a Value, an Integer, or a
-      # :symbol naming a variable.
+      # The item at `index`, as a number, read as the game plays. The first item is at 0.
+      #
+      # ```ruby
+      # draw_rect_at shots[i], 20, 2, 4, :white
+      # ```
       def [](index)
         item_value(Build.list_get(@name, Value.node_for(index)))
       end
 
-      # How many items the list holds right now, as a Value. A count, so it never carries a
-      # fraction however much the items do — half an item is not a thing.
+      # How many items the list holds now, as a number read as the game plays. It is a count, so
+      # it is a whole number even in a list of fractions.
+      #
+      # ```ruby
+      # body.shift if body.length > snake_length
+      # ```
       def length
         whole_value(Build.list_len(@name))
       end
 
-      # The first item (index 0), as a Value.
+      # The first item, the oldest, as a number.
       def first
         self[0]
       end
 
-      # The last item (index length - 1), as a Value.
+      # The last item, the newest, as a number.
       def last
         self[length - 1]
       end
 
-      # Run the block once for each item, front to back, handing it the item as a
-      # Value. Sugar over {Builder#repeat}: the count is the list's current length,
-      # so the loop tracks the list even as earlier iterations change it.
+      # Runs the block once for each item, front to back, giving it the item as a number.
+      #
+      # The count is the list's length when the walk starts each time, so the walk follows the
+      # list as the game changes it.
+      #
+      # ```ruby
+      # body.each { |cell| draw_rect_at cell, 40, 2, 2, :green }
+      # ```
+      #--
+      # Sugar over Builder#repeat.
+      #++
       def each(&block)
         list = self # `repeat` runs its block in the builder's context; keep our ref
         @builder.repeat(length) { |index| block.call(list[index]) }

@@ -7,7 +7,7 @@ module VBlank
     #
     # They live in one place because the wording and the advice under it are one promise to the
     # reader: the same slip reads the same way wherever it is written.
-    module ChangingWord
+    module ChangingWord # :nodoc:
       module_function
 
       # A word the library keeps for itself. A game writes these in plain Ruby.

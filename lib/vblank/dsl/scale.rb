@@ -22,7 +22,7 @@ module VBlank
     # exactly the mistake the orphaned-expression guardrail looks for, so the framework's
     # own scratch was indistinguishable from an author's dropped `flags | MASK`. Asking a
     # scale directly leaves the guardrail with only real expressions to judge.
-    class Scale
+    class Scale # :nodoc:
       Build = IR::Build
 
       # @param bits [Integer, nil] how many fraction bits this place keeps; nil for plain

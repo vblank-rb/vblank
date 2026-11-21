@@ -14,7 +14,7 @@ module VBlank
     #
     # One routine for a list, a font and a COLOUR, however many places draw it, since a high score
     # table draws the same list ten times over and each place only sets four numbers.
-    class ListText
+    class ListText # :nodoc:
       def initialize(builder, number:, list:, font:, color:)
         @builder = builder
         @number = number

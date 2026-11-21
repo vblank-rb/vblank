@@ -13,7 +13,7 @@ module VBlank
     # size must be even so the fast fill is legal, a timer points you at `every` for slower
     # timing. Folding those into one sentence would save a few lines and cost the thing the
     # guardrails are for.
-    module Whole
+    module Whole # :nodoc:
       module_function
 
       # A count of something there must be at least one of.

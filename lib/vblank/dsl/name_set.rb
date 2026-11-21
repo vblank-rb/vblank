@@ -18,7 +18,7 @@ module VBlank
     # against. So the set is only complete once the whole program has been built, which is why
     # anything that needs all of them (a call that picks a routine by the name a variable holds)
     # asks at the end rather than where it was written.
-    class NameSet
+    class NameSet # :nodoc:
       # @param holder [String] what keeps these names, for a message ("the variable :mode")
       def initialize(holder)
         @holder = holder
