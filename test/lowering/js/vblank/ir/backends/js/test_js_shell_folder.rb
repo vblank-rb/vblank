@@ -7,7 +7,7 @@ require "fileutils"
 require "json"
 require "tmpdir"
 
-# A SHELL OF A PORT WHOSE ORIGINAL IS A FOLDER OF FILES (FolderOriginal's fixture), played as a web
+# A shell of a port whose original is a folder of files (FolderOriginal's fixture), played as a web
 # page. LOAD ROM opens the browser's folder picker; the page finds each file the release names in any
 # case among the folder's own files, checks each by its size and SHA-1, joins them in the release's
 # order and unpacks them, and reads nothing else. It refuses a folder in the words the Ruby shell uses

@@ -5,7 +5,7 @@ require "web_page"
 require "pieced_original"
 require "json"
 
-# A WEB SHELL'S UNPACKING IN PIECES ON SEVERAL WORKERS (rg_shell_unpack_on_workers), a Web Worker
+# A web shell's unpacking in pieces on several workers (rg_shell_unpack_on_workers), a Web Worker
 # each: the pack the page keeps is byte for byte the one it keeps on one worker, which plays the
 # whole routine as one program, and the one the all-in-one build makes.
 class TestJSWorkerUnpacking < Minitest::Test
