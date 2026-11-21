@@ -4,7 +4,7 @@ require "test_helper"
 require "stringio"
 require "tmpdir"
 
-# THE GAP BETWEEN FRAMES BELONGS TO THE PICTURE. It is the only time the sprite table can be
+# The gap between frames belongs to the picture. It is the only time the sprite table can be
 # written without the screen catching it half done, and mixing a heavy song can take longer than
 # the whole gap. When the sound was built there, the game's sprite writes landed after the next
 # picture had started, so its top rows showed last frame's sprites. A console test only: the
@@ -67,7 +67,7 @@ class TestMixerLeavesTheGap < Minitest::Test
     assert_predicate v, :sound?, "the song still plays"
   end
 
-  # A GAP THAT RUNS PAST THE BLANK, and a mix waiting at the first line. The sprite table must be
+  # A gap that runs past the blank, and a mix waiting at the first line. The sprite table must be
   # written while nothing is drawn (GBATEK, OAM), so a gap that runs a few rows into the picture
   # tears those rows already; a mix that cuts in at the first line would hold the rest of the
   # table off for as long as the mix lasts, and tear most of the picture. So the table's last

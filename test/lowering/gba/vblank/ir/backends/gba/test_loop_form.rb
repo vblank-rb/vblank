@@ -4,7 +4,7 @@ require "test_helper"
 require "stringio"
 require "tmpdir"
 
-# WHICH SHAPE A `repeat` GETS, and that both shapes count right.
+# Which shape a `repeat` gets, and that both shapes count right.
 #
 # A loop has to keep two numbers: how many passes it has made and how many it will make. Kept
 # in memory, every pass loads both, compares, loads the counter again, adds one and stores it
@@ -51,7 +51,7 @@ class TestLoopForm < Minitest::Test
     assert shapes.values.first.counter_held?, "nothing in that body can touch a register the loop needs"
   end
 
-  # A CALL is the plainest reason it cannot: the routine may use any register it likes, and
+  # A call is the plainest reason it cannot: the routine may use any register it likes, and
   # this loop does not get to see inside it.
   def test_a_body_that_calls_keeps_the_registers_by_saving_them_around_the_call
     _, shapes = shapes_of do
@@ -153,7 +153,7 @@ class TestLoopForm < Minitest::Test
     assert_equal 7, read_var(rom, :passes)
   end
 
-  # A BLOCKER HIDDEN DOWN A BRANCH still blocks. The body of a loop is a tree, and a call can
+  # A blocker hidden down a branch still blocks. The body of a loop is a tree, and a call can
   # sit anywhere in it — under an `if`, or under its `else`, which an IR node keeps somewhere
   # different from the rest of its body. Missing one is not a wrong price, it is a wrong
   # answer: the call would land on the register the loop is counting in.
@@ -200,7 +200,7 @@ class TestLoopForm < Minitest::Test
     refute LoopForm.counter_in_registers?(node)
   end
 
-  # THE INVARIANT THE WHOLE THING RESTS ON: every statement kind NOT named as a blocker really
+  # The invariant the whole thing rests on: every statement kind not named as a blocker really
   # does leave the two registers alone. The blocker list is a claim about the rest of the
   # lowering, and a claim like that rots the moment someone emits a new statement that happens
   # to work in a high register — the loop around it would then count in a register somebody
@@ -300,7 +300,7 @@ class TestLoopForm < Minitest::Test
   end
 
   # ...and the console agrees, which is the only place a clobbered register would show. Read
-  # back out of memory rather than off the screen: the number IS the answer here.
+  # back out of memory rather than off the screen: the number is the answer here.
   def test_the_console_agrees_about_both_shapes
     rom = VBlank.build("LOOPSUM", console: :gba, code: "BLSM", maker: "01", err: StringIO.new, out: StringIO.new) do
       screen :bitmap
@@ -338,8 +338,8 @@ class TestLoopForm < Minitest::Test
     assert_equal 20, read_var(rom, :total)
   end
 
-  # THE READ THE SAVING EXISTS FOR. A spilled loop lends its counter register out for the
-  # length of one statement, so a body that reads the loop's index INSIDE that statement
+  # The read the saving exists for. A spilled loop lends its counter register out for the
+  # length of one statement, so a body that reads the loop's index inside that statement
   # cannot read it from the register — the count is written out to its variable first and the
   # read comes from there. Get it wrong and the index reads as whatever the borrower left in
   # the register, which is a wrong answer rather than a slow one.
@@ -403,8 +403,8 @@ class TestLoopForm < Minitest::Test
   # test at the end of the pass is the subtract and a branch. Counting up has to compare against
   # the limit as an instruction of its own.
   #
-  # Measured on the console, as the instructions a loop of PASSES runs beyond the same body
-  # written out PASSES times with no loop at all — so what is left is the loop and nothing else.
+  # Measured on the console, as the instructions a loop of passes runs beyond the same body
+  # written out passes times with no loop at all — so what is left is the loop and nothing else.
   PASSES = 200
 
   # The third instruction is not the counting: the top of a pass can be reached from two places,
@@ -435,7 +435,7 @@ class TestLoopForm < Minitest::Test
     assert_equal 5, overhead
   end
 
-  # A BODY THAT READS ITS INDEX has to be handed 0, 1, 2, so its loop counts up — but it can
+  # A body that reads its index has to be handed 0, 1, 2, so its loop counts up — but it can
   # still test at the end of a pass rather than the start. Tested first, a pass is a compare, a
   # branch out, the body, an add and a branch back; tested last it is the body, an add, a compare
   # and a branch back, which is one branch fewer. The fourth instruction is the body finding the
@@ -472,7 +472,7 @@ class TestLoopForm < Minitest::Test
     assert_equal 7, overhead
   end
 
-  # WHERE SAVING STOPS PAYING. Each statement saved around costs its own save and restore, and
+  # Where saving stops paying. Each statement saved around costs its own save and restore, and
   # through memory a pass costs the same however many calls the body makes — so there is a
   # number of calls past which memory is the cheaper shape, and the build has to pick the
   # cheaper of the two there, whether the loop reads its index or not. Three calls is past
@@ -604,7 +604,7 @@ class TestLoopForm < Minitest::Test
     assert_operator read_var(rom, :passes), :>, 0
   end
 
-  # The instructions a pass of the loop runs beyond its body. Each form is measured at PASSES
+  # The instructions a pass of the loop runs beyond its body. Each form is measured at passes
   # and at twice that, so what either spends once — setting the loop up, or the first statement
   # finding the variables — cancels out of the difference. The body is given the builder, a
   # variable to count with, and something to read: the loop's index, or with no loop an
