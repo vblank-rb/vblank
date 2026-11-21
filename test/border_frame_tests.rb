@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# A GAME LAID OUT FOR THE GAME BOY COLOR, BUILT AS THE ADVANCE WITH THE COLOR'S SCREEN, as the C,
+# A game laid out for the Game Boy Color, built as the Advance with the color's screen, as the C,
 # JavaScript and Ruby builds show it: the game's 160×144 at its own size in the middle of the
 # Advance's 240×160, with the border round it that the cartridge draws
 # (test/lowering/gba/vblank/ir/backends/gba/test_border_sprites.rb is the cartridge's own test). A

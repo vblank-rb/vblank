@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# A BACKGROUND SHOWN ONLY INSIDE A BOX THE GAME MOVES AND SIZES (`show_only_inside`), on every
+# A background shown only inside a box the game moves and sizes (`show_only_inside`), on every
 # console whose display can hold a layer to a box. The Color and the Genesis cannot, and refuse it
 # (test/all/vblank/dsl/test_background_box_refusals.rb). Each console that can has a test file in
 # its folder that includes these, so they are written once and played on every run that plays

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# A BACKGROUND SWITCHED OFF AND ON AGAIN AS THE GAME RUNS (`hide` and `show`), on every console
+# A background switched off and on again as the game runs (`hide` and `show`), on every console
 # whose display can leave a layer out. The Color and the Genesis refuse it
 # (test/all/vblank/dsl/test_background_switch_refusals.rb). Each console that can has a test file in
 # its folder that includes these, so they are written once and played on every run that plays
