@@ -2,11 +2,11 @@
 
 module VBlank
   module Live
-    # A DEVICE FOR A PLAYER WITH NO WINDOW AND NO PERSON (Bots): it shows nothing, plays no sound, and asks a
+    # A device for a player with no window and no person (Bots): it shows nothing, plays no sound, and asks a
     # bot which buttons to hold. The session hands it the game it runs (#watch), so the bot can read it, and
     # asks it once a pass for the buttons held (#held_buttons), which is when the bot looks at the game.
     #
-    # ITS CLOCK MOVES ONLY WHEN SOMETHING MOVES IT, so it never waits for real time: a bot plays as fast as
+    # Its clock moves only when something moves it, so it never waits for real time: a bot plays as fast as
     # the other machines let it, and in a match that is as fast as the slowest of them, since every
     # machine waits for every other's buttons.
     #

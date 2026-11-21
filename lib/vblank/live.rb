@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# A GAME PLAYED LIVE, IN RUBY: the game built as Ruby (IR::Backends::Ruby) runs in this process a
+# A game played live, in Ruby: the game built as Ruby (IR::Backends::Ruby) runs in this process a
 # pass at a time while a person watches and plays, its picture put on a screen, its buttons read
 # from a keyboard or a pad.
 #

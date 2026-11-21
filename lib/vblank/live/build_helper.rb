@@ -5,7 +5,7 @@ require "rbconfig"
 
 module VBlank
   module Live
-    # THE HIDDEN PROCESS THAT BUILDS A GAME FOR A WINDOW THAT WAITS (BuildWatch). vblank run starts
+    # The hidden process that builds a game for a window that waits (BuildWatch). vblank run starts
     # it (BuildHelper.start), and it builds the game, writes it out as one Ruby file
     # (IR::Backends::Ruby#build_script), says where, and ends: everything the build made goes with
     # it, and the window plays the written game with none of it.
@@ -101,7 +101,7 @@ module VBlank
         Messages::BuildStopped.with_headline(error.message, title)
       end
 
-      # A BUILD'S PROGRESS, SAID TO THE WINDOW: each phase and where it has got to, as lines
+      # A build's progress, said to the window: each phase and where it has got to, as lines
       # BuildWatch reads. A tick is counted, and its label asked for only a few times a second.
       class Sender < Messages::Progress
         TICK_SECONDS = 0.1 # How often a phase with no count says it is still going

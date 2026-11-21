@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # WHICH STATEMENTS PAINT OVER THE WHOLE SCREEN, asked two ways. The bookkeeping that tells
+    # Which statements paint over the whole screen, asked two ways. The bookkeeping that tells
     # a bitmap sprite it is off the picture (Builder::Sprites#finalize_sprite_clears) needs to
     # know every pixel went (#covers_screen?). The warning about a sprite cleared every frame
     # (Guardrails::Checks::SpriteClearedEachFrame) needs only to know the fill is a screen in
