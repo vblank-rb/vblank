@@ -2,7 +2,7 @@
 
 module VBlank
   module Console
-    # WHAT EVERY VERB DOES ON A SEGA GENESIS (Console::Answers says what an answer is).
+    # What every verb does on a Sega Genesis (Console::Answers says what an answer is).
     #
     # The Genesis is a 16-bit console of 1988 with a 68000 at its heart. Next to the Super Nintendo it
     # has a wider screen (320×224), fewer colours (512 to choose from, 61 on the screen at once: four
@@ -14,7 +14,7 @@ module VBlank
     # rows of tiles, and a sound chip of two kinds: square voices and a noise voice (the PSG), and
     # six voices of frequency-modulated sound (the YM2612).
     #
-    # A GAME NAMES WHICH CONSOLES IT IS FOR (`VBlank.game "PONG", consoles: %i[gba genesis]`), and is
+    # A game names which consoles it is for (`VBlank.game "PONG", consoles: %i[gba genesis]`), and is
     # laid out from `screen_width` and `screen_height` rather than from 240 and 160, so the same game
     # fills each screen.
     #
@@ -308,7 +308,7 @@ module VBlank
         instrument: works("see `sample`.")
       })
 
-      # WHAT .claude/dsl/sega-genesis.md SAYS: every answer, in the order ANSWERS gives them, and what
+      # What .claude/dsl/sega-genesis.md says: every answer, in the order answers gives them, and what
       # the Genesis's build does not make yet — +not_yet+, the lowering's own list of the program's
       # kinds it refuses for now, by what they are part of (Kit#answers_page).
       def self.reference(not_yet: {})

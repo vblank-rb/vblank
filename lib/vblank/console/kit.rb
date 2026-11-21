@@ -4,7 +4,7 @@ require_relative "variant"
 
 module VBlank
   module Console
-    # WHICH PARTS OF THE LIBRARY SERVE EACH CONSOLE, asked of one place.
+    # Which parts of the library serve each console, asked of one place.
     #
     # A game is built, checked, read back and tested the same way whichever console it is for,
     # and at a handful of points the console decides how: which build makes its cartridge, which
@@ -27,7 +27,7 @@ module VBlank
     #                           build(request), the cartridge from a checked program and a
     #                           Cartridge::BuildRequest; and cartridge_for(program, title:), the
     #                           cartridge for a program alone, which is what a test plays
-    #   console_settings        the names of the CONSOLE SETTINGS its build reads (build settings
+    #   console_settings        the names of the console settings its build reads (build settings
     #                           only some consoles have, such as the Advance's `stack_room:`); none
     #                           for most
     #   refuse_unusable_settings!(said)
@@ -36,7 +36,7 @@ module VBlank
     #   reading                 the module that gives the one reader (Diagnostics::Verifier) the
     #                           questions only its way of keeping things answers, when the reader
     #                           is made over one of its cartridges (Diagnostics::AdvanceReading,
-    #                           say). Every one has PALETTE (a Verifier::PaletteLayout, how its
+    #                           say). Every one has palette (a Verifier::PaletteLayout, how its
     #                           colours are laid out) and SAVE_FILE (a Verifier::SaveFileLayout,
     #                           where its save memory ends in the emulator's file), and gives
     #                           passes and sprites(name), and a private watch_passes! the reader
@@ -98,12 +98,12 @@ module VBlank
       def sprite_sizes_set_by_game? = false
       def inspector = nil
 
-      # HOW ITS GAMES KEEP THEIR TILES, COLOURS AND NUMBERS (OriginalFormats), which a port of one
+      # How its games keep their tiles, colours and numbers (OriginalFormats), which a port of one
       # of them reads its original's data in (Original::Slot); nil for a console VBlank reads no
       # original of yet.
       def original_formats = nil
 
-      # WHETHER ITS PROCESSOR READS A NUMBER OF TWO OR MORE BYTES AT ANY ADDRESS. The ARM of the
+      # Whether its processor reads a number of two or more bytes at any address. The ARM of the
       # Advance and the MIPS of the PlayStation read two bytes only at an even address and four only
       # at a multiple of four, and the 68000 of the Genesis reads either at any even address
       # (#value_alignment), so a game for them never keeps one anywhere else, and a read anywhere
@@ -112,11 +112,11 @@ module VBlank
       # numbers besides (the 65816's long addresses). Both keep the low byte first.
       def words_at_any_address? = false
 
-      # WHETHER ITS PROCESSOR KEEPS A NUMBER'S HIGH BYTE AT THE LOWEST ADDRESS: the 68000 of the
+      # Whether its processor keeps a number's high byte at the lowest address: the 68000 of the
       # Genesis does; the ARM, the SM83, the 65816 and the MIPS keep the low byte there.
       def high_byte_first? = false
 
-      # THE BOUNDARY A VALUE OF +bytes+ BYTES MUST START ON for its processor to read it whole: its
+      # The boundary a value of +bytes+ BYTES MUST START ON for its processor to read it whole: its
       # own size on the ARM and the MIPS, which read four bytes only at a multiple of four.
       def value_alignment(bytes) = bytes
 
@@ -134,7 +134,7 @@ module VBlank
       # cartridge file, and what that file is called.
       def open_probe(path, save_dir:) = Diagnostics::Emulator.probe(path, save_dir: save_dir)
 
-      # THE EMULATOR ITS CARTRIDGES PLAY IN, LOADED, and what answers questions about a whole screen
+      # The emulator its cartridges play in, loaded, and what answers questions about a whole screen
       # of its picture. The Advance and the Color play in libmgba, the Advance's emulator, whose C
       # extension answers those questions (Diagnostics::Emulator.screen_questions). Every other console
       # loads its own emulator alone and asks them in Ruby (Diagnostics::ScreenQuestions): a game for
@@ -159,29 +159,29 @@ module VBlank
       # The variants of this console a build can ask for (Console::Variant), by name: none, for most.
       def variants = {}
 
-      # THE SIZES ITS BUILD CAN DRAW A SPRITE'S PIECES AT, as [width, height] in pixels, the one a
+      # The sizes its build can draw a sprite's pieces at, as [width, height] in pixels, the one a
       # game gets when it names none first; nil for a console whose build draws a sprite whole. A
       # console that draws a sprite as pieces of its sprite table draws all of them one size at a
       # time, so a game names one where it names its consoles (`sprite_piece_size:`).
       def sprite_piece_sizes = nil
 
-      # THE SPRITE PIECES ITS BUILD MADE OF EACH PICTURE OF +program+, where the build chooses them
+      # The sprite pieces its build made of each picture of +program+, where the build chooses them
       # in ways the console's rule for cutting a picture cannot see (IR::Backends::SpriteLines
       # .pieces_built says the shape); nil for a console whose build cuts every picture by the rule.
       def sprite_pieces_built(_program) = nil
 
-      # WHETHER A COLLECTION THE GAME MARKS COLD (`fast: false`, or a pool too big to share the
+      # Whether a collection the game marks cold (`fast: false`, or a pool too big to share the
       # work memory) IS KEPT IN THE ROOMIER MEMORY ALONE. Where it is, those collections must fit
       # that memory on their own, which the build's memory check counts (Checks::IwramBudget).
       # False where the build places every collection itself and reads no such mark.
       def cold_collections_kept_roomier? = false
 
-      # WHAT ITS BUILD KEEPS IN THE ROOMIER MEMORY FOR ITSELF FOR +program+, read before it is
+      # What its build keeps in the roomier memory for itself for +program+, read before it is
       # lowered, each with a label and its bytes, for the same check to count against what the
       # game's collections may use there. Empty where nothing of the build's is counted there.
       def roomier_memory_reserved(_program) = []
 
-      # HOW MANY BYTES ONE LIST OF +capacity+ SLOTS OF +width+ TAKES in its build, for the same
+      # How many bytes one list of +capacity+ slots of +width+ takes in its build, for the same
       # check: its slots and two words of its own (where it starts and how full it is). +ring+
       # marks a list the game shifts from (#ring_lists), which a build may lay out its own way.
       def list_bytes(capacity, width, ring:) = (capacity * IR::Build::ELEMENT_BYTES.fetch(width)) + (2 * 4)
@@ -225,7 +225,7 @@ module VBlank
 
     # The Game Boy Advance's.
     class AdvanceKit < Kit
-      # A GAME LAID OUT FOR THE GAME BOY COLOR'S SCREEN, ON THE ADVANCE.
+      # A game laid out for the Game Boy Color's screen, on the Advance.
       #
       # A game written for the Color's 160×144 can be built for the Advance's 240×160 without a
       # second copy of it: `consoles: %i[gbc gba], variants: { gba: :color_screen }`. The Advance
@@ -233,7 +233,7 @@ module VBlank
       # it in the 40 columns either side and the 8 rows above and below. That is what an Advance
       # does with a Color cartridge, and no whole-number scale fits 160×144 into 240×160.
       #
-      # WHY A VARIANT, AND NOT A NEW SETTING. A variant is already "this console, with some of what
+      # Why a variant, and not a new setting. A variant is already "this console, with some of what
       # a game can tell about it changed" (Console::Variant): here the screen is the Color's size,
       # so `screen_width` and `screen_height` answer 160 and 144 in the Advance's build, the checks
       # lay the game out against that, and the interpreter plays it on a 160×144 screen. The build
@@ -264,7 +264,7 @@ module VBlank
 
       def answers = AdvanceAnswers
       def answers_page = answers.reference
-      # THE SETTINGS ONLY THE ADVANCE HAS, by the name each is set with; what each does is told
+      # The settings only the Advance has, by the name each is set with; what each does is told
       # beside its build (Cartridge::AdvanceBuild). Kept here, not there, since the settings are
       # asked of every build, a data pack's unpacking among them, which never builds a cartridge.
       CONSOLE_SETTINGS = %i[code maker fast_cartridge fast_code stack_room profile].freeze
@@ -292,7 +292,7 @@ module VBlank
       def ring_lists(program) = IR::Backends::GBA.shifted_lists(program)
     end
 
-    # THE KIT OF A CONSOLE WHOSE LOWERING IS CHECKED BY A RUN OF ITS OWN: its cartridge is made by
+    # The kit of a console whose lowering is checked by a run of its own: its cartridge is made by
     # a lowering of the console's own, and a test run plays that cartridge in the emulator and holds
     # it to the interpreter after every pass. What such a console has besides the rest:
     #
@@ -347,7 +347,7 @@ module VBlank
       # Its build gives up squares of 16×16 where video memory has no room for them (SNES::Art).
       def sprite_pieces_built(program) = lowering.sprite_pieces_built(program)
 
-      # THE CHIPS A CARTRIDGE CAN CARRY that more than a handful of games used. The one-game chips
+      # The chips a cartridge can carry that more than a handful of games used. The one-game chips
       # (the Cx4 of Mega Man X2 and X3, the S-DD1, the SPC7110, the ST010 and the rest) are left out
       # on purpose, and so is the DSP-1: an emulator needs a copy of the program built into that
       # chip, which is Nintendo's, so a homebrew cartridge has no use for it.
@@ -455,7 +455,7 @@ module VBlank
     # console settings that were given: the ones that are not nil.
     def self.console_settings_said(values) = values.slice(*console_settings).compact
 
-    # A SETTING GIVEN FOR A CONSOLE THAT DOES NOT HAVE IT is refused, rather than dropped: the author
+    # A setting given for a console that does not have it is refused, rather than dropped: the author
     # asked for something the cartridge would not have.
     #
     # +said+ is the console settings that were given, by name, to their values

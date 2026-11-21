@@ -92,7 +92,7 @@ module VBlank
       #
       # The cartridge (ROM) is slow memory. Every time the CPU fetches an instruction
       # or reads data from the .gba, it stalls a few cycles waiting for the ROM chip —
-      # "wait states". At power-on the console picks the SLOWEST, safest timing (so any
+      # "wait states". At power-on the console picks the slowest, safest timing (so any
       # cartridge works), which makes code that runs from ROM crawl.
       #
       # Real cartridges are faster than that worst case, so a game writes this register
@@ -197,7 +197,7 @@ module VBlank
       REG_WINOUT  = 0x0400004A  # Which layers show outside windows
 
       # WININ/WINOUT hold one 6-bit field per region: which layers show there, and
-      # whether the blend below applies there. The OBJECT WINDOW is the interesting
+      # whether the blend below applies there. The object window is the interesting
       # one — its region isn't a rectangle at all, it's the shape of the pixels that
       # sprites marked "window" paint, so a region can be the shape of a letter.
       WIN_ALL_LAYERS = 0x001F # BG0 | BG1 | BG2 | BG3 | OBJ
@@ -214,7 +214,7 @@ module VBlank
       # is repainted and it costs the same however much is on screen.
       #
       # MOSAIC holds four sizes, four bits each: how wide a background's block is, how
-      # tall, then how wide a sprite's block is, and how tall. Each field is one LESS
+      # tall, then how wide a sprite's block is, and how tall. Each field is one less
       # than the size in pixels, so 0 is a block of one pixel — the picture as drawn —
       # and 15 is a block of sixteen.
       #
@@ -239,7 +239,7 @@ module VBlank
       # toward black ("brightness decrease") as it draws, which costs nothing and
       # redraws nothing — a fade is two register writes, whatever is on screen.
       #
-      # BLDCNT sets WHICH layers the effect applies to (the low six bits) and WHICH
+      # BLDCNT sets which layers the effect applies to (the low six bits) and which
       # effect (bits 6-7). BLDY sets HOW FAR, from 0 (untouched) to 16 (fully white
       # or fully black); values above 16 act as 16.
       # ========================================================================
@@ -261,7 +261,7 @@ module VBlank
       BLD_OBJ      = 0x0010
       BLD_BACKDROP = 0x0020
 
-      # The same six bits again, eight places up, name the layers on the OTHER side of an
+      # The same six bits again, eight places up, name the layers on the other side of an
       # alpha blend. Blending needs two: a layer in the low six is mixed with whatever
       # sits directly beneath it, if that layer is named up here.
       BLD_SECOND_SHIFT = 8
@@ -402,7 +402,7 @@ module VBlank
 
       # Direct Sound — two DMA-driven PCM channels (A and B) for playing recorded samples.
       # Each has a small FIFO the DMA keeps topped up; a hardware timer paces how fast
-      # samples are pulled out and played (so the timer's overflow rate IS the sample rate).
+      # samples are pulled out and played (so the timer's overflow rate is the sample rate).
       # We drive channel A.
       REG_FIFO_A = 0x040000A0  # Direct Sound A's sample FIFO — the DMA writes 8-bit PCM here
       REG_FIFO_B = 0x040000A4  # Direct Sound B's sample FIFO

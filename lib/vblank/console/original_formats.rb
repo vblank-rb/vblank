@@ -2,7 +2,7 @@
 
 module VBlank
   module Console
-    # HOW A CONSOLE'S GAMES KEEP THEIR TILES, COLOURS AND NUMBERS IN THE CARTRIDGE, as plain numbers.
+    # How a console's games keep their tiles, colours and numbers in the cartridge, as plain numbers.
     # A port of a game for that console reads the original's data in these layouts (a slot of a
     # data pack, Original::Slot), and the pack holds the bytes as the original keeps them. Each
     # console's layouts are in its hardware file, and its kit names them (Kit#original_formats).
@@ -30,21 +30,21 @@ module VBlank
       def colors = 1 << plane_bits.length
     end
 
-    # A COLOUR in two bytes: whether the high byte is first, and the lowest bit of each channel
+    # A colour in two bytes: whether the high byte is first, and the lowest bit of each channel
     # in the two bytes read as one number, each +channel_bits+ wide (3 to 5). A channel narrower than
     # five bits is widened to five as the console shows it (its bits repeated, so the brightest is 31).
     ColorFormat = Data.define(:high_byte_first, :red_at, :green_at, :blue_at, :channel_bits)
 
-    # A NUMBER of one, two or four bytes: whether the high byte is first.
+    # A number of one, two or four bytes: whether the high byte is first.
     NumberFormat = Data.define(:high_byte_first)
 
-    # A CELL OF A BACKGROUND'S MAP, one number of +cell_bytes+ bytes, two unless it says: which tile
+    # A cell of a background's map, one number of +cell_bytes+ bytes, two unless it says: which tile
     # (+tile_bits+ wide from bit 0), whether it is mirrored left to right and upside down (the bits
     # +mirror_bit+ and +flip_bit+, nil for a cell that cannot turn its tile), and which bank of
     # colours it is drawn from (+bank_bits+ wide from bit +bank_at+; no bits for a cell whose tiles
     # all draw from one bank, the first).
     #
-    # IN FRONT OF THE SPRITES. +front_bit+ is the bit where the layout keeps a cell's mark for being
+    # In front of the sprites. +front_bit+ is the bit where the layout keeps a cell's mark for being
     # drawn in front of the sprites (the Genesis's and the Super Nintendo's priority, the map
     # cell's IN_FRONT), nil for a layout that keeps none (the Advance's: its priority is a whole
     # layer's). It is read only where +reads_front+ is set, which a background sets by asking for
@@ -112,7 +112,7 @@ module VBlank
       end
     end
 
-    # ONE TILE OF A CELL, as it is drawn: which tile of video memory, turned how, from which bank
+    # One tile of a cell, as it is drawn: which tile of video memory, turned how, from which bank
     # of colours, and whether it is in front of the sprites (MapWordFormat#cell_tile).
     CellTile = Data.define(:tile, :bank, :mirrored, :upside_down, :in_front) do
       def initialize(tile:, bank:, mirrored:, upside_down:, in_front: false) = super
@@ -137,13 +137,13 @@ module VBlank
     # Two bit planes, a row's plane 0 then plane 1, the left pixel in a byte's top bit.
     TWO_PLANE_TILES = TileFormat.new(plane_bits: [0, 8], row_bits: 16,
                                      column_bits: (0...8).map { |x| 7 - x })
-    # A BYTE A PIXEL, row by row: a tile of 256 colours, 64 bytes, each byte a place in the whole
+    # A byte a pixel, row by row: a tile of 256 colours, 64 bytes, each byte a place in the whole
     # table of colours. It is how a layer that turns and resizes keeps its pictures, since the
     # console reads one of its pixels at a time and never a row of them: the Advance's turning
     # layer, and the Super Nintendo's Mode 7. A byte is a byte in every layout, so a slot of
     # tiles of 256 colours is kept this way whatever console the original is for.
     BYTE_A_PIXEL_TILES = TileFormat.new(plane_bits: (0...8).to_a, row_bits: 64, column_bits: (0...8).map { |x| x * 8 })
-    # A BYTE A CELL: the map of such a layer. The byte is the tile's number and nothing else,
+    # A byte a cell: the map of such a layer. The byte is the tile's number and nothing else,
     # with no bit to turn the tile and none to pick a bank, so every tile draws from the first.
     BYTE_MAP_CELLS = MapWordFormat.new(tile_bits: 8, mirror_bit: nil, flip_bit: nil, bank_at: 0, bank_bits: 0,
                                        row_tiles: nil, cell_bytes: 1)
@@ -153,7 +153,7 @@ module VBlank
     LOW_BYTE_FIRST_NUMBERS = NumberFormat.new(high_byte_first: false)
     HIGH_BYTE_FIRST_NUMBERS = NumberFormat.new(high_byte_first: true)
 
-    # VBLANK'S OWN LAYOUT, for an original whose platform keeps its data in no layout VBlank reads:
+    # VBLANK's own layout, for an original whose platform keeps its data in no layout VBlank reads:
     # a PlayStation's, a computer's, an arcade board's, any platform an original names. No console
     # keeps data so; it is a record the port's unpacking routine writes, from however its original
     # keeps each thing, as it writes map cells (Original::MapCell) and notes (Original::PackNote).

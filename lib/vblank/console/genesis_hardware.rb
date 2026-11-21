@@ -2,18 +2,18 @@
 
 module VBlank
   module Console
-    # THE SEGA GENESIS'S HARDWARE, NAMED: where its memory is, the addresses and flags of the video
+    # The Sega Genesis's hardware, named: where its memory is, the addresses and flags of the video
     # chip's ports and registers, the pads and the boot checks. Names follow the ones Sega's own
     # Genesis Software Manual, Charles MacDonald's video chip notes and SGDK use, so anyone who has
     # read one recognises them. What is written here was checked against the source of Genesis Plus
     # GX (core/vdp_ctrl.c, core/io_ctrl.c, core/loadrom.c) and SGDK (src/boot/sega.s).
     #
-    # THE PROCESSOR IS A MOTOROLA 68000, AND IT IS BIG-ENDIAN. A number wider than a byte is kept with
+    # The processor is a Motorola 68000, AND IT IS BIG-ENDIAN. A number wider than a byte is kept with
     # its high byte at the lower address: $1234 at address 0 is $12 at 0 and $34 at 1. Every other
     # console VBlank builds for keeps the low byte first, so a number read from the Genesis's memory
     # one byte at a time is put together the other way round.
     #
-    # THE PROCESSOR REACHES 16 MEGABYTES OF ADDRESSES (24 bits), and the console and a cartridge
+    # The processor reaches 16 MEGABYTES OF ADDRESSES (24 bits), and the console and a cartridge
     # share them like this:
     #
     #   $000000-$3FFFFF  the cartridge, up to 4 megabytes
@@ -30,13 +30,13 @@ module VBlank
     # vertical scroll memory (40 words) belong to the video chip. They are not in the processor's
     # view at all: they are reached through the chip's two ports, a word at a time.
     #
-    # A WORD OR A LONG WORD MUST BE AT AN EVEN ADDRESS. The 68000 reads memory in 16-bit steps, and
+    # A word or a long word must be at an even address. The 68000 reads memory in 16-bit steps, and
     # asked for a word at an odd address it stops with an address error instead of reading. The
     # Game Boy Advance and the Game Boy Color forgive an odd address (the Advance rotates what it
     # reads, the Color has no word reads at all), so this is the one console here where a
     # misplaced variable stops the game. Every place the build gives out is even.
     #
-    # COLOURS ARE 9 BITS: three each of red, green and blue, so a picture has 512 colours to choose
+    # Colours are 9 BITS: three each of red, green and blue, so a picture has 512 colours to choose
     # from and not the 32768 of the other consoles. A colour is written as a 16-bit word in the
     # colour memory with the channels in the upper bit of each nibble: 0000 BBB0 GGG0 RRR0. A game
     # still names a colour in 15 bits, and the build keeps the top three bits of each channel
