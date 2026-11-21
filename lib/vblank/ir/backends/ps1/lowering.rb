@@ -4,13 +4,13 @@ module VBlank
   module IR
     module Backends
       class PS1
-        # ONE PROGRAM, LOWERED STRAIGHT TO R3000 MACHINE CODE: the PlayStation's peer of the Genesis's,
+        # One program, lowered straight to R3000 machine code: the PlayStation's peer of the Genesis's,
         # Super Nintendo's and Color's lowerings. It walks the IR with a table naming the method for each
         # kind of statement and each kind of value (the interpreter's own shape, Reference), and emits the
         # instructions through the assembler (R3000), calling the runtime (PS1::Runtime) for what is too
         # long to write in place.
         #
-        # HOW A NUMBER IS WORKED OUT. Every value leaves its answer in v0, a register of 32 bits as a
+        # How a number is worked out. Every value leaves its answer in v0, a register of 32 bits as a
         # game's numbers are. A sum of two works the left-hand side out into v0 and the right-hand side
         # into v1 — straight from where it is when it is a number written in the program or a variable,
         # and otherwise worked out first, pushed on the stack, and pulled into v1 once the left-hand side
@@ -21,7 +21,7 @@ module VBlank
         # from one statement to the next, but a variable read by the very instruction after the store
         # that set it (#emit_load_variable), so a statement never has to know what came before it.
         #
-        # WHERE THINGS LIVE. The game's variables, and each routine's own numbers — a loop's count, a
+        # Where things live. The game's variables, and each routine's own numbers — a loop's count, a
         # `case`'s reading — are places fixed while the program is built, in the scratchpad while it has
         # room and in the game's region of RAM after (Memory), so a routine cannot call itself, and a
         # program in which one can is refused. Every place is named as a distance from fp (the
@@ -43,7 +43,7 @@ module VBlank
           include DrawOrderWalk
           include SceneryWrites
 
-          # EVERY KIND THIS LOWERING WRITES: its own, each by a method called by name in
+          # Every kind this lowering writes: its own, each by a method called by name in
           # #emit_statement and #value_of_kind, and each part's (Paint, Faces, and the loops and tests
           # every cartridge lowering shares, ControlFlow), which each part writes in a case of its own.
           # A declaration writes nothing where it is. Read by test_ps1_kind_coverage.rb.
@@ -135,7 +135,7 @@ module VBlank
             end
           end
 
-          # EVERY KIND THIS LOWERING CANNOT MAKE YET, by what it is part of. A kind leaves the list the day
+          # Every kind this lowering cannot make yet, by what it is part of. A kind leaves the list the day
           # the PlayStation does it; test_ps1_kind_coverage.rb holds the list and the kind lists above to every
           # kind there is.
           NOT_LOWERED_YET = Ractor.make_shareable({
@@ -482,7 +482,7 @@ module VBlank
             @asm.addiu(:sp, :sp, 4)
           end
 
-          # WHERE A VALUE WAITS WHILE THE NEXT ONE IS WORKED OUT: the saved registers, in turn, and the stack
+          # Where a value waits while the next one is worked out: the saved registers, in turn, and the stack
           # only past the last of them. A value is worked out with no call to the game's own routines, and
           # every runtime routine a value calls keeps s0 to s7 as it found them (Runtime), so a number kept
           # there is still there when it is taken back; keeping it on the stack is a store and a load of
@@ -581,7 +581,7 @@ module VBlank
             emit_sum(name, :+, Build.int(1))
           end
 
-          # A LOOP'S COUNT KEPT IN A SAVED REGISTER (ControlFlow::OWN_WAYS). A count in main RAM is a
+          # A loop's count kept in a saved register (ControlFlow::OWN_WAYS). A count in main RAM is a
           # load, which waits on the RAM, an add and a store every turn, and a load again to compare it;
           # in a register it is one ADDIU, and a body reading it reads the register (psx-spx, "CPU
           # Load/Store Opcodes": main RAM has no data cache). The R3000's own loops count in a register.
@@ -644,7 +644,7 @@ module VBlank
             WALK_REGISTERS.reverse_each { |register| emit_pop(register) }
           end
 
-          # A WALK OF A POOL STEPPED AS AN R3000 GAME STEPS ONE. The tree's walk keeps the thing it goes
+          # A walk of a pool stepped as an R3000 game steps one. The tree's walk keeps the thing it goes
           # to next and the last it visits in variables in RAM, tests and copies them each turn, and reads
           # the link out of a list at an index checked and scaled each time; and every field the body reads
           # or writes checks and scales the index again, each load from main RAM, which has no data cache.
@@ -886,7 +886,7 @@ module VBlank
 
           def value_of_list_len(node) = list_call("rt_list_length", node)
 
-          # AN ITEM OF A LIST WHOSE FIRST ITEM IS ALWAYS IN ITS FIRST SLOT, read or written in place: the
+          # An item of a list whose first item is always in its first slot, read or written in place: the
           # index checked against the list's length, as rt_list_get does (an index past the end stops the
           # game, Reference#check_list_index!), then the slot at the list's place, its header and the index
           # scaled to the slot's size. The list's place is known as the program is built, so nothing is
@@ -905,7 +905,7 @@ module VBlank
             emit_slot_unscaled(slot)
           end
 
-          # A LINK KEPT AS THE SLOT TIMES THE STRIDE (PoolLayout.strided_place), two bytes with NONE as
+          # A link kept as the slot times the stride (PoolLayout.strided_place), two bytes with NONE as
           # $FFFF: loaded with its sign, NONE is -1, and an arithmetic shift right brings any other back to
           # the slot and leaves -1 as it is.
           def emit_slot_unscaled(slot)
@@ -986,7 +986,7 @@ module VBlank
 
           # --- pools (Backends::PoolLayout) ---
           #
-          # A POOL IS KEPT IN THE LAYOUT ITS PLACEMENT GIVES: where slot s of each of its lists is, in
+          # A pool is kept in the layout its placement gives: where slot s of each of its lists is, in
           # bytes from the list's first slot (PoolLayout::SlotPlace), and how wide its value is. Every
           # read and write of a slot by an index (#emit_slot_place, and the load or store at the slot's
           # width) asks #slot_place for that, a pool's list and any other alike, and the headless run
@@ -995,7 +995,7 @@ module VBlank
           # stepped by the statements the tree gives it (IR::WalkShape#step_statements). Kept as tables
           # or records (Console::Description#pool_layouts), a walk holds a register on the thing.
           #
-          # WHAT THE LISTS COST AGAINST THE CONSOLE'S HABIT. An R3000 game keeps a thing as a record and
+          # What the lists cost against the console's habit. An R3000 game keeps a thing as a record and
           # holds its address in a register through the code that works on it, so a field is one LW, LH or
           # SW with a 16-bit immediate offset from that base, the instruction after a load filled with
           # other work while the load delay passes, and the next thing is the base plus the record's size
@@ -1091,7 +1091,7 @@ module VBlank
             end
           end
 
-          # THE LISTS WHOSE LENGTH IS ALWAYS THEIR CAPACITY, so an index is checked against a number written
+          # The lists whose length is always their capacity, so an index is checked against a number written
           # in the instruction rather than a length read from main RAM, which has no cache and makes the
           # processor wait for every load: a game of rooms reads its lists hundreds of times a pass. Such a
           # list is made full (`full_of:`) every time it is made, nothing pushes to it, drops from it or
@@ -1140,7 +1140,7 @@ module VBlank
             emit_fixed_front_sort(list, keys, node.descending, shown)
           end
 
-          # AN INSERTION SORT IN THE ROUTINE'S OWN CODE, the way a console's own games sort their sprites by
+          # An insertion sort in the routine's own code, the way a console's own games sort their sprites by
           # height: for each item after the first, its number is read once, and it moves back a slot at a
           # time past the items before it whose numbers are strictly beyond its own, each moved up a slot as
           # it is passed. So level items keep their order, and a list already in order takes one compare an
@@ -1401,7 +1401,7 @@ module VBlank
             end
           end
 
-          # A COMPARISON WITH A NUMBER WRITTEN IN THE PROGRAM, which the instruction can hold: against nought
+          # A comparison with a number written in the program, which the instruction can hold: against nought
           # the zero register is the other side, and below a number of 16 bits SLTI compares with it as it
           # is (above or at most one is below the next), so the number is never put in a register first.
           # The left side is in v0, as it is for any comparison. True when done so.
@@ -1547,7 +1547,7 @@ module VBlank
             true
           end
 
-          # A MULTIPLY BY A NUMBER WRITTEN IN THE PROGRAM WITH ONE OR TWO BITS SET (an index scaled by the
+          # A multiply by a number written in the program with one or two bits set (an index scaled by the
           # size of what it counts: 3, 6, 17), as shifts and an add. MULT leaves its answer in LO a dozen
           # cycles later, and MFLO waits for it; two shifts and an ADDU take three. The low 32 bits of
           # the product are the same either way, so it wraps as IR::Int32 has it. True when done so.
@@ -1638,7 +1638,7 @@ module VBlank
             end
           end
 
-          # A NUMBER HELD TO NOUGHT TO A CEILING WRITTEN IN THE PROGRAM, as a table's index is: one compare of
+          # A number held to nought to a ceiling written in the program, as a table's index is: one compare of
           # it as a number that cannot be negative, which a negative number fails as one too big does, and
           # only a number outside takes the rest. The sign spread over every bit is all ones below nought
           # and nought above the ceiling, so its opposite masks the ceiling down to nought or keeps it

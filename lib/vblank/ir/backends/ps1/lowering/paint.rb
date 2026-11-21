@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class PS1
         class Lowering
-          # A PAINTED SCREEN, lowered for a PlayStation: each drawing statement a call into Runtime::Paint,
+          # A painted screen, lowered for a PlayStation: each drawing statement a call into Runtime::Paint,
           # and what it draws with — its pictures, its text — made into PS1::PaintedArt while the program
           # is built. Mixed into Lowering.
           #
@@ -53,7 +53,7 @@ module VBlank
                                                 Build.int(patch.corner)])
             end
 
-            # A PATCH: where its state is in RAM (Runtime::Paint::PATCH_STATE_BYTES), where it is in video RAM
+            # A patch: where its state is in RAM (Runtime::Paint::PATCH_STATE_BYTES), where it is in video RAM
             # (y << 16 | x), and its size.
             Patch = Data.define(:state, :corner, :width, :height)
 
@@ -86,7 +86,7 @@ module VBlank
               !Picture.tiled?(program) && program.walk.any? { |node| %i[fade tint].include?(node.kind) }
             end
 
-            # A PAINTED SCREEN DRAWN BY NUMBER: its numbers' colour table, and two pages to show it from, right of
+            # A painted screen drawn by number: its numbers' colour table, and two pages to show it from, right of
             # the pages it is drawn in (Runtime::Paint::PAGE_X), each kept from power-on where the runtime reads it.
             # A place's faces are drawn in colours the graphics chip works out as it draws, which have no number.
             # A painted screen with sprites over it is shown from two pages of its own too (Runtime::Paint's
