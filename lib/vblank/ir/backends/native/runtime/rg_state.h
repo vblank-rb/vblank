@@ -1,5 +1,5 @@
 /*
- * THE STATE IMAGE: everything a game and its runtime keep between two frames, written as text by
+ * The state image: everything a game and its runtime keep between two frames, written as text by
  * name, and read back into the same build so the game plays on from there.
  *
  * The image is one line a field: its name, a tab, how many numbers it holds, and the numbers, all
@@ -11,7 +11,7 @@
  * runtime's fields are the ones Computer::StateFields lists, in its order; the JavaScript and Ruby
  * runtimes visit the same, so an image written by one reads on the others.
  *
- * EACH FIELD IS NAMED ONCE AND USED BOTH WAYS. A part hands a field to a visit call; writing the
+ * Each field is named once and used both ways. A part hands a field to a visit call; writing the
  * image prints it, reading the image stores what the image holds under that name into it. So
  * writing and reading cannot disagree about what a field is or where it lives.
  *

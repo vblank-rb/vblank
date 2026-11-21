@@ -1,5 +1,5 @@
 /*
- * A PORT BUILT AS A SHELL, ON A COMPUTER (Original::Shell has what a shell is; rg_shell.c is the
+ * A port built as a shell, on a computer (Original::Shell has what a shell is; rg_shell.c is the
  * flow, and rg_shell.js the same written again for a page, function for function). The program
  * holds none of the original's data. It is built with its parts in a folder beside it: the game
  * itself, and under parts/ the menu and one unpacking for each release of the original the game
@@ -90,7 +90,7 @@ typedef struct {
                               * player, in order: a test's way to see what was told, and that nothing was */
 } rg_shell_asked;
 
-/* THE WINDOW A SHELL IS SHOWN IN, which the program that owns it hands over (rg_sdl.c): one window
+/* The window a shell is shown in, which the program that owns it hands over (rg_sdl.c): one window
  * from the menu to the game. Each of these keeps reading the window's events while it waits, and
  * the player closing the window ends the program from inside any of them.
  *

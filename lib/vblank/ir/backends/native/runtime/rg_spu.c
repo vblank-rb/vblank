@@ -1,44 +1,44 @@
 /*
- * THE PLAYSTATION'S SOUND CHIP (the SPU), for a game built as a console whose voices read loops out of
+ * The PlayStation's sound chip (the SPU), for a game built as a console whose voices read loops out of
  * sound memory (RG_VOICES_READ_SOUND_MEMORY, from Console::Description#voices_read_sound_memory). It is
  * joined into rg_sound.c, after the four voices, and reads them: what each of the game's voices is
  * told to play is kept there as on every console, and here it is played the way the PlayStation
  * program plays it (Backends::PS1::SPUWrites says which writes each sound means), so a desktop build
  * made as the PlayStation sounds like the PlayStation and not like a Game Boy.
  *
- * THE GAME'S FOUR VOICES ARE FOUR OF THE CHIP'S. Each reads a loop out of sound memory, the same
+ * The game's four voices are four of the chip's. Each reads a loop out of sound memory, the same
  * loops the PlayStation program copies there (Backends::PS1::SoundMemory): a square of each width, a
  * waveform seven times over, the hiss and the rattle. How fast it reads is its pitch, 1000h for
  * 44100 samples a second. Its loudness is a volume for each speaker, a voice's volume 0 to 15 being
  * so many fifteenths of 1000h; a fade or a swell moves that volume a step at a time, once a frame,
  * as the program's runtime does (Backends::PS1::Runtime::Sound#emit_fades).
  *
- * ONCE A FRAME, where the PlayStation program's wait ends, the tune plays its frame, the fades move a
+ * Once a frame, where the PlayStation program's wait ends, the tune plays its frame, the fades move a
  * frame on, and the voices struck are started from their loops' starts (key on) and those with nothing
  * to play let go (key off); the rest take their new pitch, loudness and shape as they play.
  *
- * THE GAME'S OWN SOUNDS ARE A FRAME BEHIND THE TUNE'S, as in the program. A beep, a hit or a wave
+ * The game's own sounds are a frame behind the tune's, as in the program. A beep, a hit or a wave
  * writes its voice's pitch and loudness the moment the pass makes it, early in the frame, and the
  * voice is started where the pass's wait ends, a frame later; so for that frame a voice still playing
  * plays on at the new pitch and loudness, and a fade set by the pass is first counted at that wait's
  * end, not at the one before. A song's notes are played where the wait ends, and are started there.
  *
- * WHAT THE CHIP DOES WITH THAT, a sample at a time, 44100 times a second, as Beetle PSX does it
+ * What the chip does with that, a sample at a time, 44100 times a second, as Beetle PSX does it
  * (mednafen/psx/spu.c, SPU_UpdateFromCDC, SPU_RunDecoder, SPU_RunEnvelope, CalcVCDelta; psx-spx,
  * "Sound Processing Unit (SPU)"):
  *
- *   - THE DECODER turns the loop's blocks of 16 bytes back into samples, four at a time into a ring
+ *   - The decoder turns the loop's blocks of 16 bytes back into samples, four at a time into a ring
  *     of 32, whenever fewer than 11 are left: a block's first halfword holds its shift, its filter
  *     and its flags, and each sample is its four bits moved to the top and shifted down, plus the
  *     filter's share of the two samples before it (in 64ths: (0, 0), (60, 0), (115, -52), (98, -55),
  *     (122, -60)). A block flagged as the loop's start marks where the voice goes back to; one
  *     flagged as its end sends it there.
- *   - THE PITCH COUNTER moves on by the pitch each sample, in 4096ths of a sample, and the sample
+ *   - The pitch counter moves on by the pitch each sample, in 4096ths of a sample, and the sample
  *     heard is four from the ring weighed by where the counter is between them (the chip's Gaussian
  *     table, psx-spx "SPU Gaussian Interpolation", handed over in rg_game_spu_rules).
- *   - THE ENVELOPE scales it (attack, decay, sustain, release, from the two halfwords the program
+ *   - The envelope scales it (attack, decay, sustain, release, from the two halfwords the program
  *     gives every game voice: up to full in three samples, held, and gone in two when let go).
- *   - THE VOLUMES scale it for each speaker, a sample after they are written, and the voices are
+ *   - The volumes scale it for each speaker, a sample after they are written, and the voices are
  *     added up, held to 16 bits, and scaled by the main volume.
  *   - A voice started waits four samples before it plays, and key on and key off are taken after the
  *     sample they arrive in.
@@ -46,7 +46,7 @@
  * The chip makes 44100 samples a second and the desktop's speaker takes RG_SOUND_RATE; each of the
  * speaker's samples holds the chip's newest.
  *
- * WHAT THE LOWERING WRITES for it (Computer::Sound#spu_tables, from Backends::PS1::SPUTables):
+ * What the lowering writes for it (Computer::Sound#spu_tables, from Backends::PS1::SPUTables):
  *
  * rg_game_spu_rules: the chip's samples a second; the two halfwords of the envelope; a voice's volume
  * at its loudest; the main volume; the pitch that reads 44100 samples a second, and the highest the
@@ -204,7 +204,7 @@ static int32_t spu_memory_at(int32_t address) {
   return at >= 0 && at < rg_game_spu_memory[0] ? rg_game_spu_memory[1 + at] : 0;
 }
 
-/* A WAVE READ FROM THE START FILE, written into its loop of sound memory (rg_sound.h). The loop was
+/* A wave read from the start file, written into its loop of sound memory (rg_sound.h). The loop was
  * made of a stand-in as the game was built (PS1::SoundMemory, waves_from_file:): the waveform's 32
  * steps seven times over, in 8 blocks of 28 samples. Each step is a four-bit level at shift 0 and
  * filter 0, as SoundMemory makes every waveform, so each block's samples are the steps less 8 as they
@@ -598,7 +598,7 @@ static void spu_tell(int32_t n, int32_t sounding, int32_t loop, int32_t pitch, i
   }
 }
 
-/* WHAT THE MIXER'S VOICE +place+ PLAYS, told to the chip's voice for it once a frame: +sounding+, and
+/* What the mixer's voice +place+ PLAYS, told to the chip's voice for it once a frame: +sounding+, and
  * if so +recording+ (the mixer's number) read +step+ of its samples for each of the mix's, going +back+
  * at its end, at +loudness+ out of the mix's full and, when it is +shaped+, its shape at +level+. The
  * voice reads the recording's loop for that way back out of sound memory at a sixteenth of the step
@@ -631,7 +631,7 @@ static inline void spu_tell_recording(int32_t place, int32_t sounding, int32_t r
   spu_tell(SPU_GAME_VOICES + place, loop >= 0, loop, pitch < 1 ? 1 : pitch > SPU_PITCH_TOP ? SPU_PITCH_TOP : pitch, value, 0);
 }
 
-/* THE 128THS OF A SECOND +frame+ FRAMES COME TO, counted from a note's start (SongTable#slide_record):
+/* THE 128THS of a second +frame+ frames come to, counted from a note's start (SongTable#slide_record):
  * the program's player steps a slide by the frames since its note started, as the song table worked
  * them out, where the Game Boy's voice steps on a clock of its own. */
 static int32_t slide_ticks_in(int32_t frame) { return (frame * COUNTED_A_FRAME_OF_SOUND) >> 7; }

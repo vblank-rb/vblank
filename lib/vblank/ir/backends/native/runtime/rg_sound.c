@@ -6,37 +6,37 @@
  * joined into this file at its end (see the hooks below), and this file calls them only through
  * those hooks.
  *
- * THE VOICES. The console has four of its own, and every rule below is the console's
+ * The voices. The console has four of its own, and every rule below is the console's
  * (Audio::Sound has them in one place for every backend, and the lowering writes the numbers
  * here from there).
  *
- * Two play a SQUARE WAVE: a wave that is high for part of its length and low for the rest.
+ * Two play a square wave: a wave that is high for part of its length and low for the rest.
  *
- *   - its PITCH is how many ticks of a 131,072-a-second clock one wave lasts, a whole number;
- *   - its TONE is how many eighths of the wave are high — half is full and hollow, less is
+ *   - its pitch is how many ticks of a 131,072-a-second clock one wave lasts, a whole number;
+ *   - its tone is how many eighths of the wave are high — half is full and hollow, less is
  *     thinner and brighter;
- *   - its LOUDNESS is 0 to 15, and a note that fades loses one of those every so many 64ths of a
+ *   - its loudness is 0 to 15, and a note that fades loses one of those every so many 64ths of a
  *     second until it is silent.
  *
  * One loops a WAVEFORM: 32 steps of 0 to 15, played one after another and round again, which
  * can be any shape — a triangle, a sine, a pulse of the game's own.
  *
- *   - its PITCH is how many ticks of a 65,536-a-second clock all 32 steps last;
- *   - its LOUDNESS is one of five: so many quarters of each step, none to all four, with what
+ *   - its pitch is how many ticks of a 65,536-a-second clock all 32 steps last;
+ *   - its loudness is one of five: so many quarters of each step, none to all four, with what
  *     does not divide dropped. It does not fade; it plays until it is told otherwise.
  *
  * There is one waveform in the voice at a time. A `wave` puts its own there, and so does a tune
  * with a part on this voice, as it starts. `stop_wave` switches the voice off, and it then stays
  * silent whatever notes it is given until one of those two switches it on again.
  *
- * One makes a HISS: a row of bits shuffled along a place at a time, the voice high or low by the
+ * One makes a hiss: a row of bits shuffled along a place at a time, the voice high or low by the
  * bit that falls off the end.
  *
- *   - its PITCH is how many ticks of a 524,288-a-second clock one step lasts — fast is a thin
+ *   - its pitch is how many ticks of a 524,288-a-second clock one step lasts — fast is a thin
  *     high hiss, slow a rumble;
- *   - its TONE is how many bits are in the row: fifteen is a plain hiss, and seven comes round
+ *   - its tone is how many bits are in the row: fifteen is a plain hiss, and seven comes round
  *     so soon it is heard as a rattle;
- *   - its LOUDNESS is 0 to 15 and fades the way a square voice's does.
+ *   - its loudness is 0 to 15 and fades the way a square voice's does.
  *
  * A song's first square part plays on the first voice and its second on the second, and a note
  * there holds until the next one. A beep plays on the second voice and fades. So a song with two
@@ -44,7 +44,7 @@
  * on the console. The wave voice is shared the same way by a song's wave part and the game's
  * `wave`, and the noise voice by a song's drums and the game's `noise`.
  *
- * WHAT THE LOWERING WRITES for the voices, all whole numbers.
+ * What the lowering writes for the voices, all whole numbers.
  *
  * rg_game_sound_rules: the ticks a second of the square voices' clock, the wave voice's and the
  * noise voice's; how many times a second the console hands its voices on to the speaker; then
@@ -208,7 +208,7 @@ static uint64_t sample_carry; /* the fraction of a sample left over from the las
 
 /* --- a pitch that slides --- */
 
-/* THE SLIDE CLOCK ticks 128 times a second from the moment the sound starts, and a slide steps on
+/* The slide clock ticks 128 times a second from the moment the sound starts, and a slide steps on
  * every so many of its ticks — the console's own clock, which a note does not start again. So a
  * note's first step comes part way into a tick, as early as the next one. */
 #define SLIDE_TICK_SAMPLES (RG_SOUND_RATE / 128)
@@ -217,7 +217,7 @@ static int32_t slide_clock; /* samples since the slide clock last ticked */
 /* The ticks between two steps of a slide: so many 128ths of a second. */
 static int32_t slide_step_ticks(int32_t slide) { return (slide >> SLIDE_EVERY_AT) & SLIDE_EVERY_BITS; }
 
-/* WHERE A STEP OF THE SLIDE TAKES THE PITCH. The first square voice keeps its pitch as a count that
+/* Where a step of the slide takes the pitch. The first square voice keeps its pitch as a count that
  * climbs as the note gets higher — PITCH_COUNT_TOP less the ticks one wave lasts — and a step moves
  * the count by itself shifted right by the slide's shift, up or down. Past the top of the count
  * there is no pitch to play, and the voice switches itself off: that answers 0. */
@@ -227,7 +227,7 @@ static int32_t slid_wave_ticks(int32_t wave_ticks, int32_t slide) {
   return next >= PITCH_COUNT_TOP ? 0 : PITCH_COUNT_TOP - next;
 }
 
-/* THE VOICE LOOKS ONE STEP AHEAD, as the console's does: as a note starts and after every step, it
+/* The voice looks one step ahead, as the console's does: as a note starts and after every step, it
  * works out the next step up, and a next step past the top switches it off then — so the highest
  * pitch a slide up reaches is never heard. A slide down never runs out. */
 static int32_t slide_runs_out(int32_t wave_ticks, int32_t slide) {
@@ -445,7 +445,7 @@ void rg_sound_hear_only(int32_t voice) { heard_only = voice; }
 
 static int32_t heard(int32_t voice, int32_t sample) { return heard_only == 0 || heard_only == voice ? sample : 0; }
 
-/* WHICH SPEAKER EACH CONSOLE VOICE PLAYS FROM (Audio::Pan), by the voice's number: PAN_LEFT,
+/* Which speaker each console voice plays from (Audio::Pan), by the voice's number: PAN_LEFT,
  * PAN_RIGHT, or nought for both, which every voice is at power-on. A song's note sets its voice's
  * as it starts, and the game's own sound sets its voice back to both. */
 static int32_t sides[RG_NOISE_VOICE + 1];
@@ -464,7 +464,7 @@ static int16_t held_in_range(int32_t sum) {
   return (int16_t)sum;
 }
 
-/* THE MAIN VOLUME scales the whole mix, songs and effects alike, as a sound chip's main volume
+/* The main volume scales the whole mix, songs and effects alike, as a sound chip's main volume
  * does after each voice's own: that many 127ths of the sum, rounded toward nought. A game that
  * named none plays the sum as it is. (A console whose voices read sound memory plays its chip's
  * own main volume instead, rg_spu.c.) */
