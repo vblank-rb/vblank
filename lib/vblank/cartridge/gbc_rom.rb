@@ -4,7 +4,7 @@ require "json"
 
 module VBlank
   module Cartridge
-    # A GAME BOY COLOR CARTRIDGE: the banks the GBC lowering linked, with the header the console
+    # A Game Boy Color cartridge: the banks the GBC lowering linked, with the header the console
     # reads before it will start one.
     #
     # The header sits at 0x0100 to 0x014F of bank 0. The processor starts at 0x0100, so the first
@@ -78,7 +78,7 @@ module VBlank
       # Whether its header declares a clock chip.
       def clock? = [MBC3_TIMER_BATTERY, MBC3_TIMER_RAM_BATTERY].include?(@bytes.getbyte(CARTRIDGE_TYPE_AT))
 
-      # WHAT EVERY GAME BOY CARTRIDGE'S HEADER HOLDS, the Color's too, whoever made it — asked of a
+      # What every Game Boy cartridge's header holds, the Color's too, whoever made it — asked of a
       # cartridge file too (Diagnostics::CartridgeFile), which has nothing but its bytes.
       #
       # The console a cartridge of this kind is for; whether +bytes+ are one (every Game Boy
@@ -102,7 +102,7 @@ module VBlank
 
       def write(path) = ROM.write_bytes(path, @bytes)
 
-      # WHERE ITS FRAMES WENT: the cartridge run in the emulator (Diagnostics::GBCProfiler), reported
+      # Where its frames went: the cartridge run in the emulator (Diagnostics::GBCProfiler), reported
       # for a person or as JSON. +keys+ are held from power-on, and +settle+ frames run before the
       # +frames+ measured.
       #

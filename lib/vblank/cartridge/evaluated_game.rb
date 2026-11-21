@@ -12,7 +12,7 @@ module VBlank
     # it stands, and only one copy caught it, so a game with a `debug_halt` in it built a
     # cartridge quite happily and then raised the moment anything asked for its tree.
     #
-    # IT ALSO CARRIES WHAT THE RUN LEARNED THAT IS NOT IN THE TREE. A few facts about a
+    # It also carries what the run learned that is not in the tree. A few facts about a
     # program have nowhere to live in the tree — Conditions built and never branched on, the
     # frame syncs the game loop already covered, the software sprites (whose layer lives on
     # the handle) — and the guardrails need them. Reaching for those meant reaching into the
@@ -20,7 +20,7 @@ module VBlank
     # pipeline's own surface. They come from here now, so the verb surface stays a verb
     # surface.
     class EvaluatedGame
-      # MAKING ONE RUNS THE BLOCK. There is no way to hold one that has not run yet, which is
+      # Making one runs the block. There is no way to hold one that has not run yet, which is
       # what stops the four steps drifting apart again: a caller cannot do three of them.
       #
       # +progress+ is what the build says it is doing while it does it, and it is carried into

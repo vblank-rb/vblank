@@ -13,7 +13,7 @@ module VBlank
     # #build_rom (the finished cartridge) — so an example is one `VBlank.game` call
     # instead of a module of wiring.
     class Game
-      # EVERY BUILD OF A RUN UNMEASURED, set once for a game's test run (Testing.build_unmeasured):
+      # Every build of a run unmeasured, set once for a game's test run (Testing.build_unmeasured):
       # #build_rom then builds without measuring unless a caller passes +profile+, and with a +cache+
       # (a Testing::CartridgeCache) reads and keeps what it builds there. A game's tests mostly do not
       # care where a routine lands, and a measured build is a whole build and a play of every scene
@@ -75,7 +75,7 @@ module VBlank
         freeze
       end
 
-      # A GAME CAN BE BUILT ON ANY CORE, so long as its block reaches for nothing around it.
+      # A game can be built on any core, so long as its block reaches for nothing around it.
       #
       # The handle keeps the author's block so the game can be built later, and a block
       # normally carries the scope it was written in — which is the one thing two cores may
@@ -83,7 +83,7 @@ module VBlank
       # written inside `module Pong` is exactly that: it names constants and methods, never a
       # variable from outside.
       #
-      # A game declared at the top LEVEL of a file cannot be, because a block written there
+      # A game declared at the top level of a file cannot be, because a block written there
       # belongs to Ruby's own main object and that is not shareable either. Such a game still
       # builds perfectly well — on the core that declared it, which is where it was going to
       # be built anyway. So this tries, and keeps what it was given when it cannot.
@@ -94,7 +94,7 @@ module VBlank
         block
       end
 
-      # A BLOCK PARAMETER IS THE ONE LOCAL RUBY DOES NOT CHECK, so it is read here first.
+      # A block parameter is the one local Ruby does not check, so it is read here first.
       #
       # A method written `def declare(&subject)` is not handed a Proc for +subject+ until
       # something asks for one: until then the variable is an empty place and the block waits
@@ -119,7 +119,7 @@ module VBlank
       # Built with the same frame timing #build_rom uses, so the tree a test runs is
       # the tree that ships.
       #
-      # RUN ONCE AND REMEMBERED, because asking a game what it is should not be an event: a
+      # Run once and remembered, because asking a game what it is should not be an event: a
       # game's block is the slowest thing in a build, since it is where the art and the levels
       # are read off disk, and a test or a tool asks more than once. Every consumer in the
       # library treats the tree as read-only and the one that rewrites one (see
@@ -150,7 +150,7 @@ module VBlank
         evaluated(merged_settings(settings), refuse_console_not_for!(console), variant, for_computer: for_computer).program
       end
 
-      # THE KEPT NUMBERS THAT DIFFERED FROM WHAT THEY WERE COPIED FROM, as the game plays on the
+      # The kept numbers that differed from what they were copied from, as the game plays on the
       # interpreter for +frames+: a list of IR::Backends::Reference::CopyWatch::Difference, each
       # naming the line that kept a local's number, the local, the game variables it was worked
       # out from, the number kept and the one they read when the local was read, and the frame.
@@ -174,7 +174,7 @@ module VBlank
         interpreter.copy_differences
       end
 
-      # THE PROGRAM A GAME PLAYED AS RUBY RUNS: checked as a build checks it, every guardrail on and
+      # The program a game played as Ruby runs: checked as a build checks it, every guardrail on and
       # their warnings printed to +err+, without making the cartridge (VBlank.build's +cartridge+).
       # +progress+, +settings+ and +console+ are as for #build_rom. +for_computer+ is what the game's
       # `built_for_computer?` answers: true, unless the run is to stand for the cartridge's game.
@@ -191,7 +191,7 @@ module VBlank
       # (+first_screen+, a Builder::ShellScreens::DeclaredShellScreen, or nil).
       ShellParts = Data.define(:program, :data_pack, :first_screen)
 
-      # WHAT A SHELL IS BUILT FROM (Original::Shell.build), a ShellParts: the program
+      # What a shell is built from (Original::Shell.build), a ShellParts: the program
       # #checked_program makes with the pack left out, and the game's data pack and first screen,
       # taken from the same reading of the game (+on_read+): a big game takes seconds to read.
       def shell_parts(err: $stderr, progress: Messages::Progress.silent, settings: {}, console: @consoles.first)
@@ -205,7 +205,7 @@ module VBlank
       # #checked_program makes it, and its +data_pack_file+, as #data_pack_file makes it.
       AllInOneParts = Data.define(:program, :data_pack_file)
 
-      # THE ALL-IN-ONE BUILD A SHELL IS HELD TO, an AllInOneParts, its program and its pack taken
+      # The all-in-one build a shell is held to, an AllInOneParts, its program and its pack taken
       # from one reading of the game (+on_read+), as #shell_parts takes the shell's: a big game
       # takes as long to read as to check. The pack file is nil for a game with no data_pack.
       def all_in_one_parts(err: $stderr, settings: {}, console: @consoles.first)
@@ -214,7 +214,7 @@ module VBlank
         AllInOneParts.new(program: program, data_pack_file: read.made_data_pack_file)
       end
 
-      # THE DATA PACK FILE THE ALL-IN-ONE BUILD MAKES from the copy of the original the game reads,
+      # The data pack file the all-in-one build makes from the copy of the original the game reads,
       # its bytes: the file a build for a computer that leaves its pack out is handed as it starts,
       # and the one a shell makes on the player's machine. Nil for a game with no data_pack.
       def data_pack_file(settings: {}, console: @consoles.first)
@@ -222,7 +222,7 @@ module VBlank
         EvaluatedGame.new(@block, options: options, settings: merged_settings(settings)).made_data_pack_file
       end
 
-      # THE SAME GAME BUILT WITH THE FEATURES +names+ ALONE, and what each brings (see
+      # The same game built with the features +names+ ALONE, and what each brings (see
       # Cartridge::Features): a new handle, this one unchanged. A name the game does not declare is
       # refused here. Everything that builds the handle — #program, #build_rom, a CartridgeCache —
       # builds the smaller game, and a cache keeps it apart from the whole one.
@@ -231,7 +231,7 @@ module VBlank
       #   game_player.run(SMALL.program, frames: 60)
       def with_features(*names) = with_options(@options.with(features_built: names.flatten.map(&:to_sym)))
 
-      # THE SAME GAME STARTED IN A CHOSEN STATE: each variable and list named in +starts+ starts at
+      # The same game started in a chosen state: each variable and list named in +starts+ starts at
       # the value given in place of the one its `var` or `list` declares, on top of any this handle
       # starts already. A new handle, this one unchanged. A variable that holds names starts at a
       # name (`mode: :playing`), so this picks the scene too; a list starts holding the items given.
@@ -246,7 +246,7 @@ module VBlank
       # starts rather than a state set in a running game.
       def starting_with(**starts) = with_options(@options.with(starts: @options.starts.merge(starts)))
 
-      # THE SAME GAME TOLD +settings+, read by `setting` in the block as a call's `settings:` is, on top
+      # The same game told +settings+, read by `setting` in the block as a call's `settings:` is, on top
       # of any this handle has already, a later value for a name taking its place. A new handle, this
       # one unchanged. Everything that builds the handle — #program, #build_rom, a CartridgeCache, a
       # film — is told them, so a test hands one handle around and never a hash beside it, and a cache
@@ -275,7 +275,7 @@ module VBlank
       # The finished ROM. Where the build prints is injectable, so a test (or the CLI) captures
       # it: out:/err: each take an open stream, the name of a file, or nil for a build that
       # prints nothing (see {Messages::BuildOutput}).
-      # THIS ONE MEASURES THE GAME, which {VBlank.build} does not do by default.
+      # This one measures the game, which {VBlank.build} does not do by default.
       #
       # The split is by who is asking. This is the method that makes a cartridge somebody is
       # going to play — it is what `ruby game.rb` and the `vblank` command call — so it is
@@ -347,7 +347,7 @@ module VBlank
         caller_path = caller_locations(1, 1)&.first&.path
         return self unless caller_path && main_script?(caller_path)
 
-        # SAY WHAT IT IS DOING, because this path is by definition somebody who ran a build by
+        # Say what it is doing, because this path is by definition somebody who ran a build by
         # hand and is now waiting for it. A build reached any other way — a test, a tool, a
         # library call — stays silent, which is what the default does.
         @consoles.each do |console|
@@ -399,7 +399,7 @@ module VBlank
 
       # This game's block, run — the tree and what the run learned besides.
       #
-      # REMEMBERED PER CORE rather than on the handle, because the handle is frozen so that
+      # Remembered per core rather than on the handle, because the handle is frozen so that
       # it can cross to another core at all. Each core that asks runs the block once and
       # keeps the answer; running a block is cheap next to lowering it, and a core that
       # never asks pays nothing.
@@ -411,7 +411,7 @@ module VBlank
                                     settings: settings, screen_as_asked: for_computer)
       end
 
-      # A GAME NAMES ITS CHIP WHERE IT NAMES ITS CONSOLES: `consoles: %i[gba snes], variants: {
+      # A game names its chip where it names its consoles: `consoles: %i[gba snes], variants: {
       # snes: :superfx }`. A chip is part of what the cartridge is, as much as which console it goes
       # in, so it is named in the same line and not left to whoever builds it; `vblank build
       # --variant` still overrides it for one build. +variants+ is keyed by console, since one game
@@ -474,7 +474,7 @@ module VBlank
     # Every game declared here, in declaration order (usually one per file). The `vblank`
     # command loads a game file and reads the game it declared from here.
     #
-    # KEPT PER RACTOR rather than for the whole process. A declared game holds the author's
+    # Kept per Ractor rather than for the whole process. A declared game holds the author's
     # own block so it can be built later, and a block carries the surroundings it was
     # written in — the one thing Ruby will not let two cores share. Kept on the module this
     # could be neither written nor read from a worker, and a worker builds games.
@@ -501,7 +501,7 @@ module VBlank
     #
     # +consoles+ are the consoles the game is for (see Console::DESCRIPTIONS), and every game names
     # them: `consoles: %i[gba]` for the Game Boy Advance alone, `consoles: %i[gba gbc]` for the
-    # Game Boy Color too. NOTHING IS TAKEN TO BE FOR THE ADVANCE, because the command line builds
+    # Game Boy Color too. Nothing is taken to be for the Advance, because the command line builds
     # a cartridge for each console a game names, and a game that named none would be built for
     # whichever console the framework happened to start with.
     #

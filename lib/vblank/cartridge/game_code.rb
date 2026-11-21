@@ -13,12 +13,12 @@ module VBlank
     # The four characters a cartridge's header holds, and where they come from.
     #
     # A cartridge carries a name (12 characters) and, separately, a four-character
-    # code. The name is for people; the CODE is the only thing an emulator has to tell
+    # code. The name is for people; the code is the only thing an emulator has to tell
     # one cartridge from another, and it leans on it twice. It looks the code up in a
     # catalogue of real cartridges to put a title in its window, and it looks the same
     # code up in a table of its own to decide what save hardware the cartridge has —
     # plain memory, flash, or a little chip read a bit at a time — and whether it
-    # carries a clock, a light sensor or a rumble motor. That second one REPLACES what
+    # carries a clock, a light sensor or a rumble motor. That second one replaces what
     # the emulator would otherwise work out from the cartridge's own save signature.
     #
     # So a code invented by hand is a real footgun. The mnemonic ones are long gone —
@@ -70,8 +70,8 @@ module VBlank
 
       # The code this game gets when its program does not write one. It starts with a
       # letter no cartridge ever used, so it cannot be a real one's whatever else it
-      # holds. The other three are DERIVED from the name rather than spelled out of it:
-      # spelling would give "SNAKE" and "SNAKEBUF" the same three letters, and an
+      # holds. The other three are derived from the name rather than spelled out of it:
+      # spelling would give "snake" and "SNAKEBUF" the same three letters, and an
       # emulator would then keep one set of saves for both. Three characters is 46,656
       # codes, so deriving makes a clash unlikely rather than impossible — the point is
       # that games with similar names stop being the likely case. The same name always

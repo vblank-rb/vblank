@@ -2,7 +2,7 @@
 
 module VBlank
   module Cartridge
-    # THE PARTS OF A GAME A BUILD CAN LEAVE OUT, and what each brings with it, as the game names them:
+    # The parts of a game a build can leave out, and what each brings with it, as the game names them:
     #
     #   VBlank.game "CAVE", consoles: %i[gba], features: { hero: %i[lamp], lamp: [], bat: [] } do
     #     ...
