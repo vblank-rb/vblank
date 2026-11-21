@@ -47,7 +47,7 @@ class TestMixedFrames < Minitest::Test
     b.program
   end
 
-  # Each frame's mix of +program+'s cartridge, for frames frames from power-on.
+  # Each frame's mix of +program+'s cartridge, for FRAMES frames from power-on.
   private def mixed_frames(program)
     console = assert_emulator_loads_rom(assemble_rom(program, name: "MIXED"), frames: 1)
     [console.last_frame_mix] + Array.new(FRAMES - 1) do

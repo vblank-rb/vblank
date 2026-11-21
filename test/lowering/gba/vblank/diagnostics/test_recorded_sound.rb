@@ -68,7 +68,7 @@ class TestRecordedSound < Minitest::Test
   SIGNED_FRAMES = [[-3, 4], [0], [-32_768, 32_767, -1], [], [5, 5]].map { |samples| samples.pack("s<*") }.freeze
   LOUDNESS = [7, 0, 65_536, 0, 10].freeze
 
-  # The loudness of frames, whose frame n is the samples n * 100 up to n * 100 + n.
+  # The loudness of FRAMES, whose frame n is the samples n * 100 up to n * 100 + n.
   LOUDNESS_OF_FRAMES = [0, 201, 603, 1206, 2010, 3015, 4221, 5628, 7236, 9045].freeze
 
   def test_how_loud_each_frame_was_is_its_samples_added_up_with_their_signs_dropped

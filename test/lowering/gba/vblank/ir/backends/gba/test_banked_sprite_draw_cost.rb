@@ -32,7 +32,7 @@ class TestBankedSpriteDrawCost < Minitest::Test
     end
   end
 
-  # The cycles a frame the game of sprites sprites spends awake, each stepping between a pose and it
+  # The cycles a frame the game of SPRITES sprites spends awake, each stepping between a pose and it
   # turned round: the frame of banks 1 and 3, or a picture of two pieces in bank 1's colours.
   private def awake_cycles(folder, banked:)
     test = self

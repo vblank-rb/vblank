@@ -70,7 +70,7 @@ class TestHeldTilesCartridge < Minitest::Test
 
   private
 
-  # For each of frames frames: the pass number, and how many blue cells each row of the box shows.
+  # For each of FRAMES frames: the pass number, and how many blue cells each row of the box shows.
   def readings(source)
     rom = VBlank.build("HELDTILES", console: :gba, validate: false, out: nil, err: nil, &source)
     verifier = assert_emulator_loads_rom(rom, frames: 3, vars: rom.var_addresses)

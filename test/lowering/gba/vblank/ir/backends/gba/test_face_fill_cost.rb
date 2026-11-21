@@ -56,7 +56,7 @@ class TestFaceFillCost < Minitest::Test
     assert_fill_under(17, whole_screen_face(:none, see_through: 0x7C1F), "reading its pair back cost 37")
   end
 
-  # A grate: the tile with every other bar of five pixels see-through, so half of it shows what is
+  # A GRATE: the tile with every other bar of five pixels see-through, so half of it shows what is
   # behind, and the bars' edges fall on either half of a pair of the screen's pixels. A pair with no
   # see-through pixel is written whole, one that is all see-through is passed over, and only a pair
   # with one of each reads video memory back.
