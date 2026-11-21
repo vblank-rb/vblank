@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module VBlank
-  # WHERE THE LIBRARY SAYS WHAT IT IS DOING, for somebody finding out why something went wrong: a
+  # Where the library says what it is doing, for somebody finding out why something went wrong: a
   # match over the network that stops, a relay that does not answer. It takes the calls a Ruby
   # Logger takes, with a block so nothing is worked out when the level leaves the line out:
   #
@@ -13,7 +13,7 @@ module VBlank
   #
   #   VBlank.logger = VBlank::Logger.new(io = StringIO.new, level: :debug)
   #
-  # WHY NOT RUBY'S OWN LOGGER: Ractors. The library's tests play in Ractors, and so can a game, and
+  # Why not Ruby's own logger: Ractors. The library's tests play in Ractors, and so can a game, and
   # each Ractor makes its own logger (below). Ruby's Logger (the logger gem) cannot be made in any
   # Ractor but the main one: Logger.new sets its level through Logger::Severity.coerce, which reads
   # Logger::Severity::LEVELS, a constant the gem never makes shareable, so the call raises
@@ -27,7 +27,7 @@ module VBlank
   # Each Ractor keeps its own, since a test in a Ractor cannot reach one the whole process shares; a
   # Ractor that set none gets a new default. Threads in one Ractor share it.
   #
-  # What the library says to the author while a game BUILDS (its warnings and progress) is
+  # What the library says to the author while a game builds (its warnings and progress) is
   # Messages', not this: this is for what runs.
   class Logger
     LEVELS = %i[debug info warn error].freeze

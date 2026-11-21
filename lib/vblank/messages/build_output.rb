@@ -4,11 +4,11 @@ module VBlank
   module Messages
     # Where a build prints: the warnings the guardrails found, and the disassembly
     # `dump_func` was asked for. `out:` and `err:` each take one of three things, because all
-    # three are reasonable readings of "where does this go" — an open stream, the NAME of a
+    # three are reasonable readings of "where does this go" — an open stream, the name of a
     # file, or nothing at all from a caller that wants the build quiet. This turns whichever
     # arrived into one thing the build can print to, so nothing downstream has to ask.
     #
-    # The name is the case worth explaining. `File::NULL` IS a name — the string "/dev/null" —
+    # The name is the case worth explaining. `File::NULL` is a name — the string "/dev/null" —
     # so "build quietly" gets written as a path more often than as anything else, and a path
     # that worked only until the build had a warning to give would fail at the worst possible
     # moment: the build that finally has something to say would be the build that cannot say

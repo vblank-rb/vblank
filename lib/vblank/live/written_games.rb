@@ -6,12 +6,12 @@ require "json"
 
 module VBlank
   module Live
-    # THE GAMES vblank run HAS WRITTEN OUT, KEPT TO BE PLAYED AGAIN. A big game takes many seconds to
+    # The games vblank run has written out, kept to be played again. A big game takes many seconds to
     # build and a fraction of one to play from its written file, so the file a helper wrote
     # (BuildHelper) is kept, with a record of everything its build read (BuildInputs), and the next
     # launch plays it with no build at all while the record still holds.
     #
-    # A KEPT GAME IS CURRENT while it was built from the same game file, launched from the same
+    # A kept game is current while it was built from the same game file, launched from the same
     # working folder, for the same console and --set values, by the same VBlank and gems
     # (#library_key) on the same Ruby; everything the build read is as it was; and the written game
     # is the one its build kept (its digest is in the record). Anything else builds again, and the
@@ -72,7 +72,7 @@ module VBlank
         Slot.new(File.join(@root, name))
       end
 
-      # ONE KEPT GAME: its folder holds the written game (game.rb) and the record of its build
+      # One kept game: its folder holds the written game (game.rb) and the record of its build
       # (record.json), the record written last.
       class Slot
         attr_reader :folder
