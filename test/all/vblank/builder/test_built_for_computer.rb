@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# ONE GAME FILE, A DEFAULT FOR EACH WAY IT IS BUILT. A cartridge and a build for a computer are
+# One game file, a default for each way it is built. A cartridge and a build for a computer are
 # made from the same block, which asks `built_for_computer?` as it runs.
 class TestBuiltForComputer < Minitest::Test
   private def game

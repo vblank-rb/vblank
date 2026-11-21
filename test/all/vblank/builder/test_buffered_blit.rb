@@ -2,15 +2,15 @@
 
 require "test_helper"
 
-# Drawing a whole PICTURE on the tear-free screen.
+# Drawing a whole picture on the tear-free screen.
 #
-# The tear-free screen holds a NUMBER per pixel, picking a colour out of a shared table,
+# The tear-free screen holds a number per pixel, picking a colour out of a shared table,
 # where the direct screen holds a whole colour. So a picture has to be shipped a second
 # way — as numbers — and copied in a row at a time. And the screen takes two pixels at
 # once and will not take one, so a row copies straight in only when it starts on an even
 # column: that is the same rule the rectangle fills already live by.
 #
-# THE PROMISE IS THE ONE EVERY OTHER DRAW MAKES HERE: the same picture at the same place
+# The promise is the one every other draw makes here: the same picture at the same place
 # with the same clipping, whichever screen it is drawn on. So most of these run the same
 # program on both screens and demand the same pixels, rather than pinning numbers that
 # only say what today's code does.
@@ -24,10 +24,10 @@ require "test_helper"
 module BufferedBlitGames
   include SharedConstants # Color, which the picture below names from inside the module
 
-  # A picture whose every pixel says WHERE IT CAME FROM — its column in the red channel
+  # A picture whose every pixel says where it came from — its column in the red channel
   # and its row in the green — so a pixel read from the wrong place lands a colour that
   # names the place it really came from. Both axes matter: a picture of stripes would
-  # hide a row read at the wrong offset ACROSS, which is exactly the mistake a clipped
+  # hide a row read at the wrong offset across, which is exactly the mistake a clipped
   # left edge makes.
   #
   # Four wide, because the screen moves two pixels at a time and an odd width could not

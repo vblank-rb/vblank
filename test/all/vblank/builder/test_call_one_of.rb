@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A CALL PICKED BY NUMBER: `call [:op_end, :op_wait, ...], number: opcode`.
+# A call picked by number: `call [:op_end, :op_wait, ...], number: opcode`.
 #
 # The number comes out of data — the instruction byte of a script read from a cartridge, the
 # state kept on one of thirty guards — and what it picks is a routine. The point of it is that
@@ -67,7 +67,7 @@ class TestCallOneOf < Minitest::Test
     assert_equal 33, game_player.run(program)[:n]
   end
 
-  # THE CASE THE FEATURE IS FOR: each instance of a pool carries its own number, so one line
+  # The case the feature is for: each instance of a pool carries its own number, so one line
   # inside `each` runs a different routine for every one of them.
   def test_each_pooled_instance_picks_its_own_routine
     program = program_with do

@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "brr_recordings"
 
-# A RECORDING GIVEN IN THE SUPER NINTENDO SOUND CHIP'S OWN FORMAT (Builder#sample's `brr:`), by hand
+# A recording given in the Super Nintendo sound chip's own format (Builder#sample's `brr:`), by hand
 # or from a slot of the data pack, plays on every console as the samples the chip decodes from it,
 # round the loop its last block names. The answer key is the same game given those samples by hand,
 # as `pcm:` with `holds_from:`, decoded by fullsnes's arithmetic (BRRRecordings). The Super
