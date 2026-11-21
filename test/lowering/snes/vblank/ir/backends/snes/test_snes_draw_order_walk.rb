@@ -12,7 +12,7 @@ class TestSNESDrawOrderWalk < Minitest::Test
   SPECK = Ractor.make_shareable((["#" * 8] * 8).join("\n"))
   OVERLAP = [70, 66].freeze
 
-  # A crowd of 126 that never comes out, an enemy and a hero overlapping at overlap, all 128 taking
+  # A crowd of 126 that never comes out, an enemy and a hero overlapping at OVERLAP, all 128 taking
   # turns in front, and the front item of their order list dropped every pass. The order is copied in
   # whole before each frame is drawn, so the list is full again, its first item one slot further on.
   private def crowded_game

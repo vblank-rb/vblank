@@ -20,7 +20,7 @@ class TestSNESCrowdedWorkRAM < Minitest::Test
   # +effects+ sound effects, one asked for on each pass in turn, and +variables+ numbers, a few
   # of them busy every pass and +approaches+ of them stepping towards another; a bar as long as a
   # sum of them shows what the game worked out. With +all_stepped+ every one of the numbers is stepped
-  # once a pass, and in a loop of 16 turns hot numbers are each read twice, more than the direct
+  # once a pass, and in a loop of 16 turns HOT numbers are each read twice, more than the direct
   # page holds, and a number `looped` once.
   def self.crowded(effects:, variables:, approaches: 0, variants: {}, all_stepped: false)
     scores = Array.new(effects) do |i|

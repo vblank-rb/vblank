@@ -92,7 +92,7 @@ class TestSNESSetCellCost < Minitest::Test
                                releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
   end
 
-  # The arena, and each pass writes cells written along its top rows: with +worked_out+ each word
+  # The arena, and each pass WRITES cells written along its top rows: with +worked_out+ each word
   # worked out from the pass, otherwise each the told word written in the program. With +moving+ a
   # tile of the slot takes turns through pictures, and with +showing+ as well the group shows the
   # next picture every other pass.

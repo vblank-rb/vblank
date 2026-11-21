@@ -9,7 +9,7 @@ require "int32_cases"
 # use, in the routine's own code (SNES::ChipCode), on the chip, in bsnes.
 #
 # The cartridge is an ordinary build of a program with one routine for each sum. Each routine works
-# out a batch of batch sums, in variables the test writes into work RAM. So the numbers travel the
+# out a batch of BATCH sums, in variables the test writes into work RAM. So the numbers travel the
 # way a game's do: out to the chip's RAM, back again, and the 65816 sees only variables.
 class TestSNESChipInt32 < Minitest::Test
   Build = VBlank::IR::Build
