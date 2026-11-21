@@ -4,9 +4,9 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # THE CARTRIDGE'S CLOCK CHIP, read for the game.
+        # The cartridge's clock chip, read for the game.
         #
-        # THE HARDWARE. The console has no clock of its own. A cartridge that keeps the date and
+        # The hardware. The console has no clock of its own. A cartridge that keeps the date and
         # time carries a small chip for it (the Seiko S-3511A the console's own games used), with
         # a watch battery that keeps it counting while the console is off. The chip is not in the
         # console's memory at all: the cartridge brings four pins out at the bottom of its own
@@ -17,16 +17,16 @@ module VBlank
         # back out the same way, lowest bit first. The answer is the year, month, day, day of the
         # week, hour, minute and second, each a byte holding two decimal digits.
         #
-        # AT POWER-ON the chip is asked whether it is there at all and whether its time was ever
+        # At power-on the chip is asked whether it is there at all and whether its time was ever
         # set; a cartridge with no chip, or one whose battery ran out, is never asked again, and
-        # every reading stays 0, which is IR::Clock's promise. THEN THE FIRST READING OF THE TIME
-        # AFTER EACH WAIT FOR THE SCREEN puts the date and time into a copy the game reads, so every
+        # every reading stays 0, which is IR::Clock's promise. Then the first reading of the time
+        # after each wait for the screen puts the date and time into a copy the game reads, so every
         # reading between two waits is of one moment, as on every backend, a game reading the time
         # twenty times a pass talks to the chip once, and a pass that does not ask does not talk to
         # it at all. Most passes of most games do not, and a conversation is about a thousand
         # instructions run from the cartridge. A wait does no more than mark the copy as old.
         #
-        # IS THERE A CHIP? With none, the pins are not pins: reading them reads two bytes of the
+        # Is there a chip? With none, the pins are not pins: reading them reads two bytes of the
         # cartridge's own code, which never change, so every bit the console ticks back is the same
         # and the chip's settings read as all noughts or all ones. The chip, told to count in 24
         # hours, reads that setting back with that one bit on, which neither of those is.
@@ -121,8 +121,8 @@ module VBlank
           COPY = IR::Clock::TIME.to_h { |reading| [reading, var(reading)] }.freeze
           WORK = %i[cycles of_cycle years into months].to_h { |part| [part, work_var(part)] }.freeze
 
-          # THE REGISTERS THE ROUTINES WORK IN: ACC for the byte going out or coming back, TMP for
-          # the pins' value, SPARE as the bit count, and HIGH holding the pins' address. All four
+          # The registers the routines work in: ACC for the byte going out or coming back, TMP for
+          # the pins' value, spare as the bit count, and HIGH holding the pins' address. All four
           # are a statement's own scratch, never held across one. Every routine but one is called
           # only between statements, so nothing the game holds is in them; the one that adds a time
           # the game set is called as a value is being worked out, and keeps every register it
@@ -182,7 +182,7 @@ module VBlank
             @primitives.store_var(ACC, READ_THIS_PASS)
           end
 
-          # A TIME THE GAME SETS: each part worked out into where it waits, and then the routine
+          # A time the game sets: each part worked out into where it waits, and then the routine
           # that keeps how far it is from the chip's (see #emit_set_body).
           def emit_set_clock(node)
             emit_set_part(:year, node.year)
@@ -276,7 +276,7 @@ module VBlank
             emit_present_and_set
           end
 
-          # THE PINS READ BACK ONLY WHILE THE CONSOLE TALKS TO THE CHIP, as the console's own games
+          # The pins read back only while the console talks to the chip, as the console's own games
           # leave them: readable, their two bytes of the cartridge read as the pins; not, as the
           # cartridge's code. Uses TMP.
           def emit_pins_readable(on)
@@ -291,8 +291,8 @@ module VBlank
             emit_end_conversation
           end
 
-          # THERE IS A CHIP when the settings read back with the 24-hour bit on and are not all
-          # ones; ITS TIME WAS SET when, besides, the battery had not run out before the console
+          # There is a chip when the settings read back with the 24-hour bit on and are not all
+          # ones; its time was set when, besides, the battery had not run out before the console
           # asked.
           def emit_present_and_set
             absent = @emitter.gensym
@@ -315,7 +315,7 @@ module VBlank
             @emitter.place_label(done)
           end
 
-          # A READING: nothing at all unless the chip is there and set, and then the date and time,
+          # A reading: nothing at all unless the chip is there and set, and then the date and time,
           # each byte's two digits made one number as it comes — into the copy, or in a game that
           # sets the clock into the chip's own reading, which the copy is made from when it is read.
           def emit_after_wait_body
@@ -345,13 +345,13 @@ module VBlank
             @primitives.store_var(ACC, COPY_MADE)
           end
 
-          # SETTING IT: nothing at all on a cartridge with no chip. The chip itself is never told
+          # Setting it: nothing at all on a cartridge with no chip. The chip itself is never told
           # the time — an emulator keeps its own whatever a cartridge sends it (mGBA does) — so what is
           # kept is how far the time set is from the chip's (see IR::Clock::OFFSET_DAYS), worked
           # out against a fresh reading. The copy is made from it the next time the game reads the
           # clock, which is the time set, as on every backend.
           #
-          # A CHIP WHOSE BATTERY RAN OUT is put back to its first moment first: on the chip the
+          # A chip whose battery ran out is put back to its first moment first: on the chip the
           # console's own games used that is what clears what it reports about the battery, so the
           # next power-on finds it set — and it clears the chip's settings with it, so it is told
           # again to count the hours 0 to 23. Read after that, the chip gives 2000-01-01, and the
@@ -401,7 +401,7 @@ module VBlank
             ]
           end
 
-          # MAKING THE COPY, the chip's reading with the time set added: the chip's date and time as
+          # Making the copy, the chip's reading with the time set added: the chip's date and time as
           # a day number and the seconds into it, the offset added, a day carried when the seconds
           # pass midnight, and back to a date and a time. Made at most once between two readings
           # of the chip, unless the offset changes in between — the saved one coming in at
@@ -473,7 +473,7 @@ module VBlank
             @emitter.emit(ASM.add_reg(ACC, ACC, BITS))
           end
 
-          # A CONVERSATION STARTS: every pin the console's, CS low with the clock high, which tells
+          # A conversation starts: every pin the console's, CS low with the clock high, which tells
           # the chip to forget any conversation half done, then CS raised and +command+ sent — and,
           # for a command the console reads, SIO handed over to the chip. The pins are pointed
           # first: at power-on they point nowhere, and a pin that is not the console's ignores what
@@ -499,7 +499,7 @@ module VBlank
             @emitter.emit(ASM.store_halfword(TMP, BASE))
           end
 
-          # SEND THE BYTE IN ACC, lowest bit first: each bit put on SIO with the clock low, then
+          # Send the byte in ACC, lowest bit first: each bit put on SIO with the clock low, then
           # the clock raised, which is when the chip takes it. The low half is written three times,
           # as the console's own games do, so a real chip has time to see it. Uses ACC, TMP and
           # BITS, with the pins' address in BASE.
@@ -521,7 +521,7 @@ module VBlank
             @emitter.place_label(DerivedNames.routine_end(SEND))
           end
 
-          # TICK A BYTE BACK INTO ACC, lowest bit first: the clock lowered, which is when the chip
+          # Tick a byte back into ACC, lowest bit first: the clock lowered, which is when the chip
           # puts its next bit on SIO, then raised, and SIO read. Each bit goes in at the top and
           # moves down, so the first one sent ends at the bottom. The low half is written five
           # times, as the console's own games do when they read, so a real chip has its bit on SIO

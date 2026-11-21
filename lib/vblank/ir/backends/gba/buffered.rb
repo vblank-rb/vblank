@@ -85,7 +85,7 @@ module VBlank
           #
           # A fill moves whole 16-bit units, so it can only START on an even column.
           # Asked for an odd one, the rect's first and last pixel each share a unit
-          # with a pixel that is NOT part of the rect — so those two are written one
+          # with a pixel that is not part of the rect — so those two are written one
           # at a time (read the unit, change that pixel's half, write it back) and the
           # DMA fills the even middle between them. The column is known while
           # building, so which of the two shapes a row takes is settled here.
@@ -102,7 +102,7 @@ module VBlank
           # instructions whatever it then moves (ten where the row's address is one the chip
           # can name outright), and a row written out is its address and then one instruction
           # per pair, which is three plus one per pair for most rows. So the written-out row
-          # is the SMALLER one up to nine pairs, and it stays the faster one further than
+          # is the smaller one up to nine pairs, and it stays the faster one further than
           # that: starting the engine costs the register writes AND the stall while the
           # engine copies, which stops the CPU dead.
           #
@@ -139,7 +139,7 @@ module VBlank
             scratch = emit_index_fill_word(color)
             index = @layout.palette.index_of(color)
 
-            # WHICH PIXELS CANNOT GO IN AS PAIRS. A fill moves whole 16-bit units, so a run that
+            # Which pixels cannot go in as pairs. A fill moves whole 16-bit units, so a run that
             # starts on an odd column shares its first unit with a pixel outside the rectangle,
             # and one holding an odd number of pixels shares its last. Either is written on its
             # own — read the unit, change that half, write it back — and the pairs between them
@@ -257,7 +257,7 @@ module VBlank
           RECT_ADDR = 5
           RECT_ROWS_LEFT = 6
 
-          # Put the hidden page's address of column 0 on the rect's FIRST row in r4, once
+          # Put the hidden page's address of column 0 on the rect's first row in r4, once
           # for the whole rect.
           #
           # Every row after that starts exactly one screen width further on, so the rows
@@ -265,7 +265,7 @@ module VBlank
           # again. Working it out again is what this used to do on every row: a multiply
           # by the screen width, a load of the hidden page's address, and an add — five
           # instructions before a single pixel was written. On a tall thin column, which is
-          # what a per-column renderer draws hundreds of, that WAS the column: measured, a
+          # what a per-column renderer draws hundreds of, that was the column: measured, a
           # rect cost the same per row at 2 pixels wide as at 16, because almost none of
           # the cost was the pixels.
           def emit_row_address_setup
@@ -407,12 +407,12 @@ module VBlank
           # block fill. Both ends come down to one rule, worked out once above the rows
           # because every row of a rect starts and ends in the same columns:
           #
-          #   - the first pixel needs splicing when the rect starts on an ODD column;
-          #   - the last one needs splicing when it ends on an EVEN column;
+          #   - the first pixel needs splicing when the rect starts on an odd column;
+          #   - the last one needs splicing when it ends on an even column;
           #   - what is left between them is always an even number of pixels beginning
           #     on an even column, which is exactly what a block fill wants.
           #
-          # x and width settle to one CLIPPED span before any row fires — a rect has one
+          # x and width settle to one clipped span before any row fires — a rect has one
           # x for its whole height — and every row then checks its own y against the
           # area (#emit_buffered_computed_row), because a run-time y or height means a
           # run-time set of rows survives: an unclipped row is what wrapped a rect onto
@@ -484,7 +484,7 @@ module VBlank
           end
 
           # One row of a computed-width rect: skipped outright if its y falls outside
-          # the area (a row above or below it draws NOTHING, not a row wrapped onto its
+          # the area (a row above or below it draws nothing, not a row wrapped onto its
           # neighbor); else at most two spliced pixels with a block fill between them,
           # which of the three actually run having been decided above the loop.
           def emit_buffered_computed_row(index:, scratch:)
@@ -542,7 +542,7 @@ module VBlank
           # pixels starting +offset+ columns right of the rect's x, on the row whose
           # address r4 holds.
           #
-          # A NARROW middle is written straight out, one 16-bit store per pair of pixels,
+          # A narrow middle is written straight out, one 16-bit store per pair of pixels,
           # rather than handing it to the block-fill engine. Starting that engine costs the
           # same whatever it then moves — the register writes, and the stall while it copies
           # — so for a pair or two the starting is nearly all of the work, and a two-pixel
@@ -638,7 +638,7 @@ module VBlank
 
           TEXT_POINTS = Messages::MadeNames.make(:buffered_text_points_routine)
 
-          # THE ROUTINE THAT STAMPS A TABLE OF PIXELS onto the hidden page: r0 the colour's slot, r1
+          # The routine that stamps a table of pixels onto the hidden page: r0 the colour's slot, r1
           # the table, r2 how many. Each pixel is half of a 16-bit unit, read, spliced and written
           # back, and which half is the pixel's column being odd.
           def emit_text_points_routine
@@ -733,7 +733,7 @@ module VBlank
               end
               emit(ASM.pop(15))
               # Where it ends, so a profile of the finished game can say how much of a frame
-              # went into drawing digits. A routine the LOWERING makes has no other record of
+              # went into drawing digits. A routine the lowering makes has no other record of
               # its span — func_ranges only knows routines somebody wrote.
               place_label(DerivedNames.routine_end(Messages::MadeNames.make(:buffered_digit_routine, font: font_name)))
             end
@@ -859,20 +859,20 @@ module VBlank
           # One column of a picture, stretched to a height the game works out — on the
           # tear-free screen.
           #
-          # It walks DOWN THE SCREEN and asks which picture row belongs at each screen row,
+          # It walks down the screen and asks which picture row belongs at each screen row,
           # exactly as the direct-color screen does, because that is what makes the two
           # screens and the interpreter land every pixel in the same place. What differs is
           # the two things this screen forces: a pixel is one BYTE (a number picking a color
           # out of the shared table) rather than two, and video memory refuses a lone byte —
-          # the smallest write covers a side-by-side PAIR of pixels. So every pixel is a
+          # the smallest write covers a side-by-side pair of pixels. So every pixel is a
           # read of its pair, a splice of its own half, and a write back.
           #
-          # TWO QUESTIONS ARE ANSWERED ONCE HERE THAT THE OTHER SCREEN ASKS AT EVERY PIXEL,
-          # and both come from the same fact: a column has ONE x for its whole height.
+          # Two questions are answered once here that the other screen asks at every pixel,
+          # and both come from the same fact: a column has one x for its whole height.
           #
           #   - The screen's left and right edges. A column is either on the screen or it is
           #     not, so it is tested before the first row instead of at every one.
-          #   - WHICH HALF OF THE PAIR to write. A row is an even number of bytes across, so
+          #   - Which half of the pair to write. A row is an even number of bytes across, so
           #     the parity of a pixel's address is the parity of its column — the same half,
           #     every row, all the way down. That also means the unit's address needs no
           #     rounding as it walks: it starts on the pair the column sits in and steps one
@@ -913,10 +913,10 @@ module VBlank
             place_label(done)
           end
 
-          # THE STRIP WRITES WHOLE PAIRS WHERE IT CAN, which needs to know whether it starts on
+          # The strip writes whole pairs where it can, which needs to know whether it starts on
           # an even column or an odd one. Proved while building, that is one copy of the rows —
           # a view drawing its strips two pixels wide writes `col * 2`, and twice anything is
-          # even. Otherwise the low bit is tested ONCE, here, and each answer gets its own copy:
+          # even. Otherwise the low bit is tested once, here, and each answer gets its own copy:
           # every row of a strip starts in the same column, so a test inside the walk would ask
           # the same question a hundred and sixty times over.
           def emit_buffered_column_bodies(width, clear, parity)
@@ -1000,7 +1000,7 @@ module VBlank
           end
 
           # WHICH 16-BIT UNITS a strip of +width+ pixels touches, and what each one needs. A
-          # unit whose BOTH pixels belong to the strip is written outright — no read, no
+          # unit whose both pixels belong to the strip is written outright — no read, no
           # splice, since nothing of it survives. Only a unit the strip half covers has to be
           # read and spliced. That is what makes a strip cheaper than its pixels: three pixels
           # are one whole pair and one splice, not three splices.
@@ -1070,14 +1070,14 @@ module VBlank
             place_label(past)
           end
 
-          # DRAW A WHOLE PICTURE on the hidden page.
+          # Draw a whole picture on the hidden page.
           #
-          # The picture is shipped a second time as one NUMBER a pixel (see
+          # The picture is shipped a second time as one number a pixel (see
           # GBA#prepare_indexed_bitmaps), so a row of it is already the bytes the screen
           # wants and a row copy is a straight run of memory — the same shape the
           # direct-color blit has, with a byte a pixel instead of two.
           #
-          # WHAT MAKES IT A STRAIGHT COPY IS THAT EVERYTHING LINES UP IN PAIRS. Video
+          # What makes it a straight copy is that everything lines up in pairs. Video
           # memory here takes two pixels at a time and will not take one, so the copying
           # engine moves 16-bit units and every end of the run has to fall on one: the
           # column the picture starts at, the picture's own width, and therefore the part
@@ -1157,7 +1157,7 @@ module VBlank
             emit_branch(:bcond, skip, cond: :le)
           end
 
-          # THE ENDS OF A ROW CUT BY AN AREA WITH AN ODD EDGE. The picture starts on an even
+          # The ends of a row cut by an area with an odd edge. The picture starts on an even
           # column and is an even number of pixels wide, so only an area's edge can cut a row
           # halfway through a pair. A pixel left alone at either end is written on its own — read
           # the pair, change that half, write it back — and the row is narrowed past it, so the
@@ -1227,7 +1227,7 @@ module VBlank
                                    control: in_register(BLIT_UNITS))
           end
 
-          # WHY THE SCREEN WANTS PAIRS, said the same way in every one of these three. It is
+          # Why the screen wants pairs, said the same way in every one of these three. It is
           # the one fact behind all of them, and a person who reads it once has read it.
           TAKES_PAIRS = "The screen takes two pixels at a time and will not take one."
 

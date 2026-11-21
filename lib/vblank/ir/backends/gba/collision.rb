@@ -220,7 +220,7 @@ module VBlank
             @emitter.place_label(x_loop)
             branch_if_ge(PO_X, PO_X1, x_end)
 
-            # A pixel counts only if it's drawn in BOTH sprites; a see-through pixel in
+            # A pixel counts only if it's drawn in both sprites; a see-through pixel in
             # either means move on to the next column.
             load_mask_byte(PO_A_MASK, aw, PO_AX, PO_AY)
             @emitter.emit(ASM.cmp_imm(ACC, 0))
