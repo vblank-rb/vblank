@@ -4,7 +4,7 @@ require "test_helper"
 require "differential"
 require "all/vblank/builder/test_pack_background_areas"
 
-# A BACKGROUND FROM THE DATA PACK WALKING BETWEEN AREAS, on the Advance's cartridge, read in the
+# A background from the data pack walking between areas, on the Advance's cartridge, read in the
 # emulator. What it shows on every run is in test/all/vblank/builder/test_pack_background_areas.rb.
 class TestPackBackgroundAreasCartridge < Minitest::Test
   include PackBackgroundAreaGames

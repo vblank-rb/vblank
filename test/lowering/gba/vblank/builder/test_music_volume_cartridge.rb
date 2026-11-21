@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "all/vblank/builder/test_music_volume"
 
-# HOW LOUD THE MUSIC PLAYS, moved while it plays, on the Advance's own cartridge: the volume each
+# How loud the music plays, moved while it plays, on the Advance's own cartridge: the volume each
 # of its voices is set to and what its speaker plays, read in the emulator. What every run plays
 # is in test/all/vblank/builder/test_music_volume.rb, which keeps the games both files play in
 # MusicVolumeGames.
@@ -13,7 +13,7 @@ class TestMusicVolumeCartridge < Minitest::Test
 
   # --- fading the music out and back in ---
 
-  # THE TWO BACKENDS AGREE ON WHAT SOUNDED: over a whole fade out and back in, the volumes the
+  # The two backends agree on what sounded: over a whole fade out and back in, the volumes the
   # console's first square voice is set to, one after another, are the volumes the interpreter
   # logs, one after another — every step of the way, not only where it ends up.
   def test_both_backends_step_through_the_same_volumes

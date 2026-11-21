@@ -13,7 +13,7 @@ class TestLayerTransparencyOnTheAdvanceCartridge < Minitest::Test
     assert_emulator_loads_rom(assemble_rom(program, name: name), frames: frames).pixel_gba(x, y)
   end
 
-  # A fade PLACED in the stack takes the blend and gives it back on the console too.
+  # A fade placed in the stack takes the blend and gives it back on the console too.
   def test_a_fade_placed_in_the_stack_takes_the_blend_and_gives_it_back_on_the_console
     on_console = console(placed_fade_program(0, 25), *SCENERY_XY, "FADPLC")
 
@@ -31,7 +31,7 @@ class TestLayerTransparencyOnTheAdvanceCartridge < Minitest::Test
     assert_equal oracle, seen
   end
 
-  # ...and both backends land on the SAME faded mix, which is the assertion that can
+  # ...and both backends land on the same faded mix, which is the assertion that can
   # catch a blend done in the wrong order. Darkening each color and then mixing them is
   # not quite darkening the mix — the two truncate in different places — so this would
   # fail by a step if either side moved its colors at the wrong moment.

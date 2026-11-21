@@ -5,7 +5,7 @@ require "differential"
 require "pack_background_tests"
 require "pack_turning_background_games"
 
-# A BACKGROUND FROM THE DATA PACK ON THE ADVANCE'S CARTRIDGE, read in the emulator. What such a
+# A background from the data pack on the Advance's cartridge, read in the emulator. What such a
 # background shows on every run is in test/all/vblank/builder/test_pack_backgrounds.rb.
 class TestPackBackgroundsCartridge < Minitest::Test
   include PackBackgroundGames
@@ -43,7 +43,7 @@ class TestPackBackgroundsCartridge < Minitest::Test
     end
   end
 
-  # A MAP OF CELLS OF VBLANK'S OWN, written by the unpacking from a Color original's two maps, on
+  # A map of cells of VBLANK's own, written by the unpacking from a Color original's two maps, on
   # the Advance's cartridge, every bank walked up from black by its name.
   def test_a_map_of_cells_walked_by_its_banks_names_shows_on_the_cartridge_as_on_the_interpreter
     Dir.mktmpdir do |folder|
@@ -53,7 +53,7 @@ class TestPackBackgroundsCartridge < Minitest::Test
     end
   end
 
-  # A LAYER THAT TURNS, FROM THE PACK (PackTurningBackgroundGames): a map of bytes over tiles of a
+  # A layer that turns, from the pack (PackTurningBackgroundGames): a map of bytes over tiles of a
   # byte a pixel. The cartridge shows what the interpreter shows as the game eases its size and
   # turns it about its map's middle, set down at a point of the screen.
   def test_a_turning_background_from_the_pack_shows_on_the_cartridge_as_on_the_interpreter
