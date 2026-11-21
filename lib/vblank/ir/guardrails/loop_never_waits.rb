@@ -16,7 +16,7 @@ module VBlank
         # work changes what its test reads is the same kind of work, counted by the game rather
         # than by a number: `while i < n` with `i += 1`, or a retry that clears its flag once a
         # try succeeds (a stage laid out at random squares until each one fits). Whether such a
-        # loop ends cannot be proved from the tree, but it CAN end without a frame, which a loop
+        # loop ends cannot be proved from the tree, but it can end without a frame, which a loop
         # on a button never can, so it is left alone too. The loop's work is everything in
         # it and every routine it calls, on either side of every `if`, since any of them can
         # be the round that ends it.

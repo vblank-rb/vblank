@@ -7,7 +7,7 @@ module VBlank
         # A note in a song that the music can never reach.
         #
         # Each part of a song is a list of notes, each on the frame it starts. The player keeps
-        # one place in each list and, every frame, looks at the ONE note there: due now, it
+        # one place in each list and, every frame, looks at the one note there: due now, it
         # plays and the place moves on; not due, nothing happens. That is what keeps a long
         # song as cheap as a short one — and it means a part's notes must each start on a later
         # frame than the one before, and before the song comes round again. A note that does

@@ -15,9 +15,9 @@ module VBlank
         # The same hole swallows `hp + 1` where `hp += 1` was meant. Nothing is emitted,
         # nothing complains, and the game quietly does not do the thing.
         #
-        # HOW IT IS FOUND, which is the interesting part. This check cannot walk the tree,
+        # How it is found, which is the interesting part. This check cannot walk the tree,
         # for the same reason the orphaned-Condition check cannot: an expression nobody
-        # kept is by definition NOT in the tree, so there is nothing there to see. But it
+        # kept is by definition not in the tree, so there is nothing there to see. But it
         # needs no "consume" bookkeeping either, because the tree already records what was
         # used — a node written into another node has its parent wired back (see IR::Node),
         # so an expression that found a home has a parent and one that did not has none.
@@ -30,7 +30,7 @@ module VBlank
         # an unparented expression behind and looked exactly like this mistake. The rules
         # live in {Scale} now, which a list and a pool field ask directly.
         #
-        # The other way it broke was a number built to HAND TO a block: the instance a pool's
+        # The other way it broke was a number built to hand to a block: the instance a pool's
         # routine runs on, the row a bend is working out, the thing a drawing order is asked
         # about. A block that had no use for it left it unparented, and its author was told
         # they had thrown a number away. Those are built by Value.handed_to_block now, which
@@ -72,7 +72,7 @@ module VBlank
             Finding.new(check: NAME, severity: :error, message: message, node: value)
           end
 
-          # ONE OF THE WORDS THAT USED TO CHANGE A VARIABLE, written the old way. `d.abs` on a
+          # One of the words that used to change a variable, written the old way. `d.abs` on a
           # line of its own changed d once; now it works out a new number and changes nothing,
           # so the likeliest meaning is the `!` form, and the message says it by name.
           def self.changing_message(value)

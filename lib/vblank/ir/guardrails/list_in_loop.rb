@@ -12,7 +12,7 @@ module VBlank
         # grows past what a single frame adds. There's no crash — just a collection
         # that mysteriously refuses to fill.
         #
-        # Like the other setup footguns, only an UNCONDITIONAL declaration — a direct
+        # Like the other setup footguns, only an unconditional declaration — a direct
         # statement of the per-frame body — is flagged, so a list created inside a
         # condition (a deliberate reset) is left alone. Reading or changing a list in
         # the loop (push/pop/get) is normal and not a declaration, so it isn't touched.

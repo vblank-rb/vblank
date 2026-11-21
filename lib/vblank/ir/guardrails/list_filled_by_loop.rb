@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # A LIST FILLED TO ITS CAPACITY WITH ONE VALUE, A PUSH AT A TIME: `repeat(64) {
+        # A list filled to its capacity with one value, a PUSH at a time: `repeat(64) {
         # name.push 0 }`, usually in setup so every item is there to index from the start.
         # It works, and `full_of: 0` where the list is declared does the same in one step. A
         # push works out where the item goes and stores the length again, so on the console a
