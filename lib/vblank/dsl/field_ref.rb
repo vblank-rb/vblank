@@ -2,7 +2,7 @@
 
 module VBlank
   module DSL
-    # A mutable handle to ONE field of ONE pool instance, at a run-time slot index —
+    # A mutable handle to one field of one pool instance, at a run-time slot index —
     # what a pool's `each` hands you as `b.x`, `b.y`, and so on. It reads and writes that
     # instance's slot in the field's backing list, so it behaves like an ordinary variable
     # {Value} — arithmetic, comparisons, set/add/… — even though it lives at a computed
@@ -24,7 +24,7 @@ module VBlank
         @index_node = index
         @pool = pool
         @field = field
-        # As a Value, this handle IS a read of the slot — so it composes in expressions
+        # As a Value, this handle is a read of the slot — so it composes in expressions
         # (b.x + 5, b.y > 100) exactly like a variable read. It carries no variable name,
         # so the mutators below override Value's (which write to a named variable).
         super(builder, read, name: nil, fraction_bits: fraction_bits, names: names,
@@ -36,7 +36,7 @@ module VBlank
       # down and doing nothing with it is as harmless as naming a variable. See Value#handle?.
       def handle? = true
 
-      # WHAT A POOL FIELD KEEPS, without building a handle to ask. A pool checks the values
+      # What a pool field keeps, without building a handle to ask. A pool checks the values
       # a `spawn` was given against the fields they are going into, and it has no instance
       # to hold a handle for — nor any need of one. On the class so that a field's own two
       # sentences are written once and both callers say the same thing.
@@ -45,7 +45,7 @@ module VBlank
                   names: names)
       end
 
-      # How to make THIS field hold a fraction: declare it in the default it is declared with,
+      # How to make this field hold a fraction: declare it in the default it is declared with,
       # which is the same way a variable declares it.
       def self.fraction_declaration_advice(pool, field)
         lambda { |other|

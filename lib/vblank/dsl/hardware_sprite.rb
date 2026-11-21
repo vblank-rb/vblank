@@ -247,7 +247,7 @@ module VBlank
       # — anything else is a friendly error. On hardware this swaps which uploaded
       # picture the console draws; the change shows on the next frame.
       #
-      # ONE OF SEVERAL, PICKED BY A NUMBER THE GAME WORKS OUT — an animation step, a state:
+      # One of several, picked by a number the game works out — an animation step, a state:
       #
       #   hero.face [:walk0, :walk1, :walk2], showing: step
       #
@@ -396,15 +396,15 @@ module VBlank
       # A number outside the set draws it in its own colours. The change shows on the frame
       # the sprite's position and pose next do, never before or after them.
       #
-      # A SPRITE WHOSE POSES ARE DRAWN FROM SEVERAL LISTS shows each pose in its own list's colours,
-      # and no one other list lines up with them all. It can FOLLOW its lists: name each list it is
+      # A sprite whose poses are drawn from several lists shows each pose in its own list's colours,
+      # and no one other list lines up with them all. It can follow its lists: name each list it is
       # to follow, drawn with itself, and a pose drawn from that list shows what the list holds now,
       # whatever the game sets it to hold with `recolor`. A list left out stays as drawn.
       #
       #   part.draw_with({ title_1: :title_1, title_2: :title_2 })
       #   part.draw_with(poses.map { |pose| colors_name_of(pose) }.uniq.to_h { |list| [list, list] })
       #
-      # Or it can draw EVERY ONE OF ITS LISTS WITH ONE OTHER LIST, place for place, as `draw_with :hurt`
+      # Or it can draw every one of its lists with one other list, place for place, as `draw_with :hurt`
       # draws a sprite of one list: a flash of white for an enemy whatever its kind's colours.
       #
       #   enemy.draw_with({ propene: :white, denkyun: :white })
@@ -498,14 +498,14 @@ module VBlank
       end
 
       # A {Condition} true when the sprite's box, placed at (target_x, target_y), is clear of
-      # the background's solid tiles — ASKED OF THE GRID rather than tested against every
+      # the background's solid tiles — asked of the grid rather than tested against every
       # rectangle the solid cells merge into.
       #
-      # WHY IT IS A ROUTINE AND NOT WRITTEN OUT HERE. The check is the same code wherever it
+      # Why it is a routine and not written out here. The check is the same code wherever it
       # is used: the only things that change between one mover and the next are where it is
       # going, and those go in as arguments. Written out at each place that moves, a game
       # with eight movers emitted it sixteen times (each moves on two axes) and the game
-      # loop stopped fitting in the console's quick memory — which slows down the WHOLE
+      # loop stopped fitting in the console's quick memory — which slows down the whole
       # frame, not just the moving. Called, it is emitted once however many movers there are.
       def emit_tile_check(target_x, target_y)
         routine = @builder.tile_collision_routine(@solid_cells, @hit_x, @hit_y, @hit_w, @hit_h)

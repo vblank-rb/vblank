@@ -2,10 +2,10 @@
 
 module VBlank
   module DSL
-    # THE SLOTS A GAME'S DATA PACK HOLDS, as the `data_pack` block names them (Builder::DataPacks).
+    # The slots a game's data pack holds, as the `data_pack` block names them (Builder::DataPacks).
     # Each line is one slot: its name, its shape, how many it holds, and where in the copy it is.
     #
-    #   data_pack from: ORIGINAL, version: "1.0" do |slots|
+    #   data_pack from: original, version: "1.0" do |slots|
     #     slots.colors  :palette, at: 0x1000, count: 16
     #     slots.tiles   :walls,   at: 0x1020, count: 40
     #     slots.numbers :speeds,  at: 0x2000, count: 8, width: :byte, signed: false
@@ -109,7 +109,7 @@ module VBlank
       #     copy.unpack_lz77 at: (release == "EU" ? 0x3040 : 0x3000), into: pack[:sprites]
       #   end
       #
-      # A ROUTINE IN PARTS. A routine may be given as several named parts, which run one after
+      # A routine in parts. A routine may be given as several named parts, which run one after
       # another in the order given, as one routine would:
       #
       #   slots.fill_from_copy(:floors) { |copy, pack| ... }
@@ -119,7 +119,7 @@ module VBlank
       # (Original::PackCache): it keeps each part's slots apart, so a change to one part plays
       # that part again, and what reads from it, and takes every other part's slots from the cache.
       #
-      # A PART IN PIECES writes slots in pieces (`slots.samples :music, count: ..., pieces: rooms`)
+      # A part in pieces writes slots in pieces (`slots.samples :music, count: ..., pieces: rooms`)
       # a piece at a time. Its block is built once, handed the piece's number after the release as
       # a game value, 0 first, which the routine reads as it runs, as a `repeat`'s index is:
       #
@@ -184,7 +184,7 @@ module VBlank
       end
     end
 
-    # A GAME'S DATA PACK, as `data_pack` hands it back: a handle for each slot, by its name.
+    # A game's data pack, as `data_pack` hands it back: a handle for each slot, by its name.
     #
     #   image :wall, width: 8, height: 8, colors: pack[:palette], places: pack[:walls].tile(0)
     #   table :speeds, pack[:speeds]
@@ -258,26 +258,26 @@ module VBlank
       end
     end
 
-    # ONE FRAME OF A SPRITE IN A SLOT OF BYTES: the slot's handle (+slot+), the byte the frame
+    # One frame of a sprite in a slot of bytes: the slot's handle (+slot+), the byte the frame
     # starts at, how many pieces it has where its layout does not say (+count+), and how it is kept
     # (+piece_layout+, an Original::FrameLayout), and the values the pose gives that layout's
     # reader (+pose+, by name). An image reads it (Builder::PackPoses).
     PackFrame = Data.define(:slot, :at, :count, :piece_layout, :pose)
 
-    # A PART'S NOTES IN A SLOT OF NOTES, and the instruments a note's number names and the waves a
+    # A part's notes in a slot of notes, and the instruments a note's number names and the waves a
     # voiced note's wave number names (PackSlot#notes).
     PackNotes = Data.define(:slot, :instruments, :waves) do
       def initialize(waves: [], **) = super
     end
 
-    # ONE NUMBER OF A SLOT OF NUMBERS (PackSlot#number), and ONE ENVELOPE OF A SLOT OF BYTES
-    # (PackSlot#envelope), each read as the game is built; and ONE ENVELOPE AS A SUPER NINTENDO'S
-    # SOUND CHIP KEEPS IT (PackSlot#snes_envelope).
+    # One number of a slot of numbers (PackSlot#number), and ONE ENVELOPE OF A SLOT OF BYTES
+    # (PackSlot#envelope), each read as the game is built; and one envelope as a Super Nintendo's
+    # sound chip keeps it (PackSlot#snes_envelope).
     PackNumber = Data.define(:slot, :index)
     PackEnvelope = Data.define(:slot, :index)
     PackSNESEnvelope = Data.define(:slot, :index)
 
-    # A MAP OF THE PACK THAT CARRIES ITS OWN SIZE (PackSlot#as_map): the map's +slot+ (a whole slot,
+    # A map of the pack that carries its own size (PackSlot#as_map): the map's +slot+ (a whole slot,
     # or a run of one) and how many cells a row of it holds. A background given it needs no
     # across:, and a background walking between areas of different sizes is handed one per area
     # (Builder::PackBackgrounds#pack_map_slot_and_across!).
@@ -286,7 +286,7 @@ module VBlank
       def down = slot.count / across
     end
 
-    # ONE WAVE OF THE WAVE VOICE IN A SLOT OF BYTES (PackSlot#wave), for a Score part's `plays:`:
+    # One wave of the wave voice in a slot of bytes (PackSlot#wave), for a Score part's `plays:`:
     # sixteen bytes from wave +index+ on, two steps of the wave a byte, the earlier in the high four
     # bits, as the Game Boy's wave memory keeps them (Audio::Sound.wave_steps_of_bytes).
     PackWave = Data.define(:slot, :index)
@@ -301,7 +301,7 @@ module VBlank
       def first_byte = index * BYTES
     end
 
-    # A TABLE'S ENTRIES IN THE FILE THE GAME IS HANDED AS IT STARTS (IR::StartFile), given to
+    # A table's entries in the file the game is handed as it starts (IR::StartFile), given to
     # `table` in place of its numbers: +count+ entries from byte +at+ on. A game built with its pack
     # left out reads each table from a slot this way, and its unpacking reads the copy this way;
     # the game must read such a file (`data_pack` with the pack left out declares it does). Each
@@ -310,7 +310,7 @@ module VBlank
       def initialize(at:, count:, format: Console::LOW_BYTE_FIRST_NUMBERS) = super
     end
 
-    # A HANDLE ON ONE SLOT OF A DATA PACK, or on tiles of a slot of tiles, or pixels of a slot of
+    # A handle on one slot of a data pack, or on tiles of a slot of tiles, or pixels of a slot of
     # pixels: the slot's layout (an Original::Slot: its name, shape, size and place in the copy)
     # and, for tiles or pixels, which. It never
     # holds the bytes. `image` and `table` read them (Builder::DataPacks#pack_slot_values).
@@ -324,7 +324,7 @@ module VBlank
     # the whole slot where neither is given: the places of one picture among several kept in one
     # slot, as `pack[:walls].pixels(64 * 64 * 3, 64 * 64)` is the fourth picture of 64x64.
     #
-    # A VIEW is a handle on some of a slot's bytes read in a shape of their own (#as_tiles and its
+    # A view is a handle on some of a slot's bytes read in a shape of their own (#as_tiles and its
     # siblings): its +layout+ is the view's (Original::Slot#viewed), so every verb takes it as it
     # takes a slot of that shape. +platform+ is the console the original is for, whose layout a
     # view is read in where it names none.
@@ -335,7 +335,7 @@ module VBlank
 
       def shape = layout.shape
 
-      # THE VIEWS: `count` items of another shape, read from byte `at` of this slot on (0 first).
+      # The views: `count` items of another shape, read from byte `at` of this slot on (0 first).
       # A console keeps its tiles of both kinds and its maps in one block of video memory, and a
       # port that keeps the block as one slot reads each part of it so:
       #

@@ -32,7 +32,7 @@ module VBlank
     class List
       Build = IR::Build
 
-      # A list can hold numbers that carry a FRACTION, the same as a variable can. It is
+      # A list can hold numbers that carry a fraction, the same as a variable can. It is
       # declared once, on the list — `list :speeds, capacity: 8, holds: 0.0` — and from then
       # on every value read out of it carries the scale and every value put in is checked
       # against it, so the game writes halves and quarters and never mentions the scale
@@ -110,7 +110,7 @@ module VBlank
         item_value(Build.list_get(@name, Value.node_for(index)))
       end
 
-      # How many items the list holds right now, as a Value. A COUNT, so it never carries a
+      # How many items the list holds right now, as a Value. A count, so it never carries a
       # fraction however much the items do — half an item is not a thing.
       def length
         whole_value(Build.list_len(@name))
@@ -147,13 +147,13 @@ module VBlank
         Value.new(@builder, node)
       end
 
-      # ...and the same for an ITEM, which carries whatever fraction the list holds.
+      # ...and the same for an item, which carries whatever fraction the list holds.
       def item_value(node)
         Value.new(@builder, node, fraction_bits: @fraction_bits,
                                   declaring: fraction_declaration_advice, mixing: mixed_kinds_advice)
       end
 
-      # How to make THIS list hold fractions, for the error somebody gets when they put a
+      # How to make this list hold fractions, for the error somebody gets when they put a
       # number with one into a list of whole numbers.
       def fraction_declaration_advice
         @fraction_declaration_advice ||= ->(other) { "add `holds: #{other}` where `list :#{@name}` is declared" }
@@ -174,7 +174,7 @@ module VBlank
         }
       end
 
-      # A value on its way INTO the list, checked against what the list holds. The rules are
+      # A value on its way into the list, checked against what the list holds. The rules are
       # the ones a variable follows, and they live in {Scale} so there is one copy of them.
       def item_node(value, verb)
         refuse_numberless_item!(value)

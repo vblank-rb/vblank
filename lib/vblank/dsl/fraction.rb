@@ -4,7 +4,7 @@ module VBlank
   module DSL
     # Numbers that carry a fraction, and the rules for doing arithmetic on them.
     #
-    # THE PROBLEM. A variable on this console holds whole numbers. A game that needs
+    # The problem. A variable on this console holds whole numbers. A game that needs
     # halves and quarters — a speed, an angle, a position between two tiles — keeps its
     # numbers multiplied up by a fixed amount and divides back at the end. That works,
     # and it is what every game on the machine does. What it costs is that the author
@@ -12,7 +12,7 @@ module VBlank
     # 65536, that one by 256, this one not at all. Nothing checks it. Add two that
     # disagree and the answer is silently wrong.
     #
-    # WHAT THE EVIDENCE SAID. examples/raycaster.rb was written the explicit way first,
+    # What the evidence said. examples/raycaster.rb was written the explicit way first,
     # so the design could be argued from real code rather than from first principles.
     # Three things showed up there, and they are what these rules answer:
     #
@@ -20,19 +20,19 @@ module VBlank
     #      + (FIXED / 2)` to write "three and a half". `rx / FIXED` to ask which cell. The
     #      author cannot write the thing they mean.
     #
-    #   2. Of the three multiplies of two fractions in that file, only ONE actually
+    #   2. Of the three multiplies of two fractions in that file, only one actually
     #      overflowed. The other two were safe only because the walking speed happened
     #      to be small. Nothing showed which was which — knowing meant working out the
     #      range of both operands in your head, and being wrong was silent. This is the
     #      strongest argument for the type: not that `fraction_bits: 16` is tedious to
     #      type, but that a person cannot reliably tell when they need it.
     #
-    #   3. Asking which cell a position is in was a DIVISION, and the console has no
+    #   3. Asking which cell a position is in was a division, and the console has no
     #      divide instruction — every one of those trapped into a BIOS routine. Sixty
     #      of them per screen column. The conversion has to be cheap or the type is a
     #      tax on the very code that needs it most.
     #
-    # THE RULES. A Value may carry a number of fraction bits. The scale then travels
+    # The rules. A Value may carry a number of fraction bits. The scale then travels
     # WITH the value through arithmetic, so it is declared once and never repeated:
     #
     #   px = var :px, 3.5          # a Float initial value: this variable holds a fraction
@@ -43,9 +43,9 @@ module VBlank
     # Ruby programmer already believes. The phrase "fixed point" never appears, and
     # neither does the scale.
     #
-    # Adding and comparing need both sides at the SAME scale, so:
+    # Adding and comparing need both sides at the same scale, so:
     #   - two fractions at the same scale: straight through.
-    #   - a fraction and a plain WHOLE NUMBER WRITTEN IN THE PROGRAM: the number is
+    #   - a fraction and a plain whole number written in the program: the number is
     #     converted for you, because `speed + 1` plainly means one faster. Free — it
     #     happens while building.
     #   - a fraction and a plain value the game works out: a build error. There is no
@@ -53,18 +53,18 @@ module VBlank
     #   - two fractions at different scales: a build error.
     #
     # Multiplying is different, and this is the part worth reading twice. Multiplying a
-    # fraction by a plain COUNT is ordinary multiplication and keeps the scale — twice
-    # as fast is twice as fast. Multiplying two FRACTIONS is the operation that
+    # fraction by a plain count is ordinary multiplication and keeps the scale — twice
+    # as fast is twice as fast. Multiplying two fractions is the operation that
     # overflows, so it becomes mul_fix automatically. The author no longer has to know
     # which of their multiplies is the dangerous one, which is the whole point.
     #
-    # Dividing a fraction by a plain count is ordinary division. Dividing a fraction BY
+    # Dividing a fraction by a plain count is ordinary division. Dividing a fraction by
     # a fraction is a build error: doing it correctly needs the numerator shifted up
     # first, which does not fit in a variable, and there is no 64-bit divide to lean on.
     # The friendly error says to use a `table` of the answers instead, which is what a
     # raycaster does for exactly this reason.
     #
-    # WHY THE SCALE LIVES IN RUBY AND NOT IN THE IR. A Value is a build-time handle, so
+    # Why the scale lives in Ruby and not in the IR. A Value is a build-time handle, so
     # the scale is known while the program is being built and can be checked there. The
     # tree that comes out the other end is ordinary integer arithmetic — the same nodes
     # a whole-number program builds, plus mul_fix and shift_right where they are needed.
