@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE RULE THE QUICK MEMORY IS SHARED OUT BY, held with made-up routines and sizes rather than
+# The rule the quick memory is shared out by, held with made-up routines and sizes rather than
 # whole games. What the author insisted on is placed first, in the room of the scene that runs
 # it; what the build picks for itself fills what is left, best first.
 class TestQuickMemoryPlan < Minitest::Test
@@ -29,7 +29,7 @@ class TestQuickMemoryPlan < Minitest::Test
     assert_match(/1000 are free/, error.message)
   end
 
-  # A CALL BETWEEN TWO KEPT ROUTINES IS A PLAIN JUMP, so the bytes each was charged for it as a
+  # A call between two kept routines is a plain jump, so the bytes each was charged for it as a
   # call between the two memories come back once both are in. 600 + 420 is more than the room;
   # less the 20 the call between them was charged, it is exactly the room.
   def test_a_routine_fits_beside_the_routine_that_calls_it
@@ -62,7 +62,7 @@ class TestQuickMemoryPlan < Minitest::Test
   # own routines in as it takes over.
   FILES_AND_PLAY = Plan::Dispatch.new(scenes: %i[_scene_files _scene_play], clauses: 2)
 
-  # TWO WORDS THAT DO NOT FIT TOGETHER, ON TWO SCREENS THAT ARE NEVER UP TOGETHER: each gets the
+  # Two words that do not fit together, on two screens that are never up together: each gets the
   # room of the scene that runs it.
   def test_insisted_routines_of_two_scenes_each_get_their_scenes_room
     plan = Plan.choose([claim(:save_step, 700, scene: :_scene_files, insisted: "`save_data :file, fast: true`"),
@@ -86,7 +86,7 @@ class TestQuickMemoryPlan < Minitest::Test
     assert_match(/files scene/, error.message)
   end
 
-  # A GAME WHOSE ROUTINES DO NOT ALL FIT gives each scene the room the whole game does not need.
+  # A game whose routines do not all fit gives each scene the room the whole game does not need.
   def test_each_scene_keeps_its_own_busy_routine_when_one_set_cannot_hold_both
     plan = Plan.choose([claim(:title_work, 700, scene: :_scene_title), claim(:play_work, 700, scene: :_scene_play)],
                        room: 1000, dispatch: Plan::Dispatch.new(scenes: %i[_scene_title _scene_play], clauses: 2))
@@ -94,7 +94,7 @@ class TestQuickMemoryPlan < Minitest::Test
     assert_equal({ _scene_title: [:title_work], _scene_play: [:play_work] }, plan.sets)
   end
 
-  # EACH SCENE'S ROOM GOES TO WHAT A FRAME OF THAT SCENE SPENDS THE MOST IN. Added up over both
+  # Each scene's room goes to what a frame of that scene spends the most in. Added up over both
   # scenes the routine they share reads dearest, so it is first in the order given; kept for the
   # whole game it leaves neither scene room for its own routine, where a frame of either spends more.
   def test_each_scenes_room_goes_to_what_a_frame_of_it_spends_most_in
@@ -117,7 +117,7 @@ class TestQuickMemoryPlan < Minitest::Test
     assert_equal({ _scene_title: [:title_work], _scene_play: %i[play_view play_work] }, plan.sets)
   end
 
-  # ...BUT WHAT EVERY FRAME RUNS STILL GOES FIRST, in either order. Measured per scene the game
+  # ...BUT what every frame runs still goes first, in either order. Measured per scene the game
   # loop reads cheap, since each scene's frame spends most of its time somewhere else; it is still
   # the one routine every scene runs. Here what the two scenes insist on fits only in a set each,
   # and play's own busy routine, taken first, would leave the game loop no room.
@@ -131,7 +131,7 @@ class TestQuickMemoryPlan < Minitest::Test
     assert_includes plan.resident, :__frame
   end
 
-  # ...AND A SAVE THE GAME DID NOT INSIST ON COMES AFTER IT. The file screen is measured with a
+  # ...AND a save the game did not insist on comes after it. The file screen is measured with a
   # save running (Diagnostics::SaveStarts), and a save is written in a few passes and then stops,
   # so what a frame of that screen spends on it is its cost spread over every frame measured. Here
   # it is still more than the routine answering the display spends on that screen, and taken first
@@ -148,7 +148,7 @@ class TestQuickMemoryPlan < Minitest::Test
     refute_includes plan.resident, :save_step
   end
 
-  # A GAME WHOSE ROUTINES ALL FIT SWAPS NOTHING.
+  # A game whose routines all fit swaps nothing.
   def test_a_game_whose_routines_all_fit_keeps_one_set
     plan = Plan.choose([claim(:title_work, 400, scene: :_scene_title), claim(:play_work, 400, scene: :_scene_play)],
                        room: 1000, dispatch: Plan::Dispatch.new(scenes: %i[_scene_title _scene_play], clauses: 2))
@@ -182,7 +182,7 @@ class TestQuickMemoryPlan < Minitest::Test
     refute plan.kept?(:light_rows)
   end
 
-  # THE PROMISE THE RULE IS FOR: however play grows, what the file screen insisted on keeps its
+  # The promise the rule is for: however play grows, what the file screen insisted on keeps its
   # room — and whatever the build would have picked ahead of it, measured or not, the answer for
   # what the author insisted on is the same.
   def test_play_growing_never_takes_the_file_screens_insisted_room
@@ -195,7 +195,7 @@ class TestQuickMemoryPlan < Minitest::Test
     end
   end
 
-  # WHETHER A BUILD STOPS IS THE AUTHOR'S ALONE: the same insisted routines stop it, or do not,
+  # Whether a build stops is the author's alone: the same insisted routines stop it, or do not,
   # whatever the build would pick beside them and whatever a measurement said of those.
   def test_whether_the_build_stops_does_not_depend_on_what_was_measured
     insisted = [claim(:save_step, 600, scene: :_scene_files, insisted: "`save_data :file, fast: true`"),

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHAT A GAME COSTS BEFORE ITS FIRST FRAME, on the console. A collection is made full at power-on
+# What a game costs before its first frame, on the console. A collection is made full at power-on
 # — a pool's slots, a list the game declares `full_of:` — and making it full is work the first
 # pass pays for, before the game has drawn anything. A pass that ends after its frame shows the
 # game's first picture a frame late, so a bigger pool must not cost a slot's worth of work per

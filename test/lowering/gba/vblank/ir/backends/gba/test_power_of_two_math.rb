@@ -9,7 +9,7 @@ require "differential"
 #
 # Nothing here is a new spelling: the DSL gains `%`, which a Ruby programmer already
 # writes, and `/` and `*` are unchanged. The speed comes from the lowering recognising
-# the divisor, so these tests care about two things — that the ANSWERS are right
+# the divisor, so these tests care about two things — that the answers are right
 # (especially on negatives, where the shortcut and the honest routine round differently)
 # and that the shortcut is actually being taken.
 class TestPowerOfTwoMath < Minitest::Test

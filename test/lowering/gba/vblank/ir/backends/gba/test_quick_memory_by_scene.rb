@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# QUICK MEMORY CHOSEN PER SCENE, AND SWAPPED AS A SCENE TAKES OVER.
+# Quick memory chosen per scene, and swapped as a scene takes over.
 #
 # The console's quick memory is 32K, and the routines a game keeps there run about two and a
 # third times faster. It used to be chosen once for the whole game and filled once at power-on,
@@ -250,7 +250,7 @@ class TestQuickMemoryByScene < Minitest::Test
     builder.program
   end
 
-  # WHAT THE GAME LOOP DOES FOR ONE SCENE IS THAT SCENE'S, not the loop's: the loop is kept for
+  # What the game loop does for one scene is that scene's, not the loop's: the loop is kept for
   # the whole game, in every scene's room, so work written in it for play alone held room on the
   # title too. It goes in play's own set, and the loop is the same size however much there is.
   def test_the_game_loops_work_for_one_scene_goes_in_that_scenes_set
@@ -273,7 +273,7 @@ class TestQuickMemoryByScene < Minitest::Test
     assert_equal 400 * 6, v.var(:c), "play's loop work ran on each of its six passes, whole"
   end
 
-  # A GAME WHOSE ROUTINES ALL FIT KEEPS ITS LOOP AS IT WAS: a block for one scene made a routine
+  # A game whose routines all fit keeps its loop as it was: a block for one scene made a routine
   # pays a call every frame, and buys nothing where no scene's set is swapped in.
   def test_a_game_whose_routines_all_fit_keeps_its_scene_blocks_in_the_loop
     report = placement_of(loop_working_for_play(extra: 10, work: 100))
@@ -282,7 +282,7 @@ class TestQuickMemoryByScene < Minitest::Test
     assert_empty(report.sizes.keys.select { |name| VBlank::Messages::MadeNames.read(name)&.first == :scene_loop_work })
   end
 
-  # A BLOCK FOR ONE SCENE INSIDE A COUNTED LOOP STAYS WHERE IT IS: the loop keeps its count in a
+  # A block for one scene inside a counted loop stays where it is: the loop keeps its count in a
   # register, and a routine called from inside it would read the count from where the register
   # has not yet put it. What it adds up is what the interpreter adds up.
   def test_a_scene_block_inside_a_counted_loop_reads_the_count
@@ -384,7 +384,7 @@ class TestQuickMemoryByScene < Minitest::Test
     assert_includes report.scenes.fetch(:play), :play_work
   end
 
-  # A GAME THAT PICKS ITS SCREEN BY NAME (`call where`) splits the room the same way, and the
+  # A game that picks its screen by name (`call where`) splits the room the same way, and the
   # console runs each scene's routine whole across the swaps.
   def test_screens_picked_by_name_each_keep_their_own_busy_routine
     program = two_screens_by_name(adds: BIG)
@@ -398,7 +398,7 @@ class TestQuickMemoryByScene < Minitest::Test
     assert_equal BIG * v.var(:t), v.var(:a) + v.var(:b), "every pass ran one scene's routine whole"
   end
 
-  # EACH SCENE'S ROOM GOES TO WHAT A FRAME OF THAT SCENE SPENDS THE MOST IN. A routine both
+  # Each scene's room goes to what a frame of that scene spends the most in. A routine both
   # screens run is counted once for each in the measurement added up over every scene, so it
   # reads dearer than either screen's own routine, though a frame of either spends less in it.
   # Kept for the whole game, it would take the room both screens' own routines need.
@@ -433,7 +433,7 @@ class TestQuickMemoryByScene < Minitest::Test
     refute_includes report.scenes.fetch(:play, []), :play_work
   end
 
-  # WHAT ONLY PLAY RUNS GOES IN PLAY'S SET, though the game loop is what calls it: putting
+  # What only play runs goes in play's set, though the game loop is what calls it: putting
   # play's pool in order and bringing play's big map along, which the gap after each frame does
   # while play is up, and a routine the game loop calls under its own test that play is up.
   # Kept for the whole game, they take the room every other screen's own routines need.
@@ -449,7 +449,7 @@ class TestQuickMemoryByScene < Minitest::Test
     assert_includes report.scenes.fetch(:title), :title_work
   end
 
-  # WHAT A SCENE INSISTS ON COMES BEFORE ITS MAP'S VIEW. Play insists on as big a routine as
+  # What a scene insists on comes before its map's view. Play insists on as big a routine as
   # its share holds, which leaves no room for the routine that brings its map along — so that
   # one runs from the cartridge, and the build never refuses what the author asked for because
   # of a routine the build picked.
@@ -468,7 +468,7 @@ class TestQuickMemoryByScene < Minitest::Test
     [2, 4, 6, 8, 10, 12].each { |f| assert_backends_agree(program, frames: f) }
   end
 
-  # A ROUTINE A TIMER REACHES IS IN NO SCENE'S SET, though only play calls it otherwise: a tick
+  # A routine a timer reaches is in no scene's set, though only play calls it otherwise: a tick
   # can land while the swap is copying, and it would run half a routine.
   def test_a_routine_a_timer_reaches_is_kept_out_of_every_scenes_set
     report = placement_of(two_screens(adds: BIG, ticked: true))
@@ -478,7 +478,7 @@ class TestQuickMemoryByScene < Minitest::Test
     assert_includes report.scenes.fetch(:title), :title_work
   end
 
-  # A GAME WHOSE ROUTINES ALL FIT SWAPS NOTHING: one set for the whole game, copied in at
+  # A game whose routines all fit swaps nothing: one set for the whole game, copied in at
   # power-on, is what it always was.
   def test_a_game_whose_routines_all_fit_keeps_one_set
     report = placement_of(two_screens(adds: 100))
@@ -488,7 +488,7 @@ class TestQuickMemoryByScene < Minitest::Test
     assert_includes report.funcs, :play_work
   end
 
-  # TWO WORDS THAT DO NOT FIT TOGETHER, ON TWO SCREENS THAT ARE NEVER UP TOGETHER. Kept for the
+  # Two words that do not fit together, on two screens that are never up together. Kept for the
   # whole game, play's routine and the file screen's save routines need more room than there is,
   # and that used to stop the build. Each needs it only while its own screen is up.
   def test_two_insisted_routines_of_two_screens_each_get_their_screens_room
@@ -534,7 +534,7 @@ class TestQuickMemoryByScene < Minitest::Test
     end
   end
 
-  # HOWEVER PLAY GROWS, THE FILE SCREEN KEEPS WHAT ITS RECORD INSISTED ON, in the build that
+  # However play grows, the file screen keeps what its record insisted on, in the build that
   # measured the game and in the one that did not.
   def test_play_growing_never_takes_the_file_screens_save_routines
     step = VBlank::Messages::MadeNames.make(:save_record, record: :file, piece: :step)
@@ -546,7 +546,7 @@ class TestQuickMemoryByScene < Minitest::Test
     end
   end
 
-  # A SCREEN WITH NOTHING OF ITS OWN LEAVES WHAT IS IN, and power-on puts in the first set a
+  # A screen with nothing of its own leaves what is in, and power-on puts in the first set a
   # screen has. A game checks its saves as it opens, under its logos, and with nothing in the
   # quick memory then that check ran from the cartridge: a pass of a real game's opening ended
   # late, and the opening was a frame behind from there.
@@ -637,7 +637,7 @@ class TestQuickMemoryByScene < Minitest::Test
     assert_equal BIG * passes, v.var(:a) + v.var(:b), "every pass ran one scene's routine whole"
   end
 
-  # A SET IS NOT A ROUTINE. Every routine the profile can name is one somebody wrote or the build
+  # A set is not a routine. Every routine the profile can name is one somebody wrote or the build
   # made; a whole set named as one would take the time of each routine in it, wherever it ran.
   def test_no_scenes_set_is_named_as_a_routine_of_its_own
     rom = assemble_rom(two_screens(adds: BIG), name: "SWAPS")
