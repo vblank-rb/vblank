@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # FADES AND TINTS. A Super Nintendo's colour maths can add or subtract a colour, or halve
+          # Fades and tints. A Super Nintendo's colour maths can add or subtract a colour, or halve
           # the result, as it draws, but it cannot move a picture a fraction of the way toward
           # another colour; so a fade here is the colours in the colour memory (CGRAM) moved — all
           # 256, from the game's own ("art colors") into a copy in work RAM (SHADOW) that the blank
@@ -24,11 +24,11 @@ module VBlank
           # channel into place. Colour 0 is moved too: it is what shows where nothing is drawn, so
           # it fades with the picture.
           #
-          # A FADE TO BLACK IS THE DISPLAY'S OWN. The console has a master brightness, sixteen levels
+          # A fade to black is the display's own. The console has a master brightness, sixteen levels
           # in the low bits of INIDISP, which dims the finished picture as it goes out: nothing in
           # memory moves, so it costs a store in the blank however much is on the screen. A game's
           # own fades are done with it, so a game that fades to black (+dims+) notes how far down
-          # the display is (DIMMED) and walks no colours for it, and the colours stay as they are,
+          # the display is (dimmed) and walks no colours for it, and the colours stay as they are,
           # free to be changed under the fade. Toward white or a colour there is no such thing, and
           # those still walk.
           #
@@ -79,7 +79,7 @@ module VBlank
 
             module_function
 
-            # THE COLOURS A GAME CHANGES (`draw_with` on a background, `recolor`), for a game that
+            # The colours a game changes (`draw_with` on a background, `recolor`), for a game that
             # changes any: the 512 bytes a fade moves from, in work RAM, where without them it is
             # "art colors" in the cartridge. So a list held now and a fade in force meet: the list
             # goes in here and the fade moves what is here, on the same pass.
@@ -435,7 +435,7 @@ module VBlank
             # are the same, so one sum makes all three tables. A channel's word is the sum's high byte
             # (XBA) for red, the sum shifted right three for green and left two for blue, each masked.
             #
-            # The tables (TABLE): red's 32 words, then green's and blue's side by side, four bytes a
+            # The tables (table): red's 32 words, then green's and blue's side by side, four bytes a
             # value, so a colour's green and blue are each found by one mask of the colour (see
             # rt_tint_apply_run).
             RED_TABLE = 0

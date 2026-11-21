@@ -5,14 +5,14 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # THE SOUND UNIT, AND HOW THE CONSOLE TALKS TO IT. A Super Nintendo's sound is made by a
+          # The sound unit, and how the console talks to it. A Super Nintendo's sound is made by a
           # small computer of its own: an SPC700 processor with 64K of memory, and the S-DSP, which
           # mixes eight voices, each playing a recorded sound at the pitch and volume its registers
           # set. The console's processor cannot see any of that memory. All it has are four one-byte
           # mailboxes ($2140-$2143 on its side, $F4-$F7 on the sound unit's): a byte the console
           # writes into one is read by the SPC700, and a byte the SPC700 writes is read by the console.
           #
-          # SENDING ITS PROGRAM. At power-on the SPC700 runs a little program built into the chip,
+          # Sending its program. At power-on the SPC700 runs a little program built into the chip,
           # which zeroes its direct page, puts $AA and $BB in the first two mailboxes to signal it is
           # ready, and then takes a program a byte at a time: the console writes the byte into
           # mailbox 1 and its number (the low eight bits of where it is) into mailbox 0, and waits
@@ -26,20 +26,20 @@ module VBlank
           # always there to answer. (fullsnes, "SNES APU Main CPU Communication Port", which has the
           # built-in program.)
           #
-          # THE PROGRAM IT RUNS (Sound.driver) does one thing: it waits for mailbox 0 to change, and
+          # The program it runs (Sound.driver) does one thing: it waits for mailbox 0 to change, and
           # then does the command the other three hold — today only "write this value into this
           # DSP register" — and copies mailbox 0's new number back to signal it is done. Everything a
           # sound is (which recording, its pitch, its volume, its envelope, key on and key off) is
           # DSP registers, so the console plays every sound by writing them through it.
           #
-          # NEVER LOSING A FRAME TO SOUND. rt_sound_write sends one register write and does not wait
+          # Never losing a frame to sound. rt_sound_write sends one register write and does not wait
           # for it to be done: it waits instead, before sending, for the write before it to have been
           # answered, which takes the SPC700 a few dozen of its cycles. That wait is bounded
           # (PATIENCE tries); a sound unit that has not answered by then has its write dropped and
           # counted in DROPPED, and the game goes on.
           #
-          # A NOTE IS NINE WRITES (two commands in a game with sound effects, #driver says why), and each still waits for the one before, so parts starting notes
-          # together would stand in a game's way. So a game with music queues its writes (QUEUE) and
+          # A note is nine writes (two commands in a game with sound effects, #driver says why), and each still waits for the one before, so parts starting notes
+          # together would stand in a game's way. So a game with music queues its writes (queue) and
           # the queue is sent while the game waits for the screen, one write each time the sound
           # unit has answered (#emit_idle_step). A recorded note, or its loudness, is one entry until
           # it reaches the front. Queueing takes a few instructions, and the waiting comes out of
@@ -117,7 +117,7 @@ module VBlank
             SENT = "rt sound sent" # The number of the last command sent, in mailbox 0
             DROPPED = "rt sound dropped" # Writes dropped because the sound unit had not answered
 
-            # THE WRITES WAITING TO GO, in a game with music: a ring of entries, the oldest at
+            # The writes waiting to go, in a game with music: a ring of entries, the oldest at
             # QUEUE_HEAD and the next free at QUEUE_TAIL, both as offsets into it, so the two are equal
             # when it is empty. One entry is left free so that full and empty differ. A power of two.
             QUEUE = "rt sound queue"
@@ -156,9 +156,9 @@ module VBlank
             # writes (#queue_room adds what a chip envelope takes).
             QUEUE_ROOM = (NOTE_START_WRITES + 1) * ENTRY_BYTES
             QUEUE_TAIL_KEPT = "rt sound queue tail kept"
-            # THE LINE AHEAD OF IT, in a game with sound effects (#emit_write_ahead), a ring laid out
+            # The line ahead of it, in a game with sound effects (#emit_write_ahead), a ring laid out
             # the same way. ASKING_AHEAD is set while an effect plays, FRONT_LEFT counts what is at the
-            # front of the queue to go before the next can be moved there, and FORGOTTEN is what an
+            # front of the queue to go before the next can be moved there, and forgotten is what an
             # entry becomes that nothing wants any more.
             AHEAD = "rt sound ahead"
             AHEAD_HEAD = "rt sound ahead head"
@@ -171,7 +171,7 @@ module VBlank
             FORGET_KEEPS = "rt sound forget keeps"
             AHEAD_TRIES = 16
 
-            # THE SOUND LOG, for whoever reads a run back: every sound statement the game ran, as the
+            # The sound log, for whoever reads a run back: every sound statement the game ran, as the
             # number the lowering gave its entry of the interpreter's log (Lowering::Sound), the
             # last LOG_LENGTH of them in a ring, and how many there have been (16 bits).
             LOG = "rt sound log"
@@ -231,7 +231,7 @@ module VBlank
             # (SNES#build), and any other is refused with these words.
             class TooBig < LoweringError; end
 
-            # EACH SCENE'S RECORDINGS. The sound unit's memory is all the recordings it can play from,
+            # Each scene's recordings. The sound unit's memory is all the recordings it can play from,
             # and a game whose recordings together are more than that still fits when they take
             # turns, as its scenes' tiles take turns in video memory (Picture's scene tiles). A
             # recording only one scene plays, and nothing outside it (Lowering::Sound#scene_of_recording), is
@@ -347,7 +347,7 @@ module VBlank
 
             def turn_word(routine) = IR::Modes.scene_func?(routine) ? "scene" : "routine"
 
-            # A NOTE TOLD WHOLE. The two chips talk a byte at a time, and a note is nine registers, so
+            # A note told whole. The two chips talk a byte at a time, and a note is nine registers, so
             # a chord of seven is sixty-three turns of the mailbox the game has to wait for, and in a
             # game with no time to spare they fall behind what the music is doing. In a game with sound
             # effects, which have to answer a press, the sound unit's program does that work itself,
@@ -415,7 +415,7 @@ module VBlank
               spc
             end
 
-            # WHAT THE SOUND UNIT DOES WITH A SCENE'S RECORDINGS. LOAD_AT names where the bytes go
+            # What the sound unit does with a scene's recordings. LOAD_AT names where the bytes go
             # (mailboxes 2 and 3), and lets go every voice reading a recording a scene loads (its
             # source +sources_from+ or past), so none plays bytes that are about to change. LOAD_TURNS
             # gives how many turns come (mailboxes 2 and 3), answers, and takes them: at each turn
@@ -946,7 +946,7 @@ module VBlank
               emit_forget_place(asm, memory) if memory.reserved?(AHEAD) && samples
             end
 
-            # A SOUND EFFECT GOES AHEAD. An effect answers a press, and a song's chord and every
+            # A sound effect goes ahead. An effect answers a press, and a song's chord and every
             # note's loudness can fill the queue for frames in a game with little time to spare to
             # send it. So what is asked for while an effect plays (ASKING_AHEAD) waits in a short line
             # of its own, and #emit_move_ahead puts its oldest at the very front of the queue. The
@@ -1159,7 +1159,7 @@ module VBlank
             end
 
             # rt_sound_queue_make_room, with the queue nearly full and the place past its end on the
-            # stack: the oldest entries sent, however long the sound unit takes, up to PATIENCE tries,
+            # stack: the oldest entries sent, however long the sound unit takes, up to patience tries,
             # and then dropped and counted until there is room. A game that never waits for the
             # screen goes on this way, a command at a time, once its queue has filled.
             def emit_queue_room_made(asm, memory, samples)
@@ -1279,7 +1279,7 @@ module VBlank
               memory.reserved?(Recordings::GLIDES) ? told.merge(VOICE_TOLD_OF_GLIDES) : told
             end
 
-            # THE ENTRY AT THE FRONT OF THE QUEUE BECOMES ITS WRITES, in the place it stood and before
+            # The entry at the front of the queue becomes its writes, in the place it stood and before
             # anything queued after it: the front of the queue moves back by as many entries as there
             # are writes, its end is put there for as long as they take to queue, and then goes back
             # to where it was. QUEUE_ROOM is what keeps those entries free. What the routine uses is

@@ -4,11 +4,11 @@ module VBlank
   module IR
     module Backends
       class SNES
-        # WHERE A GAME'S SONGS GO IN THE CARTRIDGE, over as many of its banks as they need.
+        # Where a game's songs go in the cartridge, over as many of its banks as they need.
         #
         # Two things make up a Super Nintendo game's sound, and they are kept in different places:
         #
-        # - THE SOUND CHIP'S OWN MEMORY, 64K that the console's processor cannot see. What goes there
+        # - The sound chip's own memory, 64K that the console's processor cannot see. What goes there
         #   is the sound chip's program, the table of its recordings and the recordings themselves
         #   (Runtime::Sound#image). It is sent once at power-on, a byte at a time through the
         #   mailboxes, and a scene's own recordings are sent as the scene starts. In the cartridge it
@@ -16,7 +16,7 @@ module VBlank
         #   (Sound::START_PIECE_BYTES, Sound::PIECE_BYTES), so it was never held to one bank. Its
         #   limit is the chip's memory, which Sound#image refuses in plain words, and the cartridge
         #   reports how much of it the game uses (Cartridge::SNESROM#sound_memory).
-        # - THE SONGS AND SOUND EFFECTS, the table the music player reads (SNES::Music, a SongTable).
+        # - The songs and sound effects, the table the music player reads (SNES::Music, a SongTable).
         #   The player runs on the console's own processor (Runtime::Music gives why), so this table
         #   is never sent to the sound chip: the player reads it from the cartridge, a note at a
         #   time, and each note is register writes sent through the mailboxes as it starts.
@@ -27,7 +27,7 @@ module VBlank
         # of more than 32K is in view at one run of addresses, whatever the index is. A section
         # therefore holds at most a bank (Linker), and so did the table.
         #
-        # THE DECISION. Nearly all of a long table is notes: sixteen bytes each, and everything else a
+        # The decision. Nearly all of a long table is notes: sixteen bytes each, and everything else a
         # song is (its groups of chip writes, its records, its parts' entries) is shared between
         # notes and small. So a table that fits a bank is laid out exactly as it always was, one
         # section, and a game that fits builds the bytes it always did. A table that does not fit is
@@ -45,7 +45,7 @@ module VBlank
         # of the table is still more than a bank is refused by the linker, naming the songs and
         # sound effects.
         #
-        # WHY A NOTE IS SIXTEEN BYTES, and a long song so big. Each event of a part is a note of
+        # Why a note is sixteen bytes, and a long song so big. Each event of a part is a note of
         # eight words (SongTable's "a note"), and a converted song is mostly a note and the rest
         # after it, two events for each note heard. A song that comes round keeps its parts' events
         # twice, for the first time round and the times after (IR::Tunes.loop_passes). A cut that

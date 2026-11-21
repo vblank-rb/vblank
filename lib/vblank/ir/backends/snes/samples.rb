@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class SNES
-        # THE RECORDINGS THE SOUND UNIT PLAYS, in its own format, and the table that gives where each
+        # The recordings the sound unit plays, in its own format, and the table that gives where each
         # starts. The S-DSP plays nothing but recordings, kept in BRR, its packed format (fullsnes,
         # "SNES APU DSP BRR Samples"): blocks of nine bytes, a header byte and sixteen four-bit
         # samples. The header's top four bits are how far each sample is shifted up, the next two
@@ -16,7 +16,7 @@ module VBlank
         # comes out as 7 * 2^11 / 2), well inside what the DSP can decode without the overflow
         # fullsnes warns of.
         #
-        # EACH WIDTH IS RECORDED TWICE. The pitch register reads a recording at most four times as
+        # Each width is recorded twice. The pitch register reads a recording at most four times as
         # fast as the DSP plays (fullsnes, "SNES APU DSP BRR Pitch": $3FFF is the fastest), so a
         # wave of 32 samples tops out near 4000 Hz. A wave of 32 holds its width finely, an eighth
         # of it high being four samples; a wave of 8 reaches 16000 Hz, the highest note the DSP's
@@ -51,7 +51,7 @@ module VBlank
 
           module_function
 
-          # THE METALLIC RATTLE. The Advance's noise voice can step a register of seven bits instead of
+          # The metallic rattle. The Advance's noise voice can step a register of seven bits instead of
           # fifteen, whose pattern comes round every 127 steps: a tighter, more tonal noise. The S-DSP's
           # noise generator has no such mode, so the pattern is recorded, a sample a step, high where
           # a 1 falls out of the register (GBATEK, "GBA Sound Channel 4": X = X SHR 1, and on a 1, X =
@@ -64,7 +64,7 @@ module VBlank
           # Its source number: after the long and the short square recordings.
           METALLIC = WIDTHS.size * 2
 
-          # THE WAVE VOICE'S WAVEFORMS, which are the game's own: 32 steps of 0 to 15 each (Audio::
+          # The wave voice's waveforms, which are the game's own: 32 steps of 0 to 15 each (Audio::
           # Sound.wavetable), at the loudness the game plays it (each step already cut down as the
           # Advance cuts it). Each is recorded as it is, a step a sample, less its own average (to the
           # nearest whole step), so the wave swings about nought at every loudness — a quiet wave's
@@ -124,7 +124,7 @@ module VBlank
             end
           end
 
-          # A GAME'S OWN RECORDING, +bytes+ (a byte a sample, -128..127), as BRR, and how far into it
+          # A game's own recording, +bytes+ (a byte a sample, -128..127), as BRR, and how far into it
           # its loop point is, in bytes. The Advance's mix reads a recording's byte as a sample of
           # sixteen bits times 256; here each is kept as that over two, decoding as the byte times 128
           # (fullsnes: a four-bit sample comes out shifted left by its block's range and right by
@@ -133,7 +133,7 @@ module VBlank
           # nought keeps; fullsnes's other filters, which predict a sample from the two before it,
           # would keep more and are not used).
           #
-          # ONE THAT GOES ON reads back +back+ samples at its end (Assets::Sample#loop_length). The
+          # One that goes on reads back +back+ samples at its end (Assets::Sample#loop_length). The
           # DSP loops only by whole blocks from a block's start, so the samples after the loop point
           # are moved round until the loop starts on a block, and the loop is repeated until it fills
           # whole blocks: the same sound, the loop kept as many times over as it takes to be a
@@ -151,7 +151,7 @@ module VBlank
             [brr_blocks(intro, ending: 0) + brr_blocks(loop, ending: LOOP), intro.size / BLOCK_SAMPLES * BLOCK_BYTES]
           end
 
-          # A RECORDING THE GAME GAVE IN BRR (an Audio::SNESRecording), played reading back +back+
+          # A recording the game gave in BRR (an Audio::SNESRecording), played reading back +back+
           # samples at its end, as the bytes the sound unit keeps and how far into them its loop point
           # is: the game's bytes and loop point, unchanged, where the play goes round as the recording
           # does. The interpreter reads round the decoded loop (Audio::SNESRecording#decoded), which is
@@ -211,7 +211,7 @@ module VBlank
           # that go there.
           SceneImage = Data.define(:bytes, :scene_area, :scene_bytes)
 
-          # THE SAME, WITH THE LAST OF +recordings+ KEPT BY SCENES, each scene's in the chip only while
+          # The same, with the last of +recordings+ kept by scenes, each scene's in the chip only while
           # it is up: +scene_counts+ is how many each scene keeps, in the order they come. The table
           # has a row for every recording, and the bytes after it are the rest's alone; every scene's
           # rows point into the one stretch after those, the scene area, where a scene's own go in as
