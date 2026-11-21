@@ -3,7 +3,7 @@
 require "test_helper"
 require "tmpdir"
 
-# A PORT OPENS ITS ORIGINAL GENESIS CARTRIDGE IN A PROBE, steps it, reads its work RAM by address,
+# A port opens its original Genesis cartridge in a probe, steps it, reads its work RAM by address,
 # and reads the console's tables off the file, which has no build record: the video memory, the
 # colours, the sprite table, the FM chip's registers, the scroll memory and the video registers, as
 # bytes, and the sprite table as boxes. The cartridge is a small game built here and written to a
@@ -26,7 +26,7 @@ class TestGenesisProbe < Minitest::Test
     end
   end
 
-  # The game read with its build record, a probe over its bare file, both FRAMES frames in, and
+  # The game read with its build record, a probe over its bare file, both frames frames in, and
   # where the build put the count.
   private def with_recorded_and_bare
     Dir.mktmpdir("cartridges") do |folder|

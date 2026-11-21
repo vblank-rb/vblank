@@ -8,7 +8,7 @@ require "tmpdir"
 require "vblank/diagnostics/film_tasks"
 require "heard_film"
 
-# A GENESIS CARTRIDGE THROUGH THE ONE READER: it names its sprites as the interpreter does, and it is
+# A Genesis cartridge through the one reader: it names its sprites as the interpreter does, and it is
 # filmed as any console's cartridge is, a built one beside its file, at the Genesis's 320 x 224. The
 # game is a small one of this repository's own: a white box that walks right while right is down, and
 # a red mark that stays where it is, on a blue field.

@@ -6,7 +6,7 @@ require "stringio"
 require "tmpdir"
 require "made_up_original_layouts"
 
-# A SPEECH BOX AS A GENESIS GAME OPENS ONE: a pass lays a box of nearly two hundred cells into a
+# A speech box as a Genesis game opens one: a pass lays a box of nearly two hundred cells into a
 # background from the data pack (a top edge, a left edge, the inside, a right edge and a bottom
 # edge, each a block of one cell the game works out), and a later pass puts back the cells of the
 # map the box covered. A retail game queues one command for each block and the blank writes the
