@@ -2,7 +2,7 @@
 
 module VBlank
   module DSL
-    # A SCENE'S SPRITE PICTURES IN GROUPS, handed back by `picture_groups`: a room's things,
+    # A scene's sprite pictures in groups, handed back by `picture_groups`: a room's things,
     # in a scene made of many rooms. The game sets which groups are up with #show, from
     # numbers it works out — the room it is in, and the room beside while the screen slides.
     class PictureGroups

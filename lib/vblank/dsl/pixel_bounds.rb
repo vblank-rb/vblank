@@ -3,7 +3,7 @@
 module VBlank
   module DSL
     # Makes a sprite's `overlaps?` shape-accurate. On top of the plain box test from
-    # {Bounds}, when BOTH things being compared are sprites collided per-pixel (the
+    # {Bounds}, when both things being compared are sprites collided per-pixel (the
     # default — neither was pinned to a plain `hitbox:`), it adds a second test: do their
     # drawn pixels actually meet? The box test is the cheap gate — sprites nowhere near
     # each other fail it and never reach the per-pixel walk — so the accuracy costs

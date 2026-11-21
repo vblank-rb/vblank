@@ -6,8 +6,8 @@ module VBlank
     # sees it (`draw_place :cube, seen_by: eye`).
     #
     # A place is POINTS — spots in space, each three numbers: across (x, to the right), up (y)
-    # and ahead (z) — and FACES, each a flat side joining three or four of the points in order,
-    # with a picture on it. A face's CORNERS set where on its picture each of its points falls
+    # and ahead (z) — and faces, each a flat side joining three or four of the points in order,
+    # with a picture on it. A face's corners set where on its picture each of its points falls
     # (`on_picture:`, in the picture's own pixels, across then down). The picture repeats past
     # its edges like wallpaper, so a corner may fall at 200 on a picture 64 pixels wide, or at -70.
     #
@@ -19,13 +19,13 @@ module VBlank
     #
     # The block runs while the game is built. Its numbers are written into the cartridge as they
     # are; nothing about the place's shape changes as the game runs. Which picture each face shows
-    # is kept in a picture SLOT, one for each picture the place lists and named after it, and the
+    # is kept in a picture slot, one for each picture the place lists and named after it, and the
     # game can point a slot at any of the place's pictures as it runs (Builder#change_picture):
     # every face that starts with that picture then shows the other.
     class Place
       # The most a point's number can be either way, and the viewer's: half of what a fraction
       # holds, so a point is never further from the viewer than a fraction holds, along any
-      # arrow (see IR::PlaceDrawing, "WHY NOTHING OVERFLOWS").
+      # arrow (see IR::PlaceDrawing, "why nothing overflows").
       FURTHEST = IR::PlaceDrawing::FURTHEST
 
       # The most a corner can fall past the picture's corner, in picture pixels, either way.
@@ -152,7 +152,7 @@ module VBlank
                              "of those names, or its number from 0 to #{@listed_pictures.length - 1}."
       end
 
-      # THE PLACE FROM DATA, as a game reads a level from a file: +points+ is each point's [x, y, z],
+      # The place from data, as a game reads a level from a file: +points+ is each point's [x, y, z],
       # and +faces+ each face as a Hash of what `face` takes, its points by their number in
       # +points+: { points: [0, 1, 2, 3], picture: :rock, on_picture: [...], light: 0.5 }. Each is
       # declared through #point and #face, so the place is the one those calls make, checked the
@@ -178,7 +178,7 @@ module VBlank
         @face_label = FACE_LABEL
       end
 
-      # A PLACE WHOSE POINTS AND FACES ARE IN THE DATA PACK (Builder::PackPlaces): the build holds
+      # A place whose points and faces are in the data pack (Builder::PackPlaces): the build holds
       # none of them, only the most there can be, +most_points+ and +most_faces+, and the name of the
       # table whose one entry is how many faces are used (+faces_used_table+, nil for all of them).
       def declare_from_pack(most_points:, most_faces:, faces_used_table:)

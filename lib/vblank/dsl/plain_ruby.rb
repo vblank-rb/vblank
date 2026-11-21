@@ -12,11 +12,11 @@ module VBlank
     # constructs out as calls, and runs that instead. Everything else in the block, the verbs
     # above all, is left as it was written.
     #
-    # NOTHING HERE GUESSES A TYPE. Whether `if hp > 0` is a test for the game or for the build
+    # Nothing here guesses a type. Whether `if hp > 0` is a test for the game or for the build
     # cannot be read off the source, so each construct becomes a small step (PlainRuby::Steps)
     # that looks at the value as the block runs: `if console == :gbc` stays plain Ruby.
     #
-    # A BRANCH'S CODE STAYS WHERE IT WAS WRITTEN, inside parentheses in a real Ruby `if`, and is
+    # A branch's code stays where it was written, inside parentheses in a real Ruby `if`, and is
     # never moved into a block. So the locals it sets outlive it and every line keeps its
     # number, which is what makes an error name the author's own line.
     module PlainRuby
@@ -40,7 +40,7 @@ module VBlank
       # closed over, so the game's own constants and locals still resolve. +allow+ names
       # libraries the block may use, on the author's word that they are safe here.
       #
-      # THIS RUNS AS THE GAME IS DECLARED, because the block's binding is only there to read until
+      # This runs as the game is declared, because the block's binding is only there to read until
       # a game is made shareable between Ractors (Cartridge::Game#shareable_if_possible). The proc
       # this makes is cut loose in its place, so everything it needs later is written into it.
       #
@@ -64,8 +64,8 @@ module VBlank
         rewritable?(block) ? rewrite(block, allow: allow, checked: game_blocks_checked?) : block
       end
 
-      # A BLOCK MADE SHAREABLE BETWEEN RACTORS (`Ractor.make_shareable`) IS CUT LOOSE FROM THE
-      # SCOPE IT WAS WRITTEN IN, and Ruby then gives out no binding for it, so it cannot be
+      # A block made shareable between ractors (`Ractor.make_shareable`) is cut loose from the
+      # scope it was written in, and Ruby then gives out no binding for it, so it cannot be
       # rewritten: run as it stands, `x += 1` changes a Ruby local and nothing in the game, and an
       # `if` on a game number is decided once, while building. A test class's constants are made
       # shareable (Testing::InRactors), so a block kept in one did exactly that, with no error.

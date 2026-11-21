@@ -3,7 +3,7 @@
 module VBlank
   module DSL
     module PlainRuby
-      # WHAT A CALL OF GAME CODE CAN CHANGE, for Promotion#kept_copy, as a second file of
+      # What a call of game code can change, for Promotion#kept_copy, as a second file of
       # LocalNames: it reads the names LocalNames found. A local set from a game value keeps its
       # number in a copy unless nothing can change it before it is read. Each copy costs a
       # variable, so the proof is worth making narrow: a call counts only as a change of what the
