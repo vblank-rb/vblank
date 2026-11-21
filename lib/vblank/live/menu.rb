@@ -2,7 +2,7 @@
 
 module VBlank
   module Live
-    # THE MENU OVER THE WINDOW a game is played in (WindowMenu says what it holds and how it
+    # The menu over the window a game is played in (WindowMenu says what it holds and how it
     # looks): how it behaves, and where each of its boxes and words goes. Nothing here knows about
     # a window, so it is played in tests with none; the window hands it the keys meant for it
     # (#press), draws what it asks for (#drawing), and does what its settings ask for.
@@ -125,7 +125,7 @@ module VBlank
         end
       end
 
-      # WHAT THE WINDOW SAYS OVER THE PICTURE until the player presses a button: what could not be used
+      # What the window says over the picture until the player presses a button: what could not be used
       # in the settings file (+problems+, the sentences as text, a file's name over its own), in the
       # middle as the window opens, since a player who opened the game by double-clicking it has no
       # terminal to read; and what the window tells the player (#tell) under a +title+, at the foot of
@@ -182,7 +182,7 @@ module VBlank
         true
       end
 
-      # WHAT A WINDOW DRAWS over the game, in its own pixels: the window of the game's +variables+
+      # What a window draws over the game, in its own pixels: the window of the game's +variables+
       # when it is open (name and value pairs, as the frontend read them from the game, with
       # +variables_dropped+ more it had no room to read), the menu when it is open, and in the top
       # right corner what the window is doing — the frame rate when it is asked for, how long the
@@ -209,7 +209,7 @@ module VBlank
         @out
       end
 
-      # WHETHER EVERY BOX SHOWN FITS a window +width+ by +height+ pixels at +density+, its words broken
+      # Whether every box shown fits a window +width+ by +height+ pixels at +density+, its words broken
       # to the box's width: what is told with a gap above and below it, and the settings file's box
       # with the status corner's gap. A window too small for one is made bigger by its frontend, a
       # whole number of times the picture at a time, rather than a word being cut off (Live::SDL and
@@ -226,7 +226,7 @@ module VBlank
         @density, @font = kept
       end
 
-      # WHAT A WINDOW WAITING FOR ITS GAME DRAWS (a game a helper process builds, BuildWatch): +lines+
+      # What a window waiting for its game draws (a game a helper process builds, BuildWatch): +lines+
       # of words in the middle of a window +width+ by +height+ pixels, one under another, a line too
       # wide for the window broken between words. Gives WindowMenu::Words.
       def waiting_drawing(lines, width:, height:, density:)
@@ -397,7 +397,7 @@ module VBlank
         add_words_in_row(notice, @heading_left + pad, y, row, :paused) if notice
       end
 
-      # THE WINDOW OF THE GAME'S VARIABLES, in the top left corner, under the bar when the menu is
+      # The window of the game's variables, in the top left corner, under the bar when the menu is
       # open: its title, the letters typed or what to type, a heading of Name and Value, a line for
       # each variable the letters find from the one scrolled to, and which lines those are. It is as
       # wide as its widest name needs, never narrower than variables_width, and always the same
@@ -446,7 +446,7 @@ module VBlank
         dropped.positive? ? "#{said}, and #{dropped} more not shown" : said
       end
 
-      # A BOX OF WORDS over the picture, +wide+ pixels across the middle of a window +width+ wide, its
+      # A box of words over the picture, +wide+ pixels across the middle of a window +width+ wide, its
       # top where the block puts it given how high it is: its +title+, then each of +texts+ broken to
       # fit, a line across between one and the next, and an OK with what answers it beside it, or
       # under it in a box too narrow for both.

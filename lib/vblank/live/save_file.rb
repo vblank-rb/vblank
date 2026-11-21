@@ -2,7 +2,7 @@
 
 module VBlank
   module Live
-    # THE FILE A GAME'S SAVE MEMORY IS KEPT IN between runs of vblank run: save.sav in the folder the
+    # The file a game's save memory is kept in between runs of vblank run: save.sav in the folder the
     # window keeps the game's states in (StateSlots.folder_name), as the desktop build keeps save.sav in
     # the game's folder. It holds the bytes of the game's save memory and nothing else, so a file of
     # any other size is another game's, or damaged.

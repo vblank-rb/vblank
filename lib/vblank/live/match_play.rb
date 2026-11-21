@@ -4,7 +4,7 @@ require "tmpdir"
 
 module VBlank
   module Live
-    # WHAT `vblank run --host` AND `--join` DO BEFORE AND AFTER A MATCH IS PLAYED: refuse a game for one
+    # WHAT `vblank run --host` and `--join` do before and after a match is played: refuse a game for one
     # player, check --players, host the match or join one (over a direct connection or a relay), say
     # in plain words where the others can join, and turn what stopped a match into words. The match
     # itself is a Network::Lockstep, which a Session plays.
@@ -51,7 +51,7 @@ module VBlank
       end
 
       # The match hosted or joined, its lockstep not yet begun (Lockstep#begin_match). Refused for a
-      # game for one player or too many players; a Network failure (FAILURES) as it comes.
+      # game for one player or too many players; a Network failure (failures) as it comes.
       def open
         refuse_one_player_game!
         fingerprint = @facts.fingerprint
@@ -64,7 +64,7 @@ module VBlank
       # The line said while the others are waited for, for the one who hosts.
       def waiting_line = ("Waiting for the other players. Press Ctrl-C to give up." if @host)
 
-      # The words for +error+, one of FAILURES. A machine whose game went another way than another
+      # The words for +error+, one of failures. A machine whose game went another way than another
       # machine's first writes the tape of the match and the report into a new folder, which
       # nothing removes, and the words say where: the tape replays this machine's game on the
       # interpreter, pass for pass.

@@ -2,7 +2,7 @@
 
 module VBlank
   module Live
-    # HOW FAST A PLAY WENT, handed back when it ends. A pass is one time round the game's loop,
+    # How fast a play went, handed back when it ends. A pass is one time round the game's loop,
     # and a frame is one of the console's sixtieths of a second that went by. A machine that keeps
     # up plays one pass a frame; a slower one plays fewer passes than frames, and the game, which
     # counts one frame a pass, runs that much slower. Fast forward plays more passes than frames,
@@ -11,7 +11,7 @@ module VBlank
     # the player stopped. +lateness+ is which passes ran longer than a frame (Lateness), or nil
     # played uncapped, where no pass has a frame to be late against.
     #
-    # THE PASS THE GAME SETS ITSELF UP IN is in +passes+, +frames+ and +seconds+, and is also
+    # The pass the game sets itself up in is in +passes+, +frames+ and +seconds+, and is also
     # +setup_passes+ (1, or 0 where it was played in fast forward, whose frames it shares), the
     # +setup_frames+ it took and the +setup_seconds+ to the end of them. The speeds leave it out, as
     # the Lateness does: a big game can take seconds over it before its first picture and then
