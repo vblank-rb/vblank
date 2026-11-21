@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # A FRAME'S TIME, BY ROUTINE, for a console whose emulator adds up the time each instruction took
+    # A frame's time, by routine, for a console whose emulator adds up the time each instruction took
     # by the address it started at (Core#take_processor_time on the Super Nintendo and the Genesis).
     # Every address is in a routine: one of the game's, which +routine_at+ names, or the runtime's,
     # found by the label before it. +waits+ matches the runtime's labels that are only waiting for

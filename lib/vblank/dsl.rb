@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# THE THINGS A GAME HOLDS A HANDLE TO. A verb on Builder hands one of these back — a Value, a
+# The things a game holds a handle to. A verb on Builder hands one of these back — a Value, a
 # Sprite, a List, a Pool — and the game then talks to it. So this is the half of the surface a
 # game names directly, along with the kinds of thing those handles are made of.
 

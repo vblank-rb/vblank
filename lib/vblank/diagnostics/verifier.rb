@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# REQUIRED HERE AND NOT WHERE THEY ARE USED, which is the opposite of the usual advice about
+# Required here and not where they are used, which is the opposite of the usual advice about
 # a cost you may not pay. Asking for a file reads the list of places Ruby looks for one, and
 # that list is a global — which a worker may not read at all. So a `require` reached while a
 # cartridge is being verified stops the run, and these are on that path: a verified ROM goes
@@ -16,7 +16,7 @@ module VBlank
     # This is the definitive answer to "did my ROM actually draw anything?"
     # Instead of squinting at an emulator window, assert exact pixel values.
     #
-    # ONE READER FOR EVERY CONSOLE. The picture, memory by address, the variables, the save
+    # One reader for every console. The picture, memory by address, the variables, the save
     # memory, the sound that came out, playing on, and leaving layers or voices out are read the
     # same way whichever console a cartridge is for, and are read here. What a console keeps its
     # own way — which sprite is whose, how its colours are laid out, how it counts its passes, its
@@ -46,14 +46,14 @@ module VBlank
     #   v.all_black?                        # => false (we drew a pixel)
     #   v.region_color?(80, 50, 80, 60, :blue)  # all blue in rect?
     class Verifier
-      # HOW A CONSOLE'S COLOURS ARE LAID OUT (see #palette): the backgrounds' half first, then the
+      # How a console's colours are laid out (see #palette): the backgrounds' half first, then the
       # sprites', each +half+ colours long and in groups of +group+, the most one sprite or one
       # square of background draws from. Each console's part of the reader says its own.
       PaletteLayout = Data.define(:half, :group) do
         def halves = { backgrounds: 0, sprites: half }
       end
 
-      # WHERE A CARTRIDGE'S SAVE MEMORY ENDS IN THE FILE THE EMULATOR KEEPS IT IN (see #save_image).
+      # Where a cartridge's save memory ends in the file the emulator keeps it in (see #save_image).
       # A cartridge with a clock has the emulator write the clock's own state after the save
       # memory, +clock_bytes+ of it. The save memory is a whole number of +whole+-byte pieces, so
       # what is over is the clock's, and that alone says whether the cartridge had one. Each
@@ -143,7 +143,7 @@ module VBlank
         @screen_questions = kit.screen_questions
       end
 
-      # RUN ON, so a test can watch something HAPPEN rather than only see where it ended up.
+      # Run on, so a test can watch something happen rather than only see where it ended up.
       #
       # A Verifier plays its +frames:+ the first time anything is read off it. This plays more,
       # carrying on from there, and everything read afterwards is the frame it stopped on —
@@ -152,7 +152,7 @@ module VBlank
       # which colours something is drawn in while it cannot be hit, how many frames a flash lasts,
       # whether a thing vanishes and comes back.
       #
-      # IT IS THE SAME OBJECT ON PURPOSE rather than a second way into the running cartridge.
+      # It is the same object on purpose rather than a second way into the running cartridge.
       # Everything here reads the console through what the build wrote down — which of its 128
       # places each sprite was given, how far along the build moved each stored pose, where the
       # variables went — and a stepping reader without that record answers the same question
@@ -237,7 +237,7 @@ module VBlank
 
       # --- questions about the whole screen ---
       #
-      # THE EMULATOR ANSWERS THESE, in one pass over the picture (see
+      # The emulator answers these, in one pass over the picture (see
       # {Emulator.screen_questions}). Going through the pixels in Ruby is a number made and
       # thrown away for every one of them, which is far more work than running the frame
       # was, so a test that asks something of the whole screen on every frame of a long run
@@ -245,14 +245,14 @@ module VBlank
       # Advance's and the Color's cartridges; every other console's are asked in Ruby
       # (ScreenQuestions, see Console::Kit#screen_questions), since their games may not have it.
       #
-      # THEY ARE ANSWERED AT THE PRECISION A CONSOLE SHOWS, the same fifteen bits
+      # They are answered at the precision a console shows, the same fifteen bits
       # {#pixel_gba} reads: five each of red, green and blue. The emulator keeps eight, and
       # what it holds below the five is its own working — it fills a palette colour's low
       # bits in one way, and works a colour the display brightened, darkened or mixed out at
       # eight bits. So it can hold the same five-bit colour as two different numbers, and
       # two pictures that are different bytes can still be one picture here.
 
-      # The whole screen as the console's 15-bit colours in ONE STRING: two bytes a pixel,
+      # The whole screen as the console's 15-bit colours in one string: two bytes a pixel,
       # low byte first, a row at a time from the top. It is {#frame_gba} without the list —
       # what to keep a still as, or to hash one, and the same bytes for the same picture, so
       # two of them are compared with `==`. A list of 38,400 numbers costs many times what
@@ -275,7 +275,7 @@ module VBlank
       # @return [Integer]
       def brightness = @screen_questions.brightness(picture)
 
-      # Whether this reader is showing THE SAME PICTURE as +other+: every pixel the same
+      # Whether this reader is showing the same picture as +other+: every pixel the same
       # colour. +other+ is another running cartridge, or a {#picture} kept from earlier.
       #
       # Two cartridges played side by side are asked this after every frame, so it has to
@@ -304,7 +304,7 @@ module VBlank
         @screen_questions.difference(picture, picture_of(other), @width, looked_at)
       end
 
-      # THE PICTURE ON SCREEN AS THE EMULATOR HOLDS IT — the frame the run stopped on — to
+      # The picture on screen as the emulator holds it — the frame the run stopped on — to
       # keep and compare a later one against: `kept = game.picture`, and some frames on,
       # `game.same_picture_as?(kept)`. Four bytes a pixel: red, green, blue and a byte of
       # nothing. It is the emulator's own numbers and not the colours a console shows;
@@ -326,7 +326,7 @@ module VBlank
                          "Give the Verifier `frames:` of 1 or more, or call `step` first.")
       end
 
-      # TAKE THE BACKDROP OUT OF THE PICTURE, for the rest of the run: every pixel of the colour
+      # Take the backdrop out of the picture, for the rest of the run: every pixel of the colour
       # most of the screen is reads black, in {#picture} and everything read from it. It is for a
       # picture of the sprites alone (`showing(only: :sprites)`), which shows the backdrop wherever
       # no sprite draws: two cartridges can keep that colour differently under a room that hides
@@ -346,7 +346,7 @@ module VBlank
         @screen_questions.without_commonest_color(frame)
       end
 
-      # THE PICTURE ON SCREEN WRITTEN AS A PNG at +path+, which is handed back: the frame the run
+      # The picture on screen written as a PNG at +path+, which is handed back: the frame the run
       # stopped on, in the colours a console shows, for a person to look at. A Film is made of
       # these, one for each frame it shows.
       #
@@ -367,7 +367,7 @@ module VBlank
         nil
       end
 
-      # PUT THE CONSOLE BACK AS A SAVED STATE LEFT IT, the file +path+ an emulator wrote of this
+      # Put the console back as a saved state left it, the file +path+ an emulator wrote of this
       # same cartridge, and carry on from there: the next frame played is the one after the state
       # was saved. It is how a moment far into a game is reached without playing up to it. The
       # picture read is the last frame played until #step plays one from the state. The state is the
@@ -381,7 +381,7 @@ module VBlank
         self
       end
 
-      # WRITE THE CONSOLE'S WHOLE STATE to the file +path+, for #load_state to put it back: every
+      # Write the console's whole state to the file +path+, for #load_state to put it back: every
       # byte of its memory and where its processor is. It is how a moment that took long to reach is
       # asked several questions, each from the moment itself.
       #
@@ -392,7 +392,7 @@ module VBlank
         self
       end
 
-      # WRITE A 32-BIT WORD to the bus at +address+ (a multiple of four), in the processor's byte
+      # Write a 32-BIT WORD to the bus at +address+ (a multiple of four), in the processor's byte
       # order, into the game while it runs: how a state no drive reaches cheaply is reached. On the
       # Super Nintendo and the Genesis it is the work RAM the reader reads, and on the PlayStation
       # main RAM or the scratchpad.
@@ -406,7 +406,7 @@ module VBlank
 
       # Check if the entire screen is black (nothing rendered).
       #
-      # THIS ONE IS ASKED OF WHAT THE EMULATOR HOLDS, eight bits a channel, and so it is
+      # This one is asked of what the emulator holds, eight bits a channel, and so it is
       # finer than the rest: a pixel the display has darkened to almost nothing is black to
       # {#black?} and to {#only_color}, and is not black to this. It is left that way so that
       # the frame a fade is called over on does not move for anybody already asking.
@@ -472,7 +472,7 @@ module VBlank
         @probe.read8(address)
       end
 
-      # THE SAVE CHIP AS IT IS NOW, as an IR::SaveImage the size the chip is — which is what
+      # The save chip as it is now, as an IR::SaveImage the size the chip is — which is what
       # turning the console off leaves. Hand it to another run's `save:` to turn it on again.
       #
       # The bus shows a 128K flash chip a bank at a time, so the chip is read from the file the
@@ -514,7 +514,7 @@ module VBlank
       # test asserts what a program actually computed on real hardware. A name the build does
       # not have is refused, naming the game's own variables (the framework's are left out).
       #
-      # IT IS THE NUMBER THE PROGRAM COUNTED TO, which means a count taken below nothing comes
+      # It is the number the program counted to, which means a count taken below nothing comes
       # back below nothing. A variable here is a signed whole number by definition (see
       # IR::Int32, the contract every backend keeps), so there is nothing to ask and nothing to
       # guess: the word in memory holds no sign, and reading it out means putting the sign back.
@@ -540,7 +540,7 @@ module VBlank
         @var_addresses.key?(name)
       end
 
-      # WHETHER THE GAME HAS STARTED: run the lines it has before its first wait for the screen, so
+      # Whether the game has started: run the lines it has before its first wait for the screen, so
       # what it keeps holds the numbers it set. Until then the memory a variable is kept in holds
       # whatever it held at power-on, or the nought a runtime clears it to while it sets up, and a
       # read by name would hand that back as the game's number. A Probe asks it to step to the
@@ -575,7 +575,7 @@ module VBlank
       # otherwise (ColorReading).
       private def variable_kept_at(_name, address) = var_at(address)
 
-      # A GAME'S LISTS AND POOLS, BY THE NAMES IT GAVE THEM, in the interpreter's own words: `list`
+      # A game's lists and pools, by the names it gave them, in the interpreter's own words: `list`
       # reads everything in a list now, oldest first, and `pool` one field of a pool, an entry for
       # each slot and nil for a free one (Reference::ReadingBack, which is what asks these). Where a
       # list landed is what the build wrote down, so a list the build moved is read where it went.
@@ -634,7 +634,7 @@ module VBlank
       # own) reads it the same way a game's own variable is read.
       def var_at(address) = IR::Int32.wrap(mem32(address))
 
-      # THE COLOURS THE CONSOLE IS DRAWING FROM — the backgrounds' first and then the sprites',
+      # The colours the console is drawing from — the backgrounds' first and then the sprites',
       # each a 15-bit colour: 512 on an Advance, in groups of sixteen, and 64 on a Color, in
       # groups of four (see PaletteLayout).
       #
@@ -643,8 +643,8 @@ module VBlank
       # picture is a question about these numbers put the long way round, and one that whatever
       # else is on screen can confuse.
       #
-      # NAME THE HALF AND THE GROUP to get a usable answer. An Advance sprite's row (see
-      # {#sprites}) says which GROUP it draws from and nothing about where that group sits, so
+      # Name the half and the group to get a usable answer. An Advance sprite's row (see
+      # {#sprites}) says which group it draws from and nothing about where that group sits, so
       # `palette(:sprites, row.palette)` is the sixteen colours that row is wearing. Half on its
       # own (`palette(:sprites)`) is that half; nothing at all is the whole table.
       #
@@ -671,7 +671,7 @@ module VBlank
         whole[from + (group * layout.group), layout.group]
       end
 
-      # THE CONSOLE'S OWN TABLES, AS THE BYTES IT KEEPS THEM IN, on the frame the run stopped on.
+      # The console's own tables, as the bytes it keeps them in, on the frame the run stopped on.
       # Nothing here needs a build record, so they are what a port reads off its original cartridge
       # and decodes the way the original's code reads them: the tiles and maps a game wrote, the
       # colours, where each sprite is, and what the sound chip was last told.
@@ -696,7 +696,7 @@ module VBlank
       def sprite_table = probe_table(:sprite_table) { @probe.sprite_table }
       def sound_registers = probe_table(:sound_registers) { @probe.sound_registers }
 
-      # WHAT THE SOUND CHIP HOLDS IN ITS OWN MEMORY, on the frame the run stopped on: on the Super
+      # What the sound chip holds in its own memory, on the frame the run stopped on: on the Super
       # Nintendo, the sound chip's 64K, where its program, its table of recordings and the recordings
       # are kept. The table starts at the page the DSP's DIR register (0x5D of #sound_registers) names,
       # four bytes an entry, where a recording starts and then where it loops back to, both low byte
@@ -731,7 +731,7 @@ module VBlank
       # wide as the console writes it (a byte on the Color, sixteen bits on the Advance).
       SoundWrite = Data.define(:address, :value)
 
-      # EVERY WRITE A CARTRIDGE MAKES TO ITS SOUND CHIP, from now on, so a test can see each note it
+      # Every write a cartridge makes to its sound chip, from now on, so a test can see each note it
       # starts. #sound_registers says what the registers hold after a step, and that cannot say when a
       # note started: a voice starts when the top bit of its last register is written, and that bit
       # reads back the same whether or not one did, and a register written twice in a frame shows only
@@ -785,7 +785,7 @@ module VBlank
         yield
       end
 
-      # DRAW THE PICTURE WITHOUT SOME OF IT, so a test can ask which layer drew what.
+      # Draw the picture without some of it, so a test can ask which layer drew what.
       #
       #   v.showing(only: :sprites) { v.step; v.pixel_is?(44, 44, :red) }
       #
@@ -794,7 +794,7 @@ module VBlank
       # asked of a hero standing behind a fence, has no answer in it. Leave the rest out and the
       # question is just "what is left".
       #
-      # NOTHING IS REDRAWN BY ASKING — this changes the console, not the reading — so the block
+      # Nothing is redrawn by asking — this changes the console, not the reading — so the block
       # has to {#step} before it reads anything, or it reads the picture from before the layer
       # went. With a block the layers go back as they were afterwards, which is why the block form
       # is the one to reach for; without one the change stands for the rest of the run.
@@ -811,7 +811,7 @@ module VBlank
         self
       end
 
-      # MIX THE SOUND WITHOUT SOME OF IT, so a test can ask which voice sounded.
+      # Mix the sound without some of it, so a test can ask which voice sounded.
       #
       #   v.hearing(only: :noise) { v.step(10); v.audio_energy_by_frame.last(10).sum }
       #
@@ -821,10 +821,10 @@ module VBlank
       #
       # Same words and the same warning as {#showing}: +only:+ keeps, +without:+ leaves out, a
       # block puts the voices back afterwards, and the block has to {#step} to hear anything. The
-      # sound readers here cover the WHOLE run, so a block reads the frames it just played —
+      # sound readers here cover the whole run, so a block reads the frames it just played —
       # `audio_energy_by_frame.last(n)` — rather than the total.
       #
-      # TAKING A VOICE OUT FROM UNDER A NOTE IT IS HOLDING IS A CUT, not a rest. The mix steps
+      # Taking a voice out from under a note it is holding is a cut, not a rest. The mix steps
       # down where that note was and drifts back over about half a second, so a reading taken
       # straight after is a reading of the cut and "has it gone quiet" wants half a second first.
       #
@@ -852,21 +852,21 @@ module VBlank
 
       # --- what each console's cartridge is asked its own way ---
       #
-      # A READER IS GIVEN ITS CONSOLE'S QUESTIONS WHEN IT IS MADE, from the console's kit
+      # A reader is given its console's questions when it is made, from the console's kit
       # (Console::Kit#reading). Every console's has +sprites+ and +passes+, each read the way that
       # console keeps them; an Advance cartridge's has the processor as well (+registers+,
       # +run_until+, +wave_rate+, +pad_reads+) and its mixer of recordings (+voices+, +sounding+,
       # +sample_clock+, +sound_drops+). A reader over a Color cartridge has none of those, so it is
       # never asked them. See AdvanceReading and ColorReading.
       #
-      # +sprites+ ROWS ANSWER +name+, +x+ AND +y+ THE SAME ON EVERY CONSOLE: the sprite the game
+      # +sprites+ rows answer +name+, +x+ and +y+ the same on every console: the sprite the game
       # declared, and where the game put the corner of its picture. What else a row carries is the
       # console's — an Advance cartridge's rows are SpriteRows, off its table of 128, and a Color
       # cartridge's are DrawnSprites, the list its runtime keeps of what it placed.
       #
-      # +passes+ IS HOW MANY TIMES ROUND THE GAME LOOP THE CONSOLE GOT, in the frames it ran. This
+      # +passes+ is how many times round the game loop the console got, in the frames it ran. This
       # is not the frame count, and the difference is the reason it exists: the console runs the
-      # loop once per frame it has TIME for, so a game whose pass does not fit in a frame plays less
+      # loop once per frame it has time for, so a game whose pass does not fit in a frame plays less
       # game per frame than one that does. Anything lining this run up against a run somewhere
       # else — the interpreter, an earlier build — has to line up on passes.
 
@@ -876,7 +876,7 @@ module VBlank
       # The emulator mixes each frame to stereo PCM and we keep the whole run, so
       # these ask "what did the speaker do?" rather than trusting the ROM's bytes.
       #
-      # THE WHOLE RUN, HOWEVER LONG. The sound of a long run is mostly in a scratch file and
+      # The whole run, however long. The sound of a long run is mostly in a scratch file and
       # not in memory (see RecordedSound). The energy readers go through each frame once and
       # keep its figure, so they can be asked after every frame of a long run: the only sound
       # an asking reads is the frames played since the last. #audio_samples is the one that
@@ -894,7 +894,7 @@ module VBlank
 
       # The sound itself: one Integer per 16-bit sample, the two channels interleaved.
       #
-      # What this answers that #audio_energy cannot is what SHAPE the sound had. A break in the
+      # What this answers that #audio_energy cannot is what shape the sound had. A break in the
       # stream — the mixer handing the hardware a buffer that does not line up with what it eats
       # — is a jump from one sample to the next, and a run full of them has exactly the same
       # total energy as a clean one.
@@ -909,7 +909,7 @@ module VBlank
         @sound.last_frame.unpack("s<*")
       end
 
-      # WHAT THE CARTRIDGE PUT OUT ON THE FRAME PLAYED LAST, as a FrameSound: its samples, and the
+      # What the cartridge put out on the frame played last, as a FrameSound: its samples, and the
       # loudest of them. One name and one meaning on every console whose emulator hands its sound
       # over, for a cartridge built here or anybody's file: 16-bit samples, left and right by turns,
       # and the loudest the furthest any is from nought on either speaker. A run that has played no
@@ -944,15 +944,15 @@ module VBlank
         !silent?
       end
 
-      # ...and the same figure FRAME BY FRAME: one energy per displayed frame, in order.
+      # ...and the same figure frame by frame: one energy per displayed frame, in order.
       #
-      # What this answers that #audio_energy cannot is whether the sound arrived EVENLY. A game
+      # What this answers that #audio_energy cannot is whether the sound arrived evenly. A game
       # that hands the hardware sound more slowly than the hardware plays it still makes plenty
       # of noise over a run — the total says nothing — but the noise comes in bursts with holes
       # between them, and a run of frames with far less energy than their neighbours is what a
       # hole looks like from here.
       #
-      # IT CAN BE ASKED AFTER EVERY FRAME. Each frame's figure is worked out once and kept
+      # It can be asked after every frame. Each frame's figure is worked out once and kept
       # (see RecordedSound#energy_by_frame), so asking again reads the sound of the frames
       # played since and not of the run so far: `audio_energy_by_frame.last` after each step
       # is how loud that frame was.
@@ -1008,7 +1008,7 @@ module VBlank
 
       private
 
-      # A QUESTION ANOTHER CONSOLE'S CARTRIDGES ANSWER, asked of this one — the registers of a
+      # A question another console's cartridges answer, asked of this one — the registers of a
       # Color game, say. This reader does not have the question (it does not answer respond_to?
       # for it), but a playthrough script written for one console and played on another is an
       # ordinary slip, so it is told in plain words which consoles have the question and what to
@@ -1026,7 +1026,7 @@ module VBlank
       # Only the questions this cartridge's console answers are this reader's (see #method_missing).
       def respond_to_missing?(_question, _include_private = false) = false
 
-      # WHAT A CARTRIDGE WITH NO BUILD RECORD SAYS WHEN ASKED FOR WHAT ONLY THE BUILD KNEW:
+      # What a cartridge with no build record says when asked for what only the build knew
       # which variable is where, which sprite is which, where a routine or a voice is. All
       # of that is worked out as a cartridge is built and kept beside it, never in it.
       #
@@ -1062,7 +1062,7 @@ module VBlank
       # removing it when that object is collected, and a Verifier still alive at exit is
       # never collected — so a suite leaves behind exactly the ones garbage collection did
       # not get round to. Exit is the moment that always arrives.
-      # MADE WHEN THIS FILE LOADS rather than the first time a cartridge saves, which reads
+      # Made when this file loads rather than the first time a cartridge saves, which reads
       # as wasteful and is the only arrangement that works. Several cartridges can now be
       # verified at once, on different cores, and a core may not write anything kept by a
       # class — so whichever one got there first could not make this, and the run stopped.
@@ -1071,7 +1071,7 @@ module VBlank
       # An empty directory and one entry in the list of things to tidy up at exit is what
       # that costs somebody who only ever builds cartridges and never runs one.
       #
-      # TAKEN AWAY AFTER EVERY at_exit HOOK, not by one. A test suite commonly runs its tests
+      # Taken away after every at_exit hook, not by one. A test suite commonly runs its tests
       # FROM an at_exit hook — minitest does — and Ruby runs those hooks newest first, so a
       # hook registered here, after the test runner's, ran before a single test and took the
       # directory away. The emulator quietly made it again the first time it opened a
@@ -1144,7 +1144,7 @@ module VBlank
         play(@frames)
       end
 
-      # PLAY +count+ FRAMES and keep what they produced: the picture the last of them left, and
+      # Play +count+ frames and keep what they produced: the picture the last of them left, and
       # the sound each one made, kept frame by frame so a run can be asked whether the sound
       # arrived evenly rather than only how much of it there was.
       #
@@ -1152,7 +1152,7 @@ module VBlank
       # usual case and which reads the picture once rather than once per frame. Input that
       # changes frame by frame has to be handed over a frame at a time, so it is.
       #
-      # A LONG RUN OF FRAMES IS PLAYED IN SEVERAL STEPS, none longer than the frames of sound
+      # A long run of frames is played in several steps, none longer than the frames of sound
       # this reader holds in memory. The emulator holds the sound of a step until the step
       # ends, so an hour played as one step would be an hour of sound in memory on its way to
       # a reader that was built not to hold it.
@@ -1173,7 +1173,7 @@ module VBlank
         read_picture_size
       end
 
-      # THE PICTURE IS THE SIZE THE CONSOLE DRAWS, which the emulator knows: from the cartridge on the
+      # The picture is the size the console draws, which the emulator knows: from the cartridge on the
       # Advance and the Color, and from the mode the program set its graphics chip to on the
       # PlayStation, which the program chooses as it starts (and could change). So it is read again
       # with each picture.

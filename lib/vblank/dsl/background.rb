@@ -74,7 +74,7 @@ module VBlank
         @pack_cells = nil # see #allow_set_cells
       end
 
-      # LISTS `draw_with` TAKES THOUGH NO TILE MAY BE DRAWN FROM THEM. Which lists a background's
+      # Lists `draw_with` takes though no tile may be drawn from them. Which lists a background's
       # tiles are drawn from is, as a rule, the game's own doing, so naming one that none is drawn
       # from is a name spelled wrong, and refused. A background from the data pack differs: which
       # banks of colours its map uses is in the player's copy of the original, which the game
@@ -87,8 +87,8 @@ module VBlank
         self
       end
 
-      # ONE LIST GIVEN ALONE (`draw_with :dusk`, `draw_with walk, showing: step`) DRAWS EVERY LIST
-      # OF THE LAYER. A layer drawn from several lists is, as a rule, told which list each is drawn
+      # One list given alone (`draw_with :dusk`, `draw_with walk, showing: step`) draws every list
+      # of the layer. A layer drawn from several lists is, as a rule, told which list each is drawn
       # with, by name. A background from the data pack whose pack is read as the game starts has
       # a list for every bank of its slot, since which banks its map uses is in the file. A game
       # whose screen uses one bank gives one list and names none, which is right where the build
@@ -101,7 +101,7 @@ module VBlank
         self
       end
 
-      # THE CELLS `set_cell` MAY WRITE, each as the original's own cell number (a PackCells), or nil
+      # The cells `set_cell` MAY WRITE, each as the original's own cell number (a PackCells), or nil
       # for none.
       #
       # Called by Builder::PackBackgrounds as it declares the background, with the cells its
@@ -111,7 +111,7 @@ module VBlank
         self
       end
 
-      # THE CELLS `set_cell` MAY WRITE IN EACH AREA of a background from the data pack that walks
+      # The cells `set_cell` may write in each area of a background from the data pack that walks
       # between areas: a PackCells for each area, in the order of its maps (one map an area), or nil
       # for an area told none. Each area's pictures are its own, so a picture names one tile of
       # +tiles+ (the background's tiles, every area's after the last) and `set_cell` writes the tile
@@ -133,7 +133,7 @@ module VBlank
                                   shown_map: (shown_map_var unless @map_names.one?), maps: @map_names)
       end
 
-      # PUT A DIFFERENT TILE IN ONE CELL, while the game runs.
+      # Put a different tile in one cell, while the game runs.
       #
       #   room.set_tile 4, 7, "."    # the door is open now
       #   room.set_tile 4, 7, "#"    # ...and shut again
@@ -143,7 +143,7 @@ module VBlank
       # them has to be a sprite instead, out of a budget a game would rather spend on
       # things that move.
       #
-      # +col+ and +row+ are CELL coordinates, not pixels, and either may be something the
+      # +col+ and +row+ are cell coordinates, not pixels, and either may be something the
       # game works out. The tile is named the way the map was written — one of the
       # tileset's own characters, or a number from an imported sheet — so nothing here is
       # a tile number, a place in video memory, or a moment it is safe to write.
@@ -156,7 +156,7 @@ module VBlank
       # On a background declared `held: true` the change waits, with every other change the pass
       # makes, and they all show together on the next frame (Builder#finalize_held_tiles).
       #
-      # ONE CALL FOR EVERY KIND OF BACKGROUND. The tile is named the way that background's map
+      # One call for every kind of background. The tile is named the way that background's map
       # names its cells, so the same line opens a chest wherever the room came from:
       #
       #   rooms.set_tile 10, 4, "o"    # a background that walks between areas: a key of the
@@ -234,7 +234,7 @@ module VBlank
         node
       end
 
-      # A TILE PICKED BY A NUMBER THE GAME WORKS OUT, counting from nought through the tileset's
+      # A tile picked by a number the game works out, counting from nought through the tileset's
       # keys in the order they were written, which a number that names no key leaves the cell alone
       # for. It is one step of the game, picking from the list of every key (#set_tile_picked), as
       # PackCells writes a worked-out `set_cell`: a console that keeps the keys' cells as a table
@@ -290,7 +290,7 @@ module VBlank
         which.close_side(nil)
       end
 
-      # A TILE PICKED FROM A LIST OF KEYS BY A NUMBER THE GAME WORKS OUT: +keys+ are the tileset's
+      # A tile picked from a list of keys by a number the game works out: +keys+ are the tileset's
       # keys the numbers from +from+ up stand for, nil for a number that stands for none, which
       # leaves the cell alone, as does a number before +from+ or past the last key. It is one step
       # of the program however many keys there are (IR::Nodes::SetTile#picked_by): a console's
@@ -312,7 +312,7 @@ module VBlank
       # Whether a cell given another tile takes that tile's wall (#record_wall_change).
       def walls_follow_tiles? = !@solid_tiles.nil? && !solid_lookup.nil?
 
-      # WRITE ONE CELL AS THE ORIGINAL'S OWN CELL NUMBER, on a background drawn from the data pack.
+      # Write one cell as the original's own cell number, on a background drawn from the data pack.
       #
       #   face = background :face, tiles: pack[:video], map: pack[:face_map], colors: pack[:palette],
       #                            across: 40, set_cells: 0xE500..0xE553
@@ -372,7 +372,7 @@ module VBlank
         self
       end
 
-      # THE WALLS FOLLOW THE CELL. A mover is stopped by the walls the tileset's `solid:` tiles
+      # The walls follow the cell. A mover is stopped by the walls the tileset's `solid:` tiles
       # make, and those were worked out from the map as declared; a door opened with set_tile
       # has to let it through, and a wall put down has to stop it. So a background whose cells
       # the game changes keeps its walls where the game can change them too (see
@@ -386,9 +386,9 @@ module VBlank
                                     wall: @solid_tiles.include?(index))
       end
 
-      # HAND THE BACKGROUND A WHOLE DIFFERENT MAP, while the game runs.
+      # Hand the background a whole different map, while the game runs.
       #
-      #   rooms = background :rooms, tiles: :dungeon, map: { hall: HALL, cave: CAVE }
+      #   rooms = background :rooms, tiles: :dungeon, map: { hall: hall, cave: CAVE }
       #   rooms.show_map :cave       # the whole room is the cave now
       #   rooms.show_map where       # ...or whichever map a number the game holds names
       #
@@ -399,13 +399,13 @@ module VBlank
       #
       # +which+ is one of the names the background was declared with, or a number counting
       # from 0 in that order — and the number may be something the game works out, which is
-      # what a game with hundreds of rooms wants (the room number IS the map number).
+      # what a game with hundreds of rooms wants (the room number is the map number).
       #
       # It sets which map is showing rather than doing a copy where you call it, so naming
       # the one already showing costs nothing, and the copy itself happens between frames,
       # when the display is not reading. The picture never shows half of each.
       #
-      # THE MAP COMES BACK EXACTLY AS DECLARED. A cell you had changed with `set_tile` — a
+      # The map comes back exactly as declared. A cell you had changed with `set_tile` — a
       # door you opened — is shut again when you come back to that map. A game that
       # remembers such things opens them again on the way in, which is where it wants that
       # decision anyway.
@@ -454,7 +454,7 @@ module VBlank
       # How many maps this background was declared with. 1 for the ordinary kind.
       def map_count = @map_names.length
 
-      # DRAW THE WHOLE LAYER FROM A DIFFERENT LIST OF COLOURS, from now until it is told
+      # Draw the whole layer from a different list of colours, from now until it is told
       # otherwise. The lists are declared with `colors`, see-through first, and matched to
       # the list the tiles were drawn from by PLACE — so every pixel keeps the place it was
       # drawn at and only the colour that place shows changes. The scenery is not redrawn
@@ -473,7 +473,7 @@ module VBlank
       # frames, and only on a frame where the answer changed — the same bargain `show_map`
       # makes about a map.
       #
-      # A LAYER DRAWN FROM SEVERAL LISTS — a backdrop with more colours than one list holds,
+      # A layer drawn from several lists — a backdrop with more colours than one list holds,
       # each tile drawn from one of them — is recoloured by stepping every list together. Name
       # the lists its tiles were drawn from (`image ..., colors: :sea`) and name what each walks
       # through; one number picks the same step of all of them:
@@ -501,14 +501,14 @@ module VBlank
         self
       end
 
-      # DRAWN WITH A LIST OF COLOURS THE GAME CHANGES (`recolor`), FOR GOOD. The layer's other
+      # Drawn with a list of colours the game changes (`recolor`), for good. The layer's other
       # colours become the sets the list can hold, +sets+ in the order the list counts them, so
       # the number that marks what the list holds (+shown+, the list's own variable) marks what
       # this layer is drawn with too, and the two can never disagree. A number naming none of
       # them is the layer's own colours, which are the list's as it was declared: the colours
       # it holds at power-on, and the ones `recolor :list, :own` puts back.
       #
-      # A LAYER DRAWN FROM SEVERAL LISTS follows the changing one for the tiles drawn from it
+      # A layer drawn from several lists follows the changing one for the tiles drawn from it
       # alone (`draw_with({ text: :text })`), and its other lists stay as drawn at every step:
       # letters in a list that never changes beside words in one the game fades.
       #
@@ -527,11 +527,11 @@ module VBlank
         self
       end
 
-      # DRAWN WITH SEVERAL LISTS OF COLOURS THE GAME CHANGES, FOR GOOD: `draw_with({ sign: :sign,
+      # Drawn with several lists of colours the game changes, for good: `draw_with({ sign: :sign,
       # words: :words })`, each of +lists+ told `recolor`. A tile then shows what its own list holds
       # now, each list counted by its own number, as a sprite drawn with that list does.
       #
-      # WHY IT IS NOT #follow_changing_list! TWICE. A layer that follows one list keeps the sets
+      # Why it is not #follow_changing_list! Twice. A layer that follows one list keeps the sets
       # that list can hold as its own other colours, and reads the list's number for which to show:
       # one number, one row of sets. Two lists have two numbers, and a row for every pair of them
       # is one list's sets times the other's, for every list added. A console's own games keep
@@ -554,7 +554,7 @@ module VBlank
         self
       end
 
-      # TILES DRAWN FROM A LIST THE GAME CHANGES, ON A LAYER NOT TOLD TO DRAW WITH IT, would show
+      # Tiles drawn from a list the game changes, on a layer not told to draw with it, would show
       # the colours the list was declared with on every frame, whatever the game sets it to hold: a
       # picture wrong in silence. Called once the whole program is declared (Builder::ColorLists),
       # for each list told `recolor` and each layer not told `draw_with` it.
@@ -577,14 +577,14 @@ module VBlank
       def rows = @cells[1]
 
       # The background's walls as {Box}es a sprite can be tested against — the merged
-      # solid-tile rectangles of its FIRST map. Empty if nothing is solid. Introspection
+      # solid-tile rectangles of its first map. Empty if nothing is solid. Introspection
       # now rather than the way a mover is stopped: a mover asks the grid (see
       # #solid_lookup), which is what lets the walls follow the map showing.
       def solid_boxes
         @solid_boxes ||= @walls.map { |x, y, w, h| @builder.box(x, y, w, h) }
       end
 
-      # WHERE THE WALLS ARE, as something a mover can ASK rather than something it has to
+      # Where the walls are, as something a mover can ask rather than something it has to
       # test against piece by piece.
       #
       # A room's walls make some number of rectangles — a bordered room four, a maze of
@@ -592,14 +592,14 @@ module VBlank
       # what the room is made of, and is emitted afresh at every place that moves. The same
       # walls as a grid answer "is this cell a wall" in one read, for any room.
       #
-      # A BACKGROUND WITH SEVERAL MAPS KEEPS ONE GRID PER MAP, laid end to end, and the
+      # A background with several maps keeps one grid per map, laid end to end, and the
       # mover reads the one that is really in the cells. That is what makes walking through
       # a door work: a room is a map, so the walls in front of you are the walls of the map
       # showing, and a cell that is a wall in the hall can be open floor in the cave. The
       # map to read is worked out once per check rather than once per cell, so a room with
       # several maps costs the same nine reads a room with one does.
       #
-      # It reads the map really IN THE CELLS rather than the one the game last asked for.
+      # It reads the map really in the cells rather than the one the game last asked for.
       # `show_map` copies between frames, so for the one frame in between those differ — and
       # a player can feel being stopped by a wall that is not on screen, where they cannot
       # feel a frame of lag. The walls always agree with the picture.
@@ -619,7 +619,7 @@ module VBlank
                                          name: @name, maps: @solid_cells.length,
                                          # length, not one? — a background whose maps mostly have
                                          # no walls still needs the offset, and `one?` counts the
-                                         # grids that are THERE rather than the maps.
+                                         # grids that are there rather than the maps.
                                          map_var: @solid_cells.length == 1 ? nil : live_map_var)
       end
 
@@ -653,7 +653,7 @@ module VBlank
         record_scroll_write
       end
 
-      # SHOW THE BACKGROUND ONLY INSIDE A BOX on the screen, from the frame after, the way a
+      # Show the background only inside a box on the screen, from the frame after, the way a
       # scroll shows:
       #
       #   tall = var :tall, 0
@@ -685,7 +685,7 @@ module VBlank
         record_box_write
       end
 
-      # SHOW THE BACKGROUND EVERYWHERE AGAIN, the box set aside, from the frame after. A
+      # Show the background everywhere again, the box set aside, from the frame after. A
       # background never held to a box is shown everywhere already, and this changes nothing.
       def show_everywhere
         refuse_box_on_bitmap_screen!("show_everywhere")
@@ -694,7 +694,7 @@ module VBlank
         record_box_write
       end
 
-      # SWITCH THE BACKGROUND OFF, from the frame after, the way a scroll shows:
+      # Switch the background off, from the frame after, the way a scroll shows:
       #
       #   sword.hide if passes == 90
       #   sword.show if passes == 150
@@ -720,7 +720,7 @@ module VBlank
         record_box_write
       end
 
-      # SWITCH THE BACKGROUND ON AGAIN after `hide`, from the frame after. A background never
+      # Switch the background on again after `hide`, from the frame after. A background never
       # hidden shows already, and this changes nothing. It sets aside a box from
       # `show_only_inside` too.
       def show
@@ -728,7 +728,7 @@ module VBlank
         show_everywhere
       end
 
-      # Slide each ROW of the picture sideways by its own amount, so the whole background
+      # Slide each row of the picture sideways by its own amount, so the whole background
       # bends instead of moving as one flat rectangle. The block is given the row (0 at the
       # top of the screen, 159 at the bottom) and gives back how far across that row sits:
       #
@@ -771,7 +771,7 @@ module VBlank
       # {Value} (an angle the game works out at run time). Needs `screen :rotozoom` — see
       # {Builder::Tiled#make_background_affine} for why.
       #
-      #   world = background :world, tiles: :terrain, map: MAP
+      #   world = background :world, tiles: :terrain, map: map
       #   world.rotate 15          # tilt the whole picture
       #   world.rotate spin        # or however far `spin` holds
       #
@@ -833,7 +833,7 @@ module VBlank
                             fraction_bits: Fraction::DEFAULT_BITS)
       end
 
-      # WHICH POINT THE PICTURE TURNS AROUND — the one place on screen that stays still
+      # Which point the picture turns around — the one place on screen that stays still
       # while the rest of the picture swings or grows about it.
       #
       #   background(:sword, tiles: :sword, map: grid).turns_around(120, 72).scale(16.0)
@@ -846,7 +846,7 @@ module VBlank
       # a pivot eight pixels off puts the whole thing outside the screen for the first half
       # of its arrival. It flies in from nowhere.
       #
-      # Set it ONCE, where the background is declared: a picture turns around one point
+      # Set it once, where the background is declared: a picture turns around one point
       # however many times the game turns it. The display is given a single place the
       # picture is pinned to, so two different answers could not both hold — and this is
       # not a thing to change per frame, which is why it takes numbers you write rather
@@ -855,7 +855,7 @@ module VBlank
       # Nothing about the picture moves when only the pivot changes: at its drawn size,
       # upright, a background lands in exactly the same place whatever it turns around.
       #
-      # WHICH POINT OF THE MAP IS THERE is the screen's own point unless the game names one:
+      # Which point of the map is there is the screen's own point unless the game names one:
       # the map hangs from the screen's corner, so the point of it under (120, 72) is its own
       # (120, 72). `map_point:` names another, in the map's pixels from its top left:
       #
@@ -892,7 +892,7 @@ module VBlank
               "#{instead}, or use `screen :tiled`."
       end
 
-      # A BOX IS A LAYER'S, and a `screen :bitmap` has no layers: its background is painted into
+      # A box is a layer's, and a `screen :bitmap` has no layers: its background is painted into
       # the one picture where it is declared, and nothing draws it again.
       def refuse_box_on_bitmap_screen!(verb)
         return unless @bitmap
@@ -929,7 +929,7 @@ module VBlank
         scene ? :"__solid_#{@name}__in_#{IR::Modes.strip_scene_prefix(scene)}" : :"__solid_#{@name}"
       end
 
-      # A BLOCK OF CELLS OF A MAP BROUGHT INTO VIEW A STRIP AT A TIME. One cell of such a map is
+      # A block of cells of a map brought into view a strip at a time. One cell of such a map is
       # changed with set_tile, which a console keeps in the map showing as the view moves; a block
       # (fill_cells, restore_cells) is not made for such a map yet. +verb+ is the block's.
       def refuse_block_on_streamed_map!(verb)
@@ -977,7 +977,7 @@ module VBlank
       # kept, so several calls in several branches count the same lists the same way. The
       # tiles play the part a sprite's poses play: a list is matched to the one they were
       # drawn from, place by place, so it is the tiles that decide whether another list fits.
-      # A background's other colours are STEPS rather than single lists: each step one list for
+      # A background's other colours are steps rather than single lists: each step one list for
       # every list its tiles were drawn from, in the order of #drawn_lists, nil where a list stays as
       # drawn. A layer drawn from one list has steps of one, which is today's swap exactly.
       def recolors
@@ -1210,7 +1210,7 @@ module VBlank
         @builder.make_background_affine(@name)
       end
 
-      # IS THIS TURN STILL PART OF DECLARING THE BACKGROUND, or something the frame does
+      # Is this turn still part of declaring the background, or something the frame does
       # to it afterwards?
       #
       # `background(:sword, tiles: :t, map: grid).scale(16.0)` is one line, and the size in
@@ -1226,14 +1226,14 @@ module VBlank
         !@declaration_tail.nil? && @builder.last_statement.equal?(@declaration_tail)
       end
 
-      # ...and a turn that WAS part of the declaration leaves the declaration open, so a
+      # ...and a turn that was part of the declaration leaves the declaration open, so a
       # second one chained after it (`.scale(16.0).rotate(45)`) is part of it too.
       def extend_declaration_tail
         @declaration_tail = @builder.last_statement
       end
 
       # The point is settled while the program is written, so it takes a number rather than
-      # something the game works out. A pivot that MOVED would be its own effect and a real
+      # something the game works out. A pivot that moved would be its own effect and a real
       # one; refusing it here says so plainly instead of half-doing it.
       def require_integer_pixel!(value, axis)
         return value if value.is_a?(Integer)
@@ -1254,7 +1254,7 @@ module VBlank
               "map's top left, like `map_point: [128, 128]`."
       end
 
-      # A number written on the declaration line is what the background STARTS at, so it is
+      # A number written on the declaration line is what the background starts at, so it is
       # set once at power-on; the same number written anywhere else is a write this frame
       # makes, and stays where the author put it.
       def write_affine_var(var, value, declaring)

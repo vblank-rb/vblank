@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # HOW MUCH ROOM THE PICTURES TOOK, and how much the framework's own choice bought back.
+    # How much room the pictures took, and how much the framework's own choice bought back.
     #
     # A console keeps the pictures it draws in a memory of its own, and it is small and fixed:
     # 32K for the sprites, a block of the same size for the tiles a background is built from.
@@ -76,7 +76,7 @@ module VBlank
       # is how far into the area a tile starts, in these.
       TILE_BYTES = 32
 
-      # ONE SCENE'S SPRITE MEMORY, with the pictures every screen shows: +scene+ as the author
+      # One scene's sprite memory, with the pictures every screen shows: +scene+ as the author
       # named it, or nil in a game with no scenes. +used+ is what it takes. +room_bytes+ is how
       # much of that is rooms that sprites kept to one frame share, a room for each sprite that
       # can show their pictures at once, so that what is used there follows what is on screen;
@@ -126,7 +126,7 @@ module VBlank
         def distinct_runs = sprites.map { |entry| [entry.first_tile, entry.tiles] }.uniq
       end
 
-      # WHERE ONE SPRITE'S PICTURES ARE IN SPRITE MEMORY, in one scene. +first_tile+ and +tiles+
+      # Where one sprite's pictures are in sprite memory, in one scene. +first_tile+ and +tiles+
       # are the run of tiles it draws from, and +address+ the first of them in the console's
       # memory, to lay against a reading of it. +pictures+ are the names of the pictures it shows.
       # +pieces+ is how many of the console's sprites each picture is drawn as, one for a picture
@@ -169,7 +169,7 @@ module VBlank
                        sent_as_shown: "sent as shown", by_groups: "by groups" }.freeze
       end
 
-      # ONE SET OF PICTURE GROUPS IN ONE SCENE'S SPRITE MEMORY (see Builder::PictureGroups): the
+      # One set of picture groups in one scene's sprite memory (see Builder::PictureGroups): the
       # set's +name+, and the room its pictures are kept in, +tiles+ long from +first_tile+, at
       # +address+ in the console's memory. Each grouped picture has one place in the room, shared
       # with pictures whose groups are never up with its own, and is copied there as one of its
@@ -193,7 +193,7 @@ module VBlank
         end
       end
 
-      # ONE GROUP OF A SET: its +number+, its +pictures+, the +bytes+ bringing it up copies, and
+      # One group of a set: its +number+, its +pictures+, the +bytes+ bringing it up copies, and
       # each picture with the first tile of its place.
       Group = Data.define(:number, :pictures, :bytes, :places) do
         def line
@@ -202,7 +202,7 @@ module VBlank
         end
       end
 
-      # A SET OF GROUPS UP AT ONCE, and the +bytes+ their pictures come to, each picture once.
+      # A set of groups up at once, and the +bytes+ their pictures come to, each picture once.
       UpTogether = Data.define(:groups, :bytes) do
         # "group 3", "groups 0 and 1", "groups 0, 1, 2".
         def self.groups_words(groups) = "#{groups.length == 1 ? 'group' : 'groups'} #{groups.join(groups.length == 2 ? ' and ' : ', ')}"
@@ -211,9 +211,9 @@ module VBlank
         def line = "    up together: #{summary}"
       end
 
-      # HOW MANY OF THE CONSOLE'S SPRITES THE GAME SPENDS, which is not the same number as
+      # How many of the console's sprites the game spends, which is not the same number as
       # how many sprites the author declared. The console draws 128 at once, and a picture
-      # bigger than the largest one of them is drawn as SEVERAL standing shoulder to
+      # bigger than the largest one of them is drawn as several standing shoulder to
       # shoulder — so a boss can quietly cost nine. Nobody writes that, and it comes out of
       # the same 128 as everything else, so it is worth a number.
       #
