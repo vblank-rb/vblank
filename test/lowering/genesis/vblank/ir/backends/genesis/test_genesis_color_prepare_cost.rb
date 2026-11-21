@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# WHAT PREPARING THE COLOURS COSTS A GENESIS on a pass that changes few of them or none, measured in the
+# What preparing the colours costs a Genesis on a pass that changes few of them or none, measured in the
 # emulator. The cartridge works the colour memory out in work RAM as a pass ends and copies it to the video
 # chip in the blank (Runtime::Tint). A Genesis game of its own time writes a palette line only when a fade
 # or an effect changes it, so a VBlank game must spend nothing on a pass that changed no colour, and on a
@@ -40,7 +40,7 @@ class TestGenesisColorPrepareCost < Minitest::Test
 
   private
 
-  # The share of each frame the colour routines took, over PASSES passes.
+  # The share of each frame the colour routines took, over passes passes.
   def colour_share(game)
     rom = game.build_rom(console: :genesis, out: StringIO.new, err: StringIO.new, profile: false)
     result = rom.profile(out: StringIO.new, frames: PASSES)

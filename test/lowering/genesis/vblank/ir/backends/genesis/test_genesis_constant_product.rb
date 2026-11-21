@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# MULTIPLYING BY A NUMBER WRITTEN IN THE GAME on the Genesis: shifts, adds and subtracts, or two of the
+# Multiplying by a number written in the game on the Genesis: shifts, adds and subtracts, or two of the
 # 68000's word multiplies, written where the sum is (Lowering::Products), and a product by a comparison
 # as a branch; never the runtime's multiply, which takes three word multiplies and a call. The answers
 # are held to the interpreter's for every number past every edge, on every pass; the shortcut is read
@@ -25,7 +25,7 @@ class TestGenesisConstantProduct < Minitest::Test
 
   Build = VBlank::IR::Build
 
-  # Each of EDGES in turn, one a pass, and every product of it kept in a variable of its own.
+  # Each of edges in turn, one a pass, and every product of it kept in a variable of its own.
   def self.game_of_edges
     b = Builder.new(options: VBlank::Cartridge::Options.new(console: :genesis))
     b.instance_eval do

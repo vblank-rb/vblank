@@ -38,7 +38,7 @@ class TestGenesisDmaGuard < Minitest::Test
     assert_equal SPRITES_COMMAND_KEPT + SPRITES_WORD_WRITTEN + SPRITES_WORD_WRITTEN, dma_started(samples: false)
   end
 
-  # THE CONSOLE'S MAKER SAYS a bus request made in an interrupt breaks one the main program has made
+  # The console's maker says a bus request made in an interrupt breaks one the main program has made
   # (Bulletin #3), and the blank's interrupt asks for the bus to read the controller: so the copy's
   # request is made with interrupts held off, and they stay off until the Z80 is let go.
   def test_a_copy_stops_the_sound_processor_with_interrupts_held_off_in_a_game_with_recordings
@@ -67,7 +67,7 @@ class TestGenesisDmaGuard < Minitest::Test
     refute code_of(painted_game(recording: false)).include?(BUS_ASKED_FOR), "a game with no recordings waits for no bus"
   end
 
-  # THE CONTROLLER IS READ IN THE BLANK'S INTERRUPT, and a read of its port just before the Z80 reads
+  # The controller is read in the blank's interrupt, and a read of its port just before the Z80 reads
   # the cartridge can spoil the byte the Z80 reads (Bulletin #4, Addendum 3): in a game that plays
   # recordings the interrupt reads it with the Z80 stopped, and the main program's stops never have an
   # interrupt inside them (above).
