@@ -4,18 +4,18 @@ require "zlib"
 
 module VBlank
   module IR
-    # WHERE SAVE DATA LIVES IN SAVE MEMORY, and how a copy of it shows whether it is good.
+    # Where save data lives in save memory, and how a copy of it shows whether it is good.
     #
     # A fact about the program's save memory rather than about any machine, so every backend
     # reads it from here: the console lays its chip out this way and the interpreter lays its
     # store out the same way, which is what lets a test cut the power half way through a save
     # and mean the same thing on both.
     #
-    # THE FIRST BLOCK OF THE 32K MEMORY IS `save_var`'s, as it always was: a marker and a word
+    # The first block of the 32K memory is `save_var`'s, as it always was: a marker and a word
     # per saved number. Save data starts after it, at a place nothing a game adds can move — so a game
     # that grows another `save_var` still finds last week's save files where it left them.
     #
-    # THEN A TABLE OF PLACES: one row per record, saying where in save memory it lives, how
+    # Then a table of places: one row per record, saying where in save memory it lives, how
     # big a half of it is and how many copies it has, found by a number worked out from the
     # record's name. A record's place is read from here at power-on rather than worked out
     # from the records declared before it, so a game updated after it shipped — a record
@@ -24,7 +24,7 @@ module VBlank
     # halves, the newer one wins, a checksum last), so the power going off while it is being
     # written leaves the last good one.
     #
-    # EVERY COPY IS KEPT TWICE. A save goes into the older of the two, and only once the whole
+    # Every copy is kept twice. A save goes into the older of the two, and only once the whole
     # of it is written does its header mark it newer. So a save cut off half way — the
     # power going off, the cartridge pulled — leaves the other one as it was, and the copy is
     # still the last good save. Each half starts with a header:
@@ -34,7 +34,7 @@ module VBlank
     #             changed shape reads last version's saves as empty rather than as nonsense
     #   sequence  a word, one more than the other half's, so the newer half is known
     #   kind      a word: this half holds a save, or marks the copy erased
-    #   checksum  a word over the half's bytes, written LAST: until it is, the half cannot
+    #   checksum  a word over the half's bytes, written last: until it is, the half cannot
     #             pass for good
     module SaveLayout
       module_function
@@ -43,7 +43,7 @@ module VBlank
       # that places save data asks a Memory (below), which knows flash starts elsewhere.
       START = 0x1000
 
-      # HOW `save_var` KEEPS ITS NUMBERS in that first block: the game's marker in the first
+      # How `save_var` keeps its numbers in that first block: the game's marker in the first
       # word, then a word a variable in the order they were declared. A block of 4K holds the
       # marker and 1023 of them, and that is a limit rather than a starting point: one more
       # would land on the table of places, and every save file would go with it.
@@ -77,7 +77,7 @@ module VBlank
       # The 32K memory's size.
       SIZE = 0x8000
 
-      # THE SAVE MEMORIES THE BUILD PICKS FROM, in kilobytes: the 32K above, or a flash chip of
+      # The save memories the build picks from, in kilobytes: the 32K above, or a flash chip of
       # 64K or 128K. Flash keeps a save with no battery, and real cartridges shipped both sizes.
       MEMORIES = [32, 64, 128].freeze
 
@@ -100,7 +100,7 @@ module VBlank
       # can never touch the copy beside it.
       SECTOR = 0x1000
 
-      # THE SHAPE OF ONE SAVE MEMORY: how big it is, where the table of places and the records
+      # The shape of one save memory: how big it is, where the table of places and the records
       # go, and how much room a half of a record takes. Everything that works out a place in
       # save memory asks this — the build's check that the records fit, the routines that
       # place them at power-on, and the address of each half — so none of them can lay the
@@ -222,7 +222,7 @@ module VBlank
       # The Memory a `save_memory` node declares.
       def memory_named_by(node) = memory(node.kilobytes, node.chip)
 
-      # THE SAVE MEMORIES A CONSOLE'S CARTRIDGE CAN CARRY, smallest first, as Memory: what its
+      # The save memories a console's cartridge can carry, smallest first, as Memory: what its
       # description lists (Console::Description#save_memories).
       def offered_by(console) = console.save_memories.map { |kilobytes, chip| memory(kilobytes, chip) }
 
@@ -244,7 +244,7 @@ module VBlank
       # The memory of +offered+ that is +kilobytes+ big, or nil.
       def offered_of_size(offered, kilobytes) = offered.find { |one| one.kilobytes == kilobytes }
 
-      # HOW MUCH SAVE MEMORY A CARTRIDGE HAS, a Memory: the size the game +named+ (in kilobytes)
+      # How much save memory a cartridge has, a Memory: the size the game +named+ (in kilobytes)
       # where the console +offered+ one of that size, else the memory its records +needed+ (nil
       # before they are laid out, or for a game with none), else the smallest the console picks
       # from. The one rule, so the program and its records cannot disagree.
@@ -273,7 +273,7 @@ module VBlank
       # How many bytes one half of a copy takes: its header and its body, kept to whole words.
       def half_bytes(body) = HEADER + (((body + 3) / 4) * 4)
 
-      # THE CHECKSUM, written once so both backends compute the same one. Two running totals,
+      # The checksum, written once so both backends compute the same one. Two running totals,
       # the bytes and the totals so far, each kept to sixteen bits: the second is what notices
       # two bytes that swapped places, which a plain sum does not.
       def checksum(bytes)
@@ -311,7 +311,7 @@ module VBlank
         Int32.wrap(Zlib.crc32(items.map { |kind, name, width, count| [kind, name, width, count].join(":") }.join(";")))
       end
 
-      # THE TABLE OF PLACES' OWN FACTS. The build writes the table through the same routines a
+      # The table of places' own facts. The build writes the table through the same routines a
       # record uses; SaveImage#write_table and SaveImage#table write the same layout directly, for
       # a test that wants to start a game from a table it chose and see where each record went.
       module Table
