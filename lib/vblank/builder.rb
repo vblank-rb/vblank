@@ -9,8 +9,10 @@
 # the game makes records that test.
 
 module VBlank
+  #--
   # Must come before the concerns: a game file among them runs its `while` loops as it loads, and
   # a loop asks which builder is in use (PlainRuby::Steps::LoopTest).
+  #++
   class Builder
     IN_USE_KEY = :vblank_builder_in_use
 
@@ -92,26 +94,27 @@ require_relative "builder/pack_places"         # place, shading, viewer from pac
 require_relative "builder/shell_screens"       # shell_screen: a shell's first screen, made the game's own
 
 module VBlank
-  # DSL context for building a GBA ROM.
+  # The verbs of a game
   #
-  # Each DSL method builds a node in an IR tree — an in-memory description of what
-  # the program does — and returns. {VBlank.build} lowers the finished tree to a
-  # ROM once the block ends. Building the whole tree before lowering any of it is
-  # what lets a {#call} refer to a {#func} defined later in the block.
+  # Every verb a game block can write, such as `screen`, `sprite`, `game_loop` and `beep`, is a
+  # method of Builder. Each one describes part of the game and returns, and the finished
+  # description is turned into a cartridge once the block ends. Because the whole game is
+  # described before any of it is built, a `call` can name a `func` that is written later in
+  # the block.
   #
-  # @example Minimal ROM
-  #   rom = VBlank.build("MYGAME", console: :gba) do
-  #     entry { loop_forever }
-  #   end
-  #
-  # @example Draw pixels
-  #   rom = VBlank.build("PIXELS", console: :gba) do
-  #     screen :bitmap
-  #     pixel 120, 80, :red
-  #     pixel 121, 80, color("#00FF00")
-  #     fill_rect 50, 50, 30, 20, rgb(31, 31, 0)
-  #     halt
-  #   end
+  # ```ruby
+  # rom = VBlank.build("PIXELS", console: :gba) do
+  #   screen :bitmap
+  #   pixel 120, 80, :red
+  #   pixel 121, 80, color("#00FF00")
+  #   fill_rect 50, 50, 30, 20, rgb(31, 31, 0)
+  #   halt
+  # end
+  # ```
+  #--
+  # Each DSL method builds a node in an IR tree, an in-memory description of what the program
+  # does, and returns. VBlank.build lowers the finished tree once the block ends.
+  #++
   class Builder
     include Randomness # seed, randomize, roll, rand, chance
     include Sound      # enable_sound, define_sound, beep
@@ -2323,8 +2326,8 @@ module VBlank
     # build it was handed (see examples/shmup). +args+ pass through to a block that takes them (a loop
     # index). Sub-DSLs with their own vocabulary — `entry`, `case_var`, `font`, `song` —
     # keep instance_eval instead, since their blocks speak a different verb set.
-    def run_block(*args, &block)
-      block.call(*args)
+    def run_block(*args)
+      yield(*args)
     end
 
     # Low-level entry context for raw instruction emission.
