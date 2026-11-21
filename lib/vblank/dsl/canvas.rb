@@ -2,24 +2,36 @@
 
 module VBlank
   module DSL
-    # A picture the game draws into while it runs, handed back by `canvas`.
+    # A picture the game draws into
     #
+    # `canvas` hands one back: a picture the game draws into while it runs, with words in colour
+    # names: a pixel, a rectangle, a picture stamped on, a letter, a line of text, a number.
+    # What a canvas draws shows on the next frame.
+    #
+    # ```ruby
+    # board = canvas :board, width: 208, height: 32, colors: :ink
+    # background :box, tiles: :board, map: board.cells
+    # board.clear
+    # board.fill_rect 4, 4, 40, 8, :red
+    # board.draw_text "HI", 60, 4, :white
+    # ```
+    #
+    # A position the game works out is clipped at the canvas edge, so a dot that wandered off
+    # needs no test around it. A position written as a number past the edge is refused, since
+    # that one could only be a mistake.
+    #--
     # Underneath it is the list a `tiles ..., from: list` run or an `image ..., from: list`
-    # picture paints from, and the canvas keeps that list for you: it fills it, packs each
-    # pixel into the half of a byte the console wants, and calls `changed` after every word,
-    # so the picture shows on the next frame. What a game holds is the words — a pixel, a
-    # rectangle, a picture stamped on, a letter, a line of text, a number — in colour names.
+    # picture paints from, and the canvas keeps that list for you: it fills it, packs each pixel
+    # into the half of a byte the console wants, and calls `changed` after every word.
     #
     # Every word is built from what a game could write itself (list reads and writes, the bit
     # operators, a table, a loop, a routine), which is why it works the same on the console
-    # and in the interpreter — and from one thing it could not: setting a run of the list's
+    # and in the interpreter, and from one thing it could not: setting a run of the list's
     # bytes at once (IR list_fill), which `clear` and `fill_rect` use for whole bytes, where a
     # byte at a time cost a clear of a big canvas most of a frame.
-    #
-    # A position the game works out is clipped at the canvas edge, so a dot that wandered off
-    # needs no test around it. A position written as a number past the edge is a friendly
-    # error, since that one could only be a mistake.
+    #++
     class Canvas
+      # The name the canvas was declared with, and how many pixels across and down it is.
       attr_reader :name, :width, :height
 
       def initialize(builder, name:, list:, run:, width:, height:, colors:)
@@ -36,23 +48,42 @@ module VBlank
         @pixel_routine = nil
       end
 
-      # The list the pixels live in, packed the way the console keeps them, for a game that
-      # wants to write bytes itself. Call `changed` after.
+      # The List the pixels live in, packed the way the console keeps them, for a game that wants
+      # to write bytes itself.
+      #
+      # Call #changed after writing into it, so the picture shows.
       def list = @list
 
-      # Show what the list holds on the next frame. Every drawing word calls it already. With
-      # +now+, on this frame, copied here (see TileRun#changed).
+      # Shows what the canvas's list holds on the next frame.
+      #
+      # Every drawing word calls it already, so a game calls it only after writing into #list
+      # itself.
+      #
+      # * `now:` - true copies the pixels at once and shows them on this frame, as
+      #   TileRun#changed does.
       def changed(now: false) = @run.changed(now: now)
 
-      # The cells of a background map that show this canvas, as rows of tile keys — the
-      # first row of the canvas's tiles, then the next. Put them in a map as they are, or
-      # beside other tiles of the same tileset. (A canvas a sprite shows has none.)
+      # The cells of a background map that show this canvas, as rows of tile keys: the first row
+      # of the canvas's tiles, then the next.
+      #
+      # Put them in a map as they are, or beside other tiles of the same tileset. A canvas a
+      # sprite shows has none.
+      #
+      # ```ruby
+      # background :box, tiles: :board, map: board.cells
+      # ```
       def cells
         across = @width / 8
         (0...(@height / 8)).map { |row| (1..across).map { |col| (row * across) + col } }
       end
 
-      # One pixel. +x+ and +y+ may be worked out as the game runs.
+      # Draws one pixel in `color` at `x`, `y`.
+      #
+      # `x` and `y` may be worked out as the game runs.
+      #
+      # ```ruby
+      # board.pixel dot_x, dot_y, :red
+      # ```
       def pixel(x, y, color)
         refuse_written_position_outside!(x, y)
         paint_at(x, y, place_of(color))
@@ -60,8 +91,16 @@ module VBlank
         nil
       end
 
-      # The whole canvas one colour; see-through when no colour is given. Every byte of the
-      # list holds two pixels of that colour, so it is one run of the list filled at once.
+      # Paints the whole canvas one colour, or see-through when no colour is given.
+      #
+      # ```ruby
+      # board.clear          # see-through
+      # board.clear :white
+      # ```
+      #--
+      # Every byte of the list holds two pixels of that colour, so it is one run of the list
+      # filled at once.
+      #++
       def clear(color = :transparent)
         place = place_of(color)
         fill_bytes(0, @width * @height / 2, place | (place << 4))
@@ -69,15 +108,22 @@ module VBlank
         nil
       end
 
-      # A filled rectangle, any width. Every part of it may be worked out as the game runs; a
-      # width or height of 0 or less draws nothing, and what falls outside the canvas is cut
-      # off.
+      # Draws a filled rectangle in `color`, its top-left at `x`, `y`, `w` pixels across and `h`
+      # down.
       #
+      # Every part of it may be worked out as the game runs. A width or height of 0 or less draws
+      # nothing, and what falls outside the canvas is cut off.
+      #
+      # ```ruby
+      # board.fill_rect 4, 4, health, 8, :red    # a meter as long as the health
+      # ```
+      #--
       # A row of it is whole bytes with at most a pixel left over at each end, since a byte
       # holds two pixels side by side, left one first. So each row paints its odd end pixels
       # one at a time and fills the bytes between — a run per tile it crosses, because a row
       # of one tile is four bytes and the same row of the next tile is a whole tile further on
       # in the list.
+      #++
       def fill_rect(x, y, w, h, color)
         refuse_written_position_outside!(x, y)
         place = place_of(color)
@@ -95,9 +141,14 @@ module VBlank
         nil
       end
 
-      # A picture declared with `image`, stamped on with its top-left at +x+, +y+. Its
-      # see-through pixels leave the canvas as it was. Every colour it draws must be one of
+      # Stamps a picture declared with `image` onto the canvas, its top-left at `x`, `y`.
+      #
+      # Its see-through pixels leave the canvas as it was. Every colour it draws must be one of
       # the canvas's own.
+      #
+      # ```ruby
+      # board.blit :flag, 100, 8
+      # ```
       def blit(image, x, y)
         refuse_written_position_outside!(x, y)
         table = picture_table(image)
@@ -110,10 +161,17 @@ module VBlank
         nil
       end
 
-      # One letter of +font+ with its top-left at +x+, +y+. +code+ is the character, or its
-      # number — which may be worked out as the game runs, so a name kept in a list can be
-      # drawn a letter at a time. Hands back how far across the letter reached, gap included,
-      # as a Value: where the next letter goes.
+      # Draws one letter in `color` with its top-left at `x`, `y`, and hands back how far across
+      # it reached, gap included, as a Value: where the next letter goes.
+      #
+      # `code` is the character, or its number, which may be worked out as the game runs, so a
+      # name kept in a list can be drawn a letter at a time.
+      #
+      # ```ruby
+      # along += board.draw_letter(typed[at], along, 20, :white)   # a letter kept in a list
+      # ```
+      #
+      # * `font:` - the font to draw it in.
       def draw_letter(code, x, y, color, font: :default)
         refuse_written_position_outside!(x, y)
         code = code.ord if code.is_a?(String)
@@ -138,7 +196,13 @@ module VBlank
         @advance
       end
 
-      # A line of text written in the program, with its top-left at +x+, +y+.
+      # Draws a line of text written in the program, in `color`, with its top-left at `x`, `y`.
+      #
+      # ```ruby
+      # board.draw_text "READY", 8, 12, :white
+      # ```
+      #
+      # * `font:` - the font to draw it in.
       def draw_text(text, x, y, color, font: :default)
         face = @builder.canvas_font(font)
         along = 0
@@ -149,8 +213,17 @@ module VBlank
         nil
       end
 
-      # A number the game works out, right-aligned in a field +digits+ wide, with no leading
-      # zeros — the same field a `draw_number` draws.
+      # Draws a number the game works out, in `color`, right-aligned in a field `digits` wide
+      # with its top-left at `x`, `y`, with no leading zeros.
+      #
+      # It is the same field the `draw_number` verb draws.
+      #
+      # ```ruby
+      # board.draw_number score, 150, 4, :white, digits: 6
+      # ```
+      #
+      # * `digits:` - how many digits wide the field is.
+      # * `font:` - the font to draw it in.
       def draw_number(number, x, y, color, digits:, font: :default)
         cell = @builder.canvas_font(font).cell_w
         digits.times do |from_right|
