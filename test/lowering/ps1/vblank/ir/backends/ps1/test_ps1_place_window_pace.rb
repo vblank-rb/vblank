@@ -11,7 +11,7 @@ require "stringio"
 class TestPS1PlaceWindowPace < Minitest::Test
   STRIPS = 24
 
-  # A wall down the viewer's left side, from a whole behind them to six ahead, in strips strips one
+  # A wall down the viewer's left side, from a whole behind them to six ahead, in STRIPS strips one
   # above the next, so the near limit cuts every strip. Seen straight on, the wall reaches from past
   # the screen's left edge to x 100. The setting window: :whole draws it four times a pass through the
   # whole screen; :right through a window from x 140 on, which the wall lies wholly left of.

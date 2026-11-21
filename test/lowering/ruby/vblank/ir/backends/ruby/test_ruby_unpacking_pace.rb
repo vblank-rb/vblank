@@ -82,7 +82,7 @@ class TestRubyUnpackingPace < Minitest::Test
     node.is_a?(Prism::CallNode) && %i[get set].include?(node.name) && node.receiver.is_a?(Prism::InstanceVariableReadNode)
   end
 
-  # The pack: PARTS_BEFORE short loops, then a sample loop round operators operators kept as lists.
+  # The pack: PARTS_BEFORE short loops, then a sample loop round OPERATORS operators kept as lists.
   private def looped_pack(builder, from)
     operators = OPERATORS
     samples = SAMPLES

@@ -12,7 +12,7 @@ class TestPS1DelaySlotCost < Minitest::Test
   TURNS = 2000
   CYCLES_A_FRAME = VBlank::Console::PLAYSTATION.cycles_a_frame
 
-  # Each pass adds to a number turns times, in a routine of its own so the profile names it.
+  # Each pass adds to a number TURNS times, in a routine of its own so the profile names it.
   COUNTING = VBlank.game("COUNTING", consoles: %i[ps1]) do
     total = 0
     func(:count_up) { repeat(TURNS) { total += 3 } }

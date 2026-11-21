@@ -13,10 +13,10 @@ class TestPS1ShapeRingPace < Minitest::Test
   BANDS = 5
   COPIES = 8
 
-  # Where the copies balls stand when they are all in view: spread across it, nine wholes ahead.
+  # Where the COPIES balls stand when they are all in view: spread across it, nine wholes ahead.
   AHEAD = Array.new(COPIES) { |k| [(k - 3.5) * 1.5, 0.0, 9.0] }
 
-  # A ball one whole across round +middle+, of slices slices and bands bands (fans at the poles,
+  # A ball one whole across round +middle+, of SLICES slices and BANDS bands (fans at the poles,
   # four-cornered faces between): 50 points and 60 faces, the size of a robot. Declared in +place+, the
   # block of a `place` it is called from.
   def self.declare_ball(place, middle, picture)
@@ -44,7 +44,7 @@ class TestPS1ShapeRingPace < Minitest::Test
     end
   end
 
-  # One ball, drawn copies times a pass. The setting spots: decides where, with the viewer at the
+  # One ball, drawn COPIES times a pass. The setting spots: decides where, with the viewer at the
   # middle looking ahead along z: :none draws none, :ahead spreads them across the view nine wholes
   # ahead, :behind puts them nine wholes behind, and :beside two wholes ahead and nine to either
   # side, past the view's edges.
@@ -66,7 +66,7 @@ class TestPS1ShapeRingPace < Minitest::Test
   end
 
   # The same eight balls in view, two ways, seen by a viewer that moves a little every pass as a
-  # player's does: with the setting balls: :at_spots, one ball drawn at each of ahead; with
+  # player's does: with the setting balls: :at_spots, one ball drawn at each of AHEAD; with
   # :declared, eight declared in one place where those stand, drawn once; with :none, nothing.
   #
   # The viewer must move. A place drawn where it was declared, by a viewer that has not moved since
