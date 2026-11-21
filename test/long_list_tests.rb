@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# A LIST OF MORE THAN 65,535 SLOTS, played on a console with the memory for it, as the interpreter
+# A list of more than 65,535 SLOTS, played on a console with the memory for it, as the interpreter
 # plays it: filled a push at a time, then 70,000 taken from the front and 70,000 more pushed, so the
 # first item's place and the count both pass what sixteen bits hold and the items go round the ring.
 # A console's test includes LongListTests and names the width of the slots it has room for

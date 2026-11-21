@@ -2,7 +2,7 @@
 
 require "stringio"
 
-# WHAT A TURN OF A LOOP COSTS, for each console's own cost test. A routine called once a pass goes
+# What a turn of a loop costs, for each console's own cost test. A routine called once a pass goes
 # round a loop of 64 turns, against the same routine going round 32, so what the two differ by is 32
 # turns and nothing else: the call, the setting up and the end are the same in both. The loop is a
 # `repeat` or a game's `while i < n` with `i += 1` last (a counted while, LoopForm#counted_while),

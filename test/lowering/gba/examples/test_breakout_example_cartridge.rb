@@ -11,7 +11,7 @@ require VBlank.root.join("examples/breakout").to_s
 class TestBreakoutExampleCartridge < Minitest::Test
   include VBlank::Console::Hardware
 
-  # The title shows "BREAKOUT" in cyan — the simplest proof it isn't a black screen
+  # The title shows "breakout" in cyan — the simplest proof it isn't a black screen
   # and that text renders through the buffered (indexed) screen. It drops in from above
   # at four pixels a frame, so it is in place by the fortieth frame.
   def test_the_title_renders_on_the_console
