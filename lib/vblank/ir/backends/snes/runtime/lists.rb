@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # THE LISTS: a game's `list`, and every field of a pool, as the interpreter keeps them
+          # The lists: a game's `list`, and every field of a pool, as the interpreter keeps them
           # (Reference::ListValue) — items added at the back and taken from either end, read and
           # written by index, and the game stopped, in the interpreter's words, by an index outside
           # the list, an item added to a full one or taken from an empty one.
@@ -480,7 +480,7 @@ module VBlank
               asm.rts
             end
 
-            # THE SLOTS (all reached with JSR):
+            # The slots (all reached with JSR):
             #
             #   rt_list_slot_of_index   the slot the index in R1 names, into s.slot as how far into
             #                           the list it is; an index outside the list stops the game
@@ -598,7 +598,7 @@ module VBlank
             end
 
             # The game stopped: what went wrong, the list's place, and the numbers that give how,
-            # into FAULT for the reader (Frame), then rt_fault.
+            # into fault for the reader (Frame), then rt_fault.
             def emit_faults(asm, memory, s)
               asm.label("rt_list_full")
               emit_fault_list(asm, memory)

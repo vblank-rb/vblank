@@ -5,10 +5,10 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # THE FRAME: waiting for the screen, the buttons, stopping, and going wrong.
+          # The frame: waiting for the screen, the buttons, stopping, and going wrong.
           #
           # The console draws the screen a line at a time, 224 of them, and then rests for 38 more
-          # lines' worth of time — the VERTICAL BLANK — before it starts again. Only in that rest
+          # lines' worth of time — the vertical blank — before it starts again. Only in that rest
           # (or with the screen switched off) can video RAM, the colour memory and the sprite table
           # be written, so a pass of the game loop ends by waiting for it (rt_wait_vblank): the
           # processor sleeps (WAI) until the blank's interrupt (the NMI) wakes it. Then what the
@@ -24,7 +24,7 @@ module VBlank
           # wrong and why. The names and their meanings are the Game Boy Color runtime's, so a
           # reader of either asks the same questions.
           module Frame
-            # How the game stands, in STATE.
+            # How the game stands, in state.
             RUNNING = 0
             HALTED = 1
             WENT_WRONG = 2
@@ -58,7 +58,7 @@ module VBlank
             # (LoweringPlan#keeps_last_pass_number?), nought until it is written: a boundary ending a later pass
             # moves nothing on. Such a game can end two passes in one frame, the reader seeing neither.
             LAST_PASS = "rt last pass"
-            # HOW MANY FRAMES A PASS TOOK (IR::Frames): the interrupt counts every frame (FRAMES, 32
+            # How many frames a pass took (IR::Frames): the interrupt counts every frame (FRAMES, 32
             # bits); where a pass's wait ends, the frames since the last wait ended are what that
             # pass answers for (FRAMES_TAKEN), and held between one and IR::Frames::MOST (STEP_TAKEN).
             FRAMES = "rt frames"
@@ -83,7 +83,7 @@ module VBlank
             VBLANK = "rt vblank"
             # 1 once the screen is on: before the end of the first pass it is off.
             DISPLAY_ON = "rt display on"
-            # THE FRAMES SPENT SETTING UP, before the one the first pass is shown in: from the
+            # The frames spent setting up, before the one the first pass is shown in: from the
             # interrupt being switched on (Runtime#emit_start, or near the top of setting up in a game that
             # reads the count: Boot#emit_memories_cleared_counted), through the game's first pass and the
             # copy of its picture. They are frames of a screen still off, so they move nothing on but
@@ -153,7 +153,7 @@ module VBlank
             def reserve_last_pass(memory) = memory.reserve(LAST_PASS, 4)
 
             # Branches to rt_frame_begins_skipped when LAST_PASS is written and the pass that just ended
-            # (PASSES) comes after it: LAST_PASS less PASSES, a half at a time, borrows out of the top half.
+            # (PASSES) comes after it: LAST_PASS less passes, a half at a time, borrows out of the top half.
             # Neither count is ever negative, so the borrow is the answer.
             def emit_skip_past_last_pass(asm, at)
               asm.lda(at.call(LAST_PASS))
@@ -251,7 +251,7 @@ module VBlank
               asm.rti
             end
 
-            # A BLANK COUNTED BY HAND, while the screen's interrupt is held off: FRAMES one more if a
+            # A blank counted by hand, while the screen's interrupt is held off: frames one more if a
             # blank has begun since RDNMI was last read. A blank sets RDNMI's top bit as it begins,
             # whether the interrupt is on or not, and the bit stays until it is read or the blank ends,
             # so code that looks more often than a blank lasts counts each one once. A 8 bits wide
@@ -287,7 +287,7 @@ module VBlank
               end
             end
 
-            # rt_show_pass: what the pass drew, on the screen, and SHOWN saying so. The first time,
+            # rt_show_pass: what the pass drew, on the screen, and shown saying so. The first time,
             # the screen is still off, so everything set up so far is copied while nothing is drawn,
             # and the screen comes on in the blank after, showing it; after that, the pass's changes
             # are copied in the blank. Then the sleeps it waits for the blank in, and the step that
@@ -338,7 +338,7 @@ module VBlank
               Mosaic.emit_write(asm, memory) if Mosaic.kept?(memory)
               asm.label("rt_show_pass_shown")
               asm.jsr(asm.abs("rt_letterbox_shown")) if Letterbox.kept?(memory)
-              # A picture of big pixels still being sent behind the game has SHOWN set when it is all
+              # A picture of big pixels still being sent behind the game has shown set when it is all
               # there (PaintDoubledSend).
               PaintDoubledSend.emit_branch_if_sending(asm, memory, "rt_show_pass_sending")
               asm.lda(at.call(PASSES))
@@ -413,7 +413,7 @@ module VBlank
               asm.label("rt_setting_up_added")
             end
 
-            # A PASS THAT ENDS A LITTLE INTO THE BLANK STILL MAKES IT. Music plays where a wait ends,
+            # A pass that ends a little into the blank still makes it. Music plays where a wait ends,
             # so a frame on which many parts start their notes takes a good part of the time the next
             # pass was counting on, and that pass can end a few lines after the blank begins. Sleeping
             # then would lose a whole frame over those few lines, with most of the blank unused. So in
@@ -425,7 +425,7 @@ module VBlank
             # so short that it ends in the blank it started in, which is still the frame before's,
             # and it sleeps.
             #
-            # A CHECKED RUN'S CARTRIDGE SLEEPS AT EVERY PASS (SNES#initialize's +sleeps_every_pass+).
+            # A checked run's cartridge sleeps at every pass (SNES#initialize's +sleeps_every_pass+).
             # A pass that goes straight on is waiting only while the blank lasts, and the emulator
             # stops only as a blank begins, so a reader that looks once a frame never finds it waiting
             # and never reads its numbers (CartridgeHeadlessRun#passes_missed). The cartridge a checked
@@ -592,9 +592,9 @@ module VBlank
 
             # STOPPING. rt_halt stops the game where it is: what it drew since its last frame is
             # copied to the console in the next blank (or with the screen switched on, for a game
-            # that never got as far as a frame), SHOWN marks that the end is on the screen, and the
+            # that never got as far as a frame), shown marks that the end is on the screen, and the
             # processor sleeps from then on. Going wrong is the same, with what went wrong written
-            # down first (rt_fault, A = what went wrong, the list and the numbers already in FAULT).
+            # down first (rt_fault, A = what went wrong, the list and the numbers already in fault).
             def emit_stopping(asm, memory)
               at = ->(name, plus = 0) { asm.abs(memory[name], plus) }
               asm.label("rt_halt")
