@@ -4,14 +4,14 @@ require "json"
 
 module VBlank
   module Live
-    # A WINDOW WAITING FOR ITS GAME WHILE ANOTHER PROCESS BUILDS IT. vblank run opens the window at
+    # A window waiting for its game while another process builds it. vblank run opens the window at
     # once and a helper process (BuildHelper) builds the game and writes it out as one Ruby file,
     # saying as it goes what it is doing. This reads what the helper says and has the device show
     # it, a frame at a time, until the helper says where the game is written, or why it was not.
     # The build's memory is the helper's, so it is gone once the helper ends, and the window plays
     # the game with none of it.
     #
-    # WHAT THE HELPER SAYS, one JSON array a line (#message_line writes one):
+    # What the helper says, one JSON array a line (#message_line writes one):
     #
     #   ["step", name]            a phase of the build begins
     #   ["count", [done, total]]  where a phase that can be counted has got to
@@ -22,7 +22,7 @@ module VBlank
     # "written" or "refused" ends the watch, whether or not the pipe has closed: something the
     # build started may hold the pipe open long after the helper is gone.
     #
-    # THE HELPER NEVER OUTLIVES THE WATCH. However the watch ends (the game written, a refusal, the
+    # The helper never outlives the watch. However the watch ends (the game written, a refusal, the
     # window closed, an error in the window's process), #stop_helper ends and reaps it: the window's
     # process calls it as it ends, and calling it again does nothing.
     #
@@ -43,7 +43,7 @@ module VBlank
       # One line of what the helper says.
       def self.message_line(kind, value) = "#{JSON.generate([kind, value])}\n"
 
-      # THE WAIT WITH NO WINDOW, for a play that has none (a match with --no-window): it shows
+      # The wait with no window, for a play that has none (a match with --no-window): it shows
       # nothing and never asks to stop, so the watch ends when the helper does. A refusal is said on
       # the terminal (#watch's +terminal+) and shown nowhere, so watch it with +refusal_frames+ 0.
       class Unseen
@@ -92,7 +92,7 @@ module VBlank
       end
 
       # Ends the helper, if it has not ended, and reaps it: given +grace+ seconds to end by itself,
-      # then asked to (TERM), then killed. Done once; a second call does nothing.
+      # then asked to (term), then killed. Done once; a second call does nothing.
       def stop_helper(grace: 0)
         return if @reaped
 

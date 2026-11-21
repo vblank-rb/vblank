@@ -6,7 +6,7 @@ require "rbconfig"
 
 module VBlank
   module Live
-    # WHAT A BUILD READ, recorded as it read it, so a game written out by an earlier build can be
+    # What a build read, recorded as it read it, so a game written out by an earlier build can be
     # played again only while everything it was built from is as it was (WrittenGames). Nothing is
     # guessed: the build's own reads are watched while it runs (#recording), and each is asked again
     # (#current?).
@@ -24,11 +24,11 @@ module VBlank
     # library or Ruby's standard library is left out: the library's key and Ruby's version stand
     # for those (WrittenGames).
     #
-    # HOW THE READS ARE SEEN: the methods Ruby reads files, folders and the environment with are
+    # How the reads are seen: the methods Ruby reads files, folders and the environment with are
     # wrapped (PATH_METHODS and the modules after it), each noting what it was asked and then doing
     # what it always does. Only the main Ractor records; a build runs on it.
     #
-    # A READ MADE OUTSIDE RUBY IS SEEN ONLY THROUGH .note_read. A child process (ImageMagick decoding
+    # A read made outside Ruby is seen only through .note_read. A child process (ImageMagick decoding
     # a picture) or C code opening a file itself reads past every wrapped method, so the library
     # calls BuildInputs.note_read(path) wherever it hands a file to one (Graphics::Image::Adapters::
     # ImageMagick). A new place that does must call it too, or an edit to that file plays the old game.
@@ -185,7 +185,7 @@ module VBlank
 
       def glob_found(glob) = Dir.glob(glob.patterns, glob.flags, base: glob.base).sort
 
-      # THE WRAPPERS are written as plain methods (module_eval of their text, never define_method
+      # The wrappers are written as plain methods (module_eval of their text, never define_method
       # with a block): a method made from a block can be called only from the Ractor that made it,
       # and every Ractor in the process reads files through these.
       #
