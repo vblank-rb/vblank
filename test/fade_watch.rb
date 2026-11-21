@@ -9,7 +9,7 @@ module FadeWatch
   # What one spot shows on each of the first +frames+ frames.
   def ramp(prog, frames) = watch(prog, frames) { |run| run.screen.pixel(120, 80) }
 
-  # What +read+ gives back on each of the first +frames+ frames, read from ONE run as each
+  # What +read+ gives back on each of the first +frames+ frames, read from one run as each
   # frame settles. Playing the game again for every frame looked at costs the square of the
   # frames, which the game built as C, started afresh each time, makes a long wait. The first
   # look comes at the frame boundary before the first pass, so the run plays one frame more

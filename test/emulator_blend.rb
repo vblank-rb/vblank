@@ -1,14 +1,14 @@
 # frozen_string_literal: true
 
-# WHAT THE EMULATOR DOES TO A BLENDED PIXEL, transcribed from its own source so the
+# What the emulator does to a blended pixel, transcribed from its own source so the
 # interpreter can be held to it over every value rather than sampled.
 #
 # The emulator we test against is built for 32-bit color, so it first widens each
 # channel to eight bits and blends there — a different arithmetic from five bits, which
 # lands a step away.
 #
-# The asymmetry that makes this worth writing down: the emulator divides the RED channel
-# on its raw byte and the GREEN and BLUE channels on their shifted fields, which are 256
+# The asymmetry that makes this worth writing down: the emulator divides the red channel
+# on its raw byte and the green and blue channels on their shifted fields, which are 256
 # times finer. So the three channels truncate differently and a uniform gray comes back
 # with unequal channels.
 #

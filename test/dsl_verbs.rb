@@ -2,7 +2,7 @@
 
 require "prism"
 
-# EVERY VERB A GAME CAN WRITE, worked out from what is mixed into Builder right now, for the tests
+# Every verb a game can write, worked out from what is mixed into Builder right now, for the tests
 # that hold something to every verb: the DSL reference (test_dsl_reference.rb), each console's
 # answer for every verb (test_answers.rb) and the doc comment on every verb
 # (test_verb_doc_comments.rb).

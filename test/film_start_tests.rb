@@ -2,8 +2,8 @@
 
 require "tmpdir"
 
-# A FILM'S TWO SIDES OF ONE GAME, THE CARTRIDGE AND THE INTERPRETER, SHOW THE SAME PASS ON THE SAME
-# FRAME (Diagnostics::FilmCartridge): the interpreter's side is held back, a switched-off screen, for
+# A film's two sides of one game, the cartridge and the interpreter, show the same pass on the same
+# frame (Diagnostics::FilmCartridge): the interpreter's side is held back, a switched-off screen, for
 # the frames the game's own cartridge takes to start up and show its first pass, on each screen a game
 # can start on, and for a game with more to copy as it sets up. Played by each console whose cartridge
 # shows the interpreter's pictures pass for pass (not the Genesis, whose cartridge shows a sprite a
