@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# DRAW ONE OF A SET OF PICTURES, PICKED BY A NUMBER THE GAME WORKS OUT.
+# Draw one of a set of pictures, picked by a number the game works out.
 #
 # A face that watches you, a machine in four stages of wreckage, a dial drawn as a strip, a
 # portrait picked by who is speaking. Written the long way that is a test and a draw per

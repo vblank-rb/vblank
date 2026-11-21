@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A SONG'S NOTES THAT WOBBLE THEIR PITCH — vibrato — on the square voices and the wave voice.
+# A song's notes that wobble their pitch — vibrato — on the square voices and the wave voice.
 #
 # No voice does this by itself, so the music player does it a frame at a time: once a note has
 # sounded for a while, it moves the voice's pitch number up and then down below where the note
@@ -65,7 +65,7 @@ class TestSongVibrato < Minitest::Test
                  "two steps up (half of three, rounded up), then one below where it began, two frames each"
   end
 
-  # A VIBRATO THAT CARRIES keeps its swing from one note to the next, as another Game Boy game's
+  # A vibrato that carries keeps its swing from one note to the next, as another Game Boy game's
   # music engine does: only the wait starts again. A note starting part way through a swing holds
   # its own pitch until that swing runs out, then turns to the other side. Six-frame notes, a
   # swing of four frames each way: the second note starts two frames into the swing below.
@@ -115,7 +115,7 @@ class TestSongVibrato < Minitest::Test
     assert_equal [nil, nil, Vibrato.new(depth: 5, speed: 3, after: 0)], voice.last(3)
   end
 
-  # THE WORDS: a depth and a speed by name, and a wait as a note length at the song's tempo.
+  # The words: a depth and a speed by name, and a wait as a note length at the song's tempo.
   def test_the_words_say_a_depth_a_speed_and_a_wait
     moves = voice_moves(song_game do
       voice(:lead) { |v| v.vibrato depth: :slight, speed: :medium, after: :eighth; v.note :C5, :whole }
@@ -124,7 +124,7 @@ class TestSongVibrato < Minitest::Test
     assert_equal Vibrato.new(depth: 2, speed: 4, after: 12), moves.find { |_, kind| kind == :voice }.last
   end
 
-  # A NOTE CAN SAY ITS OWN, and :none holds one still in a part that wobbles. The part's next note
+  # A note can say its own, and :none holds one still in a part that wobbles. The part's next note
   # starts its own wobble from its own beginning, and a rest stops it.
   def test_each_note_wobbles_from_its_own_beginning_and_none_holds_still
     moves = voice_moves(song_game do
@@ -151,7 +151,7 @@ class TestSongVibrato < Minitest::Test
     assert_equal [[0, 2], [3, -2], [6, 2]], wobbles_on(moves, 3).first(3)
   end
 
-  # A SCORE SAYS IT THE SAME WAY, for a game that converts another game's music: a part's
+  # A score says it the same way, for a game that converts another game's music: a part's
   # `vibrato:` and a note's own, the wait in frames.
   def test_a_score_says_how_its_notes_wobble
     score = VBlank::Audio::Score
@@ -172,7 +172,7 @@ class TestSongVibrato < Minitest::Test
     assert_equal [Vibrato.new(depth: 3, speed: 4, after: 18), Vibrato::NONE], voices.map(&:last)
   end
 
-  # THE SLOWEST SWING IS SIXTEEN FRAMES, which is what a converted engine's slowest rate holds one
+  # The slowest swing is sixteen frames, which is what a converted engine's slowest rate holds one
   # for: it counts a swing down from fifteen to nought.
   def test_the_slowest_swing_holds_sixteen_frames
     moves = voice_moves(song_game { voice(:lead) { |v| v.vibrato depth: 2, speed: 16; v.note :C5, :whole } },
@@ -181,7 +181,7 @@ class TestSongVibrato < Minitest::Test
     assert_equal [[0, 1], [16, -1], [32, 1]], wobbles_on(moves, 1).first(3)
   end
 
-  # THE GAME'S OWN SOUND TAKES A VOICE: a `beep` on the second square voice, while the song's
+  # The game's own sound takes a voice: a `beep` on the second square voice, while the song's
   # second part wobbles a note there, is not bent by it — the voice wobbles nothing until the
   # part's next note.
   def test_a_beep_takes_the_voice_from_a_wobbling_note

@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A BACKGROUND WHOSE MAP IS BIGGER THAN THE CONSOLE'S GRID — wider or taller than 64 cells,
+# A background whose map is bigger than the console's grid — wider or taller than 64 cells,
 # which is a room four screens across and more. The console holds a grid of at most 64x64
 # cells for a layer, so the framework keeps the whole map in the cartridge and copies in the
 # cells coming into view as the view moves. Nothing in the program says so: the map is
@@ -44,7 +44,7 @@ module BigMapsGames
     end
   end
 
-  # A SCENE'S FIRST TAKEOVER, NAMED AT THE END OF THE PASS BEFORE — as a file screen does on START.
+  # A scene's first takeover, named at the end of the pass before — as a file screen does on START.
   # A menu for ten passes, which names the playing scene at the end of its tenth. The playing scene
   # owns a big room and puts its view 5 columns and 3 rows from the corner from its first pass.
   def named_at_the_end_of_a_pass(builder)
@@ -271,7 +271,7 @@ class TestBigMaps < Minitest::Test
     [5, 9, 11].each { |frames| assert_backends_agree(scenes, frames: frames, name: "BIGS") }
   end
 
-  # THE FRAME THE SCENE COMES BACK ON shows the room's top-left corner: a background put up
+  # The frame the scene comes back on shows the room's top-left corner: a background put up
   # again is put up as declared, with its view at the corner, and the game's own place for
   # the view reaches the display in the gap after that pass. So the cells brought in as the
   # scene comes back have to be the ones round the corner, wherever the view was left. Here
@@ -285,7 +285,7 @@ class TestBigMaps < Minitest::Test
     end
   end
 
-  # ONE NAME, A BIG ROOM IN EACH OF TWO SCENES: :ground is declared in both, each with a big map
+  # One name, a big room in each of two scenes: :ground is declared in both, each with a big map
   # of its own, and each scene walks its view across its own. The view brought along is the one
   # of the scene up, from its own map.
   private def big_rooms_in_two_scenes
@@ -369,7 +369,7 @@ class TestBigMaps < Minitest::Test
 
   # --- a map that fits a grid of 64 cells, which comes round past its edges ---
 
-  # A MAP OF AT MOST 64 CELLS EACH WAY fits a grid, and a grid comes round: past the map's right
+  # A map of at most 64 cells each way fits a grid, and a grid comes round: past the map's right
   # edge the view shows its left one again, and above its top its bottom. A map smaller than its grid
   # shows nothing in the grid's cells past its own, then comes round at the grid's edge. That holds
   # on a console whose own grid is smaller and keeps such a map whole (the Color's is 32 cells).
@@ -397,7 +397,7 @@ class TestBigMaps < Minitest::Test
     [6, 30].each { |frames| assert_backends_agree(prog, frames: frames, name: "BIGRW40") }
   end
 
-  # A CELL CHANGED WHERE THE VIEW SHOWS IT ONLY BY COMING ROUND: the view past the bottom right of a
+  # A cell changed where the view shows it only by coming round: the view past the bottom right of a
   # 40 by 20 map's grid, which comes round to the map's top left, two cells there changed, and the
   # view walked on.
   def test_a_cell_changed_past_the_edge_the_view_comes_round_to_shows

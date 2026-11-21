@@ -4,7 +4,7 @@ require "test_helper"
 require "differential"
 require "many_tiles"
 
-# A BACKGROUND WHOSE MAPS DRAW FROM MORE THAN ONE SET OF TILES, which is how a game moves
+# A background whose maps draw from more than one set of tiles, which is how a game moves
 # between areas: every room of an area draws from the one set the area loads, and going
 # to another area brings that area's set in. Each set fits the console's tile memory on
 # its own; the sets together need not.
@@ -341,7 +341,7 @@ class TestBackgroundTileSets < Minitest::Test
     refute_empty VBlank::IR::Backends::GBA.new.lower(two_big_areas(0))
   end
 
-  # TWO AREAS WHOSE TILES TOGETHER ARE MORE THAN THE COLOR HOLDS AT ONCE, 300 each, walked into
+  # Two areas whose tiles together are more than the color holds at once, 300 each, walked into
   # and back out of while the game plays: each area's tiles come in as a map of it is shown.
   WALK_AT = 4
 
