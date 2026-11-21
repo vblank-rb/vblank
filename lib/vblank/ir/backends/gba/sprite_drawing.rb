@@ -558,7 +558,7 @@ module VBlank
             emit_rows_past_run_hidden(run) if run.shown
           end
 
-          # The rows the pass before wrote past where this pass's copy stopped (in spare), each given
+          # The rows the pass before wrote past where this pass's copy stopped (in SPARE), each given
           # the "unused slot" marker, and where this pass stopped kept for the next.
           def emit_rows_past_run_hidden(run)
             blank = gensym
@@ -1080,7 +1080,7 @@ module VBlank
           # few instructions on. The walk then carries on from the first place that shows
           # something, or is over.
           #
-          # In registers that are a statement's own scratch — the place in spare, its row in HIGH,
+          # In registers that are a statement's own scratch — the place in SPARE, its row in HIGH,
           # where to stop in TMP, the hidden mark in ACC, and ADDR for a row step too big to add
           # at once — since this runs between statements of the sprites routine and nothing is
           # held across it.

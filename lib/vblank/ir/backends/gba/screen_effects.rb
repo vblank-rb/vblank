@@ -176,7 +176,7 @@ module VBlank
             emit_display_fade_from_kept
           end
 
-          # KEPT holds a kept fade (its color is darken or carries brighten): tell the display.
+          # KEPT holds a kept fade (its color is DARKEN or carries BRIGHTEN): tell the display.
           def emit_display_fade_from_kept
             off = gensym
             brighten = gensym

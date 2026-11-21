@@ -65,7 +65,7 @@ module VBlank
 
           # The song the color's player takes up at its next step (CartridgeHeadlessRun#next_song_number),
           # from its byte fields: a song the game named is taken up when START is set, and a stop
-          # quiets the music where the game asks, so playing already says it. A tune that played once
+          # quiets the music where the game asks, so PLAYING already says it. A tune that played once
           # and has ended (Runtime::Music::ENDED) is none while it is the one the game names.
           def next_song_number
             playing = music_field(Runtime::Music::PLAYING, 1) or return nil

@@ -27,9 +27,9 @@ module VBlank
         # (IR ListSort), and nothing but the sort reads the list of numbers.
         module ShownSort
           # Where a sort handed +shown+ keeps its work, one block of work memory: how many places are
-          # not showing (a word, at hidden), whether a place came or went since the list was last moved
-          # round (a word, at changed), where in the sprite table the run's copy stopped last pass (a
-          # word, at ROWS_END), then a byte a place, 1 while it showed last pass (from flags).
+          # not showing (a word, at HIDDEN), whether a place came or went since the list was last moved
+          # round (a word, at CHANGED), where in the sprite table the run's copy stopped last pass (a
+          # word, at ROWS_END), then a byte a place, 1 while it showed last pass (from FLAGS).
           # +spare+ is where the list is copied as it is moved round. +keys+ is the program's write of
           # each place's number, by place, or nil where the sort does not make them. +asked+ is whether
           # each place is asked: a place known to show always is not.
@@ -162,11 +162,11 @@ module VBlank
           end
 
           # Each place asked whether it shows, its flag kept up to date, the count of places not showing
-          # with it, and changed set where one came or went; then the list moved round if one did. A place
+          # with it, and CHANGED set where one came or went; then the list moved round if one did. A place
           # known to show always is not asked: its flag stays as it started.
           #
           # Written once, called from each place. What a place does with its answer (read its flag, and
-          # where the flag turned over, write it, move the count and set changed) is the same for every
+          # where the flag turned over, write it, move the count and set CHANGED) is the same for every
           # place but the flag's offset, so it is one stretch of code at the end (#emit_flag_marking),
           # which each place calls with its answer: four instructions a place, where the whole of it
           # written out at every place was more than twenty. The sort runs every frame, so the build
@@ -230,7 +230,7 @@ module VBlank
           # A pool's places asked as one (RankRun): its other tests once, then the number of each place
           # showing written, place by place until the first past the count; then how many show, which
           # is the count held to the run, and only where that is not what it was last pass, the run's
-          # flags written, the count of places not showing moved by the difference and changed set.
+          # flags written, the count of places not showing moved by the difference and CHANGED set.
           # A place past the count costs nothing on a pass, as a thing not in a console's own games'
           # list of what is showing costs nothing.
           def emit_run_marked(run, kept)
@@ -276,7 +276,7 @@ module VBlank
 
           # With ACC how many of +run+'s places show: where that is not the count kept from last pass,
           # the count kept, the run's flags written (1 for the ACC places of lowest rank, 0 for the
-          # rest), the count of places not showing moved by the difference, and changed set.
+          # rest), the count of places not showing moved by the difference, and CHANGED set.
           def emit_run_flags_written(run, kept)
             e = @emitter
             same = e.gensym
@@ -310,7 +310,7 @@ module VBlank
           # The code each place calls, at +label+, with TMP its answer: the offset of its flag in the
           # block twice over, plus 1 where the place shows. One number, so a place sets one register
           # for the call. Back at once where the flag already says so; otherwise the flag turned over,
-          # the count of places not showing moved by one, and changed set. Touches ACC, SPARE and HIGH
+          # the count of places not showing moved by one, and CHANGED set. Touches ACC, SPARE and HIGH
           # besides.
           def emit_flag_marking(kept, label)
             e = @emitter

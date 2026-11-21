@@ -2842,7 +2842,7 @@ module VBlank
             value(Entry.new(drawing_table("data #{node.name}", 1, bytes), 1, false, Build.int(node.index)))
           end
 
-          # A button read is a bit of a byte, read where the game asks, as the console's own games
+          # A button read is a bit of a BYTE, read where the game asks, as the console's own games
           # test their joypad byte (Pan Docs, "Joypad Input"): the buttons are read once a frame into
           # bytes of a bit each (Runtime::Frame, rt_pad_read, rt_read_buttons), the held ones and
           # those pressed during the pass. The one controller is read whatever player is named, as
