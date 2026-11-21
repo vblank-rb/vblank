@@ -3,14 +3,14 @@
 require "test_helper"
 require "stringio"
 
-# A BACKGROUND CELL CHANGED AT A PLACE WRITTEN IN THE PROGRAM, on the Color. A game's lights and
+# A background cell changed at a place written in the program, on the Color. A game's lights and
 # arrows are many such cells in one frame, so working each one's place out as the game runs is what
 # made a busy frame run over. The place is known as the cartridge is built, and a cell off the map
 # still changes nothing.
 class TestGBCCellPlaces < Minitest::Test
   CELLS = 24
 
-  # A game changing CELLS cells a pass. +worked_out+ keeps their columns in a variable, so the
+  # A game changing cells cells a pass. +worked_out+ keeps their columns in a variable, so the
   # cartridge cannot know them; otherwise they are written in the program. The variable can hold
   # more than a byte (300 while A is held, which nothing holds here), since a column the build
   # proves stays in a byte has a quicker way of its own (GBC Picture#byte_column?), and this is the

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE COLOR'S CLOCK CHIP, as only its cartridge can be asked: one that has counted hundreds of
+# The color's clock chip, as only its cartridge can be asked: one that has counted hundreds of
 # days, or holds a time no clock can say, is nothing the interpreter has a word for.
 #
 # The chip counts 511 days, then sets a carry bit and starts again from nought. A game that sets

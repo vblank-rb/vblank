@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# A PASS THAT CHANGES MANY CELLS OF A BACKGROUND has them all written in the blank after it, so the
+# A pass that changes many cells of a background has them all written in the blank after it, so the
 # game never waits for the display, and the blank has to hold them beside everything else it does:
 # video memory takes no write once the display reads it again, so a cell the blank does not reach
 # has to wait for the display, or it would be lost, and the interpreter's picture, held on every
@@ -65,7 +65,7 @@ class TestGBCCellsInTheBlank < Minitest::Test
     assert_empty result.held.select { |reading| reading.picture_held_by == :gap }.map(&:frame)
   end
 
-  # A WHOLE SCREEN OF CELLS CHANGED IN ONE PASS, 20 by 18, is more than one blank can write and more
+  # A whole screen of cells changed in one pass, 20 by 18, is more than one blank can write and more
   # than the first list holds. It is spread over the blanks after the pass, as the console's own games
   # bring a screen in: a bounded number of cells each blank, the processor asleep between them (Pan
   # Docs, "Accessing VRAM and OAM": video memory takes writes only while the display is not reading
@@ -100,7 +100,7 @@ class TestGBCCellsInTheBlank < Minitest::Test
     pass
   end
 
-  # A CELL WRITTEN NOW (`now: true`) costs what the pass spends on it beyond the same cell queued
+  # A cell written now (`now: true`) costs what the pass spends on it beyond the same cell queued
   # plainly: a wait for a moment the display is not reading video memory, then the write (Pan Docs,
   # "STAT": bit 1 clear in modes 0 and 1). Two shapes: a play pass of twelve cells spread down its
   # frame with work between them, and a cut of eighty close together. The work between cells changes
@@ -128,7 +128,7 @@ class TestGBCCellsInTheBlank < Minitest::Test
     pass
   end
 
-  # A PASS THAT NEVER REACHES THE FAR LIST pays nothing for it: the first list's count says whether
+  # A pass that never reaches the far list pays nothing for it: the first list's count says whether
   # the far list holds cells too, so the blank's one test of it finds either. The budget is what
   # the play game, its twelve cells a pass queued plainly, was awake for each pass before the far
   # list was added.
