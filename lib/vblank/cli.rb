@@ -318,8 +318,9 @@ module VBlank
     # "gba, gbc or snes"
     CONSOLE_CHOICES = "#{CONSOLE_NAMES[0...-1].join(', ')} or #{CONSOLE_NAMES.last}".freeze
     # A line for each console: its name, the console, and the ending of its cartridge's file.
+    CONSOLE_NAME_WIDTH = VBlank::Console.kits.map { |kit| kit.name.to_s.length }.max + 2
     CONSOLE_LINES = VBlank::Console.kits.map do |kit|
-      "  #{kit.name.to_s.ljust(6)}the #{kit.title}, a #{kit.description.extension}"
+      "  #{kit.name.to_s.ljust(CONSOLE_NAME_WIDTH)}the #{kit.title}, a #{kit.description.extension}"
     end.join("\n").freeze
     # The consoles whose cartridges `compare` can line up side by side
     # (Console::Kit#compared_side_by_side?), and how a sentence says them.
