@@ -4,7 +4,7 @@ require "test_helper"
 require "native_comparison"
 require "tmpdir"
 
-# SAVING ON THE DESKTOP BUILD. The game as C keeps its save memory as the same bytes the
+# Saving on the desktop build. The game as C keeps its save memory as the same bytes the
 # interpreter's IR::SaveImage holds, which are the bytes the console's chip holds — so a save
 # made by any of the three starts a game on any other. These are small made-up programs; the
 # interpreter is the answer key for every one.
@@ -28,7 +28,7 @@ class TestNativeSaves < Minitest::Test
     assert_equal 13, last.variables[:best]
   end
 
-  # TURNING IT OFF AND ON AGAIN is two runs handed the same save memory, as it is for the
+  # Turning it off and on again is two runs handed the same save memory, as it is for the
   # interpreter: the second starts from what the first left there.
   def test_a_save_var_comes_back_after_the_power_goes_off
     store = SaveImage.new
@@ -96,7 +96,7 @@ class TestNativeSaves < Minitest::Test
     assert_equal expected.message, error.message
   end
 
-  # THE PROGRAM ITSELF keeps its save memory in a file it is told of (--save), which is how a
+  # The program itself keeps its save memory in a file it is told of (--save), which is how a
   # run is handed one: the bytes of a .sav file. With no file there it starts as a new cartridge,
   # and when it ends it leaves the file, written beside it first and then put in its place.
   def test_the_program_leaves_a_sav_file_where_there_was_none
@@ -141,7 +141,7 @@ class TestNativeSaves < Minitest::Test
     builder.program
   end
 
-  # THREE SAVE FILES, picked by a number the game works out. Each button does one thing to the
+  # Three save files, picked by a number the game works out. Each button does one thing to the
   # file `slot` names: A saves the hearts and the name into it, B erases it, L loads it, R copies
   # file 0 over it, SELECT starts a new game, and UP moves the slot on. RIGHT saves 99 hearts.
   # What each file holds, and what state it is in, is read every frame without loading it.
@@ -227,7 +227,7 @@ class TestNativeSaves < Minitest::Test
     assert_equal [10, 0, 0], shown(run)
   end
 
-  # THE POWER GOING OFF IN THE MIDDLE OF A SAVE. RIGHT saves 99 over copy 0, which holds 10. The
+  # The power going off in the middle of a save. Right saves 99 over copy 0, which holds 10. The
   # power goes off a number of bytes into that save, at the same byte in the C as in the
   # interpreter (the two are compared on the bytes the cut leaves), and copy 0 is the old save or
   # the new one, never a mixture.
@@ -260,7 +260,7 @@ class TestNativeSaves < Minitest::Test
     assert_equal [3, 0, 2], states(files_after(store))
   end
 
-  # EVERY SIZE OF SAVE MEMORY, each a different kind of chip with rules of its own: the EEPROM is
+  # Every size of save memory, each a different kind of chip with rules of its own: the EEPROM is
   # written a block of eight bytes at a time, the 32K takes any byte, and flash is wiped a block
   # before it is written. The save is the game's own routines, a piece each pass, so how many
   # passes it takes is part of what the two have to agree on.
@@ -317,9 +317,9 @@ class TestNativeSaves < Minitest::Test
     assert_saves_over_several_passes_and_comes_back 128, passes_at_least: 5
   end
 
-  # ON FLASH A SAVE WIPES BEFORE IT WRITES, and a wipe takes long enough for the power to go off
+  # On flash a save wipes before it writes, and a wipe takes long enough for the power to go off
   # in the middle of it: a cut of one step leaves half a block wiped. A saves 7 hearts, B saves
-  # 9 and L saves 11. The save that is cut is the THIRD, so the half it wipes held a save of its
+  # 9 and L saves 11. The save that is cut is the third, so the half it wipes held a save of its
   # own — and one long enough to reach into the second half of its block, which is the part
   # half a wipe leaves as it was. Wherever the power goes off, the game comes back with the
   # second save or the third. It is an Advance game: a Color has no room for the trail, and
@@ -370,7 +370,7 @@ class TestNativeSaves < Minitest::Test
     assert_equal 7, CheckedPlayer.new(save: store).run(program, frames: 2)[:best]
   end
 
-  # THE OPTIMISED BUILD saves the same way. A CheckedPlayer plays the build with every check
+  # The optimised build saves the same way. A CheckedPlayer plays the build with every check
   # on; this plays both builds from a new cartridge, on battery memory and on flash, and holds
   # each to the interpreter's variables on every frame.
   def test_both_builds_keep_save_data_as_the_interpreter_does
@@ -386,7 +386,7 @@ class TestNativeSaves < Minitest::Test
     assert_equal 1, last.variables[:done]
   end
 
-  # A SAVE WRITTEN STRAIGHT IN by a test (Reference.save_into, save_vars_into) is the bytes the
+  # A save written straight in by a test (Reference.save_into, save_vars_into) is the bytes the
   # game itself would write, so the game as C starts from it like any other.
   def test_a_save_a_test_wrote_starts_the_game_as_c
     store = Reference.save_into(SaveImage.new, three_files, :file, 1, hearts: 42, name: [7, 8])
