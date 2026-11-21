@@ -12,7 +12,7 @@ class TestSnakeExampleCartridge < Minitest::Test
 
   CELL = Snake::CELL
 
-  # AC: the initial render. On boot the title screen shows "SNAKE" in green — the
+  # AC: the initial render. On boot the title screen shows "snake" in green — the
   # simplest proof the ROM isn't a black screen. Scans the title band rather than
   # pinning font pixels, so it survives font tweaks. Skips cleanly without the emulator.
   def test_the_title_screen_renders_on_the_console

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A TUNE KEEPS ITS OWN TIME ON THE ADVANCE'S CARTRIDGE, genuinely late, and heard in the emulator:
+# A tune keeps its own time on the Advance's cartridge, genuinely late, and heard in the emulator:
 # the sound it makes frame by frame, and how many frames a pass really took. The music's timing
 # asked of every run is in test/all/vblank/audio/test_music_keeps_time.rb.
 class TestMusicKeepsTimeCartridge < Minitest::Test
@@ -13,7 +13,7 @@ class TestMusicKeepsTimeCartridge < Minitest::Test
   FRAMES = 72
   BEATS = FRAMES / 12
 
-  # HOW MUCH WORK MAKES A PASS LATE on this emulator, measured, and each picked from the middle
+  # How much work makes a pass late on this emulator, measured, and each picked from the middle
   # of the range that gives it — about twenty-five thousand steps is a frame of this game. The
   # test asserts what it got, so a change in the machine shows up as a failed assumption rather
   # than a test quietly measuring nothing.
