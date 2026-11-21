@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# The quick ways a color cartridge takes with a byte written in the program — a comparison with
+# The quick ways a color cartridge takes with a BYTE written in the program — a comparison with
 # one, a number held between two of them, a number times one (Lowering#emit_compare_with_byte,
 # #value_of_clamped, #emit_product_by_byte) — give what the long ways give for every number,
 # below nought and past a byte included; and so does a number held between two ends of up to
@@ -74,7 +74,7 @@ class TestGBCBytePaths < Minitest::Test
     b.program
   end
 
-  # Each of edges in turn, one a pass.
+  # Each of EDGES in turn, one a pass.
   private def edge_numbers
     test = self
     b = Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))

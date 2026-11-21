@@ -47,7 +47,7 @@ class TestSceneLoadsFirst < Minitest::Test
     builder.program
   end
 
-  # How many passes of the game loop the console finished in frames frames: one fewer than
+  # How many passes of the game loop the console finished in FRAMES frames: one fewer than
   # another build means one of its passes ran into a second frame.
   private def passes_finished(pictures:, loads_first:)
     rom = assemble_rom(hand_over(pictures: pictures, loads_first: loads_first), name: "LOADFRST")

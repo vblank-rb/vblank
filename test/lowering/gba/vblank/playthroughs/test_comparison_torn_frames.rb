@@ -10,9 +10,9 @@ require "comparison_games"
 # already shows what the torn one settles on, which `frames_in_a_row:` cannot tell from a fault of
 # a frame in the other cartridge.
 #
-# The cartridges are a blue screen that turns red on tick turns, built here. The "original" shows
-# tick turns torn, its top half red and its bottom half still blue, and is all red from the tick
-# after. Ours turns all red on tick turns (what the original settles on), or one tick late.
+# The cartridges are a blue screen that turns red on tick TURNS, built here. The "original" shows
+# tick TURNS torn, its top half red and its bottom half still blue, and is all red from the tick
+# after. Ours turns all red on tick TURNS (what the original settles on), or one tick late.
 class TestComparisonTornFrames < Minitest::Test
   include ComparisonGames
   include VBlank::Testing::PlaysAlike
@@ -22,7 +22,7 @@ class TestComparisonTornFrames < Minitest::Test
   # Each frame is drawn whole on a page of its own and shown when done, so the only torn frame is
   # the one drawn torn on purpose.
   #
-  # +torn_frames+ 2 is an original whose change tears over two frames: on tick turns the top third
+  # +torn_frames+ 2 is an original whose change tears over two frames: on tick TURNS the top third
   # is red, on the tick after the top two thirds, and the tick after that all of it, as a copy that
   # takes longer than a frame does.
   private def turning(torn: false, late: 0, torn_frames: 1)
