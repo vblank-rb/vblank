@@ -4,7 +4,7 @@ require "zlib"
 
 module VBlank
   module Playthroughs
-    # A GAME CHECKED AND NOT BUILT INTO A CARTRIDGE, standing where a cartridge stands for a
+    # A game checked and not built into a cartridge, standing where a cartridge stands for a
     # playthrough that runs the game itself: as Ruby, as JavaScript, as C, its rules alone, or in
     # the interpreter (LoweredGame). `vblank run` plays a script or a tape on one of these, so it
     # never waits for a cartridge it would not play. A big game's cartridge is built twice, once to

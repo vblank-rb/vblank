@@ -5,7 +5,7 @@ require "tmpdir"
 
 module VBlank
   module Playthroughs
-    # ANY CARTRIDGE DRIVEN A FRAME AT A TIME BY SOMEBODY WATCHING IT, and read by the names its
+    # Any cartridge driven a frame at a time by somebody watching it, and read by the names its
     # decompilation gave to what it keeps in memory. It is how a port measures its original: the
     # decompilation shows what the game does, and this measures how much, frame by frame, from the real
     # cartridge in the emulator.
@@ -17,12 +17,12 @@ module VBlank
     #     probe.reader.screenshot("level.png")
     #   end
     #
-    # IT WAITS ON THE GAME, never on a count of frames: step_until and press_until play until the
+    # It waits on the game, never on a count of frames: step_until and press_until play until the
     # block answers yes, so the drive keeps working when a screen takes a frame longer than it did. One
     # that never answers yes within its frames raises NeverHappened, naming what was waited for, the
     # frame it stopped on, and the values of the labels it was told to watch.
     #
-    # A CARTRIDGE VBLANK BUILT needs no labels: opened as the built cartridge (not its file), its
+    # A cartridge VBLANK built needs no labels: opened as the built cartridge (not its file), its
     # variables, lists and pools are read by the names the game gave them, as every other reader
     # reads them, from the build's record of where each is and how wide.
     #
@@ -31,27 +31,27 @@ module VBlank
     #     probe.var(:hearts)   # => 3, the number the game starts it at
     #   end
     #
-    # EVERY PROBE OPENS AT POWER-ON, a built cartridge's too, so a port can play its build frame for
+    # Every probe opens at power-on, a built cartridge's too, so a port can play its build frame for
     # frame beside its original. Until the game has run its lines before its first wait for the
     # screen (#game_started?), what it keeps in memory is what memory held at power-on, or the
     # nought a runtime clears it to while it sets up, and a read by name hands that back as if the
     # game had set it. The Color's runtime takes several frames over that. So step until the game
     # has started (#step_until_started) before reading the numbers it starts with.
     #
-    # WHAT THE GAME SUPPLIES: the cartridge (a path, or anything Diagnostics::CartridgeFile takes) and
+    # What the game supplies: the cartridge (a path, or anything Diagnostics::CartridgeFile takes) and
     # its labels, as its decompilation's RAM map has them: a name to an address on the console's bus,
-    # or to an address and how it is read (WIDTHS), one byte unsigned unless set. A read or a write
+    # or to an address and how it is read (widths), one byte unsigned unless set. A read or a write
     # takes a label or an address. +save+ (an IR::SaveImage) is what the save memory holds as the
     # console is switched on: a save file of the player's, say.
     #
-    # THE SAVE MEMORY GOES TO A FOLDER OF ITS OWN, made when the probe opens and removed when it
+    # The save memory goes to a folder of its own, made when the probe opens and removed when it
     # closes, so no run finds a save another left; +save_dir+ names one to keep instead.
     #
     # Everything else is read through #reader, the one reader over a running cartridge
     # (Diagnostics::Verifier): the picture, its pixels and colours, the sound, each console its own
     # way. Step the cartridge through the probe, never the reader, or #frame goes out of step.
     #
-    # A PROBE IS A SIDE OF A FILM as it stands (Diagnostics::Film): it answers what a film asks of a
+    # A probe is a side of a film as it stands (Diagnostics::Film): it answers what a film asks of a
     # side (#step with `keys:`, #screenshot, #last_frame_samples, #close), so a probe driven to the
     # moment worth filming is filmed from its next frame, and the film closes it, save folder and all.
     #
@@ -168,7 +168,7 @@ module VBlank
         raise NeverHappened, never_happened_message(what, "#{within} presses of #{button}", watch)
       end
 
-      # The value at +place+ (a label or an address) now, read +as+ one of WIDTHS (as the label gives,
+      # The value at +place+ (a label or an address) now, read +as+ one of widths (as the label gives,
       # or one byte unsigned), in the console's own byte order, as its processor keeps it. Where a
       # value of two or more bytes can be, and whether three bytes are one value, is the processor's
       # rule too (Console::Kit#words_at_any_address?); a read it would not make is refused. Three
@@ -205,7 +205,7 @@ module VBlank
         Array.new(count) { |offset| @reader.mem8(at + offset) }.pack("C*")
       end
 
-      # Put +value+ at +place+ (a label or an address), written +as+ one of WIDTHS, and leave the bytes
+      # Put +value+ at +place+ (a label or an address), written +as+ one of widths, and leave the bytes
       # beside it as they were. It is for reaching a state no drive reaches cheaply (fewer lives than
       # a new game gives), so say beside anything measured after one that it was reached this way.
       #
@@ -224,7 +224,7 @@ module VBlank
         self
       end
 
-      # LIST EVERY WRITE THE GAME MAKES TO ITS SOUND CHIP from now on, which is how a port sees each note
+      # List every write the game makes to its sound chip from now on, which is how a port sees each note
       # its original starts: a voice starts when the top bit of its last register is written, and that
       # bit reads back the same whether or not one did. Gives back what the registers hold now, by
       # address; after each #step, #sound_writes is what it wrote. The Advance and the Color only, for
@@ -239,7 +239,7 @@ module VBlank
       # Diagnostics::Verifier::SoundWrite (address, value as written). Empty until #watch_sound.
       def sound_writes = @reader.sound_writes
 
-      # WHAT THE CARTRIDGE PUT OUT ON THE FRAME PLAYED LAST (Diagnostics::FrameSound): its +samples+,
+      # What the cartridge put out on the frame played last (Diagnostics::FrameSound): its +samples+,
       # 16 bits each, left and right by turns, and the +loudest+ of them, the furthest any is from
       # nought. The same on every console whose emulator hands its sound over, for any cartridge
       # file; a PlayStation program is refused, saying its emulator gives no samples yet.

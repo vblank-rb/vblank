@@ -4,11 +4,11 @@ require "zlib"
 
 module VBlank
   module Playthroughs
-    # THE PRESSES OF A PLAYTHROUGH, WRITTEN DOWN: which buttons were down on each frame, and
+    # The presses of a playthrough, written down: which buttons were down on each frame, and
     # the frame each named moment fell on.
     #
     # A script sets out what to do; a tape records what was done. The difference matters the moment
-    # a script watches the game: "walk right until the door" is as many frames as THIS game
+    # a script watches the game: "walk right until the door" is as many frames as this game
     # took to reach the door, and the tape holds that number. So a tape is the same presses
     # on the same frames whatever it is played on — which is what lets two cartridges be
     # given exactly the same game to play, and their pictures laid side by side.
@@ -17,7 +17,7 @@ module VBlank
     #   tape.write("walk.tape")
     #   Tape.read("walk.tape").play(another_cartridge) { |moment, game| ... }
     #
-    # IT IS PLAIN TEXT, a line for each stretch of frames with the same buttons down, so a
+    # It is plain text, a line for each stretch of frames with the same buttons down, so a
     # person can read one and a change to one shows as a change to a few lines:
     #
     #   vblank tape 1
@@ -34,11 +34,11 @@ module VBlank
     # buttons down for that many frames, `-` for none; and a moment on a line of its own,
     # naming the frame the line before it ended on.
     #
-    # WHAT IT WAS RECORDED ON IS FOR A PERSON. The cartridge's title and a checksum of its
+    # What it was recorded on is for a person. The cartridge's title and a checksum of its
     # bytes show which game and which build the tape came from. Nothing checks them against
     # the cartridge it is played on: playing a tape on a different cartridge is the point.
     #
-    # WHERE IT STARTED IS HELD TO. The third line reads `power-on`, or `a save` for a
+    # Where it started is held to. The third line reads `power-on`, or `a save` for a
     # cartridge that held one when the console was switched on, and either can end
     # ` after a lead-in`. The same presses from anywhere else are a different game, so a
     # tape recorded from a save is played from one, and one recorded after a lead-in
@@ -47,19 +47,19 @@ module VBlank
     # +steps+ are the lines in order — each a Hold, a Moment or, on a tape of passes, an Until: the
     # same steps a script is made of, so a tape is played by the same playing a script is.
     #
-    # A TAPE CAN COUNT PASSES OF THE GAME LOOP IN PLACE OF FRAMES (+in_passes+, and see
+    # A tape can count passes of the game loop in place of frames (+in_passes+, and see
     # PassStepper), and then a line's count is passes and a moment names a pass. One extra
     # line of heading marks it, `counts: passes`, or `counts: variable steps` for a variable of the
     # game. Such a tape plays the same game at any speed on any way of running it, where a tape of
     # frames holds its presses to one cartridge's timing. A tape of frames does not have the line.
     #
-    # A TAPE OF PASSES CAN WAIT ON THE GAME, for a stretch its count does not move on (a title, a fade,
+    # A tape of passes can wait on the game, for a stretch its count does not move on (a title, a fade,
     # a tally): a line `until screen is 3: 1 start, 1 -` repeats the presses after the colon, counted
     # in frames, until the variable reads the number (Playthrough::Until). It is the same line on any
     # build, however long that build's stretch, so it is kept as it is. A tape of frames has no such
     # line: what it holds is the frames the step took.
     #
-    # A TAPE OF A MATCH played by several machines (Network::Lockstep#tape) holds the match as well
+    # A tape of a match played by several machines (Network::Lockstep#tape) holds the match as well
     # (+match+, a Match), on a line of heading after the counts: `match: 2 players, seed 1234567`.
     # Every machine of a match sees all its players connected from the first pass that reads
     # buttons, whoever has pressed one, and adds the host's seed to the game's random numbers once the
@@ -67,7 +67,7 @@ module VBlank
     # plays a game as a match (Reference#play_as_match), so a tape of one plays there and is refused
     # anywhere else. A tape with no such line, every tape written before matches kept theirs, has none.
     #
-    # A TAPE OF A PLAYING GIVEN A SEED OF ITS OWN (Playthrough#play's `seed:`) holds it (+seed+), on a
+    # A tape of a playing given a seed of its own (Playthrough#play's `seed:`) holds it (+seed+), on a
     # line of heading after the match's: `seed: 4`. The seed is added to the game's random numbers once
     # the game has set itself up, so the same presses without it are another game: such a tape plays
     # with its seed, on the ways that take one (Playthrough::SEEDED_WAYS), and is refused anywhere else.
@@ -117,7 +117,7 @@ module VBlank
       # played on another cartridge it wants that one's own.
       #
       # And it records whether a lead-in was played first, with ` after a lead-in` on the
-      # end of either. The lead-in's presses are not on the tape — a lead-in is how THIS
+      # end of either. The lead-in's presses are not on the tape — a lead-in is how this
       # cartridge gets to where the playing begins, and another cartridge has its own —
       # so all the tape can record is that there was one.
       POWER_ON = "power-on"
@@ -245,7 +245,7 @@ module VBlank
         Comparison.new(first, second, moments.keys, **settings).run(self)
       end
 
-      # WRITE ONE PICTURE OF ONE FRAME ON TWO CARTRIDGES at +path+: the tape played on
+      # Write one picture of one frame on two cartridges at +path+: the tape played on
       # +first+ and on +second+ as far as the frame +at+, and their two screens there side
       # by side with the difference between them (see Comparison::PictureRequest). +at+ is
       # the frame, by its number or by the name of a moment, and +difference+ whether the
@@ -274,7 +274,7 @@ module VBlank
                              "two cartridges, use a tape of frames, or `same: :script` on the playthrough."
       end
 
-      # THE SAME GAME AS A TAPE OF FRAMES, for +cartridge+ alone: a tape of passes played once on it,
+      # The same game as a tape of frames, for +cartridge+ alone: a tape of passes played once on it,
       # with each line holding the frames its passes took there. A tape of frames comes back as it
       # is. What comes back is as strict as any tape of frames, and this tape stays the master.
       def in_frames_on(cartridge)
@@ -314,7 +314,7 @@ module VBlank
         taping.hold(step.buttons, stepper.frames_played - before)
       end
 
-      # WRITE THE TAPE AS A SCRIPT FOR mGBA at +path+ (see TapeExport), for +cartridge+. +pictures_in+
+      # Write the tape as a script for mGBA at +path+ (see TapeExport), for +cartridge+. +pictures_in+
       # is a folder for mGBA to write the screen at each moment into, to lay beside the pictures
       # here. The path is handed back.
       def write_mgba_script(cartridge, path, pictures_in: nil)
@@ -322,7 +322,7 @@ module VBlank
         path
       end
 
-      # WRITE THE TAPE AS A BIZHAWK MOVIE at +path+ (see TapeExport), for +cartridge+. The path is
+      # Write the tape as a BizHawk movie at +path+ (see TapeExport), for +cartridge+. The path is
       # handed back.
       def write_bizhawk_movie(cartridge, path)
         cartridge = Playthrough.cartridge_from(cartridge)
@@ -390,7 +390,7 @@ module VBlank
                              "presses start in a different place. Give the lead-in to play first: `#{how}`."
       end
 
-      # THE TAPE AS FAR AS +frame+ AND NO FURTHER: the same presses, ending on that frame. It
+      # The tape as far as +frame+ and no further: the same presses, ending on that frame. It
       # is how a moment part way through is got back to — play this, and the cartridge is
       # on that frame. A hold the frame falls inside is cut short there. A moment is kept
       # when the frame it names was played, the last frame included. A frame past the end
@@ -426,7 +426,7 @@ module VBlank
       # counted from 1, and +buttons+ what was down.
       Stretch = Data.define(:frames, :buttons)
 
-      # WHAT WAS DOWN ON EACH OF THE FRAMES +frames+, a range of frame numbers: one
+      # What was down on each of the frames +frames+, a range of frame numbers: one
       # Stretch for each run of them with the same buttons down, in order. A moment
       # between two lines of the same buttons does not split a run, since a moment is
       # no frames long; and a run that reaches outside the range is cut to it.
@@ -477,7 +477,7 @@ module VBlank
         path
       end
 
-      # A TAPE BEING MADE, a line at a time — by a playing as it plays, and by a file as it
+      # A tape being made, a line at a time — by a playing as it plays, and by a file as it
       # is read. Frames with the same buttons down run on from the ones before, so a wait
       # that watched the game for ninety frames is one line of ninety and not ninety of one;
       # and the buttons of a line are in the console's own order, so the same presses are
@@ -514,7 +514,7 @@ module VBlank
         end
       end
 
-      # ONE READING OF A TAPE'S TEXT. A tape is written by a program and read back by one, but
+      # One reading of a tape's text. A tape is written by a program and read back by one, but
       # it is also a file a person can open and change, so every line that cannot be read is
       # an error saying which line, what is on it, and what a line there has to look like.
       class Reader
