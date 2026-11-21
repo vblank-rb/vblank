@@ -2,41 +2,40 @@
 
 module VBlank
   class Builder
-    # Tiled backgrounds — the way most console games draw a level: not pixel by
-    # pixel, but out of a small set of reusable little pictures ("tiles") stamped
-    # onto a grid by a map. You define a tileset (which character means which tile
-    # image) and a background (a map of those characters), and the framework paints
-    # the grid for you.
+    # Tiled backgrounds
     #
-    #   image :brick, "#" => :gray  do <<~ART … ART end   # each tile is an image
-    #   image :floor, "." => :black do <<~ART … ART end
-    #   tiles :dungeon, "#" => :brick, "." => :floor       # the character -> tile map
-    #   background :level, tiles: :dungeon, map: <<~MAP     # where each tile goes
-    #     ##########
-    #     #........#
-    #     ##########
-    #   MAP
+    # Most console games draw a level not pixel by pixel but out of a small set of reusable little
+    # pictures, called tiles, stamped onto a grid by a map. You define a tile set, which says which
+    # character means which tile picture, and a background, which is a map of those characters.
+    # The framework paints the grid for you. A tile is just an `image`, so tiles are made like any
+    # other art: text, a list of numbers or an imported picture.
     #
-    # A tile is just an {#image}, so tiles are authored exactly like any other art
-    # (ASCII, an array, or an imported picture) and the tileset only names which
-    # character stands for which. All the console's tile machinery — where the tile
-    # pictures live in video memory, the map layout, the background-control
-    # registers — is managed for you and never appears here.
+    # ```ruby
+    # image :brick, "#" => :gray  do <<~ART … ART end   # each tile is an image
+    # image :floor, "." => :black do <<~ART … ART end
+    # tiles :dungeon, "#" => :brick, "." => :floor       # the character -> tile map
+    # background :level, tiles: :dungeon, map: <<~MAP     # where each tile goes
+    #   ##########
+    #   #........#
+    #   ##########
+    # MAP
+    # ```
     #
-    # For a level drawn in a map editor (like Tiled) and exported, you skip the
-    # characters entirely: import the whole tile sheet as numbered tiles and hand the
-    # background the editor's CSV export — a grid of those numbers — with `from:`.
+    # There are three ways to get a level. Type it as rows of characters. Draw it in a map editor
+    # such as Tiled and give the editor's CSV export with `from:`, after importing the whole tile
+    # sheet as numbered tiles. Or, for a level the build works out, decoded from somewhere or
+    # generated, write rows of arrays straight into `map:`. All three produce a grid of references
+    # into a tile set.
     #
-    # For a level the BUILD works out — decoded out of somewhere, or generated — write
-    # the grid straight into `map:` as rows of arrays, whose cells are whatever the
-    # tileset is keyed by. Those are the three ways a game gets a level, and all three
-    # produce the same one thing: a grid of references into a tileset.
-    # See {#tiles} and {#background}.
-    #
-    # One `background` paints a single layer. Declare several and they stack — the
-    # first is the backmost, each later one in front, composited by the tile hardware —
-    # and each can be scrolled independently (scroll a near and a far layer at different
-    # speeds for parallax). See {Background}.
+    # One `background` paints a single layer. Declare several and they stack: the first is the
+    # backmost and each later one is in front. Each can be scrolled on its own, so that a near and a
+    # far layer scroll at different speeds for parallax. `status_bar` is a strip of tiles fixed to
+    # the screen.
+    #--
+    # See Background. All the console's tile machinery, where the tile pictures live in video
+    # memory, the map layout and the background-control registers, is managed and never appears in
+    # these verbs.
+    #++
     module Tiled
       # WHAT THE BUILD KNOWS ABOUT ONE BACKGROUND, from the line that declares it to the
       # last pass before the tree is handed over.
@@ -79,54 +78,68 @@ module VBlank
         def turns_each_frame? = !angle.nil?
       end
 
-      # Define a tileset. Two ways to author it:
+      # Defines a tile set: the tile pictures a background is drawn from.
       #
-      # 1. BY CHARACTER — a map from a character to the tile {#image} it stands for.
-      #    The images must already be defined and must all be the same size (they form
-      #    a uniform grid). The characters are the alphabet a `background` map is drawn
-      #    with.
+      # There are two ways to make one. By character, give a map from a key to the tile `image` it
+      # stands for. The images must already be defined and must all be the same size. The keys are
+      # the alphabet a `background` map is drawn with.
       #
-      #      tiles :dungeon, "#" => :brick, "." => :floor
+      # ```ruby
+      # tiles :dungeon, "#" => :brick, "." => :floor
+      # ```
       #
-      #    A KEY NEED NOT BE A CHARACTER, and that matters for a level the build works
-      #    out rather than one a person types. A game that decodes its level from
-      #    somewhere has a tile NUMBER per cell and never had a character at all, and a
-      #    real screenful holds more distinct tiles than anybody would invent an
-      #    alphabet for. So a key is whatever the game already calls its tiles, and the
-      #    `background` map is written in those:
+      # A key need not be a character. A game that decodes its level from somewhere has a tile
+      # number for each cell and never had a character, and a real screenful holds more different
+      # tiles than anybody would invent an alphabet for. So a key is whatever the game already calls
+      # its tiles, and the `background` map is written in those.
       #
-      #      tiles :room, 0 => :tile_0, 1 => :tile_1, 2 => :tile_2
+      # ```ruby
+      # tiles :room, 0 => :tile_0, 1 => :tile_1, 2 => :tile_2
+      # ```
       #
-      #    You can still import those tiles from a tile sheet — one image file holding
-      #    the tiles in a grid — with `from:` (the file) and `tile:` (each tile's size
-      #    in pixels); then each character points at a cell instead of a hand-drawn
-      #    image: a cell number (counting left-to-right, top-to-bottom) or `[column,
-      #    row]`.
+      # You can import the tiles from a tile sheet, one image file holding the tiles in a grid, with
+      # `from:` and `tile:`. Each key then points at a cell of the sheet instead of a hand-drawn
+      # image: a cell number, counting left to right and top to bottom, or `[column, row]`.
       #
-      #      tiles :dungeon, from: "dungeon.png", tile: 8, "#" => 0, "." => 1
+      # ```ruby
+      # tiles :dungeon, from: "dungeon.png", tile: 8, "#" => 0, "." => 1
+      # ```
       #
-      # 2. BY NUMBER — import the WHOLE tile sheet with `from:` and `tile:` and NO
-      #    characters. Every cell becomes a numbered tile: 1, 2, 3… left-to-right then
-      #    top-to-bottom — the exact numbering a map editor like Tiled writes into a
-      #    CSV export. A background over this tileset is authored as those numbers —
-      #    the editor's CSV (see `background from:`), or a grid of them written
-      #    straight into `map:` — so there are no characters to name.
+      # By number, import the whole tile sheet with `from:` and `tile:` and no keys. Every cell
+      # becomes a numbered tile: 1, 2, 3, left to right and then top to bottom, which is the
+      # numbering a map editor such as Tiled writes into a CSV export. A background over this tile
+      # set is written as those numbers, the editor's CSV (see `background from:`) or a grid of
+      # numbers written into `map:`.
       #
-      #      tiles :world, from: "world.png", tile: 8
+      # ```ruby
+      # tiles :world, from: "world.png", tile: 8
+      # ```
       #
-      # The file is found next to your script; `transparent: true` honors a cut-out
-      # background.
+      # Add `solid:` to mark which tiles are walls that a sprite cannot move through. It takes the
+      # keys that block, whichever kind this tile set has: characters (`solid: ["#"]`, or one
+      # character `solid: "#"`) or tile numbers (`solid: [1, 2]`). A background built from this
+      # tile set then knows where its walls are, so a sprite told to be `blocked_by` it stops at
+      # them.
       #
-      # Add `solid:` to mark which tiles are walls a sprite can't move through — the
-      # KEYS that block, whichever kind this tileset has: characters (`solid: ["#"]`,
-      # or one char `solid: "#"`), or tile numbers (`solid: [1, 2]`). A `background`
-      # built from this tileset then knows where its walls are, so a sprite told to be
-      # `blocked_by` it stops at them (see {HardwareSprite#blocked_by}).
-      #
-      # @param name [Symbol] the tileset's name, referenced by `background(tiles:)`
-      # @param tile_map [Hash] one entry per tile: key => image name, or (with `from:`)
-      #   key => cell — or empty with `from:` to import the whole sheet as numbered
-      #   tiles. Options `from:`/`tile:`/`transparent:`/`solid:`.
+      # * `name` - the tile set's name, which `background(tiles:)` refers to.
+      # * `tile_map` - one entry for each tile, from its key to an image name or, with `from:`, to
+      #   a cell. Leave it empty with `from:` to import the whole sheet as numbered tiles. These
+      #   options go in the same hash:
+      # * `from:` - an image file holding the tiles in a grid, found next to your script. With a
+      #   list the game owns, a set of tiles whose pixels the game paints while it runs.
+      # * `tile:` - each tile's size in the sheet, in pixels.
+      # * `transparent:` - `true` to honour a cut-out background.
+      # * `solid:` - the keys of the tiles that are walls.
+      # * `black:` - `:see_through` (the default) lets the layer behind show through black, and
+      #   `:solid` keeps black as a colour, so that an outline in black does not come out full of
+      #   holes.
+      #--
+      # BLACK AS A COLOUR. A tile has no marker of its own for "nothing here", so black drawn by
+      # colour stands for it. A tile set that sets `black: :solid` holds its pictures as place
+      # numbers, every backend then reads them as it reads any such art, and black takes a colour
+      # slot of its own on the console. See #solid_black_image. The pixels of a list the game owns
+      # are kept in a list of its own (see TileRuns).
+      #++
       def tiles(name, tile_map)
         # Pixels the game paints itself, kept in a list of its own (see TileRuns).
         return define_tile_run(name, tile_map) if tile_map[:from].is_a?(DSL::List)
@@ -228,122 +241,118 @@ module VBlank
       # The picture +pose+ is the solid-black copy of (#solid_black_image), or nil for any other.
       private def solid_black_source(pose) = @solid_black_images.key(pose)
 
-      # Paint a tiled background: a tileset plus a map of which tile goes in each grid
-      # cell. Author the map two ways:
+      # Paints a tiled background: a tile set plus a map of which tile goes in each cell of the
+      # grid. It returns a handle that you can scroll with `world.scroll_by dx, dy`.
       #
-      # - `map:` — the grid of tileset keys. A row is a String of them, one character
-      #   per cell, rows separated by newlines (a heredoc reads most like the picture),
-      #   which is how a level somebody typed is written; a space leaves the cell empty
-      #   (the background shows through).
+      # The map can be written in two ways. `map:` is the grid of tile set keys. A row is a string
+      # of them, one character for each cell, with rows separated by newlines, which is how a level
+      # somebody typed is written. A space leaves the cell empty, so the background shows through.
+      # A row can instead be an array with one element for each cell, and a cell is then whatever
+      # the tile set is keyed by. `nil` is the empty cell. That is how a level the build works out
+      # is written.
       #
-      #     background :level, tiles: :dungeon, map: <<~MAP
-      #       ##########
-      #       #........#
-      #       ##########
-      #     MAP
+      # ```ruby
+      # background :level, tiles: :dungeon, map: <<~MAP
+      #   ##########
+      #   #........#
+      #   ##########
+      # MAP
       #
-      #   A row may be an ARRAY instead, one element per cell, and then a cell is
-      #   whatever the tileset is keyed by rather than a single character; `nil` is
-      #   the empty cell. That is the same grid written another way, and it is how a
-      #   level the BUILD works out is written — decoded from somewhere, or generated.
-      #   Such a level has a tile number per cell and never had characters, and a real
-      #   screenful holds more distinct tiles than there are characters anybody would
-      #   read.
+      # background :room, tiles: :room, map: [[0, 1, 1, 2],
+      #                                       [3, nil, 1, 2]]
+      # ```
       #
-      #     background :room, tiles: :room, map: [[0, 1, 1, 2],
-      #                                           [3, nil, 1, 2]]
+      # `from:` is a CSV tile map exported from a map editor such as Tiled: a grid of tile numbers,
+      # as `tiles from:` numbers an imported sheet, with one row on each line. A `0` leaves the cell
+      # empty. The file is found next to your script. Use it for editor files. For a grid the build
+      # worked out, write it into `map:`.
       #
-      # - `from:` — a CSV tilemap exported from a map editor like Tiled: a grid of
-      #   tile numbers (the numbering `tiles from:` gives an imported sheet), one row
-      #   per line. A `0` leaves the cell empty. The file is found next to your script.
-      #   This one is editor interop — for a grid the build worked out, write it into
-      #   `map:` rather than through a file.
+      # ```ruby
+      # background :level, tiles: :world, from: "level.csv"
+      # ```
       #
-      #     background :level, tiles: :world, from: "level.csv"
+      # To have several maps, one showing at a time, give `map:` (or `from:`) a hash of them, from a
+      # name to a map. The background can then be handed a whole different map while the game runs,
+      # such as a room for each map, a floor for each map, or a level that reshapes. The first is the
+      # one showing when the game starts.
       #
-      # SEVERAL MAPS, one showing at a time: give `map:` (or `from:`) a HASH of them,
-      # name => map, and the background can be handed a whole different one while the
-      # game runs — a room per map, a floor per map, a level that reshapes.
+      # ```ruby
+      # rooms = background :rooms, tiles: :dungeon, map: { hall: HALL, cave: CAVE }
+      # rooms.show_map :cave       # the whole room is the cave now
+      # ```
       #
-      #     rooms = background :rooms, tiles: :dungeon, map: { hall: HALL, cave: CAVE }
-      #     rooms.show_map :cave       # ...and the whole room is the cave now
+      # A map bigger than the console's grid, or maps of different sizes, are kept whole in the
+      # cartridge and brought into view a strip at a time as the view moves. Past the edge of such a
+      # map the view shows nothing, rather than the map coming round again.
       #
-      # The first is the one showing when the program starts. See {Background#show_map}.
+      # What stops a mover is given apart from what it sees. `walls:` is a grid of its own, the
+      # same shape as the map, that marks which cells a mover cannot enter. Without it the walls
+      # are the tile set's `solid:` tiles, which is what a small game wants. With it the two are
+      # separate data, as a real game's are: a room's collision is made, imported or decoded
+      # beside its picture and not read off which tile was drawn. A map that `walls:` does not name
+      # has no walls, so a room that is scenery and not a place, such as a fly-over map or a
+      # cut-scene picture, needs one line less and not a different background. A cell is a wall
+      # unless it is blank, and blank is a space, a `.`, a `0` or nothing at all.
       #
-      # A MAP BIGGER THAN THE CONSOLE'S GRID, or maps of different sizes, are kept whole in
-      # the cartridge and brought into view a strip at a time as the view moves (see
-      # IR::TileMap.streams?). Past the edge of such a map the view shows nothing, rather than
-      # the map coming round again.
+      # ```ruby
+      # rooms = background :rooms, tiles: :dungeon,
+      #                    map:   { hall: HALL,       cave: CAVE, sky: SKY },
+      #                    walls: { hall: HALL_WALLS, cave: CAVE_WALLS }
+      # ```
       #
-      # WHAT STOPS A MOVER, given apart from what it SEES: `walls:` is a grid of its own,
-      # the same shape as the map, marking which cells a mover cannot enter. Without it the
-      # walls are the tileset's `solid:` tiles, which is what a small game wants and what
-      # every game wrote before this existed. With it the two are separate data, which is
-      # what a real game's are: a room's collision is authored, imported or decoded beside
-      # its picture rather than read off which tile was drawn.
+      # `above_row: 32` shows the background only on the rows above row 32, and `alone: true` shows
+      # it alone there, as a console's own status bar often is. No other background is drawn above
+      # the row, so its see-through pixels show the backdrop and not the field under it. Sprites are
+      # still drawn there, as the stack puts them. `alone: :without_sprites` keeps the sprites out
+      # above the row too, so only the bar and the backdrop show there.
       #
-      #     rooms = background :rooms, tiles: :dungeon,
-      #                        map:   { hall: HALL,       cave: CAVE, sky: SKY },
-      #                        walls: { hall: HALL_WALLS, cave: CAVE_WALLS }
+      # ```ruby
+      # background :bar, tiles: :hud, map: BAR_ROWS, above_row: 32, alone: :without_sprites
+      # ```
       #
-      # WHICH ROOMS HAVE WALLS IS THEN SOMETHING YOU CAN READ. A map `walls:` does not
-      # name has none — walk anywhere in it — so a room that is scenery rather than a
-      # place, a fly-over map, a cut-scene tableau, is one missing line and not a
-      # different background. A cell is a wall unless it is BLANK, and blank is a space,
-      # a `.`, a `0` or nothing at all — so a grid drawn by hand and a collision layer
-      # decoded out of somewhere else both drop in.
+      # `held: true` keeps every `set_tile` of a pass and shows them all on the next frame, for
+      # cells that change together, such as a message box that grows a size a frame. Without it a
+      # cell is written where the game asks for it, which is the cheapest thing and right for a door
+      # or a pot, and a box of seventy cells can show part of each size.
       #
-      # A BAR ABOVE A ROW: `above_row: 32` shows the background only on the rows above row 32, and
-      # `alone: true` shows it alone there, as a console's own status bar often is: no other
-      # background is drawn above the row, so its see-through pixels show the backdrop and not the
-      # field under it. Sprites are still drawn there, as the stack puts them. `alone:
-      # :without_sprites` keeps the sprites out above the row too, so only the bar and the backdrop
-      # show there, as a console that shows that one layer on those lines does.
+      # ```ruby
+      # box = background :box, tiles: :frame, map: EMPTY_BOX, held: true
+      # ```
       #
-      #     background :bar, tiles: :hud, map: BAR_ROWS, above_row: 32, alone: :without_sprites
-      #
-      # CELLS THAT CHANGE TOGETHER: `held: true` keeps every `set_tile` of a pass and shows
-      # them all on the next frame, as the frame's other framework drawing shows.
-      #
-      #     box = background :box, tiles: :frame, map: EMPTY_BOX, held: true
-      #
-      # WHY A SETTING, AND WHY IT IS OFF UNLESS ASKED FOR. Without it a cell is written where
-      # the game asks for it, which is the cheapest thing and right for a door or a pot: the
-      # display reads the map while it draws, so a change shows on this frame or the next by
-      # where on the screen the display has got to, and nobody can tell for one cell. A
-      # message box growing a size a frame is seventy cells, and there the same writes show
-      # part of each size, or a size early on a quiet frame and on time on a busy one. The
-      # console's own games keep a copy of such a layer's map in work memory, change the copy
-      # during the frame, and copy it in between frames. This keeps the changes themselves
-      # in work memory instead, a word each, and writes them in the gap between frames: the
-      # same picture, without copying the cells nobody changed, and without a second copy of
-      # the map to keep in step when show_map or a scene puts the map up again. A game that
+      # * `name` - the background's name, as a symbol.
+      # * `tiles:` - a tile set made with `tiles`, or a hash from an area to a tile set for a
+      #   background that walks between areas.
+      # * `map:` - the grid of tile set keys, as rows of characters or rows of keys, or a hash from
+      #   a name to a grid for a background with several maps.
+      # * `from:` - the path of a CSV tile map, or a hash from a name to a path.
+      # * `walls:` - which cells stop a mover, apart from the picture. One grid, or a hash keyed
+      #   like `map:`.
+      # * `above_row:` - show the background only on the rows above this row.
+      # * `alone:` - with `above_row:`, `true` shows no other background above the row, and
+      #   `:without_sprites` shows no sprite either.
+      # * `held:` - `true` keeps each pass's `set_tile` changes and shows them together on the next
+      #   frame.
+      # * `colors:` - the colours the tiles are drawn from.
+      # * `across:` and `cell:` - for a background read from the data pack, the width of its map
+      #   and the size of a cell.
+      # * `set_cells:` - for a background from the data pack, the original's cell numbers that
+      #   `set_cell` may write later.
+      # * `cells_in_front:` - the cells that are drawn in front of sprites that are `in_front:`.
+      #--
+      # WHY `held:` IS A SETTING, AND WHY IT IS OFF UNLESS ASKED FOR. The display reads the map while
+      # it draws, so a change shows on this frame or the next by where on the screen the display has
+      # got to, and nobody can tell for one cell. A message box growing a size a frame is seventy
+      # cells, and there the same writes show part of each size, or a size early on a quiet frame
+      # and on time on a busy one. The console's own games keep a copy of such a layer's map in work
+      # memory, change the copy during the frame, and copy it in between frames. This keeps the
+      # changes themselves in work memory instead, a word each, and writes them in the gap between
+      # frames: the same picture, without copying the cells nobody changed, and without a second
+      # copy of the map to keep in step when show_map or a scene puts the map up again. A game that
       # does not set it builds what it built before.
       #
-      # Returns a {Background} handle you can scroll (`world.scroll_by dx, dy`).
-      #
-      # @param name [Symbol] the background's name
-      # @param tiles [Symbol, Hash] a tileset defined with {#tiles}, or a Hash of area =>
-      #   tileset for a background that walks between areas (see #background_from_sets). From the
-      #   data pack, tiles:, map: and colors: can each be a Hash of slots by area
-      #   (Builder::PackBackgrounds#declare_pack_background_areas)
-      # @param map [String, Array<String>, Array<Array>, Hash, nil] the grid of tileset
-      #   keys — rows of characters, or rows of keys — or a Hash of name => grid for a
-      #   background with several maps; for one that walks between areas, a Hash of
-      #   area => those, under the names `tiles:` gives. From the data pack, a slot or a map that
-      #   carries its width (DSL::PackSlot#as_map), which then needs no across:
-      # @param from [String, Hash, nil] path to a CSV tilemap (a grid of tile numbers), or
-      #   a Hash of name => path for a background with several maps
-      # @param walls [String, Array<String>, Array<Array>, Hash, nil] which cells stop a
-      #   mover, apart from the picture. One grid, or a Hash keyed like `map:`.
-      # @param above_row [Integer, nil] show the background only on the rows above this row
-      # @param alone [Boolean, :without_sprites] with `above_row:`, show no other background above the
-      #   row, and with :without_sprites no sprite either
-      # @param held [Boolean] keep each pass's `set_tile` changes and show them together on
-      #   the next frame
-      # @param set_cells [Array<Integer, Range>, Range, nil] for a background from the data pack, the
-      #   original's cell numbers `set_cell` may write later (Builder::PackBackgrounds)
-      # @return [Background] a handle: scroll_by / scroll_to / show_map
+      # See #background_from_sets for the several-areas form, IR::TileMap.streams? for the bigger
+      # maps, Builder::PackBackgrounds for the data pack forms, and Background for the handle.
+      #++
       def background(name, tiles:, map: nil, from: nil, walls: nil, above_row: nil, alone: false, held: false, colors: nil,
                      across: nil, cell: nil, set_cells: nil, cells_in_front: nil)
         if pack_areas?(tiles, map, colors)
@@ -367,32 +376,36 @@ module VBlank
                                  held: held)
       end
 
-      # A STATUS BAR: a strip of tiles fixed to the screen from row +top+ down to the bottom,
-      # over a field that scrolls and changes under it — the score along the bottom of a
-      # pinball table, the lives and keys along the bottom of a dungeon.
+      # Makes a status bar: a strip of tiles fixed to the screen from a row down to the bottom, over
+      # a field that scrolls and changes under it.
       #
-      #   bar = status_bar :score, tiles: :hud, map: SCORE_BAR, top: screen_height - 16
-      #   game_loop do
-      #     bar.move_to screen_height if ball_y > 132        # out of view while the ball is low
-      #     bar.move_to screen_height - 16 if ball_y <= 132
-      #   end
+      # It is the score along the bottom of a pinball table, or the lives and keys along the bottom
+      # of a dungeon. It does not scroll. It hides the backgrounds under it from its top to the
+      # bottom of the screen, so its see-through pixels, and the rows past the end of its map, show
+      # the backdrop and never the field. Sprites, and text on a tiled screen, are drawn over it.
+      # Its map is written the way a `background`'s is, and `set_tile` changes one of its cells. One
+      # status bar shows at a time, and it needs a `screen :tiled`.
       #
-      # It does not scroll. It hides the backgrounds under it from its top to the bottom of the
-      # screen, so its see-through pixels, and the rows past the end of its map, show the
-      # backdrop and never the field. Sprites, and text on a tiled screen, are drawn over it.
-      # Its map is written the way a `background`'s is, and `set_tile` changes one of its
-      # cells. One status bar shows at a time, and it needs a `screen :tiled`.
+      # ```ruby
+      # bar = status_bar :score, tiles: :hud, map: SCORE_BAR, top: screen_height - 16
+      # game_loop do
+      #   bar.move_to screen_height if ball_y > 132        # out of view while the ball is low
+      #   bar.move_to screen_height - 16 if ball_y <= 132
+      # end
+      # ```
       #
-      # On the Game Boy Color it is the console's window, a second layer that every Color has
-      # beside its one background, so it takes nothing from the field. On the Advance it is one
-      # of the four background layers.
+      # * `name` - the bar's name, as a symbol.
+      # * `tiles:` - a tile set made with `tiles`.
+      # * `map:` - the bar's grid, as a background's. A hash from names to grids gives it several,
+      #   and `show_map` changes the whole bar at once.
+      # * `top:` - the screen row its top is at to begin with.
       #
-      # @param name [Symbol] the bar's name
-      # @param tiles [Symbol] a tileset defined with {#tiles}
-      # @param map [String, Array<String>, Array<Array>, Hash] the bar's grid, as a background's;
-      #   a Hash of names to grids gives it several, and `show_map` changes the whole bar at once
-      # @param top [Integer] the screen row its top is at to begin with
-      # @return [DSL::StatusBar] a handle: move_to / top / set_tile / show_map
+      # Returns a handle that answers `move_to`, `top`, `set_tile` and `show_map`.
+      #--
+      # On the Game Boy Color it is the console's window, a second layer that every Color has beside
+      # its one background, so it takes nothing from the field. On the Advance it is one of the four
+      # background layers.
+      #++
       def status_bar(name, tiles:, map:, top:)
         refuse_unplaceable_status_bar!(name, tiles, map, top)
         background = declare_background(name, tiles: tiles, map: map, bar_top: top)

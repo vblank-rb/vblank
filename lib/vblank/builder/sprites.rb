@@ -2,106 +2,116 @@
 
 module VBlank
   class Builder
-    # Sprite creation: the `sprite` verb, software + hardware sprites, facing /
-    # frames / directional / named-clip animation, and hitboxes.
+    # Sprites
+    #
+    # A sprite is a named picture that moves around the screen. `sprite` makes one, and the handle
+    # it returns moves it, turns it, hides it and shows it. A sprite can face the way it moves, with
+    # a picture for each direction, or cycle through frames as an animation, and it has a collision
+    # box for `overlaps?`. `hide_sprites` keeps every sprite off the screen for one frame.
+    #
+    # ```ruby
+    # hero = sprite :hero, at: [100, 60]
+    # game_loop { hero.x += 2 if held(:right) }
+    # ```
+    #--
+    # Sprite creation: the `sprite` verb, software + hardware sprites, facing / frames /
+    # directional / named-clip animation, and hitboxes.
+    #++
     module Sprites
-      # Make a sprite: a named image that moves around the screen leaving no trail.
-      # It remembers the pixels underneath itself and paints them back when it moves,
-      # and the framework redraws it for you each frame — so you never call a draw
-      # verb or clear the screen. Returns a {Sprite} whose `x`/`y` you steer with the
-      # ordinary expression DSL.
+      # Makes a sprite: a named picture that moves around the screen and leaves no trail.
       #
-      #   image :heart, "." => :transparent, "#" => :red do ... end
-      #   clear_screen :blue           # paint the field ONCE, before the loop
-      #   hero = sprite :heart, at: [100, 60]
-      #   game_loop do
-      #     wait_vblank
-      #     hero.x += 2 if held(:right)
-      #   end
+      # The framework redraws it for you each frame, so you never call a draw verb or clear the
+      # screen. It returns a handle whose `x` and `y` you steer with ordinary calculations.
       #
-      # Pass +shown: false+ for a sprite that starts hidden and appears later — a
-      # boss, a power-up, a second player who joins mid-game. Its RAM is reserved up
-      # front (there's no allocating memory mid-game on the console — you budget it
-      # when the ROM is built), but nothing is drawn until you `show` it, and while
-      # hidden the per-frame repaint skips it for almost nothing. So a late arrival
-      # costs a little reserved memory, not a busy sprite:
+      # ```ruby
+      # image :heart, "." => :transparent, "#" => :red do ... end
+      # clear_screen :blue           # paint the field once, before the loop
+      # hero = sprite :heart, at: [100, 60]
+      # game_loop do
+      #   hero.x += 2 if held(:right)
+      # end
+      # ```
       #
-      #   boss = sprite :boss, at: [200, 40], shown: false
-      #   game_loop do
-      #     wait_vblank
-      #     after(90, :seconds) { boss.show } # the boss turns up a minute and a half in
-      #   end
+      # The kind of sprite you get follows the screen you chose. On a `screen :bitmap` it is a
+      # software sprite, which remembers the pixels under itself and paints them back when it moves.
+      # On a `screen :tiled` it is a hardware sprite: the console puts it over the background for
+      # you, so it costs no per-pixel work and can stack cleanly over other sprites. The handle is
+      # the same either way, `x`, `y`, `move` and `move_to`, so the game code does not change.
       #
-      # Give a sprite POSES so it can face the way it moves: pass +facing:+ a map of
-      # direction to image (each at its top-left corner). The sprite then draws whichever pose
-      # it's facing, and `move(:left)` (or `face(:left)`) turns it — the frame-swap
-      # way 2D games face a character, done in bitmap mode:
+      # Pass `shown: false` for a sprite that starts hidden and appears later, such as a boss, a
+      # power-up or a second player who joins mid-game. Its memory is reserved up front, because a
+      # console has no allocating memory mid-game. Nothing is drawn until you `show` it, and while
+      # it is hidden the per-frame repaint skips it for almost nothing.
       #
-      #   pac = sprite :pac, at: [100, 60],
-      #                facing: { right: :pac_right, left: :pac_left, up: :pac_up, down: :pac_down }
-      #   pac.move :left, by: 2 if held(:left) # moves AND faces left
+      # ```ruby
+      # boss = sprite :boss, at: [200, 40], shown: false
+      # after(90, :seconds) { boss.show } # the boss turns up a minute and a half in
+      # ```
       #
-      # The first entry is the pose it starts in. (This is pose-swapping, not pixel
-      # rotation — turning to an arbitrary angle is the affine/hardware-sprite track.)
+      # Give a sprite poses so that it can face the way it moves. `facing:` is a map from a
+      # direction to a picture. The first entry is the pose it starts in, and `move(:left)` or
+      # `face(:left)` turns it. This is swapping pictures and not turning the pixels to an angle.
       #
-      # The kind of sprite you get follows the screen you chose. On a `screen :bitmap`
-      # it's a *software* sprite (it remembers and restores the pixels under itself,
-      # as described above). On a `screen :tiled` it's a *hardware* sprite: the
-      # console composites it over the background for you, so it costs no per-pixel
-      # work and can stack cleanly over other sprites. The handle is the same either
-      # way — `x`/`y`/`move`/`move_to` — so the game code doesn't change.
+      # ```ruby
+      # pac = sprite :pac, at: [100, 60],
+      #              facing: { right: :pac_right, left: :pac_left, up: :pac_up, down: :pac_down }
+      # pac.move :left, by: 2 if held(:left) # moves and faces left
+      # ```
       #
-      # Pass +over_picture: true+ on a `screen :bitmap` for the console's own sprite there
-      # too: the display draws it over the painted picture, never into it, so it costs no
-      # painting and nothing has to be put back when it moves or when the game repaints the
-      # whole picture. It is the same handle a tiled screen gives (turning and resizing
-      # included). The display knows nothing of what the picture shows, so such a sprite is
-      # in front of ALL of it — right for a gun in the player's hands, a cursor or a marker,
-      # and wrong for something that should go behind part of the picture. That is why it is
-      # asked for, sprite by sprite. On a `screen :tiled` it changes nothing.
+      # Give `frames:`, a list of same-size pictures, and `rate:` to make the sprite a flipbook. The
+      # framework cycles through the frames, one every `rate` frames, with nothing to drive by hand,
+      # so a coin spins or a torch flickers. It combines with movement.
       #
-      # Pass +frames:+ a list of same-size images and +rate:+ to make the sprite a
-      # FLIPBOOK: the framework cycles through those frames — one every +rate+ frames —
-      # with the timer hidden and managed for you, so a coin spins or a torch flickers
-      # with nothing to drive by hand. It composes with movement (walk it with `move`
-      # while it animates), and works the same on a `screen :bitmap` or `screen :tiled`.
+      # ```ruby
+      # spin = sprite :coin, at: [x, y], frames: [:coin1, :coin2, :coin3, :coin4], rate: 6
+      # ```
       #
-      #   spin = sprite :coin, at: [x, y], frames: [:coin1, :coin2, :coin3, :coin4], rate: 6
+      # Or import the frames from a sprite sheet, an image file holding the frames in a row or a
+      # grid. `frames_from:` names the file, which is found next to your script, and `tile:` is the
+      # size of each frame. Every cell becomes a frame, in order.
       #
-      # Or skip drawing the frames by hand and IMPORT them from a sprite sheet — one
-      # image file holding the frames in a row (or grid). +frames_from:+ names the
-      # file and +tile:+ the size of each frame; every cell becomes a frame, in order,
-      # so there's nothing to name or number:
+      # ```ruby
+      # run = sprite :hero, at: [x, y], frames_from: "hero.png", tile: 16, rate: 8, transparent: true
+      # ```
       #
-      #   run = sprite :hero, at: [x, y], frames_from: "hero.png", tile: 16, rate: 8, transparent: true
+      # A sprite takes exactly one of `facing:`, `frames:` and `frames_from:`, since each supplies
+      # the sprite's pictures.
       #
-      # +transparent: true+ honors the sheet's cut-out background so only the figure
-      # draws, not a box around it. The file is found next to your script.
-      #
-      # +facing:+, +frames:+, and +frames_from:+ all supply the sprite's pictures, so
-      # a sprite takes exactly one of them.
-      #
-      # +colors:+ is the list of colours every picture imported from a file is drawn from,
-      # the same as `image ..., colors:` gives one picture — a list, or the name of one declared
-      # with `colors`. It is what lets such a sprite be drawn with another list (`draw_with`).
-      # Pictures you declared yourself carry their own, so it goes only with +frames_from:+,
-      # +facing_from:+ and +from_aseprite:+.
-      #
-      # @param name [Symbol] what this sprite is: the name a test, a bot or a probe reads it by
-      #   (`player.sprite(:walker2).x`), and the image it shows unless +image:+ names another
-      # @param image [Symbol, nil] the image it shows (its size becomes the sprite's size), where
-      #   that is not the image of its own name: several sprites showing one picture each have a
-      #   name of their own (`sprite :walker2, image: :walker`). Not with +facing:+, +frames:+ or
+      # * `name` - what the sprite is: the name a test, a bot or a probe reads it by, such as
+      #   `player.sprite(:walker2).x`. It is also the picture it shows unless `image:` names another.
+      # * `image:` - the picture it shows, where that is not the picture of its own name. Several
+      #   sprites that show one picture each have a name of their own: `sprite :walker2, image:
+      #   :walker`. The picture's size becomes the sprite's size. Not with `facing:`, `frames:` or
       #   the other settings that give it its pictures.
-      # @param at [Array(Integer, Integer)] the sprite's starting [x, y]
-      # @param facing [Hash{Symbol=>Symbol}, nil] direction => image, for a sprite that turns
-      # @param frames [Array<Symbol>, nil] same-size images to cycle as an animation
-      # @param frames_from [String, nil] a sprite-sheet image file to slice into frames
-      # @param tile [Integer, Array(Integer, Integer), nil] frame size for +frames_from:+
-      # @param transparent [Boolean] honor the sheet's transparency (for +frames_from:+)
-      # @param rate [Integer, nil] frames-per-step for +frames:+/+frames_from:+ (required with them)
-      # @param shown [Boolean] draw it now (true, default), or start hidden until `show`
-      # @return [Sprite, HardwareSprite] a handle: x / y / move / move_to (and, in bitmap mode, face / hide / show)
+      # * `at:` - the sprite's starting place, as `[x, y]`.
+      # * `facing:` - a map from direction to picture, for a sprite that turns.
+      # * `frames:` - same-size pictures to cycle as an animation.
+      # * `frames_from:` - a sprite-sheet image file to slice into frames.
+      # * `tile:` - the frame size for `frames_from:`, a number or `[width, height]`.
+      # * `transparent:` - `true` to honour the sheet's cut-out background, so that only the figure
+      #   draws and not a box around it.
+      # * `rate:` - how many frames each animation frame lasts. It is required with `frames:` and
+      #   `frames_from:`.
+      # * `shown:` - `false` to start hidden until `show`. The default is `true`.
+      # * `colors:` - the list of colours every picture imported from a file is drawn from, as in
+      #   `image ..., colors:`: a list, or the name of one declared with `colors`. It lets such a
+      #   sprite be drawn with another list (`draw_with`). It goes only with `frames_from:`,
+      #   `facing_from:` and `from_aseprite:`, since pictures you declared yourself carry their own.
+      # * `hitbox:` - the collision box, `:full`, a number to inset it by, or `[x, y, w, h]`.
+      # * `over_picture:` - `true` on a `screen :bitmap` for the console's own sprite there too. The
+      #   display draws it over the painted picture and never into it, so it costs no painting and
+      #   nothing has to be put back when it moves. It is in front of all of the picture, which is
+      #   right for a gun in the player's hands, a cursor or a marker, and wrong for something that
+      #   should go behind part of the picture. On a `screen :tiled` it changes nothing.
+      # * `in_front:` - `true` draws the sprite over a background's cells marked `cells_in_front:`
+      #   as well as over everything else, as a cursor or a speech box frame sits over scenery its
+      #   characters walk behind.
+      #--
+      # A sprite's `hitbox:` default is per-pixel collision, gated by the visible-pixel box. The
+      # in_front frame draws the sprite after every sprite not in front
+      # (Builder#finalize_present_lists), so it is in front of those too: the console keeps a
+      # priority bit in each sprite as it does in each cell. Returns a Sprite or a HardwareSprite.
+      #++
       def sprite(name, image: nil, in_front: false, **settings)
         refuse_image_beside_poses!(name, settings) if image
         handle = sprite_handle(image || name, **settings)
@@ -257,20 +267,27 @@ module VBlank
         declare_software_sprite(handle, shown)
       end
 
-      # Keep every sprite off the screen for one frame: the next frame drawn after this pass
-      # shows none, and the frame after that shows every one where it would have been. Nothing
-      # about any sprite or pool changes, so nothing has to be put back. Call it on each pass to
-      # keep them off for longer.
+      # Keeps every sprite off the screen for one frame.
       #
-      # It is for the one frame where some sprites are not where they will be yet — the first
-      # frame after a room loads behind a fade, or a map screen opening — so that none shows
-      # half moved. On a tiled screen the text is sprites too, and it goes with them.
+      # The next frame drawn after this pass shows none, and the frame after that shows every one
+      # where it would have been. Nothing about any sprite or pool changes, so nothing has to be put
+      # back. Call it on each pass to keep them off for longer. On a tiled screen the text is sprites
+      # too, and it goes with them.
       #
-      #   hide_sprites if room_loaded
+      # It is for the one frame where some sprites are not where they will be yet, such as the first
+      # frame after a room loads behind a fade, or a map screen opening, so that none shows half
+      # moved.
       #
+      # ```ruby
+      # hide_sprites if room_loaded
+      # ```
+      #
+      # A bitmap screen paints its sprites into the picture and has no layer of sprites to switch
+      # off, so there it is an error.
+      #--
       # The console draws its sprites as a layer of its own, and this switches that layer off
-      # between frames and on again a frame later. A bitmap screen has no such layer, since it
-      # paints its sprites into the picture, so there it is a friendly error.
+      # between frames and on again a frame later.
+      #++
       def hide_sprites
         record(Build.hide_sprites)
         nil
