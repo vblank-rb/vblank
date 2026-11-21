@@ -6,6 +6,25 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # A warning that routines the game marks `fast: true` took the quick memory the sound
+        # and the frame count need:
+        #
+        # > One routine did not fit in the console's quick memory. It is the routine that
+        # > answers the display and the timers, and plays the music and the sound effects. It
+        # > runs on every frame of every screen. It needs <size>, and <size> was free when its
+        # > turn came. Before its turn, the build put in the routines that this game marks
+        # > `fast: true`: <routines>. So it runs from the cartridge, which is about two and a
+        # > half times slower. Then the heaviest frames can run late. To fix this, remove
+        # > `fast: true` from a routine that runs only now and then. A build that measures the
+        # > game then keeps that routine in the quick memory if there is room after what runs
+        # > every frame.
+        #
+        # A routine marked `fast: true` always gets the quick memory first. One that runs only
+        # now and then, such as saving the game, can take the room from code that runs every
+        # frame, and the busiest frames then run late. Remove `fast: true` from the routines the
+        # message names that the game does not need to be quick.
+        #
+        #--
         # What the author insisted on, leaving out what runs every frame. The routine the console
         # jumps into when the display or a timer announces something runs on every frame of every
         # screen: it plays the music and the sound effects, and it counts the frames. The build
@@ -22,6 +41,7 @@ module VBlank
         # routine missed — the whole game's, or one scene's — have to come to at least what it was
         # short by. A routine that missed on its own size, or behind what the build chose, is not
         # the author's word's doing, and naming that word would send them to the wrong line.
+        #++
         class InterruptFromCartridge
           NAME = :interrupt_from_cartridge
           PLAIN_NAME = "the routine that answers the display, left out by `fast: true`"

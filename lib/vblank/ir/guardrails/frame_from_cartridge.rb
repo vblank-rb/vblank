@@ -6,6 +6,37 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # A warning that the code of the `game_loop` did not fit in the console's quick memory,
+        # so it runs from the cartridge, which is slower. Where the build did not measure the
+        # game:
+        #
+        # > The game loop's body did not fit in the console's quick memory. It needs <size>,
+        # > and <size> was free when its turn came. So the whole frame runs from the
+        # > cartridge, at about two and a half times slower than it could. The cause is not
+        # > the work the loop does. The cause is how much code is in it. The usual cause is a
+        # > large piece of code in the loop that seldom runs. To fix this, move that code into
+        # > a `func` of its own, and mark it `fast: false`. Then the loop is small enough to
+        # > fit, and the rare code runs from the cartridge only when it runs. To see what was
+        # > kept in the quick memory and what was not, call `rom.profile` on the built ROM.
+        #
+        # Where the build measured the game, the middle of the message says how much of a
+        # frame's work the loop's own code does, and gives two ways out:
+        #
+        # > So the loop's own code runs from the cartridge, at about two and a half times
+        # > slower than it could. <In the :name scene, where a frame does the most work,
+        # > that> code is about <number>% of the work of a frame. To fix this, make the loop's
+        # > body smaller: move code that seldom runs into a `func` of its own, and mark it
+        # > `fast: false`. Or give the loop more room: mark a routine that matters less
+        # > `fast: false`, or remove `fast: true` from a routine, a scene or a `save_data`
+        # > record that matters less.
+        #
+        # This one is hard to find without the warning. The game slows down evenly, in code
+        # the author did not touch, and taking out the new code that pushed the loop over
+        # makes it fast again, so the new code looks like the cost. It is not: its size is.
+        # Moving the seldom-run part into a `func` marked `fast: false` is the fix. A loop's
+        # code that does little of a frame's work is not warned about.
+        #
+        #--
         # The game loop's body is the single most valuable thing to keep in the console's
         # quick memory — it is where nearly all of a frame's time goes, and code there runs
         # about two and a half times faster than code fetched from the cartridge. The build
@@ -14,17 +45,17 @@ module VBlank
         # cartridge, and the game is slower by that factor for a reason nothing else in a
         # build can show.
         #
-        # Why this one needs saying out loud: everything about it points the wrong way. It
-        # happened on the Wolfenstein port: ten guards were given a few dozen statements of thinking
-        # each frame, and a 468-scanline frame went to 1140. None of it was the work — taking
-        # the thinking out put the frame straight back, taking any one part of it out changed
-        # nothing. The statements made the loop's body too big to fit, so the loop was left in
-        # the cartridge and the rays, the columns and the fills all ran from there. The symptom
-        # is a slowdown spread evenly over code the author did not touch; bisecting by removing
-        # the new work finds nothing, because the new work is not the cost, its presence is;
-        # and the instinct to optimise what was just added is exactly wrong. The fix was one
-        # word — put the thinking in a routine of its own, marked `fast: false` — and that is
-        # what the message says.
+        # Why this one needs saying out loud: everything about it points the wrong way. A game
+        # that gives many enemies a few dozen statements of thinking each frame can make the
+        # loop's body too big to fit, and then the loop is left in the cartridge and every
+        # part of the frame's work runs from there: the frame takes more than twice as long.
+        # None of it is the work. Taking the thinking out puts the frame straight back, and
+        # taking any one part of it out changes nothing. The symptom is a slowdown spread
+        # evenly over code the author did not touch; bisecting by removing the new work finds
+        # nothing, because the new work is not the cost, its presence is; and the instinct to
+        # optimise what was just added is exactly wrong. The fix is one word — put the
+        # thinking in a routine of its own, marked `fast: false` — and that is what the
+        # message says.
         #
         # The chooser records what it passed over (see Backends::GBA::QuickMemoryPlan), so this
         # only has to read it. A build with no chooser at all (`fast_code: false`) passes
@@ -47,6 +78,7 @@ module VBlank
         # the loop was offered the memory first after what the author insisted on and missed it
         # on size, which is the case above, and nothing better is known than what that warning
         # says.
+        #++
         class FrameFromCartridge
           NAME = :frame_from_cartridge
           PLAIN_NAME = "the game loop running from the cartridge"

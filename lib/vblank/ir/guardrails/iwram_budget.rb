@@ -4,6 +4,57 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # An error about a game that keeps more numbers, lists and pools than the console has
+        # memory for. The build stops, says how much the game needs and how much there is, and
+        # names the biggest users, so it is clear what to make smaller. There are three ways to
+        # run out.
+        #
+        # ### Everything together does not fit
+        #
+        # > This program reserves about <size> of memory for its data. But <what the console
+        # > has.> The biggest users are <list :name (size), ...>. To fix this, use a smaller
+        # > capacity for a pool or a list. Or use fewer fields. Or use narrower items
+        # > (`width: :byte`). <Or use fewer variables.> Then it all fits.
+        #
+        # The advice to use fewer variables is left out where variables cannot be what
+        # crowds the memory. What the console has reads "the console has only <size> of quick memory and <size>
+        # of roomier memory, and both are full." on a console with two memories, or "the
+        # <console> has only <size> of work memory, and about <size> of that is free for your
+        # data. The rest holds the call stack and the framework's own state." on one with one.
+        #
+        # ### The variables do not fit in the quick memory
+        #
+        # > This program reserves about <size> of the console's quick memory for things that
+        # > can only live there. But the console has only <size> of it, and about <size> of
+        # > that is free for your data — the rest holds the call stack and the framework's own
+        # > state. A list or a pool can move to the roomier memory; a variable cannot, because
+        # > a variable is reached by its distance from the start of the quick one. The biggest
+        # > users are <list>. To fix this, use fewer variables. Or keep the same numbers in a
+        # > list, which can move.
+        #
+        # ### The lists kept out of the quick memory do not fit
+        #
+        # > This program keeps about <size> of lists and pools out of the quick memory. These
+        # > are the lists and pools with `fast: false`, and the pools that are bigger than
+        # > <size>. They can only go in the roomier memory. The console has only <size> of
+        # > roomier memory.
+        #
+        # It goes on to name the biggest of them and ends "If a list or a pool is small,
+        # remove `fast: false` from it. Then the build can put it in the quick memory."
+        #
+        # ### What else the message can say
+        #
+        # Where the build keeps part of the roomier memory for itself (for sound or saves), the
+        # message adds "The build keeps about <size> of the roomier memory for its own use:
+        # <list>." Where a `save_data` record is among the biggest users, it adds "A save_data
+        # record holds a copy of everything it keeps". Where the game made variables with no
+        # `var` line, it adds "These names are variables with no `var` line: <names>." and can
+        # say how many are copies, with the advice:
+        #
+        # > To need no copy, read the name before the line that changes the number. Or, after
+        # > the call that changes it, read the number again.
+        #
+        #--
         # What a program reserves, against the memory there really is.
         #
         # The console has two work memories: 32K of quick on-chip RAM and 256K of roomier
@@ -46,6 +97,7 @@ module VBlank
         # is counted against the one memory and the second check has nothing to add. The
         # Color's build refuses a game that runs out where it lays it out too
         # (Backends::GBC::Memory::Full); this says it sooner, and names the biggest users.
+        #++
         class IwramBudget
           NAME = :iwram_budget
           PLAIN_NAME = "the #{Messages::PlainWords::QUICK_MEMORY} budget".freeze
