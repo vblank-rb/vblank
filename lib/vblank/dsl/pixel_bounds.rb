@@ -12,7 +12,7 @@ module VBlank
     # Anything without solid pixels to test — a {Box}, or a sprite that opted out to a
     # plain rectangle with `hitbox:` — skips the per-pixel half and collides on its box,
     # exactly as before. A sprite mixes cleanly with a box that way.
-    module PixelBounds
+    module PixelBounds # :nodoc:
       Build = IR::Build
 
       def overlaps?(other)

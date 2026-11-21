@@ -17,7 +17,7 @@ module VBlank
     # has one of these too, and it is the same thing one step along: the list is the owner,
     # the sets it can hold are its other colours, and its own are the ones it was declared
     # with.
-    class Recolors
+    class Recolors # :nodoc:
       # What `draw_with` is told for a sprite's own colours.
       OWN = :own
 
