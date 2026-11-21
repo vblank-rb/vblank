@@ -5,10 +5,10 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # THE PICTURE: the backgrounds and the sprites, set up at power-on and copied to the
+          # The picture: the backgrounds and the sprites, set up at power-on and copied to the
           # console in the vertical blank after each pass.
           #
-          # WHAT THE CONSOLE IS TOLD TO DRAW. Mode 1 (BGMODE): two background layers of sixteen-colour
+          # What the console is told to draw. Mode 1 (BGMODE): two background layers of sixteen-colour
           # tiles (BG1 in front of BG2) and a third of four-colour tiles (BG3), and 128 sprites over
           # all of them. Video RAM, 32K words, is laid out once:
           #
@@ -17,7 +17,7 @@ module VBlank
           #   $5000-$5FFF  BG2's map
           #   $6000-$7FFF  the sprites' tiles, 512 of them
           #
-          # THE THIRD LAYER holds a status bar or a background held above a row shown beside two other
+          # The third layer holds a status bar or a background held above a row shown beside two other
           # backgrounds, or a status bar beside a sprite behind a background (+third_layer+,
           # Lowering::Picture.third_layer?), and is left off in every other game. Its map
           # is the last 1K words of the backgrounds' tiles, $3C00-$3FFF, a bar's 32×32 cells, so
@@ -30,7 +30,7 @@ module VBlank
           # third-layer bit is left clear, so the bar is behind every sprite, as the interpreter draws
           # it; the line table below hides the other two layers on its rows.
           #
-          # WHAT THE GAME CHANGES IS KEPT IN WORK RAM and copied in the blank (rt_upload): the
+          # What the game changes is kept in work RAM and copied in the blank (rt_upload): the
           # sprite table, written whole every pass a game places its sprites (a shadow of the
           # console's 544 bytes); a map put up, copied whole from the cartridge; single cells
           # changed (a queue of them); and where each layer is scrolled to. The console takes video
@@ -57,7 +57,7 @@ module VBlank
           #   rt_tile_run_copy     a run's list made into its tiles, for the next blank (a game that
           #                        paints tiles from lists)
           #
-          # A STATUS BAR is one of the two layers, shown from its top row to the bottom of the screen
+          # A status bar is one of the two layers, shown from its top row to the bottom of the screen
           # and hidden above it, while the other layer is shown above it and hidden below. Which
           # layers the console draws is TM, one register for the whole screen; but the copying
           # engine can write a register a line at a time as the picture is drawn (HDMA), from a short
@@ -68,7 +68,7 @@ module VBlank
           # and its rows past its map show the backdrop: tile 0 is see-through. The table is made in
           # the blank, with the scroll, so the two always agree.
           #
-          # A BACKGROUND BENT ROW BY ROW (`scroll_each_row`) is the same engine writing the layer's
+          # A background bent row by row (`scroll_each_row`) is the same engine writing the layer's
           # scroll across, BGnHOFS, on every line (channel 2 for BG1, 3 for BG2). The game works out
           # each row's offset at every frame boundary, for the frame after, into the layer's
           # BEND_OFFSETS (Lowering::Picture#emit_bends); as the pass ends, each row's offset and the
@@ -77,7 +77,7 @@ module VBlank
           # There are two tables for each layer, and the blank switches the channel to the one just
           # made, so a pass whose copy takes several blanks never shows a table half made.
           #
-          # TILES PAINTED FROM A LIST (a run, Builder::TileRuns) hold their pixels as the game writes
+          # Tiles painted from a list (a run, Builder::TileRuns) hold their pixels as the game writes
           # them: a byte is two pixels, the left one in the low four bits, a tile eight rows of four
           # bytes. The console keeps a tile's pixels in planes (SNES::Art#tile_bytes): for each row,
           # bit 0 of each of its eight pixels in one byte and bit 1 in the next, the leftmost pixel in
@@ -185,8 +185,8 @@ module VBlank
             BEND_STEP_LINES = SCREEN_HEIGHT / 2
             REPEAT = 0x80 # A step's count with this bit: a new value on every line of it
             BEND_TABLE_BYTES = 1 + (BEND_STEP_LINES * 2) + 1 + (BEND_STEP_LINES * 2) + 1
-            # A BEND THAT HOLDS ONE VALUE FOR WHOLE BANDS OF ROWS needs no value for every line. A step
-            # with no REPEAT bit writes the register once and leaves it for as many lines as it counts,
+            # A bend that holds one value for whole bands of rows needs no value for every line. A step
+            # with no repeat bit writes the register once and leaves it for as many lines as it counts,
             # so such a layer's table is a step for each band, three bytes where the other is 450.
             # Its rows hold those steps in place of a word a row: each step BAND_STEP_BYTES, the lines
             # and then the offset, and lines of nought after the last.
@@ -236,7 +236,7 @@ module VBlank
             # CGADSUB's bit that halves the sum.
             MATH_HALVES = 0x40
 
-            # A SCENE'S OWN SPRITE TILES, in a game whose sprites do not fit video memory all at once,
+            # A scene's own sprite tiles, in a game whose sprites do not fit video memory all at once,
             # waiting for the next blank to go in: where they are on the cartridge (three bytes and
             # a spare), how many bytes are left, where the next goes in video memory, and the byte
             # the sprite table is filled with while they go in. A scene whose sprites the frame of
@@ -250,7 +250,7 @@ module VBlank
             SCENE_TILES_HELD = 10
             SCENE_TILES_BYTES = 12
 
-            # THE SAME FOR ITS BACKGROUND TILES, where they go, how many bytes and from where.
+            # The same for its background tiles, where they go, how many bytes and from where.
             SCENE_BACKGROUND_TILES = "rt scene background tiles"
 
             # INIDISP's bit that turns the picture off, which is also what lets video memory be written
@@ -386,7 +386,7 @@ module VBlank
               asm.rtl
             end
 
-            # SPRITES OVER A PAINTED PICTURE (Paint, "SPRITES OVER THE PICTURE"): their tiles from
+            # Sprites over a painted picture (Paint, "sprites over the picture"): their tiles from
             # OBSEL's base at $6000 with the second 256 straight after, 8×8 and 16×16 as on a tiled
             # screen; the painted layer and the sprites on the main screen; and the sprites' tiles
             # copied to the last of video RAM. With the screen off, before the first pass is shown.
@@ -401,7 +401,7 @@ module VBlank
               emit_dma_to_vram(asm, Paint::SPRITE_TILES_AT, "art sprite tiles", "art sprite tiles bytes")
             end
 
-            # A LAYER HALF SEE-THROUGH (8-bit A): the layers behind it on the sub screen as well (TS);
+            # A layer half see-through (8-bit A): the layers behind it on the sub screen as well (TS);
             # colour math adding the sub screen rather than the fixed colour (CGWSEL bit 1); and, on
             # the see-through layer's own pixels alone, adding and halving the sum (CGADSUB: bit 6
             # halves, the low bits name the layers, bit 7 left clear adds). The sprites are not named,
@@ -409,7 +409,7 @@ module VBlank
             # the fixed colour unhalved, which is why the build wants a background covering the
             # screen behind the layer.
             #
-            # A LAYER ADDED TO WHAT IS BEHIND IT is the same with bit 6 clear. A game can turn that
+            # A layer added to what is behind it is the same with bit 6 clear. A game can turn that
             # off and on again: CGADSUB takes the number it was last told, from the blank, so the
             # layer turns solid between two pictures (+math_turns+, rt_see_through_math).
             def emit_see_through(asm, memory, see_through, math_turns)
@@ -635,13 +635,13 @@ module VBlank
             # table, at the sprite's place plus the piece's own; a piece wholly off the screen is not
             # written, and nor is any piece once the table's 128 rows are used.
             #
-            # A ROW'S PLACE ON THE SCREEN is nine bits across and eight down, and both come round: a
+            # A row's place on the screen is nine bits across and eight down, and both come round: a
             # piece at -3 across is kept as 509, which the console draws three columns off the left
             # edge, and one at -3 down as 253, which it draws with its top three rows above the
             # screen. So a piece that reaches the screen is written as its place's low bits, and one
             # that does not is not written at all, where coming round would show it somewhere else.
             #
-            # A SQUARE OF 16×16 reaches eight pixels further, so with +squares+ every piece is asked
+            # A square of 16×16 reaches eight pixels further, so with +squares+ every piece is asked
             # about that reach. A small piece just off an edge then takes a row and draws nothing,
             # which is a few rows at worst for what the squares save. Each piece carries its own
             # size bit, and a row's two bits in the upper table are that and across's ninth bit.
@@ -657,7 +657,7 @@ module VBlank
               piece_x = work + 4
               piece_y = work + 6
 
-              # ONLY THE ROWS THE LAST PASS WROTE ARE HIDDEN AGAIN. Rows are handed out counting down
+              # Only the rows the last pass wrote are hidden again. Rows are handed out counting down
               # from the last, so the rows a pass wrote are the ones from where NEXT_ROW stopped to
               # the end, and every row above that is still as the begin before hid it. Hiding all
               # 128 rows was 128 turns of a loop of nine every pass, a sprite or none; this is a
@@ -1006,7 +1006,7 @@ module VBlank
               asm.rtl
             end
 
-            # STATUS BAR. rt_bar_place(layer, top): the bar on +layer+ shown from row +top+, held to
+            # Status bar. rt_bar_place(layer, top): the bar on +layer+ shown from row +top+, held to
             # the screen (0 to its height, where none of it shows), from the next blank on.
             def emit_bar(asm, memory, scene_bars: false)
               r = ->(n) { Memory.register(n) }
@@ -1058,7 +1058,7 @@ module VBlank
               asm.rtl
             end
 
-            # A BACKGROUND HELD ABOVE A ROW (`above_row:`) is the bar's line table turned over: every
+            # A background held above a row (`above_row:`) is the bar's line table turned over: every
             # layer shows above the row, and from it down that one layer is switched off, so what is
             # under it shows and nothing the layer's scroll does can reach those rows. No processor
             # time goes on it once the table is made. rt_background_held_above(layer, row), and in a
@@ -1365,7 +1365,7 @@ module VBlank
                              tiles: memory.scratch(2), tile: memory.scratch(2), planes: memory.scratch(4))
             end
 
-            # TILES PAINTED FROM A LIST. rt_tile_run_copy(run): run number +run+'s list made into its
+            # Tiles painted from a list. rt_tile_run_copy(run): run number +run+'s list made into its
             # tiles in the console's form, at its staging, and owed to video RAM in the next blank.
             # Bytes past what the list holds are nought, see-through, as the interpreter reads them.
             def emit_tile_run_copy(asm, memory, s)
@@ -1542,7 +1542,7 @@ module VBlank
               end
             end
 
-            # IN THE BLANK: EACH RUN HELD IN THE CARTRIDGE and owed a copy, straight from the picture it
+            # In the blank: each run held in the cartridge and owed a copy, straight from the picture it
             # shows to its tiles in video RAM, a strip at a time ("art held strips", in the order
             # Lowering::Picture.held_runs counts them). +held_runs+: each run's number and its strips.
             def emit_held_run_upload(asm, memory, work, held_runs)
@@ -1585,7 +1585,7 @@ module VBlank
               end
             end
 
-            # THE COPY IN THE BLANK, with the screen on (Blank says how). A map put up goes first, a
+            # The copy in the blank, with the screen on (Blank says how). A map put up goes first, a
             # piece of MAP_PIECE bytes at a time as the blanks have room, with the old picture still
             # up; then, together in one blank, the sprite table, the colours, each layer's map
             # register and its scroll; then the cells changed, each when the blank has a line left

@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # SAVE MEMORY: 32K of RAM on the cartridge that a battery keeps while the console is off,
+          # Save memory: 32K of RAM on the cartridge that a battery keeps while the console is off,
           # which is what a game saves in. The interpreter's save memory is the Advance's
           # battery-backed one, also 32K and also written a byte at a time (IR::SaveLayout), so the
           # same bytes land in the same places on both, and a save made by one starts the other.
@@ -16,7 +16,7 @@ module VBlank
           # from power-on. Every routine reads it through a pointer on the direct page that holds
           # $70:0000, with the place in Y — the long indirect address [pointer],Y.
           #
-          # ON A SUPER FX CARTRIDGE bank $70 is the chip's working RAM, and the save is the whole of a
+          # On a super FX cartridge bank $70 is the chip's working RAM, and the save is the whole of a
           # second bank, $71, 64K of it (Cartridge::SNESROM::SUPER_FX says why), so the pointer holds
           # $71:0000 there. The save layout is the same packed one (IR::SaveLayout::Memory), so its
           # first 32K holds what a plain cartridge's does, byte for byte, and a game whose saves need
@@ -24,7 +24,7 @@ module VBlank
           # pointer; the routines differ only where a place or a length can be 64K itself, which
           # does not fit a 16-bit register (#emit_point_or_stop, #emit_sum).
           #
-          # WHY A PLAIN CARTRIDGE STAYS AT 32K. bsnes takes a LoROM header asking for more (up to
+          # Why a plain cartridge stays at 32K. bsnes takes a LoROM header asking for more (up to
           # 256K) and shows it 32K a bank, $70:0000-7FFF, $71:0000-7FFF and on, so a save past 32K
           # would cross a bank in the middle of a record, and every routine here would have to step
           # the pointer's bank as it goes (measured in bsnes: $71:0000 is the RAM's byte $8000).
@@ -178,7 +178,7 @@ module VBlank
               asm.iny
             end
 
-            # A WHOLE LIST MOVED BETWEEN SAVE MEMORY AND WORK RAM AS A BLOCK (IR save_load_list,
+            # A whole list moved between save memory and work RAM as a block (IR save_load_list,
             # save_store_list; Reference#exec_save_load_list, #exec_save_store_list). A record that
             # keeps a list used to read and write it an item at a time, each a call that checked the
             # place again and found the item's slot again. A slot keeps its bytes lowest first, as
