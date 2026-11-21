@@ -3,7 +3,7 @@
 require "test_helper"
 require "scene_color_games"
 
-# EACH SCREEN'S COLOURS ARE ITS OWN WHILE IT IS UP. A Genesis shows four palettes of fifteen colours at
+# Each screen's colours are its own while it is up. A Genesis shows four palettes of fifteen colours at
 # once, and its own games load a screen's palettes as the screen comes up, so a title and the screen
 # after it each have the four, less what every screen keeps. Played on every run that plays games as
 # the Genesis, each pass held to the interpreter's picture (SceneColorGames sets the game out).

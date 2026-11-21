@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A CROWDED LINE ON THE GENESIS. As it draws a line of the screen the console takes the first 20
+# A crowded line on the Genesis. As it draws a line of the screen the console takes the first 20
 # entries of its sprite table that reach the line, front-most first, and leaves the rest out of
 # that line. Then it draws 320 pixels of them, front-most first: each entry spends its whole width,
 # the pixels off the screen and the see-through ones too, and the entry that crosses 320 is drawn
@@ -76,8 +76,8 @@ class TestSpritesOnALineOnTheGenesis < Minitest::Test
     end
   end
 
-  # THE TABLE'S 80 ROWS. The cartridge places the sprite furthest back first, so with more pieces than
-  # rows the ones IN FRONT find it full. A bar of 40 is two rows, one of 32 and one of 8: 39 bars
+  # The table's 80 ROWS. The cartridge places the sprite furthest back first, so with more pieces than
+  # rows the ones in front find it full. A bar of 40 is two rows, one of 32 and one of 8: 39 bars
   # take 78, a bar in front takes the last two, and a dot in front of that finds none.
   def test_past_a_full_table_the_sprite_in_front_is_left_out
     game = program do

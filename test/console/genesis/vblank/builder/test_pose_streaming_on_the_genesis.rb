@@ -6,7 +6,7 @@ require "tmpdir"
 require "many_tiles"
 require "made_up_original_layouts"
 
-# A SPRITE WHOSE POSES DO NOT ALL FIT IN VIDEO MEMORY beside the scene's other pictures. A Genesis
+# A sprite whose poses do not all fit in video memory beside the scene's other pictures. A Genesis
 # holds 1471 tiles at once, and the console's own games keep room for the one frame a big character
 # shows, copying that frame's tiles in from the cartridge in the blank as he changes to it. Every
 # pass is held to the interpreter's picture, so a pose drawn from the wrong tiles, or from tiles
@@ -19,7 +19,7 @@ class TestPoseStreamingOnTheGenesis < Minitest::Test
   # background, more than video memory holds.
   POSES = 16
 
-  # A screen of GROUND_TILES different tiles behind sprites facing POSES big poses: +walkers+ of
+  # A screen of GROUND_TILES different tiles behind sprites facing poses big poses: +walkers+ of
   # them, each stepping to its next pose every +rate+ frames, the first from its first pose.
   private def walkers_over_a_big_ground(walkers: 1, rate: 1)
     poses = POSES
@@ -67,7 +67,7 @@ class TestPoseStreamingOnTheGenesis < Minitest::Test
   )
 
   # Each frame is PIECES_ACROSS by PIECES_DOWN pieces of four tiles by four, each piece naming tiles
-  # of its own: 96 tiles a frame, and FRAMES frames more than video memory holds.
+  # of its own: 96 tiles a frame, and frames frames more than video memory holds.
   PIECES_ACROSS = 3
   PIECES_DOWN = 2
   PIECE_TILES = 16

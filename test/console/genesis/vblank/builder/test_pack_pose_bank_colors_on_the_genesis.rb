@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "all/vblank/builder/test_pack_pose_bank_colors"
 
-# ONE SPRITE FACING FRAMES OF DIFFERENT BANKS, on every run that plays games as the Genesis: poses
+# One sprite facing frames of different banks, on every run that plays games as the Genesis: poses
 # read from the data pack, each taking its colours from the bank its frame's pieces name
 # (`bank_bit:`, `colors:` a whole slot), and many sprites facing the same poses. A retail game's
 # sprite changes palette line with its frame, since the line is two bits of each piece's entry in

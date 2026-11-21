@@ -3,7 +3,7 @@
 require "test_helper"
 require "many_tiles"
 
-# EACH SCREEN'S TILES ARE ITS OWN TO COUNT. Video memory holds 1471 tiles at once on a Genesis, and the
+# Each screen's tiles are its own to count. Video memory holds 1471 tiles at once on a Genesis, and the
 # console's own games load a screen's art as the screen starts, so two screens of 800 each never meet.
 # The tiles every screen shows stay in video memory throughout; each scene's own go in as it takes over.
 class TestSceneTilesOnTheGenesis < Minitest::Test
@@ -82,7 +82,7 @@ class TestSceneTilesOnTheGenesis < Minitest::Test
   # 800 tiles a scene, so the sprite pictures alone are more than video memory holds together.
   HEAVY_PICTURES = 8
 
-  # Two scenes whose own SPRITE pictures do not fit together, and fit one scene at a time, so each
+  # Two scenes whose own sprite pictures do not fit together, and fit one scene at a time, so each
   # scene's sprite pictures come in as it takes over. +dispatched_inside_test+ is #two_scenes's, and
   # +changed_by+ one of CHANGED_BY. Built by the Genesis lowering's own tests too, for the ways of
   # writing the loop it refuses.
@@ -157,7 +157,7 @@ class TestSceneTilesOnTheGenesis < Minitest::Test
     pass
   end
 
-  # THE PASS A SCENE TAKES OVER ON shows the new scene's map drawn from its own tiles, never from the
+  # The pass a scene takes over on shows the new scene's map drawn from its own tiles, never from the
   # tiles of the scene before at the same places in video memory.
   def test_the_pass_of_the_hand_over_shows_the_new_scenes_own_tiles
     program = two_scenes
@@ -167,7 +167,7 @@ class TestSceneTilesOnTheGenesis < Minitest::Test
     assert_equal shown(:red), game_player.run(program, frames: SWITCH_AT * 3).screen.pixel(*SECOND_TILE), "and back"
   end
 
-  # A SCENE THAT HANDS OVER AT THE END OF ITS OWN ROUTINE: the variable names the next scene for the
+  # A scene that hands over at the end of its own routine: the variable names the next scene for the
   # rest of that pass, and the next scene arrives on the pass after. Checked on every pass, neither
   # scene's sprite is drawn from the other's tiles.
   def test_a_scene_handing_over_at_its_end_shows_each_sprite_in_its_own_tiles
@@ -180,7 +180,7 @@ class TestSceneTilesOnTheGenesis < Minitest::Test
     pass
   end
 
-  # A DISPATCH INSIDE AN `if` notes the scene for the frame's sprites as the pass starts
+  # A dispatch inside an `if` notes the scene for the frame's sprites as the pass starts
   # (IR::Frames.loop_in_console_order), so the pass a scene takes over on shows the arriving scene's
   # map with the leaving scene's sprite. Both scenes' tiles are wanted in that frame, and the
   # leaving scene's sprite is never drawn from the arriving scene's tiles.
@@ -192,7 +192,7 @@ class TestSceneTilesOnTheGenesis < Minitest::Test
     game_player.run(program, frames: SWITCH_AT * 5)
   end
 
-  # SPRITE PICTURES THAT DO NOT FIT TOGETHER take turns as the scenes do, picked at the top of the
+  # Sprite pictures that do not fit together take turns as the scenes do, picked at the top of the
   # loop: checked on every pass, each scene's sprite is drawn from its own pictures.
   def test_scenes_whose_sprite_pictures_do_not_fit_together_show_their_own
     game_player.run(self.class.sprite_heavy_scenes, frames: SWITCH_AT * 5)
