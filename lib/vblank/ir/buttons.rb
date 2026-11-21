@@ -22,7 +22,7 @@ module VBlank
       # and the build refuses the rest.
       NAMES = %i[a b select start right left up down r l x y c].freeze
 
-      # Any button at all, which is not a button and so is not in names: `held(:any)` holds
+      # Any button at all, which is not a button and so is not in NAMES: `held(:any)` holds
       # while one of them is down, and `pressed(:any)` on a frame one of them went down —
       # including while another is still held, the same edge each button has on its own. It
       # is how a game leaves an attract screen.
@@ -65,7 +65,7 @@ module VBlank
 
       # Every button of one player set, a bit each in NAMES's order: what a computer's runtime keeps
       # of a player's number (Computer::ConsoleNumbers writes it ahead of each runtime), so a button
-      # added to names is kept there too.
+      # added to NAMES is kept there too.
       EVERY_BUTTON_MASK = (1 << NAMES.length) - 1
 
       # Whether +name+ is a button a program can read.
@@ -95,7 +95,7 @@ module VBlank
       end
 
       # Every name a test of +button+ for +player+ looks for among the buttons held: `pressed(:any,
-      # player: 2)` is all of the second player's, and `held(:left, player: any)` is every player's
+      # player: 2)` is all of the second player's, and `held(:left, player: ANY)` is every player's
       # left. A player who is not connected holds nothing, so asking about every player is asking
       # about every connected one.
       def names_asked(button, player)
@@ -108,7 +108,7 @@ module VBlank
       def highest_player(held) = Array(held).map { |name| player_of(name) }.max || 1
 
       # The buttons of one pass, as a computer's runtime reads them: one number per connected
-      # player, the first player's first, a bit each in the order names lists them. This plain
+      # player, the first player's first, a bit each in the order NAMES lists them. This plain
       # list is what a network will carry later, a list a pass.
       #
       # How many are connected: at least +connected+, which is how many the pass before had, and
@@ -138,7 +138,7 @@ module VBlank
         held.reduce(0) { |bits, name| player_of(name) == player ? bits | (1 << NAMES.index(button_of(name))) : bits }
       end
 
-      # +held+ buttons as one number, a bit each in the order names lists them — for the first ten
+      # +held+ buttons as one number, a bit each in the order NAMES lists them — for the first ten
       # the order the Advance's key register has them in, which the emulator's keys read — and each
       # further player's the same, PLAYER_SHIFT up from the one before. Past the second player the
       # number is wider than a console's (Ruby's numbers have no width), which only a playthrough

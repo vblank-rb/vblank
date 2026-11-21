@@ -75,7 +75,7 @@ module VBlank
       # inspects as `#<data ...>`, which describes it rather than rebuilding it, so the
       # fields are written out as keyword arguments instead.
       #
-      # Only the ones the author actually set: a record that publishes a defaults table
+      # Only the ones the author actually set: a record that publishes a DEFAULTS table
       # has the fields still at their defaults left out, so a song part that sets nothing
       # but its notes reads that way in the dump too. One with no such table writes out
       # everything, which is right — nothing there is implied.
@@ -89,13 +89,13 @@ module VBlank
       # WHAT #record_source leaves out, for a key that must change with what a tree means: the
       # DEFAULTS of every record class +node+'s tree holds, one class a line, sorted by name. The
       # dump alone keys how a tree is written, and a field at its default is not written, so a
-      # change to a class's defaults can change what the tree means and leave its dump as it was.
+      # change to a class's DEFAULTS can change what the tree means and leave its dump as it was.
       def record_defaults_source(node)
         classes = record_classes_in(node, Set.new)
         classes.sort_by(&:name).map { |record_class| "#{record_class.name} #{record_class::DEFAULTS.inspect}\n" }.join
       end
 
-      # Every record class with a defaults table that +value+ holds, however deep, added to +found+.
+      # Every record class with a DEFAULTS table that +value+ holds, however deep, added to +found+.
       def record_classes_in(value, found)
         case value
         when Node

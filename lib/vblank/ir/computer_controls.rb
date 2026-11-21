@@ -109,7 +109,7 @@ module VBlank
       end
 
       # The list of numbers each runtime reads, for a program's entries (nil for none): how many,
-      # then a button, KEY or pad, and the key's or gamepad button's number for each.
+      # then a button, KEY or PAD, and the key's or gamepad button's number for each.
       def self.runtime_numbers(entries)
         list = Array(entries)
         [list.length, *list.flat_map do |button, kind, name|

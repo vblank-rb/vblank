@@ -106,7 +106,7 @@ module VBlank
         WOBBLE_DOWN = 6
         WOBBLE_CARRIES = 8 # 1 when a note takes up the swing where the voice's last one left it
         # A swell's record (#swell_record), in bytes: how much the count must reach for a step of
-        # loudness, and where each of three lists of groups is, one for each of volumes.
+        # loudness, and where each of three lists of groups is, one for each of VOLUMES.
         SWELL_STEP = 0
         SWELL_STARTS = 2
         SWELL_HOLDS = 34
@@ -119,7 +119,7 @@ module VBlank
         COMMAND_BYTES = 6
 
         # ...and in an effect's record, and each of its parts' entries (where its notes are and how
-        # many, and channel, as a song's part has them).
+        # many, and CHANNEL, as a song's part has them).
         EFFECT_RANK = 0
         EFFECT_GROUP = 2
         EFFECT_PRIORITY = 4

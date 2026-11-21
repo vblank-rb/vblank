@@ -37,7 +37,7 @@ module VBlank
         program.walk.any? { |node| node.kind == :var_ref && [COUNT, SEEN, STEP].include?(node.name) }
       end
 
-      # Does +program+ read how many frames the screen has shown since power-on (count), and wait for
+      # Does +program+ read how many frames the screen has shown since power-on (COUNT), and wait for
       # the screen, so that a cartridge must count the frames it spends setting up as well? A game
       # that never waits shows no frames and reads nought (Builder#frames_since_power_on).
       def self.counts_from_power_on?(program)
