@@ -4,9 +4,9 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # EVERYTHING THE BUILD WORKED OUT ABOUT ONE SPRITE, for the drawing to read every frame.
+        # Everything the build worked out about one sprite, for the drawing to read every frame.
         #
-        # The console calls these OBJECTS, and so does the code around here (`@objects`, `obj`,
+        # The console calls these objects, and so does the code around here (`@objects`, `obj`,
         # `object_record`) — the record is named for what the author wrote instead, because
         # `Object` is a name Ruby already has and shadowing it inside a namespace is a trap
         # nobody needs.
@@ -19,35 +19,35 @@ module VBlank
         # ordinary case — the shape where a misspelling reads as nil and turns up as a black
         # screen a long way from the cause.
         #
-        # WHAT THE FIELDS HOLD, in the four groups a reader actually wants:
+        # What the fields hold, in the four groups a reader actually wants:
         #
-        #   WHERE IT SITS   +slot+ is its first of the console's 128 places and +pieces+ how
+        #   Where it sits   +slot+ is its first of the console's 128 places and +pieces+ how
         #                   many it takes (a picture too big to draw in one go is cut up, and
         #                   the pieces stand shoulder to shoulder). +scene+ names the scene that
         #                   owns it, or nothing for a sprite that is always there.
         #
-        #   ITS PICTURES    +tiles+ is the blob of them and +tile_units+ its size in the 32-byte
+        #   Its pictures    +tiles+ is the blob of them and +tile_units+ its size in the 32-byte
         #                   units sprite memory counts in; +tile_index+ is where the first one
-        #                   landed. +tiles+ is nil for a sprite that SHARES another's pictures,
+        #                   landed. +tiles+ is nil for a sprite that shares another's pictures,
         #                   which is why it is worth testing rather than assuming.
         #
-        #   ITS POSES       +pose+ is the run-time selector and +pose_count+ how many there are.
+        #   Its poses       +pose+ is the run-time selector and +pose_count+ how many there are.
         #                   +alike+ decides the whole draw: poses trimmed the same way sit an
         #                   even +per_pose+ apart and are found by multiplying, where poses that
         #                   came out different sizes (or that mirror another) carry a table
         #                   instead — +pose_table+ and +pose_words+, both nil when +alike+.
         #                   +mirrors+ marks which poses are drawn backwards.
         #
-        #   HOW IT IS DRAWN +x+, +y+, +active+, +angle+ and +scale+ are the live operands; the
+        #   How it is drawn +x+, +y+, +active+, +angle+ and +scale+ are the live operands; the
         #                   +offset_x+/+offset_y+ pair is where the first pose sat inside the
         #                   canvas it was drawn on, added back so trimming does not move the
         #                   picture. The three +attr*_base+ words are everything about the sprite
         #                   that never changes, folded together at build time so a frame only
         #                   ORs in what does.
         #
-        # THE ONE THAT WAS A SECRET IS +affine_slot+. A sprite that turns or resizes is drawn
+        # The one that was a secret is +affine_slot+. A sprite that turns or resizes is drawn
         # through one of the console's 32 rotation/size parameter groups, and which group used
-        # to be written INTO this record after it was built, by a different method — so the draw
+        # to be written into this record after it was built, by a different method — so the draw
         # read a field that nothing in the construction mentioned. It is handed in with the
         # sprite's place now, because it is the same kind of fact: something the build gives the
         # sprite, not something it discovers later. nil for a sprite that stays upright at its
@@ -96,7 +96,7 @@ module VBlank
           # being settled when the cartridge is built?
           def picks_attr2? = !recolor_banks.nil? || !layer_depths.nil?
 
-          # WHAT TWO SPRITES MUST HAVE THE SAME FOR ONE WRITE TO SERVE BOTH (see SpriteRepeats):
+          # What two sprites must have the same for one write to serve both (see SpriteRepeats):
           # every field settled while building that the write of a row reads. Any field not
           # named in one of the two lists below is one of them, so a field added to this
           # record is compared until somebody says otherwise.
@@ -116,9 +116,9 @@ module VBlank
           # of its table of poses, which is a table apiece holding the same +pose_words+.
           def self.unshared_fields = %i[slot tiles tile_units pose_table]
 
-          # WHICH POSE IS IN THE ROOM, for a sprite kept to one frame at a time — the name of the
+          # Which pose is in the room, for a sprite kept to one frame at a time — the name of the
           # variable the cartridge keeps it in, written as each frame is copied in. Every pose of
-          # such a sprite goes into the SAME place in sprite memory, so the console's own table
+          # such a sprite goes into the same place in sprite memory, so the console's own table
           # holds that one place whichever pose is showing and nothing in it can tell them apart.
           # This is what can. The sprite's place in the table names it, being the one thing about
           # a sprite that no other sprite shares. Meaningless for a sprite with no +frames+.

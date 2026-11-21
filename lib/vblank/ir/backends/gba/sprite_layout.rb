@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # ONE ATTEMPT AT FITTING THE SPRITES' PICTURES INTO THE CONSOLE'S 32K.
+        # One attempt at fitting the sprites' pictures into the console's 32K.
         #
         # Every sprite either keeps all its pictures in sprite memory or keeps room for one
         # frame at a time (see PictureSet), and which sprites do which is settled by trying:
@@ -12,11 +12,11 @@ module VBlank
         # try again. This is one of those attempts, and everything the next decision needs
         # to be made — and everything the report afterwards says — is on it.
         #
-        # ALWAYS-THERE ART FIRST, then each scene's own over the same room.
+        # Always-there art first, then each scene's own over the same room.
         #
         # A sprite declared inside a scene is on screen only while that scene is the active
         # state — that is what a scene already means — so no two scenes' pictures are ever
-        # wanted at once. Which means the budget a game has to fit is ONE SCENE'S, not the
+        # wanted at once. Which means the budget a game has to fit is one scene's, not the
         # whole game's, and a game with more art than the console's 32K still builds so long
         # as no single scene has. That is what lets a game with hundreds of rooms declare
         # each room's cast where it belongs.
@@ -35,7 +35,7 @@ module VBlank
             end
           end
 
-          # ROOMS SHARED BY THE SPRITES OF ONE SCENE THAT SHOW ONE SET OF PICTURES, kept to one
+          # Rooms shared by the sprites of one scene that show one set of pictures, kept to one
           # frame at a time. There is a room for each of those sprites, +count+ of them, each
           # +units+ long, from the unit +first+ on; every pose is in the cartridge at +frames+, laid
           # out the way a room is, +frame_bytes+ apart.
@@ -45,12 +45,12 @@ module VBlank
           # in. So two sprites showing the same pose draw from one room and the pose is copied once,
           # and a pose stays in a room nobody uses until another pose needs the room.
           #
-          # THERE IS ALWAYS A ROOM TO TAKE. A sprite lets go of its own room before it looks, which
+          # There is always a room to take. A sprite lets go of its own room before it looks, which
           # leaves the others at most one room each, and there is one more room than that. So the
           # game can never run out, which is the one thing a shared heap of sprite memory cannot
           # promise — there, a thing that does not fit is not drawn.
           #
-          # THE RECORD OF THE ROOMS, which the running game keeps (see
+          # The record of the rooms, which the running game keeps (see
           # SpriteDrawing#emit_shared_room_routines): two words for each room, which pose it holds
           # and how many sprites draw from it, and then a word for each sprite, which room it
           # holds. Where it is kept is the lowering's to decide; how it is laid out is set here
@@ -167,7 +167,7 @@ module VBlank
           # to one frame that show the same poses share their rooms, when there are two or more of
           # them; one alone keeps a room of its own, as it always did.
           #
-          # THE SAME POSES, IN THE SAME ORDER, and not merely the same pictures. A room is found by
+          # The same poses, in the same order, and not merely the same pictures. A room is found by
           # the number of the pose it holds, so two sprites share rooms only when every pose number
           # means the same picture to both: the same pictures in another order are stored alike,
           # and a room holding one's pose 1 would draw as the other's pose 1. Every pose laid out
@@ -208,7 +208,7 @@ module VBlank
               end
           end
 
-          # THE ROOM OF EACH SET OF PICTURE GROUPS THIS SCREEN OWNS, before any of its sprites: room
+          # The room of each set of picture groups this screen owns, before any of its sprites: room
           # for nothing is kept for nothing.
           def reserve_group_rooms(scene)
             @grouped&.rooms_on(scene).each do |name, units|
@@ -216,7 +216,7 @@ module VBlank
             end
           end
 
-          # A SPRITE SOME OF WHOSE POSES ARE COPIED IN BY THEIR GROUPS. Its other poses are kept
+          # A sprite some of whose poses are copied in by their groups. Its other poses are kept
           # the ordinary way, and a grouped pose's pieces point at the place its set gave it, so
           # the poses are not an even stride apart and the sprite reads a table of them. Every
           # number in that table counts from the sprite's own first tile, so a grouped piece is
@@ -235,7 +235,7 @@ module VBlank
               tile_index: unit }
           end
 
-          # A SPRITE DRAWN FROM A SET OF SPRITE TILES: every piece of its own points at its tile in
+          # A sprite drawn from a set of sprite tiles: every piece of its own points at its tile in
           # the set's room, and the rest at the blank tile its poses are filled out with. Every
           # number in the pose table counts from the sprite's own first tile, so a piece of the set
           # is that far back from its place, as a grouped pose's is.
@@ -250,7 +250,7 @@ module VBlank
               tile_index: unit }
           end
 
-          # THE ROOM A PAINTED PICTURE IS COPIED INTO, out of the game's list rather than the
+          # The room a painted picture is copied into, out of the game's list rather than the
           # cartridge — so there is nothing to store, only room to keep, and it is never shared
           # with a picture that merely looks the same, since the game changes it.
           def painted_placement(pictures, picture)
@@ -259,7 +259,7 @@ module VBlank
             { starts: pictures.starts, alike: true, per_pose: 0, tiles: nil, tile_units: units, tile_index: unit }
           end
 
-          # THE ROOM FOR ONE FRAME. Every pose is laid out the same way inside it, so the
+          # The room for one frame. Every pose is laid out the same way inside it, so the
           # table the drawing reads points at the room and never changes, and copying a frame
           # in is all that showing it takes. Every frame goes into the cartridge at the room's
           # stride, where the copy finds it, and stays as it is there — a frame is found by
@@ -274,7 +274,7 @@ module VBlank
               frames: blob, frame_bytes: pictures.frame_bytes }
           end
 
-          # A ROOM SHARED WITH THE OTHER SPRITES OF THIS SCREEN SHOWING THE SAME PICTURES (see
+          # A room shared with the other sprites of this screen showing the same pictures (see
           # SharedRooms). The first of them to be placed lays out every room and stores the
           # frames, once for all of them; each is numbered among them, which is how the running
           # game names which room it holds. A pose's pieces are laid out the same way in every

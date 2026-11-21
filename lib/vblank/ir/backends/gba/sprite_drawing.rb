@@ -4,14 +4,14 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # THE CODE THAT PUTS SPRITES ON A TILED SCREEN. The console draws sprites itself,
+        # The code that puts sprites on a tiled screen. The console draws sprites itself,
         # every frame, out of a table of 128 rows it keeps in its own memory: each row holds
         # where a sprite stands, which of the pictures in sprite memory it shows, and how.
         # So drawing a sprite here means writing its row — once for one that never moves,
         # every frame for one that does — and, for a sprite whose pictures do not all fit,
         # copying the frame it is showing into its room first.
         #
-        # Where each sprite's pictures and rows ARE was settled before any code existed
+        # Where each sprite's pictures and rows are was settled before any code existed
         # (see {ScreenLayout}); this reads that plan and writes the code that carries it out.
         class SpriteDrawing
           # The statements this part writes (Lowering#statements_written_by), each by its own method.
@@ -64,7 +64,7 @@ module VBlank
           OBJ_ROTSCALE     = 0x0100
           OBJ_DOUBLE_SIZE  = 0x0200
 
-          # HOW FAR OFF THE SCREEN A SPRITE CAN STAND AND STILL BE WHERE THE GAME PUT IT.
+          # How far off the screen a sprite can stand and still be where the game put it.
           #
           # A row of the table keeps a sprite's row as one of 256 and its column as one of
           # 512, and a place outside those is kept as a place inside them: row 300 is kept as
@@ -167,10 +167,10 @@ module VBlank
           end
 
           # The routine that writes the sprites nothing moves, and the two things remembered
-          # about it: WHETHER those sprites are in the console's table at all, and what the
+          # about it: whether those sprites are in the console's table at all, and what the
           # variable that decides them held when they were put there.
           #
-          # TWO WORDS AND NOT ONE, which looks like one too many and is not. A single word
+          # Two words and not one, which looks like one too many and is not. A single word
           # holding "the value we last wrote for" needs some reading of it to mean "nothing
           # written yet", and every value a word can hold is one a program is free to number a
           # scene with — a game whose first state is -1 would then find the table already
@@ -185,7 +185,7 @@ module VBlank
           # because nothing at all can change once its sprites are up.
           NOTHING_TO_WATCH = 0
 
-          # A LIST OF SPRITE COLOURS HOLDS ANOTHER SET: put that set into the group of sixteen
+          # A list of sprite colours holds another set: put that set into the group of sixteen
           # the sprites drawn with the list read.
           #
           # Not a sprite is touched. A sprite's row names which group its pixels pick their
@@ -194,7 +194,7 @@ module VBlank
           # however many there are. That is what lets one group dress a goblin in one room and
           # a bat in the next: the group is a slot, and this fills it.
           #
-          # WHY THE GROUP IS THE LIST'S OWN: the write lands in the table, where anything else
+          # Why the group is the list's own: the write lands in the table, where anything else
           # reading those sixteen would change colour too (see
           # ScreenLayout#changing_list_pictures).
           #
@@ -209,7 +209,7 @@ module VBlank
           # group, and each then reads this to put the set in force back (see
           # PaletteTint#emit_recolored_obj_banks).
           #
-          # A BACKGROUND DRAWN WITH SEVERAL LISTS THE GAME CHANGES follows this write too: the same
+          # A background drawn with several lists the game changes follows this write too: the same
           # set goes into the group of background colours its tiles drawn from this list read (see
           # ScreenLayout::FollowedColors), so the tiles change on the frame the sprites do.
           def emit_color_list_holds(node)
@@ -244,7 +244,7 @@ module VBlank
           # the display to start the next picture, so it never takes the gap from this. The console composites the sprites over the background for
           # free — there's nothing to erase, unlike a software sprite.
           #
-          # THE TABLE FIRST, THE GROUPS' PICTURES AFTER. The groups the game set as up are brought
+          # The table first, the groups' pictures after. The groups the game set as up are brought
           # in last (see PictureGroupCopying), so a sprite showing one of their pictures draws it on
           # the frame it first shows it, as long as the copy ends inside the gap. The table has to
           # be written while nothing is drawn: the display reads a sprite's row of it as it draws
@@ -272,7 +272,7 @@ module VBlank
             @placement.emit_gap_writes_ended
           end
 
-          # BRINGING AN AREA'S TILES IN IS THE LONGEST THING A FRAME EVER DOES, and it comes just
+          # Bringing an area's tiles in is the longest thing a frame ever does, and it comes just
           # before the frame's sprite work, in the same gap. So the sprite work waits a frame: the
           # sprites stay as they stood while the area arrives, and the frame after writes the same
           # numbers. A game whose frames only just hold that copy is then well inside them, and how
@@ -295,7 +295,7 @@ module VBlank
             place_label(past)
           end
 
-          # EVERY SPRITE OFF FOR A FRAME (see Builder::Sprites#hide_sprites).
+          # Every sprite off for a frame (see Builder::Sprites#hide_sprites).
           #
           # The console draws its sprites as a layer of their own over the backgrounds, and one
           # bit of its display-control register sets whether that layer is drawn at all. With it
@@ -334,7 +334,7 @@ module VBlank
           # off keeps it off. On a frame nobody asked, this costs a load, two compares and two
           # branches.
           #
-          # IN A BORDER the layer stays on, since the border is sprites too (BorderSprites). There
+          # In a border the layer stays on, since the border is sprites too (BorderSprites). There
           # only the note moves on, and the copy into the console's table, which comes later in this
           # gap, copies none of the game's rows on a frame the note says is off
           # (#emit_held_table_copy_routine): every row of the game's is hidden for that frame, and
@@ -388,7 +388,7 @@ module VBlank
             @primitives.with_interrupts_held_off(&)
           end
 
-          # A SCREEN'S WHOLE SET OF LAYERS, written to the display. Where a game's screens use
+          # A screen's whole set of layers, written to the display. Where a game's screens use
           # layers of their own, the screen in play writes all of them every pass, the sprite
           # layer among them — and that write lands after the gap that switched the sprite layer
           # off for a frame, so on its own it would put the sprites straight back. So in a game
@@ -418,7 +418,7 @@ module VBlank
             emit(ASM.store_halfword(ACC, TMP))
           end
 
-          # A RUN OF THE TABLE DRAWN IN AN ORDER THE GAME WORKS OUT (see Builder#draw_in_order).
+          # A run of the table drawn in an order the game works out (see Builder#draw_in_order).
           #
           # The console decides which of two sprites is in front by where their rows sit in its
           # table — the lower row in front — and a row's place was fixed when the cartridge was
@@ -427,7 +427,7 @@ module VBlank
           # table would have it, every way they always did; and before each frame is drawn the
           # run is copied into the table in the order the program sorted it into.
           #
-          # WHY A COPY RATHER THAN WRITING EACH SPRITE STRAIGHT TO ITS NEW ROW: a sprite's row is
+          # Why a copy rather than writing each sprite straight to its new row: a sprite's row is
           # not always written. One that never moves is written once, one whose scene is not up
           # is not written at all — and they are right because a row stays as it was last
           # written. The copy keeps that true: every row stays where its own sprite put it, and
@@ -495,7 +495,7 @@ module VBlank
             run ? run.staged(slot) : oam_slot(first, piece)
           end
 
-          # COPY ONE RUN INTO THE TABLE IN ITS ORDER. The program's list holds the sprites back
+          # Copy one run into the table in its order. The program's list holds the sprites back
           # to front, and the table's front is its first row, so the list is read from its end
           # while the table is written from the run's first row onward.
           #
@@ -505,7 +505,7 @@ module VBlank
           #   r3  the copy being read
           #   r4  rows left of this sprite
           #
-          # A RUN SORTED WITH WHAT SHOWS (ShownSort) keeps its entries not showing at the list's front,
+          # A run sorted with what shows (ShownSort) keeps its entries not showing at the list's front,
           # so the copy stops at them, and a run of many declared and a few showing copies the few. The
           # rows past the last one written then hold whatever the pass before wrote there, so the ones
           # it wrote past where this pass stopped are hidden (#emit_rows_past_run_hidden).
@@ -558,7 +558,7 @@ module VBlank
             emit_rows_past_run_hidden(run) if run.shown
           end
 
-          # The rows the pass before wrote past where this pass's copy stopped (in SPARE), each given
+          # The rows the pass before wrote past where this pass's copy stopped (in spare), each given
           # the "unused slot" marker, and where this pass stopped kept for the next.
           def emit_rows_past_run_hidden(run)
             blank = gensym
@@ -586,7 +586,7 @@ module VBlank
             end
           end
 
-          # MORE ROWS THAN THE CONSOLE'S TABLE HOLDS.
+          # More rows than the console's table holds.
           #
           # The console draws its sprites from 128 rows, and every sprite is given a row while the
           # cartridge is built — a pool one for every thing it can hold, so three pools of sixty
@@ -597,10 +597,10 @@ module VBlank
           # (see #emit_held_table_copy_routine): so what has to fit in 128 is one frame's sprites, as
           # in the console's own games, which build their table each frame from what they draw.
           #
-          # THE ORDER HOLDS. The console puts a lower row in front, and the copy keeps every row
+          # The order holds. The console puts a lower row in front, and the copy keeps every row
           # in the order the build gave it, only closing up the gaps the hidden ones leave.
           #
-          # MORE SHOWING THAN 128: the frontmost 128 are drawn, and the rest are left out for that
+          # More showing than 128: the frontmost 128 are drawn, and the rest are left out for that
           # frame and counted (LEFT_OUT, which a profile reports). Every other backend draws them
           # all — it has no table to run out of.
           #
@@ -671,7 +671,7 @@ module VBlank
             store_var(ACC, GAME_ROWS_HIDDEN)
           end
 
-          # WHERE THE GAME STOPS, the game's rows copied in again if a sending left them hidden: no
+          # Where the game stops, the game's rows copied in again if a sending left them hidden: no
           # pass after the stop copies them, and the screen's interrupt never writes the console's
           # table in a border. With +wait+ the copy waits for the gap first, so the picture the
           # sending ran into stays whole; without, the caller has waited already.
@@ -687,7 +687,7 @@ module VBlank
             place_label(past)
           end
 
-          # THE GAME'S ROWS OF THE CONSOLE'S TABLE HIDDEN, as far as the last copy reached, leaving
+          # The game's rows of the console's table hidden, as far as the last copy reached, leaving
           # the border's rows before them up (BorderSprites). For a sending in a border, which
           # cannot switch the sprites off without the border (Drawing#emit_with_layers_held_for_art):
           # each row is the "hidden" marker in its first half (GBATEK, OBJ Attribute 0: bit 9 set
@@ -714,7 +714,7 @@ module VBlank
           # first after the border's (BorderSprites::BORDER_ROWS).
           def first_game_row = OAM_START + (@layout.border ? BorderSprites::BORDER_ROWS * 8 : 0)
 
-          # THE COPY INTO THE CONSOLE'S TABLE. Each row of the copy is looked at in turn, and one
+          # The copy into the console's table. Each row of the copy is looked at in turn, and one
           # that is not hidden has its first three halves copied to the next row of the console's,
           # and its own number noted beside it; past the console's last row, it is counted
           # instead. The fourth half of each row is left alone: it belongs to the table's groups
@@ -811,7 +811,7 @@ module VBlank
           # #emit_hide_scene_rows_on_change).
           def self.hide_rows_routine(state) = Messages::MadeNames.make(:scene_rows_hide, state: state)
 
-          # WRITE ONE SCENE'S MOVING SPRITES, on its frames and no others. A scene that has gone
+          # Write one scene's moving sprites, on its frames and no others. A scene that has gone
           # has had its rows hidden already (see #emit_hide_scene_rows_on_change), and another
           # scene's sprites may be using those rows now, so its own must not touch them.
           def emit_scene_sprites(group)
@@ -830,7 +830,7 @@ module VBlank
             place_label(skip)
           end
 
-          # HIDE EVERY ROW A SCENE'S SPRITES CAN BE IN, ON THE FRAME THE SCENE CHANGES, before
+          # Hide every row a scene's sprites can be in, on the frame the scene changes, before
           # any sprite is written.
           #
           # Scenes never up together take turns at the same rows of the table (see
@@ -874,7 +874,7 @@ module VBlank
           # The routine that sends the table of the scene picked now.
           SCENE_COLORS_ROUTINE = Messages::MadeNames.make(:scene_sprite_colors)
 
-          # A SCENE'S SPRITE COLOURS GO IN WITH ITS SPRITES, in the gap between frames, on the frame
+          # A scene's sprite colours go in with its sprites, in the gap between frames, on the frame
           # the variable that picks it changes, and not as its routine first runs.
           #
           # Scenes never up together take turns at the same groups of sprite colours (see
@@ -888,7 +888,7 @@ module VBlank
           # whose scenes send no colours of their own, or are not all picked by one variable (see
           # ScreenLayout#scene_colors_picker).
           #
-          # WHAT WAS REMEMBERED CAN HOLD ANYTHING AT POWER-ON, and a stray match would leave the
+          # What was remembered can hold anything at power-on, and a stray match would leave the
           # first scene with no colours. And a change of screen sends the table every screen shows
           # again (#emit_boot_objects), over the scene's. So the table also goes in at the first
           # gap after power-on or a change of screen, whether the variable changed or not.
@@ -958,7 +958,7 @@ module VBlank
           # moves (see GBA#prepare_still_objects, and Functions#define_generated_func, which is what makes that
           # routine).
           #
-          # THE SPLIT IS THERE TO KEEP THE FRAME'S OWN CODE SMALL. The console re-reads this
+          # The split is there to keep the frame's own code small. The console re-reads this
           # table every frame and a row of it stays exactly as it was last written, so a
           # sprite the program never moves is already right — but the code to write it again
           # is some forty instructions apiece, and it sits in the body the framework keeps in
@@ -966,7 +966,7 @@ module VBlank
           # drawn as several, so a title screen's lettering is a dozen of them and more; the
           # whole of that was code saying that nothing had changed.
           #
-          # SPRITES THAT ARE ONE WRITE ARE WRITTEN BY GOING ROUND IT (see SpriteRepeats): a
+          # Sprites that are one write are written by going round it (see SpriteRepeats): a
           # pool's, which differ only in which entry of the pool's lists each reads.
           def emit_write_sprite_rows(names)
             sprites = @layout.screen.objects
@@ -979,7 +979,7 @@ module VBlank
             end
           end
 
-          # THE SPRITES ONE WRITE CANNOT SERVE, whatever they look like. Each has something of
+          # The sprites one write cannot serve, whatever they look like. Each has something of
           # its own at a place worked out from where it sits in the table, which going round
           # one write cannot reach: a window that keeps it out of a placed fade, or a room in
           # sprite memory its frames are copied into. (A sprite that turns has a group of the
@@ -998,7 +998,7 @@ module VBlank
           # Where the row being written is kept while a repeat is gone round.
           REPEAT_ROW = :__sprite_repeat_row
 
-          # A ROW OF THE CONSOLE'S TABLE TO WRITE: at an address settled while building, for a
+          # A row of the console's table to write: at an address settled while building, for a
           # sprite written on its own...
           FixedRow = Data.define(:address)
 
@@ -1006,7 +1006,7 @@ module VBlank
           # game knows.
           MovingRow = Data.define(:offset)
 
-          # WRITE EVERY SPRITE OF A REPEAT BY GOING ROUND ONE WRITE. Two variables carry the
+          # Write every sprite of a repeat by going round one write. Two variables carry the
           # round: the entry of the pool's lists this sprite reads, which the write's own sums
           # name (see SpriteRepeats::INDEX), and the address of the row it writes. They are
           # kept in memory and not in registers because working out where a sprite stands is
@@ -1039,7 +1039,7 @@ module VBlank
             place_label(done)
           end
 
-          # A POOL'S SPRITES, AND HOW MANY OF THEM SHOW. Each of a pool's sprites shows a place
+          # A pool's sprites, and how many of them show. Each of a pool's sprites shows a place
           # in the order its things were spawned (DSL::Pool#stacked_list), and is shown while the
           # pool holds more things than that place's rank (DSL::Pool#rank_taken) — so the places
           # with something in them are the lowest ranks, all together. The sprites are declared
@@ -1048,7 +1048,7 @@ module VBlank
           # holding how many things are in place, read off the sprites' own test, or nil for a
           # repeat that is not a pool's that way, which is written in full as before.
           #
-          # ONLY WHERE THAT RANK TEST HAS THE LAST WORD: the whole test, or one of several each of
+          # Only where that rank test has the last word: the whole test, or one of several each of
           # which has to hold — joined by `&`, or by `*` of two tests that are each 0 or 1, which is
           # how a scene's own pool is shown only while the scene is up (Builder#gated_by_scene). A
           # sprite past the count is then hidden whatever the rest sets. Found inside anything else
@@ -1072,7 +1072,7 @@ module VBlank
             rank_test_held(test.lhs) || rank_test_held(test.rhs)
           end
 
-          # MARK THE PLACES WITH NOTHING IN THEM HIDDEN, a store for each of a place's rows,
+          # Mark the places with nothing in them hidden, a store for each of a place's rows,
           # before the walk writes the places that show something. Written in full, such a place
           # cost its whole test and write and the walk's bookkeeping in memory, and a game sized
           # for its biggest room keeps pools mostly empty in every other room, so the frame paid
@@ -1080,7 +1080,7 @@ module VBlank
           # few instructions on. The walk then carries on from the first place that shows
           # something, or is over.
           #
-          # In registers that are a statement's own scratch — the place in SPARE, its row in HIGH,
+          # In registers that are a statement's own scratch — the place in spare, its row in HIGH,
           # where to stop in TMP, the hidden mark in ACC, and ADDR for a row step too big to add
           # at once — since this runs between statements of the sprites routine and nothing is
           # held across it.
@@ -1131,9 +1131,9 @@ module VBlank
             emit_store_acc_in_row(row, half)
           end
 
-          # WRITE THE STILL SPRITES, ON THE FRAMES WHERE THAT CAN MATTER AND NO OTHERS.
+          # Write the still sprites, on the frames where that can matter and no others.
           #
-          # Everything about such a sprite is settled except whether it is SHOWN, and that is
+          # Everything about such a sprite is settled except whether it is shown, and that is
           # decided by one variable: the one the program picks its scenes with, since a sprite
           # declared inside a scene is on screen exactly while that scene is. So the whole
           # question "is the sprite table still right?" is "are they in it, and was it that
@@ -1185,11 +1185,11 @@ module VBlank
           #
           # +twin+ is the window that keeps this sprite out of a placed fade, when it has
           # one. It stands exactly where the sprite stands and holds exactly the pose the
-          # sprite holds, so it is filled in from the SAME numbers on the way past rather
+          # sprite holds, so it is filled in from the same numbers on the way past rather
           # than worked out again — a copy of each attribute as it is written, and one test
           # of where the fade is sitting. See PlacedFade.
           #
-          # A picture too big for one object is drawn as SEVERAL, standing shoulder to
+          # A picture too big for one object is drawn as several, standing shoulder to
           # shoulder — so this walks the pieces, and a sprite the console can draw in one
           # go is simply the case where there is one of them. The pieces take a run of
           # slots from the sprite's own, so the whole thing keeps one place in the stack.
@@ -1247,14 +1247,14 @@ module VBlank
           # written. One variable serves every sprite, since each is done before the next.
           OBJ_PICKED_ATTR2 = :__obj_picked_attr2
 
-          # THE PART OF A SPRITE'S THIRD WORD THIS FRAME DECIDES, worked out once, before the
+          # The part of a sprite's third word this frame decides, worked out once, before the
           # pieces, and ORed into each of their third words. Since that word is written with
           # the position and the pose, what it decides changes on the same frame they do.
           #
           # Two things can be decided there. WHICH COLOURS: a pixel of a small-storage sprite
           # is a place in a bank of sixteen, and the bank is named in this word — so naming
-          # another bank is all it takes, and the picture itself is never touched. And HOW
-          # DEEP: the console compares a sprite's two-bit depth here with each background's
+          # another bank is all it takes, and the picture itself is never touched. And how
+          # deep: the console compares a sprite's two-bit depth here with each background's
           # own, and draws the sprite in front of every background whose number is the same
           # or bigger. Putting the sprite in another layer is changing those two bits.
           def emit_store_object_picked_attr2(obj)
@@ -1335,7 +1335,7 @@ module VBlank
             objects.filter_map(&:rooms).uniq.each { |rooms| emit_empty_shared_rooms(rooms) }
           end
 
-          # SPRITES SHARING ROOMS (see SpriteLayout::SharedRooms, which says how the record of a set
+          # Sprites sharing rooms (see SpriteLayout::SharedRooms, which says how the record of a set
           # of rooms is laid out). The record is kept in the roomy memory. A sprite holding no room
           # holds the room past the last, which is one compare to tell.
           ROOMS = SpriteLayout::SharedRooms
@@ -1358,7 +1358,7 @@ module VBlank
             end
           end
 
-          # A SPRITE SHOWING A POSE TAKES A ROOM HOLDING IT, when the pose is not the one in its room
+          # A sprite showing a pose takes a room holding it, when the pose is not the one in its room
           # already, and is then drawn from that room. Taking one is a routine of its own the sprites
           # of a set share, since it is the rare part: a sprite holding still, or showing what it
           # showed last frame, does a compare and the sum below.
@@ -1380,7 +1380,7 @@ module VBlank
             store_var(2, OBJ_ROOM_TILES)
           end
 
-          # A SPRITE THAT IS NOT SHOWN LETS GO OF ITS ROOM, so another pose can have it. The room
+          # A sprite that is not shown lets go of its room, so another pose can have it. The room
           # keeps its pose, and the sprite forgets what it was showing, so it takes a room again
           # when it is shown.
           def emit_let_go_of_shared_room(obj)
@@ -1400,7 +1400,7 @@ module VBlank
             Messages::MadeNames.make(:shared_rooms, number: @layout.room_tables.keys.index(rooms), part: part.to_s)
           end
 
-          # THE TWO ROUTINES EACH SET OF SHARED ROOMS HAS, after the program's own code and reached
+          # The two routines each set of shared rooms has, after the program's own code and reached
           # only by the calls above. Both are handed which sprite of the set is asking in the
           # second register, and taking one is handed the pose in the first.
           #
@@ -1447,7 +1447,7 @@ module VBlank
             store_var(ACC, LENT_COLORS_FRAME)
           end
 
-          # AT POWER-ON no group is lent to any list, and nothing has been drawn.
+          # At power-on no group is lent to any list, and nothing has been drawn.
           def emit_lent_colors_at_power_on
             lending = @layout.screen.lending
             return unless lending
@@ -1462,7 +1462,7 @@ module VBlank
             lending.banks.each_index { |k| store_var(ACC, lending.holder_var(k)) }
           end
 
-          # LEND A GROUP OF SPRITE COLOURS TO THE LIST A SPRITE IS WEARING, the way the console's
+          # Lend a group of sprite colours to the list a sprite is wearing, the way the console's
           # own games hand their groups out. Called as a sprite's row is written, with r0 the
           # word its table holds for the list (LENT_MARK plus the list's number); returns r0 the
           # bank to draw it from, shifted to where the row carries it.
@@ -1476,7 +1476,7 @@ module VBlank
           # is drawn from the first one, in whatever colours that holds, and counted, which is
           # what the console's own games do when they run out.
           #
-          # WHERE IT FALLS SHORT OF THEM. Their groups go back the moment the last thing
+          # Where it falls short of them. Their groups go back the moment the last thing
           # wearing one is removed. Here a group goes back once a whole frame has passed
           # without anything drawn with it, since the rows are written one sprite at a time
           # and nothing shows, part way through, which lists the rest will wear. So with every
@@ -1629,7 +1629,7 @@ module VBlank
             place_label(none)
           end
 
-          # GIVE THE ASKING SPRITE A ROOM HOLDING THE POSE, and count it among the room's users: the
+          # Give the asking sprite a room holding the pose, and count it among the room's users: the
           # room already holding the pose, if one is, used or not, and then nothing is copied. Or
           # else a room nobody draws from, with the pose copied into it. There is always one of
           # those (see SpriteLayout::SharedRooms), so the second walk always stops at one; it is
@@ -1679,7 +1679,7 @@ module VBlank
             emit_branch(:bcond, again, cond: :ne)
           end
 
-          # COPY THE FRAME THIS SPRITE IS SHOWING INTO ITS ROOM, when it is not the one already
+          # Copy the frame this sprite is showing into its room, when it is not the one already
           # there. The cartridge holds every frame at one stride, so the frame's start is the
           # pose times the stride, and one transfer moves it: whole words, since a frame is a
           # whole number of tiles and a tile is a whole number of words. Done in the gap after
@@ -1717,7 +1717,7 @@ module VBlank
             emit(ASM.add_reg(ACC, ACC, TMP))
           end
 
-          # COPY A POOL'S POSE INTO SPRITE MEMORY THE FIRST TIME ONE OF ITS THINGS SHOWS IT since
+          # Copy a pool's pose into sprite memory the first time one of its things shows it since
           # the scene took over (see PoseSends). Its byte marks whether it is there; nought, and
           # the pose's run of tiles is copied out of the cartridge to where the whole set would
           # have gone, so the table entries every pose's draw already writes point at it.
@@ -1757,7 +1757,7 @@ module VBlank
             place_label(done)
           end
 
-          # NOTHING OF A POOL'S POSES IS IN SPRITE MEMORY YET, as its scene takes over: every
+          # Nothing of a pool's poses is in sprite memory yet, as its scene takes over: every
           # pose's byte back to nought, and the blank tile its filler pieces draw cleared (see
           # PoseSends). Nought is loaded once and stored a word at a time, since both are a few words.
           def emit_forget_poses_sent(pool)
@@ -1802,7 +1802,7 @@ module VBlank
             store_halfword_acc(mirror + 4) if mirror
           end
 
-          # A sprite whose poses came out DIFFERENT sizes. Four things then move with the
+          # A sprite whose poses came out different sizes. Four things then move with the
           # pose — which tiles, what shape, what size, and how far along to draw it — so
           # they are read together out of one word (see ScreenLayout#object_pose_table) instead of
           # being worked out from a stride that no longer exists.
@@ -1812,7 +1812,7 @@ module VBlank
           POSE_WORD = 4
 
           # Where this sprite's position is held while the pose word is in a register.
-          # WORKING OUT x AND y FIRST is not tidiness: evaluating an operand is free to use
+          # Working out x AND y first is not tidiness: evaluating an operand is free to use
           # any scratch register, so the word could not survive being loaded before them.
           # Held here, nothing between loading the word and the last store evaluates
           # anything, and the register is safe for the whole of it.
@@ -1879,7 +1879,7 @@ module VBlank
           # the draw works in the accumulator and TMP alone.
           PIECE_BANK = 2 # GBA::SPARE, which is not defined yet as this file loads
 
-          # A PIECE THAT NAMES ITS OWN BANK OF COLOURS (Sprite#piece_banks): its bank bits into
+          # A piece that names its own bank of colours (Sprite#piece_banks): its bank bits into
           # attribute 2 (GBATEK, "LCD OBJ - OAM Attributes": bits 12-15), a number where the pose is
           # one the build knows and the word loaded beside the pose word where it is not.
           def emit_orr_piece_bank(obj, piece)
@@ -2110,7 +2110,7 @@ module VBlank
             emit(ASM.mov_imm_cond(:hs, ACC, edge))
           end
 
-          # THE FIRST WORD OF A SPRITE WHOSE BOX NO ROW KEEPS OFF THE SCREEN: 128 rows, where
+          # The first word of a sprite whose box no row keeps off the screen: 128 rows, where
           # only 96 are counted past the bottom edge. Standing at the first row below, its
           # end comes round onto the top.
           #
