@@ -2,7 +2,7 @@
 
 module VBlank
   module Network
-    # CLOSING A SOCKET WITHOUT LOSING WHAT WAS SENT LAST. A socket closed while it still holds bytes the other end
+    # Closing a socket without losing what was sent last. A socket closed while it still holds bytes the other end
     # sent and this end never read is not closed politely: the system resets the connection, and a reset can make the
     # other end drop what this end sent just before, which here is a player's last buttons. A machine in a match is
     # always being sent something, so a plain close would lose its last messages now and then, and the others would
