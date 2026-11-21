@@ -299,7 +299,7 @@ end
 RG_START_FILE_READS = Ractor.make_shareable([["c*", "C*", "s<*", "v*", "l<*"], ["c*", "C*", "s>*", "n*", "l>*"]])
 RG_START_FILE_ENTRY_BYTES = [1, 1, 2, 2, 4].freeze
 
-# A TABLE OF BYTES THE FILE FILLS IS KEPT AS BYTES: an RgBytes (an RgSignedBytes for signed ones), a
+# A table of bytes the file fills is kept as bytes: an RgBytes (an RgSignedBytes for signed ones), a
 # binary String whose table[i] gives a number, as an Array's does. An Array would keep each byte as a Ruby
 # number of eight bytes, and a data pack's unpacking reads the whole of the player's copy into one
 # such table: hundreds of megabytes, wanting gigabytes. An unsigned table's [] is getbyte itself, so
@@ -321,7 +321,7 @@ class RgSignedBytes < RgBytes
   end
 end
 
-# THE GAME'S ART AND SOUND ARE KEPT AS BYTES TOO: its pictures' and tiles' pixels, its maps' cells,
+# The game's art and sound are kept as bytes too: its pictures' and tiles' pixels, its maps' cells,
 # its songs' notes and its recordings' samples (Printer::KEPT_AS_BYTES), each a binary String in
 # the width the table is kept in, low byte first. A game's art is millions of numbers, and Ruby's
 # garbage collector, whenever it marks everything, reads every slot of every Array: held as Arrays
@@ -628,7 +628,7 @@ end
 # The number the two bytes from +at+ in the file hold, low byte first, 0 or more.
 def rg_start_file_half(at) = @rg_start_file.getbyte(at) | (@rg_start_file.getbyte(at + 1) << 8)
 
-# A FRAME OF A SPRITE IN THE FILE is a record of VBlank's own, one layout whatever the original:
+# A frame of a sprite in the file is a record of VBlank's own, one layout whatever the original:
 # lib/vblank/original/frame_record.rb (Original::FrameRecord) is where it is written down, and its
 # numbers (RG_FRAME_, RG_PIECE_) are written ahead of this file from there. Every number is low
 # byte first: a frame is the pieces it holds and the pieces the original names, two bytes each,
@@ -783,7 +783,7 @@ def rg_start_file_fill_tile_pose(pieces, rules)
   (kept...room).each { |left| pieces[3 * left, 3] = [0, 0, -1] }
 end
 
-# A POSE'S PIECES AS THE CONSOLE'S SPRITE TABLE HOLDS THEM (rg_runtime.c's start_file_pose_pieces
+# A pose's pieces as the console's sprite table holds them (rg_runtime.c's start_file_pose_pieces
 # and pose_listed_pieces, which say how).
 RG_PIECES_SQUARES = 2
 RG_PIECES_RECTANGLES = 3
@@ -1342,7 +1342,7 @@ def rg_timer_ticks_crossed(timer)
   timer.whole_ticks - before
 end
 
-# A HANDLER THAT WAITS: runtime/rg_runtime.c says how a boundary's walk through the timers stops
+# A handler that waits: runtime/rg_runtime.c says how a boundary's walk through the timers stops
 # where a handler waits and carries on later. The same numbers, and the same steps.
 RG_HANDLER_NONE_STOPPED = 0
 RG_HANDLER_STOPPED = 1
@@ -1410,7 +1410,7 @@ end
 # (RG_CONSOLE_TICKS_A_SECOND), and whether the clock was ever set. From then it moves on one of
 # the console's frames at each frame boundary.
 #
-# A CHIP THAT KEEPS NO DATE (RG_CLOCK_KEEPS_DATE false, the Color's; IR::Clock.undated) counts
+# A chip that keeps no date (RG_CLOCK_KEEPS_DATE false, the Color's; IR::Clock.undated) counts
 # only the days and the time of day since it started, taken as that many days on from 1 January
 # 2000: so it starts on that day, at the time of day it was started at.
 def rg_clock_starts_at(seconds, ticks, set)
@@ -1492,7 +1492,7 @@ def rg_clock_reading(reading, offset_days, offset_seconds)
   end
 end
 
-# SETTING THE CLOCK (Reference#exec_set_clock): how far the time set is from the clock's own, to
+# Setting the clock (Reference#exec_set_clock): how far the time set is from the clock's own, to
 # the whole second, in days and the seconds left over, kept until the game takes the two parts
 # into its saved numbers. The clock itself is never changed, and from then on it reads as set.
 def rg_clock_set_to(year, month, day, hour, minute, second)

@@ -33,7 +33,7 @@ end
 # once the frame boundary has passed, and the buttons the player answers are read for the pass
 # that starts.
 #
-# NOBODY WATCHING OR LISTENING. The player is asked each frame whether it wants the picture and the
+# Nobody watching or listening. The player is asked each frame whether it wants the picture and the
 # sound (picture_wanted?, sound_wanted?), and is handed nil for what it does not want, which is then
 # never made. A data pack's unpacking has nobody at the window, and building its picture and mixing
 # its sound every frame was about half of a long unpacking's time. Neither changes the game: the game
@@ -50,7 +50,7 @@ def rg_driver_wait_vblank
   rg_buttons_read(buttons)
 end
 
-# A SAVE OR LOAD THE PLAYER ASKED FOR, done where the headless run does its own (rg_headless.rb's
+# A save or load the player asked for, done where the headless run does its own (rg_headless.rb's
 # rg_headless_state_at_boundary): as the game's frame ends, before its sound is made and the next frame
 # begins. That is the one moment every routine is stopped at its wait, so a state written now is the
 # game whole, and one read back puts the game where it was. A state this build cannot read is
@@ -93,7 +93,7 @@ def rg_live_controls = @rg_game_controls
 # The most players the build seats (`players:`), 0 for none named (Live::Seats).
 def rg_live_seats = @rg_game_seats[0]
 
-# THE SAVE MEMORY, for whoever keeps it in a file (Live::Session): its size, its bytes as a String, and
+# The save memory, for whoever keeps it in a file (Live::Session): its size, its bytes as a String, and
 # the file's bytes put into it as the game starts.
 def rg_live_save_size = rg_save_size
 def rg_live_save_bytes = rg_save_bytes.pack("C*")

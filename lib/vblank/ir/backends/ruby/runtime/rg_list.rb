@@ -10,13 +10,13 @@
 # past the last item — stops the game with the interpreter's words, through rg_fault. A run that
 # carried on past one of those would be answering a different question.
 #
-# A LIST OF BYTES (`width: :byte`) IS KEPT AS BYTES, an RgByteList over a binary String, one byte
+# A list of bytes (`width: :byte`) IS KEPT AS BYTES, an RgByteList over a binary String, one byte
 # a slot. An Array keeps every item as a Ruby number of eight bytes, and a data pack's unpacking
 # writes its whole pack into one list of bytes: a pack of hundreds of megabytes held that way
 # would want gigabytes. The two classes answer the same few methods, so nothing else knows which
 # it holds.
 #
-# A READ OR WRITE OF ONE ITEM IS ONE CALL (#get, #set), which the printer writes where the game
+# A read or write of one item is one call (#get, #set), which the printer writes where the game
 # reads or writes (Printer#list_item_call): the check of the index and the ring's slot worked out
 # inside it, on the list's own instance variables. An unrolled routine paid for a few reads; a
 # routine that loops over a list by an index it works out as it runs pays for one at every turn,
@@ -174,7 +174,7 @@ class RgHalfList < RgList
   end
 end
 
-# A LIST THAT IS ALWAYS FULL: one the game only ever declares full of a number (`full_of:`), and
+# A list that is always full: one the game only ever declares full of a number (`full_of:`), and
 # never pushes onto, drops from or copies into, so it holds its whole capacity from its declaration
 # on, its first item in its first slot (Printer#always_full_lists picks these, of numbers wider
 # than a byte). A port keeps its chip's operators so, a list a field, and reads them at an index it
