@@ -76,6 +76,9 @@ class TestJSPageControls < Minitest::Test
 
     assert_equal read.call("PAGE_KEYS"), written.call("first_player")
     assert_equal read.call("PAGE_SECOND_PLAYER_KEYS"), written.call("second_player")
+    menu = File.read(VBlank.root.join("lib/vblank/ir/backends/js/runtime/rg_page_menu.js"))
+    assert_includes source, %(host.fullscreenKey === undefined ? "#{controls.dig('page_keys', 'fullscreen')}")
+    assert_includes menu[/^const PAGE_HOTKEY_KEYS = \[.*?\];/m], %("#{controls.dig('page_keys', 'menu')}")
   end
 
   def test_controls_come_from_a_game_without_building_a_page
