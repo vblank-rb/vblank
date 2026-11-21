@@ -3,6 +3,19 @@
 module VBlank
   module Effects
     module Packs
+      # A camera that follows a character
+      #
+      # `camera_follows` is the view almost every adventure game uses, for a world bigger than the
+      # screen. The hero stays put and the world slides past underneath. Move the hero like any other
+      # sprite, with `move`, and the world slides instead. Moving, facing, animating and turning all
+      # work. The sprite's position is where it sits on the screen and not where it stands in the
+      # world, so `blocked_by` and `overlaps?` against something placed in the world do not line up
+      # with it.
+      #
+      # ```ruby
+      # hero.move :right if held(:right)   # ordinary sprite code, and the world slides left
+      # ```
+      #--
       # A camera that follows a character through a world bigger than the screen — the
       # view almost every adventure game uses. The hero stays put and the world slides
       # past underneath.
@@ -33,36 +46,38 @@ module VBlank
       # world. So `blocked_by` (whose walls are places on the map) and `overlaps?` against
       # something placed in the world do not line up with it. Moving, facing, animating
       # and turning all do.
+      #++
       module FollowCamera
         HOME_X = :__camera_home_x # Where the followed sprite sits on screen
         HOME_Y = :__camera_home_y
         ROUTINE = :__camera_follow
 
-        # Point the camera at +sprite+ and keep it there, scrolling +across+ under it.
+        # Points the camera at a sprite and keeps it there, scrolling a background under it.
         #
-        #   world = background :world, tiles: :terrain, map: MAP
-        #   hero  = sprite :guy, at: [0, 0]
-        #   hero.center_on_screen
-        #   camera_follows hero, across: world
+        # Call it once, where the sprite is declared. Wherever the sprite is standing at that moment
+        # is where it stays: the middle of the screen for an adventure game, low down for a
+        # platformer, wherever you put it. From there the framework moves the world under it every
+        # frame. One sprite per game leads the camera, and calling it again with a different sprite
+        # is an error and not two cameras fighting over one world.
         #
-        # Call it once, where the sprite is declared. Wherever the sprite is standing at
-        # that moment is where it stays — the middle of the screen for an adventure game,
-        # low down for a platformer, wherever you put it. From there the framework moves
-        # the world under it every frame.
+        # ```ruby
+        # world = background :world, tiles: :terrain, map: MAP
+        # hero  = sprite :guy, at: [0, 0]
+        # hero.center_on_screen
+        # camera_follows hero, across: world
+        # camera_follows hero, across: world, at: [120, 80]   # standing by the pond
+        # ```
         #
-        # One sprite per game leads the camera. Calling it again with a different sprite
-        # is a friendly error rather than two cameras fighting over one world.
-        #
-        # `at:` sets where in the WORLD the character starts, which is the question you
-        # want answered right here and which the sprite's own position cannot answer — that
-        # is where it sits on the screen, and under a follow camera those are two different
-        # things. Leave it out to start at the world's top-left corner.
-        #
-        #   camera_follows hero, across: world, at: [120, 80]   # standing by the pond
-        #
-        # @param sprite [HardwareSprite] the character to follow
-        # @param across [Background] the world it walks through
-        # @param at [Array(Integer, Integer), nil] where the character stands in the world
+        # * `sprite` - the character to follow.
+        # * `across:` - the background, the world it walks through.
+        # * `at:` - where in the world the character starts, as `[x, y]`. The sprite's own position
+        #   cannot answer this, because it is where the sprite sits on the screen, and under a
+        #   follow camera those are two different things. Left out, it starts at the world's
+        #   top-left corner.
+        #--
+        # Every frame the routine looks at how far the sprite has drifted from where it is meant to
+        # sit, scrolls the world by exactly that much, and puts the sprite back before it is drawn.
+        #++
         def camera_follows(sprite, across:, at: nil)
           follow_camera_arguments!(sprite, across, at)
 

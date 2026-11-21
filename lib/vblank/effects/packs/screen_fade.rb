@@ -3,6 +3,20 @@
 module VBlank
   module Effects
     module Packs
+      # Screen fades
+      #
+      # `fade_out` takes the screen to a colour over a number of frames, `fade_in` brings it back,
+      # and `flash_screen` is the hit flash, which is a fade that starts full and runs the other way.
+      # Use them for a scene change, a game over or a hit. Call one once, at the moment the change
+      # begins, and the framework walks the amount for you on every frame from there. The picture is
+      # not redrawn and nothing is lost: it is all still there under the colour.
+      #
+      # ```ruby
+      # fade_out                  # to black, over half a second
+      # state = GAME_OVER if fade_level == 100
+      # fade_in
+      # ```
+      #--
       # Screen fade — the scene change, and the hit flash that is the same thing in a
       # hurry. Fade out to hand over to a game-over screen, fade in when play begins,
       # flash white when something lands.
@@ -34,6 +48,7 @@ module VBlank
       # one — only the verb the branch reaches for changes. Each color a game asks for
       # earns a branch of its own, because a color is settled while building; a game asks
       # for one or two, and the routine only ever runs one of them.
+      #++
       module ScreenFade
         # The hidden state, named with the framework's underscore prefix so a game's own
         # variables can never collide with it.
@@ -67,79 +82,89 @@ module VBlank
         # colors instead (see #fade_amount).
         DISPLAY_LEVELS = IR::Backends::FadeSteps::DISPLAY + 1
 
-        # Fade the screen out — toward black for a scene change, toward white for a
-        # whiteout. Call it once, at the moment the change begins; the framework walks the
-        # amount for you on every frame from there.
+        # Fades the screen out, toward black for a scene change or toward white for a whiteout.
         #
-        #   fade_out                                # to black, over half a second
-        #   fade_out :white, frames: 10             # a fast whiteout
-        #   fade_out :black, duration: 1.5          # the same, given in seconds
-        #   fade_out :red, frames: 12               # a redout, for a death
+        # Call it once, at the moment the change begins. The picture is not redrawn and nothing is
+        # lost. It is all still there under the colour, and `fade_in` brings it back untouched.
+        # Calling this again while a fade runs redirects it from where it is now.
         #
-        # The picture is not redrawn and nothing is lost — it is all still there under the
-        # color, and `fade_in` brings it back untouched. Calling this again while a fade
-        # runs redirects it from where it is now.
+        # ```ruby
+        # fade_out                                # to black, over half a second
+        # fade_out :white, frames: 10             # a fast whiteout
+        # fade_out :black, duration: 1.5          # the same, given in seconds
+        # fade_out :red, frames: 12               # a redout, for a death
+        # ```
         #
-        # `under:` places the fade in the stack instead of over the whole screen: it names
-        # a layer, and that layer and everything in front of it stay as they are. Fade the
-        # game out to a game-over screen and leave the score showing:
+        # `under:` places the fade in the stack instead of over the whole screen. It names a layer,
+        # and that layer and everything in front of it stay as they are. Fade the game out to a
+        # game-over screen and leave the score showing:
         #
-        #   fade_out under: :ui
+        # ```ruby
+        # fade_out under: :ui
+        # ```
         #
-        # `inside:` and `outside:` hold it to a rectangle of the screen instead, the way
-        # `fade` takes them: fade the view out and keep the status bar under it.
+        # `inside:` and `outside:` hold it to a rectangle of the screen instead, as `fade` takes
+        # them: fade the view out and keep the status bar under it. `fade_in` with no arguments comes
+        # back the same way, so the layer or the rectangle is given once. A layer or a rectangle
+        # cannot be asked for together with a colour other than black or white, and that is an error
+        # that says why.
         #
-        #   fade_out inside: [0, 0, 240, 128]
+        # ```ruby
+        # fade_out inside: [0, 0, 240, 128]
+        # ```
         #
-        # `fade_in` with no arguments comes back the same way, so the layer or the rectangle
-        # is given once. Either of those and a color other than :black or :white cannot be
-        # asked for together, which is a friendly error saying why.
-        #
-        # @param color [Symbol, String, Integer] the color to fade toward
-        # @param frames [Integer, nil] how long the fade takes, in frames
-        # @param duration [Numeric, nil] how long it takes, in seconds (instead of frames)
-        # @param under [Symbol, nil] a layer the fade sits under, or nil for the whole screen
-        # @param inside [Array<Integer>, nil] the rectangle the fade is held to
-        # @param outside [Array<Integer>, nil] the rectangle the fade leaves alone
+        # * `color` - the colour to fade toward. The default is black.
+        # * `frames:` - how long the fade takes, in frames. The default is 30.
+        # * `duration:` - how long it takes, in seconds, instead of `frames:`.
+        # * `under:` - a layer the fade sits under. The default is the whole screen.
+        # * `inside:` - the rectangle `[x, y, width, height]` the fade is held to.
+        # * `outside:` - the rectangle the fade leaves alone.
+        #--
+        # Black and white are a brightness change, which is what the kernel's `fade` is. Any other
+        # colour is a `tint`, so each colour a game asks for earns a branch of its own.
+        #++
         def fade_out(color = :black, frames: nil, duration: nil, under: nil, inside: nil, outside: nil)
           start_fade(color, FULL, frames, duration, under: under, rectangle: fade_rectangle(inside, outside))
         end
 
-        # Bring the screen back from a fade — the other half of `fade_out`, and the one
-        # that is easy to forget.
+        # Brings the screen back from a fade. It is the other half of `fade_out`, and the one that is
+        # easy to forget.
         #
-        #   fade_in                    # back the way it went out, at the same speed
-        #   fade_in frames: 10         # back faster than it left
+        # With no arguments it comes back in the colour it faded to, so a scene change is two words
+        # and no bookkeeping.
         #
-        # With no arguments it comes back in the color it faded to and over the same
-        # number of frames, so a scene change is two words and no bookkeeping.
+        # ```ruby
+        # fade_in                    # back the way it went out
+        # fade_in frames: 10         # back faster than it left
+        # ```
         #
-        # @param color [Symbol, String, Integer, nil] a color; leave it out to keep the current one
-        # @param frames [Integer, nil] how long it takes, in frames
-        # @param duration [Numeric, nil] how long it takes, in seconds
+        # * `color` - a colour. Leave it out to keep the current one.
+        # * `frames:` - how long it takes, in frames. Left out, it takes as long as the fade out did.
+        # * `duration:` - how long it takes, in seconds.
         def fade_in(color = nil, frames: nil, duration: nil)
           start_fade(color, 0.0, frames, duration, default: nil)
         end
 
-        # Flash the whole screen and let it fall back — the impact effect for a hit, a
-        # score, a life lost. It is a fade that starts full and runs the other way, which
-        # is why it lives here beside one.
+        # Flashes the whole screen and lets it fall back, as the impact effect for a hit, a score or
+        # a life lost.
         #
-        #   flash_screen                            # a short white flash
-        #   flash_screen :black, frames: 4          # a blink instead
-        #   flash_screen :red                       # took damage
+        # Any colour works. Red is the one a game reaches for most: a white flash reads as
+        # "something happened" and a red one reads as "that hurt". Pair it with `shake_screen` for a
+        # hit that is felt as well as seen. Calling it again restarts the flash, so repeated hits keep
+        # flashing.
         #
-        # Any color works, and red is the one a game reaches for most: a white flash reads
-        # as "something happened" and a red one reads as "that hurt". Pair it with
-        # `shake_screen` for a hit that is felt as well as seen. Calling it again restarts
-        # the flash, so repeated hits keep flashing.
+        # ```ruby
+        # flash_screen                            # a short white flash
+        # flash_screen :black, frames: 4          # a blink instead
+        # flash_screen :red                       # took damage
+        # ```
         #
-        # @param color [Symbol, String, Integer] the color to flash
-        # @param frames [Integer, nil] how long the flash lasts, in frames
-        # @param duration [Numeric, nil] how long it lasts, in seconds
-        # @param under [Symbol, nil] a layer the flash sits under, or nil for the whole screen
-        # @param inside [Array<Integer>, nil] the rectangle the flash is held to
-        # @param outside [Array<Integer>, nil] the rectangle the flash leaves alone
+        # * `color` - the colour to flash. The default is white.
+        # * `frames:` - how long the flash lasts, in frames. The default is 6.
+        # * `duration:` - how long it lasts, in seconds.
+        # * `under:` - a layer the flash sits under. The default is the whole screen.
+        # * `inside:` - the rectangle the flash is held to.
+        # * `outside:` - the rectangle the flash leaves alone.
         def flash_screen(color = :white, frames: nil, duration: nil, under: nil, inside: nil, outside: nil)
           state = screen_fade_state
           state[:level] = FULL # start full, so the first frame shown is the bright one
@@ -147,27 +172,26 @@ module VBlank
                                                    rectangle: fade_rectangle(inside, outside))
         end
 
-        # How far the screen is faded right now, as a value the game can read: 0 is the
-        # picture as drawn and 100 is nothing but the color.
+        # Reads how far the screen is faded right now: 0 is the picture as drawn and 100 is nothing
+        # but the colour.
         #
-        # THIS IS WHAT MAKES A SCENE CHANGE WRITABLE. `fade_out` leaves the screen dark on
-        # purpose — that is what fading out means — so whatever is drawn next is invisible
-        # until something brings it back. The order a game wants is: fade out, THEN switch
-        # screens, THEN fade in, and the middle step has to wait for the first to arrive.
-        # Reading the level is how it waits:
+        # It is what makes a scene change writable. `fade_out` leaves the screen dark on purpose, so
+        # whatever is drawn next is invisible until something brings it back. The order a game wants
+        # is to fade out, then switch screens, then fade in, and the middle step has to wait for the
+        # first to arrive. Reading the level is how it waits. It is a number and not a yes or no,
+        # because halfway through is a real place to act too.
         #
-        #   leaving = var :leaving, 0
-        #   if lives <= 0 then fade_out; leaving = 1 end # start dimming
-        #   if leaving == 1
-        #     if fade_level == 100                            # ...and once it is dark,
-        #       state = GAME_OVER                             # switch, and bring the
-        #       fade_in                                       # new screen up
-        #       leaving = 0
-        #     end
+        # ```ruby
+        # leaving = var :leaving, 0
+        # if lives <= 0 then fade_out; leaving = 1 end # start dimming
+        # if leaving == 1
+        #   if fade_level == 100                       # and once it is dark,
+        #     state = GAME_OVER                        # switch, and bring the
+        #     fade_in                                  # new screen up
+        #     leaving = 0
         #   end
-        #
-        # A value rather than a yes-or-no on purpose: half way through is a real place to
-        # act too, and there is nothing to invert.
+        # end
+        # ```
         def fade_level
           screen_fade_state[:level]
         end

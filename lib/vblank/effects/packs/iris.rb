@@ -3,6 +3,22 @@
 module VBlank
   module Effects
     module Packs
+      # The iris scene change
+      #
+      # `iris_out` closes a circle on a point until the screen is black, so that the scene can be
+      # swapped while nobody can see it, and `iris_in` opens the circle again. It is the pair to
+      # `fade_out` and `fade_in`, and is called the same way. It closes the game's own light, the
+      # one `spotlight` makes. A game with a lantern has one light already, so the iris takes that
+      # light down to nothing and, on the way back, gives it back as big and as dark as it was. A
+      # game with no light gets one that reaches past the screen and darkens nothing, which is what
+      # the iris opens back to.
+      #
+      # ```ruby
+      # iris_out at: [hero.x + 8, hero.y + 8]
+      # room.show_map next_room if iris_shut?
+      # iris_in
+      # ```
+      #--
       # The iris — the scene change where a circle closes on a point until the screen is
       # black, the scene is swapped while nobody can see it, and the circle opens again.
       #
@@ -27,6 +43,7 @@ module VBlank
       # lands on the last frame asked for, as the pixelate's is. It runs between nothing and
       # about the farthest corner of the screen from the point — never short of it, and never
       # far past it — so the circle is seen moving from the first frame to the last.
+      #++
       module Iris
         # The hidden state, named with the framework's underscore prefix.
         SIZE = :__iris_size        # How far the circle reaches now, a fraction
@@ -45,33 +62,35 @@ module VBlank
 
         DEFAULT_FRAMES = 30 # Half a second — a scene change, not a blink
 
-        # Close a circle on a point until the screen is black. Call it once, at the moment the
-        # change begins; the framework walks the circle in on every frame from there.
+        # Closes a circle on a point until the screen is black.
         #
-        #   iris_out                          # on the middle of the light, over half a second
-        #   iris_out at: [hero.x + 8, hero.y + 8]
-        #   iris_out frames: 20               # faster
-        #   iris_out duration: 1.0            # the same, given in seconds
+        # Call it once, at the moment the change begins, and the framework walks the circle in on
+        # every frame from there.
         #
-        # `at:` is the point it closes on, in screen pixels; either half may be worked out as
-        # the game runs. Left out, it closes on wherever the light already is.
+        # ```ruby
+        # iris_out                          # on the middle of the light, over half a second
+        # iris_out at: [hero.x + 8, hero.y + 8]
+        # iris_out frames: 20               # faster
+        # iris_out duration: 1.0            # the same, given in seconds
+        # ```
         #
-        # A WALK GIVEN IN PIXELS, the way a game copying another one gives it: `from:` is the size
-        # the circle starts at and `by:` how many pixels it shrinks every frame, in place of
-        # `frames:` or `duration:`.
-        #
-        #   iris_out at: [120, 80], from: 150, by: 4    # 146, 142 ... 2, then shut at nought
-        #
-        # The first step is taken on the frame the walk is called, as such a game takes it, so the
+        # A walk can be given in pixels, the way a game copying another one gives it: `from:` is the
+        # size the circle starts at and `by:` is how many pixels it shrinks every frame, in place of
+        # `frames:` or `duration:`. The first step is taken on the frame the walk is called, so the
         # light holds `from` less `by` at the end of that frame, and `iris_shut?` is true from the
-        # frame the size reaches nought. A size set in a frame is drawn on the next picture, as a
-        # sprite's place is.
+        # frame the size reaches 0. A size set in a frame is drawn on the next picture, as a sprite's
+        # place is.
         #
-        # @param at [Array, nil] the point the circle closes on
-        # @param frames [Integer, nil] how long the walk takes, in frames
-        # @param duration [Numeric, nil] how long it takes, in seconds (instead of frames)
-        # @param from [Integer, DSL::Value, nil] the size the circle starts at, in pixels
-        # @param by [Integer, DSL::Value, nil] how many pixels it shrinks each frame (instead of frames)
+        # ```ruby
+        # iris_out at: [120, 80], from: 150, by: 4    # 146, 142 ... 2, then shut at 0
+        # ```
+        #
+        # * `at:` - the point the circle closes on, as `[x, y]` in screen pixels. Either half can be
+        #   worked out as the game runs. Left out, it closes on wherever the light already is.
+        # * `frames:` - how long the walk takes, in frames.
+        # * `duration:` - how long it takes, in seconds, instead of `frames:`.
+        # * `from:` - the size the circle starts at, in pixels.
+        # * `by:` - how many pixels it shrinks each frame, instead of `frames:`.
         def iris_out(at: nil, frames: nil, duration: nil, from: nil, by: nil)
           note_verb_written(:iris_out)
           refuse_walk_in_pixels_and_frames!(by, frames, duration)
@@ -96,32 +115,37 @@ module VBlank
           nil
         end
 
-        # Open the circle again, back to the light the game had before — the other half of
-        # `iris_out`. With nothing closed before it, the screen starts black and the circle
-        # opens from nothing, which is how a game opens on an iris.
+        # Opens the circle again, back to the light the game had before. It is the other half of
+        # `iris_out`.
         #
-        #   iris_in                # out from where it closed, over half a second
-        #   iris_in frames: 10     # faster
-        #   iris_in dark: 0        # ...and come back to no darkness: out of the cave, into daylight
+        # With nothing closed before it, the screen starts black and the circle opens from nothing,
+        # which is how a game opens on an iris.
+        #
+        # ```ruby
+        # iris_in                # out from where it closed, over half a second
+        # iris_in frames: 10     # faster
+        # iris_in dark: 0        # and come back to no darkness: out of the cave, into daylight
+        # ```
         #
         # `radius:` and `dark:` are the light it opens back to, where that is not the light it
-        # closed from — a scene change is often from a dark place to a light one. Either may be
-        # worked out as the game runs. Onto a light that darkens nothing, the circle opens all
-        # the way past the corners rather than stopping at the light's own size.
+        # closed from, since a scene change is often from a dark place to a light one. Either can be
+        # worked out as the game runs. Onto a light that darkens nothing, the circle opens all the way
+        # past the corners instead of stopping at the light's own size.
         #
         # Given in pixels, it opens `by:` pixels every frame, and once the circle passes `to:` the
-        # light is let go — given back as it was, or as `radius:` and `dark:` set it:
+        # light is let go, given back as it was or as `radius:` and `dark:` set it. As with
+        # `iris_out`, the first step is taken on the frame it is called.
         #
-        #   iris_in by: 4, to: 150, dark: 0    # 4, 8 ... 148, then the whole picture
+        # ```ruby
+        # iris_in by: 4, to: 150, dark: 0    # 4, 8 ... 148, then the whole picture
+        # ```
         #
-        # As with `iris_out`, the first step is taken on the frame it is called.
-        #
-        # @param frames [Integer, nil] how long it takes, in frames
-        # @param duration [Numeric, nil] how long it takes, in seconds
-        # @param radius [Integer, DSL::Value, nil] the light's radius once it is open
-        # @param dark [Integer, DSL::Value, nil] how dark outside the light is once it is open
-        # @param by [Integer, DSL::Value, nil] how many pixels it grows each frame (instead of frames)
-        # @param to [Integer, DSL::Value, nil] the size it opens to before it lets the light go
+        # * `frames:` - how long it takes, in frames.
+        # * `duration:` - how long it takes, in seconds.
+        # * `radius:` - the light's radius once it is open.
+        # * `dark:` - how dark outside the light is once it is open.
+        # * `by:` - how many pixels it grows each frame, instead of `frames:`.
+        # * `to:` - the size it opens to before it lets the light go.
         def iris_in(frames: nil, duration: nil, radius: nil, dark: nil, by: nil, to: nil)
           note_verb_written(:iris_in)
           refuse_walk_in_pixels_and_frames!(by, frames, duration)
@@ -158,11 +182,16 @@ module VBlank
           nil
         end
 
-        # Whether the circle has closed: true from the frame a walk out arrives until the
-        # next `iris_in`. THIS IS WHAT MAKES A SCENE CHANGE WRITABLE, the way `fade_level` is
-        # for a fade — swap the scene while the screen is black:
+        # Asks whether the circle has closed. It is true from the frame a walk out arrives until the
+        # next `iris_in`.
         #
-        #   if iris_shut? then room.show_map next_room; iris_in end
+        # It makes a scene change writable, the way `fade_level` does for a fade: swap the scene
+        # while the screen is black. The test holds for two frames running, one on each side of the
+        # swap, so keep a flag of your own to act once.
+        #
+        # ```ruby
+        # if iris_shut? then room.show_map next_room; iris_in end
+        # ```
         def iris_shut?
           note_verb_written(:iris_shut?)
           iris_state(spotlight)[:shut] == 1

@@ -3,6 +3,24 @@
 module VBlank
   module Effects
     module Packs
+      # A picture that is drawn when it changes and then left there
+      #
+      # A score, a health bar, a GAME OVER banner or the words over a finished game need painting
+      # only when they change. A picture repainted every frame needs none of this. A picture left
+      # alone between changes is much cheaper, and on the tear-free screen (`screen :bitmap,
+      # tear_free: true`) leaving it alone needs care. That screen keeps two pictures and shows them
+      # in turn, so a change painted a single time reaches one of the two, and the screen flickers
+      # between the new figure and the old one. `keep_showing` paints a change once for each picture
+      # the screen keeps, so a game never writes the number down. On a plain screen the same game
+      # code costs one paint. A game moved from `screen :bitmap` to `screen :bitmap, tear_free:
+      # true` keeps working, and the flicker that would have appeared never does.
+      #
+      # ```ruby
+      # bar = keep_showing(:status_bar) { paint_the_bar }
+      # bar.changed if health != last
+      # bar.draw
+      # ```
+      #--
       # A picture that is drawn when it changes and then left there — a score, a
       # health bar, a GAME OVER banner, the words over a finished game.
       #
@@ -36,17 +54,26 @@ module VBlank
       #
       # A pack, by {Effects}'s own test: every line is written in `var`, `func`,
       # `call` and `if`, and no backend knows this file exists.
+      #++
       module KeepShowing
-        # Draw something once and leave it there, and let the framework work out how
-        # many times "once" really is on this screen.
+        # Draws something once and leaves it there, and works out how many times "once" really is
+        # on this screen.
         #
-        # The block is the drawing, and it is built into a routine of its own rather
-        # than emitted at each place that needs it — so a picture painted from three
-        # places costs its code once. Declare it where the picture belongs — the top
-        # level, or inside a `scene` that owns it — the same as a `sprite`.
+        # The block is the drawing. It is built into a routine of its own and not written out at
+        # each place that needs it, so a picture painted from three places costs its code once.
+        # Declare it where the picture belongs, at the top level or inside a `scene` that owns it,
+        # the same as a `sprite`. It returns a handle: `changed` when the picture changes, and `draw`
+        # in the drawing order.
         #
-        # @param name [Symbol] what to call the picture, for the routine and its counter
-        # @return [Shown] the handle: #changed when it changes, #draw in drawing order
+        # ```ruby
+        # bar = keep_showing(:status_bar) { paint_the_bar }
+        #
+        # bar.changed if health != last   # somewhere a change happens
+        # bar.draw                        # in the frame, where the picture belongs in the drawing order
+        # ```
+        #
+        # * `name` - what to call the picture, as a symbol. Each picture needs its own name.
+        # * The block - the drawing.
         def keep_showing(name, &drawing)
           unless name.is_a?(Symbol)
             raise ArgumentError,

@@ -3,6 +3,20 @@
 module VBlank
   module Effects
     module Packs
+      # Pixelating the screen over time
+      #
+      # `pixelate_out` breaks the picture up into bigger and bigger blocks over a number of frames,
+      # so that it can be swapped for the next one while nobody can read it, and `pixelate_in`
+      # brings it back together. It is the screen fade's sibling and reads the same at the call
+      # site. Call one once, at the moment the change begins, and the framework walks the size for
+      # you on every frame from there. The picture is not redrawn and nothing is lost.
+      #
+      # ```ruby
+      # pixelate_out                    # over half a second
+      # state = GAME_OVER if pixelate_size == 16
+      # pixelate_in
+      # ```
+      #--
       # Pixelating the screen over time — the scene change where the picture breaks up
       # into bigger and bigger blocks, is swapped for the next one while nobody can read
       # it, and comes back together.
@@ -25,6 +39,7 @@ module VBlank
       # last one, so the number an author writes is the number they get. The display is
       # handed the whole part, so the picture moves on to the next size when the walk has
       # got that far.
+      #++
       module ScreenPixelate
         # The hidden state, named with the framework's underscore prefix so a game's own
         # variables can never collide with it.
@@ -44,31 +59,28 @@ module VBlank
 
         DEFAULT_FRAMES = 30 # Half a second — a scene change, not a blink
 
-        # Break the picture up into bigger and bigger blocks, until they are the biggest
-        # the console draws. Call it once, at the moment the change begins; the framework
-        # walks the size for you on every frame from there.
+        # Breaks the picture up into bigger and bigger blocks, until they are the biggest the
+        # console draws.
         #
-        #   pixelate_out                    # over half a second
-        #   pixelate_out frames: 12         # faster
-        #   pixelate_out duration: 1.5      # the same, given in seconds
+        # Call it once, at the moment the change begins. The picture is not redrawn and nothing is
+        # lost: `pixelate_in` brings it back untouched. Calling this again while a walk runs turns
+        # it round from where it is.
         #
-        # The picture is not redrawn and nothing is lost: `pixelate_in` brings it back
-        # untouched. Calling this again while a walk runs turns it round from where it is.
+        # ```ruby
+        # pixelate_out                    # over half a second
+        # pixelate_out frames: 12         # faster
+        # pixelate_out duration: 1.5      # the same, given in seconds
+        # pixelate_out under: :ui         # keep the score sharp
+        # ```
         #
-        # `under:` leaves a layer and everything in front of it as drawn, as it does for
-        # `pixelate`, and it holds for the whole game: `pixelate_in` comes back the same
-        # way with nothing to repeat.
-        #
-        #   pixelate_out under: :ui
-        #
-        # @param frames [Integer, nil] how long the walk takes, in frames
-        # @param duration [Numeric, nil] how long it takes, in seconds (instead of frames)
-        # `sprites: false` puts the backgrounds alone in blocks, as it does for `pixelate`, and
-        # holds for the whole game the same way. So does `status_bar: true`.
-        #
-        # @param under [Symbol, nil] a layer left as drawn with everything in front of it
-        # @param sprites [Boolean] whether the sprites are put in blocks with the backgrounds
-        # @param status_bar [Boolean] whether a status bar is put in blocks with the backgrounds
+        # * `frames:` - how long the walk takes, in frames. The default is 30.
+        # * `duration:` - how long it takes, in seconds, instead of `frames:`.
+        # * `under:` - a layer left as drawn with everything in front of it, as for `pixelate`. It
+        #   holds for the whole game, so `pixelate_in` comes back the same way with nothing to
+        #   repeat.
+        # * `sprites:` - `false` puts the backgrounds alone in blocks, as for `pixelate`. It holds
+        #   for the whole game the same way.
+        # * `status_bar:` - `true` puts a status bar in blocks too. It holds for the whole game.
         def pixelate_out(frames: nil, duration: nil, under: nil, sprites: true, status_bar: false)
           note_verb_written(:pixelate_out)
           @screen_pixelate_sprites = sprites unless sprites
@@ -80,40 +92,42 @@ module VBlank
           start_pixelate_walk(FULL, frames, duration, under: under)
         end
 
-        # Bring the picture back together — the other half of `pixelate_out`.
+        # Brings the picture back together. It is the other half of `pixelate_out`.
         #
-        #   pixelate_in                # back at the speed it went out
-        #   pixelate_in frames: 10     # back faster than it left
+        # ```ruby
+        # pixelate_in                # back at the speed it went out
+        # pixelate_in frames: 10     # back faster than it left
+        # ```
         #
-        # @param frames [Integer, nil] how long it takes, in frames
-        # @param duration [Numeric, nil] how long it takes, in seconds
+        # * `frames:` - how long it takes, in frames. Left out, it takes as long as the walk out did.
+        # * `duration:` - how long it takes, in seconds.
         def pixelate_in(frames: nil, duration: nil)
           note_verb_written(:pixelate_in)
           start_pixelate_walk(0.0, frames, duration, default: nil)
         end
 
-        # How big a block is on screen right now, as a value the game can read: 1 is the
-        # picture as drawn and 16 is the biggest block there is. It is the size this walk
-        # has put on screen; a size a game sets itself with `pixelate` is not read back here.
+        # Reads how big a block is on screen right now: 1 is the picture as drawn and 16 is the
+        # biggest block there is.
         #
-        # THIS IS WHAT MAKES A SCENE CHANGE WRITABLE. The picture is hardest to read at the
-        # biggest block, so that is the moment to swap what is drawn, and the swap has to
-        # wait for the walk to arrive:
+        # It is the size this walk has put on screen. A size that a game sets itself with `pixelate`
+        # is not read back here. It makes a scene change writable: the picture is hardest to read at
+        # the biggest block, so that is the moment to swap what is drawn, and the swap has to wait
+        # for the walk to arrive.
         #
-        #   leaving = var :leaving, 0
-        #   if lives <= 0 then pixelate_out; leaving = 1 end
-        #   if leaving == 1 && pixelate_size == 16
-        #     state = GAME_OVER
-        #     pixelate_in
-        #     leaving = 0
-        #   end
+        # ```ruby
+        # leaving = var :leaving, 0
+        # if lives <= 0 then pixelate_out; leaving = 1 end
+        # if leaving == 1 && pixelate_size == 16
+        #   state = GAME_OVER
+        #   pixelate_in
+        #   leaving = 0
+        # end
+        # ```
         #
-        # THE FLAG IS NOT DECORATION. The size reads 16 on the old scene's last frame and
-        # again on the new scene's first, which is what puts both of them in the biggest
-        # blocks — so a test on the size alone is true twice, and the second time would
-        # swap again.
-        #
-        # A value rather than a yes-or-no on purpose: half way is a place to act too.
+        # The flag is needed. The size reads 16 on the old scene's last frame and again on the new
+        # scene's first, which puts both of them in the biggest blocks, so a test on the size alone
+        # is true twice, and the second time would swap again. It is a number and not a yes or no,
+        # because halfway is a place to act too.
         def pixelate_size
           screen_pixelate_state[:shown]
         end

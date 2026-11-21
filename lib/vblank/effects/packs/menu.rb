@@ -3,6 +3,20 @@
 module VBlank
   module Effects
     module Packs
+      # Menus
+      #
+      # Nearly every game has a menu: a title screen, a pause screen, a shop, a jukebox. `menu` is
+      # an ordered list of items, one of them picked, with up and down moving the pick and wrapping
+      # at both ends, and a button running the picked item's block. Which colour is which, what the
+      # cursor looks like and how far apart the rows are are named by the game.
+      #
+      # ```ruby
+      # menu :main, at: [80, 60] do |m|
+      #   m.item("NEW GAME") { state = PLAYING }
+      #   m.item("SOUND")    { state = SOUND }
+      # end
+      # ```
+      #--
       # A menu: a list of things to pick from, a selector that moves, and what each one
       # does. Nearly every game has one — a title screen, a pause screen, a shop, a
       # jukebox — and until now this framework had no word for it.
@@ -22,6 +36,7 @@ module VBlank
       # This is a pack, so every line below is written in public DSL verbs — `var`,
       # `held`, `pressed`, `if`, `draw_text`. Nothing here is new capability, which is
       # exactly why it is a pack and not part of the library proper (see {Effects}).
+      #++
       module Menus
         # How long a held button waits before it walks to the next row. Copied from
         # Wolfenstein 3D, which waits 20 tics: a tap always moves exactly one row, and
@@ -154,72 +169,61 @@ module VBlank
           end
         end
 
-        # Declare a menu: a list of rows, a cursor that moves between them, and a block
-        # per row saying what picking it does.
+        # Declares a menu: a list of rows, a cursor that moves between them, and a block for each row
+        # saying what picking it does.
         #
-        #   menu :main, at: [80, 60] do |m|
-        #     m.item("NEW GAME")                  { state = PLAYING }
-        #     m.item("LOAD GAME", enabled: false) { state = LOADING }
-        #     m.item("SOUND")                     { state = SOUND }
-        #   end
+        # ```ruby
+        # menu :main, at: [80, 60] do |m|
+        #   m.item("NEW GAME")                  { state = PLAYING }
+        #   m.item("LOAD GAME", enabled: false) { state = LOADING }
+        #   m.item("SOUND")                     { state = SOUND }
+        # end
+        # ```
         #
-        # Up and down move the cursor and WRAP at both ends. A row that cannot be picked
-        # is stepped over rather than landed on, and is drawn in its own dim colour.
-        # Holding a button walks the list instead of moving one row and stopping. The
-        # button named by `press:` runs the picked row's block.
+        # Up and down move the cursor and wrap at both ends. A row that cannot be picked is stepped
+        # over and not landed on, and is drawn in its own dim colour. Holding a button walks the list
+        # instead of moving one row and stopping. The button named by `press:` runs the picked row's
+        # block.
         #
-        # Call it where your frame's work goes — inside your `game_loop`, or inside a
-        # `scene`. A menu reads the buttons and draws itself again on every frame, so a
-        # menu written above the loop would run one time and then never again. That rule
-        # is the same on both screens, which is the whole point of it being a verb: the
-        # menu owns its own drawing, so nothing about where it goes changes with the
-        # screen the way a bare `draw_text` does.
+        # Write it where your frame's work goes, inside your `game_loop` or inside a `scene`. A menu
+        # reads the buttons and draws itself again on every frame, so a menu written above the loop
+        # would run one time and then never again. That is the same on both kinds of screen, because
+        # the menu owns its own drawing.
         #
-        # WHAT IT COSTS DEPENDS ON THE SCREEN, and it is worth knowing before you write a
-        # long one. On `screen :bitmap` the rows are painted into the picture, so they
-        # cost drawing time and no sprites. On `screen :tiled` the console composites the
-        # text for you, and every character is one little sprite of its own — out of the
-        # same table of 128 the game's own sprites come from. So reckon about ONE sprite
-        # for each character of a label, and none at all for a space. Eight rows of ten
-        # characters is about 72; twelve rows of twelve does not fit, and says so.
+        # Which row is picked survives leaving and coming back, so a submenu you back out of opens
+        # where you left it. The cursor starts on the first row that can be picked, unless
+        # `starts_on:` names another. A difficulty screen wants that: its rows run from gentlest to
+        # hardest, and the one the game recommends is usually not the first, so a player who presses
+        # the button straight through gets the game the author meant. It applies only when the game
+        # starts.
         #
-        # A row lights up by CHANGING COLOUR rather than by being drawn twice, which is
-        # what keeps that number at one and not two — see draw_text's `showing:`. The
-        # cursor is the only per-row extra, because it is shown or not shown rather than
-        # recoloured.
+        # A row lights up by changing colour and not by being drawn twice. On `screen :bitmap` the
+        # rows are painted into the picture, so they cost drawing time and no sprites. On `screen
+        # :tiled` every character is one little sprite of its own, out of the same table of 128 the
+        # game's own sprites come from. Reckon about one sprite for each character of a label, and
+        # none for a space. Eight rows of ten characters is about 72, and twelve rows of twelve does
+        # not fit, and says so.
         #
-        # WHICH ROW IS PICKED SURVIVES leaving and coming back, so a submenu you back out
-        # of opens where you left it. That is free: the pick is a variable, and a
-        # variable's starting value is applied once, at power-on.
+        # * `name` - a name for this menu, as a symbol, so that two menus keep their own pick.
+        # * `at:` - where the first row's label starts, as `[x, y]`.
+        # * `spacing:` - pixels from one row to the next.
+        # * `color:` - the colour of a row the cursor is not on.
+        # * `picked:` - the colour of the row the cursor is on.
+        # * `disabled:` - the colour of a row that cannot be picked.
+        # * `cursor:` - what is drawn to the left of the picked row. `""` for none.
+        # * `font:` - a font made with `font`.
+        # * `press:` - the button that runs the picked row's block. The default is `:a`.
+        # * `repeat_every:` - frames between rows while a button is held.
+        # * `starts_on:` - which row the cursor is on when the game starts, counting from 0.
         #
-        # WHERE THE CURSOR STARTS is the first row that can be picked, unless `starts_on:`
-        # names another. A difficulty screen is what wants it: its rows run from gentlest
-        # to hardest, and the one the game RECOMMENDS is usually not the first — so a
-        # player who presses the button straight through gets the game the author meant
-        # rather than the easiest one. That is a real difference in how hard the game is,
-        # not a cosmetic one, and it is a number the menu is given rather than an order
-        # the rows have to be written in. It applies at power-on only: the cursor moves
-        # from there like any other, and a menu you back out of still opens where you
-        # left it.
-        #
-        # THE COLOURS come in three, and any of them can be set per row:
-        #
-        #   color:     a row the cursor is not on
-        #   picked:    the row the cursor is on
-        #   disabled:  a row that cannot be picked
-        #
-        # @param name [Symbol] a name for this menu, so two menus keep their own pick
-        # @param at [Array(Integer, Integer)] where the first row's label starts
-        # @param spacing [Integer, nil] pixels from one row to the next
-        # @param color [Symbol, String, Integer] an unpicked row
-        # @param picked [Symbol, String, Integer] the picked row
-        # @param disabled [Symbol, String, Integer] a row that cannot be picked
-        # @param cursor [String] drawn to the left of the picked row ("" for none)
-        # @param font [Symbol] a font registered by {Builder::Text#font}
-        # @param press [Symbol] the button that runs the picked row's block
-        # @param repeat_every [Integer] frames between rows while a button is held
-        # @param starts_on [Integer, nil] which row the cursor is on at power-on
-        # @return [Menu] a handle: `.picked`, `.moved`, `.length`
+        # Returns a handle that answers `picked`, `moved` and `length`.
+        #--
+        # THE COST OF A ROW: a row lights up by CHANGING COLOUR rather than by being drawn twice,
+        # which is what keeps the sprite count at one and not two (see draw_text's `showing:`). The
+        # cursor is the only per-row extra, because it is shown or not shown rather than recoloured.
+        # The pick is a variable, and a variable's starting value is applied once, at power-on,
+        # which is why it survives leaving and coming back.
+        #++
         def menu(name, at:, spacing: nil, color: :gray, picked: :white,
                  disabled: DISABLED_COLOR, cursor: CURSOR, font: :default,
                  press: :a, repeat_every: HELD_REPEAT_FRAMES, starts_on: nil, &block)

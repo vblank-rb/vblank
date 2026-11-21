@@ -3,6 +3,16 @@
 module VBlank
   module Effects
     module Packs
+      # Screen shake
+      #
+      # `shake_screen` is the impact effect for a hit, an explosion or a life lost. The jitter
+      # alternates and is not random, so the same hit shakes the same way every time. Afterwards the
+      # picture is put back exactly where it was.
+      #
+      # ```ruby
+      # shake_screen intensity: 3, frames: 8
+      # ```
+      #--
       # Screen shake — the impact effect for a hit, an explosion, a life lost.
       #
       # This is the worked example of what a pack is (see {Effects} for the rule).
@@ -24,6 +34,7 @@ module VBlank
       # The jitter alternates rather than being random, which makes it repeatable: the
       # same hit shakes the same way every time, and both backends agree frame for
       # frame.
+      #++
       module ScreenShake
         # The hidden variables the shake runs on, and the routine that drives them.
         # Named with the framework's underscore prefix so they can never collide with
@@ -34,21 +45,21 @@ module VBlank
         OFFSET = :__shake_offset   # This frame's offset, power * direction
         ROUTINE = :__shake_tick
 
-        # Shake the screen — the impact effect for a hit, an explosion, a life lost.
+        # Shakes the screen, as the impact effect for a hit, an explosion or a life lost.
         #
-        # Set how hard and how long, and the framework does the rest: it jitters the
-        # camera for you every frame from here on, then puts the picture back exactly
-        # where it was. You call this once, at the moment of impact, and nothing else.
+        # Set how hard and how long, and the framework does the rest. It jitters the camera for you
+        # every frame from here on, then puts the picture back exactly where it was. You call this
+        # once, at the moment of impact, and nothing else. Calling it again while a shake runs
+        # restarts it, so repeated hits keep shaking and do not queue up.
         #
-        #   shake_screen intensity: 3, frames: 8      # eight frames of shaking
-        #   shake_screen intensity: 3, duration: 0.2  # the same, given in seconds
+        # ```ruby
+        # shake_screen intensity: 3, frames: 8      # eight frames of shaking
+        # shake_screen intensity: 3, duration: 0.2  # the same, given in seconds
+        # ```
         #
-        # Calling it again while a shake runs restarts it, so repeated hits keep
-        # shaking rather than queueing up.
-        #
-        # @param intensity [Integer] how far the picture moves, in pixels
-        # @param frames [Integer, nil] how long to shake, in frames
-        # @param duration [Numeric, nil] how long to shake, in seconds (instead of frames)
+        # * `intensity:` - how far the picture moves, in pixels. The default is 2.
+        # * `frames:` - how long to shake, in frames. The default is 8.
+        # * `duration:` - how long to shake, in seconds, instead of `frames:`.
         def shake_screen(intensity: 2, frames: nil, duration: nil)
           count = shake_screen_frames(frames, duration)
           unless DSL::Whole.positive?(intensity)

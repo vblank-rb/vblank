@@ -3,6 +3,17 @@
 module VBlank
   module Effects
     module Packs
+      # Music fades
+      #
+      # `fade_music_out` takes the music down with the lights at the end of a game, and
+      # `fade_music_in` brings it back up for the next one. They are the pair to the screen fades,
+      # and are called the same way. The song goes on playing, silently, while it is faded out.
+      #
+      # ```ruby
+      # fade_out
+      # fade_music_out
+      # ```
+      #--
       # Music fade — the music going down with the lights at the end of a game, and coming back
       # up for the next one.
       #
@@ -17,6 +28,7 @@ module VBlank
       # another song, or bring the same one back. Stopping it here instead would fight a game
       # that names its song every frame, which a jukebox does — the old tune would start over
       # the frame after it stopped.
+      #++
       module MusicFade
         LEVEL = :__music_fade_level   # How loud, 0.0 to 100.0
         TARGET = :__music_fade_target # Where the ramp is heading
@@ -31,33 +43,44 @@ module VBlank
         # the declaration. The value is never used: the routine runs only once a fade has set both.
         NEVER_FADED = -1.0
 
-        # Fade the music out, over half a second unless told otherwise. Call it once, at the
-        # moment it begins; the framework walks the volume down every frame from there, and the
-        # song carries on playing silently until `fade_music_in` brings it back.
+        # Fades the music out, over half a second unless told otherwise.
         #
-        #   fade_music_out                    # over half a second
-        #   fade_music_out frames: 90         # a slow fade for a sad ending
-        #   fade_music_out duration: 1.5      # the same, given in seconds
+        # Call it once, at the moment it begins. The framework walks the volume down every frame from
+        # there, and the song carries on playing silently until `fade_music_in` brings it back. What
+        # happens while nobody can hear it is the game's to decide: stop it, switch to another song,
+        # or bring the same one back. Calling it again while a fade runs turns it round from where it
+        # is now.
         #
-        # Calling it again while a fade runs turns it round from where it is now.
+        # ```ruby
+        # fade_music_out                    # over half a second
+        # fade_music_out frames: 90         # a slow fade for a sad ending
+        # fade_music_out duration: 1.5      # the same, given in seconds
+        # ```
         #
-        # @param frames [Integer, nil] how long the fade takes, in frames
-        # @param duration [Numeric, nil] how long it takes, in seconds (instead of frames)
+        # * `frames:` - how long the fade takes, in frames. The default is 30.
+        # * `duration:` - how long it takes, in seconds, instead of `frames:`.
+        #--
+        # A faded-out song goes on playing, silently, the way a faded-out screen goes on being
+        # drawn. Stopping it here instead would fight a game that names its song every frame, which
+        # a jukebox does: the old tune would start over the frame after it stopped.
+        #++
         def fade_music_out(frames: nil, duration: nil)
           start_music_fade(0.0, frames, duration)
         end
 
-        # Bring the music back up to full — after a fade out, from silence.
+        # Brings the music back up to full, after a fade out, from silence.
         #
-        #   fade_music_in                    # as fast as the last fade out went down
-        #   fade_music_in frames: 10
+        # With no length it comes up at the speed the music last went down, so a fade out and a fade
+        # in are two words and no bookkeeping. Called while a fade out runs, it turns round from where
+        # the music is. Called with the music already at full, there is nothing to do.
         #
-        # With no length it comes up at the speed the music last went down, so a fade out and a
-        # fade in are two words and no bookkeeping. Called while a fade out runs, it turns round
-        # from where the music is; called with the music already at full, there is nothing to do.
+        # ```ruby
+        # fade_music_in                    # as fast as the last fade out went down
+        # fade_music_in frames: 10
+        # ```
         #
-        # @param frames [Integer, nil] how long it takes, in frames
-        # @param duration [Numeric, nil] how long it takes, in seconds
+        # * `frames:` - how long it takes, in frames.
+        # * `duration:` - how long it takes, in seconds.
         def fade_music_in(frames: nil, duration: nil)
           start_music_fade(FULL, frames, duration)
         end
