@@ -15,6 +15,8 @@
  *   ./pong --config-dir DIR              keep the settings files in that folder, in place of the usual one
  *   ./pong --usual-settings              with --scripted-keys, use the usual settings files as a player's run does
  *   ./pong --window-picture shot.bmp     with --scripted-keys, save the window as it ends (menu and all)
+ *   ./pong --told told.txt               write a line in told.txt for each box the window tells the
+ *                                        player something in, and for each box of the system's (tests)
  *   ./pong --start-up                    with --scripted-keys, play the console's start-up first, as a
  *                                        player's run does where it has the BIOS (tests)
  *
@@ -95,9 +97,11 @@
  * through the plain functions of rg_window.h. Its Developer heading opens a window of the game's
  * variables over the game as it plays (rg_window_menu.h says how it is worked), which this file
  * reads the variables for each time it is drawn (watch_variables). What the window says over the
- * picture (a settings file it could not use, what a shell tells the player) is the menu's drawing
- * too, and the next console button pressed answers it (answer_messages). Everything over the
- * picture is drawn here with SDL's renderer: there is no other library for it.
+ * picture (a settings file it could not use, what a shell tells the player, a save file that is not
+ * the game's, a game that stopped on a fault) is the menu's drawing too, and the next console button
+ * pressed answers it (answer_messages); the last two end the program once answered (tell_and_end).
+ * Everything over the picture is drawn here with SDL's renderer: there is no other library for it,
+ * and a box of the system's is only for when nothing can be drawn (show_system_box_without_window).
  *
  * THE SETTINGS are the scale, fullscreen, volume, mute, frame rate, fast forward's speed, the keys,
  * the gamepad buttons and the hotkeys, in one small text file a player can edit (rg_window.h says
@@ -374,6 +378,12 @@ static SDL_Texture *part_texture;
 static int part_texture_width, part_texture_height;
 static int printing_script_end; /* the variables being printed are the script's last word */
 static const char *window_picture_file; /* --window-picture: where the window is saved as the script ends */
+/* --told: a file that gets a line for each box the window draws to tell the player something, and
+ * for each box of the system's it shows: a test's way to see what was told, and how. */
+static const char *told_file;
+/* What the program ends with when the window is closed or Escape pressed: 0, or 1 while a box says
+ * why it is ending (tell_and_end). */
+static int status_on_close;
 
 /* The settings (rg_window.h) are kept in a file; the one that changes are written to, and the new
  * file written beside it that then takes its place, as the save is. None for a scripted run that
@@ -494,25 +504,44 @@ static _Noreturn void refuse_to_start(const char *what) {
   quit(1);
 }
 
-/* A BOX OF THE SYSTEM'S OWN, for the few things said as the program ends, or as it starts with no
- * menu to say them in. SDL runs a loop of its own until the box is answered, so nothing else of
- * the program moves while it is up.
+/* A line in the --told file: +title+, then +words+ with each line break made a space, so a box is
+ * one line however many its words fill. */
+static void note_told(const char *title, const char *words) {
+  if (!told_file) return;
+  FILE *told = fopen(told_file, "ab");
+  if (!told) return;
+  fprintf(told, "%s: ", title);
+  for (const char *c = words; *c; c++) fputc(*c == '\n' ? ' ' : *c, told);
+  fputc('\n', told);
+  fclose(told);
+}
+
+/* A BOX OF THE SYSTEM'S OWN, ONLY WHERE THE WINDOW CANNOT DRAW ONE: everything the window tells the
+ * player is a box it draws over its picture (tell_and_end), and this is left for when there is no
+ * renderer to draw it with, or drawing failed. A player who started the program from the Finder has
+ * no terminal, so the words go somewhere they can be read even then.
  *
- * THE PROGRAM'S EVENTS ARE READ FIRST. A shell once put such a box up as it started, before it
- * had read one event, and on a Mac the box's button did nothing: the program never came back and
- * had to be force-quit. A program that has read no event has not finished starting as the system
- * sees it. So the events waiting are read before the box goes up, and the box is given no window:
- * by itself it needs nothing of a window that may not be on the screen yet. Nobody has yet seen
- * one of these answered on a Mac after this; a shell says nothing in one (tell_in_shell_window).
+ * WHY NOT ALWAYS ONE OF THESE. SDL runs a loop of its own until the box is answered, and a shell
+ * once put such a box up as it started, before it had read one event: on a Mac the box's button did
+ * nothing, the program never came back and had to be force-quit. A program that has read no event
+ * has not finished starting as the system sees it. So the events waiting are read before the box
+ * goes up, and the box is given no window, since it needs nothing of a window that may not be on
+ * the screen. Nobody has seen one answered on a Mac since, which is why it is only the last resort.
  *
  * A run with nobody at it shows none: a script's, or one on SDL's stand-in for a display, where a
- * box with no window would be a real one on the screen of whoever runs the tests. */
-static void show_system_box(SDL_MessageBoxFlags kind, const char *message) {
+ * box with no window would be a real one on the screen of whoever runs the tests. --told is still
+ * given its line, so a test sees that one was asked for. */
+static void show_system_box_without_window(const char *title, const char *message) {
+  note_told("system box", message);
   const char *driver = SDL_GetCurrentVideoDriver();
   if (scripted || (driver && strcmp(driver, "dummy") == 0)) return;
   SDL_PumpEvents();
-  SDL_ShowSimpleMessageBox(kind, rg_game_title, message, NULL);
+  char heading[160];
+  snprintf(heading, sizeof heading, "%s: %s", rg_game_title, title);
+  SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, heading, message, NULL);
 }
+
+static _Noreturn void tell_and_end(const char *title, const char *words);
 
 /* The folder a game's save goes in is named for the game, and a folder's name can hold less than
  * a game's title can: a letter, a digit or a space stays, and anything else becomes an
@@ -548,7 +577,8 @@ static void choose_save_file(const char *asked) {
 
 /* Reads the save the last run left, before the game starts. No file there is a new cartridge. A
  * file that is there and cannot be read, or is not as big as the game's save memory, is another
- * game's or a damaged one, and the game does not start: carrying on would write over it. */
+ * game's or a damaged one, and the game does not start: carrying on would write over it. That is
+ * told in a box in the window, and the program ends once it is answered. */
 static void read_save_file(void) {
   if (!save_path || !SDL_GetPathInfo(save_path, NULL)) return;
   size_t size = 0;
@@ -565,8 +595,7 @@ static void read_save_file(void) {
            "starts a new one.",
            save_path, (int)rg_save_size());
   fprintf(stderr, "%s cannot start: %s\n", rg_game_title, message);
-  show_system_box(SDL_MESSAGEBOX_ERROR, message);
-  quit(1);
+  tell_and_end("The save file", message);
 }
 
 /* --- save states: the quick one and slots 1 to 10, a file each beside where the game's save is kept --- */
@@ -847,6 +876,7 @@ static void load_settings(const char *asked, int usual_files_asked) {
   if (said[0]) {
     fprintf(stderr, "%s: the window cannot use some of the settings file:\n%s", rg_game_title, said);
     rg_window_set_problems(said);
+    note_told("The settings file", said);
   }
 }
 
@@ -948,6 +978,46 @@ static int largest_scale_that_fits(void) {
   if (!SDL_GetDisplayUsableBounds(SDL_GetDisplayForWindow(window), &room)) return RG_WINDOW_SCALE_MOST;
   int fits = SDL_min(room.w / RG_SHOWN_WIDTH, room.h / RG_SHOWN_HEIGHT);
   return SDL_min(fits, RG_WINDOW_SCALE_MOST);
+}
+
+/* The scale the window was made bigger to for a box (grow_window_for_messages), or 0 while it is
+ * the size the settings set. */
+static int grown_to_scale;
+
+/* A BOX TOO BIG FOR THE WINDOW MAKES THE WINDOW BIGGER. A window can be as small as the console's
+ * screen, a Color game's 160 by 144, where a long box (a fault, a file's path) would run off the
+ * window. So while a box is shown that does not fit (rg_window_menu_messages_fit), the window is
+ * made the smallest whole number of times the picture that holds it, and no bigger than the screen
+ * has room for, the picture staying sharp; and it goes back to the size the settings set once
+ * every box is answered. The settings keep the player's scale: the size is the box's, not the
+ * player's (read_events leaves a resize made here out of the scale it keeps). Fullscreen has room
+ * already. */
+static void grow_window_for_messages(void) {
+  if (rg_window_fullscreen()) return;
+  if (!rg_window_menu_message_shown()) {
+    if (!grown_to_scale) return;
+    grown_to_scale = 0;
+    SDL_SetWindowSize(window, RG_SHOWN_WIDTH * rg_window_scale(), RG_SHOWN_HEIGHT * rg_window_scale());
+    window_owed_a_drawing = true;
+    return;
+  }
+  int width = 0, height = 0;
+  SDL_GetRenderOutputSize(renderer, &width, &height);
+  double density = pixel_density();
+  if (rg_window_menu_messages_fit(width, height, density)) return;
+  int scale = SDL_max(rg_window_scale(), grown_to_scale);
+  int most = largest_scale_that_fits();
+  int chosen = scale;
+  while (chosen < most) {
+    chosen++;
+    int across = (int)(RG_SHOWN_WIDTH * chosen * density), down = (int)(RG_SHOWN_HEIGHT * chosen * density);
+    if (rg_window_menu_messages_fit(across, down, density)) break;
+  }
+  if (chosen == scale) return;
+  grown_to_scale = chosen;
+  SDL_SetWindowSize(window, RG_SHOWN_WIDTH * chosen, RG_SHOWN_HEIGHT * chosen);
+  SDL_SyncWindow(window);
+  window_owed_a_drawing = true;
 }
 
 /* The menu font's picture of every letter at the screen's density, on the screen's card, from
@@ -1085,6 +1155,7 @@ static void draw_menu_and_status(void) {
 
 /* The picture in the texture, and the menu and all else the window draws over it. Not yet shown. */
 static void draw_window(void) {
+  grow_window_for_messages(); /* first, so the picture and the boxes are drawn at one size */
   SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
   SDL_RenderClear(renderer);
   /* While a shell's parts are shown the picture is the last one a part sent, if any has yet. */
@@ -1283,8 +1354,13 @@ static void close_pad(SDL_JoystickID id) {
 }
 
 /* The player chose to quit (Escape, or Quit in the menu): a script's run ends as its last line
- * would, with what it prints at its end. */
+ * would, with what it prints at its end. Under a box saying why the program ends, it ends as the
+ * box would have. */
 static _Noreturn void quit_play(void) {
+  if (status_on_close) {
+    if (scripted && window_picture_file) save_window_picture();
+    quit(status_on_close);
+  }
   if (scripted) finish_script();
   quit(0);
 }
@@ -1471,7 +1547,7 @@ static bool read_events(void) {
     any = true;
     switch (event.type) {
     case SDL_EVENT_QUIT:
-      quit(0);
+      quit(status_on_close);
     case SDL_EVENT_KEY_DOWN:
     case SDL_EVENT_KEY_UP:
       key_changed(&event.key);
@@ -1482,7 +1558,7 @@ static bool read_events(void) {
       break;
     case SDL_EVENT_WINDOW_RESIZED:
       window_owed_a_drawing = true;
-      rg_window_size_changed(event.window.data1, event.window.data2, RG_SHOWN_WIDTH, RG_SHOWN_HEIGHT);
+      if (!grown_to_scale) rg_window_size_changed(event.window.data1, event.window.data2, RG_SHOWN_WIDTH, RG_SHOWN_HEIGHT);
       break;
     case SDL_EVENT_WINDOW_ENTER_FULLSCREEN:
       window_owed_a_drawing = true;
@@ -1683,10 +1759,10 @@ static bool write_part_result(void) {
 
 /* A scripted run's last word: every variable, as --headless prints them at its end. A script that
  * runs out, or quits, while a shell's first screen is up ends the program with no word: the game
- * never started, so there are no variables of its to print. */
+ * never started, so there are no variables of its to print. The window is saved either way. */
 static _Noreturn void finish_script(void) {
-  if (showing_shell) quit(0);
   if (window_picture_file) save_window_picture();
+  if (showing_shell) quit(0);
   puts("end");
   printing_script_end = 1;
   rg_game_dump_state();
@@ -1919,14 +1995,48 @@ static void sdl_halt(void) {
   }
 }
 
-/* Said in a box as well as on the error stream, since a player who started it from the
- * Finder has no terminal to read. */
+/* A BOX THAT SAYS WHY THE PROGRAM ENDS, drawn by the window over its last picture under +title+, as
+ * the menu draws everything else it tells the player (rg_window_tell): a player who started the
+ * program from the Finder has no terminal to read. The game is over, so nothing plays under it:
+ * the sound stops, and the window waits on its events, drawing itself again after each so the menu
+ * and a resize still work, until a button answers the box as its OK does, or the window is closed
+ * or Escape pressed. Each ends the program failing, as the reason does.
+ *
+ * A script's run ends at the line that answers it, or with the box still up once its lines run
+ * out, its --window-picture taken as it ends either way. Where the window cannot draw the box (it
+ * has no renderer, or showing a picture failed) the system's own box says it instead
+ * (show_system_box_without_window). */
+static _Noreturn void tell_and_end(const char *title, const char *words) {
+  status_on_close = 1;
+  note_told(title, words);
+  if (!renderer) {
+    show_system_box_without_window(title, words);
+    quit(1);
+  }
+  silence_speaker(true);
+  rg_window_tell(title, words);
+  for (;;) {
+    draw_window();
+    if (!SDL_RenderPresent(renderer)) {
+      show_system_box_without_window(title, words);
+      break;
+    }
+    if (!rg_window_told()[0]) break;
+    if (scripted && !press_scripted_keys()) break;
+    read_and_apply_events();
+    if (scripted) pacing_wait_ns(FRAME_NS, false);
+    else SDL_WaitEventTimeout(NULL, 100);
+  }
+  if (scripted && window_picture_file) save_window_picture();
+  quit(1);
+}
+
+/* The game went wrong: said on the error stream, and in a box in the window. */
 static void sdl_fault(const char *format, va_list args) {
   char message[512];
   vsnprintf(message, sizeof message, format, args);
   fprintf(stderr, "%s\n", message);
-  show_system_box(SDL_MESSAGEBOX_ERROR, message);
-  quit(1);
+  tell_and_end("The game stopped", message);
 }
 
 /* A player's window has nobody to print the variables to: only a trace, on the error stream as
@@ -2326,15 +2436,13 @@ static char *pick_shell_copy(int folder) {
   return picked.path;
 }
 
-/* rg_shell_window's tell: a box the window draws over its picture (rg_window_tell), which nothing
- * waits for.
- *
- * NOT A BOX OF THE SYSTEM'S. SDL runs a loop of its own until one of those is answered, and one a
- * shell put up as it started, before the program had read an event, could not be answered on a
- * Mac: the program never came back (show_system_box). A box drawn here is answered through the
- * events the window already reads, and a player who never answers it still has the menu under it. */
+/* rg_shell_window's tell: a box the window draws over its picture (rg_window_tell), under the title
+ * of the shell's Load ROM line, which nothing waits for: not a box of the system's
+ * (show_system_box_without_window says why). A box drawn here is answered through the events the
+ * window already reads, and a player who never answers it still has the menu under it. */
 static void tell_in_shell_window(const char *words) {
-  rg_window_tell(words);
+  rg_window_tell("Load ROM", words);
+  note_told("Load ROM", words);
   window_owed_a_drawing = true;
 }
 
@@ -2574,6 +2682,7 @@ int main(int argc, char **argv) {
     if (strcmp(argv[i], "--config-dir") == 0 && i + 1 < argc) config_dir_asked_for = argv[i + 1];
     if (strcmp(argv[i], "--usual-settings") == 0) usual_settings_asked_for = 1;
     if (strcmp(argv[i], "--window-picture") == 0 && i + 1 < argc) window_picture_file = argv[i + 1];
+    if (strcmp(argv[i], "--told") == 0 && i + 1 < argc) told_file = argv[i + 1];
     if (strcmp(argv[i], "--trace") == 0) tracing = 1;
     if (strcmp(argv[i], "--part") == 0 && i + 1 < argc) part_result_path = argv[i + 1];
     if (strcmp(argv[i], "--part-fast") == 0) part_fast = 1;

@@ -31,6 +31,8 @@ module VBlank
       SETTINGS_PROBLEMS_INTRO = "The window cannot use some of the settings file. It uses the rest, and the game plays as usual."
       # What the OK of a box says beside it.
       CLOSE_CAPTION = "Press a button to close this."
+      # The title a shell's refusals are told under (#tell), the shell's Load ROM line.
+      SHELL_TOLD_TITLE = "Load ROM"
 
       # +settings+ as the player last left them; +picture+, the game's picture's size, to say how
       # big the window is at each size; +scales+, the sizes the window can be made, in times the
@@ -126,15 +128,18 @@ module VBlank
       # WHAT THE WINDOW SAYS OVER THE PICTURE until the player presses a button: what could not be used
       # in the settings file (+problems+, the sentences as text, a file's name over its own), in the
       # middle as the window opens, since a player who opened the game by double-clicking it has no
-      # terminal to read; and what a shell tells the player (#tell), at the foot of the window, so
-      # the shell's own menu shows above it. Each has an OK, and the next button pressed answers both
-      # (#answer_messages). Nothing waits for them: the game plays on under them.
+      # terminal to read; and what the window tells the player (#tell) under a +title+, at the foot of
+      # the window, so a shell's own menu shows above it: a file a shell refused (the title Load ROM),
+      # a save file that is not the game's, a game that stopped on a fault. Each has an OK, and the
+      # next button pressed answers both (#answer_messages). Nothing waits for them: the game plays
+      # on under them, and what happens once one is answered is the teller's.
       def problems=(text)
         @problems = (text unless text.nil? || text.empty?)
       end
 
-      def tell(words)
+      def tell(words, title: SHELL_TOLD_TITLE)
         @told = (words unless words.nil? || words.empty?)
+        @told_title = title
       end
 
       # A button was pressed: whatever was said over the picture has been seen.
@@ -192,17 +197,33 @@ module VBlank
         @font = Graphics::MenuFont.load
         top = @open ? size(:bar) : 0
         draw_variables(top, variables, variables_dropped) if @variables_open
-        draw_message("Load ROM", [@told], width, width * 9 / 10) { |high| height - size(:message_gap) - high } if @told
+        draw_status(width, top, held, fast_forward, frame_rate, frame_work)
+        draw_message(@told_title, [@told], width, told_width(width)) { |high| height - size(:message_gap) - high } if @told
         if @problems
-          wide = [size(:message_width), width - (2 * size(:status_gap))].min
-          draw_message("The settings file", [SETTINGS_PROBLEMS_INTRO, @problems], width, wide) { |high| (height - high) / 2 }
+          draw_message("The settings file", problems_texts, width, problems_width(width)) { |high| (height - high) / 2 }
         end
         if @open
           draw_bar(width)
           draw_lines(top)
         end
-        draw_status(width, top, held, fast_forward, frame_rate, frame_work)
         @out
+      end
+
+      # WHETHER EVERY BOX SHOWN FITS a window +width+ by +height+ pixels at +density+, its words broken
+      # to the box's width: what is told with a gap above and below it, and the settings file's box
+      # with the status corner's gap. A window too small for one is made bigger by its frontend, a
+      # whole number of times the picture at a time, rather than a word being cut off (Live::SDL and
+      # rg_sdl.c's grow_window_for_messages). The density and font #drawing keeps are put back as
+      # they were, so asking changes nothing.
+      def messages_fit?(width:, height:, density:)
+        kept = [@density, @font]
+        @density = density
+        @font = Graphics::MenuFont.load
+        told_fits = !@told || message_height([@told], told_width(width)) + (2 * size(:message_gap)) <= height
+        problems_fits = !@problems || message_height(problems_texts, problems_width(width)) + (2 * size(:status_gap)) <= height
+        told_fits && problems_fits
+      ensure
+        @density, @font = kept
       end
 
       # WHAT A WINDOW WAITING FOR ITS GAME DRAWS (a game a helper process builds, BuildWatch): +lines+
@@ -221,17 +242,39 @@ module VBlank
 
       private
 
-      # +text+ as lines no wider than +room+ pixels, broken between words; a word wider than that
-      # has a line of its own.
+      # +text+ as lines no wider than +room+ pixels, broken between words; a word wider than that (a
+      # file's path) is cut into pieces that fit, each on a line of its own but the last, which the
+      # next word can join.
       def break_to_width(text, room)
         text.split.each_with_object([]) do |word, rows|
           if rows.empty? || width_of("#{rows.last} #{word}") > room
-            rows << word
+            rows.concat(pieces_to_width(word, room))
           else
             rows[-1] = "#{rows.last} #{word}"
           end
         end
       end
+
+      # +word+ as pieces no wider than +room+ pixels, each as many letters as fit and at least one.
+      def pieces_to_width(word, room)
+        pieces = []
+        rest = word
+        loop do
+          take = rest.length
+          take -= 1 while take > 1 && width_of(rest[0, take]) > room
+          pieces << rest[0, take]
+          rest = rest[take..]
+          return pieces if rest.empty?
+        end
+      end
+
+      # How wide the box of what is told is: nine tenths of the window.
+      def told_width(width) = width * 9 / 10
+
+      # How wide the settings file's box is: its own width, or as wide as the window has room for.
+      def problems_width(width) = [size(:message_width), width - (2 * size(:status_gap))].min
+
+      def problems_texts = [SETTINGS_PROBLEMS_INTRO, @problems]
 
       def lines = @headings[@heading].lines
 
@@ -405,13 +448,14 @@ module VBlank
 
       # A BOX OF WORDS over the picture, +wide+ pixels across the middle of a window +width+ wide, its
       # top where the block puts it given how high it is: its +title+, then each of +texts+ broken to
-      # fit, a line across between one and the next, and an OK with what answers it beside it.
+      # fit, a line across between one and the next, and an OK with what answers it beside it, or
+      # under it in a box too narrow for both.
       def draw_message(title, texts, width, wide)
         pad = size(:pad)
         row = size(:row)
         inner = wide - (2 * pad)
         rows = texts.map { |text| wrap_lines(text, inner) }
-        high = ((rows.sum(&:size) + 2) * row) + ((texts.size - 1) * size(:line_before)) + (2 * pad)
+        high = message_height(texts, wide)
         x = (width - wide) / 2
         y = yield(high)
         border = pixels(1)
@@ -431,10 +475,27 @@ module VBlank
             line += row
           end
         end
-        ok = width_of("OK") + (2 * pad)
+        ok = ok_width
         add_box(left, line + pixels(2), ok, row - pixels(4), size(:frame_corner), :chosen)
         add_words_in_row("OK", left + ((ok - width_of("OK")) / 2), line, row, :text)
-        add_words_in_row(CLOSE_CAPTION, left + ok + pad, line, row, :dim)
+        if caption_below_ok?(inner)
+          add_words_in_row(CLOSE_CAPTION, left, line + row, row, :dim)
+        else
+          add_words_in_row(CLOSE_CAPTION, left + ok + pad, line, row, :dim)
+        end
+      end
+
+      def ok_width = width_of("OK") + (2 * size(:pad))
+
+      # Whether what answers a box is said under its OK, in a box whose words are +inner+ pixels wide.
+      def caption_below_ok?(inner) = ok_width + size(:pad) + width_of(CLOSE_CAPTION) > inner
+
+      # How high a box +wide+ pixels across is with +texts+ in it (#draw_message).
+      def message_height(texts, wide)
+        inner = wide - (2 * size(:pad))
+        lines = texts.sum { |text| wrap_lines(text, inner).size }
+        rows = lines + (caption_below_ok?(inner) ? 3 : 2)
+        (rows * size(:row)) + ((texts.size - 1) * size(:line_before)) + (2 * size(:pad))
       end
 
       # +text+ as lines no wider than +room+ pixels: each of its own lines broken between words, a

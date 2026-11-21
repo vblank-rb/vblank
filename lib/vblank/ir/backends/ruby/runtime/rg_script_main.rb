@@ -95,8 +95,11 @@ module VBlankScript
     rate = written.shell ? play_shell(written, window, options, play_game) : play_game.call(game)
     say_rate(written.title, rate, game.frame_seconds) if rate
     VBlank::Live::MatchPlay.summary_lines(network).each { |line| puts line } if network
-  rescue VBlank::Live::SDL::Missing, VBlank::Live::SDL::Failed, VBlank::IR::ProgramError => e
+  rescue VBlank::Live::SDL::Missing, VBlank::Live::SDL::Failed, VBlank::IR::ProgramError,
+         VBlank::Live::SaveFile::NotThisGamesSave => e
     warn e.message
+    # In the window too: a player who started it from the Finder has no terminal to read.
+    window&.tell_why_play_ended(e)
     exit 1
   ensure
     window&.close

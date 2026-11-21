@@ -591,10 +591,27 @@ static const char close_caption[] = "Press a button to close this.";
  * problems and what a shell tells in 1024 bytes each), so a wide window's line is never cut. */
 #define WRAPPED_ROOM 1024
 
+/* How many bytes of +word+ (+length+ bytes) fit in +room+ pixels: as many whole letters as fit,
+ * and at least one (Live::Menu's pieces_to_width). A letter past the first 128 is several bytes,
+ * which are never parted. */
+static size_t fitting_bytes(const char *word, size_t length, int room) {
+  char piece[WRAPPED_ROOM];
+  size_t take = length;
+  for (;;) {
+    size_t first = 1;
+    while (first < length && ((unsigned char)word[first] & 0xC0) == 0x80) first++;
+    if (take <= first) return first;
+    snprintf(piece, sizeof piece, "%.*s", (int)take, word);
+    if (width_of(piece) <= room) return take;
+    take--;
+    while (take > 0 && ((unsigned char)word[take] & 0xC0) == 0x80) take--;
+  }
+}
+
 /* One part of +text+ (from +start+, +length+ bytes, with no line break in it) broken between words
- * into lines no wider than +room+ pixels, a word wider than that on a line of its own (Live::Menu's
- * break_to_width), each line drawn at +x+ from *+line+ down, a row each, where +draw+; gives how
- * many lines. */
+ * into lines no wider than +room+ pixels, a word wider than that cut into pieces that fit, each on a
+ * line of its own but the last (Live::Menu's break_to_width), each line drawn at +x+ from *+line+
+ * down, a row each, where +draw+; gives how many lines. */
 static int wrap_part(const char *start, size_t length, int room, int x, int *line, int row_height, int draw) {
   char current[WRAPPED_ROOM] = "";
   int lines = 0;
@@ -610,7 +627,17 @@ static int wrap_part(const char *start, size_t length, int room, int x, int *lin
     if (lines == 0 || width_of(longer) > room) {
       if (lines > 0 && draw) add_words_in_row(current, x, *line, row_height, rg_menu_color.text);
       if (lines > 0) *line += row_height;
-      snprintf(current, sizeof current, "%.*s", word_length, start + word_start);
+      const char *piece = start + word_start;
+      size_t left = (size_t)word_length;
+      for (size_t take = fitting_bytes(piece, left, room); take < left; take = fitting_bytes(piece, left, room)) {
+        snprintf(current, sizeof current, "%.*s", (int)take, piece);
+        if (draw) add_words_in_row(current, x, *line, row_height, rg_menu_color.text);
+        *line += row_height;
+        lines++;
+        piece += take;
+        left -= take;
+      }
+      snprintf(current, sizeof current, "%.*s", (int)left, piece);
       lines++;
     } else {
       snprintf(current, sizeof current, "%s", longer);
@@ -639,18 +666,31 @@ static int wrap_text(const char *text, int room, int x, int *line, int row_heigh
   return lines;
 }
 
+static int ok_width(void) { return width_of("OK") + 2 * pixels(rg_menu_size.pad); }
+
+/* Whether what answers a box is said under its OK, in a box whose words are +inner+ pixels wide. */
+static int caption_below_ok(int inner) { return ok_width() + pixels(rg_menu_size.pad) + width_of(close_caption) > inner; }
+
+/* How high a box +wide+ pixels across is with +texts+ in it (Live::Menu#message_height). */
+static int message_height(const char *const *texts, int text_count, int wide) {
+  int row_height = pixels(rg_menu_size.row);
+  int inner = wide - 2 * pixels(rg_menu_size.pad);
+  int lines = 0, ignored = 0;
+  for (int i = 0; i < text_count; i++) lines += wrap_text(texts[i], inner, 0, &ignored, row_height, 0);
+  int rows = lines + (caption_below_ok(inner) ? 3 : 2);
+  return rows * row_height + (text_count - 1) * pixels(rg_menu_size.line_before) + 2 * pixels(rg_menu_size.pad);
+}
+
 /* A BOX OF WORDS over the picture, +wide+ pixels across the middle of a window +width+ wide, its
  * top +from_bottom+ above the window's +height+, or in the middle of it for -1: its +title+, then
  * each of +texts+ broken to fit, a line across between one and the next, and an OK with what
- * answers it beside it (Live::Menu#draw_message). */
+ * answers it beside it, or under it in a box too narrow for both (Live::Menu#draw_message). */
 static void draw_message(const char *title, const char *const *texts, int text_count, int width, int height, int wide,
                          int from_bottom) {
   int pad = pixels(rg_menu_size.pad);
   int row_height = pixels(rg_menu_size.row);
   int inner = wide - 2 * pad;
-  int lines = 0, ignored = 0;
-  for (int i = 0; i < text_count; i++) lines += wrap_text(texts[i], inner, 0, &ignored, row_height, 0);
-  int high = (lines + 2) * row_height + (text_count - 1) * pixels(rg_menu_size.line_before) + 2 * pad;
+  int high = message_height(texts, text_count, wide);
   int x = halved(width - wide);
   int y = from_bottom >= 0 ? height - from_bottom - high : halved(height - high);
   int border = pixels(1);
@@ -667,10 +707,32 @@ static void draw_message(const char *title, const char *const *texts, int text_c
     }
     wrap_text(texts[i], inner, left, &line, row_height, 1);
   }
-  int ok = width_of("OK") + 2 * pad;
+  int ok = ok_width();
   add_box(left, line + pixels(2), ok, row_height - pixels(4), pixels(rg_menu_size.frame_corner), rg_menu_color.chosen);
   add_words_in_row("OK", left + halved(ok - width_of("OK")), line, row_height, rg_menu_color.text);
-  add_words_in_row(close_caption, left + ok + pad, line, row_height, rg_menu_color.dim);
+  if (caption_below_ok(inner)) add_words_in_row(close_caption, left, line + row_height, row_height, rg_menu_color.dim);
+  else add_words_in_row(close_caption, left + ok + pad, line, row_height, rg_menu_color.dim);
+}
+
+/* How wide the box of what is told is, and the settings file's (Live::Menu's told_width and
+ * problems_width). */
+static int told_width(int width) { return width * 9 / 10; }
+static int problems_width(int width) {
+  int room = width - 2 * pixels(rg_menu_size.status_gap);
+  return pixels(rg_menu_size.message_width) < room ? pixels(rg_menu_size.message_width) : room;
+}
+
+int rg_window_menu_messages_fit(int width, int height, double pixels_a_point) {
+  density = pixels_a_point;
+  if (rg_window_told()[0]) {
+    const char *told[] = {rg_window_told()};
+    if (message_height(told, 1, told_width(width)) + 2 * pixels(rg_menu_size.message_gap) > height) return 0;
+  }
+  if (rg_window_problems_unseen()) {
+    const char *texts[] = {settings_problems_intro, rg_window_problems()};
+    if (message_height(texts, 2, problems_width(width)) + 2 * pixels(rg_menu_size.status_gap) > height) return 0;
+  }
+  return 1;
 }
 
 void rg_window_menu_draw(rg_menu_drawing *drawing, int width, int height, double pixels_a_point, int held, int fast_forward,
@@ -681,19 +743,17 @@ void rg_window_menu_draw(rg_menu_drawing *drawing, int width, int height, double
   density = pixels_a_point;
   int top = menu_open ? pixels(rg_menu_size.bar) : 0;
   if (rg_window_menu_variables_open()) draw_variables(top);
+  draw_status(width, top, held, fast_forward, frame_rate, frame_work);
   if (rg_window_told()[0]) {
     const char *told[] = {rg_window_told()};
-    draw_message("Load ROM", told, 1, width, height, width * 9 / 10, pixels(rg_menu_size.message_gap));
+    draw_message(rg_window_told_title(), told, 1, width, height, told_width(width), pixels(rg_menu_size.message_gap));
   }
   if (rg_window_problems_unseen()) {
     const char *texts[] = {settings_problems_intro, rg_window_problems()};
-    int room = width - 2 * pixels(rg_menu_size.status_gap);
-    int wide = pixels(rg_menu_size.message_width) < room ? pixels(rg_menu_size.message_width) : room;
-    draw_message("The settings file", texts, 2, width, height, wide, -1);
+    draw_message("The settings file", texts, 2, width, height, problems_width(width), -1);
   }
   if (menu_open) {
     draw_bar(width);
     draw_lines(top);
   }
-  draw_status(width, top, held, fast_forward, frame_rate, frame_work);
 }

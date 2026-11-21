@@ -1630,6 +1630,7 @@ module VBlank
       session.play(recording || window).tap { say_match_summary(network) if network }
     rescue VBlank::Live::SDL::Missing, VBlank::Live::SDL::Failed, VBlank::IR::ProgramError,
            VBlank::Live::SaveFile::NotThisGamesSave => e
+      window&.tell_why_play_ended(e)
       raise Thor::Error, e.message
     rescue *match_failures => e
       raise Thor::Error, match_failure_message(e)

@@ -268,8 +268,13 @@ int rg_window_problems_unseen(void) { return problems_unseen; }
 void rg_window_mark_problems_seen(void) { problems_unseen = 0; }
 
 static char told[1024];
-void rg_window_tell(const char *words) { snprintf(told, sizeof told, "%s", words); }
+static char told_title[64];
+void rg_window_tell(const char *title, const char *words) {
+  snprintf(told_title, sizeof told_title, "%s", title);
+  snprintf(told, sizeof told, "%s", words);
+}
 const char *rg_window_told(void) { return told; }
+const char *rg_window_told_title(void) { return told_title; }
 void rg_window_clear_told(void) { told[0] = '\0'; }
 
 /* --- pause, step, fast forward --- */

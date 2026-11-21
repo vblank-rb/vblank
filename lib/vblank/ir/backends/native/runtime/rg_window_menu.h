@@ -138,10 +138,16 @@ int rg_window_menu_type_key(int key);
 
 /* WHAT THE WINDOW SAYS OVER THE PICTURE until the player presses a button (Live::Menu#problems=
  * and #tell): what could not be used in the settings file (rg_window_problems, while it is unseen),
- * in the middle, and what a shell tells the player (rg_window_told), at the foot of the window. Each
- * has an OK, and a console button pressed answers both. Nothing waits for them. */
+ * in the middle, and what the window tells the player (rg_window_told), at the foot of the window.
+ * Each has an OK, and a console button pressed answers both. Nothing waits for them.
+ *
+ * rg_window_menu_messages_fit: whether every box shown fits a window +width+ by +height+ pixels at
+ * +pixels_a_point+, its words broken to the box (Live::Menu#messages_fit?). A window too
+ * small for one is made bigger rather than a word being cut off (rg_sdl.c's
+ * grow_window_for_messages). */
 void rg_window_menu_answer_messages(void);
 int rg_window_menu_message_shown(void);
+int rg_window_menu_messages_fit(int width, int height, double pixels_a_point);
 
 /* --- drawing it --- */
 

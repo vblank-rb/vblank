@@ -126,6 +126,29 @@ class TestNativeWindowMenu < Minitest::Test
     assert_same_drawing([problems, "answer", told, "toggle", problems, "press left", "press down", "press enter", "answer",
                          problems, "answer"], most_scale: 6)
     assert_same_drawing([problems, told], most_scale: 2, draws: [[300, 200, 1.0, false, nil, nil, nil], [500, 300, 2.0, false, nil, nil, nil]])
+    fault = "tell_titled The_game_stopped The game went wrong: list q is full (8 items), so push cannot add to it."
+    assert_same_drawing([fault, "answer", told, fault], most_scale: 6)
+  end
+
+  # IN THE SMALLEST WINDOW, a Color game's 160 by 144, a file's path wider than the box is cut into
+  # pieces that fit, and what answers the box goes under its OK. Whether the boxes fit a window is
+  # the same answer in both copies, which is what makes a frontend grow its window.
+  def test_a_box_in_a_small_window_cuts_long_words_and_says_whether_it_fits
+    path = "tell_titled The_save_file The file at /home/player/.local/share/vblank/STOPPER/save.sav is not a save " \
+           "of this game, whose save is 32768 bytes. Move the file away, and the game starts a new one."
+    problems = "problems /home/player/.config/vblank/(all games)/settings.txt:|Line 2: volume is a whole number."
+    assert_same_drawing([path, problems], most_scale: 1, picture: [160, 144],
+                                          draws: [[160, 144, 1.0, false, nil, nil, nil], [320, 288, 1.0, false, nil, nil, nil]])
+
+    sizes = [[160, 144, 1.0], [320, 288, 1.0], [480, 432, 1.0], [320, 288, 2.0], [720, 480, 1.0]]
+    menu = Menu.new(picture: [160, 144], scales: 1..1)
+    [path, problems].each { |step| play_in_ruby(menu, step, Slots.new, []) }
+    expected = sizes.map { |width, height, density| "fits #{menu.messages_fit?(width: width, height: height, density: density) ? 1 : 0}" }
+    said = ask("picture 160 144", path, problems, *sizes.map { |size| "fits #{size.join(' ')}" })
+
+    assert_equal expected, said
+    assert_equal "fits 0", said.first, "the smallest window is too small for these"
+    assert_equal "fits 1", said.last
   end
 
   # A shell's parts keep no states, so their window has no Save or Load, and no F5 or F9.
@@ -190,6 +213,7 @@ class TestNativeWindowMenu < Minitest::Test
     when "type_key" then menu.type_key(name.to_i)
     when "problems" then menu.problems = step.split(" ", 2).last.tr("|", "\n")
     when "tell" then menu.tell(step.split(" ", 2).last.tr("|", "\n"))
+    when "tell_titled" then menu.tell(step.split(" ", 3).last.tr("|", "\n"), title: name.tr("_", " "))
     when "answer" then menu.answer_messages
     when "variables" then menu.press_on_variables(name.to_sym)
     when "toggle" then menu.toggle

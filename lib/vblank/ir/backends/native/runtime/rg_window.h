@@ -326,12 +326,14 @@ const char *rg_window_problems(void);
 int rg_window_problems_unseen(void);
 void rg_window_mark_problems_seen(void);
 
-/* WHAT A SHELL TELLS THE PLAYER (a file that is no copy the game reads, an unpacking that
- * stopped), shown in a box over the picture until the player presses a button. The
- * box is drawn by the window with everything else it draws, so nothing waits for it: the shell's
- * menu plays on under it, and a box nobody answers holds nothing up. Empty for none. */
-void rg_window_tell(const char *words);
+/* WHAT THE WINDOW TELLS THE PLAYER (a file a shell refused, an unpacking that stopped, a save
+ * file that is not the game's, a game that stopped on a fault), shown in a box over the picture
+ * under +title+ until the player presses a button. The box is drawn by the window with everything
+ * else it draws, so nothing waits for it: a shell's menu plays on under it, and a box nobody
+ * answers holds nothing up. What happens once it is answered is the teller's. Empty for none. */
+void rg_window_tell(const char *title, const char *words);
 const char *rg_window_told(void);
+const char *rg_window_told_title(void);
 void rg_window_clear_told(void);
 
 #ifdef __cplusplus

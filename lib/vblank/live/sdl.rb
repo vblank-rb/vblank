@@ -388,6 +388,7 @@ module VBlank
       def show_waiting(lines)
         read_events
         write_settings_when_due
+        grow_window_for_messages
         @sdl.SDL_SetRenderDrawColor(@renderer, 0, 0, 0, 255)
         @sdl.SDL_RenderClear(@renderer)
         upload_menu_letters
@@ -490,6 +491,41 @@ module VBlank
       # What a shell tells the player (a file that is no copy the game reads), in a box at the foot of
       # the window until a button is pressed, as the desktop build shows it.
       def tell_in_box(words) = @menu.tell(words)
+
+      # WHY THE PLAY ENDED (a save file that is not the game's, a game that stopped on a fault), in a
+      # box titled +title+ over the last picture, as the desktop build tells it: nothing plays under
+      # it, the speaker is emptied, and the window waits on its events, drawn again after each, until
+      # a button answers the box as its OK does, or the window is closed or Escape pressed. Never a
+      # box of the system's, which a Mac has been seen not to answer. Gives back once it is answered.
+      # Public for test_sdl.rb's test of the wait: #tell_why_play_ended waits only where a person can
+      # see the window, which SDL's stand-in display is not.
+      def tell_until_answered(words, title:)
+        @menu.tell(words, title: title)
+        empty_speaker
+        redraw_window
+        until !@menu.messages_shown? || @closed
+          read_event if @sdl.SDL_WaitEventTimeout(@event, 100) != 0
+          redraw_window
+        end
+      end
+
+      # What stopped a play, +error+, told in that box where a person can see the window: a save file
+      # that is not the game's (SaveFile::NotThisGamesSave), or a game that went wrong
+      # (IR::ProgramError). Anything else is not the game's to tell, and is left to the terminal.
+      def tell_why_play_ended(error)
+        title = case error
+                when SaveFile::NotThisGamesSave then "The save file"
+                when IR::ProgramError then "The game stopped"
+                end
+        tell_until_answered(error.message, title: title) if title && watched?
+      end
+
+      # Whether a person can see the window: false on SDL's stand-in for a display, which makes
+      # windows nobody sees, where waiting for a person to answer a box would wait for ever.
+      private def watched?
+        driver = @sdl.SDL_GetCurrentVideoDriver
+        live?(driver) && driver.to_s != "dummy"
+      end
 
       # The window was closed, or Escape went down and was not taken for a key being chosen
       # (#read_key_down), as SDL last told it (#show reads what SDL has told, and Session shows each
@@ -637,10 +673,12 @@ module VBlank
           extern "char SDL_Init(unsigned int)"
           extern "void SDL_Quit()"
           extern "const char* SDL_GetError()"
+          extern "const char* SDL_GetCurrentVideoDriver()"
           extern "void* SDL_CreateWindow(const char*, int, int, unsigned long long)"
           extern "void SDL_DestroyWindow(void*)"
           extern "char SDL_SetWindowTitle(void*, const char*)"
           extern "char SDL_SetWindowSize(void*, int, int)"
+          extern "char SDL_SyncWindow(void*)"
           extern "char SDL_GetWindowSize(void*, void*, void*)"
           extern "char SDL_SetWindowFullscreen(void*, char)"
           extern "void* SDL_CreateRenderer(void*, const char*)"
@@ -817,6 +855,46 @@ module VBlank
         [[wide / @shown_width, high / @shown_height].min, WindowMenu::SCALES.max].min
       end
 
+      # A BOX TOO BIG FOR THE WINDOW MAKES THE WINDOW BIGGER, as the desktop build's does
+      # (rg_sdl.c's grow_window_for_messages): while a box is shown that does not fit
+      # (Menu#messages_fit?), the window is made the smallest whole number of times the picture that
+      # holds it, no bigger than the screen has room for, and goes back to the size the settings set
+      # once every box is answered. The settings keep the player's size. Fullscreen has room already.
+      def grow_window_for_messages
+        return if @settings.fullscreen
+        return shrink_window_after_messages unless @menu.messages_shown?
+
+        width, height = output_size
+        density = pixel_density
+        return if @menu.messages_fit?(width: width, height: height, density: density)
+
+        scale = [@settings.scale, @grown_to_scale || 0].max
+        chosen = scale
+        while chosen < largest_scale_that_fits
+          chosen += 1
+          break if @menu.messages_fit?(width: (@shown_width * chosen * density).to_i,
+                                       height: (@shown_height * chosen * density).to_i, density: density)
+        end
+        return if chosen == scale
+
+        @grown_to_scale = chosen
+        resize_to_scale(chosen)
+      end
+
+      def shrink_window_after_messages
+        return unless @grown_to_scale
+
+        @grown_to_scale = nil
+        resize_to_scale(@settings.scale)
+      end
+
+      # The window made +scale+ times the picture, waiting for the system to make it so: the next
+      # drawing measures the window, and measuring the old size would grow it again.
+      def resize_to_scale(scale)
+        @sdl.SDL_SetWindowSize(@window, @shown_width * scale, @shown_height * scale)
+        @sdl.SDL_SyncWindow(@window)
+      end
+
       def live?(pointer) = pointer && !pointer.null?
 
       # The speaker, opened at +rate+ the first time and the same one every time after: two
@@ -854,6 +932,7 @@ module VBlank
       # The picture last put in the window, drawn into it again, with the menu and what the window
       # is doing over it (Menu#drawing).
       def redraw_window
+        grow_window_for_messages
         @sdl.SDL_SetRenderDrawColor(@renderer, 0, 0, 0, 255)
         @sdl.SDL_RenderClear(@renderer)
         @sdl.SDL_RenderTexture(@renderer, @texture, nil, nil)

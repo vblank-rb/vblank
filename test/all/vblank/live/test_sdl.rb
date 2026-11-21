@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "timeout"
 require "tmpdir"
 require "vblank/live"
 
@@ -533,6 +534,49 @@ class TestSDL < Minitest::Test
 
       assert_includes File.read(path), "volume = 90\n"
       assert_includes File.read(path), "scale = 3\n"
+    end
+  end
+
+  # Why a play ended is told in a box over the last picture, and the window waits there until a
+  # console button answers it (X, the A button's key to begin with) or the window is closed. On SDL's
+  # stand-in display nobody can see the box, so telling why the play ended waits for nothing there.
+  # The timeouts only catch a hang.
+  def test_why_the_play_ended_waits_in_a_box_until_answered
+    window = open_window
+    window.show(Array.new(240 * 160, 0x001F), 240, 160)
+    told = Timeout.timeout(10) { window.tell_why_play_ended(VBlank::IR::ProgramError.new("list :q is full")) }
+    assert_nil told, "nobody can see this window, so nothing is waited for"
+
+    press_key(27)
+    Timeout.timeout(10) { window.tell_until_answered("The game went wrong.", title: "The game stopped") }
+    refute window.stop?, "a button answers the box and closes nothing"
+
+    push_event([SDL::EVENT_QUIT].pack("L"))
+    Timeout.timeout(10) { window.tell_until_answered("The game went wrong.", title: "The game stopped") }
+    assert window.stop?, "closing the window ends the wait too"
+  ensure
+    window&.close
+  end
+
+  # A box too big for the window makes the window bigger, a whole number of times the picture, as the
+  # desktop build's does: a Color game's window at the least scale is its 160 by 144 screen, too small
+  # for what is wrong with a settings file. Answered, the window goes back to the player's size.
+  def test_a_box_too_big_for_the_window_makes_the_window_bigger
+    flunk "SDL3 is not installed: #{SDL::INSTALL_LINE}" unless SDL.available?
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "settings.txt")
+      File.write(path, "scale = 1\nvolume = loud\nkey.a = Nonesuch\n")
+      window = SDL.new(title: "TEST", width: 160, height: 144, settings_file: path)
+      window.show(Array.new(160 * 144, 0), 160, 144)
+      wide, high = window.window_size
+
+      assert_operator wide, :>, 160, "the window grew for the box"
+      assert_equal [wide / 160, 0, 0], [high / 144, wide % 160, high % 144], "a whole number of times the screen"
+      press_key(27) # X, the A button's key to begin with, answers the box
+      window.show(Array.new(160 * 144, 0), 160, 144)
+      assert_equal [160, 144], window.window_size
+    ensure
+      window&.close
     end
   end
 

@@ -125,6 +125,58 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
+  # A game that keeps a number in save memory and stops on a fault at the second press of B, when it
+  # pushes onto a list of one that is full. Its screen is blue, so its last picture shows behind a box.
+  private def game_that_stops_at_the_second_b(consoles: %i[gba])
+    VBlank.game("STOPPER", consoles: consoles) do
+      screen :bitmap
+      save_var :best, 5
+      full = list :full, capacity: 1
+      game_loop do
+        clear_screen :blue
+        full.push 1 if pressed(:b)
+      end
+    end
+  end
+
+  # WHAT ENDS THE PROGRAM IS TOLD IN THE WINDOW, never in a pop-up of the system's: a save file that
+  # is not the game's, and a game that stopped on a fault. Each is a box over the last picture, under
+  # a title of its own, with the words on the error stream as well, and the program ends once a
+  # button answers it, or with nobody to answer it, once the script runs out. --told writes a line
+  # for each box the window draws and for each pop-up of the system's it shows.
+  def test_what_ends_the_program_is_told_in_the_window
+    Dir.mktmpdir do |dir|
+      exe = Native.new.build_desktop(game_that_stops_at_the_second_b, File.join(dir, "stopper"), err: nil)
+      plain, = picture_of_window(exe, dir, [], frames: 12, options: ["--save-file", File.join(dir, "plain.sav")])
+      foot = [40...680, 300...470]
+
+      assert_a_fault_is_told_in_the_window_until_answered(exe, dir, plain, foot)
+      assert_a_save_file_cut_short_is_told_in_the_window(exe, dir, plain, foot)
+    end
+  end
+
+  # A BOX TOO BIG FOR THE WINDOW MAKES THE WINDOW BIGGER. A Color game's window at the least scale
+  # is its 160 by 144 screen, where a save file's path would run off it: the window is made a whole
+  # number of times the screen that holds the box, while the settings file keeps the player's size.
+  def test_a_box_too_big_for_the_window_makes_the_window_bigger
+    Dir.mktmpdir do |dir|
+      exe = Native.new.build_desktop(game_that_stops_at_the_second_b(consoles: %i[gbc]), File.join(dir, "stopper"), console: :gbc, err: nil)
+      settings = File.join(dir, "small.txt")
+      File.write(settings, "scale = 1\n")
+      small, = picture_of_window(exe, dir, [], frames: 5, options: ["--settings-file", settings, "--save-file", File.join(dir, "new.sav")])
+      path = File.join(dir, "short.sav")
+      File.binwrite(path, "x" * 100)
+      grown, _, told = told_in_window(exe, dir, [], frames: 5, options: ["--settings-file", settings, "--save-file", path], succeeds: false)
+
+      assert_equal [160, 144], [small.width, small.height]
+      assert_equal 1, told.size
+      assert_operator grown.width, :>, 160, "the window grew for the box"
+      assert_equal [0, 0], [grown.width % 160, grown.height % 144], "a whole number of times the screen"
+      assert_equal grown.width / 160, grown.height / 144, "and the screen's shape"
+      assert_includes File.read(settings), "scale = 1", "the player's size is kept"
+    end
+  end
+
   # Told nothing, it keeps the save where the operating system keeps a program's own files for
   # the person using the computer, in a folder named for the game. The test says where that
   # person's files are, in the two ways a Mac and a Linux machine are told, so nothing is
@@ -530,7 +582,8 @@ class TestNativeDesktop < Minitest::Test
   # given one) of +frames+ frames with a script's lines, a line each, as --scripted-keys reads
   # them; the frames' worth of lines are made up to with idle ones. +audio+ saves what the
   # speaker was given, through SDL's disk driver, and tells where.
-  def play_window(exe, dir, lines, frames:, options: [], env: {}, audio: false, own_settings: true)
+  # +succeeds+ false is a run that must end with a failing status, as one the window stops does.
+  def play_window(exe, dir, lines, frames:, options: [], env: {}, audio: false, own_settings: true, succeeds: true)
     script = lines + ["0"] * [frames - lines.length, 0].max
     needs_a_file = own_settings && !options.include?("--settings-file") && !options.include?("--usual-settings")
     settings = needs_a_file ? ["--settings-file", File.join(dir, "none-#{rand(1 << 30)}.txt")] : []
@@ -539,7 +592,7 @@ class TestNativeDesktop < Minitest::Test
     environment = environment.merge("SDL_AUDIO_DRIVER" => "disk", "SDL_AUDIO_DISK_OUTPUT_FILE" => raw) if audio
     printed, said, status = Open3.capture3(environment, exe, "--scripted-keys", frames.to_s, *settings, *options,
                                            stdin_data: script.map { |line| "#{line}\n" }.join)
-    assert_predicate status, :success?, said
+    assert_equal succeeds, status.success?, said
     Played.new(variables: Native::HeadlessRun.variables_in(printed.lines.map(&:chomp)), printed: printed, said: said,
                audio: audio ? File.binread(raw).unpack("s<*") : nil)
   end
@@ -652,10 +705,51 @@ class TestNativeDesktop < Minitest::Test
     Window.new(width, height, pixels)
   end
 
-  def picture_of_window(exe, dir, lines, frames:, options: [], env: {})
+  def picture_of_window(exe, dir, lines, frames:, options: [], env: {}, succeeds: true)
     picture = File.join(dir, "window-#{rand(1 << 30)}.bmp")
-    played = play_window(exe, dir, lines, frames: frames, options: ["--window-picture", picture] + options, env: env)
+    played = play_window(exe, dir, lines, frames: frames, options: ["--window-picture", picture] + options, env: env,
+                                          succeeds: succeeds)
     [window_picture(picture), played]
+  end
+
+  # A run's picture of the window as it ended, what it said, and the lines --told wrote: a box each.
+  def told_in_window(exe, dir, lines, frames:, options: [], succeeds: true)
+    told = File.join(dir, "told-#{rand(1 << 30)}.txt")
+    window, played = picture_of_window(exe, dir, lines, frames: frames, options: ["--told", told] + options, succeeds: succeeds)
+    [window, played, File.exist?(told) ? File.readlines(told, chomp: true) : []]
+  end
+
+  # The game's fault, at the second press of B, is a box over its last picture titled The game
+  # stopped, and the program waits there for the player and ends failing: once the script runs out,
+  # the box still up, or once a button answers it, which closes it and ends the program at once, the
+  # script's lines left unread.
+  def assert_a_fault_is_told_in_the_window_until_answered(exe, dir, plain, foot)
+    save = ["--save-file", File.join(dir, "fault.sav")]
+    stopped, played, told = told_in_window(exe, dir, ["0", "2", "0", "2"], frames: 30, options: save, succeeds: false)
+
+    assert_match(/list :full is full/, played.said)
+    assert_equal 1, told.size, "one box: #{told.inspect}"
+    assert_match(/\AThe game stopped: .*list :full is full/, told.first)
+    assert_operator stopped.text_in(*foot), :>, plain.text_in(*foot) + 500, "the fault is told over the picture"
+    assert_operator stopped.lit_in(0...720, 0...100), :>, 50_000, "the game's last picture stays behind it"
+
+    answered, _, told = told_in_window(exe, dir, ["0", "2", "0", "2", "0", "0 key:X"], frames: 30, options: save, succeeds: false)
+    assert_equal 1, told.size
+    assert_equal plain.text_in(*foot), answered.text_in(*foot), "a button pressed answers the box, as its OK does"
+  end
+
+  # A save file that is not as big as the game's save memory is told in a box titled The save file,
+  # over the window before the game starts, and the program ends failing, the file left as it was.
+  def assert_a_save_file_cut_short_is_told_in_the_window(exe, dir, plain, foot)
+    path = File.join(dir, "short.sav")
+    File.binwrite(path, "x" * 100)
+    refused, played, told = told_in_window(exe, dir, [], frames: 5, options: ["--save-file", path], succeeds: false)
+
+    assert_match(/is not a save of this game, whose save is 32768 bytes/, played.said)
+    assert_equal 1, told.size, "one box: #{told.inspect}"
+    assert_match(/\AThe save file: The file at .*short\.sav is not a save of this game/, told.first)
+    assert_operator refused.text_in(*foot), :>, plain.text_in(*foot) + 500, "what is wrong is told over the window"
+    assert_equal "x" * 100, File.binread(path)
   end
 
   # The window opens as large as the settings say, a whole number of times the console's screen.
@@ -734,8 +828,9 @@ class TestNativeDesktop < Minitest::Test
     assert_equal 0, hidden.lit_in(*corner), "and not when the settings say not"
   end
 
-  # A file that cannot be used is said in plain words, on the error stream and over the picture as
-  # the window opens, and the window opens anyway, as it starts.
+  # A file that cannot be used is said in plain words, on the error stream and in a box over the
+  # picture as the window opens, never a pop-up of the system's, and the window opens anyway, as it
+  # starts.
   def assert_a_file_that_cannot_be_used_is_said_and_the_game_plays_on(exe, dir)
     plain_window, plain_run = picture_of_window(exe, dir, [], frames: 20)
     garbage = File.join(dir, "garbage.txt")
@@ -753,8 +848,10 @@ class TestNativeDesktop < Minitest::Test
     middle = [40...400, 100...400]
     assert_operator garbage_window.lit_in(*middle), :>, plain_window.lit_in(*middle) + 10_000,
                     "what was wrong is said over the picture, for a player with no terminal"
-    answered, = picture_of_window(exe, dir, ["0", "0 key:X"], frames: 20, options: ["--settings-file", garbage])
+    answered, _, told = told_in_window(exe, dir, ["0", "0 key:X"], frames: 20, options: ["--settings-file", garbage])
     assert_equal plain_window.lit_in(*middle), answered.lit_in(*middle), "a button pressed answers it, as its OK does"
+    assert_equal 1, told.size, "one box, and no pop-up of the system's: #{told.inspect}"
+    assert_match(/\AThe settings file: .*Line 2: volume is a whole number/, told.first)
     assert_equal game_saw(plain_run), game_saw(from_folder)
     assert_match(/The window cannot read .*a-folder\.txt/, from_folder.said)
   end

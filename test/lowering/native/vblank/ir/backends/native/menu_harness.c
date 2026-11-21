@@ -16,7 +16,9 @@
  *   type_key N                       a key pressed, by SDL's number, for the window of variables
  *   variables up|down|close          a key of the menu's pressed, for the window of variables
  *   problems WORDS                   what could not be used in the settings file, a | for each line break
- *   tell WORDS                       what a shell tells the player, the same
+ *   tell WORDS                       what a shell tells the player, the same, under the title Load ROM
+ *   tell_titled TITLE WORDS          what the window tells the player under TITLE, a _ for each space in it
+ *   fits WIDTH HEIGHT DENSITY        print "fits 1" when every box shown fits a window that size, else "fits 0"
  *   answer                           a button pressed, which answers what the window says
  *   state                            print whether it is open and whether Quit was chosen
  *   slot N WORDS                     what slot N (0 is the quick one) says at its right, as a state's time
@@ -107,13 +109,22 @@ int main(void) {
       rg_window_menu_type_key(atoi(strtok(NULL, " \n")));
     } else if (strcmp(command, "variables") == 0) {
       rg_window_menu_press_on_variables(key_named(strtok(NULL, " \n")));
-    } else if (strcmp(command, "problems") == 0 || strcmp(command, "tell") == 0) {
+    } else if (strcmp(command, "problems") == 0 || strcmp(command, "tell") == 0 || strcmp(command, "tell_titled") == 0) {
       int problems = strcmp(command, "problems") == 0;
+      char shell_title[] = "Load ROM";
+      char *title = strcmp(command, "tell_titled") == 0 ? strtok(NULL, " \n") : shell_title;
+      for (char *c = title; c && *c; c++)
+        if (*c == '_') *c = ' ';
       char *words = strtok(NULL, "\n");
       for (char *c = words; c && *c; c++)
         if (*c == '|') *c = '\n';
       if (problems) rg_window_set_problems(words ? words : "");
-      else rg_window_tell(words ? words : "");
+      else rg_window_tell(title ? title : "", words ? words : "");
+    } else if (strcmp(command, "fits") == 0) {
+      int width = atoi(strtok(NULL, " \n"));
+      int height = atoi(strtok(NULL, " \n"));
+      double density = strtod(strtok(NULL, " \n"), NULL);
+      printf("fits %d\n", rg_window_menu_messages_fit(width, height, density));
     } else if (strcmp(command, "answer") == 0) {
       rg_window_menu_answer_messages();
     } else if (strcmp(command, "slot") == 0) {
