@@ -3,9 +3,9 @@
 module VBlank
   module Playthroughs
     class Comparison
-      # TWO CARTRIDGES LINED UP BY THE GAME'S OWN PASSES, asked for with `by_passes:`.
+      # Two cartridges lined up by the game's own passes, asked for with `by_passes:`.
       #
-      # WHAT A PASS IS. A game runs one loop over and over: read the buttons, move everything,
+      # What a pass is. A game runs one loop over and over: read the buttons, move everything,
       # draw. One run of it is a pass. Most passes take one frame, but a pass with a lot to do
       # takes two or three, and then the screen shows the same pass for that many frames. An
       # original game does this now and then; a port of it may do it on other passes, or never.
@@ -13,14 +13,14 @@ module VBlank
       # is like with like. `frames_in_a_row:` only forgives a difference for a few frames, which
       # is not the same thing.
       #
-      # SO EACH CARTRIDGE REPORTS ITS OWN COUNT OF PASSES, read after every frame, the way a reading
+      # So each cartridge reports its own count of passes, read after every frame, the way a reading
       # is read (see Readings): a variable's name, a block handed the running cartridge, or one
       # of those for each. `true` is the game loop's own count, which a cartridge built here keeps
       # (Diagnostics::Verifier#passes). An original keeps a counter somewhere in its memory, and a
       # block reads it by its address. A counter kept in a byte comes back round to nought, and
       # `pass_count_wraps_at: 256` counts it on past that, on both cartridges.
       #
-      # HOW THE TWO ARE PLAYED. The first cartridge plays the tape frame by frame, as it always
+      # How the two are played. The first cartridge plays the tape frame by frame, as it always
       # does. A frame on which its count shows a pass it has not shown before is that pass's
       # first frame; the other frames of a slow pass are not looked at. The second cartridge is
       # then played on until its own count shows that pass too, and the two are compared there,
@@ -30,9 +30,9 @@ module VBlank
       # reads what the first is held on the later frames of a slow pass, and the second is not
       # given it either: a press of one frame that falls there reaches neither game. A game that
       # reads them every frame does read it, and with `reads_buttons_every_frame: true` the second
-      # is given every frame's buttons in turn (see LinedUp, THE BUTTONS).
+      # is given every frame's buttons in turn (see LinedUp, the buttons).
       #
-      # AT THE END OF EACH PASS, asked for with `passes_compared_at: :end`. A slow pass's count can go
+      # At the end of each pass, asked for with `passes_compared_at: :end`. A slow pass's count can go
       # up before the pass's work is done: an original counts the pass at the top of its loop, then
       # runs over the frame. On the first frame that shows the pass, that cartridge is half way
       # through it, and a port that finished the pass in one frame is reported as different. At the
@@ -41,9 +41,9 @@ module VBlank
       # since a frame is drawn from the numbers of the frame before. The first cartridge's frame of a
       # drift there is the frame of the picture. The last pass the tape shows has no end on it and is
       # not compared: a tape that is to compare it plays a frame past it. The buttons are given as at
-      # the start (see LinedUp, THE BUTTONS).
+      # the start (see LinedUp, the buttons).
       #
-      # AFTER A LEAD-IN (`lead_ins:`), comparing starts on the FIRST cartridge's pass as its lead-in
+      # After a lead-in (`lead_ins:`), comparing starts on the first cartridge's pass as its lead-in
       # left it, and the second is played on to that pass, from its own lead-in's end or from
       # power-on. One that runs late on frames the other does not is passes behind after a lead-in of
       # the same frames, and no pass of either is left out between them. The pass the first is part
@@ -79,12 +79,12 @@ module VBlank
         private_constant :SIDES
 
         # Where in each pass the two can be compared (`passes_compared_at:`): on the first frame
-        # that shows it, or at its end (see AT THE END OF EACH PASS above).
+        # that shows it, or at its end (see at the end of each pass above).
         PLACES_IN_PASS = %i[start end].freeze
         private_constant :PLACES_IN_PASS
 
         # The count of +by_passes+, or nil for a comparison frame by frame. +every_frame+ is
-        # `reads_buttons_every_frame:` (see LinedUp, THE BUTTONS), and +compared_at+ is
+        # `reads_buttons_every_frame:` (see LinedUp, the buttons), and +compared_at+ is
         # `passes_compared_at:`, nil for the first frame of each pass.
         def self.from(by_passes, wraps_at, every_frame: false, compared_at: nil)
           if by_passes.nil?
@@ -140,7 +140,7 @@ module VBlank
         # The setting's name, for an error about settings it cannot be used with.
         def setting_name = "`by_passes:`"
 
-        # ONE CARTRIDGE'S COUNT OF PASSES AS IT PLAYS, counted on past each wrap so that a later
+        # One cartridge's count of passes as it plays, counted on past each wrap so that a later
         # pass is always a bigger number. +side+ is 0 for the first cartridge and 1 for the second.
         class Count
           def initialize(reading, side, wraps_at, game)
@@ -261,16 +261,16 @@ module VBlank
       end
       private_constant :Passes
 
-      # A COUNT OF PASSES THAT WENT DOWN, on a cartridge `by_passes:` lines up, where nothing set where
+      # A count of passes that went down, on a cartridge `by_passes:` lines up, where nothing set where
       # it comes back round. The message says which cartridge and how to set where it wraps.
       class PassCountFell < StandardError; end
 
-      # THE SECOND CARTRIDGE NEVER SHOWED A PASS THE FIRST DID: its count stood still for a minute
+      # The second cartridge never showed a pass the first did: its count stood still for a minute
       # of frames short of it, or it showed none of the first's passes at all. The message says
       # which pass and where the count was.
       class PassNotReached < StandardError; end
 
-      # THE SECOND CARTRIDGE'S LEAD-IN LEFT IT PAST THE FIRST'S PASS, where the comparison starts:
+      # The second cartridge's lead-in left it past the first's pass, where the comparison starts:
       # its passes before that one could not be compared with the first's. The message names both
       # passes and how to lead the second in less far.
       class SecondAheadAfterLeadIns < StandardError; end

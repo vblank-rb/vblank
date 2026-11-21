@@ -3,7 +3,7 @@
 module VBlank
   module Playthroughs
     class Comparison
-      # THE TWO SCREENS TWO CARTRIDGES SHOWED AT ONE POINT, AND WHERE THEY DIFFER, as the
+      # The two screens two cartridges showed at one point, and where they differ, as the
       # pictures a person looks at to see what a comparison found.
       #
       # +first+ and +second+ are the two screens, each a screenful of the console's colours a
@@ -30,7 +30,7 @@ module VBlank
 
         private_constant :MARK, :SCALE, :STRIP_WIDTH, :STRIP_COLOUR
 
-        # THE DIFFERENCE AS A SCREEN: the first screen with its colour taken out and dimmed,
+        # The difference as a screen: the first screen with its colour taken out and dimmed,
         # so it is only there to show where on the screen things are, and every pixel that
         # differs in the mark's colour.
         def difference_screen
@@ -39,8 +39,8 @@ module VBlank
           marked
         end
 
-        # WRITE ONE PICTURE OF IT ALL at +path+, a PNG: the first screen, the second, and the
-        # difference, left to right, each at SCALE times the console's size with a strip
+        # Write one picture of it all at +path+, a PNG: the first screen, the second, and the
+        # difference, left to right, each at scale times the console's size with a strip
         # between. +with_difference+ chooses whether the last is there, for somebody who wants
         # the two screens alone. The path is handed back.
         def write_side_by_side(path, with_difference: true)
