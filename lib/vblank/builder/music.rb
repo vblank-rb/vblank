@@ -2,27 +2,49 @@
 
 module VBlank
   class Builder
-    # The music verbs: define a tune with the note/rest DSL, name the one playing,
-    # and silence it. Songs play on channel 1 (with sweep) so they don't clash with
-    # beep/SFX on channel 2; they share the @sound_enabled flag with {Sound}.
+    # Music
     #
-    # A concern of {Builder}, mixed in so song/play_song/stop_music are flat DSL
-    # verbs. Note this is Builder::Music (the verbs) — distinct from VBlank::Audio::Music
-    # (the note/tempo notation the `song` block is written in).
+    # `song` writes a tune with notes and rests, `play_song` names the one that is playing, and
+    # `stop_music` silences it. Music plays on its own, a frame at a time, so a game that is too
+    # busy for one frame still hears it at the right speed. Sound effects play over it.
+    #
+    # ```ruby
+    # enable_sound
+    # song :gameplay do
+    #   tempo 140
+    #   note :C4, :eighth
+    #   note :E4, :eighth
+    #   note :G4, :quarter
+    #   rest :quarter
+    # end
+    # play_song :gameplay
+    # ```
+    #
+    # A game whose music already exists as numbers, such as tunes decoded from another cartridge,
+    # hands it over with `songs` and plays it by number instead.
+    #--
+    # Songs play on channel 1 (with sweep) so they don't clash with beep/SFX on channel 2; they
+    # share the @sound_enabled flag with Sound. A concern of Builder, mixed in so
+    # song/play_song/stop_music are flat DSL verbs. This is Builder::Music (the verbs), distinct
+    # from VBlank::Audio::Music (the note/tempo notation the `song` block is written in).
+    #++
     module Music
-      # Define a named song using the note/rest DSL.
-      # Songs are collected at build time and played by play_song.
+      # Writes a tune with notes and rests, and gives it a name to play by.
       #
-      # @param name [Symbol] song name
+      # The block says the tune: `tempo`, then `note` with a pitch and a length, and `rest` with
+      # a length. Songs are collected as the game is built and played by `play_song`.
       #
-      # @example
-      #   song :gameplay do
-      #     tempo 140
-      #     note :C4, :eighth
-      #     note :E4, :eighth
-      #     note :G4, :quarter
-      #     rest :quarter
-      #   end
+      # ```ruby
+      # song :gameplay do
+      #   tempo 140
+      #   note :C4, :eighth
+      #   note :E4, :eighth
+      #   note :G4, :quarter
+      #   rest :quarter
+      # end
+      # ```
+      #
+      # * `name` - the song's name, as a symbol. A name used twice is an error.
       def song(name, &block)
         raise ArgumentError, "The song :#{name} is already defined. Use a different name." if @songs.key?(name)
 
@@ -38,26 +60,28 @@ module VBlank
         record(Build.song(name, voices: ctx.voices, total_frames: ctx.total_frames, loop_frame: ctx.loop_frame))
       end
 
-      # Name which song is playing now. It plays from its start, loops, and keeps the
-      # tempo it was written at whatever the game is doing — the framework moves it on
-      # once for every frame the screen shows, so a game too heavy for a frame still
-      # hears it at the right speed.
+      # Names the song that is playing now.
       #
-      # Saying the song already playing changes nothing, so this can be written once
-      # or every frame, from a branch or a scene. Naming a different song starts that
-      # one from its beginning, and `stop_music` silences it.
+      # It plays from its start, loops, and keeps the tempo it was written at whatever the game is
+      # doing. Naming the song that is already playing changes nothing, so this can be written
+      # once or every frame, from a branch or a scene. Naming a different song starts that one
+      # from its beginning, and `stop_music` silences it.
       #
-      # A song named here starts on the NEXT frame: the player runs as the screen finishes a
-      # picture, which is before the game's pass, so it hears the name a frame on. That is a
-      # frame later than a cartridge whose sound engine runs after its game's logic, and a game
-      # rebuilt to match one sets `this_frame: true` — the song is then taken up and its first
-      # frame played right here, and the next frame plays its second.
+      # A song named here starts on the next frame. A game rebuilt to match a cartridge whose
+      # sound runs after its game logic writes `this_frame: true` to start it right here.
       #
-      # @param name [Symbol] song name (defined with `song`)
-      # @param this_frame [Boolean] start it here rather than on the next frame
+      # ```ruby
+      # play_song :gameplay
+      # ```
       #
-      # @example
-      #   play_song :gameplay
+      # * `name` - the song's name, from `song`.
+      # * `this_frame:` - `true` to start it here, and play its second frame on the next frame,
+      #   instead of starting on the next frame.
+      #--
+      # The player runs as the screen finishes a picture, which is before the game's pass, so it
+      # hears the name a frame on. With `this_frame: true` the song is taken up and its first
+      # frame played right here.
+      #++
       def play_song(name, this_frame: false)
         raise ArgumentError, "Sound is off. Call enable_sound before play_song." unless @sound_enabled
         unless @songs.key?(name)
@@ -68,51 +92,56 @@ module VBlank
         record(Build.play_song(name, this_frame: this_frame))
       end
 
-      # No song is playing now. Like `play_song`, it can be called every frame: the
-      # song goes quiet once, and calling it again while nothing plays does nothing.
-      # Called in the same frame as naming a song, it starts that song over from its
-      # first note — `stop_music; play_song :title` is how a tune restarts.
+      # Silences the music: no song is playing after this.
+      #
+      # Like `play_song`, it can be called every frame. The song goes quiet once, and calling it
+      # again while nothing plays does nothing. Called in the same frame as naming a song, it
+      # starts that song over from its first note, so `stop_music; play_song :title` restarts a
+      # tune.
       def stop_music
         record(Build.stop_music)
       end
 
-      # HOLD THE MUSIC WHERE IT IS, while the next screen loads. The notes sounding ring on as
-      # they are, and nothing new starts, from the next frame: `release_music` carries on from
-      # the note it stopped before, and naming another song or calling `stop_music` lets it go
-      # too. Naming the song held changes nothing, so a game that calls `play_song` every frame
-      # can hold its music like any other. Sound effects play on, and the music volume still
-      # reaches the notes held. Holding when no song plays does nothing.
+      # Holds the music where it is, for example while the next screen loads.
+      #
+      # The notes sounding ring on as they are, and nothing new starts, from the next frame.
+      # `release_music` carries on from the note it stopped before, and naming another song or
+      # calling `stop_music` lets it go too. Naming the song held changes nothing, so a game that
+      # calls `play_song` every frame can hold its music like any other. Sound effects play on, and
+      # the music volume still reaches the notes held. Holding when no song plays does nothing.
       def hold_music
         record(Build.hold_music(true))
       end
 
-      # The music held by `hold_music` carries on from the next frame. Called when it is not held,
-      # it does nothing.
+      # Carries on with the music that `hold_music` held, from the next frame.
+      #
+      # Called when the music is not held, it does nothing.
       def release_music
         record(Build.hold_music(false))
       end
 
-      # HOW LOUD THE MUSIC PLAYS, from 0 (silent) to 100 (as written). It reaches the song
-      # playing now, notes already sounding included, from the next frame — and every song
-      # after it, until it is set again. Sound effects are not the music, and keep their own
-      # volume.
+      # Sets how loud the music plays, or reads how loud it is now.
       #
-      #   music_volume 50          # half as loud
-      #   music_volume slider      # whatever a settings screen holds
+      # The volume goes from 0 (silent) to 100 (as written). It reaches the song playing now,
+      # notes already sounding included, from the next frame, and every song after it, until it is
+      # set again. Sound effects are not the music, and keep their own volume. `fade_music_out`
+      # walks the volume down to silence over time.
       #
-      # `fade_music_out` walks it down to silence over time, and this is what it moves.
+      # With no number it reads how loud the music is now, from 0 to 100. That is how a game waits
+      # for a fade to finish before it switches songs, so that the switch is never heard.
       #
-      # WITH NO NUMBER IT READS how loud the music is now, 0 to 100 — which is how a game waits
-      # for a fade to finish before it switches songs, so the switch is never heard:
+      # ```ruby
+      # music_volume 50          # half as loud
+      # music_volume slider      # whatever a settings screen holds
       #
-      #   if music_volume == 0
-      #     track = next_track
-      #     fade_music_in
-      #   end
+      # if music_volume == 0
+      #   track = next_track
+      #   fade_music_in
+      # end
+      # ```
       #
-      # @param amount [Integer, Value, nil] 0..100; anything outside that is held at the nearer
-      #   end. Leave it out to read the volume instead.
-      # @return [Value, nil] the volume now, when reading
+      # * `amount` - from 0 to 100. A number outside that is held at the nearer end. Leave it out
+      #   to read the volume instead.
       def music_volume(amount = nil)
         @music_level ||= var(IR::Tunes::LEVEL, IR::Tunes::FULL_LEVEL)
         full = IR::Tunes::FULL_LEVEL
@@ -132,16 +161,23 @@ module VBlank
         nil
       end
 
-      # HAND OVER MUSIC AS DATA, and play it by number.
+      # Hands over music as data, and returns a list to play it from by number.
       #
-      #   music = songs :music, [title_theme, file_select, forest]   # VBlank::Audio::Score each
-      #   music.play 2            # the forest
-      #   music.play track        # ...or whichever one a number the game holds names
+      # Use it for a game whose music already exists as numbers, such as tunes decoded from
+      # another cartridge or read from a file, instead of written as `song` blocks. Each tune is a
+      # `VBlank::Audio::Score`. A hash names them instead of numbering them.
       #
-      # For a game whose music already exists as numbers — decoded from another cartridge,
-      # read from a file — rather than written as `song` blocks. A Hash names them instead:
-      # `songs :music, { title: TITLE, forest: FOREST }`, then `music.play :forest`. Returns a
-      # {VBlank::DSL::SongList}.
+      # ```ruby
+      # music = songs :music, [title_theme, file_select, forest]
+      # music.play 2            # the forest
+      # music.play track        # or whichever one a number the game holds names
+      #
+      # music = songs :music, { title: TITLE, forest: FOREST }
+      # music.play :forest
+      # ```
+      #
+      # * `name` - the list's name, as a symbol.
+      # * `scores` - the tunes, as a list or a hash.
       def songs(name, scores)
         turn_sound_on
         scores = scores_with_pack_notes(scores, "songs :#{name}")
@@ -164,16 +200,22 @@ module VBlank
                              "its voices until it ends. Remove `keeps_voices:` from this Score."
       end
 
-      # SOUNDS HANDED OVER AS DATA, each played ONCE over the song that is playing.
+      # Hands over sound effects as data, and returns a list to play them from.
       #
-      #   sfx = sound_effects :sfx, { hit: HIT, spark: SPARK }   # VBlank::Audio::Score each
-      #   sfx.play :hit
-      #   sfx.play which          # ...or whichever one a number the game holds names
+      # An effect is a short run of notes, the way a tune is, such as a sword hit, a door or a
+      # chest. Each is played once over the song that is playing. Asked for again while it is
+      # still sounding, one starts again from its first note. When an effect and the song, or two
+      # effects, want the same voice at once, the one with the higher `priority:` sounds on it.
+      # Each effect is a `VBlank::Audio::Score`.
       #
-      # A sword hit, a door, a chest: short runs of notes the way a tune is, decoded from the same
-      # place. Asked for again while it is still sounding, one starts again from its first note.
-      # When an effect and the song, or two effects, want the same voice at once, the Score with
-      # the higher `priority:` sounds on it. Returns a {VBlank::DSL::SoundEffectList}.
+      # ```ruby
+      # sfx = sound_effects :sfx, { hit: HIT, spark: SPARK }
+      # sfx.play :hit
+      # sfx.play which          # or whichever one a number the game holds names
+      # ```
+      #
+      # * `name` - the list's name, as a symbol.
+      # * `scores` - the effects, as a list or a hash.
       def sound_effects(name, scores)
         turn_sound_on
         scores = scores_with_pack_notes(scores, "sound_effects :#{name}")
