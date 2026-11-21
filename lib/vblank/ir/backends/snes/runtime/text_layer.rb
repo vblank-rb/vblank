@@ -278,7 +278,7 @@ module VBlank
               end
             end
 
-            # rt_paint_layer_find (JSR, A a text's number): the text at hand made that one (text and
+            # rt_paint_layer_find (JSR, A a text's number): the text at hand made that one (TEXT and
             # AT), and +pointer+ pointed at its cells. Uses X.
             def emit_find(asm, memory, s)
               text = memory[TEXT]
@@ -380,7 +380,7 @@ module VBlank
               asm.rts
             end
 
-            # X at the text at hand's first cell of row in cells, and CELLS_LEFT its columns.
+            # X at the text at hand's first cell of ROW in CELLS, and CELLS_LEFT its columns.
             def emit_row_cells(asm, memory)
               text = memory[TEXT]
               asm.lda(asm.abs(memory[ROW]))

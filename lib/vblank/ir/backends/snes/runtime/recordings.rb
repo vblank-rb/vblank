@@ -71,7 +71,7 @@ module VBlank
             PLACE_ADVANCE = 16
             PLACE_ADVANCE_FRACTION = 20
             PLACE_LOGGED = 22
-            # ...and whose it is: nought for the game's own, a part's owner number for a song's — its
+            # ...and whose it is: nought for the game's own, a part's OWNER number for a song's — its
             # place among the song's recorded parts, one up — and for a sound effect's the same in the
             # low byte under the effect's number, one up, in the high (EFFECT_OWNER and over); the
             # rank it holds the place at, the song's or effect's rank's place one up (nought for the
@@ -87,7 +87,7 @@ module VBlank
             NEVER_ENDS = 0xFFFF
             EFFECT_OWNER = 0x100
             # ...and its SHAPE (Reference::Mixer#step_envelopes): the row's two words of it, its level
-            # (out of Audio::Envelope::FULL), which part of the shape it is in (plain for a note with
+            # (out of Audio::Envelope::FULL), which part of the shape it is in (PLAIN for a note with
             # none), and its volume as the row holds it, which the level scales.
             PLACE_AD = 32
             PLACE_SR = 34
@@ -97,7 +97,7 @@ module VBlank
             # ...and in a game with a sound queue, whether a word about its loudness is waiting there
             # (#emit_shapes).
             VOLUME_WAITING = 42
-            # ...and its row's shaped word, in a game with CHIP_ENVELOPES.
+            # ...and its row's SHAPED word, in a game with CHIP_ENVELOPES.
             PLACE_SHAPED = 44
             PLACE_BYTES = 64
             LOOPS = 0x8000
@@ -107,7 +107,7 @@ module VBlank
             FALLING = 3
             DONE = 4 # Fallen to nothing: the place comes free on the frame after
             FULL = Audio::Envelope::FULL
-            # A row's logged for a note of a song: nothing is logged as it comes round again.
+            # A row's LOGGED for a note of a song: nothing is logged as it comes round again.
             NOT_LOGGED = 0xFFFF
             # ...and, for each of the last Frame::STEPS_KEPT passes, by the pass's number less its
             # multiples of STEPS_KEPT, each place's recording as its wait ended: a byte a place; and its
@@ -120,13 +120,13 @@ module VBlank
             DROPS_MUSIC = "rt recordings drops music"
 
             # Where the row being played is, the place it takes, that place's voice's first register,
-            # and which recording a stop names (or all) and its entry in the log.
+            # and which recording a stop names (or ALL) and its entry in the log.
             ROW = "rt recordings row"
             PLACE = "rt recordings place"
             REGISTERS = "rt recordings registers"
             STOP_NAME = "rt recordings stop name"
             STOP_LOGGED = "rt recordings stop logged"
-            # How many of its own sounds the game has started (ticket), and, while a note finds a place,
+            # How many of its own sounds the game has started (TICKET), and, while a note finds a place,
             # whose it is, its rank, and the best place found to take and its rank and ticket.
             TICKETS = "rt recordings tickets"
             NOTE_OWNER = "rt recordings note owner"
@@ -239,7 +239,7 @@ module VBlank
               emit_voice_of_place(asm, at, voices)
             end
 
-            # rt_recordings_voice_of_place: A = the voice of the place at place, one that has a voice.
+            # rt_recordings_voice_of_place: A = the voice of the place at PLACE, one that has a voice.
             def emit_voice_of_place(asm, at, voices)
               asm.label("rt_recordings_voice_of_place")
               asm.lda(at.call(PLACE))
@@ -317,7 +317,7 @@ module VBlank
               asm.ora(LOOPS)
               asm.sta(place.call(TICKET))
 
-              # rt_recordings_take: the row at row into the place Y holds, from the recording's start,
+              # rt_recordings_take: the row at ROW into the place Y holds, from the recording's start,
               # on its voice for one of the first four places. A = 1 after.
               asm.label("rt_recordings_take")
               asm.sty(at.call(PLACE))
@@ -398,7 +398,7 @@ module VBlank
 
             # What the sound unit hears of a note is only what these write, so in a game with a sound
             # queue each waits there as one entry and is worked out while the game waits for the screen
-            # (Sound's rt_sound_send_queued). rt_recordings_voice_start (JSL), with place and row set:
+            # (Sound's rt_sound_send_queued). rt_recordings_voice_start (JSL), with PLACE and ROW set:
             # the note, in Sound::NOTE_START_WRITES writes. rt_recordings_voice_volume (JSL), with
             # PLACE set: its loudness, in Sound::NOTE_VOLUME_WRITES.
             def emit_voice_routines(asm, at, memory, row, place)
@@ -495,7 +495,7 @@ module VBlank
               asm.jmp(asm.abs("rt_recordings_level_times"))
             end
 
-            # The place at place has no word about its loudness waiting in the queue any more: the
+            # The place at PLACE has no word about its loudness waiting in the queue any more: the
             # one that stood for it is being sent.
             def emit_clear_loudness_waiting(asm, at, place)
               asm.ldy(at.call(PLACE))
@@ -513,7 +513,7 @@ module VBlank
               asm.bne(whole)
             end
 
-            # A = byte +which+ (0 ADSR1, 1 ADSR2, 2 GAIN) of the chip envelope of the row at row.
+            # A = byte +which+ (0 ADSR1, 1 ADSR2, 2 GAIN) of the chip envelope of the row at ROW.
             def emit_chip_envelope_byte(asm, at, row, which)
               asm.ldx(at.call(ROW))
               asm.lda(row.call(SHAPED))
@@ -597,7 +597,7 @@ module VBlank
               # The quietest note falling away.
               asm.jsr(asm.abs("rt_recordings_quietest"))
               asm.branch_long(:bcc, "rt_recordings_note_found")
-              # The lowest-ranked place below the note's rank: best is the place offset one up, nought
+              # The lowest-ranked place below the note's rank: BEST is the place offset one up, nought
               # while none is found.
               asm.stz(at.call(BEST))
               each_place(asm, "rt_recordings_note_low") do |next_place|
@@ -654,7 +654,7 @@ module VBlank
 
             # The row at ROW's word of "recording_sides" (a word for each row's ROW_BYTES, X the row) into the
             # place's PLACE_SIDES, X the row again after.
-            # With +unless_kept+, a label, a word of kept leaves the place's sides as they are.
+            # With +unless_kept+, a label, a word of KEPT leaves the place's sides as they are.
             def emit_row_sides_copied(asm, at, place, unless_kept: nil)
               asm.txa
               (ROW_BYTES / 2).bit_length.pred.times { asm.lsr }
@@ -693,7 +693,7 @@ module VBlank
                 asm.lda(row.call(from))
                 asm.sta(place.call(to))
               end
-              # Its loudness and sides where it names them; a row holding kept leaves the note's.
+              # Its loudness and sides where it names them; a row holding KEPT leaves the note's.
               asm.lda(row.call(VOLUME))
               asm.cmp(KEPT)
               asm.beq("rt_recordings_glide_loud_kept")
@@ -711,7 +711,7 @@ module VBlank
               asm.lda(1)
               asm.rtl
 
-              # rt_recordings_voice_pitch (JSL), with place and row set: a new pitch for its voice, in
+              # rt_recordings_voice_pitch (JSL), with PLACE and ROW set: a new pitch for its voice, in
               # Sound::NOTE_PITCH_WRITES writes.
               asm.label("rt_recordings_voice_pitch")
               emit_registers(asm, at)
@@ -747,7 +747,7 @@ module VBlank
               asm.lda(0)
               asm.rtl
 
-              # rt_recordings_loud(volume): the place just taken, at place, sounding at +volume+, as the
+              # rt_recordings_loud(volume): the place just taken, at PLACE, sounding at +volume+, as the
               # music volume sets (Reference::Player#song_loudness).
               asm.label("rt_recordings_loud")
               asm.ldy(at.call(PLACE))
@@ -931,7 +931,7 @@ module VBlank
             # to its sustain; one falling falls by its release, and once at nothing is done. A heard
             # place's voice is told its new volume.
             #
-            # rt_recordings_volume: the voice of the place at place (its registers at registers) told the
+            # rt_recordings_volume: the voice of the place at PLACE (its registers at REGISTERS) told the
             # place's volume scaled by its level — the whole of it at full.
             #
             # A note's loudness changes every frame while it climbs or falls, and a game with no time
@@ -1042,8 +1042,8 @@ module VBlank
               emit_side_times(asm, at) if memory.reserved?(SIDES)
             end
 
-            # A = the loudness in best as side +side+ (0 the left, 1 the right) of the place at place
-            # hears it (sides).
+            # A = the loudness in BEST as side +side+ (0 the left, 1 the right) of the place at PLACE
+            # hears it (SIDES).
             def emit_side_loudness(asm, at, place, side)
               asm.ldy(at.call(PLACE))
               asm.lda(place.call(PLACE_SIDES))
@@ -1052,7 +1052,7 @@ module VBlank
               asm.jsr(asm.abs("rt_recordings_side_times"))
             end
 
-            # rt_recordings_side_times: A = the loudness in best times the share in A, out of
+            # rt_recordings_side_times: A = the loudness in BEST times the share in A, out of
             # Audio::Pan::SHARE_FULL, to the nearest whole step. A share is at most SHARE_FULL and a
             # loudness at most 127, so the product fits the multiplier's sixteen bits.
             def emit_side_times(asm, at)
@@ -1094,7 +1094,7 @@ module VBlank
               asm.label(scaled)
             end
 
-            # The voice of the place at place told its loudness, with Y that place. In a game with a
+            # The voice of the place at PLACE told its loudness, with Y that place. In a game with a
             # sound queue that is one word waiting, or none if one is, so a music volume falling on
             # eight notes fills the queue no more than their shapes do. On to +past+ if one is.
             def emit_told_new_volume(asm, at, memory, place, past)
@@ -1164,7 +1164,7 @@ module VBlank
             end
 
             # rt_recordings_stop(name, logged): every place playing recording +name+ (or every place,
-            # for all) freed, a heard one's voice let go, and [:stop_sample] logged (Reference::Mixer#stop).
+            # for ALL) freed, a heard one's voice let go, and [:stop_sample] logged (Reference::Mixer#stop).
             def emit_stop(asm, at, memory, heard)
               place = place_field(asm, memory)
               asm.label("rt_recordings_stop")
@@ -1280,7 +1280,7 @@ module VBlank
               asm.rts
             end
 
-            # One entry in the sound queue for what a place's voice is to be told, which place and row name.
+            # One entry in the sound queue for what a place's voice is to be told, which PLACE and ROW name.
             def emit_queued_entry(asm, at, command)
               asm.lda(at.call(PLACE))
               asm.sta(asm.direct(Sound::R0))
@@ -1293,14 +1293,14 @@ module VBlank
             # A field of the place whose offset Y holds, as an operand.
             def place_field(asm, memory) = ->(field) { asm.abs_y(memory[PLACES_STATE], field) }
 
-            # REGISTERS = the first register of the voice of the place at place (one that has a voice).
+            # REGISTERS = the first register of the voice of the place at PLACE (one that has a voice).
             def emit_registers(asm, at)
               asm.jsr(asm.abs("rt_recordings_voice_of_place"))
               4.times { asm.asl }
               asm.sta(at.call(REGISTERS))
             end
 
-            # A = the bit of the voice of the place at place, in KON and KOFF.
+            # A = the bit of the voice of the place at PLACE, in KON and KOFF.
             def emit_voice_bit(asm, _at)
               asm.jsr(asm.abs("rt_recordings_voice_of_place"))
               asm.tax
@@ -1314,7 +1314,7 @@ module VBlank
               asm.label("#{label}_done")
             end
 
-            # One write to register +register+ of the voice at registers, its value from the block (in A).
+            # One write to register +register+ of the voice at REGISTERS, its value from the block (in A).
             def emit_voice_write(asm, at, register)
               yield
               asm.and_a(0xFF)

@@ -28,7 +28,7 @@ module VBlank
           # in the low bits of INIDISP, which dims the finished picture as it goes out: nothing in
           # memory moves, so it costs a store in the blank however much is on the screen. A game's
           # own fades are done with it, so a game that fades to black (+dims+) notes how far down
-          # the display is (dimmed) and walks no colours for it, and the colours stay as they are,
+          # the display is (DIMMED) and walks no colours for it, and the colours stay as they are,
           # free to be changed under the fade. Toward white or a colour there is no such thing, and
           # those still walk.
           #
@@ -435,7 +435,7 @@ module VBlank
             # are the same, so one sum makes all three tables. A channel's word is the sum's high byte
             # (XBA) for red, the sum shifted right three for green and left two for blue, each masked.
             #
-            # The tables (table): red's 32 words, then green's and blue's side by side, four bytes a
+            # The tables (TABLE): red's 32 words, then green's and blue's side by side, four bytes a
             # value, so a colour's green and blue are each found by one mask of the colour (see
             # rt_tint_apply_run).
             RED_TABLE = 0

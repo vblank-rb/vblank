@@ -18,7 +18,7 @@ module VBlank
           #
           # So each pass's rectangles and pictures are WRITTEN DOWN as they are painted: their kind,
           # the area they were held to and their working numbers. The next pass's first clear of the
-          # whole screen, to the colour it is cleared to already, is deferred: the screen still holds
+          # whole screen, to the colour it is cleared to already, is DEFERRED: the screen still holds
           # the last pass's picture. Each painting is then compared with the one written down at the
           # same place in the log; the same, it is passed over. A pass that ends having matched the
           # whole log is the screen as it is, and nothing changes.
@@ -90,7 +90,7 @@ module VBlank
             end
 
             # At the top of a clear of the whole screen to the place in R0 (Paint's
-            # rt_paint_clear_whole): deferred, returning (RTL), when it is to the colour the screen
+            # rt_paint_clear_whole): DEFERRED, returning (RTL), when it is to the colour the screen
             # is cleared to already, the pass has made no clear yet and the last pass was written
             # down whole. While one is deferred, a second starts the comparing again from the top.
             # A clear to another colour is made, and with it any deferred.
@@ -126,7 +126,7 @@ module VBlank
             # At the start of a painting routine (JSL) of +kind+, known by +bytes+ of working numbers
             # (in the direct page from 0): while a clear is deferred, compared with the entry at
             # LOG_END and passed over (RTL) when it is the same; else written down, while the pass is.
-            # Painting it again from the log starts at its now label, past this.
+            # Painting it again from the log starts at its NOW label, past this.
             #
             # A +kind+ with HIGH_HALVES_NOUGHT is a fill handed only its numbers' low halves: it
             # compares those alone (PaintLog#compared_words), and nought is put in the high halves

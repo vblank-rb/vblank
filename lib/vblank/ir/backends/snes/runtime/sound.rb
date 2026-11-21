@@ -39,7 +39,7 @@ module VBlank
           # counted in DROPPED, and the game goes on.
           #
           # A note is nine writes (two commands in a game with sound effects, #driver says why), and each still waits for the one before, so parts starting notes
-          # together would stand in a game's way. So a game with music queues its writes (queue) and
+          # together would stand in a game's way. So a game with music queues its writes (QUEUE) and
           # the queue is sent while the game waits for the screen, one write each time the sound
           # unit has answered (#emit_idle_step). A recorded note, or its loudness, is one entry until
           # it reaches the front. Queueing takes a few instructions, and the waiting comes out of
@@ -158,7 +158,7 @@ module VBlank
             QUEUE_TAIL_KEPT = "rt sound queue tail kept"
             # The line ahead of it, in a game with sound effects (#emit_write_ahead), a ring laid out
             # the same way. ASKING_AHEAD is set while an effect plays, FRONT_LEFT counts what is at the
-            # front of the queue to go before the next can be moved there, and forgotten is what an
+            # front of the queue to go before the next can be moved there, and FORGOTTEN is what an
             # entry becomes that nothing wants any more.
             AHEAD = "rt sound ahead"
             AHEAD_HEAD = "rt sound ahead head"
@@ -1159,7 +1159,7 @@ module VBlank
             end
 
             # rt_sound_queue_make_room, with the queue nearly full and the place past its end on the
-            # stack: the oldest entries sent, however long the sound unit takes, up to patience tries,
+            # stack: the oldest entries sent, however long the sound unit takes, up to PATIENCE tries,
             # and then dropped and counted until there is room. A game that never waits for the
             # screen goes on this way, a command at a time, once its queue has filled.
             def emit_queue_room_made(asm, memory, samples)
