@@ -8,17 +8,17 @@ require "differential"
 # one per pixel — so they play on the Advance's runs alone. The rest are in that file, and what
 # the Advance's cartridge shows is in test/lowering/gba/vblank/builder/test_buffered_blit_cartridge.rb.
 #
-# Drawing a whole PICTURE on the tear-free screen. The promise is the one every other draw makes
+# Drawing a whole picture on the tear-free screen. The promise is the one every other draw makes
 # here: the same picture at the same place with the same clipping, whichever screen it is drawn
 # on.
 class TestBufferedBlitOnTheAdvance < Minitest::Test
   include VBlank::IR::Build
   include Differential
 
-  # A picture whose every pixel says WHERE IT CAME FROM — its column in the red channel
+  # A picture whose every pixel says where it came from — its column in the red channel
   # and its row in the green — so a pixel read from the wrong place lands a colour that
   # names the place it really came from. Both axes matter: a picture of stripes would
-  # hide a row read at the wrong offset ACROSS, which is exactly the mistake a clipped
+  # hide a row read at the wrong offset across, which is exactly the mistake a clipped
   # left edge makes.
   #
   # Four wide, because the screen moves two pixels at a time and an odd width could not
@@ -68,7 +68,7 @@ class TestBufferedBlitOnTheAdvance < Minitest::Test
 
   # --- clipped at every edge, the same as the direct screen ------------------------
 
-  # Half off each edge, and one wholly outside. The comparison is against the DIRECT
+  # Half off each edge, and one wholly outside. The comparison is against the direct
   # screen running the same program, which is the promise: same picture, same place,
   # same clipping, only the screen differs.
   EDGES = [
@@ -102,7 +102,7 @@ class TestBufferedBlitOnTheAdvance < Minitest::Test
     assert_equal Color.resolve(:black), s.pixel(1, 41)
   end
 
-  # THE LEFT EDGE IS THE ONE THAT NEEDS A PICTURE VARYING ACROSS, and it is worth its own
+  # The left edge is the one that needs a picture varying across, and it is worth its own
   # test rather than only the whole-screen comparison. A picture hanging off the left must
   # show its RIGHT-HAND columns at the screen's left, because the columns before them are
   # the ones cut off — and a reader that forgot to skip them would show the left-hand
@@ -115,9 +115,9 @@ class TestBufferedBlitOnTheAdvance < Minitest::Test
     end
   end
 
-  # INSIDE AN AREA the edges move, and that is what makes an edge off by one visible at
-  # all. A row one past the bottom of the SCREEN lands in memory nobody ever shows, so
-  # no pixel can tell you about it; a row one past the bottom of an AREA lands in plain
+  # Inside an area the edges move, and that is what makes an edge off by one visible at
+  # all. A row one past the bottom of the screen lands in memory nobody ever shows, so
+  # no pixel can tell you about it; a row one past the bottom of an area lands in plain
   # sight, on a part of the screen the area said to leave alone.
   private def area_program(x, y, buffered:)
     program(
