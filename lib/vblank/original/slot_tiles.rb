@@ -2,11 +2,11 @@
 
 module VBlank
   module Original
-    # THE TILES OF ONE SLOT OF TILES (a Slot of shape :tiles), each read from the slot's bytes the
+    # The tiles of one slot of tiles (a Slot of shape :tiles), each read from the slot's bytes the
     # first time a verb asks for it and kept after that. A build asks for a tile by its number, as
     # an Array is asked: #fetch, #first, #length.
     #
-    # WHY ONE TILE AT A TIME, AND NOT THE WHOLE SLOT ONCE. An original keeps each sprite's tiles in
+    # Why one tile at a time, and not the whole slot once. An original keeps each sprite's tiles in
     # one sheet, and a sheet can be many thousands of tiles (the Minish Cap's are up to 18,163),
     # while one pose reads a handful of them. Reading a tile is 64 places worked out in Ruby, so
     # reading a whole sheet costs far more than every pose of a room together, and a whole game

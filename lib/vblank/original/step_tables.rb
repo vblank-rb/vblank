@@ -2,7 +2,7 @@
 
 module VBlank
   module Original
-    # THE STEPS OF AN UNPACKING ROUTINE, KEPT AS ROWS OF TABLES WHERE THEY CAN BE. Each step a
+    # The steps of an unpacking routine, kept as rows of tables where they can be. Each step a
     # routine asks for (`copy.unpack_<format>`, `copy.copy_bytes`) is the same few statements: the
     # kit's variables set to what the step is given, a call of the format's routine, and a wait for
     # the next frame (CopyReader#emit_block_call). A port asks for them from a Ruby loop over its
@@ -16,12 +16,12 @@ module VBlank
     # each round the variables set from that round's row, the routine called and the frame waited
     # for. The same steps in the same order, with the same waits.
     #
-    # A TABLE FOR EACH VARIABLE, not one wide table of rows: a read needs no multiply to find its
+    # A table for each variable, not one wide table of rows: a read needs no multiply to find its
     # row, a variable whose number is the same in every step is set to that number and needs no
     # table, and each table takes the narrowest width its numbers fit, where a slot's number or a
     # format's needs a byte and a place in the copy a word.
     #
-    # WHAT ENDS A RUN: a step given a value the routine works out as it runs (a place read from the
+    # What ends a run: a step given a value the routine works out as it runs (a place read from the
     # copy) is left as it is, and so is anything else the routine does between two steps. Each step
     # records where its statements are in the container they went into, and a step joins a run only
     # when its statements start right after the run's last. A run whose statements have moved since

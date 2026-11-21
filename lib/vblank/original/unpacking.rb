@@ -2,11 +2,11 @@
 
 module VBlank
   module Original
-    # A DATA PACK'S UNPACKING, AS A PROGRAM OF ITS OWN: the game's unpacking routine
+    # A data pack's unpacking, as a program of its own: the game's unpacking routine
     # (`slots.fill_from_copy`) built into a program that reads the copy and writes every slot of the
     # pack, and what to read back from a run of it.
     #
-    # WHY A PROGRAM OF ITS OWN, and not a part of the game. The routine has to run before anything
+    # Why a program of its own, and not a part of the game. The routine has to run before anything
     # reads a slot, and a build reads slots as the game is built: `image` and `table` take a slot's
     # bytes then, in Ruby. So built all-in-one (every build today, and every cartridge for good)
     # the routine runs as the game is built, the fastest way this machine has (#run_fastest, from
@@ -17,7 +17,7 @@ module VBlank
     # table, a byte list, loops, routines, `wait_vblank`, `halt`), so every run plays it as it plays
     # any game, checked against the interpreter, and nothing new is asked of a backend.
     #
-    # THE COPY IS A FILE THE PROGRAM IS HANDED AS IT STARTS (IR::StartFile), however it is built,
+    # The copy is a file the program is handed as it starts (IR::StartFile), however it is built,
     # so the program holds none of the original's bytes: a copy of tens of megabytes held as a
     # table, one Ruby number a byte, and written out again as text for the pack cache's key, would
     # cost many times its size. Built all-in-one, the build hands it the copy it read (#run_on). A
@@ -28,10 +28,10 @@ module VBlank
     # The routine itself does not change for any of that. What a shell must still add is playing it
     # inside the shipped game before the game, and keeping the pack it wrote.
     #
-    # WHAT IS IN IT. The copy is a table of bytes (COPY), read from the file. The pack is one list of
+    # What is in it. The copy is a table of bytes (copy), read from the file. The pack is one list of
     # bytes (BYTES), every slot in it one after another in the pack's order (#places), as the pack
     # file keeps them.
-    # The slots copied as they are (`at:`) are copied first, then the routine runs, then FINISHED is
+    # The slots copied as they are (`at:`) are copied first, then the routine runs, then finished is
     # set and the program halts. The building blocks (CopyReader, Packing::BlockKit) add what they
     # write to BYTES_DONE as they go and wait for the next frame every so often, so a shell can show
     # how far the unpacking has got. The first thing that goes wrong (Fault) is kept in the FAULT_
@@ -41,7 +41,7 @@ module VBlank
     # +copy_bytes+ is the copy where the build read one (an all-in-one build), handed to the program
     # as its file whenever it is played (#run_on); nil for a shell's, which is handed the player's.
     #
-    # THE FRAMES A GAME NAMES ARE WRITTEN LAST (+frames+, a FrameRecord::Section). Once every slot
+    # The frames a game names are written last (+frames+, a FrameRecord::Section). Once every slot
     # is filled, the routine reads each frame of a sprite the game names from its slot and writes
     # it after the last slot as a record of VBlank's own (FrameRewrite), which is all that anything
     # drawing a pose reads. That is so for a slot copied as it is too, in a pack with no routine.
@@ -79,7 +79,7 @@ module VBlank
       def most_frames = copy_size + byte_size + SPARE_FRAMES
       def most_steps_a_frame = ((copy_size + byte_size) * STEPS_A_BYTE) + SPARE_STEPS
 
-      # THE FASTEST RUN THIS MACHINE HAS, for at most +frames+ frames: built as C where zig is
+      # The fastest run this machine has, for at most +frames+ frames: built as C where zig is
       # installed (#run_as_c), else built as Ruby (#run_as_ruby), and on the interpreter where the
       # Ruby runtime cannot play the program yet. What a build plays (Builder::DataPacks#play_unpacking),
       # and what a game's test asks for to make the pack a build makes. Every way writes the same
@@ -92,7 +92,7 @@ module VBlank
         play_fastest(frames: frames, stuck_after: stuck_after) { run_as_c(frames: frames, stuck_after: stuck_after) }
       end
 
-      # THE PACK FILE, made the fastest way this machine has (as #run_fastest) and written to the
+      # The pack file, made the fastest way this machine has (as #run_fastest) and written to the
       # file at +path+, for the copy whose SHA-1 is +sha1+ and the build +build_version+: the bytes
       # #pack_file_in gives, whichever way played it. What an all-in-one build makes its pack with
       # (Builder::DataPacks#play_unpacking). Gives back the run, to ask whether the routine finished
@@ -141,7 +141,7 @@ module VBlank
       # are read back as an interpreter run's are. IR::Backends::Ruby::RuntimeGap where the Ruby
       # runtime cannot play the program yet; IR::ProgramError where it stops as the interpreter would.
       #
-      # A STUCK ROUTINE. The game built as Ruby runs straight through until it waits for a frame,
+      # A stuck routine. The game built as Ruby runs straight through until it waits for a frame,
       # as a cartridge does: it counts no steps, which is much of why it is fast. So a loop that
       # never waits would keep the build forever, where the interpreter's step budget stopped it.
       # A watchdog thread stops it instead (ArgumentError) once +stuck_after+ seconds go by with no
@@ -258,7 +258,7 @@ module VBlank
       # The variable that holds the piece's number as the program plays it.
       PIECE_PLAYED = Messages::MadeNames.make(:unpacking_part, part: :piece_played)
 
-      # WHAT WENT WRONG AS THE ROUTINE RAN, the first time anything did. +kind+ is one of the five
+      # What went wrong as the routine ran, the first time anything did. +kind+ is one of the five
       # below. For the first four, +at+ is a place in the copy for the first two, a byte outside the
       # slot for the third (a format's write names the first byte past the slot's end, whether it
       # found the write did not fit when the size was expected or when the byte was written), and
