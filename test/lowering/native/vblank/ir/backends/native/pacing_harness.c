@@ -2,23 +2,23 @@
  * Asks runtime/rg_pacing.h its two questions, a line of standard input each. See
  * test_native_pacing.rb.
  *
- *   monitor RATE   how the window paces its frames on a monitor refreshing RATE times a second:
+ *   monitor rate   how the window paces its frames on a monitor refreshing rate times a second:
  *                  prints how many refreshes a picture is shown for, whether a picture waits for
  *                  a refresh, and how fast the game then runs
  *
- *   picture RATE   how long a picture is shown for on such a monitor where it paces the game, in
+ *   picture rate   how long a picture is shown for on such a monitor where it paces the game, in
  *                  nanoseconds
  *
- *   handover RATE INTERVAL ONE
+ *   handover rate interval one
  *                  how the window is drawn for each picture on such a monitor, when the display
- *                  has (1) or has not (0) accepted a wait for the picture's refreshes (INTERVAL)
- *                  and a wait for one refresh (ONE): prints how many times it is drawn for a
+ *                  has (1) or has not (0) accepted a wait for the picture's refreshes (interval)
+ *                  and a wait for one refresh (one): prints how many times it is drawn for a
  *                  picture, how many refreshes the display waits at each, and whether it can be
  *                  made to wait at all
  *
- *   frames RATE LEGS GAP COUNT [GAP COUNT ...]
- *                  plays one run of frames on such a monitor, in LEGS legs one after another:
- *                  COUNT frames, each coming round GAP nanoseconds after the one before unless
+ *   frames rate legs gap count [gap count ...]
+ *                  plays one run of frames on such a monitor, in legs legs one after another:
+ *                  COUNT frames, each coming round gap nanoseconds after the one before unless
  *                  the limit on the game's speed holds it longer. Prints how many frames of each
  *                  leg the limit held, and then how long the whole run took
  */

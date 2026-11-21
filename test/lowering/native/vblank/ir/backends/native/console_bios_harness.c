@@ -1,6 +1,6 @@
 /*
  * Asks runtime/rg_console_bios.h for the player's BIOS, a line of standard input each, its fields
- * divided by tabs: ENVIRONMENT SETTING SHARED_FOLDER KNOWN_SHA1, with "-" for one that is not set and
+ * divided by tabs: environment setting SHARED_FOLDER KNOWN_SHA1, with "-" for one that is not set and
  * "empty" for one set to nothing. Prints "none", "found<TAB>PATH" or "refused<TAB>PATH<TAB>MESSAGE".
  * See test_native_console_bios.rb.
  */

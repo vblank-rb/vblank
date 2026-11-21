@@ -6,19 +6,19 @@
  *   most_scale 6                     the biggest the window can be made
  *   toggle                           open the menu, or close it
  *   press up|down|left|right|enter|close
- *   hotkey NAME                      a hotkey pressed, as rg_window.c takes it: frame_rate, mute...
+ *   hotkey name                      a hotkey pressed, as rg_window.c takes it: frame_rate, mute...
  *   capture_key N                    a key pressed, by number, while one is being chosen
  *   capture_pad N                    a gamepad button pressed, by SDL's number, the same
  *   draw WIDTH HEIGHT DENSITY HELD FAST RATE WORK
- *                                    print what the menu draws; RATE and WORK are words, - for none
+ *                                    print what the menu draws; rate and work are words, - for none
  *   watch_begin                      the game's variables read afresh: none yet
- *   watch NAME VALUE                 ...and one of them, as the window reads it from the game
+ *   watch name value                 ...and one of them, as the window reads it from the game
  *   type_key N                       a key pressed, by SDL's number, for the window of variables
  *   variables up|down|close          a key of the menu's pressed, for the window of variables
- *   problems WORDS                   what could not be used in the settings file, a | for each line break
- *   tell WORDS                       what a shell tells the player, the same, under the title Load ROM
- *   tell_titled TITLE WORDS          what the window tells the player under TITLE, a _ for each space in it
- *   fits WIDTH HEIGHT DENSITY        print "fits 1" when every box shown fits a window that size, else "fits 0"
+ *   problems words                   what could not be used in the settings file, a | for each line break
+ *   tell words                       what a shell tells the player, the same, under the title Load ROM
+ *   tell_titled title words          what the window tells the player under title, a _ for each space in it
+ *   fits width height density        print "fits 1" when every box shown fits a window that size, else "fits 0"
  *   answer                           a button pressed, which answers what the window says
  *   state                            print whether it is open and whether Quit was chosen
  *   slot N WORDS                     what slot N (0 is the quick one) says at its right, as a state's time
