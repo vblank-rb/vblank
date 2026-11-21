@@ -21,8 +21,8 @@ require "open3"
 #   node -> test   chat from text  a line of chat that came from another player
 #
 # A copy that meets the others through a relay (relay_copy) is carried the same way, but what it says to the
-# relay is text for a line: `relay-out text`, `relay?` and `relay-in TEXT` / `relay-end` / `relay-closed`, and it
-# says `room code` when it has made a room. The line is a Network::InProcessLine to a StandInRelay, or anything
+# relay is text for a line: `relay-out TEXT`, `relay?` and `relay-in TEXT` / `relay-end` / `relay-closed`, and it
+# says `room CODE` when it has made a room. The line is a Network::InProcessLine to a StandInRelay, or anything
 # that answers send_text, receive_text, wait_for_text and closed?.
 module NodeCopy
   Wire = VBlank::Network::Wire

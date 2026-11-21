@@ -28,7 +28,7 @@ module ManyTiles
   # Declare +count+ tiles in +builder+, as images named +prefix+ and a number and a tileset named
   # +prefix+, each one +color+ on black in a pattern no other tile numbered +from+ to +from+ +
   # +count+ has, however either is turned: its number in binary, a pixel a bit, along its first
-  # rows, and CORNER. Hands back the map that shows each of them once, across to a row, keyed by its
+  # rows, and CORNER. Hands back the map that shows each of them once, ACROSS to a row, keyed by its
   # number in the set.
   def declare(builder, prefix, count, color, from: 0)
     keys = (0...count).to_h do |k|
@@ -66,7 +66,7 @@ module ManyTiles
   end
 
   # Declare in +builder+ a tile for each of +lists+ — four colours each, place 0 see-through — drawn
-  # by place in all four of its list's places (quarters), for the tests of what a console does when
+  # by place in all four of its list's places (QUARTERS), for the tests of what a console does when
   # a game draws from more lists of colours than it holds at once. The lists and images are named
   # +prefix+ and a number, the tileset +prefix+. Hands back a row of a map showing each tile once.
   def declare_listed(builder, prefix, lists)

@@ -26,7 +26,7 @@ module PackScoresAtStartTests
   OWN = PackNote::PART_OWN
 
   # A part's notes as the records a pack holds: [at, length, key, instrument, volume] each, a
-  # length of 0 for until the next note, a key of rest for a rest, and a loudness in 512ths after
+  # length of 0 for until the next note, a key of REST for a rest, and a loudness in 512ths after
   # the volume where a note gives one, then its speaker and its noise clock where it gives them.
   # Then a note that ends the part, and filler after it that no part may play.
   private def records(notes)
@@ -79,11 +79,11 @@ module PackScoresAtStartTests
   WAVES = [(0...16).map { |at| at * 17 }, (0...16).map { |at| ((15 - at) << 4) | (at % 7) }].freeze
   WAVES_AT = 2096
 
-  # Wave +index+ of waves as the 32 steps a part written by hand plays.
+  # Wave +index+ of WAVES as the 32 steps a part written by hand plays.
   private def wave_steps(index) = WAVES.fetch(index).flat_map { |byte| [byte >> 4, byte & 0xF] }
 
   # The pack file holding +parts+ (their records by slot name), as a player's machine would make it.
-  # +timing+ is what its song's length and loop hold, and with +waves+ it holds waves.
+  # +timing+ is what its song's length and loop hold, and with +waves+ it holds WAVES.
   # +timing_packing+ is how the timing slot's numbers are written: two bytes, low byte first, unless
   # the game names another shape for the slot (+timing_slot+ of #scored_game).
   private def pack_file(parts, timing: TIMING, waves: false, timing_packing: "v*")
@@ -96,7 +96,7 @@ module PackScoresAtStartTests
   # A game whose songs and sound effects are made by the block, which is handed a way to get a
   # part's notes by slot name: the slot's handle with the pack left out (+folder+ given), or the
   # notes written by hand. It plays song 0 on A and sound effect 0 on B, or with +plays+ false
-  # declares them and plays neither. With +waves+ the pack has a slot of waves, and the block is
+  # declares them and plays neither. With +waves+ the pack has a slot of WAVES, and the block is
   # handed a way to get one of them for a part's `plays:`, the same way.
   # +timing_slot+ is the timing slot's shape: its width and whether it goes below zero, and its
   # byte order where it names one.
@@ -780,7 +780,7 @@ module PackScoresAtStartTests
     [[16, 6, 60, OWN, { wave: 9 }], { key: 60 }],
     [[24, 0, 62, OWN, { wave: 2 }], { key: 62, wave: :wave_1 }]
   ].freeze
-  # The pack's waves a note written by hand names, by which of waves each is.
+  # The pack's waves a note written by hand names, by which of WAVES each is.
   PACK_WAVE_NAMES = { wave_0: 0, wave_1: 1 }.freeze
 
   # A game of a song of the drum and the pad, read from voiced slots with the pack left out
@@ -851,7 +851,7 @@ module PackScoresAtStartTests
   ].freeze
   HORN_RATE_AT = 2080
 
-  # +notes+ (GLIDING or hissed) for this run's console: a console whose recorded notes cannot
+  # +notes+ (GLIDING or HISSED) for this run's console: a console whose recorded notes cannot
   # glide (Console::Description#glides_recordings) strikes each instead, in the records and by hand.
   private def for_console(notes)
     return notes if VBlank::Console.described(game_console).glides_recordings

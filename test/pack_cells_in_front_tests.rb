@@ -52,8 +52,8 @@ module PackCellsInFrontGames
 
   # A second area, for a background walking between areas: the same cells, each mark the other way.
   FAR_CELLS = CELLS.map { |tile, front| [tile, !front] }.freeze
-  # The passes the walking game (#front_areas_game_and_file) writes written in the first area on,
-  # walks to the second on, and writes written there on.
+  # The passes the walking game (#front_areas_game_and_file) writes WRITTEN in the first area on,
+  # walks to the second on, and writes WRITTEN there on.
   NEAR_WRITTEN_PASS = 4
   FAR_WALK_PASS = 7
   FAR_WRITTEN_PASS = 10
@@ -102,7 +102,7 @@ module PackCellsInFrontGames
     [b.program, b.made_data_pack_file]
   end
 
-  # +cells+ with written at WRITTEN_AT.
+  # +cells+ with WRITTEN at WRITTEN_AT.
   private def with_written(cells) = cells.dup.tap { |written| written[WRITTEN_AT] = WRITTEN }
 
   # The game of two sprites in front taking turns: the pointer and the hand, each of one colour all
@@ -137,7 +137,7 @@ module PackCellsInFrontGames
     (top...(top + SPRITE_SIDE)).flat_map { |y| (left...(left + SPRITE_SIDE)).map { |x| [x, y] } }
   end
 
-  # The made-up Genesis original: cells as its map at MAP_AT, its two banks at COLORS_AT, PLACES as
+  # The made-up Genesis original: CELLS as its map at MAP_AT, its two banks at COLORS_AT, PLACES as
   # its tiles at TILES_AT, and each cell's tile and mark as bytes, for a port that writes map cells.
   private def front_original(folder)
     tiles = PLACES.map(&MadeUpOriginalLayouts::HIGH_HALF_FIRST).join
@@ -158,7 +158,7 @@ module PackCellsInFrontGames
   # The game: the original's map as a background that reads its cells' marks, and the sprite over
   # it. +map+ is :console for the Genesis's own cells, or :map_cells for map cells the unpacking
   # writes. +cells_in_front+ is what the background is given. With +written+, the background is
-  # told written and writes it at WRITTEN_AT on pass WRITTEN_PASS. With +pointer+ a sprite in front
+  # told WRITTEN and writes it at WRITTEN_AT on pass WRITTEN_PASS. With +pointer+ a sprite in front
   # (POINTER_PLACES) is over the walker. Hands back the program and the pack file the build made
   # (nil with the pack left out).
   private def front_game_and_file(folder, map: :console, cells_in_front: true, written: false, pointer: false,
@@ -231,7 +231,7 @@ module PackCellsInFrontGames
     end.to_h.compact
   end
 
-  # CELLS with written at WRITTEN_AT.
+  # CELLS with WRITTEN at WRITTEN_AT.
   private def cells_written = CELLS.dup.tap { |cells| cells[WRITTEN_AT] = WRITTEN }
 
   private def shown_pixels(screen, wanted) = wanted.keys.to_h { |x, y| [[x, y], screen.pixel(x, y)] }
