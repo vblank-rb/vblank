@@ -31,7 +31,7 @@ module VBlank
           # (WALK_TABLES, rt_colors_walk_tables), and a colour is then three halfwords read and put together
           # (rt_colors_walk), with no multiply and no call for each.
           #
-          # A change only marks what it changed (dirty): a list or a background told another set marks the
+          # A change only marks what it changed (DIRTY): a list or a background told another set marks the
           # colour tables its entries are in (each table's record in "colors tables") and the backdrop if it is
           # one, a fade or tint every one. They are worked out once, as the pass's picture is drawn
           # (rt_colors_shown, the first thing rt_tiles_draw does), and only the tables marked are walked and

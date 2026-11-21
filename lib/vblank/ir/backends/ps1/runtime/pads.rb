@@ -209,7 +209,7 @@ module VBlank
               asm.bne(:t2, :t0, "rt_pad_acknowledged_next")
               asm.sw(:t3, at.call(Frame::PAD_BYTE), :gp)
               asm.label("rt_pad_acknowledged_next")
-              # The second byte asks for the buttons, and the rest are noughts (sent).
+              # The second byte asks for the buttons, and the rest are noughts (SENT).
               asm.li(:t0, 1)
               asm.bne(:t2, :t0, "rt_pad_acknowledged_send") { asm.move(:t3, :zero) }
               asm.li(:t3, SENT[1])

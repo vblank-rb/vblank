@@ -27,7 +27,7 @@ module VBlank
           # the corners from the list; only when there are three or more are the edges and the perspective
           # worked out (LEFT_OFFSET_BYTES to SPANS_OFFSET_BYTES), and rt_fill_face called.
           #
-          # The pieces are kept in RAM out of gp's reach (pieces, made only for a game that fills faces):
+          # The pieces are kept in RAM out of gp's reach (PIECES, made only for a game that fills faces):
           # each a count and up to FacePieces::MOST_CORNERS corners, POLYGON_BYTES in all. A piece holds
           # the address of each of its corners, a word, not the corner's FacePieces::NUMBERS words: a cut
           # hands most of a piece's corners on to the pieces either side of its line unchanged, and the
@@ -76,7 +76,7 @@ module VBlank
             # (Nodes::FillFace::CORNER_NUMBERS).
             LIST_CORNER_BYTES = Nodes::FillFace::CORNER_NUMBERS * 4
 
-            # Where each number is in face, in bytes from its start.
+            # Where each number is in FACE, in bytes from its start.
             PICTURE_OFFSET_BYTES = 0
             COUNT_OFFSET_BYTES = 4
             LEFT_OFFSET_BYTES = 8
@@ -145,8 +145,8 @@ module VBlank
             EDGE_END_OFFSET_BYTES = FacePieces::EDGE_END * 4
             CORNER_BYTES = (FacePieces::EDGE_END + 1) * 4
 
-            # A corner's light is held to lightest by testing its top half for nought (rt_fill_face), which
-            # is right only while lightest is the whole bottom half.
+            # A corner's light is held to LIGHTEST by testing its top half for nought (rt_fill_face), which
+            # is right only while LIGHTEST is the whole bottom half.
             raise "rt_fill_face holds a light to 0xFFFF, not #{Nodes::FillFace::LIGHTEST}" unless Nodes::FillFace::LIGHTEST == 0xFFFF
 
             # A piece: its count, then the address of each corner.
@@ -159,7 +159,7 @@ module VBlank
               raise "a corner in the pool keeps x, y and its nearness where the list's corner does not"
             end
 
-            # The pieces, in pieces: the face, two rests for cutting it into rows, a row, two rests for
+            # The pieces, in PIECES: the face, two rests for cutting it into rows, a row, two rests for
             # cutting a row into squares, a square, two for cutting on the picture, then those waiting.
             POLYGONS = %i[face rows_a rows_b row squares_a squares_b square part_a part_b].freeze
             WAITING_OFFSET_BYTES = POLYGONS.length * POLYGON_BYTES
@@ -218,7 +218,7 @@ module VBlank
 
             module_function
 
-            # FILL_STACK and face, for a game that fills faces, in the scratchpad: asked for before anything
+            # FILL_STACK and FACE, for a game that fills faces, in the scratchpad: asked for before anything
             # else is given any of it, so they are always there.
             def reserve(memory)
               memory.reserve_scratchpad(FILL_STACK, FILL_STACK_BYTES)
@@ -829,7 +829,7 @@ module VBlank
             end
 
             # A straight face's corner's colour at s3, from its light at s1, on a lit face (FacePieces.corner_from_list
-            # and .corner_color): the light held to nought to lightest, moved up seven bits, the light floor
+            # and .corner_color): the light held to nought to LIGHTEST, moved up seven bits, the light floor
             # added, and its whole part held to FULL_COLOR in each of the word's three bytes. A face not lit
             # sends none.
             def emit_straight_corner_color(asm, at)
@@ -1287,7 +1287,7 @@ module VBlank
               asm.sw(:t1, 12, :s4)
               asm.sw(:t2, 16, :s4)
               asm.jal("rt_face_texel") { asm.move(:a0, :s4) }
-              # The shade (FacePieces.corner_from_list): the light held to nought to lightest, moved up seven
+              # The shade (FacePieces.corner_from_list): the light held to nought to LIGHTEST, moved up seven
               # bits, and the light floor added; nought for a face not lit.
               asm.lw(:t0, at + LIGHT_FLOOR_OFFSET_BYTES, FACE_BASE)
               asm.lw(:t1, 20, :s3) # the light
@@ -2548,7 +2548,7 @@ module VBlank
               asm.jr(:ra)
             end
 
-            # Where the least of +number+ (one of EXTENT_NUMBERS) over the piece being sent is in face; its
+            # Where the least of +number+ (one of EXTENT_NUMBERS) over the piece being sent is in FACE; its
             # most is the word after.
             def least_offset_bytes(number) = EXTENTS_OFFSET_BYTES + (EXTENT_NUMBERS.index(number) * 8)
 
@@ -2656,7 +2656,7 @@ module VBlank
 
             # rt_face_texel: a0 = a corner, its u and v the whole texel there (FacePieces.set_texel!): without
             # perspective a and b's whole parts; in perspective a and b times the distance, which is
-            # IR::Reciprocals.distance of w (w held to least, its leading eleven bits looked up, and the entry
+            # IR::Reciprocals.distance of w (w held to LEAST, its leading eleven bits looked up, and the entry
             # moved down by as many places as w was, less two). Changes t0 to t6 and t9.
             def emit_texel_routine(asm, at)
               a = NUMBER_OFFSETS.fetch(FacePieces::U_SOURCE)
@@ -2679,7 +2679,7 @@ module VBlank
               asm.label("rt_face_texel_too_far")
               asm.li(:t2, IR::Reciprocals::LEAST)
               asm.label("rt_face_texel_far_enough")
-              # w is at least least, so a quarter of it has eleven bits or more; it is moved down by 16, 8, 4,
+              # w is at least LEAST, so a quarter of it has eleven bits or more; it is moved down by 16, 8, 4,
               # 2 and 1 wherever what is left still has more than eleven, t4 counting how far.
               asm.srl(:t3, :t2, 2)
               asm.move(:t4, :zero)
