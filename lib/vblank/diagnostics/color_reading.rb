@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # WHAT A READER OVER A RUNNING GAME BOY COLOR CARTRIDGE CAN BE ASKED that only the Color's way
+    # What a reader over a running Game Boy Color cartridge can be asked that only the Color's way
     # of keeping things answers: whose each sprite is, and how many passes of the game loop it
     # finished — the same questions an Advance reader answers its own way (AdvanceReading).
     #
@@ -12,7 +12,7 @@ module VBlank
     # game read the buttons, the mixer of recordings a Color game cannot have — a Color reader
     # does not have at all.
     #
-    # THE SOUND OF THE FIRST FEW FRAMES is the Color's speaker settling after power-on, which the
+    # The sound of the first few frames is the Color's speaker settling after power-on, which the
     # emulator plays as it is: a silent game has some sound energy there that dies away. Ask about
     # the game's own sound after the game has started.
     module ColorReading
@@ -27,14 +27,14 @@ module VBlank
       SCROLL_REGISTERS = { SCY: 0xFF42, SCX: 0xFF43, WY: 0xFF4A, WX: 0xFF4B }.freeze
       VIDEO_REGISTERS = { LCDC: 0xFF40 }.freeze
 
-      # THE SOUND CHIP'S REGISTERS, for Verifier#watch_sound: NR10 to NR51, the four voices' and the
+      # The sound chip's registers, for Verifier#watch_sound: NR10 to NR51, the four voices' and the
       # mixer's. NR52 (the switch for the whole chip) and the wave voice's own memory are left out.
       SOUND_REGISTER_ADDRESSES = (0xFF10..0xFF25)
       def sound_register_addresses = SOUND_REGISTER_ADDRESSES
       # The Color's processor writes a byte at a time.
       def sound_write_mask = 0xFF
 
-      # WHAT THE CONSOLE MAKES ITS PICTURE FROM, other than the tiles' pictures, as
+      # What the console makes its picture from, other than the tiles' pictures, as
       # AdvanceReading#video_memories gives it: the 64 colours, the sprite table by its bytes,
       # the scroll and the window's place, and the register that switches the parts on.
       def video_memories
@@ -45,7 +45,7 @@ module VBlank
           registers: VIDEO_REGISTERS.transform_values { |address| mem8(address) } }
       end
 
-      # THE SPRITE TABLE AS BOXES (SpriteBox), one for each of the forty entries the console draws, in
+      # The sprite table as boxes (SpriteBox), one for each of the forty entries the console draws, in
       # the table's order. Nothing here needs a build record, so it is how a cartridge with none shows
       # where its sprites are. An entry is four bytes: its down plus 16, its across plus 8, its tile
       # and its settings. So a sprite at nought either way is wholly off the screen, which is how a game
@@ -65,7 +65,7 @@ module VBlank
 
       TALL_SPRITES_BIT = 0x04
 
-      # A GAME BOY CARTRIDGE WITH A CLOCK CHIP has the emulator write the chip's counters, and the
+      # A Game Boy cartridge with a clock chip has the emulator write the chip's counters, and the
       # moment it last read them, after the save memory in its file: 48 bytes, the layout other Game
       # Boy emulators write too. What the game saved is the memory before them, in whole banks.
       SAVE_FILE = Verifier::SaveFileLayout.new(whole: Console::GBCHardware::SRAM_BANK_SIZE, clock_bytes: 48)
@@ -75,7 +75,7 @@ module VBlank
 
       private def list_layout = IR::Backends::GBC::Runtime::Lists
 
-      # A VARIABLE KEPT NARROW — one the game declared narrow, or one only ever holding a byte or two
+      # A variable kept narrow — one the game declared narrow, or one only ever holding a byte or two
       # (IR::Backends::GBC::NarrowVariables) — is kept in a byte or two here, with the next variable
       # straight after it, so only its own bytes are read, and its sign is put back from the top one.
       private def variable_kept_at(name, address)
@@ -86,7 +86,7 @@ module VBlank
         number >= 1 << ((bytes * 8) - 1) ? number - (1 << (bytes * 8)) : number
       end
 
-      # THE SPRITES THE GAME PLACED IN ITS LAST PASS, as the interpreter gives them
+      # The sprites the game placed in its last pass, as the interpreter gives them
       # (Reference#sprites): a DrawnSprite for each, with its +name+, +x+, +y+ and +picture+, back
       # to front, where the game put them. Name one and only that sprite's rows come back. The
       # Color's own table of forty eight-pixel pieces does not record whose a piece is, so this reads the
@@ -105,7 +105,7 @@ module VBlank
         name ? @drawn.rows_named(rows, name) : rows
       end
 
-      # WHICH SONG IS PLAYING NOW, by its name, or nil for none (Reference#music_playing): the byte
+      # Which song is playing now, by its name, or nil for none (Reference#music_playing): the byte
       # the Color's player keeps the song it is on in (GBC::Runtime::Music::PLAYING), its place in
       # the order declared (IR::Tunes.song_numbered). It is the song as the frames played so far
       # left it: one the game named in the frame just played starts at the player's next step, so

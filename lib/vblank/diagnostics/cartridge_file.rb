@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # A CARTRIDGE THAT IS ONLY ITS FILE: the bytes of a .gba or a .gbc, and nothing the build
+    # A cartridge that is only its file: the bytes of a .gba or a .gbc, and nothing the build
     # worked out about them. A cartridge somebody else made is one, and so is one this framework
     # built once it has been written to a file — what the build knew is in the program that
     # built it and never in the file.

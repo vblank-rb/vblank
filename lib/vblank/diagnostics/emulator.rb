@@ -21,7 +21,7 @@ module VBlank
 
       # Load the emulator backend. Raises a clear, actionable error when it isn't there.
       #
-      # THE GEM FIRST, THE CHECKOUT SECOND, and the order is the whole point. The gem declares
+      # The gem first, the checkout second, and the order is the whole point. The gem declares
       # its C extension, so a Gemfile line builds it — per Ruby ABI, which means changing Ruby
       # rebuilds it rather than leaving a binary compiled for another one.
       #
@@ -30,13 +30,13 @@ module VBlank
       # a vendored path always resolves, so nobody found out that nothing was ever building this
       # for anyone else.
       #
-      # LOADED THE FIRST TIME SOMETHING NEEDS IT — a measured build, a cartridge verified, a
+      # Loaded the first time something needs it — a measured build, a cartridge verified, a
       # picture compared — and never by `require "vblank"`. Somebody who only builds cartridges
       # pays nothing for it, and a checkout's build that is out of date (see the emulator gem's
       # built_from.rb) stops only somebody who is about to run it.
       #
-      # ON THE MAIN RACTOR. Asking for a file reads the list of places Ruby looks for one, and
-      # looking in the sibling checkout WRITES that list; both are globals, which a worker Ractor
+      # On the main Ractor. Asking for a file reads the list of places Ruby looks for one, and
+      # looking in the sibling checkout writes that list; both are globals, which a worker Ractor
       # may not touch at all. The library starts no Ractors, so its own first use is always on
       # the main one. A test suite that plays tests in Ractors loads it before they start, which
       # vblank/testing does.
@@ -91,7 +91,7 @@ module VBlank
         RubyGBAEmulator::Core
       end
 
-      # THE SUPER NINTENDO'S EMULATOR is a gem of its own too, ruby-snes-emulator: bsnes, built as a
+      # The Super Nintendo's emulator is a gem of its own too, ruby-snes-emulator: bsnes, built as a
       # libretro core with a patch that hands over the console's memories, played through a small C
       # extension of the gem's own, so a cartridge plays in any Ractor. It is loaded the same way,
       # the gem first and this repository's checkout second, and when it is missing it says how to
@@ -125,7 +125,7 @@ module VBlank
         RubySNESEmulator::Core.new(rom_path, save_dir: save_dir)
       end
 
-      # THE SEGA GENESIS'S EMULATOR is a gem of its own too, ruby-genesis-emulator: Genesis Plus GX,
+      # The Sega Genesis's emulator is a gem of its own too, ruby-genesis-emulator: Genesis Plus GX,
       # built as a libretro core with a patch that hands over the console's memories, played through a
       # small C extension of the gem's own, so a cartridge plays in any Ractor. It is loaded the same
       # way, the gem first and this repository's checkout second, and when it is missing it says how
@@ -160,7 +160,7 @@ module VBlank
         RubyGenesisEmulator::Core.new(rom_path, save_dir: save_dir, settings: settings)
       end
 
-      # THE PLAYSTATION'S EMULATOR is a gem of its own too, ruby-ps1-emulator: Beetle PSX, built as a
+      # The PlayStation's emulator is a gem of its own too, ruby-ps1-emulator: Beetle PSX, built as a
       # libretro core with a patch that hands over the console's memories, played through a small C
       # extension of the gem's own, so a program plays in any Ractor. It is loaded the same way, the
       # gem first and this repository's checkout second, and when it is missing it says how to get it.
@@ -268,7 +268,7 @@ module VBlank
         RubyGBAEmulator.open(rom_path, save_dir: save_dir, bios_path: bios_path)
       end
 
-      # THE QUESTIONS THE EMULATOR ANSWERS ABOUT A WHOLE SCREEN, for a screen it handed over:
+      # The questions the emulator answers about a whole screen, for a screen it handed over:
       # which colours it holds, whether it is all one colour, how bright it is, and whether
       # and where it differs from another.
       #
@@ -296,7 +296,7 @@ module VBlank
       # Whether the backend can be loaded, loading it if so. For the caller that legitimately
       # degrades rather than fails — a measured build with no emulator to measure on, the
       # standalone debug scripts. An emulator that is there but out of date still raises.
-      # Emulator-backed tests must NOT use this to skip: the emulator is required, so a load
+      # Emulator-backed tests must not use this to skip: the emulator is required, so a load
       # failure there is a real error (see the module note).
       def available?
         load!

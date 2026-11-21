@@ -2,25 +2,25 @@
 
 module VBlank
   module Diagnostics
-    # WHAT THE BUILD MADE OF YOUR PROGRAM — read off the finished build, never modelled.
+    # What the build made of your program — read off the finished build, never modelled.
     #
     # Every number here is a fact the build already knows exactly: how big each routine came
     # out, which ones fit in the console's quick memory and which missed, how many of a font's
     # glyphs a game actually draws. Nothing is predicted, so nothing here can drift.
     #
-    # WHY THIS IS NOT THE PROFILER'S JOB, and cannot be. A profile runs the finished cartridge
+    # Why this is not the profiler's job, and cannot be. A profile runs the finished cartridge
     # and watches where the console was; by then these facts are gone. Nothing in a running ROM
     # can show that a routine missed the quick memory by four tenths of a kilobyte, or that a
     # helper was emitted sixty-four times, or that a font ships forty-three letters and the game
     # draws thirty. Those are decisions the build made, and the build is the only witness.
     #
-    # WHAT IS DELIBERATELY ABSENT is any claim about how long a frame takes. This report used to
+    # What is deliberately absent is any claim about how long a frame takes. This report used to
     # carry one — a frame priced in scanlines, judged against a budget, with a verdict of fits or
     # tears. It was a second statement of what the hardware costs, kept in step with the backend
     # by hand, and every mispricing was a bug. Time is measured now, by running the game, and
     # {Profiler} prints it directly under this.
     #
-    # AN ADVANCE CARTRIDGE'S ALONE. It reads what the Advance's build and hardware keep, and only
+    # An Advance cartridge's alone. It reads what the Advance's build and hardware keep, and only
     # Cartridge::ROM and the Advance's Profiler reach it; a Color cartridge's profile is GBCProfiler's.
     module BuildReport
       # Code in the console's 32K of quick memory runs about this much faster than code fetched
@@ -38,7 +38,7 @@ module VBlank
       #
       # Several DIFFERENT lines repeating the same number of times is a helper — a plain Ruby
       # method called from a build block is emitted at every call site — and that has a one-word
-      # fix. ONE line repeating is a single verb with a large expansion (a live number lays out
+      # fix. One line repeating is a single verb with a large expansion (a live number lays out
       # all ten shapes for every digit place), where the same advice would be wrong.
       REPEATED_ENOUGH = 3
 
@@ -61,9 +61,9 @@ module VBlank
         tearing_line(program, printer)
       end
 
-      # WHAT RATE THE RECORDED SOUND CAME OUT AT, which nobody wrote and nothing else knows.
+      # What rate the recorded sound came out at, which nobody wrote and nothing else knows.
       #
-      # A game names the rate its recordings were MADE at; the rate they are PLAYED at is the
+      # A game names the rate its recordings were made at; the rate they are played at is the
       # build's business, because the sound hardware can only be clocked so that a whole number
       # of samples — and a whole number of the lots its DMA moves — fits in a frame. So the
       # build picks the nearest one that does, and the recordings are resampled to it as they
@@ -77,7 +77,7 @@ module VBlank
         printer.puts format("    %d Hz, %d samples a frame", clock.rate, clock.samples_a_frame)
       end
 
-      # WHICH SEE-THROUGH PICTURES SKIP THE ROWS THEY HAVE NOTHING IN, and which walk the lot.
+      # Which see-through pictures skip the rows they have nothing in, and which walk the lot.
       #
       # A picture drawn as a stretched column normally ships with a list, per column, of where
       # that column holds pixels — so a lamp in a square of ceiling costs its lit rows and not
@@ -113,15 +113,15 @@ module VBlank
         end
       end
 
-      # WHAT EACH DECLARED LAYER TURNED OUT TO HOLD, and how deep the picture goes.
+      # What each declared layer turned out to hold, and how deep the picture goes.
       #
-      # A layer is a name an author writes; a LEVEL is what the console actually keeps, and it
+      # A layer is a name an author writes; a level is what the console actually keeps, and it
       # has only four of them. Several layers landing on one level is the normal, wanted answer
       # rather than a compromise — so this shows the levels, with the layers that share each,
       # and says how many are left.
       #
-      # WHAT USED TO BE HERE AND IS NOT is a column of scanlines beside each layer, and the
-      # share of a frame they came to. Those were the estimate's. What a layer COSTS is a
+      # What used to be here and is not is a column of scanlines beside each layer, and the
+      # share of a frame they came to. Those were the estimate's. What a layer costs is a
       # question about time, and `Profiler` answers it by routine, from a real run.
       def stack_lines(program, printer)
         picture = IR::Stacking.picture(program)
@@ -191,16 +191,16 @@ module VBlank
           printer.puts "    :#{layer.name} #{amount} — the display blends it as it draws, for nothing"
         else
           # The one arrangement where it is not free — and only half of it: the blending is
-          # still the display's, and it is the TELLING that costs.
+          # still the display's, and it is the telling that costs.
           printer.puts "    :#{layer.name} is as see-through as the game works out — " \
                        "the display blends it for nothing"
           printer.puts "      ...and the amount is written to it on every frame"
         end
       end
 
-      # WHICH OF THE TWO WAYS OF FADING THIS BUILD GOT, which is the one thing about a fade a
+      # Which of the two ways of fading this build got, which is the one thing about a fade a
       # reader cannot see anywhere else. A fade over the whole screen walks the colours, which
-      # leaves the layer blending and costs what moving a colour table costs; a fade PLACED in
+      # leaves the layer blending and costs what moving a colour table costs; a fade placed in
       # the stack cannot, and takes the layer's blend for as long as it runs. Either way the
       # two verbs are usually written nowhere near each other (see IR::Fading).
       def see_through_fade_lines(program, layer, printer)
@@ -216,7 +216,7 @@ module VBlank
                      "blend: :#{layer} is solid until it lifts"
       end
 
-      # HOW FINE THE GAME'S FADES GO, which nothing in the program shows. A long fade walks the
+      # How fine the game's fades go, which nothing in the program shows. A long fade walks the
       # colours in 257 levels where the display's own fade has 17 and costs nothing, so its
       # price is worth a line; a long fade placed in the stack cannot, and the line says what
       # it gives up. A game whose fades are all short hears nothing (see IR::Fading).
@@ -239,7 +239,7 @@ module VBlank
                      "A long one changes the picture every other frame."
       end
 
-      # WHERE THE PICTURES WENT, and what the framework's own choice of storage bought back.
+      # Where the pictures went, and what the framework's own choice of storage bought back.
       #
       # The console keeps the pictures it draws in a memory of its own, and it is small and
       # fixed. Running out is a build error, so the number worth having is the room left —
@@ -264,7 +264,7 @@ module VBlank
         object_count_lines(video.objects, printer)
       end
 
-      # EACH SCENE'S SHARE OF THE SPRITE MEMORY, said for a scene with rooms that sprites share or
+      # Each scene's share of the sprite memory, said for a scene with rooms that sprites share or
       # with room it could give back. The line above is the fullest scene's, and the fullest is
       # not always the one a game grows in: a file screen of still pictures can be the fullest
       # while every room, person and effect of the game is in the play scene.
@@ -289,7 +289,7 @@ module VBlank
         end
       end
 
-      # HOW MANY OF THE CONSOLE'S SPRITES THE GAME REALLY SPENDS — said only when it is not
+      # How many of the console's sprites the game really spends — said only when it is not
       # one per sprite, which is the only time it can surprise anybody. A picture too big for
       # one object is drawn as several standing shoulder to shoulder, and the author wrote
       # one sprite; the same goes for the windows that hold a placed fade off a sprite.
@@ -345,7 +345,7 @@ module VBlank
         parts.empty? ? "" : " (#{parts.join('; ')})"
       end
 
-      # WHAT THE BUILD KEPT IN THE QUICK MEMORY, with each routine's size beside it — size is the
+      # What the build kept in the quick memory, with each routine's size beside it — size is the
       # whole of why one routine is on this list and another is not, so it belongs next to them.
       def quick_memory_lines(placement, program, printer, emitted = nil)
         return if placement.nil? || (placement.funcs.empty? && placement.passed_over.empty?)
@@ -368,7 +368,7 @@ module VBlank
         passed_over_lines(placement, program, printer, emitted)
       end
 
-      # WHAT EACH SCENE KEEPS THERE WHILE IT IS UP, for a game whose routines did not all fit at
+      # What each scene keeps there while it is up, for a game whose routines did not all fit at
       # once: each scene's own are copied in as it takes over, into one place the scenes share,
       # and run from the cartridge while another scene is up. A scene that keeps nothing of its
       # own is left out.
@@ -383,7 +383,7 @@ module VBlank
         end
       end
 
-      # WHAT WENT IN THE OTHER WORK MEMORY, which is a decision nobody wrote down.
+      # What went in the other work memory, which is a decision nobody wrote down.
       #
       # The console keeps 256K of it — eight times the quick memory, and about six times the
       # wait on a read. Everything a program declares goes in the quick one until it will not
@@ -397,7 +397,7 @@ module VBlank
       # record, a canvas — with the bytes of all of that one's lists added up: a pool is a
       # list a field and several of its own, and the author wrote none of those lists' names.
       #
-      # A MEASURED BUILD SAYS HOW OFTEN A FRAME TOUCHED EACH, at most, in any one scene. For a
+      # A measured build says how often a frame touched each, at most, in any one scene. For a
       # collection the build moved, that is what it was weighed by against the code that took its
       # place; one the author moved with `fast: false` is said the same way.
       def roomy_memory_lines(roomy, printer)
@@ -424,7 +424,7 @@ module VBlank
 
       def times_in_words(count) = count == 1 ? "1 time" : "#{count} times"
 
-      # WHICH SAVE MEMORY THE CARTRIDGE HAS, and what takes it. The build picks 32K, or 64K or
+      # Which save memory the cartridge has, and what takes it. The build picks 32K, or 64K or
       # 128K of flash, from the save_data records unless the game named a size, and nothing in
       # the program shows which it got. So this says the size and how it came about, then each
       # thing laid out in it: the block kept for save_var on 32K, the table that records where
@@ -499,7 +499,7 @@ module VBlank
       # slower one makes the processor wait — not an estimate of anybody's program.
       ROOMY_MEMORY_SLOWDOWN = 6
 
-      # WHICH OF THE TWO ANSWERS PICKED THAT LIST, which an author cannot tell by reading it and
+      # Which of the two answers picked that list, which an author cannot tell by reading it and
       # which is the difference between a tuned game and an untuned one.
       def chosen_from_line(placement)
         return "chosen from a measurement of a real run" if placement.chosen_from == :measurement
@@ -508,7 +508,7 @@ module VBlank
           "game really spends its frames on, build it with `VBlank.game`, which measures."
       end
 
-      # WHAT EACH SCENE WAS MEASURED DOING, for a scene that named them (`measure_holding:`). The same
+      # What each scene was measured doing, for a scene that named them (`measure_holding:`). The same
       # cartridge measured standing still and measured in a fight are measurements of different
       # code, so a reader is told which one chose the list, as `rom.profile` says what it held.
       def measured_presses_lines(placement, program, printer)
@@ -524,7 +524,7 @@ module VBlank
         bytes ? format("%8s  ", kilobytes(bytes)) : " " * 10
       end
 
-      # ...AND WHAT DID NOT FIT, which is the actionable half. A routine the frame spends real
+      # ...AND what did not fit, which is the actionable half. A routine the frame spends real
       # time in that just missed is exactly where a program loses that speed, and nothing in a
       # finished cartridge can show it afterwards.
       def passed_over_lines(placement, program, printer, emitted)
@@ -547,7 +547,7 @@ module VBlank
         ""
       end
 
-      # THE LINE A ROUTINE'S SIZE COMES FROM, ranked by the bytes emitted for it rather than by
+      # The line a routine's size comes from, ranked by the bytes emitted for it rather than by
       # how many statements carry it: a picture declared in a routine is a statement and emits
       # nothing, so counting statements named a line of declarations ahead of the code. A part
       # of a statement — a sum, a read — carries no line of its own and is charged to the
@@ -591,7 +591,7 @@ module VBlank
         (node.children + node.operand_nodes).each { |part| charge_lines(part, owner, emitted, &charge) }
       end
 
-      # Said only when the evidence is there: a run of DIFFERENT lines each emitted the same
+      # Said only when the evidence is there: a run of different lines each emitted the same
       # number of times, which is what a helper looks like from here.
       def helper_advice(counts, times)
         return "" unless counts.count { |_, n| n == times } > 1
@@ -606,15 +606,15 @@ module VBlank
         end
       end
 
-      # CAN THIS GAME TEAR — asked of its SHAPE, which is the half that is exact and free.
+      # Can this game tear — asked of its shape, which is the half that is exact and free.
       #
       # A tear is the display reaching a row before the game finished drawing it, so it needs a
       # game that draws straight into the one picture the display is reading. That is a fact
       # about the screen a game chose, not about how long anything takes: a double-buffered game
-      # draws to a hidden page shown all at once and CANNOT tear, however slow it is, and a tiled
+      # draws to a hidden page shown all at once and cannot tear, however slow it is, and a tiled
       # game has no picture of its own to tear.
       #
-      # WHAT IS NOT SAID HERE is whether a game that CAN tear actually does. That was a timing
+      # What is not said here is whether a game that can tear actually does. That was a timing
       # claim — a frame priced in scanlines against the brief safe window — and it was invented
       # arithmetic, of exactly the kind this report no longer makes. It is also the one question
       # a run answers outright: {Tearing} holds what the display showed against what the game had
@@ -627,7 +627,7 @@ module VBlank
                      "reading, so it can tear. Run it to see whether it does."
       end
 
-      # THE SAME FACTS AS THE PROSE, as data — for something comparing two builds rather than
+      # The same facts as the prose, as data — for something comparing two builds rather than
       # reading one. Did the routine that just missed the quick memory now fit? That is the
       # question a before-and-after asks, and nothing should have to match a sentence to ask it.
       def as_json(rom)
