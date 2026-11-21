@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # WHERE EACH FRAME WENT WHILE A TAPE PLAYED, on the Game Boy Color, the Super Nintendo, the
+    # Where each frame went while a tape played, on the Game Boy Color, the Super Nintendo, the
     # Genesis and the PlayStation. Each console's profiler defines how one frame is played and measured
     # on its emulator (a meter: see .play); the tape, the frames, the readings and the report are the
     # same for all.
@@ -13,7 +13,7 @@ module VBlank
     # gets there by the same presses every time, and this plays it from power-on and reads every frame
     # asked for on its own: how many lines it had to spare, and which routines took its time.
     #
-    # WHICH WORK HELD THE PICTURE. A frame is a picture shown. The game's pass ends; the runtime then
+    # Which work held the picture. A frame is a picture shown. The game's pass ends; the runtime then
     # works out what the pass changed in the picture, waits for the blank, and copies it to the
     # console there, a blank at a time when it is more than one blank holds. Only then is the new
     # picture up. So a frame that shows no new picture lost it in one of two places, and the fix is
@@ -29,7 +29,7 @@ module VBlank
     # shown when it ends was held by its gap. That holds wherever the emulator's frame begins
     # against the blank.
     #
-    # THE EMULATOR RUNS THE PROCESSOR A LITTLE AHEAD OF THE PICTURE when nothing makes it wait, so a
+    # The emulator runs the processor a little ahead of the picture when nothing makes it wait, so a
     # frame that starts a long stretch of the game's own work can count some of the next frame's
     # time as well (it then counts more than a frame's worth of time), and the two words can
     # be read a little early. `rom.profile` adds frames up the same way, so the two agree.
@@ -69,7 +69,7 @@ module VBlank
         def to_h = { frames: readings.map(&:to_h) }
       end
 
-      # THE METER OF A CONSOLE WHOSE EMULATOR ADDS UP TIME BY ADDRESS (Core#take_processor_time on
+      # The meter of a console whose emulator adds up time by address (Core#take_processor_time on
       # the Super Nintendo, the Genesis and the PlayStation), read as TimeByRoutine reads it.
       # +shown_at+ and +passes_at+ are where its runtime keeps Frame::SHOWN and Frame::PASSES in work
       # memory. A console whose core names its buttons or its memory otherwise gives its own in a subclass
@@ -152,7 +152,7 @@ module VBlank
         play(rom, tape: tape, frames: frames, meter: meter)
       end
 
-      # THE FRAMES A PASS OF THE GAME LOOP RAN OVER, counted from 1 at power-on as a tape counts
+      # The frames a pass of the game loop ran over, counted from 1 at power-on as a tape counts
       # them, so a slow pass a profile names can be read frame by frame with a tape. +took+ is the
       # frames each measured pass took, by pass, in order, and +settled_on+ the frame the first of
       # them ended on (.wait_ended_on); each later pass ends its own frames after the last.
@@ -161,17 +161,17 @@ module VBlank
         (ended_on - took.fetch(pass) + 1)..ended_on
       end
 
-      # THE FRAME PASS +pass+ ENDED ON, as the frames a pass took are counted: where its wait ended.
+      # The frame pass +pass+ ENDED ON, as the frames a pass took are counted: where its wait ended.
       # A profile settles by counting passes ended (Frame::PASSES), and that count rises the moment
       # the pass's own work is done. The runtime then readies the pass's picture and waits for the
       # blank, and a pass whose work ends in the last few lines of a frame can run that past the
       # blank: its wait ends a frame after its count rose, and the frame between belongs to it.
       # Frame::SHOWN takes the pass's number in the blank its wait ends at, which an emulated frame
-      # starts with, so the wait ended on the frame before the first one after which SHOWN reads
+      # starts with, so the wait ended on the frame before the first one after which shown reads
       # +pass+ or more.
       #
-      # +shown+ is SHOWN as read after each frame from +first+ on; while it is short of +pass+, the
-      # core plays on a frame at a time, the block reading SHOWN after each, as far as +most_frames+.
+      # +shown+ is shown as read after each frame from +first+ on; while it is short of +pass+, the
+      # core plays on a frame at a time, the block reading shown after each, as far as +most_frames+.
       # If SHOWN never gets there, the answer is the frame the count rose on, the one before +first+.
       def self.wait_ended_on(core, pass:, first:, shown:, most_frames:)
         until shown.any? { |each| each >= pass } || shown.size >= most_frames
@@ -236,7 +236,7 @@ module VBlank
         tape.presses_within(1..last).flat_map { |stretch| Array.new(stretch.frames.size, stretch.buttons) }
       end
 
-      # THE TAPE AND THE FRAMES, checked before the console is switched on. +keys+ and +settle+ are
+      # The tape and the frames, checked before the console is switched on. +keys+ and +settle+ are
       # what else the profile was given: a tape gives the buttons and where to start.
       def self.refuse_unplayable!(tape, frames, keys:, settle:)
         unless tape.is_a?(Playthroughs::Tape)

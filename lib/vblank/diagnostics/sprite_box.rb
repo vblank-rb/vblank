@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # ONE ENTRY OF A CONSOLE'S SPRITE TABLE, AS THE BOX IT DRAWS: which entry it is (+slot+), the
+    # One entry of a console's sprite table, as the box it draws: which entry it is (+slot+), the
     # screen position of its top left corner in pixels (+x+, +y+, which can be below nothing or past
     # the edge, where part of it is off the screen), how wide and tall it is, and the first tile of
     # video memory it draws from. It is what the console's table holds and nothing more: which sprite
