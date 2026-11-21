@@ -4,7 +4,7 @@ require "test_helper"
 
 require "stringio"
 
-# WHAT A PROGRAM RESERVES, against the memory there really is.
+# What a program reserves, against the memory there really is.
 #
 # The console has two work memories: 32K of quick on-chip RAM and 256K of roomier RAM on a
 # chip of its own. A collection can live in either — the framework puts what a frame touches
@@ -12,7 +12,7 @@ require "stringio"
 # state is no longer a build failure just because it will not all fit near to hand. That is
 # what this check used to say, and it was the wrong thing to say.
 #
-# What it still says is the part that is really a ceiling. A VARIABLE cannot move: it is
+# What it still says is the part that is really a ceiling. A variable cannot move: it is
 # reached by its distance from the start of the quick memory, which is what makes a read two
 # instructions instead of four. And everything together still has to fit in the two memories
 # added up.
@@ -52,7 +52,7 @@ class TestIRGuardrailIwramBudget < Minitest::Test
     assert_empty findings_for(prog)
   end
 
-  # THE ONE THIS BEAD CHANGED. A list past the quick memory used to stop the build. It
+  # The one this bead changed. A list past the quick memory used to stop the build. It
   # moves now, and moving is not something to report as a problem.
   def test_a_list_past_the_quick_memory_is_no_longer_a_problem
     prog = program(
@@ -89,7 +89,7 @@ class TestIRGuardrailIwramBudget < Minitest::Test
     assert_match(/#{VBlank::Messages::PlainWords::QUICK_MEMORY}/, message) # said the one way it is said
   end
 
-  # VARIABLES CANNOT MOVE, so they have their own ceiling and their own explanation. A
+  # Variables cannot move, so they have their own ceiling and their own explanation. A
   # program whose variables alone fill the quick memory cannot be helped by the other one.
   def test_more_variables_than_the_quick_memory_holds_is_a_fatal_error
     count = (QUICK_FREE / Budget::WORD) + 512
@@ -158,7 +158,7 @@ class TestIRGuardrailIwramBudget < Minitest::Test
     assert_match(/list :trail/, err.string)
   end
 
-  # A COLD COLLECTION CAN ONLY BE IN THE ROOMIER MEMORY. Two pools too big for the quick memory
+  # A cold collection can only be in the roomier memory. Two pools too big for the quick memory
   # are kept out of it, so together they must fit the roomier memory alone, however much of the
   # quick memory is free. Each fits; the two do not, and the build says so before it lays them out.
   def test_the_build_stops_on_cold_pools_past_the_roomier_memory
@@ -176,7 +176,7 @@ class TestIRGuardrailIwramBudget < Minitest::Test
                  "the cold collections' finding, not the one for both memories")
   end
 
-  # A LIST THE GAME SHIFTS FROM TAKES MORE THAN ITS CAPACITY on the Advance: its slots are rounded
+  # A list the game shifts from takes more than its capacity on the Advance: its slots are rounded
   # up to a power of two, so its wrap is one step. 40,000 words is about 156KB asked for and 256KB
   # of slots taken, which with its two counters is past the roomier memory.
   def test_a_cold_list_the_game_shifts_from_is_counted_at_the_room_it_takes
@@ -240,7 +240,7 @@ class TestIRGuardrailIwramBudget < Minitest::Test
     assert_empty findings_for(prog)
   end
 
-  # WHAT THE BUILD KEEPS IN THE ROOMIER MEMORY FOR ITSELF IS COUNTED TOO. Two cold pools that fit
+  # What the build keeps in the roomier memory for itself is counted too. Two cold pools that fit
   # the roomier memory alone, in a game that plays a recording: the sound mixer's buffers are
   # there as well, and then the pools do not fit. The same pools in a silent game build.
   private def cold_pools_game(sound:)
@@ -266,7 +266,7 @@ class TestIRGuardrailIwramBudget < Minitest::Test
     VBlank.build("COLDQUIET", console: :gba, out: StringIO.new, err: StringIO.new, &cold_pools_game(sound: false))
   end
 
-  # A GAME FOR THE COLOR IS CHECKED AGAINST THE COLOR'S MEMORY: 8K, every variable and list in
+  # A game for the color is checked against the color's memory: 8K, every variable and list in
   # it, and no roomier memory beside it. A list the Advance would hold without a word is too big.
   def test_a_color_program_past_the_colors_memory_is_a_fatal_error
     prog = program(
@@ -299,7 +299,7 @@ class TestIRGuardrailIwramBudget < Minitest::Test
     assert_match(/fewer variables/, message)
   end
 
-  # THE SUPER NINTENDO'S VARIABLES CAN MOVE: what its first 8K cannot hold goes further on in
+  # The Super Nintendo's variables can move: what its first 8K cannot hold goes further on in
   # work RAM, reached by a whole address. So 2,000 variables, twice what that 8K holds, are not
   # refused there, while the same many past the Advance's quick memory still are.
   private def many_variables(count, console)

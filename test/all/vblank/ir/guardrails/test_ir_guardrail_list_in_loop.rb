@@ -4,7 +4,7 @@ require "test_helper"
 
 require "stringio"
 
-# A one-time-setup footgun, sibling to the seed-in-loop guardrail: `list` DECLARES a
+# A one-time-setup footgun, sibling to the seed-in-loop guardrail: `list` declares a
 # collection, set up once. Written inside a per-frame context (the game loop, a scene,
 # a repeat/every timer) the declaration re-creates the list empty every frame, so
 # pushes vanish and its length never grows. Caught on the IR as a friendly warning.
@@ -54,7 +54,7 @@ class TestIRGuardrailListInLoop < Minitest::Test
     assert_empty findings_for(prog)
   end
 
-  # Pushing to / dropping from a list every frame is normal — only the DECLARATION is
+  # Pushing to / dropping from a list every frame is normal — only the declaration is
   # one-time setup, so list ops in the loop are left alone.
   def test_list_ops_in_the_loop_are_not_flagged
     prog = program(

@@ -4,7 +4,7 @@ require "test_helper"
 
 require "stringio"
 
-# WHAT THE AUTHOR INSISTED ON, TAKING THE ROOM OF WHAT RUNS EVERY FRAME. The routine that answers
+# What the author insisted on, taking the room of what runs every frame. The routine that answers
 # the display runs on every frame of every screen and plays the music and the sound effects. What
 # a game marks `fast: true` goes in the console's quick memory before it, so a routine insisted on
 # for a moment's sake can leave it in the cartridge — and nothing showed that until a test played
