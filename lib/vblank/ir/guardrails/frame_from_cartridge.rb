@@ -10,11 +10,11 @@ module VBlank
         # quick memory — it is where nearly all of a frame's time goes, and code there runs
         # about two and a half times faster than code fetched from the cartridge. The build
         # offers it the memory first, after only what the author insisted on (`fast: true`).
-        # When it does not FIT, the whole frame runs from the
+        # When it does not fit, the whole frame runs from the
         # cartridge, and the game is slower by that factor for a reason nothing else in a
         # build can show.
         #
-        # WHY THIS ONE NEEDS SAYING OUT LOUD: everything about it points the wrong way. It
+        # Why this one needs saying out loud: everything about it points the wrong way. It
         # happened on the Wolfenstein port: ten guards were given a few dozen statements of thinking
         # each frame, and a 468-scanline frame went to 1140. None of it was the work — taking
         # the thinking out put the frame straight back, taking any one part of it out changed
@@ -30,7 +30,7 @@ module VBlank
         # only has to read it. A build with no chooser at all (`fast_code: false`) passes
         # nothing over and says nothing.
         #
-        # A LOOP LEFT OUT IS NOT ALWAYS A FRAME SLOWED, and a build that measured its game can
+        # A loop left out is not always a frame slowed, and a build that measured its game can
         # tell the two apart. The story above is a loop whose body holds the frame's work in
         # line. A loop that only picks a scene and calls it holds almost none: the work is in
         # the routines it calls, each placed on its own, and when those take the room the loop

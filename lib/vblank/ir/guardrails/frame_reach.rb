@@ -19,7 +19,7 @@ module VBlank
       # Both sides of an ordinary `if` are on the path, since either may be what runs this
       # frame — which also means two things a check finds can sit on opposite sides of one
       # `if` and never run in the same frame. The checks built on this accept that: they
-      # warn about what a frame CAN do.
+      # warn about what a frame can do.
       module FrameReach
         module_function
 

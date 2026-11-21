@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # A GAME TOLD AT EACH LINE THAT ASKS FOR SOMETHING ITS CONSOLE CANNOT DO, in the words that
+        # A game told at each line that asks for something its console cannot do, in the words that
         # console's answers have for the verb: an error, before anything is made. What a console
         # cannot do is the answers' to say (Console::Answers#refusals), and this only reports it.
         # Nothing is shown differently on any console, so nothing is only warned of but a crowded

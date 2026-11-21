@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # A GAME THAT SHOWS THE TIME AND NEVER ASKS WHETHER THERE IS A CLOCK. The console has no
+        # A game that shows the time and never asks whether there is a clock. The console has no
         # clock of its own; some cartridges carry one, and most emulators give a cartridge none
         # unless they are told to. A clock whose watch battery ran out was never set. Either way
         # every reading is 0 (see IR::Clock), so a game written on a desktop, where the clock

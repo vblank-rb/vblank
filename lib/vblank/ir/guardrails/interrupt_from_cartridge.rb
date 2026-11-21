@@ -6,7 +6,7 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # WHAT THE AUTHOR INSISTED ON, LEAVING OUT WHAT RUNS EVERY FRAME. The routine the console
+        # What the author insisted on, leaving out what runs every frame. The routine the console
         # jumps into when the display or a timer announces something runs on every frame of every
         # screen: it plays the music and the sound effects, and it counts the frames. The build
         # weighs it for the quick memory ahead of everything it chooses for itself — but behind
@@ -18,7 +18,7 @@ module VBlank
         # to play those frames found it, one screen from where the cause was written. So the build
         # says it, naming what was insisted on, since that is the line to change.
         #
-        # ONLY WHERE WHAT WAS INSISTED ON TOOK THE ROOM: the insisted routines kept in the share the
+        # Only where what was insisted on took the room: the insisted routines kept in the share the
         # routine missed — the whole game's, or one scene's — have to come to at least what it was
         # short by. A routine that missed on its own size, or behind what the build chose, is not
         # the author's word's doing, and naming that word would send them to the wrong line.
