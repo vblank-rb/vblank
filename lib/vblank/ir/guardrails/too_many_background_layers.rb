@@ -7,6 +7,32 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # An error for a screen that shows more backgrounds at one time than the console can stack.
+        # A background past the count would not be drawn at all, which looks like a mistake in the
+        # art, so the build stops and names both counts:
+        #
+        # > <The scene :name, or This game> shows <number of backgrounds> at one time (<names>).
+        # > The <console> shows <number of backgrounds> at one time
+        #
+        # To fix this, show no more than the console's number on one screen. On a console that
+        # can show a status bar or a background kept above a row as an extra layer, the message
+        # offers that too.
+        #
+        # A console that turns and resizes backgrounds has fewer scrolling ones beside a
+        # background that turns, and only so many that turn:
+        #
+        # > Background :<name> turns or resizes. Beside a background that turns, the <console>
+        # > shows <number of backgrounds> at one time.
+        #
+        # > <The scene :name, or This game> turns or resizes <number> backgrounds at one time
+        # > (<names>). The <console> can turn <number of backgrounds> at one time. To fix this, turn
+        # > <number of backgrounds>, and let the others scroll.
+        #
+        # Each scene is counted on its own, because scenes take turns with the layers. So a game
+        # with scenes can also move a background into a scene that has room. A game drawn only on
+        # a bitmap screen has no layers to run out of.
+        #
+        #--
         # More background layers than the console can stack.
         #
         # A console stacks so many tile layers, and one that can turn a layer arranges them
@@ -36,6 +62,7 @@ module VBlank
         # backgrounds AND too many scrolling ones is told about the second turner
         # first: cutting a scrolling layer would not save it, and the arrangement it
         # was counted against is not one the console has anyway.
+        #++
         class TooManyBackgroundLayers
           NAME = :too_many_background_layers
           PLAIN_NAME = "more backgrounds than the console stacks"

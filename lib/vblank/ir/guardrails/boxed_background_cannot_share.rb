@@ -6,6 +6,26 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # An error for a background held to a box with `show_only_inside`, beside a second such
+        # background on the same screen:
+        #
+        # > The backgrounds :<name> and :<name> are on the screen at the same time, and the game
+        # > holds both to a box with show_only_inside. One screen can hold one background to a box.
+        #
+        # To fix this, put the two backgrounds in different scenes, or hold only one of them to a
+        # box.
+        #
+        # On a console whose box shares the display's windows with a light, a status bar and a fade
+        # held to part of the screen or under a layer, a game with a box can have none of those:
+        #
+        # > This game holds the background :<name> to a box with show_only_inside, and has <what>.
+        # > On the <console>, both need the same windows of the display, and the windows can do only
+        # > one of the two. To fix this, remove show_only_inside, or remove <what>.
+        #
+        # The console cannot do both, so one of them would show wrong. The build stops on every
+        # backend in the same words.
+        #
+        #--
         # A background held to a box (`show_only_inside`) beside something that needs the same part
         # of the display, or beside a second one on the same screen.
         #
@@ -24,6 +44,7 @@ module VBlank
         #
         # Asked of the console the program is built for (Console::Description#background_box), so
         # the interpreter refuses what the cartridge would get wrong, in the same words.
+        #++
         class BoxedBackgroundCannotShare
           NAME = :boxed_background_cannot_share
           PLAIN_NAME = "a background held to a box beside something that needs the same part of the display"

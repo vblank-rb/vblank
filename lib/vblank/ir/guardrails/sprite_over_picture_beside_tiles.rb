@@ -4,6 +4,18 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # An error for a sprite shown over a painted screen (`sprite ..., over_picture: true`) in a
+        # game that also has a tiled screen:
+        #
+        # > The sprite :<name> is shown over_picture: true on a painted (bitmap) screen, and this
+        # > game also has a tiled screen. A game with a sprite over a painted screen can have
+        # > painted screens only.
+        #
+        # A sprite over the picture needs the console's sprite layer switched on, and then the tiled
+        # screens' sprites would show over the painted screen too. To fix this, remove
+        # `over_picture: true` from the sprite, or use painted screens only in this game.
+        #
+        #--
         # A sprite shown over a painted screen (`sprite ..., over_picture: true`) in a game that also
         # has a screen drawn from tiles.
         #
@@ -14,6 +26,7 @@ module VBlank
         # the tiled screens' too. Telling the two kinds apart on every change of screen is not made,
         # so such a game is refused. Asked by the interpreter and by each console's lowering as well
         # as by the build, so all of them stop with the same words.
+        #++
         class SpriteOverPictureBesideTiles
           NAME = :sprite_over_picture_beside_tiles
           PLAIN_NAME = "a sprite shown over a painted screen in a game that also has a tiled screen"

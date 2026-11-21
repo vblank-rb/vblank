@@ -6,6 +6,30 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # An error for a `status_bar` in a game that also uses something the console makes with the
+        # same part of its display. On some consoles that is a light, a fade held to part of the
+        # screen, or a fade under a layer:
+        #
+        # > This game has the status bar :<name> and <what>. On the <console>, both need the same
+        # > part of the display, and that part can do only one of the two. To fix this, remove the
+        # > status bar, or remove <what>.
+        #
+        # On a console whose bar is a layer of its own, a painted screen and a sprite stacked
+        # behind a background cannot share it:
+        #
+        # > This game has the status bar :<name> and a `screen :bitmap`. On the <console>, the bar
+        # > and a painted screen use the same memory. To fix this, remove the status bar, or draw
+        # > that screen with tiles: `screen :tiled`.
+        #
+        # > This game has the status bar :<name>, and the layers put the sprite :<sprite> behind a
+        # > background. On the <console>, a sprite behind a background is behind the status bar
+        # > too. To fix this, put the sprite in front of the backgrounds, or remove the status bar.
+        #
+        # The console cannot do both, so one of them would show wrong. The build stops on every
+        # backend in the same words. A console whose status bar is drawn like any other picture has
+        # no such limit.
+        #
+        #--
         # A status bar beside something that needs the same part of the display.
         #
         # On the Advance the bar is one of the background layers, kept to the rows under its top by
@@ -25,6 +49,7 @@ module VBlank
         # #bar_is_a_background tells the two apart), so the interpreter refuses what the
         # cartridge would get wrong, in the same words. A console whose bar is a picture drawn like
         # any other, the PlayStation's, shares nothing (Description#bar_shares_display).
+        #++
         class StatusBarCannotShare
           NAME = :status_bar_cannot_share
           PLAIN_NAME = "a status bar beside something that needs the same part of the display"
