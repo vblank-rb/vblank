@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A TILE'S LIST OF FIVE, ONE THE BACKDROP. A Color tile holds three colours and the backdrop, and an
+# A tile's list of five, one the backdrop. A Color tile holds three colours and the backdrop, and an
 # ordinary tile drawn from [:transparent, backdrop, a, b, c] fits by leaving the backdrop out. A group
 # of tile pictures is written from the same list without it, drawing see-through where the list
 # says the backdrop: the same picture, and both fade through lists of their own in step.

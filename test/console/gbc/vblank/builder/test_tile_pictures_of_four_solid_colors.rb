@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A GROUP OF TILE PICTURES IN ALL FOUR COLOURS OF A COLOR PALETTE. Its list is see-through first,
+# A group of tile pictures in all four colours of a color palette. Its list is see-through first,
 # never drawn, and four solid after, none of them the backdrop. The first of the four shows, not
 # the backdrop, and the group fades through a list of its own beside tiles of another.
 class TestTilePicturesOfFourSolidColors < Minitest::Test

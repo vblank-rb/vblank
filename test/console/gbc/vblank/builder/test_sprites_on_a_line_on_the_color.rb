@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# TEN SPRITES ON A LINE OF THE SCREEN. The Color draws at most ten pieces of sprites on any one
+# Ten sprites on a line of the screen. The Color draws at most ten pieces of sprites on any one
 # line, the first ten its sprite table holds there, and leaves the rest of that line's out. The
 # table holds the sprite in front first, so on a crowded line the sprite furthest back is the one
 # that goes: here the one declared first, which every other is drawn over. Only the crowded lines
