@@ -1,5 +1,5 @@
 /*
- * A SMALL GAME BOY ADVANCE, JUST BIG ENOUGH TO RUN THE CONSOLE'S OWN START-UP (rg_bios_boot.h).
+ * A small Game Boy Advance, just big enough to run the console's own start-up (rg_bios_boot.h).
  *
  * The start-up is a program inside the console, the BIOS, and the only faithful way to show it is to
  * run it. So this is an emulator of what that program touches and nothing more: the processor (an
@@ -16,7 +16,7 @@
  * order the picture is composed in, the way colours are worked out in eight bits. Nothing of mGBA's
  * code is here; what is here is the behaviour, written out again.
  *
- * HOW TIME IS KEPT. Everything that happens on its own — a line of the screen ending, a timer running
+ * How time is kept. Everything that happens on its own — a line of the screen ending, a timer running
  * out, a copy moving a word, an interrupt arriving — is an event at a moment on the console's clock.
  * The processor runs whole instructions, each adding the cycles it took; whenever the clock passes
  * the next event, the events due are done, in the order of their moments (and, at the same moment,
@@ -489,7 +489,7 @@ static void process_events(rg_bios_boot *b) {
 }
 
 /* ======================================================================================== */
-/* THE PROCESSOR'S MODES AND STATUS                                                         */
+/* the processor's modes and status                                                         */
 /* ======================================================================================== */
 
 static int bank_of(int mode) {
@@ -547,7 +547,7 @@ static void read_cpsr(rg_bios_boot *b) {
 }
 
 /* ======================================================================================== */
-/* THE MEMORY BUS                                                                           */
+/* the memory bus                                                                           */
 /* ======================================================================================== */
 
 /* How many extra cycles a memory takes beyond the one every access takes, by region. */
@@ -1194,7 +1194,7 @@ static void halt(rg_bios_boot *b) {
 }
 
 /* ======================================================================================== */
-/* THE COPY ENGINES (DMA)                                                                   */
+/* the copy engines (DMA)                                                                   */
 /* ======================================================================================== */
 
 static const int32_t DMA_OFFSET[4] = {1, -1, 0, 1};
@@ -1367,7 +1367,7 @@ static void on_dma_event(rg_bios_boot *b, uint32_t late) {
 }
 
 /* ======================================================================================== */
-/* THE TIMERS                                                                               */
+/* the timers                                                                               */
 /* ======================================================================================== */
 
 static void audio_sample_fifo(rg_bios_boot *b, int fifo_id, int32_t cycles);
@@ -1441,7 +1441,7 @@ static void timer_write_control(rg_bios_boot *b, int timer, uint16_t control) {
 }
 
 /* ======================================================================================== */
-/* THE SCREEN'S TIMING                                                                      */
+/* the screen's timing                                                                      */
 /* ======================================================================================== */
 
 static void renderer_draw_scanline(rg_bios_boot *b, int y);
@@ -1516,7 +1516,7 @@ static void start_hblank(rg_bios_boot *b, uint32_t late) {
 }
 
 /* ======================================================================================== */
-/* THE REGISTERS                                                                            */
+/* the registers                                                                            */
 /* ======================================================================================== */
 
 static uint16_t renderer_write_register(rg_bios_boot *b, uint32_t address, uint16_t value);
@@ -1820,7 +1820,7 @@ static uint16_t io_read(rg_bios_boot *b, uint32_t address) {
 }
 
 /* ======================================================================================== */
-/* THE INSTRUCTIONS                                                                         */
+/* the instructions                                                                         */
 /* ======================================================================================== */
 
 #define ARM_PREFETCH_CYCLES (1 + b->active_seq32)
@@ -2828,7 +2828,7 @@ uint8_t rg_bios_boot_peek(const rg_bios_boot *b, uint32_t address) {
 const char *rg_bios_boot_unhandled(const rg_bios_boot *b) { return b->unhandled; }
 
 /* ======================================================================================== */
-/* THE PICTURE                                                                              */
+/* the picture                                                                              */
 /* ======================================================================================== */
 
 /* The picture is drawn a line at a time, as the screen reaches the end of each line, from the
@@ -3608,10 +3608,10 @@ static void renderer_finish_frame(rg_bios_boot *b) {
 }
 
 /* ======================================================================================== */
-/* THE SOUND                                                                                */
+/* the sound                                                                                */
 /* ======================================================================================== */
 
-/* THE CHIME is recorded sound: the BIOS mixes it itself, into a stretch of memory, and two of the
+/* The chime is recorded sound: the BIOS mixes it itself, into a stretch of memory, and two of the
  * copy engines feed it a word at a time to the two recorded-sound voices' queues (A and B), each time
  * a timer runs out and its queue has room. Each time the timer runs out the voice moves to its next
  * 8-bit sample.

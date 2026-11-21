@@ -166,7 +166,7 @@
  * build). These are the same numbers, for a file of the runtime read on its own, as an editor's
  * checker reads it; a test holds them to StartFileNumbers.names.
  *
- * A FRAME OF A SPRITE IN THE FILE is a record of VBlank's own, one layout whatever the original.
+ * A frame of a sprite in the file is a record of VBlank's own, one layout whatever the original.
  * lib/vblank/original/frame_record.rb (Original::FrameRecord) is where that layout is written
  * down, and the RG_FRAME_ and RG_PIECE_ numbers are its own, written into every build from there.
  * Every number is low byte first. A frame is RG_FRAME_HEADER_BYTES, the pieces it holds and the

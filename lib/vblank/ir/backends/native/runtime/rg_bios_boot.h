@@ -1,5 +1,5 @@
 /*
- * THE CONSOLE'S OWN START-UP, PLAYED FROM THE PLAYER'S BIOS (rg_bios_boot.c).
+ * The console's own start-up, played from the player's BIOS (rg_bios_boot.c).
  *
  * A Game Boy Advance, switched on, runs the small program built into it (the BIOS) before the
  * cartridge: it draws the Nintendo logo, plays the chime, checks the cartridge's header, and then
