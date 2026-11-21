@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      # THE GAME BOY'S SOUND CHIP, which two consoles have: the Game Boy Advance kept the Color's
+      # The Game Boy's sound chip, which two consoles have: the Game Boy Advance kept the Color's
       # square, wave and noise voices when it was made. So the numbers a beep, a note or a hit
       # comes to are the same on both, and are worked out once, here, from the musical values
       # Audio::Sound resolves; where those numbers go is each console's own. The chip's registers
@@ -35,7 +35,7 @@ module VBlank
         # Every voice to both speakers: the speakers' register's high byte, at the level its low byte holds.
         EVERY_VOICE_SWITCHED_ON = 0xFF00
 
-        # THE MAIN VOLUME. The low byte of the speakers' register (NR50) holds a level for each speaker,
+        # The main volume. The low byte of the speakers' register (NR50) holds a level for each speaker,
         # 0 to 7, the right one in bits 0 to 2 and the left in bits 4 to 6, and the chip plays every
         # voice at (level + 1) eighths of its loudness from it (Pan Docs, "Sound Control Registers").
         # So the quietest level is an eighth, not silence.
@@ -133,14 +133,14 @@ module VBlank
           [[:square2_control, control], [:square2_trigger, trigger]]
         end
 
-        # A SINGLE MUSIC NOTE ON THE WAVE VOICE (channel 3), for a song part that plays it.
+        # A single music note on the wave voice (channel 3), for a song part that plays it.
         #
         # Two register values, like a square note, and for the same reason: the player copies two
         # halfwords out of the score and the waveform itself is already in wave RAM, uploaded once
         # when the tune started. The level holds the note and the trigger restarts the waveform.
         # A frequency of 0 is a rest, which mutes the voice without disturbing the table.
         #
-        # It reaches LOWER than a square voice: this one tunes by a sample rate, so its bottom is
+        # It reaches lower than a square voice: this one tunes by a sample rate, so its bottom is
         # 32 Hz against the square voices' 64 — an octave further down, which is most of why a
         # tune puts its bass here.
         # +volume+ is 0..15, the same scale a square part's is written on — the wave voice has
@@ -159,10 +159,10 @@ module VBlank
         # loops, it loops this waveform.
         def wavetable_halfwords(shape) = pack_wavetable(Sound.wavetable(shape))
 
-        # A SINGLE MUSIC NOTE ON THE NOISE VOICE (channel 4), for a song part that plays it — the
+        # A single music note on the noise voice (channel 4), for a song part that plays it — the
         # drums. Two register values again, so the player copies two halfwords here too.
         #
-        # WHAT A NOTE MEANS HERE is the one thing about this voice that has to be decided rather
+        # What a note means here is the one thing about this voice that has to be decided rather
         # than followed: the noise voice makes a hiss, not a tone, so there is no pitch in the way
         # a melody has one. What it does have is a CLOCK, and a faster clock is a higher, thinner
         # hiss where a slower one is a low rumble. So a note's pitch picks the clock nearest to it

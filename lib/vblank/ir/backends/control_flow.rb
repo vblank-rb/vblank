@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      # LOOPS, TESTS AND BRANCHES, LOWERED ONCE for every console whose lowering writes machine code
+      # Loops, tests and branches, lowered once for every console whose lowering writes machine code
       # (the Color's, the Super Nintendo's, the Genesis's and the PlayStation's).
       #
       # A test, a loop and a choice between scenes are the same few labels and jumps on every
@@ -13,7 +13,7 @@ module VBlank
       # two worked it out into a variable first, so the same game got a slower loop on two consoles.
       # So the walk is here, once, and a fix or a speed-up to it lands on all four.
       #
-      # WHAT THE LOWERING SUPPLIES. This module is mixed into a lowering and calls these of it, each
+      # What the lowering supplies. This module is mixed into a lowering and calls these of it, each
       # written in that processor's instructions:
       #
       #   fresh_label(what)               a label no other has, named for what it marks
@@ -48,7 +48,7 @@ module VBlank
         # (LoweringPlan#routines_reentered_at_frame_boundary), a lowering puts them back after it.
         CALL_NUMBERS = %i[index count state].freeze
 
-        # EVERY METHOD OF THIS MODULE A LOWERING WRITES ITS OWN WAY, by the method and then the
+        # Every method of this module a lowering writes its own way, by the method and then the
         # console, with why its way is cheaper there. A lowering takes the walk as it is unless it is
         # named here (.claude/rules/adding-a-backend.md); test_control_flow.rb holds the four
         # lowerings to this list, both ways. The measurement behind each is in the commit that
@@ -163,19 +163,19 @@ module VBlank
 
         # Reference#exec_repeat: the count worked out once, before the first turn; the index
         # counting 0, 1, 2... and in the game's variable from the top of each turn; and
-        # +stop_when+ asked BEFORE the body, so a loop already finished on its first turn runs the
+        # +stop_when+ asked before the body, so a loop already finished on its first turn runs the
         # body no times.
         #
         # A count written in the program is compared as the number it is, with no variable of its
         # own to work out and read back each time round.
         #
-        # THE TEST IS AT THE END OF A TURN: one more, compare, and a jump back while there are turns
+        # The test is at the end of a turn: one more, compare, and a jump back while there are turns
         # left. A test at the top spends a jump out of the loop that is not taken and a jump back
         # besides, every turn. A test at the end cannot see a loop with no turns, so a count of
         # nought or less is caught before the first: none is written for a count known to be one,
         # and no test for a count known to be more.
         #
-        # THE GAME'S VARIABLE IS THE COUNT where only the loop writes it (LoopForm#counts_in_index?),
+        # The game's variable is the count where only the loop writes it (LoopForm#counts_in_index?),
         # so no turn copies a count of the loop's own into it. A loop that runs out has then counted
         # one past its last turn, and the variable is taken back by one, to the last turn's number,
         # which is what the interpreter's holds.
@@ -260,7 +260,7 @@ module VBlank
         # inside the block.
         def with_counter_held(_node, _counter, loaded: false) = yield
 
-        # WHAT A LOOP'S VARIABLE IS KNOWN TO BE BELOW while the loop's own statements are written: a
+        # What a loop's variable is known to be below while the loop's own statements are written: a
         # loop that counts in its variable to a count written in the program holds 0 to one less
         # than the count there, through every statement of its body, since nothing else writes it.
         # So a lowering reading a table or a list at that variable can tell, while building, that
@@ -271,7 +271,7 @@ module VBlank
         # The count +name+ is below, or nil where nothing is known of it.
         def index_below(name) = (@indexes_below ||= {})[name]
 
-        # WHAT AN INDEX IS KNOWN TO BE BELOW, from how it is written: a number written in the program
+        # What an index is known to be below, from how it is written: a number written in the program
         # (one more than it, when it is not below nought), a loop's variable (#index_below), a number
         # kept to its low bits by a mask written in the program, `t & 31`, which is never below nought
         # and never above the mask, or the remainder of a division by a number written in the program
@@ -293,7 +293,7 @@ module VBlank
           divisor if divisor.is_a?(Integer) && divisor.positive?
         end
 
-        # WHAT RANGE A NUMBER STAYS IN while the statement being written runs, for a lowering that
+        # What range a number stays in while the statement being written runs, for a lowering that
         # works a small one at a narrower width: what the plan proves of it (LoweringPlan#number_ranges),
         # and a loop's variable below its count through the loop's body (#index_below). Nil where
         # nothing is known.
@@ -317,7 +317,7 @@ module VBlank
         # A beat (`every`, `after`) is the plain statements IR::Frames turns it into.
         def emit_beat(node) = Frames.beat_statements(node).each { |child| statement(child) }
 
-        # Reference#exec_case: the variable read ONCE, before the first clause. A scene's usual last
+        # Reference#exec_case: the variable read once, before the first clause. A scene's usual last
         # act is to set it to the next scene, and reading it again per clause would run that one
         # too, in the same pass.
         def emit_case(node)
