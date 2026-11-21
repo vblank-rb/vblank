@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class SNES
         class Lowering
-          # A DRAW ORDER'S SORT THAT LEAVES OUT WHAT IS NOT SHOWING (IR ListSort's +shown+). Mixed into
+          # A draw order's sort that leaves out what is not showing (IR ListSort's +shown+). Mixed into
           # Lowering, whose sort kept in tables of its own (Lowering#emit_keyed_sort) it starts past the
           # things not showing.
           #
@@ -95,7 +95,7 @@ module VBlank
             # Each thing asked whether it shows, its flag kept up to date, the count of things not showing
             # with it, and +changed+ set where one came or went; then the places moved round if one did.
             #
-            # WHAT A THING DOES WHEN ITS FLAG TURNS OVER IS WRITTEN ONCE, past the things (#emit_count_moved):
+            # What a thing does when its flag turns over is written once, past the things (#emit_count_moved):
             # a thing writes its flag where it stands and calls that code to set +changed+ and move the
             # count. A pass where nothing came or went runs what it did with all of it written out, and a
             # thing is under thirty bytes of this rather than more than fifty: the sort is written out a
@@ -139,7 +139,7 @@ module VBlank
               @asm.label(marked)
             end
 
-            # THE CODE A THING CALLS WHEN ITS FLAG TURNED OVER, at +label+, with A not nought: +changed+
+            # The code a thing calls when its flag turned over, at +label+, with A not nought: +changed+
             # set, and the count of things not showing (twice over, as the tables index them) moved by
             # +step+.
             def emit_count_moved(kept, label, step:)
@@ -174,7 +174,7 @@ module VBlank
               @asm.label(past)
             end
 
-            # THE PLACES MOVED ROUND, on a pass where a thing came or went: the items copied aside, then
+            # The places moved round, on a pass where a thing came or went: the items copied aside, then
             # the ones not showing written back from the first place in the order they stood, then the ones
             # showing after them in theirs, and the table of places written again for every item. The
             # numbers are not moved: each thing showing writes its number into its place after this.

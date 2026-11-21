@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class SNES
-        # A GAME'S SONGS AND SOUND EFFECTS, AS THE SUPER NINTENDO'S PLAYER READS THEM (Runtime::Music):
+        # A game's songs and sound effects, as the Super Nintendo's player reads them (Runtime::Music):
         # the table is SongTable's, and what is the Super Nintendo's is here. A chip write is a write to
         # the S-DSP (DSPWrites), and the recordings a game plays share its eight voices.
         class Music < SongTable
@@ -16,7 +16,7 @@ module VBlank
 
           LoweringError = SNES::LoweringError
 
-          # THE SOUND CHIP'S VOICES RECORDINGS PLAY ON in +program+, the first place's first: the four
+          # The sound chip's voices recordings play on in +program+, the first place's first: the four
           # past the square, wave and noise parts', and then each of those four the game never
           # sounds, so a game with no use for them has all eight. Asked of the whole program, since
           # a voice is either kept for those sounds everywhere or free everywhere.
