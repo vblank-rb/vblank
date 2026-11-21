@@ -2,12 +2,12 @@
 
 require "test_helper"
 
-# A GAME IN FEATURES: `VBlank.game ..., features: { hero: %i[lamp], lamp: [], bat: [] }` names the
+# A game in features: `VBlank.game ..., features: { hero: %i[lamp], lamp: [], bat: [] }` names the
 # parts of the game a build can leave out and what each brings with it, the block asks
 # `feature?(:bat)`, and `game.with_features(:hero)` is the game built with those alone. A test asks
 # for the smallest game that answers its question this way, and every run plays it.
 class TestFeatures < Minitest::Test
-  # THE CAVE: a hero who walks once the game is playing and brings his lamp, and a bat that flies a
+  # The cave: a hero who walks once the game is playing and brings his lamp, and a bat that flies a
   # path read from a table. The game shows its title for TITLE_PASSES passes, counting them, and
   # then plays, keeping each pass's count in a trail. Shared with the cartridge's test of a feature left
   # out (test/lowering/gba/vblank/testing/test_feature_builds.rb) and the test of chosen starts.

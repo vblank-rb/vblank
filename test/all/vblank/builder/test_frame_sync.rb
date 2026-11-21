@@ -29,7 +29,7 @@ class TestFrameSync < Minitest::Test
     [rom.source_program, err.string]
   end
 
-  # How many times the loop body ran over FRAMES frames.
+  # How many times the loop body ran over frames frames.
   private def passes(program)
     game_player.run(program, frames: FRAMES)[:n]
   end

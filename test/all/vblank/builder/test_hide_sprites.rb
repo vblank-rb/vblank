@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# EVERY SPRITE OFF FOR A FRAME. A game that changes a lot at once — a room loading behind a
+# Every sprite off for a frame. A game that changes a lot at once — a room loading behind a
 # fade, a map opening — can keep every sprite off the screen for the one frame where some of
 # them are not where they will be yet, without touching any of them: on a tiled screen the
 # text is sprites too, and it goes with them. The frame after, everything shows where it
