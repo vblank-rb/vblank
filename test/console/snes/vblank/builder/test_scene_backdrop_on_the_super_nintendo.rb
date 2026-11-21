@@ -3,7 +3,7 @@
 require "test_helper"
 require "screen_backdrop_games"
 
-# A SCENE'S OWN BACKDROP. Colour 0 of the Super Nintendo's colour memory is what shows wherever
+# A scene's own backdrop. Colour 0 of the Super Nintendo's colour memory is what shows wherever
 # nothing is drawn, and it can change with the rest of a screen's colours, as the console's own
 # games change it. A title of a blue sky hands over to a stage of black, and a scene that says no
 # backdrop shows the game's.

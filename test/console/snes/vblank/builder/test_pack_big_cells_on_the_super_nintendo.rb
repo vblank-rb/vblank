@@ -4,7 +4,7 @@ require "test_helper"
 require "made_up_original_layouts"
 require "pack_background_tests"
 
-# A BACKGROUND FROM THE DATA PACK WHOSE CELLS ARE 16x16, BUILT FOR THE SUPER NINTENDO, which draws
+# A background from the data pack whose cells are 16x16, built for the Super Nintendo, which draws
 # such a cell as one tile (Builder::PackBackgrounds#big_pack_cells?). The answer key is the made-up
 # original: a cell at tile t is tiles t, t + 1, t + 16 and t + 17 of its video memory, drawn from
 # its bank and turned whole.

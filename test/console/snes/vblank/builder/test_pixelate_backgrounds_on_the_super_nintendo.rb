@@ -3,7 +3,7 @@
 require "test_helper"
 require "pixelate_backgrounds_tests"
 
-# THE BACKGROUNDS IN BLOCKS AND THE SPRITES AS DRAWN, on the Super Nintendo, whose mosaic reaches
+# The backgrounds in blocks and the sprites as drawn, on the Super Nintendo, whose mosaic reaches
 # the backgrounds and never the sprites: the tests every console whose display can show it plays
 # (PixelateBackgroundsTests in test/pixelate_backgrounds_tests.rb). The Advance's twin is
 # test/console/gba/vblank/builder/test_pixelate_backgrounds_on_the_advance.rb.
@@ -132,7 +132,7 @@ class TestPixelateBackgroundsOnTheSuperNintendo < Minitest::Test
     b.program
   end
 
-  # A SCROLLED ARENA keeps the grid fixed to the screen: every block shows the pixel the arena has,
+  # A scrolled arena keeps the grid fixed to the screen: every block shows the pixel the arena has,
   # as drawn, at the block's top left on the screen, wherever the scroll puts the map: from the bar's
   # last row down, the arena alone in its own blocks, a block that straddles that row read at its
   # first row. The scrolls: a whole tile across and far down a 512-row map (the cartridge writes

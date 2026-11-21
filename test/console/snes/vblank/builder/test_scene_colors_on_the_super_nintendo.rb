@@ -3,7 +3,7 @@
 require "test_helper"
 require "scene_color_lists"
 
-# EACH SCREEN'S COLOURS ARE ITS OWN TO COUNT. A Super Nintendo holds eight sets of fifteen colours
+# Each screen's colours are its own to count. A Super Nintendo holds eight sets of fifteen colours
 # for its backgrounds, and its own games load a screen's sets as they load the screen, so a game
 # has dozens across its screens and never more than eight at once.
 class TestSceneColorsOnTheSuperNintendo < Minitest::Test
