@@ -2,7 +2,7 @@
 
 module VBlank
   module Audio
-    # A PIECE OF MUSIC AS DATA — for a game whose music already exists as numbers rather than as
+    # A piece of music as data — for a game whose music already exists as numbers rather than as
     # something to write out by hand: decoded out of another game's cartridge, read from a file,
     # made up by a program. A `song do ... end` block is for writing a tune; a Score is for handing
     # one over. `songs :music, [score, ...]` takes a list of them and plays them by number.
@@ -14,26 +14,26 @@ module VBlank
     #   ])
     #   VBlank::Audio::Score.new(parts: [melody], tempo: 150)
     #
-    # TIME IS COUNTED IN TICKS, the way sequenced music is stored everywhere: a beat is
+    # Time is counted in ticks, the way sequenced music is stored everywhere: a beat is
     # +ticks_per_beat+ of them, and the tempo is how many beats a minute. The framework turns
     # ticks into frames once, when the game is built — so a decoder hands over what its format
     # holds and never does the sum. The tempo can change as the song goes:
     # `tempo: [[0, 120], [960, 140]]` is 120 from the start and 140 from tick 960.
     #
-    # A PART is one line of music: a note at a time, each lasting until the next one starts or
+    # A part is one line of music: a note at a time, each lasting until the next one starts or
     # its own +length+ runs out. It plays the square wave, or the recording its +plays:+ names.
     #
-    # A NOTE has a +key+ — a MIDI note number (60 is middle C) or a note name like :C4 — or no
+    # A note has a +key+ — a MIDI note number (60 is middle C) or a note name like :C4 — or no
     # key at all, which is a rest. It can also name its own +instrument+ and +volume+, for music
     # that changes instrument or loudness from one note to the next. What a part cannot do is
     # change from a square wave to a recording halfway through: it plays one or the other. A note
     # on the noise voice can give `hz:` instead of a key, for a hiss faster than any key reaches.
     #
-    # A SONG WITH AN INTRODUCTION sets where its loop starts: `loop_from: 384` plays the first 384
+    # A song with an introduction sets where its loop starts: `loop_from: 384` plays the first 384
     # ticks once, then everything from there to the end over and over. Without it, the whole song
     # repeats.
     #
-    # A SONG THAT ENDS sets `plays_once: true`: at its end its parts go quiet and it is not heard
+    # A song that ends sets `plays_once: true`: at its end its parts go quiet and it is not heard
     # again until the game stops the music and names it, or names another song first. Music
     # decoded off a cartridge knows which kind each song is, since a track there ends either with
     # a mark that sends it back or with one that stops it. A sound effect plays once whatever
@@ -44,24 +44,24 @@ module VBlank
     # IR::Tunes.song_rank). A cartridge's own sound engine carries one on every sequence, so a decoder
     # hands it straight over.
     #
-    # A GROUP sets which sound effects cut each other off: effects with the same +group+ play one at
+    # A group sets which sound effects cut each other off: effects with the same +group+ play one at
     # a time, the way a character has one voice. Asked for while another of its group sounds, an
     # effect of at least that priority stops it and starts; one of lower priority is not played. A
     # cartridge's engine plays each effect on one of a few players, and the player is the group.
     #
-    # LOW NOTES THE ORIGINAL PLAYED THE SAME WAY. The square-wave voice cannot go below 64 Hz, just
-    # under C2, and plays a lower note AT 64 Hz; the build warns about such a note, because in music
+    # Low notes the original played the same way. The square-wave voice cannot go below 64 Hz, just
+    # under C2, and plays a lower note at 64 Hz; the build warns about such a note, because in music
     # written by hand it is a mistake. A cartridge's own sound engine does the same before the
     # console sees the note, so music decoded off one plays exactly what the original did, and
     # `low_notes_intended: true` marks that: the warning is left out for this Score alone. The sound
     # does not change — the note is played at the bottom either way.
     #
-    # A SOUND EFFECT THAT KEEPS ITS VOICES. A rest or a note at volume 0 gives its voice to the song
+    # A sound effect that keeps its voices. A rest or a note at volume 0 gives its voice to the song
     # at once. `keeps_voices: true` on an effect's Score holds each voice it has taken through such a
     # silence until the effect ends, the way a cartridge's own sound engine can, so a song note
     # falling in that silence is lost. It means nothing for a song.
     #
-    # A SONG WHOSE LENGTH IS IN THE PLAYER'S DATA PACK. A port reading its original's songs as the
+    # A song whose length is in the player's data pack. A port reading its original's songs as the
     # game starts gives `length:` and `loop_from:` as numbers of the pack (`pack[:song].number(0)`,
     # Builder::PackScores), which no build can read until the player's copy is unpacked. +longest+
     # is then the most ticks the song can last, the one number such a build must know: it holds room
@@ -72,7 +72,7 @@ module VBlank
                         :low_notes_intended, :keeps_voices, :longest)
 
     class Score
-      # FRAMES A SECOND, the rate the music is played at — the same round figure a song block's
+      # Frames a second, the rate the music is played at — the same round figure a song block's
       # note lengths are worked out from, so the two agree about how long a beat is.
       FRAME_RATE = 60
 
@@ -82,7 +82,7 @@ module VBlank
       # +length+ is where the song comes round again, in ticks. Left out, it is where the last
       # note ends — and a note with no length of its own counts as a beat long for that, since
       # it lasts until the next note and the last one has none after it. +loop_from+ is the tick
-      # it comes round TO; left out, that is its start. A song that +plays_once+ does not come
+      # it comes round to; left out, that is its start. A song that +plays_once+ does not come
       # round, and +length+ is where it ends.
       def initialize(parts:, tempo: 120, ticks_per_beat: 24, length: nil, loop_from: nil, plays_once: false,
                      priority: 0, group: nil, low_notes_intended: false, keeps_voices: false, longest: nil)
@@ -183,13 +183,13 @@ module VBlank
                          :slide_down, :vibrato, :pan, :duty, :pitch_number, :noise_clock, :glides, :metallic, :wave)
 
       class Note
-        # A NOTE ON A SQUARE VOICE OR THE WAVE VOICE CAN GIVE +pitch_number+ IN PLACE OF A KEY: the
+        # A note on a square voice or the wave voice can give +pitch_number+ in place of a key: the
         # number the voice itself is tuned by, 0 to 2047, where each step up makes a wave a tick of
         # the voice's clock shorter (the same steps a part's `pitch_offset` counts). Another Game Boy
         # game's music engine keeps a table of these, and its notes are often a step away from the
         # pitch a key comes to, so a song converted from it gives the number to sound the same.
         #
-        # A NOTE ON THE NOISE VOICE CAN GIVE +hz+ IN PLACE OF A KEY: how many times a second its
+        # A note on the noise voice can give +hz+ in place of a key: how many times a second its
         # hiss steps. A key cannot name most of them. The voice steps up to 524,288 times a second,
         # and the highest MIDI key is 12,543 Hz — so a drum that wants a thin, fast hiss, which is
         # most drums another game's sound engine plays, has no key to ask for it with. The voice
@@ -201,19 +201,19 @@ module VBlank
         # rate — [1, 1] and [0, 2] both 131,072 times a second — and sound the same; a console that
         # is told the setting itself is told this one, as the game the song came from told it.
         #
-        # A NOTE ON A RECORDING CAN GIVE +hz+ IN PLACE OF A KEY too, for a pitch no key reaches: the
+        # A note on a recording can give +hz+ in place of a key too, for a pitch no key reaches: the
         # recording's own note, as a frequency, reads it at the rate it was recorded. And it can set
         # +glides: true+: it does not strike. The note sounding on its part carries on from where
         # it has got to, fading as it was, at this pitch from here, and at this note's +volume+ and
         # +pan+ where it names them; else the note keeps its own. If the part has no note sounding by then,
         # nothing sounds.
         #
-        # A NOTE ON THE NOISE VOICE CAN SAY WHETHER IT RATTLES, `metallic: true` or `false`, in place
+        # A note on the noise voice can say whether it rattles, `metallic: true` or `false`, in place
         # of its part's +metallic+: the short, metallic hiss or the full one. Another Game Boy game's
         # sound engine sets that bit for each drum hit it strikes, so a converted drum part has some
         # hits that rattle and some that do not.
         #
-        # A NOTE ON THE WAVE VOICE CAN NAME ITS OWN +wave+, in place of the one its part plays: a
+        # A note on the wave voice can name its own +wave+, in place of the one its part plays: a
         # shape (:sine, :triangle, :sawtooth, or :wave for the middle one) or 32 steps of 0 to 15,
         # as a part's `plays:` takes them. The voice holds one waveform, so the note puts its own in
         # as it starts, on the notes where the waveform changes.
@@ -267,7 +267,7 @@ module VBlank
         end
       end
 
-      # TICKS INTO FRAMES, from the tempo map. Each note's frame is worked out from the start of
+      # Ticks into frames, from the tempo map. Each note's frame is worked out from the start of
       # the song with exact fractions and rounded once, so rounding never builds up over a long
       # song the way adding up rounded note lengths would.
       class Timing
@@ -291,7 +291,7 @@ module VBlank
         end
       end
 
-      # A PART'S EVENTS, as the player walks them: one event on a frame, in order. A note with a
+      # A part's events, as the player walks them: one event on a frame, in order. A note with a
       # length ends in a rest where the length runs out, unless the next note has already begun.
       # Two events that round onto one frame keep the later — the player takes one event a frame,
       # and the earlier would last no time at all — and nothing is kept past the song's end.
@@ -322,9 +322,9 @@ module VBlank
         end
       end
 
-      # WHAT A SCORE HAS TO BE, said plainly and early — a game hands these over from its own
+      # What a score has to be, said plainly and early — a game hands these over from its own
       # decoder, and a mistake in one names the note it is in, rather than coming out as a wrong
-      # sound or a crash somewhere deep in the build. What a SONG has to be — how many parts, how
+      # sound or a crash somewhere deep in the build. What a song has to be — how many parts, how
       # low a square-wave note — is the same for a Score and a song block, so it is checked on the
       # finished program instead (IR::Guardrails).
       module Checks

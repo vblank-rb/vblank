@@ -2,7 +2,7 @@
 
 module VBlank
   module Audio
-    # HOW A NOTE ON A SQUARE OR NOISE VOICE CHANGES ITS OWN LOUDNESS while it holds.
+    # How a note on a square or noise voice changes its own loudness while it holds.
     #
     # Those voices count a note's loudness by themselves, with nothing from the game: struck at
     # its volume (0 to 15), the voice steps it one down — or one up — every +step+ 64ths of a
@@ -29,7 +29,7 @@ module VBlank
       # A note that holds at its volume.
       HOLD = fading(0)
 
-      # THE SHAPE A PART OR NOTE GAVE, from the two words a song writes it with: +decay+ to fade
+      # The shape a part or note gave, from the two words a song writes it with: +decay+ to fade
       # each note out, +swell+ to bring it in. Each is a speed (:fast, :medium, :slow or :none) or
       # the step itself, 0 to 7. Nil when it gave neither, which leaves the note to its voice: a
       # drum fades as its part sets, a square note holds.
@@ -52,7 +52,7 @@ module VBlank
       end
       private_class_method :step_of
 
-      # A WHOLE PART'S FADE, from what it gave: a part on the noise voice keeps its fade-out as its
+      # A whole part's fade, from what it gave: a part on the noise voice keeps its fade-out as its
       # own `decay`, as a drum always did, so only a swell is a fade of its own there. Every other
       # part's is what it gave.
       def self.for_part(said, drum:) = drum && !said&.swells? ? nil : said
