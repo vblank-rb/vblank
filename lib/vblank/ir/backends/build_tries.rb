@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      # A CARTRIDGE BUILD AS A SERIES OF TRIES, each a whole lowering of the game with one set of
+      # A cartridge build as a series of tries, each a whole lowering of the game with one set of
       # settings, until one fits. A console that sees its cartridge a bank at a time, with a few
       # hundred tiles and a few lists of colours at once, cannot tell from the program alone how a
       # game must be kept to fit: it tries the simple way first, and a try that does not fit stops
@@ -11,27 +11,27 @@ module VBlank
       # cartridge too full), which decides what the next try changes. A game that fits at the first
       # try builds the bytes it always did; a big one takes several tries.
       #
-      # THE DECISION, shared by every such console so it is made once (the Color's, the Super
+      # The decision, shared by every such console so it is made once (the Color's, the Super
       # Nintendo's and the Genesis's builds all run on this):
       #
-      # - THE ORDER OF THE STEPS is each console's: its step is handed the error that stopped a try
+      # - The order of the steps is each console's: its step is handed the error that stopped a try
       #   and the try, and gives the settings of the next try, or nil where nothing it can change
       #   would help, and the error stands. The settings are one value (a Data), so a try is known
       #   by its settings, and by what the build's BuildCache holds by then (a Color variable found
       #   to be kept whole is the cache's, and the try after it has the same settings).
-      # - WHAT A TRY FOUND IS KEPT for every later try. The next settings are the last ones with one
+      # - What a try found is kept for every later try. The next settings are the last ones with one
       #   thing more, never a fresh start, because what a try finds (these sprites need more tiles
       #   than the console holds) is a fact about the game and not about that try. A step that must
       #   start part of its settings over gives those parts back as they were first.
-      # - A TRY THAT IS SURE TO FAIL STOPS as soon as it is: each console's lowering raises the
+      # - A try that is sure to fail stops as soon as it is: each console's lowering raises the
       #   moment a count passes what the console holds, rather than at the end of the try (the
       #   console's own checks; see each lowering's Art). And a try that has found one thing that
       #   does not fit, of a kind several parts of the game can each have, finds them all before it
       #   stops (the Super Nintendo's crowded scenes), so one try does what one try per part did.
-      # - A STEP THE LAST TRY'S MEASUREMENTS RULE OUT IS SKIPPED, untried (#first_step_not_ruled_out):
+      # - A step the last try's measurements rule out is skipped, untried (#first_step_not_ruled_out):
       #   a part of the cartridge too full by more than a step can move (the Color's part always in
       #   view). The measurements are each console's.
-      # - A STEP MAY BE AN ATTEMPT (Attempt): one way of fitting that is worth trying before the
+      # - A step may be an attempt (Attempt): one way of fitting that is worth trying before the
       #   others but may not work, and if the tries after it fail, the build goes back to where it
       #   was and carries on there. And a try that fits may be followed by one that would be better
       #   (more of the game the fast way), kept only if it fits too (+better+ in #run).
@@ -100,7 +100,7 @@ module VBlank
         # How many tries the last #run made: one for a game that fits as it first tries.
         def count = @tries.length
 
-        # THE BUILD: the block is one try, given the Try and giving back what fit (a cartridge). A try
+        # The build: the block is one try, given the Try and giving back what fit (a cartridge). A try
         # that raises is handed to +next_settings+ (given the error and the Try), which gives the next
         # settings, an Attempt, or nil. Nil gives the build back to the last open attempt that gives up
         # on the error, or raises it where none does. +better+, where given, is asked after a try fits

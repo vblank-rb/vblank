@@ -66,7 +66,7 @@ module VBlank
     # that writes a game out as a Ruby program to play fast, which Reference never
     # tries to be.
     #
-    # EVERY BACKEND IS FIRST-CLASS. `rake test` plays the suite once for each lowering — GBA (the
+    # Every backend is first-class. `rake test` plays the suite once for each lowering — GBA (the
     # cartridge), Native (the game as a desktop program), JS (the game as a web page), Ruby (the
     # game as a Ruby program) and GBC (the Color cartridge) — and checks each against Reference, so
     # a feature is not done until it works on all of them: a test that one of them cannot pass fails

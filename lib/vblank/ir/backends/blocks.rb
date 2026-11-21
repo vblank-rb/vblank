@@ -3,10 +3,10 @@
 module VBlank
   module IR
     module Backends
-      # THE BLOCKS A PICTURE IS SHOWN IN when a program pixelates: what every backend has
+      # The blocks a picture is shown in when a program pixelates: what every backend has
       # to agree on, kept where both read it so they cannot come to different answers.
       #
-      # HOW BIG a block can be is the display's: it keeps the size in a few bits, so there
+      # How big a block can be is the display's: it keeps the size in a few bits, so there
       # is a biggest one, and a size asked for past either end stops at that end. It is
       # written here, since every backend has to stop at the same size, and the Advance's
       # display keeps the same biggest one (MOSAIC_LARGEST).
@@ -38,7 +38,7 @@ module VBlank
             "this, give every pixelate the same place."
         end
 
-        # WHETHER THE SPRITES ARE LEFT AS DRAWN, which is one choice for a whole program for
+        # Whether the sprites are left as drawn, which is one choice for a whole program for
         # the same reason as the place: each sprite's switch is settled before it runs. Every
         # choice +program+'s `pixelate` statements make: true where the backgrounds alone are
         # put into blocks. None for a program that never pixelates, and both for a program no
@@ -62,7 +62,7 @@ module VBlank
             "To fix this, give every `pixelate` the same `sprites:`."
         end
 
-        # WHETHER A STATUS BAR IS IN BLOCKS, one choice for a whole program for the same reason:
+        # Whether a status bar is in blocks, one choice for a whole program for the same reason:
         # true where `pixelate ..., status_bar: true` puts it in them, in the one grid every
         # background's blocks are in (Reference#paint_status_bar_rows). Raises +error+ for a
         # program that chooses both ways.

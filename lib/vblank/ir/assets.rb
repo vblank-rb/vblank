@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # WHAT A DECLARED ASSET IS, read off the node that declares it.
+    # What a declared asset is, read off the node that declares it.
     #
     # A program declares images and recorded sounds, and every backend has to know the same
     # things about them: how big a picture is, which of its colors means "see through",
@@ -11,7 +11,7 @@ module VBlank
     # agree — and nothing but a test to notice when they drifted.
     #
     # These are built from the declaring node by one function, so there is one description
-    # and the backends read it. What a backend then DOES with an asset is its own business
+    # and the backends read it. What a backend then does with an asset is its own business
     # and stays there: where the GBA packed a table into the cartridge, or which hardware
     # layer a background got, means nothing to an interpreter and is not here.
     module Assets
@@ -24,7 +24,7 @@ module VBlank
       # where the art was given as colors). The two are the same picture until the table
       # holds one color at two places, which a palette taken off a real cartridge usually
       # does — then a pixel's color no longer shows which place drew it, and anything that
-      # reads a pixel as a NUMBER has to ask here instead.
+      # reads a pixel as a number has to ask here instead.
       #
       # +colors_name+ is the name of the list of colours it was drawn from, where the game named one
       # (`image ..., colors: :sea`), and nil where it gave the colours themselves. Two lists named
@@ -53,7 +53,7 @@ module VBlank
       # What marks a pixel see-through where a picture has no marker yet (the sixteenth bit alone).
       SEE_THROUGH_MARKER = 0x8000
 
-      # A PICTURE GIVEN AS PLACES INTO A LIST OF COLOURS (`image colors:, places:`), as its pixels: a
+      # A picture given as places into a list of colours (`image colors:, places:`), as its pixels: a
       # place's colour (colour 0 for a place past them), or SEE_THROUGH_MARKER at place +see_through+
       # (0, as a picture of up to sixteen colours has it; nil for none). Gives back the pixels, two bytes each, and
       # the marker when a pixel is see-through, nil when none is. The build makes a picture so from
@@ -120,10 +120,10 @@ module VBlank
         # picture whose art was given as colors and never recorded one.
         def place_at(index) = places&.getbyte(index)
 
-        # ONE PIXEL, COUNTING ACROSS THE ROWS: pixel 0 is the top left, and the next is the
+        # One pixel, counting across the rows: pixel 0 is the top left, and the next is the
         # one to its right. Two bytes each, the low one first.
         #
-        # TWO READINGS, AND THE DIFFERENCE MATTERS. +raw_at+ is the number the program wrote,
+        # Two readings, and the difference matters. +raw_at+ is the number the program wrote,
         # which is fifteen bits of color and a sixteenth bit that marks a pixel see-through —
         # so it is the one to compare against +transparent+, and #drawn_at? is that comparison.
         # +color_at+ drops that bit, and is the color the console shows. Reading the wrong one
@@ -157,7 +157,7 @@ module VBlank
           with(pixels: marked.pack("v*"), transparent: marker)
         end
 
-        # EVERY COLOR THIS PICTURE ACTUALLY DRAWS, its see-through pixels left out. What a
+        # Every color this picture actually draws, its see-through pixels left out. What a
         # picture was given and what it uses are different lists: a table can name colors no
         # pixel is painted in, which is how one picture ships a whole game's palette.
         #
@@ -170,11 +170,11 @@ module VBlank
           end
         end
 
-        # THE SAME PICTURE THE OTHER WAY ROUND — every row read right to left.
+        # The same picture the other way round — every row read right to left.
         #
         # "Left is the right one, backwards" is close to universal in 2D games, and this
-        # is the one place a picture is turned round. A program that DECLARES a pose is a
-        # mirror and a build that NOTICES one already is therefore compare the same bytes,
+        # is the one place a picture is turned round. A program that declares a pose is a
+        # mirror and a build that notices one already is therefore compare the same bytes,
         # which is what lets the second recognize the first.
         def mirrored
           turned = (0...height).each_with_object(+"".b) do |row, bytes|
@@ -184,7 +184,7 @@ module VBlank
                pieces: pieces&.map { |dx, dy, own| [width - dx - Image.side(own), dy, Image.rows(own).map(&:reverse).join.b] })
         end
 
-        # THE SAME PICTURE TURNED TOP TO BOTTOM — its rows in the other order. The other
+        # The same picture turned top to bottom — its rows in the other order. The other
         # mirror, and the one place a picture is turned that way, for the same reason as above.
         def upside_down
           rows = (0...height).map { |row| pixels.byteslice(row * width * 2, width * 2) }
@@ -241,7 +241,7 @@ module VBlank
         end
       end
 
-      # WHAT COLOR A PIXEL IS DRAWN IN while its picture is drawn with another list of colors:
+      # What color a pixel is drawn in while its picture is drawn with another list of colors:
       # each place of the picture's own list shows the color at the same place of that list.
       # A picture whose art was given as places is read by place, which is what a machine that
       # keeps a number per pixel does with it; one given as colors has only its colors to go
@@ -258,7 +258,7 @@ module VBlank
               by_color: picture.places ? nil : color_swaps(picture.colors, swapped))
         end
 
-        # A picture given as COLORS has no places recorded, so its swap is read the only way
+        # A picture given as colors has no places recorded, so its swap is read the only way
         # left: color to color, and a color its list holds twice is read at the first of
         # them. The build refuses that where the two places differ in the list being drawn
         # with, so this is only ever reached where both places agree.
@@ -278,7 +278,7 @@ module VBlank
       # and the note it was played at when recorded (which is what playing it at another
       # pitch is measured from).
       # +holds_from+ is where a held note reads back to at the end of the recording, as a sample
-      # number, or nil for one that runs out. It is kept as HOW FAR BACK that is rather than
+      # number, or nil for one that runs out. It is kept as how far back that is rather than
       # where it starts, because that is what a voice needs: the mixer moves its read pointer
       # back by this when it reaches the end, which is one subtraction and no arithmetic about
       # where the recording began.
