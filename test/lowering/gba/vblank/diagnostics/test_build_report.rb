@@ -3,9 +3,9 @@
 require "test_helper"
 require "stringio"
 
-# WHAT THE BUILD MADE OF A PROGRAM — the exact half of a profile.
+# What the build made of a program — the exact half of a profile.
 #
-# Every fact here is read off the finished build, so these assert the SENTENCES rather than
+# Every fact here is read off the finished build, so these assert the sentences rather than
 # the sizes: how big a routine came out moves whenever the lowering does, and none of these
 # tests should care. What must not move is which facts get stated at all — each one is
 # something a running cartridge cannot tell you afterwards, which is the whole reason this
@@ -58,7 +58,7 @@ class TestBuildReport < Minitest::Test
     assert_match(/free/, text)
   end
 
-  # A GAME WHOSE SCENES EACH KEEP THEIR OWN is told which routines each scene keeps while it is
+  # A game whose scenes each keep their own is told which routines each scene keeps while it is
   # up — the split is a decision nobody wrote, so the report is the only place it shows.
   def test_it_says_what_each_scene_keeps_while_it_is_up
     rom = VBlank.build("BRSETS", console: :gba, out: StringIO.new, err: StringIO.new, profile: false) do
@@ -84,7 +84,7 @@ class TestBuildReport < Minitest::Test
     assert_match(/scene :play:\n(\s+.*\n)*?\s+.*func :play_work/, text)
   end
 
-  # ...AND WHICH SCENE'S SHARE A ROUTINE MISSED. With the room split, a routine of play's that
+  # ...AND which scene's share a routine missed. With the room split, a routine of play's that
   # does not fit missed play's share, not the whole game's: the title's routine took none of it.
   def test_it_says_which_scenes_share_a_routine_did_not_fit_in
     rom = VBlank.build("BRMISS", console: :gba, out: StringIO.new, err: StringIO.new, profile: false) do
@@ -114,7 +114,7 @@ class TestBuildReport < Minitest::Test
     assert_equal ["play"], missed.map { |over| over[:scene] }.uniq
   end
 
-  # THE ACTIONABLE HALF, and the one a finished cartridge cannot answer: a routine that just
+  # The actionable half, and the one a finished cartridge cannot answer: a routine that just
   # missed is exactly where a game lost that speed, and by then the evidence is gone.
   def test_it_names_what_did_not_fit_with_what_it_wanted_and_what_was_left
     text = report_for(crowded_game)
@@ -123,7 +123,7 @@ class TestBuildReport < Minitest::Test
     assert_match(/it needs .*K and .*K was left when its turn came/, text)
   end
 
-  # THE LINE IT NAMES IS THE ONE THAT COSTS. A picture declared inside a routine is a
+  # The line it names is the one that costs. A picture declared inside a routine is a
   # statement of that routine and emits nothing, so a count of statements names a line of
   # declarations ahead of the line the routine's size really comes from.
   def test_it_names_the_line_that_emits_the_most_not_the_most_statements
@@ -144,7 +144,7 @@ class TestBuildReport < Minitest::Test
     assert_match(/\d+(\.\d)?K in all/, note, "and what it came to")
   end
 
-  # A value held in a Ruby variable is ONE node written into every statement that uses it,
+  # A value held in a Ruby variable is one node written into every statement that uses it,
   # so asking it which statement holds it answers with the last one — here a line of another
   # routine, which is not in the routine the note is about at all.
   #
@@ -190,7 +190,7 @@ class TestBuildReport < Minitest::Test
 
   # --- the tear question, at build time ---
 
-  # A game that draws straight into the picture the display is reading CAN tear, and that is
+  # A game that draws straight into the picture the display is reading can tear, and that is
   # a fact about the screen it chose rather than about how long anything takes.
   def test_a_single_buffered_game_is_told_it_can_tear
     rom = VBlank.build("BRTR", console: :gba, code: "BRTR", maker: "01", out: nil, err: nil) do
@@ -210,7 +210,7 @@ class TestBuildReport < Minitest::Test
     refute_match(/tear/, report_for(crowded_game))
   end
 
-  # NO CLAIM ABOUT HOW LONG ANYTHING TAKES survives here. This report used to price a frame
+  # No claim about how long anything takes survives here. This report used to price a frame
   # in scanlines against a budget and call it fits or tears — a second statement of what the
   # hardware costs, kept in step with the backend by hand. Time is measured now.
   def test_it_makes_no_claim_about_how_long_a_frame_takes

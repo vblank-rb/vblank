@@ -101,8 +101,8 @@ class TestEmulatorBlend < Minitest::Test
 
   # The quirk the fade has to copy, pinned so it cannot change unnoticed: the emulator
   # divides the red channel on its raw byte and the other two on their shifted fields, so
-  # a uniform gray comes back with unequal channels. 24 is a channel that LOST a truncated
-  # share; 23 is one that KEPT one.
+  # a uniform gray comes back with unequal channels. 24 is a channel that lost a truncated
+  # share; 23 is one that kept one.
   def test_the_emulator_treats_the_red_channel_differently
     y = EmulatorBlend.steps_of(25)
     per_channel = 3.times.map { |field| EmulatorBlend.darkened(31, y, field) }
