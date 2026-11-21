@@ -3,7 +3,7 @@
 require "test_helper"
 require "loop_cost_games"
 
-# A TURN OF A LOOP ON THE PLAYSTATION, measured in the emulator: a `repeat`, and a game's
+# A turn of a loop on the PlayStation, measured in the emulator: a `repeat`, and a game's
 # `while i < n` with `i += 1` last, which the build lowers as a counted loop (LoopForm#counted_while).
 # The R3000's own way is a count in a register, ADDIU, a compare and a branch with its delay slot
 # (psx-spx, "CPU Opcode Encoding"). A count here is kept in a saved register where the body cannot

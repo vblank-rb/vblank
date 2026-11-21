@@ -38,7 +38,7 @@ class TestPS1ManyRoomsPace < Minitest::Test
   # A wall two wholes square shows its picture four times each way.
   WALL = Ractor.make_shareable([[0, 0], [64, 0], [64, 64], [0, 64]])
 
-  # A corridor of ROOMS rooms, each two wholes wide, high and long, with walls and a floor, a ceiling
+  # A corridor of rooms rooms, each two wholes wide, high and long, with walls and a floor, a ceiling
   # in every fourth room, and a wall at its end: about 55 faces. The viewer stands in the first room
   # and sways a little left and right, looking down it.
   CORRIDOR = VBlank.game("MANY ROOMS", consoles: %i[ps1]) do
