@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # A ROUTINE TOO BIG FOR THE QUICK MEMORY, CUT INTO PIECES THAT FIT.
+        # A routine too big for the quick memory, cut into pieces that fit.
         #
         # The quick memory runs code more than twice as fast as the cartridge, and a routine goes in
         # whole or not at all (see {Placement}). A game's play screen grows past the room, and then
@@ -20,7 +20,7 @@ module VBlank
         # at statements that can run as a routine of their own, and only where it lets the busy
         # part in.
         #
-        # WHAT IS CUT is a statement the routine runs at most once each time it is called: one
+        # What is cut is a statement the routine runs at most once each time it is called: one
         # written straight in the routine, or in a test's either branch, however many tests deep.
         # Such a statement made a routine of its own and called from where it was does exactly what
         # it did, because nothing the routine holds in a register lives across its statements: a
@@ -30,7 +30,7 @@ module VBlank
         # against) where a routine of its own would not see it. Nor is one holding a declaration,
         # which belongs to where it is written.
         #
-        # WHICH ROUTINES, AND WHICH PIECES. A routine is cut only when the plan passed it over, so a
+        # Which routines, and which pieces. A routine is cut only when the plan passed it over, so a
         # routine that fits keeps its one call and runs as it did. Its statements are taken from the
         # top: one at most half as big as the room the quick memory has with nothing moved is a
         # piece, a test bigger than that is cut inside its branches, and a statement smaller than
@@ -38,7 +38,7 @@ module VBlank
         # are then routines like any other, weighed by what a frame spends in each (see
         # Placement#choose_fast_funcs), so the busy one goes in and the rest stay in the cartridge.
         #
-        # THE NAMES ARE THE PLACES, so they survive a rebuild: a measurement saved from one build is
+        # The names are the places, so they survive a rebuild: a measurement saved from one build is
         # read by routine name (Diagnostics::RoutineProfile), and a piece named by where it is in
         # its routine is the same piece in the next build of the same game. A build cut where the
         # one measured was not finds its pieces unmeasured, and they go after every measured

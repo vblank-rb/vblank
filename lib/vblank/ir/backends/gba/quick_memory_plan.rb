@@ -4,19 +4,19 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # WHAT GOES IN THE CONSOLE'S QUICK MEMORY, worked out from plain numbers: each routine
+        # What goes in the console's quick memory, worked out from plain numbers: each routine
         # or collection that wants a place there, how big it is, which scene runs it, and whether
         # the author insisted on it. Nothing here lowers anything or reads the program;
         # {Placement} measures them and hands them over, and emits what comes back. A collection
         # is weighed like a routine with no calls that only the whole game's room can hold.
         #
-        # THE RULE. What the author insisted on (`fast: true` on a routine, a scene or a save
+        # The rule. What the author insisted on (`fast: true` on a routine, a scene or a save
         # record) goes in first, in the room of the scene that runs it. Then whatever the build
         # would pick for itself, best first, in what is left. An insisted routine is never turned
         # away for a routine the build picked, so whether a build fails depends only on what the
         # author insisted on — never on what the measuring run found.
         #
-        # TWO WAYS TO HOLD THEM. One set of routines for the whole game, copied in at power-on; or,
+        # Two ways to hold them. One set of routines for the whole game, copied in at power-on; or,
         # for a game whose scenes are picked by one dispatch in the game loop, a set for each scene
         # as well, copied in as that scene takes over (see {SceneQuickMemory}). A scene's set costs
         # a word in every scene saying where each of its routines is, so it is used only when one
@@ -106,13 +106,13 @@ module VBlank
 
             private
 
-            # WHAT ONE SET LEFT OUT, a scene's own room may hold. Answers the split, or nil where it
+            # What one set left out, a scene's own room may hold. Answers the split, or nil where it
             # is no better than +one+ set: it keeps nothing in a scene's set, or it keeps what every
             # frame runs less well (see #keeps_dearer_every_frame_claim?). With no +one+ — what the author
             # insisted on fits only in a split — the split is the answer, and a split that cannot
             # hold what was insisted on stops the build.
             #
-            # WHICH ROUTINES GO FIRST is tried two ways when each scene's work was measured, and the
+            # Which routines go first is tried two ways when each scene's work was measured, and the
             # one that leaves more of the scenes' measured work in the quick memory is kept. Added
             # up over every scene, a routine two scenes run reads dearer than either scene's own
             # busier routine, though a frame of either spends less in it; taken by what one scene
@@ -126,7 +126,7 @@ module VBlank
                     .max_by { |split| scene_work_kept(split.plan) }
             end
 
-            # WHAT EVERY FRAME RUNS GOES FIRST in a split, whichever order it is taken in. A routine
+            # What every frame runs goes first in a split, whichever order it is taken in. A routine
             # kept for the whole game needs its room in every scene: taken in the order of what was
             # measured, a menu's own big routine came before the game loop, its set left no room in
             # that scene, and the game loop ran from the cartridge everywhere, play included. And
@@ -167,7 +167,7 @@ module VBlank
               split if keeps_dearer_every_frame_claim?(plan, one, optional)
             end
 
-            # DOES THE SPLIT KEEP WHAT EVERY FRAME RUNS AT LEAST AS WELL AS ONE SET DID? Taken in the
+            # Does the split keep what every frame runs at least as well as one set did? Taken in the
             # order the build ranks them, the first such claim the two disagree about decides: the
             # one that keeps it wins. A split that leaves out something every frame runs is no
             # better than the one set that kept it — unless that one set left out something ranked
@@ -246,7 +246,7 @@ module VBlank
               end
             end
 
-            # Go down +claims+ keeping each that fits, and AGAIN WHILE ANYTHING WAS ADDED, because
+            # Go down +claims+ keeping each that fits, and again while anything was added, because
             # what a routine adds depends on what is kept beside it: one turned away near the top
             # can fit once a routine it calls, or one that calls it, has gone in below. Leaves
             # #missed as the claims the last pass turned away, which are those that never fitted.
@@ -306,7 +306,7 @@ module VBlank
               nil
             end
 
-            # A CALL BETWEEN TWO ROUTINES KEPT IN ONE PLACE NEVER GREW, so what +claim+ was charged
+            # A call between two routines kept in one place never grew, so what +claim+ was charged
             # for each of its calls to a routine in +place+ (itself among them) comes back. Every
             # call is charged as though it crossed, because the charging starts before anything is
             # chosen; but the routines of one place are copied as one block and go on calling each
@@ -316,7 +316,7 @@ module VBlank
               claim.call_charge * claim.calls.count { |target| place.include?(target) }
             end
 
-            # WHAT KEEPING +claim+ ADDS to a place already holding +kept+: its own charge, less its
+            # What keeping +claim+ ADDS to a place already holding +kept+: its own charge, less its
             # calls to routines there (or to itself), less what each of them gets back for calling it.
             def bytes_added_by(claim, kept)
               own = bytes_given_back(claim, kept.to_set | [claim.name])

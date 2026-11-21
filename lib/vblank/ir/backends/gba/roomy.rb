@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # WHICH COLLECTIONS GO IN THE OTHER MEMORY, and why the answer is not "the big ones".
+        # Which collections go in the other memory, and why the answer is not "the big ones".
         #
         # The console has two work memories, and they are not two sizes of the same thing:
         #
@@ -17,14 +17,14 @@ module VBlank
         # that asked for more than fits did not build. Meanwhile a quarter of a megabyte
         # sat idle, touched by nothing but the audio mixer's two output buffers.
         #
-        # AND THE QUICK ONE IS ALSO WHERE THE HOT CODE GOES. Data used to be handed out first,
+        # And the quick one is also where the hot code goes. Data used to be handed out first,
         # so a big cold collection quietly pushed a routine the frame spends its time in back
         # into the cartridge, where it runs about two and a third times slower — invisible from
         # the program, and the expensive half of this. Code and collections are now weighed
         # against each other by one rule (below), before any collection is given its place.
         #
-        # AMONG THE COLLECTIONS THE RULE IS: everything stays in the quick memory until it will
-        # not fit, and then the COLDEST things move — not the biggest, and not the last declared.
+        # Among the collections the rule is: everything stays in the quick memory until it will
+        # not fit, and then the coldest things move — not the biggest, and not the last declared.
         #
         #   what the author asked for      `fast: false` means "I know this is cold"; those
         #                                  move first, whatever their size.
@@ -38,14 +38,14 @@ module VBlank
         # `fast: true` keeps one where it is and takes it out of the reckoning entirely, so
         # an author who knows better than the rule can set it.
         #
-        # AGAINST THE CODE that wants the same room, each collection is a claim like a routine
+        # Against the code that wants the same room, each collection is a claim like a routine
         # (see Placement#collection_claims, a pool being one collection): what the author
         # insisted on goes first. In a build that measured the game, each collection then goes
         # among the routines by how often a frame read it; in one that did not, the collections
         # a frame touches go next, then the routines the build picks, then the collections no
         # frame touches.
         #
-        # WHAT A FRAME TOUCHES is read off the program rather than guessed: the game loop's
+        # What a frame touches is read off the program rather than guessed: the game loop's
         # body, and every routine reachable from it. That is a structural fact — this
         # collection is named in the per-frame path, or it is not — with nothing predicted
         # and nothing to drift.
@@ -58,7 +58,7 @@ module VBlank
             def rank = [asked == false ? 0 : (hot ? 2 : 1), -bytes]
           end
 
-          # WHAT CAME OF THE MOVES: how much of the roomy memory is spoken for, how much is
+          # What came of the moves: how much of the roomy memory is spoken for, how much is
           # left, and which collections landed there. The counterpart to Candidate — that one
           # is what was considered, this is what happened — and the only way an author can see
           # it, since a collection moving here is a decision nobody wrote. Seeing it is what
@@ -102,12 +102,12 @@ module VBlank
 
           def hot?(name) = @hot.include?(name)
 
-          # THE COLLECTIONS A FRAME TOUCHES: everything named inside the game loop's body,
+          # The collections a frame touches: everything named inside the game loop's body,
           # plus everything named inside any routine it can reach from there. A program
           # with no game loop has no per-frame path, so nothing is hot and the rule falls
           # back to size alone.
           #
-          # A TIMER'S HANDLER COUNTS TOO, although a frame does not reach it: it is run by
+          # A timer's handler counts too, although a frame does not reach it: it is run by
           # the console many times a second, which is the same thing said another way.
           def self.touched_every_frame(program)
             bodies = program.walk.select { |n| n.kind == :func }.to_h { |n| [n.name, n] }
@@ -122,8 +122,8 @@ module VBlank
           # names of every collection it touches. +seen+ stops a routine that calls itself
           # from going round forever.
           #
-          # EVERY WAY OF REACHING ONE MATTERS, and missing one reads a whole game as cold. A
-          # `call` names its routine outright. A game's SCENES are reached by a multi-way
+          # Every way of reaching one matters, and missing one reads a whole game as cold. A
+          # `call` names its routine outright. A game's scenes are reached by a multi-way
           # dispatch instead — one clause per state, each naming the routine that draws it —
           # and a game of any size puts all its per-frame work there. Following only calls, a
           # raycaster with twenty-six collections came back with none of them touched by a
@@ -150,7 +150,7 @@ module VBlank
           # many bytes it takes there.
           Reservation = Data.define(:label, :bytes)
 
-          # WHAT THE BUILD WILL KEEP IN THE ROOMY MEMORY FOR ITSELF, read off +program+ before it
+          # What the build will keep in the roomy memory for itself, read off +program+ before it
           # is lowered, so the build's memory check (Guardrails::Checks::IwramBudget, through
           # Console::AdvanceKit#roomier_memory_reserved) can count it against what the game's own
           # collections may use there. Each number is the one the lowering claims, worked out by
@@ -160,7 +160,7 @@ module VBlank
           # claims none for a game whose every held change names a cell off its map
           # (HeldTiles#emit_fixed_tile_held): a game that does only that is refused 4K early.
           #
-          # NOT COUNTED, because only laying out the sprites can say: the records the sprite
+          # Not counted, because only laying out the sprites can say: the records the sprite
           # drawing keeps there (GBA#alloc_sprite_record!) for a game with more sprites than the
           # console's table holds, a pool whose pictures are sent as they are first shown, or
           # sprites that share rooms. Which of those a game needs, and how big each is, is known

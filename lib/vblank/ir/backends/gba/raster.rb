@@ -6,7 +6,7 @@ module VBlank
       class GBA
         # Bending a background row by row — the lowering of `:scroll_rows`.
         #
-        # HOW THE PICTURE IS BUILT. The console does not hold a finished picture anywhere.
+        # How the picture is built. The console does not hold a finished picture anywhere.
         # It builds the screen one horizontal line at a time, top to bottom, and for every
         # single line it re-reads where each background layer is scrolled to. So the scroll
         # position is not one setting for the whole picture — it is a setting the display
@@ -20,12 +20,12 @@ module VBlank
         # still one costs — the picture is made of the same tiles, just fetched from a
         # different place per line.
         #
-        # WHERE THE ROWS ARE WORKED OUT. In the gap between frames, all 160 of them, into a
+        # Where the rows are worked out. In the gap between frames, all 160 of them, into a
         # table — the program's own expression run 160 times in an ordinary loop. That is
         # the whole of what a bend costs, and it is the same either way the table is then
         # fed to the display.
         #
-        # THE GAP IS WHERE IT BELONGS, not a convenience. Everything else about a frame is
+        # The gap is where it belongs, not a convenience. Everything else about a frame is
         # settled there — where the sprites are, where each background is scrolled to — so
         # a bend worked out there shows the frame that moved it at the same moment they do.
         # Work the rows out while the picture is being drawn instead, which is the obvious
@@ -33,12 +33,12 @@ module VBlank
         # standing on it does; and the display is meanwhile reading the same rows we are
         # writing, so a long frame tears its own wave part way down.
         #
-        # HOW WE GET IN BETWEEN THE LINES. After the display finishes drawing a line it
+        # How we get in between the lines. After the display finishes drawing a line it
         # pauses briefly before starting the next (the gap is there so the hardware can
         # fetch what it needs). Two different things can move a row's number out of the
         # table in that pause, and which one a bend gets is {BendForm}'s answer.
         #
-        # THE COPIER is the cheap one. The console has four small copying engines, and one
+        # The copier is the cheap one. The console has four small copying engines, and one
         # of them can be told "at the end of every line, move one number from here into
         # that register". Point it at the table and at the layer's scroll register and it
         # feeds the display by itself, with the CPU untouched: the per-line cost is nothing
@@ -55,15 +55,15 @@ module VBlank
         # at the top — which is done in the gap between frames, where it is idle (the
         # display raises no line-ends while it is not drawing).
         #
-        # THE INTERRUPT is what answers when there is no engine left. The display can raise
-        # an interrupt at the start of that same pause: the handler reads the NEXT line's
+        # The interrupt is what answers when there is no engine left. The display can raise
+        # an interrupt at the start of that same pause: the handler reads the next line's
         # number out of the table and writes the scroll register, and the display picks
         # that up as it draws it. Same numbers, same picture — only the CPU carries them.
         #
-        # WHAT THE INTERRUPT COSTS. An interrupt per line is real work — the console stops
+        # What the interrupt costs. An interrupt per line is real work — the console stops
         # the game, saves registers, runs the handler, and resumes, 228 times a frame (the
         # display keeps counting lines past the bottom of the picture). Three things keep
-        # it small. The handler is the FIRST thing the dispatcher checks, because it fires
+        # it small. The handler is the first thing the dispatcher checks, because it fires
         # far more often than anything else. It stops early on the lines below the picture,
         # where there is nothing to bend — about a third of them. And the dispatcher itself
         # is normally worth keeping in the console's quick memory, which the build works out
@@ -71,12 +71,12 @@ module VBlank
         # cost off. What is left is the part of an interrupt the console does itself, which
         # nothing we can do reaches.
         #
-        # A PROGRAM WITH NO FRAME has no gap to fill a table in, and then the handler runs
+        # A program with no frame has no gap to fill a table in, and then the handler runs
         # the block itself, line by line, which is what this did everywhere before there
         # was a table. Nothing is paced in such a program, so there is nothing for the bend
         # to be a frame out of step with.
         #
-        # A LIGHT IS FED THE SAME WAY. A spotlight is the display's first window, a rectangle
+        # A light is fed the same way. A spotlight is the display's first window, a rectangle
         # whose left and right edges are read again for every line like a scroll is — so a
         # circle is a span per row, worked out into a table in the same gap and moved into the
         # window's register by the same engine or the same interrupt. Everything below that
@@ -90,7 +90,7 @@ module VBlank
         # table of worked-out offsets when one is latched ahead of the frame
         # (@row_bend_table), which copying engine feeds that table (@row_bend_engine), and
         # whether a copier is doing the feeding at all (@copies_row_bends) — and the light
-        # (@light), whose table and engine sit in the same two maps under LIGHT. `backgrounds:`
+        # (@light), whose table and engine sit in the same two maps under light. `backgrounds:`
         # is a live reference to the backend's own name -> layer map — it is filled after
         # this object is built (tiled backgrounds are prepared first), so only bg_number,
         # called at emission time, ever actually reads it.
@@ -110,7 +110,7 @@ module VBlank
           # The lines the picture is drawn on. The display counts on past the bottom of the
           # picture (through 227) while nothing is being drawn, so a line at or past this
           # has nothing to bend — except the very last one, which is where the top line of
-          # the NEXT frame is set up.
+          # the next frame is set up.
           VISIBLE_LINES = 160
           LAST_LINE = 227
 
@@ -157,7 +157,7 @@ module VBlank
             @lit_outside_shown = WIN_ALL_LAYERS | WIN_EFFECT | (@places_fade ? (WIN_ALL_LAYERS | WIN_EFFECT) << WINOUT_OBJ_SHIFT : 0)
           end
 
-          # THE LIGHT'S WINDOW AND THE WINDOW THAT KEEPS SPRITES OUT OF A PLACED FADE. The display
+          # The light's window and the window that keeps sprites out of a placed fade. The display
           # has two kinds of window here: the first window, which is the light's circle, and the
           # object window, the shape of the twin sprites that keep what is in front of a placed fade
           # out of it (SpriteDrawing#emit_boot_object_windows). Where the two overlap, the first
@@ -175,7 +175,7 @@ module VBlank
           # Does the light take turns with scenes it is off in (see IR::LightScenes)?
           def switches_light? = @light && !@dark_scenes.empty?
 
-          # A LIGHT THAT SHOWS NOTHING OUTSIDE IT IS THE WINDOW AND NOTHING ELSE
+          # A light that shows nothing outside it is the window and nothing else
           # (Nodes::ShadeOutside#shuts_out). Inside the window every layer shows and the colour
           # effect applies, so whatever the game mixes there, a see-through layer or a fade, goes
           # on as if there were no window. Outside it no layer is switched on, and the display
@@ -186,12 +186,12 @@ module VBlank
           # Does the light darken, and so hold the blend unit while it is on?
           def light_darkens? = !@light.nil? && !@light.shuts_out
 
-          # WHETHER THE LAST GAP BETWEEN FRAMES SWITCHED THE LIGHT ON, 1 or 0. A lit scene's
+          # Whether the last gap between frames switched the light on, 1 or 0. A lit scene's
           # pass reads it to tell the blend unit the same, so a scene arriving from one the light
           # was off in shows its first picture with no light, as every backend does.
           LIGHT_SHOWN = :_light_shown
 
-          # TAKING TURNS WITH THE LIGHT, set by a scene as its pass starts. The light switches
+          # Taking turns with the light, set by a scene as its pass starts. The light switches
           # OFF at once — the scene it is off in takes the blend unit for its own mixing there and
           # then, and lets that mixing through the light's window, inside as well as out — and
           # back ON only at the next gap between frames, where its darkness is worked out (see
@@ -377,7 +377,7 @@ module VBlank
           # light's window edges.
           def register_fed(name) = name == LIGHT ? REG_WIN0H : BackgroundDrawing::BG_HOFS_REGS[bg_number(name)]
 
-          # WHAT THE WINDOW MEANS, set once at boot. Inside it every layer and every sprite
+          # What the window means, set once at boot. Inside it every layer and every sprite
           # shows and the darkening is off; outside it the same things show and the darkening
           # is on. Its top and bottom are the whole screen, so which rows are lit is entirely
           # the spans: a row outside the circle has a span with no columns in it. The darkening
@@ -408,7 +408,7 @@ module VBlank
             @primitives.store_word_immediate(0, @primitives.var_addr(LIGHT_PASSES_BEGUN)) # still setting up
           end
 
-          # THE LIGHT AT THE GAP BETWEEN FRAMES, in a game where it takes turns: where the scene
+          # The light at the gap between frames, in a game where it takes turns: where the scene
           # that just ran has it on, it is the darkening and a window whose inside is left alone,
           # as at boot, and its darkness for the frame to come. Either way the gap remembers what
           # it did, for the next pass of a lit scene to read (see #emit_light_for_lit_scene). Where
@@ -446,7 +446,7 @@ module VBlank
             @primitives.store_halfword_acc(REG_BLDY)
           end
 
-          # WHAT SHOWS OUTSIDE A LIGHT THAT SHOWS NOTHING THERE, this frame: no layer at all while
+          # What shows outside a light that shows nothing there, this frame: no layer at all while
           # the program's amount comes to a sixteenth or more, which is the light on, and every
           # layer while it does not, which is the light off. One register, and the same amount in
           # the same sixteenths the darkening light counts in, so on and off fall where the other
@@ -464,7 +464,7 @@ module VBlank
           # walks forward as it feeds the display and there is no telling it to start over,
           # so this is how a table gets read again: stop it, aim it, start it.
           #
-          # It aims one entry IN, because the engine's first move of a frame lands on row 1
+          # It aims one entry in, because the engine's first move of a frame lands on row 1
           # — the end of line 0 is the first line-end there is. Row 0 is the frame's own to
           # write (see #emit_fill_row_bend_tables).
           #
@@ -480,11 +480,11 @@ module VBlank
             end
           end
 
-          # A BEND IS FED ONLY WHILE ITS BACKGROUND IS UP. Scenes take turns showing their
+          # A bend is fed only while its background is up. Scenes take turns showing their
           # backgrounds, and two scenes' backgrounds can be shown on the same layer of the console,
           # one at a time. Each bend has a table and a feeder of its own, all aimed at that one
           # layer's scroll register: fed regardless, the last one fed wins, and a scene that bends
-          # its background bends the next scene's as well. So everything that FEEDS a bend — its
+          # its background bends the next scene's as well. So everything that feeds a bend — its
           # row 0 into the register at the gap, its engine, the per-line handler — asks first
           # whether the scene its background belongs to is the one whose backgrounds are up, from
           # the same note the scene keeps as it puts them up (SceneEntry). Its rows are still worked
@@ -529,7 +529,7 @@ module VBlank
           # is fed from. Run once a frame, from the frame boundary — so the program's block
           # is worked out 160 times here instead of once per line while the picture is drawn.
           #
-          # EVERY LAYER'S ROW 0 GOES FIRST, before any layer's remaining rows, and that
+          # Every layer's row 0 goes first, before any layer's remaining rows, and that
           # ordering is load-bearing. Row 0 is the one that is written straight into the
           # display's register, and it has to be there before the picture starts. The rest
           # is a table nobody reads until the line it belongs to, so it may take as long as
@@ -537,10 +537,10 @@ module VBlank
           # this than the gap between frames is, and if a register write were at the end of
           # that it would land on a line being drawn and put a seam across the picture.
           #
-          # THE LIGHT'S DARKNESS GOES WITH ITS ROW 0, and before any table, for the same
+          # The light's darkness goes with its row 0, and before any table, for the same
           # reason: it is a register the whole picture reads.
           #
-          # THE LIGHT'S ROWS ARE NOT WORKED OUT HERE, only its darkness and its row 0. The gap is
+          # The light's rows are not worked out here, only its darkness and its row 0. The gap is
           # also where the frame's sprites are written, and the display starts drawing the top
           # of the next picture from them the moment the gap ends. A light that changes every
           # frame and has a long shape could fill the whole gap by itself, and then the sprites
@@ -549,7 +549,7 @@ module VBlank
           # sleeps (#emit_stage_light_rows), into a table of their own; here they are only
           # copied into the table the display is fed from, which is a short loop.
           #
-          # EXCEPT AT THE FIRST GAP, after the setting up. The setting up is not a pass: it ends
+          # Except at the first gap, after the setting up. The setting up is not a pass: it ends
           # wherever its work runs out, often right up against the gap, and working a light's rows
           # out on the end of it would carry it past the gap, so the game's first pass would start
           # a frame late. No picture has been shown yet and there are no sprites on screen to
@@ -564,7 +564,7 @@ module VBlank
             @row_bends.each_key { |key| emit_fill_row_table(key) }
           end
 
-          # THE LIGHT'S ROWS ARE ONE ROUTINE, called at the end of every pass and from
+          # The light's rows are one routine, called at the end of every pass and from
           # Spotlight#show_now. A light whose shape is worked out row by row costs a few dozen
           # instructions a row, and written out at each place that asks, the one inside a pass ran
           # wherever that pass's routine was kept: from the cartridge, at well under half the
@@ -600,7 +600,7 @@ module VBlank
             @primitives.store_halfword_acc(register_fed(key))
           end
 
-          # A SCENE TAKING OVER SWITCHES ITS LAYERS' BENDS, as its backgrounds go up. The gap before
+          # A scene taking over switches its layers' bends, as its backgrounds go up. The gap before
           # fed whatever was up then, the last scene's, and the scene's first picture is drawn
           # from the bends of the backgrounds it shows: so here the other scenes' engines on the
           # layers this scene's backgrounds use stop, this scene's bend is pointed at its table
@@ -625,7 +625,7 @@ module VBlank
             @flat_on_bent_layers.each { |name, owner| emit_flat_scroll(name) if owner == scene }
           end
 
-          # A BACKGROUND PUT UP SHOWS FROM ITS CORNER for the rest of the pass, bent or not
+          # A background put up shows from its corner for the rest of the pass, bent or not
           # (Reference#put_up_background) — a scene coming back, the scenery every screen shows
           # coming back, or its statement reached again in a routine. A flat one has its scroll
           # registers put back to 0 as it goes up. A bent one's rows come from its table, and the
@@ -717,7 +717,7 @@ module VBlank
             @emitter.place_label(begun)
           end
 
-          # THE LIGHT'S ROWS AT THE END OF A PASS, before the console sleeps until the gap. The
+          # The light's rows at the end of a pass, before the console sleeps until the gap. The
           # game's numbers stand as the gap will find them, so the rows are the ones the gap
           # used to work out, only worked out sooner, into the second table: the display is
           # still drawing this pass's picture from the first one. They are worked out only where
@@ -750,7 +750,7 @@ module VBlank
             @emitter.place_label(done)
           end
 
-          # THE LIGHT WORKED OUT DURING A PASS (Spotlight#show_now), for the picture being drawn:
+          # The light worked out during a pass (Spotlight#show_now), for the picture being drawn:
           # what a game does that hands the display its rows while it draws. The darkness, and
           # the rows only where they show and have changed, worked out as the end of a pass works
           # them out and then copied at once into the table the display goes on reading a line at
@@ -885,7 +885,7 @@ module VBlank
 
           # The per-line handler, run from the interrupt dispatcher.
           #
-          # The line the display is ABOUT to draw is one past the one it just finished, so
+          # The line the display is about to draw is one past the one it just finished, so
           # the offset written here is the next line's. On the display's last line that
           # wraps to the top line of the next frame, which is what keeps the topmost row of
           # the picture bent like all the others.

@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # THE KINDS OF SAVE CHIP, and what each does differently with the three ways into save
+        # The kinds of save chip, and what each does differently with the three ways into save
         # memory that save data is built from (see Save): read, write, and checksum a run of
         # bytes — and the wipe, which only flash has.
         #
@@ -205,7 +205,7 @@ module VBlank
           def flash? = true
           def signature = SIGNATURE
 
-          # SEND A COMMAND TO THE CHIP FIRST, before anything reads save memory. An emulator
+          # Send a command to the chip first, before anything reads save memory. An emulator
           # decides which chip a cartridge has from the first thing the game does to save memory:
           # a command makes it flash, and anything else — a read included — makes it battery
           # memory for good. Asking the chip for its maker's number and putting it back is the
@@ -305,7 +305,7 @@ module VBlank
             end
           end
 
-          # Read the byte at +at+ until it is the byte in +want+, or the chip has been asked ASKS
+          # Read the byte at +at+ until it is the byte in +want+, or the chip has been asked asks
           # times. Spends r0 and r12.
           def emit_wait_until_read_is(at, want)
             again = @emitter.gensym
@@ -322,7 +322,7 @@ module VBlank
           end
         end
 
-        # A CHIP WHOSE PLACES BECOME ADDRESSES ONE BYTE AT A TIME, through a routine of the chip's
+        # A chip whose places become addresses one byte at a time, through a routine of the chip's
         # own (#emit_place_to_address): r1 holds a place going in and an address the console can
         # read coming out, and r0, r2 and r3 are left as they were. The 128K flash chip finds the
         # bank a byte is in; the EEPROM finds its block.
@@ -420,8 +420,8 @@ module VBlank
         end
 
         # AN 8K EEPROM. It is not on the bus the other chips are on: it sits at the start of
-        # EEPROM_AT and is spoken to ONE BIT AT A TIME, a bit in the lowest bit of each halfword
-        # the copying engine moves there or back. It reads and writes a BLOCK of eight bytes
+        # EEPROM_AT and is spoken to one bit at a time, a bit in the lowest bit of each halfword
+        # the copying engine moves there or back. It reads and writes a block of eight bytes
         # and nothing smaller, numbered from 0 to 1023.
         #
         # Reading a block is two copies: out go 17 bits — 1, 1, the block's number in 14 bits
@@ -431,7 +431,7 @@ module VBlank
         # takes most of half a frame to settle, and a read at EEPROM_AT shows when it has: its
         # lowest bit comes back 1.
         #
-        # SO THE CHIP IS SEEN THROUGH ONE BLOCK KEPT IN THE ROOMY MEMORY. A place becomes an
+        # So the chip is seen through one block kept in the roomy memory. A place becomes an
         # address in that copy, and the copy is fetched first when it holds another block; a
         # byte written goes into the copy, which is then marked as differing from the chip. The copy goes
         # back to the chip when another block is wanted, and at the end of every pass of the game
@@ -441,7 +441,7 @@ module VBlank
         # the chip in the order the save made them — the checksum that makes a half good still
         # goes in last — and nothing a pass wrote is still in the copy when the frame ends.
         #
-        # READS HAVE A BLOCK OF THEIR OWN. A save after the first copies from the older half
+        # Reads have a block of their own. A save after the first copies from the older half
         # while it writes the newer, a byte from one and then a byte to the other; with one copy
         # each read would throw out the block being written and every byte would cost a block
         # written back. So a read is served from the block a save writes into when it is that
@@ -700,7 +700,7 @@ module VBlank
             @emitter.emit(ASM.load_immediate(0, 0))
             @emitter.emit(ASM.store_halfword(0, 1))                    # the request's last bit
             emit_copy(from: :bits, to: :chip, count: WRITE_REQUEST)
-            # Ask the chip until it has settled, or it has been asked ASKS times.
+            # Ask the chip until it has settled, or it has been asked asks times.
             @emitter.emit(ASM.load_immediate(1, EEPROM_AT))
             @emitter.emit(ASM.load_immediate(3, ASKS))
             @emitter.place_label(asked)
