@@ -54,10 +54,9 @@ These work as their group files say:
 `color_walk`, `mirror`, `upside_down`, `blit`, `draw_in_order`, `hide_sprites`,
 `picture_groups`, `pool`, `box`, `tiles`, `canvas`, `tile_pictures`, `sprite_tiles`,
 `draw_text`, `draw_number`, `text_width`, `text_height`, `menu`, `var`, `save_var`, `save_data`,
-`clock`, `saves_keep_everything`, `part`, `start_over`, `set`, `add`, `add_var`, `sub`,
-`sub_var`, `copy`, `negate`, `negate!`, `flip`, `flip!`, `abs`, `abs!`, `negate_abs`,
-`negate_abs!`, `clamp`, `clamp!`, `approach`, `approach!`, `list`, `func`, `call`, `scene`,
-`case_var`, `most_players`, `seed`, `randomize`, `roll`, `rand`, `chance`, `random_numbers`,
-`define_sound`, `beep`, `noise`, `wave`, `stop_wave`, `play_song`, `stop_music`, `hold_music`,
-`release_music`, `music_volume`, `fade_music_in`, `fade_music_out`, `sound_effects`, `sample`,
-`instrument`.
+`clock`, `saves_keep_everything`, `part`, `start_over`, `negate`, `negate!`, `flip`, `flip!`,
+`abs`, `abs!`, `negate_abs`, `negate_abs!`, `clamp`, `clamp!`, `approach`, `approach!`, `list`,
+`func`, `call`, `scene`, `case_var`, `most_players`, `seed`, `randomize`, `roll`, `rand`,
+`chance`, `random_numbers`, `define_sound`, `beep`, `noise`, `wave`, `stop_wave`, `play_song`,
+`stop_music`, `hold_music`, `release_music`, `music_volume`, `fade_music_in`, `fade_music_out`,
+`sound_effects`, `sample`, `instrument`.

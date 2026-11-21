@@ -493,7 +493,7 @@ explanation, and leads with what went wrong and where.
 ### DSL Conventions
 
 - `flip` (not `negate`) for reversing direction — reads naturally in game code
-- `copy :dest, :src` for variable-to-variable assignment
+- Plain Ruby assignment (`x = y`, `x += n`) changes a variable
 - Underscore prefix (`_cpu_center`) for scratch/temp variables
 - `func` for subroutines, `scene` for game states, `case_var` for dispatch
 
