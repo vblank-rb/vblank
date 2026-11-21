@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# THE TESTS OF vblank/effects/packs/test_screen_pixelate.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY, kept apart so that the
+# The tests of vblank/effects/packs/test_screen_pixelate.rb that only the Game Boy Advance can play, kept apart so that the
 # Game Boy Color's run never loads them (test/console/gba); the rest are in that file.
 #
 # The pixelate that walks — `pixelate_out`, `pixelate_in`, and the size a game can read to
@@ -48,7 +48,7 @@ class TestScreenPixelateOnTheAdvance < Minitest::Test
 
   # The size of block each of the first +frames+ frames shows: found by putting the picture
   # as drawn into blocks of every size and seeing which one the frame is. Every frame is read
-  # from ONE run as it settles, rather than the game played again for each, which costs the
+  # from one run as it settles, rather than the game played again for each, which costs the
   # square of the frames. The first look comes at the boundary before the first pass, so the
   # run plays one frame more and that look is dropped.
   private def sizes_shown(program, frames)

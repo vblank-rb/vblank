@@ -3,7 +3,7 @@
 require "test_helper"
 require "fade_watch"
 
-# THE TESTS OF vblank/effects/packs/test_screen_fade.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY, kept apart so
+# The tests of vblank/effects/packs/test_screen_fade.rb that only the Game Boy Advance can play, kept apart so
 # that the Game Boy Color's run never loads them (test/console/gba); the rest are in that file.
 #
 # The Advance's display fades a plain bitmap screen itself, in sixteenths. A Game Boy Color has no

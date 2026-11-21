@@ -3,12 +3,12 @@
 require "test_helper"
 require "all/vblank/ir/backends/reference/test_save_into"
 
-# THE TESTS OF vblank/ir/backends/reference/test_save_into.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY, kept apart so that the
+# The tests of vblank/ir/backends/reference/test_save_into.rb that only the Game Boy Advance can play, kept apart so that the
 # Game Boy Color's run never loads them (test/console/gba); the rest are in that file, and the
 # Advance's cartridge starting from a written copy is in
 # test/lowering/gba/vblank/ir/backends/reference/test_save_into_cartridge.rb.
 #
-# A TEST WRITES A SAVE INTO SAVE MEMORY, so a game starts from a save it chose rather than
+# A test writes a save into save memory, so a game starts from a save it chose rather than
 # being played until it saves one. The copy is the one the game itself would have written,
 # so the game treats it the same as its own: good, read by peek and load, saved over, erased
 # and copied like any other.

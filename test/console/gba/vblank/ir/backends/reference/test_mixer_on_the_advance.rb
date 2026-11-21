@@ -36,8 +36,8 @@ module MixerGames
     game_player.run(frames_program(frames, &setup), max_steps: 200_000)
   end
 
-  # TWO MORE DIFFERENT SOUNDS THAN THE MIXER HAS VOICES, AND BOTH BACKENDS MUST KEEP THE SAME
-  # ONES. The mixer drops a play it has no room for rather than cutting off one already
+  # Two more different sounds than the mixer has voices, and both backends must keep the same
+  # ones. The mixer drops a play it has no room for rather than cutting off one already
   # sounding, so the first ones played are the ones that sound and the last two are lost.
   #
   # A count alone would not show that: two backends can each hold a full mixer and disagree
@@ -47,7 +47,7 @@ module MixerGames
   # class's own constants are frozen for its Ractor.
   SOUNDS = Ractor.make_shareable((0...(VBlank::Audio::Sound::MIXER_VOICES + 2)).map { |i| :"s#{i}" })
 
-  # Every one of SOUNDS played on the first pass, each with bytes of its own.
+  # Every one of sounds played on the first pass, each with bytes of its own.
   private def sounds_past_the_mixer
     frames_program(5) do
       SOUNDS.each_with_index.map { |name, i| sample name, pcm: [25 + i, -25 - i] * 2000, rate: 8000 }
@@ -56,8 +56,8 @@ module MixerGames
   end
 end
 
-# THE TESTS OF test/all/vblank/ir/backends/reference/test_mixer.rb THAT ONLY THE GAME BOY ADVANCE
-# CAN PLAY, kept apart so that the Game Boy Color's run never loads them; the rest are in that
+# The tests of test/all/vblank/ir/backends/reference/test_mixer.rb that only the Game Boy Advance
+# can play, kept apart so that the Game Boy Color's run never loads them; the rest are in that
 # file, and the mix read straight off the Advance's cartridge is in
 # test/lowering/gba/vblank/ir/backends/reference/test_mixer_cartridge.rb.
 #
@@ -132,7 +132,7 @@ class TestMixerOnTheAdvance < Minitest::Test
     assert_operator i.peak_voices, :>=, 3, "the same effect overlaps itself (#{i.peak_voices})"
   end
 
-  # OVER-SUBSCRIBE THE MIXER AND ASK BOTH BACKENDS WHAT HAPPENED. The assertion is against
+  # Over-subscribe the mixer and ask both backends what happened. The assertion is against
   # Sound::MIXER_VOICES — the promise the two backends make to each other — and not against
   # either one's own constant. Asserting the interpreter's cap against the interpreter's
   # behaviour is true whatever the number says and silent about the lowering, which is how
@@ -233,7 +233,7 @@ class TestMixerOnTheAdvance < Minitest::Test
     assert_mixes_agree(tune_on(part_words: { envelope: { release: 0.2 } }, volume_from: 8), frames: 60)
   end
 
-  # A QUIET NOTE FALLING AWAY GOES SILENT WHILE ITS LEVEL IS STILL ABOVE NOTHING. A voice's
+  # A quiet note falling away goes silent while its level is still above nothing. A voice's
   # loudness for a frame is a whole number of 256ths, the loudness asked for (out of 512) times
   # the level, over 512, the rest dropped — as a cartridge's own sound engine works it out from
   # its right and left volumes, (level x (right + left)) >> 9. So a note asked at 51 (25 and a
@@ -442,7 +442,7 @@ class TestMixerOnTheAdvance < Minitest::Test
     assert_mixes_agree(quiet_note_let_go, frames: 100)
   end
 
-  # WHAT A GAME DOES INSIDE ITS LOOP is mixed in the slice made just after its pass, so against a
+  # What a game does inside its loop is mixed in the slice made just after its pass, so against a
   # tune that is already sounding, a sound the game starts or stops lands on the cartridge's
   # frame — and a sound with a shape is heard there, its shape moved on once as it is played.
   def test_a_sound_the_game_starts_and_stops_in_its_loop_lands_on_the_same_frame
